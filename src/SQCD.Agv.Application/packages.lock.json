@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dependencies": {
+    "net8.0": {
+      "sqcd.agv.core": {
+        "type": "Project"
+      }
+    },
+    "net8.0/win-x64": {}
+  }
+}

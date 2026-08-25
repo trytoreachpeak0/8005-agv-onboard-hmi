@@ -11,9 +11,9 @@ public sealed class OnboardControllerTests
         FakeIoModule io = new();
         FakeRuleGateway rule = new(OperationType.Load, "OP-LOAD-001");
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
 
-        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
 
         Assert.Equal(1, io.PulseCount);
         OperationResult result = Assert.Single(rule.Results);
@@ -30,10 +30,10 @@ public sealed class OnboardControllerTests
         FakeIoModule io = new();
         FakeRuleGateway rule = new(OperationType.Load, "OP-DUPLICATE");
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
-        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        await controller.StartAsync(TestContext.Current.CancellationToken);
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
 
-        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
 
         Assert.Equal(1, io.PulseCount);
         Assert.Equal("DUPLICATE_OPERATION", controller.Current.ErrorCode);
@@ -45,9 +45,9 @@ public sealed class OnboardControllerTests
         FakeIoModule io = new() { FailUnlockFeedback = true };
         FakeRuleGateway rule = new(OperationType.Load, "OP-TIMEOUT");
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
 
-        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
 
         Assert.Equal(1, io.PulseCount);
         OperationResult result = Assert.Single(rule.Results);
@@ -64,9 +64,9 @@ public sealed class OnboardControllerTests
         FakeIoModule io = new();
         FakeRuleGateway rule = new(OperationType.Load, "OP-001") { PublishVisit = false };
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
 
-        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
 
         Assert.Equal(0, io.PulseCount);
         Assert.Empty(rule.Results);
@@ -78,10 +78,10 @@ public sealed class OnboardControllerTests
         FakeIoModule io = new() { FinalHasCargo = false };
         FakeRuleGateway rule = new(OperationType.Unload, "OP-UNLOAD-001");
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
         io.SetCargo(slotIndex: 0, hasCargo: true);
 
-        await controller.SubmitScanAsync("UNLOAD-001", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("UNLOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
 
         Assert.Equal(1, io.PulseCount);
         OperationResult result = Assert.Single(rule.Results);
@@ -96,9 +96,9 @@ public sealed class OnboardControllerTests
         FakeIoModule io = new();
         FakeRuleGateway rule = new(OperationType.Load, "OP-INVALID-SLOT") { SlotIndex = 8 };
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
 
-        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
 
         Assert.Equal(0, io.PulseCount);
         Assert.Equal("INVALID_RULE_RESPONSE", controller.Current.ErrorCode);
@@ -111,9 +111,9 @@ public sealed class OnboardControllerTests
         FakeRuleGateway rule = new(OperationType.Load, "OP-VISIT");
         io.BeforeFinalFeedback = () => rule.ReplaceVisit("VISIT-NEW");
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
 
-        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
 
         OperationResult result = Assert.Single(rule.Results);
         Assert.Equal("VISIT-001", result.VisitId);
@@ -126,13 +126,13 @@ public sealed class OnboardControllerTests
         io.SetCargo(0, hasCargo: true);
         FakeRuleGateway rule = new(OperationType.Unload, "OP-RECOVERY");
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
         Assert.Equal("STARTUP_STATE_UNSAFE", controller.Current.ErrorCode);
         Assert.Contains("仓内已有货物", controller.Current.Guidance);
         Assert.DoesNotContain("DO=", controller.Current.Guidance);
         Assert.DoesNotContain("DI=", controller.Current.Guidance);
 
-        bool recovered = await controller.ConfirmSafeStartupStateAsync();
+        bool recovered = await controller.ConfirmSafeStartupStateAsync(TestContext.Current.CancellationToken);
 
         Assert.True(recovered);
         Assert.Equal(OnboardState.ReadyToScan, controller.Current.State);
@@ -145,9 +145,9 @@ public sealed class OnboardControllerTests
         FakeIoModule io = new();
         FakeRuleGateway rule = new(OperationType.Load, "OP-RULE-TIMEOUT") { FailVerificationWithTimeout = true };
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
 
-        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
 
         Assert.Equal(0, io.PulseCount);
         Assert.Equal("REQUEST_TIMEOUT", controller.Current.ErrorCode);
@@ -160,9 +160,9 @@ public sealed class OnboardControllerTests
         FakeIoModule io = new() { FailPulseWithTimeout = true };
         FakeRuleGateway rule = new(OperationType.Load, "OP-WRITE-TIMEOUT");
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
 
-        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
 
         Assert.Equal(1, io.PulseCount);
         Assert.Equal("IO_WRITE_FAILED", controller.Current.ErrorCode);
@@ -176,9 +176,9 @@ public sealed class OnboardControllerTests
         FakeIoModule io = new() { KeepUnlockOutputActive = true };
         FakeRuleGateway rule = new(OperationType.Load, "OP-OUTPUT-STUCK");
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
 
-        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
 
         Assert.Equal(1, io.PulseCount);
         OperationResult result = Assert.Single(rule.Results);
@@ -198,10 +198,10 @@ public sealed class OnboardControllerTests
             PauseVerification = true
         };
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
 
-        Task submitTask = controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
-        await rule.VerificationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        Task submitTask = controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
+        await rule.VerificationStarted.Task.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
         controller.EnterFatalFault("UI_FATAL_TEST", "测试严重安全故障，禁止继续操作。");
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(
@@ -220,9 +220,9 @@ public sealed class OnboardControllerTests
         FakeIoModule io = new() { FailUnlockFeedbackWithIoDisconnect = true };
         FakeRuleGateway rule = new(OperationType.Load, "OP-IO-OFFLINE");
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
 
-        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
 
         Assert.Equal("IO_OFFLINE", controller.Current.ErrorCode);
         Assert.Contains("所有仓位状态无法确认", controller.Current.Guidance);
@@ -235,10 +235,10 @@ public sealed class OnboardControllerTests
         FakeIoModule io = new();
         FakeRuleGateway rule = new(OperationType.Load, "OP-ALL-UNKNOWN");
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
         io.SetUnknown(Enumerable.Range(0, 8).ToArray());
 
-        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
 
         Assert.Equal("IO_STATE_UNKNOWN", controller.Current.ErrorCode);
         Assert.Contains("所有仓位状态无法确认", controller.Current.Guidance);
@@ -251,10 +251,10 @@ public sealed class OnboardControllerTests
         FakeIoModule io = new();
         FakeRuleGateway rule = new(OperationType.Load, "OP-ONE-UNKNOWN") { SlotIndex = 2 };
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
         io.SetUnknown(2);
 
-        await controller.SubmitScanAsync("LOAD-003", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("LOAD-003", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
 
         Assert.Equal("IO_STATE_UNKNOWN", controller.Current.ErrorCode);
         Assert.Contains("3号仓状态无法确认", controller.Current.Guidance);
@@ -266,10 +266,10 @@ public sealed class OnboardControllerTests
         FakeIoModule io = new();
         FakeRuleGateway rule = new(OperationType.Load, "OP-PRECHECK");
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
         io.SetCargo(0, hasCargo: true);
 
-        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
 
         Assert.Equal(0, io.PulseCount);
         OperationResult result = Assert.Single(rule.Results);
@@ -287,10 +287,10 @@ public sealed class OnboardControllerTests
             ResultAcknowledged = false
         };
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
         io.SetCargo(0, hasCargo: true);
 
-        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
 
         Assert.Equal(OnboardState.Faulted, controller.Current.State);
         Assert.Equal("PRECHECK_RESULT_ACK_TIMEOUT", controller.Current.ErrorCode);
@@ -314,9 +314,9 @@ public sealed class OnboardControllerTests
         FakeIoModule io = new();
         FakeRuleGateway rule = new(OperationType.Unload, "OP-NO-CARGO");
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
 
-        await controller.SubmitScanAsync("UNLOAD-001", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("UNLOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
         io.RepublishSnapshot();
 
         Assert.Equal(OnboardState.ReadyToScan, controller.Current.State);
@@ -331,15 +331,15 @@ public sealed class OnboardControllerTests
         io.QueueCargoOnClose(false, true);
         FakeRuleGateway rule = new(OperationType.Load, "OP-LOAD-REOPEN");
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
 
-        Task submitTask = controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        Task submitTask = controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
         await WaitUntilAsync(() => controller.CanReopenCurrentOperation);
 
         Assert.Equal(OperationStage.WaitingOperatorRecovery, controller.Current.ActiveOperation?.Stage);
         Assert.Contains("尚未检测到货物", controller.Current.Guidance);
         Assert.True(controller.RequestReopenCurrentOperation());
-        await submitTask.WaitAsync(TimeSpan.FromSeconds(2));
+        await submitTask.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 
         Assert.Equal(2, io.PulseCount);
         OperationResult result = Assert.Single(rule.Results);
@@ -354,16 +354,16 @@ public sealed class OnboardControllerTests
         FakeIoModule io = new();
         FakeRuleGateway rule = new(OperationType.Unload, "OP-UNLOAD-REOPEN");
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
         io.SetCargo(0, hasCargo: true);
         io.QueueCargoOnClose(true, false);
 
-        Task submitTask = controller.SubmitScanAsync("UNLOAD-001", ScanInputMethod.Scanner);
+        Task submitTask = controller.SubmitScanAsync("UNLOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
         await WaitUntilAsync(() => controller.CanReopenCurrentOperation);
 
         Assert.Contains("仍检测到货物", controller.Current.Guidance);
         Assert.True(controller.RequestReopenCurrentOperation());
-        await submitTask.WaitAsync(TimeSpan.FromSeconds(2));
+        await submitTask.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 
         Assert.Equal(2, io.PulseCount);
         OperationResult result = Assert.Single(rule.Results);
@@ -378,13 +378,13 @@ public sealed class OnboardControllerTests
         io.QueueCargoOnClose(false);
         FakeRuleGateway rule = new(OperationType.Load, "OP-LOAD-CANCEL");
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
 
-        Task submitTask = controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        Task submitTask = controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
         await WaitUntilAsync(() => controller.CanCancelCurrentOperation);
 
         Assert.True(controller.RequestCancelCurrentOperation());
-        await submitTask.WaitAsync(TimeSpan.FromSeconds(2));
+        await submitTask.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 
         OperationResult result = Assert.Single(rule.Results);
         Assert.False(result.Success);
@@ -402,12 +402,12 @@ public sealed class OnboardControllerTests
         io.QueueCargoOnClose(false);
         FakeRuleGateway rule = new(OperationType.Load, "OP-DELAYED-CARGO");
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
 
-        Task submitTask = controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        Task submitTask = controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
         await WaitUntilAsync(() => controller.CanCancelCurrentOperation);
         io.SetCargo(0, hasCargo: true);
-        await submitTask.WaitAsync(TimeSpan.FromSeconds(2));
+        await submitTask.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 
         Assert.Equal(1, io.PulseCount);
         Assert.True(Assert.Single(rule.Results).Success);
@@ -424,12 +424,12 @@ public sealed class OnboardControllerTests
             ResultAcknowledged = false
         };
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
 
-        Task submitTask = controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        Task submitTask = controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
         await WaitUntilAsync(() => controller.CanCancelCurrentOperation);
         Assert.True(controller.RequestCancelCurrentOperation());
-        await submitTask.WaitAsync(TimeSpan.FromSeconds(2));
+        await submitTask.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
 
         Assert.Equal(OnboardState.Faulted, controller.Current.State);
         Assert.Equal("CANCEL_RESULT_ACK_TIMEOUT", controller.Current.ErrorCode);
@@ -446,9 +446,9 @@ public sealed class OnboardControllerTests
             ResultAcknowledged = false
         };
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
 
-        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
 
         Assert.Equal(OnboardState.Faulted, controller.Current.State);
         Assert.Equal("RESULT_ACK_TIMEOUT", controller.Current.ErrorCode);
@@ -475,12 +475,12 @@ public sealed class OnboardControllerTests
         io.QueueCargoOnClose(false, false, false);
         FakeRuleGateway rule = new(OperationType.Load, "OP-LOAD-REOPEN-LIMIT");
         await using OnboardController controller = CreateController(io, rule);
-        await controller.StartAsync();
+        await controller.StartAsync(TestContext.Current.CancellationToken);
 
-        Task submitTask = controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        Task submitTask = controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
         await WaitUntilAsync(() => controller.CanReopenCurrentOperation);
 
-        await controller.SubmitScanAsync("LOAD-002", ScanInputMethod.Scanner);
+        await controller.SubmitScanAsync("LOAD-002", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
         Assert.Equal(1, io.PulseCount);
         Assert.Equal("EARLY_DOOR_CLOSED", controller.Current.ErrorCode);
         Assert.Contains("重新打开仓门", controller.Current.Guidance);
@@ -496,7 +496,7 @@ public sealed class OnboardControllerTests
         Assert.False(controller.RequestReopenCurrentOperation());
         Assert.Contains("次数已经用完", controller.Current.Guidance);
         Assert.True(controller.RequestCancelCurrentOperation());
-        await submitTask.WaitAsync(TimeSpan.FromSeconds(2));
+        await submitTask.WaitAsync(TimeSpan.FromSeconds(2), TestContext.Current.CancellationToken);
         Assert.Equal(3, io.PulseCount);
     }
 

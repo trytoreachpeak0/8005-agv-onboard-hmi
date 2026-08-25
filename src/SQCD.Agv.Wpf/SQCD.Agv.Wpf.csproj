@@ -3,6 +3,9 @@
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
+    <RuntimeFrameworkVersion>8.0.30</RuntimeFrameworkVersion>
+    <PublishSingleFile>false</PublishSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
     <ApplicationIcon />
   </PropertyGroup>
   <ItemGroup>

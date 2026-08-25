@@ -16,6 +16,7 @@
 - Release构建启用可空检查、推荐级静态分析和警告即错误。
 - 具备核心安全规则和自动测试。
 - RuleMock默认从“在途”开始，可通过控制台命令模拟到站和离站。
+- `OnboardHmi_MVP` 已绑定未批准协议候选 `72ddde5` / manifest `e878d8…35f2e`，并建立正式 `ISlotIoProvider` 与原型 A 映射入口；旧协议和单仓路径尚未完成迁移。
 
 当前`SQCD.Agv.Contracts`和TCP JSON消息属于早期联调协议，只用于保留现有可运行能力，不代表双方最终接口。后续接口定义、消息示例、版本和兼容规则统一以[`8005-agv-protocol`](https://github.com/trytoreachpeak0/8005-agv-protocol)仓库为准，并按该仓库逐步发布的协议增量开发。
 
@@ -51,9 +52,11 @@ tests/
 在仓库根目录执行：
 
 ```powershell
-dotnet build .\SQCD_8005AGV.slnx -c Release
+dotnet build .\SQCD_8005AGV.sln -c Release
 dotnet test .\tests\SQCD.Agv.UnitTests\SQCD.Agv.UnitTests.csproj -c Release
 ```
+
+可复现构建要求 `global.json` 指定的 SDK `8.0.424`；不得使用 9.x SDK 冒充冻结版本。若 SDK 未加入 `PATH`，可把 `WIRE_TO_GATE_DOTNET_EXE` 指向该版本的 `dotnet.exe` 后运行脚本。薄实施入口见 [`docs/ai-spec/README.md`](docs/ai-spec/README.md)。
 
 也可以直接使用Visual Studio的“发布”功能。命令行发布车载端示例：
 
