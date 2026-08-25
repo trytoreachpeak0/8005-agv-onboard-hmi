@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.1">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/SQCD.Agv.Core/SQCD.Agv.Core.csproj" />
+    <ProjectReference Include="../../src/SQCD.Agv.Application/SQCD.Agv.Application.csproj" />
+    <ProjectReference Include="../../src/SQCD.Agv.Infrastructure/SQCD.Agv.Infrastructure.csproj" />
+    <ProjectReference Include="../../tools/SQCD.Agv.RuleMock/SQCD.Agv.RuleMock.csproj" />
+  </ItemGroup>
+</Project>

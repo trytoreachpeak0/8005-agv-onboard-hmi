@@ -1,0 +1,116 @@
+{
+  "listenIp": "127.0.0.1",
+  "listenPort": 18080,
+  "agvId": "AGV-8005-01",
+  "visitId": "VISIT-MOCK-001",
+  "stationId": "ST-MOCK-01",
+  "stationName": "模拟站点A",
+  "allowOperation": true,
+  "visitValidMinutes": 60,
+  "responseDelayMs": 50,
+  "autoStartVisit": false,
+  "faults": {
+    "ignoreScanRequests": false,
+    "dropResultAcknowledgements": false,
+    "sendDuplicateScanResponse": false,
+    "returnInvalidSlotIndex": false
+  },
+  "rules": [
+    {
+      "sublot": "LOAD-001",
+      "taskId": "TASK-LOAD-001",
+      "slotIndex": 0,
+      "operationType": "Load"
+    },
+    {
+      "sublot": "LOAD-002",
+      "taskId": "TASK-LOAD-002",
+      "slotIndex": 1,
+      "operationType": "Load"
+    },
+    {
+      "sublot": "LOAD-003",
+      "taskId": "TASK-LOAD-003",
+      "slotIndex": 2,
+      "operationType": "Load"
+    },
+    {
+      "sublot": "LOAD-004",
+      "taskId": "TASK-LOAD-004",
+      "slotIndex": 3,
+      "operationType": "Load"
+    },
+    {
+      "sublot": "LOAD-005",
+      "taskId": "TASK-LOAD-005",
+      "slotIndex": 4,
+      "operationType": "Load"
+    },
+    {
+      "sublot": "LOAD-006",
+      "taskId": "TASK-LOAD-006",
+      "slotIndex": 5,
+      "operationType": "Load"
+    },
+    {
+      "sublot": "LOAD-007",
+      "taskId": "TASK-LOAD-007",
+      "slotIndex": 6,
+      "operationType": "Load"
+    },
+    {
+      "sublot": "LOAD-008",
+      "taskId": "TASK-LOAD-008",
+      "slotIndex": 7,
+      "operationType": "Load"
+    },
+    {
+      "sublot": "UNLOAD-001",
+      "taskId": "TASK-UNLOAD-001",
+      "slotIndex": 0,
+      "operationType": "Unload"
+    },
+    {
+      "sublot": "UNLOAD-002",
+      "taskId": "TASK-UNLOAD-002",
+      "slotIndex": 1,
+      "operationType": "Unload"
+    },
+    {
+      "sublot": "UNLOAD-003",
+      "taskId": "TASK-UNLOAD-003",
+      "slotIndex": 2,
+      "operationType": "Unload"
+    },
+    {
+      "sublot": "UNLOAD-004",
+      "taskId": "TASK-UNLOAD-004",
+      "slotIndex": 3,
+      "operationType": "Unload"
+    },
+    {
+      "sublot": "UNLOAD-005",
+      "taskId": "TASK-UNLOAD-005",
+      "slotIndex": 4,
+      "operationType": "Unload"
+    },
+    {
+      "sublot": "UNLOAD-006",
+      "taskId": "TASK-UNLOAD-006",
+      "slotIndex": 5,
+      "operationType": "Unload"
+    },
+    {
+      "sublot": "UNLOAD-007",
+      "taskId": "TASK-UNLOAD-007",
+      "slotIndex": 6,
+      "operationType": "Unload"
+    },
+    {
+      "sublot": "UNLOAD-008",
+      "taskId": "TASK-UNLOAD-008",
+      "slotIndex": 7,
+      "operationType": "Unload"
+    }
+  ]
+}

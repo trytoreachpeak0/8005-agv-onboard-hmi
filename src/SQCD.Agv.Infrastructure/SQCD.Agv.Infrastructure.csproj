@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../SQCD.Agv.Core/SQCD.Agv.Core.csproj" />
+    <ProjectReference Include="../SQCD.Agv.Contracts/SQCD.Agv.Contracts.csproj" />
+  </ItemGroup>
+</Project>

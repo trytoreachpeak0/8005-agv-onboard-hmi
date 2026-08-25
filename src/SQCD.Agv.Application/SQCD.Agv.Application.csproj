@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../SQCD.Agv.Core/SQCD.Agv.Core.csproj" />
+  </ItemGroup>
+</Project>
