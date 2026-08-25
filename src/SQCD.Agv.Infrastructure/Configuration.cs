@@ -18,6 +18,8 @@ public sealed class OnboardSettings
 
     public LogSettings Logging { get; init; } = new();
 
+    public WireToGateRuntimeSettings WireToGate { get; init; } = new();
+
     public static OnboardSettings Load(string path)
     {
         if (!File.Exists(path))
@@ -44,6 +46,7 @@ public sealed class OnboardSettings
         RuleGateway.Validate();
         IoModule.Validate();
         Workflow.Validate();
+        WireToGate.Validate();
     }
 
     private static JsonSerializerOptions SerializerOptions { get; } = new()
@@ -52,6 +55,34 @@ public sealed class OnboardSettings
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true
     };
+}
+
+public sealed class WireToGateRuntimeSettings
+{
+    public string ControlServerHost { get; init; } = "127.0.0.1";
+    public int ControlServerPort { get; init; } = 58_005;
+    public bool UseTls { get; init; }
+    public string? ServerCertificateSha256 { get; init; }
+    public string CredentialEnvironmentVariable { get; init; } = "CONTROL_SERVER_ONBOARD_CREDENTIAL";
+    public int ConnectTimeoutMs { get; init; } = 3_000;
+    public string IoSimulatorBaseUrl { get; init; } = "http://127.0.0.1:58006";
+    public int IoRequestTimeoutMs { get; init; } = 2_000;
+    public string JournalDatabasePath { get; init; } = "%ProgramData%/8005/OnboardHmi/data/onboard-journal.db";
+
+    internal void Validate()
+    {
+        if (string.IsNullOrWhiteSpace(ControlServerHost) || ControlServerPort is < 1 or > 65_535 ||
+            string.IsNullOrWhiteSpace(CredentialEnvironmentVariable) || ConnectTimeoutMs <= 0 ||
+            !Uri.TryCreate(IoSimulatorBaseUrl, UriKind.Absolute, out _) || IoRequestTimeoutMs <= 0 ||
+            string.IsNullOrWhiteSpace(JournalDatabasePath))
+        {
+            throw new InvalidDataException("WIRE_TO_GATE ControlServer、IO simulator 或 journal 配置无效。");
+        }
+        if (UseTls && string.IsNullOrWhiteSpace(ServerCertificateSha256))
+        {
+            throw new InvalidDataException("WIRE_TO_GATE TLS 必须配置服务端证书 SHA-256 pin。");
+        }
+    }
 }
 
 public sealed class RuleGatewaySettings

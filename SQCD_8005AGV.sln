@@ -1,4 +1,4 @@
-Microsoft Visual Studio Solution File, Format Version 12.00
+﻿Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
@@ -15,6 +15,14 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SQCD.Agv.RuleMock", "tools\SQCD.Agv.RuleMock\SQCD.Agv.RuleMock.csproj", "{A16B99A5-6494-4102-9F43-865683F7F77E}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SQCD.Agv.UnitTests", "tests\SQCD.Agv.UnitTests\SQCD.Agv.UnitTests.csproj", "{70E37606-EAA1-4B42-81E0-30FD4581FD45}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{02BCF375-01D3-4AFE-9AEE-6A61934BE976}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SQCD.Agv.IoSimulator", "tools\SQCD.Agv.IoSimulator\SQCD.Agv.IoSimulator.csproj", "{37AA90C9-9656-4AE0-992D-7C7AAEE3CC84}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SQCD.Agv.FakeControlServer", "tools\SQCD.Agv.FakeControlServer\SQCD.Agv.FakeControlServer.csproj", "{456FCA48-C89E-4637-8F58-8F2BF01C533A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SQCD.Agv.Conformance", "tools\SQCD.Agv.Conformance\SQCD.Agv.Conformance.csproj", "{75C8FBDE-154C-4798-A161-CDA1F19197A4}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -50,5 +58,22 @@ Global
 		{70E37606-EAA1-4B42-81E0-30FD4581FD45}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{70E37606-EAA1-4B42-81E0-30FD4581FD45}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{70E37606-EAA1-4B42-81E0-30FD4581FD45}.Release|Any CPU.Build.0 = Release|Any CPU
+		{37AA90C9-9656-4AE0-992D-7C7AAEE3CC84}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{37AA90C9-9656-4AE0-992D-7C7AAEE3CC84}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{37AA90C9-9656-4AE0-992D-7C7AAEE3CC84}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{37AA90C9-9656-4AE0-992D-7C7AAEE3CC84}.Release|Any CPU.Build.0 = Release|Any CPU
+		{456FCA48-C89E-4637-8F58-8F2BF01C533A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{456FCA48-C89E-4637-8F58-8F2BF01C533A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{456FCA48-C89E-4637-8F58-8F2BF01C533A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{456FCA48-C89E-4637-8F58-8F2BF01C533A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{75C8FBDE-154C-4798-A161-CDA1F19197A4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{75C8FBDE-154C-4798-A161-CDA1F19197A4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{75C8FBDE-154C-4798-A161-CDA1F19197A4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{75C8FBDE-154C-4798-A161-CDA1F19197A4}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{37AA90C9-9656-4AE0-992D-7C7AAEE3CC84} = {02BCF375-01D3-4AFE-9AEE-6A61934BE976}
+		{456FCA48-C89E-4637-8F58-8F2BF01C533A} = {02BCF375-01D3-4AFE-9AEE-6A61934BE976}
+		{75C8FBDE-154C-4798-A161-CDA1F19197A4} = {02BCF375-01D3-4AFE-9AEE-6A61934BE976}
 	EndGlobalSection
 EndGlobal

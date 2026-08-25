@@ -51,6 +51,18 @@ public sealed class LockerCardViewModel : ViewModelBase
         ? "DO:-  锁DI:-  光幕DI:-"
         : $"DO:{(_doActive ? 1 : 0)}  锁DI:{(_isLocked ? 1 : 0)}  光幕DI:{(_hasCargo ? 0 : 1)}";
 
+    public string OccupancyText => !IsKnown ? "UNKNOWN" : _hasCargo ? "OCCUPIED" : "EMPTY";
+
+    public string LockText => !IsKnown ? "UNKNOWN" : _isLocked ? "LOCKED" : "UNLOCKED";
+
+    public string OutputText => !IsKnown ? "UNKNOWN" : _doActive ? "ACTIVE" : "RESET";
+
+    public string BusinessText => !IsTarget ? "—" : _operationType == OperationType.Load ? "待装货绑定" : "当前在车货物";
+
+    public bool IsActiveUnlock => IsTarget && _operationStage is
+        OperationStage.WritingUnlock or OperationStage.WaitingUnlockFeedback or
+        OperationStage.WaitingUnlockOutputReset or OperationStage.WaitingCargoAndRelock;
+
     public string TargetText => !IsTarget
         ? string.Empty
         : _operationStage == OperationStage.Failed
@@ -79,5 +91,10 @@ public sealed class LockerCardViewModel : ViewModelBase
         OnPropertyChanged(nameof(CargoText));
         OnPropertyChanged(nameof(RawIoText));
         OnPropertyChanged(nameof(TargetText));
+        OnPropertyChanged(nameof(OccupancyText));
+        OnPropertyChanged(nameof(LockText));
+        OnPropertyChanged(nameof(OutputText));
+        OnPropertyChanged(nameof(BusinessText));
+        OnPropertyChanged(nameof(IsActiveUnlock));
     }
 }

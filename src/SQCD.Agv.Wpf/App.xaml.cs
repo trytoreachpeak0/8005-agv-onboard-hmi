@@ -1,4 +1,5 @@
 using System.IO;
+using System.Net.Http;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Threading;
@@ -12,9 +13,12 @@ namespace SQCD.Agv.Wpf;
 public partial class App : System.Windows.Application, IDisposable
 {
     private FileAppLogger? _logger;
-    private ModbusTcpIoModuleClient? _ioModule;
+    private SlotIoModuleClientAdapter? _ioModule;
     private TcpJsonRuleGateway? _ruleGateway;
     private OnboardController? _controller;
+    private SqliteOnboardExecutionJournal? _journal;
+    private WireToGateSessionClient? _candidateSession;
+    private MainViewModel? _viewModel;
     private bool _disposed;
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -26,7 +30,17 @@ public partial class App : System.Windows.Application, IDisposable
             string settingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
             OnboardSettings settings = OnboardSettings.Load(settingsPath);
             _logger = new FileAppLogger(settings.Logging);
-            _ioModule = new ModbusTcpIoModuleClient(settings.IoModule, _logger);
+            HttpClient ioHttpClient = new()
+            {
+                BaseAddress = new Uri(settings.WireToGate.IoSimulatorBaseUrl),
+                Timeout = TimeSpan.FromMilliseconds(settings.WireToGate.IoRequestTimeoutMs)
+            };
+            HttpSimulatorSlotIoProvider slotProvider = new(ioHttpClient);
+            _ioModule = new SlotIoModuleClientAdapter(
+                slotProvider,
+                new SystemClock(),
+                TimeSpan.FromMilliseconds(settings.IoModule.PollIntervalMs),
+                _logger);
             _ruleGateway = new TcpJsonRuleGateway(
                 settings.RuleGateway,
                 settings.AgvId,
@@ -51,6 +65,20 @@ public partial class App : System.Windows.Application, IDisposable
                 _controller.Current.ActiveOperation?.OperationId,
                 _controller.Current.DeparturePermitted);
 
+            _journal = new SqliteOnboardExecutionJournal(settings.WireToGate.JournalDatabasePath);
+            _candidateSession = new WireToGateSessionClient(
+                new WireToGateSessionOptions(
+                    settings.WireToGate.ControlServerHost,
+                    settings.WireToGate.ControlServerPort,
+                    settings.AgvId,
+                    settings.OnboardInstanceId,
+                    settings.WireToGate.CredentialEnvironmentVariable,
+                    settings.WireToGate.UseTls,
+                    settings.WireToGate.ServerCertificateSha256,
+                    TimeSpan.FromMilliseconds(settings.WireToGate.ConnectTimeoutMs)),
+                slotProvider,
+                _journal);
+
             string version = Assembly.GetExecutingAssembly()
                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion
                 ?? Assembly.GetExecutingAssembly().GetName().Version?.ToString()
@@ -59,12 +87,12 @@ public partial class App : System.Windows.Application, IDisposable
                 LogSeverity.Information,
                 nameof(App),
                 $"车载端启动：agvId={settings.AgvId}，environment={settings.Environment}，version={version}。");
-            MainViewModel viewModel = new(_controller, _logger, settings.AgvId);
-            MainWindow window = new() { DataContext = viewModel };
+            _viewModel = new MainViewModel(_controller, _logger, settings.AgvId, _candidateSession, _journal);
+            WireToGateMainWindow window = new() { DataContext = _viewModel };
             MainWindow = window;
             DispatcherUnhandledException += OnDispatcherUnhandledException;
             window.Show();
-            await viewModel.InitializeAsync().ConfigureAwait(true);
+            await _viewModel.InitializeAsync().ConfigureAwait(true);
         }
         catch (Exception exception) when (
             exception is IOException
@@ -100,6 +128,9 @@ public partial class App : System.Windows.Application, IDisposable
         _disposed = true;
         try
         {
+            _viewModel?.Dispose();
+            _candidateSession?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            _journal?.DisposeAsync().AsTask().GetAwaiter().GetResult();
             _controller?.DisposeAsync().AsTask().GetAwaiter().GetResult();
             _ruleGateway?.DisposeAsync().AsTask().GetAwaiter().GetResult();
             _ioModule?.DisposeAsync().AsTask().GetAwaiter().GetResult();

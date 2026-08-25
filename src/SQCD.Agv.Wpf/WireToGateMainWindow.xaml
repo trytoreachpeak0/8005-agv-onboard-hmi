@@ -1,0 +1,196 @@
+<Window x:Class="SQCD.Agv.Wpf.WireToGateMainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:SQCD.Agv.Wpf.ViewModels"
+        Title="8005 多仓位 AGV 车载端"
+        Width="1024" Height="768" MinWidth="1024" MinHeight="700"
+        WindowStartupLocation="CenterScreen" WindowState="Maximized"
+        Background="#07111F" Foreground="#EEF6FF"
+        FontFamily="Microsoft YaHei UI" UseLayoutRounding="True" SnapsToDevicePixels="True">
+    <Window.Resources>
+        <SolidColorBrush x:Key="PanelBrush" Color="#101D2F" />
+        <SolidColorBrush x:Key="Panel2Brush" Color="#17263B" />
+        <SolidColorBrush x:Key="LineBrush" Color="#304763" />
+        <SolidColorBrush x:Key="MutedTextBrush" Color="#9EB2CA" />
+        <SolidColorBrush x:Key="AccentBrush" Color="#45D3FF" />
+        <Style x:Key="PanelStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource PanelBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+        <Style x:Key="StatusLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+        <Style x:Key="StatusValueStyle" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,4,0,0" />
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+        <Style x:Key="FactLabelStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+        <Style x:Key="FactValueStyle" TargetType="TextBlock">
+            <Setter Property="Margin" Value="0,3,0,0" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="SecondaryButtonStyle" TargetType="Button">
+            <Setter Property="Foreground" Value="#EEF6FF" />
+            <Setter Property="Background" Value="#21344C" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="14,9" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="76" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="1.15*" />
+                <ColumnDefinition Width="0.72*" />
+                <ColumnDefinition Width="0.72*" />
+                <ColumnDefinition Width="0.72*" />
+                <ColumnDefinition Width="1.1*" />
+            </Grid.ColumnDefinitions>
+            <Border Margin="0,0,8,0" Style="{StaticResource PanelStyle}">
+                <StackPanel>
+                    <TextBlock Style="{StaticResource StatusLabelStyle}" Text="车辆" />
+                    <TextBlock Margin="0,4,0,0" FontSize="17" FontWeight="Bold" Text="{Binding AgvId}" />
+                    <TextBlock Foreground="{StaticResource AccentBrush}" FontSize="11" Text="WIRE_TO_GATE · 固定八仓" />
+                </StackPanel>
+            </Border>
+            <Border Grid.Column="1" Margin="0,0,8,0" Style="{StaticResource PanelStyle}">
+                <StackPanel><TextBlock Style="{StaticResource StatusLabelStyle}" Text="通信" /><TextBlock Style="{StaticResource StatusValueStyle}" Text="{Binding CommunicationText}" /></StackPanel>
+            </Border>
+            <Border Grid.Column="2" Margin="0,0,8,0" Style="{StaticResource PanelStyle}">
+                <StackPanel><TextBlock Style="{StaticResource StatusLabelStyle}" Text="业务就绪" /><TextBlock Style="{StaticResource StatusValueStyle}" Text="{Binding BusinessReadinessText}" /></StackPanel>
+            </Border>
+            <Border Grid.Column="3" Margin="0,0,8,0" Style="{StaticResource PanelStyle}">
+                <StackPanel><TextBlock Style="{StaticResource StatusLabelStyle}" Text="运行" /><TextBlock Style="{StaticResource StatusValueStyle}" Text="{Binding MotionText}" /></StackPanel>
+            </Border>
+            <Border Grid.Column="4" Style="{StaticResource PanelStyle}">
+                <StackPanel><TextBlock Style="{StaticResource StatusLabelStyle}" Text="安全 / 联锁" /><TextBlock Style="{StaticResource StatusValueStyle}" Text="{Binding SafetyInterlockText}" /></StackPanel>
+            </Border>
+        </Grid>
+
+        <Border Grid.Row="1" Margin="0,12,0,12" Padding="12" CornerRadius="6" BorderThickness="1"
+                Background="#32243A" BorderBrush="#BF8CFF">
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center" FontSize="18" FontWeight="Bold" Text="!" Foreground="#FFD166" />
+                <TextBlock Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center" FontSize="13"
+                           Text="{Binding Guidance}" TextWrapping="Wrap" AutomationProperties.Name="当前安全提示" />
+            </Grid>
+        </Border>
+
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="190" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="12" />
+                <ColumnDefinition Width="390" />
+            </Grid.ColumnDefinitions>
+
+            <Border Grid.Column="0" Style="{StaticResource PanelStyle}">
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Top" Margin="0,0,0,12" FontSize="15" FontWeight="Bold" Text="单场景旅程" />
+                    <ItemsControl ItemsSource="{Binding JourneySteps}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,0,0,8" Padding="10" Background="{StaticResource Panel2Brush}" CornerRadius="4">
+                                    <TextBlock FontSize="13" Text="{Binding}" TextWrapping="Wrap" />
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </DockPanel>
+            </Border>
+
+            <Border Grid.Column="2" Style="{StaticResource PanelStyle}">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+                    <TextBlock Foreground="{StaticResource AccentBrush}" FontSize="11" FontWeight="Bold" Text="当前唯一任务 · ControlServer 权威" />
+                    <TextBlock Grid.Row="1" Margin="0,8,0,0" FontSize="22" FontWeight="Bold" Text="{Binding StateText}" TextWrapping="Wrap" />
+                    <TextBlock Grid.Row="2" Margin="0,8,0,16" Foreground="{StaticResource MutedTextBrush}" FontSize="13" Text="{Binding Guidance}" TextWrapping="Wrap" />
+
+                    <UniformGrid Grid.Row="3" Columns="2" Rows="3">
+                        <Border Margin="0,0,6,6" Padding="10" Background="{StaticResource Panel2Brush}" CornerRadius="4"><StackPanel><TextBlock Style="{StaticResource FactLabelStyle}" Text="当前唯一 Demand" /><TextBlock Style="{StaticResource FactValueStyle}" Text="{Binding CurrentDemandText}" /></StackPanel></Border>
+                        <Border Margin="6,0,0,6" Padding="10" Background="{StaticResource Panel2Brush}" CornerRadius="4"><StackPanel><TextBlock Style="{StaticResource FactLabelStyle}" Text="WorkType" /><TextBlock Style="{StaticResource FactValueStyle}" Text="{Binding WorkTypeText}" /></StackPanel></Border>
+                        <Border Margin="0,6,6,6" Padding="10" Background="{StaticResource Panel2Brush}" CornerRadius="4"><StackPanel><TextBlock Style="{StaticResource FactLabelStyle}" Text="当前停靠 / 下一停靠" /><TextBlock Style="{StaticResource FactValueStyle}" Text="{Binding CurrentStopText}" /></StackPanel></Border>
+                        <Border Margin="6,6,0,6" Padding="10" Background="{StaticResource Panel2Brush}" CornerRadius="4"><StackPanel><TextBlock Style="{StaticResource FactLabelStyle}" Text="StationOperationGuard" /><TextBlock Style="{StaticResource FactValueStyle}" Text="{Binding StationGuardText}" /></StackPanel></Border>
+                        <Border Margin="0,6,6,0" Padding="10" Background="{StaticResource Panel2Brush}" CornerRadius="4"><StackPanel><TextBlock Style="{StaticResource FactLabelStyle}" Text="Sublot" /><TextBlock Style="{StaticResource FactValueStyle}" Text="{Binding CurrentSublotText}" /></StackPanel></Border>
+                        <Border Margin="6,6,0,0" Padding="10" Background="{StaticResource Panel2Brush}" CornerRadius="4"><StackPanel><TextBlock Style="{StaticResource FactLabelStyle}" Text="ExpectedBasketCount / 目标仓" /><TextBlock Style="{StaticResource FactValueStyle}" Text="{Binding BasketAndSlotsText}" /></StackPanel></Border>
+                    </UniformGrid>
+
+                    <Grid Grid.Row="4" Margin="0,16,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBox x:Name="ScanTextBox" Height="42" Padding="12,7" VerticalContentAlignment="Center"
+                                 Background="#07111F" Foreground="#EEF6FF" BorderBrush="{StaticResource LineBrush}"
+                                 FontFamily="Consolas" FontSize="17" IsEnabled="{Binding CanSubmit}"
+                                 Text="{Binding ScanText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Sublot 扫描或键盘输入">
+                            <TextBox.InputBindings><KeyBinding Key="Enter" Command="{Binding ScannerSubmitCommand}" /></TextBox.InputBindings>
+                        </TextBox>
+                        <Button Grid.Column="1" Margin="8,0,0,0" Command="{Binding ManualSubmitCommand}" Content="提交最终核验" />
+                    </Grid>
+                    <Grid Grid.Row="5" Margin="0,12,0,0">
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <Button IsEnabled="{Binding CanSubmit}" Command="{Binding ManualSubmitCommand}" Content="{Binding PrimaryActionText}" />
+                        <Button Grid.Column="1" Margin="8,0,0,0" Style="{StaticResource SecondaryButtonStyle}"
+                                Background="#6E2430" Content="请求本车急停" IsEnabled="False"
+                                ToolTip="候选会话未保持活动时不可发送；请使用车辆实体急停"
+                                AutomationProperties.Name="本车急停请求不可用；请使用车辆实体急停" />
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <Border Grid.Column="4" Style="{StaticResource PanelStyle}">
+                <Grid>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                        <TextBlock FontSize="15" FontWeight="Bold" Text="固定 1–8 号仓位" />
+                        <TextBlock Grid.Column="1" Foreground="{StaticResource MutedTextBrush}" FontSize="11" Text="业务 + 实时物理事实" />
+                    </Grid>
+                    <ItemsControl Grid.Row="1" Margin="0,12,0,0" ItemsSource="{Binding Lockers}">
+                        <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="2" Rows="4" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:LockerCardViewModel}">
+                                <Border Margin="4" Padding="9" Background="{StaticResource Panel2Brush}" BorderBrush="{StaticResource LineBrush}" BorderThickness="1" CornerRadius="6">
+                                    <StackPanel>
+                                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions><TextBlock FontSize="14" FontWeight="Bold" Text="{Binding Title}" /><TextBlock Grid.Column="1" Foreground="{StaticResource AccentBrush}" FontSize="10" Text="{Binding TargetText}" /></Grid>
+                                        <Grid Margin="0,6,0,0"><Grid.ColumnDefinitions><ColumnDefinition Width="54" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Foreground="{StaticResource MutedTextBrush}" FontSize="10" Text="业务" /><TextBlock Grid.Column="1" FontSize="11" FontWeight="SemiBold" Text="{Binding BusinessText}" /></Grid>
+                                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="54" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Foreground="{StaticResource MutedTextBrush}" FontSize="10" Text="占用" /><TextBlock Grid.Column="1" FontSize="11" Text="{Binding OccupancyText}" /></Grid>
+                                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="54" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Foreground="{StaticResource MutedTextBrush}" FontSize="10" Text="锁闭" /><TextBlock Grid.Column="1" FontSize="11" Text="{Binding LockText}" /></Grid>
+                                        <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="54" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions><TextBlock Foreground="{StaticResource MutedTextBrush}" FontSize="10" Text="DO" /><TextBlock Grid.Column="1" FontSize="11" Text="{Binding OutputText}" /></Grid>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Grid.Row="2" Margin="4,8,4,0" Foreground="{StaticResource MutedTextBrush}" FontSize="10" Text="UNKNOWN、未锁或 DO 未复位均独立阻断；人员身份不能覆盖。" TextWrapping="Wrap" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
