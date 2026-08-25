@@ -1,6 +1,8 @@
 # 8005 AGV 车载端 HMI
 
 > 车载端负责人接管前请先阅读 [`docs/ONBOARD_DEVELOPER_HANDOFF.md`](docs/ONBOARD_DEVELOPER_HANDOFF.md)。当前产品树已恢复到王昆的 `bc56fa9` 基线；历史中的 AI 候选提交不代表人员本人开发或批准。
+>
+> 第一次联调与模拟器自动化的具体工作包见 [`docs/WANG_KUN_FIRST_INTEGRATION_WORK_PACKAGE.md`](docs/WANG_KUN_FIRST_INTEGRATION_WORK_PACKAGE.md)。
 
 本仓库是长电科技（宿迁）8005多仓位AGV车载端程序的正式开发仓库，包含车载HMI、仓门业务编排、IO通信和自动测试。
 

@@ -1,5 +1,7 @@
 # OnboardHmi 开发接管说明
 
+> 当前最具体的两项开发任务见 [`WANG_KUN_FIRST_INTEGRATION_WORK_PACKAGE.md`](WANG_KUN_FIRST_INTEGRATION_WORK_PACKAGE.md)，包括 HMI 第一次联调和独立模拟器外部自动化控制接口。
+
 ## 目的
 
 本文件交给车载端负责人王昆接管 `WIRE_TO_GATE` OnboardHmi 开发。后续 OnboardHmi 产品代码、测试和实现判断由车载端负责人本人完成或审查批准；AI 不再把自己的实现表述为车载端负责人已完成的工作。
