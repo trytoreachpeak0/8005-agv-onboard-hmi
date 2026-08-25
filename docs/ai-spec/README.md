@@ -5,9 +5,9 @@
 ## 固定身份与权威
 
 - 分支：`OnboardHmi_MVP`
-- 协议候选：`72ddde595165468520d9f3a46b25e4aa4eec0c3f`
-- manifest：`e878d89e820535fe1eb64b85681b9c2994fb98646309e6ba768219c5c8735f2e`
-- 状态：`CANDIDATE_UNAPPROVED`；可用于隔离开发与测试，不得称为正式 release。
+- 协议 release：`protocol-v0.1.0@3ad309ffd5f9a48a6cf390b51a81da2f47c814dd`
+- manifest：`92c19e74affe876902e1c64aa5cdbca845f5dbc93a8c82014a16627a26deb8d3`
+- 状态：`APPROVED_RELEASE`；所有 G2/G3 证据必须绑定该精确身份。
 - UI：获选原型 A“旅程导引台”源是布局/交互权威；生产代码不得依赖 HTML、假数据或原型词汇。
 - 物理：实时 `ISlotIoProvider` 是仓位物理事实入口；ControlServer 不发送原始 DI/DO，车载端不调用 RIoT 或从 MesIngest 选任务。
 

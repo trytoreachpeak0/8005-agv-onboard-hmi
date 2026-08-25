@@ -8,7 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 if (-not (Test-Path -LiteralPath $ProtocolManifest -PathType Leaf)) { throw "Protocol manifest not found: $ProtocolManifest" }
-$expectedManifestSha256 = 'e878d89e820535fe1eb64b85681b9c2994fb98646309e6ba768219c5c8735f2e'
+$expectedManifestSha256 = '92c19e74affe876902e1c64aa5cdbca845f5dbc93a8c82014a16627a26deb8d3'
 $actualManifestSha256 = (Get-FileHash -LiteralPath $ProtocolManifest -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actualManifestSha256 -ne $expectedManifestSha256) {
     throw "Protocol manifest hash mismatch: expected $expectedManifestSha256, actual $actualManifestSha256"
@@ -32,7 +32,7 @@ $testExitCode = $LASTEXITCODE
     finishedAt = ([DateTimeOffset]::UtcNow).ToString('O')
     implementationRepository = '8005-agv-onboard-hmi'
     implementationCommit = (git -c safe.directory=$root -C $root rev-parse HEAD).Trim()
-    protocolRepositoryCommit = '72ddde595165468520d9f3a46b25e4aa4eec0c3f'
+    protocolRepositoryCommit = '3ad309ffd5f9a48a6cf390b51a81da2f47c814dd'
     protocolManifestSha256 = $actualManifestSha256
     testExitCode = $testExitCode
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $Output 'gate-result.json') -Encoding utf8NoBOM

@@ -1,7 +1,8 @@
 {
-  "repositoryCommit": "72ddde595165468520d9f3a46b25e4aa4eec0c3f",
-  "manifestSha256": "e878d89e820535fe1eb64b85681b9c2994fb98646309e6ba768219c5c8735f2e",
+  "tag": "protocol-v0.1.0",
+  "repositoryCommit": "3ad309ffd5f9a48a6cf390b51a81da2f47c814dd",
+  "manifestSha256": "92c19e74affe876902e1c64aa5cdbca845f5dbc93a8c82014a16627a26deb8d3",
   "profileId": "WIRE_TO_GATE_MVP",
   "protocolVersion": 1,
-  "approvalStatus": "CANDIDATE_UNAPPROVED"
+  "approvalStatus": "APPROVED_RELEASE"
 }

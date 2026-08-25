@@ -16,9 +16,9 @@
 - Release构建启用可空检查、推荐级静态分析和警告即错误。
 - 具备核心安全规则和自动测试。
 - RuleMock默认从“在途”开始，可通过控制台命令模拟到站和离站。
-- `OnboardHmi_MVP` 已绑定未批准协议候选 `72ddde5` / manifest `e878d8…35f2e`，并建立正式 `ISlotIoProvider` 与原型 A 映射入口；旧协议和单仓路径尚未完成迁移。
+- `OnboardHmi_MVP` 已绑定正式协议 `protocol-v0.1.0` / manifest `92c19e…b8d3`，并建立正式 `ISlotIoProvider` 与原型 A 映射入口；旧协议和单仓路径尚未完成迁移。
 
-当前分支还包含候选五步恢复客户端、SQLite `OnboardExecutionJournal`、多仓物理闭环执行器、独立 HTTP IO Simulator、Fake ControlServer/Conformance 工具，以及按获选原型 A 重建的 WPF“左旅程—中央唯一动作—右固定八仓”生产窗口。候选身份固定为 protocol commit `72ddde595165468520d9f3a46b25e4aa4eec0c3f`、manifest SHA-256 `e878d89e820535fe1eb64b85681b9c2994fb98646309e6ba768219c5c8735f2e`，状态仍为 `CANDIDATE_UNAPPROVED`。
+当前分支还包含五步恢复客户端、SQLite `OnboardExecutionJournal`、多仓物理闭环执行器、独立 HTTP IO Simulator、Fake ControlServer/Conformance 工具，以及按获选原型 A 重建的 WPF“左旅程—中央唯一动作—右固定八仓”生产窗口。协议身份固定为 `protocol-v0.1.0@3ad309ffd5f9a48a6cf390b51a81da2f47c814dd`、manifest SHA-256 `92c19e74affe876902e1c64aa5cdbca845f5dbc93a8c82014a16627a26deb8d3`，状态为 `APPROVED_RELEASE`。
 
 独立 IO Simulator 默认监听 `127.0.0.1:58006`，初始 8 仓均为 `online + EMPTY + LOCKED + RESET + CLEAR`：
 
@@ -36,7 +36,7 @@ dotnet run --project .\tools\SQCD.Agv.FakeControlServer -c Release -- 58015
 dotnet run --project .\tools\SQCD.Agv.Conformance -c Release -- 127.0.0.1 58015 http://127.0.0.1:58006 <new-journal-path>
 ```
 
-生产启动保留既有 `OnboardController` 安全锁存，并通过 `SlotIoModuleClientAdapter` 只消费正式业务状态 Provider；同时会使用配置的 ControlServer 地址和环境变量凭据建立候选五步恢复会话。只有既有执行链可操作、候选会话在线且候选业务状态为 `READY` 时才允许扫码；候选心跳丢失会立即锁存故障并禁止新操作。软件急停请求和目标车辆部署仍须在目标适配/部署阶段完成。未完成真实 ControlServer 命令分发、RIoT/车辆/IO 集成、Golden WPF 用户预览、G3 或协议批准，不能据此宣称整个 MVP 或真实现场闭环完成。
+生产启动保留既有 `OnboardController` 安全锁存，并通过 `SlotIoModuleClientAdapter` 只消费正式业务状态 Provider；同时会使用配置的 ControlServer 地址和环境变量凭据建立正式五步恢复会话。只有既有执行链可操作、正式会话在线且业务状态为 `READY` 时才允许扫码；心跳丢失会立即锁存故障并禁止新操作。软件急停请求和目标车辆部署仍须在目标适配/部署阶段完成。未完成真实 ControlServer 命令分发、RIoT/车辆/IO 集成、Golden WPF 用户预览或 G3，不能据此宣称整个 MVP 或真实现场闭环完成。
 
 当前`SQCD.Agv.Contracts`和TCP JSON消息属于早期联调协议，只用于保留现有可运行能力，不代表双方最终接口。后续接口定义、消息示例、版本和兼容规则统一以[`8005-agv-protocol`](https://github.com/trytoreachpeak0/8005-agv-protocol)仓库为准，并按该仓库逐步发布的协议增量开发。
 
