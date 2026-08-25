@@ -1,5 +1,7 @@
 # 8005 AGV 车载端 HMI
 
+> 车载端负责人接管前请先阅读 [`docs/ONBOARD_DEVELOPER_HANDOFF.md`](docs/ONBOARD_DEVELOPER_HANDOFF.md)。远程 `OnboardHmi_MVP` 当前包含 AI 候选提交，不能仅凭 Git Author 名称认定为人员本人开发或批准。
+
 本仓库是长电科技（宿迁）8005多仓位AGV车载端程序的正式开发仓库，包含车载HMI、仓门业务编排、IO通信和自动测试。
 
 当前提交由原型仓库`SQCD_8005AGV`迁移而来，作为双方开始协议对接前的车载端初始代码基线。当前目标是先稳定跑通：
