@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace SQCD.Agv.Core;
 
 public static class WireToGateProtocol
@@ -35,7 +38,42 @@ public static class WireToGateProtocol
         schemaBundleSha256 = ProtocolCandidateIdentity.SchemaBundleSha256,
         vectorsSha256 = ProtocolCandidateIdentity.VectorsSha256
     };
+
+    public static PendingResultReference ToPendingResultReference(JournalAttempt attempt)
+    {
+        if (attempt.Status != JournalAttemptStatus.ResultPendingAck || string.IsNullOrWhiteSpace(attempt.ResultJson))
+        {
+            throw new InvalidOperationException("Only a journaled result pending durable ack can be reported.");
+        }
+        string contentSha256 = Convert.ToHexString(
+            SHA256.HashData(Encoding.UTF8.GetBytes(attempt.ResultJson))).ToLowerInvariant();
+        return new PendingResultReference(
+            "OperationResult", attempt.MessageId, attempt.SlotOperationAttemptId, contentSha256);
+    }
+
+    public static string SelectRecoveryCheckpoint(IReadOnlyList<JournalAttempt> unsettled)
+    {
+        if (unsettled.Count == 0)
+        {
+            return "NONE";
+        }
+        if (unsettled.Any(item => item.Status == JournalAttemptStatus.ResultPendingAck))
+        {
+            return "RESULT_RECORDED";
+        }
+        if (unsettled.Any(item => item.Status is JournalAttemptStatus.IoStarted or JournalAttemptStatus.RecoveryRequired))
+        {
+            return "ACTIVE_UNLOCK_SET";
+        }
+        return "PREPARED";
+    }
 }
+
+public sealed record PendingResultReference(
+    string MessageType,
+    string MessageId,
+    string BusinessId,
+    string ContentSha256);
 
 public enum JournalAttemptStatus
 {

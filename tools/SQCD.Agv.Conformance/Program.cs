@@ -6,10 +6,24 @@ string serverHost = args.Length > 0 ? args[0] : "127.0.0.1";
 int serverPort = args.Length > 1 ? int.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture) : 58_015;
 string ioUrl = args.Length > 2 ? args[2] : "http://127.0.0.1:58006";
 string journalPath = args.Length > 3 ? args[3] : Path.Combine(Path.GetTempPath(), "8005-onboard-conformance", "journal.db");
+bool seedPendingResult = args.Length > 4 && args[4].Equals("seed-pending-result", StringComparison.OrdinalIgnoreCase);
 HttpClient httpClient = new() { BaseAddress = new Uri(ioUrl), Timeout = TimeSpan.FromSeconds(2) };
 await using HttpSimulatorSlotIoProvider provider = new(httpClient);
 await using SqliteOnboardExecutionJournal journal = new(journalPath);
 await journal.InitializeAsync(CancellationToken.None);
+if (seedPendingResult)
+{
+    await journal.PrepareAsync(new JournalAttempt(
+        "00000000-0000-4000-8000-000000000301",
+        "00000000-0000-4000-8000-000000000302",
+        new string('e', 64),
+        [1, 2],
+        SlotOccupancy.Occupied,
+        1,
+        JournalAttemptStatus.ResultPendingAck,
+        "{\"outcome\":\"COMPLETED\"}",
+        DateTimeOffset.UtcNow), CancellationToken.None);
+}
 await using WireToGateSessionClient client = new(
     new WireToGateSessionOptions(
         serverHost, serverPort, "AGV-FAKE-001", "OBU-CONFORMANCE-001",
@@ -17,15 +31,21 @@ await using WireToGateSessionClient client = new(
     provider,
     journal);
 WireToGateHandshakeResult result = await client.ConnectAndRecoverAsync(CancellationToken.None);
-if (result.Readiness != VehicleBusinessReadiness.Ready || result.SlotStates.Count != 8)
+VehicleBusinessReadiness expectedReadiness = seedPendingResult
+    ? VehicleBusinessReadiness.RecoveryRequired
+    : VehicleBusinessReadiness.Ready;
+if (result.Readiness != expectedReadiness || result.SlotStates.Count != 8)
 {
-    throw new InvalidOperationException("Onboard conformance recovery did not reach READY with eight slots.");
+    throw new InvalidOperationException(
+        $"Onboard conformance recovery reached {result.Readiness}, expected {expectedReadiness}, with {result.SlotStates.Count} slots.");
 }
 await client.SendHeartbeatAsync(result.SessionGeneration, CancellationToken.None);
 Console.WriteLine(JsonSerializer.Serialize(new
 {
     status = "PASS",
-    scenario = "ONBOARD_HTTP_IO_AND_FAKE_CONTROL_SERVER",
+    scenario = seedPendingResult
+        ? "ONBOARD_PENDING_RESULT_RECOVERY_WITH_CONTROL_SERVER"
+        : "ONBOARD_HTTP_IO_AND_CONTROL_SERVER",
     result.SessionGeneration,
     readiness = result.Readiness.ToString().ToUpperInvariant(),
     slotCount = result.SlotStates.Count,

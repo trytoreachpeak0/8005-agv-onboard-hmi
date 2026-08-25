@@ -106,12 +106,12 @@ public sealed class WireToGateSessionClient(
             reportId = Guid.NewGuid().ToString("D"),
             observedAt = DateTimeOffset.UtcNow,
             unsettledSlotOperationAttemptId = unsettled.Count == 0 ? null : unsettled[0].SlotOperationAttemptId,
-            provenRecoveryCheckpoint = unsettled.Count == 0 ? "NONE" : "JOURNAL_LOADED_IO_RECONCILED",
+            provenRecoveryCheckpoint = WireToGateProtocol.SelectRecoveryCheckpoint(unsettled),
             activeUnlockSlots = states.Where(item => item.UnlockOutput == UnlockOutputState.Active)
                 .Select(item => item.PhysicalSlotNumber).Order().ToArray(),
             forcedRecoveryGeneration = unsettled.Select(item => item.ForcedRecoveryGeneration).DefaultIfEmpty(0).Max(),
             pendingResults = unsettled.Where(item => item.Status == JournalAttemptStatus.ResultPendingAck)
-                .Select(item => new { resultId = item.MessageId, slotOperationAttemptId = item.SlotOperationAttemptId })
+                .Select(WireToGateProtocol.ToPendingResultReference)
                 .ToArray(),
             journalContentSha256 = ComputeJournalHash(unsettled)
         }, timeout.Token).ConfigureAwait(false);
@@ -121,9 +121,10 @@ public sealed class WireToGateSessionClient(
         RequireType(readiness.RootElement, "SessionReadiness");
         JsonElement payload = readiness.RootElement.GetProperty("payload");
         string readinessValue = payload.GetProperty("readiness").GetString() ?? "RECOVERY_REQUIRED";
-        string reason = payload.TryGetProperty("reasonCode", out JsonElement reasonElement)
-            ? reasonElement.GetString() ?? "UNKNOWN"
-            : "UNKNOWN";
+        string reason = payload.TryGetProperty("reasonCodes", out JsonElement reasonCodes) &&
+                        reasonCodes.ValueKind == JsonValueKind.Array && reasonCodes.GetArrayLength() > 0
+            ? reasonCodes[0].GetString() ?? "UNKNOWN"
+            : readinessValue == "READY" ? "READY" : "UNKNOWN";
         return new WireToGateHandshakeResult(
             generation,
             readinessValue == "READY" ? VehicleBusinessReadiness.Ready : VehicleBusinessReadiness.RecoveryRequired,

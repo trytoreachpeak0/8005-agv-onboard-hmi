@@ -9,6 +9,30 @@ namespace SQCD.Agv.UnitTests;
 public sealed class WireToGateExecutionTests
 {
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public void RecoveryReportUsesCandidateCheckpointAndPendingResultShape()
+    {
+        JournalAttempt attempt = new(
+            "00000000-0000-4000-8000-000000000201",
+            "00000000-0000-4000-8000-000000000202",
+            new string('d', 64),
+            [1, 2],
+            SlotOccupancy.Occupied,
+            2,
+            JournalAttemptStatus.ResultPendingAck,
+            "{\"outcome\":\"COMPLETED\"}",
+            DateTimeOffset.UtcNow);
+
+        PendingResultReference pending = WireToGateProtocol.ToPendingResultReference(attempt);
+
+        Assert.Equal("RESULT_RECORDED", WireToGateProtocol.SelectRecoveryCheckpoint([attempt]));
+        Assert.Equal("OperationResult", pending.MessageType);
+        Assert.Equal(attempt.MessageId, pending.MessageId);
+        Assert.Equal(attempt.SlotOperationAttemptId, pending.BusinessId);
+        Assert.Matches("^[0-9a-f]{64}$", pending.ContentSha256);
+    }
+
+    [Fact]
     [Trait("IntegrationSlice", "W2G-IS-01")]
     public void AuthoritativeProjectionRejectsSameRevisionConflictAndLocalSlotChoice()
     {

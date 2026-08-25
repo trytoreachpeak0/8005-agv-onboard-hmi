@@ -47,7 +47,15 @@ try
     using JsonDocument recovery = await ReadAsync(reader);
     Require(recovery.RootElement, "RecoveryStateReport");
     await SendAsync(writer, "DurableAck", agvId, 1, new { durable = true });
-    await SendAsync(writer, "SessionReadiness", agvId, 1, new { readiness = "READY", reasonCode = "READY" });
+    await SendAsync(writer, "SessionReadiness", agvId, 1, new
+    {
+        readiness = "READY",
+        decidedAt = DateTimeOffset.UtcNow,
+        reasonCodes = Array.Empty<string>(),
+        acceptedCapabilityVersion = 1,
+        acceptedSafetyStateVersion = 1,
+        vehicleBusinessStateRevision = 1
+    });
     using JsonDocument heartbeat = await ReadAsync(reader);
     Require(heartbeat.RootElement, "Heartbeat");
     await SendAsync(writer, "HeartbeatAck", agvId, 1, new { accepted = true });
