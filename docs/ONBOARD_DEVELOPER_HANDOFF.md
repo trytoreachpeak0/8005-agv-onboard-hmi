@@ -6,7 +6,7 @@
 
 ## 先确认提交归属
 
-远程 `OnboardHmi_MVP` 当前包含 AI 候选代码，不能仅根据 Git Author 名称判断为人员亲自开发：
+远程 `OnboardHmi_MVP` 历史中包含 AI 候选代码，不能仅根据 Git Author 名称判断为人员亲自开发：
 
 | 提交 | 实际含义 |
 | --- | --- |
@@ -18,12 +18,7 @@
 
 后四个提交显示的 Git Author 为 `Zhengyu Shao`，原因是开发终端使用了该 Git 身份；这不表示郑宇或王昆本人编写、复核或批准了其中代码。
 
-建议王昆明确选择一种接管方式并留下提交记录：
-
-1. 从人员基线 `bc56fa9` 建立自己的开发分支，按本文件重新实现；或
-2. 把 `bc56fa9..c41160c` 作为 AI 参考候选逐项审查、修改并由本人提交确认。
-
-在王昆完成选择和审查前，`c41160c` 只能称为 AI 候选，不能称为车载端完成版本。如果从 `bc56fa9` 开新分支，可单独 cherry-pick 本交接文档的文档提交，不必带入 AI 产品代码。
+用户已选择由王昆从自己的 `bc56fa9` 基线继续开发。当前产品树已通过可追溯的 revert 恢复到该基线，只额外保留 README 提示与本交接文档。`bc56fa9..c41160c` 仍可在 Git 历史中作为 AI 参考候选查看，但不会作为当前产品代码，也不能称为车载端完成版本。
 
 ## 不可改变的协议身份
 
@@ -80,15 +75,15 @@
 
 ## UI 与 IO 边界
 
-- 获选原型 A“旅程导引台”是布局与交互权威，映射细节见 [`ai-spec/prototype-to-production.md`](ai-spec/prototype-to-production.md)。
+- 获选原型 A“旅程导引台”是布局与交互权威：目标视口为 1024×768、100% 缩放；主界面采用左侧旅程、中央唯一主动作、右侧固定八仓；主旅程、当前步骤、关键阻断和八仓状态不得依赖危险滚动，技术日志放在次级层级。
 - 主界面保持“左侧旅程、中央唯一主动作、右侧固定八仓”；生产代码不得依赖原型项目或假数据。
 - 八仓 IO 是车载端独占物理权威。ControlServer 只发业务命令，不发送原始 DI/DO。
 - HTTP IO Simulator 仅用于确定性软件测试，不证明真实 Modbus、接线、锁、光幕或工控机资格。
 - Golden WPF 预览、DPI/目标视口验证和真实硬件动作需要单独授权，不能由本地截图或模拟器 PASS 代替。
 
-## 当前 AI 候选可供审查的范围
+## Git 历史中的 AI 候选范围
 
-`bc56fa9..c41160c` 涉及 52 个文件，主要包括：
+`bc56fa9..c41160c` 曾涉及 52 个文件，现已从当前产品树回退；如需了解思路，可只在 Git 历史中审查：
 
 - `WireToGateSessionClient`、正式 release 身份和五步恢复；
 - SQLite `OnboardExecutionJournal`；
@@ -106,22 +101,14 @@
 
 ## 本地验证命令
 
-要求 .NET SDK `8.0.424`。先从干净工作区运行：
+从干净工作区运行王昆基线现有的构建和测试：
 
 ```powershell
-.\scripts\build.ps1
+dotnet build .\SQCD_8005AGV.slnx -c Release
 dotnet test .\tests\SQCD.Agv.UnitTests\SQCD.Agv.UnitTests.csproj -c Release
 ```
 
-对正式协议逐切片运行 G2；每次必须使用新的证据目录：
-
-```powershell
-$manifest = '<protocol-repo>\manifest\release.json'
-.\scripts\test-wire-to-gate.ps1 -Gate G2 -Slice W2G-IS-00 `
-  -ProtocolManifest $manifest -Output '<new-evidence-directory>'
-```
-
-将 `W2G-IS-00` 依次替换到 `W2G-IS-07`。只有全部八个切片通过、证据绑定王昆本人确认的完整 commit，才可称为车载端 G2 通过。G2 不能替代真实 ControlServer 的 G3、真实硬件或现场验收。
+王昆实施正式协议后，还需在本仓建立自己的逐切片 G2 入口。G2 必须先校验 `8005-agv-protocol@3ad309f` 的 `manifest/release.json` 哈希，再按协议仓 `integration-slices/index.json` 依次覆盖 `W2G-IS-00`～`W2G-IS-07`，每次写入新的证据目录。只有全部八个切片通过、证据绑定王昆本人确认的完整 commit，才可称为车载端 G2 通过。G2 不能替代真实 ControlServer 的 G3、真实硬件或现场验收。
 
 ## 接管完成的最低记录
 

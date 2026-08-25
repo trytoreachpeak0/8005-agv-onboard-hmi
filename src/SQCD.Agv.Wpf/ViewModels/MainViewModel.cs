@@ -1,29 +1,17 @@
 using System.Collections.ObjectModel;
-using System.IO;
-using System.Net.Http;
-using System.Net.Sockets;
 using System.Windows;
 using System.Windows.Threading;
 using SQCD.Agv.Application;
 using SQCD.Agv.Core;
-using SQCD.Agv.Infrastructure;
 
 namespace SQCD.Agv.Wpf.ViewModels;
 
-public sealed class MainViewModel : ViewModelBase, IDisposable
+public sealed class MainViewModel : ViewModelBase
 {
     private const int MaxLogEntries = 300;
     private readonly OnboardController _controller;
     private readonly IAppLogger _logger;
-    private readonly WireToGateSessionClient _candidateSession;
-    private readonly SqliteOnboardExecutionJournal _journal;
-    private readonly CancellationTokenSource _candidateStopping = new();
     private readonly OperatorRecordFormatter _operatorRecordFormatter = new();
-    private bool _candidateConnected;
-    private bool _candidateReady;
-    private long _candidateSessionGeneration;
-    private string _candidateReason = "CANDIDATE_HANDSHAKE_REQUIRED";
-    private bool _disposed;
     private string _scanText = string.Empty;
     private string _ruleConnectionText = "离线";
     private string _ioConnectionText = "离线";
@@ -44,14 +32,10 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public MainViewModel(
         OnboardController controller,
         IAppLogger logger,
-        string agvId,
-        WireToGateSessionClient candidateSession,
-        SqliteOnboardExecutionJournal journal)
+        string agvId)
     {
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _candidateSession = candidateSession ?? throw new ArgumentNullException(nameof(candidateSession));
-        _journal = journal ?? throw new ArgumentNullException(nameof(journal));
         AgvId = agvId;
         Lockers = new ObservableCollection<LockerCardViewModel>(
             Enumerable.Range(0, 8).Select(index => new LockerCardViewModel(index)));
@@ -78,49 +62,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
     public ObservableCollection<LockerCardViewModel> Lockers { get; }
 
     public ObservableCollection<LogLineViewModel> Logs { get; } = [];
-
-    public IReadOnlyList<string> JourneySteps { get; } =
-    [
-        "连接与恢复", "前往机台", "机台扫码与装货", "等待发车 / 前往关卡", "关卡自动卸货", "8005 本地完成"
-    ];
-
-    public string CommunicationText => _candidateConnected ? "已连接" : "已断开";
-
-    public string BusinessReadinessText =>
-        _candidateConnected && _candidateReady ? "READY" : "RECOVERY_REQUIRED";
-
-    public string MotionText => _controller.Current.State == OnboardState.Operating
-        ? "停稳（站点作业）"
-        : "运动状态 UNKNOWN";
-
-    public string SafetyInterlockText => DepartureText;
-
-    public string CurrentDemandText => _controller.Current.ActiveOperation?.TaskId ?? "等待 ControlServer 唯一 Demand";
-
-    public string WorkTypeText => _controller.Current.ActiveOperation is null
-        ? "WIRE_TO_GATE"
-        : $"WIRE_TO_GATE / {_controller.Current.ActiveOperation.OperationType.ToString().ToUpperInvariant()}";
-
-    public string CurrentStopText => VisitText;
-
-    public string StationGuardText => _controller.Current.ActiveOperation is null ? "保持" : "有效（站点作业中）";
-
-    public string CurrentSublotText => _controller.Current.ActiveOperation?.Sublot ?? "—";
-
-    public string BasketAndSlotsText => _controller.Current.ActiveOperation is null
-        ? "—"
-        : $"服务端冻结 / [{_controller.Current.ActiveOperation.SlotIndex + 1}]";
-
-    public string PrimaryActionText => _controller.Current.State switch
-    {
-        OnboardState.ReadyToScan => "提交 Sublot 最终核验",
-        OnboardState.Operating => "等待目标仓位物理闭环",
-        OnboardState.Reporting => "等待可靠结果确认",
-        OnboardState.Faulted => "进入安全恢复",
-        _ => "等待服务端下一步"
-    };
-
-    public bool HasBlockingNotice => HasError || HasWarning || BusinessReadinessText != "READY";
 
     public AsyncCommand ScannerSubmitCommand { get; }
 
@@ -234,33 +175,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
     public async Task InitializeAsync()
     {
-        await _journal.InitializeAsync(_candidateStopping.Token).ConfigureAwait(true);
         _controller.StateChanged += OnStateChanged;
         ApplySnapshot(_controller.Current);
         await _controller.StartAsync().ConfigureAwait(true);
-        await EstablishCandidateSessionAsync().ConfigureAwait(true);
-        _ = MaintainCandidateHeartbeatAsync(_candidateStopping.Token);
-    }
-
-    public void StopCandidateSession()
-    {
-        if (!_candidateStopping.IsCancellationRequested)
-        {
-            _candidateStopping.Cancel();
-        }
-        _controller.StateChanged -= OnStateChanged;
-    }
-
-    public void Dispose()
-    {
-        if (_disposed)
-        {
-            return;
-        }
-        _disposed = true;
-        StopCandidateSession();
-        _candidateStopping.Dispose();
-        GC.SuppressFinalize(this);
     }
 
     private async Task SubmitAsync(ScanInputMethod inputMethod)
@@ -300,12 +217,9 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
                 : hasWarning
                     ? "请处理"
                     : GetStateText(snapshot.State);
-        bool candidateGateOpen = _candidateConnected && _candidateReady;
-        Guidance = candidateGateOpen
-            ? snapshot.Guidance
-            : $"候选协议尚未 READY（{_candidateReason}）。禁止扫码、开仓和移动。";
-        CanSubmit = snapshot.State == OnboardState.ReadyToScan && candidateGateOpen;
-        HasWarning = hasWarning || !candidateGateOpen;
+        Guidance = snapshot.Guidance;
+        CanSubmit = snapshot.State == OnboardState.ReadyToScan;
+        HasWarning = hasWarning;
         HasError = hasBlockingError;
         CanSafetyReview = snapshot.State == OnboardState.Faulted
             && snapshot.ErrorCode == "STARTUP_STATE_UNSAFE"
@@ -317,18 +231,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
             ? "当前仓"
             : $"{snapshot.ActiveOperation.SlotIndex + 1}号仓";
 
-        OnPropertyChanged(nameof(CommunicationText));
-        OnPropertyChanged(nameof(BusinessReadinessText));
-        OnPropertyChanged(nameof(MotionText));
-        OnPropertyChanged(nameof(SafetyInterlockText));
-        OnPropertyChanged(nameof(CurrentDemandText));
-        OnPropertyChanged(nameof(CurrentStopText));
-        OnPropertyChanged(nameof(StationGuardText));
-        OnPropertyChanged(nameof(CurrentSublotText));
-        OnPropertyChanged(nameof(BasketAndSlotsText));
-        OnPropertyChanged(nameof(PrimaryActionText));
-        OnPropertyChanged(nameof(HasBlockingNotice));
-
         foreach (LockerCardViewModel locker in Lockers)
         {
             LockerSnapshot state = snapshot.Io.GetLocker(locker.SlotIndex);
@@ -337,72 +239,6 @@ public sealed class MainViewModel : ViewModelBase, IDisposable
 
         AppendOperatorRecord(snapshot);
         LogOperatorVisibleError(snapshot);
-    }
-
-    private async Task EstablishCandidateSessionAsync()
-    {
-        try
-        {
-            WireToGateHandshakeResult result = await _candidateSession
-                .ConnectAndRecoverAsync(_candidateStopping.Token)
-                .ConfigureAwait(true);
-            _candidateConnected = true;
-            _candidateReady = result.Readiness == VehicleBusinessReadiness.Ready;
-            _candidateSessionGeneration = result.SessionGeneration;
-            _candidateReason = result.ReasonCode;
-            ApplySnapshot(_controller.Current);
-            _logger.Write(
-                LogSeverity.Information,
-                nameof(MainViewModel),
-                $"候选协议五步恢复完成：generation={result.SessionGeneration}，readiness={result.Readiness}，reason={result.ReasonCode}。");
-        }
-        catch (Exception exception) when (exception is SocketException or IOException or InvalidDataException or
-                                          InvalidOperationException or OperationCanceledException or HttpRequestException)
-        {
-            if (exception is OperationCanceledException && _candidateStopping.IsCancellationRequested)
-            {
-                return;
-            }
-            _candidateConnected = false;
-            _candidateReady = false;
-            _candidateReason = "CANDIDATE_HANDSHAKE_FAILED";
-            ApplySnapshot(_controller.Current);
-            _logger.Write(LogSeverity.Warning, nameof(MainViewModel), "候选协议恢复握手未完成，保持安全阻断。", exception);
-        }
-    }
-
-    private async Task MaintainCandidateHeartbeatAsync(CancellationToken cancellationToken)
-    {
-        using PeriodicTimer timer = new(TimeSpan.FromSeconds(5));
-        try
-        {
-            while (await timer.WaitForNextTickAsync(cancellationToken).ConfigureAwait(false))
-            {
-                if (!_candidateConnected)
-                {
-                    continue;
-                }
-                await _candidateSession.SendHeartbeatAsync(_candidateSessionGeneration, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-        }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-        {
-        }
-        catch (Exception exception)
-        {
-            _logger.Write(LogSeverity.Error, nameof(MainViewModel), "候选协议心跳丢失，已进入安全阻断。", exception);
-            RunOnUiThread(() =>
-            {
-                _candidateConnected = false;
-                _candidateReady = false;
-                _candidateReason = "CONTROL_SERVER_HEARTBEAT_LOST";
-                _controller.EnterFatalFault(
-                    "CONTROL_SERVER_CONNECTION_LOST",
-                    "ControlServer 连接已丢失，已禁止新操作。请确认仓门与开锁输出状态。");
-                ApplySnapshot(_controller.Current);
-            });
-        }
     }
 
     private void HandleCommandError(Exception exception)

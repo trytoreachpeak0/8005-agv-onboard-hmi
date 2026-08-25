@@ -1,6 +1,6 @@
 # 8005 AGV 车载端 HMI
 
-> 车载端负责人接管前请先阅读 [`docs/ONBOARD_DEVELOPER_HANDOFF.md`](docs/ONBOARD_DEVELOPER_HANDOFF.md)。远程 `OnboardHmi_MVP` 当前包含 AI 候选提交，不能仅凭 Git Author 名称认定为人员本人开发或批准。
+> 车载端负责人接管前请先阅读 [`docs/ONBOARD_DEVELOPER_HANDOFF.md`](docs/ONBOARD_DEVELOPER_HANDOFF.md)。当前产品树已恢复到王昆的 `bc56fa9` 基线；历史中的 AI 候选提交不代表人员本人开发或批准。
 
 本仓库是长电科技（宿迁）8005多仓位AGV车载端程序的正式开发仓库，包含车载HMI、仓门业务编排、IO通信和自动测试。
 
@@ -18,27 +18,6 @@
 - Release构建启用可空检查、推荐级静态分析和警告即错误。
 - 具备核心安全规则和自动测试。
 - RuleMock默认从“在途”开始，可通过控制台命令模拟到站和离站。
-- `OnboardHmi_MVP` 已绑定正式协议 `protocol-v0.1.0` / manifest `92c19e…b8d3`，并建立正式 `ISlotIoProvider` 与原型 A 映射入口；旧协议和单仓路径尚未完成迁移。
-
-当前分支还包含五步恢复客户端、SQLite `OnboardExecutionJournal`、多仓物理闭环执行器、独立 HTTP IO Simulator、Fake ControlServer/Conformance 工具，以及按获选原型 A 重建的 WPF“左旅程—中央唯一动作—右固定八仓”生产窗口。协议身份固定为 `protocol-v0.1.0@3ad309ffd5f9a48a6cf390b51a81da2f47c814dd`、manifest SHA-256 `92c19e74affe876902e1c64aa5cdbca845f5dbc93a8c82014a16627a26deb8d3`，状态为 `APPROVED_RELEASE`。
-
-独立 IO Simulator 默认监听 `127.0.0.1:58006`，初始 8 仓均为 `online + EMPTY + LOCKED + RESET + CLEAR`：
-
-```powershell
-dotnet run --project .\tools\SQCD.Agv.IoSimulator -c Release
-```
-
-它提供 `/api/v1/slots`、`/api/v1/unlock`、逐仓状态注入及 `Offline / ResponseTimeout / Unknown / LockFeedbackAbnormal / OutputStuck / RequestLost / ResponseLost / Crashed` 故障模式。模拟器只证明软件闭环，不代表真实 IO 协议、接线、锁、光幕或硬件资格。
-
-Fake ControlServer 与 Conformance 是显式本地自测入口；凭据只从 `CONTROL_SERVER_ONBOARD_CREDENTIAL` 读取：
-
-```powershell
-$env:CONTROL_SERVER_ONBOARD_CREDENTIAL = '<local-test-secret>'
-dotnet run --project .\tools\SQCD.Agv.FakeControlServer -c Release -- 58015
-dotnet run --project .\tools\SQCD.Agv.Conformance -c Release -- 127.0.0.1 58015 http://127.0.0.1:58006 <new-journal-path>
-```
-
-生产启动保留既有 `OnboardController` 安全锁存，并通过 `SlotIoModuleClientAdapter` 只消费正式业务状态 Provider；同时会使用配置的 ControlServer 地址和环境变量凭据建立正式五步恢复会话。只有既有执行链可操作、正式会话在线且业务状态为 `READY` 时才允许扫码；心跳丢失会立即锁存故障并禁止新操作。软件急停请求和目标车辆部署仍须在目标适配/部署阶段完成。未完成真实 ControlServer 命令分发、RIoT/车辆/IO 集成、Golden WPF 用户预览或 G3，不能据此宣称整个 MVP 或真实现场闭环完成。
 
 当前`SQCD.Agv.Contracts`和TCP JSON消息属于早期联调协议，只用于保留现有可运行能力，不代表双方最终接口。后续接口定义、消息示例、版本和兼容规则统一以[`8005-agv-protocol`](https://github.com/trytoreachpeak0/8005-agv-protocol)仓库为准，并按该仓库逐步发布的协议增量开发。
 
@@ -74,11 +53,9 @@ tests/
 在仓库根目录执行：
 
 ```powershell
-dotnet build .\SQCD_8005AGV.sln -c Release
+dotnet build .\SQCD_8005AGV.slnx -c Release
 dotnet test .\tests\SQCD.Agv.UnitTests\SQCD.Agv.UnitTests.csproj -c Release
 ```
-
-可复现构建要求 `global.json` 指定的 SDK `8.0.424`；不得使用 9.x SDK 冒充冻结版本。若 SDK 未加入 `PATH`，可把 `WIRE_TO_GATE_DOTNET_EXE` 指向该版本的 `dotnet.exe` 后运行脚本。薄实施入口见 [`docs/ai-spec/README.md`](docs/ai-spec/README.md)。
 
 也可以直接使用Visual Studio的“发布”功能。命令行发布车载端示例：
 
@@ -91,8 +68,8 @@ dotnet publish .\src\SQCD.Agv.Wpf\SQCD.Agv.Wpf.csproj `
 
 ## 本地联调
 
-1. 启动正式 HTTP IO Simulator，确认监听 `127.0.0.1:58006`；初始状态已是八仓安全 Reset。
-2. 如需回归旧单仓流程，再启动兼容 RuleMock（它不代表候选 ControlServer）：
+1. 启动IO仿真软件并执行“安全Reset”，确认监听`127.0.0.1:1502`、Unit ID为255。
+2. 启动规则MOCK：
 
    ```powershell
    dotnet run --project .\tools\SQCD.Agv.RuleMock\SQCD.Agv.RuleMock.csproj
@@ -151,8 +128,8 @@ SUBLOT后三位编号与物理仓位号保持一致。例如，扫描`LOAD-003`�
 
 ## 当前已知限制
 
-- 旧 `SQCD.Agv.Contracts` / RuleMock 仍只用于回归旧单仓流程；候选会话、Fake ControlServer 与 Conformance 是另一条明确隔离的入口。
-- 生产启动已接入候选五步恢复与活动心跳，并以候选 `READY` 作为扫码门禁；`WireToGateSlotExecutor` 已支持完整目标集合、持久去重和重启恢复。真实 ControlServer 的 Demand/站点/批量仓位命令分发尚未替换旧规则执行链，必须在双仓联合集成中完成后才能称为候选协议端到端。
-- 新原型 A 窗口已成为生产启动窗口；尚未运行需用户单独授权的 Golden WPF tier 2/3，也未取得目标 1024×768 车载硬件的视觉批准。
-- Modbus Provider 保留给真实硬件适配；本轮默认 HTTP Simulator 不证明现场模块、接线或极性资格。
-- 未包含任务调度、路径规划、MES直连、刷卡会话或未经协议批准的异常动作。
+- TCP JSON是正式接口冻结前的临时适配器。
+- 已执行`operationId`和未ACK结果目前仅保存在进程内；进程内支持自动/手动重报，但异常重启后仍需人工对账，不自动续作。
+- 当前只支持单仓串行操作，不支持批量开仓。
+- 未包含任务调度、路径规划、MES直连、刷卡会话和复杂异常恢复。
+- 生产规则地址、IO地址和正式协议仍需与项目同事确认；当前开发配置不得直接用于现场。

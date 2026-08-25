@@ -39,7 +39,7 @@ public sealed class RuleMockServerTests
 
         Assert.False(server.IsArrived);
 
-        await server.ArriveAsync(TestContext.Current.CancellationToken);
+        await server.ArriveAsync();
 
         Assert.True(server.IsArrived);
         Assert.Contains("已到站", server.GetStatusText(), StringComparison.Ordinal);
@@ -52,7 +52,7 @@ public sealed class RuleMockServerTests
         await using RuleMockServer server = new(settings);
         Assert.True(server.IsArrived);
 
-        await server.DepartAsync("测试离站", TestContext.Current.CancellationToken);
+        await server.DepartAsync("测试离站");
 
         Assert.False(server.IsArrived);
         Assert.Contains("在途", server.GetStatusText(), StringComparison.Ordinal);

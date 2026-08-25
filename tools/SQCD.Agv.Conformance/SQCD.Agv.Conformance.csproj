@@ -1,7 +1,0 @@
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
-  <ItemGroup>
-    <ProjectReference Include="../../src/SQCD.Agv.Core/SQCD.Agv.Core.csproj" />
-    <ProjectReference Include="../../src/SQCD.Agv.Infrastructure/SQCD.Agv.Infrastructure.csproj" />
-  </ItemGroup>
-</Project>
