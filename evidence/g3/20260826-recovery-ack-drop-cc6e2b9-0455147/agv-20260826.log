@@ -1,0 +1,8 @@
+2026-08-26T16:41:48.3146338+08:00	Information	App	车载端启动：agvId=AGV-8005-STAGED-G3-ACK-DROP-01，environment=Development，version=0.2.0-safety-mock-travel+045514770da9858a8a49196dede276192e4f2a1b。
+2026-08-26T16:41:48.9097601+08:00	Information	ModbusTcpIoModuleClient	已连接IO模块 127.0.0.1:1502，UnitId=255。
+2026-08-26T16:41:48.9554101+08:00	Information	OnboardController	IO模块在线。
+2026-08-26T16:41:48.9590527+08:00	Information	OnboardController	启动IO安全快照验证通过。
+2026-08-26T16:41:49.6142405+08:00	Warning	WireToGateSessionService	上层会话不可用：HANDSHAKE_SEQUENCE_INVALID：期望DurableAck，实际SessionReadiness。。将在2秒后重连。
+2026-08-26T16:41:51.7287053+08:00	Warning	WireToGateSessionService	上层会话不可用：ControlServer在会话恢复期间关闭了连接。。将在2秒后重连。
+2026-08-26T16:41:53.7641703+08:00	Warning	WireToGateSessionService	上层会话不可用：ControlServer在会话恢复期间关闭了连接。。将在2秒后重连。
+2026-08-26T16:41:55.7989992+08:00	Warning	WireToGateSessionService	上层会话不可用：ControlServer在会话恢复期间关闭了连接。。将在2秒后重连。

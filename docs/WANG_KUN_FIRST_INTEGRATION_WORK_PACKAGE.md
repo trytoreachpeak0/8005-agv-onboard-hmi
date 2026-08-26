@@ -148,9 +148,10 @@ Fake 拒绝，且没有第二次物理副作用。
 
 解除阻断需同时提供：本端 G2 回归、Fake 对所有非 `SessionHello` 消息的当前代次
 校验，以及真实双端首 Ack 丢失后稳定收敛到安全 readiness 的新 G3 证据。当前红
-证据保存在规划仓
-`.scratch/wire-to-gate-ai-implementation-kit/evidence/g3/20260826-recovery-ack-drop-cc6e2b9-0455147/`；
-修复后重跑，不覆盖原红证据。
+证据由本仓
+`evidence/g3/20260826-recovery-ack-drop-cc6e2b9-0455147/SUMMARY.md` 保存；重跑入口为
+`scripts/run-staged-g3-recovery-ack-drop.ps1`。修复后生成新的证据目录，不覆盖原红
+证据。
 
 ## 工作二：完成模拟器外部控制接口
 

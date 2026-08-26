@@ -1,0 +1,127 @@
+{
+  "schemaVersion": "1.0.0",
+  "runKind": "STAGED_G3_REAL_PEERS_RECOVERY_ACK_DROP",
+  "runId": "8005-staged-g3-ack-drop-final-20260826-164132",
+  "startedScope": [
+    "W2G-IS-00",
+    "W2G-IS-06"
+  ],
+  "status": "FAIL_CROSS_REPOSITORY_RECOVERY_REPLAY",
+  "protocol": {
+    "tag": "protocol-v0.1.1",
+    "commit": "1531489e42e328f28bfe0c51ed3f8c56e5ce0279",
+    "manifestSha256": "a467c0c4b03cbf54fae985ceade256ff13225581babad7f46d90449b7f16389f"
+  },
+  "commits": {
+    "controlServer": "cc6e2b97e4308fa14b519edf9a0089d0da7d6d14",
+    "onboardHmi": "045514770da9858a8a49196dede276192e4f2a1b",
+    "slotsSimulator": "fb5f7c593742bf98bc3957b8729a38aad5321f28"
+  },
+  "config": {
+    "onboardConfigSha256": "bf7da14960ac8fcc0130c9165056d1f922add8b1472e759037e5a8572a41fc40",
+    "insecureLoopback": true,
+    "freshControlDatabase": true,
+    "freshOnboardJournal": true,
+    "fault": "drop-first-RecoveryStateReport-DurableAck",
+    "ports": {
+      "modbus": 1502,
+      "simulatorHttp": 58006,
+      "proxy": 58114,
+      "onboardNdjson": 58115,
+      "controlHealth": 58117
+    }
+  },
+  "observations": {
+    "droppedRecoveryAckCount": 1,
+    "recoveryReportSendCount": 4,
+    "recoveryReportMessageIds": [
+      "1ff687b2-bbfc-4a6c-94c3-ca8b435586f5"
+    ],
+    "recoveryReportConnectionIds": [
+      2,
+      3,
+      4,
+      5
+    ],
+    "replayedExactMessageIdentityAcrossConnections": true,
+    "onboardReconnectObserved": true,
+    "staleSessionGenerationRejectedByControlServer": true,
+    "sessionAfterFault": null,
+    "database": {
+      "recoveryStateReportInboxRows": [
+        {
+          "messageId": "1ff687b2-bbfc-4a6c-94c3-ca8b435586f5",
+          "contentHash": "978417eebba2575fbfd591cb2740893d5d5e6bf347d30f1495383c7eea86a0b4",
+          "rowCount": 1
+        }
+      ],
+      "currentSession": {
+        "sessionGeneration": 4,
+        "readiness": "RecoveryRequired",
+        "reasonCode": "HANDSHAKE_INCOMPLETE",
+        "capabilityRevision": null,
+        "safetyRevision": null
+      }
+    }
+  },
+  "expected": {
+    "outcome": "The exact durable RecoveryStateReport is accepted after reconnect without duplicate side effects.",
+    "safeTerminalReadiness": "RecoveryRequired",
+    "safeTerminalReasonCode": "DEPARTURE_SAFETY_NOT_READY",
+    "movementAttempted": false
+  },
+  "simulatorHealth": {
+    "schemaVersion": "1.0",
+    "instanceId": "agv-slot-simulator-01",
+    "runId": "run-5143ac8eeb1c4f1780983cd1aafe4fd8",
+    "revision": 1,
+    "observedAt": "2026-08-26T16:41:46.2504958+08:00",
+    "status": "READY",
+    "modbus": {
+      "listenAddress": "127.0.0.1",
+      "port": 1502,
+      "unitId": 255,
+      "isRunning": true,
+      "clientCount": 0,
+      "faultMode": "NORMAL",
+      "delayMs": 0
+    }
+  },
+  "evidenceFiles": [
+    {
+      "path": "control.err.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "length": 0
+    },
+    {
+      "path": "control.out.log",
+      "sha256": "0389275266adf8cc199517c8c82933721230f09c991f49911709570e3198e372",
+      "length": 33774
+    },
+    {
+      "path": "onboard.err.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "length": 0
+    },
+    {
+      "path": "onboard.out.log",
+      "sha256": "f1e286ac091ad3bf12e21b267212d7bde549f500b81c080cf77f29b32fa2b234",
+      "length": 1074
+    },
+    {
+      "path": "simulator.err.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "length": 0
+    },
+    {
+      "path": "simulator.out.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "length": 0
+    },
+    {
+      "path": "onboard-logs/agv-20260826.log",
+      "sha256": "e44018de51113d29d6c06f9220a7ff400d576bc51fc1ef978ab3ff4859a080b9",
+      "length": 1216
+    }
+  ]
+}
