@@ -119,6 +119,9 @@ protocol 版本证据。
 
 - 生产 WPF 尚未完成 ControlServer Demand、worklist、扫码、批量操作及异常恢复消息的真实分发闭环；
 - 完整 W2G-IS-00～07 G3 尚未通过；
+- 首次 `RecoveryStateReport` Ack 丢失后，当前实现会把旧 generation 的完整 wire
+  原样跨连接重放，被真实 ControlServer 正确拒绝；修复与回归条件见
+  `docs/WANG_KUN_FIRST_INTEGRATION_WORK_PACKAGE.md` 的“2026-08-26 G3 阻断”；
 - 真实 IO、目标工控机和 Golden WPF 尚未验证；
 - 真实 RIoT、车辆、Map、站点和现场旅程属于联合门禁，不能由 Onboard 单仓自测证明。
 

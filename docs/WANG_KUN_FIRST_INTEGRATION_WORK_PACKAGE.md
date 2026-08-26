@@ -127,6 +127,31 @@ Fake PASS 只能称为 HMI G2/联调准备通过，不能称为最终 G3。
 - HMI 重启后读取 journal 和实时 Modbus 状态再决定恢复；
 - 第一次联调证据绑定 HMI commit、模拟器 commit、协议 release、配置哈希和场景结果。
 
+### 2026-08-26 G3 阻断：RecoveryStateReport 跨代次重放
+
+真实 `ControlServer_MVP@cc6e2b97e4308fa14b519edf9a0089d0da7d6d14` 与本仓
+`OnboardHmi_MVP@045514770da9858a8a49196dede276192e4f2a1b` 的阶段性 G3
+已稳定复现一个恢复阻断：测试代理只丢弃 generation 1 的
+`RecoveryStateReport` 第一条 `DurableAck` 后，HMI 会在 generation 2、3、4 的
+新连接上逐字重放 journal 中的旧 envelope。messageId 与 payload 保持正确，但
+envelope 的 `sessionGeneration` 仍为 1，ControlServer 因此按围栏拒绝
+`STALE_SESSION_GENERATION`，会话持续停在 `HANDSHAKE_INCOMPLETE`。
+
+这不是 ControlServer 放宽围栏的问题。已接受协议决策要求：重连时使用当前
+`sessionGeneration` 重新封装待补报语义消息，同时保留原 `messageId` 与 payload；
+旧 generation 的消息必须拒绝。请修改
+`WireToGateSessionClient.ReplayDurableOutgoingAsync` 及 journal 更新路径：在新代次
+发送前原子保存重新封装后的 wire/hash，并按新 hash 校验 `DurableAck`。现有
+`ReconnectDuringRecoveryReplaysExactDurableReportWithoutUnlockSideEffects` 不应再断言
+跨重连 wire 逐字相同；应断言 messageId/payload 相同、generation 更新、旧代次被
+Fake 拒绝，且没有第二次物理副作用。
+
+解除阻断需同时提供：本端 G2 回归、Fake 对所有非 `SessionHello` 消息的当前代次
+校验，以及真实双端首 Ack 丢失后稳定收敛到安全 readiness 的新 G3 证据。当前红
+证据保存在规划仓
+`.scratch/wire-to-gate-ai-implementation-kit/evidence/g3/20260826-recovery-ack-drop-cc6e2b9-0455147/`；
+修复后重跑，不覆盖原红证据。
+
 ## 工作二：完成模拟器外部控制接口
 
 详细契约放在模拟器仓库：
