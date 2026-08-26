@@ -153,7 +153,8 @@ messageId/payload 相同、generation/hash 更新、journal 保存新 wire，以
 证据由本仓
 `evidence/g3/20260826-recovery-ack-drop-cc6e2b9-0455147/SUMMARY.md` 保存；重跑入口为
 `scripts/run-staged-g3-recovery-ack-drop.ps1`。修复后生成新的证据目录，不覆盖原红
-证据。
+证据。runner 默认把当前 checkout 的 `HEAD` 写入 HMI 构建身份；如果从证据目录复制
+runner 执行，应显式传入 `-OnboardBuildCommit <完整40位commit>`。
 
 ## 工作二：完成模拟器外部控制接口
 

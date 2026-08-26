@@ -1,13 +1,13 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string]$StageRoot
+    [string]$StageRoot,
+    [string]$OnboardBuildCommit = ''
 )
 
 $ErrorActionPreference = 'Stop'
 
 $controlCommit = 'cc6e2b97e4308fa14b519edf9a0089d0da7d6d14'
-$onboardCommit = '0584322e86bdf6e1f94b58a70381b42d353ba5df'
 $simulatorCommit = 'fb5f7c593742bf98bc3957b8729a38aad5321f28'
 $agvId = 'AGV-8005-STAGED-G3-ACK-DROP-01'
 $proxyPort = 58114
@@ -15,6 +15,20 @@ $controlPort = 58115
 $healthPort = 58117
 $credential = [Guid]::NewGuid().ToString('N')
 $proxyTranscript = Join-Path $StageRoot 'proxy-events.ndjson'
+
+if ([string]::IsNullOrWhiteSpace($OnboardBuildCommit)) {
+    $repoRoot = Split-Path -Parent $PSScriptRoot
+    $OnboardBuildCommit = (& git -C $repoRoot rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0) {
+        throw '无法从当前 checkout 解析 OnboardHmi commit；请显式传入 -OnboardBuildCommit。'
+    }
+}
+
+if ($OnboardBuildCommit -notmatch '^[0-9a-fA-F]{40}$') {
+    throw "OnboardBuildCommit 不是完整 40 位 commit：$OnboardBuildCommit"
+}
+
+$onboardCommit = $OnboardBuildCommit.ToLowerInvariant()
 
 $proxySource = @'
 #nullable enable
