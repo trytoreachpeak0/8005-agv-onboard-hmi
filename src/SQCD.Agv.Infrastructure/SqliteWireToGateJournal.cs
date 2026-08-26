@@ -192,6 +192,89 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
         }
     }
 
+    public async Task<WireToGateDurableMessage> ReplaceOutgoingForReplayAsync(
+        WireToGateDurableMessage expected,
+        WireToGateDurableMessage replacement,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ValidateDurableMessage(expected);
+        ValidateDurableMessage(replacement);
+        if (!string.Equals(expected.DeduplicationKey, replacement.DeduplicationKey, StringComparison.Ordinal)
+            || !string.Equals(expected.MessageType, replacement.MessageType, StringComparison.Ordinal)
+            || !string.Equals(expected.MessageId, replacement.MessageId, StringComparison.Ordinal)
+            || replacement.Acknowledged)
+        {
+            throw new InvalidDataException("DURABLE_OUTBOX_REBIND_IDENTITY_CONFLICT");
+        }
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            WireToGateDurableMessage? current = await ReadByDeduplicationKeyAsync(
+                connection,
+                expected.DeduplicationKey,
+                cancellationToken).ConfigureAwait(false);
+            if (current is null)
+            {
+                throw new InvalidDataException("DURABLE_OUTBOX_MISSING");
+            }
+
+            if (current.Acknowledged)
+            {
+                return current;
+            }
+
+            if (!SameDurableContent(current, expected))
+            {
+                throw new InvalidDataException("DURABLE_OUTBOX_CONTENT_MISMATCH");
+            }
+
+            if (SameDurableWire(current, replacement))
+            {
+                return current;
+            }
+
+            await using SqliteTransaction transaction = (SqliteTransaction)await connection
+                .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            await using SqliteCommand command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                UPDATE WireToGateDurableOutbox
+                SET ContentSha256 = $newHash, WireLine = $newWire
+                WHERE DeduplicationKey = $key
+                  AND MessageType = $type
+                  AND MessageId = $messageId
+                  AND ContentSha256 = $oldHash
+                  AND WireLine = $oldWire
+                  AND Acknowledged = 0
+                """;
+            command.Parameters.AddWithValue("$newHash", replacement.ContentSha256);
+            command.Parameters.AddWithValue("$newWire", replacement.WireLine);
+            command.Parameters.AddWithValue("$key", expected.DeduplicationKey);
+            command.Parameters.AddWithValue("$type", expected.MessageType);
+            command.Parameters.AddWithValue("$messageId", expected.MessageId);
+            command.Parameters.AddWithValue("$oldHash", expected.ContentSha256);
+            command.Parameters.AddWithValue("$oldWire", expected.WireLine);
+            if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
+            {
+                throw new InvalidDataException("DURABLE_OUTBOX_REBIND_CONFLICT");
+            }
+
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            return replacement with
+            {
+                CreatedAt = current.CreatedAt,
+                Acknowledged = false
+            };
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<WireToGateDurableMessage?> ReadOutgoingByDeduplicationKeyAsync(
         string deduplicationKey,
         CancellationToken cancellationToken = default)
@@ -516,6 +599,21 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             reader.GetString(reader.GetOrdinal("AppliedAt")),
             CultureInfo.InvariantCulture,
             DateTimeStyles.RoundtripKind));
+
+    private static bool SameDurableContent(
+        WireToGateDurableMessage left,
+        WireToGateDurableMessage right) =>
+        string.Equals(left.DeduplicationKey, right.DeduplicationKey, StringComparison.Ordinal)
+        && string.Equals(left.MessageType, right.MessageType, StringComparison.Ordinal)
+        && string.Equals(left.MessageId, right.MessageId, StringComparison.Ordinal)
+        && string.Equals(left.ContentSha256, right.ContentSha256, StringComparison.Ordinal)
+        && string.Equals(left.WireLine, right.WireLine, StringComparison.Ordinal);
+
+    private static bool SameDurableWire(
+        WireToGateDurableMessage left,
+        WireToGateDurableMessage right) =>
+        string.Equals(left.ContentSha256, right.ContentSha256, StringComparison.Ordinal)
+        && string.Equals(left.WireLine, right.WireLine, StringComparison.Ordinal);
 
     private static void Bind(SqliteCommand command, WireToGateDurableMessage message)
     {

@@ -75,6 +75,18 @@ public interface IWireToGateJournal : IAsyncDisposable
         WireToGateDurableMessage message,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Atomically replaces the wire representation of an unacknowledged durable
+    /// message before replaying it on a new connection.  The business identity and
+    /// payload stay the same; only transport fields such as session generation may
+    /// be rebound.  The expected row is checked so a concurrent acknowledgement or
+    /// content change cannot silently overwrite a newer journal state.
+    /// </summary>
+    public Task<WireToGateDurableMessage> ReplaceOutgoingForReplayAsync(
+        WireToGateDurableMessage expected,
+        WireToGateDurableMessage replacement,
+        CancellationToken cancellationToken = default);
+
     public Task<WireToGateDurableMessage?> ReadOutgoingByDeduplicationKeyAsync(
         string deduplicationKey,
         CancellationToken cancellationToken = default);

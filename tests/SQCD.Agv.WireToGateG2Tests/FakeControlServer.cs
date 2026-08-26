@@ -72,6 +72,12 @@ public sealed class FakeControlServer : IAsyncDisposable
         private set;
     } = [];
 
+    public IReadOnlyList<(int Connection, string MessageType, string MessageId, string ReasonCode)> StaleGenerationRejections
+    {
+        get;
+        private set;
+    } = [];
+
     public IReadOnlyList<(string Kind, long Revision)> AppliedSnapshots { get; private set; } = [];
 
     private sealed class ConnectionContext
@@ -180,6 +186,29 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
     }
 
+    private bool HasCurrentSessionGeneration(
+        ConnectionContext context,
+        JsonElement envelope,
+        int connectionIndex,
+        string messageType,
+        string messageId)
+    {
+        bool matches = envelope.TryGetProperty("sessionGeneration", out JsonElement generation)
+            && generation.ValueKind == JsonValueKind.Number
+            && generation.GetInt64() == context.Generation;
+        if (!matches)
+        {
+            lock (_sync)
+            {
+                var rejections = StaleGenerationRejections.ToList();
+                rejections.Add((connectionIndex, messageType, messageId, "STALE_SESSION_GENERATION"));
+                StaleGenerationRejections = rejections;
+            }
+        }
+
+        return matches;
+    }
+
     private async Task HandleConnectionAsync(
         int connectionIndex,
         ConnectionContext context,
@@ -200,6 +229,17 @@ public sealed class FakeControlServer : IAsyncDisposable
                 string messageType = root.GetProperty("messageType").GetString()!;
                 string messageId = root.GetProperty("messageId").GetString()!;
                 RecordMessage(connectionIndex, context.ReceivedOrder, messageType, messageId, line);
+
+                if (!string.Equals(messageType, "SessionHello", StringComparison.Ordinal)
+                    && !HasCurrentSessionGeneration(context, root, connectionIndex, messageType, messageId))
+                {
+                    await WriteEnvelopeAsync(context, CreateProtocolProblem(
+                        context,
+                        messageId,
+                        messageType,
+                        "STALE_SESSION_GENERATION")).ConfigureAwait(false);
+                    continue;
+                }
 
                 switch (messageType)
                 {

@@ -461,7 +461,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 throw new InvalidDataException("BUSINESS_ID_CONTENT_CONFLICT");
             }
 
-            stored = existing;
+            stored = await RebindDurableMessageForSessionAsync(
+                existing,
+                current.SessionGeneration.Value,
+                cancellationToken).ConfigureAwait(false);
         }
         else
         {
@@ -675,21 +678,60 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             throw new InvalidDataException("DURABLE_OUTBOX_CONTENT_MISMATCH");
         }
 
-        await SendLineAsync(pending.WireLine, cancellationToken).ConfigureAwait(false);
+        WireToGateDurableMessage rebound = await RebindDurableMessageForSessionAsync(
+            pending,
+            generation,
+            cancellationToken).ConfigureAwait(false);
+        if (rebound.Acknowledged)
+        {
+            return;
+        }
+
+        await SendLineAsync(rebound.WireLine, cancellationToken).ConfigureAwait(false);
         WireToGateEnvelope ackEnvelope = await ReadEnvelopeAsync(generation, cancellationToken).ConfigureAwait(false);
         ThrowIfProtocolProblem(ackEnvelope);
-        WireToGateProtocolSerializer.RequireMessage(ackEnvelope, "DurableAck", pending.MessageId);
+        WireToGateProtocolSerializer.RequireMessage(ackEnvelope, "DurableAck", rebound.MessageId);
         DurableAckPayload ack = WireToGateProtocolSerializer.DeserializePayload<DurableAckPayload>(ackEnvelope);
-        if (ack.AcceptedMessageId != pending.MessageId
-            || ack.AcceptedMessageType != pending.MessageType
-            || ack.AcceptedContentSha256 != pending.ContentSha256)
+        if (ack.AcceptedMessageId != rebound.MessageId
+            || ack.AcceptedMessageType != rebound.MessageType
+            || ack.AcceptedContentSha256 != rebound.ContentSha256)
         {
             throw new InvalidDataException("CONTENT_HASH_MISMATCH");
         }
 
         await _journal.MarkOutgoingAcknowledgedAsync(
-            pending.MessageId,
-            pending.ContentSha256,
+            rebound.MessageId,
+            rebound.ContentSha256,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<WireToGateDurableMessage> RebindDurableMessageForSessionAsync(
+        WireToGateDurableMessage pending,
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        WireToGateEnvelope storedEnvelope = WireToGateProtocolSerializer.DeserializeAndValidate(
+            pending.WireLine.TrimEnd('\r', '\n'),
+            _options.AgvId);
+        if (storedEnvelope.MessageId != pending.MessageId
+            || storedEnvelope.MessageType != pending.MessageType
+            || WireToGateProtocolSerializer.ComputeContentSha256(storedEnvelope) != pending.ContentSha256)
+        {
+            throw new InvalidDataException("DURABLE_OUTBOX_CONTENT_MISMATCH");
+        }
+
+        WireToGateEnvelope reboundEnvelope = WireToGateProtocolSerializer.RebindSessionGeneration(
+            storedEnvelope,
+            generation);
+        WireToGateDurableMessage rebound = pending with
+        {
+            ContentSha256 = WireToGateProtocolSerializer.ComputeContentSha256(reboundEnvelope),
+            WireLine = WireToGateProtocolSerializer.SerializeLine(reboundEnvelope),
+            Acknowledged = false
+        };
+        return await _journal.ReplaceOutgoingForReplayAsync(
+            pending,
+            rebound,
             cancellationToken).ConfigureAwait(false);
     }
 

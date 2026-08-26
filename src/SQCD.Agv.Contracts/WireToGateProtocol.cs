@@ -112,6 +112,22 @@ public static class WireToGateProtocolSerializer
 
     public static string SerializeLine(WireToGateEnvelope envelope) => Serialize(envelope) + "\n";
 
+    /// <summary>
+    /// Rebinds a pending durable message to the active connection generation while
+    /// preserving its message identity, correlation and raw business payload.
+    /// Session generation is transport/session metadata and is intentionally not
+    /// allowed to remain stale across reconnects.
+    /// </summary>
+    public static WireToGateEnvelope RebindSessionGeneration(
+        WireToGateEnvelope envelope,
+        long sessionGeneration)
+    {
+        ArgumentNullException.ThrowIfNull(envelope);
+        ArgumentOutOfRangeException.ThrowIfNegative(sessionGeneration);
+
+        return envelope with { SessionGeneration = sessionGeneration };
+    }
+
     public static WireToGateEnvelope DeserializeAndValidate(
         string line,
         string expectedAgvId,

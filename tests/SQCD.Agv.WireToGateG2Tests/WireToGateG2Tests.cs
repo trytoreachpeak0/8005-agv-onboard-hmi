@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
@@ -40,7 +41,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
-    public async Task ReconnectDuringRecoveryReplaysExactDurableReportWithoutUnlockSideEffects()
+    public async Task ReconnectDuringRecoveryRebindsDurableReportWithoutUnlockSideEffects()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
         await using FakeControlServer server = new(IPAddress.Loopback)
@@ -106,7 +107,28 @@ public sealed class WireToGateG2Tests
             .ToArray();
         Assert.Equal(2, replayed.Length);
         Assert.All(replayed, item => Assert.Equal(originalMessageId, item.MessageId));
-        Assert.All(replayed, item => Assert.Equal(originalWireLine.TrimEnd('\n'), item.WireLine));
+        WireToGateEnvelope[] replayedEnvelopes = replayed
+            .Select(item => WireToGateProtocolSerializer.DeserializeAndValidate(item.WireLine, "AGV-8005-01"))
+            .ToArray();
+        Assert.Equal([1L, 2L], replayedEnvelopes.Select(item => item.SessionGeneration).ToArray());
+        Assert.All(replayedEnvelopes, item => Assert.True(JsonNode.DeepEquals(
+            JsonNode.Parse(originalReport.Payload.GetRawText()),
+            JsonNode.Parse(item.Payload.GetRawText()))));
+        Assert.Equal(
+            originalContentSha256,
+            WireToGateProtocolSerializer.ComputeContentSha256(replayedEnvelopes[0]));
+        string reboundContentSha256 = WireToGateProtocolSerializer.ComputeContentSha256(replayedEnvelopes[1]);
+        Assert.NotEqual(originalContentSha256, reboundContentSha256);
+        Assert.NotEqual(replayed[0].WireLine, replayed[1].WireLine);
+        Assert.Empty(server.StaleGenerationRejections);
+
+        WireToGateDurableMessage? stored = await journal.ReadOutgoingByDeduplicationKeyAsync(
+            "recovery:0:interrupted",
+            testToken);
+        Assert.NotNull(stored);
+        Assert.True(stored!.Acknowledged);
+        Assert.Equal(reboundContentSha256, stored.ContentSha256);
+        Assert.Equal(replayed[1].WireLine + "\n", stored.WireLine);
         Assert.Empty(await journal.ReadUnacknowledgedOutgoingAsync(testToken));
     }
 
