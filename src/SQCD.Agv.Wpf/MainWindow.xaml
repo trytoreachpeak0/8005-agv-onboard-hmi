@@ -27,6 +27,7 @@
                     <ColumnDefinition Width="1.1*" />
                     <ColumnDefinition Width="0.85*" />
                     <ColumnDefinition Width="0.85*" />
+                    <ColumnDefinition Width="0.85*" />
                     <ColumnDefinition Width="1.35*" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
@@ -48,6 +49,10 @@
                     <TextBlock Margin="0,2,0,0" FontSize="15" FontWeight="SemiBold" Text="{Binding IoConnectionText}" />
                 </StackPanel>
                 <StackPanel Grid.Column="3">
+                    <TextBlock FontSize="12" Foreground="{StaticResource MutedBrush}" Text="上层会话" />
+                    <TextBlock Margin="0,2,0,0" FontSize="15" FontWeight="SemiBold" Text="{Binding WireToGateText}" />
+                </StackPanel>
+                <StackPanel Grid.Column="4">
                     <TextBlock FontSize="12" Foreground="{StaticResource MutedBrush}" Text="到站" />
                     <TextBlock Margin="0,2,0,0"
                                FontSize="15"
@@ -56,7 +61,7 @@
                                TextTrimming="CharacterEllipsis"
                                ToolTip="{Binding VisitText}" />
                 </StackPanel>
-                <StackPanel Grid.Column="4">
+                <StackPanel Grid.Column="5">
                     <TextBlock FontSize="12" Foreground="{StaticResource MutedBrush}" Text="发车安全" />
                     <TextBlock Margin="0,2,0,0"
                                FontSize="15"

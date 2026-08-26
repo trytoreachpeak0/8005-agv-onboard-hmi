@@ -2,6 +2,13 @@
 
 ## 交付目标
 
+本机无需现场即可先执行的计划和验收矩阵见：
+
+- docs/LOCAL_VALIDATION_RUNBOOK.md
+- docs/LOCAL_INTEGRATION_MATRIX.md
+- docs/LOCAL_RECOVERY_MATRIX.md
+- docs/LOCAL_UI_ACCEPTANCE.md
+
 本工作包由王昆负责完成两项开发：
 
 1. 完成 OnboardHmi 第一次可重复联调所需的产品开发；
@@ -15,14 +22,16 @@
 | --- | --- | --- |
 | OnboardHmi | `trytoreachpeak0/8005-agv-onboard-hmi` / `OnboardHmi_MVP` | `05bf9f4781828dcd4e63cbb7349e4cebd6a25a85`；产品树等同王昆 `bc56fa9` 基线，仅多交接文档。 |
 | 仓位模拟器 | `trytoreachpeak0/slots-simulator` / `main` | `0a778c9439d7c0fb0f25791ccce00b5caf7e6b4b`；Modbus 基线，现有测试 18/18 PASS。 |
-| 共享协议 | `trytoreachpeak0/8005-agv-protocol` | `protocol-v0.1.0@3ad309ffd5f9a48a6cf390b51a81da2f47c814dd`。 |
+| 共享协议 | `trytoreachpeak0/8005-agv-protocol` | `protocol-v0.1.1@1531489e42e328f28bfe0c51ed3f8c56e5ce0279`。 |
 | ControlServer | `trytoreachpeak0/8005-agv-control-server` / `ControlServer_MVP` | `02c2f3ca168f14d09f3fa1fc01b9654ff7e833ff`；目前正式会话恢复/心跳可联调，业务命令分发仍需双方对接。 |
 
 协议固定身份：
 
-- manifest SHA-256：`92c19e74affe876902e1c64aa5cdbca845f5dbc93a8c82014a16627a26deb8d3`
-- Schema bundle SHA-256：`de29647ab356cebb946bf559e5ba4f322f08ea7f354a844c9b84c8a3f29246a0`
-- vectors SHA-256：`25a4e900695f1f0b58e60330d7aeb0d5dc79958a5a8ad8d631c9fad18f13d387`
+- manifest SHA-256：`a467c0c4b03cbf54fae985ceade256ff13225581babad7f46d90449b7f16389f`
+- Schema bundle SHA-256：`e04296e9bcf48c341bc91fef5731f6f465a5ecdbb9adedc17f3bac58e193d30c`
+- vectors SHA-256：`fc5902b71d1b276c674f8a21c738d27193ddcbaf9b352951deffbaf1488d356e`
+
+`protocol-v0.1.1` 是非破坏性符合性修订：消息字段、类型、枚举、方向和 `ProtocolVersion=1` 不变；W2G-IS-01 使用专用轨迹 `CV-DEMAND-ACCEPT-TO-PICKUP`，通用重试和首结果重放归入 W2G-IS-06。Onboard 只读展示 `UpcomingStopPlanSnapshot` 与 `CurrentStopWorklistSnapshot`，不读取 MesIngest、不选择、排序或绑定 Demand。
 
 不得从协议仓 `main` 猜字段，也不得在 HMI 和 ControlServer 两边各自维护私有消息版本。
 
@@ -44,7 +53,7 @@
 
 当前 ControlServer 只足以验证正式会话恢复和心跳；业务命令尚未完整真实分发。因此第一次开发分两步验收：
 
-- A：使用按 `protocol-v0.1.0` Schema/向量实现的 Fake ControlServer 完成业务流；
+- A：使用按 `protocol-v0.1.1` Schema/向量实现的 Fake ControlServer 完成业务流；W2G-IS-01 必须覆盖 `CV-DEMAND-ACCEPT-TO-PICKUP`；
 - B：ControlServer 补齐分发后，不改 HMI 业务逻辑，直接换成真实 ControlServer 重跑同一场景。
 
 Fake PASS 只能称为 HMI G2/联调准备通过，不能称为最终 G3。
@@ -159,7 +168,7 @@ Fake PASS 只能称为 HMI G2/联调准备通过，不能称为最终 G3。
 
 - OnboardHmi 完整 commit 和分支；
 - SlotSimulator 完整 commit 和分支；
-- `protocol-v0.1.0` 精确身份；
+- `protocol-v0.1.1` 精确身份（新运行生成新 G2 证据，不能继承 v0.1.0 证据）；
 - HMI Release 构建和全部测试结果；
 - 模拟器原有 18 项与新增控制 API 测试结果；
 - 一条可复现的第一次联调命令；
@@ -167,4 +176,3 @@ Fake PASS 只能称为 HMI G2/联调准备通过，不能称为最终 G3。
 - 尚未通过的真实 ControlServer G3、真实 IO、目标硬件或现场项目清单。
 
 完成以上内容后再约双方第一次正式 G3；不要用手工演示或模拟器 PASS 代替人员确认和真实对端证据。
-

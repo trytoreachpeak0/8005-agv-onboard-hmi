@@ -5,6 +5,75 @@ namespace SQCD.Agv.UnitTests;
 public sealed class SafetyRulesTests
 {
     [Fact]
+    public void RecordedVehicleSafetyProviderDistinguishesStoppedMovingAndUnknown()
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        RecordedVehicleSafetySignalProvider provider = new();
+
+        provider.Set(VehicleMotionState.Stopped, now.AddMilliseconds(-100));
+        VehicleSafetySignal stopped = provider.Read();
+        Assert.True(stopped.IsStoppedAndFresh(now, TimeSpan.FromSeconds(1)));
+
+        provider.Set(VehicleMotionState.Moving, now);
+        VehicleSafetySignal moving = provider.Read();
+        Assert.False(moving.IsStoppedAndFresh(now, TimeSpan.FromSeconds(1)));
+
+        provider.Set(VehicleMotionState.Unknown, now.AddSeconds(-2));
+        VehicleSafetySignal expired = provider.Read();
+        Assert.False(expired.IsFresh(now, TimeSpan.FromSeconds(1)));
+        Assert.Equal(VehicleMotionState.Unknown, expired.MotionState);
+    }
+
+    [Fact]
+    public void UnavailableVehicleSafetyProviderFailsClosed()
+    {
+        VehicleSafetySignal signal = new UnavailableVehicleSafetySignalProvider().Read();
+
+        Assert.Equal(VehicleMotionState.Unknown, signal.MotionState);
+        Assert.False(signal.IsStoppedAndFresh(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(1)));
+    }
+
+    [Fact]
+    public void RecoverySafetyPolicyRequiresAuthorizationPersistenceAndFreshPhysicalFacts()
+    {
+        WireToGateRecoverySafetyFacts facts = WireToGateRecoverySafetyFacts.Unknown;
+
+        Assert.Equal(
+            "RECOVERY_AUTHORIZATION_REQUIRED",
+            WireToGateRecoverySafetyPolicy.Evaluate(facts).ReasonCode);
+
+        facts = facts with { RecoverySessionAuthorized = true };
+        Assert.Equal(
+            "RECOVERY_STATE_NOT_PERSISTED",
+            WireToGateRecoverySafetyPolicy.Evaluate(facts).ReasonCode);
+
+        facts = facts with { RecoveryStatePersisted = true };
+        Assert.Equal(
+            "VEHICLE_STATE_UNKNOWN",
+            WireToGateRecoverySafetyPolicy.Evaluate(facts).ReasonCode);
+
+        facts = facts with { VehicleSignalFresh = true, VehicleStopped = true };
+        Assert.Equal(
+            "SLOT_STATE_UNKNOWN",
+            WireToGateRecoverySafetyPolicy.Evaluate(facts).ReasonCode);
+
+        facts = facts with { AllTargetSlotsKnown = true };
+        Assert.Equal(
+            "LOCK_NOT_CLOSED",
+            WireToGateRecoverySafetyPolicy.Evaluate(facts).ReasonCode);
+
+        facts = facts with { AllTargetSlotsLocked = true };
+        Assert.Equal(
+            "UNLOCK_OUTPUT_NOT_RESET",
+            WireToGateRecoverySafetyPolicy.Evaluate(facts).ReasonCode);
+
+        facts = facts with { AllUnlockOutputsReset = true };
+        Assert.Equal(
+            WireToGateRecoverySafetyDecision.Allow(),
+            WireToGateRecoverySafetyPolicy.Evaluate(facts));
+    }
+
+    [Fact]
     public void LoadIntoEmptyLockedSlotIsAllowed()
     {
         ScanAuthorization authorization = CreateAuthorization(OperationType.Load, slotIndex: 0);

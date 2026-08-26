@@ -20,8 +20,14 @@
 - Release构建启用可空检查、推荐级静态分析和警告即错误。
 - 具备核心安全规则和自动测试。
 - RuleMock默认从“在途”开始，可通过控制台命令模拟到站和离站。
+- 本机验证入口已统一为 scripts/run-local-validation.ps1：protocol G1、HMI G2
+  证据、slots-simulator 18+14 黑盒测试、W2G/Legacy 边界和 UI 布局审计均可重复执行。
+- 当前本机回归基线为 Release build 0 警告/0 错误、Unit 62/62、W2G G2 13/13；
+  每次运行的 evidence/g2/ 目录都会绑定协议身份和 HMI 完整 commit。
+- 已接入 `WIRE_TO_GATE` 会话恢复、SQLite durable outbox、服务端旅程投影、正式业务命令模型和多货位物理执行骨架；正式绑定 `protocol-v0.1.1`（精确身份见交接文档）。
+- WIRE_TO_GATE 业务执行器只接受服务端冻结的货位集合；所有结果先写 outbox，再等待 `DurableAck`。
 
-当前`SQCD.Agv.Contracts`和TCP JSON消息属于早期联调协议，只用于保留现有可运行能力，不代表双方最终接口。后续接口定义、消息示例、版本和兼容规则统一以[`8005-agv-protocol`](https://github.com/trytoreachpeak0/8005-agv-protocol)仓库为准，并按该仓库逐步发布的协议增量开发。
+旧 TCP JSON 规则适配器仍属于早期联调协议，只用于保留现有开发能力，不代表双方最终接口；`WireToGate*` 消息面已按正式 `protocol-v0.1.1` 绑定。后续接口定义、消息示例、版本和兼容规则统一以[`8005-agv-protocol`](https://github.com/trytoreachpeak0/8005-agv-protocol)仓库的不可变 release 为准。
 
 正式规则接口、现场IP、最终IO映射和反馈超时仍应在现场联调后冻结。所有暂定值集中在配置文件中。
 
@@ -33,7 +39,7 @@ src/
 ├─ SQCD.Agv.Contracts       临时TCP JSON协议DTO
 ├─ SQCD.Agv.Application     单仓作业状态机和业务编排
 ├─ SQCD.Agv.Infrastructure  Modbus、TCP、配置和文件日志
-└─ SQCD.Agv.Wpf             车载操作界面和组合根
+└─ SQCD.Agv.Wpf             车载操作界面、WIRE_TO_GATE业务桥和组合根
 tools/
 └─ SQCD.Agv.RuleMock        独立规则服务模拟器
 tests/
@@ -56,8 +62,13 @@ tests/
 
 ```powershell
 dotnet build .\SQCD_8005AGV.slnx -c Release
-dotnet test .\tests\SQCD.Agv.UnitTests\SQCD.Agv.UnitTests.csproj -c Release
+dotnet test .\SQCD_8005AGV.slnx -c Release
+dotnet format .\SQCD_8005AGV.slnx --verify-no-changes --no-restore
 ```
+
+本机完整验证（不需要现场硬件或真实 ControlServer）：
+
+    .\scripts\run-local-validation.ps1
 
 也可以直接使用Visual Studio的“发布”功能。命令行发布车载端示例：
 
@@ -69,6 +80,14 @@ dotnet publish .\src\SQCD.Agv.Wpf\SQCD.Agv.Wpf.csproj `
 发布后必须把正式现场参数写入发布目录中的`appsettings.json`，并确认不再使用localhost或示例占位地址。生产配置模板见`src/SQCD.Agv.Wpf/appsettings.Production.example.json`；RuleMock不应复制到车载端生产目录。
 
 ## 本地联调
+
+如果需要同时启动已经实现 HTTP 测试控制面的 `slots-simulator`，可以从本仓库执行：
+
+```powershell
+.\scripts\run-first-integration.ps1 -StartHmi
+```
+
+该脚本只启动 simulator 的 Modbus 数据面（`127.0.0.1:1502`）和 loopback HTTP 控制面（`127.0.0.1:58006`），不会伪造或替代 ControlServer。HTTP 只能改变测试环境中的货物、关门和故障状态，HMI 仍只能通过 Modbus 操作仓门。
 
 1. 启动IO仿真软件并执行“安全Reset”，确认监听`127.0.0.1:1502`、Unit ID为255。
 2. 启动规则MOCK：
@@ -108,6 +127,7 @@ SUBLOT后三位编号与物理仓位号保持一致。例如，扫描`LOAD-003`�
 生产部署前至少确认并修改：
 
 - AGV编号和车载实例编号。
+- WIRE_TO_GATE 运行时必须提供 `CONTROL_SERVER_OPERATOR_ID`（或配置中指定的操作员环境变量），用于 `SublotSubmitted.operator` 的会话身份。
 - 规则模块IP、端口和正式协议适配器。
 - IO模块IP、端口、Unit ID。
 - DO/DI基地址和8仓逐点映射。
@@ -131,7 +151,13 @@ SUBLOT后三位编号与物理仓位号保持一致。例如，扫描`LOAD-003`�
 ## 当前已知限制
 
 - TCP JSON是正式接口冻结前的临时适配器。
-- 已执行`operationId`和未ACK结果目前仅保存在进程内；进程内支持自动/手动重报，但异常重启后仍需人工对账，不自动续作。
-- 当前只支持单仓串行操作，不支持批量开仓。
+- 旧 TCP JSON 规则适配器仍保留给开发环境；生产 WIRE_TO_GATE 业务权威必须使用 ControlServer 正式消息流。
+- WIRE_TO_GATE 已支持服务端多货位命令的串行安全执行和 durable outbox，但真实 ControlServer 的业务派发、结果 reconciliation、异常恢复和现场车辆停稳信号仍需联调。
+- Production 配置启动时会拒绝 ControlServer 回环/示例地址、占位 commit/TLS
+  指纹、示例身份和缺失的凭据/操作员环境变量；车辆停稳信号尚未接线时 provider
+  固定报告 UNKNOWN，所有危险动作保持 fail-closed。
+- IS-07 本机只验收授权/持久化/新鲜物理事实的安全闸门，正式恢复 session、人工/
+  机械动作、硬件恢复和 ControlServer 业务结果仍不能由本机伪造完成。
+- 断线时未能确认物理安全收尾的活动货位会保留在 journal 中并保持阻塞，不能自动扩展或重新开锁。
 - 未包含任务调度、路径规划、MES直连、刷卡会话和复杂异常恢复。
 - 生产规则地址、IO地址和正式协议仍需与项目同事确认；当前开发配置不得直接用于现场。

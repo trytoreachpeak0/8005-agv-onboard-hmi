@@ -6,6 +6,104 @@ namespace SQCD.Agv.UnitTests;
 public sealed class OnboardControllerTests
 {
     [Fact]
+    public async Task ExternalSafetyGateNotReadyBlocksScanUnlockAndDeparture()
+    {
+        bool externalSafetyReady = false;
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-GATED");
+        await using OnboardController controller = CreateController(io, rule, () => externalSafetyReady);
+
+        await controller.StartAsync();
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+
+        Assert.Equal(0, io.PulseCount);
+        Assert.Empty(rule.Results);
+        Assert.Equal(OnboardState.Connecting, controller.Current.State);
+        Assert.Equal("WIRE_TO_GATE_NOT_READY", controller.Current.ErrorCode);
+        Assert.False(controller.Current.DeparturePermitted);
+
+        externalSafetyReady = true;
+        controller.RefreshExternalSafetyState();
+        Assert.Equal(OnboardState.ReadyToScan, controller.Current.State);
+        Assert.True(controller.Current.DeparturePermitted);
+    }
+
+    [Fact]
+    public async Task ExternalSafetyGateDropDuringVerificationPreventsPhysicalUnlock()
+    {
+        bool externalSafetyReady = true;
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-GATE-DROP") { PauseVerification = true };
+        await using OnboardController controller = CreateController(io, rule, () => externalSafetyReady);
+        await controller.StartAsync();
+
+        Task submit = controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner);
+        await rule.VerificationStarted.Task;
+        externalSafetyReady = false;
+        controller.RefreshExternalSafetyState();
+        rule.ReleaseVerification();
+        await submit;
+
+        Assert.Equal(0, io.PulseCount);
+        OperationResult result = Assert.Single(rule.Results);
+        Assert.False(result.Success);
+        Assert.Equal("WIRE_TO_GATE_NOT_READY", result.FailureCode);
+        Assert.Equal(OnboardState.Connecting, controller.Current.State);
+        Assert.False(controller.Current.DeparturePermitted);
+    }
+
+    [Fact]
+    public async Task AuthoritativeJourneyMustContainMatchingSublotBeforeScan()
+    {
+        WireToGateJourneySnapshot journey = WireToGateJourneySnapshot.Empty;
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-JOURNEY");
+        await using OnboardController controller = CreateController(
+            io,
+            rule,
+            () => true,
+            () => journey);
+
+        await controller.StartAsync();
+        await controller.SubmitScanAsync("SUBLOT-001", ScanInputMethod.Scanner);
+
+        Assert.Equal(0, io.PulseCount);
+        Assert.Empty(rule.Results);
+        Assert.Equal("WIRE_TO_GATE_JOURNEY_NOT_READY", controller.Current.ErrorCode);
+
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        journey = new WireToGateJourneySnapshot(
+            new WireToGateVehicleBusinessState(
+                1,
+                "READY",
+                false,
+                "SUFFICIENT",
+                [],
+                now,
+                new string('a', 64)),
+            new WireToGateCurrentStopWorklist(
+                "ST-01",
+                1,
+                null,
+                [new WireToGateWorklistItem(
+                    "11111111-1111-1111-1111-111111111111",
+                    "TD-001",
+                    "SUBLOT-001",
+                    "WIRE_TO_GATE",
+                    "PICKUP",
+                    1)],
+                new string('b', 64)),
+            null,
+            now);
+        controller.RefreshExternalSafetyState();
+        await controller.SubmitScanAsync("WRONG-SUBLOT", ScanInputMethod.Scanner);
+
+        Assert.Equal(0, io.PulseCount);
+        Assert.Empty(rule.Results);
+        Assert.Equal("SUBLOT_NOT_IN_WORKLIST", controller.Current.ErrorCode);
+    }
+
+    [Fact]
     public async Task LoadFlowUnlocksOnceAndReportsSuccess()
     {
         FakeIoModule io = new();
@@ -509,7 +607,11 @@ public sealed class OnboardControllerTests
         }
     }
 
-    private static OnboardController CreateController(FakeIoModule io, FakeRuleGateway rule)
+    private static OnboardController CreateController(
+        FakeIoModule io,
+        FakeRuleGateway rule,
+        Func<bool>? externalSafetyReadyProvider = null,
+        Func<WireToGateJourneySnapshot?>? journeyProvider = null)
     {
         return new OnboardController(
             io,
@@ -523,7 +625,9 @@ public sealed class OnboardControllerTests
                 TimeSpan.Zero,
                 TimeSpan.FromSeconds(1),
                 128,
-                2));
+                2),
+            externalSafetyReadyProvider,
+            journeyProvider);
     }
 
     private sealed class FakeIoModule : IIoModuleClient
@@ -744,6 +848,8 @@ public sealed class OnboardControllerTests
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public List<OperationResult> Results { get; } = [];
+
+        public void ReleaseVerification() => VerificationRelease.TrySetResult(true);
 
         public bool IsConnected { get; private set; }
 

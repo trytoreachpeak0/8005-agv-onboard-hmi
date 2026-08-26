@@ -11,6 +11,8 @@ public sealed class OnboardController : IAsyncDisposable
     private readonly IAppLogger _logger;
     private readonly IClock _clock;
     private readonly OnboardWorkflowOptions _options;
+    private readonly Func<bool> _externalSafetyReadyProvider;
+    private readonly Func<WireToGateJourneySnapshot?>? _journeyProvider;
     // 操作锁
     private readonly SemaphoreSlim _operationLock = new(1, 1);
     // 线程安全集合
@@ -48,13 +50,17 @@ public sealed class OnboardController : IAsyncDisposable
         IRuleGateway ruleGateway,
         IAppLogger logger,
         IClock clock,
-        OnboardWorkflowOptions options)
+        OnboardWorkflowOptions options,
+        Func<bool>? externalSafetyReadyProvider = null,
+        Func<WireToGateJourneySnapshot?>? journeyProvider = null)
     {
         _ioModule = ioModule ?? throw new ArgumentNullException(nameof(ioModule));
         _ruleGateway = ruleGateway ?? throw new ArgumentNullException(nameof(ruleGateway));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         _options = options ?? throw new ArgumentNullException(nameof(options));
+        _externalSafetyReadyProvider = externalSafetyReadyProvider ?? (() => true);
+        _journeyProvider = journeyProvider;
         _current = new OnboardSnapshot(
             OnboardState.Starting,
             false,
@@ -79,6 +85,7 @@ public sealed class OnboardController : IAsyncDisposable
             {
                 return _activeOperation?.Stage == OperationStage.WaitingOperatorRecovery
                     && _activeOperation.ReopenAttempts < _options.MaxReopenAttempts
+                    && IsExternalSafetyReady()
                     && _recoveryActionSource is not null;
             }
         }
@@ -109,6 +116,12 @@ public sealed class OnboardController : IAsyncDisposable
 
     // 状态变化事件
     public event EventHandler<ValueChangedEventArgs<OnboardSnapshot>>? StateChanged;
+
+    /// <summary>
+    /// 外部安全会话状态变化后重新计算扫码和发车门禁。
+    /// 已经开始的操作仍可继续收敛到关门安全状态，但不会允许新的开锁或重新开门。
+    /// </summary>
+    public void RefreshExternalSafetyState() => ReevaluateIdleState();
 
     // 启动控制器,订阅 IO 和规则模块事件,启动两个后台通信客户端,让界面进入“连接中”状态
     public async Task StartAsync(CancellationToken cancellationToken = default)
@@ -219,10 +232,24 @@ public sealed class OnboardController : IAsyncDisposable
             if (before.State != OnboardState.ReadyToScan
                 || !before.RuleConnected
                 || !before.IoConnected
+                || !IsExternalSafetyReady()
+                || !IsAuthoritativeJourneyReady()
                 || visit is null
                 || !visit.IsActive(_clock.Now))
             {
-                ReevaluateIdleState("车辆尚未准备好，请等待界面显示“可扫码”。", "NOT_READY");
+                string errorCode = !IsExternalSafetyReady()
+                    ? "WIRE_TO_GATE_NOT_READY"
+                    : !IsAuthoritativeJourneyReady()
+                        ? "WIRE_TO_GATE_JOURNEY_NOT_READY"
+                        : "NOT_READY";
+                ReevaluateIdleState(GetOperatorMessage(errorCode), errorCode);
+                return;
+            }
+
+            string? journeySublotError = ValidateJourneySublot(normalizedSublot);
+            if (journeySublotError is not null)
+            {
+                ReevaluateIdleState(GetOperatorMessage(journeySublotError), journeySublotError);
                 return;
             }
 
@@ -309,6 +336,8 @@ public sealed class OnboardController : IAsyncDisposable
 
             // 真正发出开锁信号
             ThrowIfFatalFaultLatched(operationToken);
+            ThrowIfExternalSafetyNotReady();
+            ThrowIfAuthoritativeJourneyNotReady(normalizedSublot);
             await _ioModule.PulseUnlockAsync(slotIndex, operationToken).ConfigureAwait(false);
             // 等待锁反馈确认“已解锁”
             operation = operation with { Stage = OperationStage.WaitingUnlockFeedback };
@@ -585,6 +614,16 @@ public sealed class OnboardController : IAsyncDisposable
     // 规则模块回复成功后、本地写 DO 前的最后检查
     private string? ValidateAuthorization(ScanAuthorization authorization)
     {
+        if (!IsExternalSafetyReady())
+        {
+            return "WIRE_TO_GATE_NOT_READY";
+        }
+
+        if (!IsAuthoritativeJourneyReady())
+        {
+            return "WIRE_TO_GATE_JOURNEY_NOT_READY";
+        }
+
         if (authorization.OperationType == OperationType.Load && authorization.ExpectedCargoAfter is not true
             || authorization.OperationType == OperationType.Unload && authorization.ExpectedCargoAfter is not false)
         {
@@ -680,6 +719,7 @@ public sealed class OnboardController : IAsyncDisposable
                 OnboardState.Operating,
                 $"正在重新打开{operation.SlotIndex + 1}号仓（第{attempt}次）…");
             ThrowIfFatalFaultLatched(cancellationToken);
+            ThrowIfExternalSafetyNotReady();
             await _ioModule.PulseUnlockAsync(operation.SlotIndex, cancellationToken).ConfigureAwait(false);
 
             operation = operation with { Stage = OperationStage.WaitingUnlockFeedback };
@@ -805,7 +845,8 @@ public sealed class OnboardController : IAsyncDisposable
                 || _recoveryActionSource is null
                 || _recoveryOperationId != operation.OperationId
                 || action == OperatorRecoveryAction.Reopen
-                    && operation.ReopenAttempts >= _options.MaxReopenAttempts)
+                    && (operation.ReopenAttempts >= _options.MaxReopenAttempts
+                        || !IsExternalSafetyReady()))
             {
                 return false;
             }
@@ -816,6 +857,11 @@ public sealed class OnboardController : IAsyncDisposable
 
     private string? ValidateRecoveryAction(ActiveOperation operation, bool requireActiveVisit)
     {
+        if (!IsExternalSafetyReady())
+        {
+            return "上层安全会话尚未就绪，请等待连接和恢复完成。";
+        }
+
         if (!_ioModule.IsConnected || !_ioModule.CurrentSnapshot.IsConnected)
         {
             return "仓门控制设备连接中断，请等待连接恢复。";
@@ -920,10 +966,10 @@ public sealed class OnboardController : IAsyncDisposable
 
         if (!acknowledged)
         {
-                Publish(
-                    OnboardState.Faulted,
-                    "本次操作已在车上取消，但任务系统尚未确认。禁止继续扫码和发车；系统将在连接恢复后自动重报，也可点击“重新上报结果”。",
-                    "CANCEL_RESULT_ACK_TIMEOUT");
+            Publish(
+                OnboardState.Faulted,
+                "本次操作已在车上取消，但任务系统尚未确认。禁止继续扫码和发车；系统将在连接恢复后自动重报，也可点击“重新上报结果”。",
+                "CANCEL_RESULT_ACK_TIMEOUT");
             return;
         }
 
@@ -1037,7 +1083,8 @@ public sealed class OnboardController : IAsyncDisposable
             success ? null : operation,
             hasBlockingFault: !success,
             _clock.Now,
-            _options.IoSnapshotMaxAge);
+            _options.IoSnapshotMaxAge)
+            && IsExternalSafetyReady();
         return new OperationResult(
             $"MSG-{Guid.NewGuid():N}",
             operation.VisitId,
@@ -1312,6 +1359,24 @@ public sealed class OnboardController : IAsyncDisposable
             {
                 PublishCore(OnboardState.Connecting, preferredGuidance ?? "正在等待仓门控制设备和任务系统连接…", errorCode, null, null);
             }
+            else if (!IsExternalSafetyReady())
+            {
+                PublishCore(
+                    OnboardState.Connecting,
+                    preferredGuidance ?? GetOperatorMessage("WIRE_TO_GATE_NOT_READY"),
+                    errorCode ?? "WIRE_TO_GATE_NOT_READY",
+                    null,
+                    false);
+            }
+            else if (!IsAuthoritativeJourneyReady())
+            {
+                PublishCore(
+                    OnboardState.Connecting,
+                    preferredGuidance ?? GetOperatorMessage("WIRE_TO_GATE_JOURNEY_NOT_READY"),
+                    errorCode ?? "WIRE_TO_GATE_JOURNEY_NOT_READY",
+                    null,
+                    false);
+            }
             else if (visit is null || !visit.IsActive(_clock.Now))
             {
                 PublishCore(OnboardState.WaitingArrival, preferredGuidance ?? "设备已连接，等待到站通知…", errorCode, null, null);
@@ -1358,6 +1423,20 @@ public sealed class OnboardController : IAsyncDisposable
             errorCode = fatalFault.ErrorCode;
             departureOverride = false;
         }
+        else if (state == OnboardState.ReadyToScan && !IsExternalSafetyReady())
+        {
+            state = OnboardState.Connecting;
+            guidance = GetOperatorMessage("WIRE_TO_GATE_NOT_READY");
+            errorCode = "WIRE_TO_GATE_NOT_READY";
+            departureOverride = false;
+        }
+        else if (state == OnboardState.ReadyToScan && !IsAuthoritativeJourneyReady())
+        {
+            state = OnboardState.Connecting;
+            guidance = GetOperatorMessage("WIRE_TO_GATE_JOURNEY_NOT_READY");
+            errorCode = "WIRE_TO_GATE_JOURNEY_NOT_READY";
+            departureOverride = false;
+        }
 
         IoSnapshot io = ioOverride ?? _ioModule.CurrentSnapshot;
         ActiveOperation? active = _activeOperation;
@@ -1391,6 +1470,10 @@ public sealed class OnboardController : IAsyncDisposable
             IOException when operation?.Stage == OperationStage.WritingUnlock => "IO_WRITE_FAILED",
             IOException => "IO_OFFLINE",
             InvalidDataException => "INVALID_RULE_RESPONSE",
+            InvalidOperationException when exception.Message is
+                "WIRE_TO_GATE_NOT_READY"
+                or "WIRE_TO_GATE_JOURNEY_NOT_READY"
+                or "SUBLOT_NOT_IN_WORKLIST" => exception.Message,
             InvalidOperationException => "RULE_OFFLINE",
             _ => "OPERATION_FAILED"
         };
@@ -1413,6 +1496,12 @@ public sealed class OnboardController : IAsyncDisposable
             "SUBLOT_TOO_LONG" => "条码内容不正确，请重新扫描。",
             "OPERATION_BUSY" => "当前装卸操作尚未完成，请完成装卸并关好仓门。",
             "NOT_READY" => "车辆尚未准备好，请等待界面显示“可扫码”。",
+            "WIRE_TO_GATE_NOT_READY" =>
+                "上层安全会话尚未就绪，已禁止扫码、开门和发车。请等待连接及恢复完成。",
+            "WIRE_TO_GATE_JOURNEY_NOT_READY" =>
+                "服务端旅程或当前站点任务尚未同步，已禁止扫码和开门。请等待任务恢复。",
+            "SUBLOT_NOT_IN_WORKLIST" =>
+                "当前条码不属于服务端下发的站点任务，请核对条码或等待任务刷新。",
             "VISIT_NOT_ACTIVE" => "车辆尚未到站或本次作业已经结束，请等待新的到站任务。",
             "SUBLOT_NOT_FOUND" => "未找到该条码对应的任务，请核对条码或联系班组长。",
             "SCAN_REJECTED" => "该条码当前不能操作，请核对任务或联系班组长。",
@@ -1535,12 +1624,94 @@ public sealed class OnboardController : IAsyncDisposable
 
     private bool CalculateDeparture(IoSnapshot io, ActiveOperation? active, OnboardState state)
     {
-        return SafetyRules.IsDeparturePermitted(
-            io,
-            active,
-            state == OnboardState.Faulted,
-            _clock.Now,
-            _options.IoSnapshotMaxAge);
+        return IsExternalSafetyReady()
+            && SafetyRules.IsDeparturePermitted(
+                io,
+                active,
+                state == OnboardState.Faulted,
+                _clock.Now,
+                _options.IoSnapshotMaxAge);
+    }
+
+    private bool IsExternalSafetyReady()
+    {
+        try
+        {
+            return _externalSafetyReadyProvider();
+        }
+        catch (Exception exception)
+        {
+            _logger.Write(
+                LogSeverity.Error,
+                nameof(OnboardController),
+                "读取上层安全会话门禁失败，已按未就绪处理。",
+                exception);
+            return false;
+        }
+    }
+
+    private bool IsAuthoritativeJourneyReady()
+    {
+        if (_journeyProvider is null)
+        {
+            return true;
+        }
+
+        try
+        {
+            return _journeyProvider()?.CanAcceptSublot == true;
+        }
+        catch (Exception exception)
+        {
+            _logger.Write(
+                LogSeverity.Error,
+                nameof(OnboardController),
+                "读取服务端旅程投影失败，已按未就绪处理。",
+                exception);
+            return false;
+        }
+    }
+
+    private string? ValidateJourneySublot(string sublot)
+    {
+        if (_journeyProvider is null)
+        {
+            return null;
+        }
+
+        WireToGateWorklistItem? item = _journeyProvider()?.CurrentStopWorklist?.Items.SingleOrDefault();
+        return item is null
+            ? "WIRE_TO_GATE_JOURNEY_NOT_READY"
+            : string.Equals(item.Sublot, sublot, StringComparison.Ordinal)
+                ? null
+                : "SUBLOT_NOT_IN_WORKLIST";
+    }
+
+    private void ThrowIfExternalSafetyNotReady()
+    {
+        if (!IsExternalSafetyReady())
+        {
+            throw new InvalidOperationException("WIRE_TO_GATE_NOT_READY");
+        }
+    }
+
+    private void ThrowIfAuthoritativeJourneyNotReady(string sublot)
+    {
+        if (_journeyProvider is null)
+        {
+            return;
+        }
+
+        if (!IsAuthoritativeJourneyReady())
+        {
+            throw new InvalidOperationException("WIRE_TO_GATE_JOURNEY_NOT_READY");
+        }
+
+        string? journeySublotError = ValidateJourneySublot(sublot);
+        if (journeySublotError is not null)
+        {
+            throw new InvalidOperationException(journeySublotError);
+        }
     }
 
     private void ThrowIfFatalFaultLatched(CancellationToken cancellationToken)

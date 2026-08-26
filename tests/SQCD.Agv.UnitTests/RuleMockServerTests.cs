@@ -1,9 +1,9 @@
-using SQCD.Agv.RuleMock;
-using SQCD.Agv.Core;
-using SQCD.Agv.Infrastructure;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
+using SQCD.Agv.Core;
+using SQCD.Agv.Infrastructure;
+using SQCD.Agv.RuleMock;
 
 namespace SQCD.Agv.UnitTests;
 

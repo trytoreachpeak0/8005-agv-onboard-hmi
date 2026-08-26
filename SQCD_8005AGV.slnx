@@ -11,5 +11,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/SQCD.Agv.UnitTests/SQCD.Agv.UnitTests.csproj" />
+    <Project Path="tests/SQCD.Agv.WireToGateG2Tests/SQCD.Agv.WireToGateG2Tests.csproj" />
   </Folder>
 </Solution>

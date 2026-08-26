@@ -1,0 +1,88 @@
+namespace SQCD.Agv.Core;
+
+public abstract record WireToGateServerCommand(
+    string MessageType,
+    string MessageId,
+    string? CorrelationId,
+    long SessionGeneration,
+    DateTimeOffset SentAt);
+
+public sealed record WireToGateSublotEntryRequest(
+    string MessageId,
+    long SessionGeneration,
+    DateTimeOffset SentAt,
+    string DemandId,
+    string OperationSessionId,
+    string StationId,
+    long WorklistRevision,
+    string ExpectedSublot,
+    IReadOnlyList<string> EntryMethods,
+    bool ExpiresOnRevisionChange)
+    : WireToGateServerCommand("SublotEntryRequested", MessageId, null, SessionGeneration, SentAt);
+
+public sealed record WireToGateSlotOperationCommand(
+    string MessageId,
+    string? CorrelationId,
+    long SessionGeneration,
+    DateTimeOffset SentAt,
+    string DemandId,
+    string OperationSessionId,
+    string SlotOperationAttemptId,
+    OperationType OperationType,
+    IReadOnlyList<int> Slots,
+    int ExpectedBasketCount,
+    bool ExpectedOccupied,
+    string CommandContentSha256)
+    : WireToGateServerCommand("SlotOperationCommand", MessageId, CorrelationId, SessionGeneration, SentAt);
+
+public sealed record WireToGateSlotOperationResumeCommand(
+    string MessageId,
+    long SessionGeneration,
+    DateTimeOffset SentAt,
+    string ExceptionRecoverySessionId,
+    string RecoveryActionId,
+    string DemandId,
+    string SlotOperationAttemptId,
+    WireToGateRecoveryCheckpoint ProvenRecoveryCheckpoint,
+    IReadOnlyList<int> Slots,
+    string CommandContentSha256)
+    : WireToGateServerCommand("SlotOperationResumeCommand", MessageId, null, SessionGeneration, SentAt);
+
+public sealed record WireToGatePreDepartureSafetyCheck(
+    string MessageId,
+    long SessionGeneration,
+    DateTimeOffset SentAt,
+    string PreDepartureSafetyCheckId,
+    string DemandId,
+    string MovementLegId,
+    long ExpectedSafetyStateVersion,
+    string TargetStationId)
+    : WireToGateServerCommand("PreDepartureSafetyCheck", MessageId, null, SessionGeneration, SentAt);
+
+public sealed record WireToGateRecoveryCommand(
+    string MessageType,
+    string MessageId,
+    string? CorrelationId,
+    long SessionGeneration,
+    DateTimeOffset SentAt,
+    string PayloadJson)
+    : WireToGateServerCommand(MessageType, MessageId, CorrelationId, SessionGeneration, SentAt);
+
+public sealed record WireToGateSlotExecutionResult(
+    int SlotNo,
+    string Outcome,
+    string FinalPhysicalState,
+    string LockState,
+    string UnlockOutputState,
+    IReadOnlyList<string> ReasonCodes);
+
+public sealed record WireToGateOperationExecutionResult(
+    string DemandId,
+    string SlotOperationAttemptId,
+    OperationType OperationType,
+    string OverallOutcome,
+    IReadOnlyList<WireToGateSlotExecutionResult> SlotResults,
+    DateTimeOffset ObservedAt,
+    string JournalCheckpoint,
+    string ResultContentSha256);
+

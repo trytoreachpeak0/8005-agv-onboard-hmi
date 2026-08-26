@@ -4,6 +4,25 @@
 
 ## 目的
 
+## 当前本机交付状态（2026-08-26）
+
+当前 OnboardHmi_MVP 工作区已经按现场联调前计划完成一轮可重复的本机闭环：
+
+- protocol v0.1.1@1531489e42e328f28bfe0c51ed3f8c56e5ce0279 的 G1 通过；
+- HMI 生成独立 evidence/g2/protocol-v0.1.1/<run>/，含 summary、NDJSON
+  transcript/journal、原始日志和测试结果；
+- IS-00/IS-01 的 Onboard HMI G2 本机结果 PASS，IS-01 使用
+  CV-DEMAND-ACCEPT-TO-PICKUP；
+- Production 配置占位值拒绝、可替换车辆安全信号 provider、八仓装/卸货和
+  recovery fail-closed 矩阵已纳入代码/测试；
+- scripts/run-local-validation.ps1 已跑通 protocol G1、Release build/test/
+  format、slots-simulator 18+14、W2G/Legacy 审计和 UI 布局审计；
+- 当前回归基线：Unit 62/62、W2G G2 13/13、Release 0 warning/0 error。
+
+以上是 OnboardHmi 本机证据，不是 ControlServer G2、联合 G3、真实车辆信号、
+现场 TLS/网络或硬件验收。最新证据目录必须在每次运行后重新生成，不能继承旧
+protocol 版本证据。
+
 本文件交给车载端负责人王昆接管 `WIRE_TO_GATE` OnboardHmi 开发。后续 OnboardHmi 产品代码、测试和实现判断由车载端负责人本人完成或审查批准；AI 不再把自己的实现表述为车载端负责人已完成的工作。
 
 ## 先确认提交归属
@@ -16,7 +35,7 @@
 | `2eeecf6dd44dc041e3db79da06d225d7d3ec77f2` | AI 创建的 WIRE_TO_GATE 迁移骨架。 |
 | `f265cd8a1a617a092e6df4babdc086cc92c876ef` | AI 编写的八仓、恢复、模拟器、测试和 WPF 候选实现。 |
 | `398a957662cacb6c0f49ddd78da12d896a1469be` | AI 修正恢复报告 Schema。 |
-| `c41160c34c411f0f602f7c695e8c880ac6c19ae4` | AI 将候选绑定到正式协议 `protocol-v0.1.0`。 |
+| `c41160c34c411f0f602f7c695e8c880ac6c19ae4` | AI 将候选绑定到上一版正式协议；当前 release 已升级为 `protocol-v0.1.1`。 |
 
 后四个提交显示的 Git Author 为 `Zhengyu Shao`，原因是开发终端使用了该 Git 身份；这不表示郑宇或王昆本人编写、复核或批准了其中代码。
 
@@ -26,11 +45,13 @@
 
 两端正式协议权威是独立仓库 [`8005-agv-protocol`](https://github.com/trytoreachpeak0/8005-agv-protocol) 的不可变 release：
 
-- tag：`protocol-v0.1.0`
-- commit：`3ad309ffd5f9a48a6cf390b51a81da2f47c814dd`
-- manifest SHA-256：`92c19e74affe876902e1c64aa5cdbca845f5dbc93a8c82014a16627a26deb8d3`
-- Schema bundle SHA-256：`de29647ab356cebb946bf559e5ba4f322f08ea7f354a844c9b84c8a3f29246a0`
-- vectors SHA-256：`25a4e900695f1f0b58e60330d7aeb0d5dc79958a5a8ad8d631c9fad18f13d387`
+- tag：`protocol-v0.1.1`
+- commit：`1531489e42e328f28bfe0c51ed3f8c56e5ce0279`
+- manifest SHA-256：`a467c0c4b03cbf54fae985ceade256ff13225581babad7f46d90449b7f16389f`
+- Schema bundle SHA-256：`e04296e9bcf48c341bc91fef5731f6f465a5ecdbb9adedc17f3bac58e193d30c`
+- vectors SHA-256：`fc5902b71d1b276c674f8a21c738d27193ddcbaf9b352951deffbaf1488d356e`
+
+本次为非破坏性符合性修订：消息字段、类型、枚举、方向和 `ProtocolVersion=1` 不变；W2G-IS-01 改用专用向量 `CV-DEMAND-ACCEPT-TO-PICKUP`，通用重试与首结果重放向量归入 W2G-IS-06。Onboard 对 Demand 仍只保留已承诺旅程和当前停靠工作两个只读投影，不读取 MesIngest、不选择或绑定 Demand。
 
 不得跟踪协议仓 `main`、复制并私改 Schema，或在 OnboardHmi 内另建一套消息定义。任何跨端协议变更必须同时更新协议仓 Schema、样例、向量和兼容性说明，并由两名真实负责人重新批准。
 
@@ -43,7 +64,7 @@
 - session generation fencing、心跳丢失安全阻断、pending result 原 `messageId` 重放。
 - 重启后从持久 journal 与实时 IO 重新建立事实，未知状态不得自动放行。
 
-### W2G-IS-01 — 服务端权威旅程
+### W2G-IS-01 — 服务端权威旅程（`CV-DEMAND-ACCEPT-TO-PICKUP`）
 
 - 只消费 ControlServer 发布的 Demand、当前站点 worklist 与旅程投影。
 - OnboardHmi 不选任务、不决定仓位、不调用 MesIngest 或 RIoT。
@@ -107,10 +128,21 @@
 
 ```powershell
 dotnet build .\SQCD_8005AGV.slnx -c Release
-dotnet test .\tests\SQCD.Agv.UnitTests\SQCD.Agv.UnitTests.csproj -c Release
+dotnet test .\SQCD_8005AGV.slnx -c Release
+dotnet format .\SQCD_8005AGV.slnx --verify-no-changes --no-restore
 ```
 
-王昆实施正式协议后，还需在本仓建立自己的逐切片 G2 入口。G2 必须先校验 `8005-agv-protocol@3ad309f` 的 `manifest/release.json` 哈希，再按协议仓 `integration-slices/index.json` 依次覆盖 `W2G-IS-00`～`W2G-IS-07`，每次写入新的证据目录。只有全部八个切片通过、证据绑定王昆本人确认的完整 commit，才可称为车载端 G2 通过。G2 不能替代真实 ControlServer 的 G3、真实硬件或现场验收。
+本仓已有 scripts/run-w2g-g2.ps1，会先校验
+8005-agv-protocol@1531489e42e328f28bfe0c51ed3f8c56e5ce0279 的 protocol-v0.1.1
+release 身份与 manifest 哈希，再生成新的证据目录。当前脚本覆盖 Onboard HMI 的
+IS-00/IS-01 G2；IS-02～IS-07 的本机安全/IO/可靠性矩阵见
+docs/LOCAL_INTEGRATION_MATRIX.md，正式跨端业务结果仍需按
+integration-slices/index.json 由双方补齐。只有全部切片通过、证据绑定负责人确认
+的完整 commit，才可称为联合 G2/G3 通过。
+
+一键执行本机所有不依赖现场的验证：
+
+    .\scripts\run-local-validation.ps1
 
 ## 接管完成的最低记录
 

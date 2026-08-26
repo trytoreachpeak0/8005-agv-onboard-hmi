@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Threading;
 using SQCD.Agv.Application;
 using SQCD.Agv.Core;
+using SQCD.Agv.Infrastructure;
 
 namespace SQCD.Agv.Wpf.ViewModels;
 
@@ -15,6 +16,7 @@ public sealed class MainViewModel : ViewModelBase
     private string _scanText = string.Empty;
     private string _ruleConnectionText = "离线";
     private string _ioConnectionText = "离线";
+    private string _wireToGateText = "未启用";
     private string _visitText = "未到站";
     private string _departureText = "禁止发车";
     private string _stateText = "启动中";
@@ -26,8 +28,11 @@ public sealed class MainViewModel : ViewModelBase
     private bool _canReopenOperation;
     private bool _canCancelOperation;
     private bool _canRetryPendingResult;
+    private bool _hasWireToGateJourney;
     private string _recoverySlotName = "当前仓";
     private string? _lastLoggedErrorKey;
+    private Func<string, ScanInputMethod, CancellationToken, Task>? _wireToGateSubmitter;
+    private Func<bool>? _wireToGateCanSubmit;
 
     public MainViewModel(
         OnboardController controller,
@@ -92,6 +97,59 @@ public sealed class MainViewModel : ViewModelBase
     {
         get => _ioConnectionText;
         private set => SetProperty(ref _ioConnectionText, value);
+    }
+
+    public string WireToGateText
+    {
+        get => _wireToGateText;
+        private set => SetProperty(ref _wireToGateText, value);
+    }
+
+    internal void UpdateWireToGateStatus(WireToGateSessionSnapshot snapshot) => RunOnUiThread(() =>
+    {
+        WireToGateText = !snapshot.Connected
+            ? "离线"
+            : snapshot.Readiness switch
+            {
+                WireToGateSessionReadiness.Recovering => "恢复中",
+                WireToGateSessionReadiness.RecoveryRequired => "需恢复",
+                WireToGateSessionReadiness.Ready => "就绪",
+                _ => "连接中"
+            };
+        RefreshWireToGateInputStateCore();
+    });
+
+    internal void UpdateWireToGateJourney(WireToGateJourneySnapshot snapshot) => RunOnUiThread(() =>
+    {
+        _hasWireToGateJourney = true;
+        if (snapshot.CurrentStopWorklist is { } worklist)
+        {
+            WireToGateWorklistItem? item = worklist.Items.SingleOrDefault();
+            VisitText = item is null
+                ? $"{worklist.StationId} / 无待处理任务"
+                : $"{worklist.StationId} / {item.Sublot}";
+        }
+        else
+        {
+            VisitText = "旅程未同步";
+        }
+        RefreshWireToGateInputStateCore();
+    });
+
+    internal void ConfigureWireToGate(
+        Func<string, ScanInputMethod, CancellationToken, Task> submitter,
+        Func<bool> canSubmit)
+    {
+        _wireToGateSubmitter = submitter ?? throw new ArgumentNullException(nameof(submitter));
+        _wireToGateCanSubmit = canSubmit ?? throw new ArgumentNullException(nameof(canSubmit));
+        RefreshWireToGateInputStateCore();
+    }
+
+    internal void RefreshWireToGateInputState() => RunOnUiThread(RefreshWireToGateInputStateCore);
+
+    private void RefreshWireToGateInputStateCore()
+    {
+        CanSubmit = _wireToGateCanSubmit?.Invoke() ?? CanSubmit;
     }
 
     public string VisitText
@@ -184,6 +242,12 @@ public sealed class MainViewModel : ViewModelBase
     {
         string sublot = ScanText;
         ScanText = string.Empty;
+        if (_wireToGateSubmitter is not null)
+        {
+            await _wireToGateSubmitter(sublot, inputMethod, CancellationToken.None).ConfigureAwait(true);
+            return;
+        }
+
         await _controller.SubmitScanAsync(sublot, inputMethod).ConfigureAwait(true);
     }
 
@@ -206,7 +270,10 @@ public sealed class MainViewModel : ViewModelBase
     {
         RuleConnectionText = snapshot.RuleConnected ? "在线" : "离线";
         IoConnectionText = snapshot.IoConnected ? "在线" : "离线";
-        VisitText = snapshot.Visit is null ? "未到站" : $"{snapshot.Visit.StationName} / {snapshot.Visit.VisitId}";
+        if (!_hasWireToGateJourney)
+        {
+            VisitText = snapshot.Visit is null ? "未到站" : $"{snapshot.Visit.StationName} / {snapshot.Visit.VisitId}";
+        }
         DepartureText = snapshot.DeparturePermitted ? "允许发车" : "禁止发车";
         bool hasBlockingError = snapshot.State == OnboardState.Faulted;
         bool hasWarning = !hasBlockingError && !string.IsNullOrWhiteSpace(snapshot.ErrorCode);
@@ -218,7 +285,7 @@ public sealed class MainViewModel : ViewModelBase
                     ? "请处理"
                     : GetStateText(snapshot.State);
         Guidance = snapshot.Guidance;
-        CanSubmit = snapshot.State == OnboardState.ReadyToScan;
+        CanSubmit = _wireToGateCanSubmit?.Invoke() ?? snapshot.State == OnboardState.ReadyToScan;
         HasWarning = hasWarning;
         HasError = hasBlockingError;
         CanSafetyReview = snapshot.State == OnboardState.Faulted

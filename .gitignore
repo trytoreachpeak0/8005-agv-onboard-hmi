@@ -6,3 +6,4 @@ TestResults/
 *.suo
 logs/
 artifacts/
+evidence/

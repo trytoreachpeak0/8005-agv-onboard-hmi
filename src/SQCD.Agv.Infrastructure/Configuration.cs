@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 
 namespace SQCD.Agv.Infrastructure;
@@ -11,6 +12,8 @@ public sealed class OnboardSettings
     public string OnboardInstanceId { get; init; } = "OBU-8005-01";
 
     public RuleGatewaySettings RuleGateway { get; init; } = new();
+
+    public WireToGateSettings WireToGate { get; init; } = new();
 
     public IoModuleSettings IoModule { get; init; } = new();
 
@@ -41,9 +44,60 @@ public sealed class OnboardSettings
             throw new InvalidDataException("Environment、AgvId和OnboardInstanceId不能为空。");
         }
 
-        RuleGateway.Validate();
-        IoModule.Validate();
+        bool production = Environment.Equals("Production", StringComparison.OrdinalIgnoreCase);
+        if (production && !WireToGate.Enabled)
+        {
+            throw new InvalidDataException("Production环境必须启用WIRE_TO_GATE，禁止回退到仅使用旧规则协议。");
+        }
+
+        if (production
+            && (IsPlaceholderValue(AgvId)
+                || IsPlaceholderValue(OnboardInstanceId)))
+        {
+            throw new InvalidDataException("Production环境必须配置真实且稳定的AgvId和OnboardInstanceId。");
+        }
+
+        RuleGateway.Validate(production);
+        WireToGate.Validate(production);
+        IoModule.Validate(production);
         Workflow.Validate();
+
+        if (production)
+        {
+            RequireProductionEnvironmentVariable(
+                WireToGate.CredentialEnvironmentVariable,
+                "ControlServer凭据");
+            RequireProductionEnvironmentVariable(
+                WireToGate.OperatorIdEnvironmentVariable,
+                "操作员ID");
+        }
+    }
+
+    internal static bool IsPlaceholderValue(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return true;
+        }
+
+        string normalized = value.Trim();
+        return normalized.Equals("AGV-8005-01", StringComparison.OrdinalIgnoreCase)
+            || normalized.Equals("OBU-8005-01", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("REPLACE", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("EXAMPLE", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("CHANGEME", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("YOUR_", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("YOUR-", StringComparison.OrdinalIgnoreCase)
+            || normalized.Contains("TODO", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static void RequireProductionEnvironmentVariable(string name, string displayName)
+    {
+        if (IsPlaceholderValue(name)
+            || string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable(name)))
+        {
+            throw new InvalidDataException($"Production环境未提供{displayName}环境变量。");
+        }
     }
 
     private static JsonSerializerOptions SerializerOptions { get; } = new()
@@ -52,6 +106,126 @@ public sealed class OnboardSettings
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true
     };
+}
+
+public sealed class WireToGateSettings
+{
+    public bool Enabled { get; init; }
+
+    public string Host { get; init; } = "127.0.0.1";
+
+    public int Port { get; init; } = 58_015;
+
+    public string OnboardInstanceId { get; init; } = string.Empty;
+
+    public string OnboardBuildCommit { get; init; } = string.Empty;
+
+    public string CredentialEnvironmentVariable { get; init; } = "CONTROL_SERVER_ONBOARD_CREDENTIAL";
+
+    public bool UseTls { get; init; } = true;
+
+    public string? ServerCertificateSha256 { get; init; }
+
+    public int ConnectTimeoutMs { get; init; } = 3_000;
+
+    public int MessageTimeoutMs { get; init; } = 3_000;
+
+    public long CapabilityVersion { get; init; } = 1;
+
+    public long SafetyStateVersion { get; init; } = 1;
+
+    public string SlotModelVersion { get; init; } = "eight-slot-v1";
+
+    public string ActiveSlotConfigurationVersion { get; init; } = "eight-slot-modbus-v1";
+
+    public bool SupportsBatchUnlock { get; init; }
+
+    public int JourneySnapshotMaxAgeMs { get; init; } = 5_000;
+
+    public string OperatorIdEnvironmentVariable { get; init; } = "CONTROL_SERVER_OPERATOR_ID";
+
+    public string JournalPath { get; init; } = "%LOCALAPPDATA%\\SQCD\\8005AGV\\onboard-journal.db";
+
+    public WireToGateSessionOptions CreateSessionOptions(string agvId)
+    {
+        if (!Enabled)
+        {
+            throw new InvalidOperationException("WIRE_TO_GATE尚未启用。");
+        }
+
+        Validate();
+        return new WireToGateSessionOptions(
+            Host,
+            Port,
+            agvId,
+            OnboardInstanceId,
+            OnboardBuildCommit,
+            CredentialEnvironmentVariable,
+            UseTls,
+            ServerCertificateSha256,
+            TimeSpan.FromMilliseconds(ConnectTimeoutMs),
+            TimeSpan.FromMilliseconds(MessageTimeoutMs),
+            CapabilityVersion,
+            SafetyStateVersion,
+            SlotModelVersion,
+            ActiveSlotConfigurationVersion,
+            SupportsBatchUnlock);
+    }
+
+    internal void Validate(bool production = false)
+    {
+        if (!Enabled)
+        {
+            return;
+        }
+
+        string normalizedCertificateHash = ServerCertificateSha256?
+            .Replace(":", string.Empty, StringComparison.Ordinal) ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(Host)
+            || Port is < 1 or > 65_535
+            || !Guid.TryParseExact(OnboardInstanceId, "D", out _)
+            || OnboardBuildCommit.Length != 40
+            || OnboardBuildCommit.Any(character => !Uri.IsHexDigit(character))
+            || OnboardBuildCommit.All(character => character == '0')
+            || string.IsNullOrWhiteSpace(CredentialEnvironmentVariable)
+            || ConnectTimeoutMs <= 0
+            || MessageTimeoutMs <= 0
+            || CapabilityVersion < 0
+            || SafetyStateVersion < 0
+            || string.IsNullOrWhiteSpace(SlotModelVersion)
+            || string.IsNullOrWhiteSpace(ActiveSlotConfigurationVersion)
+            || JourneySnapshotMaxAgeMs <= 0
+            || string.IsNullOrWhiteSpace(OperatorIdEnvironmentVariable)
+            || string.IsNullOrWhiteSpace(JournalPath)
+            || (UseTls && normalizedCertificateHash.Length != 64))
+        {
+            throw new InvalidDataException("WIRE_TO_GATE配置无效。");
+        }
+
+        if (production
+            && (IsForbiddenProductionHost(Host)
+                || OnboardSettings.IsPlaceholderValue(OnboardBuildCommit)
+                || string.IsNullOrWhiteSpace(ServerCertificateSha256)
+                || ServerCertificateSha256.Replace(":", string.Empty, StringComparison.Ordinal)
+                    .All(character => character == '0')))
+        {
+            throw new InvalidDataException(
+                "Production环境的ControlServer地址、构建commit或TLS指纹仍是本机/占位配置。");
+        }
+    }
+
+    private static bool IsForbiddenProductionHost(string host)
+    {
+        if (OnboardSettings.IsPlaceholderValue(host)
+            || host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            || host.Equals("0.0.0.0", StringComparison.OrdinalIgnoreCase)
+            || host.Equals("::", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return IPAddress.TryParse(host, out IPAddress? address) && IPAddress.IsLoopback(address);
+    }
 }
 
 public sealed class RuleGatewaySettings
@@ -70,7 +244,7 @@ public sealed class RuleGatewaySettings
 
     public int[] ReconnectDelaysMs { get; init; } = [1_000, 2_000, 5_000, 10_000];
 
-    internal void Validate()
+    internal void Validate(bool production = false)
     {
         if (string.IsNullOrWhiteSpace(Host) || Port is < 1 or > 65_535)
         {
@@ -85,6 +259,11 @@ public sealed class RuleGatewaySettings
         if (ReconnectDelaysMs.Length == 0 || ReconnectDelaysMs.Any(delay => delay <= 0))
         {
             throw new InvalidDataException("规则模块重连间隔必须至少包含一个正整数。");
+        }
+
+        if (production && OnboardSettings.IsPlaceholderValue(Host))
+        {
+            throw new InvalidDataException("Production环境禁止保留规则模块占位地址。");
         }
     }
 }
@@ -111,11 +290,16 @@ public sealed class IoModuleSettings
 
     public IReadOnlyList<SlotIoMapping> Slots { get; init; } = CreateDefaultSlots();
 
-    internal void Validate()
+    internal void Validate(bool production = false)
     {
         if (string.IsNullOrWhiteSpace(Host) || Port is < 1 or > 65_535)
         {
             throw new InvalidDataException("IO模块Host或Port无效。");
+        }
+
+        if (production && OnboardSettings.IsPlaceholderValue(Host))
+        {
+            throw new InvalidDataException("Production环境禁止保留IO模块占位地址。");
         }
 
         if (ChannelCount is 0 or > 2_000 || PollIntervalMs <= 0 || RequestTimeoutMs <= 0 || ReconnectDelayMs <= 0)

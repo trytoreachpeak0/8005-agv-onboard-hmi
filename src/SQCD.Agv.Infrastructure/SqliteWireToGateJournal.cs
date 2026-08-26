@@ -1,0 +1,604 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+using Microsoft.Data.Sqlite;
+using SQCD.Agv.Core;
+
+namespace SQCD.Agv.Infrastructure;
+
+public sealed class SqliteWireToGateJournal : IWireToGateJournal
+{
+    private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
+    private readonly string _connectionString;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private bool _disposed;
+
+    static SqliteWireToGateJournal()
+    {
+        SQLitePCL.raw.SetProvider(new SQLitePCL.SQLite3Provider_winsqlite3());
+    }
+
+    public SqliteWireToGateJournal(string databasePath)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(databasePath);
+        string expandedPath = Environment.ExpandEnvironmentVariables(databasePath);
+        string fullPath = Path.GetFullPath(expandedPath);
+        Directory.CreateDirectory(Path.GetDirectoryName(fullPath)
+            ?? throw new InvalidDataException("WIRE_TO_GATE journal路径没有父目录。"));
+        _connectionString = new SqliteConnectionStringBuilder
+        {
+            DataSource = fullPath,
+            Mode = SqliteOpenMode.ReadWriteCreate,
+            Cache = SqliteCacheMode.Shared,
+            Pooling = false
+        }.ToString();
+    }
+
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using SqliteCommand command = connection.CreateCommand();
+            command.CommandText = """
+                PRAGMA journal_mode = WAL;
+                PRAGMA synchronous = FULL;
+
+                CREATE TABLE IF NOT EXISTS WireToGateRecoveryState (
+                    Id INTEGER NOT NULL PRIMARY KEY CHECK (Id = 1),
+                    ContentJson TEXT NOT NULL,
+                    UpdatedAt TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS WireToGateDurableOutbox (
+                    DeduplicationKey TEXT NOT NULL PRIMARY KEY,
+                    MessageType TEXT NOT NULL,
+                    MessageId TEXT NOT NULL UNIQUE,
+                    ContentSha256 TEXT NOT NULL,
+                    WireLine TEXT NOT NULL,
+                    CreatedAt TEXT NOT NULL,
+                    Acknowledged INTEGER NOT NULL CHECK (Acknowledged IN (0, 1))
+                );
+
+                CREATE TABLE IF NOT EXISTS WireToGateAppliedJourneySnapshots (
+                    MessageType TEXT NOT NULL PRIMARY KEY,
+                    MessageId TEXT NOT NULL,
+                    Revision INTEGER NOT NULL CHECK (Revision >= 0),
+                    ContentSha256 TEXT NOT NULL,
+                    PayloadJson TEXT NOT NULL,
+                    AppliedAt TEXT NOT NULL
+                );
+                """;
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
+            await using SqliteCommand seed = connection.CreateCommand();
+            seed.CommandText = """
+                INSERT OR IGNORE INTO WireToGateRecoveryState (Id, ContentJson, UpdatedAt)
+                VALUES (1, $content, $updatedAt)
+                """;
+            seed.Parameters.AddWithValue("$content", SerializeRecoveryState(WireToGateRecoveryState.Empty));
+            seed.Parameters.AddWithValue("$updatedAt", DateTimeOffset.UnixEpoch.ToString("O"));
+            await seed.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<WireToGateRecoveryState> ReadRecoveryStateAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            return await ReadRecoveryStateCoreAsync(connection, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task WriteRecoveryStateAsync(
+        WireToGateRecoveryState state,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ValidateRecoveryState(state);
+        string json = SerializeRecoveryState(state);
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using SqliteTransaction transaction = (SqliteTransaction)await connection
+                .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            await using SqliteCommand command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = """
+                UPDATE WireToGateRecoveryState
+                SET ContentJson = $content, UpdatedAt = $updatedAt
+                WHERE Id = 1
+                """;
+            command.Parameters.AddWithValue("$content", json);
+            command.Parameters.AddWithValue("$updatedAt", DateTimeOffset.UtcNow.ToString("O"));
+            if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
+            {
+                throw new InvalidDataException("WIRE_TO_GATE journal尚未初始化。");
+            }
+
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<WireToGateDurableMessage> SaveOutgoingBeforeSendAsync(
+        WireToGateDurableMessage message,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ValidateDurableMessage(message);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            WireToGateDurableMessage? existing = await ReadByDeduplicationKeyAsync(
+                connection,
+                message.DeduplicationKey,
+                cancellationToken).ConfigureAwait(false);
+            if (existing is not null)
+            {
+                if (existing.MessageType != message.MessageType
+                    || existing.MessageId != message.MessageId
+                    || existing.ContentSha256 != message.ContentSha256
+                    || existing.WireLine != message.WireLine)
+                {
+                    throw new InvalidDataException("BUSINESS_ID_CONTENT_CONFLICT");
+                }
+
+                return existing;
+            }
+
+            await using SqliteCommand command = connection.CreateCommand();
+            command.CommandText = """
+                INSERT INTO WireToGateDurableOutbox
+                    (DeduplicationKey, MessageType, MessageId, ContentSha256, WireLine, CreatedAt, Acknowledged)
+                VALUES ($key, $type, $messageId, $hash, $wireLine, $createdAt, 0)
+                """;
+            Bind(command, message);
+            try
+            {
+                await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (SqliteException exception) when (exception.SqliteErrorCode == 19)
+            {
+                throw new InvalidDataException("MESSAGE_ID_CONTENT_CONFLICT", exception);
+            }
+
+            return message with { Acknowledged = false };
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<WireToGateDurableMessage?> ReadOutgoingByDeduplicationKeyAsync(
+        string deduplicationKey,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ArgumentException.ThrowIfNullOrWhiteSpace(deduplicationKey);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            return await ReadByDeduplicationKeyAsync(connection, deduplicationKey, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task MarkOutgoingAcknowledgedAsync(
+        string messageId,
+        string acceptedContentSha256,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        RequireUuid(messageId, nameof(messageId));
+        RequireSha256(acceptedContentSha256, nameof(acceptedContentSha256));
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using SqliteCommand command = connection.CreateCommand();
+            command.CommandText = """
+                UPDATE WireToGateDurableOutbox
+                SET Acknowledged = 1
+                WHERE MessageId = $messageId AND ContentSha256 = $hash
+                """;
+            command.Parameters.AddWithValue("$messageId", messageId);
+            command.Parameters.AddWithValue("$hash", acceptedContentSha256);
+            if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) == 1)
+            {
+                return;
+            }
+
+            await using SqliteCommand already = connection.CreateCommand();
+            already.CommandText = """
+                SELECT ContentSha256, Acknowledged
+                FROM WireToGateDurableOutbox
+                WHERE MessageId = $messageId
+                """;
+            already.Parameters.AddWithValue("$messageId", messageId);
+            await using SqliteDataReader reader = await already
+                .ExecuteReaderAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+                && reader.GetInt32(reader.GetOrdinal("Acknowledged")) == 1
+                && string.Equals(
+                    reader.GetString(reader.GetOrdinal("ContentSha256")),
+                    acceptedContentSha256,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            throw new InvalidDataException("CONTENT_HASH_MISMATCH");
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            return await ReadUnacknowledgedCoreAsync(connection, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<IReadOnlyList<WireToGateAppliedJourneySnapshot>> ReadAppliedJourneySnapshotsAsync(
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            List<WireToGateAppliedJourneySnapshot> snapshots = [];
+            await using SqliteCommand command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT MessageType, MessageId, Revision, ContentSha256, PayloadJson, AppliedAt
+                FROM WireToGateAppliedJourneySnapshots
+                ORDER BY MessageType
+                """;
+            await using SqliteDataReader reader = await command
+                .ExecuteReaderAsync(cancellationToken)
+                .ConfigureAwait(false);
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                snapshots.Add(ReadAppliedJourneySnapshot(reader));
+            }
+
+            return snapshots;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<WireToGateAppliedJourneySnapshot> SaveAppliedJourneySnapshotAsync(
+        WireToGateAppliedJourneySnapshot snapshot,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        ValidateAppliedJourneySnapshot(snapshot);
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            WireToGateAppliedJourneySnapshot? existing = await ReadAppliedJourneySnapshotCoreAsync(
+                connection,
+                snapshot.MessageType,
+                cancellationToken).ConfigureAwait(false);
+            if (existing is not null)
+            {
+                if (snapshot.Revision < existing.Revision)
+                {
+                    throw new InvalidDataException("SNAPSHOT_REVISION_REGRESSION");
+                }
+
+                if (snapshot.Revision == existing.Revision)
+                {
+                    if (!string.Equals(snapshot.ContentSha256, existing.ContentSha256, StringComparison.Ordinal))
+                    {
+                        throw new InvalidDataException("SNAPSHOT_REVISION_CONTENT_CONFLICT");
+                    }
+
+                    return existing;
+                }
+            }
+
+            await using SqliteCommand command = connection.CreateCommand();
+            command.CommandText = """
+                INSERT INTO WireToGateAppliedJourneySnapshots
+                    (MessageType, MessageId, Revision, ContentSha256, PayloadJson, AppliedAt)
+                VALUES ($messageType, $messageId, $revision, $contentSha256, $payloadJson, $appliedAt)
+                ON CONFLICT(MessageType) DO UPDATE SET
+                    MessageId = excluded.MessageId,
+                    Revision = excluded.Revision,
+                    ContentSha256 = excluded.ContentSha256,
+                    PayloadJson = excluded.PayloadJson,
+                    AppliedAt = excluded.AppliedAt
+                """;
+            command.Parameters.AddWithValue("$messageType", snapshot.MessageType);
+            command.Parameters.AddWithValue("$messageId", snapshot.MessageId);
+            command.Parameters.AddWithValue("$revision", snapshot.Revision);
+            command.Parameters.AddWithValue("$contentSha256", snapshot.ContentSha256);
+            command.Parameters.AddWithValue("$payloadJson", snapshot.PayloadJson);
+            command.Parameters.AddWithValue("$appliedAt", snapshot.AppliedAt.ToUniversalTime().ToString("O"));
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            return snapshot;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<string> ComputeContentSha256Async(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            WireToGateRecoveryState state = await ReadRecoveryStateCoreAsync(connection, cancellationToken)
+                .ConfigureAwait(false);
+            IReadOnlyList<WireToGateDurableMessage> pending = await ReadUnacknowledgedCoreAsync(
+                connection,
+                cancellationToken).ConfigureAwait(false);
+            object content = new
+            {
+                recoveryState = Normalize(state),
+                pendingBusinessMessages = pending
+                    .Where(item => item.MessageType != "RecoveryStateReport")
+                    .OrderBy(item => item.DeduplicationKey, StringComparer.Ordinal)
+                    .Select(item => new
+                    {
+                        item.DeduplicationKey,
+                        item.MessageType,
+                        item.MessageId,
+                        item.ContentSha256
+                    })
+                    .ToArray()
+            };
+            byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(content, SerializerOptions);
+            return Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public ValueTask DisposeAsync()
+    {
+        if (!_disposed)
+        {
+            _disposed = true;
+            _gate.Dispose();
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)
+    {
+        SqliteConnection connection = new(_connectionString);
+        await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        return connection;
+    }
+
+    private static async Task<WireToGateRecoveryState> ReadRecoveryStateCoreAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = "SELECT ContentJson FROM WireToGateRecoveryState WHERE Id = 1";
+        object? value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+        if (value is not string json)
+        {
+            throw new InvalidDataException("WIRE_TO_GATE journal尚未初始化。");
+        }
+
+        return JsonSerializer.Deserialize<WireToGateRecoveryState>(json, SerializerOptions)
+            ?? throw new InvalidDataException("WIRE_TO_GATE recovery state内容无效。");
+    }
+
+    private static async Task<WireToGateDurableMessage?> ReadByDeduplicationKeyAsync(
+        SqliteConnection connection,
+        string key,
+        CancellationToken cancellationToken)
+    {
+        await using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = "SELECT * FROM WireToGateDurableOutbox WHERE DeduplicationKey = $key";
+        command.Parameters.AddWithValue("$key", key);
+        await using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? ReadMessage(reader) : null;
+    }
+
+    private static async Task<WireToGateAppliedJourneySnapshot?> ReadAppliedJourneySnapshotCoreAsync(
+        SqliteConnection connection,
+        string messageType,
+        CancellationToken cancellationToken)
+    {
+        await using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT MessageType, MessageId, Revision, ContentSha256, PayloadJson, AppliedAt
+            FROM WireToGateAppliedJourneySnapshots
+            WHERE MessageType = $messageType
+            """;
+        command.Parameters.AddWithValue("$messageType", messageType);
+        await using SqliteDataReader reader = await command
+            .ExecuteReaderAsync(cancellationToken)
+            .ConfigureAwait(false);
+        return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+            ? ReadAppliedJourneySnapshot(reader)
+            : null;
+    }
+
+    private static async Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedCoreAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        List<WireToGateDurableMessage> messages = [];
+        await using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT * FROM WireToGateDurableOutbox
+            WHERE Acknowledged = 0
+            ORDER BY CreatedAt, DeduplicationKey
+            """;
+        await using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            messages.Add(ReadMessage(reader));
+        }
+
+        return messages;
+    }
+
+    private static WireToGateDurableMessage ReadMessage(SqliteDataReader reader) => new(
+        reader.GetString(reader.GetOrdinal("DeduplicationKey")),
+        reader.GetString(reader.GetOrdinal("MessageType")),
+        reader.GetString(reader.GetOrdinal("MessageId")),
+        reader.GetString(reader.GetOrdinal("ContentSha256")),
+        reader.GetString(reader.GetOrdinal("WireLine")),
+        DateTimeOffset.Parse(
+            reader.GetString(reader.GetOrdinal("CreatedAt")),
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.RoundtripKind),
+        reader.GetInt32(reader.GetOrdinal("Acknowledged")) == 1);
+
+    private static WireToGateAppliedJourneySnapshot ReadAppliedJourneySnapshot(
+        SqliteDataReader reader) => new(
+        reader.GetString(reader.GetOrdinal("MessageType")),
+        reader.GetString(reader.GetOrdinal("MessageId")),
+        reader.GetInt64(reader.GetOrdinal("Revision")),
+        reader.GetString(reader.GetOrdinal("ContentSha256")),
+        reader.GetString(reader.GetOrdinal("PayloadJson")),
+        DateTimeOffset.Parse(
+            reader.GetString(reader.GetOrdinal("AppliedAt")),
+            CultureInfo.InvariantCulture,
+            DateTimeStyles.RoundtripKind));
+
+    private static void Bind(SqliteCommand command, WireToGateDurableMessage message)
+    {
+        command.Parameters.AddWithValue("$key", message.DeduplicationKey);
+        command.Parameters.AddWithValue("$type", message.MessageType);
+        command.Parameters.AddWithValue("$messageId", message.MessageId);
+        command.Parameters.AddWithValue("$hash", message.ContentSha256);
+        command.Parameters.AddWithValue("$wireLine", message.WireLine);
+        command.Parameters.AddWithValue("$createdAt", message.CreatedAt.ToString("O"));
+    }
+
+    private static string SerializeRecoveryState(WireToGateRecoveryState state) =>
+        JsonSerializer.Serialize(Normalize(state), SerializerOptions);
+
+    private static WireToGateRecoveryState Normalize(WireToGateRecoveryState state) => state with
+    {
+        ActiveUnlockSlots = state.ActiveUnlockSlots.Order().ToArray(),
+        PendingResults = state.PendingResults
+            .OrderBy(item => item.MessageId, StringComparer.Ordinal)
+            .ToArray()
+    };
+
+    private static void ValidateRecoveryState(WireToGateRecoveryState state)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        if (state.UnsettledSlotOperationAttemptId is not null)
+        {
+            RequireUuid(state.UnsettledSlotOperationAttemptId, nameof(state.UnsettledSlotOperationAttemptId));
+        }
+
+        if (state.ForcedRecoveryGeneration < 0
+            || state.ActiveUnlockSlots.Any(slot => slot is < 1 or > 8)
+            || state.ActiveUnlockSlots.Distinct().Count() != state.ActiveUnlockSlots.Count)
+        {
+            throw new InvalidDataException("WIRE_TO_GATE recovery state字段无效。");
+        }
+
+        foreach (WireToGatePendingResult pending in state.PendingResults)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(pending.MessageType);
+            ArgumentException.ThrowIfNullOrWhiteSpace(pending.BusinessId);
+            RequireUuid(pending.MessageId, nameof(pending.MessageId));
+            RequireSha256(pending.ContentSha256, nameof(pending.ContentSha256));
+        }
+    }
+
+    private static void ValidateDurableMessage(WireToGateDurableMessage message)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(message.DeduplicationKey);
+        ArgumentException.ThrowIfNullOrWhiteSpace(message.MessageType);
+        ArgumentException.ThrowIfNullOrWhiteSpace(message.WireLine);
+        RequireUuid(message.MessageId, nameof(message.MessageId));
+        RequireSha256(message.ContentSha256, nameof(message.ContentSha256));
+    }
+
+    private static void ValidateAppliedJourneySnapshot(WireToGateAppliedJourneySnapshot snapshot)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(snapshot.MessageType);
+        RequireUuid(snapshot.MessageId, nameof(snapshot.MessageId));
+        if (snapshot.Revision < 0)
+        {
+            throw new InvalidDataException("旅程快照revision不能为负数。");
+        }
+
+        RequireSha256(snapshot.ContentSha256, nameof(snapshot.ContentSha256));
+        ArgumentException.ThrowIfNullOrWhiteSpace(snapshot.PayloadJson);
+    }
+
+    private static void RequireUuid(string value, string name)
+    {
+        if (!Guid.TryParseExact(value, "D", out _))
+        {
+            throw new InvalidDataException($"{name}必须是标准UUID。");
+        }
+    }
+
+    private static void RequireSha256(string value, string name)
+    {
+        if (value.Length != 64 || value.Any(character => !Uri.IsHexDigit(character)))
+        {
+            throw new InvalidDataException($"{name}必须是64位SHA-256十六进制字符串。");
+        }
+    }
+
+    private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+}

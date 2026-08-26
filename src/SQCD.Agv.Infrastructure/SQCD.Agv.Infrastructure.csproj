@@ -1,5 +1,9 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="8.0.30" />
+    <PackageReference Include="SQLitePCLRaw.provider.winsqlite3" Version="2.1.11" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../SQCD.Agv.Core/SQCD.Agv.Core.csproj" />
     <ProjectReference Include="../SQCD.Agv.Contracts/SQCD.Agv.Contracts.csproj" />
   </ItemGroup>
