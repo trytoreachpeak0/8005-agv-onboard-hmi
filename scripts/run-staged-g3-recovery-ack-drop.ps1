@@ -7,7 +7,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $controlCommit = 'cc6e2b97e4308fa14b519edf9a0089d0da7d6d14'
-$onboardCommit = '045514770da9858a8a49196dede276192e4f2a1b'
+$onboardCommit = '0584322e86bdf6e1f94b58a70381b42d353ba5df'
 $simulatorCommit = 'fb5f7c593742bf98bc3957b8729a38aad5321f28'
 $agvId = 'AGV-8005-STAGED-G3-ACK-DROP-01'
 $proxyPort = 58114
