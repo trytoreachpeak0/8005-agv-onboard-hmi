@@ -1,9 +1,33 @@
+using System.Text.Json;
 using SQCD.Agv.Infrastructure;
 
 namespace SQCD.Agv.UnitTests;
 
 public sealed class ConfigurationTests
 {
+    [Theory]
+    [InlineData("src/SQCD.Agv.Wpf/appsettings.json")]
+    [InlineData("src/SQCD.Agv.Wpf/appsettings.Production.example.json")]
+    public void WireToGateExamplesUseTheAuthoritativeControlServerPort(string relativePath)
+    {
+        string path = FindRepositoryFile(relativePath);
+        using JsonDocument document = JsonDocument.Parse(
+            File.ReadAllText(path),
+            new JsonDocumentOptions
+            {
+                CommentHandling = JsonCommentHandling.Skip,
+                AllowTrailingCommas = true
+            });
+
+        int configuredPort = document.RootElement
+            .GetProperty("wireToGate")
+            .GetProperty("port")
+            .GetInt32();
+
+        Assert.Equal(WireToGateSettings.DefaultControlServerPort, configuredPort);
+        Assert.Equal(58_005, configuredPort);
+    }
+
     [Fact]
     public void ProductionWithoutWireToGateIsRejected()
     {
@@ -181,6 +205,23 @@ public sealed class ConfigurationTests
             },
             IoModule = new IoModuleSettings { Host = "io-module.internal" }
         };
+
+    private static string FindRepositoryFile(string relativePath)
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            string candidate = Path.Combine(directory.FullName, relativePath);
+            if (File.Exists(candidate))
+            {
+                return candidate;
+            }
+
+            directory = directory.Parent;
+        }
+
+        throw new FileNotFoundException("找不到测试所需的仓库配置文件。", relativePath);
+    }
 
     private sealed class EnvironmentVariableScope : IDisposable
     {

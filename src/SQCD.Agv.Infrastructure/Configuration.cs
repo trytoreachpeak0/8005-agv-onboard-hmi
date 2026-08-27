@@ -187,11 +187,13 @@ public sealed class VehicleSafetySettings
 
 public sealed class WireToGateSettings
 {
+    public const int DefaultControlServerPort = 58_005;
+
     public bool Enabled { get; init; }
 
     public string Host { get; init; } = "127.0.0.1";
 
-    public int Port { get; init; } = 58_015;
+    public int Port { get; init; } = DefaultControlServerPort;
 
     public string OnboardInstanceId { get; init; } = string.Empty;
 
