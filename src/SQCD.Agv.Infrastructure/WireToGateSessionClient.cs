@@ -195,7 +195,12 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             throw new InvalidDataException("SLOT_SET_INVALID");
         }
 
-        string deduplicationKey = $"safety-state-changed:{safetyStateVersion}";
+        // safetyStateVersion restarts from the server baseline in every fresh
+        // runtime, so the durable identity must also bind the observation time;
+        // otherwise two fresh journals collide on one messageId with different
+        // content and ControlServer rejects them as inbox conflicts.
+        string deduplicationKey =
+            $"safety-state-changed:{safetyStateVersion}:{observedAt.ToUniversalTime():O}";
         return SendDurableAsync(
             "SafetyStateChanged",
             deduplicationKey,

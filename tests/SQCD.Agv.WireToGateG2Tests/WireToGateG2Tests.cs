@@ -165,13 +165,21 @@ public sealed class WireToGateG2Tests
         string journalPath = NewJournalPath();
         FakeIoModuleClient io = new();
 
-        await using WireToGateSessionClient firstClient = CreateClient(server, io, journalPath);
+        await using WireToGateSessionClient firstClient = CreateClient(
+            server,
+            io,
+            journalPath,
+            onboardInstanceId: "0198f1a2-7c3d-4e5f-8a9b-c0de5a7e1001");
         await firstClient.ConnectAndRecoverAsync(testToken);
         await firstClient.DisposeAsync();
 
         io.SetCargoPresent(3, present: true);
 
-        await using WireToGateSessionClient secondClient = CreateClient(server, io, journalPath);
+        await using WireToGateSessionClient secondClient = CreateClient(
+            server,
+            io,
+            journalPath,
+            onboardInstanceId: "0198f1a2-7c3d-4e5f-8a9b-c0de5a7e1001");
         InvalidDataException failure = await Assert.ThrowsAsync<InvalidDataException>(
             () => secondClient.ConnectAndRecoverAsync(testToken));
 
@@ -458,6 +466,46 @@ public sealed class WireToGateG2Tests
         Assert.Equal(original.WireLine, stored.WireLine);
     }
 
+    [Fact]
+    public async Task FreshJournalsNeverReuseSafetyStateChangedMessageIdentity()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback) { SendReadinessAfterRecoveryAck = true };
+
+        string firstMessageId;
+        await using (WireToGateSessionClient firstClient = CreateClient(server, new FakeIoModuleClient(), NewJournalPath()))
+        {
+            await firstClient.ConnectAndRecoverAsync(testToken);
+            firstMessageId = await firstClient.SendSafetyStateChangedAsync(
+                1,
+                new DateTimeOffset(2026, 8, 27, 8, 0, 0, TimeSpan.Zero),
+                new WireToGateSafetySummaryPayload(true, true, true, true, false, []),
+                [1],
+                testToken);
+        }
+
+        string secondMessageId;
+        await using (WireToGateSessionClient secondClient = CreateClient(server, new FakeIoModuleClient(), NewJournalPath()))
+        {
+            await secondClient.ConnectAndRecoverAsync(testToken);
+            secondMessageId = await secondClient.SendSafetyStateChangedAsync(
+                1,
+                new DateTimeOffset(2026, 8, 27, 9, 30, 0, TimeSpan.Zero),
+                new WireToGateSafetySummaryPayload(false, true, true, true, false, ["VEHICLE_NOT_STOPPED"]),
+                [2],
+                testToken);
+        }
+
+        Assert.NotEqual(firstMessageId, secondMessageId);
+        var safetyMessages = server.ReceivedEnvelopes
+            .Where(item => item.MessageType == "SafetyStateChanged")
+            .ToArray();
+        Assert.Equal(2, safetyMessages.Length);
+        Assert.Equal([firstMessageId, secondMessageId], safetyMessages.Select(item => item.MessageId).ToArray());
+        Assert.Equal(1, safetyMessages[0].Connection);
+        Assert.Equal(2, safetyMessages[1].Connection);
+    }
+
     private static string[] InboundMessageTypes(FakeControlServer server) =>
         server.Received
             .Select(item => item.MessageType)
@@ -469,13 +517,14 @@ public sealed class WireToGateG2Tests
         FakeIoModuleClient io,
         string journalPath,
         long capability = 1,
-        long safety = 1)
+        long safety = 1,
+        string? onboardInstanceId = null)
     {
         WireToGateSessionOptions options = new(
             "127.0.0.1",
             server.Port,
             "AGV-8005-01",
-            Guid.NewGuid().ToString("D"),
+            onboardInstanceId ?? Guid.NewGuid().ToString("D"),
             new string('a', 40),
             CredentialVariable,
             UseTls: false,

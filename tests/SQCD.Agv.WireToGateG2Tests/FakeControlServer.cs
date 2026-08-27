@@ -19,6 +19,7 @@ public sealed class FakeControlServer : IAsyncDisposable
     private readonly object _sync = new();
     private long _sessionGeneration;
     private int _recoveryAckCount;
+    private string? _lastAcceptedInstanceId;
     private long _acceptedCapabilityVersion;
     private long _acceptedSafetyStateVersion;
     private int _demandSnapshotSendCount;
@@ -315,6 +316,18 @@ public sealed class FakeControlServer : IAsyncDisposable
         lock (_sync)
         {
             generation = ++_sessionGeneration;
+            // A different runtime instance starts a fresh snapshot revision
+            // baseline, mirroring how real ControlServer accepts new journal
+            // generations.  The same instance reconnecting (same journal)
+            // keeps server-side revision memory so same-revision conflicts
+            // stay enforced.
+            string onboardInstanceId =
+                hello.GetProperty("payload").GetProperty("onboardInstanceId").GetString() ?? string.Empty;
+            if (!string.Equals(onboardInstanceId, _lastAcceptedInstanceId, StringComparison.Ordinal))
+            {
+                _appliedSnapshots.Clear();
+                _lastAcceptedInstanceId = onboardInstanceId;
+            }
         }
 
         context.Generation = generation;
