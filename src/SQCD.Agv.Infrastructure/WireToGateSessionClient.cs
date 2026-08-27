@@ -48,6 +48,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     private WireToGateJourneySnapshot _journey;
     private CancellationTokenSource? _receiveStopping;
     private TaskCompletionSource<Exception>? _receiveFailure;
+    private string? _journalEpoch;
     private bool _disposed;
 
     public WireToGateSessionClient(
@@ -195,12 +196,14 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             throw new InvalidDataException("SLOT_SET_INVALID");
         }
 
-        // safetyStateVersion restarts from the server baseline in every fresh
-        // runtime, so the durable identity must also bind the observation time;
-        // otherwise two fresh journals collide on one messageId with different
-        // content and ControlServer rejects them as inbox conflicts.
+        string journalEpoch = Volatile.Read(ref _journalEpoch)
+            ?? throw new InvalidOperationException("WIRE_TO_GATE_JOURNAL_NOT_READY");
+        // The epoch supplies strict cross-journal uniqueness.  The version and
+        // observation time keep retries of one in-memory work item stable while
+        // allowing a later observation to remain a distinct event even if a
+        // runtime is still using the same server baseline version.
         string deduplicationKey =
-            $"safety-state-changed:{safetyStateVersion}:{observedAt.ToUniversalTime():O}";
+            $"safety-state-changed:{journalEpoch}:{safetyStateVersion}:{observedAt.ToUniversalTime():O}";
         return SendDurableAsync(
             "SafetyStateChanged",
             deduplicationKey,
@@ -228,6 +231,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
         Publish(false, null, WireToGateSessionReadiness.Recovering, []);
         await _journal.InitializeAsync(cancellationToken).ConfigureAwait(false);
+        string journalEpoch = await _journal.ReadJournalEpochAsync(cancellationToken).ConfigureAwait(false);
+        Volatile.Write(ref _journalEpoch, journalEpoch);
 
         try
         {

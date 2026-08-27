@@ -16,6 +16,7 @@ public sealed class FakeControlServer : IAsyncDisposable
     private readonly Task _acceptLoop;
     private readonly List<string> _identityValidations = [];
     private readonly Dictionary<string, (long Revision, string ContentSha256)> _appliedSnapshots = new();
+    private readonly Dictionary<string, string> _acceptedSafetyStateChanges = new(StringComparer.Ordinal);
     private readonly object _sync = new();
     private long _sessionGeneration;
     private int _recoveryAckCount;
@@ -38,7 +39,11 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool DropBeforeRecoveryAck { get; set; }
 
+    public bool DropBeforeSafetyStateChangedAck { get; set; }
+
     public bool SendReadinessAfterRecoveryAck { get; set; }
+
+    public bool SendReadinessAfterSafetyStateChangedAck { get; set; }
 
     public bool SendJourneySnapshotsAfterRecovery { get; set; }
 
@@ -80,6 +85,17 @@ public sealed class FakeControlServer : IAsyncDisposable
     } = [];
 
     public IReadOnlyList<(string Kind, long Revision)> AppliedSnapshots { get; private set; } = [];
+
+    public int AcceptedSafetyStateChangedCount
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _acceptedSafetyStateChanges.Count;
+            }
+        }
+    }
 
     private sealed class ConnectionContext
     {
@@ -261,9 +277,11 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "OperationProgress":
                     case "OperationResult":
                     case "PreDepartureSafetyCheckResult":
-                    case "SafetyStateChanged":
                     case "SlotOperationCommandRejected":
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        break;
+                    case "SafetyStateChanged":
+                        await HandleSafetyStateChangedAsync(context, root).ConfigureAwait(false);
                         break;
                 }
             }
@@ -483,6 +501,47 @@ public sealed class FakeControlServer : IAsyncDisposable
         if (drop)
         {
             context.Client.Close();
+        }
+    }
+
+    private async Task HandleSafetyStateChangedAsync(ConnectionContext context, JsonElement message)
+    {
+        string messageId = message.GetProperty("messageId").GetString()!;
+        string payloadJson = message.GetProperty("payload").GetRawText();
+        bool conflict;
+        lock (_sync)
+        {
+            conflict = _acceptedSafetyStateChanges.TryGetValue(messageId, out string? acceptedPayload)
+                && !string.Equals(acceptedPayload, payloadJson, StringComparison.Ordinal);
+            if (!conflict && acceptedPayload is null)
+            {
+                _acceptedSafetyStateChanges.Add(messageId, payloadJson);
+            }
+        }
+
+        if (conflict)
+        {
+            await WriteEnvelopeAsync(context, CreateProtocolProblem(
+                context,
+                messageId,
+                "SafetyStateChanged",
+                "MESSAGE_ID_CONTENT_CONFLICT")).ConfigureAwait(false);
+            return;
+        }
+
+        // The inbox accepts the work first.  Closing here models a DurableAck
+        // lost after durable acceptance, so replay must retain identity/content
+        // and must not produce a second business acceptance.
+        if (DropBeforeSafetyStateChangedAck)
+        {
+            context.Client.Close();
+            return;
+        }
+
+        await WriteEnvelopeAsync(context, CreateDurableAck(context, message)).ConfigureAwait(false);
+        if (SendReadinessAfterSafetyStateChangedAck)
+        {
+            await WriteEnvelopeAsync(context, CreateSessionReadiness(context)).ConfigureAwait(false);
         }
     }
 

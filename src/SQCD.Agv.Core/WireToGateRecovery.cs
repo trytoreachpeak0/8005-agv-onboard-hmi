@@ -64,6 +64,14 @@ public interface IWireToGateJournal : IAsyncDisposable
 {
     public Task InitializeAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Returns the UUID created with this journal.  It remains stable when the
+    /// same journal is reopened and differs for every newly-created journal, so
+    /// durable message identities cannot collide merely because business
+    /// revisions restart from the same server baseline.
+    /// </summary>
+    public Task<string> ReadJournalEpochAsync(CancellationToken cancellationToken = default);
+
     public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(
         CancellationToken cancellationToken = default);
 

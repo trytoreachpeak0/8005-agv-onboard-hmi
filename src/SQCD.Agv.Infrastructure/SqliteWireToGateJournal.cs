@@ -47,6 +47,11 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
                 PRAGMA journal_mode = WAL;
                 PRAGMA synchronous = FULL;
 
+                CREATE TABLE IF NOT EXISTS WireToGateJournalMetadata (
+                    Id INTEGER NOT NULL PRIMARY KEY CHECK (Id = 1),
+                    JournalEpoch TEXT NOT NULL UNIQUE
+                );
+
                 CREATE TABLE IF NOT EXISTS WireToGateRecoveryState (
                     Id INTEGER NOT NULL PRIMARY KEY CHECK (Id = 1),
                     ContentJson TEXT NOT NULL,
@@ -74,6 +79,14 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
                 """;
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
 
+            await using SqliteCommand metadataSeed = connection.CreateCommand();
+            metadataSeed.CommandText = """
+                INSERT OR IGNORE INTO WireToGateJournalMetadata (Id, JournalEpoch)
+                VALUES (1, $journalEpoch)
+                """;
+            metadataSeed.Parameters.AddWithValue("$journalEpoch", Guid.NewGuid().ToString("D"));
+            await metadataSeed.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
             await using SqliteCommand seed = connection.CreateCommand();
             seed.CommandText = """
                 INSERT OR IGNORE INTO WireToGateRecoveryState (Id, ContentJson, UpdatedAt)
@@ -82,6 +95,30 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             seed.Parameters.AddWithValue("$content", SerializeRecoveryState(WireToGateRecoveryState.Empty));
             seed.Parameters.AddWithValue("$updatedAt", DateTimeOffset.UnixEpoch.ToString("O"));
             await seed.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<string> ReadJournalEpochAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using SqliteCommand command = connection.CreateCommand();
+            command.CommandText = "SELECT JournalEpoch FROM WireToGateJournalMetadata WHERE Id = 1";
+            object? value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
+            if (value is not string journalEpoch
+                || !Guid.TryParseExact(journalEpoch, "D", out _))
+            {
+                throw new InvalidDataException("WIRE_TO_GATE journal epoch无效或尚未初始化。");
+            }
+
+            return journalEpoch;
         }
         finally
         {

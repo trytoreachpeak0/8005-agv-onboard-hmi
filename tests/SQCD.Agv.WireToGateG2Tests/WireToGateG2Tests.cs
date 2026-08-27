@@ -467,10 +467,43 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    public async Task JournalEpochPersistsAcrossReopenAndDiffersForFreshJournal()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        string existingJournalPath = NewJournalPath();
+        string firstEpoch;
+        await using (SqliteWireToGateJournal first = new(existingJournalPath))
+        {
+            await first.InitializeAsync(testToken);
+            firstEpoch = await first.ReadJournalEpochAsync(testToken);
+        }
+
+        string reopenedEpoch;
+        await using (SqliteWireToGateJournal reopened = new(existingJournalPath))
+        {
+            await reopened.InitializeAsync(testToken);
+            reopenedEpoch = await reopened.ReadJournalEpochAsync(testToken);
+        }
+
+        string freshEpoch;
+        await using (SqliteWireToGateJournal fresh = new(NewJournalPath()))
+        {
+            await fresh.InitializeAsync(testToken);
+            freshEpoch = await fresh.ReadJournalEpochAsync(testToken);
+        }
+
+        Assert.Equal(firstEpoch, reopenedEpoch);
+        Assert.NotEqual(firstEpoch, freshEpoch);
+        Assert.True(Guid.TryParseExact(firstEpoch, "D", out _));
+        Assert.True(Guid.TryParseExact(freshEpoch, "D", out _));
+    }
+
+    [Fact]
     public async Task FreshJournalsNeverReuseSafetyStateChangedMessageIdentity()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
         await using FakeControlServer server = new(IPAddress.Loopback) { SendReadinessAfterRecoveryAck = true };
+        DateTimeOffset observedAt = new(2026, 8, 27, 8, 0, 0, TimeSpan.Zero);
 
         string firstMessageId;
         await using (WireToGateSessionClient firstClient = CreateClient(server, new FakeIoModuleClient(), NewJournalPath()))
@@ -478,7 +511,7 @@ public sealed class WireToGateG2Tests
             await firstClient.ConnectAndRecoverAsync(testToken);
             firstMessageId = await firstClient.SendSafetyStateChangedAsync(
                 1,
-                new DateTimeOffset(2026, 8, 27, 8, 0, 0, TimeSpan.Zero),
+                observedAt,
                 new WireToGateSafetySummaryPayload(true, true, true, true, false, []),
                 [1],
                 testToken);
@@ -490,7 +523,7 @@ public sealed class WireToGateG2Tests
             await secondClient.ConnectAndRecoverAsync(testToken);
             secondMessageId = await secondClient.SendSafetyStateChangedAsync(
                 1,
-                new DateTimeOffset(2026, 8, 27, 9, 30, 0, TimeSpan.Zero),
+                observedAt,
                 new WireToGateSafetySummaryPayload(false, true, true, true, false, ["VEHICLE_NOT_STOPPED"]),
                 [2],
                 testToken);
@@ -504,6 +537,76 @@ public sealed class WireToGateG2Tests
         Assert.Equal([firstMessageId, secondMessageId], safetyMessages.Select(item => item.MessageId).ToArray());
         Assert.Equal(1, safetyMessages[0].Connection);
         Assert.Equal(2, safetyMessages[1].Connection);
+        Assert.Equal(2, server.AcceptedSafetyStateChangedCount);
+    }
+
+    [Fact]
+    public async Task LostSafetyStateChangedAckReplaysSameIdentityAndBusinessContentFromJournal()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            DropBeforeSafetyStateChangedAck = true,
+            SendReadinessAfterRecoveryAck = true,
+            SendReadinessAfterSafetyStateChangedAck = true
+        };
+        string journalPath = NewJournalPath();
+        string onboardInstanceId = "0198f1a2-7c3d-4e5f-8a9b-c0de5a7e1002";
+        FakeIoModuleClient io = new();
+        DateTimeOffset observedAt = new(2026, 8, 27, 10, 0, 0, TimeSpan.Zero);
+        WireToGateSafetySummaryPayload payload = new(
+            false,
+            false,
+            true,
+            true,
+            true,
+            ["VEHICLE_STATE_UNKNOWN"]);
+
+        await using (WireToGateSessionClient firstClient = CreateClient(
+            server,
+            io,
+            journalPath,
+            onboardInstanceId: onboardInstanceId))
+        {
+            await firstClient.ConnectAndRecoverAsync(testToken);
+            await Assert.ThrowsAnyAsync<IOException>(() => firstClient.SendSafetyStateChangedAsync(
+                1,
+                observedAt,
+                payload,
+                [1, 2],
+                testToken));
+        }
+
+        server.DropBeforeSafetyStateChangedAck = false;
+        await using (WireToGateSessionClient secondClient = CreateClient(
+            server,
+            io,
+            journalPath,
+            onboardInstanceId: onboardInstanceId))
+        {
+            WireToGateSessionSnapshot resumed = await secondClient.ConnectAndRecoverAsync(testToken);
+            Assert.Equal(WireToGateSessionReadiness.Ready, resumed.Readiness);
+        }
+
+        var replayed = server.ReceivedEnvelopes
+            .Where(item => item.MessageType == "SafetyStateChanged")
+            .ToArray();
+        Assert.Equal(2, replayed.Length);
+        Assert.Equal(replayed[0].MessageId, replayed[1].MessageId);
+        WireToGateEnvelope[] envelopes = replayed
+            .Select(item => WireToGateProtocolSerializer.DeserializeAndValidate(item.WireLine, "AGV-8005-01"))
+            .ToArray();
+        Assert.Equal([1L, 2L], envelopes.Select(item => item.SessionGeneration).ToArray());
+        Assert.True(JsonNode.DeepEquals(
+            JsonNode.Parse(envelopes[0].Payload.GetRawText()),
+            JsonNode.Parse(envelopes[1].Payload.GetRawText())));
+        Assert.NotEqual(replayed[0].WireLine, replayed[1].WireLine);
+        Assert.Equal(1, server.AcceptedSafetyStateChangedCount);
+        Assert.Equal(0, io.UnlockCount);
+
+        await using SqliteWireToGateJournal journal = new(journalPath);
+        await journal.InitializeAsync(testToken);
+        Assert.Empty(await journal.ReadUnacknowledgedOutgoingAsync(testToken));
     }
 
     private static string[] InboundMessageTypes(FakeControlServer server) =>
