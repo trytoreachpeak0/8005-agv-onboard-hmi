@@ -24,6 +24,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
     private readonly IVehicleSafetySignalProvider _vehicleSafetySignalProvider;
     private readonly string _operatorIdEnvironmentVariable;
     private readonly TimeSpan _ioSnapshotMaxAge;
+    private readonly TimeSpan _vehicleSafetyMaxAge;
     private readonly WireToGateSlotOperationExecutor _executor;
     private readonly CancellationTokenSource _stopping = new();
     private readonly object _taskGate = new();
@@ -46,7 +47,8 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         Func<bool> vehicleStoppedProvider,
         WireToGateSlotOperationExecutorOptions executorOptions,
         string operatorIdEnvironmentVariable,
-        IVehicleSafetySignalProvider? vehicleSafetySignalProvider = null)
+        IVehicleSafetySignalProvider? vehicleSafetySignalProvider = null,
+        TimeSpan? vehicleSafetyMaxAge = null)
     {
         _session = session;
         _ioModule = ioModule;
@@ -57,6 +59,11 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
             ?? new DelegateVehicleSafetySignalProvider(vehicleStoppedProvider);
         _operatorIdEnvironmentVariable = operatorIdEnvironmentVariable;
         _ioSnapshotMaxAge = executorOptions.IoSnapshotMaxAge;
+        _vehicleSafetyMaxAge = vehicleSafetyMaxAge ?? _ioSnapshotMaxAge;
+        if (_vehicleSafetyMaxAge <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(vehicleSafetyMaxAge));
+        }
         _nextSafetyStateVersion = session.Current.SafetyStateVersion + 1;
         if (string.IsNullOrWhiteSpace(operatorIdEnvironmentVariable))
         {
@@ -349,7 +356,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         DateTimeOffset now = _clock.Now;
         bool fresh = snapshot.IsConnected
             && SafetyRules.IsSnapshotFresh(snapshot, now, _ioSnapshotMaxAge)
-            && vehicle.IsFresh(now, _ioSnapshotMaxAge);
+            && vehicle.IsFresh(now, _vehicleSafetyMaxAge);
         bool targetsKnown = fresh
             && command.Slots.All(slot =>
                 TryGetLocker(snapshot, slot, out LockerSnapshot? locker)
@@ -553,13 +560,12 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                 Source = string.IsNullOrWhiteSpace(signal.Source) ? "UNKNOWN" : signal.Source
             };
         }
-        catch (Exception exception)
+        catch (Exception)
         {
             _logger.Write(
                 LogSeverity.Error,
                 nameof(WireToGateBusinessService),
-                "读取车辆停稳信号失败，按未停稳处理。",
-                exception);
+                "读取车辆停稳信号失败，按未停稳处理。凭据和异常详情不会写入日志。");
             return new VehicleSafetySignal(
                 VehicleMotionState.Unknown,
                 DateTimeOffset.MinValue,
@@ -578,7 +584,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         bool allLocked = !unknown && snapshot.Lockers.All(locker => locker.IsLocked);
         bool allOutputsReset = !unknown && snapshot.Lockers.All(locker => locker.UnlockOutputRaw is false);
         VehicleSafetySignal vehicleSignal = ReadVehicleSafety();
-        bool vehicleFresh = vehicleSignal.IsFresh(observedAt, _ioSnapshotMaxAge);
+        bool vehicleFresh = vehicleSignal.IsFresh(observedAt, _vehicleSafetyMaxAge);
         bool vehicleStopped = vehicleSignal.MotionState == VehicleMotionState.Stopped && vehicleFresh;
         bool vehicleUnknown = !vehicleFresh || vehicleSignal.MotionState == VehicleMotionState.Unknown;
         List<string> reasons = [];

@@ -15,6 +15,8 @@ public sealed class OnboardSettings
 
     public WireToGateSettings WireToGate { get; init; } = new();
 
+    public VehicleSafetySettings VehicleSafety { get; init; } = new();
+
     public IoModuleSettings IoModule { get; init; } = new();
 
     public WorkflowSettings Workflow { get; init; } = new();
@@ -59,6 +61,7 @@ public sealed class OnboardSettings
 
         RuleGateway.Validate(production);
         WireToGate.Validate(production);
+        VehicleSafety.Validate(production && WireToGate.Enabled);
         IoModule.Validate(production);
         Workflow.Validate();
 
@@ -67,6 +70,9 @@ public sealed class OnboardSettings
             RequireProductionEnvironmentVariable(
                 WireToGate.CredentialEnvironmentVariable,
                 "ControlServer凭据");
+            RequireProductionEnvironmentVariable(
+                VehicleSafety.CredentialEnvironmentVariable,
+                "车辆安全投影凭据");
             RequireProductionEnvironmentVariable(
                 WireToGate.OperatorIdEnvironmentVariable,
                 "操作员ID");
@@ -106,6 +112,77 @@ public sealed class OnboardSettings
         ReadCommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true
     };
+}
+
+/// <summary>
+/// Configuration for the read-only vehicle-safety projection exposed by
+/// ControlServer.  The endpoint is deliberately a complete HTTPS URI so that
+/// an accidental HTTP fallback cannot be hidden in a host/port combination.
+/// </summary>
+public sealed class VehicleSafetySettings
+{
+    public bool Enabled { get; init; }
+
+    public string Endpoint { get; init; } = "https://control.example.invalid/api/onboard/v1/vehicle-safety";
+
+    public string CredentialEnvironmentVariable { get; init; } = "CONTROL_SERVER_ONBOARD_CREDENTIAL";
+
+    public string ExpectedVehicleKey { get; init; } = string.Empty;
+
+    public int MaximumEvidenceAgeMs { get; init; } = 5_000;
+
+    public int PollIntervalMs { get; init; } = 1_000;
+
+    public int RequestTimeoutMs { get; init; } = 3_000;
+
+    internal void Validate(bool production = false)
+    {
+        if (!Enabled)
+        {
+            if (production)
+            {
+                throw new InvalidDataException("Production环境必须启用ControlServer车辆安全投影。");
+            }
+
+            return;
+        }
+
+        bool validEndpoint = Uri.TryCreate(Endpoint, UriKind.Absolute, out Uri? endpoint)
+            && endpoint is not null
+            && endpoint.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            && string.IsNullOrEmpty(endpoint.UserInfo)
+            && string.IsNullOrEmpty(endpoint.Fragment);
+        if (!validEndpoint
+            || string.IsNullOrWhiteSpace(CredentialEnvironmentVariable)
+            || OnboardSettings.IsPlaceholderValue(CredentialEnvironmentVariable)
+            || string.IsNullOrWhiteSpace(ExpectedVehicleKey)
+            || MaximumEvidenceAgeMs <= 0
+            || PollIntervalMs <= 0
+            || RequestTimeoutMs <= 0)
+        {
+            throw new InvalidDataException("ControlServer车辆安全投影配置无效，必须使用HTTPS并配置身份、凭据和证据时效。");
+        }
+
+        if (production
+            && (IsForbiddenProductionHost(endpoint!.Host)
+                || OnboardSettings.IsPlaceholderValue(ExpectedVehicleKey)))
+        {
+            throw new InvalidDataException("Production环境的车辆安全投影地址或期望车辆身份仍是本机/占位配置。");
+        }
+    }
+
+    private static bool IsForbiddenProductionHost(string host)
+    {
+        if (OnboardSettings.IsPlaceholderValue(host)
+            || host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+            || host.Equals("0.0.0.0", StringComparison.OrdinalIgnoreCase)
+            || host.Equals("::", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        return IPAddress.TryParse(host, out IPAddress? address) && IPAddress.IsLoopback(address);
+    }
 }
 
 public sealed class WireToGateSettings

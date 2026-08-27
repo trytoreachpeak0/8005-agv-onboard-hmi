@@ -17,6 +17,7 @@ public partial class App : System.Windows.Application, IDisposable
     private OnboardController? _controller;
     private WireToGateSessionService? _wireToGate;
     private WireToGateBusinessService? _wireToGateBusiness;
+    private ControlServerVehicleSafetySignalProvider? _vehicleSafetySignalProvider;
     private bool _disposed;
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -27,14 +28,14 @@ public partial class App : System.Windows.Application, IDisposable
         {
             string settingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
             OnboardSettings settings = OnboardSettings.Load(settingsPath);
-            // 当前项目尚未接入可信的车速/驻车信号。未知必须按“未停稳”处理，
-            // 禁止用“没有仓位操作”冒充车辆物理停稳。现场适配器只需替换此 provider。
-            UnavailableVehicleSafetySignalProvider vehicleSafetySignalProvider =
-                new UnavailableVehicleSafetySignalProvider();
+            _vehicleSafetySignalProvider = new ControlServerVehicleSafetySignalProvider(
+                settings.VehicleSafety,
+                startPolling: settings.WireToGate.Enabled);
+            ControlServerVehicleSafetySignalProvider vehicleSafetySignalProvider = _vehicleSafetySignalProvider;
             Func<bool> vehicleStoppedProvider = () =>
                 vehicleSafetySignalProvider.Read().IsStoppedAndFresh(
                     DateTimeOffset.UtcNow,
-                    TimeSpan.FromMilliseconds(settings.Workflow.IoSnapshotMaxAgeMs));
+                    TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs));
             _logger = new FileAppLogger(settings.Logging);
             _ioModule = new ModbusTcpIoModuleClient(settings.IoModule, _logger);
             _ruleGateway = settings.WireToGate.Enabled
@@ -125,7 +126,8 @@ public partial class App : System.Windows.Application, IDisposable
                         TimeSpan.FromMilliseconds(settings.Workflow.FeedbackStableMs),
                         TimeSpan.FromMilliseconds(settings.Workflow.IoSnapshotMaxAgeMs)),
                     settings.WireToGate.OperatorIdEnvironmentVariable,
-                    vehicleSafetySignalProvider);
+                    vehicleSafetySignalProvider,
+                    TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs));
                 _wireToGateBusiness.SublotEntryRequested += (_, args) =>
                 {
                     _logger.Write(
@@ -187,6 +189,7 @@ public partial class App : System.Windows.Application, IDisposable
             _controller?.DisposeAsync().AsTask().GetAwaiter().GetResult();
             _ruleGateway?.DisposeAsync().AsTask().GetAwaiter().GetResult();
             _ioModule?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            _vehicleSafetySignalProvider?.Dispose();
         }
         catch (Exception exception) when (exception is IOException or OperationCanceledException)
         {

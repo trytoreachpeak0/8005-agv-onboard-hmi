@@ -10,8 +10,16 @@ public enum VehicleMotionState
 public sealed record VehicleSafetySignal(
     VehicleMotionState MotionState,
     DateTimeOffset ObservedAt,
-    string Source)
+    string Source,
+    string? VehicleKey = null,
+    IReadOnlyList<string>? ReasonCodes = null)
 {
+    /// <summary>
+    /// Gets the server reason codes without exposing a nullable collection to callers.
+    /// Providers should still preserve the response codes when the response is trusted.
+    /// </summary>
+    public IReadOnlyList<string> EffectiveReasonCodes => ReasonCodes ?? Array.Empty<string>();
+
     public bool IsFresh(DateTimeOffset now, TimeSpan maxAge)
     {
         if (maxAge <= TimeSpan.Zero

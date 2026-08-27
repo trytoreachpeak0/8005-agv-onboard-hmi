@@ -73,6 +73,36 @@ public sealed class ConfigurationTests
     }
 
     [Fact]
+    public void EnabledVehicleSafetyProjectionRejectsPlainHttp()
+    {
+        OnboardSettings settings = new()
+        {
+            VehicleSafety = new VehicleSafetySettings
+            {
+                Enabled = true,
+                Endpoint = "http://control.internal/api/onboard/v1/vehicle-safety",
+                ExpectedVehicleKey = "AGV-8005-27"
+            }
+        };
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(settings.Validate);
+
+        Assert.Contains("必须使用HTTPS", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProductionRequiresEnabledVehicleSafetyProjection()
+    {
+        using EnvironmentVariableScope credentials = new();
+        OnboardSettings settings = CreateValidProductionSettings(
+            vehicleSafety: new VehicleSafetySettings { Enabled = false });
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(settings.Validate);
+
+        Assert.Contains("必须启用ControlServer车辆安全投影", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void DuplicateUnlockOutputChannelIsRejected()
     {
         SlotIoMapping[] slots = CreateDefaultSlots();
@@ -126,7 +156,8 @@ public sealed class ConfigurationTests
             .ToArray();
 
     private static OnboardSettings CreateValidProductionSettings(
-        WireToGateSettings? wireToGate = null) =>
+        WireToGateSettings? wireToGate = null,
+        VehicleSafetySettings? vehicleSafety = null) =>
         new()
         {
             Environment = "Production",
@@ -140,6 +171,13 @@ public sealed class ConfigurationTests
                 OnboardInstanceId = "77a9a4b8-7b1c-4f2b-92bd-3872f5871158",
                 OnboardBuildCommit = "a6f05fbced15316a2cc20cd327f80c5c5ee1821e",
                 ServerCertificateSha256 = new string('a', 64)
+            },
+            VehicleSafety = vehicleSafety ?? new VehicleSafetySettings
+            {
+                Enabled = true,
+                Endpoint = "https://control.internal/api/onboard/v1/vehicle-safety",
+                CredentialEnvironmentVariable = "CONTROL_SERVER_ONBOARD_CREDENTIAL",
+                ExpectedVehicleKey = "AGV-8005-27"
             },
             IoModule = new IoModuleSettings { Host = "io-module.internal" }
         };
