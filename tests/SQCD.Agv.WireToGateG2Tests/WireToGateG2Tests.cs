@@ -1,9 +1,12 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using SQCD.Agv.Application;
 using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
+using SQCD.Agv.Wpf;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
@@ -656,6 +659,80 @@ public sealed class WireToGateG2Tests
         Assert.Empty(server.StaleGenerationRejections);
     }
 
+    [Fact]
+    public async Task FailedThenStoppedProviderRefreshFlowsThroughBusinessServiceToReady()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            RequireSafeSafetyForReadiness = true,
+            SendReadinessAfterRecoveryAck = true,
+            SendReadinessAfterSafetyStateChangedAck = true
+        };
+        SequenceSafetyHandler handler = new();
+        using HttpClient httpClient = new(handler);
+        using ControlServerVehicleSafetySignalProvider provider = new(
+            new VehicleSafetySettings
+            {
+                Enabled = true,
+                Endpoint = "https://control.test/api/onboard/v1/vehicle-safety",
+                CredentialEnvironmentVariable = CredentialVariable,
+                ExpectedVehicleKey = "AGV-8005-01",
+                MaximumEvidenceAgeMs = 5_000,
+                PollIntervalMs = 1_000,
+                RequestTimeoutMs = 2_000
+            },
+            httpClient,
+            startPolling: false,
+            credentialReader: () => "g2-test-credential");
+        FakeIoModuleClient io = new();
+        NullLogger logger = new();
+        await using WireToGateSessionService session = new(
+            CreateSessionOptions(server),
+            io,
+            new SqliteWireToGateJournal(NewJournalPath()),
+            logger,
+            new SystemClock(),
+            () => provider.Read().IsStoppedAndFresh(
+                DateTimeOffset.UtcNow,
+                TimeSpan.FromSeconds(5)));
+        await using WireToGateBusinessService business = new(
+            session,
+            io,
+            logger,
+            new SystemClock(),
+            () => provider.Read().MotionState == VehicleMotionState.Stopped,
+            new WireToGateSlotOperationExecutorOptions(
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(2),
+                TimeSpan.FromMilliseconds(10),
+                TimeSpan.FromSeconds(30)),
+            "W2G_G2_OPERATOR_ID",
+            provider,
+            TimeSpan.FromSeconds(5));
+
+        await provider.RefreshAsync(testToken);
+        Assert.Equal(VehicleMotionState.Unknown, provider.Read().MotionState);
+        business.Start();
+        WireToGateSessionSnapshot blocked = await session.Client.ConnectAndRecoverAsync(testToken);
+        Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, blocked.Readiness);
+        await WaitUntilAsync(() => server.AcceptedSafetyStateChangedCount == 1, testToken);
+
+        handler.ReturnStopped = true;
+        await provider.RefreshAsync(testToken);
+        await WaitUntilAsync(
+            () => session.Current.Readiness == WireToGateSessionReadiness.Ready,
+            testToken);
+
+        Assert.Equal(VehicleMotionState.Stopped, provider.Read().MotionState);
+        Assert.Equal(2, server.AcceptedSafetyStateChangedCount);
+        Assert.True(session.Current.SafetyStateVersion >= 3);
+        Assert.Empty(session.Current.ReasonCodes);
+        Assert.Equal(0, io.UnlockCount);
+        Assert.Empty(server.StaleGenerationRejections);
+    }
+
     private static string[] InboundMessageTypes(FakeControlServer server) =>
         server.Received
             .Select(item => item.MessageType)
@@ -671,7 +748,25 @@ public sealed class WireToGateG2Tests
         string? onboardInstanceId = null,
         Func<bool>? vehicleStoppedProvider = null)
     {
-        WireToGateSessionOptions options = new(
+        WireToGateSessionOptions options = CreateSessionOptions(
+            server,
+            capability,
+            safety,
+            onboardInstanceId);
+        return new WireToGateSessionClient(
+            options,
+            io,
+            new SqliteWireToGateJournal(journalPath),
+            new SystemClock(),
+            vehicleStoppedProvider ?? (() => true));
+    }
+
+    private static WireToGateSessionOptions CreateSessionOptions(
+        FakeControlServer server,
+        long capability = 1,
+        long safety = 1,
+        string? onboardInstanceId = null) =>
+        new(
             "127.0.0.1",
             server.Port,
             "AGV-8005-01",
@@ -687,13 +782,6 @@ public sealed class WireToGateG2Tests
             "eight-slot-v1",
             "eight-slot-modbus-v1",
             SupportsBatchUnlock: false);
-        return new WireToGateSessionClient(
-            options,
-            io,
-            new SqliteWireToGateJournal(journalPath),
-            new SystemClock(),
-            vehicleStoppedProvider ?? (() => true));
-    }
 
     private static string NewJournalPath()
     {
@@ -709,6 +797,52 @@ public sealed class WireToGateG2Tests
         while (!predicate())
         {
             await Task.Delay(5, timeout.Token);
+        }
+    }
+
+    private sealed class SequenceSafetyHandler : HttpMessageHandler
+    {
+        public bool ReturnStopped { get; set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            _ = request;
+            _ = cancellationToken;
+            if (!ReturnStopped)
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = JsonContent.Create(new
+                {
+                    vehicleKey = "AGV-8005-01",
+                    motionState = "STOPPED",
+                    observedAt = DateTimeOffset.UtcNow,
+                    source = "CONTROL_SERVER",
+                    reasonCodes = Array.Empty<string>()
+                })
+            });
+        }
+    }
+
+    private sealed class NullLogger : IAppLogger
+    {
+        public event EventHandler<LogEntryEventArgs>? EntryWritten;
+
+        public void Write(
+            LogSeverity severity,
+            string source,
+            string message,
+            Exception? exception = null)
+        {
+            _ = severity;
+            _ = source;
+            _ = message;
+            _ = exception;
         }
     }
 }

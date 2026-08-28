@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -17,5 +17,6 @@
     <ProjectReference Include="../../src/SQCD.Agv.Contracts/SQCD.Agv.Contracts.csproj" />
     <ProjectReference Include="../../src/SQCD.Agv.Core/SQCD.Agv.Core.csproj" />
     <ProjectReference Include="../../src/SQCD.Agv.Infrastructure/SQCD.Agv.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/SQCD.Agv.Wpf/SQCD.Agv.Wpf.csproj" />
   </ItemGroup>
 </Project>
