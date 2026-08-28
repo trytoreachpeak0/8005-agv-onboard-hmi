@@ -249,6 +249,66 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Fact]
+    public async Task DelayedFirstRefreshNotifiesStoppedWithoutBlockingSnapshotReads()
+    {
+        TaskCompletionSource<bool> releaseResponse = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        StubHandler handler = new(async (_, cancellationToken) =>
+        {
+            await releaseResponse.Task.WaitAsync(cancellationToken);
+            return JsonResponse(new
+            {
+                vehicleKey = VehicleKey,
+                motionState = "STOPPED",
+                observedAt = Now,
+                source = "CONTROL_SERVER",
+                reasonCodes = StoppedReasonCodes
+            });
+        });
+        using HttpClient client = new(handler);
+        using ControlServerVehicleSafetySignalProvider provider = new(
+            CreateSettings(requestTimeoutMs: 2_000),
+            client,
+            new FixedTimeProvider(Now),
+            startPolling: true,
+            credentialReader: () => Credential);
+        TaskCompletionSource<VehicleSafetySignal> changed = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        provider.SignalChanged += (_, args) => changed.TrySetResult(args.Value);
+
+        Task firstRefresh = provider.WaitForFirstRefreshAsync();
+        Assert.Equal(VehicleMotionState.Unknown, provider.Read().MotionState);
+        Assert.False(firstRefresh.IsCompleted);
+
+        releaseResponse.SetResult(true);
+        await firstRefresh;
+        VehicleSafetySignal signal = await changed.Task.WaitAsync(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(VehicleMotionState.Stopped, signal.MotionState);
+        Assert.True(signal.IsStoppedAndFresh(Now, TimeSpan.FromSeconds(5)));
+        Assert.Equal(1, handler.RequestCount);
+    }
+
+    [Fact]
+    public async Task FailedFirstRefreshCompletesStartupWaitAsUnknown()
+    {
+        StubHandler handler = new((_, _) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)));
+        using HttpClient client = new(handler);
+        using ControlServerVehicleSafetySignalProvider provider = new(
+            CreateSettings(),
+            client,
+            new FixedTimeProvider(Now),
+            startPolling: true,
+            credentialReader: () => Credential);
+
+        await provider.WaitForFirstRefreshAsync().WaitAsync(TimeSpan.FromSeconds(1));
+
+        VehicleSafetySignal signal = provider.Read();
+        Assert.Equal(VehicleMotionState.Unknown, signal.MotionState);
+        Assert.Contains("HTTP_503", signal.EffectiveReasonCodes);
+    }
+
+    [Fact]
     public async Task ReadDoesNotWaitForAnInFlightNetworkRequest()
     {
         TaskCompletionSource<bool> requestStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -49,6 +49,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     private CancellationTokenSource? _receiveStopping;
     private TaskCompletionSource<Exception>? _receiveFailure;
     private string? _journalEpoch;
+    private long _acceptedCapabilityVersion;
+    private long _acceptedSafetyStateVersion;
     private bool _disposed;
 
     public WireToGateSessionClient(
@@ -64,6 +66,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         _clock = clock;
         _vehicleStoppedProvider = vehicleStoppedProvider;
         ValidateOptions(options);
+        _acceptedCapabilityVersion = options.CapabilityVersion;
+        _acceptedSafetyStateVersion = options.SafetyStateVersion;
         _current = new WireToGateSessionSnapshot(
             false,
             null,
@@ -180,7 +184,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 safety),
             cancellationToken);
 
-    public Task<string> SendSafetyStateChangedAsync(
+    public async Task<string> SendSafetyStateChangedAsync(
         long safetyStateVersion,
         DateTimeOffset observedAt,
         WireToGateSafetySummaryPayload safety,
@@ -204,7 +208,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         // runtime is still using the same server baseline version.
         string deduplicationKey =
             $"safety-state-changed:{journalEpoch}:{safetyStateVersion}:{observedAt.ToUniversalTime():O}";
-        return SendDurableAsync(
+        string messageId = await SendDurableCoreAsync(
             "SafetyStateChanged",
             deduplicationKey,
             StableUuid(deduplicationKey),
@@ -214,7 +218,16 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 observedAt.ToUniversalTime(),
                 safety,
                 sortedSlots),
-            cancellationToken);
+            allowRecoveryRequired: true,
+            cancellationToken).ConfigureAwait(false);
+        AdvanceSafetyStateVersion(safetyStateVersion);
+        WireToGateSessionSnapshot current = Current;
+        Publish(
+            current.Connected,
+            current.SessionGeneration,
+            current.Readiness,
+            current.ReasonCodes);
+        return messageId;
     }
 
     public async Task<WireToGateSessionSnapshot> ConnectAndRecoverAsync(
@@ -314,13 +327,14 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     cancellationToken).ConfigureAwait(false);
 
                 ProtocolSafetySummary safety = CreateSafetySummary(io, slotStates);
+                long safetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
                 await SendSnapshotAndRequireAckAsync(
                     "SafetyStateSnapshot",
                     "SAFETY_STATE",
-                    _options.SafetyStateVersion,
+                    safetyStateVersion,
                     generation,
                     new SafetyStateSnapshotPayload(
-                        _options.SafetyStateVersion,
+                        safetyStateVersion,
                         _clock.Now.ToUniversalTime(),
                         safety,
                         slotStates),
@@ -332,27 +346,9 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             WireToGateEnvelope readinessEnvelope = await ReadEnvelopeAsync(generation, cancellationToken)
                 .ConfigureAwait(false);
             ThrowIfProtocolProblem(readinessEnvelope);
-            WireToGateProtocolSerializer.RequireMessage(readinessEnvelope, "SessionReadiness");
-            if (readinessEnvelope.CorrelationId is not null)
-            {
-                throw new InvalidDataException("CORRELATION_INVALID");
-            }
-
-            SessionReadinessPayload readiness = WireToGateProtocolSerializer
-                .DeserializePayload<SessionReadinessPayload>(readinessEnvelope);
-            if (readiness.AcceptedCapabilityVersion != _options.CapabilityVersion
-                || readiness.AcceptedSafetyStateVersion != _options.SafetyStateVersion)
-            {
-                throw new InvalidDataException("HANDSHAKE_SEQUENCE_INVALID");
-            }
-
-            WireToGateSessionReadiness mappedReadiness = readiness.Readiness switch
-            {
-                "READY" => WireToGateSessionReadiness.Ready,
-                "RECOVERY_REQUIRED" => WireToGateSessionReadiness.RecoveryRequired,
-                _ => throw new InvalidDataException("SessionReadiness.readiness无效。")
-            };
-            Publish(true, generation, mappedReadiness, readiness.ReasonCodes);
+            ApplySessionReadiness(
+                readinessEnvelope,
+                requireExactConfiguredBaseline: !resumingInterruptedRecovery);
             StartReceiveLoop(generation);
             return Current;
         }
@@ -421,13 +417,30 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// This is the common path for operation progress/results and safety results;
     /// reconnect recovery replays the same outbox row automatically.
     /// </summary>
-    public async Task<string> SendDurableAsync(
+    public Task<string> SendDurableAsync(
         string messageType,
         string deduplicationKey,
         string messageId,
         string? correlationId,
         object payload,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        SendDurableCoreAsync(
+            messageType,
+            deduplicationKey,
+            messageId,
+            correlationId,
+            payload,
+            allowRecoveryRequired: false,
+            cancellationToken);
+
+    private async Task<string> SendDurableCoreAsync(
+        string messageType,
+        string deduplicationKey,
+        string messageId,
+        string? correlationId,
+        object payload,
+        bool allowRecoveryRequired,
+        CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(messageType);
@@ -435,9 +448,12 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         RequireUuid(messageId, nameof(messageId));
 
         WireToGateSessionSnapshot current = Current;
+        bool readinessAllowed = current.Readiness == WireToGateSessionReadiness.Ready
+            || allowRecoveryRequired
+                && current.Readiness == WireToGateSessionReadiness.RecoveryRequired;
         if (!current.Connected
             || current.SessionGeneration is null
-            || current.Readiness != WireToGateSessionReadiness.Ready)
+            || !readinessAllowed)
         {
             throw new InvalidOperationException("WIRE_TO_GATE_NOT_READY");
         }
@@ -713,6 +729,12 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             rebound.MessageId,
             rebound.ContentSha256,
             cancellationToken).ConfigureAwait(false);
+        if (string.Equals(rebound.MessageType, "SafetyStateChanged", StringComparison.Ordinal))
+        {
+            SafetyStateChangedPayload payload = WireToGateProtocolSerializer
+                .DeserializePayload<SafetyStateChangedPayload>(storedEnvelope);
+            AdvanceSafetyStateVersion(payload.SafetyStateVersion);
+        }
     }
 
     private async Task<WireToGateDurableMessage> RebindDurableMessageForSessionAsync(
@@ -782,6 +804,12 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 {
                     await ApplyJourneySnapshotAsync(envelope, generation, stopping.Token)
                         .ConfigureAwait(false);
+                    continue;
+                }
+
+                if (string.Equals(envelope.MessageType, "SessionReadiness", StringComparison.Ordinal))
+                {
+                    ApplySessionReadiness(envelope, requireExactConfiguredBaseline: false);
                     continue;
                 }
 
@@ -1720,11 +1748,61 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             generation,
             readiness,
             reasonCodes,
-            _options.CapabilityVersion,
-            _options.SafetyStateVersion,
+            Volatile.Read(ref _acceptedCapabilityVersion),
+            Volatile.Read(ref _acceptedSafetyStateVersion),
             _clock.Now);
         Volatile.Write(ref _current, snapshot);
         StateChanged?.Invoke(this, new ValueChangedEventArgs<WireToGateSessionSnapshot>(snapshot));
+    }
+
+    private void ApplySessionReadiness(
+        WireToGateEnvelope envelope,
+        bool requireExactConfiguredBaseline)
+    {
+        WireToGateProtocolSerializer.RequireMessage(envelope, "SessionReadiness");
+        if (envelope.CorrelationId is not null)
+        {
+            throw new InvalidDataException("CORRELATION_INVALID");
+        }
+
+        SessionReadinessPayload readiness = WireToGateProtocolSerializer
+            .DeserializePayload<SessionReadinessPayload>(envelope);
+        long currentSafetyVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
+        bool invalidVersion = readiness.AcceptedCapabilityVersion != _options.CapabilityVersion
+            || readiness.AcceptedSafetyStateVersion < currentSafetyVersion
+            || requireExactConfiguredBaseline
+                && readiness.AcceptedSafetyStateVersion != currentSafetyVersion;
+        if (invalidVersion)
+        {
+            throw new InvalidDataException("HANDSHAKE_SEQUENCE_INVALID");
+        }
+
+        WireToGateSessionReadiness mappedReadiness = readiness.Readiness switch
+        {
+            "READY" => WireToGateSessionReadiness.Ready,
+            "RECOVERY_REQUIRED" => WireToGateSessionReadiness.RecoveryRequired,
+            _ => throw new InvalidDataException("SessionReadiness.readiness无效。")
+        };
+        AdvanceSafetyStateVersion(readiness.AcceptedSafetyStateVersion);
+        Publish(true, envelope.SessionGeneration, mappedReadiness, readiness.ReasonCodes);
+    }
+
+    private void AdvanceSafetyStateVersion(long safetyStateVersion)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(safetyStateVersion);
+        long current;
+        do
+        {
+            current = Volatile.Read(ref _acceptedSafetyStateVersion);
+            if (safetyStateVersion <= current)
+            {
+                return;
+            }
+        }
+        while (Interlocked.CompareExchange(
+            ref _acceptedSafetyStateVersion,
+            safetyStateVersion,
+            current) != current);
     }
 
     private static void ThrowIfProtocolProblem(WireToGateEnvelope envelope)

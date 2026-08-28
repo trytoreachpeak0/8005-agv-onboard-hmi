@@ -10,7 +10,7 @@ namespace SQCD.Agv.Infrastructure;
 /// only performs a volatile reference read, so a stale or failed request can
 /// never leave the previous STOPPED result in force.
 /// </summary>
-public sealed class ControlServerVehicleSafetySignalProvider : IVehicleSafetySignalProvider, IDisposable
+public sealed class ControlServerVehicleSafetySignalProvider : IObservableVehicleSafetySignalProvider, IDisposable
 {
     private const string ProviderSource = "CONTROL_SERVER_VEHICLE_SAFETY";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
@@ -27,6 +27,8 @@ public sealed class ControlServerVehicleSafetySignalProvider : IVehicleSafetySig
     private readonly Func<string?> _credentialReader;
     private readonly Uri? _endpoint;
     private readonly CancellationTokenSource _stopping = new();
+    private readonly TaskCompletionSource<bool> _firstRefresh = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
     private readonly Task? _pollingTask;
     private VehicleSafetySignal _current;
     private bool _disposed;
@@ -49,7 +51,11 @@ public sealed class ControlServerVehicleSafetySignalProvider : IVehicleSafetySig
             : null;
         _current = UnknownSignal("INITIALIZING");
 
-        if (_settings.Enabled && startPolling)
+        if (!_settings.Enabled)
+        {
+            Publish(UnknownSignal("DISABLED"));
+        }
+        else if (startPolling)
         {
             _pollingTask = PollLoopAsync();
         }
@@ -59,6 +65,16 @@ public sealed class ControlServerVehicleSafetySignalProvider : IVehicleSafetySig
     /// Gets the latest safety snapshot.  This method never performs network IO.
     /// </summary>
     public VehicleSafetySignal Read() => Volatile.Read(ref _current);
+
+    public event EventHandler<ValueChangedEventArgs<VehicleSafetySignal>>? SignalChanged;
+
+    /// <summary>
+    /// Waits until the first HTTPS refresh attempt has produced either a trusted
+    /// projection or an explicit fail-closed UNKNOWN result.  This is asynchronous
+    /// and never turns an unavailable/invalid response into STOPPED.
+    /// </summary>
+    public Task WaitForFirstRefreshAsync(CancellationToken cancellationToken = default) =>
+        _firstRefresh.Task.WaitAsync(cancellationToken);
 
     /// <summary>
     /// Runs one request immediately.  Production uses the background loop;
@@ -324,7 +340,20 @@ public sealed class ControlServerVehicleSafetySignalProvider : IVehicleSafetySig
             null,
             [reasonCode]);
 
-    private void Publish(VehicleSafetySignal signal) => Volatile.Write(ref _current, signal);
+    private void Publish(VehicleSafetySignal signal)
+    {
+        Volatile.Write(ref _current, signal);
+        _firstRefresh.TrySetResult(true);
+        try
+        {
+            SignalChanged?.Invoke(this, new ValueChangedEventArgs<VehicleSafetySignal>(signal));
+        }
+        catch
+        {
+            // A consumer notification failure cannot be allowed to recurse into
+            // RefreshAsync's fail-closed exception path or stop future polling.
+        }
+    }
 
     private static HttpClient CreateTrustedHttpClient()
     {

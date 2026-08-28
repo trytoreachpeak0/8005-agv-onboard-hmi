@@ -609,6 +609,53 @@ public sealed class WireToGateG2Tests
         Assert.Empty(await journal.ReadUnacknowledgedOutgoingAsync(testToken));
     }
 
+    [Fact]
+    public async Task DelayedStoppedSafetyRevisionRecoversSessionToReadyWithoutIoSideEffects()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            RequireSafeSafetyForReadiness = true,
+            SendReadinessAfterRecoveryAck = true,
+            SendReadinessAfterSafetyStateChangedAck = true
+        };
+        bool vehicleStopped = false;
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionClient client = CreateClient(
+            server,
+            io,
+            NewJournalPath(),
+            vehicleStoppedProvider: () => vehicleStopped);
+
+        WireToGateSessionSnapshot blocked = await client.ConnectAndRecoverAsync(testToken);
+
+        Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, blocked.Readiness);
+        Assert.Contains("DEPARTURE_SAFETY_NOT_READY", blocked.ReasonCodes);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendOperationProgressAsync(
+            "44444444-4444-4444-4444-444444444444",
+            "PREPARING",
+            [],
+            [],
+            cancellationToken: testToken));
+
+        vehicleStopped = true;
+        await client.SendSafetyStateChangedAsync(
+            2,
+            DateTimeOffset.UtcNow,
+            new WireToGateSafetySummaryPayload(true, true, true, true, false, []),
+            [1, 2, 3, 4, 5, 6, 7, 8],
+            testToken);
+        await WaitUntilAsync(
+            () => client.Current.Readiness == WireToGateSessionReadiness.Ready,
+            testToken);
+
+        Assert.Equal(2, client.Current.SafetyStateVersion);
+        Assert.Empty(client.Current.ReasonCodes);
+        Assert.Equal(1, server.AcceptedSafetyStateChangedCount);
+        Assert.Equal(0, io.UnlockCount);
+        Assert.Empty(server.StaleGenerationRejections);
+    }
+
     private static string[] InboundMessageTypes(FakeControlServer server) =>
         server.Received
             .Select(item => item.MessageType)
@@ -621,7 +668,8 @@ public sealed class WireToGateG2Tests
         string journalPath,
         long capability = 1,
         long safety = 1,
-        string? onboardInstanceId = null)
+        string? onboardInstanceId = null,
+        Func<bool>? vehicleStoppedProvider = null)
     {
         WireToGateSessionOptions options = new(
             "127.0.0.1",
@@ -644,7 +692,7 @@ public sealed class WireToGateG2Tests
             io,
             new SqliteWireToGateJournal(journalPath),
             new SystemClock(),
-            () => true);
+            vehicleStoppedProvider ?? (() => true));
     }
 
     private static string NewJournalPath()

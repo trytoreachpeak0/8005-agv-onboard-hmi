@@ -42,6 +42,16 @@ public interface IVehicleSafetySignalProvider
 }
 
 /// <summary>
+/// Optional notification contract for providers whose trusted projection is
+/// refreshed asynchronously.  Consumers still read the immutable snapshot and
+/// must independently apply freshness/fail-closed checks.
+/// </summary>
+public interface IObservableVehicleSafetySignalProvider : IVehicleSafetySignalProvider
+{
+    public event EventHandler<ValueChangedEventArgs<VehicleSafetySignal>>? SignalChanged;
+}
+
+/// <summary>
 /// Safe default used until a trusted vehicle stop/park signal is wired.
 /// Unknown is intentionally different from stopped so it cannot authorize IO.
 /// </summary>
@@ -54,7 +64,7 @@ public sealed class UnavailableVehicleSafetySignalProvider : IVehicleSafetySigna
 /// <summary>
 /// Deterministic provider for local tests and recorded signal playback.
 /// </summary>
-public sealed class RecordedVehicleSafetySignalProvider : IVehicleSafetySignalProvider
+public sealed class RecordedVehicleSafetySignalProvider : IObservableVehicleSafetySignalProvider
 {
     private VehicleSafetySignal _current;
 
@@ -70,6 +80,8 @@ public sealed class RecordedVehicleSafetySignalProvider : IVehicleSafetySignalPr
 
     public VehicleSafetySignal Read() => Volatile.Read(ref _current);
 
+    public event EventHandler<ValueChangedEventArgs<VehicleSafetySignal>>? SignalChanged;
+
     public void Set(
         VehicleMotionState motionState,
         DateTimeOffset observedAt,
@@ -81,8 +93,8 @@ public sealed class RecordedVehicleSafetySignalProvider : IVehicleSafetySignalPr
         }
 
         ArgumentException.ThrowIfNullOrWhiteSpace(source);
-        Volatile.Write(
-            ref _current,
-            new VehicleSafetySignal(motionState, observedAt, source));
+        VehicleSafetySignal signal = new(motionState, observedAt, source);
+        Volatile.Write(ref _current, signal);
+        SignalChanged?.Invoke(this, new ValueChangedEventArgs<VehicleSafetySignal>(signal));
     }
 }

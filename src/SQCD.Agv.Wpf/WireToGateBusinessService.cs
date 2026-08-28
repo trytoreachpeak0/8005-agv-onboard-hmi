@@ -22,6 +22,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
     private readonly IClock _clock;
     private readonly Func<bool> _vehicleStoppedProvider;
     private readonly IVehicleSafetySignalProvider _vehicleSafetySignalProvider;
+    private readonly IObservableVehicleSafetySignalProvider? _observableVehicleSafetySignalProvider;
     private readonly string _operatorIdEnvironmentVariable;
     private readonly TimeSpan _ioSnapshotMaxAge;
     private readonly TimeSpan _vehicleSafetyMaxAge;
@@ -57,6 +58,8 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         _vehicleStoppedProvider = vehicleStoppedProvider;
         _vehicleSafetySignalProvider = vehicleSafetySignalProvider
             ?? new DelegateVehicleSafetySignalProvider(vehicleStoppedProvider);
+        _observableVehicleSafetySignalProvider = _vehicleSafetySignalProvider
+            as IObservableVehicleSafetySignalProvider;
         _operatorIdEnvironmentVariable = operatorIdEnvironmentVariable;
         _ioSnapshotMaxAge = executorOptions.IoSnapshotMaxAge;
         _vehicleSafetyMaxAge = vehicleSafetyMaxAge ?? _ioSnapshotMaxAge;
@@ -130,6 +133,10 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         _session.ServerCommandReceived += OnServerCommandReceived;
         _session.StateChanged += OnSessionStateChanged;
         _ioModule.SnapshotChanged += OnIoSnapshotChanged;
+        if (_observableVehicleSafetySignalProvider is not null)
+        {
+            _observableVehicleSafetySignalProvider.SignalChanged += OnVehicleSafetySignalChanged;
+        }
         TrackTask(QueueSafetyStateChangeAsync(_ioModule.CurrentSnapshot, _stopping.Token));
     }
 
@@ -147,6 +154,10 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
             _session.ServerCommandReceived -= OnServerCommandReceived;
             _session.StateChanged -= OnSessionStateChanged;
             _ioModule.SnapshotChanged -= OnIoSnapshotChanged;
+            if (_observableVehicleSafetySignalProvider is not null)
+            {
+                _observableVehicleSafetySignalProvider.SignalChanged -= OnVehicleSafetySignalChanged;
+            }
             _started = false;
         }
 
@@ -207,7 +218,8 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         {
             Volatile.Write(ref _currentEntryRequest, null);
         }
-        else
+
+        if (CanPublishSafetyRevision(args.Value))
         {
             TrackTask(QueueSafetyStateChangeAsync(_ioModule.CurrentSnapshot, _stopping.Token));
         }
@@ -215,6 +227,14 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
 
     private void OnIoSnapshotChanged(object? sender, ValueChangedEventArgs<IoSnapshot> args) =>
         TrackTask(QueueSafetyStateChangeAsync(args.Value, _stopping.Token));
+
+    private void OnVehicleSafetySignalChanged(
+        object? sender,
+        ValueChangedEventArgs<VehicleSafetySignal> args)
+    {
+        _ = args;
+        TrackTask(QueueSafetyStateChangeAsync(_ioModule.CurrentSnapshot, _stopping.Token));
+    }
 
     private void TrackTask(Task task)
     {
@@ -240,7 +260,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         IoSnapshot snapshot,
         CancellationToken cancellationToken)
     {
-        if (_disposed || _session.Current.Readiness != WireToGateSessionReadiness.Ready)
+        if (_disposed || !CanPublishSafetyRevision(_session.Current))
         {
             return;
         }
@@ -248,7 +268,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         await _safetySendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (_disposed || _session.Current.Readiness != WireToGateSessionReadiness.Ready)
+            if (_disposed || !CanPublishSafetyRevision(_session.Current))
             {
                 return;
             }
@@ -291,6 +311,12 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
             _safetySendGate.Release();
         }
     }
+
+    private static bool CanPublishSafetyRevision(WireToGateSessionSnapshot session) =>
+        session.Connected
+        && session.SessionGeneration is not null
+        && session.Readiness is WireToGateSessionReadiness.Ready
+            or WireToGateSessionReadiness.RecoveryRequired;
 
     private async Task HandleCommandAsync(
         WireToGateServerCommand command,

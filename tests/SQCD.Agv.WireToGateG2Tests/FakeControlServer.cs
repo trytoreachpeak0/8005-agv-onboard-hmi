@@ -23,6 +23,7 @@ public sealed class FakeControlServer : IAsyncDisposable
     private string? _lastAcceptedInstanceId;
     private long _acceptedCapabilityVersion;
     private long _acceptedSafetyStateVersion;
+    private bool _latestSafetyDepartureSafe;
     private int _demandSnapshotSendCount;
 
     public FakeControlServer(IPAddress address)
@@ -44,6 +45,8 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool SendReadinessAfterRecoveryAck { get; set; }
 
     public bool SendReadinessAfterSafetyStateChangedAck { get; set; }
+
+    public bool RequireSafeSafetyForReadiness { get; set; }
 
     public bool SendJourneySnapshotsAfterRecovery { get; set; }
 
@@ -428,6 +431,19 @@ public sealed class FakeControlServer : IAsyncDisposable
             return;
         }
 
+        if (messageType == "SafetyStateSnapshot")
+        {
+            bool departureSafe = snapshot
+                .GetProperty("payload")
+                .GetProperty("safety")
+                .GetProperty("departureSafe")
+                .GetBoolean();
+            lock (_sync)
+            {
+                _latestSafetyDepartureSafe = departureSafe;
+            }
+        }
+
         var ackPayload = new
         {
             snapshotMessageId = snapshot.GetProperty("messageId").GetString()!,
@@ -507,7 +523,10 @@ public sealed class FakeControlServer : IAsyncDisposable
     private async Task HandleSafetyStateChangedAsync(ConnectionContext context, JsonElement message)
     {
         string messageId = message.GetProperty("messageId").GetString()!;
-        string payloadJson = message.GetProperty("payload").GetRawText();
+        JsonElement payload = message.GetProperty("payload");
+        string payloadJson = payload.GetRawText();
+        long safetyStateVersion = payload.GetProperty("safetyStateVersion").GetInt64();
+        bool departureSafe = payload.GetProperty("safety").GetProperty("departureSafe").GetBoolean();
         bool conflict;
         lock (_sync)
         {
@@ -527,6 +546,13 @@ public sealed class FakeControlServer : IAsyncDisposable
                 "SafetyStateChanged",
                 "MESSAGE_ID_CONTENT_CONFLICT")).ConfigureAwait(false);
             return;
+        }
+
+        context.SafetyStateVersion = Math.Max(context.SafetyStateVersion, safetyStateVersion);
+        lock (_sync)
+        {
+            _acceptedSafetyStateVersion = Math.Max(_acceptedSafetyStateVersion, safetyStateVersion);
+            _latestSafetyDepartureSafe = departureSafe;
         }
 
         // The inbox accepts the work first.  Closing here models a DurableAck
@@ -559,20 +585,28 @@ public sealed class FakeControlServer : IAsyncDisposable
             DateTimeOffset.UtcNow,
             payload);
 
-    private static WireToGateEnvelope CreateSessionReadiness(ConnectionContext context) =>
-        CreateEnvelope(
+    private WireToGateEnvelope CreateSessionReadiness(ConnectionContext context)
+    {
+        bool ready;
+        lock (_sync)
+        {
+            ready = !RequireSafeSafetyForReadiness || _latestSafetyDepartureSafe;
+        }
+
+        return CreateEnvelope(
             context,
             "SessionReadiness",
             correlationId: null,
             new
             {
-                readiness = "READY",
+                readiness = ready ? "READY" : "RECOVERY_REQUIRED",
                 decidedAt = DateTimeOffset.UtcNow,
-                reasonCodes = Array.Empty<string>(),
+                reasonCodes = ready ? Array.Empty<string>() : ["DEPARTURE_SAFETY_NOT_READY"],
                 acceptedCapabilityVersion = Math.Max(context.CapabilityVersion, context.AcceptedCapabilityVersion),
                 acceptedSafetyStateVersion = Math.Max(context.SafetyStateVersion, context.AcceptedSafetyStateVersion),
                 vehicleBusinessStateRevision = 0
             });
+    }
 
     private static WireToGateEnvelope CreateHeartbeatAck(ConnectionContext context, JsonElement heartbeat)
     {

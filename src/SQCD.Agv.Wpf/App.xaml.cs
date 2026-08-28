@@ -148,6 +148,14 @@ public partial class App : System.Windows.Application, IDisposable
             DispatcherUnhandledException += OnDispatcherUnhandledException;
             window.Show();
             await viewModel.InitializeAsync().ConfigureAwait(true);
+            if (settings.WireToGate.Enabled)
+            {
+                // Await the first asynchronous projection attempt before the
+                // handshake snapshot.  A failed attempt still completes with
+                // UNKNOWN and therefore remains fail-closed; it is never
+                // promoted to STOPPED merely to make startup succeed.
+                await vehicleSafetySignalProvider.WaitForFirstRefreshAsync().ConfigureAwait(true);
+            }
             _wireToGate?.Start();
         }
         catch (Exception exception) when (
