@@ -11,6 +11,8 @@ public sealed class FakeControlServer : IAsyncDisposable
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
     private static readonly int[] SingleSlot = [1];
+    private static readonly DateTimeOffset StableJourneyObservedAt =
+        new(2026, 8, 29, 6, 30, 0, TimeSpan.Zero);
     private readonly TcpListener _listener;
     private readonly CancellationTokenSource _stopping = new();
     private readonly Task _acceptLoop;
@@ -56,6 +58,8 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool SendJourneyRevisionConflict { get; set; }
 
+    public bool ReplayJourneySnapshotsWithStableIdentity { get; set; }
+
     public bool SendSlotOperationCommandAfterRecovery { get; set; }
 
     public long InitialAcceptedCapabilityVersion { get; set; }
@@ -76,6 +80,12 @@ public sealed class FakeControlServer : IAsyncDisposable
     public IReadOnlyList<(int Connection, string MessageType)> Received { get; private set; } = [];
 
     public IReadOnlyList<(int Connection, string MessageType, string MessageId, string WireLine)> ReceivedEnvelopes
+    {
+        get;
+        private set;
+    } = [];
+
+    public IReadOnlyList<(int Connection, string MessageType, string MessageId, string WireLine)> SentJourneyEnvelopes
     {
         get;
         private set;
@@ -102,6 +112,7 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     private sealed class ConnectionContext
     {
+        public required int ConnectionIndex;
         public required TcpClient Client;
         public required StreamReader Reader;
         public required StreamWriter Writer;
@@ -149,6 +160,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             NetworkStream stream = client.GetStream();
             ConnectionContext context = new()
             {
+                ConnectionIndex = connectionIndex,
                 Client = client,
                 Reader = new StreamReader(stream, new UTF8Encoding(false, true), false, 4_096, leaveOpen: true),
                 Writer = new StreamWriter(stream, new UTF8Encoding(false), 4_096, leaveOpen: true)
@@ -665,10 +677,12 @@ public sealed class FakeControlServer : IAsyncDisposable
     {
         string demandId = "11111111-1111-1111-1111-111111111111";
         string movementLegId = "22222222-2222-2222-2222-222222222222";
-        await WriteEnvelopeAsync(context, CreateEnvelope(
+        DateTimeOffset observedAt = ReplayJourneySnapshotsWithStableIdentity
+            ? StableJourneyObservedAt
+            : DateTimeOffset.UtcNow;
+        await WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(
             context,
             "VehicleBusinessStateSnapshot",
-            null,
             new
             {
                 vehicleBusinessStateRevision = 1,
@@ -676,12 +690,11 @@ public sealed class FakeControlServer : IAsyncDisposable
                 manualChargingHold = false,
                 batteryState = "SUFFICIENT",
                 blockingFacts = Array.Empty<object>(),
-                observedAt = DateTimeOffset.UtcNow
+                observedAt
             })).ConfigureAwait(false);
-        await WriteEnvelopeAsync(context, CreateEnvelope(
+        await WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(
             context,
             "CurrentStopWorklistSnapshot",
-            null,
             new
             {
                 stationId = "ST-01",
@@ -700,10 +713,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                     }
                 }
             })).ConfigureAwait(false);
-        await WriteEnvelopeAsync(context, CreateEnvelope(
+        await WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(
             context,
             "UpcomingStopPlanSnapshot",
-            null,
             new
             {
                 planRevision = 1,
@@ -724,10 +736,9 @@ public sealed class FakeControlServer : IAsyncDisposable
 
         if (SendJourneyRevisionConflict)
         {
-            await WriteEnvelopeAsync(context, CreateEnvelope(
+            await WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(
                 context,
                 "CurrentStopWorklistSnapshot",
-                null,
                 new
                 {
                     stationId = "ST-01",
@@ -747,6 +758,45 @@ public sealed class FakeControlServer : IAsyncDisposable
                     }
                 })).ConfigureAwait(false);
         }
+    }
+
+    private WireToGateEnvelope CreateJourneyEnvelope(
+        ConnectionContext context,
+        string messageType,
+        object payload)
+    {
+        string messageId = ReplayJourneySnapshotsWithStableIdentity
+            ? messageType switch
+            {
+                "VehicleBusinessStateSnapshot" => "00000000-0000-4000-8000-000000009101",
+                "CurrentStopWorklistSnapshot" => "00000000-0000-4000-8000-000000009102",
+                "UpcomingStopPlanSnapshot" => "00000000-0000-4000-8000-000000009103",
+                _ => throw new InvalidDataException("Unsupported journey snapshot type.")
+            }
+            : Guid.NewGuid().ToString("D");
+        return WireToGateProtocolSerializer.Create(
+            messageType,
+            messageId,
+            correlationId: null,
+            context.AgvId,
+            context.Generation,
+            DateTimeOffset.UtcNow,
+            payload);
+    }
+
+    private async Task WriteJourneyEnvelopeAsync(
+        ConnectionContext context,
+        WireToGateEnvelope envelope)
+    {
+        string wireLine = WireToGateProtocolSerializer.Serialize(envelope);
+        lock (_sync)
+        {
+            var sent = SentJourneyEnvelopes.ToList();
+            sent.Add((context.ConnectionIndex, envelope.MessageType, envelope.MessageId, wireLine));
+            SentJourneyEnvelopes = sent;
+        }
+
+        await context.Writer.WriteLineAsync(wireLine).ConfigureAwait(false);
     }
 
     private static async Task SendDemandAcceptanceSnapshotsAsync(ConnectionContext context)

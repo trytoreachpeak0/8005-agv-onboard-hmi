@@ -856,9 +856,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         long generation,
         CancellationToken cancellationToken)
     {
-        string contentSha256 = WireToGateProtocolSerializer.ComputeContentSha256(envelope);
+        string envelopeContentSha256 = WireToGateProtocolSerializer.ComputeContentSha256(envelope);
         try
         {
+            string payloadContentSha256 = WireToGateProtocolSerializer.ComputePayloadContentSha256(envelope);
             if (envelope.CorrelationId is not null)
             {
                 throw new InvalidDataException("CORRELATION_INVALID");
@@ -866,14 +867,14 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
             (long revision, string snapshotKind) = ApplyJourneyProjection(
                 envelope,
-                contentSha256,
+                payloadContentSha256,
                 cancellationToken);
             await _journal.SaveAppliedJourneySnapshotAsync(
                 new WireToGateAppliedJourneySnapshot(
                     envelope.MessageType,
                     envelope.MessageId,
                     revision,
-                    contentSha256,
+                    envelopeContentSha256,
                     envelope.Payload.GetRawText(),
                     _clock.Now.ToUniversalTime()),
                 cancellationToken).ConfigureAwait(false);
@@ -881,7 +882,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 envelope,
                 snapshotKind,
                 revision,
-                contentSha256,
+                envelopeContentSha256,
                 generation,
                 cancellationToken).ConfigureAwait(false);
         }
@@ -928,7 +929,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 payloadDocument.RootElement.Clone());
             (long revision, _) = ApplyJourneyProjection(
                 envelope,
-                snapshot.ContentSha256,
+                WireToGateProtocolSerializer.ComputePayloadContentSha256(snapshot.PayloadJson),
                 cancellationToken);
             if (revision != snapshot.Revision)
             {
@@ -939,7 +940,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
     private (long Revision, string SnapshotKind) ApplyJourneyProjection(
         WireToGateEnvelope envelope,
-        string contentSha256,
+        string payloadContentSha256,
         CancellationToken cancellationToken)
     {
         switch (envelope.MessageType)
@@ -952,7 +953,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     ApplyJourneyRevision(
                         envelope.MessageType,
                         payload.VehicleBusinessStateRevision,
-                        contentSha256,
+                        payloadContentSha256,
                         journey => journey with
                         {
                             VehicleBusinessState = new WireToGateVehicleBusinessState(
@@ -967,7 +968,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                                         item.SubjectId))
                                     .ToArray(),
                                 payload.ObservedAt,
-                                contentSha256),
+                                payloadContentSha256),
                             UpdatedAt = _clock.Now
                         },
                         cancellationToken);
@@ -981,7 +982,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     ApplyJourneyRevision(
                         envelope.MessageType,
                         payload.WorklistRevision,
-                        contentSha256,
+                        payloadContentSha256,
                         journey => journey with
                         {
                             CurrentStopWorklist = new WireToGateCurrentStopWorklist(
@@ -989,7 +990,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                                 payload.WorklistRevision,
                                 payload.OperationSessionId,
                                 payload.Items.Select(ToCoreWorklistItem).ToArray(),
-                                contentSha256),
+                                payloadContentSha256),
                             UpdatedAt = _clock.Now
                         },
                         cancellationToken);
@@ -1003,14 +1004,14 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     ApplyJourneyRevision(
                         envelope.MessageType,
                         payload.PlanRevision,
-                        contentSha256,
+                        payloadContentSha256,
                         journey => journey with
                         {
                             UpcomingStopPlan = new WireToGateUpcomingStopPlan(
                                 payload.PlanRevision,
                                 payload.DemandId,
                                 payload.Legs.Select(ToCoreMovementLeg).ToArray(),
-                                contentSha256),
+                                payloadContentSha256),
                             UpdatedAt = _clock.Now
                         },
                         cancellationToken);
@@ -1047,7 +1048,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     private void ApplyJourneyRevision(
         string messageType,
         long revision,
-        string contentSha256,
+        string payloadContentSha256,
         Func<WireToGateJourneySnapshot, WireToGateJourneySnapshot> apply,
         CancellationToken cancellationToken)
     {
@@ -1064,7 +1065,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
                 if (revision == previous.Revision)
                 {
-                    if (contentSha256 != previous.ContentSha256)
+                    if (payloadContentSha256 != previous.ContentSha256)
                     {
                         throw new InvalidDataException("SNAPSHOT_REVISION_CONTENT_CONFLICT");
                     }
@@ -1073,7 +1074,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 }
             }
 
-            _journeyRevisions[messageType] = (revision, contentSha256);
+            _journeyRevisions[messageType] = (revision, payloadContentSha256);
             updated = apply(_journey);
             Volatile.Write(ref _journey, updated);
         }

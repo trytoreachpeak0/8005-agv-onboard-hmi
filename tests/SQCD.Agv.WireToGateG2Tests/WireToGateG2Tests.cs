@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using SQCD.Agv.Application;
@@ -256,6 +257,158 @@ public sealed class WireToGateG2Tests
             () => InboundMessageTypes(server).Contains("Heartbeat", StringComparer.Ordinal),
             testToken);
         Assert.Contains(server.Received, item => item.MessageType == "Heartbeat");
+    }
+
+    [Fact]
+    public async Task SameJourneyRevisionsWithStablePayloadAreAcceptedAcrossSessionGenerations()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            SendJourneySnapshotsAfterRecovery = true,
+            ReplayJourneySnapshotsWithStableIdentity = true
+        };
+        string journalPath = NewJournalPath();
+        const string onboardInstanceId = "0198f1a2-7c3d-4e5f-8a9b-c0de5a7e2001";
+        FakeIoModuleClient io = new();
+
+        await using (WireToGateSessionClient firstClient = CreateClient(
+            server,
+            io,
+            journalPath,
+            onboardInstanceId: onboardInstanceId))
+        {
+            await firstClient.ConnectAndRecoverAsync(testToken);
+            await WaitUntilAsync(
+                () => server.Received.Count(item => item.MessageType == "SnapshotAppliedAck") == 3,
+                testToken);
+        }
+
+        await using WireToGateSessionClient secondClient = CreateClient(
+            server,
+            io,
+            journalPath,
+            capability: 2,
+            safety: 2,
+            onboardInstanceId: onboardInstanceId);
+        int restoredProjectionChanges = 0;
+        secondClient.JourneyChanged += (_, _) => restoredProjectionChanges++;
+        WireToGateSessionSnapshot resumed = await secondClient.ConnectAndRecoverAsync(testToken);
+        await WaitUntilAsync(
+            () => server.Received.Count(item => item.MessageType == "SnapshotAppliedAck") == 6,
+            testToken);
+
+        Assert.Equal(WireToGateSessionReadiness.Ready, resumed.Readiness);
+        Assert.True(secondClient.CurrentJourney.CanAcceptSublot);
+        Assert.Equal(3, restoredProjectionChanges);
+        Assert.Equal(0, io.UnlockCount);
+        Assert.Empty(server.StaleGenerationRejections);
+        Assert.DoesNotContain(server.Received, item => item.MessageType == "ProtocolProblem");
+
+        var sentByType = server.SentJourneyEnvelopes
+            .GroupBy(item => item.MessageType, StringComparer.Ordinal)
+            .ToDictionary(
+                group => group.Key,
+                group => group.OrderBy(item => item.Connection).ToArray(),
+                StringComparer.Ordinal);
+        Assert.Equal(
+            [
+                "CurrentStopWorklistSnapshot",
+                "UpcomingStopPlanSnapshot",
+                "VehicleBusinessStateSnapshot"
+            ],
+            sentByType.Keys.OrderBy(item => item, StringComparer.Ordinal).ToArray());
+        Assert.All(sentByType.Values, attempts =>
+        {
+            Assert.Equal(2, attempts.Length);
+            WireToGateEnvelope first = WireToGateProtocolSerializer.DeserializeAndValidate(
+                attempts[0].WireLine,
+                "AGV-8005-01");
+            WireToGateEnvelope second = WireToGateProtocolSerializer.DeserializeAndValidate(
+                attempts[1].WireLine,
+                "AGV-8005-01");
+            Assert.Equal(first.MessageId, second.MessageId);
+            Assert.NotEqual(first.SessionGeneration, second.SessionGeneration);
+            Assert.NotEqual(
+                WireToGateProtocolSerializer.ComputeContentSha256(first),
+                WireToGateProtocolSerializer.ComputeContentSha256(second));
+            Assert.Equal(
+                WireToGateProtocolSerializer.ComputePayloadContentSha256(first),
+                WireToGateProtocolSerializer.ComputePayloadContentSha256(second));
+        });
+
+        var secondConnectionAcks = server.ReceivedEnvelopes
+            .Where(item => item.Connection == 2 && item.MessageType == "SnapshotAppliedAck")
+            .ToArray();
+        Assert.Equal(3, secondConnectionAcks.Length);
+        foreach (var sent in server.SentJourneyEnvelopes.Where(item => item.Connection == 2))
+        {
+            var acknowledgement = Assert.Single(secondConnectionAcks, item =>
+            {
+                using JsonDocument document = JsonDocument.Parse(item.WireLine);
+                return document.RootElement.GetProperty("correlationId").GetString() == sent.MessageId;
+            });
+            using JsonDocument acknowledgementDocument = JsonDocument.Parse(acknowledgement.WireLine);
+            string? appliedContentSha256 = acknowledgementDocument.RootElement
+                .GetProperty("payload")
+                .GetProperty("appliedContentSha256")
+                .GetString();
+            Assert.Equal(
+                WireToGateProtocolSerializer.ComputeSha256(Encoding.UTF8.GetBytes(sent.WireLine)),
+                appliedContentSha256);
+        }
+
+        await using SqliteWireToGateJournal journal = new(journalPath);
+        await journal.InitializeAsync(testToken);
+        IReadOnlyList<WireToGateAppliedJourneySnapshot> persisted =
+            await journal.ReadAppliedJourneySnapshotsAsync(testToken);
+        Assert.Equal(3, persisted.Count);
+        Assert.All(persisted, snapshot => Assert.Equal(
+            WireToGateProtocolSerializer.ComputePayloadContentSha256(snapshot.PayloadJson),
+            snapshot.MessageType switch
+            {
+                "VehicleBusinessStateSnapshot" => secondClient.CurrentJourney.VehicleBusinessState!.ContentSha256,
+                "CurrentStopWorklistSnapshot" => secondClient.CurrentJourney.CurrentStopWorklist!.ContentSha256,
+                "UpcomingStopPlanSnapshot" => secondClient.CurrentJourney.UpcomingStopPlan!.ContentSha256,
+                _ => throw new InvalidDataException("Unexpected persisted journey snapshot type.")
+            }));
+    }
+
+    [Fact]
+    public async Task AppliedJourneyJournalUsesCanonicalPayloadForSameRevisionIdentity()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using SqliteWireToGateJournal journal = new(NewJournalPath());
+        await journal.InitializeAsync(testToken);
+        WireToGateAppliedJourneySnapshot original = new(
+            "CurrentStopWorklistSnapshot",
+            "00000000-0000-4000-8000-000000009201",
+            7,
+            new string('a', 64),
+            "{\"stationId\":\"ST-01\",\"items\":[{\"sublot\":\"LOT-1\",\"count\":2}]}",
+            DateTimeOffset.UtcNow);
+        await journal.SaveAppliedJourneySnapshotAsync(original, testToken);
+        WireToGateAppliedJourneySnapshot replay = original with
+        {
+            MessageId = "00000000-0000-4000-8000-000000009202",
+            ContentSha256 = new string('b', 64),
+            PayloadJson = "{\"items\":[{\"count\":2,\"sublot\":\"LOT-1\"}],\"stationId\":\"ST-01\"}",
+            AppliedAt = original.AppliedAt.AddSeconds(1)
+        };
+
+        WireToGateAppliedJourneySnapshot accepted =
+            await journal.SaveAppliedJourneySnapshotAsync(replay, testToken);
+
+        Assert.Equal(original, accepted);
+        WireToGateAppliedJourneySnapshot conflict = replay with
+        {
+            MessageId = "00000000-0000-4000-8000-000000009203",
+            PayloadJson = "{\"items\":[{\"count\":2,\"sublot\":\"LOT-2\"}],\"stationId\":\"ST-01\"}"
+        };
+        InvalidDataException failure = await Assert.ThrowsAsync<InvalidDataException>(
+            () => journal.SaveAppliedJourneySnapshotAsync(conflict, testToken));
+        Assert.Equal("SNAPSHOT_REVISION_CONTENT_CONFLICT", failure.Message);
     }
 
     [Fact]

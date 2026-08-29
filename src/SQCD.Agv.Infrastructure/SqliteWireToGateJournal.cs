@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using Microsoft.Data.Sqlite;
+using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
 
 namespace SQCD.Agv.Infrastructure;
@@ -455,7 +456,14 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
 
                 if (snapshot.Revision == existing.Revision)
                 {
-                    if (!string.Equals(snapshot.ContentSha256, existing.ContentSha256, StringComparison.Ordinal))
+                    string existingPayloadSha256 = WireToGateProtocolSerializer
+                        .ComputePayloadContentSha256(existing.PayloadJson);
+                    string incomingPayloadSha256 = WireToGateProtocolSerializer
+                        .ComputePayloadContentSha256(snapshot.PayloadJson);
+                    if (!string.Equals(
+                        incomingPayloadSha256,
+                        existingPayloadSha256,
+                        StringComparison.Ordinal))
                     {
                         throw new InvalidDataException("SNAPSHOT_REVISION_CONTENT_CONFLICT");
                     }

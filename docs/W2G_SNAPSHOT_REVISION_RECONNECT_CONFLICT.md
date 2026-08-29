@@ -73,6 +73,22 @@
 无论选哪种，建议同时在协议仓为 `appliedContentSha256` 补上覆盖范围的正式定义，避免第四次
 出现同类分歧。协议仓为审批门禁，需两名负责人批准。
 
+## 本仓决定（2026-08-29）
+
+OnboardHmi 采用方向 1，并明确拆分两个不同用途的哈希：
+
+- 同一 revision 的业务一致性使用递归规范化后的 **payload SHA-256** 判断，排除
+  `messageId`、`sentAt`、`sessionGeneration` 等传输字段；
+- `SnapshotAppliedAck.appliedContentSha256` 继续返回当前收到的**完整信封 SHA-256**，保持与
+  ControlServer 现有 outbox 确认逻辑兼容。
+
+SQLite 不增加破坏性迁移：已持久化的原始 `PayloadJson` 是 revision 内容判断的权威来源，旧记录
+中的整信封 `ContentSha256` 继续保留用于审计。这样已有 journal 升级后也不会因为哈希语义变化
+产生一次新的假冲突。
+
+协议仓对 `appliedContentSha256` 覆盖范围的正式说明仍需双方负责人单独审批；本仓不会在未批准时
+单方面修改正式协议身份。
+
 ## 复现方式
 
 服务端隔离运行（全新 SQLite 与 journal、临时端口 58105／58107）加真实 OnboardHmi 与

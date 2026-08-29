@@ -222,8 +222,88 @@ public static class WireToGateProtocolSerializer
     public static string ComputeContentSha256(WireToGateEnvelope envelope) =>
         ComputeSha256(Encoding.UTF8.GetBytes(Serialize(envelope)));
 
+    /// <summary>
+    /// Computes the semantic identity used to compare revisions of a server-owned
+    /// snapshot. Transport fields such as messageId, sentAt and sessionGeneration
+    /// are deliberately excluded. Object properties are sorted recursively so
+    /// harmless JSON property ordering differences do not create a false conflict.
+    /// </summary>
+    public static string ComputePayloadContentSha256(WireToGateEnvelope envelope)
+    {
+        ArgumentNullException.ThrowIfNull(envelope);
+        return ComputePayloadContentSha256(envelope.Payload);
+    }
+
+    public static string ComputePayloadContentSha256(string payloadJson)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(payloadJson);
+        using JsonDocument document = JsonDocument.Parse(payloadJson);
+        return ComputePayloadContentSha256(document.RootElement);
+    }
+
     public static string ComputeSha256(ReadOnlySpan<byte> bytes) =>
         Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+
+    private static string ComputePayloadContentSha256(JsonElement payload)
+    {
+        if (payload.ValueKind != JsonValueKind.Object)
+        {
+            throw new InvalidDataException("PROTOCOL_PAYLOAD_INVALID");
+        }
+
+        using MemoryStream stream = new();
+        using (Utf8JsonWriter writer = new(stream))
+        {
+            WriteCanonicalJson(writer, payload);
+        }
+
+        return ComputeSha256(stream.ToArray());
+    }
+
+    private static void WriteCanonicalJson(Utf8JsonWriter writer, JsonElement element)
+    {
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.Object:
+                writer.WriteStartObject();
+                foreach (JsonProperty property in element
+                    .EnumerateObject()
+                    .OrderBy(item => item.Name, StringComparer.Ordinal))
+                {
+                    writer.WritePropertyName(property.Name);
+                    WriteCanonicalJson(writer, property.Value);
+                }
+
+                writer.WriteEndObject();
+                break;
+            case JsonValueKind.Array:
+                writer.WriteStartArray();
+                foreach (JsonElement item in element.EnumerateArray())
+                {
+                    WriteCanonicalJson(writer, item);
+                }
+
+                writer.WriteEndArray();
+                break;
+            case JsonValueKind.String:
+                writer.WriteStringValue(element.GetString());
+                break;
+            case JsonValueKind.Number:
+                writer.WriteRawValue(element.GetRawText(), skipInputValidation: true);
+                break;
+            case JsonValueKind.True:
+                writer.WriteBooleanValue(true);
+                break;
+            case JsonValueKind.False:
+                writer.WriteBooleanValue(false);
+                break;
+            case JsonValueKind.Null:
+                writer.WriteNullValue();
+                break;
+            default:
+                throw new InvalidDataException("PROTOCOL_PAYLOAD_INVALID");
+        }
+    }
 
     private static void RequireUuid(string value, string parameterName)
     {

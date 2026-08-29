@@ -50,7 +50,9 @@ public sealed record WireToGateDurableMessage(
 /// <summary>
 /// Durable adoption record for a server-owned journey snapshot.  The raw payload
 /// is retained so the projection can be rebuilt after an onboard restart without
-/// treating a stale session generation as a live wire message.
+/// treating a stale session generation as a live wire message. ContentSha256 is
+/// the hash of the received envelope used by SnapshotAppliedAck; revision identity
+/// is derived independently from the retained payload.
 /// </summary>
 public sealed record WireToGateAppliedJourneySnapshot(
     string MessageType,
