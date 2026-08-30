@@ -5,6 +5,34 @@ namespace SQCD.Agv.UnitTests;
 public sealed class SafetyRulesTests
 {
     [Fact]
+    public void ResumeAuthorizationRequiresExactPersistedAttemptAndCheckpoint()
+    {
+        WireToGateRecoveryState state = new(
+            "11111111-1111-4111-8111-111111111111",
+            WireToGateRecoveryCheckpoint.SafeFinishReached,
+            [],
+            0,
+            []);
+
+        Assert.True(WireToGateRecoverySafetyPolicy.MatchesPersistedResumeState(
+            state,
+            "11111111-1111-4111-8111-111111111111",
+            WireToGateRecoveryCheckpoint.SafeFinishReached));
+        Assert.False(WireToGateRecoverySafetyPolicy.MatchesPersistedResumeState(
+            state,
+            "22222222-2222-4222-8222-222222222222",
+            WireToGateRecoveryCheckpoint.SafeFinishReached));
+        Assert.False(WireToGateRecoverySafetyPolicy.MatchesPersistedResumeState(
+            state,
+            "11111111-1111-4111-8111-111111111111",
+            WireToGateRecoveryCheckpoint.Prepared));
+        Assert.False(WireToGateRecoverySafetyPolicy.MatchesPersistedResumeState(
+            state with { ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ResultRecorded },
+            "11111111-1111-4111-8111-111111111111",
+            WireToGateRecoveryCheckpoint.ResultRecorded));
+    }
+
+    [Fact]
     public void RecordedVehicleSafetyProviderDistinguishesStoppedMovingAndUnknown()
     {
         DateTimeOffset now = DateTimeOffset.UtcNow;

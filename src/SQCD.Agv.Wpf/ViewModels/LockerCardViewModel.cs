@@ -12,6 +12,7 @@ public sealed class LockerCardViewModel : ViewModelBase
     private OperationType? _operationType;
     private OperationStage _operationStage;
     private int _reopenAttempts;
+    private string? _wireToGateTargetText;
 
     public LockerCardViewModel(int slotIndex)
     {
@@ -53,6 +54,8 @@ public sealed class LockerCardViewModel : ViewModelBase
 
     public string TargetText => !IsTarget
         ? string.Empty
+        : _wireToGateTargetText is not null
+            ? _wireToGateTargetText
         : _operationStage == OperationStage.Failed
             ? "当前操作异常"
             : _operationStage == OperationStage.WaitingOperatorRecovery
@@ -64,20 +67,58 @@ public sealed class LockerCardViewModel : ViewModelBase
                     ? "正在重新打开仓门"
                     : _operationType == OperationType.Load ? "当前装料仓位" : "当前卸料仓位";
 
-    public void Update(LockerSnapshot snapshot, ActiveOperation? activeOperation)
+    public void Update(
+        LockerSnapshot snapshot,
+        ActiveOperation? activeOperation,
+        WireToGateHmiOperationSnapshot? wireToGateOperation = null)
     {
         IsKnown = snapshot.IsKnown;
         _isLocked = snapshot.IsLocked;
         _hasCargo = snapshot.HasCargo;
         _doActive = snapshot.UnlockOutputRaw is true;
-        bool isTarget = activeOperation?.SlotIndex == SlotIndex;
-        _operationType = isTarget ? activeOperation?.OperationType : null;
-        _operationStage = isTarget ? activeOperation?.Stage ?? OperationStage.None : OperationStage.None;
-        _reopenAttempts = isTarget ? activeOperation?.ReopenAttempts ?? 0 : 0;
+        bool wireToGateTarget = wireToGateOperation?.Slots.Contains(PhysicalNumber) == true;
+        bool legacyTarget = activeOperation?.SlotIndex == SlotIndex;
+        bool isTarget = wireToGateTarget || legacyTarget;
+        _operationType = wireToGateTarget
+            ? wireToGateOperation!.OperationType
+            : legacyTarget ? activeOperation?.OperationType : null;
+        _operationStage = wireToGateTarget
+            ? MapOperationStage(wireToGateOperation!.Stage)
+            : legacyTarget ? activeOperation?.Stage ?? OperationStage.None : OperationStage.None;
+        _reopenAttempts = legacyTarget ? activeOperation?.ReopenAttempts ?? 0 : 0;
+        _wireToGateTargetText = wireToGateTarget
+            ? WireToGateTargetText(wireToGateOperation!)
+            : null;
         IsTarget = isTarget;
         OnPropertyChanged(nameof(DoorText));
         OnPropertyChanged(nameof(CargoText));
         OnPropertyChanged(nameof(RawIoText));
         OnPropertyChanged(nameof(TargetText));
     }
+
+    private static OperationStage MapOperationStage(WireToGateHmiOperationStage stage) => stage switch
+    {
+        WireToGateHmiOperationStage.Preparing => OperationStage.Precheck,
+        WireToGateHmiOperationStage.Unlocking => OperationStage.WritingUnlock,
+        WireToGateHmiOperationStage.WaitingOperator => OperationStage.WaitingCargoAndRelock,
+        WireToGateHmiOperationStage.Verifying => OperationStage.ReportingResult,
+        WireToGateHmiOperationStage.Reporting => OperationStage.ReportingResult,
+        WireToGateHmiOperationStage.Completed => OperationStage.Completed,
+        WireToGateHmiOperationStage.RecoveryRequired => OperationStage.WaitingOperatorRecovery,
+        _ => OperationStage.None
+    };
+
+    private static string WireToGateTargetText(WireToGateHmiOperationSnapshot operation) => operation.Stage switch
+    {
+        WireToGateHmiOperationStage.Preparing => "正在进行操作前安全检查",
+        WireToGateHmiOperationStage.Unlocking => "正在打开仓门",
+        WireToGateHmiOperationStage.WaitingOperator => operation.OperationType == OperationType.Load
+            ? "请放入货物并关门"
+            : "请取出货物并关门",
+        WireToGateHmiOperationStage.Verifying => "正在核对物理状态",
+        WireToGateHmiOperationStage.Reporting => "安全收尾，正在上报结果",
+        WireToGateHmiOperationStage.Completed => "操作完成",
+        WireToGateHmiOperationStage.RecoveryRequired => "操作未完成，需要管理员恢复",
+        _ => "当前目标仓"
+    };
 }

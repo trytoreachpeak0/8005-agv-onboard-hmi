@@ -11,7 +11,8 @@ namespace SQCD.Agv.Wpf;
 /// Wires formal server commands to the safe physical executor.  The legacy rule
 /// gateway remains available for development compatibility, but this service is
 /// the production WIRE_TO_GATE path for server-frozen slot commands and safety
-/// checks.  Unknown recovery commands are intentionally logged and left blocked.
+/// checks. Unsupported recovery commands remain fail-closed and are projected to
+/// the operator instead of disappearing into the file log.
 /// </summary>
 public sealed class WireToGateBusinessService : IAsyncDisposable
 {
@@ -32,6 +33,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
     private readonly object _operationAttemptGate = new();
     private readonly HashSet<Task> _tasks = [];
     private readonly HashSet<string> _operationAttempts = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _publishedOperatorEventKeys = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _safetySendGate = new(1, 1);
     private WireToGateSublotEntryRequest? _currentEntryRequest;
     private SafetyChangeWork? _pendingSafetyChange;
@@ -81,6 +83,8 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
 
     public event EventHandler<ValueChangedEventArgs<WireToGateSublotEntryRequest>>? SublotEntryRequested;
 
+    public event EventHandler<ValueChangedEventArgs<WireToGateOperatorEvent>>? OperatorEventPublished;
+
     public bool CanSubmitSublot =>
         _session.Current.Readiness == WireToGateSessionReadiness.Ready
         && Volatile.Read(ref _currentEntryRequest) is not null;
@@ -108,7 +112,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
             throw new InvalidOperationException("WIRE_TO_GATE_OPERATOR_NOT_READY");
         }
 
-        return await _session.SendSublotSubmittedAsync(
+        string messageId = await _session.SendSublotSubmittedAsync(
             request.DemandId,
             request.OperationSessionId,
             request.StationId,
@@ -119,6 +123,11 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
             "SESSION",
             _clock.Now.ToUniversalTime(),
             cancellationToken).ConfigureAwait(false);
+        PublishOperatorEvent(
+            $"sublot-submitted:{messageId}",
+            "SUBLOT_SUBMITTED",
+            $"子批 {sublot.Trim()} 已提交，等待服务端下发仓位操作。");
+        return messageId;
     }
 
     public void Start()
@@ -328,6 +337,10 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
             {
                 case WireToGateSublotEntryRequest sublot:
                     Volatile.Write(ref _currentEntryRequest, sublot);
+                    PublishOperatorEvent(
+                        $"sublot-requested:{sublot.MessageId}",
+                        "SUBLOT_ENTRY_REQUESTED",
+                        $"收到子批录入请求：{sublot.ExpectedSublot}。");
                     SublotEntryRequested?.Invoke(
                         this,
                         new ValueChangedEventArgs<WireToGateSublotEntryRequest>(sublot));
@@ -354,6 +367,10 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                         LogSeverity.Warning,
                         nameof(WireToGateBusinessService),
                         $"收到服务端恢复消息：{recovery.MessageType}，恢复动作被安全策略阻断：{decision.ReasonCode}。");
+                    PublishOperatorEvent(
+                        $"recovery-blocked:{recovery.MessageId}",
+                        "RECOVERY_BLOCKED",
+                        $"收到恢复消息 {recovery.MessageType}，当前安全条件不允许执行：{decision.ReasonCode}。");
                     break;
             }
         }
@@ -398,8 +415,15 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         WireToGateRecoverySafetyDecision decision =
             WireToGateRecoverySafetyPolicy.Evaluate(
                 new WireToGateRecoverySafetyFacts(
-                    RecoverySessionAuthorized: false,
-                    RecoveryStatePersisted: state.ProvenRecoveryCheckpoint is not WireToGateRecoveryCheckpoint.None,
+                    // The command is emitted only after ControlServer has opened an
+                    // authenticated exception-recovery session and accepted the
+                    // recoveryActionId. TLS/session validation plus the formal IDs
+                    // are the authorization proof available to the onboard peer.
+                    RecoverySessionAuthorized: true,
+                    RecoveryStatePersisted: WireToGateRecoverySafetyPolicy.MatchesPersistedResumeState(
+                        state,
+                        command.SlotOperationAttemptId,
+                        command.ProvenRecoveryCheckpoint),
                     VehicleStopped: vehicle.MotionState == VehicleMotionState.Stopped,
                     VehicleSignalFresh: fresh,
                     AllTargetSlotsKnown: targetsKnown,
@@ -409,6 +433,12 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
             LogSeverity.Warning,
             nameof(WireToGateBusinessService),
             $"收到SlotOperationResumeCommand但未执行物理动作：attempt={command.SlotOperationAttemptId}，reason={decision.ReasonCode}。");
+        PublishOperatorEvent(
+            $"resume-command:{command.MessageId}",
+            decision.Allowed ? "RECOVERY_AUTHORIZED" : "RECOVERY_BLOCKED",
+            decision.Allowed
+                ? "恢复命令已通过安全检查，但当前版本没有可安全收敛的续作结果路径，未执行第二次IO。"
+                : $"恢复命令被安全门禁阻断：{decision.ReasonCode}。");
     }
 
     private static bool TryGetLocker(
@@ -442,6 +472,10 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                 LogSeverity.Information,
                 nameof(WireToGateBusinessService),
                 $"忽略重复SlotOperationCommand：attempt={command.SlotOperationAttemptId}，保留原OperationResult重放。");
+            PublishOperatorEvent(
+                $"operation-replay:{command.SlotOperationAttemptId}",
+                "OPERATION_REPLAY",
+                "收到重复仓位命令，已保持原结果重放，未再次执行仓门IO。");
             return;
         }
 
@@ -459,22 +493,47 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
 
         try
         {
+            PublishOperation(
+                command,
+                WireToGateHmiOperationStage.Preparing,
+                $"准备执行{(command.OperationType == OperationType.Load ? "装货" : "卸货")}：{FormatSlots(command.Slots)}。",
+                "initial");
             async Task SendProgress(
                 string phase,
                 IReadOnlyList<int> active,
                 IReadOnlyList<int> completed,
-                CancellationToken progressToken) =>
+                CancellationToken progressToken)
+            {
+                PublishOperation(
+                    command,
+                    MapOperationStage(phase),
+                    OperationGuidance(command, phase, active, completed),
+                    $"{phase}:{string.Join(',', active)}:{string.Join(',', completed)}");
                 await _session.SendOperationProgressAsync(
                     command.SlotOperationAttemptId,
                     phase,
                     active,
                     completed,
                     cancellationToken: progressToken).ConfigureAwait(false);
+            }
 
             WireToGateOperationExecutionResult execution = await _executor
                 .ExecuteAsync(command, SendProgress, cancellationToken)
                 .ConfigureAwait(false);
             WireToGateOperationResultPayload payload = CreateOperationResultPayload(execution);
+            bool completedSuccessfully = string.Equals(
+                execution.OverallOutcome,
+                "COMPLETED",
+                StringComparison.Ordinal);
+            PublishOperation(
+                command,
+                completedSuccessfully
+                    ? WireToGateHmiOperationStage.Completed
+                    : WireToGateHmiOperationStage.RecoveryRequired,
+                completedSuccessfully
+                    ? $"{FormatSlots(command.Slots)}操作完成，正在上报结果。"
+                    : $"{FormatSlots(command.Slots)}操作未完成，需要恢复处理。",
+                "final");
             try
             {
                 await _session.SendOperationResultAsync(
@@ -488,6 +547,21 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                         command.SlotOperationAttemptId,
                         cancellationToken).ConfigureAwait(false);
                 }
+                PublishOperatorEvent(
+                    $"operation-result:{command.SlotOperationAttemptId}:{execution.OverallOutcome}",
+                    completedSuccessfully ? "OPERATION_COMPLETED" : "OPERATION_RECOVERY_REQUIRED",
+                    completedSuccessfully
+                        ? $"{FormatSlots(command.Slots)}操作结果已被服务端确认。"
+                        : $"{FormatSlots(command.Slots)}操作失败或状态未知，服务端已收到结果，等待管理员恢复。",
+                    new WireToGateHmiOperationSnapshot(
+                        command.SlotOperationAttemptId,
+                        command.OperationType,
+                        command.Slots,
+                        completedSuccessfully
+                            ? WireToGateHmiOperationStage.Completed
+                            : WireToGateHmiOperationStage.RecoveryRequired,
+                        completedSuccessfully ? "操作完成。" : "操作需要管理员恢复。",
+                        execution.ObservedAt));
             }
             catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
             {
@@ -498,6 +572,19 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                     nameof(WireToGateBusinessService),
                     $"OperationResult暂未收到DurableAck：attempt={command.SlotOperationAttemptId}。",
                     exception);
+                PublishOperatorEvent(
+                    $"operation-result-pending:{command.SlotOperationAttemptId}",
+                    "RESULT_ACK_PENDING",
+                    "操作已安全结束，但结果确认暂未收到；系统将保持同一结果重放，不会重复执行IO。",
+                    new WireToGateHmiOperationSnapshot(
+                        command.SlotOperationAttemptId,
+                        command.OperationType,
+                        command.Slots,
+                        completedSuccessfully
+                            ? WireToGateHmiOperationStage.Reporting
+                            : WireToGateHmiOperationStage.RecoveryRequired,
+                        "结果等待确认，禁止重复操作仓门。",
+                        execution.ObservedAt));
             }
         }
         finally
@@ -508,6 +595,78 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
             }
         }
     }
+
+    private void PublishOperation(
+        WireToGateSlotOperationCommand command,
+        WireToGateHmiOperationStage stage,
+        string guidance,
+        string detailKey)
+    {
+        PublishOperatorEvent(
+            $"operation-stage:{command.SlotOperationAttemptId}:{stage}:{detailKey}",
+            "OPERATION_PROGRESS",
+            guidance,
+            new WireToGateHmiOperationSnapshot(
+                command.SlotOperationAttemptId,
+                command.OperationType,
+                command.Slots,
+                stage,
+                guidance,
+                _clock.Now.ToUniversalTime()));
+    }
+
+    private void PublishOperatorEvent(
+        string deduplicationKey,
+        string kind,
+        string message,
+        WireToGateHmiOperationSnapshot? operation = null)
+    {
+        lock (_operationAttemptGate)
+        {
+            if (!_publishedOperatorEventKeys.Add(deduplicationKey))
+            {
+                return;
+            }
+        }
+
+        OperatorEventPublished?.Invoke(
+            this,
+            new ValueChangedEventArgs<WireToGateOperatorEvent>(
+                new WireToGateOperatorEvent(
+                    _clock.Now.ToUniversalTime(),
+                    kind,
+                    message,
+                    operation)));
+    }
+
+    private static WireToGateHmiOperationStage MapOperationStage(string phase) => phase switch
+    {
+        "PREPARING" => WireToGateHmiOperationStage.Preparing,
+        "UNLOCKING" => WireToGateHmiOperationStage.Unlocking,
+        "WAITING_OPERATOR" => WireToGateHmiOperationStage.WaitingOperator,
+        "VERIFYING" => WireToGateHmiOperationStage.Verifying,
+        "SAFE_FINISH" => WireToGateHmiOperationStage.Reporting,
+        _ => WireToGateHmiOperationStage.Preparing
+    };
+
+    private static string OperationGuidance(
+        WireToGateSlotOperationCommand command,
+        string phase,
+        IReadOnlyList<int> active,
+        IReadOnlyList<int> completed) => phase switch
+        {
+            "PREPARING" => $"正在检查{FormatSlots(command.Slots)}的安全条件。",
+            "UNLOCKING" => $"正在打开{FormatSlots(active)}。",
+            "WAITING_OPERATOR" => command.OperationType == OperationType.Load
+                ? $"请向{FormatSlots(active)}放入货物并关门。"
+                : $"请从{FormatSlots(active)}取出货物并关门。",
+            "VERIFYING" => $"正在核对仓门、货物和输出状态；已完成 {completed.Count}/{command.Slots.Count}。",
+            "SAFE_FINISH" => "全部目标仓已达到安全收尾状态，正在上报结果。",
+            _ => $"正在处理{FormatSlots(command.Slots)}。"
+        };
+
+    private static string FormatSlots(IReadOnlyList<int> slots) =>
+        string.Join("、", slots.Order()) + "号仓";
 
     private async Task HandlePreDepartureSafetyCheckAsync(
         WireToGatePreDepartureSafetyCheck command,

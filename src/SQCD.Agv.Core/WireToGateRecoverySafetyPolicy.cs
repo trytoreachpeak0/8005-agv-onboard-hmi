@@ -37,6 +37,23 @@ public sealed record WireToGateRecoverySafetyDecision(
 /// </summary>
 public static class WireToGateRecoverySafetyPolicy
 {
+    public static bool MatchesPersistedResumeState(
+        WireToGateRecoveryState state,
+        string slotOperationAttemptId,
+        WireToGateRecoveryCheckpoint checkpoint)
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        ArgumentException.ThrowIfNullOrWhiteSpace(slotOperationAttemptId);
+        return string.Equals(
+                state.UnsettledSlotOperationAttemptId,
+                slotOperationAttemptId,
+                StringComparison.Ordinal)
+            && state.ProvenRecoveryCheckpoint == checkpoint
+            && checkpoint is WireToGateRecoveryCheckpoint.Prepared
+                or WireToGateRecoveryCheckpoint.ActiveUnlockSet
+                or WireToGateRecoveryCheckpoint.SafeFinishReached;
+    }
+
     public static WireToGateRecoverySafetyDecision Evaluate(
         WireToGateRecoverySafetyFacts facts)
     {

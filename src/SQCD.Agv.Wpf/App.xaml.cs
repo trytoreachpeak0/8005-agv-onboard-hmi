@@ -136,6 +136,8 @@ public partial class App : System.Windows.Application, IDisposable
                         $"服务端请求录入Sublot：demandId={args.Value.DemandId}，revision={args.Value.WorklistRevision}。 ");
                     viewModel.RefreshWireToGateInputState();
                 };
+                _wireToGateBusiness.OperatorEventPublished += (_, args) =>
+                    viewModel.ApplyWireToGateOperatorEvent(args.Value);
                 viewModel.ConfigureWireToGate(
                     (sublot, inputMethod, cancellationToken) => _wireToGateBusiness.SubmitSublotAsync(
                         sublot,

@@ -29,6 +29,10 @@ public sealed class MainViewModel : ViewModelBase
     private bool _canCancelOperation;
     private bool _canRetryPendingResult;
     private bool _hasWireToGateJourney;
+    private bool _wireToGateEnabled;
+    private WireToGateSessionSnapshot? _wireToGateSession;
+    private WireToGateHmiOperationSnapshot? _wireToGateOperation;
+    private OnboardSnapshot? _lastControllerSnapshot;
     private string _recoverySlotName = "当前仓";
     private string? _lastLoggedErrorKey;
     private Func<string, ScanInputMethod, CancellationToken, Task>? _wireToGateSubmitter;
@@ -107,6 +111,7 @@ public sealed class MainViewModel : ViewModelBase
 
     internal void UpdateWireToGateStatus(WireToGateSessionSnapshot snapshot) => RunOnUiThread(() =>
     {
+        _wireToGateSession = snapshot;
         WireToGateText = !snapshot.Connected
             ? "离线"
             : snapshot.Readiness switch
@@ -116,7 +121,9 @@ public sealed class MainViewModel : ViewModelBase
                 WireToGateSessionReadiness.Ready => "就绪",
                 _ => "连接中"
             };
+        RuleConnectionText = snapshot.Connected ? "在线" : "离线";
         RefreshWireToGateInputStateCore();
+        ApplyWireToGatePresentationCore();
     });
 
     internal void UpdateWireToGateJourney(WireToGateJourneySnapshot snapshot) => RunOnUiThread(() =>
@@ -134,6 +141,7 @@ public sealed class MainViewModel : ViewModelBase
             VisitText = "旅程未同步";
         }
         RefreshWireToGateInputStateCore();
+        ApplyWireToGatePresentationCore();
     });
 
     internal void ConfigureWireToGate(
@@ -142,8 +150,31 @@ public sealed class MainViewModel : ViewModelBase
     {
         _wireToGateSubmitter = submitter ?? throw new ArgumentNullException(nameof(submitter));
         _wireToGateCanSubmit = canSubmit ?? throw new ArgumentNullException(nameof(canSubmit));
+        _wireToGateEnabled = true;
         RefreshWireToGateInputStateCore();
+        ApplyWireToGatePresentationCore();
     }
+
+    internal void ApplyWireToGateOperatorEvent(WireToGateOperatorEvent operatorEvent) =>
+        RunOnUiThread(() =>
+        {
+            ArgumentNullException.ThrowIfNull(operatorEvent);
+            if (operatorEvent.Operation is not null)
+            {
+                _wireToGateOperation = operatorEvent.Operation.Stage == WireToGateHmiOperationStage.Completed
+                    ? null
+                    : operatorEvent.Operation;
+            }
+
+            Logs.Add(new LogLineViewModel(
+                operatorEvent.Timestamp,
+                MapOperatorEventKind(operatorEvent.Kind),
+                operatorEvent.Message));
+            ClearLogsCommand.RaiseCanExecuteChanged();
+            TrimLogs();
+            ApplyWireToGatePresentationCore();
+            RefreshLockerCardsCore();
+        });
 
     internal void RefreshWireToGateInputState() => RunOnUiThread(RefreshWireToGateInputStateCore);
 
@@ -268,6 +299,7 @@ public sealed class MainViewModel : ViewModelBase
 
     private void ApplySnapshot(OnboardSnapshot snapshot)
     {
+        _lastControllerSnapshot = snapshot;
         RuleConnectionText = snapshot.RuleConnected ? "在线" : "离线";
         IoConnectionText = snapshot.IoConnected ? "在线" : "离线";
         if (!_hasWireToGateJourney)
@@ -301,11 +333,12 @@ public sealed class MainViewModel : ViewModelBase
         foreach (LockerCardViewModel locker in Lockers)
         {
             LockerSnapshot state = snapshot.Io.GetLocker(locker.SlotIndex);
-            locker.Update(state, snapshot.ActiveOperation);
+            locker.Update(state, snapshot.ActiveOperation, _wireToGateOperation);
         }
 
         AppendOperatorRecord(snapshot);
         LogOperatorVisibleError(snapshot);
+        ApplyWireToGatePresentationCore();
     }
 
     private void HandleCommandError(Exception exception)
@@ -328,11 +361,69 @@ public sealed class MainViewModel : ViewModelBase
 
         Logs.Add(new LogLineViewModel(record.Timestamp, record.Kind, record.Message));
         ClearLogsCommand.RaiseCanExecuteChanged();
+        TrimLogs();
+    }
+
+    private void ApplyWireToGatePresentationCore()
+    {
+        if (!_wireToGateEnabled || _wireToGateSession is null)
+        {
+            return;
+        }
+
+        if (_lastControllerSnapshot?.State == OnboardState.Faulted)
+        {
+            return;
+        }
+
+        WireToGateHmiBanner banner = WireToGateHmiPresentation.Create(
+            _wireToGateSession,
+            _wireToGateOperation,
+            _wireToGateCanSubmit?.Invoke() == true);
+        RuleConnectionText = _wireToGateSession.Connected ? "在线" : "离线";
+        StateText = banner.StateText;
+        Guidance = banner.Guidance;
+        HasWarning = banner.HasWarning;
+        HasError = banner.HasError;
+        CanReopenOperation = false;
+        CanCancelOperation = false;
+        CanRetryPendingResult = false;
+    }
+
+    private void RefreshLockerCardsCore()
+    {
+        OnboardSnapshot? snapshot = _lastControllerSnapshot;
+        if (snapshot is null)
+        {
+            return;
+        }
+
+        foreach (LockerCardViewModel locker in Lockers)
+        {
+            locker.Update(
+                snapshot.Io.GetLocker(locker.SlotIndex),
+                snapshot.ActiveOperation,
+                _wireToGateOperation);
+        }
+    }
+
+    private void TrimLogs()
+    {
         while (Logs.Count > MaxLogEntries)
         {
             Logs.RemoveAt(0);
         }
     }
+
+    private static OperatorRecordKind MapOperatorEventKind(string kind) => kind switch
+    {
+        "OPERATION_COMPLETED" => OperatorRecordKind.Success,
+        "OPERATION_RECOVERY_REQUIRED" or "RECOVERY_BLOCKED" => OperatorRecordKind.Error,
+        "RESULT_ACK_PENDING" or "RECOVERY_AUTHORIZED" => OperatorRecordKind.Warning,
+        "SUBLOT_ENTRY_REQUESTED" or "SUBLOT_SUBMITTED" or "OPERATION_PROGRESS" or "OPERATION_REPLAY" =>
+            OperatorRecordKind.Operation,
+        _ => OperatorRecordKind.System
+    };
 
     private void LogOperatorVisibleError(OnboardSnapshot snapshot)
     {
@@ -373,7 +464,12 @@ public sealed class MainViewModel : ViewModelBase
 
     private static void RunOnUiThread(Action action)
     {
-        Dispatcher dispatcher = System.Windows.Application.Current.Dispatcher;
+        Dispatcher? dispatcher = System.Windows.Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            action();
+            return;
+        }
         if (dispatcher.CheckAccess())
         {
             action();
