@@ -38,7 +38,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
         Assert.Equal("RIOT_BEHAVIOR_LAB", signal.Source);
         Assert.Contains("MT_STOPPED_CONFIRMED", signal.EffectiveReasonCodes);
         Assert.Equal("Bearer " + Credential, handler.Authorization);
-        Assert.Equal("https://control.test/api/onboard/v1/vehicle-safety", handler.RequestUri?.ToString());
+        Assert.Equal("http://control.test/api/onboard/v1/vehicle-safety", handler.RequestUri?.ToString());
     }
 
     [Theory]
@@ -122,9 +122,16 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Fact]
-    public async Task HttpEndpointIsRejectedBeforeNetworkCall()
+    public async Task HttpEndpointSendsRequestAndPublishesResponse()
     {
-        StubHandler handler = new((_, _) => Task.FromResult(JsonResponse(new { motionState = "STOPPED" })));
+        StubHandler handler = new((_, _) => Task.FromResult(JsonResponse(new
+        {
+            vehicleKey = VehicleKey,
+            motionState = "STOPPED",
+            observedAt = Now,
+            source = "CONTROL_SERVER",
+            reasonCodes = Array.Empty<string>()
+        })));
         using HttpClient client = new(handler);
         VehicleSafetySettings settings = CreateSettings(
             endpoint: "http://control.test/api/onboard/v1/vehicle-safety");
@@ -137,8 +144,27 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
 
         await provider.RefreshAsync();
 
+        Assert.Equal(1, handler.RequestCount);
+        Assert.Equal(VehicleMotionState.Stopped, provider.Read().MotionState);
+    }
+
+    [Fact]
+    public async Task HttpsEndpointIsRejectedBeforeNetworkCall()
+    {
+        StubHandler handler = new((_, _) => Task.FromResult(JsonResponse(new { })));
+        using HttpClient client = new(handler);
+        using ControlServerVehicleSafetySignalProvider provider = new(
+            CreateSettings(endpoint: "https://control.test/api/onboard/v1/vehicle-safety"),
+            client,
+            new FixedTimeProvider(Now),
+            startPolling: false,
+            credentialReader: () => Credential);
+
+        await provider.RefreshAsync();
+
         Assert.Equal(0, handler.RequestCount);
-        Assert.Contains("HTTPS_REQUIRED", provider.Read().EffectiveReasonCodes);
+        Assert.Equal(VehicleMotionState.Unknown, provider.Read().MotionState);
+        Assert.Contains("HTTP_ENDPOINT_REQUIRED", provider.Read().EffectiveReasonCodes);
     }
 
     [Fact]
@@ -184,14 +210,14 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     public async Task TransportFailureIsUnknown()
     {
         StubHandler handler = new((_, _) =>
-            Task.FromException<HttpResponseMessage>(new HttpRequestException("certificate validation failed")));
+            Task.FromException<HttpResponseMessage>(new HttpRequestException("connection failed")));
         using HttpClient client = new(handler);
         using ControlServerVehicleSafetySignalProvider provider = CreateProvider(client);
 
         await provider.RefreshAsync();
 
         Assert.Equal(VehicleMotionState.Unknown, provider.Read().MotionState);
-        Assert.Contains("HTTPS_REQUEST_FAILED", provider.Read().EffectiveReasonCodes);
+        Assert.Contains("HTTP_REQUEST_FAILED", provider.Read().EffectiveReasonCodes);
     }
 
     [Fact]
@@ -356,7 +382,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
         int requestTimeoutMs = 1_000) => new()
         {
             Enabled = true,
-            Endpoint = endpoint ?? "https://control.test/api/onboard/v1/vehicle-safety",
+            Endpoint = endpoint ?? "http://control.test/api/onboard/v1/vehicle-safety",
             CredentialEnvironmentVariable = "TEST_CONTROL_SERVER_CREDENTIAL",
             ExpectedVehicleKey = VehicleKey,
             MaximumEvidenceAgeMs = 5_000,

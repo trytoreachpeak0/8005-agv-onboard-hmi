@@ -20,7 +20,7 @@
 - 当前回归基线：Unit 80/80、W2G G2 13/13、Release 0 warning/0 error。
 
 以上是 OnboardHmi 本机证据，不是 ControlServer G2、联合 G3、真实车辆信号、
-现场 TLS/网络或硬件验收。最新证据目录必须在每次运行后重新生成，不能继承旧
+现场明文网络或硬件验收。最新证据目录必须在每次运行后重新生成，不能继承旧
 protocol 版本证据。
 
 本文件交给车载端负责人王昆接管 `WIRE_TO_GATE` OnboardHmi 开发。后续 OnboardHmi 产品代码、测试和实现判断由车载端负责人本人完成或审查批准；AI 不再把自己的实现表述为车载端负责人已完成的工作。
@@ -59,7 +59,7 @@ protocol 版本证据。
 
 ### W2G-IS-00 — 会话与恢复
 
-- TLS/NDJSON 会话、外部凭据、精确 release 身份拒绝。
+- 明文 TCP/NDJSON 会话、外部凭据、精确 release 身份拒绝。
 - `SessionHello`、能力与安全快照、`RecoveryStateReport`、`SessionReadiness` 五步恢复。
 - session generation fencing、心跳丢失安全阻断、pending result 原 `messageId` 重放。
 - 重启后从持久 journal 与实时 IO 重新建立事实，未知状态不得自动放行。
@@ -81,15 +81,17 @@ protocol 版本证据。
 
 - 八仓事实、车停稳、门锁、开锁输出复位、UNKNOWN 和快照时效共同决定安全状态。
 - `ControlServerVehicleSafetySignalProvider` 通过 `GET
-  /api/onboard/v1/vehicle-safety` 的 HTTPS 投影后台轮询车辆状态；Bearer 凭据只从
-  `CONTROL_SERVER_ONBOARD_CREDENTIAL`（或显式配置的环境变量名）读取，使用 Windows
-  正式证书信任，不保存 RIoT 凭据，也不把响应写入 journal 或日志。
+  /api/onboard/v1/vehicle-safety` 的明文 HTTP 投影后台轮询车辆状态；Bearer 凭据只从
+  `CONTROL_SERVER_ONBOARD_CREDENTIAL`（或显式配置的环境变量名）读取，不保存 RIoT
+  凭据，也不把响应写入 journal 或日志。
 - 只有车辆身份匹配、`observedAt` 未过期且 `motionState=STOPPED` 才能映射为
-  `VehicleMotionState.Stopped`；`MOVING`、`UNKNOWN`、`MT_NA`、HTTP/TLS/认证/超时、
+  `VehicleMotionState.Stopped`；`MOVING`、`UNKNOWN`、`MT_NA`、连接/认证/超时、
   格式错误、身份不匹配和过期均 fail-closed 为 `Unknown`。读取失败会立即替换上一份
   `STOPPED` 快照，不复用旧状态。
 - OnboardHmi 只提供车载物理事实和执行安全闭环，不拥有移动目标或 RIoT 订单权威。
 - 断联或安全事实过期时禁止新开锁和新动作。
+- 明文传输会暴露 Bearer/credentialProof，并允许网络中间人篡改 STOPPED 投影；两端必须
+  同版本切换，不能将明文 OnboardHmi 与旧 TLS ControlServer 混用。
 
 ### W2G-IS-04 — 关卡批量卸货
 

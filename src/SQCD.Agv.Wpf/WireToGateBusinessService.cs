@@ -417,7 +417,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                 new WireToGateRecoverySafetyFacts(
                     // The command is emitted only after ControlServer has opened an
                     // authenticated exception-recovery session and accepted the
-                    // recoveryActionId. TLS/session validation plus the formal IDs
+                    // recoveryActionId. Transport/session validation plus the formal IDs
                     // are the authorization proof available to the onboard peer.
                     RecoverySessionAuthorized: true,
                     RecoveryStatePersisted: WireToGateRecoverySafetyPolicy.MatchesPersistedResumeState(

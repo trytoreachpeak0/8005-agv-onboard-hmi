@@ -1,9 +1,6 @@
 using System.Collections.Concurrent;
-using System.Net;
-using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Cryptography;
-using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -19,8 +16,6 @@ public sealed record WireToGateSessionOptions(
     string OnboardInstanceId,
     string OnboardBuildCommit,
     string CredentialEnvironmentVariable,
-    bool UseTls,
-    string? ServerCertificateSha256,
     TimeSpan ConnectTimeout,
     TimeSpan MessageTimeout,
     long CapabilityVersion,
@@ -1603,7 +1598,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         {
             await client.ConnectAsync(_options.Host, _options.Port, timeout.Token).ConfigureAwait(false);
             client.NoDelay = true;
-            Stream stream = await CreateTransportStreamAsync(client, timeout.Token).ConfigureAwait(false);
+            Stream stream = client.GetStream();
             _client = client;
             _stream = stream;
             _reader = new StreamReader(stream, new UTF8Encoding(false, true), false, 4_096, true);
@@ -1618,46 +1613,6 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             client.Dispose();
             throw;
         }
-    }
-
-    private async Task<Stream> CreateTransportStreamAsync(
-        TcpClient client,
-        CancellationToken cancellationToken)
-    {
-        NetworkStream network = client.GetStream();
-        if (!_options.UseTls)
-        {
-            return network;
-        }
-
-        SslStream ssl = new(network, false, ValidateServerCertificate);
-        await ssl.AuthenticateAsClientAsync(new SslClientAuthenticationOptions
-        {
-            TargetHost = _options.Host,
-            EnabledSslProtocols = System.Security.Authentication.SslProtocols.Tls12
-                | System.Security.Authentication.SslProtocols.Tls13
-        }, cancellationToken).ConfigureAwait(false);
-        return ssl;
-    }
-
-    private bool ValidateServerCertificate(
-        object sender,
-        X509Certificate? certificate,
-        X509Chain? chain,
-        SslPolicyErrors sslPolicyErrors)
-    {
-        _ = sender;
-        _ = chain;
-        if (certificate is null || string.IsNullOrWhiteSpace(_options.ServerCertificateSha256))
-        {
-            return false;
-        }
-
-        string actual = Convert.ToHexString(SHA256.HashData(certificate.GetRawCertData()));
-        string expected = _options.ServerCertificateSha256.Replace(":", string.Empty, StringComparison.Ordinal);
-        bool trusted = sslPolicyErrors is SslPolicyErrors.None
-            or SslPolicyErrors.RemoteCertificateNameMismatch;
-        return trusted && actual.Equals(expected, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task SendEnvelopeAsync(
@@ -1847,27 +1802,6 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             throw new InvalidDataException("WIRE_TO_GATE会话配置无效。");
         }
 
-        if (!options.UseTls && !IsLoopback(options.Host))
-        {
-            throw new InvalidDataException("非TLS WIRE_TO_GATE连接只允许loopback地址。");
-        }
-
-        if (options.UseTls
-            && (options.ServerCertificateSha256 is null
-                || options.ServerCertificateSha256.Replace(":", string.Empty, StringComparison.Ordinal).Length != 64))
-        {
-            throw new InvalidDataException("TLS连接必须配置服务器证书SHA-256指纹。");
-        }
-    }
-
-    private static bool IsLoopback(string host)
-    {
-        if (host.Equals("localhost", StringComparison.OrdinalIgnoreCase))
-        {
-            return true;
-        }
-
-        return IPAddress.TryParse(host, out IPAddress? address) && IPAddress.IsLoopback(address);
     }
 
     private static void RequireUuid(string value, string name)

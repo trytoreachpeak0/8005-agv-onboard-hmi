@@ -77,7 +77,7 @@ Fake PASS 只能称为 HMI G2/联调准备通过，不能称为最终 G3。
 
 - Core：正式协议身份、业务投影、slot operation/journal 领域类型；
 - Application：session/readiness、命令分发、批量仓位执行和恢复协调器；
-- Infrastructure：TLS/NDJSON 协议客户端、SQLite journal、可靠 outbox/inbox；
+- Infrastructure：明文 TCP/NDJSON 协议客户端、SQLite journal、可靠 outbox/inbox；
 - WPF：把正式旅程状态接入原型 A 信息结构，不在 ViewModel 内重写协议状态机；
 - Tests：按 W2G-IS-00～07 建立逐切片测试和第一次联调 harness；
 - `scripts/run-first-integration.ps1`：启动依赖、运行场景、收集证据并清理进程。

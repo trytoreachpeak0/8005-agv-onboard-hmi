@@ -44,7 +44,7 @@ public sealed class ControlServerVehicleSafetySignalProvider : IObservableVehicl
         _timeProvider = timeProvider ?? TimeProvider.System;
         _credentialReader = credentialReader
             ?? (() => Environment.GetEnvironmentVariable(_settings.CredentialEnvironmentVariable));
-        _httpClient = httpClient ?? CreateTrustedHttpClient();
+        _httpClient = httpClient ?? CreateHttpClient();
         _ownsHttpClient = httpClient is null;
         _endpoint = Uri.TryCreate(_settings.Endpoint, UriKind.Absolute, out Uri? endpoint)
             ? endpoint
@@ -69,7 +69,7 @@ public sealed class ControlServerVehicleSafetySignalProvider : IObservableVehicl
     public event EventHandler<ValueChangedEventArgs<VehicleSafetySignal>>? SignalChanged;
 
     /// <summary>
-    /// Waits until the first HTTPS refresh attempt has produced either a trusted
+    /// Waits until the first HTTP refresh attempt has produced either a usable
     /// projection or an explicit fail-closed UNKNOWN result.  This is asynchronous
     /// and never turns an unavailable/invalid response into STOPPED.
     /// </summary>
@@ -92,11 +92,11 @@ public sealed class ControlServerVehicleSafetySignalProvider : IObservableVehicl
         }
 
         if (_endpoint is null
-            || !_endpoint.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            || !_endpoint.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
             || !string.IsNullOrEmpty(_endpoint.UserInfo)
             || !string.IsNullOrEmpty(_endpoint.Fragment))
         {
-            Publish(UnknownSignal("HTTPS_REQUIRED"));
+            Publish(UnknownSignal("HTTP_ENDPOINT_REQUIRED"));
             return;
         }
 
@@ -165,14 +165,14 @@ public sealed class ControlServerVehicleSafetySignalProvider : IObservableVehicl
         }
         catch (IOException)
         {
-            Publish(UnknownSignal("HTTPS_REQUEST_FAILED"));
+            Publish(UnknownSignal("HTTP_REQUEST_FAILED"));
         }
         catch (HttpRequestException)
         {
-            // This includes TLS trust failures, DNS failures and connection
-            // failures.  No exception text is retained because it could contain
-            // endpoint or transport details that do not belong in evidence.
-            Publish(UnknownSignal("HTTPS_REQUEST_FAILED"));
+            // This includes DNS and connection failures. No exception text is
+            // retained because it could contain endpoint or transport details
+            // that do not belong in evidence.
+            Publish(UnknownSignal("HTTP_REQUEST_FAILED"));
         }
         catch (InvalidOperationException)
         {
@@ -355,10 +355,8 @@ public sealed class ControlServerVehicleSafetySignalProvider : IObservableVehicl
         }
     }
 
-    private static HttpClient CreateTrustedHttpClient()
+    private static HttpClient CreateHttpClient()
     {
-        // Do not set ServerCertificateCustomValidationCallback: the platform
-        // handler must use normal Windows certificate trust and hostname checks.
         HttpClientHandler handler = new()
         {
             AllowAutoRedirect = false

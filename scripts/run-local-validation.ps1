@@ -31,4 +31,4 @@ Write-Host '=== UI layout ==='
 & (Join-Path $scriptRoot 'check-ui-layout.ps1')
 
 Write-Host ''
-Write-Host '本机计划中的可执行验证全部通过；ControlServer、真实车辆信号、现场网络/TLS和硬件仍保留为外部门禁。'
+Write-Host '本机计划中的可执行验证全部通过；ControlServer、真实车辆信号、现场明文网络和硬件仍保留为外部门禁。'

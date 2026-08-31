@@ -23,9 +23,17 @@ public sealed class ConfigurationTests
             .GetProperty("wireToGate")
             .GetProperty("port")
             .GetInt32();
+        JsonElement wireToGate = document.RootElement.GetProperty("wireToGate");
+        Uri vehicleSafetyEndpoint = new(document.RootElement
+            .GetProperty("vehicleSafety")
+            .GetProperty("endpoint")
+            .GetString()!);
 
         Assert.Equal(WireToGateSettings.DefaultControlServerPort, configuredPort);
         Assert.Equal(58_005, configuredPort);
+        Assert.False(wireToGate.TryGetProperty("useTls", out _));
+        Assert.False(wireToGate.TryGetProperty("serverCertificateSha256", out _));
+        Assert.Equal(Uri.UriSchemeHttp, vehicleSafetyEndpoint.Scheme);
     }
 
     [Fact]
@@ -48,8 +56,7 @@ public sealed class ConfigurationTests
                 Enabled = true,
                 Host = "127.0.0.1",
                 OnboardInstanceId = "77a9a4b8-7b1c-4f2b-92bd-3872f5871158",
-                OnboardBuildCommit = "a6f05fbced15316a2cc20cd327f80c5c5ee1821e",
-                ServerCertificateSha256 = new string('a', 64)
+                OnboardBuildCommit = "a6f05fbced15316a2cc20cd327f80c5c5ee1821e"
             });
 
         InvalidDataException exception = Assert.Throws<InvalidDataException>(settings.Validate);
@@ -67,8 +74,7 @@ public sealed class ConfigurationTests
                 Enabled = true,
                 Host = "control.example.internal",
                 OnboardInstanceId = "77a9a4b8-7b1c-4f2b-92bd-3872f5871158",
-                OnboardBuildCommit = "a6f05fbced15316a2cc20cd327f80c5c5ee1821e",
-                ServerCertificateSha256 = new string('a', 64)
+                OnboardBuildCommit = "a6f05fbced15316a2cc20cd327f80c5c5ee1821e"
             });
 
         InvalidDataException exception = Assert.Throws<InvalidDataException>(settings.Validate);
@@ -97,7 +103,7 @@ public sealed class ConfigurationTests
     }
 
     [Fact]
-    public void EnabledVehicleSafetyProjectionRejectsPlainHttp()
+    public void EnabledVehicleSafetyProjectionAcceptsPlainHttp()
     {
         OnboardSettings settings = new()
         {
@@ -109,9 +115,52 @@ public sealed class ConfigurationTests
             }
         };
 
+        settings.Validate();
+    }
+
+    [Fact]
+    public void EnabledVehicleSafetyProjectionRejectsHttps()
+    {
+        OnboardSettings settings = new()
+        {
+            VehicleSafety = new VehicleSafetySettings
+            {
+                Enabled = true,
+                Endpoint = "https://control.internal/api/onboard/v1/vehicle-safety",
+                ExpectedVehicleKey = "AGV-8005-27"
+            }
+        };
+
         InvalidDataException exception = Assert.Throws<InvalidDataException>(settings.Validate);
 
-        Assert.Contains("必须使用HTTPS", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("必须使用HTTP", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("useTls")]
+    [InlineData("serverCertificateSha256")]
+    public void RemovedTransportKeyIsRejectedInsteadOfSilentlyIgnored(string removedKey)
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"onboard-settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(path, $$"""
+                {
+                  "wireToGate": {
+                    "{{removedKey}}": false
+                  }
+                }
+                """);
+
+            InvalidDataException exception = Assert.Throws<InvalidDataException>(() => OnboardSettings.Load(path));
+
+            Assert.Contains("已移除", exception.Message, StringComparison.Ordinal);
+            Assert.Contains("明文TCP/HTTP", exception.Message, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 
     [Fact]
@@ -193,13 +242,12 @@ public sealed class ConfigurationTests
                 Enabled = true,
                 Host = "control.internal",
                 OnboardInstanceId = "77a9a4b8-7b1c-4f2b-92bd-3872f5871158",
-                OnboardBuildCommit = "a6f05fbced15316a2cc20cd327f80c5c5ee1821e",
-                ServerCertificateSha256 = new string('a', 64)
+                OnboardBuildCommit = "a6f05fbced15316a2cc20cd327f80c5c5ee1821e"
             },
             VehicleSafety = vehicleSafety ?? new VehicleSafetySettings
             {
                 Enabled = true,
-                Endpoint = "https://control.internal/api/onboard/v1/vehicle-safety",
+                Endpoint = "http://control.internal/api/onboard/v1/vehicle-safety",
                 CredentialEnvironmentVariable = "CONTROL_SERVER_ONBOARD_CREDENTIAL",
                 ExpectedVehicleKey = "AGV-8005-27"
             },

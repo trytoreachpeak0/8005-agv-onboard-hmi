@@ -321,7 +321,7 @@ $summary = [ordered]@{
     knownLimitations = @(
         '本证据是 OnboardHmi 本机 G2；ControlServer G2 和联合 G3 仍需外部/现场门禁。',
         'G1 使用临时盘符运行，仅规避 Windows 工作区路径含 # 时的 Node URL 解码问题，不改变协议仓库内容。',
-        '真实车辆停稳信号、Modbus/锁/门/光幕和现场 TLS 未在本机证据中宣称完成。'
+        '真实车辆停稳信号、Modbus/锁/门/光幕和现场明文网络未在本机证据中宣称完成。'
     )
 }
 

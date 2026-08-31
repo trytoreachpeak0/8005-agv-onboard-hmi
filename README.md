@@ -153,9 +153,13 @@ SUBLOT后三位编号与物理仓位号保持一致。例如，扫描`LOAD-003`�
 - TCP JSON是正式接口冻结前的临时适配器。
 - 旧 TCP JSON 规则适配器仍保留给开发环境；生产 WIRE_TO_GATE 业务权威必须使用 ControlServer 正式消息流。
 - WIRE_TO_GATE 已支持服务端多货位命令的串行安全执行和 durable outbox，但真实 ControlServer 的业务派发、结果 reconciliation、异常恢复和现场车辆停稳信号仍需联调。
-- Production 配置启动时会拒绝 ControlServer 回环/示例地址、占位 commit/TLS
-  指纹、示例身份和缺失的凭据/操作员环境变量；车辆停稳信号尚未接线时 provider
-  固定报告 UNKNOWN，所有危险动作保持 fail-closed。
+- Production 配置启动时会拒绝 ControlServer 回环/示例地址、占位 commit、示例身份和
+  缺失的凭据/操作员环境变量；车辆安全投影不可用、身份不匹配或证据过期时固定报告
+  UNKNOWN，所有危险动作保持 fail-closed。
+- WIRE_TO_GATE 与车辆安全投影固定使用明文 TCP/HTTP，不提供 TLS 开关。厂内网络抓包者
+  可取得并重放 credentialProof/Bearer 凭据，车辆 STOPPED 投影也可能被中间人篡改；
+  ControlServer 的 health/version 端点会随 HTTP 服务暴露。这是已接受的安全与功能安全限制，
+  现场升级必须保证 OnboardHmi 与 ControlServer 同时切换到明文版本。
 - IS-07 本机只验收授权/持久化/新鲜物理事实的安全闸门，正式恢复 session、人工/
   机械动作、硬件恢复和 ControlServer 业务结果仍不能由本机伪造完成。
 - 断线时未能确认物理安全收尾的活动货位会保留在 journal 中并保持阻塞，不能自动扩展或重新开锁。

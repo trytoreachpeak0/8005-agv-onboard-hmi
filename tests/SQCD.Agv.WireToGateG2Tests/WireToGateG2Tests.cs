@@ -828,7 +828,7 @@ public sealed class WireToGateG2Tests
             new VehicleSafetySettings
             {
                 Enabled = true,
-                Endpoint = "https://control.test/api/onboard/v1/vehicle-safety",
+                Endpoint = "http://control.test/api/onboard/v1/vehicle-safety",
                 CredentialEnvironmentVariable = CredentialVariable,
                 ExpectedVehicleKey = "AGV-8005-01",
                 MaximumEvidenceAgeMs = 5_000,
@@ -926,8 +926,6 @@ public sealed class WireToGateG2Tests
             onboardInstanceId ?? Guid.NewGuid().ToString("D"),
             new string('a', 40),
             CredentialVariable,
-            UseTls: false,
-            ServerCertificateSha256: null,
             TimeSpan.FromSeconds(2),
             TimeSpan.FromSeconds(2),
             capability,

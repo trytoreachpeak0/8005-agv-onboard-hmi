@@ -289,7 +289,6 @@ $settings.wireToGate.host = '127.0.0.1'
 $settings.wireToGate.port = $proxyPort
 $settings.wireToGate.onboardInstanceId = '56385c7b-a149-4127-a686-72334178093b'
 $settings.wireToGate.onboardBuildCommit = $onboardCommit
-$settings.wireToGate.useTls = $false
 $settings.wireToGate.journalPath = Join-Path $StageRoot 'onboard-journal.db'
 $settings.logging.directory = Join-Path $StageRoot 'onboard-logs'
 $settings.logging.writeToConsole = $true

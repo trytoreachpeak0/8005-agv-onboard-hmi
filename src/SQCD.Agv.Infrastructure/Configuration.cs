@@ -31,6 +31,7 @@ public sealed class OnboardSettings
         }
 
         string json = File.ReadAllText(path);
+        RejectRemovedTransportKeys(json);
         OnboardSettings settings = JsonSerializer.Deserialize<OnboardSettings>(json, SerializerOptions)
             ?? throw new InvalidDataException("车载端配置文件内容为空或格式错误。");
         settings.Validate();
@@ -106,6 +107,43 @@ public sealed class OnboardSettings
         }
     }
 
+    private static void RejectRemovedTransportKeys(string json)
+    {
+        using JsonDocument document = JsonDocument.Parse(
+            json,
+            new JsonDocumentOptions
+            {
+                CommentHandling = JsonCommentHandling.Skip,
+                AllowTrailingCommas = true
+            });
+        JsonElement wireToGate = default;
+        bool foundWireToGate = false;
+        foreach (JsonProperty property in document.RootElement.EnumerateObject())
+        {
+            if (property.Name.Equals("wireToGate", StringComparison.OrdinalIgnoreCase))
+            {
+                wireToGate = property.Value;
+                foundWireToGate = true;
+                break;
+            }
+        }
+
+        if (!foundWireToGate || wireToGate.ValueKind != JsonValueKind.Object)
+        {
+            return;
+        }
+
+        foreach (JsonProperty property in wireToGate.EnumerateObject())
+        {
+            if (property.Name.Equals("useTls", StringComparison.OrdinalIgnoreCase)
+                || property.Name.Equals("serverCertificateSha256", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException(
+                    $"WIRE_TO_GATE配置键{property.Name}已移除，当前版本固定使用明文TCP/HTTP传输。");
+            }
+        }
+    }
+
     private static JsonSerializerOptions SerializerOptions { get; } = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -116,14 +154,14 @@ public sealed class OnboardSettings
 
 /// <summary>
 /// Configuration for the read-only vehicle-safety projection exposed by
-/// ControlServer.  The endpoint is deliberately a complete HTTPS URI so that
-/// an accidental HTTP fallback cannot be hidden in a host/port combination.
+/// ControlServer. The endpoint is a complete plaintext HTTP URI so the remote
+/// host and port remain explicit in production configuration.
 /// </summary>
 public sealed class VehicleSafetySettings
 {
     public bool Enabled { get; init; }
 
-    public string Endpoint { get; init; } = "https://control.example.invalid/api/onboard/v1/vehicle-safety";
+    public string Endpoint { get; init; } = "http://control.example.invalid/api/onboard/v1/vehicle-safety";
 
     public string CredentialEnvironmentVariable { get; init; } = "CONTROL_SERVER_ONBOARD_CREDENTIAL";
 
@@ -149,7 +187,7 @@ public sealed class VehicleSafetySettings
 
         bool validEndpoint = Uri.TryCreate(Endpoint, UriKind.Absolute, out Uri? endpoint)
             && endpoint is not null
-            && endpoint.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+            && endpoint.Scheme.Equals(Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase)
             && string.IsNullOrEmpty(endpoint.UserInfo)
             && string.IsNullOrEmpty(endpoint.Fragment);
         if (!validEndpoint
@@ -160,7 +198,7 @@ public sealed class VehicleSafetySettings
             || PollIntervalMs <= 0
             || RequestTimeoutMs <= 0)
         {
-            throw new InvalidDataException("ControlServer车辆安全投影配置无效，必须使用HTTPS并配置身份、凭据和证据时效。");
+            throw new InvalidDataException("ControlServer车辆安全投影配置无效，必须使用HTTP并配置身份、凭据和证据时效。");
         }
 
         if (production
@@ -201,10 +239,6 @@ public sealed class WireToGateSettings
 
     public string CredentialEnvironmentVariable { get; init; } = "CONTROL_SERVER_ONBOARD_CREDENTIAL";
 
-    public bool UseTls { get; init; } = true;
-
-    public string? ServerCertificateSha256 { get; init; }
-
     public int ConnectTimeoutMs { get; init; } = 3_000;
 
     public int MessageTimeoutMs { get; init; } = 3_000;
@@ -240,8 +274,6 @@ public sealed class WireToGateSettings
             OnboardInstanceId,
             OnboardBuildCommit,
             CredentialEnvironmentVariable,
-            UseTls,
-            ServerCertificateSha256,
             TimeSpan.FromMilliseconds(ConnectTimeoutMs),
             TimeSpan.FromMilliseconds(MessageTimeoutMs),
             CapabilityVersion,
@@ -258,8 +290,6 @@ public sealed class WireToGateSettings
             return;
         }
 
-        string normalizedCertificateHash = ServerCertificateSha256?
-            .Replace(":", string.Empty, StringComparison.Ordinal) ?? string.Empty;
         if (string.IsNullOrWhiteSpace(Host)
             || Port is < 1 or > 65_535
             || !Guid.TryParseExact(OnboardInstanceId, "D", out _)
@@ -275,21 +305,17 @@ public sealed class WireToGateSettings
             || string.IsNullOrWhiteSpace(ActiveSlotConfigurationVersion)
             || JourneySnapshotMaxAgeMs <= 0
             || string.IsNullOrWhiteSpace(OperatorIdEnvironmentVariable)
-            || string.IsNullOrWhiteSpace(JournalPath)
-            || (UseTls && normalizedCertificateHash.Length != 64))
+            || string.IsNullOrWhiteSpace(JournalPath))
         {
             throw new InvalidDataException("WIRE_TO_GATE配置无效。");
         }
 
         if (production
             && (IsForbiddenProductionHost(Host)
-                || OnboardSettings.IsPlaceholderValue(OnboardBuildCommit)
-                || string.IsNullOrWhiteSpace(ServerCertificateSha256)
-                || ServerCertificateSha256.Replace(":", string.Empty, StringComparison.Ordinal)
-                    .All(character => character == '0')))
+                || OnboardSettings.IsPlaceholderValue(OnboardBuildCommit)))
         {
             throw new InvalidDataException(
-                "Production环境的ControlServer地址、构建commit或TLS指纹仍是本机/占位配置。");
+                "Production环境的ControlServer地址或构建commit仍是本机/占位配置。");
         }
     }
 
