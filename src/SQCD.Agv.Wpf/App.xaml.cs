@@ -2,6 +2,7 @@ using System.IO;
 using System.Reflection;
 using System.Windows;
 using System.Windows.Threading;
+using SQCD.Agv.AutomationHost;
 using SQCD.Agv.Application;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
@@ -17,6 +18,7 @@ public partial class App : System.Windows.Application, IDisposable
     private OnboardController? _controller;
     private WireToGateSessionService? _wireToGate;
     private WireToGateBusinessService? _wireToGateBusiness;
+    private OnboardAutomationHttpServer? _automationServer;
     private ControlServerVehicleSafetySignalProvider? _vehicleSafetySignalProvider;
     private bool _disposed;
 
@@ -132,7 +134,12 @@ public partial class App : System.Windows.Application, IDisposable
                     settings.WireToGate.OperatorIdEnvironmentVariable,
                     vehicleSafetySignalProvider,
                     TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs),
-                    TimeSpan.FromMilliseconds(settings.VehicleSafety.ClockSkewToleranceMs));
+                    TimeSpan.FromMilliseconds(settings.VehicleSafety.ClockSkewToleranceMs),
+                    new WireToGateRecoveryOptions(
+                        settings.WireToGate.RecoveryResumeEnabled,
+                        settings.WireToGate.RecoveryAuthenticationProofEnvironmentVariable,
+                        settings.WireToGate.RecoveryAdministratorRole,
+                        settings.WireToGate.RecoveryVerificationMethod));
                 _wireToGateBusiness.SublotEntryRequested += (_, args) =>
                 {
                     _logger.Write(
@@ -148,7 +155,10 @@ public partial class App : System.Windows.Application, IDisposable
                         sublot,
                         inputMethod == ScanInputMethod.Scanner ? "SCANNER" : "KEYBOARD",
                         cancellationToken),
-                    () => _wireToGateBusiness.CanSubmitSublot);
+                    () => _wireToGateBusiness.CanSubmitSublot,
+                    () => _wireToGateBusiness.CanRequestResumeAfterRepair,
+                    cancellationToken => _wireToGateBusiness.RequestResumeAfterRepairAsync(
+                        cancellationToken: cancellationToken));
                 _wireToGateBusiness.Start();
             }
 
@@ -164,11 +174,30 @@ public partial class App : System.Windows.Application, IDisposable
                 await vehicleSafetySignalProvider.WaitForFirstRefreshAsync().ConfigureAwait(true);
             }
             _wireToGate?.Start();
+            if (settings.Automation.Enabled)
+            {
+                _automationServer = new OnboardAutomationHttpServer(
+                    new OnboardAutomationHostOptions(
+                        settings.Automation.ListenAddress,
+                        settings.Automation.Port),
+                    new WpfOnboardAutomationFacade(
+                        settings.AgvId,
+                        _controller,
+                        _wireToGate ?? throw new InvalidOperationException("WIRE_TO_GATE未初始化。"),
+                        _wireToGateBusiness ?? throw new InvalidOperationException("WIRE_TO_GATE业务未初始化。"),
+                        new SystemClock()));
+                await _automationServer.StartAsync().ConfigureAwait(true);
+                _logger.Write(
+                    LogSeverity.Information,
+                    nameof(App),
+                    $"车载端自动化接口已启动：{_automationServer.Endpoint}。 ");
+            }
         }
         catch (Exception exception) when (
             exception is IOException
                 or InvalidDataException
                 or UnauthorizedAccessException
+                or System.Net.Sockets.SocketException
                 or System.Text.Json.JsonException)
         {
             _logger?.Write(LogSeverity.Error, nameof(App), "车载端启动失败。", exception);
@@ -199,6 +228,7 @@ public partial class App : System.Windows.Application, IDisposable
         _disposed = true;
         try
         {
+            _automationServer?.DisposeAsync().AsTask().GetAwaiter().GetResult();
             _wireToGateBusiness?.DisposeAsync().AsTask().GetAwaiter().GetResult();
             _wireToGate?.DisposeAsync().AsTask().GetAwaiter().GetResult();
             _controller?.DisposeAsync().AsTask().GetAwaiter().GetResult();

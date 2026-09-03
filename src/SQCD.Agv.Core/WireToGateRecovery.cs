@@ -23,6 +23,58 @@ public sealed record WireToGatePendingResult(
     string BusinessId,
     string ContentSha256);
 
+/// <summary>
+/// The immutable operation identity needed to resume a physical operation after
+/// a process or connection interruption.  This is deliberately a copy of the
+/// server command's business fields; the original command is never reconstructed
+/// from the current screen or from a newly selected slot set.
+/// </summary>
+public sealed record WireToGateRecoveryOperationContext(
+    string MessageId,
+    string? CorrelationId,
+    long SessionGeneration,
+    DateTimeOffset SentAt,
+    string DemandId,
+    string OperationSessionId,
+    string SlotOperationAttemptId,
+    OperationType OperationType,
+    IReadOnlyList<int> Slots,
+    int ExpectedBasketCount,
+    bool ExpectedOccupied,
+    string CommandContentSha256)
+{
+    public static WireToGateRecoveryOperationContext FromCommand(
+        WireToGateSlotOperationCommand command) =>
+        new(
+            command.MessageId,
+            command.CorrelationId,
+            command.SessionGeneration,
+            command.SentAt,
+            command.DemandId,
+            command.OperationSessionId,
+            command.SlotOperationAttemptId,
+            command.OperationType,
+            command.Slots.ToArray(),
+            command.ExpectedBasketCount,
+            command.ExpectedOccupied,
+            command.CommandContentSha256);
+
+    public WireToGateSlotOperationCommand ToCommand() =>
+        new(
+            MessageId,
+            CorrelationId,
+            SessionGeneration,
+            SentAt,
+            DemandId,
+            OperationSessionId,
+            SlotOperationAttemptId,
+            OperationType,
+            Slots,
+            ExpectedBasketCount,
+            ExpectedOccupied,
+            CommandContentSha256);
+}
+
 public sealed record WireToGateRecoveryState(
     string? UnsettledSlotOperationAttemptId,
     WireToGateRecoveryCheckpoint ProvenRecoveryCheckpoint,
@@ -30,6 +82,36 @@ public sealed record WireToGateRecoveryState(
     long ForcedRecoveryGeneration,
     IReadOnlyList<WireToGatePendingResult> PendingResults)
 {
+    /// <summary>
+    /// Optional for backward compatibility with journals created before resume
+    /// context was introduced.  A missing context must be treated as a hard
+    /// recovery block by the business layer; it must never be guessed.
+    /// </summary>
+    public WireToGateRecoveryOperationContext? OperationContext { get; init; }
+
+    public IReadOnlyList<int> CompletedSlots { get; init; } = [];
+
+    public IReadOnlyList<WireToGateSlotExecutionResult> SlotResults { get; init; } = [];
+
+    /// <summary>
+    /// The authenticated recovery identifiers are persisted so a reconnect or
+    /// process restart cannot silently accept a different recovery action.
+    /// Authentication proof itself is intentionally never persisted.
+    /// </summary>
+    public string? ExceptionRecoverySessionId { get; init; }
+
+    public string? RecoveryActionId { get; init; }
+
+    public string? RecoverySessionRequestId { get; init; }
+
+    public string? RecoveryActionRequestId { get; init; }
+
+    public string? RecoveryReason { get; init; }
+
+    public string? RecoveryOperatorId { get; init; }
+
+    public DateTimeOffset? RecoveryOperatorVerifiedAt { get; init; }
+
     public static WireToGateRecoveryState Empty { get; } = new(
         null,
         WireToGateRecoveryCheckpoint.None,

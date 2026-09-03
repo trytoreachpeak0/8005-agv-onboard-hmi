@@ -6,6 +6,7 @@
     <ApplicationIcon />
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../SQCD.Agv.AutomationHost/SQCD.Agv.AutomationHost.csproj" />
     <ProjectReference Include="../SQCD.Agv.Application/SQCD.Agv.Application.csproj" />
     <ProjectReference Include="../SQCD.Agv.Core/SQCD.Agv.Core.csproj" />
     <ProjectReference Include="../SQCD.Agv.Infrastructure/SQCD.Agv.Infrastructure.csproj" />

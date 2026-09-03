@@ -28,6 +28,7 @@ public sealed class MainViewModel : ViewModelBase
     private bool _canReopenOperation;
     private bool _canCancelOperation;
     private bool _canRetryPendingResult;
+    private bool _canRequestWireToGateRecovery;
     private bool _hasWireToGateJourney;
     private bool _wireToGateEnabled;
     private WireToGateSessionSnapshot? _wireToGateSession;
@@ -37,6 +38,8 @@ public sealed class MainViewModel : ViewModelBase
     private string? _lastLoggedErrorKey;
     private Func<string, ScanInputMethod, CancellationToken, Task>? _wireToGateSubmitter;
     private Func<bool>? _wireToGateCanSubmit;
+    private Func<bool>? _wireToGateCanRequestRecovery;
+    private Func<CancellationToken, Task<bool>>? _wireToGateRecoveryRequester;
 
     public MainViewModel(
         OnboardController controller,
@@ -146,10 +149,14 @@ public sealed class MainViewModel : ViewModelBase
 
     internal void ConfigureWireToGate(
         Func<string, ScanInputMethod, CancellationToken, Task> submitter,
-        Func<bool> canSubmit)
+        Func<bool> canSubmit,
+        Func<bool>? canRequestRecovery = null,
+        Func<CancellationToken, Task<bool>>? recoveryRequester = null)
     {
         _wireToGateSubmitter = submitter ?? throw new ArgumentNullException(nameof(submitter));
         _wireToGateCanSubmit = canSubmit ?? throw new ArgumentNullException(nameof(canSubmit));
+        _wireToGateCanRequestRecovery = canRequestRecovery;
+        _wireToGateRecoveryRequester = recoveryRequester;
         _wireToGateEnabled = true;
         RefreshWireToGateInputStateCore();
         ApplyWireToGatePresentationCore();
@@ -181,6 +188,7 @@ public sealed class MainViewModel : ViewModelBase
     private void RefreshWireToGateInputStateCore()
     {
         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? CanSubmit;
+        CanRequestWireToGateRecovery = _wireToGateCanRequestRecovery?.Invoke() == true;
     }
 
     public string VisitText
@@ -256,6 +264,12 @@ public sealed class MainViewModel : ViewModelBase
         private set => SetProperty(ref _canRetryPendingResult, value);
     }
 
+    public bool CanRequestWireToGateRecovery
+    {
+        get => _canRequestWireToGateRecovery;
+        private set => SetProperty(ref _canRequestWireToGateRecovery, value);
+    }
+
     public string RecoverySlotName
     {
         get => _recoverySlotName;
@@ -291,6 +305,11 @@ public sealed class MainViewModel : ViewModelBase
         Task.FromResult(_controller.RequestCancelCurrentOperation());
 
     public Task<bool> RetryPendingResultAsync() => _controller.RetryPendingResultAsync();
+
+    public Task<bool> RequestWireToGateRecoveryAsync(CancellationToken cancellationToken = default) =>
+        _wireToGateRecoveryRequester is null
+            ? Task.FromResult(false)
+            : _wireToGateRecoveryRequester(cancellationToken);
 
     private void OnStateChanged(object? sender, ValueChangedEventArgs<OnboardSnapshot> args)
     {
@@ -373,6 +392,7 @@ public sealed class MainViewModel : ViewModelBase
 
         if (_lastControllerSnapshot?.State == OnboardState.Faulted)
         {
+            CanRequestWireToGateRecovery = false;
             return;
         }
 
@@ -388,6 +408,8 @@ public sealed class MainViewModel : ViewModelBase
         CanReopenOperation = false;
         CanCancelOperation = false;
         CanRetryPendingResult = false;
+        CanRequestWireToGateRecovery = _wireToGateCanRequestRecovery?.Invoke() == true
+            && _wireToGateOperation?.Stage == WireToGateHmiOperationStage.RecoveryRequired;
     }
 
     private void RefreshLockerCardsCore()

@@ -108,6 +108,55 @@ public sealed record SafetyStateChangedPayload(
     WireToGateSafetySummaryPayload Safety,
     IReadOnlyList<int> AffectedSlots);
 
+public sealed record ExceptionRecoverySessionRequestedPayload(
+    string RequestId,
+    WireToGateOperatorContextPayload Administrator,
+    string AdministratorRole,
+    string EventId,
+    string? DemandId,
+    IReadOnlyList<int> Slots,
+    string Reason,
+    string AuthenticationProof);
+
+public sealed record ExceptionRecoverySessionOpenedPayload(
+    string RequestId,
+    string ExceptionRecoverySessionId,
+    DateTimeOffset OpenedAt,
+    string EventId,
+    string? DemandId,
+    IReadOnlyList<int> Slots,
+    long RecoverySessionRevision);
+
+public sealed record RecoveryActionSubmittedPayload(
+    string RecoveryActionId,
+    string ExceptionRecoverySessionId,
+    string Action,
+    string EventId,
+    string? DemandId,
+    IReadOnlyList<int> Slots,
+    WireToGateOperatorContextPayload Operator,
+    string Reason);
+
+public sealed record RecoveryActionAcceptedPayload(
+    string RecoveryActionId,
+    string ExceptionRecoverySessionId,
+    string AcceptedAction,
+    long RecoverySessionRevision,
+    DateTimeOffset AcceptedAt);
+
+public sealed record ExceptionRecoverySessionSnapshotPayload(
+    string ExceptionRecoverySessionId,
+    long RecoverySessionRevision,
+    string State,
+    string AdministratorId,
+    string AdministratorRole,
+    string EventId,
+    string? DemandId,
+    IReadOnlyList<int> Slots,
+    string? SelectedAction,
+    IReadOnlyList<string> AllowedActions,
+    IReadOnlyList<WireToGateBlockingFactPayload> BlockingFacts);
+
 public sealed record WireToGateProblemPayload(
     string ReasonCode,
     string? FieldPath,

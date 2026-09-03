@@ -15,6 +15,8 @@ public sealed class OnboardSettings
 
     public WireToGateSettings WireToGate { get; init; } = new();
 
+    public OnboardAutomationSettings Automation { get; init; } = new();
+
     public VehicleSafetySettings VehicleSafety { get; init; } = new();
 
     public IoModuleSettings IoModule { get; init; } = new();
@@ -62,6 +64,11 @@ public sealed class OnboardSettings
 
         RuleGateway.Validate(production);
         WireToGate.Validate(production);
+        Automation.Validate(
+            production,
+            WireToGate.Enabled,
+            WireToGate.Port,
+            IoModule.Port);
         VehicleSafety.Validate(production && WireToGate.Enabled);
         IoModule.Validate(production);
         Workflow.Validate();
@@ -77,6 +84,12 @@ public sealed class OnboardSettings
             RequireProductionEnvironmentVariable(
                 WireToGate.OperatorIdEnvironmentVariable,
                 "操作员ID");
+            if (WireToGate.RecoveryResumeEnabled)
+            {
+                RequireProductionEnvironmentVariable(
+                    WireToGate.RecoveryAuthenticationProofEnvironmentVariable,
+                    "恢复管理员凭据");
+            }
         }
     }
 
@@ -264,6 +277,15 @@ public sealed class WireToGateSettings
 
     public string OperatorIdEnvironmentVariable { get; init; } = "CONTROL_SERVER_OPERATOR_ID";
 
+    public bool RecoveryResumeEnabled { get; init; }
+
+    public string RecoveryAuthenticationProofEnvironmentVariable { get; init; } =
+        "CONTROL_SERVER_RECOVERY_PROOF";
+
+    public string RecoveryAdministratorRole { get; init; } = "MAINTENANCE_ADMINISTRATOR";
+
+    public string RecoveryVerificationMethod { get; init; } = "CONFIGURED_PROOF";
+
     public string JournalPath { get; init; } = "%LOCALAPPDATA%\\SQCD\\8005AGV\\onboard-journal.db";
 
     public WireToGateSessionOptions CreateSessionOptions(string agvId)
@@ -312,6 +334,9 @@ public sealed class WireToGateSettings
             || string.IsNullOrWhiteSpace(ActiveSlotConfigurationVersion)
             || JourneySnapshotMaxAgeMs <= 0
             || string.IsNullOrWhiteSpace(OperatorIdEnvironmentVariable)
+            || string.IsNullOrWhiteSpace(RecoveryAuthenticationProofEnvironmentVariable)
+            || string.IsNullOrWhiteSpace(RecoveryAdministratorRole)
+            || string.IsNullOrWhiteSpace(RecoveryVerificationMethod)
             || string.IsNullOrWhiteSpace(JournalPath))
         {
             throw new InvalidDataException("WIRE_TO_GATE配置无效。");
@@ -323,6 +348,22 @@ public sealed class WireToGateSettings
         {
             throw new InvalidDataException(
                 "Production环境的ControlServer地址或构建commit仍是本机/占位配置。");
+        }
+
+        if (RecoveryAdministratorRole is not ("MAINTENANCE_ADMINISTRATOR" or "SYSTEM_ADMINISTRATOR"))
+        {
+            throw new InvalidDataException("恢复管理员角色必须是受支持的协议角色。 ");
+        }
+
+        if (OnboardSettings.IsPlaceholderValue(RecoveryAuthenticationProofEnvironmentVariable))
+        {
+            throw new InvalidDataException("恢复管理员凭据环境变量不能使用占位名称。 ");
+        }
+
+        if (RecoveryVerificationMethod is "BADGE" or "CARD" or "BIOMETRIC")
+        {
+            throw new InvalidDataException(
+                "当前车载端只支持已配置凭据证明，不能把它标记为未接入的实体徽章或生物识别方式。 ");
         }
     }
 
@@ -337,6 +378,44 @@ public sealed class WireToGateSettings
         }
 
         return IPAddress.TryParse(host, out IPAddress? address) && IPAddress.IsLoopback(address);
+    }
+}
+
+public sealed class OnboardAutomationSettings
+{
+    public bool Enabled { get; init; }
+
+    public string ListenAddress { get; init; } = "127.0.0.1";
+
+    public int Port { get; init; } = 58_007;
+
+    internal void Validate(
+        bool production,
+        bool wireToGateEnabled,
+        int wireToGatePort,
+        int ioModulePort)
+    {
+        if (!Enabled)
+        {
+            return;
+        }
+
+        if (production)
+        {
+            throw new InvalidDataException(
+                "Production环境禁止启用车载端自动化loopback接口，除非完成独立安全评审。 ");
+        }
+
+        if (!IPAddress.TryParse(ListenAddress, out IPAddress? address)
+            || !IPAddress.IsLoopback(address)
+            || Port is < 1 or > 65_535
+            || Port == wireToGatePort
+            || Port == ioModulePort
+            || !wireToGateEnabled)
+        {
+            throw new InvalidDataException(
+                "车载端自动化接口必须绑定loopback、使用独立端口，并且只能在WIRE_TO_GATE启用时开启。 ");
+        }
     }
 }
 

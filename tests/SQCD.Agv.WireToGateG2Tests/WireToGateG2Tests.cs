@@ -225,6 +225,62 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    public async Task RecoverySessionAndActionResponsesAreCorrelatedWithoutPhysicalIo()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            RespondToRecoveryRequests = true
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionClient client = CreateClient(server, io, NewJournalPath());
+        await client.ConnectAndRecoverAsync(testToken);
+
+        string requestId = "77777777-7777-4777-8777-777777777770";
+        WireToGateOperatorContextPayload operatorContext = new(
+            "maintenance-001",
+            "CONFIGURED_PROOF",
+            DateTimeOffset.UtcNow);
+        ExceptionRecoverySessionOpenedPayload opened = await client
+            .RequestExceptionRecoverySessionAsync(
+                requestId,
+                new ExceptionRecoverySessionRequestedPayload(
+                    requestId,
+                    operatorContext,
+                    "MAINTENANCE_ADMINISTRATOR",
+                    "88888888-8888-4888-8888-888888888888",
+                    "99999999-9999-4999-8999-999999999999",
+                    [1, 2],
+                    "repair complete",
+                    "test-proof"),
+                testToken);
+
+        Assert.Equal(requestId, opened.RequestId);
+        Assert.Equal("77777777-7777-4777-8777-777777777777", opened.ExceptionRecoverySessionId);
+
+        string actionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+        RecoveryActionAcceptedPayload accepted = await client.SubmitRecoveryActionAsync(
+            actionId,
+            new RecoveryActionSubmittedPayload(
+                actionId,
+                opened.ExceptionRecoverySessionId,
+                "RESUME_AFTER_REPAIR",
+                opened.EventId,
+                opened.DemandId,
+                opened.Slots,
+                operatorContext,
+                "repair complete"),
+            testToken);
+
+        Assert.Equal(actionId, accepted.RecoveryActionId);
+        Assert.Equal("RESUME_AFTER_REPAIR", accepted.AcceptedAction);
+        Assert.Equal(0, io.UnlockCount);
+        Assert.Contains(server.Received, item => item.MessageType == "ExceptionRecoverySessionRequested");
+        Assert.Contains(server.Received, item => item.MessageType == "RecoveryActionSubmitted");
+    }
+
+    [Fact]
     public async Task JourneySnapshotsAreProjectedAndHeartbeatDoesNotStealAsyncMessages()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;

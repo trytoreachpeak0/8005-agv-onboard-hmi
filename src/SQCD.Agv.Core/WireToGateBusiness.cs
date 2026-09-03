@@ -68,6 +68,34 @@ public sealed record WireToGateRecoveryCommand(
     string PayloadJson)
     : WireToGateServerCommand(MessageType, MessageId, CorrelationId, SessionGeneration, SentAt);
 
+public sealed record WireToGateRecoveryBlockingFact(
+    string ReasonCode,
+    string SubjectType,
+    string? SubjectId);
+
+public sealed record WireToGateExceptionRecoverySessionSnapshot(
+    string MessageId,
+    string? CorrelationId,
+    long SessionGeneration,
+    DateTimeOffset SentAt,
+    string ExceptionRecoverySessionId,
+    long RecoverySessionRevision,
+    string State,
+    string AdministratorId,
+    string AdministratorRole,
+    string EventId,
+    string? DemandId,
+    IReadOnlyList<int> Slots,
+    string? SelectedAction,
+    IReadOnlyList<string> AllowedActions,
+    IReadOnlyList<WireToGateRecoveryBlockingFact> BlockingFacts)
+    : WireToGateServerCommand(
+        "ExceptionRecoverySessionSnapshot",
+        MessageId,
+        CorrelationId,
+        SessionGeneration,
+        SentAt);
+
 public sealed record WireToGateSlotExecutionResult(
     int SlotNo,
     string Outcome,
@@ -85,4 +113,3 @@ public sealed record WireToGateOperationExecutionResult(
     DateTimeOffset ObservedAt,
     string JournalCheckpoint,
     string ResultContentSha256);
-

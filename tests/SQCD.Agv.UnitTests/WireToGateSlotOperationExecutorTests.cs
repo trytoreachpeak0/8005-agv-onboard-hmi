@@ -95,6 +95,102 @@ public sealed class WireToGateSlotOperationExecutorTests
         Assert.Contains("SLOT_STATE_UNKNOWN", result.SlotResults.Single().ReasonCodes);
     }
 
+    [Fact]
+    public async Task ResumeSkipsSlotsAlreadyAtDesiredFinalState()
+    {
+        await using TestFixture fixture = await TestFixture.CreateAsync(initialCargo: false, finalCargo: true);
+        WireToGateSlotOperationCommand command = CreateCommand(
+            OperationType.Load,
+            [1, 2],
+            expectedOccupied: true);
+        WireToGateOperationExecutionResult first = await fixture.Executor.ExecuteAsync(command, null);
+        Assert.Equal("COMPLETED", first.OverallOutcome);
+        int unlocksBeforeResume = fixture.Io.UnlockCount;
+
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync();
+        await fixture.Journal.WriteRecoveryStateAsync(state with
+        {
+            ExceptionRecoverySessionId = "44444444-4444-4444-8444-444444444444",
+            RecoveryActionId = "55555555-5555-4555-8555-555555555555"
+        });
+        WireToGateSlotOperationResumeCommand resume = new(
+            "66666666-6666-4666-8666-666666666666",
+            2,
+            DateTimeOffset.UtcNow,
+            "44444444-4444-4444-8444-444444444444",
+            "55555555-5555-4555-8555-555555555555",
+            command.DemandId,
+            command.SlotOperationAttemptId,
+            WireToGateRecoveryCheckpoint.SafeFinishReached,
+            command.Slots,
+            command.CommandContentSha256);
+
+        WireToGateOperationExecutionResult resumed = await fixture.Executor.ResumeAsync(resume, null);
+
+        Assert.Equal("COMPLETED", resumed.OverallOutcome);
+        Assert.Equal(unlocksBeforeResume, fixture.Io.UnlockCount);
+        Assert.All(resumed.SlotResults, slot => Assert.Equal("COMPLETED", slot.Outcome));
+    }
+
+    [Fact]
+    public async Task ResumeWithoutOriginalContextFailsClosed()
+    {
+        await using TestFixture fixture = await TestFixture.CreateAsync();
+        WireToGateSlotOperationResumeCommand resume = new(
+            "66666666-6666-4666-8666-666666666666",
+            2,
+            DateTimeOffset.UtcNow,
+            "44444444-4444-4444-8444-444444444444",
+            "55555555-5555-4555-8555-555555555555",
+            "11111111-1111-4111-8111-111111111111",
+            "22222222-2222-4222-8222-222222222222",
+            WireToGateRecoveryCheckpoint.Prepared,
+            [1],
+            new string('0', 64));
+
+        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Executor.ResumeAsync(resume, null));
+
+        Assert.Equal("RECOVERY_OPERATION_CONTEXT_MISSING", error.Message);
+        Assert.Equal(0, fixture.Io.UnlockCount);
+    }
+
+    [Fact]
+    public async Task ResumeRejectsDifferentCommandHashWithoutUnlock()
+    {
+        await using TestFixture fixture = await TestFixture.CreateAsync(initialCargo: false, finalCargo: true);
+        WireToGateSlotOperationCommand command = CreateCommand(
+            OperationType.Load,
+            [1],
+            expectedOccupied: true);
+        WireToGateOperationExecutionResult first = await fixture.Executor.ExecuteAsync(command, null);
+        Assert.Equal("COMPLETED", first.OverallOutcome);
+
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync();
+        await fixture.Journal.WriteRecoveryStateAsync(state with
+        {
+            ExceptionRecoverySessionId = "44444444-4444-4444-8444-444444444444",
+            RecoveryActionId = "55555555-5555-4555-8555-555555555555"
+        });
+        WireToGateSlotOperationResumeCommand resume = new(
+            "66666666-6666-4666-8666-666666666666",
+            2,
+            DateTimeOffset.UtcNow,
+            "44444444-4444-4444-8444-444444444444",
+            "55555555-5555-4555-8555-555555555555",
+            command.DemandId,
+            command.SlotOperationAttemptId,
+            WireToGateRecoveryCheckpoint.SafeFinishReached,
+            command.Slots,
+            new string('1', 64));
+
+        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Executor.ResumeAsync(resume, null));
+
+        Assert.Equal("RECOVERY_STATE_MISMATCH", error.Message);
+        Assert.Equal(1, fixture.Io.UnlockCount);
+    }
+
     private static WireToGateSlotOperationCommand CreateCommand(
         OperationType operationType,
         IReadOnlyList<int> slots,

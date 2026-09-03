@@ -565,8 +565,19 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             throw new InvalidDataException("WIRE_TO_GATE journal尚未初始化。");
         }
 
-        return JsonSerializer.Deserialize<WireToGateRecoveryState>(json, SerializerOptions)
-            ?? throw new InvalidDataException("WIRE_TO_GATE recovery state内容无效。");
+        WireToGateRecoveryState state;
+        try
+        {
+            state = JsonSerializer.Deserialize<WireToGateRecoveryState>(json, SerializerOptions)
+                ?? throw new InvalidDataException("WIRE_TO_GATE recovery state内容无效。");
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException("WIRE_TO_GATE recovery state内容无效。", exception);
+        }
+
+        ValidateRecoveryState(state);
+        return state;
     }
 
     private static async Task<WireToGateDurableMessage?> ReadByDeduplicationKeyAsync(
@@ -676,6 +687,10 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
     private static WireToGateRecoveryState Normalize(WireToGateRecoveryState state) => state with
     {
         ActiveUnlockSlots = state.ActiveUnlockSlots.Order().ToArray(),
+        CompletedSlots = state.CompletedSlots.Order().ToArray(),
+        SlotResults = state.SlotResults
+            .OrderBy(item => item.SlotNo)
+            .ToArray(),
         PendingResults = state.PendingResults
             .OrderBy(item => item.MessageId, StringComparer.Ordinal)
             .ToArray()
@@ -689,12 +704,59 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             RequireUuid(state.UnsettledSlotOperationAttemptId, nameof(state.UnsettledSlotOperationAttemptId));
         }
 
-        if (state.ForcedRecoveryGeneration < 0
+        if (state.ActiveUnlockSlots is null
+            || state.CompletedSlots is null
+            || state.SlotResults is null
+            || state.PendingResults is null
+            || state.ForcedRecoveryGeneration < 0
             || state.ActiveUnlockSlots.Any(slot => slot is < 1 or > 8)
-            || state.ActiveUnlockSlots.Distinct().Count() != state.ActiveUnlockSlots.Count)
+            || state.ActiveUnlockSlots.Distinct().Count() != state.ActiveUnlockSlots.Count
+            || state.CompletedSlots.Any(slot => slot is < 1 or > 8)
+            || state.CompletedSlots.Distinct().Count() != state.CompletedSlots.Count
+            || state.SlotResults.Any(result => result.SlotNo is < 1 or > 8)
+            || state.SlotResults.Select(result => result.SlotNo).Distinct().Count() != state.SlotResults.Count)
         {
             throw new InvalidDataException("WIRE_TO_GATE recovery state字段无效。");
         }
+
+        if (state.OperationContext is { } context)
+        {
+            RequireUuid(context.MessageId, nameof(context.MessageId));
+            RequireUuid(context.DemandId, nameof(context.DemandId));
+            RequireUuid(context.OperationSessionId, nameof(context.OperationSessionId));
+            RequireUuid(context.SlotOperationAttemptId, nameof(context.SlotOperationAttemptId));
+            RequireSha256(context.CommandContentSha256, nameof(context.CommandContentSha256));
+            if (context.CorrelationId is not null)
+            {
+                RequireUuid(context.CorrelationId, nameof(context.CorrelationId));
+            }
+
+            if (context.SessionGeneration < 0
+                || context.Slots is null
+                || context.Slots.Count is < 1 or > 8
+                || context.Slots.Any(slot => slot is < 1 or > 8)
+                || context.Slots.Distinct().Count() != context.Slots.Count
+                || !context.Slots.SequenceEqual(context.Slots.Order())
+                || context.ExpectedBasketCount != context.Slots.Count
+                || context.ExpectedOccupied != (context.OperationType == OperationType.Load))
+            {
+                throw new InvalidDataException("WIRE_TO_GATE recovery operation context字段无效。");
+            }
+
+            if (state.UnsettledSlotOperationAttemptId is not null
+                && !string.Equals(
+                    state.UnsettledSlotOperationAttemptId,
+                    context.SlotOperationAttemptId,
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidDataException("WIRE_TO_GATE recovery state与operation context不一致。");
+            }
+        }
+
+        ValidateOptionalUuid(state.ExceptionRecoverySessionId, nameof(state.ExceptionRecoverySessionId));
+        ValidateOptionalUuid(state.RecoveryActionId, nameof(state.RecoveryActionId));
+        ValidateOptionalUuid(state.RecoverySessionRequestId, nameof(state.RecoverySessionRequestId));
+        ValidateOptionalUuid(state.RecoveryActionRequestId, nameof(state.RecoveryActionRequestId));
 
         foreach (WireToGatePendingResult pending in state.PendingResults)
         {
@@ -702,6 +764,14 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             ArgumentException.ThrowIfNullOrWhiteSpace(pending.BusinessId);
             RequireUuid(pending.MessageId, nameof(pending.MessageId));
             RequireSha256(pending.ContentSha256, nameof(pending.ContentSha256));
+        }
+    }
+
+    private static void ValidateOptionalUuid(string? value, string name)
+    {
+        if (value is not null)
+        {
+            RequireUuid(value, name);
         }
     }
 

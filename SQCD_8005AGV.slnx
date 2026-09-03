@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/SQCD.Agv.Core/SQCD.Agv.Core.csproj" />
     <Project Path="src/SQCD.Agv.Contracts/SQCD.Agv.Contracts.csproj" />
+    <Project Path="src/SQCD.Agv.AutomationHost/SQCD.Agv.AutomationHost.csproj" />
     <Project Path="src/SQCD.Agv.Application/SQCD.Agv.Application.csproj" />
     <Project Path="src/SQCD.Agv.Infrastructure/SQCD.Agv.Infrastructure.csproj" />
     <Project Path="src/SQCD.Agv.Wpf/SQCD.Agv.Wpf.csproj" />

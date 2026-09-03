@@ -1,4 +1,6 @@
 using System.IO;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using SQCD.Agv.Application;
 using SQCD.Agv.Contracts;
@@ -6,6 +8,12 @@ using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
 
 namespace SQCD.Agv.Wpf;
+
+public sealed record WireToGateRecoveryOptions(
+    bool ResumeAfterRepairEnabled,
+    string AuthenticationProofEnvironmentVariable,
+    string AdministratorRole,
+    string VerificationMethod);
 
 /// <summary>
 /// Wires formal server commands to the safe physical executor.  The legacy rule
@@ -28,6 +36,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
     private readonly TimeSpan _ioSnapshotMaxAge;
     private readonly TimeSpan _vehicleSafetyMaxAge;
     private readonly TimeSpan _vehicleSafetyClockSkewTolerance;
+    private readonly WireToGateRecoveryOptions _recoveryOptions;
     private readonly WireToGateSlotOperationExecutor _executor;
     private readonly CancellationTokenSource _stopping = new();
     private readonly object _taskGate = new();
@@ -37,6 +46,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
     private readonly HashSet<string> _publishedOperatorEventKeys = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _safetySendGate = new(1, 1);
     private WireToGateSublotEntryRequest? _currentEntryRequest;
+    private WireToGateExceptionRecoverySessionSnapshot? _recoverySessionSnapshot;
     private SafetyChangeWork? _pendingSafetyChange;
     private string? _lastSafetySignature;
     private long _nextSafetyStateVersion;
@@ -55,7 +65,8 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         string operatorIdEnvironmentVariable,
         IVehicleSafetySignalProvider? vehicleSafetySignalProvider = null,
         TimeSpan? vehicleSafetyMaxAge = null,
-        TimeSpan? vehicleSafetyClockSkewTolerance = null)
+        TimeSpan? vehicleSafetyClockSkewTolerance = null,
+        WireToGateRecoveryOptions? recoveryOptions = null)
     {
         _session = session;
         _ioModule = ioModule;
@@ -70,6 +81,11 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         _ioSnapshotMaxAge = executorOptions.IoSnapshotMaxAge;
         _vehicleSafetyMaxAge = vehicleSafetyMaxAge ?? _ioSnapshotMaxAge;
         _vehicleSafetyClockSkewTolerance = vehicleSafetyClockSkewTolerance ?? TimeSpan.Zero;
+        _recoveryOptions = recoveryOptions ?? new WireToGateRecoveryOptions(
+            ResumeAfterRepairEnabled: false,
+            AuthenticationProofEnvironmentVariable: "CONTROL_SERVER_RECOVERY_PROOF",
+            AdministratorRole: "MAINTENANCE_ADMINISTRATOR",
+            VerificationMethod: "CONFIGURED_PROOF");
         if (_vehicleSafetyMaxAge <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(vehicleSafetyMaxAge));
@@ -98,6 +114,189 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
     public bool CanSubmitSublot =>
         _session.Current.Readiness == WireToGateSessionReadiness.Ready
         && Volatile.Read(ref _currentEntryRequest) is not null;
+
+    public string? ExpectedSublot => Volatile.Read(ref _currentEntryRequest)?.ExpectedSublot;
+
+    public bool CanRequestResumeAfterRepair
+    {
+        get
+        {
+            WireToGateExceptionRecoverySessionSnapshot? snapshot =
+                Volatile.Read(ref _recoverySessionSnapshot);
+            string? operatorId = Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable);
+            string? proof = Environment.GetEnvironmentVariable(
+                _recoveryOptions.AuthenticationProofEnvironmentVariable);
+            return _recoveryOptions.ResumeAfterRepairEnabled
+                && _session.Current.Connected
+                && (_session.Current.Readiness is WireToGateSessionReadiness.Ready
+                    or WireToGateSessionReadiness.RecoveryRequired)
+                && snapshot is not null
+                && snapshot.State is "OPEN" or "ACTION_SELECTED" or "EXECUTING"
+                && snapshot.AllowedActions.Contains("RESUME_AFTER_REPAIR", StringComparer.Ordinal)
+                && !string.IsNullOrWhiteSpace(operatorId)
+                && !string.IsNullOrWhiteSpace(proof);
+        }
+    }
+
+    public async Task<bool> RequestResumeAfterRepairAsync(
+        string reason = "现场维修完成，申请恢复原仓位操作。",
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        try
+        {
+            if (!_recoveryOptions.ResumeAfterRepairEnabled)
+            {
+                PublishOperatorEvent(
+                    "recovery-disabled",
+                    "RECOVERY_BLOCKED",
+                    "RESUME_AFTER_REPAIR功能未启用。请由维护人员完成配置后再操作。 ");
+                return false;
+            }
+
+            WireToGateExceptionRecoverySessionSnapshot recovery =
+                Volatile.Read(ref _recoverySessionSnapshot)
+                ?? throw new InvalidOperationException("RECOVERY_SESSION_NOT_READY");
+            if (!recovery.AllowedActions.Contains("RESUME_AFTER_REPAIR", StringComparer.Ordinal))
+            {
+                PublishOperatorEvent(
+                    $"recovery-action-not-allowed:{recovery.ExceptionRecoverySessionId}",
+                    "RECOVERY_BLOCKED",
+                    "当前恢复会话不允许恢复原仓位操作。 ");
+                return false;
+            }
+
+            string operatorId = Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable)
+                ?? throw new InvalidOperationException("WIRE_TO_GATE_OPERATOR_NOT_READY");
+            string proof = Environment.GetEnvironmentVariable(
+                _recoveryOptions.AuthenticationProofEnvironmentVariable)
+                ?? throw new InvalidOperationException("RECOVERY_AUTHENTICATION_REQUIRED");
+            if (string.IsNullOrWhiteSpace(operatorId) || string.IsNullOrWhiteSpace(proof))
+            {
+                throw new InvalidOperationException("RECOVERY_AUTHENTICATION_REQUIRED");
+            }
+
+            WireToGateRecoveryState state = await _session.Journal
+                .ReadRecoveryStateAsync(cancellationToken)
+                .ConfigureAwait(false);
+            WireToGateRecoveryOperationContext context = state.OperationContext
+                ?? throw new InvalidDataException("RECOVERY_OPERATION_CONTEXT_MISSING");
+            if (state.RecoveryOperatorId is not null
+                && !string.Equals(state.RecoveryOperatorId, operatorId, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException("RECOVERY_OPERATOR_MISMATCH");
+            }
+            if (state.UnsettledSlotOperationAttemptId != context.SlotOperationAttemptId
+                || recovery.DemandId != context.DemandId
+                || !recovery.Slots.SequenceEqual(context.Slots))
+            {
+                throw new InvalidDataException("RECOVERY_SCOPE_MISMATCH");
+            }
+
+            string requestId = state.RecoverySessionRequestId ?? Guid.NewGuid().ToString("D");
+            string recoveryReason = state.RecoveryReason ?? reason;
+            string recoveryOperatorId = state.RecoveryOperatorId ?? operatorId;
+            DateTimeOffset recoveryVerifiedAt = state.RecoveryOperatorVerifiedAt
+                ?? _clock.Now.ToUniversalTime();
+            state = state with
+            {
+                RecoverySessionRequestId = requestId,
+                RecoveryReason = recoveryReason,
+                RecoveryOperatorId = recoveryOperatorId,
+                RecoveryOperatorVerifiedAt = recoveryVerifiedAt
+            };
+            await _session.Journal.WriteRecoveryStateAsync(state, cancellationToken).ConfigureAwait(false);
+            DateTimeOffset now = recoveryVerifiedAt;
+            WireToGateOperatorContextPayload administrator = new(
+                recoveryOperatorId,
+                _recoveryOptions.VerificationMethod,
+                now);
+            ExceptionRecoverySessionOpenedPayload opened = await _session
+                .RequestExceptionRecoverySessionAsync(
+                    requestId,
+                    new ExceptionRecoverySessionRequestedPayload(
+                        requestId,
+                        administrator,
+                        _recoveryOptions.AdministratorRole,
+                        recovery.EventId,
+                        context.DemandId,
+                        context.Slots,
+                        recoveryReason,
+                        proof),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!string.Equals(opened.RequestId, requestId, StringComparison.Ordinal)
+                || !string.Equals(opened.EventId, recovery.EventId, StringComparison.Ordinal)
+                || !string.Equals(opened.DemandId, context.DemandId, StringComparison.Ordinal)
+                || !opened.Slots.SequenceEqual(context.Slots))
+            {
+                throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
+            }
+
+            string actionId = state.RecoveryActionId ?? Guid.NewGuid().ToString("D");
+            string actionMessageId = state.RecoveryActionRequestId ?? actionId;
+            state = state with
+            {
+                ExceptionRecoverySessionId = opened.ExceptionRecoverySessionId,
+                RecoveryActionId = actionId,
+                RecoveryActionRequestId = actionMessageId
+            };
+            await _session.Journal.WriteRecoveryStateAsync(state, cancellationToken).ConfigureAwait(false);
+
+            RecoveryActionAcceptedPayload accepted = await _session
+                .SubmitRecoveryActionAsync(
+                    actionMessageId,
+                    new RecoveryActionSubmittedPayload(
+                        actionId,
+                        opened.ExceptionRecoverySessionId,
+                        "RESUME_AFTER_REPAIR",
+                        recovery.EventId,
+                        context.DemandId,
+                        context.Slots,
+                        administrator,
+                        recoveryReason),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!string.Equals(accepted.RecoveryActionId, actionId, StringComparison.Ordinal)
+                || !string.Equals(
+                    accepted.ExceptionRecoverySessionId,
+                    opened.ExceptionRecoverySessionId,
+                    StringComparison.Ordinal)
+                || accepted.AcceptedAction != "RESUME_AFTER_REPAIR")
+            {
+                throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
+            }
+
+            PublishOperatorEvent(
+                $"recovery-action-submitted:{actionId}",
+                "RECOVERY_ACTION_SUBMITTED",
+                "恢复申请已通过服务端授权，等待下发原操作续作命令。 ");
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is IOException
+                or TimeoutException
+                or InvalidOperationException
+                or InvalidDataException)
+        {
+            string recoveryId = Volatile.Read(ref _recoverySessionSnapshot)?.ExceptionRecoverySessionId
+                ?? "unknown";
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"恢复申请未执行：session={recoveryId}，reason={exception.Message}。",
+                exception);
+            PublishOperatorEvent(
+                $"recovery-request-failed:{recoveryId}",
+                "RECOVERY_BLOCKED",
+                $"恢复申请被阻断：{exception.Message}。请检查授权、现场安全条件和服务端状态。 ");
+            return false;
+        }
+    }
 
     public async Task<string> SubmitSublotAsync(
         string sublot,
@@ -427,6 +626,15 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                         this,
                         new ValueChangedEventArgs<WireToGateSublotEntryRequest>(sublot));
                     break;
+                case WireToGateExceptionRecoverySessionSnapshot recoverySnapshot:
+                    Volatile.Write(ref _recoverySessionSnapshot, recoverySnapshot);
+                    PublishOperatorEvent(
+                        $"recovery-session-snapshot:{recoverySnapshot.ExceptionRecoverySessionId}:{recoverySnapshot.RecoverySessionRevision}",
+                        "RECOVERY_SESSION_UPDATED",
+                        recoverySnapshot.State == "CLOSED"
+                            ? "服务端恢复会话已关闭。"
+                            : $"收到服务端恢复会话状态：{recoverySnapshot.State}。 ");
+                    break;
                 case WireToGateSlotOperationCommand operation:
                     await HandleSlotOperationAsync(operation, cancellationToken).ConfigureAwait(false);
                     break;
@@ -473,6 +681,36 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         WireToGateSlotOperationResumeCommand command,
         CancellationToken cancellationToken)
     {
+        try
+        {
+            await HandleBlockedResumeCoreAsync(command, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is IOException
+                or TimeoutException
+                or InvalidOperationException
+                or InvalidDataException)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"恢复命令未执行：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。",
+                exception);
+            PublishOperatorEvent(
+                $"resume-command-failed:{command.MessageId}",
+                "RECOVERY_BLOCKED",
+                $"恢复命令被阻断：{exception.Message}。未执行仓门IO。 ");
+        }
+    }
+
+    private async Task HandleBlockedResumeCoreAsync(
+        WireToGateSlotOperationResumeCommand command,
+        CancellationToken cancellationToken)
+    {
         WireToGateRecoveryState state = await _session.Journal
             .ReadRecoveryStateAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -497,14 +735,26 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
             && command.Slots.All(slot =>
                 TryGetLocker(snapshot, slot, out LockerSnapshot? locker)
                 && locker is { UnlockOutputRaw: false });
+        bool recoverySessionAuthorized =
+            _recoveryOptions.ResumeAfterRepairEnabled
+            && string.Equals(
+                state.ExceptionRecoverySessionId,
+                command.ExceptionRecoverySessionId,
+                StringComparison.Ordinal)
+            && string.Equals(
+                state.RecoveryActionId,
+                command.RecoveryActionId,
+                StringComparison.Ordinal)
+            && state.OperationContext is not null
+            && string.Equals(
+                state.OperationContext.DemandId,
+                command.DemandId,
+                StringComparison.Ordinal)
+            && state.OperationContext.Slots.SequenceEqual(command.Slots);
         WireToGateRecoverySafetyDecision decision =
             WireToGateRecoverySafetyPolicy.Evaluate(
                 new WireToGateRecoverySafetyFacts(
-                    // The command is emitted only after ControlServer has opened an
-                    // authenticated exception-recovery session and accepted the
-                    // recoveryActionId. Transport/session validation plus the formal IDs
-                    // are the authorization proof available to the onboard peer.
-                    RecoverySessionAuthorized: true,
+                    RecoverySessionAuthorized: recoverySessionAuthorized,
                     RecoveryStatePersisted: WireToGateRecoverySafetyPolicy.MatchesPersistedResumeState(
                         state,
                         command.SlotOperationAttemptId,
@@ -514,16 +764,124 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                     AllTargetSlotsKnown: targetsKnown,
                     AllTargetSlotsLocked: targetsLocked,
                     AllUnlockOutputsReset: outputsReset));
-        _logger.Write(
-            LogSeverity.Warning,
-            nameof(WireToGateBusinessService),
-            $"收到SlotOperationResumeCommand但未执行物理动作：attempt={command.SlotOperationAttemptId}，reason={decision.ReasonCode}。");
-        PublishOperatorEvent(
-            $"resume-command:{command.MessageId}",
-            decision.Allowed ? "RECOVERY_AUTHORIZED" : "RECOVERY_BLOCKED",
-            decision.Allowed
-                ? "恢复命令已通过安全检查，但当前版本没有可安全收敛的续作结果路径，未执行第二次IO。"
-                : $"恢复命令被安全门禁阻断：{decision.ReasonCode}。");
+        if (!decision.Allowed)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"收到SlotOperationResumeCommand但未执行物理动作：attempt={command.SlotOperationAttemptId}，reason={decision.ReasonCode}。");
+            PublishOperatorEvent(
+                $"resume-command:{command.MessageId}",
+                "RECOVERY_BLOCKED",
+                $"恢复命令被安全门禁阻断：{decision.ReasonCode}。");
+            return;
+        }
+
+        string recoveryResultKey =
+            $"recovery-operation-result:{command.SlotOperationAttemptId}:{command.RecoveryActionId}";
+        WireToGateDurableMessage? existingResult = await _session.Journal
+            .ReadOutgoingByDeduplicationKeyAsync(recoveryResultKey, cancellationToken)
+            .ConfigureAwait(false);
+        if (existingResult is not null)
+        {
+            PublishOperatorEvent(
+                $"recovery-result-replay:{command.RecoveryActionId}",
+                "OPERATION_REPLAY",
+                "恢复结果已存在，保持原恢复结果重放，未再次执行仓门IO。");
+            return;
+        }
+
+        lock (_operationAttemptGate)
+        {
+            if (!_operationAttempts.Add(command.SlotOperationAttemptId))
+            {
+                return;
+            }
+        }
+
+        try
+        {
+            WireToGateSlotOperationCommand original = state.OperationContext!.ToCommand();
+            PublishOperation(
+                original,
+                WireToGateHmiOperationStage.Preparing,
+                $"恢复原操作：{FormatSlots(command.Slots)}。",
+                $"recovery:{command.RecoveryActionId}:start");
+            async Task SendProgress(
+                string phase,
+                IReadOnlyList<int> active,
+                IReadOnlyList<int> completed,
+                CancellationToken progressToken)
+            {
+                PublishOperation(
+                    original,
+                    MapOperationStage(phase),
+                    OperationGuidance(original, phase, active, completed),
+                    $"recovery:{command.RecoveryActionId}:{phase}:{string.Join(',', active)}:{string.Join(',', completed)}");
+                await _session.SendRecoveryOperationProgressAsync(
+                    command.SlotOperationAttemptId,
+                    phase,
+                    active,
+                    completed,
+                    cancellationToken: progressToken).ConfigureAwait(false);
+            }
+
+            WireToGateOperationExecutionResult execution = await _executor
+                .ResumeAsync(command, SendProgress, cancellationToken)
+                .ConfigureAwait(false);
+            WireToGateOperationResultPayload payload = CreateOperationResultPayload(execution);
+            string resultMessageId = StableUuid(recoveryResultKey);
+            bool completedSuccessfully = execution.OverallOutcome == "COMPLETED";
+            PublishOperation(
+                original,
+                completedSuccessfully
+                    ? WireToGateHmiOperationStage.Completed
+                    : WireToGateHmiOperationStage.RecoveryRequired,
+                completedSuccessfully
+                    ? "恢复后的仓位操作已完成，正在上报替换结果。"
+                    : "恢复后的仓位操作仍未完成，需要继续人工恢复。",
+                $"recovery:{command.RecoveryActionId}:final");
+            try
+            {
+                await _session.SendRecoveryOperationResultAsync(
+                    recoveryResultKey,
+                    resultMessageId,
+                    payload,
+                    cancellationToken).ConfigureAwait(false);
+                if (completedSuccessfully && execution.JournalCheckpoint != "NONE")
+                {
+                    await _executor.MarkResultRecordedAsync(
+                        command.SlotOperationAttemptId,
+                        cancellationToken).ConfigureAwait(false);
+                }
+
+                PublishOperatorEvent(
+                    $"recovery-result:{command.RecoveryActionId}:{execution.OverallOutcome}",
+                    completedSuccessfully ? "OPERATION_COMPLETED" : "OPERATION_RECOVERY_REQUIRED",
+                    completedSuccessfully
+                        ? "恢复后的原操作结果已上报。"
+                        : "恢复后的原操作仍未完成，结果已上报并保持故障安全。");
+            }
+            catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
+            {
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    $"恢复OperationResult暂未收到DurableAck：attempt={command.SlotOperationAttemptId}。",
+                    exception);
+                PublishOperatorEvent(
+                    $"recovery-result-pending:{command.RecoveryActionId}",
+                    "RESULT_ACK_PENDING",
+                    "恢复结果已持久化，等待服务端确认；不会重复执行仓门IO。");
+            }
+        }
+        finally
+        {
+            lock (_operationAttemptGate)
+            {
+                _operationAttempts.Remove(command.SlotOperationAttemptId);
+            }
+        }
     }
 
     private static bool TryGetLocker(
@@ -626,7 +984,8 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                     command.SlotOperationAttemptId,
                     payload,
                     cancellationToken).ConfigureAwait(false);
-                if (!string.Equals(execution.JournalCheckpoint, "NONE", StringComparison.Ordinal))
+                if (completedSuccessfully
+                    && !string.Equals(execution.JournalCheckpoint, "NONE", StringComparison.Ordinal))
                 {
                     await _executor.MarkResultRecordedAsync(
                         command.SlotOperationAttemptId,
@@ -731,6 +1090,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         "WAITING_OPERATOR" => WireToGateHmiOperationStage.WaitingOperator,
         "VERIFYING" => WireToGateHmiOperationStage.Verifying,
         "SAFE_FINISH" => WireToGateHmiOperationStage.Reporting,
+        "PAUSED" => WireToGateHmiOperationStage.RecoveryRequired,
         _ => WireToGateHmiOperationStage.Preparing
     };
 
@@ -752,6 +1112,16 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
 
     private static string FormatSlots(IReadOnlyList<int> slots) =>
         string.Join("、", slots.Order()) + "号仓";
+
+    private static string StableUuid(string value)
+    {
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(value));
+        Span<byte> bytes = stackalloc byte[16];
+        hash.AsSpan(0, 16).CopyTo(bytes);
+        bytes[6] = (byte)((bytes[6] & 0x0F) | 0x50);
+        bytes[8] = (byte)((bytes[8] & 0x3F) | 0x80);
+        return new Guid(bytes).ToString("D");
+    }
 
     private async Task HandlePreDepartureSafetyCheckAsync(
         WireToGatePreDepartureSafetyCheck command,

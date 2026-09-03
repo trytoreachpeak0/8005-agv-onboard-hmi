@@ -98,12 +98,46 @@ public sealed class WireToGateSessionService : IAsyncDisposable
             observedAt,
             cancellationToken);
 
+    public Task<string> SendRecoveryOperationProgressAsync(
+        string slotOperationAttemptId,
+        string phase,
+        IReadOnlyList<int> activeUnlockSlots,
+        IReadOnlyList<int> completedSlots,
+        DateTimeOffset? observedAt = null,
+        CancellationToken cancellationToken = default) =>
+        _client.SendRecoveryOperationProgressAsync(
+            slotOperationAttemptId,
+            phase,
+            activeUnlockSlots,
+            completedSlots,
+            observedAt,
+            cancellationToken);
+
     public Task<string> SendOperationResultAsync(
         string deduplicationKey,
         string messageId,
         WireToGateOperationResultPayload payload,
         CancellationToken cancellationToken = default) =>
         _client.SendOperationResultAsync(deduplicationKey, messageId, payload, cancellationToken);
+
+    public Task<string> SendRecoveryOperationResultAsync(
+        string deduplicationKey,
+        string messageId,
+        WireToGateOperationResultPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.SendRecoveryOperationResultAsync(deduplicationKey, messageId, payload, cancellationToken);
+
+    public Task<ExceptionRecoverySessionOpenedPayload> RequestExceptionRecoverySessionAsync(
+        string messageId,
+        ExceptionRecoverySessionRequestedPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.RequestExceptionRecoverySessionAsync(messageId, payload, cancellationToken);
+
+    public Task<RecoveryActionAcceptedPayload> SubmitRecoveryActionAsync(
+        string messageId,
+        RecoveryActionSubmittedPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.SubmitRecoveryActionAsync(messageId, payload, cancellationToken);
 
     public Task<string> SendPreDepartureSafetyCheckResultAsync(
         string preDepartureSafetyCheckId,

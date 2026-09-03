@@ -13,6 +13,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/SQCD.Agv.Core/SQCD.Agv.Core.csproj" />
+    <ProjectReference Include="../../src/SQCD.Agv.AutomationHost/SQCD.Agv.AutomationHost.csproj" />
     <ProjectReference Include="../../src/SQCD.Agv.Application/SQCD.Agv.Application.csproj" />
     <ProjectReference Include="../../src/SQCD.Agv.Infrastructure/SQCD.Agv.Infrastructure.csproj" />
     <ProjectReference Include="../../tools/SQCD.Agv.RuleMock/SQCD.Agv.RuleMock.csproj" />

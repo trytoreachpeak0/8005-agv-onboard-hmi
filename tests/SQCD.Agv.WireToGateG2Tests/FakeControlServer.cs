@@ -62,6 +62,10 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool SendSlotOperationCommandAfterRecovery { get; set; }
 
+    public bool RespondToRecoveryRequests { get; set; }
+
+    public bool SendResumeCommandAfterRecoveryAction { get; set; }
+
     public long InitialAcceptedCapabilityVersion { get; set; }
 
     public long InitialAcceptedSafetyStateVersion { get; set; }
@@ -294,6 +298,12 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "PreDepartureSafetyCheckResult":
                     case "SlotOperationCommandRejected":
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        break;
+                    case "ExceptionRecoverySessionRequested" when RespondToRecoveryRequests:
+                        await HandleRecoverySessionRequestAsync(context, root).ConfigureAwait(false);
+                        break;
+                    case "RecoveryActionSubmitted" when RespondToRecoveryRequests:
+                        await HandleRecoveryActionSubmittedAsync(context, root).ConfigureAwait(false);
                         break;
                     case "SafetyStateChanged":
                         await HandleSafetyStateChangedAsync(context, root).ConfigureAwait(false);
@@ -530,6 +540,57 @@ public sealed class FakeControlServer : IAsyncDisposable
         {
             context.Client.Close();
         }
+    }
+
+    private static async Task HandleRecoverySessionRequestAsync(
+        ConnectionContext context,
+        JsonElement request)
+    {
+        JsonElement payload = request.GetProperty("payload");
+        string sessionId = "77777777-7777-4777-8777-777777777777";
+        await WriteEnvelopeAsync(
+            context,
+            CreateEnvelope(
+                context,
+                "ExceptionRecoverySessionOpened",
+                request.GetProperty("messageId").GetString(),
+                new
+                {
+                    requestId = payload.GetProperty("requestId").GetString(),
+                    exceptionRecoverySessionId = sessionId,
+                    openedAt = DateTimeOffset.UtcNow,
+                    eventId = payload.GetProperty("eventId").GetString(),
+                    demandId = payload.TryGetProperty("demandId", out JsonElement demandId)
+                        ? demandId.GetString()
+                        : null,
+                    slots = payload.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()).ToArray(),
+                    recoverySessionRevision = 1
+                }))
+            .ConfigureAwait(false);
+    }
+
+    private static async Task HandleRecoveryActionSubmittedAsync(
+        ConnectionContext context,
+        JsonElement request)
+    {
+        JsonElement payload = request.GetProperty("payload");
+        string sessionId = payload.GetProperty("exceptionRecoverySessionId").GetString()!;
+        string actionId = payload.GetProperty("recoveryActionId").GetString()!;
+        await WriteEnvelopeAsync(
+            context,
+            CreateEnvelope(
+                context,
+                "RecoveryActionAccepted",
+                request.GetProperty("messageId").GetString(),
+                new
+                {
+                    recoveryActionId = actionId,
+                    exceptionRecoverySessionId = sessionId,
+                    acceptedAction = payload.GetProperty("action").GetString(),
+                    recoverySessionRevision = 2,
+                    acceptedAt = DateTimeOffset.UtcNow
+                }))
+            .ConfigureAwait(false);
     }
 
     private async Task HandleSafetyStateChangedAsync(ConnectionContext context, JsonElement message)

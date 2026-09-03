@@ -1,0 +1,33 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "8005 onboard HMI automation API",
+    "version": "1.0.0",
+    "description": "Loopback-only, safety-preserving observation and sublot submission API. Physical unlock and recovery bypass endpoints are intentionally absent."
+  },
+  "servers": [{ "url": "http://127.0.0.1:58007" }],
+  "paths": {
+    "/api/v1/health": { "get": { "responses": { "200": { "description": "Health status" } } } },
+    "/api/v1/snapshot": { "get": { "responses": { "200": { "description": "Read-only onboard state" } } } },
+    "/api/v1/sublots/submit": {
+      "post": {
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SublotSubmitRequest" } } } },
+        "responses": { "200": { "description": "Submitted" }, "400": { "description": "Invalid request" }, "409": { "description": "State or command conflict" } }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "SublotSubmitRequest": {
+        "type": "object",
+        "required": ["runId", "commandId", "expectedRevision", "sublot"],
+        "properties": {
+          "runId": { "type": "string", "format": "uuid" },
+          "commandId": { "type": "string", "format": "uuid" },
+          "expectedRevision": { "type": "integer", "format": "int64", "minimum": 1 },
+          "sublot": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

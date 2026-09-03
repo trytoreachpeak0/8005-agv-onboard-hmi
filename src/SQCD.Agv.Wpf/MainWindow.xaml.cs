@@ -162,6 +162,35 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnWireToGateRecoveryClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null)
+        {
+            return;
+        }
+
+        MessageBoxResult confirmation = MessageBox.Show(
+            "请由已授权维护人员现场确认：车辆已经停稳，维修已经完成，所有目标仓门已锁好，开锁输出已复位，现场无人和障碍物。\n\n申请恢复只会继续服务端已授权的原操作，不会重新选择仓位。是否继续？",
+            "申请恢复原操作",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+        if (confirmation != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        bool accepted = await _viewModel.RequestWireToGateRecoveryAsync();
+        if (!accepted)
+        {
+            MessageBox.Show(
+                "恢复申请未被接受。请检查授权凭据、现场安全条件和服务端恢复会话状态。",
+                "恢复申请失败",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        }
+    }
+
     private void OnClosed(object? sender, EventArgs e)
     {
         if (_viewModel is not null)

@@ -167,6 +167,32 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             cancellationToken);
     }
 
+    public Task<string> SendRecoveryOperationProgressAsync(
+        string slotOperationAttemptId,
+        string phase,
+        IReadOnlyList<int> activeUnlockSlots,
+        IReadOnlyList<int> completedSlots,
+        DateTimeOffset? observedAt = null,
+        CancellationToken cancellationToken = default)
+    {
+        DateTimeOffset effectiveObservedAt = (observedAt ?? _clock.Now).ToUniversalTime();
+        string deduplicationKey =
+            $"operation-progress:{slotOperationAttemptId}:{phase}:{string.Join(',', activeUnlockSlots)}:{string.Join(',', completedSlots)}:{effectiveObservedAt:O}";
+        return SendDurableCoreAsync(
+            "OperationProgress",
+            deduplicationKey,
+            StableUuid(deduplicationKey),
+            null,
+            new OperationProgressPayload(
+                slotOperationAttemptId,
+                phase,
+                activeUnlockSlots.Order().ToArray(),
+                completedSlots.Order().ToArray(),
+                effectiveObservedAt),
+            allowRecoveryRequired: true,
+            cancellationToken);
+    }
+
     public Task<string> SendOperationResultAsync(
         string deduplicationKey,
         string messageId,
@@ -178,6 +204,42 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             messageId,
             null,
             payload,
+            cancellationToken);
+
+    public Task<string> SendRecoveryOperationResultAsync(
+        string deduplicationKey,
+        string messageId,
+        WireToGateOperationResultPayload payload,
+        CancellationToken cancellationToken = default) =>
+        SendDurableCoreAsync(
+            "OperationResult",
+            deduplicationKey,
+            messageId,
+            null,
+            payload,
+            allowRecoveryRequired: true,
+            cancellationToken);
+
+    public Task<ExceptionRecoverySessionOpenedPayload> RequestExceptionRecoverySessionAsync(
+        string messageId,
+        ExceptionRecoverySessionRequestedPayload payload,
+        CancellationToken cancellationToken = default) =>
+        SendRecoveryRequestAsync<ExceptionRecoverySessionOpenedPayload>(
+            "ExceptionRecoverySessionRequested",
+            messageId,
+            payload,
+            "ExceptionRecoverySessionOpened",
+            cancellationToken);
+
+    public Task<RecoveryActionAcceptedPayload> SubmitRecoveryActionAsync(
+        string messageId,
+        RecoveryActionSubmittedPayload payload,
+        CancellationToken cancellationToken = default) =>
+        SendRecoveryRequestAsync<RecoveryActionAcceptedPayload>(
+            "RecoveryActionSubmitted",
+            messageId,
+            payload,
+            "RecoveryActionAccepted",
             cancellationToken);
 
     public Task<string> SendPreDepartureSafetyCheckResultAsync(
@@ -427,6 +489,73 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         {
             _responseWaiters.TryRemove(messageId, out _);
         }
+    }
+
+    private async Task<TResponse> SendRecoveryRequestAsync<TResponse>(
+        string messageType,
+        string messageId,
+        object payload,
+        string acceptedMessageType,
+        CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        RequireUuid(messageId, nameof(messageId));
+        WireToGateSessionSnapshot current = Current;
+        if (!current.Connected
+            || current.SessionGeneration is null
+            || current.Readiness is not (WireToGateSessionReadiness.Ready
+                or WireToGateSessionReadiness.RecoveryRequired))
+        {
+            throw new InvalidOperationException("WIRE_TO_GATE_NOT_READY");
+        }
+
+        WireToGateEnvelope request = WireToGateProtocolSerializer.Create(
+            messageType,
+            messageId,
+            null,
+            _options.AgvId,
+            current.SessionGeneration,
+            _clock.Now.ToUniversalTime(),
+            payload);
+        TaskCompletionSource<WireToGateEnvelope> response = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_responseWaiters.TryAdd(messageId, response))
+        {
+            throw new InvalidOperationException("重复的恢复请求messageId。");
+        }
+
+        try
+        {
+            await SendEnvelopeAsync(request, cancellationToken).ConfigureAwait(false);
+            WireToGateEnvelope responseEnvelope = await response.Task
+                .WaitAsync(_options.MessageTimeout, cancellationToken)
+                .ConfigureAwait(false);
+            ThrowIfProtocolProblem(responseEnvelope);
+            if (responseEnvelope.MessageType.EndsWith("Rejected", StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(ReadRecoveryProblemReason(responseEnvelope));
+            }
+
+            WireToGateProtocolSerializer.RequireMessage(responseEnvelope, acceptedMessageType, messageId);
+            return WireToGateProtocolSerializer.DeserializePayload<TResponse>(responseEnvelope);
+        }
+        finally
+        {
+            _responseWaiters.TryRemove(messageId, out _);
+        }
+    }
+
+    private static string ReadRecoveryProblemReason(WireToGateEnvelope envelope)
+    {
+        if (envelope.Payload.TryGetProperty("problem", out JsonElement problem)
+            && problem.TryGetProperty("reasonCode", out JsonElement reasonCode)
+            && reasonCode.ValueKind == JsonValueKind.String
+            && !string.IsNullOrWhiteSpace(reasonCode.GetString()))
+        {
+            return reasonCode.GetString()!;
+        }
+
+        return "RECOVERY_REQUEST_REJECTED";
     }
 
     /// <summary>
@@ -831,18 +960,18 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     continue;
                 }
 
+                if (envelope.CorrelationId is not null
+                    && _responseWaiters.TryRemove(envelope.CorrelationId, out TaskCompletionSource<WireToGateEnvelope>? response))
+                {
+                    response.TrySetResult(envelope);
+                    continue;
+                }
+
                 if (TryCreateServerCommand(envelope, out WireToGateServerCommand? command))
                 {
                     ServerCommandReceived?.Invoke(
                         this,
                         new ValueChangedEventArgs<WireToGateServerCommand>(command!));
-                    continue;
-                }
-
-                if (envelope.CorrelationId is not null
-                    && _responseWaiters.TryRemove(envelope.CorrelationId, out TaskCompletionSource<WireToGateEnvelope>? response))
-                {
-                    response.TrySetResult(envelope);
                     continue;
                 }
 
@@ -1303,6 +1432,62 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         payload.TargetStationId);
                     return true;
                 }
+            case "ExceptionRecoverySessionSnapshot":
+                {
+                    if (envelope.CorrelationId is not null)
+                    {
+                        throw new InvalidDataException("CORRELATION_INVALID");
+                    }
+
+                    ExceptionRecoverySessionSnapshotPayload payload =
+                        WireToGateProtocolSerializer.DeserializePayload<ExceptionRecoverySessionSnapshotPayload>(envelope);
+                    RequireUuid(
+                        payload.ExceptionRecoverySessionId,
+                        nameof(payload.ExceptionRecoverySessionId));
+                    RequireUuid(payload.EventId, nameof(payload.EventId));
+                    if (payload.RecoverySessionRevision < 0
+                        || payload.State is not ("OPEN" or "ACTION_SELECTED" or "EXECUTING" or "CLOSED")
+                        || string.IsNullOrWhiteSpace(payload.AdministratorId)
+                        || payload.AdministratorRole is not ("MAINTENANCE_ADMINISTRATOR" or "SYSTEM_ADMINISTRATOR")
+                        || payload.DemandId is not null
+                            && !Guid.TryParseExact(payload.DemandId, "D", out _)
+                        || payload.Slots is null
+                        || payload.AllowedActions is null
+                        || payload.BlockingFacts is null)
+                    {
+                        throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+                    }
+
+                    ValidateSortedSlots(payload.Slots);
+                    if (payload.AllowedActions.Any(string.IsNullOrWhiteSpace)
+                        || payload.BlockingFacts.Any(fact =>
+                            string.IsNullOrWhiteSpace(fact.ReasonCode)
+                            || string.IsNullOrWhiteSpace(fact.SubjectType)))
+                    {
+                        throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+                    }
+
+                    command = new WireToGateExceptionRecoverySessionSnapshot(
+                        envelope.MessageId,
+                        envelope.CorrelationId,
+                        envelope.SessionGeneration!.Value,
+                        envelope.SentAt,
+                        payload.ExceptionRecoverySessionId,
+                        payload.RecoverySessionRevision,
+                        payload.State,
+                        payload.AdministratorId,
+                        payload.AdministratorRole,
+                        payload.EventId,
+                        payload.DemandId,
+                        payload.Slots,
+                        payload.SelectedAction,
+                        payload.AllowedActions,
+                        payload.BlockingFacts.Select(fact => new WireToGateRecoveryBlockingFact(
+                            fact.ReasonCode,
+                            fact.SubjectType,
+                            fact.SubjectId)).ToArray());
+                    return true;
+                }
             case "SublotRejected":
                 {
                     RequireCorrelatedProblem(envelope, typeof(SublotRejectedPayload));
@@ -1354,7 +1539,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             case "ExceptionRecoverySessionRequested":
             case "ExceptionRecoverySessionOpened":
             case "ExceptionRecoverySessionRejected":
-            case "ExceptionRecoverySessionSnapshot":
+            case "RecoveryActionAccepted":
+            case "RecoveryActionRejected":
             case "FaultCargoRecoveryCommand":
             case "ForcedMechanicalRecoveryCommand":
             case "ManualChargingReturnToServiceRequested":

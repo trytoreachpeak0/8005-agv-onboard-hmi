@@ -53,6 +53,64 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Resumes the persisted operation context after an authenticated
+    /// RESUME_AFTER_REPAIR action. The resume command can only select the exact
+    /// persisted attempt/checkpoint/slot set; it cannot manufacture a new one.
+    /// Slots already observed in their desired final state are recorded without
+    /// another unlock pulse.
+    /// </summary>
+    public async Task<WireToGateOperationExecutionResult> ResumeAsync(
+        WireToGateSlotOperationResumeCommand resume,
+        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>? progress,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(resume);
+        ValidateResumeCommand(resume);
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            WireToGateRecoveryState state = await _journal
+                .ReadRecoveryStateAsync(cancellationToken)
+                .ConfigureAwait(false);
+            WireToGateRecoveryOperationContext context = state.OperationContext
+                ?? throw new InvalidDataException("RECOVERY_OPERATION_CONTEXT_MISSING");
+            if (!WireToGateRecoverySafetyPolicy.MatchesPersistedResumeState(
+                    state,
+                    resume.SlotOperationAttemptId,
+                    resume.ProvenRecoveryCheckpoint)
+                || !string.Equals(
+                    state.ExceptionRecoverySessionId,
+                    resume.ExceptionRecoverySessionId,
+                    StringComparison.Ordinal)
+                || !string.Equals(
+                    state.RecoveryActionId,
+                    resume.RecoveryActionId,
+                    StringComparison.Ordinal)
+                || !string.Equals(context.DemandId, resume.DemandId, StringComparison.Ordinal)
+                || !string.Equals(
+                    context.CommandContentSha256,
+                    resume.CommandContentSha256,
+                    StringComparison.OrdinalIgnoreCase)
+                || !context.Slots.SequenceEqual(resume.Slots))
+            {
+                throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
+            }
+
+            WireToGateSlotOperationCommand command = context.ToCommand();
+            ValidateCommand(command);
+            return await ResumeExclusiveAsync(
+                command,
+                state,
+                progress,
+                cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
     public async Task MarkResultRecordedAsync(
         string slotOperationAttemptId,
         CancellationToken cancellationToken = default)
@@ -70,7 +128,17 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             {
                 UnsettledSlotOperationAttemptId = null,
                 ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ResultRecorded,
-                ActiveUnlockSlots = []
+                ActiveUnlockSlots = [],
+                OperationContext = null,
+                CompletedSlots = [],
+                SlotResults = [],
+                ExceptionRecoverySessionId = null,
+                RecoveryActionId = null,
+                RecoverySessionRequestId = null,
+                RecoveryActionRequestId = null,
+                RecoveryReason = null,
+                RecoveryOperatorId = null,
+                RecoveryOperatorVerifiedAt = null
             },
             cancellationToken).ConfigureAwait(false);
     }
@@ -88,43 +156,145 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     {
         DateTimeOffset started = _clock.Now;
         IoSnapshot initial = _ioModule.CurrentSnapshot;
-        string? precheckFailure = ValidateBeforeOperation(initial, command);
+        string? precheckFailure = ValidateBeforeOperation(initial, command, command.Slots);
         if (precheckFailure is not null)
         {
             return CreateRejectedResult(command, precheckFailure, started);
         }
 
-        await _journal.WriteRecoveryStateAsync(
-            new WireToGateRecoveryState(
-                command.SlotOperationAttemptId,
-                WireToGateRecoveryCheckpoint.Prepared,
-                [],
-                0,
-                []),
+        WireToGateRecoveryOperationContext context =
+            WireToGateRecoveryOperationContext.FromCommand(command);
+        List<int> completed = [];
+        List<WireToGateSlotExecutionResult> results = [];
+        await WriteRecoveryStateAsync(
+            context,
+            WireToGateRecoveryCheckpoint.Prepared,
+            [],
+            completed,
+            results,
+            WireToGateRecoveryState.Empty,
             cancellationToken).ConfigureAwait(false);
         await SendProgressAsync(progress, "PREPARING", [], [], cancellationToken).ConfigureAwait(false);
 
-        List<int> completed = [];
-        List<WireToGateSlotExecutionResult> results = [];
+        return await ExecuteRemainingSlotsAsync(
+            command,
+            context,
+            WireToGateRecoveryState.Empty,
+            completed,
+            results,
+            started,
+            progress,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<WireToGateOperationExecutionResult> ResumeExclusiveAsync(
+        WireToGateSlotOperationCommand command,
+        WireToGateRecoveryState state,
+        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>? progress,
+        CancellationToken cancellationToken)
+    {
+        DateTimeOffset started = _clock.Now;
+        IoSnapshot snapshot = _ioModule.CurrentSnapshot;
+        if (!snapshot.IsConnected
+            || !SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge))
+        {
+            throw new InvalidDataException("SLOT_STATE_UNKNOWN");
+        }
+
+        List<int> completed = state.CompletedSlots
+            .Where(command.Slots.Contains)
+            .Distinct()
+            .Order()
+            .ToList();
+        List<WireToGateSlotExecutionResult> results = state.SlotResults
+            .Where(result => command.Slots.Contains(result.SlotNo))
+            .GroupBy(result => result.SlotNo)
+            .Select(group => group.Last())
+            .OrderBy(result => result.SlotNo)
+            .ToList();
+
+        // Re-read every target before deciding whether a recorded slot can be
+        // reused. A physical state change since the checkpoint makes it
+        // unresolved and therefore requires a fresh safe operation.
+        foreach (int physicalSlot in command.Slots)
+        {
+            LockerSnapshot locker = snapshot.GetLocker(physicalSlot - 1);
+            if (IsFinalState(locker, command.ExpectedOccupied))
+            {
+                completed.Add(physicalSlot);
+                UpsertResult(results, CreateSlotResult(locker, "COMPLETED", []));
+            }
+            else
+            {
+                completed.Remove(physicalSlot);
+            }
+        }
+
+        int[] remaining = command.Slots.Where(slot => !completed.Contains(slot)).ToArray();
+        string? precheckFailure = ValidateBeforeOperation(snapshot, command, remaining);
+        if (precheckFailure is not null)
+        {
+            throw new InvalidDataException(precheckFailure);
+        }
+
+        completed = completed.Distinct().Order().ToList();
+        WireToGateRecoveryOperationContext context =
+            WireToGateRecoveryOperationContext.FromCommand(command);
+        await WriteRecoveryStateAsync(
+            context,
+            WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+            [],
+            completed,
+            results,
+            state,
+            cancellationToken).ConfigureAwait(false);
+        await SendProgressAsync(progress, "PREPARING", [], completed, cancellationToken).ConfigureAwait(false);
+
+        return await ExecuteRemainingSlotsAsync(
+            command,
+            context,
+            state,
+            completed,
+            results,
+            started,
+            progress,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<WireToGateOperationExecutionResult> ExecuteRemainingSlotsAsync(
+        WireToGateSlotOperationCommand command,
+        WireToGateRecoveryOperationContext context,
+        WireToGateRecoveryState existingState,
+        List<int> completed,
+        List<WireToGateSlotExecutionResult> results,
+        DateTimeOffset started,
+        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>? progress,
+        CancellationToken cancellationToken)
+    {
         DateTimeOffset deadline = started + _options.OperationTimeout;
         foreach (int physicalSlot in command.Slots)
         {
+            if (completed.Contains(physicalSlot))
+            {
+                continue;
+            }
+
             cancellationToken.ThrowIfCancellationRequested();
             int slotIndex = physicalSlot - 1;
-            await _journal.WriteRecoveryStateAsync(
-                new WireToGateRecoveryState(
-                    command.SlotOperationAttemptId,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                    [physicalSlot],
-                    0,
-                    []),
+            await WriteRecoveryStateAsync(
+                context,
+                WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                [physicalSlot],
+                completed,
+                results,
+                existingState,
                 cancellationToken).ConfigureAwait(false);
             await SendProgressAsync(progress, "UNLOCKING", [physicalSlot], completed, cancellationToken)
                 .ConfigureAwait(false);
 
             try
             {
-                await EnsureRemainingAsync(deadline, cancellationToken).ConfigureAwait(false);
+                EnsureRemaining(deadline, cancellationToken);
                 await _ioModule.PulseUnlockAsync(slotIndex, cancellationToken).ConfigureAwait(false);
                 LockerSnapshot unlocked = await _ioModule.WaitForLockerAsync(
                     slotIndex,
@@ -144,15 +314,14 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 await SendProgressAsync(
                     progress,
                     "WAITING_OPERATOR",
-                    [],
+                    [physicalSlot],
                     completed,
                     cancellationToken).ConfigureAwait(false);
-                bool expectedOccupied = command.ExpectedOccupied;
                 LockerSnapshot completedLocker = await _ioModule.WaitForLockerAsync(
                     slotIndex,
                     locker => locker.IsKnown
                         && locker.IsLocked
-                        && locker.HasCargo == expectedOccupied,
+                        && locker.HasCargo == command.ExpectedOccupied,
                     MinTimeout(_options.OperationTimeout, GetRemaining(deadline)),
                     _options.FeedbackStableWindow,
                     cancellationToken).ConfigureAwait(false);
@@ -161,15 +330,15 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     completedLocker,
                     "COMPLETED",
                     []);
-                results.Add(result);
+                UpsertResult(results, result);
                 completed.Add(physicalSlot);
-                await _journal.WriteRecoveryStateAsync(
-                    new WireToGateRecoveryState(
-                        command.SlotOperationAttemptId,
-                        WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                        [],
-                        0,
-                        []),
+                await WriteRecoveryStateAsync(
+                    context,
+                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                    [],
+                    completed,
+                    results,
+                    existingState,
                     cancellationToken).ConfigureAwait(false);
                 await SendProgressAsync(progress, "VERIFYING", [], completed, cancellationToken)
                     .ConfigureAwait(false);
@@ -182,16 +351,18 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             {
                 LockerSnapshot latest = TryGetLocker(_ioModule.CurrentSnapshot, slotIndex);
                 string reason = MapFailureReason(exception);
-                results.Add(CreateSlotResult(latest, "UNKNOWN", [reason]));
-                foreach (int notStarted in command.Slots.Where(slot => !results.Any(result => result.SlotNo == slot)))
+                UpsertResult(results, CreateSlotResult(latest, "UNKNOWN", [reason]));
+                foreach (int notStarted in command.Slots.Where(slot => !completed.Contains(slot)))
                 {
-                    results.Add(new WireToGateSlotExecutionResult(
-                        notStarted,
-                        "NOT_STARTED",
-                        "UNKNOWN",
-                        "UNKNOWN",
-                        "UNKNOWN",
-                        [reason]));
+                    UpsertResult(
+                        results,
+                        new WireToGateSlotExecutionResult(
+                            notStarted,
+                            "NOT_STARTED",
+                            "UNKNOWN",
+                            "UNKNOWN",
+                            "UNKNOWN",
+                            [reason]));
                 }
 
                 IoSnapshot failureSnapshot = _ioModule.CurrentSnapshot;
@@ -200,13 +371,13 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     ? WireToGateRecoveryCheckpoint.SafeFinishReached
                     : WireToGateRecoveryCheckpoint.ActiveUnlockSet;
                 IReadOnlyList<int> failureActiveSlots = safeFinish ? [] : [physicalSlot];
-                await _journal.WriteRecoveryStateAsync(
-                    new WireToGateRecoveryState(
-                        command.SlotOperationAttemptId,
-                        failureCheckpoint,
-                        failureActiveSlots,
-                        0,
-                        []),
+                await WriteRecoveryStateAsync(
+                    context,
+                    failureCheckpoint,
+                    failureActiveSlots,
+                    completed,
+                    results,
+                    existingState,
                     CancellationToken.None).ConfigureAwait(false);
                 await SendProgressAsync(
                         progress,
@@ -219,26 +390,69 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             }
         }
 
-        await _journal.WriteRecoveryStateAsync(
-            new WireToGateRecoveryState(
-                command.SlotOperationAttemptId,
-                WireToGateRecoveryCheckpoint.SafeFinishReached,
-                [],
-                0,
-                []),
+        await WriteRecoveryStateAsync(
+            context,
+            WireToGateRecoveryCheckpoint.SafeFinishReached,
+            [],
+            completed,
+            results,
+            existingState,
             cancellationToken).ConfigureAwait(false);
         await SendProgressAsync(progress, "SAFE_FINISH", [], completed, cancellationToken).ConfigureAwait(false);
         return CreateResult(command, "COMPLETED", results, WireToGateRecoveryCheckpoint.SafeFinishReached);
     }
 
-    private string? ValidateBeforeOperation(IoSnapshot snapshot, WireToGateSlotOperationCommand command)
+    private async Task WriteRecoveryStateAsync(
+        WireToGateRecoveryOperationContext context,
+        WireToGateRecoveryCheckpoint checkpoint,
+        IReadOnlyList<int> activeSlots,
+        IReadOnlyList<int> completedSlots,
+        IReadOnlyList<WireToGateSlotExecutionResult> results,
+        WireToGateRecoveryState existingState,
+        CancellationToken cancellationToken)
     {
+        await _journal.WriteRecoveryStateAsync(
+            new WireToGateRecoveryState(
+                context.SlotOperationAttemptId,
+                checkpoint,
+                activeSlots.Order().ToArray(),
+                existingState.ForcedRecoveryGeneration,
+                existingState.PendingResults)
+            {
+                OperationContext = context,
+                CompletedSlots = completedSlots.Distinct().Order().ToArray(),
+                SlotResults = results
+                    .GroupBy(result => result.SlotNo)
+                    .Select(group => group.Last())
+                    .OrderBy(result => result.SlotNo)
+                    .ToArray(),
+                ExceptionRecoverySessionId = existingState.ExceptionRecoverySessionId,
+                RecoveryActionId = existingState.RecoveryActionId,
+                RecoverySessionRequestId = existingState.RecoverySessionRequestId,
+                RecoveryActionRequestId = existingState.RecoveryActionRequestId,
+                RecoveryReason = existingState.RecoveryReason,
+                RecoveryOperatorId = existingState.RecoveryOperatorId,
+                RecoveryOperatorVerifiedAt = existingState.RecoveryOperatorVerifiedAt
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private string? ValidateBeforeOperation(
+        IoSnapshot snapshot,
+        WireToGateSlotOperationCommand command,
+        IReadOnlyList<int> physicalSlots)
+    {
+        if (physicalSlots.Count == 0)
+        {
+            return null;
+        }
+
         if (!snapshot.IsConnected || !SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge))
         {
             return "SLOT_STATE_UNKNOWN";
         }
 
-        foreach (int physicalSlot in command.Slots)
+        foreach (int physicalSlot in physicalSlots)
         {
             LockerSnapshot locker = snapshot.GetLocker(physicalSlot - 1);
             if (!locker.IsKnown)
@@ -318,6 +532,27 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             locker.IsKnown ? locker.UnlockOutputRaw is true ? "ACTIVE" : "RESET" : "UNKNOWN",
             reasonCodes);
 
+    private static bool IsFinalState(LockerSnapshot locker, bool expectedOccupied) =>
+        locker.IsKnown
+        && locker.IsLocked
+        && locker.UnlockOutputRaw is false
+        && locker.HasCargo == expectedOccupied;
+
+    private static void UpsertResult(
+        List<WireToGateSlotExecutionResult> results,
+        WireToGateSlotExecutionResult result)
+    {
+        int index = results.FindIndex(item => item.SlotNo == result.SlotNo);
+        if (index >= 0)
+        {
+            results[index] = result;
+        }
+        else
+        {
+            results.Add(result);
+        }
+    }
+
     private static LockerSnapshot TryGetLocker(IoSnapshot snapshot, int slotIndex) =>
         snapshot.Lockers.FirstOrDefault(locker => locker.SlotIndex == slotIndex)
         ?? LockerSnapshot.Unknown(slotIndex, snapshot.ObservedAt);
@@ -344,14 +579,13 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         }
     }
 
-    private async Task EnsureRemainingAsync(DateTimeOffset deadline, CancellationToken cancellationToken)
+    private void EnsureRemaining(DateTimeOffset deadline, CancellationToken cancellationToken)
     {
         if (GetRemaining(deadline) <= TimeSpan.Zero)
         {
             throw new TimeoutException("WIRE_TO_GATE操作超时。");
         }
 
-        await Task.CompletedTask.ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
     }
 
@@ -378,6 +612,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         RequireUuid(command.DemandId, nameof(command.DemandId));
         RequireUuid(command.OperationSessionId, nameof(command.OperationSessionId));
         RequireUuid(command.SlotOperationAttemptId, nameof(command.SlotOperationAttemptId));
+        RequireSha256(command.CommandContentSha256, nameof(command.CommandContentSha256));
         if (command.Slots is null
             || command.Slots.Count is < 1 or > 8
             || command.Slots.Any(slot => slot is < 1 or > 8)
@@ -387,6 +622,27 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             || command.ExpectedOccupied != (command.OperationType == OperationType.Load))
         {
             throw new InvalidDataException("SLOT_SET_INVALID");
+        }
+    }
+
+    private static void ValidateResumeCommand(WireToGateSlotOperationResumeCommand command)
+    {
+        RequireUuid(command.MessageId, nameof(command.MessageId));
+        RequireUuid(command.ExceptionRecoverySessionId, nameof(command.ExceptionRecoverySessionId));
+        RequireUuid(command.RecoveryActionId, nameof(command.RecoveryActionId));
+        RequireUuid(command.DemandId, nameof(command.DemandId));
+        RequireUuid(command.SlotOperationAttemptId, nameof(command.SlotOperationAttemptId));
+        RequireSha256(command.CommandContentSha256, nameof(command.CommandContentSha256));
+        if (command.Slots is null
+            || command.Slots.Count is < 1 or > 8
+            || command.Slots.Any(slot => slot is < 1 or > 8)
+            || command.Slots.Distinct().Count() != command.Slots.Count
+            || !command.Slots.SequenceEqual(command.Slots.Order())
+            || command.ProvenRecoveryCheckpoint is not WireToGateRecoveryCheckpoint.Prepared
+                and not WireToGateRecoveryCheckpoint.ActiveUnlockSet
+                and not WireToGateRecoveryCheckpoint.SafeFinishReached)
+        {
+            throw new InvalidDataException("RECOVERY_COMMAND_INVALID");
         }
     }
 
@@ -407,6 +663,14 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         if (!Guid.TryParseExact(value, "D", out _))
         {
             throw new InvalidDataException($"{name}必须是标准UUID。");
+        }
+    }
+
+    private static void RequireSha256(string value, string name)
+    {
+        if (value.Length != 64 || value.Any(character => !Uri.IsHexDigit(character)))
+        {
+            throw new InvalidDataException($"{name}必须是64位SHA-256十六进制字符串。");
         }
     }
 }
