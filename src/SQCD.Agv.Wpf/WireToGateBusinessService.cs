@@ -45,8 +45,10 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
     private readonly HashSet<string> _operationAttempts = new(StringComparer.Ordinal);
     private readonly HashSet<string> _publishedOperatorEventKeys = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _safetySendGate = new(1, 1);
+    private readonly SemaphoreSlim _recoveryRequestGate = new(1, 1);
     private WireToGateSublotEntryRequest? _currentEntryRequest;
     private WireToGateExceptionRecoverySessionSnapshot? _recoverySessionSnapshot;
+    private WireToGateHmiOperationSnapshot? _currentOperationSnapshot;
     private SafetyChangeWork? _pendingSafetyChange;
     private string? _lastSafetySignature;
     private long _nextSafetyStateVersion;
@@ -117,6 +119,14 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
 
     public string? ExpectedSublot => Volatile.Read(ref _currentEntryRequest)?.ExpectedSublot;
 
+    /// <summary>
+    /// Read-only projection of the latest operation progress emitted by the
+    /// business service. It never grants authority to perform business or IO
+    /// actions.
+    /// </summary>
+    public WireToGateHmiOperationSnapshot? CurrentOperationSnapshot =>
+        Volatile.Read(ref _currentOperationSnapshot);
+
     public bool CanRequestResumeAfterRepair
     {
         get
@@ -126,13 +136,17 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
             string? operatorId = Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable);
             string? proof = Environment.GetEnvironmentVariable(
                 _recoveryOptions.AuthenticationProofEnvironmentVariable);
+            WireToGateSessionSnapshot session = _session.Current;
+            bool bootstrap = snapshot is null || snapshot.State == "CLOSED";
+            bool active = IsActiveRecoverySnapshot(snapshot)
+                && snapshot!.SelectedAction is not "RESUME_AFTER_REPAIR";
             return _recoveryOptions.ResumeAfterRepairEnabled
-                && _session.Current.Connected
-                && (_session.Current.Readiness is WireToGateSessionReadiness.Ready
-                    or WireToGateSessionReadiness.RecoveryRequired)
-                && snapshot is not null
-                && snapshot.State is "OPEN" or "ACTION_SELECTED" or "EXECUTING"
-                && snapshot.AllowedActions.Contains("RESUME_AFTER_REPAIR", StringComparer.Ordinal)
+                && session.Connected
+                && ((bootstrap
+                        && session.Readiness == WireToGateSessionReadiness.RecoveryRequired)
+                    || (active
+                        && session.Readiness is (WireToGateSessionReadiness.Ready
+                            or WireToGateSessionReadiness.RecoveryRequired)))
                 && !string.IsNullOrWhiteSpace(operatorId)
                 && !string.IsNullOrWhiteSpace(proof);
         }
@@ -143,6 +157,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        await _recoveryRequestGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             if (!_recoveryOptions.ResumeAfterRepairEnabled)
@@ -154,13 +169,46 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                 return false;
             }
 
-            WireToGateExceptionRecoverySessionSnapshot recovery =
-                Volatile.Read(ref _recoverySessionSnapshot)
-                ?? throw new InvalidOperationException("RECOVERY_SESSION_NOT_READY");
-            if (!recovery.AllowedActions.Contains("RESUME_AFTER_REPAIR", StringComparer.Ordinal))
+            WireToGateSessionSnapshot session = _session.Current;
+            if (!session.Connected
+                || session.Readiness is not (WireToGateSessionReadiness.Ready
+                    or WireToGateSessionReadiness.RecoveryRequired))
+            {
+                throw new InvalidOperationException("WIRE_TO_GATE_NOT_READY");
+            }
+
+            WireToGateExceptionRecoverySessionSnapshot? recoverySnapshot =
+                Volatile.Read(ref _recoverySessionSnapshot);
+            bool activeRecovery = IsActiveRecoverySnapshot(recoverySnapshot);
+            if (!activeRecovery
+                && recoverySnapshot is not null
+                && recoverySnapshot.State != "CLOSED")
+            {
+                throw new InvalidOperationException("RECOVERY_SESSION_NOT_READY");
+            }
+
+            if (!activeRecovery && session.Readiness != WireToGateSessionReadiness.RecoveryRequired)
+            {
+                throw new InvalidOperationException("RECOVERY_SESSION_NOT_READY");
+            }
+
+            if (activeRecovery
+                && recoverySnapshot!.SelectedAction is "RESUME_AFTER_REPAIR")
             {
                 PublishOperatorEvent(
-                    $"recovery-action-not-allowed:{recovery.ExceptionRecoverySessionId}",
+                    $"recovery-action-already-selected:{recoverySnapshot.ExceptionRecoverySessionId}",
+                    "RECOVERY_ACTION_SUBMITTED",
+                    "当前恢复会话已经提交恢复申请，等待服务端下发原操作续作命令。 ");
+                return false;
+            }
+
+            if (activeRecovery
+                && !recoverySnapshot!.AllowedActions.Contains(
+                    "RESUME_AFTER_REPAIR",
+                    StringComparer.Ordinal))
+            {
+                PublishOperatorEvent(
+                    $"recovery-action-not-allowed:{recoverySnapshot.ExceptionRecoverySessionId}",
                     "RECOVERY_BLOCKED",
                     "当前恢复会话不允许恢复原仓位操作。 ");
                 return false;
@@ -187,13 +235,20 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                 throw new InvalidDataException("RECOVERY_OPERATOR_MISMATCH");
             }
             if (state.UnsettledSlotOperationAttemptId != context.SlotOperationAttemptId
-                || recovery.DemandId != context.DemandId
-                || !recovery.Slots.SequenceEqual(context.Slots))
+                || activeRecovery
+                    && (recoverySnapshot!.DemandId != context.DemandId
+                        || !recoverySnapshot.Slots.SequenceEqual(context.Slots)))
             {
                 throw new InvalidDataException("RECOVERY_SCOPE_MISMATCH");
             }
 
+            if (!activeRecovery && state.ExceptionRecoverySessionId is not null)
+            {
+                throw new InvalidOperationException("RECOVERY_SESSION_STATE_PENDING");
+            }
+
             string requestId = state.RecoverySessionRequestId ?? Guid.NewGuid().ToString("D");
+            string eventId = activeRecovery ? recoverySnapshot!.EventId : requestId;
             string recoveryReason = state.RecoveryReason ?? reason;
             string recoveryOperatorId = state.RecoveryOperatorId ?? operatorId;
             DateTimeOffset recoveryVerifiedAt = state.RecoveryOperatorVerifiedAt
@@ -211,22 +266,48 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                 recoveryOperatorId,
                 _recoveryOptions.VerificationMethod,
                 now);
-            ExceptionRecoverySessionOpenedPayload opened = await _session
-                .RequestExceptionRecoverySessionAsync(
+            ExceptionRecoverySessionOpenedPayload opened;
+            if (activeRecovery)
+            {
+                WireToGateExceptionRecoverySessionSnapshot recovery = recoverySnapshot
+                    ?? throw new InvalidOperationException("RECOVERY_SESSION_NOT_READY");
+                if (state.ExceptionRecoverySessionId is not null
+                    && !string.Equals(
+                        state.ExceptionRecoverySessionId,
+                        recovery.ExceptionRecoverySessionId,
+                        StringComparison.Ordinal))
+                {
+                    throw new InvalidDataException("RECOVERY_SESSION_SCOPE_MISMATCH");
+                }
+
+                opened = new ExceptionRecoverySessionOpenedPayload(
                     requestId,
-                    new ExceptionRecoverySessionRequestedPayload(
+                    recovery.ExceptionRecoverySessionId,
+                    recovery.SentAt,
+                    recovery.EventId,
+                    recovery.DemandId,
+                    recovery.Slots,
+                    recovery.RecoverySessionRevision);
+            }
+            else
+            {
+                opened = await _session
+                    .RequestExceptionRecoverySessionAsync(
                         requestId,
-                        administrator,
-                        _recoveryOptions.AdministratorRole,
-                        recovery.EventId,
-                        context.DemandId,
-                        context.Slots,
-                        recoveryReason,
-                        proof),
-                    cancellationToken)
-                .ConfigureAwait(false);
+                        new ExceptionRecoverySessionRequestedPayload(
+                            requestId,
+                            administrator,
+                            _recoveryOptions.AdministratorRole,
+                            eventId,
+                            context.DemandId,
+                            context.Slots,
+                            recoveryReason,
+                            proof),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
             if (!string.Equals(opened.RequestId, requestId, StringComparison.Ordinal)
-                || !string.Equals(opened.EventId, recovery.EventId, StringComparison.Ordinal)
+                || !string.Equals(opened.EventId, eventId, StringComparison.Ordinal)
                 || !string.Equals(opened.DemandId, context.DemandId, StringComparison.Ordinal)
                 || !opened.Slots.SequenceEqual(context.Slots))
             {
@@ -250,7 +331,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                         actionId,
                         opened.ExceptionRecoverySessionId,
                         "RESUME_AFTER_REPAIR",
-                        recovery.EventId,
+                        opened.EventId,
                         context.DemandId,
                         context.Slots,
                         administrator,
@@ -295,6 +376,10 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                 "RECOVERY_BLOCKED",
                 $"恢复申请被阻断：{exception.Message}。请检查授权、现场安全条件和服务端状态。 ");
             return false;
+        }
+        finally
+        {
+            _recoveryRequestGate.Release();
         }
     }
 
@@ -400,6 +485,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
 
         _stopping.Dispose();
         _safetySendGate.Dispose();
+        _recoveryRequestGate.Dispose();
         await _executor.DisposeAsync().ConfigureAwait(false);
         GC.SuppressFinalize(this);
     }
@@ -437,9 +523,58 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
             Volatile.Write(ref _currentEntryRequest, null);
         }
 
+        if (args.Value.Readiness == WireToGateSessionReadiness.RecoveryRequired)
+        {
+            TrackTask(RestorePendingRecoveryOperationProjectionAsync(_stopping.Token));
+        }
+
         if (CanPublishSafetyRevision(args.Value))
         {
             RequestSafetyStateChange();
+        }
+    }
+
+    private async Task RestorePendingRecoveryOperationProjectionAsync(
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            WireToGateRecoveryState state = await _session.Journal
+                .ReadRecoveryStateAsync(cancellationToken)
+                .ConfigureAwait(false);
+            WireToGateRecoveryOperationContext? context = state.OperationContext;
+            if (context is null
+                || !string.Equals(
+                    state.UnsettledSlotOperationAttemptId,
+                    context.SlotOperationAttemptId,
+                    StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            WireToGateHmiOperationSnapshot operation = new(
+                context.SlotOperationAttemptId,
+                context.OperationType,
+                context.Slots,
+                WireToGateHmiOperationStage.RecoveryRequired,
+                $"上次{(context.OperationType == OperationType.Load ? "装货" : "卸货")}操作未完成：{FormatSlots(context.Slots)}，需要管理员恢复。",
+                _clock.Now.ToUniversalTime());
+            PublishOperatorEvent(
+                $"recovery-operation-restored:{context.SlotOperationAttemptId}",
+                "OPERATION_RECOVERY_REQUIRED",
+                operation.Guidance,
+                operation);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                "恢复未完成仓位操作的界面投影失败，保持恢复入口关闭。",
+                exception);
         }
     }
 
@@ -608,6 +743,12 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         && session.Readiness is WireToGateSessionReadiness.Ready
             or WireToGateSessionReadiness.RecoveryRequired;
 
+    private static bool IsActiveRecoverySnapshot(
+        WireToGateExceptionRecoverySessionSnapshot? snapshot) =>
+        snapshot is not null
+        && snapshot.State is "OPEN" or "ACTION_SELECTED" or "EXECUTING"
+        && snapshot.AllowedActions.Contains("RESUME_AFTER_REPAIR", StringComparer.Ordinal);
+
     private async Task HandleCommandAsync(
         WireToGateServerCommand command,
         CancellationToken cancellationToken)
@@ -627,7 +768,9 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                         new ValueChangedEventArgs<WireToGateSublotEntryRequest>(sublot));
                     break;
                 case WireToGateExceptionRecoverySessionSnapshot recoverySnapshot:
-                    Volatile.Write(ref _recoverySessionSnapshot, recoverySnapshot);
+                    Volatile.Write(
+                        ref _recoverySessionSnapshot,
+                        recoverySnapshot.State == "CLOSED" ? null : recoverySnapshot);
                     PublishOperatorEvent(
                         $"recovery-session-snapshot:{recoverySnapshot.ExceptionRecoverySessionId}:{recoverySnapshot.RecoverySessionRevision}",
                         "RECOVERY_SESSION_UPDATED",
@@ -1046,17 +1189,19 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         string guidance,
         string detailKey)
     {
+        WireToGateHmiOperationSnapshot operation = new(
+            command.SlotOperationAttemptId,
+            command.OperationType,
+            command.Slots,
+            stage,
+            guidance,
+            _clock.Now.ToUniversalTime());
+        Volatile.Write(ref _currentOperationSnapshot, operation);
         PublishOperatorEvent(
             $"operation-stage:{command.SlotOperationAttemptId}:{stage}:{detailKey}",
             "OPERATION_PROGRESS",
             guidance,
-            new WireToGateHmiOperationSnapshot(
-                command.SlotOperationAttemptId,
-                command.OperationType,
-                command.Slots,
-                stage,
-                guidance,
-                _clock.Now.ToUniversalTime()));
+            operation);
     }
 
     private void PublishOperatorEvent(
@@ -1065,6 +1210,11 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         string message,
         WireToGateHmiOperationSnapshot? operation = null)
     {
+        if (operation is not null)
+        {
+            Volatile.Write(ref _currentOperationSnapshot, operation);
+        }
+
         lock (_operationAttemptGate)
         {
             if (!_publishedOperatorEventKeys.Add(deduplicationKey))

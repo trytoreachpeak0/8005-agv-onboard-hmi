@@ -202,8 +202,16 @@ foreach ($key in $expected.Keys) {
 
 $protocolCommit = (& git -C $ProtocolRoot rev-parse HEAD).Trim()
 $protocolTagCommit = (& git -C $ProtocolRoot rev-list -n 1 ($expected.Tag + '^{commit}')).Trim()
-Assert-Equal 'protocol HEAD' $protocolCommit $expected.Commit
 Assert-Equal 'protocol tag commit' $protocolTagCommit $expected.Commit
+$tagIsAncestor = $false
+$hasProtocolIdentity = -not [string]::IsNullOrWhiteSpace($protocolCommit) -and -not [string]::IsNullOrWhiteSpace($protocolTagCommit)
+if ($hasProtocolIdentity) {
+    & git -C $ProtocolRoot merge-base --is-ancestor $protocolTagCommit $protocolCommit | Out-Null
+    $tagIsAncestor = $LASTEXITCODE -eq 0
+}
+if (-not $tagIsAncestor) {
+    Add-Failure "protocol HEAD 不是 $($expected.Tag) release 的后继提交：head=$protocolCommit, tag=$protocolTagCommit"
+}
 
 $release = Get-Content -LiteralPath (Join-Path $ProtocolRoot 'manifest\release.json') -Raw | ConvertFrom-Json
 Assert-Equal 'release.protocolVersion' $release.protocolVersion $expected.ProtocolVersion
@@ -273,6 +281,7 @@ $summary = [ordered]@{
         headCommit = $protocolCommit
         tag = $expected.Tag
         tagCommit = $protocolTagCommit
+        tagIsAncestorOfHead = $tagIsAncestor
         g1Status = $protocolStatus
         g1CandidateManifestSha256 = if ($g1ManifestMatch.Success) { $g1ManifestMatch.Groups[1].Value } else { $null }
         releaseFile = 'manifest/release.json'

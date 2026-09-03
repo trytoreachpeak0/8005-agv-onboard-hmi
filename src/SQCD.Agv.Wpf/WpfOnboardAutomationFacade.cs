@@ -1,6 +1,6 @@
 using System.IO;
-using SQCD.Agv.Core;
 using SQCD.Agv.Application;
+using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
 
 namespace SQCD.Agv.Wpf;
@@ -35,6 +35,21 @@ public sealed class WpfOnboardAutomationFacade : IOnboardAutomationFacade
     public OnboardAutomationSnapshot ReadSnapshot()
     {
         WireToGateRecoveryState recovery = ReadRecoveryState();
+        WireToGateHmiOperationSnapshot? operation = _business.CurrentOperationSnapshot;
+        string? currentAttemptId = recovery.UnsettledSlotOperationAttemptId;
+        string? currentPhase = null;
+        if (operation is not null
+            && operation.Stage != WireToGateHmiOperationStage.Completed
+            && (currentAttemptId is null
+                || string.Equals(
+                    currentAttemptId,
+                    operation.SlotOperationAttemptId,
+                    StringComparison.Ordinal)))
+        {
+            currentAttemptId ??= operation.SlotOperationAttemptId;
+            currentPhase = operation.Stage.ToProtocolPhase();
+        }
+
         return new OnboardAutomationSnapshot(
             _agvId,
             _controller.Current,
@@ -43,7 +58,8 @@ public sealed class WpfOnboardAutomationFacade : IOnboardAutomationFacade
             recovery,
             _business.CanSubmitSublot,
             _business.ExpectedSublot,
-            recovery.UnsettledSlotOperationAttemptId,
+            currentAttemptId,
+            currentPhase,
             _clock.Now.ToUniversalTime());
     }
 

@@ -148,7 +148,8 @@ dotnet format .\SQCD_8005AGV.slnx --verify-no-changes --no-restore
 
 本仓已有 scripts/run-w2g-g2.ps1，会先校验
 8005-agv-protocol@1531489e42e328f28bfe0c51ed3f8c56e5ce0279 的 protocol-v0.1.1
-release 身份与 manifest 哈希，再生成新的证据目录。当前脚本覆盖 Onboard HMI 的
+release 身份、当前 HEAD 的 release 后继关系与 manifest 哈希，再生成新的证据目录。
+当前脚本覆盖 Onboard HMI 的
 IS-00/IS-01 G2；IS-02～IS-07 的本机安全/IO/可靠性矩阵见
 docs/LOCAL_INTEGRATION_MATRIX.md，正式跨端业务结果仍需按
 integration-slices/index.json 由双方补齐。只有全部切片通过、证据绑定负责人确认

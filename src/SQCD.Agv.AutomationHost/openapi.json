@@ -8,7 +8,20 @@
   "servers": [{ "url": "http://127.0.0.1:58007" }],
   "paths": {
     "/api/v1/health": { "get": { "responses": { "200": { "description": "Health status" } } } },
-    "/api/v1/snapshot": { "get": { "responses": { "200": { "description": "Read-only onboard state" } } } },
+    "/api/v1/snapshot": {
+      "get": {
+        "responses": {
+          "200": {
+            "description": "Read-only onboard state",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AutomationSnapshotResponse" }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/sublots/submit": {
       "post": {
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SublotSubmitRequest" } } } },
@@ -18,6 +31,47 @@
   },
   "components": {
     "schemas": {
+      "AutomationSnapshotResponse": {
+        "type": "object",
+        "required": ["schemaVersion", "agvId", "runId", "revision", "observedAt", "state"],
+        "properties": {
+          "schemaVersion": { "type": "string" },
+          "agvId": { "type": "string" },
+          "runId": { "type": "string", "format": "uuid" },
+          "revision": { "type": "integer", "format": "int64", "minimum": 1 },
+          "observedAt": { "type": "string", "format": "date-time" },
+          "state": { "$ref": "#/components/schemas/OnboardAutomationSnapshot" }
+        }
+      },
+      "OnboardAutomationSnapshot": {
+        "type": "object",
+        "description": "Read-only HMI state. It exposes no physical IO command.",
+        "required": [
+          "agvId",
+          "onboard",
+          "recoveryState",
+          "canSubmitSublot",
+          "currentOperationAttemptId",
+          "currentOperationPhase",
+          "observedAt"
+        ],
+        "properties": {
+          "agvId": { "type": "string" },
+          "onboard": { "type": "object", "additionalProperties": true },
+          "wireToGateSession": { "type": "object", "nullable": true, "additionalProperties": true },
+          "wireToGateJourney": { "type": "object", "nullable": true, "additionalProperties": true },
+          "recoveryState": { "type": "object", "additionalProperties": true },
+          "canSubmitSublot": { "type": "boolean" },
+          "expectedSublot": { "type": "string", "nullable": true },
+          "currentOperationAttemptId": { "type": "string", "nullable": true, "format": "uuid" },
+          "currentOperationPhase": {
+            "type": "string",
+            "nullable": true,
+            "enum": ["PREPARING", "UNLOCKING", "WAITING_OPERATOR", "VERIFYING", "SAFE_FINISH", "PAUSED"]
+          },
+          "observedAt": { "type": "string", "format": "date-time" }
+        }
+      },
       "SublotSubmitRequest": {
         "type": "object",
         "required": ["runId", "commandId", "expectedRevision", "sublot"],

@@ -31,6 +31,8 @@ public sealed class OnboardAutomationHostTests
         Assert.Equal(HttpStatusCode.OK, snapshot.StatusCode);
         JsonDocument snapshotJson = (await snapshot.Content.ReadFromJsonAsync<JsonDocument>())!;
         long revision = snapshotJson.RootElement.GetProperty("revision").GetInt64();
+        JsonElement snapshotState = snapshotJson.RootElement.GetProperty("state");
+        Assert.Equal(JsonValueKind.Null, snapshotState.GetProperty("currentOperationPhase").ValueKind);
 
         string commandId = "11111111-1111-4111-8111-111111111111";
         var request = new
@@ -65,6 +67,18 @@ public sealed class OnboardAutomationHostTests
         Assert.Throws<InvalidDataException>(() => new OnboardAutomationHttpServer(
             new OnboardAutomationHostOptions("0.0.0.0", 58007),
             new FakeFacade()));
+    }
+
+    [Fact]
+    public void HmiOperationStagesMapToTheFormalProgressVocabulary()
+    {
+        Assert.Equal("PREPARING", WireToGateHmiOperationStage.Preparing.ToProtocolPhase());
+        Assert.Equal("UNLOCKING", WireToGateHmiOperationStage.Unlocking.ToProtocolPhase());
+        Assert.Equal("WAITING_OPERATOR", WireToGateHmiOperationStage.WaitingOperator.ToProtocolPhase());
+        Assert.Equal("VERIFYING", WireToGateHmiOperationStage.Verifying.ToProtocolPhase());
+        Assert.Equal("SAFE_FINISH", WireToGateHmiOperationStage.Reporting.ToProtocolPhase());
+        Assert.Equal("PAUSED", WireToGateHmiOperationStage.RecoveryRequired.ToProtocolPhase());
+        Assert.Null(WireToGateHmiOperationStage.Completed.ToProtocolPhase());
     }
 
     private static int GetFreePort()
@@ -125,6 +139,7 @@ public sealed class OnboardAutomationHostTests
                 WireToGateRecoveryState.Empty,
                 true,
                 "SUBLOT-001",
+                null,
                 null,
                 now);
         }

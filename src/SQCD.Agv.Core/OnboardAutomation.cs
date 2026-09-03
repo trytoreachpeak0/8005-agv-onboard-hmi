@@ -13,6 +13,7 @@ public sealed record OnboardAutomationSnapshot(
     bool CanSubmitSublot,
     string? ExpectedSublot,
     string? CurrentOperationAttemptId,
+    string? CurrentOperationPhase,
     DateTimeOffset ObservedAt);
 
 public sealed record OnboardAutomationSubmitOutcome(
@@ -23,9 +24,9 @@ public sealed record OnboardAutomationSubmitOutcome(
 
 public interface IOnboardAutomationFacade
 {
-    OnboardAutomationSnapshot ReadSnapshot();
+    public OnboardAutomationSnapshot ReadSnapshot();
 
-    Task<OnboardAutomationSubmitOutcome> SubmitSublotAsync(
+    public Task<OnboardAutomationSubmitOutcome> SubmitSublotAsync(
         string sublot,
         CancellationToken cancellationToken = default);
 }

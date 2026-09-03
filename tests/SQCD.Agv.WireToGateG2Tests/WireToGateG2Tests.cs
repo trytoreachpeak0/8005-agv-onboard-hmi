@@ -281,6 +281,158 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    public async Task BusinessBootstrapsRecoveryRequestBeforeServerSnapshot()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        const string operatorVariable = "W2G_G2_RECOVERY_OPERATOR";
+        const string proofVariable = "W2G_G2_RECOVERY_PROOF";
+        string? previousOperator = Environment.GetEnvironmentVariable(operatorVariable);
+        string? previousProof = Environment.GetEnvironmentVariable(proofVariable);
+        Environment.SetEnvironmentVariable(operatorVariable, "maintenance-001");
+        Environment.SetEnvironmentVariable(proofVariable, "test-proof");
+
+        try
+        {
+            await using FakeControlServer server = new(IPAddress.Loopback)
+            {
+                RequireSafeSafetyForReadiness = true,
+                SendReadinessAfterRecoveryAck = true,
+                RespondToRecoveryRequests = true
+            };
+            FakeIoModuleClient io = new();
+            NullLogger logger = new();
+            string journalPath = NewJournalPath();
+            await using WireToGateSessionService session = new(
+                CreateSessionOptions(server),
+                io,
+                new SqliteWireToGateJournal(journalPath),
+                logger,
+                new SystemClock(),
+                new DelegateVehicleSafetySignalProvider(() => false),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(500));
+            await using WireToGateBusinessService business = new(
+                session,
+                io,
+                logger,
+                new SystemClock(),
+                () => false,
+                new WireToGateSlotOperationExecutorOptions(
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromMilliseconds(10),
+                    TimeSpan.FromSeconds(30)),
+                operatorVariable,
+                recoveryOptions: new WireToGateRecoveryOptions(
+                    true,
+                    proofVariable,
+                    "MAINTENANCE_ADMINISTRATOR",
+                    "CONFIGURED_PROOF"));
+
+            DateTimeOffset sentAt = DateTimeOffset.UtcNow;
+            const string demandId = "11111111-1111-4111-8111-111111111111";
+            const string operationSessionId = "22222222-2222-4222-8222-222222222222";
+            const string attemptId = "33333333-3333-4333-8333-333333333333";
+            WireToGateRecoveryOperationContext context = new(
+                "44444444-4444-4444-8444-444444444444",
+                null,
+                1,
+                sentAt,
+                demandId,
+                operationSessionId,
+                attemptId,
+                OperationType.Load,
+                [1, 2],
+                2,
+                true,
+                new string('0', 64));
+            await session.Journal.InitializeAsync(testToken);
+            await session.Journal.WriteRecoveryStateAsync(
+                new WireToGateRecoveryState(
+                    attemptId,
+                    WireToGateRecoveryCheckpoint.Prepared,
+                    [],
+                    0,
+                    [])
+                {
+                    OperationContext = context
+                },
+                testToken);
+
+            business.Start();
+            WireToGateSessionSnapshot connected = await session.Client
+                .ConnectAndRecoverAsync(testToken);
+            Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, connected.Readiness);
+            await WaitUntilAsync(
+                () => business.CurrentOperationSnapshot?.Stage
+                    == WireToGateHmiOperationStage.RecoveryRequired,
+                testToken);
+            Assert.Equal(attemptId, business.CurrentOperationSnapshot!.SlotOperationAttemptId);
+            Assert.True(business.CanRequestResumeAfterRepair);
+
+            bool[] requestOutcomes = await Task.WhenAll(
+                business.RequestResumeAfterRepairAsync("repair complete", testToken),
+                business.RequestResumeAfterRepairAsync("repair complete", testToken));
+
+            Assert.Equal(1, requestOutcomes.Count(outcome => outcome));
+            await WaitUntilAsync(
+                () => server.Received.Count(item =>
+                    item.MessageType is "ExceptionRecoverySessionRequested" or "RecoveryActionSubmitted") == 2,
+                testToken);
+            string[] recoveryMessages = server.Received
+                .Select(item => item.MessageType)
+                .Where(item => item is "ExceptionRecoverySessionRequested" or "RecoveryActionSubmitted")
+                .ToArray();
+            Assert.Equal(["ExceptionRecoverySessionRequested", "RecoveryActionSubmitted"], recoveryMessages);
+            Assert.Equal(0, io.UnlockCount);
+
+            var requestEnvelope = server.ReceivedEnvelopes
+                .Single(item => item.MessageType == "ExceptionRecoverySessionRequested");
+            var actionEnvelope = server.ReceivedEnvelopes
+                .Single(item => item.MessageType == "RecoveryActionSubmitted");
+            JsonDocument requestDocument = JsonDocument.Parse(requestEnvelope.WireLine);
+            JsonDocument actionDocument = JsonDocument.Parse(actionEnvelope.WireLine);
+            string requestId = requestDocument.RootElement
+                .GetProperty("payload")
+                .GetProperty("requestId")
+                .GetString()!;
+            string requestEventId = requestDocument.RootElement
+                .GetProperty("payload")
+                .GetProperty("eventId")
+                .GetString()!;
+            string actionEventId = actionDocument.RootElement
+                .GetProperty("payload")
+                .GetProperty("eventId")
+                .GetString()!;
+            Assert.Equal(requestEnvelope.MessageId, requestId);
+            Assert.Equal(requestId, requestEventId);
+            Assert.Equal(requestEventId, actionEventId);
+            Assert.Equal(
+                demandId,
+                requestDocument.RootElement.GetProperty("payload").GetProperty("demandId").GetString());
+            Assert.Equal(
+                [1, 2],
+                requestDocument.RootElement.GetProperty("payload").GetProperty("slots")
+                    .EnumerateArray()
+                    .Select(item => item.GetInt32())
+                    .ToArray());
+
+            WireToGateRecoveryState persisted = await session.Journal
+                .ReadRecoveryStateAsync(testToken);
+            Assert.Equal(requestId, persisted.RecoverySessionRequestId);
+            Assert.Equal("77777777-7777-4777-8777-777777777777", persisted.ExceptionRecoverySessionId);
+            Assert.NotNull(persisted.RecoveryActionId);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(operatorVariable, previousOperator);
+            Environment.SetEnvironmentVariable(proofVariable, previousProof);
+        }
+    }
+
+    [Fact]
     public async Task JourneySnapshotsAreProjectedAndHeartbeatDoesNotStealAsyncMessages()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
