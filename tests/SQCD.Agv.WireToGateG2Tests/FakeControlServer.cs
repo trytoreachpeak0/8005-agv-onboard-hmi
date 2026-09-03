@@ -398,7 +398,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             context.SafetyStateVersion = revision;
             lock (_sync)
             {
-                _acceptedSafetyStateVersion = revision;
+                _acceptedSafetyStateVersion = Math.Max(_acceptedSafetyStateVersion, revision);
             }
         }
 

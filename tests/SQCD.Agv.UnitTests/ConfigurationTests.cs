@@ -137,6 +137,26 @@ public sealed class ConfigurationTests
     }
 
     [Theory]
+    [InlineData(-1)]
+    [InlineData(1_001)]
+    [InlineData(5_000)]
+    public void EnabledVehicleSafetyProjectionRejectsUnsafeClockSkewTolerance(int toleranceMs)
+    {
+        OnboardSettings settings = new()
+        {
+            VehicleSafety = new VehicleSafetySettings
+            {
+                Enabled = true,
+                Endpoint = "http://control.internal/api/onboard/v1/vehicle-safety",
+                ExpectedVehicleKey = "AGV-8005-27",
+                ClockSkewToleranceMs = toleranceMs
+            }
+        };
+
+        Assert.Throws<InvalidDataException>(settings.Validate);
+    }
+
+    [Theory]
     [InlineData("useTls")]
     [InlineData("serverCertificateSha256")]
     public void RemovedTransportKeyIsRejectedInsteadOfSilentlyIgnored(string removedKey)

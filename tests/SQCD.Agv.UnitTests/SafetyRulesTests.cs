@@ -1,4 +1,5 @@
 using SQCD.Agv.Core;
+using SQCD.Agv.Infrastructure;
 
 namespace SQCD.Agv.UnitTests;
 
@@ -59,6 +60,87 @@ public sealed class SafetyRulesTests
 
         Assert.Equal(VehicleMotionState.Unknown, signal.MotionState);
         Assert.False(signal.IsStoppedAndFresh(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(1)));
+    }
+
+    [Theory]
+    [InlineData(100, 500, true)]
+    [InlineData(500, 500, true)]
+    [InlineData(501, 500, false)]
+    [InlineData(-5_000, 500, true)]
+    [InlineData(-5_001, 500, false)]
+    public void VehicleSafetyFreshnessAllowsOnlyBoundedClockSkew(
+        int observedAtOffsetMs,
+        int clockSkewToleranceMs,
+        bool expected)
+    {
+        DateTimeOffset now = new(2026, 9, 3, 8, 0, 0, TimeSpan.Zero);
+        VehicleSafetySignal signal = new(
+            VehicleMotionState.Stopped,
+            now.AddMilliseconds(observedAtOffsetMs),
+            "CONTROL_SERVER");
+
+        Assert.Equal(
+            expected,
+            signal.IsFresh(
+                now,
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(clockSkewToleranceMs)));
+    }
+
+    [Fact]
+    public void VehicleSafetyFreshnessRejectsInvalidPolicyInputs()
+    {
+        DateTimeOffset now = new(2026, 9, 3, 8, 0, 0, TimeSpan.Zero);
+
+        Assert.False(VehicleSafetyFreshness.IsFresh(
+            now,
+            now,
+            TimeSpan.Zero,
+            TimeSpan.FromMilliseconds(500)));
+        Assert.False(VehicleSafetyFreshness.IsFresh(
+            now,
+            now,
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(-1)));
+        Assert.False(VehicleSafetyFreshness.IsFresh(
+            default,
+            now,
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(500)));
+    }
+
+    [Theory]
+    [InlineData(VehicleMotionState.Unknown, true, "VEHICLE_STATE_UNKNOWN")]
+    [InlineData(VehicleMotionState.Moving, false, "ACTION_NOT_ALLOWED_IN_STATE")]
+    public void WireToGateSafetySummaryPreservesVehicleTriState(
+        VehicleMotionState motionState,
+        bool expectedUnknown,
+        string expectedReason)
+    {
+        DateTimeOffset now = new(2026, 9, 3, 8, 0, 0, TimeSpan.Zero);
+        IoSnapshot snapshot = CreateSnapshot(targetHasCargo: false, targetLocked: true) with
+        {
+            ObservedAt = now,
+            Lockers = CreateSnapshot(false, true).Lockers
+                .Select(locker => locker with { ObservedAt = now })
+                .ToArray()
+        };
+
+        var summary = WireToGateSafetyEvaluator.Evaluate(
+            snapshot,
+            new VehicleSafetySignal(motionState, now.AddMilliseconds(100), "CONTROL_SERVER"),
+            now,
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(500));
+
+        Assert.False(summary.DepartureSafe);
+        Assert.False(summary.VehicleStopped);
+        Assert.Equal(expectedUnknown, summary.UnknownPresent);
+        Assert.Contains(expectedReason, summary.ReasonCodes);
+        Assert.DoesNotContain(
+            expectedUnknown ? "ACTION_NOT_ALLOWED_IN_STATE" : "VEHICLE_STATE_UNKNOWN",
+            summary.ReasonCodes);
     }
 
     [Fact]

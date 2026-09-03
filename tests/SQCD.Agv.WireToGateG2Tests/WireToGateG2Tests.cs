@@ -822,7 +822,10 @@ public sealed class WireToGateG2Tests
             SendReadinessAfterRecoveryAck = true,
             SendReadinessAfterSafetyStateChangedAck = true
         };
-        SequenceSafetyHandler handler = new();
+        SequenceSafetyHandler handler = new()
+        {
+            ObservedAtOffset = TimeSpan.FromMilliseconds(100)
+        };
         using HttpClient httpClient = new(handler);
         using ControlServerVehicleSafetySignalProvider provider = new(
             new VehicleSafetySettings
@@ -832,6 +835,7 @@ public sealed class WireToGateG2Tests
                 CredentialEnvironmentVariable = CredentialVariable,
                 ExpectedVehicleKey = "AGV-8005-01",
                 MaximumEvidenceAgeMs = 5_000,
+                ClockSkewToleranceMs = 500,
                 PollIntervalMs = 1_000,
                 RequestTimeoutMs = 2_000
             },
@@ -846,9 +850,10 @@ public sealed class WireToGateG2Tests
             new SqliteWireToGateJournal(NewJournalPath()),
             logger,
             new SystemClock(),
-            () => provider.Read().IsStoppedAndFresh(
-                DateTimeOffset.UtcNow,
-                TimeSpan.FromSeconds(5)));
+            provider,
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(500));
         await using WireToGateBusinessService business = new(
             session,
             io,
@@ -863,14 +868,28 @@ public sealed class WireToGateG2Tests
                 TimeSpan.FromSeconds(30)),
             "W2G_G2_OPERATOR_ID",
             provider,
-            TimeSpan.FromSeconds(5));
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(500));
 
         await provider.RefreshAsync(testToken);
         Assert.Equal(VehicleMotionState.Unknown, provider.Read().MotionState);
-        business.Start();
         WireToGateSessionSnapshot blocked = await session.Client.ConnectAndRecoverAsync(testToken);
         Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, blocked.Readiness);
-        await WaitUntilAsync(() => server.AcceptedSafetyStateChangedCount == 1, testToken);
+        DateTimeOffset rebasedAt = DateTimeOffset.UtcNow;
+        await session.SendSafetyStateChangedAsync(
+            10,
+            rebasedAt,
+            WireToGateSafetyEvaluator.Evaluate(
+                io.CurrentSnapshot,
+                provider.Read(),
+                rebasedAt,
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(500)),
+            [1, 2, 3, 4, 5, 6, 7, 8],
+            testToken);
+        business.Start();
+        await WaitUntilAsync(() => server.AcceptedSafetyStateChangedCount == 2, testToken);
 
         handler.ReturnStopped = true;
         await provider.RefreshAsync(testToken);
@@ -879,9 +898,89 @@ public sealed class WireToGateG2Tests
             testToken);
 
         Assert.Equal(VehicleMotionState.Stopped, provider.Read().MotionState);
-        Assert.Equal(2, server.AcceptedSafetyStateChangedCount);
-        Assert.True(session.Current.SafetyStateVersion >= 3);
+        Assert.Equal(3, server.AcceptedSafetyStateChangedCount);
+        Assert.True(session.Current.SafetyStateVersion >= 12);
+        long[] changedVersions = server.ReceivedEnvelopes
+            .Where(item => item.MessageType == "SafetyStateChanged")
+            .Select(item => WireToGateProtocolSerializer.DeserializeAndValidate(
+                item.WireLine,
+                "AGV-8005-01"))
+            .Select(envelope => envelope.Payload
+                .GetProperty("safetyStateVersion")
+                .GetInt64())
+            .ToArray();
+        Assert.Equal([10L, 11L, 12L], changedVersions);
         Assert.Empty(session.Current.ReasonCodes);
+        Assert.Equal(0, io.UnlockCount);
+        Assert.Empty(server.StaleGenerationRejections);
+    }
+
+    [Fact]
+    public async Task BusinessSafetySendFailureDisconnectsAndReplaysPendingRevision()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            RequireSafeSafetyForReadiness = true,
+            SendReadinessAfterRecoveryAck = true,
+            SendReadinessAfterSafetyStateChangedAck = true
+        };
+        RecordedVehicleSafetySignalProvider provider = new(new VehicleSafetySignal(
+            VehicleMotionState.Stopped,
+            DateTimeOffset.UtcNow,
+            "G2_TEST"));
+        FakeIoModuleClient io = new();
+        NullLogger logger = new();
+        await using WireToGateSessionService session = new(
+            CreateSessionOptions(server),
+            io,
+            new SqliteWireToGateJournal(NewJournalPath()),
+            logger,
+            new SystemClock(),
+            provider,
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(500));
+        await using WireToGateBusinessService business = new(
+            session,
+            io,
+            logger,
+            new SystemClock(),
+            () => provider.Read().MotionState == VehicleMotionState.Stopped,
+            new WireToGateSlotOperationExecutorOptions(
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(2),
+                TimeSpan.FromMilliseconds(10),
+                TimeSpan.FromSeconds(30)),
+            "W2G_G2_OPERATOR_ID",
+            provider,
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(500));
+
+        business.Start();
+        await session.Client.ConnectAndRecoverAsync(testToken);
+        await WaitUntilAsync(() => server.AcceptedSafetyStateChangedCount == 1, testToken);
+
+        server.DropBeforeSafetyStateChangedAck = true;
+        provider.Set(VehicleMotionState.Unknown, DateTimeOffset.UtcNow);
+        await WaitUntilAsync(
+            () => session.Current.Readiness == WireToGateSessionReadiness.Disconnected,
+            testToken);
+
+        server.DropBeforeSafetyStateChangedAck = false;
+        WireToGateSessionSnapshot recovered = await session.Client.ConnectAndRecoverAsync(testToken);
+        await WaitUntilAsync(
+            () => session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired,
+            testToken);
+
+        var changed = server.ReceivedEnvelopes
+            .Where(item => item.MessageType == "SafetyStateChanged")
+            .ToArray();
+        Assert.Equal(3, changed.Length);
+        Assert.Equal(changed[^2].MessageId, changed[^1].MessageId);
+        Assert.Equal(2, server.AcceptedSafetyStateChangedCount);
+        Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, recovered.Readiness);
         Assert.Equal(0, io.UnlockCount);
         Assert.Empty(server.StaleGenerationRejections);
     }
@@ -911,7 +1010,10 @@ public sealed class WireToGateG2Tests
             io,
             new SqliteWireToGateJournal(journalPath),
             new SystemClock(),
-            vehicleStoppedProvider ?? (() => true));
+            new DelegateVehicleSafetySignalProvider(vehicleStoppedProvider ?? (() => true)),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(500));
     }
 
     private static WireToGateSessionOptions CreateSessionOptions(
@@ -955,6 +1057,8 @@ public sealed class WireToGateG2Tests
     {
         public bool ReturnStopped { get; set; }
 
+        public TimeSpan ObservedAtOffset { get; init; }
+
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken)
@@ -972,12 +1076,21 @@ public sealed class WireToGateG2Tests
                 {
                     vehicleKey = "AGV-8005-01",
                     motionState = "STOPPED",
-                    observedAt = DateTimeOffset.UtcNow,
+                    observedAt = DateTimeOffset.UtcNow + ObservedAtOffset,
                     source = "CONTROL_SERVER",
                     reasonCodes = Array.Empty<string>()
                 })
             });
         }
+    }
+
+    private sealed class DelegateVehicleSafetySignalProvider(Func<bool> isStopped)
+        : IVehicleSafetySignalProvider
+    {
+        public VehicleSafetySignal Read() => new(
+            isStopped() ? VehicleMotionState.Stopped : VehicleMotionState.Unknown,
+            DateTimeOffset.UtcNow,
+            "G2_TEST");
     }
 
     private sealed class NullLogger : IAppLogger

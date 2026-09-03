@@ -35,7 +35,8 @@ public partial class App : System.Windows.Application, IDisposable
             Func<bool> vehicleStoppedProvider = () =>
                 vehicleSafetySignalProvider.Read().IsStoppedAndFresh(
                     DateTimeOffset.UtcNow,
-                    TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs));
+                    TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs),
+                    TimeSpan.FromMilliseconds(settings.VehicleSafety.ClockSkewToleranceMs));
             _logger = new FileAppLogger(settings.Logging);
             _ioModule = new ModbusTcpIoModuleClient(settings.IoModule, _logger);
             _ruleGateway = settings.WireToGate.Enabled
@@ -102,7 +103,10 @@ public partial class App : System.Windows.Application, IDisposable
                     journal,
                     _logger,
                     new SystemClock(),
-                    vehicleStoppedProvider);
+                    vehicleSafetySignalProvider,
+                    TimeSpan.FromMilliseconds(settings.Workflow.IoSnapshotMaxAgeMs),
+                    TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs),
+                    TimeSpan.FromMilliseconds(settings.VehicleSafety.ClockSkewToleranceMs));
                 _wireToGate.StateChanged += (_, args) =>
                 {
                     viewModel.UpdateWireToGateStatus(args.Value);
@@ -127,7 +131,8 @@ public partial class App : System.Windows.Application, IDisposable
                         TimeSpan.FromMilliseconds(settings.Workflow.IoSnapshotMaxAgeMs)),
                     settings.WireToGate.OperatorIdEnvironmentVariable,
                     vehicleSafetySignalProvider,
-                    TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs));
+                    TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs),
+                    TimeSpan.FromMilliseconds(settings.VehicleSafety.ClockSkewToleranceMs));
                 _wireToGateBusiness.SublotEntryRequested += (_, args) =>
                 {
                     _logger.Write(

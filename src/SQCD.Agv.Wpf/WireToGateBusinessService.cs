@@ -27,6 +27,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
     private readonly string _operatorIdEnvironmentVariable;
     private readonly TimeSpan _ioSnapshotMaxAge;
     private readonly TimeSpan _vehicleSafetyMaxAge;
+    private readonly TimeSpan _vehicleSafetyClockSkewTolerance;
     private readonly WireToGateSlotOperationExecutor _executor;
     private readonly CancellationTokenSource _stopping = new();
     private readonly object _taskGate = new();
@@ -39,6 +40,8 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
     private SafetyChangeWork? _pendingSafetyChange;
     private string? _lastSafetySignature;
     private long _nextSafetyStateVersion;
+    private int _safetyRefreshPending;
+    private int _safetyRefreshWorkerActive;
     private bool _started;
     private bool _disposed;
 
@@ -51,7 +54,8 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         WireToGateSlotOperationExecutorOptions executorOptions,
         string operatorIdEnvironmentVariable,
         IVehicleSafetySignalProvider? vehicleSafetySignalProvider = null,
-        TimeSpan? vehicleSafetyMaxAge = null)
+        TimeSpan? vehicleSafetyMaxAge = null,
+        TimeSpan? vehicleSafetyClockSkewTolerance = null)
     {
         _session = session;
         _ioModule = ioModule;
@@ -65,9 +69,15 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         _operatorIdEnvironmentVariable = operatorIdEnvironmentVariable;
         _ioSnapshotMaxAge = executorOptions.IoSnapshotMaxAge;
         _vehicleSafetyMaxAge = vehicleSafetyMaxAge ?? _ioSnapshotMaxAge;
+        _vehicleSafetyClockSkewTolerance = vehicleSafetyClockSkewTolerance ?? TimeSpan.Zero;
         if (_vehicleSafetyMaxAge <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(vehicleSafetyMaxAge));
+        }
+        if (_vehicleSafetyClockSkewTolerance < TimeSpan.Zero
+            || _vehicleSafetyClockSkewTolerance >= _vehicleSafetyMaxAge)
+        {
+            throw new ArgumentOutOfRangeException(nameof(vehicleSafetyClockSkewTolerance));
         }
         _nextSafetyStateVersion = session.Current.SafetyStateVersion + 1;
         if (string.IsNullOrWhiteSpace(operatorIdEnvironmentVariable))
@@ -146,7 +156,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         {
             _observableVehicleSafetySignalProvider.SignalChanged += OnVehicleSafetySignalChanged;
         }
-        TrackTask(QueueSafetyStateChangeAsync(_ioModule.CurrentSnapshot, _stopping.Token));
+        RequestSafetyStateChange();
     }
 
     public async ValueTask DisposeAsync()
@@ -230,19 +240,57 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
 
         if (CanPublishSafetyRevision(args.Value))
         {
-            TrackTask(QueueSafetyStateChangeAsync(_ioModule.CurrentSnapshot, _stopping.Token));
+            RequestSafetyStateChange();
         }
     }
 
-    private void OnIoSnapshotChanged(object? sender, ValueChangedEventArgs<IoSnapshot> args) =>
-        TrackTask(QueueSafetyStateChangeAsync(args.Value, _stopping.Token));
+    private void OnIoSnapshotChanged(object? sender, ValueChangedEventArgs<IoSnapshot> args)
+    {
+        _ = args;
+        RequestSafetyStateChange();
+    }
 
     private void OnVehicleSafetySignalChanged(
         object? sender,
         ValueChangedEventArgs<VehicleSafetySignal> args)
     {
         _ = args;
-        TrackTask(QueueSafetyStateChangeAsync(_ioModule.CurrentSnapshot, _stopping.Token));
+        RequestSafetyStateChange();
+    }
+
+    private void RequestSafetyStateChange()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        Interlocked.Exchange(ref _safetyRefreshPending, 1);
+        if (Interlocked.CompareExchange(ref _safetyRefreshWorkerActive, 1, 0) == 0)
+        {
+            TrackTask(ProcessSafetyStateChangesAsync(_stopping.Token));
+        }
+    }
+
+    private async Task ProcessSafetyStateChangesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!_disposed && Interlocked.Exchange(ref _safetyRefreshPending, 0) == 1)
+            {
+                await QueueSafetyStateChangeAsync(cancellationToken).ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            Volatile.Write(ref _safetyRefreshWorkerActive, 0);
+            if (!_disposed
+                && Volatile.Read(ref _safetyRefreshPending) == 1
+                && Interlocked.CompareExchange(ref _safetyRefreshWorkerActive, 1, 0) == 0)
+            {
+                TrackTask(ProcessSafetyStateChangesAsync(cancellationToken));
+            }
+        }
     }
 
     private void TrackTask(Task task)
@@ -259,15 +307,21 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                 {
                     _tasks.Remove(completed);
                 }
+                if (completed.IsFaulted && completed.Exception is not null)
+                {
+                    _logger.Write(
+                        LogSeverity.Error,
+                        nameof(WireToGateBusinessService),
+                        "WIRE_TO_GATE后台任务异常，相关操作已保持故障安全阻塞。",
+                        completed.Exception.GetBaseException());
+                }
             },
             CancellationToken.None,
             TaskContinuationOptions.ExecuteSynchronously,
             TaskScheduler.Default);
     }
 
-    private async Task QueueSafetyStateChangeAsync(
-        IoSnapshot snapshot,
-        CancellationToken cancellationToken)
+    private async Task QueueSafetyStateChangeAsync(CancellationToken cancellationToken)
     {
         if (_disposed || !CanPublishSafetyRevision(_session.Current))
         {
@@ -282,7 +336,18 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                 return;
             }
 
-            SafetyEvaluation evaluation = EvaluateSafety(snapshot);
+            WireToGateSessionSnapshot current = _session.Current;
+            if (_pendingSafetyChange is not null
+                && current.SafetyStateVersion >= _pendingSafetyChange.Version)
+            {
+                _lastSafetySignature = _pendingSafetyChange.Signature;
+                _pendingSafetyChange = null;
+            }
+            _nextSafetyStateVersion = Math.Max(
+                _nextSafetyStateVersion,
+                checked(current.SafetyStateVersion + 1));
+
+            SafetyEvaluation evaluation = EvaluateSafety(_ioModule.CurrentSnapshot);
             string signature = evaluation.Signature;
             if (_pendingSafetyChange is null
                 && string.Equals(_lastSafetySignature, signature, StringComparison.Ordinal))
@@ -304,16 +369,33 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                 pending.AffectedSlots,
                 cancellationToken).ConfigureAwait(false);
             _lastSafetySignature = pending.Signature;
-            _nextSafetyStateVersion = pending.Version + 1;
+            _nextSafetyStateVersion = Math.Max(
+                checked(pending.Version + 1),
+                checked(_session.Current.SafetyStateVersion + 1));
             _pendingSafetyChange = null;
         }
-        catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
         {
             _logger.Write(
-                LogSeverity.Warning,
+                LogSeverity.Error,
                 nameof(WireToGateBusinessService),
-                "SafetyStateChanged暂未收到DurableAck，将使用同一版本和内容重试。",
+                "SafetyStateChanged发送失败，正在断开会话并以同一版本和内容重试。",
                 exception);
+            try
+            {
+                await _session.Client.DisconnectAsync().ConfigureAwait(false);
+            }
+            catch (Exception disconnectException)
+            {
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    "安全状态发送失败后断开会话时发生异常。",
+                    disconnectException);
+            }
         }
         finally
         {
@@ -399,7 +481,10 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         DateTimeOffset now = _clock.Now;
         bool fresh = snapshot.IsConnected
             && SafetyRules.IsSnapshotFresh(snapshot, now, _ioSnapshotMaxAge)
-            && vehicle.IsFresh(now, _vehicleSafetyMaxAge);
+            && vehicle.IsFresh(
+                now,
+                _vehicleSafetyMaxAge,
+                _vehicleSafetyClockSkewTolerance);
         bool targetsKnown = fresh
             && command.Slots.All(slot =>
                 TryGetLocker(snapshot, slot, out LockerSnapshot? locker)
@@ -674,11 +759,12 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
     {
         SafetyEvaluation evaluation = EvaluateSafety(_ioModule.CurrentSnapshot);
         bool safe = evaluation.Safety.DepartureSafe;
+        long safetyStateVersion = _session.Current.SafetyStateVersion;
         await _session.SendPreDepartureSafetyCheckResultAsync(
             command.PreDepartureSafetyCheckId,
             safe ? "SAFE" : evaluation.Safety.UnknownPresent ? "UNKNOWN" : "UNSAFE",
             evaluation.ObservedAt,
-            _nextSafetyStateVersion - 1,
+            safetyStateVersion,
             evaluation.ObservedAt.AddSeconds(2),
             evaluation.Safety,
             cancellationToken).ConfigureAwait(false);
@@ -761,49 +847,13 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
     private SafetyEvaluation EvaluateSafety(IoSnapshot snapshot)
     {
         DateTimeOffset observedAt = _clock.Now;
-        bool fresh = snapshot.IsConnected
-            && SafetyRules.IsSnapshotFresh(snapshot, observedAt, _ioSnapshotMaxAge);
-        bool unknown = !fresh
-            || snapshot.Lockers.Count != 8
-            || snapshot.Lockers.Any(locker => !locker.IsKnown);
-        bool allLocked = !unknown && snapshot.Lockers.All(locker => locker.IsLocked);
-        bool allOutputsReset = !unknown && snapshot.Lockers.All(locker => locker.UnlockOutputRaw is false);
-        VehicleSafetySignal vehicleSignal = ReadVehicleSafety();
-        bool vehicleFresh = vehicleSignal.IsFresh(observedAt, _vehicleSafetyMaxAge);
-        bool vehicleStopped = vehicleSignal.MotionState == VehicleMotionState.Stopped && vehicleFresh;
-        bool vehicleUnknown = !vehicleFresh || vehicleSignal.MotionState == VehicleMotionState.Unknown;
-        List<string> reasons = [];
-        if (unknown)
-        {
-            reasons.Add("SLOT_STATE_UNKNOWN");
-        }
-
-        if (!allLocked)
-        {
-            reasons.Add("LOCK_NOT_CLOSED");
-        }
-
-        if (!allOutputsReset)
-        {
-            reasons.Add("UNLOCK_OUTPUT_NOT_RESET");
-        }
-
-        if (vehicleUnknown)
-        {
-            reasons.Add("VEHICLE_STATE_UNKNOWN");
-        }
-        else if (!vehicleStopped)
-        {
-            reasons.Add("ACTION_NOT_ALLOWED_IN_STATE");
-        }
-
-        WireToGateSafetySummaryPayload safety = new(
-            !unknown && allLocked && allOutputsReset && vehicleStopped,
-            vehicleStopped,
-            allLocked,
-            allOutputsReset,
-            unknown || vehicleUnknown,
-            reasons.Distinct(StringComparer.Ordinal).ToArray());
+        WireToGateSafetySummaryPayload safety = WireToGateSafetyEvaluator.Evaluate(
+            snapshot,
+            ReadVehicleSafety(),
+            observedAt,
+            _ioSnapshotMaxAge,
+            _vehicleSafetyMaxAge,
+            _vehicleSafetyClockSkewTolerance);
         string signature = JsonSerializer.Serialize(
             new
             {

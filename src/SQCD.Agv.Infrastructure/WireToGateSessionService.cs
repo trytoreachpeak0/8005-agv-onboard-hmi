@@ -20,16 +20,27 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         IWireToGateJournal journal,
         IAppLogger logger,
         IClock clock,
-        Func<bool> vehicleStoppedProvider)
+        IVehicleSafetySignalProvider vehicleSafetySignalProvider,
+        TimeSpan ioSnapshotMaxAge,
+        TimeSpan vehicleSafetyMaxAge,
+        TimeSpan vehicleSafetyClockSkewTolerance)
     {
         ArgumentNullException.ThrowIfNull(ioModule);
         ArgumentNullException.ThrowIfNull(journal);
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(clock);
-        ArgumentNullException.ThrowIfNull(vehicleStoppedProvider);
+        ArgumentNullException.ThrowIfNull(vehicleSafetySignalProvider);
         _journal = journal;
         _logger = logger;
-        _client = new WireToGateSessionClient(options, ioModule, journal, clock, vehicleStoppedProvider);
+        _client = new WireToGateSessionClient(
+            options,
+            ioModule,
+            journal,
+            clock,
+            vehicleSafetySignalProvider,
+            ioSnapshotMaxAge,
+            vehicleSafetyMaxAge,
+            vehicleSafetyClockSkewTolerance);
         _client.StateChanged += OnClientStateChanged;
         _client.JourneyChanged += OnClientJourneyChanged;
         _client.ServerCommandReceived += OnClientServerCommandReceived;

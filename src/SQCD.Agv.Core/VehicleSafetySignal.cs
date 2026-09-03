@@ -20,20 +20,43 @@ public sealed record VehicleSafetySignal(
     /// </summary>
     public IReadOnlyList<string> EffectiveReasonCodes => ReasonCodes ?? Array.Empty<string>();
 
-    public bool IsFresh(DateTimeOffset now, TimeSpan maxAge)
+    public bool IsFresh(
+        DateTimeOffset now,
+        TimeSpan maxAge,
+        TimeSpan clockSkewTolerance = default) =>
+        VehicleSafetyFreshness.IsFresh(ObservedAt, now, maxAge, clockSkewTolerance);
+
+    public bool IsStoppedAndFresh(
+        DateTimeOffset now,
+        TimeSpan maxAge,
+        TimeSpan clockSkewTolerance = default) =>
+        MotionState == VehicleMotionState.Stopped
+        && IsFresh(now, maxAge, clockSkewTolerance);
+}
+
+/// <summary>
+/// Applies one freshness policy at every vehicle-safety trust boundary. A small,
+/// explicitly bounded future skew is allowed because ControlServer and Onboard
+/// stamp observations with different machine clocks.
+/// </summary>
+public static class VehicleSafetyFreshness
+{
+    public static bool IsFresh(
+        DateTimeOffset observedAt,
+        DateTimeOffset now,
+        TimeSpan maxAge,
+        TimeSpan clockSkewTolerance = default)
     {
         if (maxAge <= TimeSpan.Zero
-            || ObservedAt == default
-            || ObservedAt > now)
+            || clockSkewTolerance < TimeSpan.Zero
+            || observedAt == default)
         {
             return false;
         }
 
-        return now - ObservedAt <= maxAge;
+        TimeSpan age = now - observedAt;
+        return age >= -clockSkewTolerance && age <= maxAge;
     }
-
-    public bool IsStoppedAndFresh(DateTimeOffset now, TimeSpan maxAge) =>
-        MotionState == VehicleMotionState.Stopped && IsFresh(now, maxAge);
 }
 
 public interface IVehicleSafetySignalProvider

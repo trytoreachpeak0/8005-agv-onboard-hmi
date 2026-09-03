@@ -277,14 +277,11 @@ public sealed class ControlServerVehicleSafetySignalProvider : IObservableVehicl
     }
 
     private bool IsFresh(DateTimeOffset observedAt, DateTimeOffset now)
-    {
-        if (_settings.MaximumEvidenceAgeMs <= 0 || observedAt > now)
-        {
-            return false;
-        }
-
-        return now - observedAt <= TimeSpan.FromMilliseconds(_settings.MaximumEvidenceAgeMs);
-    }
+        => VehicleSafetyFreshness.IsFresh(
+            observedAt,
+            now,
+            TimeSpan.FromMilliseconds(_settings.MaximumEvidenceAgeMs),
+            TimeSpan.FromMilliseconds(_settings.ClockSkewToleranceMs));
 
     private static VehicleMotionState ParseMotionState(string? value) =>
         value?.Trim().ToUpperInvariant() switch

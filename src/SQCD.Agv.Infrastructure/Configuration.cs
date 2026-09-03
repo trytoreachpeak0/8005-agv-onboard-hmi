@@ -159,6 +159,8 @@ public sealed class OnboardSettings
 /// </summary>
 public sealed class VehicleSafetySettings
 {
+    private const int MaximumClockSkewToleranceMs = 1_000;
+
     public bool Enabled { get; init; }
 
     public string Endpoint { get; init; } = "http://control.example.invalid/api/onboard/v1/vehicle-safety";
@@ -168,6 +170,8 @@ public sealed class VehicleSafetySettings
     public string ExpectedVehicleKey { get; init; } = string.Empty;
 
     public int MaximumEvidenceAgeMs { get; init; } = 5_000;
+
+    public int ClockSkewToleranceMs { get; init; } = 500;
 
     public int PollIntervalMs { get; init; } = 1_000;
 
@@ -195,6 +199,9 @@ public sealed class VehicleSafetySettings
             || OnboardSettings.IsPlaceholderValue(CredentialEnvironmentVariable)
             || string.IsNullOrWhiteSpace(ExpectedVehicleKey)
             || MaximumEvidenceAgeMs <= 0
+            || ClockSkewToleranceMs < 0
+            || ClockSkewToleranceMs > MaximumClockSkewToleranceMs
+            || ClockSkewToleranceMs >= MaximumEvidenceAgeMs
             || PollIntervalMs <= 0
             || RequestTimeoutMs <= 0)
         {

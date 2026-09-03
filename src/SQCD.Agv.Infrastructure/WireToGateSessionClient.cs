@@ -30,7 +30,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     private readonly IIoModuleClient _ioModule;
     private readonly IWireToGateJournal _journal;
     private readonly IClock _clock;
-    private readonly Func<bool> _vehicleStoppedProvider;
+    private readonly IVehicleSafetySignalProvider _vehicleSafetySignalProvider;
+    private readonly TimeSpan _ioSnapshotMaxAge;
+    private readonly TimeSpan _vehicleSafetyMaxAge;
+    private readonly TimeSpan _vehicleSafetyClockSkewTolerance;
     private readonly SemaphoreSlim _sendGate = new(1, 1);
     private readonly object _journeyGate = new();
     private readonly Dictionary<string, (long Revision, string ContentSha256)> _journeyRevisions = [];
@@ -53,13 +56,33 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         IIoModuleClient ioModule,
         IWireToGateJournal journal,
         IClock clock,
-        Func<bool> vehicleStoppedProvider)
+        IVehicleSafetySignalProvider vehicleSafetySignalProvider,
+        TimeSpan ioSnapshotMaxAge,
+        TimeSpan vehicleSafetyMaxAge,
+        TimeSpan vehicleSafetyClockSkewTolerance)
     {
         _options = options;
         _ioModule = ioModule;
         _journal = journal;
         _clock = clock;
-        _vehicleStoppedProvider = vehicleStoppedProvider;
+        _vehicleSafetySignalProvider = vehicleSafetySignalProvider
+            ?? throw new ArgumentNullException(nameof(vehicleSafetySignalProvider));
+        _ioSnapshotMaxAge = ioSnapshotMaxAge;
+        _vehicleSafetyMaxAge = vehicleSafetyMaxAge;
+        _vehicleSafetyClockSkewTolerance = vehicleSafetyClockSkewTolerance;
+        if (_ioSnapshotMaxAge <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(ioSnapshotMaxAge));
+        }
+        if (_vehicleSafetyMaxAge <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(vehicleSafetyMaxAge));
+        }
+        if (_vehicleSafetyClockSkewTolerance < TimeSpan.Zero
+            || _vehicleSafetyClockSkewTolerance >= _vehicleSafetyMaxAge)
+        {
+            throw new ArgumentOutOfRangeException(nameof(vehicleSafetyClockSkewTolerance));
+        }
         ValidateOptions(options);
         _acceptedCapabilityVersion = options.CapabilityVersion;
         _acceptedSafetyStateVersion = options.SafetyStateVersion;
@@ -321,7 +344,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         1),
                     cancellationToken).ConfigureAwait(false);
 
-                ProtocolSafetySummary safety = CreateSafetySummary(io, slotStates);
+                WireToGateSafetySummaryPayload safety = CreateSafetySummary(io);
                 long safetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
                 await SendSnapshotAndRequireAckAsync(
                     "SafetyStateSnapshot",
@@ -1548,44 +1571,14 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             .ToArray();
     }
 
-    private ProtocolSafetySummary CreateSafetySummary(
-        IoSnapshot snapshot,
-        IReadOnlyList<ProtocolSlotState> slots)
-    {
-        bool vehicleStopped = _vehicleStoppedProvider();
-        bool unknownPresent = !snapshot.IsConnected || slots.Any(slot =>
-            slot.PhysicalState == "UNKNOWN"
-            || slot.LockState == "UNKNOWN"
-            || slot.UnlockOutputState == "UNKNOWN");
-        bool allLocked = slots.All(slot => slot.LockState == "LOCKED");
-        bool allOutputsReset = slots.All(slot => slot.UnlockOutputState == "RESET");
-        List<string> reasonCodes = [];
-        if (unknownPresent)
-        {
-            reasonCodes.Add("SLOT_STATE_UNKNOWN");
-        }
-        if (!allLocked)
-        {
-            reasonCodes.Add("LOCK_NOT_CLOSED");
-        }
-        if (!allOutputsReset)
-        {
-            reasonCodes.Add("UNLOCK_OUTPUT_NOT_RESET");
-        }
-        if (!vehicleStopped)
-        {
-            reasonCodes.Add("ACTION_NOT_ALLOWED_IN_STATE");
-        }
-
-        bool departureSafe = vehicleStopped && !unknownPresent && allLocked && allOutputsReset;
-        return new ProtocolSafetySummary(
-            departureSafe,
-            vehicleStopped,
-            allLocked,
-            allOutputsReset,
-            unknownPresent,
-            reasonCodes.Distinct(StringComparer.Ordinal).ToArray());
-    }
+    private WireToGateSafetySummaryPayload CreateSafetySummary(IoSnapshot snapshot) =>
+        WireToGateSafetyEvaluator.Evaluate(
+            snapshot,
+            _vehicleSafetySignalProvider.Read(),
+            _clock.Now,
+            _ioSnapshotMaxAge,
+            _vehicleSafetyMaxAge,
+            _vehicleSafetyClockSkewTolerance);
 
     private async Task OpenConnectionAsync(CancellationToken cancellationToken)
     {
@@ -1874,18 +1867,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         bool SupportsBatchUnlock,
         int OnboardJournalFormatVersion);
 
-    private sealed record ProtocolSafetySummary(
-        bool DepartureSafe,
-        bool VehicleStopped,
-        bool AllTargetSlotsLocked,
-        bool AllUnlockOutputsReset,
-        bool UnknownPresent,
-        IReadOnlyList<string> ReasonCodes);
-
     private sealed record SafetyStateSnapshotPayload(
         long SafetyStateVersion,
         DateTimeOffset ObservedAt,
-        ProtocolSafetySummary Safety,
+        WireToGateSafetySummaryPayload Safety,
         IReadOnlyList<ProtocolSlotState> SlotStates);
 
     private sealed record SnapshotAppliedAckPayload(

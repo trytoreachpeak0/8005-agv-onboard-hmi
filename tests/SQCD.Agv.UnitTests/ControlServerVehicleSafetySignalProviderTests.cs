@@ -42,6 +42,34 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Theory]
+    [InlineData(100, VehicleMotionState.Stopped)]
+    [InlineData(500, VehicleMotionState.Stopped)]
+    [InlineData(501, VehicleMotionState.Unknown)]
+    public async Task FutureEvidenceUsesConfiguredClockSkewTolerance(
+        int observedAtOffsetMs,
+        VehicleMotionState expected)
+    {
+        StubHandler handler = new((_, _) => Task.FromResult(JsonResponse(new
+        {
+            vehicleKey = VehicleKey,
+            motionState = "STOPPED",
+            observedAt = Now.AddMilliseconds(observedAtOffsetMs),
+            source = "CONTROL_SERVER",
+            reasonCodes = Array.Empty<string>()
+        })));
+        using HttpClient client = new(handler);
+        using ControlServerVehicleSafetySignalProvider provider = CreateProvider(client);
+
+        await provider.RefreshAsync();
+
+        Assert.Equal(expected, provider.Read().MotionState);
+        if (expected == VehicleMotionState.Unknown)
+        {
+            Assert.Contains("EVIDENCE_EXPIRED", provider.Read().EffectiveReasonCodes);
+        }
+    }
+
+    [Theory]
     [InlineData("MOVING", VehicleMotionState.Moving)]
     [InlineData("UNKNOWN", VehicleMotionState.Unknown)]
     [InlineData("MT_NA", VehicleMotionState.Unknown)]
@@ -386,6 +414,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
             CredentialEnvironmentVariable = "TEST_CONTROL_SERVER_CREDENTIAL",
             ExpectedVehicleKey = VehicleKey,
             MaximumEvidenceAgeMs = 5_000,
+            ClockSkewToleranceMs = 500,
             PollIntervalMs = 1_000,
             RequestTimeoutMs = requestTimeoutMs
         };
