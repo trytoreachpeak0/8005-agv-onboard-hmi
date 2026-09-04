@@ -432,6 +432,112 @@ public sealed class WireToGateG2Tests
         }
     }
 
+    /// <summary>
+    /// The recovery entry has to open on a session that turned RECOVERY_REQUIRED *while it was
+    /// running*, not only on one that handshook that way. On the real vehicle the trigger is a
+    /// refused load result: the server applies it, decides the session needs recovery, and appends
+    /// one SessionReadiness line to the result ack. By then the vehicle has already cleared its own
+    /// recovery state -- recording the result is what clears it -- so the entry has to open with no
+    /// checkpoint and no server recovery-session snapshot to lean on.
+    /// </summary>
+    [Fact]
+    public async Task RecoveryRequiredAnnouncedOnAResultAckOpensTheRecoveryEntry()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        const string operatorVariable = "W2G_G2_MIDSESSION_OPERATOR";
+        const string proofVariable = "W2G_G2_MIDSESSION_PROOF";
+        string? previousOperator = Environment.GetEnvironmentVariable(operatorVariable);
+        string? previousProof = Environment.GetEnvironmentVariable(proofVariable);
+        Environment.SetEnvironmentVariable(operatorVariable, "maintenance-002");
+        Environment.SetEnvironmentVariable(proofVariable, "test-proof");
+
+        try
+        {
+            await using FakeControlServer server = new(IPAddress.Loopback)
+            {
+                SendReadinessAfterRecoveryAck = true,
+                SendRecoveryRequiredReadinessAfterOperationResultAck = true
+            };
+            FakeIoModuleClient io = new();
+            NullLogger logger = new();
+            await using WireToGateSessionService session = new(
+                CreateSessionOptions(server),
+                io,
+                new SqliteWireToGateJournal(NewJournalPath()),
+                logger,
+                new SystemClock(),
+                new DelegateVehicleSafetySignalProvider(() => false),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(500));
+            await using WireToGateBusinessService business = new(
+                session,
+                io,
+                logger,
+                new SystemClock(),
+                () => false,
+                new WireToGateSlotOperationExecutorOptions(
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromMilliseconds(10),
+                    TimeSpan.FromSeconds(30)),
+                operatorVariable,
+                recoveryOptions: new WireToGateRecoveryOptions(
+                    true,
+                    proofVariable,
+                    "MAINTENANCE_ADMINISTRATOR",
+                    "CONFIGURED_PROOF"));
+
+            business.Start();
+            WireToGateSessionSnapshot connected = await session.Client
+                .ConnectAndRecoverAsync(testToken);
+
+            // The entry stays shut while the session is usable -- otherwise the assertion below
+            // would pass on a door that was never closed.
+            Assert.Equal(WireToGateSessionReadiness.Ready, connected.Readiness);
+            Assert.False(business.CanRequestResumeAfterRepair);
+
+            const string demandId = "11111111-1111-4111-8111-111111111111";
+            const string attemptId = "33333333-3333-4333-8333-333333333333";
+            await session.Client.SendOperationResultAsync(
+                $"operation-result:{attemptId}",
+                attemptId,
+                new WireToGateOperationResultPayload(
+                    demandId,
+                    attemptId,
+                    "LOAD",
+                    "FAILED",
+                    [
+                        new WireToGateSlotResultPayload(
+                            1,
+                            "FAILED",
+                            "EMPTY",
+                            "UNLOCKED",
+                            "RESET",
+                            ["SLOT_EMPTY_AFTER_LOAD"])
+                    ],
+                    DateTimeOffset.UtcNow,
+                    "NONE",
+                    new string('0', 64)),
+                testToken);
+
+            await WaitUntilAsync(
+                () => session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired,
+                testToken);
+
+            Assert.Contains("SESSION_RECOVERY_REQUIRED", session.Current.ReasonCodes);
+            Assert.True(session.Current.Connected);
+            Assert.True(business.CanRequestResumeAfterRepair);
+            Assert.Equal(0, io.UnlockCount);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(operatorVariable, previousOperator);
+            Environment.SetEnvironmentVariable(proofVariable, previousProof);
+        }
+    }
+
     [Fact]
     public async Task JourneySnapshotsAreProjectedAndHeartbeatDoesNotStealAsyncMessages()
     {
