@@ -110,7 +110,7 @@ public sealed class SafetyRulesTests
     }
 
     [Theory]
-    [InlineData(VehicleMotionState.Unknown, true, "VEHICLE_STATE_UNKNOWN")]
+    [InlineData(VehicleMotionState.Unknown, true, "VEHICLE_NOT_READY")]
     [InlineData(VehicleMotionState.Moving, false, "ACTION_NOT_ALLOWED_IN_STATE")]
     public void WireToGateSafetySummaryPreservesVehicleTriState(
         VehicleMotionState motionState,
@@ -139,7 +139,7 @@ public sealed class SafetyRulesTests
         Assert.Equal(expectedUnknown, summary.UnknownPresent);
         Assert.Contains(expectedReason, summary.ReasonCodes);
         Assert.DoesNotContain(
-            expectedUnknown ? "ACTION_NOT_ALLOWED_IN_STATE" : "VEHICLE_STATE_UNKNOWN",
+            expectedUnknown ? "ACTION_NOT_ALLOWED_IN_STATE" : "VEHICLE_NOT_READY",
             summary.ReasonCodes);
     }
 
@@ -149,17 +149,17 @@ public sealed class SafetyRulesTests
         WireToGateRecoverySafetyFacts facts = WireToGateRecoverySafetyFacts.Unknown;
 
         Assert.Equal(
-            "RECOVERY_AUTHORIZATION_REQUIRED",
+            "RECOVERY_AUTHENTICATION_FAILED",
             WireToGateRecoverySafetyPolicy.Evaluate(facts).ReasonCode);
 
         facts = facts with { RecoverySessionAuthorized = true };
         Assert.Equal(
-            "RECOVERY_STATE_NOT_PERSISTED",
+            "RECOVERY_SESSION_NOT_OPEN",
             WireToGateRecoverySafetyPolicy.Evaluate(facts).ReasonCode);
 
         facts = facts with { RecoveryStatePersisted = true };
         Assert.Equal(
-            "VEHICLE_STATE_UNKNOWN",
+            "VEHICLE_NOT_READY",
             WireToGateRecoverySafetyPolicy.Evaluate(facts).ReasonCode);
 
         facts = facts with { VehicleSignalFresh = true, VehicleStopped = true };
