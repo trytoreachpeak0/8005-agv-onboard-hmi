@@ -1,3 +1,8 @@
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
+
 namespace SQCD.Agv.Core;
 
 public enum WireToGateRecoveryCheckpoint
@@ -22,6 +27,92 @@ public sealed record WireToGatePendingResult(
     string MessageId,
     string BusinessId,
     string ContentSha256);
+
+public static class WireToGateRecoveryVectorTypes
+{
+    public const string LoadCancellation = "LOAD_CANCELLATION";
+    public const string LoadCompensation = "LOAD_COMPENSATION";
+    public const string LoadCorrection = "LOAD_CORRECTION";
+    public const string FaultCargoHandoff = "FAULT_CARGO_HANDOFF";
+
+    public static bool IsKnown(string value) => value is
+        LoadCancellation
+        or LoadCompensation
+        or LoadCorrection
+        or FaultCargoHandoff;
+}
+
+public static class WireToGateRecoveryCommandHash
+{
+    public static string Compute(params string[] parts) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join('|', parts))))
+            .ToLowerInvariant();
+
+    public static string ForLoadCompensation(
+        string recoveryActionId,
+        string demandId,
+        string slotOperationAttemptId,
+        IReadOnlyList<int> slots) =>
+        Compute(
+            recoveryActionId,
+            demandId,
+            slotOperationAttemptId,
+            JsonSerializer.Serialize(slots));
+
+    public static string ForLoadCorrection(
+        string correctionId,
+        string demandId,
+        string slotOperationAttemptId,
+        IReadOnlyList<int> slots) =>
+        Compute(
+            correctionId,
+            demandId,
+            slotOperationAttemptId,
+            JsonSerializer.Serialize(slots));
+
+    public static string ForRecoveryAction(
+        string recoveryActionId,
+        string demandId,
+        string slotOperationAttemptId,
+        IReadOnlyList<int> slots,
+        long forcedRecoveryGeneration) =>
+        Compute(
+            recoveryActionId,
+            demandId,
+            slotOperationAttemptId,
+            JsonSerializer.Serialize(slots),
+            forcedRecoveryGeneration.ToString(CultureInfo.InvariantCulture));
+}
+
+/// <summary>
+/// Durable identity for a recovery vector.  The command and result are bound to
+/// this exact scope; a reconnect may replay the result, but it may not invent a
+/// different demand, attempt, handoff, or slot set.
+/// </summary>
+public sealed record WireToGateRecoveryVectorContext(
+    string VectorType,
+    string PrimaryId,
+    string? ExceptionRecoverySessionId,
+    string DemandId,
+    string? SlotOperationAttemptId,
+    string? HandoffId,
+    IReadOnlyList<int> Slots,
+    string? CommandContentSha256,
+    string? OperatorId,
+    string? OperatorVerificationMethod,
+    DateTimeOffset? OperatorVerifiedAt);
+
+public sealed record WireToGateRecoveryVectorExecutionResult(
+    string VectorType,
+    string PrimaryId,
+    string? ExceptionRecoverySessionId,
+    string DemandId,
+    string? SlotOperationAttemptId,
+    string? HandoffId,
+    string OverallOutcome,
+    IReadOnlyList<WireToGateSlotExecutionResult> SlotResults,
+    DateTimeOffset ObservedAt,
+    string JournalCheckpoint);
 
 /// <summary>
 /// The immutable operation identity needed to resume a physical operation after
@@ -111,6 +202,21 @@ public sealed record WireToGateRecoveryState(
     public string? RecoveryOperatorId { get; init; }
 
     public DateTimeOffset? RecoveryOperatorVerifiedAt { get; init; }
+
+    public WireToGateRecoveryVectorContext? RecoveryVector { get; init; }
+
+    /// <summary>
+    /// Stable observation time for the recovery result currently being
+    /// reported.  Keeping it in the journal makes a retry byte-for-byte
+    /// identical to the first durable send.
+    /// </summary>
+    public DateTimeOffset? RecoveryResultObservedAt { get; init; }
+
+    /// <summary>
+    /// The last successfully recorded LOAD command is retained for the bounded
+    /// post-commit correction entry. It is never used to authorize a new load.
+    /// </summary>
+    public WireToGateRecoveryOperationContext? LastCompletedLoadOperationContext { get; init; }
 
     public static WireToGateRecoveryState Empty { get; } = new(
         null,

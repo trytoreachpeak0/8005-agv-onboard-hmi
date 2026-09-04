@@ -68,6 +68,58 @@ public sealed record WireToGateRecoveryCommand(
     string PayloadJson)
     : WireToGateServerCommand(MessageType, MessageId, CorrelationId, SessionGeneration, SentAt);
 
+public sealed record WireToGateLoadCompensationCommand(
+    string MessageId,
+    long SessionGeneration,
+    DateTimeOffset SentAt,
+    string RecoveryActionId,
+    string ExceptionRecoverySessionId,
+    string DemandId,
+    string SlotOperationAttemptId,
+    IReadOnlyList<int> Slots,
+    string ExpectedFinalPhysicalState,
+    string CommandContentSha256)
+    : WireToGateServerCommand(
+        "LoadCompensationCommand",
+        MessageId,
+        null,
+        SessionGeneration,
+        SentAt);
+
+public sealed record WireToGateLoadCorrectionCommand(
+    string MessageId,
+    long SessionGeneration,
+    DateTimeOffset SentAt,
+    string CorrectionId,
+    string DemandId,
+    string SlotOperationAttemptId,
+    IReadOnlyList<int> Slots,
+    IReadOnlyList<string> ExpectedSequence,
+    string CommandContentSha256)
+    : WireToGateServerCommand(
+        "LoadCorrectionCommand",
+        MessageId,
+        null,
+        SessionGeneration,
+        SentAt);
+
+public sealed record WireToGateFaultCargoRecoveryCommand(
+    string MessageId,
+    long SessionGeneration,
+    DateTimeOffset SentAt,
+    string ExceptionRecoverySessionId,
+    string RecoveryActionId,
+    string DemandId,
+    IReadOnlyList<int> Slots,
+    string HandoffId,
+    string CommandContentSha256)
+    : WireToGateServerCommand(
+        "FaultCargoRecoveryCommand",
+        MessageId,
+        null,
+        SessionGeneration,
+        SentAt);
+
 public sealed record WireToGateRecoveryBlockingFact(
     string ReasonCode,
     string SubjectType,

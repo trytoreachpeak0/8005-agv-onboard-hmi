@@ -158,6 +158,18 @@ public partial class App : System.Windows.Application, IDisposable
                     () => _wireToGateBusiness.CanSubmitSublot,
                     () => _wireToGateBusiness.CanRequestResumeAfterRepair,
                     cancellationToken => _wireToGateBusiness.RequestResumeAfterRepairAsync(
+                        cancellationToken: cancellationToken),
+                    () => _wireToGateBusiness.CanRequestLoadCancellation,
+                    cancellationToken => _wireToGateBusiness.RequestLoadCancellationAsync(
+                        cancellationToken: cancellationToken),
+                    () => _wireToGateBusiness.CanRequestLoadCompensation,
+                    cancellationToken => _wireToGateBusiness.RequestLoadCompensationAsync(
+                        cancellationToken: cancellationToken),
+                    () => _wireToGateBusiness.CanRequestLoadCorrection,
+                    cancellationToken => _wireToGateBusiness.RequestLoadCorrectionAsync(
+                        cancellationToken: cancellationToken),
+                    () => _wireToGateBusiness.CanRequestFaultCargoHandoff,
+                    cancellationToken => _wireToGateBusiness.RequestFaultCargoHandoffAsync(
                         cancellationToken: cancellationToken));
                 _wireToGateBusiness.Start();
             }

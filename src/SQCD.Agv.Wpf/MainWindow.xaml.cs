@@ -191,6 +191,89 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnLoadCancellationClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null
+            || MessageBox.Show(
+                "请确认车辆已停稳、目标仓门已锁好，并由授权人员确认本次装货应取消。\n\n系统只会执行服务端授权的目标仓位清空，不会重新选择仓位。是否继续？",
+                "取消装货",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.RequestLoadCancellationAsync())
+        {
+            ShowRecoveryFailure("装货取消未被接受。请检查授权、车辆停稳信号和服务端状态。", "取消装货失败");
+        }
+    }
+
+    private async void OnLoadCompensationClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null
+            || MessageBox.Show(
+                "请确认装货流程无法继续，并由授权维护人员确认需要将目标仓位全部清空。\n\n服务端授权后，系统才会执行清空动作。是否继续？",
+                "补偿清空",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.RequestLoadCompensationAsync())
+        {
+            ShowRecoveryFailure("补偿清空请求未被接受。请检查授权、恢复会话和服务端状态。", "补偿清空失败");
+        }
+    }
+
+    private async void OnLoadCorrectionClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null
+            || MessageBox.Show(
+                "请确认上一笔装货结果需要修正，并由现场人员准备按‘取出后重新放入’的顺序操作。\n\n系统只执行服务端下发的原目标仓位修正命令。是否继续？",
+                "修正装货",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.RequestLoadCorrectionAsync())
+        {
+            ShowRecoveryFailure("装货修正请求未被接受。请检查上一笔装货记录和服务端状态。", "修正装货失败");
+        }
+    }
+
+    private async void OnFaultCargoHandoffClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null
+            || MessageBox.Show(
+                "请确认目标仓存在故障货物，并由授权维护人员确认交接范围。\n\n系统会先等待服务端下发故障交接命令，再将目标仓位安全清空。是否继续？",
+                "故障货物交接",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.RequestFaultCargoHandoffAsync())
+        {
+            ShowRecoveryFailure("故障货物交接请求未被接受。请检查授权、恢复会话和服务端状态。", "故障交接失败");
+        }
+    }
+
+    private static void ShowRecoveryFailure(string message, string title) =>
+        MessageBox.Show(
+            message,
+            title,
+            MessageBoxButton.OK,
+            MessageBoxImage.Information);
+
     private void OnClosed(object? sender, EventArgs e)
     {
         if (_viewModel is not null)

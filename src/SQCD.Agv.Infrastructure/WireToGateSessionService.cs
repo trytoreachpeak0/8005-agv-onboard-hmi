@@ -139,6 +139,68 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         _client.SubmitRecoveryActionAsync(messageId, payload, cancellationToken);
 
+    public Task<LoadCancellationAuthorizationPayload> RequestLoadCancellationStartAsync(
+        string messageId,
+        LoadCancellationStartRequestedPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.RequestLoadCancellationStartAsync(messageId, payload, cancellationToken);
+
+    public Task<string> RequestLoadCompensationAsync(
+        string messageId,
+        LoadCompensationRequestedPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.RequestLoadCompensationAsync(messageId, payload, cancellationToken);
+
+    public Task<string> RequestLoadCorrectionAsync(
+        string messageId,
+        LoadCorrectionRequestedPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.RequestLoadCorrectionAsync(messageId, payload, cancellationToken);
+
+    public Task<string> SendLoadCancellationResultAsync(
+        string deduplicationKey,
+        string messageId,
+        LoadCancellationResultPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.SendLoadCancellationResultAsync(
+            deduplicationKey,
+            messageId,
+            payload,
+            cancellationToken);
+
+    public Task<string> SendLoadCompensationResultAsync(
+        string deduplicationKey,
+        string messageId,
+        LoadCompensationResultPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.SendLoadCompensationResultAsync(
+            deduplicationKey,
+            messageId,
+            payload,
+            cancellationToken);
+
+    public Task<string> SendLoadCorrectionResultAsync(
+        string deduplicationKey,
+        string messageId,
+        LoadCorrectionResultPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.SendLoadCorrectionResultAsync(
+            deduplicationKey,
+            messageId,
+            payload,
+            cancellationToken);
+
+    public Task<string> SendFaultCargoRecoveryResultAsync(
+        string deduplicationKey,
+        string messageId,
+        FaultCargoRecoveryResultPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.SendFaultCargoRecoveryResultAsync(
+            deduplicationKey,
+            messageId,
+            payload,
+            cancellationToken);
+
     public Task<ManualChargingReturnToServiceResultPayload> RequestManualChargingReturnToServiceAsync(
         string messageId,
         ManualChargingReturnToServiceRequestedPayload payload,

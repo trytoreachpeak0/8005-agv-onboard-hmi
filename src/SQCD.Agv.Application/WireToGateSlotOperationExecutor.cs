@@ -138,7 +138,12 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 RecoveryActionRequestId = null,
                 RecoveryReason = null,
                 RecoveryOperatorId = null,
-                RecoveryOperatorVerifiedAt = null
+                RecoveryOperatorVerifiedAt = null,
+                RecoveryVector = null,
+                RecoveryResultObservedAt = null,
+                LastCompletedLoadOperationContext = state.OperationContext?.OperationType == OperationType.Load
+                    ? state.OperationContext
+                    : state.LastCompletedLoadOperationContext
             },
             cancellationToken).ConfigureAwait(false);
     }
@@ -432,7 +437,10 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 RecoveryActionRequestId = existingState.RecoveryActionRequestId,
                 RecoveryReason = existingState.RecoveryReason,
                 RecoveryOperatorId = existingState.RecoveryOperatorId,
-                RecoveryOperatorVerifiedAt = existingState.RecoveryOperatorVerifiedAt
+                RecoveryOperatorVerifiedAt = existingState.RecoveryOperatorVerifiedAt,
+                RecoveryVector = existingState.RecoveryVector,
+                RecoveryResultObservedAt = existingState.RecoveryResultObservedAt,
+                LastCompletedLoadOperationContext = existingState.LastCompletedLoadOperationContext
             },
             cancellationToken).ConfigureAwait(false);
     }
