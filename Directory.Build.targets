@@ -1,0 +1,23 @@
+<Project>
+  <Target Name="EnforceW2GToolchainBaseline" BeforeTargets="PrepareForBuild;Restore">
+    <ItemGroup>
+      <_W2GForbiddenTestPackage Include="@(PackageReference->WithMetadataValue('Identity','xunit'))" />
+      <_W2GForbiddenTestPackage Include="@(PackageReference->WithMetadataValue('Identity','xunit.assert'))" />
+      <_W2GForbiddenTestPackage Include="@(PackageReference->WithMetadataValue('Identity','xunit.core'))" />
+      <_W2GForbiddenTestPackage Include="@(PackageReference->WithMetadataValue('Identity','xunit.extensibility.core'))" />
+      <_W2GForbiddenTestPackage Include="@(PackageReference->WithMetadataValue('Identity','xunit.extensibility.execution'))" />
+      <_W2GForbiddenTestPackage Include="@(PackageReference->WithMetadataValue('Identity','xunit.runner.console'))" />
+      <_W2GForbiddenTestPackage Include="@(PackageReference->WithMetadataValue('Identity','xunit.runner.utility'))" />
+      <_W2GForbiddenTestPackage Include="@(PackageReference->WithMetadataValue('Identity','NUnit'))" />
+      <_W2GForbiddenTestPackage Include="@(PackageReference->WithMetadataValue('Identity','NUnit3TestAdapter'))" />
+      <_W2GForbiddenTestPackage Include="@(PackageReference->WithMetadataValue('Identity','MSTest.TestAdapter'))" />
+      <_W2GForbiddenTestPackage Include="@(PackageReference->WithMetadataValue('Identity','MSTest.TestFramework'))" />
+      <_W2GForbiddenTestPackage Include="@(PackageReference->WithMetadataValue('Identity','coverlet.collector'))" />
+    </ItemGroup>
+    <Error
+      Condition="'@(_W2GForbiddenTestPackage)' != ''"
+      Code="W2G0056"
+      File="$(MSBuildProjectFullPath)"
+      Text="W2G0056: 禁止使用旧测试包（xunit v2、NUnit、MSTest、coverlet.collector）。请使用协议基线规定的 xunit.v3 测试栈。检测到：@(_W2GForbiddenTestPackage)" />
+  </Target>
+</Project>

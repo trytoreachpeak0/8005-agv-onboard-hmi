@@ -16,20 +16,26 @@ public sealed class OnboardAutomationHostTests
         await using OnboardAutomationHttpServer server = new(
             new OnboardAutomationHostOptions("127.0.0.1", port),
             facade);
-        await server.StartAsync();
+        await server.StartAsync(TestContext.Current.CancellationToken);
         using HttpClient client = new()
         {
             BaseAddress = new Uri(server.Endpoint)
         };
 
-        HttpResponseMessage health = await client.GetAsync("/api/v1/health");
+        HttpResponseMessage health = await client.GetAsync(
+            "/api/v1/health",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, health.StatusCode);
-        JsonDocument healthJson = (await health.Content.ReadFromJsonAsync<JsonDocument>())!;
+        JsonDocument healthJson = (await health.Content.ReadFromJsonAsync<JsonDocument>(
+            cancellationToken: TestContext.Current.CancellationToken))!;
         Assert.Equal(server.RunId, healthJson.RootElement.GetProperty("runId").GetString());
 
-        HttpResponseMessage snapshot = await client.GetAsync("/api/v1/snapshot");
+        HttpResponseMessage snapshot = await client.GetAsync(
+            "/api/v1/snapshot",
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, snapshot.StatusCode);
-        JsonDocument snapshotJson = (await snapshot.Content.ReadFromJsonAsync<JsonDocument>())!;
+        JsonDocument snapshotJson = (await snapshot.Content.ReadFromJsonAsync<JsonDocument>(
+            cancellationToken: TestContext.Current.CancellationToken))!;
         long revision = snapshotJson.RootElement.GetProperty("revision").GetInt64();
         JsonElement snapshotState = snapshotJson.RootElement.GetProperty("state");
         Assert.Equal(JsonValueKind.Null, snapshotState.GetProperty("currentOperationPhase").ValueKind);
@@ -42,21 +48,32 @@ public sealed class OnboardAutomationHostTests
             expectedRevision = revision,
             sublot = "SUBLOT-001"
         };
-        HttpResponseMessage first = await client.PostAsJsonAsync("/api/v1/sublots/submit", request);
+        HttpResponseMessage first = await client.PostAsJsonAsync(
+            "/api/v1/sublots/submit",
+            request,
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, first.StatusCode);
-        HttpResponseMessage replay = await client.PostAsJsonAsync("/api/v1/sublots/submit", request);
+        HttpResponseMessage replay = await client.PostAsJsonAsync(
+            "/api/v1/sublots/submit",
+            request,
+            TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.OK, replay.StatusCode);
-        JsonDocument replayJson = (await replay.Content.ReadFromJsonAsync<JsonDocument>())!;
+        JsonDocument replayJson = (await replay.Content.ReadFromJsonAsync<JsonDocument>(
+            cancellationToken: TestContext.Current.CancellationToken))!;
         Assert.True(replayJson.RootElement.GetProperty("replayed").GetBoolean());
         Assert.Equal(1, facade.SubmitCount);
 
         HttpResponseMessage unsafeEndpoint = await client.PostAsync(
             "/api/v1/slots/1/unlock",
-            content: null);
+            content: null,
+            cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal(HttpStatusCode.NotFound, unsafeEndpoint.StatusCode);
 
-        HttpResponseMessage openApi = await client.GetAsync("/openapi/v1.json");
-        string openApiText = await openApi.Content.ReadAsStringAsync();
+        HttpResponseMessage openApi = await client.GetAsync(
+            "/openapi/v1.json",
+            TestContext.Current.CancellationToken);
+        string openApiText = await openApi.Content.ReadAsStringAsync(
+            TestContext.Current.CancellationToken);
         Assert.Contains("/api/v1/sublots/submit", openApiText, StringComparison.Ordinal);
         Assert.DoesNotContain("/unlock", openApiText, StringComparison.OrdinalIgnoreCase);
     }
