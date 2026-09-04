@@ -72,6 +72,17 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool RespondToRecoveryRequests { get; set; }
 
+    public bool RespondToManualChargingReturnToServiceRequests { get; set; }
+
+    public string ManualChargingReturnToServiceOutcome { get; set; } =
+        "RETURNED_TO_ELIGIBILITY_EVALUATION";
+
+    public WireToGateProblemPayload? ManualChargingReturnToServiceProblem { get; set; }
+
+    public long ManualChargingReturnToServiceVehicleBusinessStateRevision { get; set; } = 1;
+
+    public int ManualChargingReturnToServiceResponseCopies { get; set; } = 1;
+
     public bool SendResumeCommandAfterRecoveryAction { get; set; }
 
     public long InitialAcceptedCapabilityVersion { get; set; }
@@ -321,6 +332,11 @@ public sealed class FakeControlServer : IAsyncDisposable
                         break;
                     case "RecoveryActionSubmitted" when RespondToRecoveryRequests:
                         await HandleRecoveryActionSubmittedAsync(context, root).ConfigureAwait(false);
+                        break;
+                    case "ManualChargingReturnToServiceRequested"
+                        when RespondToManualChargingReturnToServiceRequests:
+                        await HandleManualChargingReturnToServiceRequestedAsync(context, root)
+                            .ConfigureAwait(false);
                         break;
                     case "SafetyStateChanged":
                         await HandleSafetyStateChangedAsync(context, root).ConfigureAwait(false);
@@ -608,6 +624,33 @@ public sealed class FakeControlServer : IAsyncDisposable
                     acceptedAt = DateTimeOffset.UtcNow
                 }))
             .ConfigureAwait(false);
+    }
+
+    private async Task HandleManualChargingReturnToServiceRequestedAsync(
+        ConnectionContext context,
+        JsonElement request)
+    {
+        JsonElement payload = request.GetProperty("payload");
+        string messageId = request.GetProperty("messageId").GetString()!;
+        string requestId = payload.GetProperty("requestId").GetString()!;
+        int responseCopies = Math.Max(0, ManualChargingReturnToServiceResponseCopies);
+        for (int index = 0; index < responseCopies; index++)
+        {
+            await WriteEnvelopeAsync(
+                context,
+                CreateEnvelope(
+                    context,
+                    "ManualChargingReturnToServiceResult",
+                    messageId,
+                    new
+                    {
+                        requestId,
+                        outcome = ManualChargingReturnToServiceOutcome,
+                        problem = ManualChargingReturnToServiceProblem,
+                        vehicleBusinessStateRevision = ManualChargingReturnToServiceVehicleBusinessStateRevision
+                    }))
+                .ConfigureAwait(false);
+        }
     }
 
     private async Task HandleSafetyStateChangedAsync(ConnectionContext context, JsonElement message)

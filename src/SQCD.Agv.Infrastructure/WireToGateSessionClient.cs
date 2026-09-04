@@ -38,6 +38,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     private readonly object _journeyGate = new();
     private readonly Dictionary<string, (long Revision, string ContentSha256)> _journeyRevisions = [];
     private readonly ConcurrentDictionary<string, TaskCompletionSource<WireToGateEnvelope>> _responseWaiters = [];
+    private readonly ConcurrentDictionary<string, string> _completedManualChargingResultFingerprints = [];
     private TcpClient? _client;
     private Stream? _stream;
     private StreamReader? _reader;
@@ -241,6 +242,12 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             payload,
             "RecoveryActionAccepted",
             cancellationToken);
+
+    public Task<ManualChargingReturnToServiceResultPayload> RequestManualChargingReturnToServiceAsync(
+        string messageId,
+        ManualChargingReturnToServiceRequestedPayload payload,
+        CancellationToken cancellationToken = default) =>
+        SendManualChargingReturnToServiceRequestAsync(messageId, payload, cancellationToken);
 
     public Task<string> SendPreDepartureSafetyCheckResultAsync(
         string preDepartureSafetyCheckId,
@@ -556,6 +563,65 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         }
 
         return "RECOVERY_REQUEST_REJECTED";
+    }
+
+    private async Task<ManualChargingReturnToServiceResultPayload>
+        SendManualChargingReturnToServiceRequestAsync(
+            string messageId,
+            ManualChargingReturnToServiceRequestedPayload payload,
+            CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        RequireUuid(messageId, nameof(messageId));
+        ValidateManualChargingRequest(payload);
+        WireToGateSessionSnapshot current = Current;
+        if (!current.Connected
+            || current.SessionGeneration is null
+            || current.Readiness is not (WireToGateSessionReadiness.Ready
+                or WireToGateSessionReadiness.RecoveryRequired))
+        {
+            throw new InvalidOperationException("WIRE_TO_GATE_NOT_READY");
+        }
+
+        WireToGateEnvelope request = WireToGateProtocolSerializer.Create(
+            "ManualChargingReturnToServiceRequested",
+            messageId,
+            null,
+            _options.AgvId,
+            current.SessionGeneration,
+            _clock.Now.ToUniversalTime(),
+            payload);
+        TaskCompletionSource<WireToGateEnvelope> response = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_responseWaiters.TryAdd(messageId, response))
+        {
+            throw new InvalidOperationException("重复的人工充电返岗请求messageId。");
+        }
+
+        try
+        {
+            await SendEnvelopeAsync(request, cancellationToken).ConfigureAwait(false);
+            WireToGateEnvelope responseEnvelope = await response.Task
+                .WaitAsync(_options.MessageTimeout, cancellationToken)
+                .ConfigureAwait(false);
+            ThrowIfProtocolProblem(responseEnvelope);
+            WireToGateProtocolSerializer.RequireMessage(
+                responseEnvelope,
+                "ManualChargingReturnToServiceResult",
+                messageId);
+            ManualChargingReturnToServiceResultPayload result =
+                DeserializeManualChargingResult(responseEnvelope);
+            if (!string.Equals(result.RequestId, payload.RequestId, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException("CORRELATION_INVALID");
+            }
+
+            return result;
+        }
+        finally
+        {
+            _responseWaiters.TryRemove(messageId, out _);
+        }
     }
 
     /// <summary>
@@ -957,6 +1023,40 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 if (string.Equals(envelope.MessageType, "SessionReadiness", StringComparison.Ordinal))
                 {
                     ApplySessionReadiness(envelope, requireExactConfiguredBaseline: false);
+                    continue;
+                }
+
+                if (string.Equals(
+                    envelope.MessageType,
+                    "ManualChargingReturnToServiceResult",
+                    StringComparison.Ordinal))
+                {
+                    ManualChargingReturnToServiceResultPayload result =
+                        DeserializeManualChargingResult(envelope);
+                    if (_responseWaiters.TryRemove(
+                        envelope.CorrelationId!,
+                        out TaskCompletionSource<WireToGateEnvelope>? manualResponse))
+                    {
+                        RememberManualChargingResult(envelope, result);
+                        manualResponse.TrySetResult(envelope);
+                        continue;
+                    }
+
+                    if (RememberManualChargingResult(envelope, result))
+                    {
+                        continue;
+                    }
+
+                    WireToGateRecoveryCommand manualCommand = new(
+                        envelope.MessageType,
+                        envelope.MessageId,
+                        envelope.CorrelationId,
+                        envelope.SessionGeneration!.Value,
+                        envelope.SentAt,
+                        envelope.Payload.GetRawText());
+                    ServerCommandReceived?.Invoke(
+                        this,
+                        new ValueChangedEventArgs<WireToGateServerCommand>(manualCommand));
                     continue;
                 }
 
@@ -1544,6 +1644,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             case "FaultCargoRecoveryCommand":
             case "ForcedMechanicalRecoveryCommand":
             case "ManualChargingReturnToServiceRequested":
+            case "ManualChargingReturnToServiceResult":
             case "HardwareRecoveryRecordSubmitted":
             case "RecoveryActionSubmitted":
             case "LoadCorrectionRequested":
@@ -1560,6 +1661,92 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             default:
                 return false;
         }
+    }
+
+    private static void ValidateManualChargingRequest(
+        ManualChargingReturnToServiceRequestedPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        RequireUuid(payload.RequestId, nameof(payload.RequestId));
+        if (payload.Administrator is null
+            || string.IsNullOrWhiteSpace(payload.Administrator.OperatorId)
+            || payload.Administrator.VerificationMethod is not ("BADGE" or "SESSION")
+            || payload.Administrator.VerifiedAt == default
+            || payload.AdministratorRole is not ("MAINTENANCE_ADMINISTRATOR" or "SYSTEM_ADMINISTRATOR")
+            || string.IsNullOrWhiteSpace(payload.Reason)
+            || payload.ObservedBatteryPercent is < 0 or > 100
+            || payload.ObservedBatteryPercent is double batteryPercent
+                && (double.IsNaN(batteryPercent) || double.IsInfinity(batteryPercent)))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+    }
+
+    private static ManualChargingReturnToServiceResultPayload DeserializeManualChargingResult(
+        WireToGateEnvelope envelope)
+    {
+        if (envelope.CorrelationId is null
+            || !Guid.TryParseExact(envelope.CorrelationId, "D", out _))
+        {
+            throw new InvalidDataException("CORRELATION_INVALID");
+        }
+
+        if (!envelope.Payload.TryGetProperty("requestId", out _)
+            || !envelope.Payload.TryGetProperty("outcome", out _)
+            || !envelope.Payload.TryGetProperty("problem", out _)
+            || !envelope.Payload.TryGetProperty("vehicleBusinessStateRevision", out _))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        ManualChargingReturnToServiceResultPayload payload =
+            WireToGateProtocolSerializer.DeserializePayload<ManualChargingReturnToServiceResultPayload>(envelope);
+        RequireUuid(payload.RequestId, nameof(payload.RequestId));
+        if (payload.Outcome is not ("RETURNED_TO_ELIGIBILITY_EVALUATION" or "REJECTED")
+            || payload.VehicleBusinessStateRevision < 0)
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        if (payload.Problem is not null)
+        {
+            ValidateProblem(payload.Problem);
+        }
+
+        return payload;
+    }
+
+    private bool RememberManualChargingResult(
+        WireToGateEnvelope envelope,
+        ManualChargingReturnToServiceResultPayload result)
+    {
+        string fingerprint = WireToGateProtocolSerializer.ComputePayloadContentSha256(envelope);
+        if (_completedManualChargingResultFingerprints.TryGetValue(
+            result.RequestId,
+            out string? previousFingerprint))
+        {
+            if (!string.Equals(previousFingerprint, fingerprint, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException("BUSINESS_ID_CONTENT_CONFLICT");
+            }
+
+            return true;
+        }
+
+        if (_completedManualChargingResultFingerprints.TryAdd(result.RequestId, fingerprint))
+        {
+            return false;
+        }
+
+        if (_completedManualChargingResultFingerprints.TryGetValue(
+            result.RequestId,
+            out previousFingerprint)
+            && string.Equals(previousFingerprint, fingerprint, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        throw new InvalidDataException("BUSINESS_ID_CONTENT_CONFLICT");
     }
 
     private static void RequireCorrelatedProblem(
@@ -1853,6 +2040,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             waiter.Value.TrySetException(new IOException("WIRE_TO_GATE连接已关闭。"));
         }
         _responseWaiters.Clear();
+        _completedManualChargingResultFingerprints.Clear();
 
         ResetJourneyProjection();
 
