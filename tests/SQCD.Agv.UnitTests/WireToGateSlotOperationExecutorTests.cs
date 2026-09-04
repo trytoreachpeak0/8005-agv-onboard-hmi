@@ -14,7 +14,7 @@ public sealed class WireToGateSlotOperationExecutorTests
         string journalPath = Path.Combine(directory, "journal.db");
         SimulationIo io = new();
         await using SqliteWireToGateJournal journal = new(journalPath);
-        await journal.InitializeAsync();
+        await journal.InitializeAsync(TestContext.Current.CancellationToken);
         WireToGateSlotOperationExecutor executor = new(
             io,
             journal,
@@ -41,18 +41,25 @@ public sealed class WireToGateSlotOperationExecutorTests
                 true,
                 new string('0', 64));
 
-            WireToGateOperationExecutionResult result = await executor.ExecuteAsync(command, null);
+            WireToGateOperationExecutionResult result = await executor.ExecuteAsync(
+                command,
+                null,
+                TestContext.Current.CancellationToken);
 
             Assert.Equal("COMPLETED", result.OverallOutcome);
             Assert.Equal([1, 2], result.SlotResults.Select(slot => slot.SlotNo));
             Assert.All(result.SlotResults, slot => Assert.Equal("COMPLETED", slot.Outcome));
             Assert.Equal(2, io.UnlockCount);
-            WireToGateRecoveryState checkpoint = await journal.ReadRecoveryStateAsync();
+            WireToGateRecoveryState checkpoint = await journal.ReadRecoveryStateAsync(
+                TestContext.Current.CancellationToken);
             Assert.Equal(WireToGateRecoveryCheckpoint.SafeFinishReached, checkpoint.ProvenRecoveryCheckpoint);
             Assert.Equal(command.SlotOperationAttemptId, checkpoint.UnsettledSlotOperationAttemptId);
 
-            await executor.MarkResultRecordedAsync(command.SlotOperationAttemptId);
-            checkpoint = await journal.ReadRecoveryStateAsync();
+            await executor.MarkResultRecordedAsync(
+                command.SlotOperationAttemptId,
+                TestContext.Current.CancellationToken);
+            checkpoint = await journal.ReadRecoveryStateAsync(
+                TestContext.Current.CancellationToken);
             Assert.Equal(WireToGateRecoveryCheckpoint.ResultRecorded, checkpoint.ProvenRecoveryCheckpoint);
             Assert.Null(checkpoint.UnsettledSlotOperationAttemptId);
         }
@@ -61,14 +68,20 @@ public sealed class WireToGateSlotOperationExecutorTests
     [Fact]
     public async Task UnloadAllTargetSlotsRequiresEverySlotToReachEmpty()
     {
-        await using TestFixture fixture = await TestFixture.CreateAsync(initialCargo: true, finalCargo: false);
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            initialCargo: true,
+            finalCargo: false,
+            cancellationToken: TestContext.Current.CancellationToken);
         WireToGateSlotOperationCommand command = CreateCommand(
             OperationType.Unload,
             [1, 2, 3, 4, 5, 6, 7, 8],
             expectedOccupied: false);
 
         WireToGateOperationExecutionResult result =
-            await fixture.Executor.ExecuteAsync(command, null);
+            await fixture.Executor.ExecuteAsync(
+                command,
+                null,
+                TestContext.Current.CancellationToken);
 
         Assert.Equal("COMPLETED", result.OverallOutcome);
         Assert.Equal(8, fixture.Io.UnlockCount);
@@ -83,12 +96,14 @@ public sealed class WireToGateSlotOperationExecutorTests
     [Fact]
     public async Task UnknownSnapshotFailsClosedWithoutUnlock()
     {
-        await using TestFixture fixture = await TestFixture.CreateAsync();
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
         fixture.Io.SetUnknown();
         WireToGateOperationExecutionResult result =
             await fixture.Executor.ExecuteAsync(
                 CreateCommand(OperationType.Load, [1], expectedOccupied: true),
-                null);
+                null,
+                TestContext.Current.CancellationToken);
 
         Assert.Equal("FAILED", result.OverallOutcome);
         Assert.Equal(0, fixture.Io.UnlockCount);
@@ -98,21 +113,28 @@ public sealed class WireToGateSlotOperationExecutorTests
     [Fact]
     public async Task ResumeSkipsSlotsAlreadyAtDesiredFinalState()
     {
-        await using TestFixture fixture = await TestFixture.CreateAsync(initialCargo: false, finalCargo: true);
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            initialCargo: false,
+            finalCargo: true,
+            cancellationToken: TestContext.Current.CancellationToken);
         WireToGateSlotOperationCommand command = CreateCommand(
             OperationType.Load,
             [1, 2],
             expectedOccupied: true);
-        WireToGateOperationExecutionResult first = await fixture.Executor.ExecuteAsync(command, null);
+        WireToGateOperationExecutionResult first = await fixture.Executor.ExecuteAsync(
+            command,
+            null,
+            TestContext.Current.CancellationToken);
         Assert.Equal("COMPLETED", first.OverallOutcome);
         int unlocksBeforeResume = fixture.Io.UnlockCount;
 
-        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync();
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
+            TestContext.Current.CancellationToken);
         await fixture.Journal.WriteRecoveryStateAsync(state with
         {
             ExceptionRecoverySessionId = "44444444-4444-4444-8444-444444444444",
             RecoveryActionId = "55555555-5555-4555-8555-555555555555"
-        });
+        }, TestContext.Current.CancellationToken);
         WireToGateSlotOperationResumeCommand resume = new(
             "66666666-6666-4666-8666-666666666666",
             2,
@@ -125,7 +147,10 @@ public sealed class WireToGateSlotOperationExecutorTests
             command.Slots,
             command.CommandContentSha256);
 
-        WireToGateOperationExecutionResult resumed = await fixture.Executor.ResumeAsync(resume, null);
+        WireToGateOperationExecutionResult resumed = await fixture.Executor.ResumeAsync(
+            resume,
+            null,
+            TestContext.Current.CancellationToken);
 
         Assert.Equal("COMPLETED", resumed.OverallOutcome);
         Assert.Equal(unlocksBeforeResume, fixture.Io.UnlockCount);
@@ -135,7 +160,8 @@ public sealed class WireToGateSlotOperationExecutorTests
     [Fact]
     public async Task ResumeWithoutOriginalContextFailsClosed()
     {
-        await using TestFixture fixture = await TestFixture.CreateAsync();
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
         WireToGateSlotOperationResumeCommand resume = new(
             "66666666-6666-4666-8666-666666666666",
             2,
@@ -149,7 +175,10 @@ public sealed class WireToGateSlotOperationExecutorTests
             new string('0', 64));
 
         InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(
-            () => fixture.Executor.ResumeAsync(resume, null));
+            () => fixture.Executor.ResumeAsync(
+                resume,
+                null,
+                TestContext.Current.CancellationToken));
 
         Assert.Equal("RECOVERY_OPERATION_CONTEXT_MISSING", error.Message);
         Assert.Equal(0, fixture.Io.UnlockCount);
@@ -158,20 +187,27 @@ public sealed class WireToGateSlotOperationExecutorTests
     [Fact]
     public async Task ResumeRejectsDifferentCommandHashWithoutUnlock()
     {
-        await using TestFixture fixture = await TestFixture.CreateAsync(initialCargo: false, finalCargo: true);
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            initialCargo: false,
+            finalCargo: true,
+            cancellationToken: TestContext.Current.CancellationToken);
         WireToGateSlotOperationCommand command = CreateCommand(
             OperationType.Load,
             [1],
             expectedOccupied: true);
-        WireToGateOperationExecutionResult first = await fixture.Executor.ExecuteAsync(command, null);
+        WireToGateOperationExecutionResult first = await fixture.Executor.ExecuteAsync(
+            command,
+            null,
+            TestContext.Current.CancellationToken);
         Assert.Equal("COMPLETED", first.OverallOutcome);
 
-        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync();
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
+            TestContext.Current.CancellationToken);
         await fixture.Journal.WriteRecoveryStateAsync(state with
         {
             ExceptionRecoverySessionId = "44444444-4444-4444-8444-444444444444",
             RecoveryActionId = "55555555-5555-4555-8555-555555555555"
-        });
+        }, TestContext.Current.CancellationToken);
         WireToGateSlotOperationResumeCommand resume = new(
             "66666666-6666-4666-8666-666666666666",
             2,
@@ -185,7 +221,10 @@ public sealed class WireToGateSlotOperationExecutorTests
             new string('1', 64));
 
         InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(
-            () => fixture.Executor.ResumeAsync(resume, null));
+            () => fixture.Executor.ResumeAsync(
+                resume,
+                null,
+                TestContext.Current.CancellationToken));
 
         Assert.Equal("RECOVERY_STATE_MISMATCH", error.Message);
         Assert.Equal(1, fixture.Io.UnlockCount);
@@ -229,7 +268,8 @@ public sealed class WireToGateSlotOperationExecutorTests
 
         public static async Task<TestFixture> CreateAsync(
             bool initialCargo = false,
-            bool finalCargo = true)
+            bool finalCargo = true,
+            CancellationToken cancellationToken = default)
         {
             string directory = Path.Combine(
                 Path.GetTempPath(),
@@ -237,7 +277,7 @@ public sealed class WireToGateSlotOperationExecutorTests
                 Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
             SqliteWireToGateJournal journal = new(Path.Combine(directory, "journal.db"));
-            await journal.InitializeAsync();
+            await journal.InitializeAsync(cancellationToken);
             SimulationIo io = new(initialCargo, finalCargo);
             WireToGateSlotOperationExecutor executor = new(
                 io,

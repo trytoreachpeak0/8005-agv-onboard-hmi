@@ -141,9 +141,9 @@ protocol 版本证据。
 从干净工作区运行王昆基线现有的构建和测试：
 
 ```powershell
-dotnet build .\SQCD_8005AGV.slnx -c Release
-dotnet test .\SQCD_8005AGV.slnx -c Release
-dotnet format .\SQCD_8005AGV.slnx --verify-no-changes --no-restore
+dotnet build .\SQCD_8005AGV.sln -c Release
+dotnet test .\SQCD_8005AGV.sln -c Release
+dotnet format .\SQCD_8005AGV.sln --verify-no-changes --no-restore
 ```
 
 本仓已有 scripts/run-w2g-g2.ps1，会先校验

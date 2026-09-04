@@ -61,9 +61,9 @@ tests/
 在仓库根目录执行：
 
 ```powershell
-dotnet build .\SQCD_8005AGV.slnx -c Release
-dotnet test .\SQCD_8005AGV.slnx -c Release
-dotnet format .\SQCD_8005AGV.slnx --verify-no-changes --no-restore
+dotnet build .\SQCD_8005AGV.sln -c Release
+dotnet test .\SQCD_8005AGV.sln -c Release
+dotnet format .\SQCD_8005AGV.sln --verify-no-changes --no-restore
 ```
 
 本机完整验证（不需要现场硬件或真实 ControlServer）：

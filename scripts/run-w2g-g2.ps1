@@ -234,9 +234,9 @@ if (-not $SkipProtocolG1) {
     Add-Event $transcript 'protocol.g1.skipped' @{ reason = 'SkipProtocolG1' }
 }
 
-$build = Invoke-LoggedCommand -Name 'dotnet-build-release' -FilePath 'dotnet' -Arguments @('build', '.\SQCD_8005AGV.slnx', '-c', 'Release') -LogPath (Join-Path $logsDirectory 'dotnet-build-release.log')
-$test = Invoke-LoggedCommand -Name 'dotnet-test-release' -FilePath 'dotnet' -Arguments @('test', '.\SQCD_8005AGV.slnx', '-c', 'Release', '--no-build', '--results-directory', $resultsDirectory) -LogPath (Join-Path $logsDirectory 'dotnet-test-release.log')
-$format = Invoke-LoggedCommand -Name 'dotnet-format-verify' -FilePath 'dotnet' -Arguments @('format', '.\SQCD_8005AGV.slnx', '--verify-no-changes', '--no-restore') -LogPath (Join-Path $logsDirectory 'dotnet-format-verify.log')
+$build = Invoke-LoggedCommand -Name 'dotnet-build-release' -FilePath 'dotnet' -Arguments @('build', '.\SQCD_8005AGV.sln', '-c', 'Release') -LogPath (Join-Path $logsDirectory 'dotnet-build-release.log')
+$test = Invoke-LoggedCommand -Name 'dotnet-test-release' -FilePath 'dotnet' -Arguments @('test', '.\SQCD_8005AGV.sln', '-c', 'Release', '--no-build', '--results-directory', $resultsDirectory) -LogPath (Join-Path $logsDirectory 'dotnet-test-release.log')
+$format = Invoke-LoggedCommand -Name 'dotnet-format-verify' -FilePath 'dotnet' -Arguments @('format', '.\SQCD_8005AGV.sln', '--verify-no-changes', '--no-restore') -LogPath (Join-Path $logsDirectory 'dotnet-format-verify.log')
 
 $g1Text = if ($g1Result) { $g1Result.Output } else { '' }
 $g1ManifestMatch = [regex]::Match($g1Text, '"candidateManifestSha256"\s*:\s*"([^"]+)"')

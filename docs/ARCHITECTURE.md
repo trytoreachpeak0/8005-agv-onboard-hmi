@@ -103,7 +103,7 @@ Starting → Connecting → WaitingArrival → ReadyToScan
 ## 7. 合入前检查
 
 ```powershell
-dotnet build .\SQCD_8005AGV.slnx -c Release
+dotnet build .\SQCD_8005AGV.sln -c Release
 dotnet test .\tests\SQCD.Agv.UnitTests\SQCD.Agv.UnitTests.csproj -c Release --no-build
 ```
 

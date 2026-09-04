@@ -29,7 +29,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
         using HttpClient client = new(handler);
         using ControlServerVehicleSafetySignalProvider provider = CreateProvider(client);
 
-        await provider.RefreshAsync();
+        await provider.RefreshAsync(TestContext.Current.CancellationToken);
 
         VehicleSafetySignal signal = provider.Read();
         Assert.Equal(VehicleMotionState.Stopped, signal.MotionState);
@@ -60,7 +60,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
         using HttpClient client = new(handler);
         using ControlServerVehicleSafetySignalProvider provider = CreateProvider(client);
 
-        await provider.RefreshAsync();
+        await provider.RefreshAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(expected, provider.Read().MotionState);
         if (expected == VehicleMotionState.Unknown)
@@ -86,7 +86,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
         using HttpClient client = new(handler);
         using ControlServerVehicleSafetySignalProvider provider = CreateProvider(client);
 
-        await provider.RefreshAsync();
+        await provider.RefreshAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(expected, provider.Read().MotionState);
     }
@@ -105,7 +105,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
         using HttpClient client = new(handler);
         using ControlServerVehicleSafetySignalProvider provider = CreateProvider(client);
 
-        await provider.RefreshAsync();
+        await provider.RefreshAsync(TestContext.Current.CancellationToken);
 
         VehicleSafetySignal signal = provider.Read();
         Assert.Equal(VehicleMotionState.Unknown, signal.MotionState);
@@ -127,7 +127,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
         using HttpClient client = new(handler);
         using ControlServerVehicleSafetySignalProvider provider = CreateProvider(client);
 
-        await provider.RefreshAsync();
+        await provider.RefreshAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(VehicleMotionState.Unknown, provider.Read().MotionState);
         Assert.Contains("VEHICLE_IDENTITY_MISMATCH", provider.Read().EffectiveReasonCodes);
@@ -143,7 +143,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
         using HttpClient client = new(handler);
         using ControlServerVehicleSafetySignalProvider provider = CreateProvider(client);
 
-        await provider.RefreshAsync();
+        await provider.RefreshAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(VehicleMotionState.Unknown, provider.Read().MotionState);
         Assert.Contains($"HTTP_{(int)statusCode}", provider.Read().EffectiveReasonCodes);
@@ -170,7 +170,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
             startPolling: false,
             credentialReader: () => Credential);
 
-        await provider.RefreshAsync();
+        await provider.RefreshAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(1, handler.RequestCount);
         Assert.Equal(VehicleMotionState.Stopped, provider.Read().MotionState);
@@ -188,7 +188,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
             startPolling: false,
             credentialReader: () => Credential);
 
-        await provider.RefreshAsync();
+        await provider.RefreshAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(0, handler.RequestCount);
         Assert.Equal(VehicleMotionState.Unknown, provider.Read().MotionState);
@@ -205,7 +205,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
         using HttpClient client = new(handler);
         using ControlServerVehicleSafetySignalProvider provider = CreateProvider(client);
 
-        await provider.RefreshAsync();
+        await provider.RefreshAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(VehicleMotionState.Unknown, provider.Read().MotionState);
         Assert.Contains("INVALID_JSON", provider.Read().EffectiveReasonCodes);
@@ -228,7 +228,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
             startPolling: false,
             credentialReader: () => Credential);
 
-        await provider.RefreshAsync();
+        await provider.RefreshAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(VehicleMotionState.Unknown, provider.Read().MotionState);
         Assert.Contains("REQUEST_TIMEOUT", provider.Read().EffectiveReasonCodes);
@@ -242,7 +242,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
         using HttpClient client = new(handler);
         using ControlServerVehicleSafetySignalProvider provider = CreateProvider(client);
 
-        await provider.RefreshAsync();
+        await provider.RefreshAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(VehicleMotionState.Unknown, provider.Read().MotionState);
         Assert.Contains("HTTP_REQUEST_FAILED", provider.Read().EffectiveReasonCodes);
@@ -269,10 +269,10 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
         using HttpClient client = new(handler);
         using ControlServerVehicleSafetySignalProvider provider = CreateProvider(client);
 
-        await provider.RefreshAsync();
+        await provider.RefreshAsync(TestContext.Current.CancellationToken);
         Assert.Equal(VehicleMotionState.Stopped, provider.Read().MotionState);
 
-        await provider.RefreshAsync();
+        await provider.RefreshAsync(TestContext.Current.CancellationToken);
 
         VehicleSafetySignal signal = provider.Read();
         Assert.Equal(VehicleMotionState.Unknown, signal.MotionState);
@@ -294,7 +294,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
         using HttpClient client = new(handler);
         using ControlServerVehicleSafetySignalProvider provider = CreateProvider(client);
 
-        await provider.RefreshAsync();
+        await provider.RefreshAsync(TestContext.Current.CancellationToken);
 
         VehicleSafetySignal signal = provider.Read();
         Assert.DoesNotContain(Credential, signal.Source, StringComparison.Ordinal);
@@ -329,13 +329,13 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
             TaskCreationOptions.RunContinuationsAsynchronously);
         provider.SignalChanged += (_, args) => changed.TrySetResult(args.Value);
 
-        Task firstRefresh = provider.WaitForFirstRefreshAsync();
+        Task firstRefresh = provider.WaitForFirstRefreshAsync(TestContext.Current.CancellationToken);
         Assert.Equal(VehicleMotionState.Unknown, provider.Read().MotionState);
         Assert.False(firstRefresh.IsCompleted);
 
         releaseResponse.SetResult(true);
         await firstRefresh;
-        VehicleSafetySignal signal = await changed.Task.WaitAsync(TimeSpan.FromSeconds(1));
+        VehicleSafetySignal signal = await changed.Task.WaitAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
 
         Assert.Equal(VehicleMotionState.Stopped, signal.MotionState);
         Assert.True(signal.IsStoppedAndFresh(Now, TimeSpan.FromSeconds(5)));
@@ -355,7 +355,8 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
             startPolling: true,
             credentialReader: () => Credential);
 
-        await provider.WaitForFirstRefreshAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await provider.WaitForFirstRefreshAsync(TestContext.Current.CancellationToken)
+            .WaitAsync(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
 
         VehicleSafetySignal signal = provider.Read();
         Assert.Equal(VehicleMotionState.Unknown, signal.MotionState);
@@ -381,7 +382,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
             startPolling: false,
             credentialReader: () => Credential);
 
-        Task refresh = provider.RefreshAsync();
+        Task refresh = provider.RefreshAsync(TestContext.Current.CancellationToken);
         await requestStarted.Task;
         DateTimeOffset before = DateTimeOffset.UtcNow;
         VehicleSafetySignal signal = provider.Read();
