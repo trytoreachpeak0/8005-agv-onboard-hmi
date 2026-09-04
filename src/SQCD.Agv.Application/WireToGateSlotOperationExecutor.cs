@@ -472,7 +472,11 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
             if (locker.HasCargo == command.ExpectedOccupied)
             {
-                return command.ExpectedOccupied ? "SLOT_NOT_EMPTY" : "SLOT_HAS_NO_CARGO";
+                // Both occupancy mismatches are one protocol-level conflict:
+                // the physical slot state disagrees with the requested
+                // operation. Keep the legacy, more specific codes in the
+                // non-WIRE_TO_GATE SafetyRules path.
+                return "SLOT_OPERATION_CONFLICT";
             }
         }
 

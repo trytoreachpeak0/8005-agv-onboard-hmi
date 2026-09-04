@@ -50,7 +50,10 @@ public static class WireToGateSafetyEvaluator
         }
         if (vehicleUnknown)
         {
-            reasons.Add("VEHICLE_STATE_UNKNOWN");
+            // The protocol registry has no VEHICLE_STATE_UNKNOWN entry. An
+            // expired or indeterminate upstream safety signal is represented
+            // on the wire by the registered VEHICLE_NOT_READY code.
+            reasons.Add("VEHICLE_NOT_READY");
         }
         else if (!vehicleStopped)
         {

@@ -1196,7 +1196,7 @@ public sealed class WireToGateG2Tests
             true,
             true,
             true,
-            ["VEHICLE_STATE_UNKNOWN"]);
+            ["VEHICLE_NOT_READY"]);
 
         await using (WireToGateSessionClient firstClient = CreateClient(
             server,

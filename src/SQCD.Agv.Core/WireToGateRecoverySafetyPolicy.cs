@@ -27,7 +27,7 @@ public sealed record WireToGateRecoverySafetyDecision(
         new(false, reasonCode);
 
     public static WireToGateRecoverySafetyDecision Allow() =>
-        new(true, "NONE");
+        new(true, string.Empty);
 }
 
 /// <summary>
@@ -61,19 +61,19 @@ public static class WireToGateRecoverySafetyPolicy
         if (!facts.RecoverySessionAuthorized)
         {
             return WireToGateRecoverySafetyDecision.Denied(
-                "RECOVERY_AUTHORIZATION_REQUIRED");
+                "RECOVERY_AUTHENTICATION_FAILED");
         }
 
         if (!facts.RecoveryStatePersisted)
         {
             return WireToGateRecoverySafetyDecision.Denied(
-                "RECOVERY_STATE_NOT_PERSISTED");
+                "RECOVERY_SESSION_NOT_OPEN");
         }
 
         if (!facts.VehicleSignalFresh)
         {
             return WireToGateRecoverySafetyDecision.Denied(
-                "VEHICLE_STATE_UNKNOWN");
+                "VEHICLE_NOT_READY");
         }
 
         if (!facts.VehicleStopped)
