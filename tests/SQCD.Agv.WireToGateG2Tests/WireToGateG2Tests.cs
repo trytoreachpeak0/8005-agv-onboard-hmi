@@ -281,6 +281,172 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    public async Task ManualChargingReturnToServiceAcceptedResultIsCorrelatedToRequestedMessage()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            RespondToManualChargingReturnToServiceRequests = true,
+            ManualChargingReturnToServiceVehicleBusinessStateRevision = 4
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionClient client = CreateClient(server, io, NewJournalPath());
+        await client.ConnectAndRecoverAsync(testToken);
+
+        const string messageId = "11111111-1111-4111-8111-111111111116";
+        const string requestId = "22222222-2222-4222-8222-222222222226";
+        ManualChargingReturnToServiceResultPayload result = await client
+            .RequestManualChargingReturnToServiceAsync(
+                messageId,
+                new ManualChargingReturnToServiceRequestedPayload(
+                    requestId,
+                    new WireToGateOperatorContextPayload(
+                        "maintenance-001",
+                        "BADGE",
+                        DateTimeOffset.UtcNow),
+                    "MAINTENANCE_ADMINISTRATOR",
+                    "manual charging completed",
+                    86.5),
+                testToken);
+
+        Assert.Equal(requestId, result.RequestId);
+        Assert.Equal("RETURNED_TO_ELIGIBILITY_EVALUATION", result.Outcome);
+        Assert.Null(result.Problem);
+        Assert.Equal(4, result.VehicleBusinessStateRevision);
+
+        var requestEnvelope = server.ReceivedEnvelopes
+            .Single(item => item.MessageType == "ManualChargingReturnToServiceRequested");
+        using JsonDocument requestDocument = JsonDocument.Parse(requestEnvelope.WireLine);
+        Assert.Equal(messageId, requestEnvelope.MessageId);
+        Assert.Equal(
+            JsonValueKind.Null,
+            requestDocument.RootElement.GetProperty("correlationId").ValueKind);
+        Assert.Equal(
+            requestId,
+            requestDocument.RootElement.GetProperty("payload").GetProperty("requestId").GetString());
+    }
+
+    [Fact]
+    public async Task ManualChargingReturnToServiceRejectedResultPreservesRegisteredProblem()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            RespondToManualChargingReturnToServiceRequests = true,
+            ManualChargingReturnToServiceOutcome = "REJECTED",
+            ManualChargingReturnToServiceProblem = new WireToGateProblemPayload(
+                "MANUAL_CHARGING_HOLD_ACTIVE",
+                null,
+                null)
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionClient client = CreateClient(server, io, NewJournalPath());
+        await client.ConnectAndRecoverAsync(testToken);
+
+        const string messageId = "33333333-3333-4333-8333-333333333336";
+        const string requestId = "44444444-4444-4444-8444-444444444446";
+        ManualChargingReturnToServiceResultPayload result = await client
+            .RequestManualChargingReturnToServiceAsync(
+                messageId,
+                new ManualChargingReturnToServiceRequestedPayload(
+                    requestId,
+                    new WireToGateOperatorContextPayload(
+                        "maintenance-002",
+                        "SESSION",
+                        DateTimeOffset.UtcNow),
+                    "SYSTEM_ADMINISTRATOR",
+                    "manual charging completed",
+                    null),
+                testToken);
+
+        Assert.Equal(requestId, result.RequestId);
+        Assert.Equal("REJECTED", result.Outcome);
+        Assert.NotNull(result.Problem);
+        Assert.Equal("MANUAL_CHARGING_HOLD_ACTIVE", result.Problem!.ReasonCode);
+    }
+
+    [Fact]
+    public async Task DuplicateManualChargingReturnToServiceResultDoesNotRaiseSecondCommand()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            RespondToManualChargingReturnToServiceRequests = true,
+            ManualChargingReturnToServiceResponseCopies = 2
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionClient client = CreateClient(server, io, NewJournalPath());
+        int receivedResultCommands = 0;
+        client.ServerCommandReceived += (_, args) =>
+        {
+            if (args.Value.MessageType == "ManualChargingReturnToServiceResult")
+            {
+                Interlocked.Increment(ref receivedResultCommands);
+            }
+        };
+        await client.ConnectAndRecoverAsync(testToken);
+
+        const string messageId = "55555555-5555-4555-8555-555555555556";
+        const string requestId = "66666666-6666-4666-8666-666666666666";
+        ManualChargingReturnToServiceResultPayload result = await client
+            .RequestManualChargingReturnToServiceAsync(
+                messageId,
+                new ManualChargingReturnToServiceRequestedPayload(
+                    requestId,
+                    new WireToGateOperatorContextPayload(
+                        "maintenance-003",
+                        "BADGE",
+                        DateTimeOffset.UtcNow),
+                    "MAINTENANCE_ADMINISTRATOR",
+                    "manual charging completed",
+                    90),
+                testToken);
+
+        Assert.Equal(requestId, result.RequestId);
+        await Task.Delay(100, testToken);
+        Assert.Equal(0, receivedResultCommands);
+
+        await client.SendHeartbeatAsync(testToken);
+        Assert.True(client.IsConnected);
+    }
+
+    [Fact]
+    public async Task MissingManualChargingReturnToServiceResultTimesOutExplicitly()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionClient client = CreateClient(
+            server,
+            io,
+            NewJournalPath(),
+            messageTimeout: TimeSpan.FromMilliseconds(100));
+        await client.ConnectAndRecoverAsync(testToken);
+
+        await Assert.ThrowsAsync<TimeoutException>(
+            () => client.RequestManualChargingReturnToServiceAsync(
+                "77777777-7777-4777-8777-777777777776",
+                new ManualChargingReturnToServiceRequestedPayload(
+                    "88888888-8888-4888-8888-888888888886",
+                    new WireToGateOperatorContextPayload(
+                        "maintenance-004",
+                        "BADGE",
+                        DateTimeOffset.UtcNow),
+                    "MAINTENANCE_ADMINISTRATOR",
+                    "manual charging completed",
+                    75),
+                testToken));
+
+        Assert.True(client.IsConnected);
+    }
+
+    [Fact]
     public async Task BusinessBootstrapsRecoveryRequestBeforeServerSnapshot()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1312,13 +1478,15 @@ public sealed class WireToGateG2Tests
         long capability = 1,
         long safety = 1,
         string? onboardInstanceId = null,
-        Func<bool>? vehicleStoppedProvider = null)
+        Func<bool>? vehicleStoppedProvider = null,
+        TimeSpan? messageTimeout = null)
     {
         WireToGateSessionOptions options = CreateSessionOptions(
             server,
             capability,
             safety,
-            onboardInstanceId);
+            onboardInstanceId,
+            messageTimeout);
         return new WireToGateSessionClient(
             options,
             io,
@@ -1334,7 +1502,8 @@ public sealed class WireToGateG2Tests
         FakeControlServer server,
         long capability = 1,
         long safety = 1,
-        string? onboardInstanceId = null) =>
+        string? onboardInstanceId = null,
+        TimeSpan? messageTimeout = null) =>
         new(
             "127.0.0.1",
             server.Port,
@@ -1343,7 +1512,7 @@ public sealed class WireToGateG2Tests
             new string('a', 40),
             CredentialVariable,
             TimeSpan.FromSeconds(2),
-            TimeSpan.FromSeconds(2),
+            messageTimeout ?? TimeSpan.FromSeconds(2),
             capability,
             safety,
             "eight-slot-v1",

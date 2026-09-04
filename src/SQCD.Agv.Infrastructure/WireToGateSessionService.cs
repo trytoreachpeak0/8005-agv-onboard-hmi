@@ -139,6 +139,12 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         _client.SubmitRecoveryActionAsync(messageId, payload, cancellationToken);
 
+    public Task<ManualChargingReturnToServiceResultPayload> RequestManualChargingReturnToServiceAsync(
+        string messageId,
+        ManualChargingReturnToServiceRequestedPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.RequestManualChargingReturnToServiceAsync(messageId, payload, cancellationToken);
+
     public Task<string> SendPreDepartureSafetyCheckResultAsync(
         string preDepartureSafetyCheckId,
         string outcome,

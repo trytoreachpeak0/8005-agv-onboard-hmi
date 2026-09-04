@@ -144,6 +144,19 @@ public sealed record RecoveryActionAcceptedPayload(
     long RecoverySessionRevision,
     DateTimeOffset AcceptedAt);
 
+public sealed record ManualChargingReturnToServiceRequestedPayload(
+    string RequestId,
+    WireToGateOperatorContextPayload Administrator,
+    string AdministratorRole,
+    string Reason,
+    double? ObservedBatteryPercent);
+
+public sealed record ManualChargingReturnToServiceResultPayload(
+    string RequestId,
+    string Outcome,
+    WireToGateProblemPayload? Problem,
+    long VehicleBusinessStateRevision);
+
 public sealed record ExceptionRecoverySessionSnapshotPayload(
     string ExceptionRecoverySessionId,
     long RecoverySessionRevision,
