@@ -48,6 +48,14 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool SendReadinessAfterSafetyStateChangedAck { get; set; }
 
+    /// <summary>
+    /// Appends one RECOVERY_REQUIRED SessionReadiness line to the OperationResult ack, the way the
+    /// real ControlServer does when applying a refused result moves the session into recovery.
+    /// Every other mid-session readiness here rides a SafetyStateChanged ack, so this shape --
+    /// readiness announced on a business ack the vehicle is already awaiting -- had no coverage.
+    /// </summary>
+    public bool SendRecoveryRequiredReadinessAfterOperationResultAck { get; set; }
+
     public bool RequireSafeSafetyForReadiness { get; set; }
 
     public bool SendJourneySnapshotsAfterRecovery { get; set; }
@@ -292,9 +300,18 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "Heartbeat":
                         await WriteEnvelopeAsync(context, CreateHeartbeatAck(context, root)).ConfigureAwait(false);
                         break;
+                    case "OperationResult":
+                        await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        if (SendRecoveryRequiredReadinessAfterOperationResultAck)
+                        {
+                            await WriteEnvelopeAsync(
+                                context,
+                                CreateRecoveryRequiredSessionReadiness(context)).ConfigureAwait(false);
+                        }
+
+                        break;
                     case "SublotSubmitted":
                     case "OperationProgress":
-                    case "OperationResult":
                     case "PreDepartureSafetyCheckResult":
                     case "SlotOperationCommandRejected":
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
@@ -680,6 +697,27 @@ public sealed class FakeControlServer : IAsyncDisposable
                 vehicleBusinessStateRevision = 0
             });
     }
+
+    private static readonly string[] RecoveryRequiredReasonCodes = ["SESSION_RECOVERY_REQUIRED"];
+
+    /// <summary>
+    /// Shaped after OnboardMessageProcessor.SessionReadinessLine: no correlationId even though it
+    /// trails an ack, and the protocol reason code the server maps OPERATION_RECOVERY_REQUIRED onto.
+    /// </summary>
+    private static WireToGateEnvelope CreateRecoveryRequiredSessionReadiness(ConnectionContext context) =>
+        CreateEnvelope(
+            context,
+            "SessionReadiness",
+            correlationId: null,
+            new
+            {
+                readiness = "RECOVERY_REQUIRED",
+                decidedAt = DateTimeOffset.UtcNow,
+                reasonCodes = RecoveryRequiredReasonCodes,
+                acceptedCapabilityVersion = Math.Max(context.CapabilityVersion, context.AcceptedCapabilityVersion),
+                acceptedSafetyStateVersion = Math.Max(context.SafetyStateVersion, context.AcceptedSafetyStateVersion),
+                vehicleBusinessStateRevision = 0
+            });
 
     private static WireToGateEnvelope CreateHeartbeatAck(ConnectionContext context, JsonElement heartbeat)
     {
