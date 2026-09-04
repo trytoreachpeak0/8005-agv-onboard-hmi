@@ -22,7 +22,7 @@ public sealed record WireToGateRecoveryOptions(
 /// checks. Unsupported recovery commands remain fail-closed and are projected to
 /// the operator instead of disappearing into the file log.
 /// </summary>
-public sealed class WireToGateBusinessService : IAsyncDisposable
+public sealed partial class WireToGateBusinessService : IAsyncDisposable
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private readonly WireToGateSessionService _session;
@@ -103,6 +103,11 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
             throw new ArgumentException("operatorIdEnvironmentVariable不能为空。", nameof(operatorIdEnvironmentVariable));
         }
         _executor = new WireToGateSlotOperationExecutor(
+            ioModule,
+            session.Journal,
+            clock,
+            executorOptions);
+        _vectorExecutor = new WireToGateRecoveryVectorExecutor(
             ioModule,
             session.Journal,
             clock,
@@ -264,7 +269,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
             DateTimeOffset now = recoveryVerifiedAt;
             WireToGateOperatorContextPayload administrator = new(
                 recoveryOperatorId,
-                _recoveryOptions.VerificationMethod,
+                GetProtocolVerificationMethod(),
                 now);
             ExceptionRecoverySessionOpenedPayload opened;
             if (activeRecovery)
@@ -487,6 +492,7 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
         _safetySendGate.Dispose();
         _recoveryRequestGate.Dispose();
         await _executor.DisposeAsync().ConfigureAwait(false);
+        await _vectorExecutor.DisposeAsync().ConfigureAwait(false);
         GC.SuppressFinalize(this);
     }
 
@@ -523,7 +529,8 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
             Volatile.Write(ref _currentEntryRequest, null);
         }
 
-        if (args.Value.Readiness == WireToGateSessionReadiness.RecoveryRequired)
+        if (args.Value.Readiness is WireToGateSessionReadiness.Ready
+            or WireToGateSessionReadiness.RecoveryRequired)
         {
             TrackTask(RestorePendingRecoveryOperationProjectionAsync(_stopping.Token));
         }
@@ -542,6 +549,13 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
             WireToGateRecoveryState state = await _session.Journal
                 .ReadRecoveryStateAsync(cancellationToken)
                 .ConfigureAwait(false);
+            Volatile.Write(ref _lastRecoveryState, state);
+            if (state.RecoveryVector is { } vector)
+            {
+                PublishRecoveryVectorRestored(vector);
+                return;
+            }
+
             WireToGateRecoveryOperationContext? context = state.OperationContext;
             if (context is null
                 || !string.Equals(
@@ -788,10 +802,29 @@ public sealed class WireToGateBusinessService : IAsyncDisposable
                 case WireToGateSlotOperationResumeCommand resume:
                     await HandleBlockedResumeAsync(resume, cancellationToken).ConfigureAwait(false);
                     break;
+                case WireToGateLoadCompensationCommand compensation:
+                    await HandleLoadCompensationCommandAsync(compensation, cancellationToken)
+                        .ConfigureAwait(false);
+                    break;
+                case WireToGateLoadCorrectionCommand correction:
+                    await HandleLoadCorrectionCommandAsync(correction, cancellationToken)
+                        .ConfigureAwait(false);
+                    break;
+                case WireToGateFaultCargoRecoveryCommand faultCargo:
+                    await HandleFaultCargoRecoveryCommandAsync(faultCargo, cancellationToken)
+                        .ConfigureAwait(false);
+                    break;
                 case WireToGateRecoveryCommand recovery:
                     if (recovery.MessageType == "SublotRejected")
                     {
                         Volatile.Write(ref _currentEntryRequest, null);
+                    }
+                    else if (recovery.MessageType is "LoadCorrectionRejected"
+                        or "LoadCompensationRejected")
+                    {
+                        await HandleRecoveryVectorRejectedAsync(recovery, cancellationToken)
+                            .ConfigureAwait(false);
+                        break;
                     }
                     WireToGateRecoverySafetyDecision decision =
                         WireToGateRecoverySafetyPolicy.Evaluate(

@@ -243,6 +243,117 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             "RecoveryActionAccepted",
             cancellationToken);
 
+    public async Task<LoadCancellationAuthorizationPayload> RequestLoadCancellationStartAsync(
+        string messageId,
+        LoadCancellationStartRequestedPayload payload,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateLoadCancellationStartRequested(payload);
+        LoadCancellationAuthorizationPayload authorization = await SendRecoveryRequestAsync<
+            LoadCancellationAuthorizationPayload>(
+                "LoadCancellationStartRequested",
+                messageId,
+                payload,
+                "LoadCancellationAuthorization",
+                cancellationToken).ConfigureAwait(false);
+        ValidateLoadCancellationAuthorization(payload, authorization);
+        return authorization;
+    }
+
+    public Task<string> RequestLoadCompensationAsync(
+        string messageId,
+        LoadCompensationRequestedPayload payload,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateLoadCompensationRequested(payload);
+        return SendRequestWithoutResponseAsync(
+            "LoadCompensationRequested",
+            messageId,
+            payload,
+            cancellationToken);
+    }
+
+    public Task<string> RequestLoadCorrectionAsync(
+        string messageId,
+        LoadCorrectionRequestedPayload payload,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateLoadCorrectionRequested(payload);
+        return SendRequestWithoutResponseAsync(
+            "LoadCorrectionRequested",
+            messageId,
+            payload,
+            cancellationToken);
+    }
+
+    public Task<string> SendLoadCancellationResultAsync(
+        string deduplicationKey,
+        string messageId,
+        LoadCancellationResultPayload payload,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateLoadCancellationResult(payload);
+        return SendDurableCoreAsync(
+            "LoadCancellationResult",
+            deduplicationKey,
+            messageId,
+            null,
+            payload,
+            allowRecoveryRequired: true,
+            cancellationToken);
+    }
+
+    public Task<string> SendLoadCompensationResultAsync(
+        string deduplicationKey,
+        string messageId,
+        LoadCompensationResultPayload payload,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateLoadCompensationResult(payload);
+        return SendDurableCoreAsync(
+            "LoadCompensationResult",
+            deduplicationKey,
+            messageId,
+            null,
+            payload,
+            allowRecoveryRequired: true,
+            cancellationToken);
+    }
+
+    public Task<string> SendLoadCorrectionResultAsync(
+        string deduplicationKey,
+        string messageId,
+        LoadCorrectionResultPayload payload,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateLoadCorrectionResult(payload);
+        return SendDurableCoreAsync(
+            "LoadCorrectionResult",
+            deduplicationKey,
+            messageId,
+            null,
+            payload,
+            allowRecoveryRequired: true,
+            cancellationToken);
+    }
+
+    public Task<string> SendFaultCargoRecoveryResultAsync(
+        string deduplicationKey,
+        string messageId,
+        FaultCargoRecoveryResultPayload payload,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateFaultCargoRecoveryResult(payload);
+        return SendDurableCoreAsync(
+            "FaultCargoRecoveryResult",
+            deduplicationKey,
+            messageId,
+            null,
+            payload,
+            allowRecoveryRequired: true,
+            cancellationToken);
+    }
+
     public Task<ManualChargingReturnToServiceResultPayload> RequestManualChargingReturnToServiceAsync(
         string messageId,
         ManualChargingReturnToServiceRequestedPayload payload,
@@ -550,6 +661,35 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         {
             _responseWaiters.TryRemove(messageId, out _);
         }
+    }
+
+    private async Task<string> SendRequestWithoutResponseAsync(
+        string messageType,
+        string messageId,
+        object payload,
+        CancellationToken cancellationToken)
+    {
+        ThrowIfDisposed();
+        RequireUuid(messageId, nameof(messageId));
+        WireToGateSessionSnapshot current = Current;
+        if (!current.Connected
+            || current.SessionGeneration is null
+            || current.Readiness is not (WireToGateSessionReadiness.Ready
+                or WireToGateSessionReadiness.RecoveryRequired))
+        {
+            throw new InvalidOperationException("WIRE_TO_GATE_NOT_READY");
+        }
+
+        WireToGateEnvelope request = WireToGateProtocolSerializer.Create(
+            messageType,
+            messageId,
+            null,
+            _options.AgvId,
+            current.SessionGeneration,
+            _clock.Now.ToUniversalTime(),
+            payload);
+        await SendEnvelopeAsync(request, cancellationToken).ConfigureAwait(false);
+        return messageId;
     }
 
     private static string ReadRecoveryProblemReason(WireToGateEnvelope envelope)
@@ -1633,6 +1773,99 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         envelope.Payload.GetRawText());
                     return true;
                 }
+            case "LoadCompensationCommand":
+                {
+                    if (envelope.CorrelationId is not null)
+                    {
+                        throw new InvalidDataException("CORRELATION_INVALID");
+                    }
+
+                    LoadCompensationCommandPayload payload =
+                        WireToGateProtocolSerializer.DeserializePayload<LoadCompensationCommandPayload>(envelope);
+                    RequireUuid(payload.RecoveryActionId, nameof(payload.RecoveryActionId));
+                    RequireUuid(payload.ExceptionRecoverySessionId, nameof(payload.ExceptionRecoverySessionId));
+                    RequireUuid(payload.DemandId, nameof(payload.DemandId));
+                    RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
+                    RequireSha256(payload.CommandContentSha256, nameof(payload.CommandContentSha256));
+                    ValidateSortedSlots(payload.Slots);
+                    if (!string.Equals(payload.ExpectedFinalPhysicalState, "EMPTY", StringComparison.Ordinal))
+                    {
+                        throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+                    }
+
+                    command = new WireToGateLoadCompensationCommand(
+                        envelope.MessageId,
+                        envelope.SessionGeneration!.Value,
+                        envelope.SentAt,
+                        payload.RecoveryActionId,
+                        payload.ExceptionRecoverySessionId,
+                        payload.DemandId,
+                        payload.SlotOperationAttemptId,
+                        payload.Slots,
+                        payload.ExpectedFinalPhysicalState,
+                        payload.CommandContentSha256);
+                    return true;
+                }
+            case "LoadCorrectionCommand":
+                {
+                    if (envelope.CorrelationId is not null)
+                    {
+                        throw new InvalidDataException("CORRELATION_INVALID");
+                    }
+
+                    LoadCorrectionCommandPayload payload =
+                        WireToGateProtocolSerializer.DeserializePayload<LoadCorrectionCommandPayload>(envelope);
+                    RequireUuid(payload.CorrectionId, nameof(payload.CorrectionId));
+                    RequireUuid(payload.DemandId, nameof(payload.DemandId));
+                    RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
+                    RequireSha256(payload.CommandContentSha256, nameof(payload.CommandContentSha256));
+                    ValidateSortedSlots(payload.Slots);
+                    if (payload.ExpectedSequence is null
+                        || !payload.ExpectedSequence.SequenceEqual(["EMPTY", "OCCUPIED"]))
+                    {
+                        throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+                    }
+
+                    command = new WireToGateLoadCorrectionCommand(
+                        envelope.MessageId,
+                        envelope.SessionGeneration!.Value,
+                        envelope.SentAt,
+                        payload.CorrectionId,
+                        payload.DemandId,
+                        payload.SlotOperationAttemptId,
+                        payload.Slots,
+                        payload.ExpectedSequence,
+                        payload.CommandContentSha256);
+                    return true;
+                }
+            case "FaultCargoRecoveryCommand":
+                {
+                    if (envelope.CorrelationId is not null)
+                    {
+                        throw new InvalidDataException("CORRELATION_INVALID");
+                    }
+
+                    FaultCargoRecoveryCommandPayload payload =
+                        WireToGateProtocolSerializer.DeserializePayload<FaultCargoRecoveryCommandPayload>(envelope);
+                    RequireUuid(payload.ExceptionRecoverySessionId, nameof(payload.ExceptionRecoverySessionId));
+                    RequireUuid(payload.RecoveryActionId, nameof(payload.RecoveryActionId));
+                    RequireUuid(payload.DemandId, nameof(payload.DemandId));
+                    RequireUuid(payload.HandoffId, nameof(payload.HandoffId));
+                    RequireSha256(payload.CommandContentSha256, nameof(payload.CommandContentSha256));
+                    ValidateSortedSlots(payload.Slots);
+
+                    command = new WireToGateFaultCargoRecoveryCommand(
+                        envelope.MessageId,
+                        envelope.SessionGeneration!.Value,
+                        envelope.SentAt,
+                        payload.ExceptionRecoverySessionId,
+                        payload.RecoveryActionId,
+                        payload.DemandId,
+                        payload.Slots,
+                        payload.HandoffId,
+                        payload.CommandContentSha256);
+                    return true;
+                }
             case "CapabilitySnapshotRequested":
             case "SafetyStateChanged":
             case "SafetyStateSnapshotRequested":
@@ -1641,15 +1874,17 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             case "ExceptionRecoverySessionRejected":
             case "RecoveryActionAccepted":
             case "RecoveryActionRejected":
-            case "FaultCargoRecoveryCommand":
             case "ForcedMechanicalRecoveryCommand":
             case "ManualChargingReturnToServiceRequested":
             case "ManualChargingReturnToServiceResult":
             case "HardwareRecoveryRecordSubmitted":
             case "RecoveryActionSubmitted":
             case "LoadCorrectionRequested":
+            case "LoadCorrectionRejected":
             case "LoadCompensationRequested":
+            case "LoadCompensationRejected":
             case "LoadCancellationStartRequested":
+            case "LoadCancellationAuthorization":
                 command = new WireToGateRecoveryCommand(
                     envelope.MessageType,
                     envelope.MessageId,
@@ -1677,6 +1912,173 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             || payload.ObservedBatteryPercent is < 0 or > 100
             || payload.ObservedBatteryPercent is double batteryPercent
                 && (double.IsNaN(batteryPercent) || double.IsInfinity(batteryPercent)))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+    }
+
+    private static void ValidateLoadCancellationStartRequested(
+        LoadCancellationStartRequestedPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        RequireUuid(payload.CancellationId, nameof(payload.CancellationId));
+        RequireUuid(payload.DemandId, nameof(payload.DemandId));
+        if (payload.SlotOperationAttemptId is not null)
+        {
+            RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
+        }
+
+        ValidateOperatorContext(payload.Operator);
+        if (string.IsNullOrWhiteSpace(payload.Reason))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+    }
+
+    private static void ValidateLoadCancellationAuthorization(
+        LoadCancellationStartRequestedPayload request,
+        LoadCancellationAuthorizationPayload authorization)
+    {
+        ArgumentNullException.ThrowIfNull(authorization);
+        RequireUuid(authorization.CancellationId, nameof(authorization.CancellationId));
+        RequireUuid(authorization.DemandId, nameof(authorization.DemandId));
+        if (!string.Equals(authorization.CancellationId, request.CancellationId, StringComparison.Ordinal)
+            || !string.Equals(authorization.DemandId, request.DemandId, StringComparison.Ordinal)
+            || authorization.SlotOperationAttemptId != request.SlotOperationAttemptId
+            || authorization.Decision is not ("AUTHORIZED" or "REJECTED")
+            || authorization.Slots is null
+            || authorization.Slots.Count > 8
+            || authorization.Slots.Any(slot => slot is < 1 or > 8)
+            || authorization.Slots.Distinct().Count() != authorization.Slots.Count
+            || !authorization.Slots.SequenceEqual(authorization.Slots.Order()))
+        {
+            throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
+        }
+
+        if (authorization.Problem is not null)
+        {
+            ValidateProblem(authorization.Problem);
+        }
+    }
+
+    private static void ValidateLoadCompensationRequested(
+        LoadCompensationRequestedPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        RequireUuid(payload.RecoveryActionId, nameof(payload.RecoveryActionId));
+        RequireUuid(payload.ExceptionRecoverySessionId, nameof(payload.ExceptionRecoverySessionId));
+        RequireUuid(payload.DemandId, nameof(payload.DemandId));
+        RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
+        ValidateOperatorContext(payload.Operator);
+    }
+
+    private static void ValidateLoadCorrectionRequested(
+        LoadCorrectionRequestedPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        RequireUuid(payload.CorrectionId, nameof(payload.CorrectionId));
+        RequireUuid(payload.DemandId, nameof(payload.DemandId));
+        RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
+        ValidateSortedSlots(payload.Slots);
+        ValidateOperatorContext(payload.Operator);
+        if (string.IsNullOrWhiteSpace(payload.Reason))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+    }
+
+    private static void ValidateLoadCancellationResult(
+        LoadCancellationResultPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        RequireUuid(payload.CancellationId, nameof(payload.CancellationId));
+        RequireUuid(payload.DemandId, nameof(payload.DemandId));
+        if (payload.SlotOperationAttemptId is not null)
+        {
+            RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
+        }
+
+        if (payload.OverallOutcome is not ("ALL_EMPTY" or "FAILED" or "UNKNOWN"))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        ValidateSlotResults(payload.SlotResults);
+    }
+
+    private static void ValidateLoadCompensationResult(
+        LoadCompensationResultPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        RequireUuid(payload.RecoveryActionId, nameof(payload.RecoveryActionId));
+        RequireUuid(payload.DemandId, nameof(payload.DemandId));
+        RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
+        if (payload.OverallOutcome is not ("ALL_EMPTY" or "FAILED" or "UNKNOWN"))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        ValidateSlotResults(payload.SlotResults);
+    }
+
+    private static void ValidateLoadCorrectionResult(
+        LoadCorrectionResultPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        RequireUuid(payload.CorrectionId, nameof(payload.CorrectionId));
+        RequireUuid(payload.DemandId, nameof(payload.DemandId));
+        RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
+        if (payload.OverallOutcome is not ("COMPLETED" or "FAILED" or "UNKNOWN"))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        ValidateSlotResults(payload.SlotResults);
+    }
+
+    private static void ValidateFaultCargoRecoveryResult(
+        FaultCargoRecoveryResultPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        RequireUuid(payload.ExceptionRecoverySessionId, nameof(payload.ExceptionRecoverySessionId));
+        RequireUuid(payload.RecoveryActionId, nameof(payload.RecoveryActionId));
+        RequireUuid(payload.DemandId, nameof(payload.DemandId));
+        RequireUuid(payload.HandoffId, nameof(payload.HandoffId));
+        if (payload.OverallOutcome is not ("HANDED_OFF" or "FAILED" or "UNKNOWN"))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        ValidateSlotResults(payload.SlotResults);
+        ValidateOperatorContext(payload.Operator);
+    }
+
+    private static void ValidateSlotResults(
+        IReadOnlyList<WireToGateSlotResultPayload> results)
+    {
+        if (results is null
+            || results.Count is < 1 or > 8
+            || results.Select(result => result.SlotNo).Distinct().Count() != results.Count
+            || results.Any(result =>
+                result.SlotNo is < 1 or > 8
+                || result.Outcome is not ("COMPLETED" or "FAILED" or "NOT_STARTED" or "UNKNOWN")
+                || result.FinalPhysicalState is not ("EMPTY" or "OCCUPIED" or "UNKNOWN")
+                || result.LockState is not ("LOCKED" or "UNLOCKED" or "UNKNOWN")
+                || result.UnlockOutputState is not ("RESET" or "ACTIVE" or "UNKNOWN")
+                || result.ReasonCodes is null
+                || result.ReasonCodes.Distinct().Count() != result.ReasonCodes.Count
+                || result.ReasonCodes.Any(code => !IsProtocolErrorCode(code))))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+    }
+
+    private static void ValidateOperatorContext(WireToGateOperatorContextPayload context)
+    {
+        if (context is null
+            || string.IsNullOrWhiteSpace(context.OperatorId)
+            || context.VerificationMethod is not ("BADGE" or "SESSION")
+            || context.VerifiedAt == default)
         {
             throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
         }

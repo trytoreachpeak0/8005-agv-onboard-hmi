@@ -29,6 +29,10 @@ public sealed class MainViewModel : ViewModelBase
     private bool _canCancelOperation;
     private bool _canRetryPendingResult;
     private bool _canRequestWireToGateRecovery;
+    private bool _canRequestLoadCancellation;
+    private bool _canRequestLoadCompensation;
+    private bool _canRequestLoadCorrection;
+    private bool _canRequestFaultCargoHandoff;
     private bool _hasWireToGateJourney;
     private bool _wireToGateEnabled;
     private WireToGateSessionSnapshot? _wireToGateSession;
@@ -40,6 +44,14 @@ public sealed class MainViewModel : ViewModelBase
     private Func<bool>? _wireToGateCanSubmit;
     private Func<bool>? _wireToGateCanRequestRecovery;
     private Func<CancellationToken, Task<bool>>? _wireToGateRecoveryRequester;
+    private Func<bool>? _wireToGateCanRequestLoadCancellation;
+    private Func<bool>? _wireToGateCanRequestLoadCompensation;
+    private Func<bool>? _wireToGateCanRequestLoadCorrection;
+    private Func<bool>? _wireToGateCanRequestFaultCargoHandoff;
+    private Func<CancellationToken, Task<bool>>? _wireToGateLoadCancellationRequester;
+    private Func<CancellationToken, Task<bool>>? _wireToGateLoadCompensationRequester;
+    private Func<CancellationToken, Task<bool>>? _wireToGateLoadCorrectionRequester;
+    private Func<CancellationToken, Task<bool>>? _wireToGateFaultCargoHandoffRequester;
 
     public MainViewModel(
         OnboardController controller,
@@ -151,12 +163,28 @@ public sealed class MainViewModel : ViewModelBase
         Func<string, ScanInputMethod, CancellationToken, Task> submitter,
         Func<bool> canSubmit,
         Func<bool>? canRequestRecovery = null,
-        Func<CancellationToken, Task<bool>>? recoveryRequester = null)
+        Func<CancellationToken, Task<bool>>? recoveryRequester = null,
+        Func<bool>? canRequestLoadCancellation = null,
+        Func<CancellationToken, Task<bool>>? loadCancellationRequester = null,
+        Func<bool>? canRequestLoadCompensation = null,
+        Func<CancellationToken, Task<bool>>? loadCompensationRequester = null,
+        Func<bool>? canRequestLoadCorrection = null,
+        Func<CancellationToken, Task<bool>>? loadCorrectionRequester = null,
+        Func<bool>? canRequestFaultCargoHandoff = null,
+        Func<CancellationToken, Task<bool>>? faultCargoHandoffRequester = null)
     {
         _wireToGateSubmitter = submitter ?? throw new ArgumentNullException(nameof(submitter));
         _wireToGateCanSubmit = canSubmit ?? throw new ArgumentNullException(nameof(canSubmit));
         _wireToGateCanRequestRecovery = canRequestRecovery;
         _wireToGateRecoveryRequester = recoveryRequester;
+        _wireToGateCanRequestLoadCancellation = canRequestLoadCancellation;
+        _wireToGateLoadCancellationRequester = loadCancellationRequester;
+        _wireToGateCanRequestLoadCompensation = canRequestLoadCompensation;
+        _wireToGateLoadCompensationRequester = loadCompensationRequester;
+        _wireToGateCanRequestLoadCorrection = canRequestLoadCorrection;
+        _wireToGateLoadCorrectionRequester = loadCorrectionRequester;
+        _wireToGateCanRequestFaultCargoHandoff = canRequestFaultCargoHandoff;
+        _wireToGateFaultCargoHandoffRequester = faultCargoHandoffRequester;
         _wireToGateEnabled = true;
         RefreshWireToGateInputStateCore();
         ApplyWireToGatePresentationCore();
@@ -189,6 +217,10 @@ public sealed class MainViewModel : ViewModelBase
     {
         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? CanSubmit;
         CanRequestWireToGateRecovery = _wireToGateCanRequestRecovery?.Invoke() == true;
+        CanRequestLoadCancellation = _wireToGateCanRequestLoadCancellation?.Invoke() == true;
+        CanRequestLoadCompensation = _wireToGateCanRequestLoadCompensation?.Invoke() == true;
+        CanRequestLoadCorrection = _wireToGateCanRequestLoadCorrection?.Invoke() == true;
+        CanRequestFaultCargoHandoff = _wireToGateCanRequestFaultCargoHandoff?.Invoke() == true;
     }
 
     public string VisitText
@@ -270,6 +302,30 @@ public sealed class MainViewModel : ViewModelBase
         private set => SetProperty(ref _canRequestWireToGateRecovery, value);
     }
 
+    public bool CanRequestLoadCancellation
+    {
+        get => _canRequestLoadCancellation;
+        private set => SetProperty(ref _canRequestLoadCancellation, value);
+    }
+
+    public bool CanRequestLoadCompensation
+    {
+        get => _canRequestLoadCompensation;
+        private set => SetProperty(ref _canRequestLoadCompensation, value);
+    }
+
+    public bool CanRequestLoadCorrection
+    {
+        get => _canRequestLoadCorrection;
+        private set => SetProperty(ref _canRequestLoadCorrection, value);
+    }
+
+    public bool CanRequestFaultCargoHandoff
+    {
+        get => _canRequestFaultCargoHandoff;
+        private set => SetProperty(ref _canRequestFaultCargoHandoff, value);
+    }
+
     public string RecoverySlotName
     {
         get => _recoverySlotName;
@@ -310,6 +366,26 @@ public sealed class MainViewModel : ViewModelBase
         _wireToGateRecoveryRequester is null
             ? Task.FromResult(false)
             : _wireToGateRecoveryRequester(cancellationToken);
+
+    public Task<bool> RequestLoadCancellationAsync(CancellationToken cancellationToken = default) =>
+        _wireToGateLoadCancellationRequester is null
+            ? Task.FromResult(false)
+            : _wireToGateLoadCancellationRequester(cancellationToken);
+
+    public Task<bool> RequestLoadCompensationAsync(CancellationToken cancellationToken = default) =>
+        _wireToGateLoadCompensationRequester is null
+            ? Task.FromResult(false)
+            : _wireToGateLoadCompensationRequester(cancellationToken);
+
+    public Task<bool> RequestLoadCorrectionAsync(CancellationToken cancellationToken = default) =>
+        _wireToGateLoadCorrectionRequester is null
+            ? Task.FromResult(false)
+            : _wireToGateLoadCorrectionRequester(cancellationToken);
+
+    public Task<bool> RequestFaultCargoHandoffAsync(CancellationToken cancellationToken = default) =>
+        _wireToGateFaultCargoHandoffRequester is null
+            ? Task.FromResult(false)
+            : _wireToGateFaultCargoHandoffRequester(cancellationToken);
 
     private void OnStateChanged(object? sender, ValueChangedEventArgs<OnboardSnapshot> args)
     {
@@ -393,6 +469,10 @@ public sealed class MainViewModel : ViewModelBase
         if (_lastControllerSnapshot?.State == OnboardState.Faulted)
         {
             CanRequestWireToGateRecovery = false;
+            CanRequestLoadCancellation = false;
+            CanRequestLoadCompensation = false;
+            CanRequestLoadCorrection = false;
+            CanRequestFaultCargoHandoff = false;
             return;
         }
 
@@ -410,6 +490,10 @@ public sealed class MainViewModel : ViewModelBase
         CanRetryPendingResult = false;
         CanRequestWireToGateRecovery = _wireToGateCanRequestRecovery?.Invoke() == true
             && _wireToGateOperation?.Stage == WireToGateHmiOperationStage.RecoveryRequired;
+        CanRequestLoadCancellation = _wireToGateCanRequestLoadCancellation?.Invoke() == true;
+        CanRequestLoadCompensation = _wireToGateCanRequestLoadCompensation?.Invoke() == true;
+        CanRequestLoadCorrection = _wireToGateCanRequestLoadCorrection?.Invoke() == true;
+        CanRequestFaultCargoHandoff = _wireToGateCanRequestFaultCargoHandoff?.Invoke() == true;
     }
 
     private void RefreshLockerCardsCore()

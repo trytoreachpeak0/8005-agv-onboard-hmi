@@ -119,13 +119,18 @@
                 </Style>
             </Border.Style>
             <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
-                <TextBlock VerticalAlignment="Center" FontSize="15" FontWeight="Bold" Text="{Binding StateText}" />
-                <ScrollViewer Grid.Column="1"
+                <TextBlock Grid.Row="0" VerticalAlignment="Center" FontSize="15" FontWeight="Bold" Text="{Binding StateText}" />
+                <ScrollViewer Grid.Row="0"
+                              Grid.Column="1"
                               MaxHeight="48"
                               Margin="12,0"
                               VerticalScrollBarVisibility="Auto"
@@ -135,7 +140,11 @@
                                Text="{Binding Guidance}"
                                TextWrapping="Wrap" />
                 </ScrollViewer>
-                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <WrapPanel Grid.Row="1"
+                           Grid.Column="0"
+                           Grid.ColumnSpan="3"
+                           Margin="0,8,0,0"
+                           HorizontalAlignment="Right">
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"
@@ -144,6 +153,38 @@
                             Visibility="{Binding CanRequestWireToGateRecovery, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnWireToGateRecoveryClick"
                             Content="申请恢复" />
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            Background="#D6A32A"
+                            IsEnabled="{Binding CanRequestLoadCancellation}"
+                            Visibility="{Binding CanRequestLoadCancellation, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnLoadCancellationClick"
+                            Content="取消装货" />
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            Background="#D6A32A"
+                            IsEnabled="{Binding CanRequestLoadCompensation}"
+                            Visibility="{Binding CanRequestLoadCompensation, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnLoadCompensationClick"
+                            Content="补偿清空" />
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            Background="#D6A32A"
+                            IsEnabled="{Binding CanRequestLoadCorrection}"
+                            Visibility="{Binding CanRequestLoadCorrection, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnLoadCorrectionClick"
+                            Content="修正装货" />
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            Background="#D6A32A"
+                            IsEnabled="{Binding CanRequestFaultCargoHandoff}"
+                            Visibility="{Binding CanRequestFaultCargoHandoff, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnFaultCargoHandoffClick"
+                            Content="故障交接" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"
@@ -172,7 +213,7 @@
                             Visibility="{Binding CanSafetyReview, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnSafetyReviewClick"
                             Content="启动安全复核" />
-                </StackPanel>
+                </WrapPanel>
             </Grid>
         </Border>
 

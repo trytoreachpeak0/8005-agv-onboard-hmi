@@ -174,3 +174,92 @@ public sealed record WireToGateProblemPayload(
     string ReasonCode,
     string? FieldPath,
     string? DisplayMessage);
+
+public sealed record LoadCancellationStartRequestedPayload(
+    string CancellationId,
+    string DemandId,
+    string? SlotOperationAttemptId,
+    WireToGateOperatorContextPayload Operator,
+    string Reason);
+
+public sealed record LoadCancellationAuthorizationPayload(
+    string CancellationId,
+    string Decision,
+    string DemandId,
+    string? SlotOperationAttemptId,
+    IReadOnlyList<int> Slots,
+    WireToGateProblemPayload? Problem);
+
+public sealed record LoadCancellationResultPayload(
+    string CancellationId,
+    string DemandId,
+    string? SlotOperationAttemptId,
+    string OverallOutcome,
+    IReadOnlyList<WireToGateSlotResultPayload> SlotResults,
+    DateTimeOffset ObservedAt);
+
+public sealed record LoadCompensationRequestedPayload(
+    string RecoveryActionId,
+    string ExceptionRecoverySessionId,
+    string DemandId,
+    string SlotOperationAttemptId,
+    WireToGateOperatorContextPayload Operator);
+
+public sealed record LoadCompensationCommandPayload(
+    string RecoveryActionId,
+    string ExceptionRecoverySessionId,
+    string DemandId,
+    string SlotOperationAttemptId,
+    IReadOnlyList<int> Slots,
+    string ExpectedFinalPhysicalState,
+    string CommandContentSha256);
+
+public sealed record LoadCompensationResultPayload(
+    string RecoveryActionId,
+    string DemandId,
+    string SlotOperationAttemptId,
+    string OverallOutcome,
+    IReadOnlyList<WireToGateSlotResultPayload> SlotResults,
+    DateTimeOffset ObservedAt);
+
+public sealed record LoadCorrectionRequestedPayload(
+    string CorrectionId,
+    string DemandId,
+    string SlotOperationAttemptId,
+    IReadOnlyList<int> Slots,
+    WireToGateOperatorContextPayload Operator,
+    string Reason);
+
+public sealed record LoadCorrectionCommandPayload(
+    string CorrectionId,
+    string DemandId,
+    string SlotOperationAttemptId,
+    IReadOnlyList<int> Slots,
+    IReadOnlyList<string> ExpectedSequence,
+    string CommandContentSha256);
+
+public sealed record LoadCorrectionResultPayload(
+    string CorrectionId,
+    string DemandId,
+    string SlotOperationAttemptId,
+    string OverallOutcome,
+    IReadOnlyList<WireToGateSlotResultPayload> SlotResults,
+    DateTimeOffset ObservedAt);
+
+public sealed record FaultCargoRecoveryCommandPayload(
+    string ExceptionRecoverySessionId,
+    string RecoveryActionId,
+    string DemandId,
+    IReadOnlyList<int> Slots,
+    string HandoffId,
+    string CommandContentSha256);
+
+public sealed record FaultCargoRecoveryResultPayload(
+    string ExceptionRecoverySessionId,
+    string RecoveryActionId,
+    string DemandId,
+    string HandoffId,
+    string OverallOutcome,
+    IReadOnlyList<WireToGateSlotResultPayload> SlotResults,
+    WireToGateOperatorContextPayload Operator,
+    DateTimeOffset ObservedAt);

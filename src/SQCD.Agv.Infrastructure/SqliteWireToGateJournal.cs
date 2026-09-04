@@ -693,7 +693,13 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             .ToArray(),
         PendingResults = state.PendingResults
             .OrderBy(item => item.MessageId, StringComparer.Ordinal)
-            .ToArray()
+            .ToArray(),
+        RecoveryVector = state.RecoveryVector is { } vector
+            ? vector with { Slots = vector.Slots.Order().ToArray() }
+            : null,
+        LastCompletedLoadOperationContext = state.LastCompletedLoadOperationContext is { } lastLoad
+            ? lastLoad with { Slots = lastLoad.Slots.Order().ToArray() }
+            : null
     };
 
     private static void ValidateRecoveryState(WireToGateRecoveryState state)
@@ -721,27 +727,7 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
 
         if (state.OperationContext is { } context)
         {
-            RequireUuid(context.MessageId, nameof(context.MessageId));
-            RequireUuid(context.DemandId, nameof(context.DemandId));
-            RequireUuid(context.OperationSessionId, nameof(context.OperationSessionId));
-            RequireUuid(context.SlotOperationAttemptId, nameof(context.SlotOperationAttemptId));
-            RequireSha256(context.CommandContentSha256, nameof(context.CommandContentSha256));
-            if (context.CorrelationId is not null)
-            {
-                RequireUuid(context.CorrelationId, nameof(context.CorrelationId));
-            }
-
-            if (context.SessionGeneration < 0
-                || context.Slots is null
-                || context.Slots.Count is < 1 or > 8
-                || context.Slots.Any(slot => slot is < 1 or > 8)
-                || context.Slots.Distinct().Count() != context.Slots.Count
-                || !context.Slots.SequenceEqual(context.Slots.Order())
-                || context.ExpectedBasketCount != context.Slots.Count
-                || context.ExpectedOccupied != (context.OperationType == OperationType.Load))
-            {
-                throw new InvalidDataException("WIRE_TO_GATE recovery operation context字段无效。");
-            }
+            ValidateOperationContext(context, requireLoad: false);
 
             if (state.UnsettledSlotOperationAttemptId is not null
                 && !string.Equals(
@@ -751,6 +737,16 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             {
                 throw new InvalidDataException("WIRE_TO_GATE recovery state与operation context不一致。");
             }
+        }
+
+        if (state.LastCompletedLoadOperationContext is { } lastLoad)
+        {
+            ValidateOperationContext(lastLoad, requireLoad: true);
+        }
+
+        if (state.RecoveryVector is { } vector)
+        {
+            ValidateRecoveryVectorContext(vector);
         }
 
         ValidateOptionalUuid(state.ExceptionRecoverySessionId, nameof(state.ExceptionRecoverySessionId));
@@ -772,6 +768,79 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
         if (value is not null)
         {
             RequireUuid(value, name);
+        }
+    }
+
+    private static void ValidateOperationContext(
+        WireToGateRecoveryOperationContext context,
+        bool requireLoad)
+    {
+        RequireUuid(context.MessageId, nameof(context.MessageId));
+        RequireUuid(context.DemandId, nameof(context.DemandId));
+        RequireUuid(context.OperationSessionId, nameof(context.OperationSessionId));
+        RequireUuid(context.SlotOperationAttemptId, nameof(context.SlotOperationAttemptId));
+        RequireSha256(context.CommandContentSha256, nameof(context.CommandContentSha256));
+        if (context.CorrelationId is not null)
+        {
+            RequireUuid(context.CorrelationId, nameof(context.CorrelationId));
+        }
+
+        if (context.SessionGeneration < 0
+            || context.Slots is null
+            || context.Slots.Count is < 1 or > 8
+            || context.Slots.Any(slot => slot is < 1 or > 8)
+            || context.Slots.Distinct().Count() != context.Slots.Count
+            || !context.Slots.SequenceEqual(context.Slots.Order())
+            || context.ExpectedBasketCount != context.Slots.Count
+            || context.ExpectedOccupied != (context.OperationType == OperationType.Load)
+            || requireLoad && context.OperationType != OperationType.Load)
+        {
+            throw new InvalidDataException("WIRE_TO_GATE recovery operation context字段无效。");
+        }
+    }
+
+    private static void ValidateRecoveryVectorContext(
+        WireToGateRecoveryVectorContext vector)
+    {
+        if (!WireToGateRecoveryVectorTypes.IsKnown(vector.VectorType))
+        {
+            throw new InvalidDataException("WIRE_TO_GATE recovery vector类型无效。");
+        }
+
+        RequireUuid(vector.PrimaryId, nameof(vector.PrimaryId));
+        RequireUuid(vector.DemandId, nameof(vector.DemandId));
+        ValidateOptionalUuid(vector.ExceptionRecoverySessionId, nameof(vector.ExceptionRecoverySessionId));
+        ValidateOptionalUuid(vector.SlotOperationAttemptId, nameof(vector.SlotOperationAttemptId));
+        ValidateOptionalUuid(vector.HandoffId, nameof(vector.HandoffId));
+        if (vector.Slots is null
+            || vector.Slots.Count is < 1 or > 8
+            || vector.Slots.Any(slot => slot is < 1 or > 8)
+            || vector.Slots.Distinct().Count() != vector.Slots.Count
+            || !vector.Slots.SequenceEqual(vector.Slots.Order())
+            || vector.CommandContentSha256 is not null
+                && !IsSha256(vector.CommandContentSha256))
+        {
+            throw new InvalidDataException("WIRE_TO_GATE recovery vector字段无效。");
+        }
+
+        if (vector.VectorType is WireToGateRecoveryVectorTypes.LoadCompensation
+                or WireToGateRecoveryVectorTypes.FaultCargoHandoff
+            && (vector.ExceptionRecoverySessionId is null
+                || vector.SlotOperationAttemptId is null)
+            || vector.VectorType == WireToGateRecoveryVectorTypes.LoadCorrection
+                && vector.SlotOperationAttemptId is null
+            || vector.VectorType == WireToGateRecoveryVectorTypes.FaultCargoHandoff
+                && vector.HandoffId is null)
+        {
+            throw new InvalidDataException("WIRE_TO_GATE recovery vector范围无效。");
+        }
+
+        if (vector.OperatorId is not null
+            && (string.IsNullOrWhiteSpace(vector.OperatorId)
+                || string.IsNullOrWhiteSpace(vector.OperatorVerificationMethod)
+                || vector.OperatorVerifiedAt is null))
+        {
+            throw new InvalidDataException("WIRE_TO_GATE recovery vector操作员字段无效。");
         }
     }
 
@@ -812,6 +881,9 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             throw new InvalidDataException($"{name}必须是64位SHA-256十六进制字符串。");
         }
     }
+
+    private static bool IsSha256(string value) =>
+        value.Length == 64 && value.All(Uri.IsHexDigit);
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
 }
