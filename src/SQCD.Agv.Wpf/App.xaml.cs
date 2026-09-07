@@ -26,6 +26,14 @@ public partial class App : System.Windows.Application, IDisposable
     {
         base.OnStartup(e);
 
+        // Logging has to exist before anything that can throw, or a rejected
+        // configuration leaves no trace at all: the catch below would run with
+        // a null logger, write nothing, and park on a modal dialog nobody is
+        // standing in front of.  The default directory matches the deployed
+        // configuration, so the bootstrap logger and the configured one append
+        // to the same file.
+        _logger = new FileAppLogger(new LogSettings());
+
         try
         {
             string settingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
