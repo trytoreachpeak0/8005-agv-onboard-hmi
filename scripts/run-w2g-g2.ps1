@@ -15,15 +15,15 @@ if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
 }
 
 $expected = [ordered]@{
-    ProtocolVersion = 1
+    ProtocolVersion = 3
     ProfileId = 'WIRE_TO_GATE_MVP'
-    ReleaseVersion = '0.1.1'
+    ReleaseVersion = '0.3.0'
     Repository = '8005-agv-protocol'
-    Tag = 'protocol-v0.1.1'
-    Commit = '1531489e42e328f28bfe0c51ed3f8c56e5ce0279'
-    ManifestSha256 = 'a467c0c4b03cbf54fae985ceade256ff13225581babad7f46d90449b7f16389f'
-    SchemaBundleSha256 = 'e04296e9bcf48c341bc91fef5731f6f465a5ecdbb9adedc17f3bac58e193d30c'
-    VectorsSha256 = 'fc5902b71d1b276c674f8a21c738d27193ddcbaf9b352951deffbaf1488d356e'
+    Tag = 'protocol-v0.3.0'
+    Commit = '345c53c58517968192c87c3e7777ed08ddb48726'
+    ManifestSha256 = 'b6c81ca9bb482986249411fcfc9169ac6b70b77388c63e43d581295eb02ba138'
+    SchemaBundleSha256 = '68bfd531c4b9c08bc80f6d9c5a67264891efa200acdb154eb18e1d083bf4ed98'
+    VectorsSha256 = 'bd272b63a1d0663d61c4a38d6e8633d7e7d4f7b561a7915c3df51c7a93bd4576'
 }
 
 $failures = [System.Collections.Generic.List[string]]::new()
@@ -31,7 +31,7 @@ $runUtc = [DateTime]::UtcNow
 $runId = $runUtc.ToString('yyyyMMddTHHmmssfffZ')
 $hmiCommit = (& git -C $hmiRoot rev-parse HEAD).Trim()
 $shortHmiCommit = if ($hmiCommit.Length -ge 12) { $hmiCommit.Substring(0, 12) } else { $hmiCommit }
-$runDirectory = Join-Path (Join-Path $EvidenceRoot 'protocol-v0.1.1') ($runId + '-' + $shortHmiCommit)
+$runDirectory = Join-Path (Join-Path $EvidenceRoot 'protocol-v0.3.0') ($runId + '-' + $shortHmiCommit)
 $logsDirectory = Join-Path $runDirectory 'logs'
 $resultsDirectory = Join-Path $runDirectory 'test-results'
 New-Item -ItemType Directory -Force -Path $logsDirectory, $resultsDirectory | Out-Null
