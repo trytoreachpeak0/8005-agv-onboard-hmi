@@ -146,10 +146,15 @@ public sealed class MainViewModel : ViewModelBase
         _hasWireToGateJourney = true;
         if (snapshot.CurrentStopWorklist is { } worklist)
         {
-            WireToGateWorklistItem? item = worklist.Items.SingleOrDefault();
-            VisitText = item is null
-                ? $"{worklist.StationId} / 无待处理任务"
-                : $"{worklist.StationId} / {item.Sublot}";
+            // 一次停靠可以有多项。原先这里取 SingleOrDefault()，两项就抛，而这条路径跑在 UI 线程
+            // 的更新回调里——多单的第一份清单会让界面停在上一次的文字上，看不出发生了什么。
+            VisitText = worklist.Items.Count switch
+            {
+                0 => $"{worklist.StationId} / 无待处理任务",
+                1 => $"{worklist.StationId} / {worklist.Items[0].Sublot}",
+                _ => $"{worklist.StationId} / {worklist.Items.Count} 项：" +
+                     string.Join('、', worklist.Items.Select(item => item.Sublot))
+            };
         }
         else
         {

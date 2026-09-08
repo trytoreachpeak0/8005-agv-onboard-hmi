@@ -57,22 +57,30 @@ public sealed record WireToGateJourneySnapshot(
 
     public bool HasAuthoritativeWorklist => CurrentStopWorklist is not null;
 
-    public bool HasConsistentDemand
-    {
-        get
-        {
-            string? worklistDemand = CurrentStopWorklist?.Items.SingleOrDefault()?.DemandId;
-            return worklistDemand is null
-                || UpcomingStopPlan?.DemandId is null
-                || string.Equals(worklistDemand, UpcomingStopPlan.DemandId, StringComparison.Ordinal);
-        }
-    }
+    /// <summary>
+    /// 行程计划点名的需求必须是作业清单里的一个。
+    /// </summary>
+    /// <remarks>
+    /// 从 protocol 0.2.0 起清单可以有多项，计划的 <c>demandId</c> 也可以是 null——一趟行程属于整趟
+    /// 而不属于其中某一个需求。原先这里用 <c>SingleOrDefault()</c>：清单一旦有两项它**抛异常**，
+    /// 而不是判不一致，于是多单会在渲染路径上炸掉而不是被拒。
+    /// </remarks>
+    public bool HasConsistentDemand =>
+        UpcomingStopPlan?.DemandId is null
+        || CurrentStopWorklist is null
+        || CurrentStopWorklist.Items.Count == 0
+        || CurrentStopWorklist.Items.Any(item =>
+            string.Equals(item.DemandId, UpcomingStopPlan.DemandId, StringComparison.Ordinal));
 
+    /// <summary>
+    /// 清单里至少有一项待处理，才谈得上录入。**不再要求恰好一项**：一次停靠可以有多项待装，
+    /// 服务端下发的可录入范围也可能横跨几个站点（FR-001 AC-3）。
+    /// </summary>
     public bool CanAcceptSublot =>
         VehicleBusinessState?.Readiness == "READY"
         && VehicleBusinessState.ManualChargingHold is false
         && VehicleBusinessState.BatteryState == "SUFFICIENT"
-        && CurrentStopWorklist?.Items.Count == 1
+        && CurrentStopWorklist?.Items.Count > 0
         && HasConsistentDemand;
 
     public bool CanAcceptSublotAt(DateTimeOffset now, TimeSpan maxAge)

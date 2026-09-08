@@ -51,6 +51,7 @@
           "onboard",
           "recoveryState",
           "canSubmitSublot",
+          "expectedSublots",
           "currentOperationAttemptId",
           "currentOperationPhase",
           "observedAt"
@@ -62,7 +63,7 @@
           "wireToGateJourney": { "type": "object", "nullable": true, "additionalProperties": true },
           "recoveryState": { "type": "object", "additionalProperties": true },
           "canSubmitSublot": { "type": "boolean" },
-          "expectedSublot": { "type": "string", "nullable": true },
+          "expectedSublots": { "type": "array", "items": { "type": "string" } },
           "currentOperationAttemptId": { "type": "string", "nullable": true, "format": "uuid" },
           "currentOperationPhase": {
             "type": "string",

@@ -122,7 +122,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         _session.Current.Readiness == WireToGateSessionReadiness.Ready
         && Volatile.Read(ref _currentEntryRequest) is not null;
 
-    public string? ExpectedSublot => Volatile.Read(ref _currentEntryRequest)?.ExpectedSublot;
+    /// <summary>
+    /// 当前可录入的子批集合，没有待录入请求时为空。自动化用它挑一个来提交；人工录入走扫码。
+    /// </summary>
+    public IReadOnlyList<string> ExpectedSublots =>
+        Volatile.Read(ref _currentEntryRequest)?.ExpectedSublots ?? [];
 
     /// <summary>
     /// Read-only projection of the latest operation progress emitted by the
@@ -398,8 +402,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(entryMethod);
         WireToGateSublotEntryRequest request = Volatile.Read(ref _currentEntryRequest)
             ?? throw new InvalidOperationException("WIRE_TO_GATE_JOURNEY_NOT_READY");
+        // 判据是集合归属，不是与某一个期望值相等。FR-001 AC-3 允许录入的任务其目标站点与操作员
+        // 当前物理站点不完全相同，只要它在本次派车范围内；范围外仍然要拒（AC-4），但那是「不在这
+        // 个集合里」，不是「不等于那一个字符串」。
         if (!request.EntryMethods.Contains(entryMethod, StringComparer.Ordinal)
-            || !string.Equals(request.ExpectedSublot, sublot.Trim(), StringComparison.Ordinal))
+            || !request.ExpectedSublots.Contains(sublot.Trim(), StringComparer.Ordinal))
         {
             throw new InvalidOperationException("SUBLOT_NOT_IN_WORKLIST");
         }
@@ -776,7 +783,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     PublishOperatorEvent(
                         $"sublot-requested:{sublot.MessageId}",
                         "SUBLOT_ENTRY_REQUESTED",
-                        $"收到子批录入请求：{sublot.ExpectedSublot}。");
+                        $"收到子批录入请求：{string.Join('、', sublot.ExpectedSublots)}。");
                     SublotEntryRequested?.Invoke(
                         this,
                         new ValueChangedEventArgs<WireToGateSublotEntryRequest>(sublot));

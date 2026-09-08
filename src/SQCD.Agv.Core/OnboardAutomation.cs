@@ -11,7 +11,7 @@ public sealed record OnboardAutomationSnapshot(
     WireToGateJourneySnapshot? WireToGateJourney,
     WireToGateRecoveryState RecoveryState,
     bool CanSubmitSublot,
-    string? ExpectedSublot,
+    IReadOnlyList<string> ExpectedSublots,
     string? CurrentOperationAttemptId,
     string? CurrentOperationPhase,
     DateTimeOffset ObservedAt);
