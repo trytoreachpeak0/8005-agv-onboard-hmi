@@ -1,5 +1,5 @@
 {
-  "registryVersion": "1.0.0",
+  "registryVersion": "1.1.0",
   "appendOnly": true,
   "displayMessageAuthoritative": false,
   "codes": [
@@ -441,6 +441,16 @@
       ],
       "retryDisposition": "AFTER_STATE_CHANGE",
       "introducedInRelease": "0.1.0"
+    },
+    {
+      "code": "OPERATOR_TIMEOUT",
+      "category": "BUSINESS",
+      "meaning": "OPERATOR_TIMEOUT is the stable business failure defined by the accepted WIRE_TO_GATE MVP governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "0.3.0"
     }
   ]
 }

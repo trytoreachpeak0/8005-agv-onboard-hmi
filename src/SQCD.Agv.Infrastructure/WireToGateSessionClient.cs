@@ -2281,7 +2281,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         or "RECOVERY_SCOPE_MISMATCH"
         or "RECOVERY_CHECKPOINT_NOT_UNIQUE"
         or "RECOVERY_AUTHENTICATION_FAILED"
-        or "FORCED_RECOVERY_GENERATION_STALE";
+        or "FORCED_RECOVERY_GENERATION_STALE"
+        or "OPERATOR_TIMEOUT";
 
     private static void ValidateCurrentStopWorklist(CurrentStopWorklistSnapshotPayload payload)
     {

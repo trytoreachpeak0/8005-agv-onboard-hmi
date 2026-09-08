@@ -10,15 +10,15 @@ namespace SQCD.Agv.Contracts;
 /// </summary>
 public static class WireToGateRelease
 {
-    public const int ProtocolVersion = 1;
+    public const int ProtocolVersion = 3;
     public const string ProfileId = "WIRE_TO_GATE_MVP";
-    public const string ReleaseVersion = "0.1.1";
+    public const string ReleaseVersion = "0.3.0";
     public const string Repository = "8005-agv-protocol";
-    public const string Tag = "protocol-v0.1.1";
-    public const string Commit = "1531489e42e328f28bfe0c51ed3f8c56e5ce0279";
-    public const string ManifestSha256 = "a467c0c4b03cbf54fae985ceade256ff13225581babad7f46d90449b7f16389f";
-    public const string SchemaBundleSha256 = "e04296e9bcf48c341bc91fef5731f6f465a5ecdbb9adedc17f3bac58e193d30c";
-    public const string VectorsSha256 = "fc5902b71d1b276c674f8a21c738d27193ddcbaf9b352951deffbaf1488d356e";
+    public const string Tag = "protocol-v0.3.0";
+    public const string Commit = "345c53c58517968192c87c3e7777ed08ddb48726";
+    public const string ManifestSha256 = "b6c81ca9bb482986249411fcfc9169ac6b70b77388c63e43d581295eb02ba138";
+    public const string SchemaBundleSha256 = "68bfd531c4b9c08bc80f6d9c5a67264891efa200acdb154eb18e1d083bf4ed98";
+    public const string VectorsSha256 = "bd272b63a1d0663d61c4a38d6e8633d7e7d4f7b561a7915c3df51c7a93bd4576";
 
     public static ProtocolReleaseIdentity Identity { get; } = new(
         Repository,
@@ -57,7 +57,7 @@ public sealed record WireToGateEnvelope(
     JsonElement Payload);
 
 /// <summary>
-/// Minimal strict serializer for the immutable protocol-v0.1.1 envelope.
+/// Minimal strict serializer for the immutable protocol-v0.3.0 envelope.
 /// Message payloads remain explicit at their call sites so that later slices can be
 /// generated from the tagged JSON Schemas without changing the transport contract.
 /// </summary>
