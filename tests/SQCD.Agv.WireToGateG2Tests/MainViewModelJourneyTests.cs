@@ -6,11 +6,13 @@ using Xunit;
 namespace SQCD.Agv.WireToGateG2Tests;
 
 /// <summary>
-/// 作业清单在界面上的那一行。它以前取 <c>Items.SingleOrDefault()</c>，两项就抛——而这条路径跑在
-/// UI 线程的快照更新回调里，抛出去的结果不是报错而是**界面停在上一次的文字上**，操作员看不出这
-/// 一停靠有几项，也看不出清单已经换了。
+/// 旅程快照落到界面上的两处：作业清单那一行文字，和状态条下方的行程带。
+///
+/// 清单那一行以前取 <c>Items.SingleOrDefault()</c>，两项就抛——而这条路径跑在 UI 线程的快照更新
+/// 回调里，抛出去的结果不是报错而是**界面停在上一次的文字上**，操作员看不出这一停靠有几项，也
+/// 看不出清单已经换了。行程带则是新的：<c>UpcomingStopPlan</c> 在 WPF 层此前一处引用都没有。
 /// </summary>
-public sealed class WireToGateVisitTextTests
+public sealed class MainViewModelJourneyTests
 {
     private static readonly DateTimeOffset Now =
         new(2026, 9, 8, 10, 0, 0, TimeSpan.Zero);
@@ -68,6 +70,75 @@ public sealed class WireToGateVisitTextTests
         Assert.Equal("ST-01 / 2 项：SUBLOT-002、SUBLOT-003", viewModel.VisitText);
     }
 
+    [Fact]
+    public void UpcomingPlanRendersEveryLegInSequenceOrder()
+    {
+        // 协议保证 sequence 从 1 起连续，但不保证数组本身有序——这里故意倒着发。
+        MainViewModel viewModel = CreateViewModel();
+
+        viewModel.UpdateWireToGateJourney(JourneyWithLegs(
+            Leg(2, "TO_GATE", "ST-09", "PLANNED"),
+            Leg(1, "TO_PICKUP", "ST-01", "ACTIVE")));
+
+        Assert.True(viewModel.HasUpcomingPlan);
+        Assert.Equal([1, 2], viewModel.UpcomingLegs.Select(leg => leg.Sequence));
+        Assert.Equal(["取货", "交货"], viewModel.UpcomingLegs.Select(leg => leg.LegTypeText));
+        Assert.Equal(["ST-01", "ST-09"], viewModel.UpcomingLegs.Select(leg => leg.StationId));
+        Assert.Equal(["行进中", "待走"], viewModel.UpcomingLegs.Select(leg => leg.StateText));
+    }
+
+    [Fact]
+    public void OnlyTheLegTheVehicleIsOnIsMarkedCurrent()
+    {
+        MainViewModel viewModel = CreateViewModel();
+
+        viewModel.UpdateWireToGateJourney(JourneyWithLegs(
+            Leg(1, "TO_PICKUP", "ST-01", "COMPLETED"),
+            Leg(2, "TO_GATE", "ST-09", "ARRIVED")));
+
+        Assert.Equal([false, true], viewModel.UpcomingLegs.Select(leg => leg.IsCurrent));
+        Assert.Equal([true, false], viewModel.UpcomingLegs.Select(leg => leg.IsDone));
+    }
+
+    [Fact]
+    public void BlockedLegIsCalledOutSeparatelyFromTheCurrentOne()
+    {
+        // 受阻要与「正在走」区分开：两者都不是完成，但操作员对它们要做的事不一样。
+        MainViewModel viewModel = CreateViewModel();
+
+        viewModel.UpdateWireToGateJourney(JourneyWithLegs(Leg(1, "TO_PICKUP", "ST-01", "BLOCKED")));
+
+        StopLegViewModel leg = Assert.Single(viewModel.UpcomingLegs);
+        Assert.True(leg.IsBlocked);
+        Assert.False(leg.IsCurrent);
+        Assert.Equal("受阻", leg.StateText);
+    }
+
+    [Fact]
+    public void JourneyWithoutAPlanCollapsesTheBand()
+    {
+        MainViewModel viewModel = CreateViewModel();
+
+        viewModel.UpdateWireToGateJourney(WireToGateJourneySnapshot.Empty);
+
+        Assert.False(viewModel.HasUpcomingPlan);
+        Assert.Empty(viewModel.UpcomingLegs);
+    }
+
+    [Fact]
+    public void ASecondPlanReplacesTheBandRatherThanAppendingToIt()
+    {
+        MainViewModel viewModel = CreateViewModel();
+
+        viewModel.UpdateWireToGateJourney(JourneyWithLegs(
+            Leg(1, "TO_PICKUP", "ST-01", "ACTIVE"),
+            Leg(2, "TO_GATE", "ST-09", "PLANNED")));
+        viewModel.UpdateWireToGateJourney(JourneyWithLegs(Leg(1, "TO_GATE", "ST-09", "ACTIVE")));
+
+        StopLegViewModel leg = Assert.Single(viewModel.UpcomingLegs);
+        Assert.Equal("ST-09", leg.StationId);
+    }
+
     private static MainViewModel CreateViewModel() => new(
         new OnboardController(
             new FakeIoModuleClient(),
@@ -108,8 +179,21 @@ public sealed class WireToGateVisitTextTests
             "sha"),
         Now);
 
+    private static WireToGateJourneySnapshot JourneyWithLegs(params WireToGateMovementLeg[] legs) =>
+        Journey("SUBLOT-001") with
+        {
+            UpcomingStopPlan = new WireToGateUpcomingStopPlan(1, "D-1", legs, "sha")
+        };
+
+    private static WireToGateMovementLeg Leg(
+        int sequence,
+        string legType,
+        string stationId,
+        string state) =>
+        new($"leg-{sequence}", legType, sequence, stationId, "MAP-01", state);
+
     /// <summary>
-    /// 这几条测试只走快照到文字这一段，规则网关一次也不会被碰到。
+    /// 这几条测试只走快照到界面状态这一段，规则网关一次也不会被碰到。
     /// </summary>
     private sealed class InertRuleGateway : IRuleGateway
     {
