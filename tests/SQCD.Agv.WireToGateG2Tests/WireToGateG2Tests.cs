@@ -660,7 +660,7 @@ public sealed class WireToGateG2Tests
             // change exists for: before it, the button was bound to an unsettled load operation and
             // stayed hidden here.
             Assert.True(business.CanRequestLoadCancellation);
-            Assert.Equal("SUBLOT-001", business.ExpectedSublot);
+            Assert.Equal(["SUBLOT-001"], business.ExpectedSublots);
             Assert.Equal(0, io.UnlockCount);
 
             Assert.True(await business.RequestLoadCancellationAsync(
@@ -743,7 +743,7 @@ public sealed class WireToGateG2Tests
                 testToken));
 
             Assert.True(business.CanSubmitSublot);
-            Assert.Equal("SUBLOT-001", business.ExpectedSublot);
+            Assert.Equal(["SUBLOT-001"], business.ExpectedSublots);
             Assert.Equal(0, io.UnlockCount);
         }
         finally
@@ -1138,6 +1138,163 @@ public sealed class WireToGateG2Tests
         Assert.Equal("ST-01", secondClient.CurrentJourney.CurrentStopWorklist?.StationId);
         Assert.Equal("ARRIVED", Assert.Single(secondClient.CurrentJourney.UpcomingStopPlan!.Legs).State);
         Assert.Equal(3, server.Received.Count(item => item.MessageType == "SnapshotAppliedAck"));
+    }
+
+    /// <summary>
+    /// FR-001 AC-3 把可录入范围定义为「本次派车关联的任务集合」，而一趟车可以带着几个站点各自的
+    /// 任务，所以判据是集合归属。操作员录入集合里的第二项与录入第一项一样合法——旧判据是「等于
+    /// expectedSublot 这一个字符串」，那样的话除第一项外全都会以 SUBLOT_NOT_IN_WORKLIST 被拒。
+    /// </summary>
+    [Fact]
+    public Task AnySublotInTheExpectedSetCanBeSubmittedNotOnlyTheFirst() =>
+        RunWithSublotEntryAsync(
+            ["SUBLOT-001", "SUBLOT-002", "SUBLOT-003"],
+            async (server, business, testToken) =>
+            {
+                Assert.Equal(["SUBLOT-001", "SUBLOT-002", "SUBLOT-003"], business.ExpectedSublots);
+
+                string messageId = await business.SubmitSublotAsync("SUBLOT-002", "SCANNER", testToken);
+
+                Assert.NotEmpty(messageId);
+                Assert.Contains(
+                    server.ReceivedEnvelopes,
+                    item => item.MessageType == "SublotSubmitted"
+                        && item.WireLine.Contains("SUBLOT-002", StringComparison.Ordinal));
+            });
+
+    /// <summary>
+    /// 放宽到集合不等于放开：范围外的子批仍然要拒（FR-001 AC-4），而且不能有任何东西发到服务端。
+    /// </summary>
+    [Fact]
+    public Task SublotOutsideTheExpectedSetIsStillRefused() =>
+        RunWithSublotEntryAsync(
+            ["SUBLOT-001", "SUBLOT-002"],
+            async (server, business, testToken) =>
+            {
+                InvalidOperationException error = await Assert.ThrowsAsync<InvalidOperationException>(
+                    async () => await business.SubmitSublotAsync("SUBLOT-009", "SCANNER", testToken));
+
+                Assert.Equal("SUBLOT_NOT_IN_WORKLIST", error.Message);
+                Assert.DoesNotContain(server.Received, item => item.MessageType == "SublotSubmitted");
+            });
+
+    /// <summary>
+    /// 上限是 8，八项本身合法。这条与 <see cref="NineExpectedSublotsFailClosed"/> 一起把边界钉在
+    /// 8/9 之间——只测拒绝的那一半，上限写成 7 也会通过。
+    /// </summary>
+    [Fact]
+    public Task EightExpectedSublotsAreWithinTheCap() =>
+        RunWithSublotEntryAsync(
+            ["S-1", "S-2", "S-3", "S-4", "S-5", "S-6", "S-7", "S-8"],
+            (server, business, testToken) =>
+            {
+                _ = server;
+                _ = testToken;
+                Assert.Equal(8, business.ExpectedSublots.Count);
+                return Task.CompletedTask;
+            });
+
+    [Fact]
+    public Task EmptyExpectedSublotsFailClosed() => AssertEntryRequestFailsClosedAsync([]);
+
+    [Fact]
+    public Task NineExpectedSublotsFailClosed() =>
+        AssertEntryRequestFailsClosedAsync(
+            ["S-1", "S-2", "S-3", "S-4", "S-5", "S-6", "S-7", "S-8", "S-9"]);
+
+    /// <summary>
+    /// 重复项不是「无害的冗余」：同一个子批出现两次，录入之后哪一次算数是无定义的，而清单的修订号
+    /// 只能表达一次录入。失败在解析处比失败在录入处便宜。
+    /// </summary>
+    [Fact]
+    public Task DuplicateExpectedSublotsFailClosed() =>
+        AssertEntryRequestFailsClosedAsync(["SUBLOT-001", "SUBLOT-001"]);
+
+    [Fact]
+    public Task BlankExpectedSublotFailsClosed() =>
+        AssertEntryRequestFailsClosedAsync(["SUBLOT-001", "   "]);
+
+    /// <summary>
+    /// 违反 schema 的 SublotEntryRequested 走的是失败关闭，不是 ProtocolProblem：
+    /// TryCreateServerCommand 抛的 InvalidDataException 冒到读循环的总 catch，那里重置旅程投影并把
+    /// 会话置为 Disconnected / SESSION_RECOVERY_REQUIRED。断言这条路径而不是断言一条问题消息。
+    /// </summary>
+    private static async Task AssertEntryRequestFailsClosedAsync(IReadOnlyList<string> expectedSublots)
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            SendJourneySnapshotsAfterRecovery = true,
+            SendSublotEntryRequestAfterRecovery = true,
+            ExpectedSublots = expectedSublots
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionClient client = CreateClient(server, io, NewJournalPath());
+
+        await client.ConnectAndRecoverAsync(testToken);
+        await WaitUntilAsync(
+            () => client.Current.Readiness == WireToGateSessionReadiness.Disconnected,
+            testToken);
+
+        Assert.False(client.IsReady);
+        Assert.Contains("SESSION_RECOVERY_REQUIRED", client.Current.ReasonCodes);
+    }
+
+    private static async Task RunWithSublotEntryAsync(
+        IReadOnlyList<string> expectedSublots,
+        Func<FakeControlServer, WireToGateBusinessService, CancellationToken, Task> body)
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        const string operatorVariable = "W2G_G2_MULTI_DEMAND_OPERATOR";
+        string? previousOperator = Environment.GetEnvironmentVariable(operatorVariable);
+        Environment.SetEnvironmentVariable(operatorVariable, "operator-001");
+
+        try
+        {
+            await using FakeControlServer server = new(IPAddress.Loopback)
+            {
+                SendReadinessAfterRecoveryAck = true,
+                SendJourneySnapshotsAfterRecovery = true,
+                SendSublotEntryRequestAfterRecovery = true,
+                ExpectedSublots = expectedSublots
+            };
+            FakeIoModuleClient io = new();
+            NullLogger logger = new();
+            await using WireToGateSessionService session = new(
+                CreateSessionOptions(server),
+                io,
+                new SqliteWireToGateJournal(NewJournalPath()),
+                logger,
+                new SystemClock(),
+                new DelegateVehicleSafetySignalProvider(() => true),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(500));
+            await using WireToGateBusinessService business = new(
+                session,
+                io,
+                logger,
+                new SystemClock(),
+                () => true,
+                new WireToGateSlotOperationExecutorOptions(
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromMilliseconds(10),
+                    TimeSpan.FromSeconds(30)),
+                operatorVariable);
+
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            await WaitUntilAsync(() => business.CanSubmitSublot, testToken);
+
+            await body(server, business, testToken);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(operatorVariable, previousOperator);
+        }
     }
 
     [Fact]

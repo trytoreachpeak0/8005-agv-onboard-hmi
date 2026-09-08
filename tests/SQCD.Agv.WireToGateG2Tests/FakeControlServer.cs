@@ -86,12 +86,20 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public string LoadCancellationDecision { get; set; } = "AUTHORIZED";
 
+    /// <summary>
+    /// The expectedSublots the SublotEntryRequested carries. One entry by default; a test hands it
+    /// several to exercise set membership, or a value the schema forbids -- empty, over the cap of
+    /// eight, duplicated -- to exercise the parser's refusal.
+    /// </summary>
+    public IReadOnlyList<string> ExpectedSublots { get; set; } = DefaultExpectedSublots;
+
     public IReadOnlyList<string> ReceivedLoadCancellationAttemptIds =>
         _receivedLoadCancellationAttemptIds.ToArray();
 
     private readonly ConcurrentQueue<string> _receivedLoadCancellationAttemptIds = new();
 
     private static readonly string[] SublotEntryMethods = ["SCANNER", "KEYBOARD"];
+    private static readonly string[] DefaultExpectedSublots = ["SUBLOT-001"];
 
     public bool RespondToRecoveryRequests { get; set; }
 
@@ -950,7 +958,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                     operationSessionId = "33333333-3333-3333-3333-333333333333",
                     stationId = "ST-01",
                     worklistRevision = 1,
-                    expectedSublot = "SUBLOT-001",
+                    expectedSublots = ExpectedSublots,
                     entryMethods = SublotEntryMethods,
                     expiresOnRevisionChange = true
                 })).ConfigureAwait(false);

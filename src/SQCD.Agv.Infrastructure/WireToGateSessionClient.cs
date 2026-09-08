@@ -1545,7 +1545,12 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     RequireUuid(payload.OperationSessionId, nameof(payload.OperationSessionId));
                     if (string.IsNullOrWhiteSpace(payload.StationId)
                         || payload.WorklistRevision < 0
-                        || string.IsNullOrWhiteSpace(payload.ExpectedSublot)
+                        || payload.ExpectedSublots is null
+                        || payload.ExpectedSublots.Count == 0
+                        || payload.ExpectedSublots.Count > 8
+                        || payload.ExpectedSublots.Any(string.IsNullOrWhiteSpace)
+                        || payload.ExpectedSublots.Distinct(StringComparer.Ordinal).Count()
+                            != payload.ExpectedSublots.Count
                         || payload.EntryMethods is null
                         || payload.EntryMethods.SequenceEqual(["SCANNER", "KEYBOARD"]) is false
                         || payload.ExpiresOnRevisionChange is false)
@@ -1561,7 +1566,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         payload.OperationSessionId,
                         payload.StationId,
                         payload.WorklistRevision,
-                        payload.ExpectedSublot,
+                        payload.ExpectedSublots,
                         payload.EntryMethods,
                         payload.ExpiresOnRevisionChange);
                     return true;

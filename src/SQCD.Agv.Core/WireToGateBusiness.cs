@@ -15,7 +15,7 @@ public sealed record WireToGateSublotEntryRequest(
     string OperationSessionId,
     string StationId,
     long WorklistRevision,
-    string ExpectedSublot,
+    IReadOnlyList<string> ExpectedSublots,
     IReadOnlyList<string> EntryMethods,
     bool ExpiresOnRevisionChange)
     : WireToGateServerCommand("SublotEntryRequested", MessageId, null, SessionGeneration, SentAt);

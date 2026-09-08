@@ -34,6 +34,7 @@ public sealed class MainViewModel : ViewModelBase
     private bool _canRequestLoadCorrection;
     private bool _canRequestFaultCargoHandoff;
     private bool _hasWireToGateJourney;
+    private bool _hasUpcomingPlan;
     private bool _wireToGateEnabled;
     private WireToGateSessionSnapshot? _wireToGateSession;
     private WireToGateHmiOperationSnapshot? _wireToGateOperation;
@@ -86,6 +87,18 @@ public sealed class MainViewModel : ViewModelBase
     public ObservableCollection<LockerCardViewModel> Lockers { get; }
 
     public ObservableCollection<LogLineViewModel> Logs { get; } = [];
+
+    /// <summary>
+    /// 后续停靠序列，按 sequence 升序。协议保证 sequence 从 1 起连续，但**不保证数组本身有序**
+    /// ——校验那边也是 OrderBy 之后才检查连续性的，所以这里要自己排。
+    /// </summary>
+    public ObservableCollection<StopLegViewModel> UpcomingLegs { get; } = [];
+
+    public bool HasUpcomingPlan
+    {
+        get => _hasUpcomingPlan;
+        private set => SetProperty(ref _hasUpcomingPlan, value);
+    }
 
     public AsyncCommand ScannerSubmitCommand { get; }
 
@@ -146,18 +159,36 @@ public sealed class MainViewModel : ViewModelBase
         _hasWireToGateJourney = true;
         if (snapshot.CurrentStopWorklist is { } worklist)
         {
-            WireToGateWorklistItem? item = worklist.Items.SingleOrDefault();
-            VisitText = item is null
-                ? $"{worklist.StationId} / 无待处理任务"
-                : $"{worklist.StationId} / {item.Sublot}";
+            // 一次停靠可以有多项。原先这里取 SingleOrDefault()，两项就抛，而这条路径跑在 UI 线程
+            // 的更新回调里——多单的第一份清单会让界面停在上一次的文字上，看不出发生了什么。
+            VisitText = worklist.Items.Count switch
+            {
+                0 => $"{worklist.StationId} / 无待处理任务",
+                1 => $"{worklist.StationId} / {worklist.Items[0].Sublot}",
+                _ => $"{worklist.StationId} / {worklist.Items.Count} 项：" +
+                     string.Join('、', worklist.Items.Select(item => item.Sublot))
+            };
         }
         else
         {
             VisitText = "旅程未同步";
         }
+        UpdateUpcomingLegsCore(snapshot.UpcomingStopPlan);
         RefreshWireToGateInputStateCore();
         ApplyWireToGatePresentationCore();
     });
+
+    private void UpdateUpcomingLegsCore(WireToGateUpcomingStopPlan? plan)
+    {
+        UpcomingLegs.Clear();
+        foreach (WireToGateMovementLeg leg in (plan?.Legs ?? [])
+            .OrderBy(leg => leg.Sequence))
+        {
+            UpcomingLegs.Add(new StopLegViewModel(leg));
+        }
+
+        HasUpcomingPlan = UpcomingLegs.Count > 0;
+    }
 
     internal void ConfigureWireToGate(
         Func<string, ScanInputMethod, CancellationToken, Task> submitter,

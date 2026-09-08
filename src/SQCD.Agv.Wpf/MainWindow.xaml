@@ -17,6 +17,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="110" />
         </Grid.RowDefinitions>
@@ -73,7 +74,98 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="1" Margin="0,8,0,0" Padding="10" Background="White" CornerRadius="8">
+        <Border Grid.Row="1"
+                Margin="0,8,0,0"
+                Padding="10,6"
+                Background="White"
+                CornerRadius="8"
+                Visibility="{Binding HasUpcomingPlan, Converter={StaticResource BooleanToVisibilityConverter}}">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Margin="0,0,12,0"
+                           VerticalAlignment="Center"
+                           FontSize="12"
+                           Foreground="{StaticResource MutedBrush}"
+                           Text="行程" />
+                <ItemsControl VerticalAlignment="Center" ItemsSource="{Binding UpcomingLegs}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal" />
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:StopLegViewModel}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Margin="0,0,8,0"
+                                           VerticalAlignment="Center"
+                                           FontSize="14"
+                                           Foreground="{StaticResource MutedBrush}"
+                                           Text="&#x2192;">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Sequence}" Value="1">
+                                                    <Setter Property="Visibility" Value="Collapsed" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <Border Margin="0,0,8,0"
+                                        Padding="10,4"
+                                        CornerRadius="6"
+                                        BorderThickness="1">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#F4F6F9" />
+                                            <Setter Property="BorderBrush" Value="#DCE2EA" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                                    <Setter Property="Background" Value="#EAF2FF" />
+                                                    <Setter Property="BorderBrush" Value="#9ABCEB" />
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding IsBlocked}" Value="True">
+                                                    <Setter Property="Background" Value="#FFF0F0" />
+                                                    <Setter Property="BorderBrush" Value="#E89B9B" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock VerticalAlignment="Center"
+                                                   FontSize="14"
+                                                   Text="{Binding LegTypeText}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="FontWeight" Value="Normal" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsCurrent}" Value="True">
+                                                            <Setter Property="FontWeight" Value="Bold" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Margin="6,0,0,0"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="14"
+                                                   Text="{Binding StationId}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding StationId}" />
+                                        <TextBlock Margin="8,0,0,0"
+                                                   VerticalAlignment="Center"
+                                                   FontSize="12"
+                                                   Foreground="{StaticResource MutedBrush}"
+                                                   Text="{Binding StateText}" />
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
+        </Border>
+
+        <Border Grid.Row="2" Margin="0,8,0,0" Padding="10" Background="White" CornerRadius="8">
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -101,7 +193,7 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="2" Margin="0,8,0,0" Padding="10" CornerRadius="8" BorderThickness="1">
+        <Border Grid.Row="3" Margin="0,8,0,0" Padding="10" CornerRadius="8" BorderThickness="1">
             <Border.Style>
                 <Style TargetType="Border">
                     <Setter Property="Background" Value="#EAF2FF" />
@@ -217,7 +309,7 @@
             </Grid>
         </Border>
 
-        <ScrollViewer Grid.Row="3"
+        <ScrollViewer Grid.Row="4"
                       Margin="0,6"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
@@ -261,7 +353,7 @@
             </ItemsControl>
         </ScrollViewer>
 
-        <Border Grid.Row="4" Padding="8" Background="#17212E" CornerRadius="8">
+        <Border Grid.Row="5" Padding="8" Background="#17212E" CornerRadius="8">
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />

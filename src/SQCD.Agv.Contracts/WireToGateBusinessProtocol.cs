@@ -1,11 +1,16 @@
 namespace SQCD.Agv.Contracts;
 
+/// <summary>
+/// 服务端请求操作员录入子批。<see cref="ExpectedSublots"/> 从 protocol 0.2.0 起是集合而不是单个
+/// 字符串：FR-001 AC-3 与 BR-001 把可录入范围定义为「本次派车关联的任务集合」，判据是集合归属而
+/// 不是与当前站点的距离，而一趟车可以带着几个站点各自的任务。
+/// </summary>
 public sealed record SublotEntryRequestedPayload(
     string DemandId,
     string OperationSessionId,
     string StationId,
     long WorklistRevision,
-    string ExpectedSublot,
+    IReadOnlyList<string> ExpectedSublots,
     IReadOnlyList<string> EntryMethods,
     bool ExpiresOnRevisionChange);
 
