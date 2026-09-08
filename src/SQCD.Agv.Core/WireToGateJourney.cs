@@ -47,29 +47,31 @@ public sealed record WireToGateUpcomingStopPlan(
     string ContentSha256)
 {
     /// <summary>
-    /// The one demand this plan is for, or null when the legs do not agree on one.
+    /// The distinct demand ids the legs carry, in leg order and without nulls.
     /// </summary>
     /// <remarks>
     /// Protocol v2 moved <c>demandId</c> out of the snapshot's top level and into the leg, because
     /// <c>legs.maxItems</c> went from 2 to 9 and one demand id for a nine-leg plan has no defined
-    /// meaning. This projection keeps the single-demand question answerable for the plans this
-    /// runtime actually receives -- both of today's legs carry the same id -- and answers null,
-    /// rather than guessing, as soon as they do not. Null is also what a plan of charger or
-    /// waiting-point legs gives, since those legs carry no demand at all.
+    /// meaning. Exposing the set rather than a single value is what keeps "the legs disagree"
+    /// distinguishable from "the legs carry no demand": collapsing both to null is how
+    /// <see cref="WireToGateJourneySnapshot.HasConsistentDemand"/> would read a self-contradictory
+    /// plan as consistent.
     /// </remarks>
-    public string? DemandId
-    {
-        get
-        {
-            string[] demands =
-            [
-                .. Legs.Select(leg => leg.DemandId)
-                    .OfType<string>()
-                    .Distinct(StringComparer.Ordinal)
-            ];
-            return demands.Length == 1 ? demands[0] : null;
-        }
-    }
+    public IReadOnlyList<string> DemandIds =>
+    [
+        .. Legs.Select(leg => leg.DemandId).OfType<string>().Distinct(StringComparer.Ordinal)
+    ];
+
+    /// <summary>
+    /// The one demand this plan is for, or null when the legs carry none or disagree.
+    /// </summary>
+    /// <remarks>
+    /// Convenience over <see cref="DemandIds"/> for the callers that only ever see single-demand
+    /// plans. <b>Null is ambiguous here</b> -- it means "none" and "more than one" alike -- so a
+    /// caller deciding whether to allow an operator action must read <see cref="DemandIds"/>
+    /// instead.
+    /// </remarks>
+    public string? DemandId => DemandIds.Count == 1 ? DemandIds[0] : null;
 }
 
 public sealed record WireToGateJourneySnapshot(
@@ -86,14 +88,33 @@ public sealed record WireToGateJourneySnapshot(
 
     public bool HasAuthoritativeWorklist => CurrentStopWorklist is not null;
 
+    /// <summary>
+    /// Whether the worklist and the plan name the same demand.
+    /// </summary>
+    /// <remarks>
+    /// <b>A plan whose legs name more than one demand is never consistent</b>, whatever the
+    /// worklist says. Before protocol v2 that case could not arise -- the snapshot carried one
+    /// top-level <c>demandId</c> -- and reading the derived
+    /// <see cref="WireToGateUpcomingStopPlan.DemandId"/> as "no demand" when the legs disagree
+    /// would let a self-contradictory plan through the guard that
+    /// <see cref="CanAcceptSublot"/> stands behind. Unreachable while the control server emits at
+    /// most two legs of one demand; reachable once waiting points (<c>FP-C4</c>) and chargers
+    /// (<c>FP-C1</c>) put more legs in the plan.
+    /// </remarks>
     public bool HasConsistentDemand
     {
         get
         {
+            IReadOnlyList<string> planDemands = UpcomingStopPlan?.DemandIds ?? [];
+            if (planDemands.Count > 1)
+            {
+                return false;
+            }
+
             string? worklistDemand = CurrentStopWorklist?.Items.SingleOrDefault()?.DemandId;
             return worklistDemand is null
-                || UpcomingStopPlan?.DemandId is null
-                || string.Equals(worklistDemand, UpcomingStopPlan.DemandId, StringComparison.Ordinal);
+                || planDemands.Count == 0
+                || string.Equals(worklistDemand, planDemands[0], StringComparison.Ordinal);
         }
     }
 

@@ -1,5 +1,4 @@
 using System.Globalization;
-using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using SQCD.Agv.Contracts;
@@ -82,11 +81,24 @@ public sealed class ProtocolIdentityArchitectureTests
     }
 
     /// <summary>
-    /// The identity constants are the candidate's own values, read off the vendored manifest.
+    /// The six identity constants the manifest carries are the candidate's own values.
     /// </summary>
     /// <remarks>
-    /// <c>Tag</c> and <c>Commit</c> are absent from the manifest and are checked separately below --
-    /// stating that rather than quietly checking six of eight.
+    /// <para>
+    /// <b>Six of ten, and the other four are named here rather than left to look covered.</b>
+    /// <c>ManifestSha256</c> is <see cref="TheVendoredManifestIsTheProtocolManifestByteForByte"/>'s
+    /// job -- a manifest cannot carry its own digest. <c>Tag</c> and <c>ApprovalStatus</c> are
+    /// <see cref="TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsACandidate"/>'s.
+    /// </para>
+    /// <para>
+    /// <b><c>Commit</c> is the one no assertion in this assembly can bind.</b> Nothing inside the
+    /// repository knows which commit of <c>8005-agv-protocol</c> a copy came from;
+    /// <see cref="TheGateScriptExpectsTheSameIdentityAsTheAssembly"/> only keeps the two local
+    /// copies in step with each other. The check against the protocol repository itself is
+    /// <c>scripts/run-w2g-g2.ps1</c>, which resolves the commit there and refuses when the
+    /// candidate is not an ancestor of its HEAD. That gate needs both repositories on the machine,
+    /// which is why it is a gate and not a test.
+    /// </para>
     /// </remarks>
     [Fact]
     public void TheIdentityConstantsAreTheCandidatesOwnValues()
@@ -275,6 +287,8 @@ public sealed class ProtocolIdentityArchitectureTests
             "Could not locate the repository root from the test process directories.");
     }
 
-    private static string Sha256(ReadOnlySpan<byte> bytes) =>
-        Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+    /// <summary>
+    /// The same digest the product code puts on the wire, not a second implementation of it.
+    /// </summary>
+    private static string Sha256(byte[] bytes) => WireToGateProtocolSerializer.ComputeSha256(bytes);
 }

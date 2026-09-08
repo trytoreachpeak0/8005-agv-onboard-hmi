@@ -127,6 +127,21 @@ public sealed class FakeControlServer : IAsyncDisposable
         private set;
     } = [];
 
+    /// <summary>
+    /// Every envelope this double put on the wire, journey snapshots included.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="SentJourneyEnvelopes"/> is the three journey snapshots only, and the tests that
+    /// own snapshot revision behaviour want exactly those. A check on what the double sends has to
+    /// see all of it -- the handshake, the acknowledgements and the recovery responses are just as
+    /// able to drift into a shape the real control server would never send.
+    /// </remarks>
+    public IReadOnlyList<(int Connection, string MessageType, string MessageId, string WireLine)> SentEnvelopes
+    {
+        get;
+        private set;
+    } = [];
+
     public IReadOnlyList<(int Connection, string MessageType, string MessageId, string ReasonCode)> StaleGenerationRejections
     {
         get;
@@ -595,7 +610,7 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
     }
 
-    private static async Task HandleRecoverySessionRequestAsync(
+    private async Task HandleRecoverySessionRequestAsync(
         ConnectionContext context,
         JsonElement request)
     {
@@ -622,7 +637,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             .ConfigureAwait(false);
     }
 
-    private static async Task HandleRecoveryActionSubmittedAsync(
+    private async Task HandleRecoveryActionSubmittedAsync(
         ConnectionContext context,
         JsonElement request)
     {
@@ -813,7 +828,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             });
     }
 
-    private static async Task SendSlotOperationCommandAsync(ConnectionContext context)
+    private async Task SendSlotOperationCommandAsync(ConnectionContext context)
     {
         await WriteEnvelopeAsync(
             context,
@@ -884,21 +899,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             new
             {
                 planRevision = 1,
-                legs = new[]
-                {
-                    new
-                    {
-                        movementLegId,
-                        legType,
-                        stopPurposeCategory = "BUSINESS",
-                        demandId,
-                        publicStationFunction = (string?)null,
-                        sequence = 1,
-                        stationId = "ST-01",
-                        mapId = "MAP-01",
-                        state = "ACTIVE"
-                    }
-                }
+                legs = new[] { Leg(movementLegId, legType, demandId, "ACTIVE") }
             })).ConfigureAwait(false);
 
         if (SendJourneyRevisionConflict)
@@ -926,6 +927,28 @@ public sealed class FakeControlServer : IAsyncDisposable
                 })).ConfigureAwait(false);
         }
     }
+
+    /// <summary>
+    /// One <c>UpcomingStopPlanSnapshot</c> leg in the shape protocol v2 froze.
+    /// </summary>
+    /// <remarks>
+    /// The three plan snapshots this double sends used to spell the leg out inline, so v2's three
+    /// new required properties had to be added in three places and the shape could drift between
+    /// them. One builder makes the next protocol change one edit.
+    /// </remarks>
+    private static object Leg(string movementLegId, string legType, string demandId, string state) =>
+        new
+        {
+            movementLegId,
+            legType,
+            stopPurposeCategory = "BUSINESS",
+            demandId,
+            publicStationFunction = (string?)null,
+            sequence = 1,
+            stationId = "ST-01",
+            mapId = "MAP-01",
+            state
+        };
 
     private WireToGateEnvelope CreateJourneyEnvelope(
         ConnectionContext context,
@@ -963,10 +986,11 @@ public sealed class FakeControlServer : IAsyncDisposable
             SentJourneyEnvelopes = sent;
         }
 
+        Record(context, envelope, wireLine);
         await context.Writer.WriteLineAsync(wireLine).ConfigureAwait(false);
     }
 
-    private static async Task SendDemandAcceptanceSnapshotsAsync(ConnectionContext context)
+    private async Task SendDemandAcceptanceSnapshotsAsync(ConnectionContext context)
     {
         string demandId = "11111111-1111-1111-1111-111111111111";
         string movementLegId = "22222222-2222-2222-2222-222222222222";
@@ -977,21 +1001,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             new
             {
                 planRevision = 1,
-                legs = new[]
-                {
-                    new
-                    {
-                        movementLegId,
-                        legType = "TO_PICKUP",
-                        stopPurposeCategory = "BUSINESS",
-                        demandId,
-                        publicStationFunction = (string?)null,
-                        sequence = 1,
-                        stationId = "ST-01",
-                        mapId = "MAP-01",
-                        state = "ACTIVE"
-                    }
-                }
+                legs = new[] { Leg(movementLegId, "TO_PICKUP", demandId, "ACTIVE") }
             })).ConfigureAwait(false);
         await WriteEnvelopeAsync(context, CreateEnvelope(
             context,
@@ -1022,21 +1032,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             new
             {
                 planRevision = 2,
-                legs = new[]
-                {
-                    new
-                    {
-                        movementLegId,
-                        legType = "TO_PICKUP",
-                        stopPurposeCategory = "BUSINESS",
-                        demandId,
-                        publicStationFunction = (string?)null,
-                        sequence = 1,
-                        stationId = "ST-01",
-                        mapId = "MAP-01",
-                        state = "ARRIVED"
-                    }
-                }
+                legs = new[] { Leg(movementLegId, "TO_PICKUP", demandId, "ARRIVED") }
             })).ConfigureAwait(false);
     }
 
@@ -1064,9 +1060,21 @@ public sealed class FakeControlServer : IAsyncDisposable
                 expectedProtocolReleaseManifestSha256 = WireToGateRelease.ManifestSha256
             });
 
-    private static async Task WriteEnvelopeAsync(ConnectionContext context, WireToGateEnvelope envelope)
+    private async Task WriteEnvelopeAsync(ConnectionContext context, WireToGateEnvelope envelope)
     {
-        await context.Writer.WriteLineAsync(WireToGateProtocolSerializer.Serialize(envelope)).ConfigureAwait(false);
+        string wireLine = WireToGateProtocolSerializer.Serialize(envelope);
+        Record(context, envelope, wireLine);
+        await context.Writer.WriteLineAsync(wireLine).ConfigureAwait(false);
+    }
+
+    private void Record(ConnectionContext context, WireToGateEnvelope envelope, string wireLine)
+    {
+        lock (_sync)
+        {
+            var sent = SentEnvelopes.ToList();
+            sent.Add((context.ConnectionIndex, envelope.MessageType, envelope.MessageId, wireLine));
+            SentEnvelopes = sent;
+        }
     }
 
     public async ValueTask DisposeAsync()

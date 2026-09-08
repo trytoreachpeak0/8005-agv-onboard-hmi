@@ -576,27 +576,27 @@ public sealed class ReasonCodeRegistryArchitectureTests
     private static string FormatCodes(IReadOnlyCollection<string> codes) =>
         codes.Count == 0 ? "(none)" : string.Join(", ", codes);
 
+    /// <summary>
+    /// The repository root, plus the precondition that the vendored registry is under it.
+    /// </summary>
+    /// <remarks>
+    /// The walk itself lives in <see cref="ProtocolIdentityArchitectureTests.RepositoryRoot"/> --
+    /// one locator per assembly, not one per test class. The registry check stays here because it
+    /// is this class's precondition, and a missing registry should say so rather than surface as an
+    /// empty scan.
+    /// </remarks>
     private static string FindRepositoryRoot()
     {
-        foreach (string start in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
+        string root = ProtocolIdentityArchitectureTests.RepositoryRoot();
+        string registry = Path.Combine(
+            root, RegistryRelativePath.Replace('/', Path.DirectorySeparatorChar));
+        if (!File.Exists(registry))
         {
-            DirectoryInfo? directory = new(Path.GetFullPath(start));
-            while (directory is not null)
-            {
-                if (File.Exists(Path.Combine(directory.FullName, "SQCD_8005AGV.sln"))
-                    && File.Exists(Path.Combine(
-                        directory.FullName,
-                        RegistryRelativePath.Replace('/', Path.DirectorySeparatorChar))))
-                {
-                    return directory.FullName;
-                }
-
-                directory = directory.Parent;
-            }
+            throw new FileNotFoundException(
+                "Vendored protocol error registry is missing.", registry);
         }
 
-        throw new DirectoryNotFoundException(
-            "Could not locate the repository root from the test process directories.");
+        return root;
     }
 
     private static int GetLineNumber(string source, int index) =>

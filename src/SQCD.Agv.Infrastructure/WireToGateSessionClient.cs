@@ -2382,6 +2382,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// an identity rather than a nonce.
     /// </para>
     /// <para>
+    /// <b>The slot numbers are invariant today</b> -- <see cref="CreateSlotStates"/> refuses
+    /// anything but eight lockers, so that term is always <c>1..8</c> and the digest reduces to the
+    /// two configured strings. It is in the input anyway because the term that would silently stop
+    /// mattering if the slot model ever changed is exactly the one worth hashing, and because a
+    /// digest whose inputs are stated is checkable while one whose inputs are implied is not.
+    /// </para>
+    /// <para>
     /// <b>What it deliberately is not.</b> It is not a verification result. <c>FP-C7</c>
     /// (configuration activation governance) is scheduled into batch 3 with slice
     /// <c>FP-IS-14</c>, and until it lands nothing on this end verifies that the physical slots

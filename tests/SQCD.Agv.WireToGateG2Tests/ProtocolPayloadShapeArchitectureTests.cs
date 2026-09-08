@@ -1,5 +1,5 @@
 using System.Net;
-using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
@@ -29,9 +29,11 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// <b>The payloads come from the real client, not from fixtures written beside the assertion.</b> A
 /// hand-built sample proves the sample conforms. <see cref="EveryMessageTheClientSendsMatchesItsFrozenSchema"/>
 /// drives a real session against <see cref="FakeControlServer"/> over a loopback socket and reads
-/// the exact bytes the client wrote. The inbound direction is covered too: the fake's own C_TO_O
-/// envelopes are checked against the same schemas, so the double cannot drift into a shape the real
-/// server would never send and quietly keep the client's parsing honest against a fiction.
+/// the exact bytes the client wrote. The inbound direction is covered too: <b>every</b> envelope
+/// the fake puts on the wire -- handshake, acknowledgements and recovery responses, not only the
+/// three journey snapshots -- is checked against the same schemas, so the double cannot drift into
+/// a shape the real server would never send and quietly keep the client's parsing honest against a
+/// fiction.
 /// </para>
 /// <para>
 /// <b>What this checks, and what it does not.</b> It reads the frozen schema and compares the
@@ -193,8 +195,14 @@ public sealed class ProtocolPayloadShapeArchitectureTests
         FakeControlServer server = await DriveAFullSessionAsync();
         await using (server)
         {
-            string[] sent = [.. server.SentJourneyEnvelopes.Select(envelope => envelope.WireLine)];
+            string[] sent = [.. server.SentEnvelopes.Select(envelope => envelope.WireLine)];
             Assert.NotEmpty(sent);
+
+            // Not just the three journey snapshots: the handshake, the acknowledgements and the
+            // recovery responses are on the wire too, and drift there is just as invisible.
+            Assert.Contains("SessionAccepted", server.SentEnvelopes.Select(e => e.MessageType));
+            Assert.Contains("SessionReadiness", server.SentEnvelopes.Select(e => e.MessageType));
+            Assert.Contains("DurableAck", server.SentEnvelopes.Select(e => e.MessageType));
 
             string[] offences = [.. sent.SelectMany(Offences)];
 
@@ -446,9 +454,11 @@ public sealed class ProtocolPayloadShapeArchitectureTests
     private static WireToGateSafetySummaryPayload Safety() =>
         new(true, true, true, true, false, []);
 
+    /// <summary>
+    /// The same digest the product code puts on the wire, not a second implementation of it.
+    /// </summary>
     private static string Sha256Of(string value) =>
-        Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(value)))
-            .ToLowerInvariant();
+        WireToGateProtocolSerializer.ComputeSha256(Encoding.UTF8.GetBytes(value));
 
     private static async Task WaitUntilAsync(Func<bool> predicate, CancellationToken cancellationToken)
     {
@@ -492,6 +502,12 @@ public sealed class ProtocolPayloadShapeArchitectureTests
         JsonElement schema)
     {
         List<string> offences = [];
+        if (value.ValueKind == JsonValueKind.Null)
+        {
+            // The schema's nullable branch permits it; there is nothing further to check.
+            return offences;
+        }
+
         JsonElement resolved = Resolve(schema);
 
         if (value.ValueKind == JsonValueKind.Array)
@@ -599,12 +615,39 @@ public sealed class ProtocolPayloadShapeArchitectureTests
 
     /// <summary>
     /// One <c>$ref</c> hop into <c>common/types.schema.json</c>, which is as deep as the protocol's
-    /// own payloads go. Anything else is returned unchanged and simply goes unchecked -- stated
-    /// rather than hidden, because a resolver that silently returned an empty schema would make this
-    /// whole class quietly weaker.
+    /// own payloads go, plus the <c>anyOf [ &lt;something&gt;, null ]</c> wrapper it uses for a
+    /// nullable field.
     /// </summary>
+    /// <remarks>
+    /// <b>The <c>anyOf</c> unwrap is load-bearing, not tidiness.</b> A nullable object -- v2 writes
+    /// <c>problem</c> and <c>expectedProtocolReleaseIdentity</c> that way -- arrives as a node with
+    /// no <c>required</c> of its own, so without unwrapping it <see cref="Offences"/> returns
+    /// nothing for the whole subtree and reports success. That is the exact failure mode this class
+    /// exists to prevent, one level down.
+    /// <para>
+    /// Anything the two hops do not cover is returned unchanged and simply goes unchecked --
+    /// stated rather than hidden, because a resolver that silently returned an empty schema would
+    /// make this whole class quietly weaker.
+    /// </para>
+    /// </remarks>
     private static JsonElement Resolve(JsonElement schema)
     {
+        if (schema.TryGetProperty("anyOf", out JsonElement branches))
+        {
+            foreach (JsonElement branch in branches.EnumerateArray())
+            {
+                if (branch.TryGetProperty("type", out JsonElement type)
+                    && string.Equals(type.GetString(), "null", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                return Resolve(branch);
+            }
+
+            return schema;
+        }
+
         if (!schema.TryGetProperty("$ref", out JsonElement reference))
         {
             return schema;
