@@ -7,9 +7,44 @@ namespace SQCD.Agv.UnitTests;
 /// Keeps the formal WIRE_TO_GATE error-code boundary tied to the vendored
 /// protocol release. This is intentionally a source-level gate because the
 /// current onboard implementation does not use a JSON Schema runtime library.
+///
+/// Every rule below keys off a syntactic signal that only a reason code
+/// carries -- an identifier literally named reasonCode, a protocol payload
+/// constructor, a named send API -- and is applied to every file under src/.
+/// Scanning is deliberately NOT gated on a file being named WireToGate*: a
+/// reason code must not escape the gate merely by living somewhere else.
+///
+/// Two values have no such signal at their site, so their rules are anchored
+/// to a named member instead. Anchors are asserted to still match
+/// (<see cref="AnchoredScanRulesStillMatchTheirTargets"/>), so reshaping that
+/// code makes the gate fail loudly rather than silently go blind. Anchor on a
+/// member name, never on the shape of an expression.
+///
+/// Local diagnostic codes are not protocol bytes and match no rule here:
+/// SafetyRules returns SLOT_NOT_EMPTY / SLOT_HAS_NO_CARGO for the legacy HMI
+/// path, and WireToGateBusinessService throws codes as exception messages.
+/// No exemption list is needed today. If a future local code does match a
+/// rule, add an explicit exemption with its reason rather than narrowing the
+/// rule -- narrowing silently drops coverage for real protocol codes too.
 /// </summary>
 public sealed class ReasonCodeRegistryArchitectureTests
 {
+    private const string RegistryRelativePath =
+        "vendor/8005-agv-protocol/protocol-v0.1.1/errors/error-codes.json";
+
+    /// <summary>
+    /// Predicate whose whole purpose is "is this value a protocol error
+    /// code". It is a second copy of the registry living in product code, so
+    /// it must equal the registry exactly, not merely be a subset of it.
+    /// </summary>
+    private const string ProtocolErrorCodePredicate = "IsProtocolErrorCode";
+
+    /// <summary>Returns the slot precondition reason code, or null.</summary>
+    private const string SlotPreconditionMethod = "ValidateBeforeOperation";
+
+    /// <summary>Carries a reasonCodes collection as a positional argument.</summary>
+    private const string ProtocolSlotStateType = "ProtocolSlotState";
+
     private static readonly Regex ReasonCodeAssignmentRegex = new(
         @"\b(?:reasonCode|ReasonCode)\s*(?:=|:)\s*""(?<code>[A-Za-z][A-Za-z0-9_]*)""",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -42,12 +77,12 @@ public sealed class ReasonCodeRegistryArchitectureTests
         @"\b(?:reasons|reasonCodes|ReasonCodes)\.Add\s*\(\s*""(?<code>[A-Za-z][A-Za-z0-9_]*)""",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private static readonly Regex SlotReasonReturnRegex = new(
-        @"\breturn\s+(?:command\.ExpectedOccupied\s*\?\s*)?""(?<code>[A-Za-z][A-Za-z0-9_]*)""(?:\s*:\s*""(?<code>[A-Za-z][A-Za-z0-9_]*)"")?\s*;",
+    private static readonly Regex ReturnLiteralRegex = new(
+        @"\breturn\s+""(?<code>[A-Za-z][A-Za-z0-9_]*)""\s*;",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private static readonly Regex UnknownSlotReasonListRegex = new(
-        @"\?\s*\[\]\s*:\s*\[\s*""(?<code>[A-Za-z][A-Za-z0-9_]*)""",
+    private static readonly Regex CollectionLiteralRegex = new(
+        @"\[[^\]]*\]",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     [Fact]
@@ -78,6 +113,109 @@ public sealed class ReasonCodeRegistryArchitectureTests
         InvalidDataException error = Assert.Throws<InvalidDataException>(
             () => AssertAllRegistered(literals, registry));
         Assert.Contains("NOT_IN_PROTOCOL_REGISTRY", error.Message);
+    }
+
+    /// <summary>
+    /// Pins the coverage hole that gating the scan on a WireToGate* file name
+    /// would reopen: the same declaration must be caught wherever it lives.
+    /// </summary>
+    [Fact]
+    public void ScannerGateCoversFilesOutsideTheWireToGateNamingConvention()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        HashSet<string> registry = LoadRegistry(repositoryRoot);
+        const string syntheticSource = """
+            var reasonCode = "NOT_IN_PROTOCOL_REGISTRY";
+            """;
+
+        foreach (string path in new[]
+                 {
+                     "src/SQCD.Agv.Core/SafetyRules.cs",
+                     "src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs",
+                 })
+        {
+            List<SourceReasonCode> literals = ScanSourceText(syntheticSource, path);
+
+            Assert.NotEmpty(literals);
+            InvalidDataException error = Assert.Throws<InvalidDataException>(
+                () => AssertAllRegistered(literals, registry));
+            Assert.Contains("NOT_IN_PROTOCOL_REGISTRY", error.Message);
+            Assert.Contains(path, error.Message);
+        }
+    }
+
+    /// <summary>
+    /// The inline predicate decides whether an inbound reason code is a
+    /// protocol error code at all. A registry entry it does not list is
+    /// rejected as PROTOCOL_SCHEMA_INVALID, so subset is not enough here --
+    /// the two sets must be equal in both directions.
+    /// </summary>
+    [Fact]
+    public void InlineProtocolErrorCodeSetMatchesVendoredRegistry()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        HashSet<string> registry = LoadRegistry(repositoryRoot);
+        string source = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "SQCD.Agv.Infrastructure",
+            "WireToGateSessionClient.cs"));
+
+        string body = ExtractExpressionBody(source, ProtocolErrorCodePredicate);
+        Assert.False(
+            string.IsNullOrEmpty(body),
+            $"'{ProtocolErrorCodePredicate}' no longer exists in WireToGateSessionClient.cs. "
+            + "This gate anchors on it; update the anchor rather than deleting the check.");
+
+        HashSet<string> inline = StringLiteralRegex
+            .Matches(body)
+            .Select(match => match.Groups["code"].Value)
+            .ToHashSet(StringComparer.Ordinal);
+
+        string[] notInRegistry = inline
+            .Except(registry, StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+        string[] notInline = registry
+            .Except(inline, StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.True(
+            notInRegistry.Length == 0 && notInline.Length == 0,
+            $"'{ProtocolErrorCodePredicate}' is a second copy of the error-code registry and has drifted."
+            + $"{Environment.NewLine}Listed inline but absent from the registry: {FormatCodes(notInRegistry)}"
+            + $"{Environment.NewLine}In the registry but not listed inline: {FormatCodes(notInline)}");
+    }
+
+    /// <summary>
+    /// Two rules are anchored to a named member because the value they carry
+    /// has no reason-code signal at its site. If either anchor stops matching,
+    /// the gate has gone blind there -- fail instead of passing quietly.
+    /// </summary>
+    [Fact]
+    public void AnchoredScanRulesStillMatchTheirTargets()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+
+        string executor = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "SQCD.Agv.Application",
+            "WireToGateSlotOperationExecutor.cs"));
+        string preconditionBody = ExtractBlockBody(executor, SlotPreconditionMethod);
+        Assert.False(
+            string.IsNullOrEmpty(preconditionBody),
+            $"'{SlotPreconditionMethod}' no longer exists in WireToGateSlotOperationExecutor.cs. "
+            + "This gate anchors on it; update the anchor rather than deleting the check.");
+        Assert.NotEmpty(ReturnLiteralRegex.Matches(preconditionBody));
+
+        string sessionClient = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "SQCD.Agv.Infrastructure",
+            "WireToGateSessionClient.cs"));
+        Assert.NotEmpty(ScanProtocolSlotStateReasonCodes(sessionClient, "anchor-probe.cs"));
     }
 
     private static SourceReasonCode[] ScanSource(string repositoryRoot)
@@ -113,45 +251,70 @@ public sealed class ReasonCodeRegistryArchitectureTests
         string path,
         ICollection<SourceReasonCode> literals)
     {
-        bool formalWireToGateFile = Path.GetFileName(path)
-            .StartsWith("WireToGate", StringComparison.OrdinalIgnoreCase);
-
-        // These patterns identify values at a protocol payload boundary. They
-        // are applied to every source file so a future protocol payload cannot
-        // evade the gate merely because it lives in a different project.
+        // Global rules. Each keys off a syntactic signal only a reason code
+        // carries, so they are safe -- and necessary -- to apply everywhere.
         AddMatches(source, path, literals, WireProblemPayloadRegex, "problem.reasonCode");
         AddMatches(source, path, literals, WireBlockingFactPayloadRegex, "blockingFact.reasonCode");
         AddMatches(source, path, literals, RecoveryDecisionRegex, "recovery decision reasonCode");
         AddMatches(source, path, literals, OperationRejectedRegex, "operationRejected.reasonCode");
-
-        if (!formalWireToGateFile)
-        {
-            return;
-        }
-
         AddMatches(source, path, literals, ReasonCodeAssignmentRegex, "reasonCode assignment");
+        AddMatches(source, path, literals, SafetyReasonAdditionRegex, "reasonCodes addition");
         AddListMatches(source, path, literals, ReasonCodesListAssignmentRegex, "reasonCodes list");
 
-        if (path.EndsWith(
-                "src/SQCD.Agv.Infrastructure/WireToGateSafetyEvaluator.cs",
-                StringComparison.OrdinalIgnoreCase))
+        // Anchored rules. The values below are reason codes by contract of the
+        // member that produces them, with nothing at the site to say so.
+        string preconditionBody = ExtractBlockBody(source, SlotPreconditionMethod);
+        if (preconditionBody.Length > 0)
         {
-            AddMatches(source, path, literals, SafetyReasonAdditionRegex, "safety reasonCodes");
+            int offset = source.IndexOf(preconditionBody, StringComparison.Ordinal);
+            foreach (Match match in ReturnLiteralRegex.Matches(preconditionBody))
+            {
+                Capture capture = match.Groups["code"];
+                literals.Add(new SourceReasonCode(
+                    capture.Value,
+                    path,
+                    GetLineNumber(source, offset + capture.Index),
+                    $"{SlotPreconditionMethod} result reasonCode"));
+            }
         }
 
-        if (path.EndsWith(
-                "src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs",
-                StringComparison.OrdinalIgnoreCase))
+        foreach (SourceReasonCode code in ScanProtocolSlotStateReasonCodes(source, path))
         {
-            AddMatches(source, path, literals, SlotReasonReturnRegex, "slot result reasonCode");
+            literals.Add(code);
+        }
+    }
+
+    private static List<SourceReasonCode> ScanProtocolSlotStateReasonCodes(string source, string path)
+    {
+        List<SourceReasonCode> literals = [];
+        Regex constructor = new(
+            $@"\bnew\s+{Regex.Escape(ProtocolSlotStateType)}\s*\(",
+            RegexOptions.CultureInvariant);
+
+        foreach (Match match in constructor.Matches(source))
+        {
+            int open = source.IndexOf('(', match.Index);
+            if (open < 0)
+            {
+                continue;
+            }
+
+            string arguments = ExtractBalanced(source, open, '(', ')');
+            foreach (Match list in CollectionLiteralRegex.Matches(arguments))
+            {
+                foreach (Match literal in StringLiteralRegex.Matches(list.Value))
+                {
+                    int index = open + list.Index + literal.Groups["code"].Index;
+                    literals.Add(new SourceReasonCode(
+                        literal.Groups["code"].Value,
+                        path,
+                        GetLineNumber(source, index),
+                        $"{ProtocolSlotStateType} reasonCodes"));
+                }
+            }
         }
 
-        if (path.EndsWith(
-                "src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs",
-                StringComparison.OrdinalIgnoreCase))
-        {
-            AddMatches(source, path, literals, UnknownSlotReasonListRegex, "slot state reasonCodes");
-        }
+        return literals;
     }
 
     private static void AddMatches(
@@ -196,15 +359,163 @@ public sealed class ReasonCodeRegistryArchitectureTests
         }
     }
 
+    /// <summary>
+    /// Returns the body of an expression-bodied member, from its "=>" to the
+    /// terminating semicolon, or an empty string when the member is absent.
+    /// </summary>
+    private static string ExtractExpressionBody(string source, string memberName)
+    {
+        Match declaration = Regex.Match(
+            source,
+            $@"\b{Regex.Escape(memberName)}\s*\([^)]*\)\s*=>",
+            RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        if (!declaration.Success)
+        {
+            return string.Empty;
+        }
+
+        int start = declaration.Index + declaration.Length;
+        for (int i = start; i < source.Length; i++)
+        {
+            char character = source[i];
+            if (character == '"')
+            {
+                i = SkipStringLiteral(source, i);
+                continue;
+            }
+
+            if (character == '/' && i + 1 < source.Length)
+            {
+                i = SkipComment(source, i);
+                continue;
+            }
+
+            if (character == ';')
+            {
+                return source[start..i];
+            }
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>
+    /// Returns the braced body of a method declaration, or an empty string
+    /// when the method is absent. Matches the declaration rather than a call
+    /// site by requiring an access modifier ahead of the name.
+    /// </summary>
+    private static string ExtractBlockBody(string source, string methodName)
+    {
+        Match declaration = Regex.Match(
+            source,
+            $@"\b(?:private|public|internal|protected)[^;{{}}()]*\b{Regex.Escape(methodName)}\s*\(",
+            RegexOptions.CultureInvariant | RegexOptions.Singleline);
+        if (!declaration.Success)
+        {
+            return string.Empty;
+        }
+
+        int parameters = source.IndexOf('(', declaration.Index);
+        if (parameters < 0)
+        {
+            return string.Empty;
+        }
+
+        int afterParameters = parameters + ExtractBalanced(source, parameters, '(', ')').Length;
+        int open = source.IndexOf('{', afterParameters);
+        return open < 0 ? string.Empty : ExtractBalanced(source, open, '{', '}');
+    }
+
+    /// <summary>
+    /// Returns the text from <paramref name="open"/> through its matching
+    /// close character, skipping string literals and comments.
+    /// </summary>
+    private static string ExtractBalanced(string source, int open, char openChar, char closeChar)
+    {
+        int depth = 0;
+        for (int i = open; i < source.Length; i++)
+        {
+            char character = source[i];
+            if (character == '"')
+            {
+                i = SkipStringLiteral(source, i);
+                continue;
+            }
+
+            if (character == '/' && i + 1 < source.Length)
+            {
+                i = SkipComment(source, i);
+                continue;
+            }
+
+            if (character == openChar)
+            {
+                depth++;
+            }
+            else if (character == closeChar && --depth == 0)
+            {
+                return source[open..(i + 1)];
+            }
+        }
+
+        return string.Empty;
+    }
+
+    /// <summary>Returns the index of the closing quote of a string literal.</summary>
+    private static int SkipStringLiteral(string source, int quote)
+    {
+        bool verbatim = quote > 0 && source[quote - 1] == '@';
+        for (int i = quote + 1; i < source.Length; i++)
+        {
+            if (!verbatim && source[i] == '\\')
+            {
+                i++;
+                continue;
+            }
+
+            if (source[i] != '"')
+            {
+                continue;
+            }
+
+            if (verbatim && i + 1 < source.Length && source[i + 1] == '"')
+            {
+                i++;
+                continue;
+            }
+
+            return i;
+        }
+
+        return source.Length - 1;
+    }
+
+    /// <summary>
+    /// Returns the last index of a comment starting at <paramref name="slash"/>,
+    /// or that index unchanged when it does not start one.
+    /// </summary>
+    private static int SkipComment(string source, int slash)
+    {
+        if (source[slash + 1] == '/')
+        {
+            int newline = source.IndexOf('\n', slash);
+            return newline < 0 ? source.Length - 1 : newline;
+        }
+
+        if (source[slash + 1] == '*')
+        {
+            int end = source.IndexOf("*/", slash + 2, StringComparison.Ordinal);
+            return end < 0 ? source.Length - 1 : end + 1;
+        }
+
+        return slash;
+    }
+
     private static HashSet<string> LoadRegistry(string repositoryRoot)
     {
         string registryPath = Path.Combine(
             repositoryRoot,
-            "vendor",
-            "8005-agv-protocol",
-            "protocol-v0.1.1",
-            "errors",
-            "error-codes.json");
+            RegistryRelativePath.Replace('/', Path.DirectorySeparatorChar));
         if (!File.Exists(registryPath))
         {
             throw new FileNotFoundException("Vendored protocol error registry is missing.", registryPath);
@@ -262,6 +573,9 @@ public sealed class ReasonCodeRegistryArchitectureTests
             $"WIRE_TO_GATE reasonCode literals are missing from the vendored registry:{Environment.NewLine}{details}");
     }
 
+    private static string FormatCodes(IReadOnlyCollection<string> codes) =>
+        codes.Count == 0 ? "(none)" : string.Join(", ", codes);
+
     private static string FindRepositoryRoot()
     {
         foreach (string start in new[] { AppContext.BaseDirectory, Directory.GetCurrentDirectory() })
@@ -272,11 +586,7 @@ public sealed class ReasonCodeRegistryArchitectureTests
                 if (File.Exists(Path.Combine(directory.FullName, "SQCD_8005AGV.sln"))
                     && File.Exists(Path.Combine(
                         directory.FullName,
-                        "vendor",
-                        "8005-agv-protocol",
-                        "protocol-v0.1.1",
-                        "errors",
-                        "error-codes.json")))
+                        RegistryRelativePath.Replace('/', Path.DirectorySeparatorChar))))
                 {
                     return directory.FullName;
                 }
