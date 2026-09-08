@@ -599,6 +599,160 @@ public sealed class WireToGateG2Tests
     }
 
     /// <summary>
+    /// A pickup stop that turns out to have nothing to load. The entry is open, no slot operation
+    /// was ever commanded, and until now that was the one state with no way out: the cancellation
+    /// button only appeared once a load was already underway, so the journey held the vehicle and
+    /// the station until somebody drove a recovery by hand.
+    ///
+    /// The path is deliberately short. No door was opened, so there is nothing to clear, no
+    /// recovery vector to journal and no LoadCancellationResult to send -- that message could not
+    /// carry this case anyway, its slotResults being minItems 1. The authorization is the whole
+    /// handshake.
+    /// </summary>
+    [Fact]
+    public async Task CancellingAtAStopWithNothingToLoadNeedsNoSlotOperationAndTouchesNoIo()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        const string operatorVariable = "W2G_G2_BEFORE_LOAD_OPERATOR";
+        string? previousOperator = Environment.GetEnvironmentVariable(operatorVariable);
+        Environment.SetEnvironmentVariable(operatorVariable, "operator-001");
+
+        try
+        {
+            await using FakeControlServer server = new(IPAddress.Loopback)
+            {
+                SendReadinessAfterRecoveryAck = true,
+                SendJourneySnapshotsAfterRecovery = true,
+                SendSublotEntryRequestAfterRecovery = true,
+                RespondToLoadCancellationRequests = true
+            };
+            FakeIoModuleClient io = new();
+            NullLogger logger = new();
+            await using WireToGateSessionService session = new(
+                CreateSessionOptions(server),
+                io,
+                new SqliteWireToGateJournal(NewJournalPath()),
+                logger,
+                new SystemClock(),
+                new DelegateVehicleSafetySignalProvider(() => true),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(500));
+            await using WireToGateBusinessService business = new(
+                session,
+                io,
+                logger,
+                new SystemClock(),
+                () => true,
+                new WireToGateSlotOperationExecutorOptions(
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromMilliseconds(10),
+                    TimeSpan.FromSeconds(30)),
+                operatorVariable);
+
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            await WaitUntilAsync(() => business.CanSubmitSublot, testToken);
+
+            // The entry is open and nothing has been commanded to a slot. This is the assertion the
+            // change exists for: before it, the button was bound to an unsettled load operation and
+            // stayed hidden here.
+            Assert.True(business.CanRequestLoadCancellation);
+            Assert.Equal("SUBLOT-001", business.ExpectedSublot);
+            Assert.Equal(0, io.UnlockCount);
+
+            Assert.True(await business.RequestLoadCancellationAsync(
+                "现场确认本站没有要装的货。",
+                testToken));
+
+            // Raised with no attempt id: that null is what tells the server this is the before-load
+            // path, and it is what lets the authorization stand as the whole handshake.
+            Assert.Equal("(null)", Assert.Single(server.ReceivedLoadCancellationAttemptIds));
+            Assert.Contains(
+                server.Received,
+                item => item.MessageType == "LoadCancellationStartRequested");
+            // Nothing to clear means no result and no IO. A result here would be a claim about
+            // slots this cancellation never touched.
+            Assert.DoesNotContain(
+                server.Received,
+                item => item.MessageType == "LoadCancellationResult");
+            Assert.Equal(0, io.UnlockCount);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(operatorVariable, previousOperator);
+        }
+    }
+
+    /// <summary>
+    /// The same stop, but the server refuses. The peer must report the refusal and change nothing:
+    /// a rejected cancellation leaves the entry open, because the demand is still the vehicle's.
+    /// </summary>
+    [Fact]
+    public async Task ARefusedBeforeLoadCancellationLeavesTheStopExactlyAsItWas()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        const string operatorVariable = "W2G_G2_BEFORE_LOAD_REFUSED_OPERATOR";
+        string? previousOperator = Environment.GetEnvironmentVariable(operatorVariable);
+        Environment.SetEnvironmentVariable(operatorVariable, "operator-001");
+
+        try
+        {
+            await using FakeControlServer server = new(IPAddress.Loopback)
+            {
+                SendReadinessAfterRecoveryAck = true,
+                SendJourneySnapshotsAfterRecovery = true,
+                SendSublotEntryRequestAfterRecovery = true,
+                RespondToLoadCancellationRequests = true,
+                LoadCancellationDecision = "REJECTED"
+            };
+            FakeIoModuleClient io = new();
+            NullLogger logger = new();
+            await using WireToGateSessionService session = new(
+                CreateSessionOptions(server),
+                io,
+                new SqliteWireToGateJournal(NewJournalPath()),
+                logger,
+                new SystemClock(),
+                new DelegateVehicleSafetySignalProvider(() => true),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(500));
+            await using WireToGateBusinessService business = new(
+                session,
+                io,
+                logger,
+                new SystemClock(),
+                () => true,
+                new WireToGateSlotOperationExecutorOptions(
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromMilliseconds(10),
+                    TimeSpan.FromSeconds(30)),
+                operatorVariable);
+
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            await WaitUntilAsync(() => business.CanSubmitSublot, testToken);
+
+            Assert.False(await business.RequestLoadCancellationAsync(
+                "现场确认本站没有要装的货。",
+                testToken));
+
+            Assert.True(business.CanSubmitSublot);
+            Assert.Equal("SUBLOT-001", business.ExpectedSublot);
+            Assert.Equal(0, io.UnlockCount);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(operatorVariable, previousOperator);
+        }
+    }
+
+    /// <summary>
     /// The recovery entry has to open on a session that turned RECOVERY_REQUIRED *while it was
     /// running*, not only on one that handshook that way. On the real vehicle the trigger is a
     /// refused load result: the server applies it, decides the session needs recovery, and appends

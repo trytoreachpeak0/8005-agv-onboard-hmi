@@ -15,8 +15,21 @@ public sealed partial class WireToGateBusinessService
     private WireToGateRecoveryState _lastRecoveryState = WireToGateRecoveryState.Empty;
 
     public bool CanRequestLoadCancellation =>
-        CanUseRecoveryOperator(requireProof: false)
-        && HasRecoveryVectorOrLoadOperation(WireToGateRecoveryVectorTypes.LoadCancellation);
+        (CanUseRecoveryOperator(requireProof: false)
+            && HasRecoveryVectorOrLoadOperation(WireToGateRecoveryVectorTypes.LoadCancellation))
+        || (CanUseStopOperator() && HasSublotEntryPending);
+
+    /// <summary>
+    /// The stop is waiting for a sublot and nothing has been commanded to a slot yet. This is
+    /// exactly the moment an operator discovers the stop has nothing to load, and until now it was
+    /// the one moment with no way out: the entry stayed open, the journey held the vehicle and the
+    /// pickup station, and the cancellation button only appeared once a load was already underway.
+    /// The entry request carries the demand, so nothing else is needed to raise it.
+    /// </summary>
+    private bool HasSublotEntryPending =>
+        Volatile.Read(ref _lastRecoveryState).RecoveryVector is null
+        && Volatile.Read(ref _lastRecoveryState).OperationContext is null
+        && CanSubmitSublot;
 
     public bool CanRequestLoadCompensation =>
         CanUseRecoveryOperator(requireProof: true)
@@ -110,6 +123,23 @@ public sealed partial class WireToGateBusinessService
         {
             _recoveryRequestGate.Release();
         }
+    }
+
+    /// <summary>
+    /// Cancelling a stop that has nothing to load is ordinary stop work, not recovery. It opens no
+    /// slot, needs no authentication proof, and leaves no physical state behind for anyone to
+    /// reconcile. Gating it on <c>ResumeAfterRepairEnabled</c> -- which ships false, so the entry
+    /// would never appear on a production vehicle -- would leave the defect this path exists to
+    /// fix exactly where it was. The session still has to be usable and the operator still has to
+    /// be identified.
+    /// </summary>
+    private bool CanUseStopOperator()
+    {
+        WireToGateSessionSnapshot session = _session.Current;
+        return session.Connected
+            && session.Readiness == WireToGateSessionReadiness.Ready
+            && !string.IsNullOrWhiteSpace(
+                Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable));
     }
 
     private bool CanUseRecoveryOperator(bool requireProof)
@@ -212,6 +242,16 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
         }
 
+        // Nothing commanded to a slot: the cancellation is the short path below, which finishes at
+        // the authorization. Deciding it here rather than inside the long path keeps
+        // RequireUnsettledLoadOperation as the hard guard it is -- reaching it without an operation
+        // is still a bug, just no longer this one.
+        if (state.OperationContext is null && state.UnsettledSlotOperationAttemptId is null)
+        {
+            return await RequestLoadCancellationBeforeLoadAsync(reason, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         WireToGateRecoveryOperationContext operation = RequireUnsettledLoadOperation(state);
         WireToGateOperatorContextPayload operatorContext = ReadOperatorContext();
         string cancellationId = StableUuid(
@@ -268,6 +308,54 @@ public sealed partial class WireToGateBusinessService
                     result,
                     cancellationToken))
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Cancels a stop that has nothing to load, before any slot operation was commanded. It is a
+    /// far shorter path than the cancellation that interrupts a load, and deliberately so: no door
+    /// was opened, so there is no emptiness to prove, no recovery vector to journal and no
+    /// LoadCancellationResult to send -- that message could not carry this case anyway, its
+    /// slotResults being minItems 1. The authorization ends the journey on the server, and the
+    /// operator sees the stop clear.
+    /// </summary>
+    private async Task<bool> RequestLoadCancellationBeforeLoadAsync(
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        WireToGateSublotEntryRequest request = Volatile.Read(ref _currentEntryRequest)
+            ?? throw new InvalidOperationException("WIRE_TO_GATE_JOURNEY_NOT_READY");
+        WireToGateOperatorContextPayload operatorContext = ReadOperatorContext();
+        string cancellationId = StableUuid($"{request.DemandId}|before-load|load-cancellation");
+        LoadCancellationStartRequestedPayload payload = new(
+            cancellationId,
+            request.DemandId,
+            null,
+            operatorContext,
+            RequireReason(reason));
+        LoadCancellationAuthorizationPayload authorization = await _session
+            .RequestLoadCancellationStartAsync(cancellationId, payload, cancellationToken)
+            .ConfigureAwait(false);
+        if (authorization.Decision == "REJECTED")
+        {
+            PublishOperatorEvent(
+                $"load-cancellation-rejected:{cancellationId}",
+                "RECOVERY_BLOCKED",
+                $"服务端拒绝取消本站装货：{authorization.Problem?.ReasonCode ?? "ACTION_NOT_ALLOWED_IN_STATE"}。 ");
+            return false;
+        }
+
+        // An authorization naming slots or an attempt would mean the server matched this request to
+        // a load that is actually underway, and clearing those slots is not what this path does.
+        if (authorization.Slots.Count != 0 || authorization.SlotOperationAttemptId is not null)
+        {
+            throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
+        }
+
+        PublishOperatorEvent(
+            $"load-cancellation-before-load:{cancellationId}",
+            "RECOVERY_VECTOR_AUTHORIZED",
+            "本站装货已取消，车辆可以接下一单。 ");
+        return true;
     }
 
     private async Task<bool> RequestLoadCorrectionCoreAsync(

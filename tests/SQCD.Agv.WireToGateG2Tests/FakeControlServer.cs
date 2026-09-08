@@ -70,6 +70,29 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool SendSlotOperationCommandAfterRecovery { get; set; }
 
+    /// <summary>
+    /// Sends a SublotEntryRequested after the journey snapshots, leaving the stop waiting for an
+    /// operator to enter a sublot with nothing yet commanded to a slot. That is the state a
+    /// cancellation raised before any load starts from.
+    /// </summary>
+    public bool SendSublotEntryRequestAfterRecovery { get; set; }
+
+    /// <summary>
+    /// Answers LoadCancellationStartRequested. AUTHORIZED with no slots and no attempt is the
+    /// server's whole side of the before-load cancellation: nothing was opened, so the peer has
+    /// nothing to clear and sends no result.
+    /// </summary>
+    public bool RespondToLoadCancellationRequests { get; set; }
+
+    public string LoadCancellationDecision { get; set; } = "AUTHORIZED";
+
+    public IReadOnlyList<string> ReceivedLoadCancellationAttemptIds =>
+        _receivedLoadCancellationAttemptIds.ToArray();
+
+    private readonly ConcurrentQueue<string> _receivedLoadCancellationAttemptIds = new();
+
+    private static readonly string[] SublotEntryMethods = ["SCANNER", "KEYBOARD"];
+
     public bool RespondToRecoveryRequests { get; set; }
 
     public bool RespondToManualChargingReturnToServiceRequests { get; set; }
@@ -329,6 +352,10 @@ public sealed class FakeControlServer : IAsyncDisposable
                         break;
                     case "ExceptionRecoverySessionRequested" when RespondToRecoveryRequests:
                         await HandleRecoverySessionRequestAsync(context, root).ConfigureAwait(false);
+                        break;
+                    case "LoadCancellationStartRequested" when RespondToLoadCancellationRequests:
+                        await HandleLoadCancellationStartRequestedAsync(context, root)
+                            .ConfigureAwait(false);
                         break;
                     case "RecoveryActionSubmitted" when RespondToRecoveryRequests:
                         await HandleRecoveryActionSubmittedAsync(context, root).ConfigureAwait(false);
@@ -598,6 +625,42 @@ public sealed class FakeControlServer : IAsyncDisposable
                         : null,
                     slots = payload.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()).ToArray(),
                     recoverySessionRevision = 1
+                }))
+            .ConfigureAwait(false);
+    }
+
+    private async Task HandleLoadCancellationStartRequestedAsync(
+        ConnectionContext context,
+        JsonElement request)
+    {
+        JsonElement payload = request.GetProperty("payload");
+        string cancellationId = payload.GetProperty("cancellationId").GetString()!;
+        string demandId = payload.GetProperty("demandId").GetString()!;
+        JsonElement attempt = payload.GetProperty("slotOperationAttemptId");
+        string? attemptId = attempt.ValueKind == JsonValueKind.Null ? null : attempt.GetString();
+        _receivedLoadCancellationAttemptIds.Enqueue(attemptId ?? "(null)");
+        bool authorized = LoadCancellationDecision == "AUTHORIZED";
+        await WriteEnvelopeAsync(
+            context,
+            CreateEnvelope(
+                context,
+                "LoadCancellationAuthorization",
+                request.GetProperty("messageId").GetString(),
+                new
+                {
+                    cancellationId,
+                    decision = LoadCancellationDecision,
+                    demandId,
+                    slotOperationAttemptId = attemptId,
+                    slots = Array.Empty<int>(),
+                    problem = authorized
+                        ? null
+                        : new
+                        {
+                            reasonCode = "ACTION_NOT_ALLOWED_IN_STATE",
+                            fieldPath = "payload.demandId",
+                            displayMessage = "当前状态不允许取消装货。"
+                        }
                 }))
             .ConfigureAwait(false);
     }
@@ -875,6 +938,23 @@ public sealed class FakeControlServer : IAsyncDisposable
                     }
                 }
             })).ConfigureAwait(false);
+
+        if (SendSublotEntryRequestAfterRecovery)
+        {
+            await WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(
+                context,
+                "SublotEntryRequested",
+                new
+                {
+                    demandId,
+                    operationSessionId = "33333333-3333-3333-3333-333333333333",
+                    stationId = "ST-01",
+                    worklistRevision = 1,
+                    expectedSublot = "SUBLOT-001",
+                    entryMethods = SublotEntryMethods,
+                    expiresOnRevisionChange = true
+                })).ConfigureAwait(false);
+        }
 
         if (SendJourneyRevisionConflict)
         {
