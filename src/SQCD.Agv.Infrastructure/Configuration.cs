@@ -389,6 +389,14 @@ public sealed class OnboardAutomationSettings
 
     public int Port { get; init; } = 58_007;
 
+    /// <summary>
+    /// Where the independent safety review that permits this interface in
+    /// Production is recorded.  It is deliberately a value nobody can supply by
+    /// accident: leaving it empty, or leaving a template placeholder in it,
+    /// keeps the Production ban in force.
+    /// </summary>
+    public string? ProductionReviewReference { get; init; }
+
     internal void Validate(
         bool production,
         bool wireToGateEnabled,
@@ -400,10 +408,11 @@ public sealed class OnboardAutomationSettings
             return;
         }
 
-        if (production)
+        if (production && OnboardSettings.IsPlaceholderValue(ProductionReviewReference))
         {
             throw new InvalidDataException(
-                "Production环境禁止启用车载端自动化loopback接口，除非完成独立安全评审。 ");
+                "Production环境启用车载端自动化loopback接口，必须在automation.productionReviewReference中"
+                + "记录已完成的独立安全评审出处。 ");
         }
 
         if (!IPAddress.TryParse(ListenAddress, out IPAddress? address)

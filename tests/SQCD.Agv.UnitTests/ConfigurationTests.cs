@@ -103,6 +103,87 @@ public sealed class ConfigurationTests
     }
 
     [Fact]
+    public void ProductionRejectsAutomationWithoutRecordedSafetyReview()
+    {
+        using EnvironmentVariableScope credentials = new();
+        OnboardSettings settings = CreateValidProductionSettings(
+            automation: new OnboardAutomationSettings { Enabled = true });
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(settings.Validate);
+
+        Assert.Contains("独立安全评审", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("REPLACE_WITH_REVIEW")]
+    [InlineData("TODO")]
+    public void ProductionRejectsAutomationWithPlaceholderSafetyReview(string reference)
+    {
+        using EnvironmentVariableScope credentials = new();
+        OnboardSettings settings = CreateValidProductionSettings(
+            automation: new OnboardAutomationSettings
+            {
+                Enabled = true,
+                ProductionReviewReference = reference
+            });
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(settings.Validate);
+
+        Assert.Contains("独立安全评审", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ProductionAcceptsAutomationWithRecordedSafetyReview()
+    {
+        using EnvironmentVariableScope credentials = new();
+        OnboardSettings settings = CreateValidProductionSettings(
+            automation: new OnboardAutomationSettings
+            {
+                Enabled = true,
+                ProductionReviewReference = "8005-agv-onboard-hmi#14"
+            });
+
+        settings.Validate();
+    }
+
+    [Fact]
+    public void RecordedSafetyReviewDoesNotWaiveTheLoopbackBinding()
+    {
+        using EnvironmentVariableScope credentials = new();
+        OnboardSettings settings = CreateValidProductionSettings(
+            automation: new OnboardAutomationSettings
+            {
+                Enabled = true,
+                ListenAddress = "0.0.0.0",
+                ProductionReviewReference = "8005-agv-onboard-hmi#14"
+            });
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(settings.Validate);
+
+        Assert.Contains("loopback", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DevelopmentAutomationStillNeedsNoSafetyReview()
+    {
+        OnboardSettings settings = new()
+        {
+            Automation = new OnboardAutomationSettings { Enabled = true },
+            WireToGate = new WireToGateSettings
+            {
+                Enabled = true,
+                Host = "control.internal",
+                OnboardInstanceId = "77a9a4b8-7b1c-4f2b-92bd-3872f5871158",
+                OnboardBuildCommit = "a6f05fbced15316a2cc20cd327f80c5c5ee1821e"
+            }
+        };
+
+        settings.Validate();
+    }
+
+    [Fact]
     public void EnabledVehicleSafetyProjectionAcceptsPlainHttp()
     {
         OnboardSettings settings = new()
@@ -250,9 +331,11 @@ public sealed class ConfigurationTests
 
     private static OnboardSettings CreateValidProductionSettings(
         WireToGateSettings? wireToGate = null,
-        VehicleSafetySettings? vehicleSafety = null) =>
+        VehicleSafetySettings? vehicleSafety = null,
+        OnboardAutomationSettings? automation = null) =>
         new()
         {
+            Automation = automation ?? new OnboardAutomationSettings(),
             Environment = "Production",
             AgvId = "AGV-8005-27",
             OnboardInstanceId = "ONBOARD-8005-27",
