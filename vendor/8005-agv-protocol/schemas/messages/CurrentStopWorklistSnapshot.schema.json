@@ -1,0 +1,139 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.8005-agv.local/agv-full-product/v2/messages/CurrentStopWorklistSnapshot.schema.json",
+  "title": "CurrentStopWorklistSnapshot",
+  "type": "object",
+  "properties": {
+    "protocolVersion": {
+      "type": "integer",
+      "const": 2
+    },
+    "profileId": {
+      "type": "string",
+      "minLength": 1,
+      "const": "AGV_FULL_PRODUCT"
+    },
+    "protocolReleaseVersion": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "examples": [
+        "1.0.0"
+      ]
+    },
+    "protocolReleaseManifestSha256": {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Sha256"
+    },
+    "messageType": {
+      "type": "string",
+      "minLength": 1,
+      "const": "CurrentStopWorklistSnapshot"
+    },
+    "messageId": {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Id"
+    },
+    "correlationId": {
+      "type": "null"
+    },
+    "agvId": {
+      "type": "string",
+      "minLength": 1,
+      "examples": [
+        "AGV-8005-01"
+      ]
+    },
+    "sessionGeneration": {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Generation"
+    },
+    "sentAt": {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Instant"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "stationId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "worklistRevision": {
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Revision"
+        },
+        "operationSessionId": {
+          "anyOf": [
+            {
+              "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "demandId": {
+                "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Id"
+              },
+              "transportDemandKey": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sublot": {
+                "type": "string",
+                "minLength": 1
+              },
+              "workType": {
+                "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/TransportTaskType"
+              },
+              "stopRole": {
+                "type": "string",
+                "enum": [
+                  "PICKUP",
+                  "DROPOFF"
+                ]
+              },
+              "expectedBasketCount": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8
+              }
+            },
+            "required": [
+              "demandId",
+              "transportDemandKey",
+              "sublot",
+              "workType",
+              "stopRole",
+              "expectedBasketCount"
+            ],
+            "additionalProperties": false
+          },
+          "maxItems": 8
+        }
+      },
+      "required": [
+        "stationId",
+        "worklistRevision",
+        "operationSessionId",
+        "items"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "protocolVersion",
+    "profileId",
+    "protocolReleaseVersion",
+    "protocolReleaseManifestSha256",
+    "messageType",
+    "messageId",
+    "correlationId",
+    "agvId",
+    "sessionGeneration",
+    "sentAt",
+    "payload"
+  ],
+  "additionalProperties": false
+}

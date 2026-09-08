@@ -1,0 +1,178 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.8005-agv.local/agv-full-product/v2/messages/SlotOperationCommand.schema.json",
+  "title": "SlotOperationCommand",
+  "type": "object",
+  "properties": {
+    "protocolVersion": {
+      "type": "integer",
+      "const": 2
+    },
+    "profileId": {
+      "type": "string",
+      "minLength": 1,
+      "const": "AGV_FULL_PRODUCT"
+    },
+    "protocolReleaseVersion": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "examples": [
+        "1.0.0"
+      ]
+    },
+    "protocolReleaseManifestSha256": {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Sha256"
+    },
+    "messageType": {
+      "type": "string",
+      "minLength": 1,
+      "const": "SlotOperationCommand"
+    },
+    "messageId": {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Id"
+    },
+    "correlationId": {
+      "anyOf": [
+        {
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Id"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "agvId": {
+      "type": "string",
+      "minLength": 1,
+      "examples": [
+        "AGV-8005-01"
+      ]
+    },
+    "sessionGeneration": {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Generation"
+    },
+    "sentAt": {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Instant"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "demandId": {
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Id"
+        },
+        "operationSessionId": {
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Id"
+        },
+        "slotOperationAttemptId": {
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Id"
+        },
+        "operationType": {
+          "type": "string",
+          "enum": [
+            "LOAD",
+            "UNLOAD"
+          ]
+        },
+        "slots": {
+          "type": "array",
+          "items": {
+            "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/SlotNo"
+          },
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "x-sortedAscending": true
+        },
+        "expectedBasketCount": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "expectedFinalPhysicalState": {
+          "type": "string",
+          "enum": [
+            "OCCUPIED",
+            "EMPTY"
+          ]
+        },
+        "commandContentSha256": {
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Sha256"
+        }
+      },
+      "required": [
+        "demandId",
+        "operationSessionId",
+        "slotOperationAttemptId",
+        "operationType",
+        "slots",
+        "expectedBasketCount",
+        "expectedFinalPhysicalState",
+        "commandContentSha256"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "protocolVersion",
+    "profileId",
+    "protocolReleaseVersion",
+    "protocolReleaseManifestSha256",
+    "messageType",
+    "messageId",
+    "correlationId",
+    "agvId",
+    "sessionGeneration",
+    "sentAt",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "payload": {
+            "properties": {
+              "operationType": {
+                "const": "LOAD"
+              }
+            },
+            "required": [
+              "operationType"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "correlationId": {
+            "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Id"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "payload": {
+            "properties": {
+              "operationType": {
+                "const": "UNLOAD"
+              }
+            },
+            "required": [
+              "operationType"
+            ]
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "correlationId": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  ]
+}

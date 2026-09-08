@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.8005-agv.local/agv-full-product/v2/messages/OperationProgress.schema.json",
+  "title": "OperationProgress",
+  "type": "object",
+  "properties": {
+    "protocolVersion": {
+      "type": "integer",
+      "const": 2
+    },
+    "profileId": {
+      "type": "string",
+      "minLength": 1,
+      "const": "AGV_FULL_PRODUCT"
+    },
+    "protocolReleaseVersion": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "examples": [
+        "1.0.0"
+      ]
+    },
+    "protocolReleaseManifestSha256": {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Sha256"
+    },
+    "messageType": {
+      "type": "string",
+      "minLength": 1,
+      "const": "OperationProgress"
+    },
+    "messageId": {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Id"
+    },
+    "correlationId": {
+      "type": "null"
+    },
+    "agvId": {
+      "type": "string",
+      "minLength": 1,
+      "examples": [
+        "AGV-8005-01"
+      ]
+    },
+    "sessionGeneration": {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Generation"
+    },
+    "sentAt": {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Instant"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "slotOperationAttemptId": {
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Id"
+        },
+        "phase": {
+          "type": "string",
+          "enum": [
+            "PREPARING",
+            "UNLOCKING",
+            "WAITING_OPERATOR",
+            "VERIFYING",
+            "SAFE_FINISH",
+            "PAUSED"
+          ]
+        },
+        "activeUnlockSlots": {
+          "type": "array",
+          "items": {
+            "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/SlotNo"
+          },
+          "maxItems": 8,
+          "uniqueItems": true,
+          "x-sortedAscending": true
+        },
+        "completedSlots": {
+          "type": "array",
+          "items": {
+            "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/SlotNo"
+          },
+          "maxItems": 8,
+          "uniqueItems": true,
+          "x-sortedAscending": true
+        },
+        "observedAt": {
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Instant"
+        }
+      },
+      "required": [
+        "slotOperationAttemptId",
+        "phase",
+        "activeUnlockSlots",
+        "completedSlots",
+        "observedAt"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "protocolVersion",
+    "profileId",
+    "protocolReleaseVersion",
+    "protocolReleaseManifestSha256",
+    "messageType",
+    "messageId",
+    "correlationId",
+    "agvId",
+    "sessionGeneration",
+    "sentAt",
+    "payload"
+  ],
+  "additionalProperties": false
+}

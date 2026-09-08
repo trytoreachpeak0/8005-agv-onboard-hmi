@@ -76,6 +76,7 @@ public sealed class OnboardControllerTests
             new WireToGateVehicleBusinessState(
                 1,
                 "READY",
+                "TRANSPORT",
                 false,
                 "SUFFICIENT",
                 [],

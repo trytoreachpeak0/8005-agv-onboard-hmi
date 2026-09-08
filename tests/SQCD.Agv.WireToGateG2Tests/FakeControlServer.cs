@@ -66,6 +66,19 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool SendJourneyRevisionConflict { get; set; }
 
+    /// <summary>
+    /// Sends the drop-off half of a journey: <c>stopRole "DROPOFF"</c> and
+    /// <c>legType "TO_DROPOFF"</c>.
+    /// </summary>
+    /// <remarks>
+    /// These are the two values protocol v2 renamed -- v1 called them <c>GATE</c> and
+    /// <c>TO_GATE</c> -- and the onboard's inbound validators checked for the v1 spellings until
+    /// 2026-09-09. Every other snapshot this double sends is the pick-up half, whose values did not
+    /// change, so without this flag the whole suite stayed green while the onboard would have
+    /// refused every drop-off the v2 control server sends.
+    /// </remarks>
+    public bool SendDropoffStopSnapshots { get; set; }
+
     public bool ReplayJourneySnapshotsWithStableIdentity { get; set; }
 
     public bool SendSlotOperationCommandAfterRecovery { get; set; }
@@ -325,6 +338,13 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "OperationProgress":
                     case "PreDepartureSafetyCheckResult":
                     case "SlotOperationCommandRejected":
+                    // The four recovery results below are durable in exactly the same way as the
+                    // four above; they are listed so a test can drive the whole O_TO_C surface
+                    // rather than only the part an earlier test happened to need.
+                    case "LoadCancellationResult":
+                    case "LoadCompensationResult":
+                    case "LoadCorrectionResult":
+                    case "FaultCargoRecoveryResult":
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
                         break;
                     case "ExceptionRecoverySessionRequested" when RespondToRecoveryRequests:
@@ -819,6 +839,8 @@ public sealed class FakeControlServer : IAsyncDisposable
     {
         string demandId = "11111111-1111-1111-1111-111111111111";
         string movementLegId = "22222222-2222-2222-2222-222222222222";
+        string stopRole = SendDropoffStopSnapshots ? "DROPOFF" : "PICKUP";
+        string legType = SendDropoffStopSnapshots ? "TO_DROPOFF" : "TO_PICKUP";
         DateTimeOffset observedAt = ReplayJourneySnapshotsWithStableIdentity
             ? StableJourneyObservedAt
             : DateTimeOffset.UtcNow;
@@ -829,6 +851,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             {
                 vehicleBusinessStateRevision = 1,
                 readiness = "READY",
+                activePurpose = "TRANSPORT",
                 manualChargingHold = false,
                 batteryState = "SUFFICIENT",
                 blockingFacts = Array.Empty<object>(),
@@ -850,7 +873,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                         transportDemandKey = "TD-001",
                         sublot = "SUBLOT-001",
                         workType = "WIRE_TO_GATE",
-                        stopRole = "PICKUP",
+                        stopRole,
                         expectedBasketCount = 2
                     }
                 }
@@ -861,13 +884,15 @@ public sealed class FakeControlServer : IAsyncDisposable
             new
             {
                 planRevision = 1,
-                demandId,
                 legs = new[]
                 {
                     new
                     {
                         movementLegId,
-                        legType = "TO_PICKUP",
+                        legType,
+                        stopPurposeCategory = "BUSINESS",
+                        demandId,
+                        publicStationFunction = (string?)null,
                         sequence = 1,
                         stationId = "ST-01",
                         mapId = "MAP-01",
@@ -952,13 +977,15 @@ public sealed class FakeControlServer : IAsyncDisposable
             new
             {
                 planRevision = 1,
-                demandId,
                 legs = new[]
                 {
                     new
                     {
                         movementLegId,
                         legType = "TO_PICKUP",
+                        stopPurposeCategory = "BUSINESS",
+                        demandId,
+                        publicStationFunction = (string?)null,
                         sequence = 1,
                         stationId = "ST-01",
                         mapId = "MAP-01",
@@ -995,13 +1022,15 @@ public sealed class FakeControlServer : IAsyncDisposable
             new
             {
                 planRevision = 2,
-                demandId,
                 legs = new[]
                 {
                     new
                     {
                         movementLegId,
                         legType = "TO_PICKUP",
+                        stopPurposeCategory = "BUSINESS",
+                        demandId,
+                        publicStationFunction = (string?)null,
                         sequence = 1,
                         stationId = "ST-01",
                         mapId = "MAP-01",

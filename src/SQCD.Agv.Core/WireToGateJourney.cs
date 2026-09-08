@@ -3,6 +3,7 @@ namespace SQCD.Agv.Core;
 public sealed record WireToGateVehicleBusinessState(
     long Revision,
     string Readiness,
+    string? ActivePurpose,
     bool ManualChargingHold,
     string BatteryState,
     IReadOnlyList<WireToGateBlockingFact> BlockingFacts,
@@ -31,7 +32,10 @@ public sealed record WireToGateCurrentStopWorklist(
 
 public sealed record WireToGateMovementLeg(
     string MovementLegId,
-    string LegType,
+    string? LegType,
+    string StopPurposeCategory,
+    string? DemandId,
+    string? PublicStationFunction,
     int Sequence,
     string StationId,
     string MapId,
@@ -39,9 +43,34 @@ public sealed record WireToGateMovementLeg(
 
 public sealed record WireToGateUpcomingStopPlan(
     long Revision,
-    string? DemandId,
     IReadOnlyList<WireToGateMovementLeg> Legs,
-    string ContentSha256);
+    string ContentSha256)
+{
+    /// <summary>
+    /// The one demand this plan is for, or null when the legs do not agree on one.
+    /// </summary>
+    /// <remarks>
+    /// Protocol v2 moved <c>demandId</c> out of the snapshot's top level and into the leg, because
+    /// <c>legs.maxItems</c> went from 2 to 9 and one demand id for a nine-leg plan has no defined
+    /// meaning. This projection keeps the single-demand question answerable for the plans this
+    /// runtime actually receives -- both of today's legs carry the same id -- and answers null,
+    /// rather than guessing, as soon as they do not. Null is also what a plan of charger or
+    /// waiting-point legs gives, since those legs carry no demand at all.
+    /// </remarks>
+    public string? DemandId
+    {
+        get
+        {
+            string[] demands =
+            [
+                .. Legs.Select(leg => leg.DemandId)
+                    .OfType<string>()
+                    .Distinct(StringComparer.Ordinal)
+            ];
+            return demands.Length == 1 ? demands[0] : null;
+        }
+    }
+}
 
 public sealed record WireToGateJourneySnapshot(
     WireToGateVehicleBusinessState? VehicleBusinessState,

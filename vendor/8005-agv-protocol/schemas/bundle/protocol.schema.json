@@ -1,0 +1,196 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.8005-agv.local/agv-full-product/v2/bundle/protocol.schema.json",
+  "title": "AGV_FULL_PRODUCT protocol bundle",
+  "oneOf": [
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/SessionHello.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/SessionAccepted.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/SessionRejected.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/Heartbeat.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/HeartbeatAck.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/CapabilitySnapshotRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/CapabilitySnapshot.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/RecoveryStateReport.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/SessionReadiness.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/SafetyStateChanged.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/SafetyStateSnapshotRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/SafetyStateSnapshot.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/PreDepartureSafetyCheck.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/PreDepartureSafetyCheckResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/VehicleBusinessStateSnapshot.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/CurrentStopWorklistSnapshot.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/UpcomingStopPlanSnapshot.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/SublotEntryRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/SublotSubmitted.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/SublotRejected.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/SlotOperationCommand.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/SlotOperationCommandRejected.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/OperationProgress.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/OperationResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/ManualChargingReturnToServiceRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/ManualChargingReturnToServiceResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/LoadCorrectionRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/LoadCorrectionRejected.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/LoadCorrectionCommand.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/LoadCorrectionResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/LoadCancellationStartRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/LoadCancellationAuthorization.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/LoadCancellationResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/LoadCompensationRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/LoadCompensationRejected.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/LoadCompensationCommand.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/LoadCompensationResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/ExceptionRecoverySessionRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/ExceptionRecoverySessionOpened.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/ExceptionRecoverySessionRejected.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/ExceptionRecoverySessionSnapshot.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/RecoveryActionSubmitted.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/RecoveryActionAccepted.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/RecoveryActionRejected.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/HardwareRecoveryRecordSubmitted.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/HardwareRecoveryRecordResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/SlotOperationResumeCommand.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/FaultCargoRecoveryCommand.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/FaultCargoRecoveryResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/ForcedMechanicalRecoveryCommand.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/ForcedMechanicalRecoveryResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/DurableAck.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/SnapshotAppliedAck.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/ProtocolProblem.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/DemandSelectionRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/DemandSelectionResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/UnableToChargeFieldConfirmationRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/UnableToChargeFieldConfirmationResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/ManualStationClearanceConfirmationRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/ManualStationClearanceConfirmationResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/SlotConfigurationActivationCommand.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/SlotConfigurationActivationResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/messages/OnboardAlarmSnapshot.schema.json"
+    }
+  ]
+}

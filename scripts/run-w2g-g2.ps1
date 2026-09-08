@@ -14,16 +14,26 @@ if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
     $EvidenceRoot = Join-Path $hmiRoot 'evidence\g2'
 }
 
+# 协议 v2 候选的身份。这是本仓库的第二份副本，权威副本是
+# src/SQCD.Agv.Contracts/WireToGateProtocol.cs 的 WireToGateRelease；
+# ProtocolIdentityArchitectureTests.TheGateScriptExpectsTheSameIdentityAsTheAssembly
+# 逐字段比对这两份，任一处漂移即测试红。
+#
+# Tag 指向一个还没打的 tag：规格 6.6 第 6 条要两名产品负责人 attestation ＋ 注释 tag
+# protocol-v1.0.0，两件都没发生（协议仓 git tag --list 只有 v0.1.0/v0.1.1/v0.2.0/v0.3.0）。
+# 这个字段仍写它，是因为 $defs/ProtocolReleaseIdentity 对 tag 是 required ＋ minLength 1 ＋
+# ^protocol-v；ApprovalStatus 承担「它还没被批准」这半句。所以下面绑的是 commit，不是 tag。
 $expected = [ordered]@{
-    ProtocolVersion = 1
-    ProfileId = 'WIRE_TO_GATE_MVP'
-    ReleaseVersion = '0.1.1'
+    ProtocolVersion = 2
+    ProfileId = 'AGV_FULL_PRODUCT'
+    ReleaseVersion = '1.0.0'
     Repository = '8005-agv-protocol'
-    Tag = 'protocol-v0.1.1'
-    Commit = '1531489e42e328f28bfe0c51ed3f8c56e5ce0279'
-    ManifestSha256 = 'a467c0c4b03cbf54fae985ceade256ff13225581babad7f46d90449b7f16389f'
-    SchemaBundleSha256 = 'e04296e9bcf48c341bc91fef5731f6f465a5ecdbb9adedc17f3bac58e193d30c'
-    VectorsSha256 = 'fc5902b71d1b276c674f8a21c738d27193ddcbaf9b352951deffbaf1488d356e'
+    Tag = 'protocol-v1.0.0'
+    Commit = 'f6ee75defe6e2d18f63f4082bee445dbb678ab1b'
+    ManifestSha256 = '84f984eabf17106e92666c415b63100d404e9ec69a9a710dfddf17683cc42788'
+    SchemaBundleSha256 = '71146c881e8ec199e9a977779ec1a557bed96a9ab71e36cfc3dfb7b329351c6b'
+    VectorsSha256 = '51c5aaca2ca02326d16e02af7e76c9954d84414a9772c5b208a92969a417d1df'
+    ApprovalStatus = 'SUPERSEDING_CANDIDATE'
 }
 
 $failures = [System.Collections.Generic.List[string]]::new()
@@ -31,7 +41,7 @@ $runUtc = [DateTime]::UtcNow
 $runId = $runUtc.ToString('yyyyMMddTHHmmssfffZ')
 $hmiCommit = (& git -C $hmiRoot rev-parse HEAD).Trim()
 $shortHmiCommit = if ($hmiCommit.Length -ge 12) { $hmiCommit.Substring(0, 12) } else { $hmiCommit }
-$runDirectory = Join-Path (Join-Path $EvidenceRoot 'protocol-v0.1.1') ($runId + '-' + $shortHmiCommit)
+$runDirectory = Join-Path (Join-Path $EvidenceRoot $expected.Tag) ($runId + '-' + $shortHmiCommit)
 $logsDirectory = Join-Path $runDirectory 'logs'
 $resultsDirectory = Join-Path $runDirectory 'test-results'
 New-Item -ItemType Directory -Force -Path $logsDirectory, $resultsDirectory | Out-Null
@@ -191,6 +201,7 @@ $hmiIdentity = [ordered]@{
     ManifestSha256 = Read-CSharpConstant $contractSource 'ManifestSha256'
     SchemaBundleSha256 = Read-CSharpConstant $contractSource 'SchemaBundleSha256'
     VectorsSha256 = Read-CSharpConstant $contractSource 'VectorsSha256'
+    ApprovalStatus = Read-CSharpConstant $contractSource 'ApprovalStatus'
 }
 
 foreach ($key in $expected.Keys) {
@@ -201,16 +212,23 @@ foreach ($key in $expected.Keys) {
 }
 
 $protocolCommit = (& git -C $ProtocolRoot rev-parse HEAD).Trim()
-$protocolTagCommit = (& git -C $ProtocolRoot rev-list -n 1 ($expected.Tag + '^{commit}')).Trim()
-Assert-Equal 'protocol tag commit' $protocolTagCommit $expected.Commit
-$tagIsAncestor = $false
-$hasProtocolIdentity = -not [string]::IsNullOrWhiteSpace($protocolCommit) -and -not [string]::IsNullOrWhiteSpace($protocolTagCommit)
-if ($hasProtocolIdentity) {
-    & git -C $ProtocolRoot merge-base --is-ancestor $protocolTagCommit $protocolCommit | Out-Null
-    $tagIsAncestor = $LASTEXITCODE -eq 0
+
+# tag 还没打，所以绑的是候选 commit 本身。tag 一旦打出来必须指向同一个 commit，
+# 打错地方比没打更危险，所以这里查「存在则必须相等」而不是「必须存在」。
+$protocolTagCommit = (& git -C $ProtocolRoot rev-list -n 1 ($expected.Tag + '^{commit}') 2>$null)
+$protocolTagCommit = if ($null -eq $protocolTagCommit) { '' } else { ([string]$protocolTagCommit).Trim() }
+$tagExists = -not [string]::IsNullOrWhiteSpace($protocolTagCommit)
+if ($tagExists -and $protocolTagCommit -ne $expected.Commit) {
+    Add-Failure "$($expected.Tag) 已存在但指向 $protocolTagCommit，不是候选 commit $($expected.Commit)"
 }
-if (-not $tagIsAncestor) {
-    Add-Failure "protocol HEAD 不是 $($expected.Tag) release 的后继提交：head=$protocolCommit, tag=$protocolTagCommit"
+
+$candidateIsAncestor = $false
+if (-not [string]::IsNullOrWhiteSpace($protocolCommit)) {
+    & git -C $ProtocolRoot merge-base --is-ancestor $expected.Commit $protocolCommit | Out-Null
+    $candidateIsAncestor = $LASTEXITCODE -eq 0
+}
+if (-not $candidateIsAncestor) {
+    Add-Failure "protocol HEAD 不是候选 commit 的后继提交：head=$protocolCommit, candidate=$($expected.Commit)"
 }
 
 $release = Get-Content -LiteralPath (Join-Path $ProtocolRoot 'manifest\release.json') -Raw | ConvertFrom-Json
@@ -221,8 +239,8 @@ Assert-Equal 'release.schemaBundleSha256' $release.schemaBundleSha256 $expected.
 Assert-Equal 'release.vectorsSha256' $release.vectorsSha256 $expected.VectorsSha256
 
 $index = Get-Content -LiteralPath (Join-Path $ProtocolRoot 'integration-slices\index.json') -Raw | ConvertFrom-Json
-$is00 = $index.slices | Where-Object integrationSliceId -eq 'W2G-IS-00'
-$is01 = $index.slices | Where-Object integrationSliceId -eq 'W2G-IS-01'
+$is00 = $index.slices | Where-Object integrationSliceId -eq 'FP-IS-00'
+$is01 = $index.slices | Where-Object integrationSliceId -eq 'FP-IS-01'
 Assert-Equal 'IS-00 vector count' $is00.vectorIds.Count 4
 Assert-Equal 'IS-01 vector count' $is01.vectorIds.Count 1
 Assert-Equal 'IS-01 vector' ($is01.vectorIds -join ',') 'CV-DEMAND-ACCEPT-TO-PICKUP'
@@ -280,8 +298,11 @@ $summary = [ordered]@{
         repository = $expected.Repository
         headCommit = $protocolCommit
         tag = $expected.Tag
+        tagExists = $tagExists
         tagCommit = $protocolTagCommit
-        tagIsAncestorOfHead = $tagIsAncestor
+        candidateCommit = $expected.Commit
+        candidateIsAncestorOfHead = $candidateIsAncestor
+        approvalStatus = $expected.ApprovalStatus
         g1Status = $protocolStatus
         g1CandidateManifestSha256 = if ($g1ManifestMatch.Success) { $g1ManifestMatch.Groups[1].Value } else { $null }
         releaseFile = 'manifest/release.json'
@@ -295,7 +316,7 @@ $summary = [ordered]@{
     }
     slices = @(
         [ordered]@{
-            integrationSliceId = 'W2G-IS-00'
+            integrationSliceId = 'FP-IS-00'
             vectorIds = @($is00.vectorIds)
             onboardHmiG2 = $hmiStatus
             controlServerG2 = 'PENDING_EXTERNAL'
@@ -303,7 +324,7 @@ $summary = [ordered]@{
             forbidUnclosedFailOrInconclusive = [bool]$is00.forbidUnclosedFailOrInconclusive
         },
         [ordered]@{
-            integrationSliceId = 'W2G-IS-01'
+            integrationSliceId = 'FP-IS-01'
             vectorIds = @($is01.vectorIds)
             onboardHmiG2 = $hmiStatus
             controlServerG2 = 'PENDING_EXTERNAL'
@@ -330,7 +351,11 @@ $summary = [ordered]@{
     knownLimitations = @(
         '本证据是 OnboardHmi 本机 G2；ControlServer G2 和联合 G3 仍需外部/现场门禁。',
         'G1 使用临时盘符运行，仅规避 Windows 工作区路径含 # 时的 Node URL 解码问题，不改变协议仓库内容。',
-        '真实车辆停稳信号、Modbus/锁/门/光幕和现场明文网络未在本机证据中宣称完成。'
+        '真实车辆停稳信号、Modbus/锁/门/光幕和现场明文网络未在本机证据中宣称完成。',
+        ('本证据绑定的是协议 v2 候选，approvalStatus=' + $expected.ApprovalStatus + '，不是已批准发布：' +
+            $expected.Tag + ' 这个 tag 在协议仓里尚未打出（规格 6.6 第 6 条要两名产品负责人 attestation）。'),
+        ('本脚本跑整个解决方案的测试，不按切片过滤；summary.json 里 FP-IS-00 与 FP-IS-01 两片共享同一个 ' +
+            'onboardHmiG2 结论。按切片分别出证需要车载端先有 IntegrationSlice trait，那是票 20 的范围。')
     )
 }
 

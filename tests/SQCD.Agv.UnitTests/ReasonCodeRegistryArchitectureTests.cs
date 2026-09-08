@@ -30,7 +30,7 @@ namespace SQCD.Agv.UnitTests;
 public sealed class ReasonCodeRegistryArchitectureTests
 {
     private const string RegistryRelativePath =
-        "vendor/8005-agv-protocol/protocol-v0.1.1/errors/error-codes.json";
+        "vendor/8005-agv-protocol/errors/error-codes.json";
 
     /// <summary>
     /// Predicate whose whole purpose is "is this value a protocol error

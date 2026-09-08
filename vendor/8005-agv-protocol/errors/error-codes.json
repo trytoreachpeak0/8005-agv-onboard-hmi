@@ -1,0 +1,556 @@
+{
+  "registryVersion": "1.0.0",
+  "appendOnly": true,
+  "displayMessageAuthoritative": false,
+  "codes": [
+    {
+      "code": "PROTOCOL_ENVELOPE_INVALID",
+      "category": "PROTOCOL",
+      "meaning": "PROTOCOL_ENVELOPE_INVALID is the stable protocol failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "ProtocolProblem",
+        "SessionRejected"
+      ],
+      "retryDisposition": "NEVER",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "PROTOCOL_SCHEMA_INVALID",
+      "category": "PROTOCOL",
+      "meaning": "PROTOCOL_SCHEMA_INVALID is the stable protocol failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "ProtocolProblem",
+        "SessionRejected"
+      ],
+      "retryDisposition": "NEVER",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "UNSUPPORTED_PROTOCOL_VERSION",
+      "category": "PROTOCOL",
+      "meaning": "UNSUPPORTED_PROTOCOL_VERSION is the stable protocol failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "ProtocolProblem",
+        "SessionRejected"
+      ],
+      "retryDisposition": "NEVER",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "PROTOCOL_RELEASE_IDENTITY_MISMATCH",
+      "category": "PROTOCOL",
+      "meaning": "PROTOCOL_RELEASE_IDENTITY_MISMATCH is the stable protocol failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "ProtocolProblem",
+        "SessionRejected"
+      ],
+      "retryDisposition": "NEVER",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "UNKNOWN_MESSAGE_TYPE",
+      "category": "PROTOCOL",
+      "meaning": "UNKNOWN_MESSAGE_TYPE is the stable protocol failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "ProtocolProblem",
+        "SessionRejected"
+      ],
+      "retryDisposition": "NEVER",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "PROFILE_MESSAGE_NOT_ALLOWED",
+      "category": "PROTOCOL",
+      "meaning": "PROFILE_MESSAGE_NOT_ALLOWED is the stable protocol failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "ProtocolProblem",
+        "SessionRejected"
+      ],
+      "retryDisposition": "NEVER",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "MESSAGE_ID_CONTENT_CONFLICT",
+      "category": "PROTOCOL",
+      "meaning": "MESSAGE_ID_CONTENT_CONFLICT is the stable protocol failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "ProtocolProblem",
+        "SessionRejected"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "CORRELATION_INVALID",
+      "category": "PROTOCOL",
+      "meaning": "CORRELATION_INVALID is the stable protocol failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "ProtocolProblem",
+        "SessionRejected"
+      ],
+      "retryDisposition": "NEW_MESSAGE_ID",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "CONTENT_HASH_MISMATCH",
+      "category": "PROTOCOL",
+      "meaning": "CONTENT_HASH_MISMATCH is the stable protocol failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "ProtocolProblem",
+        "SessionRejected"
+      ],
+      "retryDisposition": "NEVER",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "VEHICLE_CREDENTIAL_INVALID",
+      "category": "SESSION",
+      "meaning": "VEHICLE_CREDENTIAL_INVALID is the stable session failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "AGV_ID_MISMATCH",
+      "category": "SESSION",
+      "meaning": "AGV_ID_MISMATCH is the stable session failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "STALE_SESSION_GENERATION",
+      "category": "SESSION",
+      "meaning": "STALE_SESSION_GENERATION is the stable session failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_RECONNECT",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "DUPLICATE_ACTIVE_SESSION",
+      "category": "SESSION",
+      "meaning": "DUPLICATE_ACTIVE_SESSION is the stable session failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_RECONNECT",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "HANDSHAKE_SEQUENCE_INVALID",
+      "category": "SESSION",
+      "meaning": "HANDSHAKE_SEQUENCE_INVALID is the stable session failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_RECONNECT",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "CAPABILITY_VERSION_GAP",
+      "category": "SESSION",
+      "meaning": "CAPABILITY_VERSION_GAP is the stable session failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "SAFETY_STATE_VERSION_GAP",
+      "category": "SESSION",
+      "meaning": "SAFETY_STATE_VERSION_GAP is the stable session failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "SNAPSHOT_REVISION_REGRESSION",
+      "category": "SESSION",
+      "meaning": "SNAPSHOT_REVISION_REGRESSION is the stable session failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "SNAPSHOT_REVISION_CONTENT_CONFLICT",
+      "category": "SESSION",
+      "meaning": "SNAPSHOT_REVISION_CONTENT_CONFLICT is the stable session failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "SESSION_RECOVERY_REQUIRED",
+      "category": "SESSION",
+      "meaning": "SESSION_RECOVERY_REQUIRED is the stable session failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "BUSINESS_ID_CONTENT_CONFLICT",
+      "category": "BUSINESS",
+      "meaning": "BUSINESS_ID_CONTENT_CONFLICT is the stable business failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "VEHICLE_NOT_READY",
+      "category": "BUSINESS",
+      "meaning": "VEHICLE_NOT_READY is the stable business failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "DEMAND_NOT_CURRENT",
+      "category": "BUSINESS",
+      "meaning": "DEMAND_NOT_CURRENT is the stable business failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "OPERATION_SESSION_MISMATCH",
+      "category": "BUSINESS",
+      "meaning": "OPERATION_SESSION_MISMATCH is the stable business failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "STATION_MISMATCH",
+      "category": "BUSINESS",
+      "meaning": "STATION_MISMATCH is the stable business failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "WORKLIST_REVISION_STALE",
+      "category": "BUSINESS",
+      "meaning": "WORKLIST_REVISION_STALE is the stable business failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "SUBLOT_MISMATCH",
+      "category": "BUSINESS",
+      "meaning": "SUBLOT_MISMATCH is the stable business failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "NEW_MESSAGE_ID",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "SLOT_SET_INVALID",
+      "category": "BUSINESS",
+      "meaning": "SLOT_SET_INVALID is the stable business failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "NEW_MESSAGE_ID",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "EXPECTED_BASKET_COUNT_MISMATCH",
+      "category": "BUSINESS",
+      "meaning": "EXPECTED_BASKET_COUNT_MISMATCH is the stable business failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "SLOT_OPERATION_CONFLICT",
+      "category": "BUSINESS",
+      "meaning": "SLOT_OPERATION_CONFLICT is the stable business failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "ACTION_NOT_ALLOWED_IN_STATE",
+      "category": "BUSINESS",
+      "meaning": "ACTION_NOT_ALLOWED_IN_STATE is the stable business failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "MANUAL_CHARGING_HOLD_ACTIVE",
+      "category": "BUSINESS",
+      "meaning": "MANUAL_CHARGING_HOLD_ACTIVE is the stable business failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "CAPABILITY_UNKNOWN",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "CAPABILITY_UNKNOWN is the stable safety_recovery failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "SLOT_INOPERABLE",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "SLOT_INOPERABLE is the stable safety_recovery failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "SLOT_STATE_UNKNOWN",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "SLOT_STATE_UNKNOWN is the stable safety_recovery failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "LOCK_NOT_CLOSED",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "LOCK_NOT_CLOSED is the stable safety_recovery failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "UNLOCK_OUTPUT_NOT_RESET",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "UNLOCK_OUTPUT_NOT_RESET is the stable safety_recovery failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "DEPARTURE_UNSAFE",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "DEPARTURE_UNSAFE is the stable safety_recovery failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "PREDEPARTURE_CHECK_EXPIRED",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "PREDEPARTURE_CHECK_EXPIRED is the stable safety_recovery failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "NEW_MESSAGE_ID",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "RECOVERY_SESSION_NOT_OPEN",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "RECOVERY_SESSION_NOT_OPEN is the stable safety_recovery failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "RECOVERY_SCOPE_MISMATCH",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "RECOVERY_SCOPE_MISMATCH is the stable safety_recovery failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "RECOVERY_CHECKPOINT_NOT_UNIQUE",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "RECOVERY_CHECKPOINT_NOT_UNIQUE is the stable safety_recovery failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "RECOVERY_AUTHENTICATION_FAILED",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "RECOVERY_AUTHENTICATION_FAILED is the stable safety_recovery failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "FORCED_RECOVERY_GENERATION_STALE",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "FORCED_RECOVERY_GENERATION_STALE is the stable safety_recovery failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "SLOT_CONFIGURATION_VERIFICATION_FAILED",
+      "category": "BUSINESS",
+      "meaning": "SLOT_CONFIGURATION_VERIFICATION_FAILED is the stable business failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "SLOT_CONFIGURATION_FINGERPRINT_MISMATCH",
+      "category": "BUSINESS",
+      "meaning": "SLOT_CONFIGURATION_FINGERPRINT_MISMATCH is the stable business failure defined by the accepted AGV_FULL_PRODUCT governance decision.",
+      "allowedMessageTypes": [
+        "*"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "RECOVERY_DEMAND_NOT_BLOCKED",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "The demand named by the recovery scope is not blocked, so no exception recovery session may be opened against it.",
+      "allowedMessageTypes": [
+        "ExceptionRecoverySessionRejected"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "RECOVERY_EVENT_MISMATCH",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "The eventId carried by the recovery action is not the event the exception recovery session was opened for.",
+      "allowedMessageTypes": [
+        "RecoveryActionRejected"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "RECOVERY_DEMAND_MISMATCH",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "The demandId carried by the recovery action is not the demand the exception recovery session was opened for.",
+      "allowedMessageTypes": [
+        "RecoveryActionRejected"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "RECOVERY_OPERATOR_MISMATCH",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "The operator submitting the recovery action is not the administrator who opened the exception recovery session.",
+      "allowedMessageTypes": [
+        "RecoveryActionRejected"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "RECOVERY_ACTION_ALREADY_SELECTED",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "The exception recovery session has already selected a different recovery action.",
+      "allowedMessageTypes": [
+        "RecoveryActionRejected"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "RECOVERY_OPERATION_NOT_FOUND",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "The exception recovery session is scoped to a demand, but no station operation exists for that demand.",
+      "allowedMessageTypes": [
+        "RecoveryActionRejected"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "PROVEN_RECOVERY_CHECKPOINT_REQUIRED",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "RESUME_AFTER_REPAIR requires the vehicle to hold a proven recovery checkpoint for the unsettled slot operation attempt.",
+      "allowedMessageTypes": [
+        "RecoveryActionRejected"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "RECOVERY_ACTION_REQUIRED",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "The exception recovery session is open and stays blocked until the operator selects a recovery action.",
+      "allowedMessageTypes": [
+        "ExceptionRecoverySessionSnapshot"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "RECOVERY_RESULT_REQUIRED",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "A recovery action has been selected and the exception recovery session stays blocked until its result arrives.",
+      "allowedMessageTypes": [
+        "ExceptionRecoverySessionSnapshot"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "1.0.0"
+    }
+  ]
+}

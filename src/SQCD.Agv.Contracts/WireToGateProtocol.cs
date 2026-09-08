@@ -6,19 +6,54 @@ using System.Text.Json.Serialization;
 namespace SQCD.Agv.Contracts;
 
 /// <summary>
-/// Immutable identity of the approved WIRE_TO_GATE protocol release.
+/// The protocol release this onboard build is built against, mirrored as constants because the
+/// onboard runtime does not read the protocol's files at runtime.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>This names the v2 candidate, and the candidate is not an approved release.</b> Every value
+/// below is read off <c>8005-agv-protocol</c> commit
+/// <c>f6ee75defe6e2d18f63f4082bee445dbb678ab1b</c> (branch <c>fp/v2-candidate</c>), the candidate
+/// G1 passed on 2026-09-08. <see cref="ApprovalStatus"/> says <c>SUPERSEDING_CANDIDATE</c> rather
+/// than <c>APPROVED_RELEASE</c> for exactly that reason, and it is the field to read before
+/// treating this identity as releasable.
+/// </para>
+/// <para>
+/// <b>These nine values are byte-for-byte the control server's.</b> <c>ProtocolCandidateIdentity</c>
+/// in <c>8005-agv-control-server</c> carries the same ones, because the handshake compares
+/// <c>commit</c>, <c>manifestSha256</c>, <c>profileId</c> and <c>protocolVersion</c> and refuses the
+/// session on any difference. Neither end copied the other: both read the candidate.
+/// </para>
+/// <para>
+/// <b><see cref="Tag"/> names a tag that does not exist yet.</b> Section 6.6 of the full-product
+/// scope specification lists what a <c>ProtocolRelease</c> still needs, and item 6 is two product
+/// owners' external attestation plus the annotated tag <c>protocol-v1.0.0</c>; neither has
+/// happened. The constant still carries the name because <c>$defs/ProtocolReleaseIdentity</c>
+/// requires <c>tag</c>, constrains it to <c>minLength: 1</c> and <c>^protocol-v</c>, and forbids
+/// additional properties -- an empty string would put a schema-invalid value on
+/// <c>SessionHello</c>, and neither end validates against the schemas at runtime, so nothing would
+/// catch it. The pair is what tells the truth: this build targets <c>protocol-v1.0.0</c>, and that
+/// release is not approved.
+/// </para>
+/// <para>
+/// <see cref="ApprovalStatus"/> is deliberately <b>not</b> part of <see cref="Identity"/>: the
+/// frozen <c>$defs/ProtocolReleaseIdentity</c> is <c>additionalProperties: false</c> over exactly
+/// nine names, and approval status is not one of them. It is a fact about this build, not a field
+/// of the wire identity.
+/// </para>
+/// </remarks>
 public static class WireToGateRelease
 {
-    public const int ProtocolVersion = 1;
-    public const string ProfileId = "WIRE_TO_GATE_MVP";
-    public const string ReleaseVersion = "0.1.1";
+    public const int ProtocolVersion = 2;
+    public const string ProfileId = "AGV_FULL_PRODUCT";
+    public const string ReleaseVersion = "1.0.0";
     public const string Repository = "8005-agv-protocol";
-    public const string Tag = "protocol-v0.1.1";
-    public const string Commit = "1531489e42e328f28bfe0c51ed3f8c56e5ce0279";
-    public const string ManifestSha256 = "a467c0c4b03cbf54fae985ceade256ff13225581babad7f46d90449b7f16389f";
-    public const string SchemaBundleSha256 = "e04296e9bcf48c341bc91fef5731f6f465a5ecdbb9adedc17f3bac58e193d30c";
-    public const string VectorsSha256 = "fc5902b71d1b276c674f8a21c738d27193ddcbaf9b352951deffbaf1488d356e";
+    public const string Tag = "protocol-v1.0.0";
+    public const string Commit = "f6ee75defe6e2d18f63f4082bee445dbb678ab1b";
+    public const string ManifestSha256 = "84f984eabf17106e92666c415b63100d404e9ec69a9a710dfddf17683cc42788";
+    public const string SchemaBundleSha256 = "71146c881e8ec199e9a977779ec1a557bed96a9ab71e36cfc3dfb7b329351c6b";
+    public const string VectorsSha256 = "51c5aaca2ca02326d16e02af7e76c9954d84414a9772c5b208a92969a417d1df";
+    public const string ApprovalStatus = "SUPERSEDING_CANDIDATE";
 
     public static ProtocolReleaseIdentity Identity { get; } = new(
         Repository,
@@ -57,7 +92,7 @@ public sealed record WireToGateEnvelope(
     JsonElement Payload);
 
 /// <summary>
-/// Minimal strict serializer for the immutable protocol-v0.1.1 envelope.
+/// Minimal strict serializer for the immutable protocol-v1.0.0 candidate envelope.
 /// Message payloads remain explicit at their call sites so that later slices can be
 /// generated from the tagged JSON Schemas without changing the transport contract.
 /// </summary>

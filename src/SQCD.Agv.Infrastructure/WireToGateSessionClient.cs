@@ -519,6 +519,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         _clock.Now.ToUniversalTime(),
                         _options.SlotModelVersion,
                         _options.ActiveSlotConfigurationVersion,
+                        ActiveSlotConfigurationFingerprint(_options, slotStates),
                         slotStates,
                         _options.SupportsBatchUnlock,
                         1),
@@ -1346,6 +1347,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                             VehicleBusinessState = new WireToGateVehicleBusinessState(
                                 payload.VehicleBusinessStateRevision,
                                 payload.Readiness,
+                                payload.ActivePurpose,
                                 payload.ManualChargingHold,
                                 payload.BatteryState,
                                 payload.BlockingFacts
@@ -1396,7 +1398,6 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         {
                             UpcomingStopPlan = new WireToGateUpcomingStopPlan(
                                 payload.PlanRevision,
-                                payload.DemandId,
                                 payload.Legs.Select(ToCoreMovementLeg).ToArray(),
                                 payloadContentSha256),
                             UpdatedAt = _clock.Now
@@ -2211,6 +2212,9 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         new SQCD.Agv.Core.WireToGateMovementLeg(
             leg.MovementLegId,
             leg.LegType,
+            leg.StopPurposeCategory,
+            leg.DemandId,
+            leg.PublicStationFunction,
             leg.Sequence,
             leg.StationId,
             leg.MapId,
@@ -2220,6 +2224,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     {
         if (payload.VehicleBusinessStateRevision < 0
             || payload.Readiness is not ("READY" or "RECOVERY_REQUIRED")
+            || payload.ActivePurpose is not (null
+                or "TRANSPORT" or "CHARGING" or "CLEARING_MAINTENANCE" or "IDLE_RETURN")
             || payload.BatteryState is not ("SUFFICIENT" or "LOW" or "UNKNOWN")
             || payload.BlockingFacts is null
             || payload.BlockingFacts.Distinct().Count() != payload.BlockingFacts.Count
@@ -2276,8 +2282,34 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         or "RECOVERY_SCOPE_MISMATCH"
         or "RECOVERY_CHECKPOINT_NOT_UNIQUE"
         or "RECOVERY_AUTHENTICATION_FAILED"
-        or "FORCED_RECOVERY_GENERATION_STALE";
+        or "FORCED_RECOVERY_GENERATION_STALE"
+        or "SLOT_CONFIGURATION_VERIFICATION_FAILED"
+        or "SLOT_CONFIGURATION_FINGERPRINT_MISMATCH"
+        or "RECOVERY_DEMAND_NOT_BLOCKED"
+        or "RECOVERY_EVENT_MISMATCH"
+        or "RECOVERY_DEMAND_MISMATCH"
+        or "RECOVERY_OPERATOR_MISMATCH"
+        or "RECOVERY_ACTION_ALREADY_SELECTED"
+        or "RECOVERY_OPERATION_NOT_FOUND"
+        or "PROVEN_RECOVERY_CHECKPOINT_REQUIRED"
+        or "RECOVERY_ACTION_REQUIRED"
+        or "RECOVERY_RESULT_REQUIRED";
 
+    /// <summary>
+    /// Checks an inbound worklist snapshot, and is <b>stricter than the frozen v2 schema on two
+    /// counts</b>.
+    /// </summary>
+    /// <remarks>
+    /// v2 raised <c>items.maxItems</c> to 8 and widened <c>workType</c> to the six MES literals;
+    /// this still refuses more than one item and anything but <c>WIRE_TO_GATE</c>. Both are
+    /// business narrowings, not schema conformance -- a legal v2 payload carrying two items would
+    /// be answered with <c>PROTOCOL_SCHEMA_INVALID</c>, which is the wrong verdict for it. They are
+    /// left in place rather than widened because the projection above them assumes a single demand
+    /// (<c>WireToGateJourneySnapshot.CanAcceptSublot</c> requires exactly one item), so widening
+    /// the check without widening that is how a crash gets introduced. The control server emits at
+    /// most one item and only <c>WIRE_TO_GATE</c> today, so neither narrowing is reachable; both
+    /// are recorded as findings for the ticket that owns multi-demand worklists.
+    /// </remarks>
     private static void ValidateCurrentStopWorklist(CurrentStopWorklistSnapshotPayload payload)
     {
         if (string.IsNullOrWhiteSpace(payload.StationId)
@@ -2291,17 +2323,27 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 || string.IsNullOrWhiteSpace(item.TransportDemandKey)
                 || string.IsNullOrWhiteSpace(item.Sublot)
                 || item.WorkType != "WIRE_TO_GATE"
-                || item.StopRole is not ("PICKUP" or "GATE")
+                || item.StopRole is not ("PICKUP" or "DROPOFF")
                 || item.ExpectedBasketCount is < 1 or > 8))
         {
             throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
         }
     }
 
+    /// <summary>
+    /// Checks an inbound plan snapshot, and is <b>stricter than the frozen v2 schema on one
+    /// count</b>: <c>legs.maxItems</c> went from 2 to 9 and this still refuses more than two.
+    /// </summary>
+    /// <remarks>
+    /// Same shape of narrowing as <see cref="ValidateCurrentStopWorklist"/> and the same treatment:
+    /// a three-leg plan is legal v2 and would be answered <c>PROTOCOL_SCHEMA_INVALID</c>. Legs
+    /// beyond two arrive with waiting points (<c>FP-C4</c>, batch 5) and chargers (<c>FP-C1</c>,
+    /// batch 8); the control server emits at most two today, so the narrowing is not reachable, and
+    /// it is recorded as a finding rather than widened here.
+    /// </remarks>
     private static void ValidateUpcomingStopPlan(UpcomingStopPlanSnapshotPayload payload)
     {
         if (payload.PlanRevision < 0
-            || payload.DemandId is not null && !IsUuid(payload.DemandId)
             || payload.Legs is null
             || payload.Legs.Count > 2
             || payload.Legs.Any(leg => leg is null)
@@ -2310,7 +2352,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             || payload.Legs.Any(leg =>
                 leg is null
                 || !IsUuid(leg.MovementLegId)
-                || leg.LegType is not ("TO_PICKUP" or "TO_GATE")
+                || leg.LegType is not (null or "TO_PICKUP" or "TO_DROPOFF")
+                || leg.StopPurposeCategory is not ("BUSINESS" or "WAITING_POINT" or "CHARGER")
+                || leg.DemandId is not null && !IsUuid(leg.DemandId)
+                || leg.PublicStationFunction is not (null
+                    or "WIRE_STAGING" or "OVEN" or "GATE" or "OPTICAL" or "NITROGEN")
                 || string.IsNullOrWhiteSpace(leg.StationId)
                 || string.IsNullOrWhiteSpace(leg.MapId)
                 || leg.State is not ("PLANNED" or "ACTIVE" or "ARRIVED" or "COMPLETED" or "BLOCKED")))
@@ -2321,6 +2367,47 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
     private static bool IsUuid(string? value) =>
         value is not null && Guid.TryParseExact(value, "D", out _);
+
+    /// <summary>
+    /// The content digest of the slot configuration this vehicle is actually running, required by
+    /// protocol v2 on every <c>CapabilitySnapshot</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What it is a digest of.</b> The two configured version names plus the slot numbers the
+    /// onboard runtime actually exposes, rendered canonically and hashed. Those three are what
+    /// "the active slot configuration" consists of on this build: the model the slots follow, the
+    /// configuration selected for them, and which slots exist. Change any of them and the digest
+    /// changes; change nothing and it is stable across restarts, which is what makes it usable as
+    /// an identity rather than a nonce.
+    /// </para>
+    /// <para>
+    /// <b>What it deliberately is not.</b> It is not a verification result. <c>FP-C7</c>
+    /// (configuration activation governance) is scheduled into batch 3 with slice
+    /// <c>FP-IS-14</c>, and until it lands nothing on this end verifies that the physical slots
+    /// match the configuration they claim -- <c>SlotConfigurationActivationCommand</c> and
+    /// <c>SlotConfigurationActivationResult</c> are unimplemented and pinned as such in
+    /// <c>ProtocolMessageSurfaceArchitectureTests</c>. When that slice lands, the digest's inputs
+    /// are the thing to revisit, and the value will change.
+    /// </para>
+    /// <para>
+    /// <b>Why not a constant.</b> The field is required and typed <c>Sha256</c>, so a fixed
+    /// sixty-four-character string would be schema-valid and mean nothing -- the exact shape of
+    /// "the identity moved to v2 but the payload did not" that this switch was supposed to close.
+    /// The control server does not read the field today, so nothing outside this repository would
+    /// have noticed.
+    /// </para>
+    /// </remarks>
+    private static string ActiveSlotConfigurationFingerprint(
+        WireToGateSessionOptions options,
+        IReadOnlyList<ProtocolSlotState> slotStates)
+    {
+        string canonical =
+            $"slotModelVersion={options.SlotModelVersion}\n"
+            + $"activeSlotConfigurationVersion={options.ActiveSlotConfigurationVersion}\n"
+            + $"slotNos={string.Join(',', slotStates.Select(slot => slot.SlotNo).Order())}\n";
+        return WireToGateProtocolSerializer.ComputeSha256(Encoding.UTF8.GetBytes(canonical));
+    }
 
     private static ProtocolSlotState[] CreateSlotStates(IoSnapshot snapshot)
     {
@@ -2639,6 +2726,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         DateTimeOffset ObservedAt,
         string SlotModelVersion,
         string ActiveSlotConfigurationVersion,
+        string ActiveSlotConfigurationFingerprint,
         IReadOnlyList<ProtocolSlotState> SlotStates,
         bool SupportsBatchUnlock,
         int OnboardJournalFormatVersion);

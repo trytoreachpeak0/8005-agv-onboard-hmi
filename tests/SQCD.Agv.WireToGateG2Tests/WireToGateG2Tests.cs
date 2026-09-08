@@ -704,6 +704,53 @@ public sealed class WireToGateG2Tests
         }
     }
 
+    /// <summary>
+    /// A drop-off journey is projected rather than refused.
+    /// </summary>
+    /// <remarks>
+    /// Protocol v2 renamed the two values this exercises: <c>stopRole</c> <c>GATE</c> became
+    /// <c>DROPOFF</c> and <c>legType</c> <c>TO_GATE</c> became <c>TO_DROPOFF</c>. The onboard's
+    /// inbound validators still named the v1 spellings on 2026-09-09, which meant every drop-off
+    /// snapshot the v2 control server sends would have been answered
+    /// <c>PROTOCOL_SCHEMA_INVALID</c> -- and nothing said so, because every fixture in this suite
+    /// sent the pick-up half, whose values v2 did not change.
+    /// </remarks>
+    [Fact]
+    public async Task DropoffStopSnapshotsAreProjectedRatherThanRefused()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            SendJourneySnapshotsAfterRecovery = true,
+            SendDropoffStopSnapshots = true
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionClient client = CreateClient(server, io, NewJournalPath());
+
+        await client.ConnectAndRecoverAsync(testToken);
+        await WaitUntilAsync(
+            () => client.CurrentJourney.CurrentStopWorklist is not null
+                && client.CurrentJourney.UpcomingStopPlan is not null,
+            testToken);
+
+        WireToGateJourneySnapshot journey = client.CurrentJourney;
+        Assert.Equal("DROPOFF", Assert.Single(journey.CurrentStopWorklist!.Items).StopRole);
+        SQCD.Agv.Core.WireToGateMovementLeg leg = Assert.Single(journey.UpcomingStopPlan!.Legs);
+        Assert.Equal("TO_DROPOFF", leg.LegType);
+        Assert.Equal("BUSINESS", leg.StopPurposeCategory);
+        Assert.Null(leg.PublicStationFunction);
+
+        // v2 moved demandId into the leg; the projection's single-demand answer now comes from
+        // there rather than from a top-level field the payload no longer carries.
+        Assert.Equal(leg.DemandId, journey.UpcomingStopPlan.DemandId);
+        Assert.Equal(
+            journey.CurrentStopWorklist.Items.Single().DemandId,
+            journey.UpcomingStopPlan.DemandId);
+        Assert.DoesNotContain(server.Received, item => item.MessageType == "ProtocolProblem");
+        Assert.Equal(0, io.UnlockCount);
+    }
+
     [Fact]
     public async Task JourneySnapshotsAreProjectedAndHeartbeatDoesNotStealAsyncMessages()
     {
