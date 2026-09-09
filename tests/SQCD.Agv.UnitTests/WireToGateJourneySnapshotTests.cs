@@ -14,6 +14,7 @@ public sealed class WireToGateJourneySnapshotTests
         new(2026, 9, 8, 10, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public void MultiItemWorklistNoLongerThrowsWhenTheDemandIsChecked()
     {
         // 这是回归点本身：旧实现用 SingleOrDefault()，两项时抛 InvalidOperationException。抛在
@@ -26,6 +27,7 @@ public sealed class WireToGateJourneySnapshotTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public void PlanDemandThatIsAbsentFromAMultiItemWorklistIsInconsistent()
     {
         WireToGateJourneySnapshot snapshot = Snapshot(
@@ -36,6 +38,7 @@ public sealed class WireToGateJourneySnapshotTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public void PlanWithoutADemandIsConsistentWithAnyWorklist()
     {
         // 0.2.0 起一趟行程属于整趟而不属于其中某一个需求，计划的 demandId 因此可以是 null。
@@ -47,6 +50,7 @@ public sealed class WireToGateJourneySnapshotTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public void EmptyWorklistIsConsistentButAcceptsNothing()
     {
         WireToGateJourneySnapshot snapshot = Snapshot(Worklist(), Plan("D-1"));
@@ -56,6 +60,7 @@ public sealed class WireToGateJourneySnapshotTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public void MultiItemWorklistCanAcceptSublot()
     {
         // 旧判据是 Items.Count == 1：一次停靠有两项待装就整个录不进去。
@@ -67,6 +72,7 @@ public sealed class WireToGateJourneySnapshotTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public void SingleItemWorklistStillAcceptsSublot()
     {
         WireToGateJourneySnapshot snapshot = Snapshot(Worklist(("D-1", "SUBLOT-001")), Plan("D-1"));
@@ -75,6 +81,7 @@ public sealed class WireToGateJourneySnapshotTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public void InconsistentDemandBlocksAcceptanceEvenWithItemsPresent()
     {
         WireToGateJourneySnapshot snapshot = Snapshot(
@@ -85,6 +92,7 @@ public sealed class WireToGateJourneySnapshotTests
     }
 
     [Theory]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     [InlineData("BLOCKED", false, "SUFFICIENT")]
     [InlineData("READY", true, "SUFFICIENT")]
     [InlineData("READY", false, "LOW")]

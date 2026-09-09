@@ -22,6 +22,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-00")]
     public async Task HappyPathCompletesFullSequenceAndBecomesReady()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -45,6 +46,8 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-00")]
+    [Trait("IntegrationSlice", "W2G-IS-05")]
     public async Task ReconnectDuringRecoveryRebindsDurableReportWithoutUnlockSideEffects()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -137,6 +140,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-00")]
     public async Task SnapshotReplaceAndAckAcceptsHigherRevisionOnNewConnection()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -162,6 +166,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-00")]
     public async Task SameRevisionDifferentContentFailsClosedWithProtocolProblemReasonCode()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -194,6 +199,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
     public async Task DurableOutboxIsAcknowledgedAfterServerDurableAck()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -209,6 +215,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-00")]
     public async Task HeartbeatIsAcknowledgedByControlServer()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -225,6 +232,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task RecoverySessionAndActionResponsesAreCorrelatedWithoutPhysicalIo()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -281,6 +289,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task ManualChargingReturnToServiceAcceptedResultIsCorrelatedToRequestedMessage()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -328,6 +337,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task ManualChargingReturnToServiceRejectedResultPreservesRegisteredProblem()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -368,6 +378,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task DuplicateManualChargingReturnToServiceResultDoesNotRaiseSecondCommand()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -414,6 +425,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task MissingManualChargingReturnToServiceResultTimesOutExplicitly()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -447,6 +459,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-00")]
     public async Task BusinessBootstrapsRecoveryRequestBeforeServerSnapshot()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -610,6 +623,7 @@ public sealed class WireToGateG2Tests
     /// handshake.
     /// </summary>
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public async Task CancellingAtAStopWithNothingToLoadNeedsNoSlotOperationAndTouchesNoIo()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -691,6 +705,7 @@ public sealed class WireToGateG2Tests
     /// a rejected cancellation leaves the entry open, because the demand is still the vehicle's.
     /// </summary>
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public async Task ARefusedBeforeLoadCancellationLeavesTheStopExactlyAsItWas()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -761,6 +776,7 @@ public sealed class WireToGateG2Tests
     /// checkpoint and no server recovery-session snapshot to lean on.
     /// </summary>
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task RecoveryRequiredAnnouncedOnAResultAckOpensTheRecoveryEntry()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -859,6 +875,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public async Task JourneySnapshotsAreProjectedAndHeartbeatDoesNotStealAsyncMessages()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -894,6 +911,8 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-00")]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public async Task SameJourneyRevisionsWithStablePayloadAreAcceptedAcrossSessionGenerations()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1010,6 +1029,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public async Task AppliedJourneyJournalUsesCanonicalPayloadForSameRevisionIdentity()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1046,6 +1066,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public async Task DemandAcceptanceSnapshotsArePersistedBeforeAcknowledgement()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1107,6 +1128,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public async Task PersistedDemandProjectionIsRestoredWhenServerDoesNotResendIt()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1146,6 +1168,7 @@ public sealed class WireToGateG2Tests
     /// expectedSublot 这一个字符串」，那样的话除第一项外全都会以 SUBLOT_NOT_IN_WORKLIST 被拒。
     /// </summary>
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public Task AnySublotInTheExpectedSetCanBeSubmittedNotOnlyTheFirst() =>
         RunWithSublotEntryAsync(
             ["SUBLOT-001", "SUBLOT-002", "SUBLOT-003"],
@@ -1166,6 +1189,7 @@ public sealed class WireToGateG2Tests
     /// 放宽到集合不等于放开：范围外的子批仍然要拒（FR-001 AC-4），而且不能有任何东西发到服务端。
     /// </summary>
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public Task SublotOutsideTheExpectedSetIsStillRefused() =>
         RunWithSublotEntryAsync(
             ["SUBLOT-001", "SUBLOT-002"],
@@ -1183,6 +1207,7 @@ public sealed class WireToGateG2Tests
     /// 8/9 之间——只测拒绝的那一半，上限写成 7 也会通过。
     /// </summary>
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public Task EightExpectedSublotsAreWithinTheCap() =>
         RunWithSublotEntryAsync(
             ["S-1", "S-2", "S-3", "S-4", "S-5", "S-6", "S-7", "S-8"],
@@ -1195,9 +1220,11 @@ public sealed class WireToGateG2Tests
             });
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public Task EmptyExpectedSublotsFailClosed() => AssertEntryRequestFailsClosedAsync([]);
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public Task NineExpectedSublotsFailClosed() =>
         AssertEntryRequestFailsClosedAsync(
             ["S-1", "S-2", "S-3", "S-4", "S-5", "S-6", "S-7", "S-8", "S-9"]);
@@ -1207,10 +1234,12 @@ public sealed class WireToGateG2Tests
     /// 只能表达一次录入。失败在解析处比失败在录入处便宜。
     /// </summary>
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public Task DuplicateExpectedSublotsFailClosed() =>
         AssertEntryRequestFailsClosedAsync(["SUBLOT-001", "SUBLOT-001"]);
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public Task BlankExpectedSublotFailsClosed() =>
         AssertEntryRequestFailsClosedAsync(["SUBLOT-001", "   "]);
 
@@ -1298,6 +1327,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public async Task SameJourneyRevisionWithDifferentContentFailsClosed()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1322,6 +1352,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public async Task FormalSlotOperationCommandIsValidatedAndRaisedWithoutPhysicalSideEffect()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1346,6 +1377,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
     public async Task BusinessProgressUsesStableDurableMessageAndDoesNotDuplicateAfterAck()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1378,6 +1410,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
     public async Task DurableOutboxRejectsDifferentContentForSameDeduplicationKey()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1414,6 +1447,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-00")]
     public async Task JournalEpochPersistsAcrossReopenAndDiffersForFreshJournal()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1446,6 +1480,8 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-00")]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
     public async Task FreshJournalsNeverReuseSafetyStateChangedMessageIdentity()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1488,6 +1524,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
     public async Task LostSafetyStateChangedAckReplaysSameIdentityAndBusinessContentFromJournal()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1557,6 +1594,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task DelayedStoppedSafetyRevisionRecoversSessionToReadyWithoutIoSideEffects()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1604,6 +1642,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task FailedThenStoppedProviderRefreshFlowsThroughBusinessServiceToReady()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1707,6 +1746,8 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-05")]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
     public async Task BusinessSafetySendFailureDisconnectsAndReplaysPendingRevision()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1797,6 +1838,8 @@ public sealed class WireToGateG2Tests
     /// 认下之后，pending 对账会把 _lastSafetySignature 重新填上，换代重置必须排在它之后才有效。
     /// </summary>
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-00")]
+    [Trait("IntegrationSlice", "W2G-IS-05")]
     public async Task BusinessResendsSafetyStateAfterSessionGenerationChangeWhileVehicleIdle()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;

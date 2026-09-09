@@ -7,6 +7,8 @@ namespace SQCD.Agv.UnitTests;
 public sealed class WireToGateRecoveryVectorExecutorTests
 {
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-04")]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task ClearSkipsEmptySlotsAndUnlocksOnlyOccupiedSlots()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
@@ -34,6 +36,8 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task ReplayingACompletedVectorKeepsTheSameObservedAtAndDoesNotPulse()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
@@ -59,6 +63,8 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task CorrectionRequiresEmptyThenOccupiedSequence()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
@@ -83,6 +89,8 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task UnknownSnapshotFailsClosedWithoutUnlock()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
@@ -104,6 +112,7 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task ActiveUnlockCheckpointIsNotPulsedAgainAfterUncertainFailure()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(

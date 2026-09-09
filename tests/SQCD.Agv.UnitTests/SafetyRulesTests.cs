@@ -6,6 +6,7 @@ namespace SQCD.Agv.UnitTests;
 public sealed class SafetyRulesTests
 {
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public void ResumeAuthorizationRequiresExactPersistedAttemptAndCheckpoint()
     {
         WireToGateRecoveryState state = new(
@@ -34,6 +35,7 @@ public sealed class SafetyRulesTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public void RecordedVehicleSafetyProviderDistinguishesStoppedMovingAndUnknown()
     {
         DateTimeOffset now = DateTimeOffset.UtcNow;
@@ -54,6 +56,7 @@ public sealed class SafetyRulesTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public void UnavailableVehicleSafetyProviderFailsClosed()
     {
         VehicleSafetySignal signal = new UnavailableVehicleSafetySignalProvider().Read();
@@ -63,6 +66,7 @@ public sealed class SafetyRulesTests
     }
 
     [Theory]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     [InlineData(100, 500, true)]
     [InlineData(500, 500, true)]
     [InlineData(501, 500, false)]
@@ -88,6 +92,7 @@ public sealed class SafetyRulesTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public void VehicleSafetyFreshnessRejectsInvalidPolicyInputs()
     {
         DateTimeOffset now = new(2026, 9, 3, 8, 0, 0, TimeSpan.Zero);
@@ -110,6 +115,7 @@ public sealed class SafetyRulesTests
     }
 
     [Theory]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     [InlineData(VehicleMotionState.Unknown, true, "VEHICLE_NOT_READY")]
     [InlineData(VehicleMotionState.Moving, false, "ACTION_NOT_ALLOWED_IN_STATE")]
     public void WireToGateSafetySummaryPreservesVehicleTriState(
@@ -144,6 +150,7 @@ public sealed class SafetyRulesTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public void RecoverySafetyPolicyRequiresAuthorizationPersistenceAndFreshPhysicalFacts()
     {
         WireToGateRecoverySafetyFacts facts = WireToGateRecoverySafetyFacts.Unknown;
@@ -184,6 +191,7 @@ public sealed class SafetyRulesTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public void LoadIntoEmptyLockedSlotIsAllowed()
     {
         ScanAuthorization authorization = CreateAuthorization(OperationType.Load, slotIndex: 0);
@@ -195,6 +203,7 @@ public sealed class SafetyRulesTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public void LoadIntoOccupiedSlotIsRejected()
     {
         ScanAuthorization authorization = CreateAuthorization(OperationType.Load, slotIndex: 0);
@@ -206,6 +215,7 @@ public sealed class SafetyRulesTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-04")]
     public void UnloadFromEmptySlotIsRejected()
     {
         ScanAuthorization authorization = CreateAuthorization(OperationType.Unload, slotIndex: 0);
@@ -217,6 +227,7 @@ public sealed class SafetyRulesTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public void DepartureIsRejectedWhenAnyDoorIsUnlocked()
     {
         IoSnapshot snapshot = CreateSnapshot(targetHasCargo: false, targetLocked: false);
@@ -227,6 +238,7 @@ public sealed class SafetyRulesTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public void DepartureIsRejectedWhenAnyUnlockOutputIsActive()
     {
         IoSnapshot snapshot = ReplaceLocker(CreateSnapshot(false, true), 0, unlockOutput: true, isLocked: true);
@@ -235,6 +247,7 @@ public sealed class SafetyRulesTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public void DepartureIsRejectedByBlockingFault()
     {
         IoSnapshot snapshot = CreateSnapshot(false, true);
@@ -250,6 +263,7 @@ public sealed class SafetyRulesTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public void StaleSnapshotIsRejectedBeforeUnlockAndDeparture()
     {
         ScanAuthorization authorization = CreateAuthorization(OperationType.Load, slotIndex: 0);
@@ -265,6 +279,7 @@ public sealed class SafetyRulesTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public void ActiveUnlockOutputIsRejectedBeforeUnlock()
     {
         ScanAuthorization authorization = CreateAuthorization(OperationType.Load, slotIndex: 0);
@@ -274,6 +289,7 @@ public sealed class SafetyRulesTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public void AnotherUnlockedDoorIsRejectedBeforeUnlock()
     {
         ScanAuthorization authorization = CreateAuthorization(OperationType.Load, slotIndex: 0);

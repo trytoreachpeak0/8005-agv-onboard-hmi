@@ -6,6 +6,7 @@ namespace SQCD.Agv.UnitTests;
 public sealed class OnboardControllerTests
 {
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task ExternalSafetyGateNotReadyBlocksScanUnlockAndDeparture()
     {
         bool externalSafetyReady = false;
@@ -29,6 +30,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task ExternalSafetyGateDropDuringVerificationPreventsPhysicalUnlock()
     {
         bool externalSafetyReady = true;
@@ -53,6 +55,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public async Task AuthoritativeJourneyMustContainMatchingSublotBeforeScan()
     {
         WireToGateJourneySnapshot journey = WireToGateJourneySnapshot.Empty;
@@ -104,6 +107,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public async Task LoadFlowUnlocksOnceAndReportsSuccess()
     {
         FakeIoModule io = new();
@@ -123,6 +127,8 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
     public async Task DuplicateOperationIdDoesNotUnlockAgain()
     {
         FakeIoModule io = new();
@@ -138,6 +144,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
     public async Task UnlockFeedbackTimeoutDoesNotRetryPulseAndReportsFailure()
     {
         FakeIoModule io = new() { FailUnlockFeedback = true };
@@ -157,6 +164,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public async Task ScanWithoutActiveVisitDoesNotUnlock()
     {
         FakeIoModule io = new();
@@ -171,6 +179,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-04")]
     public async Task UnloadFlowRequiresCargoAndReportsEmptySlot()
     {
         FakeIoModule io = new() { FinalHasCargo = false };
@@ -203,6 +212,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
     public async Task ResultKeepsVisitFromOperationStartWhenCurrentVisitChanges()
     {
         FakeIoModule io = new();
@@ -218,6 +228,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task StartupWithLockedCargoCanBeRecoveredByControlledReview()
     {
         FakeIoModule io = new();
@@ -238,6 +249,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
     public async Task RuleTimeoutIsReportedAsRequestTimeoutWithoutUnlock()
     {
         FakeIoModule io = new();
@@ -253,6 +265,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
     public async Task ModbusWriteTimeoutIsReportedAsIoWriteFailedWithoutRetry()
     {
         FakeIoModule io = new() { FailPulseWithTimeout = true };
@@ -269,6 +282,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task UnlockOutputThatDoesNotResetCannotBeReportedAsSuccess()
     {
         FakeIoModule io = new() { KeepUnlockOutputActive = true };
@@ -288,6 +302,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-05")]
     public async Task FatalFaultCancelsVerificationAndCannotBeOverwritten()
     {
         FakeIoModule io = new();
@@ -313,6 +328,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-05")]
     public async Task IoConnectionLossDuringOperationIsReportedAsSystemWideFault()
     {
         FakeIoModule io = new() { FailUnlockFeedbackWithIoDisconnect = true };
@@ -328,6 +344,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task AllUnknownIoStatesAreReportedWithoutImplyingSingleSlotFault()
     {
         FakeIoModule io = new();
@@ -344,6 +361,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task SingleUnknownIoStateIdentifiesAffectedPhysicalSlot()
     {
         FakeIoModule io = new();
@@ -359,6 +377,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task ValidAuthorizationWithUnsafeSlotReportsPrecheckFailureWithoutUnlock()
     {
         FakeIoModule io = new();
@@ -377,6 +396,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
     public async Task UnacknowledgedPrecheckFailureBlocksUntilAutomaticReportRetrySucceeds()
     {
         FakeIoModule io = new();
@@ -407,6 +427,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task PrecheckErrorRemainsVisibleAfterIoSnapshotRefresh()
     {
         FakeIoModule io = new();
@@ -423,6 +444,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public async Task PrematureCloseDuringLoadCanReopenAndComplete()
     {
         FakeIoModule io = new();
@@ -447,6 +469,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-04")]
     public async Task PrematureCloseDuringUnloadCanReopenAndComplete()
     {
         FakeIoModule io = new();
@@ -470,6 +493,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public async Task PrematureCloseCanBeSafelyCancelledAndReported()
     {
         FakeIoModule io = new();
@@ -494,6 +518,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public async Task DelayedCargoFeedbackCompletesWithoutReopening()
     {
         FakeIoModule io = new();
@@ -513,6 +538,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public async Task CancelWithoutRuleAcknowledgementRemainsBlocking()
     {
         FakeIoModule io = new();
@@ -536,6 +562,8 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-05")]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
     public async Task SuccessfulResultIsRetriedWithSameMessageAfterConnectionRecovers()
     {
         FakeIoModule io = new();
@@ -567,6 +595,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public async Task ReopenIsLimitedAndOtherScansRemainBlocked()
     {
         FakeIoModule io = new();

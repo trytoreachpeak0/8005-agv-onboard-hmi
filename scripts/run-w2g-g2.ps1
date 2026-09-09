@@ -220,12 +220,24 @@ Assert-Equal 'release.releaseVersion' $release.releaseVersion $expected.ReleaseV
 Assert-Equal 'release.schemaBundleSha256' $release.schemaBundleSha256 $expected.SchemaBundleSha256
 Assert-Equal 'release.vectorsSha256' $release.vectorsSha256 $expected.VectorsSha256
 
-$index = Get-Content -LiteralPath (Join-Path $ProtocolRoot 'integration-slices\index.json') -Raw | ConvertFrom-Json
-$is00 = $index.slices | Where-Object integrationSliceId -eq 'W2G-IS-00'
-$is01 = $index.slices | Where-Object integrationSliceId -eq 'W2G-IS-01'
-Assert-Equal 'IS-00 vector count' $is00.vectorIds.Count 4
-Assert-Equal 'IS-01 vector count' $is01.vectorIds.Count 1
-Assert-Equal 'IS-01 vector' ($is01.vectorIds -join ',') 'CV-DEMAND-ACCEPT-TO-PICKUP'
+$indexRelativePath = 'integration-slices\index.json'
+$indexPath = Join-Path $ProtocolRoot $indexRelativePath
+$index = Get-Content -LiteralPath $indexPath -Raw | ConvertFrom-Json
+if (@($index.slices).Count -eq 0) {
+    throw "协议仓的 $indexRelativePath 没有任何切片：$indexPath"
+}
+
+# 本仓测试按 [Trait("IntegrationSlice", ...)] 分组，而那些标注由
+# IntegrationSliceCoverageArchitectureTests 对着 vendored 的同一份 index.json 校验。
+# 两份必须逐字节相同，否则「标注覆盖了所有切片」这句话说的是另一个切片表。
+$vendoredIndexPath = Join-Path $hmiRoot ('vendor\8005-agv-protocol\' + $expected.Tag + '\' + $indexRelativePath)
+if (-not (Test-Path -LiteralPath $vendoredIndexPath)) {
+    Add-Failure "找不到 vendored 切片索引：$vendoredIndexPath"
+} else {
+    $releaseIndexHash = (Get-FileHash -LiteralPath $indexPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $vendoredIndexHash = (Get-FileHash -LiteralPath $vendoredIndexPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    Assert-Equal 'vendored integration-slices/index.json sha256' $vendoredIndexHash $releaseIndexHash
+}
 
 $g1Result = $null
 if (-not $SkipProtocolG1) {
@@ -238,10 +250,56 @@ $build = Invoke-LoggedCommand -Name 'dotnet-build-release' -FilePath 'dotnet' -A
 $test = Invoke-LoggedCommand -Name 'dotnet-test-release' -FilePath 'dotnet' -Arguments @('test', '.\SQCD_8005AGV.sln', '-c', 'Release', '--no-build', '--results-directory', $resultsDirectory) -LogPath (Join-Path $logsDirectory 'dotnet-test-release.log')
 $format = Invoke-LoggedCommand -Name 'dotnet-format-verify' -FilePath 'dotnet' -Arguments @('format', '.\SQCD_8005AGV.sln', '--verify-no-changes', '--no-restore') -LogPath (Join-Path $logsDirectory 'dotnet-format-verify.log')
 
+# 整仓那一趟是**前置**：它跑掉全部 193 条，包括没有挂切片标注的横切测试，以及守着标注本身的
+# IntegrationSliceCoverageArchitectureTests。前置不绿，任何切片都不许声称 PASS。
+$preconditionStatus = if ($build.ExitCode -eq 0 -and $test.ExitCode -eq 0 -and $format.ExitCode -eq 0) { 'PASS' } else { 'FAIL' }
+
+# 切片结论来自它自己那批测试，不是整仓那个结论的复制。
+$sliceRuns = [ordered]@{}
+foreach ($slice in $index.slices) {
+    $sliceId = [string]$slice.integrationSliceId
+    $sliceResults = Join-Path $resultsDirectory $sliceId
+    New-Item -ItemType Directory -Force -Path $sliceResults | Out-Null
+    $sliceRun = Invoke-LoggedCommand `
+        -Name ('dotnet-test-' + $sliceId) `
+        -FilePath 'dotnet' `
+        -Arguments @('test', '.\SQCD_8005AGV.sln', '-c', 'Release', '--no-build', '--filter', ('IntegrationSlice=' + $sliceId), '--results-directory', $sliceResults) `
+        -LogPath (Join-Path $logsDirectory ('dotnet-test-' + $sliceId + '.log'))
+
+    # VSTest 对「过滤器一条都没选中」返回 0。不数一遍的话，标注写错会让切片静默变绿——
+    # 那正是这次改造要消灭的失败形态，所以空结果在这里当失败。
+    $passed = 0
+    $failed = 0
+    foreach ($match in [regex]::Matches($sliceRun.Output, 'Failed:\s*(\d+),\s*Passed:\s*(\d+)')) {
+        $failed += [int]$match.Groups[1].Value
+        $passed += [int]$match.Groups[2].Value
+    }
+    if ($passed -eq 0 -and $failed -eq 0) {
+        Add-Failure "$sliceId 的过滤器一条测试都没选中：标注缺失或写错，证据不能为它出结论"
+    }
+
+    $sliceStatus = if ($preconditionStatus -eq 'PASS' -and $sliceRun.ExitCode -eq 0 -and $passed -gt 0) { 'PASS' } else { 'FAIL' }
+    Add-Event $journal 'slice.validated' @{
+        integrationSliceId = $sliceId
+        status = $sliceStatus
+        passed = $passed
+        failed = $failed
+        exitCode = $sliceRun.ExitCode
+    }
+    $sliceRuns[$sliceId] = [pscustomobject]@{
+        Status = $sliceStatus
+        Passed = $passed
+        Failed = $failed
+        ExitCode = $sliceRun.ExitCode
+        Log = 'logs/dotnet-test-' + $sliceId + '.log'
+        Results = 'test-results/' + $sliceId
+    }
+}
+
 $g1Text = if ($g1Result) { $g1Result.Output } else { '' }
 $g1ManifestMatch = [regex]::Match($g1Text, '"candidateManifestSha256"\s*:\s*"([^"]+)"')
 $protocolStatus = if ($g1Result) { $g1Result.Status } else { 'SKIPPED' }
-$hmiStatus = if ($build.ExitCode -eq 0 -and $test.ExitCode -eq 0 -and $format.ExitCode -eq 0) { 'PASS' } else { 'FAIL' }
+$hmiStatus = if ($preconditionStatus -eq 'PASS' -and @($sliceRuns.Values | Where-Object Status -ne 'PASS').Count -eq 0) { 'PASS' } else { 'FAIL' }
 $testSummaryMatch = [regex]::Match($test.Output, 'Total tests:\s*(\d+).*?Passed:\s*(\d+).*?Failed:\s*(\d+)', [System.Text.RegularExpressions.RegexOptions]::Singleline)
 
 Add-Event $transcript 'evidence.journal.bound' @{
@@ -262,6 +320,8 @@ Add-Event $journal 'hmi.validation.completed' @{
     testExitCode = $test.ExitCode
     formatExitCode = $format.ExitCode
     testSummary = if ($testSummaryMatch.Success) { $testSummaryMatch.Value } else { 'unparsed' }
+    sliceCount = $sliceRuns.Count
+    slicesPassed = @($sliceRuns.Values | Where-Object Status -eq 'PASS').Count
 }
 
 $summary = [ordered]@{
@@ -293,31 +353,40 @@ $summary = [ordered]@{
         test = [ordered]@{ exitCode = $test.ExitCode; log = 'logs/dotnet-test-release.log'; resultsDirectory = 'test-results' }
         format = [ordered]@{ exitCode = $format.ExitCode; log = 'logs/dotnet-format-verify.log' }
     }
+    precondition = [ordered]@{
+        status = $preconditionStatus
+        scope = 'WHOLE_SOLUTION_BUILD_TEST_FORMAT'
+        note = '含未挂切片标注的横切测试，以及守着标注本身的 IntegrationSliceCoverageArchitectureTests。'
+    }
     slices = @(
-        [ordered]@{
-            integrationSliceId = 'W2G-IS-00'
-            vectorIds = @($is00.vectorIds)
-            onboardHmiG2 = $hmiStatus
-            controlServerG2 = 'PENDING_EXTERNAL'
-            g3 = 'PENDING_JOINT'
-            forbidUnclosedFailOrInconclusive = [bool]$is00.forbidUnclosedFailOrInconclusive
-        },
-        [ordered]@{
-            integrationSliceId = 'W2G-IS-01'
-            vectorIds = @($is01.vectorIds)
-            onboardHmiG2 = $hmiStatus
-            controlServerG2 = 'PENDING_EXTERNAL'
-            g3 = 'PENDING_JOINT'
-            demandMode = 'READ_ONLY_COMMITTED_PROJECTION'
-            demandSource = 'CONTROL_SERVER_SNAPSHOTS_ONLY'
-            controlServerOutcomes = @(
-                'MESINGEST_FINAL_REREAD',
-                'ATOMIC_DEMAND_ACCEPTANCE',
-                'DEDUPLICATED_TO_PICKUP_INTENT',
-                'RIOT_ORDER_RECONCILIATION',
-                'TRUSTED_PICKUP_ARRIVAL'
-            )
-            forbidUnclosedFailOrInconclusive = [bool]$is01.forbidUnclosedFailOrInconclusive
+        foreach ($slice in $index.slices) {
+            $sliceId = [string]$slice.integrationSliceId
+            $run = $sliceRuns[$sliceId]
+            $entry = [ordered]@{
+                integrationSliceId = $sliceId
+                vectorIds = @($slice.vectorIds)
+                onboardHmiG2 = $run.Status
+                controlServerG2 = 'PENDING_EXTERNAL'
+                g3 = 'PENDING_JOINT'
+                testFilter = 'IntegrationSlice=' + $sliceId
+                testsPassed = $run.Passed
+                testsFailed = $run.Failed
+                testLog = $run.Log
+                testResults = $run.Results
+                forbidUnclosedFailOrInconclusive = [bool]$slice.forbidUnclosedFailOrInconclusive
+            }
+            if ($sliceId -eq 'W2G-IS-01') {
+                $entry['demandMode'] = 'READ_ONLY_COMMITTED_PROJECTION'
+                $entry['demandSource'] = 'CONTROL_SERVER_SNAPSHOTS_ONLY'
+                $entry['controlServerOutcomes'] = @(
+                    'MESINGEST_FINAL_REREAD',
+                    'ATOMIC_DEMAND_ACCEPTANCE',
+                    'DEDUPLICATED_TO_PICKUP_INTENT',
+                    'RIOT_ORDER_RECONCILIATION',
+                    'TRUSTED_PICKUP_ARRIVAL'
+                )
+            }
+            $entry
         }
     )
     failures = @($failures)
@@ -330,7 +399,9 @@ $summary = [ordered]@{
     knownLimitations = @(
         '本证据是 OnboardHmi 本机 G2；ControlServer G2 和联合 G3 仍需外部/现场门禁。',
         'G1 使用临时盘符运行，仅规避 Windows 工作区路径含 # 时的 Node URL 解码问题，不改变协议仓库内容。',
-        '真实车辆停稳信号、Modbus/锁/门/光幕和现场明文网络未在本机证据中宣称完成。'
+        '真实车辆停稳信号、Modbus/锁/门/光幕和现场明文网络未在本机证据中宣称完成。',
+        '切片结论来自 [Trait("IntegrationSlice", ...)] 选出的测试子集：证据声称的是「本仓有这些具名测试覆盖该切片的车载端职责」，不是「该切片端到端已验证」——端到端属于 G3。',
+        '标注本身由 IntegrationSliceCoverageArchitectureTests 守卫：切片集双向相等、每切片下限 3 条、vendored index.json 按哈希钉字节。'
     )
 }
 

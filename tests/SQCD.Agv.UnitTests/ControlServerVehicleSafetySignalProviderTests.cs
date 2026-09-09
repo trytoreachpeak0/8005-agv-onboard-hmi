@@ -16,6 +16,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     private const string Credential = "unit-test-onboard-credential";
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task FreshStoppedResponseIsPublishedWithIdentityAndEvidence()
     {
         StubHandler handler = new((_, _) => Task.FromResult(JsonResponse(new
@@ -42,6 +43,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Theory]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     [InlineData(100, VehicleMotionState.Stopped)]
     [InlineData(500, VehicleMotionState.Stopped)]
     [InlineData(501, VehicleMotionState.Unknown)]
@@ -70,6 +72,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Theory]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     [InlineData("MOVING", VehicleMotionState.Moving)]
     [InlineData("UNKNOWN", VehicleMotionState.Unknown)]
     [InlineData("MT_NA", VehicleMotionState.Unknown)]
@@ -92,6 +95,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task ExpiredEvidenceIsUnknownAndDoesNotPreserveStopped()
     {
         StubHandler handler = new((_, _) => Task.FromResult(JsonResponse(new
@@ -114,6 +118,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task WrongVehicleIdentityIsUnknown()
     {
         StubHandler handler = new((_, _) => Task.FromResult(JsonResponse(new
@@ -134,6 +139,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Theory]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     [InlineData(HttpStatusCode.Unauthorized)]
     [InlineData(HttpStatusCode.UpgradeRequired)]
     [InlineData(HttpStatusCode.ServiceUnavailable)]
@@ -150,6 +156,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task HttpEndpointSendsRequestAndPublishesResponse()
     {
         StubHandler handler = new((_, _) => Task.FromResult(JsonResponse(new
@@ -177,6 +184,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task HttpsEndpointIsRejectedBeforeNetworkCall()
     {
         StubHandler handler = new((_, _) => Task.FromResult(JsonResponse(new { })));
@@ -196,6 +204,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task MalformedJsonIsUnknown()
     {
         StubHandler handler = new((_, _) => Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
@@ -212,6 +221,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task TimeoutIsUnknown()
     {
         StubHandler handler = new(async (_, cancellationToken) =>
@@ -235,6 +245,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task TransportFailureIsUnknown()
     {
         StubHandler handler = new((_, _) =>
@@ -249,6 +260,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task FailedRefreshImmediatelyReplacesPreviousStoppedSnapshot()
     {
         int calls = 0;
@@ -281,6 +293,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task CredentialIsNotCopiedIntoPublishedSignal()
     {
         StubHandler handler = new((_, _) => Task.FromResult(JsonResponse(new
@@ -303,6 +316,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task DelayedFirstRefreshNotifiesStoppedWithoutBlockingSnapshotReads()
     {
         TaskCompletionSource<bool> releaseResponse = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -343,6 +357,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task FailedFirstRefreshCompletesStartupWaitAsUnknown()
     {
         StubHandler handler = new((_, _) =>
@@ -364,6 +379,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task ReadDoesNotWaitForAnInFlightNetworkRequest()
     {
         TaskCompletionSource<bool> requestStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -18,6 +18,7 @@ public sealed class MainViewModelJourneyTests
         new(2026, 9, 8, 10, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public void MultiItemWorklistListsEveryPendingSublot()
     {
         MainViewModel viewModel = CreateViewModel();
@@ -28,6 +29,7 @@ public sealed class MainViewModelJourneyTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public void SingleItemWorklistStaysOnTheOneLineForm()
     {
         // 单项仍然只写子批本身，不写「1 项：」——绝大多数停靠是单项，多出来的计数只是噪音。
@@ -39,6 +41,7 @@ public sealed class MainViewModelJourneyTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public void EmptyWorklistSaysSoInsteadOfLookingLikeAnUnsyncedJourney()
     {
         MainViewModel viewModel = CreateViewModel();
@@ -49,6 +52,7 @@ public sealed class MainViewModelJourneyTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public void JourneyWithoutAWorklistIsReportedAsUnsynced()
     {
         MainViewModel viewModel = CreateViewModel();
@@ -59,6 +63,7 @@ public sealed class MainViewModelJourneyTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public void ASecondWorklistReplacesTheTextRatherThanLeavingTheStaleOne()
     {
         // 回归点：旧实现在第二份清单（两项）上抛异常，界面因此还留着第一份的文字。
@@ -71,6 +76,7 @@ public sealed class MainViewModelJourneyTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public void UpcomingPlanRendersEveryLegInSequenceOrder()
     {
         // 协议保证 sequence 从 1 起连续，但不保证数组本身有序——这里故意倒着发。
@@ -88,6 +94,7 @@ public sealed class MainViewModelJourneyTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public void OnlyTheLegTheVehicleIsOnIsMarkedCurrent()
     {
         MainViewModel viewModel = CreateViewModel();
@@ -101,6 +108,7 @@ public sealed class MainViewModelJourneyTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public void BlockedLegIsCalledOutSeparatelyFromTheCurrentOne()
     {
         // 受阻要与「正在走」区分开：两者都不是完成，但操作员对它们要做的事不一样。
@@ -115,6 +123,7 @@ public sealed class MainViewModelJourneyTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public void JourneyWithoutAPlanCollapsesTheBand()
     {
         MainViewModel viewModel = CreateViewModel();
@@ -126,6 +135,7 @@ public sealed class MainViewModelJourneyTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
     public void ASecondPlanReplacesTheBandRatherThanAppendingToIt()
     {
         MainViewModel viewModel = CreateViewModel();
