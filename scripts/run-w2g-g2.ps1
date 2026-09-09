@@ -212,8 +212,65 @@ function Invoke-LoggedCommand {
     }
 }
 
+# G1 要 node 与 pnpm，这台机器上两者都不在 PATH 上，而协议仓也不带 node_modules。
+# 隔壁 run-staged-g3.ps1 早就处理了同一件事（它的第 33-61 行与第 2189-2194 行），
+# 这里照抄它的三步而不是另发明一套：
+#   1. node 不在 PATH 就用 codex runtime 里那份，**并把它的目录前置到 PATH**——
+#      少这一步 pnpm 自己起得来，但它派生的 `node tools/g1-validate.mjs` 起不来；
+#   2. pnpm 不在 PATH 就用 node 直接跑随 node 一起装的那份 pnpm.cjs；
+#   3. g1 校验依赖 ajv，协议仓没有 node_modules，所以跑 g1 之前先 install。
+#
+# 2026-09-09 逐步实测过：只补第 2 步时 `pnpm g1` 报
+# `'node' is not recognized as an internal or external command`；三步齐全时 G1 返回
+# "status": "PASS"，candidateManifestSha256 与协议仓已提交的 evidence/g1-result.json 逐字段相同。
+function Resolve-ProtocolG1Toolchain {
+    $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
+    $nodeExecutable = if ($null -ne $nodeCommand) {
+        $nodeCommand.Source
+    } else {
+        Join-Path $env:USERPROFILE '.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe'
+    }
+    if (-not (Test-Path -LiteralPath $nodeExecutable -PathType Leaf)) { return $null }
+
+    $nodeDirectory = Split-Path -Parent $nodeExecutable
+    if (($env:PATH -split ';') -notcontains $nodeDirectory) {
+        $env:PATH = "$nodeDirectory;$env:PATH"
+    }
+
+    $pnpmCommand = Get-Command pnpm -ErrorAction SilentlyContinue
+    if ($null -ne $pnpmCommand) {
+        return [pscustomobject]@{ FilePath = $pnpmCommand.Source; PrefixArguments = @() }
+    }
+    $bundledPnpm = Join-Path (Split-Path -Parent $nodeDirectory) 'node_modules\pnpm\bin\pnpm.cjs'
+    if (-not (Test-Path -LiteralPath $bundledPnpm -PathType Leaf)) { return $null }
+    return [pscustomobject]@{ FilePath = $nodeExecutable; PrefixArguments = @($bundledPnpm) }
+}
+
 function Invoke-ProtocolG1 {
     param([string]$LogPath)
+
+    $toolchain = Resolve-ProtocolG1Toolchain
+    if ($null -eq $toolchain) {
+        Add-Failure '这台机器上找不到可用的 node/pnpm，协议 G1 无法运行。'
+        return [pscustomobject]@{ ExitCode = 1; Output = ''; Status = 'NOT_RUN' }
+    }
+
+    # g1-validate.mjs 把仓库里的文件逐个与 manifest 的清单对账，排除项写作
+    # `p.startsWith(".git/")`——那条规则假定 .git 是目录。协议仓若是一个 linked worktree，
+    # 它的 .git 是一个内含 `gitdir: ...` 的文件，排除不掉，于是多出恰好一个条目，
+    # G1 报 `manifest file count` ＋ `manifest missing .git` 而 FAIL。
+    #
+    # 那不是协议内容的问题，把它报成 FAIL 会诬告候选。协议仓不能为此修改：
+    # g1-validate.mjs 在 manifest 的清单里，改它就改掉 manifestSha256，两端所有身份绑定全废。
+    # 所以在这里认出这个形状并如实说明。run-staged-g3.ps1 不受影响——它用 git clone
+    # 取协议仓，那种 .git 是目录。
+    $protocolGitPath = Join-Path $ProtocolRoot '.git'
+    if (Test-Path -LiteralPath $protocolGitPath -PathType Leaf) {
+        Add-Failure ("协议仓 $ProtocolRoot 是一个 linked worktree（.git 是文件），" +
+            'g1-validate.mjs 的 .git/ 排除规则对它不成立，G1 必然 FAIL 在 manifest file count。' +
+            '请把 -ProtocolRoot 指向一份普通克隆，或用 -SkipProtocolG1 并在证据里说明。')
+        return [pscustomobject]@{ ExitCode = 1; Output = ''; Status = 'NOT_RUN' }
+    }
 
     $candidateDrives = @('X', 'Y', 'Z', 'W', 'V') |
         Where-Object { -not (Test-Path -LiteralPath ($_ + ':\')) }
@@ -234,9 +291,24 @@ function Invoke-ProtocolG1 {
     try {
         Push-Location ($driveName + '\')
         try {
-            $output = & pnpm g1 2>&1
+            # --frozen-lockfile：装的就是锁文件里那几个包，不会顺手改动被测仓库的依赖状态。
+            # node_modules 在协议仓的 .gitignore 里，装完那个仓的工作树仍然干净。
+            $installArguments = $toolchain.PrefixArguments + @('install', '--frozen-lockfile')
+            $installOutput = & $toolchain.FilePath $installArguments 2>&1
+            $installExitCode = $LASTEXITCODE
+            if ($installExitCode -ne 0) {
+                $installOutput | Out-File -LiteralPath $LogPath -Encoding utf8
+                Add-Failure "协议依赖安装失败，G1 未运行：exitCode=$installExitCode"
+                return [pscustomobject]@{
+                    ExitCode = $installExitCode
+                    Output = ($installOutput -join [Environment]::NewLine)
+                    Status = 'NOT_RUN'
+                }
+            }
+            $g1Arguments = $toolchain.PrefixArguments + @('g1')
+            $output = & $toolchain.FilePath $g1Arguments 2>&1
             $exitCode = $LASTEXITCODE
-            $output | Out-File -LiteralPath $LogPath -Encoding utf8
+            ($installOutput + $output) | Out-File -LiteralPath $LogPath -Encoding utf8
         } finally {
             Pop-Location
         }
