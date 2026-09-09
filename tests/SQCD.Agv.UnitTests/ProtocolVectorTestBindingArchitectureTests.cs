@@ -149,34 +149,26 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// rule on the other set, and between them neither set can absorb the other's entries.
     /// </para>
     /// <para>
-    /// Both entries were measured on 2026-09-09, and they are not the same kind of gap.
-    /// <c>CV-FAULT-CARGO-HANDOFF</c> is implemented end to end -- the receive loop parses
-    /// <c>FaultCargoRecoveryCommand</c>, <c>WireToGateBusinessService</c>'s
-    /// <c>HandleFaultCargoRecoveryCommandAsync</c> runs it through the shared recovery-vector path
-    /// and sends <c>FaultCargoRecoveryResult</c> -- and no test drives any of it. Only
-    /// <c>ProtocolPayloadShapeArchitectureTests</c> touches that message, and it proves the payload's
-    /// shape rather than the handoff's behaviour; tagging it would be exactly the false green this
-    /// class exists to prevent. <c>CV-FORCED-MECHANICAL-RECOVERY</c> cannot be closed by a test at
-    /// all: <c>ForcedMechanicalRecoveryResult</c> has no implementation in <c>src/</c> -- it is one
-    /// of the two findings <see cref="ProtocolMessageSurfaceArchitectureTests"/> already pins -- so
-    /// <c>REPORT_FORCED_RECOVERY_OUTCOME</c> has nothing to assert against until product code
-    /// changes.
+    /// <b>It held two entries when it landed on 2026-09-09, and ticket 21 closed both.</b> They
+    /// were not the same kind of gap. <c>CV-FAULT-CARGO-HANDOFF</c> was implemented end to end and
+    /// driven by no test -- only <c>ProtocolPayloadShapeArchitectureTests</c> touched the message,
+    /// and it proves a payload's shape rather than the handoff's behaviour, so tagging it would
+    /// have been exactly the false green this class exists to prevent.
+    /// <c>CV-FORCED-MECHANICAL-RECOVERY</c> could not be closed by a test at all:
+    /// <c>ForcedMechanicalRecoveryResult</c> had no implementation in <c>src/</c>, so
+    /// <c>REPORT_FORCED_RECOVERY_OUTCOME</c> had nothing to assert against until product code
+    /// changed. Both are now bound by <c>RecoveryVectorG2Tests</c>, which drives the shared
+    /// recovery-vector path end to end for each.
     /// </para>
     /// <para>
-    /// <b>Both belong to <c>FP-IS-07</c>, which is inside track A's recertification scope.</b> That
-    /// makes this set the input the <c>FP-IS-00</c>-through-<c>07</c> recertification has to dispose
-    /// of, one way or the other, before it can certify <c>FP-IS-07</c>.
+    /// <b>Keep the field now that it is empty</b> -- empty is itself the assertion, and the two
+    /// rules below still run over it. <c>FP-IS-07</c> is inside track A's recertification scope,
+    /// and an empty set here is the statement that the recertification has no vector debt left to
+    /// dispose of on this end.
     /// </para>
     /// </remarks>
     private static readonly IReadOnlyDictionary<string, string> VectorsThisBatchOwesANamedTest =
-        new SortedDictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["CV-FAULT-CARGO-HANDOFF"] =
-                "FP-IS-07, batch 2 track A -- implemented end to end and driven by no test",
-            ["CV-FORCED-MECHANICAL-RECOVERY"] =
-                "FP-IS-07, batch 2 track A -- ForcedMechanicalRecoveryResult has no implementation, "
-                + "so REPORT_FORCED_RECOVERY_OUTCOME has nothing to assert against"
-        };
+        new SortedDictionary<string, string>(StringComparer.Ordinal);
 
     /// <summary>
     /// A vector claim anywhere inside an attribute list. The trait name is interpolated from

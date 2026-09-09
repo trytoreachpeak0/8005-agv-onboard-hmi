@@ -10,6 +10,7 @@ public sealed partial class WireToGateBusinessService
 {
     private const string CompensateLoadAction = "COMPENSATE_LOAD_ALL_EMPTY";
     private const string FaultCargoHandoffAction = "FAULT_CARGO_HANDOFF";
+    private const string ForcedMechanicalRecoveryAction = "FORCED_MECHANICAL_RECOVERY";
 
     private readonly WireToGateRecoveryVectorExecutor _vectorExecutor;
     private WireToGateRecoveryState _lastRecoveryState = WireToGateRecoveryState.Empty;
@@ -33,6 +34,12 @@ public sealed partial class WireToGateBusinessService
         && CanRequestRecoveryAction(
             FaultCargoHandoffAction,
             WireToGateRecoveryVectorTypes.FaultCargoHandoff);
+
+    public bool CanRequestForcedMechanicalRecovery =>
+        CanUseRecoveryOperator(requireProof: true)
+        && CanRequestRecoveryAction(
+            ForcedMechanicalRecoveryAction,
+            WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery);
 
     public Task<bool> RequestLoadCancellationAsync(
         string reason = "现场确认装货取消，申请将目标仓位清空。",
@@ -70,6 +77,18 @@ public sealed partial class WireToGateBusinessService
             () => RequestRecoveryActionVectorCoreAsync(
                 FaultCargoHandoffAction,
                 WireToGateRecoveryVectorTypes.FaultCargoHandoff,
+                reason,
+                cancellationToken),
+            cancellationToken);
+
+    public Task<bool> RequestForcedMechanicalRecoveryAsync(
+        string reason = "现场确认仓门无法电动解锁，申请强制机械恢复。",
+        CancellationToken cancellationToken = default) =>
+        RunRecoveryRequestAsync(
+            WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery,
+            () => RequestRecoveryActionVectorCoreAsync(
+                ForcedMechanicalRecoveryAction,
+                WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery,
                 reason,
                 cancellationToken),
             cancellationToken);
@@ -622,6 +641,8 @@ public sealed partial class WireToGateBusinessService
                 command.SlotOperationAttemptId,
                 null,
                 command.Slots,
+                forcedRecoveryGeneration: null,
+                command.CommandContentSha256,
                 state => WireToGateRecoveryCommandHash.ForLoadCompensation(
                     command.RecoveryActionId,
                     command.DemandId,
@@ -646,6 +667,8 @@ public sealed partial class WireToGateBusinessService
                 command.SlotOperationAttemptId,
                 null,
                 command.Slots,
+                forcedRecoveryGeneration: null,
+                command.CommandContentSha256,
                 state => WireToGateRecoveryCommandHash.ForLoadCorrection(
                     command.CorrectionId,
                     command.DemandId,
@@ -670,6 +693,8 @@ public sealed partial class WireToGateBusinessService
                 null,
                 command.HandoffId,
                 command.Slots,
+                forcedRecoveryGeneration: null,
+                command.CommandContentSha256,
                 state => WireToGateRecoveryCommandHash.ForRecoveryAction(
                     command.RecoveryActionId,
                     command.DemandId,
@@ -678,6 +703,65 @@ public sealed partial class WireToGateBusinessService
                     state.ForcedRecoveryGeneration),
                 correction: false,
                 resultKey: $"recovery-vector-result:{WireToGateRecoveryVectorTypes.FaultCargoHandoff}:{command.RecoveryActionId}",
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Handles <c>ForcedMechanicalRecoveryCommand</c>, the command half of
+    /// <c>CV-FORCED-MECHANICAL-RECOVERY</c>.
+    /// </summary>
+    /// <remarks>
+    /// The command's <c>demandId</c> is nullable on the wire, but this onboard only ever asks for a
+    /// forced mechanical recovery while an unsettled <see cref="OperationType.Load"/> is bound, so
+    /// a command that carries no demand cannot be the authorisation for the vector this end
+    /// prepared.  Refusing is the same judgement <c>HANDOFF_ONLY_ON_AUTHORIZED_COMMAND</c> makes
+    /// for the sibling vector: an unscoped command is not a narrower authorisation, it is a
+    /// different one.
+    /// </remarks>
+    private async Task HandleForcedMechanicalRecoveryCommandAsync(
+        WireToGateForcedMechanicalRecoveryCommand command,
+        CancellationToken cancellationToken)
+    {
+        // Checked here rather than as a throwing argument expression: an exception raised while
+        // evaluating the arguments would be thrown before HandleRecoveryVectorCommandAsync is
+        // entered, so it would miss that method's InvalidDataException handler and reach the
+        // dispatcher's catch-all instead -- the operator would get a generic failure log rather
+        // than the RECOVERY_BLOCKED event every other refusal on this path publishes.
+        if (command.DemandId is not { } demandId)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"强制机械恢复命令未携带 demandId，与本端已绑定的装货作业范围不符："
+                    + $"message={command.MessageId}。未执行仓门IO。");
+            PublishOperatorEvent(
+                $"forced-recovery-demand-missing:{command.RecoveryActionId}",
+                "RECOVERY_BLOCKED",
+                "强制机械恢复命令未指明需求单，无法与本端待结算的装货作业对应，已拒绝执行，"
+                    + "未重复执行仓门IO。 ");
+            return;
+        }
+
+        await HandleRecoveryVectorCommandAsync(
+                command.MessageId,
+                WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery,
+                command.RecoveryActionId,
+                command.ExceptionRecoverySessionId,
+                demandId,
+                null,
+                null,
+                command.Slots,
+                command.ForcedRecoveryGeneration,
+                command.CommandContentSha256,
+                state => WireToGateRecoveryCommandHash.ForRecoveryAction(
+                    command.RecoveryActionId,
+                    demandId,
+                    state.OperationContext?.SlotOperationAttemptId ?? string.Empty,
+                    command.Slots,
+                    command.ForcedRecoveryGeneration),
+                correction: false,
+                resultKey: $"recovery-vector-result:{WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery}:{command.RecoveryActionId}",
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -757,6 +841,17 @@ public sealed partial class WireToGateBusinessService
             $"服务端拒绝恢复向量请求：{reason}。未执行仓门IO。 ");
     }
 
+    /// <param name="forcedRecoveryGeneration">
+    /// The generation the command was issued under, for
+    /// <see cref="WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery"/>; <c>null</c> for the
+    /// four vectors the control server does not fence by generation.
+    /// </param>
+    /// <remarks>
+    /// <paramref name="forcedRecoveryGeneration"/> is required rather than defaulted so that a
+    /// sixth vector cannot inherit "no fence" by saying nothing.  An unfenced default is the shape
+    /// that fails open, and every caller passing it explicitly is what makes the four <c>null</c>s
+    /// a decision on the record instead of an omission.
+    /// </remarks>
     private async Task HandleRecoveryVectorCommandAsync(
         string commandMessageId,
         string vectorType,
@@ -766,6 +861,8 @@ public sealed partial class WireToGateBusinessService
         string? slotOperationAttemptId,
         string? handoffId,
         IReadOnlyList<int> slots,
+        long? forcedRecoveryGeneration,
+        string authorisedContentSha256,
         Func<WireToGateRecoveryState, string> expectedHash,
         bool correction,
         string resultKey,
@@ -777,6 +874,36 @@ public sealed partial class WireToGateBusinessService
         {
             WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
                 .ConfigureAwait(false);
+            if (forcedRecoveryGeneration is { } generation)
+            {
+                // REFUSE_STALE_FORCED_RECOVERY_GENERATION.  Checked before the replay short-circuit
+                // and before binding, so a fenced command reaches neither the journal nor the IO
+                // path: the control server has already moved past this generation and reissued
+                // under a newer one, and executing it now would unlock a slot set the server no
+                // longer believes is in scope.
+                if (generation < state.ForcedRecoveryGeneration)
+                {
+                    _logger.Write(
+                        LogSeverity.Warning,
+                        nameof(WireToGateBusinessService),
+                        $"强制机械恢复命令被代际栅栏拒绝：message={commandMessageId}，"
+                            + $"命令代={generation}，已持久代={state.ForcedRecoveryGeneration}。未执行仓门IO。");
+                    PublishOperatorEvent(
+                        $"forced-recovery-generation-stale:{primaryId}:{generation}",
+                        "RECOVERY_BLOCKED",
+                        $"强制机械恢复命令的代际 {generation} 已过期（当前 "
+                            + $"{state.ForcedRecoveryGeneration}），已拒绝执行，未重复执行仓门IO。 ");
+                    return;
+                }
+
+                if (generation > state.ForcedRecoveryGeneration)
+                {
+                    state = state with { ForcedRecoveryGeneration = generation };
+                    await WriteRecoveryStateCachedAsync(state, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            }
+
             WireToGateDurableMessage? existingResult = await _session.Journal
                 .ReadOutgoingByDeduplicationKeyAsync(resultKey, cancellationToken)
                 .ConfigureAwait(false);
@@ -798,6 +925,8 @@ public sealed partial class WireToGateBusinessService
                     slotOperationAttemptId,
                     handoffId,
                     slots,
+                    forcedRecoveryGeneration,
+                    authorisedContentSha256,
                     expectedHash,
                     correction,
                     cancellationToken)
@@ -861,6 +990,8 @@ public sealed partial class WireToGateBusinessService
         string? slotOperationAttemptId,
         string? handoffId,
         IReadOnlyList<int> slots,
+        long? forcedRecoveryGeneration,
+        string authorisedContentSha256,
         Func<WireToGateRecoveryState, string> expectedHash,
         bool correction,
         CancellationToken cancellationToken)
@@ -874,7 +1005,8 @@ public sealed partial class WireToGateBusinessService
 
         string boundSlotOperationAttemptId = slotOperationAttemptId ?? context.SlotOperationAttemptId;
         if (slotOperationAttemptId is null
-            && vectorType != WireToGateRecoveryVectorTypes.FaultCargoHandoff)
+            && vectorType is not (WireToGateRecoveryVectorTypes.FaultCargoHandoff
+                or WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery))
         {
             throw new InvalidDataException("RECOVERY_SCOPE_MISMATCH");
         }
@@ -917,19 +1049,50 @@ public sealed partial class WireToGateBusinessService
             }
         }
 
-        if (context.CommandContentSha256 is not null
-            && !string.Equals(
-                context.CommandContentSha256,
-                expectedHash(state),
+        // The generation is stamped on the durable context at first bind and required to match on
+        // every rebind.  A second command for the same recoveryActionId under a different
+        // generation is not a retransmission of this one: the server reissues under a new action
+        // when it bumps, so a differing generation here means the two ends disagree about what is
+        // being authorised.
+        if (context.ForcedRecoveryGeneration is { } boundGeneration
+            && boundGeneration != forcedRecoveryGeneration)
+        {
+            throw new InvalidDataException("RECOVERY_SCOPE_MISMATCH");
+        }
+
+        string commandHash = expectedHash(state);
+
+        // HANDOFF_ONLY_ON_AUTHORIZED_COMMAND, the content half.  The scope comparison above proves
+        // the command names the vector this end prepared; this proves the server authorised the
+        // same content the vehicle is about to act on.  The two ends compute this digest from the
+        // same five parts and neither derives it from the other, so a mismatch means one of them is
+        // working from a different demand, attempt, slot set or forced-recovery generation -- and
+        // the resume path (WireToGateSlotOperationExecutor) has always compared its equivalent.
+        if (!string.Equals(
+                authorisedContentSha256,
+                commandHash,
                 StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException("RECOVERY_COMMAND_HASH_MISMATCH");
         }
 
-        string commandHash = expectedHash(state);
-        if (context.CommandContentSha256 is null)
+        if (context.CommandContentSha256 is not null
+            && !string.Equals(
+                context.CommandContentSha256,
+                commandHash,
+                StringComparison.OrdinalIgnoreCase))
         {
-            context = context with { CommandContentSha256 = commandHash };
+            throw new InvalidDataException("RECOVERY_COMMAND_HASH_MISMATCH");
+        }
+
+        if (context.CommandContentSha256 is null
+            || context.ForcedRecoveryGeneration != forcedRecoveryGeneration)
+        {
+            context = context with
+            {
+                CommandContentSha256 = commandHash,
+                ForcedRecoveryGeneration = forcedRecoveryGeneration
+            };
             await WriteRecoveryStateCachedAsync(
                     state with { RecoveryVector = context },
                     cancellationToken)
@@ -1107,6 +1270,30 @@ public sealed partial class WireToGateBusinessService
                         RequirePersistedOperator(context),
                         result.ObservedAt),
                     cancellationToken),
+            // REPORT_FORCED_RECOVERY_OUTCOME.  The slot results the executor produced are
+            // deliberately dropped: this message's schema carries only the slot set, because a
+            // forced mechanical recovery is a human opening a locker by hand and the electronic
+            // readings taken afterwards prove nothing about what was done. The two proof flags are
+            // constants for the same reason -- see ForcedMechanicalRecoveryResultPayload.
+            WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery => _session
+                .SendForcedMechanicalRecoveryResultAsync(
+                    resultKey,
+                    messageId,
+                    new ForcedMechanicalRecoveryResultPayload(
+                        context.ExceptionRecoverySessionId
+                            ?? throw new InvalidDataException("RECOVERY_SESSION_SCOPE_MISMATCH"),
+                        context.PrimaryId,
+                        context.ForcedRecoveryGeneration
+                            ?? throw new InvalidDataException("RECOVERY_COMMAND_INVALID"),
+                        result.OverallOutcome == "COMPLETED"
+                            ? "MECHANICALLY_ISOLATED"
+                            : result.OverallOutcome,
+                        context.Slots,
+                        RequirePersistedOperator(context),
+                        result.ObservedAt,
+                        ElectronicEmptyProven: false,
+                        VehicleReadyProven: false),
+                    cancellationToken),
             _ => throw new InvalidDataException("RECOVERY_VECTOR_TYPE_INVALID")
         };
     }
@@ -1166,6 +1353,7 @@ public sealed partial class WireToGateBusinessService
                     RecoveryActionId = context.VectorType is
                         WireToGateRecoveryVectorTypes.LoadCompensation
                         or WireToGateRecoveryVectorTypes.FaultCargoHandoff
+                        or WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery
                         ? context.PrimaryId
                         : state.RecoveryActionId,
                     RecoveryOperatorId = context.OperatorId ?? state.RecoveryOperatorId,

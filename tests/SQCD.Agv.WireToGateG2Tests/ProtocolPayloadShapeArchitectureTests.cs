@@ -431,6 +431,16 @@ public sealed class ProtocolPayloadShapeArchitectureTests
                     opened.ExceptionRecoverySessionId, actionId, demandId, legId, "HANDED_OFF",
                     [SlotResult(1, "COMPLETED", "EMPTY")], operatorContext, DateTimeOffset.UtcNow),
                 token);
+            // No slot results and no demandId: this message's schema carries neither, and the two
+            // proof flags are const false in it.
+            await client.SendForcedMechanicalRecoveryResultAsync(
+                $"forced-mechanical-recovery-result:{attemptId}",
+                "66666666-6666-4666-8666-666666666667",
+                new ForcedMechanicalRecoveryResultPayload(
+                    opened.ExceptionRecoverySessionId, actionId, 1, "MECHANICALLY_ISOLATED",
+                    [1, 2], operatorContext, DateTimeOffset.UtcNow,
+                    ElectronicEmptyProven: false, VehicleReadyProven: false),
+                token);
 
             return server;
         }

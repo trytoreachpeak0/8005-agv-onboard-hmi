@@ -825,6 +825,7 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
 
         if (vector.VectorType is WireToGateRecoveryVectorTypes.LoadCompensation
                 or WireToGateRecoveryVectorTypes.FaultCargoHandoff
+                or WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery
             && (vector.ExceptionRecoverySessionId is null
                 || vector.SlotOperationAttemptId is null)
             || vector.VectorType == WireToGateRecoveryVectorTypes.LoadCorrection
@@ -833,6 +834,18 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
                 && vector.HandoffId is null)
         {
             throw new InvalidDataException("WIRE_TO_GATE recovery vector范围无效。");
+        }
+
+        // The generation belongs to exactly one vector.  Carrying it on any other would mean a
+        // fence had been recorded for a vector nothing fences, and its absence on this one would
+        // leave the result with no generation to report.
+        if (vector.ForcedRecoveryGeneration is { } generation
+            ? vector.VectorType != WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery
+                || generation < 0
+            : vector.VectorType == WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery
+                && vector.CommandContentSha256 is not null)
+        {
+            throw new InvalidDataException("WIRE_TO_GATE recovery vector代际无效。");
         }
 
         if (vector.OperatorId is not null

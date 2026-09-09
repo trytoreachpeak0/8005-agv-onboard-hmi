@@ -263,3 +263,42 @@ public sealed record FaultCargoRecoveryResultPayload(
     IReadOnlyList<WireToGateSlotResultPayload> SlotResults,
     WireToGateOperatorContextPayload Operator,
     DateTimeOffset ObservedAt);
+
+public sealed record ForcedMechanicalRecoveryCommandPayload(
+    string ExceptionRecoverySessionId,
+    string RecoveryActionId,
+    string? DemandId,
+    long ForcedRecoveryGeneration,
+    IReadOnlyList<int> Slots,
+    string CommandContentSha256);
+
+/// <summary>
+/// The result half of <c>CV-FORCED-MECHANICAL-RECOVERY</c>.  Three fields differ from every other
+/// recovery result and none of the differences is incidental.
+/// </summary>
+/// <remarks>
+/// <para>
+/// There is no <c>demandId</c>: the command's is nullable and the result schema does not carry one
+/// at all.  There is no per-slot result array either -- a forced mechanical recovery is a human
+/// prying a locker open, and the vehicle has no trustworthy electronic reading of what happened
+/// inside it, so the message reports only which slots were in scope.
+/// </para>
+/// <para>
+/// <see cref="ElectronicEmptyProven"/> and <see cref="VehicleReadyProven"/> are
+/// <c>{"const": false}</c> in the schema.  The protocol refuses to let this message claim either
+/// proof, which is what keeps <c>ready-before-reconciliation</c> and <c>unknown-as-success</c> off
+/// the table; they are written as constants at the send site rather than computed from state,
+/// because a state that could ever compute <c>true</c> here would be a bug the schema would then
+/// have to catch on the wire.
+/// </para>
+/// </remarks>
+public sealed record ForcedMechanicalRecoveryResultPayload(
+    string ExceptionRecoverySessionId,
+    string RecoveryActionId,
+    long ForcedRecoveryGeneration,
+    string Outcome,
+    IReadOnlyList<int> Slots,
+    WireToGateOperatorContextPayload Operator,
+    DateTimeOffset ObservedAt,
+    bool ElectronicEmptyProven,
+    bool VehicleReadyProven);

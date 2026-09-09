@@ -201,6 +201,17 @@ public sealed class WireToGateSessionService : IAsyncDisposable
             payload,
             cancellationToken);
 
+    public Task<string> SendForcedMechanicalRecoveryResultAsync(
+        string deduplicationKey,
+        string messageId,
+        ForcedMechanicalRecoveryResultPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.SendForcedMechanicalRecoveryResultAsync(
+            deduplicationKey,
+            messageId,
+            payload,
+            cancellationToken);
+
     public Task<ManualChargingReturnToServiceResultPayload> RequestManualChargingReturnToServiceAsync(
         string messageId,
         ManualChargingReturnToServiceRequestedPayload payload,

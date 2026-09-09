@@ -120,6 +120,30 @@ public sealed record WireToGateFaultCargoRecoveryCommand(
         SessionGeneration,
         SentAt);
 
+/// <summary>
+/// The command half of <c>CV-FORCED-MECHANICAL-RECOVERY</c>.  Unlike the other four recovery
+/// vectors it carries a <see cref="ForcedRecoveryGeneration"/>: the control server bumps that
+/// number when it authorises a forced recovery and fences everything it issued under an older one,
+/// so the onboard must refuse a command that arrives carrying a generation it has already moved
+/// past.
+/// </summary>
+public sealed record WireToGateForcedMechanicalRecoveryCommand(
+    string MessageId,
+    long SessionGeneration,
+    DateTimeOffset SentAt,
+    string ExceptionRecoverySessionId,
+    string RecoveryActionId,
+    string? DemandId,
+    long ForcedRecoveryGeneration,
+    IReadOnlyList<int> Slots,
+    string CommandContentSha256)
+    : WireToGateServerCommand(
+        "ForcedMechanicalRecoveryCommand",
+        MessageId,
+        null,
+        SessionGeneration,
+        SentAt);
+
 public sealed record WireToGateRecoveryBlockingFact(
     string ReasonCode,
     string SubjectType,

@@ -814,6 +814,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     await HandleFaultCargoRecoveryCommandAsync(faultCargo, cancellationToken)
                         .ConfigureAwait(false);
                     break;
+                case WireToGateForcedMechanicalRecoveryCommand forcedRecovery:
+                    await HandleForcedMechanicalRecoveryCommandAsync(forcedRecovery, cancellationToken)
+                        .ConfigureAwait(false);
+                    break;
                 case WireToGateRecoveryCommand recovery:
                     if (recovery.MessageType == "SublotRejected")
                     {

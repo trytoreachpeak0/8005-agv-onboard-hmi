@@ -354,6 +354,23 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             cancellationToken);
     }
 
+    public Task<string> SendForcedMechanicalRecoveryResultAsync(
+        string deduplicationKey,
+        string messageId,
+        ForcedMechanicalRecoveryResultPayload payload,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateForcedMechanicalRecoveryResult(payload);
+        return SendDurableCoreAsync(
+            "ForcedMechanicalRecoveryResult",
+            deduplicationKey,
+            messageId,
+            null,
+            payload,
+            allowRecoveryRequired: true,
+            cancellationToken);
+    }
+
     public Task<ManualChargingReturnToServiceResultPayload> RequestManualChargingReturnToServiceAsync(
         string messageId,
         ManualChargingReturnToServiceRequestedPayload payload,
@@ -1867,6 +1884,43 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         payload.CommandContentSha256);
                     return true;
                 }
+            case "ForcedMechanicalRecoveryCommand":
+                {
+                    if (envelope.CorrelationId is not null)
+                    {
+                        throw new InvalidDataException("CORRELATION_INVALID");
+                    }
+
+                    ForcedMechanicalRecoveryCommandPayload payload =
+                        WireToGateProtocolSerializer
+                            .DeserializePayload<ForcedMechanicalRecoveryCommandPayload>(envelope);
+                    RequireUuid(payload.ExceptionRecoverySessionId, nameof(payload.ExceptionRecoverySessionId));
+                    RequireUuid(payload.RecoveryActionId, nameof(payload.RecoveryActionId));
+                    if (payload.DemandId is not null)
+                    {
+                        RequireUuid(payload.DemandId, nameof(payload.DemandId));
+                    }
+
+                    if (payload.ForcedRecoveryGeneration < 0)
+                    {
+                        throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+                    }
+
+                    RequireSha256(payload.CommandContentSha256, nameof(payload.CommandContentSha256));
+                    ValidateSortedSlots(payload.Slots);
+
+                    command = new WireToGateForcedMechanicalRecoveryCommand(
+                        envelope.MessageId,
+                        envelope.SessionGeneration!.Value,
+                        envelope.SentAt,
+                        payload.ExceptionRecoverySessionId,
+                        payload.RecoveryActionId,
+                        payload.DemandId,
+                        payload.ForcedRecoveryGeneration,
+                        payload.Slots,
+                        payload.CommandContentSha256);
+                    return true;
+                }
             case "CapabilitySnapshotRequested":
             case "SafetyStateChanged":
             case "SafetyStateSnapshotRequested":
@@ -1875,7 +1929,6 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             case "ExceptionRecoverySessionRejected":
             case "RecoveryActionAccepted":
             case "RecoveryActionRejected":
-            case "ForcedMechanicalRecoveryCommand":
             case "ManualChargingReturnToServiceRequested":
             case "ManualChargingReturnToServiceResult":
             case "HardwareRecoveryRecordSubmitted":
@@ -2051,6 +2104,35 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         }
 
         ValidateSlotResults(payload.SlotResults);
+        ValidateOperatorContext(payload.Operator);
+    }
+
+    /// <summary>
+    /// Validates <c>ForcedMechanicalRecoveryResult</c> against its schema before it is made
+    /// durable.
+    /// </summary>
+    /// <remarks>
+    /// The two proof flags are checked for <c>false</c> rather than simply written as <c>false</c>
+    /// at the one call site.  The schema pins them with <c>{"const": false}</c>, so a caller that
+    /// ever passed <c>true</c> would be building a message the control server must reject; catching
+    /// it here keeps that failure on this side of the wire, where the journal has not yet recorded
+    /// a claim the vehicle cannot support.
+    /// </remarks>
+    private static void ValidateForcedMechanicalRecoveryResult(
+        ForcedMechanicalRecoveryResultPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        RequireUuid(payload.ExceptionRecoverySessionId, nameof(payload.ExceptionRecoverySessionId));
+        RequireUuid(payload.RecoveryActionId, nameof(payload.RecoveryActionId));
+        if (payload.ForcedRecoveryGeneration < 0
+            || payload.Outcome is not ("MECHANICALLY_ISOLATED" or "FAILED" or "UNKNOWN")
+            || payload.ElectronicEmptyProven
+            || payload.VehicleReadyProven)
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        ValidateSortedSlots(payload.Slots);
         ValidateOperatorContext(payload.Operator);
     }
 

@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using SQCD.Agv.Contracts;
@@ -97,6 +99,34 @@ public sealed class FakeControlServer : IAsyncDisposable
     public int ManualChargingReturnToServiceResponseCopies { get; set; } = 1;
 
     public bool SendResumeCommandAfterRecoveryAction { get; set; }
+
+    /// <summary>
+    /// Issues the recovery vector command the accepted action calls for, immediately after
+    /// <c>RecoveryActionAccepted</c>, the way the real server does once it has authorised one.
+    /// </summary>
+    public bool SendRecoveryVectorCommandAfterRecoveryAction { get; set; }
+
+    /// <summary>
+    /// The <c>forcedRecoveryGeneration</c> a <c>ForcedMechanicalRecoveryCommand</c> carries.
+    /// </summary>
+    /// <remarks>
+    /// The real server bumps this when it authorises a forced recovery and fences everything it
+    /// issued under an older number.  Setting it below what the onboard has already persisted is
+    /// how a test produces the stale command <c>REFUSE_STALE_FORCED_RECOVERY_GENERATION</c> is
+    /// about.
+    /// </remarks>
+    public long ForcedRecoveryGeneration { get; set; } = 1;
+
+    /// <summary>
+    /// The <c>slotOperationAttemptId</c> the authorising hash is computed over.
+    /// </summary>
+    /// <remarks>
+    /// The real server takes this from the persisted slot operation the recovery is scoped to; this
+    /// double has no such store, so the test states it. Leaving it null makes the double hash an
+    /// empty attempt id, which is what produces a command the onboard must refuse as unauthorised
+    /// content rather than as a scope mismatch.
+    /// </remarks>
+    public string? RecoveryVectorSlotOperationAttemptId { get; set; }
 
     public long InitialAcceptedCapabilityVersion { get; set; }
 
@@ -353,13 +383,14 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "OperationProgress":
                     case "PreDepartureSafetyCheckResult":
                     case "SlotOperationCommandRejected":
-                    // The four recovery results below are durable in exactly the same way as the
+                    // The five recovery results below are durable in exactly the same way as the
                     // four above; they are listed so a test can drive the whole O_TO_C surface
                     // rather than only the part an earlier test happened to need.
                     case "LoadCancellationResult":
                     case "LoadCompensationResult":
                     case "LoadCorrectionResult":
                     case "FaultCargoRecoveryResult":
+                    case "ForcedMechanicalRecoveryResult":
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
                         break;
                     case "ExceptionRecoverySessionRequested" when RespondToRecoveryRequests:
@@ -659,7 +690,97 @@ public sealed class FakeControlServer : IAsyncDisposable
                     acceptedAt = DateTimeOffset.UtcNow
                 }))
             .ConfigureAwait(false);
+
+        if (SendRecoveryVectorCommandAfterRecoveryAction)
+        {
+            await SendRecoveryVectorCommandAsync(context, payload, sessionId, actionId)
+                .ConfigureAwait(false);
+        }
     }
+
+    /// <summary>
+    /// Issues the command the accepted recovery action authorises.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Two derivations here restate what the real control server computes, because the onboard
+    /// verifies both and a double that skipped them would be testing nothing.  The
+    /// <c>handoffId</c> is <c>SHA-256("{recoveryActionId}|fault-cargo-handoff")</c> shaped as a
+    /// UUIDv5 -- <c>OnboardRecoveryCoordinator.StableGuid(workflow.WorkflowId, ...)</c>, where
+    /// <c>WorkflowId</c> is the recovery action id.  The <c>commandContentSha256</c> is
+    /// <c>RecoveryCommandHash.ForRecoveryAction</c>: the five parts joined by <c>|</c>, hashed, and
+    /// lowercased.
+    /// </para>
+    /// <para>
+    /// The onboard derives the same two values independently and neither end sends the other its
+    /// inputs, so these copies are not a shortcut around the product code -- they are the peer's
+    /// half of an agreement that nothing in either repository currently pins.
+    /// </para>
+    /// </remarks>
+    private async Task SendRecoveryVectorCommandAsync(
+        ConnectionContext context,
+        JsonElement submitted,
+        string sessionId,
+        string actionId)
+    {
+        string action = submitted.GetProperty("action").GetString()!;
+        string? demandId = submitted.TryGetProperty("demandId", out JsonElement demand)
+            && demand.ValueKind == JsonValueKind.String
+                ? demand.GetString()
+                : null;
+        int[] slots =
+        [
+            .. submitted.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32())
+        ];
+        string attemptId = RecoveryVectorSlotOperationAttemptId ?? string.Empty;
+
+        switch (action)
+        {
+            case "FAULT_CARGO_HANDOFF":
+                await WriteEnvelopeAsync(
+                    context,
+                    CreateEnvelope(
+                        context,
+                        "FaultCargoRecoveryCommand",
+                        null,
+                        new
+                        {
+                            exceptionRecoverySessionId = sessionId,
+                            recoveryActionId = actionId,
+                            demandId,
+                            slots,
+                            handoffId = FakeControlServerIdentifiers.StableUuid($"{actionId}|fault-cargo-handoff"),
+                            commandContentSha256 = FakeControlServerIdentifiers.RecoveryActionContentSha256(
+                                actionId, demandId ?? string.Empty, attemptId, slots, 0)
+                        }))
+                    .ConfigureAwait(false);
+                break;
+            case "FORCED_MECHANICAL_RECOVERY":
+                await WriteEnvelopeAsync(
+                    context,
+                    CreateEnvelope(
+                        context,
+                        "ForcedMechanicalRecoveryCommand",
+                        null,
+                        new
+                        {
+                            exceptionRecoverySessionId = sessionId,
+                            recoveryActionId = actionId,
+                            demandId,
+                            forcedRecoveryGeneration = ForcedRecoveryGeneration,
+                            slots,
+                            commandContentSha256 = FakeControlServerIdentifiers.RecoveryActionContentSha256(
+                                actionId,
+                                demandId ?? string.Empty,
+                                attemptId,
+                                slots,
+                                ForcedRecoveryGeneration)
+                        }))
+                    .ConfigureAwait(false);
+                break;
+        }
+    }
+
 
     private async Task HandleManualChargingReturnToServiceRequestedAsync(
         ConnectionContext context,
@@ -1091,4 +1212,46 @@ public sealed class FakeControlServer : IAsyncDisposable
         _listener.Stop();
         _stopping.Dispose();
     }
+}
+
+/// <summary>
+/// The two identifier derivations the control server and this onboard each perform independently.
+/// </summary>
+/// <remarks>
+/// Neither end sends the other its inputs: the control server derives the handoff id from the
+/// recovery workflow and the content digest from the authorised scope, and the onboard derives both
+/// again from what it already holds. That agreement is load-bearing -- a fault cargo command whose
+/// handoff id or digest differs is refused -- and nothing in either repository pins the two
+/// implementations together, so this double has to restate the server's half to stand in for it at
+/// all. Keeping the two here, named for what they mirror, is the closest this repository can get to
+/// making that dependency visible from the test side.
+/// </remarks>
+internal static class FakeControlServerIdentifiers
+{
+    /// <summary>Mirrors <c>OnboardRecoveryCoordinator.StableGuid(identity, purpose)</c>.</summary>
+    public static string StableUuid(string value)
+    {
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(value));
+        Span<byte> bytes = stackalloc byte[16];
+        hash.AsSpan(0, 16).CopyTo(bytes);
+        bytes[6] = (byte)((bytes[6] & 0x0F) | 0x50);
+        bytes[8] = (byte)((bytes[8] & 0x3F) | 0x80);
+        return new Guid(bytes).ToString("D");
+    }
+
+    /// <summary>Mirrors <c>RecoveryCommandHash.ForRecoveryAction</c>.</summary>
+    public static string RecoveryActionContentSha256(
+        string recoveryActionId,
+        string demandId,
+        string slotOperationAttemptId,
+        IReadOnlyList<int> slots,
+        long forcedRecoveryGeneration) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join(
+                '|',
+                recoveryActionId,
+                demandId,
+                slotOperationAttemptId,
+                JsonSerializer.Serialize(slots),
+                forcedRecoveryGeneration.ToString(CultureInfo.InvariantCulture)))))
+            .ToLowerInvariant();
 }

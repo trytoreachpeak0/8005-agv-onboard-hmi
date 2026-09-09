@@ -34,12 +34,14 @@ public static class WireToGateRecoveryVectorTypes
     public const string LoadCompensation = "LOAD_COMPENSATION";
     public const string LoadCorrection = "LOAD_CORRECTION";
     public const string FaultCargoHandoff = "FAULT_CARGO_HANDOFF";
+    public const string ForcedMechanicalRecovery = "FORCED_MECHANICAL_RECOVERY";
 
     public static bool IsKnown(string value) => value is
         LoadCancellation
         or LoadCompensation
         or LoadCorrection
-        or FaultCargoHandoff;
+        or FaultCargoHandoff
+        or ForcedMechanicalRecovery;
 }
 
 public static class WireToGateRecoveryCommandHash
@@ -100,7 +102,21 @@ public sealed record WireToGateRecoveryVectorContext(
     string? CommandContentSha256,
     string? OperatorId,
     string? OperatorVerificationMethod,
-    DateTimeOffset? OperatorVerifiedAt);
+    DateTimeOffset? OperatorVerifiedAt)
+{
+    /// <summary>
+    /// The <c>forcedRecoveryGeneration</c> the authorising command carried, for
+    /// <see cref="WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery"/> only; null for every
+    /// other vector, none of which is fenced by generation.
+    /// </summary>
+    /// <remarks>
+    /// It is durable here rather than read back from
+    /// <see cref="WireToGateRecoveryState.ForcedRecoveryGeneration"/> at send time because the
+    /// result is <c>durableBeforeSend</c>: a replay after a later generation arrives must still
+    /// report the generation the command it answers was issued under, byte for byte.
+    /// </remarks>
+    public long? ForcedRecoveryGeneration { get; init; }
+}
 
 public sealed record WireToGateRecoveryVectorExecutionResult(
     string VectorType,

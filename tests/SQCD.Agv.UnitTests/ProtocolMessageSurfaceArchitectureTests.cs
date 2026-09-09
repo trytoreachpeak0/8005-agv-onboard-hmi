@@ -48,22 +48,25 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
     /// <para>
     /// <b>Two kinds of entry, and they are not the same kind of debt.</b> Nine are messages v2
     /// added, and each belongs to a slice section 7.2 of the full-product scope specification
-    /// schedules into a later batch; those empty as their batches land. Two predate v2 and are
-    /// pinned to what the onboard does instead -- they are findings, not schedules, and the note on
-    /// each is the thing to argue with.
+    /// schedules into a later batch; those empty as their batches land. One predates v2 and is
+    /// pinned to what the onboard does instead -- it is a finding, not a schedule, and the note on
+    /// it is the thing to argue with.
     /// </para>
     /// <para>
-    /// Both of the two were checked rather than assumed on 2026-09-09, and both are the result half
-    /// of a pair whose request half <i>is</i> named. <c>ForcedMechanicalRecoveryResult</c>:
-    /// <c>ForcedMechanicalRecoveryCommand</c> reaches
-    /// <c>WireToGateBusinessService.HandleRecoveryCommandAsync</c>'s general branch, which evaluates
-    /// <c>WireToGateRecoverySafetyPolicy</c> against <c>WireToGateRecoverySafetyFacts.Unknown</c>,
-    /// logs, and blocks -- no path executes the command, so no path reports a result.
-    /// <c>HardwareRecoveryRecordResult</c>: <c>HardwareRecoveryRecordSubmitted</c> is named only as
-    /// a <c>case</c> label in the receive loop even though it is an <c>O_TO_C</c> message, so the
-    /// onboard never submits a record and has no result to read. That second one is exactly the hole
+    /// That one was checked rather than assumed on 2026-09-09, and it is the result half of a pair
+    /// whose request half <i>is</i> named. <c>HardwareRecoveryRecordSubmitted</c> appears only as a
+    /// <c>case</c> label in the receive loop even though it is an <c>O_TO_C</c> message, so the
+    /// onboard never submits a record and has no result to read. That is exactly the hole
     /// <see cref="NoOnboardToServerMessageTypeIsDispatchedByTheReceiveLoopUnlessPinned"/> exists to
     /// keep visible: "named in src/" cannot tell which side of the wire the name is on.
+    /// </para>
+    /// <para>
+    /// <c>ForcedMechanicalRecoveryResult</c> was the second such finding until ticket 21 closed it
+    /// on 2026-09-09. Its command half used to fall into the same general branch, be evaluated
+    /// against <c>WireToGateRecoverySafetyFacts.Unknown</c>, and be blocked, so no path executed it
+    /// and no path reported a result; it now has a typed command, a handler and a send path,
+    /// because <c>CV-FORCED-MECHANICAL-RECOVERY</c> is one of <c>FP-IS-07</c>'s vectors and the
+    /// slice cannot be certified while half of it is a log line.
     /// </para>
     /// <para>
     /// <b>The control server's pinned set is not this one.</b> Its
@@ -84,9 +87,6 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
         {
             ["DemandSelectionRequested"] = "FP-IS-09, batch 7",
             ["DemandSelectionResult"] = "FP-IS-09, batch 7",
-            ["ForcedMechanicalRecoveryResult"] =
-                "predates v2; ForcedMechanicalRecoveryCommand is blocked by the recovery safety policy "
-                + "and never executed, so nothing reports a result",
             ["HardwareRecoveryRecordResult"] =
                 "predates v2; HardwareRecoveryRecordSubmitted is O_TO_C but appears only as an inbound "
                 + "case label, so the onboard never submits a record and has no result to read",
