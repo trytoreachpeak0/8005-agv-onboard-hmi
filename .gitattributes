@@ -1,0 +1,11 @@
+# One line ending, decided here rather than by whatever each machine happens to have configured.
+#
+# .editorconfig has always said `end_of_line = lf` under `[*]`, and the repository has always
+# stored LF. What was missing is this file: without it, a machine with the Git for Windows default
+# `core.autocrlf=true` -- which is every machine here -- checks the tree out as CRLF, and
+# `dotnet format --verify-no-changes` then reports one ENDOFLINE per line of the repository. That
+# was 22800 diagnostics on 2026-09-09, and it is why ONBOARD_HMI_G2 had never once passed.
+#
+# eol=lf applies to .ps1 too, unlike the sibling ControlServer repository: this repository's
+# .editorconfig makes no exception for it, and PowerShell 7 does not care.
+* text=auto eol=lf
