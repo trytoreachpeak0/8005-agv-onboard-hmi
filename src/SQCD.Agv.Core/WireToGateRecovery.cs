@@ -105,7 +105,7 @@ public sealed record WireToGateRecoveryVectorContext(
     DateTimeOffset? OperatorVerifiedAt)
 {
     /// <summary>
-    /// The <c>forcedRecoveryGeneration</c> the authorising command carried, for
+    /// The <c>forcedRecoveryGeneration</c> the authorizing command carried, for
     /// <see cref="WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery"/> only; null for every
     /// other vector, none of which is fenced by generation.
     /// </summary>

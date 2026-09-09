@@ -642,7 +642,6 @@ public sealed partial class WireToGateBusinessService
                 null,
                 command.Slots,
                 forcedRecoveryGeneration: null,
-                command.CommandContentSha256,
                 state => WireToGateRecoveryCommandHash.ForLoadCompensation(
                     command.RecoveryActionId,
                     command.DemandId,
@@ -668,7 +667,6 @@ public sealed partial class WireToGateBusinessService
                 null,
                 command.Slots,
                 forcedRecoveryGeneration: null,
-                command.CommandContentSha256,
                 state => WireToGateRecoveryCommandHash.ForLoadCorrection(
                     command.CorrectionId,
                     command.DemandId,
@@ -694,7 +692,6 @@ public sealed partial class WireToGateBusinessService
                 command.HandoffId,
                 command.Slots,
                 forcedRecoveryGeneration: null,
-                command.CommandContentSha256,
                 state => WireToGateRecoveryCommandHash.ForRecoveryAction(
                     command.RecoveryActionId,
                     command.DemandId,
@@ -714,9 +711,9 @@ public sealed partial class WireToGateBusinessService
     /// <remarks>
     /// The command's <c>demandId</c> is nullable on the wire, but this onboard only ever asks for a
     /// forced mechanical recovery while an unsettled <see cref="OperationType.Load"/> is bound, so
-    /// a command that carries no demand cannot be the authorisation for the vector this end
+    /// a command that carries no demand cannot be the authorization for the vector this end
     /// prepared.  Refusing is the same judgement <c>HANDOFF_ONLY_ON_AUTHORIZED_COMMAND</c> makes
-    /// for the sibling vector: an unscoped command is not a narrower authorisation, it is a
+    /// for the sibling vector: an unscoped command is not a narrower authorization, it is a
     /// different one.
     /// </remarks>
     private async Task HandleForcedMechanicalRecoveryCommandAsync(
@@ -753,7 +750,6 @@ public sealed partial class WireToGateBusinessService
                 null,
                 command.Slots,
                 command.ForcedRecoveryGeneration,
-                command.CommandContentSha256,
                 state => WireToGateRecoveryCommandHash.ForRecoveryAction(
                     command.RecoveryActionId,
                     demandId,
@@ -862,7 +858,6 @@ public sealed partial class WireToGateBusinessService
         string? handoffId,
         IReadOnlyList<int> slots,
         long? forcedRecoveryGeneration,
-        string authorisedContentSha256,
         Func<WireToGateRecoveryState, string> expectedHash,
         bool correction,
         string resultKey,
@@ -874,34 +869,34 @@ public sealed partial class WireToGateBusinessService
         {
             WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
                 .ConfigureAwait(false);
-            if (forcedRecoveryGeneration is { } generation)
+            // REFUSE_STALE_FORCED_RECOVERY_GENERATION.  Refusing happens before the replay
+            // short-circuit and before binding, so a fenced command reaches neither the journal
+            // nor the IO path: the control server has already moved past this generation and
+            // reissued under a newer one, and executing it now would unlock a slot set the server
+            // no longer believes is in scope.
+            //
+            // Raising the fence is the opposite, and lives in BindRecoveryVectorCommandAsync
+            // after the command has been proved to name this vector and this scope. Raising it
+            // here would let one unvalidated command carrying an absurd generation park the fence
+            // above every genuine one the server can still issue -- fail-closed, permanent, and
+            // reachable from a single malformed message.
+            if (forcedRecoveryGeneration is { } generation
+                && generation < state.ForcedRecoveryGeneration)
             {
-                // REFUSE_STALE_FORCED_RECOVERY_GENERATION.  Checked before the replay short-circuit
-                // and before binding, so a fenced command reaches neither the journal nor the IO
-                // path: the control server has already moved past this generation and reissued
-                // under a newer one, and executing it now would unlock a slot set the server no
-                // longer believes is in scope.
-                if (generation < state.ForcedRecoveryGeneration)
-                {
-                    _logger.Write(
-                        LogSeverity.Warning,
-                        nameof(WireToGateBusinessService),
-                        $"强制机械恢复命令被代际栅栏拒绝：message={commandMessageId}，"
-                            + $"命令代={generation}，已持久代={state.ForcedRecoveryGeneration}。未执行仓门IO。");
-                    PublishOperatorEvent(
-                        $"forced-recovery-generation-stale:{primaryId}:{generation}",
-                        "RECOVERY_BLOCKED",
-                        $"强制机械恢复命令的代际 {generation} 已过期（当前 "
-                            + $"{state.ForcedRecoveryGeneration}），已拒绝执行，未重复执行仓门IO。 ");
-                    return;
-                }
-
-                if (generation > state.ForcedRecoveryGeneration)
-                {
-                    state = state with { ForcedRecoveryGeneration = generation };
-                    await WriteRecoveryStateCachedAsync(state, cancellationToken)
-                        .ConfigureAwait(false);
-                }
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    $"恢复向量命令被代际栅栏拒绝：code=FORCED_RECOVERY_GENERATION_STALE，"
+                        + $"type={vectorType}，message={commandMessageId}，operationId={primaryId}，"
+                        + $"attempt={state.UnsettledSlotOperationAttemptId}，"
+                        + $"slots={FormatSlots(slots)}，命令代={generation}，"
+                        + $"已持久代={state.ForcedRecoveryGeneration}。未执行仓门IO。");
+                PublishOperatorEvent(
+                    $"forced-recovery-generation-stale:{primaryId}:{generation}",
+                    "RECOVERY_BLOCKED",
+                    $"强制机械恢复命令的代际 {generation} 已过期（当前 "
+                        + $"{state.ForcedRecoveryGeneration}），已拒绝执行，未重复执行仓门IO。 ");
+                return;
             }
 
             WireToGateDurableMessage? existingResult = await _session.Journal
@@ -926,7 +921,6 @@ public sealed partial class WireToGateBusinessService
                     handoffId,
                     slots,
                     forcedRecoveryGeneration,
-                    authorisedContentSha256,
                     expectedHash,
                     correction,
                     cancellationToken)
@@ -991,7 +985,6 @@ public sealed partial class WireToGateBusinessService
         string? handoffId,
         IReadOnlyList<int> slots,
         long? forcedRecoveryGeneration,
-        string authorisedContentSha256,
         Func<WireToGateRecoveryState, string> expectedHash,
         bool correction,
         CancellationToken cancellationToken)
@@ -1053,7 +1046,7 @@ public sealed partial class WireToGateBusinessService
         // every rebind.  A second command for the same recoveryActionId under a different
         // generation is not a retransmission of this one: the server reissues under a new action
         // when it bumps, so a differing generation here means the two ends disagree about what is
-        // being authorised.
+        // being authorized.
         if (context.ForcedRecoveryGeneration is { } boundGeneration
             && boundGeneration != forcedRecoveryGeneration)
         {
@@ -1061,20 +1054,6 @@ public sealed partial class WireToGateBusinessService
         }
 
         string commandHash = expectedHash(state);
-
-        // HANDOFF_ONLY_ON_AUTHORIZED_COMMAND, the content half.  The scope comparison above proves
-        // the command names the vector this end prepared; this proves the server authorised the
-        // same content the vehicle is about to act on.  The two ends compute this digest from the
-        // same five parts and neither derives it from the other, so a mismatch means one of them is
-        // working from a different demand, attempt, slot set or forced-recovery generation -- and
-        // the resume path (WireToGateSlotOperationExecutor) has always compared its equivalent.
-        if (!string.Equals(
-                authorisedContentSha256,
-                commandHash,
-                StringComparison.OrdinalIgnoreCase))
-        {
-            throw new InvalidDataException("RECOVERY_COMMAND_HASH_MISMATCH");
-        }
 
         if (context.CommandContentSha256 is not null
             && !string.Equals(
@@ -1093,8 +1072,22 @@ public sealed partial class WireToGateBusinessService
                 CommandContentSha256 = commandHash,
                 ForcedRecoveryGeneration = forcedRecoveryGeneration
             };
+
+            // The fence rises here and nowhere else: every scope comparison above has passed, so
+            // this generation came from a command that really does authorize this vector. It goes
+            // out in the same write as the stamped context, because a generation persisted
+            // without the context it belongs to would fence the vehicle against work that
+            // nothing recorded.
             await WriteRecoveryStateCachedAsync(
-                    state with { RecoveryVector = context },
+                    state with
+                    {
+                        ForcedRecoveryGeneration =
+                            forcedRecoveryGeneration is { } authorizedGeneration
+                                && authorizedGeneration > state.ForcedRecoveryGeneration
+                                    ? authorizedGeneration
+                                    : state.ForcedRecoveryGeneration,
+                        RecoveryVector = context
+                    },
                     cancellationToken)
                 .ConfigureAwait(false);
         }

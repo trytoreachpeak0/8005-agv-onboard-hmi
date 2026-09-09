@@ -102,7 +102,7 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     /// <summary>
     /// Issues the recovery vector command the accepted action calls for, immediately after
-    /// <c>RecoveryActionAccepted</c>, the way the real server does once it has authorised one.
+    /// <c>RecoveryActionAccepted</c>, the way the real server does once it has authorized one.
     /// </summary>
     public bool SendRecoveryVectorCommandAfterRecoveryAction { get; set; }
 
@@ -110,7 +110,7 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// The <c>forcedRecoveryGeneration</c> a <c>ForcedMechanicalRecoveryCommand</c> carries.
     /// </summary>
     /// <remarks>
-    /// The real server bumps this when it authorises a forced recovery and fences everything it
+    /// The real server bumps this when it authorizes a forced recovery and fences everything it
     /// issued under an older number.  Setting it below what the onboard has already persisted is
     /// how a test produces the stale command <c>REFUSE_STALE_FORCED_RECOVERY_GENERATION</c> is
     /// about.
@@ -118,15 +118,29 @@ public sealed class FakeControlServer : IAsyncDisposable
     public long ForcedRecoveryGeneration { get; set; } = 1;
 
     /// <summary>
-    /// The <c>slotOperationAttemptId</c> the authorising hash is computed over.
+    /// The <c>slotOperationAttemptId</c> the <c>commandContentSha256</c> is computed over.
     /// </summary>
     /// <remarks>
     /// The real server takes this from the persisted slot operation the recovery is scoped to; this
-    /// double has no such store, so the test states it. Leaving it null makes the double hash an
-    /// empty attempt id, which is what produces a command the onboard must refuse as unauthorised
-    /// content rather than as a scope mismatch.
+    /// double has no such store, so the test states it. Note that the onboard does not currently
+    /// compare the digest it receives against the one it computes -- it validates the field's shape
+    /// and discards it -- so getting this wrong is invisible today. It is set correctly anyway,
+    /// because a double that puts a knowingly wrong digest on the wire would stop being a model of
+    /// the peer the moment that comparison is turned on.
     /// </remarks>
     public string? RecoveryVectorSlotOperationAttemptId { get; set; }
+
+    /// <summary>
+    /// Issues <c>FaultCargoRecoveryCommand</c> naming this handoff instead of the one the recovery
+    /// action derives, modelling a server that authorized a different handoff.
+    /// </summary>
+    public string? FaultCargoRecoveryHandoffIdOverride { get; set; }
+
+    /// <summary>
+    /// Issues the recovery vector command over these slots instead of the ones the recovery action
+    /// named, modelling a server that authorized a different slot set.
+    /// </summary>
+    public IReadOnlyList<int>? RecoveryVectorSlotsOverride { get; set; }
 
     public long InitialAcceptedCapabilityVersion { get; set; }
 
@@ -699,7 +713,7 @@ public sealed class FakeControlServer : IAsyncDisposable
     }
 
     /// <summary>
-    /// Issues the command the accepted recovery action authorises.
+    /// Issues the command the accepted recovery action authorizes.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -728,10 +742,9 @@ public sealed class FakeControlServer : IAsyncDisposable
             && demand.ValueKind == JsonValueKind.String
                 ? demand.GetString()
                 : null;
-        int[] slots =
-        [
-            .. submitted.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32())
-        ];
+        int[] slots = RecoveryVectorSlotsOverride is { } overridden
+            ? [.. overridden]
+            : [.. submitted.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32())];
         string attemptId = RecoveryVectorSlotOperationAttemptId ?? string.Empty;
 
         switch (action)
@@ -749,7 +762,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                             recoveryActionId = actionId,
                             demandId,
                             slots,
-                            handoffId = FakeControlServerIdentifiers.StableUuid($"{actionId}|fault-cargo-handoff"),
+                            handoffId = FaultCargoRecoveryHandoffIdOverride
+                                ?? FakeControlServerIdentifiers.StableUuid(
+                                    $"{actionId}|fault-cargo-handoff"),
                             commandContentSha256 = FakeControlServerIdentifiers.RecoveryActionContentSha256(
                                 actionId, demandId ?? string.Empty, attemptId, slots, 0)
                         }))
@@ -1219,7 +1234,7 @@ public sealed class FakeControlServer : IAsyncDisposable
 /// </summary>
 /// <remarks>
 /// Neither end sends the other its inputs: the control server derives the handoff id from the
-/// recovery workflow and the content digest from the authorised scope, and the onboard derives both
+/// recovery workflow and the content digest from the authorized scope, and the onboard derives both
 /// again from what it already holds. That agreement is load-bearing -- a fault cargo command whose
 /// handoff id or digest differs is refused -- and nothing in either repository pins the two
 /// implementations together, so this double has to restate the server's half to stand in for it at

@@ -123,7 +123,7 @@ public sealed record WireToGateFaultCargoRecoveryCommand(
 /// <summary>
 /// The command half of <c>CV-FORCED-MECHANICAL-RECOVERY</c>.  Unlike the other four recovery
 /// vectors it carries a <see cref="ForcedRecoveryGeneration"/>: the control server bumps that
-/// number when it authorises a forced recovery and fences everything it issued under an older one,
+/// number when it authorizes a forced recovery and fences everything it issued under an older one,
 /// so the onboard must refuse a command that arrives carrying a generation it has already moved
 /// past.
 /// </summary>
