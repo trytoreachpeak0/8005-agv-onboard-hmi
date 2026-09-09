@@ -132,6 +132,7 @@ public sealed class WireToGateJourneySnapshotTests
             "ST-01",
             1,
             "33333333-3333-3333-3333-333333333333",
+            null,
             items
                 .Select(item => new WireToGateWorklistItem(
                     item.DemandId,

@@ -22,10 +22,17 @@ public sealed record WireToGateWorklistItem(
     string StopRole,
     int ExpectedBasketCount);
 
+/// <param name="StationDepartureDeadlineAt">
+/// 服务端掌握的本站截止时间（ADR-cross-0055 / ADR-cross-0058 决策 3）。车载端只显示，不据此判死。
+/// 为空表示这一站没有期限——纯卸货站、关卡站，或超时被配置为禁用。
+/// **同一次停靠内它会往后跳**：每批 LoadBatch 闭环后服务端重置计时并随下一份清单重发，断联也会
+/// 先清空再重填，所以界面必须每次都从这个绝对时刻重算，不能自己递减。
+/// </param>
 public sealed record WireToGateCurrentStopWorklist(
     string StationId,
     long Revision,
     string? OperationSessionId,
+    DateTimeOffset? StationDepartureDeadlineAt,
     IReadOnlyList<WireToGateWorklistItem> Items,
     string ContentSha256);
 

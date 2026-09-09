@@ -17,6 +17,7 @@ public sealed record CurrentStopWorklistSnapshotPayload(
     string StationId,
     long WorklistRevision,
     string? OperationSessionId,
+    DateTimeOffset? StationDepartureDeadlineAt,
     IReadOnlyList<WireToGateWorklistItem> Items);
 
 public sealed record WireToGateWorklistItem(

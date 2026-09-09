@@ -88,6 +88,7 @@ public sealed class OnboardControllerTests
                 "ST-01",
                 1,
                 null,
+                null,
                 [new WireToGateWorklistItem(
                     "11111111-1111-1111-1111-111111111111",
                     "TD-001",

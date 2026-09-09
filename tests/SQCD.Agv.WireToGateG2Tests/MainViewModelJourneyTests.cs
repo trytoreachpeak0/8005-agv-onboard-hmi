@@ -149,7 +149,94 @@ public sealed class MainViewModelJourneyTests
         Assert.Equal("ST-09", leg.StationId);
     }
 
-    private static MainViewModel CreateViewModel() => new(
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
+    public void ServerDeadlineBecomesACountdownOnTheStopBanner()
+    {
+        // 决策 3：站点能停多久由服务端掌握，车载端只显示。这里锁的是「显示的是服务端那个时刻」。
+        MainViewModel viewModel = CreateViewModel(new FixedClock(Now));
+
+        viewModel.UpdateWireToGateJourney(JourneyWithDeadline(Now + TimeSpan.FromMinutes(3)));
+
+        Assert.True(viewModel.HasStationDepartureCountdown);
+        Assert.Equal("03:00", viewModel.StationDepartureCountdownText);
+        Assert.Equal("Normal", viewModel.StationDepartureCountdownTier);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
+    public void AWorklistWithoutADeadlineStillShowsTheBlockSayingThereIsNone()
+    {
+        // 纯卸货站与关卡站没有期限。整块藏起来会让「服务端没给期限」与「清单还没到」看着一样。
+        MainViewModel viewModel = CreateViewModel(new FixedClock(Now));
+
+        viewModel.UpdateWireToGateJourney(JourneyWithDeadline(null));
+
+        Assert.True(viewModel.HasStationDepartureCountdown);
+        Assert.Equal("无倒计时", viewModel.StationDepartureCountdownText);
+        Assert.Equal("Absent", viewModel.StationDepartureCountdownTier);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
+    public void JourneyWithoutAWorklistHidesTheCountdownEntirely()
+    {
+        MainViewModel viewModel = CreateViewModel(new FixedClock(Now));
+
+        viewModel.UpdateWireToGateJourney(WireToGateJourneySnapshot.Empty);
+
+        Assert.False(viewModel.HasStationDepartureCountdown);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
+    public void AnExpiredDeadlineKeepsTheVehicleWaitingInsteadOfShowingANegativeNumber()
+    {
+        // ADR-cross-0058 决策 4 之后期限到期不必然结束本站：仓门未闭时服务端只发告警并继续等。
+        MainViewModel viewModel = CreateViewModel(new FixedClock(Now));
+
+        viewModel.UpdateWireToGateJourney(JourneyWithDeadline(Now - TimeSpan.FromSeconds(90)));
+
+        Assert.Equal("已到期，等待服务端结算", viewModel.StationDepartureCountdownText);
+        Assert.Equal("Expired", viewModel.StationDepartureCountdownTier);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
+    public void ASecondWorklistThatPushesTheDeadlineOutIsFollowed()
+    {
+        // 每批 LoadBatch 闭环后服务端重置计时并随下一份清单重发，断联也会先清空再重填。
+        // 界面不能把第一次收到的期限当成本次停靠的定值。
+        MainViewModel viewModel = CreateViewModel(new FixedClock(Now));
+
+        viewModel.UpdateWireToGateJourney(JourneyWithDeadline(Now + TimeSpan.FromSeconds(5)));
+        Assert.Equal("Critical", viewModel.StationDepartureCountdownTier);
+
+        viewModel.UpdateWireToGateJourney(JourneyWithDeadline(Now + TimeSpan.FromMinutes(5)));
+
+        Assert.Equal("05:00", viewModel.StationDepartureCountdownText);
+        Assert.Equal("Normal", viewModel.StationDepartureCountdownTier);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
+    public void TheCountdownIsRecomputedFromTheClockRatherThanCachedAtArrival()
+    {
+        // 定时器每 250 ms 调的就是这个方法。这里用一个会走的时钟替身代替定时器，锁「重算」这件事。
+        MovingClock clock = new(Now);
+        MainViewModel viewModel = CreateViewModel(clock);
+
+        viewModel.UpdateWireToGateJourney(JourneyWithDeadline(Now + TimeSpan.FromMinutes(2)));
+        Assert.Equal("02:00", viewModel.StationDepartureCountdownText);
+
+        clock.Advance(TimeSpan.FromSeconds(115));
+        viewModel.RefreshStationDepartureCountdown();
+
+        Assert.Equal("00:05", viewModel.StationDepartureCountdownText);
+        Assert.Equal("Critical", viewModel.StationDepartureCountdownTier);
+    }
+
+    private static MainViewModel CreateViewModel(IClock? clock = null) => new(
         new OnboardController(
             new FakeIoModuleClient(),
             new InertRuleGateway(),
@@ -164,6 +251,7 @@ public sealed class MainViewModelJourneyTests
                 128,
                 2)),
         new SilentLogger(),
+        clock ?? new SystemClock(),
         "AGV-8005-01");
 
     private static WireToGateJourneySnapshot Journey(params string[] sublots) => new(
@@ -172,6 +260,7 @@ public sealed class MainViewModelJourneyTests
             "ST-01",
             1,
             "33333333-3333-3333-3333-333333333333",
+            null,
             sublots
                 .Select(sublot => new WireToGateWorklistItem(
                     "D-1",
@@ -189,6 +278,18 @@ public sealed class MainViewModelJourneyTests
             "sha"),
         Now);
 
+    private static WireToGateJourneySnapshot JourneyWithDeadline(DateTimeOffset? deadlineAt)
+    {
+        WireToGateJourneySnapshot journey = Journey("SUBLOT-001");
+        return journey with
+        {
+            CurrentStopWorklist = journey.CurrentStopWorklist! with
+            {
+                StationDepartureDeadlineAt = deadlineAt
+            }
+        };
+    }
+
     private static WireToGateJourneySnapshot JourneyWithLegs(params WireToGateMovementLeg[] legs) =>
         Journey("SUBLOT-001") with
         {
@@ -201,6 +302,20 @@ public sealed class MainViewModelJourneyTests
         string stationId,
         string state) =>
         new($"leg-{sequence}", legType, sequence, stationId, "MAP-01", state);
+
+    private sealed class FixedClock(DateTimeOffset now) : IClock
+    {
+        public DateTimeOffset Now => now;
+    }
+
+    private sealed class MovingClock(DateTimeOffset start) : IClock
+    {
+        private DateTimeOffset _now = start;
+
+        public DateTimeOffset Now => _now;
+
+        public void Advance(TimeSpan delta) => _now += delta;
+    }
 
     /// <summary>
     /// 这几条测试只走快照到界面状态这一段，规则网关一次也不会被碰到。
