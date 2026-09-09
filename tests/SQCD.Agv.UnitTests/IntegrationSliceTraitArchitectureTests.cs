@@ -179,7 +179,7 @@ public sealed class IntegrationSliceTraitArchitectureTests
     [Fact]
     public void NoIntegrationSliceTraitSitsOnATypeDeclaration()
     {
-        string[] claims = [.. ScanRaw().TypeLevelClaims.Where(IsASliceClaim)];
+        string[] claims = SliceProblems(ScanRaw().TypeLevelClaims);
 
         Assert.True(
             claims.Length == 0,
@@ -194,7 +194,7 @@ public sealed class IntegrationSliceTraitArchitectureTests
     [Fact]
     public void NoIntegrationSliceTraitSitsOnATestThatDoesNotRun()
     {
-        string[] claims = [.. ScanRaw().ClaimsOnTestsThatDoNotRun.Where(IsASliceClaim)];
+        string[] claims = SliceProblems(ScanRaw().ClaimsOnTestsThatDoNotRun);
 
         Assert.True(
             claims.Length == 0,
@@ -208,7 +208,7 @@ public sealed class IntegrationSliceTraitArchitectureTests
     [Fact]
     public void NoIntegrationSliceTraitIsLeftUnattributed()
     {
-        string[] claims = [.. ScanRaw().UnattributableClaims.Where(IsASliceClaim)];
+        string[] claims = SliceProblems(ScanRaw().UnattributableClaims);
 
         Assert.True(
             claims.Length == 0,
@@ -362,9 +362,20 @@ public sealed class IntegrationSliceTraitArchitectureTests
         string.Equals(trait.TraitName, SliceTrait, StringComparison.Ordinal);
 
     /// <summary>
-    /// Whether a scanner diagnostic is about a slice claim. The scanner is asked for both traits at
-    /// once, so its three problem lists mix them; the vector guard reports the vector half.
+    /// This class's half of a problem list, rendered. The scanner is asked for both traits at once,
+    /// so its three problem lists mix them; the vector guard reports the vector half.
     /// </summary>
-    private static bool IsASliceClaim(string claim) =>
-        claim.Contains(" " + SliceTrait + " ", StringComparison.Ordinal);
+    /// <remarks>
+    /// Filtered on <see cref="ProblemClaim.TraitName"/> rather than on the rendered sentence. An
+    /// earlier version searched the sentence for the trait's name, which a repository path or a
+    /// trait value containing that name would have answered wrongly -- and a guard that reports the
+    /// wrong problems is worse than one that reports none.
+    /// </remarks>
+    private static string[] SliceProblems(IEnumerable<ProblemClaim> claims) =>
+    [
+        .. claims
+            .Where(claim => string.Equals(claim.TraitName, SliceTrait, StringComparison.Ordinal))
+            .Select(claim => claim.ToString())
+            .Order(StringComparer.Ordinal)
+    ];
 }

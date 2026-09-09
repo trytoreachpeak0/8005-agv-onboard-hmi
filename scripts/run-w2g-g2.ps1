@@ -61,38 +61,53 @@ $shortHmiCommit = if ($hmiCommit.Length -ge 12) { $hmiCommit.Substring(0, 12) } 
 # Refusing, rather than writing INCONCLUSIVE evidence. An evidence directory that exists is a run
 # that happened; a slice with no tests here has nothing to run, and the honest artefact is none.
 #
-# The listing is matched on the test namespace rather than on indentation: VSTest prints each test
-# indented under "The following Tests are available:" today, but a gate-blocking decision should not
-# rest on a console layout, and SQCD.Agv. is a prefix this repository controls.
+# A test is recognised by the shape of its fully qualified name, not by how VSTest indents it.
+# `^\s*` accepts today's four-space indent and would accept none; what the line has to be is
+# SQCD.Agv.<assembly>.<something>, and the second dot is the load-bearing part.
 #
-# The second dot is load-bearing, and this is why. This preflight runs before the script's own build
-# step, so `dotnet test --list-tests` builds, and MSBuild prints one "  SQCD.Agv.Core -> ...\*.dll"
-# line per project. Measured on 2026-09-09, before the dot was required: -Slice FP-IS-04 counted 11
-# where the truth is 2 -- the nine build lines plus the two tests -- and wrote that 11 into
-# gate-result.json. A fully qualified test name always has a dot after the assembly's namespace; a
-# build line has a space there.
+# Why that dot matters here: this preflight runs before the script's own build step, so
+# `dotnet test --list-tests` builds, and MSBuild prints one "  SQCD.Agv.Core -> ...\*.dll" line per
+# project. Measured on 2026-09-09, before the dot was required: -Slice FP-IS-04 counted 11 where the
+# truth is 2 -- the nine build lines plus the two tests -- and wrote that 11 into gate-result.json.
+# A fully qualified test name has a dot after the assembly's namespace; a build line has a space.
+$isSliceRun = -not [string]::IsNullOrWhiteSpace($Slice)
 $sliceIndexPath = Join-Path $ProtocolRoot 'integration-slices\index.json'
 $sliceEntry = $null
 $selectedTestCount = $null
 $sliceIndexSha256 = $null
-if (-not [string]::IsNullOrWhiteSpace($Slice)) {
+if ($isSliceRun) {
     if (-not (Test-Path -LiteralPath $sliceIndexPath -PathType Leaf)) {
         throw "找不到切片索引：$sliceIndexPath"
     }
     $sliceIndexSha256 = (Get-FileHash -LiteralPath $sliceIndexPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    $sliceEntry = (Get-Content -LiteralPath $sliceIndexPath -Raw | ConvertFrom-Json).slices |
-        Where-Object { $_.integrationSliceId -eq $Slice }
-    if ($null -eq $sliceEntry) {
-        throw "切片 '$Slice' 不在协议冻结的切片族里：$sliceIndexPath"
+
+    # @() so a duplicated integrationSliceId in the index is a loud count mismatch rather than an
+    # array quietly flattening its vectorIds into the evidence.
+    $sliceMatches = @((Get-Content -LiteralPath $sliceIndexPath -Raw | ConvertFrom-Json).slices |
+        Where-Object { $_.integrationSliceId -eq $Slice })
+    if ($sliceMatches.Count -ne 1) {
+        throw "切片索引里 '$Slice' 匹配到 $($sliceMatches.Count) 条，应当恰好 1 条：$sliceIndexPath"
     }
+    $sliceEntry = $sliceMatches[0]
 
     Push-Location $hmiRoot
     try {
         $listed = @(& dotnet test '.\SQCD_8005AGV.sln' -c Release --list-tests --filter "IntegrationSlice=$Slice" |
-            Where-Object { $_ -match '^\s+SQCD\.Agv\.\S+\.\S' })
+            Where-Object { $_ -match '^\s*SQCD\.Agv\.\S+\.\S' })
+        $listExitCode = $LASTEXITCODE
     } finally {
         Pop-Location
     }
+
+    # Checked, because --list-tests builds. A compile break also produces zero matching lines, and
+    # reporting that as "this slice has no tests" would blame the slice for a broken tree. The build
+    # this run logs comes later; this one's output is on the console, which is where a preflight
+    # failure belongs -- no evidence directory exists yet.
+    if ($listExitCode -ne 0) {
+        throw ("列举切片 '$Slice' 的测试失败（exit=$listExitCode）。这通常是构建坏了，" +
+               '不是这一片没有测试——先修构建再出证。')
+    }
+
     $selectedTestCount = $listed.Count
     if ($selectedTestCount -eq 0) {
         throw ("切片 '$Slice' 在本仓选不中任何测试，ONBOARD_HMI_G2 没有东西可证。" +
@@ -100,10 +115,11 @@ if (-not [string]::IsNullOrWhiteSpace($Slice)) {
     }
 }
 
-$runDirectory = Join-Path (Join-Path $EvidenceRoot $expected.Tag) ($runId + '-' + $shortHmiCommit)
-if (-not [string]::IsNullOrWhiteSpace($Slice)) {
-    $runDirectory = Join-Path (Join-Path (Join-Path $EvidenceRoot $expected.Tag) $Slice) ($runId + '-' + $shortHmiCommit)
+$runRoot = Join-Path $EvidenceRoot $expected.Tag
+if ($isSliceRun) {
+    $runRoot = Join-Path $runRoot $Slice
 }
+$runDirectory = Join-Path $runRoot ($runId + '-' + $shortHmiCommit)
 $logsDirectory = Join-Path $runDirectory 'logs'
 $resultsDirectory = Join-Path $runDirectory 'test-results'
 New-Item -ItemType Directory -Force -Path $logsDirectory, $resultsDirectory | Out-Null
@@ -322,7 +338,7 @@ $build = Invoke-LoggedCommand -Name 'dotnet-build-release' -FilePath 'dotnet' -A
 # of the slice, and narrowing them would leave each slice's evidence covering only the files that
 # slice happens to touch.
 $testArguments = @('test', '.\SQCD_8005AGV.sln', '-c', 'Release', '--no-build', '--results-directory', $resultsDirectory)
-if (-not [string]::IsNullOrWhiteSpace($Slice)) {
+if ($isSliceRun) {
     # LogFilePrefix, not LogFileName. This solution has two test projects and a slice can select
     # tests in both; LogFileName gives them the same path and the second silently overwrites the
     # first. Measured on 2026-09-09: -Slice FP-IS-01 selected 5 tests and left one .trx holding 3.
@@ -337,7 +353,7 @@ $test = Invoke-LoggedCommand -Name 'dotnet-test-release' -FilePath 'dotnet' -Arg
 # lost .trx from a quiet under-report into a FAIL, and it also catches a filter that selected one
 # set and ran another.
 $recordedTestCount = $null
-if (-not [string]::IsNullOrWhiteSpace($Slice)) {
+if ($isSliceRun) {
     $recordedTestCount = 0
     foreach ($trx in @(Get-ChildItem -LiteralPath $resultsDirectory -Filter '*.trx' -File)) {
         $recordedTestCount += ([regex]::Matches(
@@ -462,7 +478,7 @@ $summary = [ordered]@{
         journal = 'journal.ndjson'
         logs = 'logs'
         testResults = 'test-results'
-        gateResult = if ([string]::IsNullOrWhiteSpace($Slice)) { $null } else { 'gate-result.json' }
+        gateResult = if ($isSliceRun) { 'gate-result.json' } else { $null }
     }
     knownLimitations = @(
         '本证据是 OnboardHmi 本机 G2；ControlServer G2 和联合 G3 仍需外部/现场门禁。',
@@ -470,7 +486,7 @@ $summary = [ordered]@{
         '真实车辆停稳信号、Modbus/锁/门/光幕和现场明文网络未在本机证据中宣称完成。',
         ('本证据绑定的是协议 v2 候选，approvalStatus=' + $expected.ApprovalStatus + '，不是已批准发布：' +
             $expected.Tag + ' 这个 tag 在协议仓里尚未打出（规格 6.6 第 6 条要两名产品负责人 attestation）。'),
-        $(if ([string]::IsNullOrWhiteSpace($Slice)) {
+        $(if (-not $isSliceRun) {
             '本次未传 -Slice：测试跑的是整个解决方案，不按切片过滤，summary.json 里 FP-IS-00 与 FP-IS-01 ' +
             '两片共享同一个 onboardHmiG2 结论。按切片各出一份证据请传 -Slice FP-IS-NN。'
         } else {
@@ -486,12 +502,19 @@ $transcript | Set-Content -LiteralPath $transcriptPath -Encoding utf8
 $journal | Set-Content -LiteralPath $journalPath -Encoding utf8
 $summary | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath (Join-Path $runDirectory 'summary.json') -Encoding utf8
 
-# A slice run also writes gate-result.json, in the shape test-wire-to-gate.ps1 writes on the control
-# server side. Two ends of one slice should be readable by one reader: the field names, the
-# schemaVersion and the PASS/FAIL rule are that side's, and only `gate` and the implementation
-# repository differ. summary.json stays as well -- it carries the transcript, the G1 result and the
-# identity checks, none of which the gate result has room for.
-if (-not [string]::IsNullOrWhiteSpace($Slice)) {
+# A slice run also writes gate-result.json, aligned with what test-wire-to-gate.ps1 writes on the
+# control server side: two ends of one slice should be readable by one reader, so every field that
+# side has is here under that side's name, with that side's schemaVersion and PASS/FAIL rule.
+#
+# It is a superset, not an identical shape. This end adds implementationBranch (that side runs on one
+# branch; this one runs on w2g/*), recordedTestCount (that end has one test project and so cannot
+# lose a .trx to a name collision), and buildExitCode/formatExitCode (that end's script runs neither
+# -- here both are part of the verdict). A reader written for the control server's 1.1.0 parses this;
+# a reader that requires exactly its field set does not.
+#
+# summary.json stays as well: it carries the transcript, the G1 result and the identity checks, none
+# of which the gate result has room for.
+if ($isSliceRun) {
     $gateResult = [ordered]@{
         schemaVersion = '1.1.0'
         gate = 'ONBOARD_HMI_G2'

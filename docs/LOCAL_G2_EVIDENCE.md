@@ -21,9 +21,17 @@ scripts/run-w2g-g2.ps1 为每次本机验证创建一个不可复用的证据目
 **构建与 `dotnet format` 仍是全仓的**——它们是这棵树的属性，不是这一片的属性，按片收窄会让每份
 证据只覆盖那片碰巧改到的文件。
 
-带 `-Slice` 的运行**另写一份 gate-result.json**，形状与控制端 `test-wire-to-gate.ps1` 的
+带 `-Slice` 的运行**另写一份 gate-result.json**，与控制端 `test-wire-to-gate.ps1` 的
 `schemaVersion 1.1.0` 对齐（`gate` 为 `ONBOARD_HMI_G2`），这样一条切片的两端证据能被同一个读法
-读。`summary.json` 仍然保留：transcript、G1 结果与身份校验这三样 gate-result 里放不下。
+读。**是超集，不是同一份字段表**：本端多出 `implementationBranch`（控制端跑在一条分支上，
+本端跑在 `w2g/*`）、`recordedTestCount`（控制端只有一个测试工程，不会因文件名相撞丢 trx）、
+以及 `buildExitCode`／`formatExitCode`（控制端那个脚本两样都不跑，本端两样都算进结论）。
+按控制端 `1.1.0` 写的读法能读本端；要求字段集完全相等的读法不能。
+
+`summary.json` 仍然保留：transcript、G1 结果与身份校验这三样 gate-result 里放不下。它自己的
+`schemaVersion` 也一并升到 `1.1.0`——**两种跑法都升**，多出 `integrationSliceId`、
+`selectedTestCount`、`recordedTestCount`、`integrationSliceIndexSha256` 四个字段（不带 `-Slice`
+时都是 `null`）。让不带 `-Slice` 的那条留在 `1.0.0` 反而更糟：字段已经多了，版本号却说没多。
 
 **选不中任何测试的切片会被拒绝，且是在建目录之前拒绝。** `dotnet test --filter` 选中 0 条时退出
 码是 0（2026-09-09 本仓实测，`-Slice FP-IS-13`），不拒绝就会给一个没建的切片写出一份绿证据。

@@ -30,13 +30,28 @@ internal sealed record TraitedTest(string TestName, IReadOnlyList<TraitClaim> Tr
 }
 
 /// <summary>
+/// A claim the scanner found but refused to attribute to a running test method, with where it was
+/// and why it was refused.
+/// </summary>
+/// <remarks>
+/// A record rather than the formatted sentence it renders to. Two guards read these lists and each
+/// wants only its own trait; asking them to recover the trait name by searching the sentence would
+/// make a file path or a trait value that happens to contain the trait's name change the answer.
+/// <see cref="ToString"/> is the sentence, produced at the point of reporting.
+/// </remarks>
+internal sealed record ProblemClaim(string Site, string TraitName, string Value, string Reason)
+{
+    public override string ToString() => $"{Site} claims {TraitName} {Value} {Reason}";
+}
+
+/// <summary>
 /// What one pass of the scanner collects.
 /// </summary>
 internal sealed record TraitScanResult(
     IReadOnlyList<TraitedTest> Tests,
-    IReadOnlyList<string> TypeLevelClaims,
-    IReadOnlyList<string> ClaimsOnTestsThatDoNotRun,
-    IReadOnlyList<string> UnattributableClaims);
+    IReadOnlyList<ProblemClaim> TypeLevelClaims,
+    IReadOnlyList<ProblemClaim> ClaimsOnTestsThatDoNotRun,
+    IReadOnlyList<ProblemClaim> UnattributableClaims);
 
 /// <summary>
 /// Reads xUnit trait claims out of this repository's test <b>source</b> and attributes each to the
@@ -279,14 +294,14 @@ internal static class TestSourceTraitScanner
     }
 
     private static void Record(
-        List<string> destination,
+        List<ProblemClaim> destination,
         IEnumerable<TraitClaim> claimed,
         string site,
         string what)
     {
         foreach (TraitClaim claim in claimed)
         {
-            destination.Add($"{site} claims {claim.TraitName} {claim.Value} {what}");
+            destination.Add(new ProblemClaim(site, claim.TraitName, claim.Value, what));
         }
     }
 
@@ -425,11 +440,11 @@ internal static class TestSourceTraitScanner
     {
         public List<TraitedTest> Tests { get; } = [];
 
-        public List<string> TypeLevelClaims { get; } = [];
+        public List<ProblemClaim> TypeLevelClaims { get; } = [];
 
-        public List<string> ClaimsOnTestsThatDoNotRun { get; } = [];
+        public List<ProblemClaim> ClaimsOnTestsThatDoNotRun { get; } = [];
 
-        public List<string> UnattributableClaims { get; } = [];
+        public List<ProblemClaim> UnattributableClaims { get; } = [];
 
         public TraitScanResult ToResult() => new(
             Tests, TypeLevelClaims, ClaimsOnTestsThatDoNotRun, UnattributableClaims);

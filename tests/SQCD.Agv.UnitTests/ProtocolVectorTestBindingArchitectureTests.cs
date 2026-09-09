@@ -759,9 +759,21 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
             .. scan.Tests.SelectMany(test => test.ValuesOf(VectorTrait)
                 .Select(vectorId => new VectorBinding(vectorId, test.TestName)))
         ],
-        scan.TypeLevelClaims,
-        scan.ClaimsOnTestsThatDoNotRun,
-        scan.UnattributableClaims);
+        Sentences(scan.TypeLevelClaims),
+        Sentences(scan.ClaimsOnTestsThatDoNotRun),
+        Sentences(scan.UnattributableClaims));
+
+    /// <summary>
+    /// This class's half of a problem list, rendered. The filter is a no-op while the scan asks for
+    /// one trait, and is written anyway: it is the field that says which trait a claim was, and
+    /// leaving it out is how this class would start reporting the slice guard's problems as its own.
+    /// </summary>
+    private static string[] Sentences(IEnumerable<ProblemClaim> claims) =>
+    [
+        .. claims
+            .Where(claim => string.Equals(claim.TraitName, VectorTrait, StringComparison.Ordinal))
+            .Select(claim => claim.ToString())
+    ];
 
     private static string[] FrozenVectorIds() => VendoredSliceIndex.FrozenVectorIds();
 
