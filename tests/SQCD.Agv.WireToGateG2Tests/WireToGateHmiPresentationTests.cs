@@ -10,6 +10,7 @@ public sealed class WireToGateHmiPresentationTests
         new(2026, 8, 30, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-00")]
     public void ReadyWireToGateSessionDoesNotRemainInLegacyConnectingState()
     {
         WireToGateSessionSnapshot session = Session(WireToGateSessionReadiness.Ready);
@@ -26,6 +27,7 @@ public sealed class WireToGateHmiPresentationTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public void RecoveryRequiredIsVisibleWithTheServerReason()
     {
         WireToGateSessionSnapshot session = Session(
@@ -43,6 +45,7 @@ public sealed class WireToGateHmiPresentationTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public void OperationProjectionOverridesReadyBannerAndTargetsEveryPhysicalSlot()
     {
         WireToGateHmiOperationSnapshot operation = new(
@@ -73,6 +76,7 @@ public sealed class WireToGateHmiPresentationTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public void FailedOperationRemainsVisibleAsRecoveryRequired()
     {
         WireToGateHmiOperationSnapshot operation = new(

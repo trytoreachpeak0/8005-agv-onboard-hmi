@@ -7,6 +7,7 @@ namespace SQCD.Agv.UnitTests;
 public sealed class WireToGateSlotOperationExecutorTests
 {
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
     public async Task LoadUsesOnlyServerFrozenSlotsAndJournalsBeforePulses()
     {
         string directory = Path.Combine(Path.GetTempPath(), "w2g-executor", Guid.NewGuid().ToString("N"));
@@ -66,6 +67,7 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-04")]
     public async Task UnloadAllTargetSlotsRequiresEverySlotToReachEmpty()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
@@ -94,6 +96,7 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task UnknownSnapshotFailsClosedWithoutUnlock()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
@@ -111,6 +114,7 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task ResumeSkipsSlotsAlreadyAtDesiredFinalState()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
@@ -158,6 +162,7 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task ResumeWithoutOriginalContextFailsClosed()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
@@ -185,6 +190,8 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task ResumeRejectsDifferentCommandHashWithoutUnlock()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
