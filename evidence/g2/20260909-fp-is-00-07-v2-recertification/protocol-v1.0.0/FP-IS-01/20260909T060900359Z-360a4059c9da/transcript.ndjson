@@ -1,0 +1,10 @@
+{"timestampUtc":"2026-09-09T06:09:08.3151788Z","kind":"run.started","data":{"runId":"20260909T060900359Z","protocolRoot":"C:\\Users\\szy\\Desktop\\8005-fp\\8005-agv-protocol","hmiRoot":"C:\\Users\\szy\\Desktop\\8005-fp\\8005-agv-onboard-hmi","integrationSliceId":"FP-IS-01","evidenceType":"ONBOARD_HMI_LOCAL_G2","selectedTestCount":5}}
+{"timestampUtc":"2026-09-09T06:09:08.5765114Z","kind":"protocol.g1.skipped","data":{"reason":"SkipProtocolG1"}}
+{"timestampUtc":"2026-09-09T06:09:08.5812014Z","kind":"command.started","data":{"name":"dotnet-build-release","arguments":["build",".\\SQCD_8005AGV.sln","-c","Release"]}}
+{"timestampUtc":"2026-09-09T06:09:10.9860584Z","kind":"command.completed","data":{"exitCode":0,"log":"dotnet-build-release.log","name":"dotnet-build-release"}}
+{"timestampUtc":"2026-09-09T06:09:10.9919786Z","kind":"command.started","data":{"name":"dotnet-test-release","arguments":["test",".\\SQCD_8005AGV.sln","-c","Release","--no-build","--results-directory","evidence\\g2\\20260909-fp-is-00-07-v2-recertification\\protocol-v1.0.0\\FP-IS-01\\20260909T060900359Z-360a4059c9da\\test-results","--filter","IntegrationSlice=FP-IS-01","--logger","trx;LogFilePrefix=onboard-FP-IS-01"]}}
+{"timestampUtc":"2026-09-09T06:09:15.7541875Z","kind":"command.completed","data":{"exitCode":0,"log":"dotnet-test-release.log","name":"dotnet-test-release"}}
+{"timestampUtc":"2026-09-09T06:09:15.8170689Z","kind":"command.started","data":{"name":"dotnet-format-verify","arguments":["format",".\\SQCD_8005AGV.sln","--verify-no-changes","--no-restore"]}}
+{"timestampUtc":"2026-09-09T06:09:38.6028945Z","kind":"command.completed","data":{"exitCode":0,"log":"dotnet-format-verify.log","name":"dotnet-format-verify"}}
+{"timestampUtc":"2026-09-09T06:09:38.6109013Z","kind":"evidence.journal.bound","data":{"hmiCommit":"360a4059c9daa44a90f6b504cb25366d264b532a","hmiStatus":"PASS","protocolCommit":"f6ee75defe6e2d18f63f4082bee445dbb678ab1b","g1Status":"SKIPPED"}}
+{"timestampUtc":"2026-09-09T06:09:38.7252156Z","kind":"run.completed","data":{"status":"PASS","failures":0}}

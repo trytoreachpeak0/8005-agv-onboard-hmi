@@ -1,0 +1,31 @@
+{
+  "schemaVersion": "1.1.0",
+  "gate": "ONBOARD_HMI_G2",
+  "integrationSliceId": "FP-IS-06",
+  "status": "PASS",
+  "startedAt": "2026-09-09T06:12:14.4252011Z",
+  "finishedAt": "2026-09-09T06:12:46.3973968Z",
+  "implementationRepository": "8005-agv-onboard-hmi",
+  "implementationCommit": "360a4059c9daa44a90f6b504cb25366d264b532a",
+  "implementationBranch": "w2g/fp-v2-impl",
+  "protocolReleaseVersion": "1.0.0",
+  "protocolTag": "protocol-v1.0.0",
+  "protocolProfileId": "AGV_FULL_PRODUCT",
+  "protocolVersion": 2,
+  "protocolApprovalStatus": "SUPERSEDING_CANDIDATE",
+  "protocolRepositoryCommit": "f6ee75defe6e2d18f63f4082bee445dbb678ab1b",
+  "protocolManifestSha256": "84f984eabf17106e92666c415b63100d404e9ec69a9a710dfddf17683cc42788",
+  "protocolSchemaBundleSha256": "71146c881e8ec199e9a977779ec1a557bed96a9ab71e36cfc3dfb7b329351c6b",
+  "protocolVectorsSha256": "51c5aaca2ca02326d16e02af7e76c9954d84414a9772c5b208a92969a417d1df",
+  "integrationSliceIndexSha256": "71e0a63d49d1973653e1f70addc19c334faff5e53e8597733c1423a7307bd82f",
+  "selectedTestCount": 8,
+  "recordedTestCount": 8,
+  "vectorIds": [
+    "CV-RELIABLE-RETRY-SAME-CONTENT",
+    "CV-RELIABLE-RETRY-DIFFERENT-CONTENT",
+    "CV-REQUEST-FIRST-RESULT-REPLAY"
+  ],
+  "buildExitCode": 0,
+  "testExitCode": 0,
+  "formatExitCode": 0
+}

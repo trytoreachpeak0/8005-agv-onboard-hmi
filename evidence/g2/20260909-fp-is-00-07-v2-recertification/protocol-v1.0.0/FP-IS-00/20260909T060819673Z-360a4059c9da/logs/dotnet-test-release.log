@@ -1,0 +1,16 @@
+Test run for C:\Users\szy\Desktop\8005-fp\8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+Test run for C:\Users\szy\Desktop\8005-fp\8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+VSTest version 17.11.1 (x64)
+
+
+Starting test execution, please wait...
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.A total of 1 test files matched the specified pattern.
+
+No test matches the given testcase filter `IntegrationSlice=FP-IS-00` in C:\Users\szy\Desktop\8005-fp\8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll
+Results File: C:\Users\szy\Desktop\8005-fp\8005-agv-onboard-hmi\evidence\g2\20260909-fp-is-00-07-v2-recertification\protocol-v1.0.0\FP-IS-00\20260909T060819673Z-360a4059c9da\test-results\onboard-FP-IS-00_net8.0_20260909140834.trx
+
+Results File: C:\Users\szy\Desktop\8005-fp\8005-agv-onboard-hmi\evidence\g2\20260909-fp-is-00-07-v2-recertification\protocol-v1.0.0\FP-IS-00\20260909T060819673Z-360a4059c9da\test-results\onboard-FP-IS-00_net8.0_20260909140836.trx
+
+Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
