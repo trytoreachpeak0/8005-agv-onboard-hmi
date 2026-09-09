@@ -296,6 +296,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     recovery.SentAt,
                     recovery.EventId,
                     recovery.DemandId,
+                    recovery.SlotOperationAttemptId,
                     recovery.Slots,
                     recovery.RecoverySessionRevision);
             }
@@ -319,6 +320,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             if (!string.Equals(opened.RequestId, requestId, StringComparison.Ordinal)
                 || !string.Equals(opened.EventId, eventId, StringComparison.Ordinal)
                 || !string.Equals(opened.DemandId, context.DemandId, StringComparison.Ordinal)
+                || !AttemptMatches(opened.SlotOperationAttemptId, context)
                 || !opened.Slots.SequenceEqual(context.Slots))
             {
                 throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
@@ -353,6 +355,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     accepted.ExceptionRecoverySessionId,
                     opened.ExceptionRecoverySessionId,
                     StringComparison.Ordinal)
+                || !AttemptMatches(accepted.SlotOperationAttemptId, context)
                 || accepted.AcceptedAction != "RESUME_AFTER_REPAIR")
             {
                 throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");

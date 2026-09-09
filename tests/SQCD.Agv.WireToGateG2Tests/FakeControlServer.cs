@@ -618,7 +618,7 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
     }
 
-    private static async Task HandleRecoverySessionRequestAsync(
+    private async Task HandleRecoverySessionRequestAsync(
         ConnectionContext context,
         JsonElement request)
     {
@@ -639,6 +639,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                     demandId = payload.TryGetProperty("demandId", out JsonElement demandId)
                         ? demandId.GetString()
                         : null,
+                    slotOperationAttemptId = RecoverySessionSlotOperationAttemptId,
                     slots = payload.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()).ToArray(),
                     recoverySessionRevision = 1
                 }))
@@ -681,7 +682,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             .ConfigureAwait(false);
     }
 
-    private static async Task HandleRecoveryActionSubmittedAsync(
+    private async Task HandleRecoveryActionSubmittedAsync(
         ConnectionContext context,
         JsonElement request)
     {
@@ -698,6 +699,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                 {
                     recoveryActionId = actionId,
                     exceptionRecoverySessionId = sessionId,
+                    slotOperationAttemptId = RecoverySessionSlotOperationAttemptId,
                     acceptedAction = payload.GetProperty("action").GetString(),
                     recoverySessionRevision = 2,
                     acceptedAt = DateTimeOffset.UtcNow
@@ -872,6 +874,15 @@ public sealed class FakeControlServer : IAsyncDisposable
             });
     }
 
+    public const string SlotOperationAttemptId = "44444444-4444-4444-4444-444444444444";
+
+    /// <summary>
+    /// protocol-v0.3.0 起服务端在恢复会话的三条消息里点名这次恢复说的是哪一次 attempt。默认
+    /// <c>null</c>——那是合法值，意思是这个会话没挂上任何 station operation，车辆本地那份身份因此
+    /// 不被挑战。要测两端对得上（或对不上）的测试自己设它。
+    /// </summary>
+    public string? RecoverySessionSlotOperationAttemptId { get; set; }
+
     private static async Task SendSlotOperationCommandAsync(ConnectionContext context)
     {
         await WriteEnvelopeAsync(
@@ -884,7 +895,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                 {
                     demandId = "11111111-1111-1111-1111-111111111111",
                     operationSessionId = "33333333-3333-3333-3333-333333333333",
-                    slotOperationAttemptId = "44444444-4444-4444-4444-444444444444",
+                    slotOperationAttemptId = SlotOperationAttemptId,
                     operationType = "LOAD",
                     slots = SingleSlot,
                     expectedBasketCount = 1,

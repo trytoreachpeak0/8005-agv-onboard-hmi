@@ -1697,6 +1697,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         || payload.AdministratorRole is not ("MAINTENANCE_ADMINISTRATOR" or "SYSTEM_ADMINISTRATOR")
                         || payload.DemandId is not null
                             && !Guid.TryParseExact(payload.DemandId, "D", out _)
+                        || payload.SlotOperationAttemptId is not null
+                            && !Guid.TryParseExact(payload.SlotOperationAttemptId, "D", out _)
                         || payload.Slots is null
                         || payload.AllowedActions is null
                         || payload.BlockingFacts is null)
@@ -1725,6 +1727,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         payload.AdministratorRole,
                         payload.EventId,
                         payload.DemandId,
+                        payload.SlotOperationAttemptId,
                         payload.Slots,
                         payload.SelectedAction,
                         payload.AllowedActions,
