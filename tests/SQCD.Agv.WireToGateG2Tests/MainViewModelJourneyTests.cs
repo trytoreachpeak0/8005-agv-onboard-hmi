@@ -197,7 +197,7 @@ public sealed class MainViewModelJourneyTests
 
         viewModel.UpdateWireToGateJourney(JourneyWithDeadline(Now - TimeSpan.FromSeconds(90)));
 
-        Assert.Equal("已到期，等待服务端结算", viewModel.StationDepartureCountdownText);
+        Assert.Equal("已到期，等待本站结束", viewModel.StationDepartureCountdownText);
         Assert.Equal("Expired", viewModel.StationDepartureCountdownTier);
     }
 

@@ -38,8 +38,11 @@ public sealed record StationDepartureCountdownView(
 /// <list type="bullet">
 /// <item>最后 60 秒转黄，最后 10 秒转红并逐秒闪烁，不依赖声音设备。</item>
 /// <item>截止时间缺席时显示「无倒计时」，**不是** 00:00——两者含义完全不同。</item>
-/// <item>剩余归零后不显示负数，改显示「已到期，等待服务端结算」。决策 4 使期限到期不必然结束本站：
-/// 仓门未闭时服务端只发告警并继续等，车辆会带着一个已耗尽的倒计时停很久。</item>
+/// <item>剩余归零后不显示负数，改显示「已到期，等待本站结束」。决策 4 使期限到期不必然结束本站：
+/// 仓门未闭时服务端只发告警并继续等，车辆会带着一个已耗尽的倒计时停很久。
+/// **这一行不指名在等谁**，因为到期时车辆可能处在两种完全不同的处境里：没有在途仓位操作时
+/// 等的是服务端结算；正在装载时等的是操作员——期限过后车还会宽限一轮提示（#24），
+/// 那一轮结束才结算成确定失败。</item>
 /// </list>
 ///
 /// 这是个纯函数，每次都从绝对时刻重算，不持有任何递减状态——**同一次停靠内截止时间会往后跳**
@@ -49,7 +52,7 @@ public sealed record StationDepartureCountdownView(
 public static class StationDepartureCountdownFormatter
 {
     private const string AbsentText = "无倒计时";
-    private const string ExpiredText = "已到期，等待服务端结算";
+    private const string ExpiredText = "已到期，等待本站结束";
 
     /// <summary>最后 60 秒转黄。</summary>
     private static readonly TimeSpan WarningThreshold = TimeSpan.FromSeconds(60);

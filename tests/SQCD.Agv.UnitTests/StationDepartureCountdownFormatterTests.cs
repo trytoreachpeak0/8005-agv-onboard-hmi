@@ -99,14 +99,17 @@ public sealed class StationDepartureCountdownFormatterTests
 
     [Fact]
     [Trait("IntegrationSlice", "W2G-IS-01")]
-    public void AnExhaustedDeadlineSaysTheServerStillOwnsTheDecision()
+    public void AnExhaustedDeadlineDoesNotNameWhoIsBeingWaitedFor()
     {
-        // 决策 4：仓门未闭时超时只转告警，车辆继续等。这一档不是终态，界面不能写成「本站结束」。
+        // 决策 4：仓门未闭时超时只转告警，车辆继续等。这一档不是终态。
+        // 而且到期时车辆可能处在两种处境里：没有在途仓位操作时等的是服务端结算，
+        // 正在装载时等的是操作员——期限过后还宽限一轮提示（#24）。这一行因此
+        // 不指名在等谁，写死任何一方都会有一半的时间在骗人。
         StationDepartureCountdownView view = StationDepartureCountdownFormatter.Format(
             Now - TimeSpan.FromMinutes(7),
             Now);
 
-        Assert.Equal("已到期，等待服务端结算", view.Text);
+        Assert.Equal("已到期，等待本站结束", view.Text);
         Assert.Equal(StationDepartureCountdownTier.Expired, view.Tier);
         Assert.False(view.Dimmed);
     }

@@ -385,6 +385,192 @@ public sealed class WireToGateSlotOperationExecutorTests
         Assert.Equal(0, fixture.Io.UnlockCount(1));
     }
 
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public async Task AnExpiredStationDeadlineSettlesAsDeterminateFailureAfterOneGraceRound()
+    {
+        // 本站期限早就过了，操作员每一轮都只关门、不放料。期限不会立刻判死：先花掉
+        // 宽限的那一轮（再开一次门、再提示一次），第二次读到相反态才结算。
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken,
+            () => DateTimeOffset.UtcNow - TimeSpan.FromMinutes(1));
+        List<(string Phase, int PromptRound)> phases = [];
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1], expectedOccupied: true),
+            (phase, active, completed, promptRound, token) =>
+            {
+                phases.Add((phase, promptRound));
+                if (phase == "WAITING_OPERATOR")
+                {
+                    fixture.Io.CloseDoor(active[0] - 1, cargo: false);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("FAILED", result.OverallOutcome);
+        WireToGateSlotExecutionResult slot = result.SlotResults.Single();
+        Assert.Equal("FAILED", slot.Outcome);
+        Assert.Equal(["OPERATOR_TIMEOUT"], slot.ReasonCodes);
+        // 服务端的 determinateFailure 判据要的三样：状态已知、门已闭、开锁输出已复位。
+        Assert.Equal("EMPTY", slot.FinalPhysicalState);
+        Assert.Equal("LOCKED", slot.LockState);
+        Assert.Equal("RESET", slot.UnlockOutputState);
+        // 门已闭、输出已复位，这是安全收尾，与达成目标态时同一个检查点。
+        Assert.Equal("SAFE_FINISH_REACHED", result.JournalCheckpoint);
+        // 宽限那一轮真的又开了一次门，之后不再开。
+        Assert.Equal(2, fixture.Io.UnlockCount(0));
+        Assert.Equal(
+            [0, 1],
+            phases.Where(item => item.Phase == "UNLOCKING").Select(item => item.PromptRound));
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public async Task AStationDeadlineStillRunningNeverSettlesTheSlotAsFailed()
+    {
+        // 期限还没到，决策 1 的「不设次数上限」原封不动：关六次门也不判失败。
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken,
+            () => DateTimeOffset.UtcNow + TimeSpan.FromMinutes(5));
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1], expectedOccupied: true),
+            (phase, active, completed, promptRound, token) =>
+            {
+                if (phase == "WAITING_OPERATOR")
+                {
+                    fixture.Io.CloseDoor(active[0] - 1, cargo: promptRound >= 5);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.Equal(6, fixture.Io.UnlockCount(0));
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public async Task AnExpiredDeadlineWithTheDoorStillOpenKeepsPromptingInsteadOfSettling()
+    {
+        // 期限过了但仓门根本没关：ADR-cross-0058 决策 4 的「仓门未闭超时转告警并持续等待」。
+        // 车这边照旧提示，不结算——而且门开着时 determinateFailure 的三个条件本来就不成立。
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken,
+            () => DateTimeOffset.UtcNow - TimeSpan.FromMinutes(1));
+        List<(string Phase, int PromptRound)> phases = [];
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1], expectedOccupied: true),
+            (phase, active, completed, promptRound, token) =>
+            {
+                phases.Add((phase, promptRound));
+                // 前三轮门一直开着，第三轮之后操作员才把料放进去并关门。
+                if (phase == "WAITING_OPERATOR" && promptRound >= 2)
+                {
+                    fixture.Io.CloseDoor(active[0] - 1, cargo: true);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        // 提示节拍到期时仓门还开着，不重复脉冲，也不因为期限已过就判死。
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+        Assert.Equal(
+            [0, 1, 2],
+            phases.Where(item => item.Phase == "WAITING_OPERATOR").Select(item => item.PromptRound));
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public async Task ADeterminateFailureLeavesEverySlotReadable()
+    {
+        // 决策 5 的 determinateFailure 判的是 SlotEvidence.All(...)：只要有一个仓位报
+        // UNKNOWN，服务端就只能当成 RecoveryRequired。到期结算时那些从未开启的仓位
+        // 因此必须按真实 IO 读数填（决策 6），不能图省事写 UNKNOWN。
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken,
+            () => DateTimeOffset.UtcNow - TimeSpan.FromMinutes(1));
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true),
+            (phase, active, completed, promptRound, token) =>
+            {
+                if (phase == "WAITING_OPERATOR")
+                {
+                    fixture.Io.CloseDoor(active[0] - 1, cargo: false);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("FAILED", result.OverallOutcome);
+        WireToGateSlotExecutionResult neverStarted = result.SlotResults.Single(slot => slot.SlotNo == 2);
+        Assert.Equal("NOT_STARTED", neverStarted.Outcome);
+        Assert.Empty(neverStarted.ReasonCodes);
+        Assert.Equal(0, fixture.Io.UnlockCount(1));
+        Assert.All(result.SlotResults, slot =>
+        {
+            Assert.NotEqual("UNKNOWN", slot.FinalPhysicalState);
+            Assert.Equal("LOCKED", slot.LockState);
+            Assert.Equal("RESET", slot.UnlockOutputState);
+        });
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public async Task AbortActiveOperationStopsAnOperationThatHasNoNaturalEnd()
+    {
+        // 没有期限时目标态闭环没有终点，操作员发起的装货取消必须能把它停下来——否则
+        // 取消向量与这个执行器会同时驱动同一个 IO 模块。
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Task<WireToGateOperationExecutionResult> operation = fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1], expectedOccupied: true),
+            (phase, active, completed, promptRound, token) =>
+            {
+                if (phase == "WAITING_OPERATOR")
+                {
+                    waiting.TrySetResult();
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        await waiting.Task;
+        fixture.Executor.AbortActiveOperation();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => operation);
+        // 中止不写结果。日志里那次 attempt 仍然未结算，取消向量的 RequireUnsettledLoadOperation
+        // 要靠它认出自己在取消谁。
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
+            TestContext.Current.CancellationToken);
+        Assert.NotNull(state.UnsettledSlotOperationAttemptId);
+        Assert.NotNull(state.OperationContext);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public async Task AbortActiveOperationWithNothingRunningIsANoOp()
+    {
+        // 操作员可以在没有在途操作时按取消（本站还没开始装），那条路走的是
+        // RequestLoadCancellationBeforeLoadAsync，中止不能因此炸掉。
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+
+        fixture.Executor.AbortActiveOperation();
+    }
+
     private static WireToGateSlotOperationCommand CreateCommand(
         OperationType operationType,
         IReadOnlyList<int> slots,
@@ -593,7 +779,13 @@ public sealed class WireToGateSlotOperationExecutorTests
 
         public WireToGateSlotOperationExecutor Executor { get; }
 
-        public static async Task<ScriptedFixture> CreateAsync(CancellationToken cancellationToken)
+        /// <param name="stationDepartureDeadline">
+        /// 服务端给本站的离站期限。默认不给——那时目标态闭环没有上限，与 ADR-cross-0058
+        /// 决策 1 的原始形态一致，既有用例照旧。
+        /// </param>
+        public static async Task<ScriptedFixture> CreateAsync(
+            CancellationToken cancellationToken,
+            Func<DateTimeOffset?>? stationDepartureDeadline = null)
         {
             string directory = Path.Combine(
                 Path.GetTempPath(),
@@ -612,7 +804,8 @@ public sealed class WireToGateSlotOperationExecutorTests
                     TimeSpan.FromMilliseconds(200),
                     TimeSpan.FromMilliseconds(200),
                     TimeSpan.Zero,
-                    TimeSpan.FromSeconds(30)));
+                    TimeSpan.FromSeconds(30)),
+                stationDepartureDeadline);
             return new ScriptedFixture(io, journal, executor);
         }
 

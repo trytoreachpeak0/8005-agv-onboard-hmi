@@ -107,7 +107,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             ioModule,
             session.Journal,
             clock,
-            executorOptions);
+            executorOptions,
+            // ADR-cross-0058 决策 3：期限归服务端。车这边不算期限，只读服务端随作业清单
+            // 发来的那个时刻，而且每一轮重新读——新的一份作业清单可以改写它。
+            () => session.CurrentJourney.CurrentStopWorklist?.StationDepartureDeadlineAt);
         _vectorExecutor = new WireToGateRecoveryVectorExecutor(
             ioModule,
             session.Journal,
@@ -1168,14 +1171,27 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 execution.OverallOutcome,
                 "COMPLETED",
                 StringComparison.Ordinal);
+            // ADR-cross-0058 决策 5：确定失败不进恢复。现场没有一件事是不确定的——每个仓位
+            // 都报得出已知的占用状态、已闭的门与已复位的开锁输出——所以它不需要管理员，
+            // 需要的是操作员取消本次装货。把它和 UNKNOWN 混在一起显示，操作员会去找一个
+            // 根本不必来的人。
+            bool determinateFailure = string.Equals(
+                execution.OverallOutcome,
+                "FAILED",
+                StringComparison.Ordinal);
+            WireToGateHmiOperationStage finalStage = completedSuccessfully
+                ? WireToGateHmiOperationStage.Completed
+                : determinateFailure
+                    ? WireToGateHmiOperationStage.StationDeadlineExpired
+                    : WireToGateHmiOperationStage.RecoveryRequired;
             PublishOperation(
                 command,
-                completedSuccessfully
-                    ? WireToGateHmiOperationStage.Completed
-                    : WireToGateHmiOperationStage.RecoveryRequired,
+                finalStage,
                 completedSuccessfully
                     ? $"{FormatSlots(command.Slots)}操作完成，正在上报结果。"
-                    : $"{FormatSlots(command.Slots)}操作未完成，需要恢复处理。",
+                    : determinateFailure
+                        ? $"{FormatSlots(command.Slots)}本站期限已过，货物未交接，请在界面上取消本次装货。"
+                        : $"{FormatSlots(command.Slots)}操作未完成，需要恢复处理。",
                 "final");
             try
             {
@@ -1193,18 +1209,26 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 }
                 PublishOperatorEvent(
                     $"operation-result:{command.SlotOperationAttemptId}:{execution.OverallOutcome}",
-                    completedSuccessfully ? "OPERATION_COMPLETED" : "OPERATION_RECOVERY_REQUIRED",
+                    completedSuccessfully
+                        ? "OPERATION_COMPLETED"
+                        : determinateFailure
+                            ? "OPERATION_STATION_DEADLINE_EXPIRED"
+                            : "OPERATION_RECOVERY_REQUIRED",
                     completedSuccessfully
                         ? $"{FormatSlots(command.Slots)}操作结果已被服务端确认。"
-                        : $"{FormatSlots(command.Slots)}操作失败或状态未知，服务端已收到结果，等待管理员恢复。",
+                        : determinateFailure
+                            ? $"{FormatSlots(command.Slots)}本站期限已过、货物未交接，服务端已收到结果。不需要管理员恢复，请在界面上取消本次装货。"
+                            : $"{FormatSlots(command.Slots)}操作失败或状态未知，服务端已收到结果，等待管理员恢复。",
                     new WireToGateHmiOperationSnapshot(
                         command.SlotOperationAttemptId,
                         command.OperationType,
                         command.Slots,
+                        finalStage,
                         completedSuccessfully
-                            ? WireToGateHmiOperationStage.Completed
-                            : WireToGateHmiOperationStage.RecoveryRequired,
-                        completedSuccessfully ? "操作完成。" : "操作需要管理员恢复。",
+                            ? "操作完成。"
+                            : determinateFailure
+                                ? "本站期限已过，货物未交接，请取消本次装货。"
+                                : "操作需要管理员恢复。",
                         execution.ObservedAt));
             }
             catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
@@ -1226,7 +1250,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         command.Slots,
                         completedSuccessfully
                             ? WireToGateHmiOperationStage.Reporting
-                            : WireToGateHmiOperationStage.RecoveryRequired,
+                            : finalStage,
                         "结果等待确认，禁止重复操作仓门。",
                         execution.ObservedAt));
             }

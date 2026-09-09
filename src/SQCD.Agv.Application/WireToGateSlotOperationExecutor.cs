@@ -17,29 +17,71 @@ public sealed record WireToGateSlotOperationExecutorOptions(
 public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 {
     /// <summary>
-    /// 一轮操作员等待的结论。Reached 非空表示已达成目标态；为空且 OppositeObserved
-    /// 为真表示门已关好但货物状态与预期相反，需要重新开锁；两者都为空/假表示这一轮
-    /// 只是提示节拍到期，仓门还开着。
+    /// 一轮操作员等待的结论。Reached 非空表示已达成目标态；Opposite 非空表示门已关好
+    /// 但货物状态与预期相反，需要重新开锁——它同时是这一刻的读数，本站期限已过时要靠
+    /// 它填出三个明确的物理字段；两者都为空表示这一轮只是提示节拍到期，仓门还开着。
     /// </summary>
-    private readonly record struct SlotWaitResult(LockerSnapshot? Reached, bool OppositeObserved);
+    private readonly record struct SlotWaitResult(LockerSnapshot? Reached, LockerSnapshot? Opposite)
+    {
+        public bool OppositeObserved => Opposite is not null;
+    }
+
+    /// <summary>
+    /// 一个仓位驱动到底的结论。<see cref="HandedOver"/> 为真表示达成了目标态；为假表示
+    /// 本站期限已过、宽限的那一轮也用掉了，货物始终没有交接——门已闭、开锁输出已复位，
+    /// 三个物理字段都读得到，这是 ADR-cross-0058 决策 5 要的那种确定失败。
+    /// </summary>
+    private readonly record struct SlotDriveResult(LockerSnapshot Locker, bool HandedOver);
 
     private readonly IIoModuleClient _ioModule;
     private readonly IWireToGateJournal _journal;
     private readonly IClock _clock;
     private readonly WireToGateSlotOperationExecutorOptions _options;
+    private readonly Func<DateTimeOffset?> _stationDepartureDeadline;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
+    private CancellationTokenSource? _activeOperation;
 
+    /// <param name="stationDepartureDeadline">
+    /// 服务端给本站的离站期限，随 CurrentStopWorklistSnapshot 到达（ADR-cross-0058 决策 3：
+    /// 期限归服务端）。每一轮重新读，因为一份新的作业清单可以改写它。返回 null 表示本站
+    /// 没有期限可倒数，那时目标态闭环没有上限，与决策 1 的原始形态一致。
+    /// </param>
     public WireToGateSlotOperationExecutor(
         IIoModuleClient ioModule,
         IWireToGateJournal journal,
         IClock clock,
-        WireToGateSlotOperationExecutorOptions options)
+        WireToGateSlotOperationExecutorOptions options,
+        Func<DateTimeOffset?>? stationDepartureDeadline = null)
     {
         _ioModule = ioModule;
         _journal = journal;
         _clock = clock;
         _options = options;
+        _stationDepartureDeadline = stationDepartureDeadline ?? (static () => null);
         ValidateOptions(options);
+    }
+
+    /// <summary>
+    /// 中止正在执行的仓位操作。目标态闭环没有自然终点（决策 1 不设次数上限），所以
+    /// 操作员发起的装货取消必须先把它停下来，否则两个执行器会同时驱动同一个 IO 模块：
+    /// 一个还在循环脉冲开锁，另一个在验证仓位清空。没有在途操作时什么都不做。
+    /// </summary>
+    public void AbortActiveOperation()
+    {
+        CancellationTokenSource? active = Volatile.Read(ref _activeOperation);
+        if (active is null)
+        {
+            return;
+        }
+
+        try
+        {
+            active.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // 操作在这两行之间自己结束了，正是想要的结果。
+        }
     }
 
     public async Task<WireToGateOperationExecutionResult> ExecuteAsync(
@@ -49,13 +91,30 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(command);
         ValidateCommand(command);
+        return await RunExclusiveAsync(
+            token => ExecuteExclusiveAsync(command, progress, token),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 拿操作锁，并把这一次操作的取消源登记为「在途操作」，让 <see cref="AbortActiveOperation"/>
+    /// 能停下它。取消源链接调用方的 token，所以关进程与外部中止走同一条路。
+    /// </summary>
+    private async Task<WireToGateOperationExecutionResult> RunExclusiveAsync(
+        Func<CancellationToken, Task<WireToGateOperationExecutionResult>> body,
+        CancellationToken cancellationToken)
+    {
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        using CancellationTokenSource active =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Volatile.Write(ref _activeOperation, active);
         try
         {
-            return await ExecuteExclusiveAsync(command, progress, cancellationToken).ConfigureAwait(false);
+            return await body(active.Token).ConfigureAwait(false);
         }
         finally
         {
+            Volatile.Write(ref _activeOperation, null);
             _operationGate.Release();
         }
     }
@@ -74,15 +133,22 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(resume);
         ValidateResumeCommand(resume);
-        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            WireToGateRecoveryState state = await _journal
-                .ReadRecoveryStateAsync(cancellationToken)
-                .ConfigureAwait(false);
-            WireToGateRecoveryOperationContext context = state.OperationContext
-                ?? throw new InvalidDataException("RECOVERY_OPERATION_CONTEXT_MISSING");
-            if (!WireToGateRecoverySafetyPolicy.MatchesPersistedResumeState(
+        return await RunExclusiveAsync(
+            token => ResumeCoreAsync(resume, progress, token),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<WireToGateOperationExecutionResult> ResumeCoreAsync(
+        WireToGateSlotOperationResumeCommand resume,
+        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, int, CancellationToken, Task>? progress,
+        CancellationToken cancellationToken)
+    {
+        WireToGateRecoveryState state = await _journal
+            .ReadRecoveryStateAsync(cancellationToken)
+            .ConfigureAwait(false);
+        WireToGateRecoveryOperationContext context = state.OperationContext
+            ?? throw new InvalidDataException("RECOVERY_OPERATION_CONTEXT_MISSING");
+        if (!WireToGateRecoverySafetyPolicy.MatchesPersistedResumeState(
                     state,
                     resume.SlotOperationAttemptId,
                     resume.ProvenRecoveryCheckpoint)
@@ -100,22 +166,17 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     resume.CommandContentSha256,
                     StringComparison.OrdinalIgnoreCase)
                 || !context.Slots.SequenceEqual(resume.Slots))
-            {
-                throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
-            }
-
-            WireToGateSlotOperationCommand command = context.ToCommand();
-            ValidateCommand(command);
-            return await ResumeExclusiveAsync(
-                command,
-                state,
-                progress,
-                cancellationToken).ConfigureAwait(false);
-        }
-        finally
         {
-            _operationGate.Release();
+            throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
         }
+
+        WireToGateSlotOperationCommand command = context.ToCommand();
+        ValidateCommand(command);
+        return await ResumeExclusiveAsync(
+            command,
+            state,
+            progress,
+            cancellationToken).ConfigureAwait(false);
     }
 
     public async Task MarkResultRecordedAsync(
@@ -303,15 +364,31 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
             try
             {
-                LockerSnapshot completedLocker = await DriveSlotToTargetStateAsync(
+                SlotDriveResult drive = await DriveSlotToTargetStateAsync(
                     command,
                     physicalSlot,
                     completed,
                     progress,
                     cancellationToken).ConfigureAwait(false);
 
+                if (!drive.HandedOver)
+                {
+                    // 本站期限已过而货物始终没有交接。整站就此收场——后面的仓位不再开，
+                    // 期限是站的不是仓位的，接着开下一个仓位只会让车停得更久。
+                    return await SettleStationDeadlineFailureAsync(
+                        command,
+                        context,
+                        existingState,
+                        completed,
+                        results,
+                        physicalSlot,
+                        drive.Locker,
+                        progress,
+                        cancellationToken).ConfigureAwait(false);
+                }
+
                 WireToGateSlotExecutionResult result = CreateSlotResult(
-                    completedLocker,
+                    drive.Locker,
                     "COMPLETED",
                     []);
                 UpsertResult(results, result);
@@ -392,12 +469,64 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     }
 
     /// <summary>
+    /// 本站期限过后货物仍未交接，就地结算成 ADR-cross-0058 决策 5 的确定失败：
+    /// overallOutcome 是 FAILED，每一个仓位都报得出已知的占用状态、已闭的门与已复位的
+    /// 开锁输出——服务端的 determinateFailure 判据要的正是这三样。它既不阻塞旅程也不
+    /// 开恢复会话，因为没有任何一件事是不确定的：车辆说得清现场长什么样，答案是没人
+    /// 把货交过来。
+    /// </summary>
+    private async Task<WireToGateOperationExecutionResult> SettleStationDeadlineFailureAsync(
+        WireToGateSlotOperationCommand command,
+        WireToGateRecoveryOperationContext context,
+        WireToGateRecoveryState existingState,
+        IReadOnlyList<int> completed,
+        List<WireToGateSlotExecutionResult> results,
+        int timedOutSlot,
+        LockerSnapshot timedOutLocker,
+        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, int, CancellationToken, Task>? progress,
+        CancellationToken cancellationToken)
+    {
+        UpsertResult(results, CreateSlotResult(timedOutLocker, "FAILED", ["OPERATOR_TIMEOUT"]));
+
+        // 一次读快照，剩下的仓位共用同一份读数，避免两次读到不同状态。它们的门从未开过，
+        // 三个字段都读得到——决策 6：填 UNKNOWN 才是在陈述不存在的不确定性。reasonCodes
+        // 留空，「为什么没开始」由 overallOutcome 承载，不属于仓位。
+        IoSnapshot snapshot = _ioModule.CurrentSnapshot;
+        foreach (int notStarted in command.Slots
+            .Where(slot => slot != timedOutSlot && !completed.Contains(slot)))
+        {
+            UpsertResult(
+                results,
+                CreateSlotResult(TryGetLocker(snapshot, notStarted - 1), "NOT_STARTED", []));
+        }
+
+        // 门已闭、开锁输出已复位，这就是安全收尾——与达成目标态时同一个检查点。
+        await WriteRecoveryStateAsync(
+            context,
+            WireToGateRecoveryCheckpoint.SafeFinishReached,
+            [],
+            completed,
+            results,
+            existingState,
+            cancellationToken).ConfigureAwait(false);
+        await SendProgressAsync(progress, "SAFE_FINISH", [], completed, 0, cancellationToken)
+            .ConfigureAwait(false);
+        return CreateResult(command, "FAILED", results, WireToGateRecoveryCheckpoint.SafeFinishReached);
+    }
+
+    /// <summary>
     /// 把一个仓位开到目标态。光幕稳定读到与预期相反的状态，说明操作员没有放入或
     /// 取出货物——自动重新输出开锁脉冲并提示，不判失败、不进恢复、不设次数上限
     /// （ADR-cross-0058 决策 1）。仓门根本没关时两个条件都不成立，等待继续，
     /// 这是第三条出路，不需要为它单独写判据。
     /// </summary>
-    private async Task<LockerSnapshot> DriveSlotToTargetStateAsync(
+    /// <remarks>
+    /// 上限仍然不是次数，是服务端给的时刻：本站期限过了以后再读到相反态，就在那里
+    /// 结算成确定失败。期限只在**相反态**上生效——门开着时不结算，那是决策 4 的
+    /// 「仓门未闭超时转告警并持续等待」，服务端挂 STATION_TIMEOUT_DOOR_NOT_CLOSED，
+    /// 车这边照旧提示。而且门开着时 determinateFailure 的三个条件本来就不成立。
+    /// </remarks>
+    private async Task<SlotDriveResult> DriveSlotToTargetStateAsync(
         WireToGateSlotOperationCommand command,
         int physicalSlot,
         IReadOnlyList<int> completed,
@@ -406,6 +535,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     {
         int slotIndex = physicalSlot - 1;
         bool unlockNeeded = true;
+        bool graceUsed = false;
         for (int promptRound = 0; ; promptRound++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -450,7 +580,21 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
             if (wait.Reached is { } reached)
             {
-                return reached;
+                return new SlotDriveResult(reached, HandedOver: true);
+            }
+
+            if (wait.Opposite is { } opposite && IsPastStationDeadline())
+            {
+                // 期限已过，而且门已闭、货没动——这是唯一产得出确定失败的一刻。先花掉
+                // 宽限的那一轮：再开一次门、再提示一次。它吸收两端时钟的偏差，也给操作员
+                // 最后一次机会，因为决策 1 的立场始终是先提示、别判死。宽限用掉之后
+                // 再读到相反态，本站就结算在这里。
+                if (graceUsed)
+                {
+                    return new SlotDriveResult(opposite, HandedOver: false);
+                }
+
+                graceUsed = true;
             }
 
             // 相反状态说明门已关好、货物没动，要重新开锁；提示节拍到期时门还开着，
@@ -458,6 +602,14 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             unlockNeeded = wait.OppositeObserved;
         }
     }
+
+    /// <summary>
+    /// 本站离站期限是否已经过去。期限由服务端随作业清单发来，每一轮重新读——新的一份
+    /// 作业清单可以改写它。没有期限时永远返回 false，目标态闭环就退回决策 1 的原始
+    /// 形态：没有上限。
+    /// </summary>
+    private bool IsPastStationDeadline() =>
+        _stationDepartureDeadline() is { } deadline && _clock.Now >= deadline;
 
     /// <summary>
     /// 并发等待两个互斥条件：达成态与相反态。两者都要求锁已闭，所以「仓门根本没关」
@@ -489,14 +641,14 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 .ConfigureAwait(false);
             LockerSnapshot locker = await winner.ConfigureAwait(false);
             return ReferenceEquals(winner, reachedTask)
-                ? new SlotWaitResult(locker, false)
-                : new SlotWaitResult(null, true);
+                ? new SlotWaitResult(locker, null)
+                : new SlotWaitResult(null, locker);
         }
         catch (TimeoutException)
         {
             // 一个 OperationTimeout 之内两个条件都没有稳定成立：仓门还开着，
             // 操作员还没有动作。不判失败，回去再提示一次。
-            return new SlotWaitResult(null, false);
+            return new SlotWaitResult(null, null);
         }
         finally
         {

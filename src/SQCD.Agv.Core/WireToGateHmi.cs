@@ -8,7 +8,14 @@ public enum WireToGateHmiOperationStage
     Verifying,
     Reporting,
     Completed,
-    RecoveryRequired
+    RecoveryRequired,
+
+    /// <summary>
+    /// 本站期限过了，货物始终没有交接。ADR-cross-0058 决策 5 的确定失败：现场没有任何
+    /// 一件事是不确定的，所以它不是 <see cref="RecoveryRequired"/>——不需要管理员，
+    /// 需要的是操作员在 HMI 上取消本次装货（ADR-cross-0015、ADR-cross-0046）。
+    /// </summary>
+    StationDeadlineExpired
 }
 
 public static class WireToGateHmiOperationStageExtensions
@@ -25,6 +32,9 @@ public static class WireToGateHmiOperationStageExtensions
         WireToGateHmiOperationStage.Verifying => "VERIFYING",
         WireToGateHmiOperationStage.Reporting => "SAFE_FINISH",
         WireToGateHmiOperationStage.RecoveryRequired => "PAUSED",
+        // 门已闭、开锁输出已复位，车辆这一侧安全地结束了——与达成目标态时同一个 phase。
+        // 失败是业务结论，由 OperationResult 承载，不是进度里的一个阶段。
+        WireToGateHmiOperationStage.StationDeadlineExpired => "SAFE_FINISH",
         WireToGateHmiOperationStage.Completed => null,
         _ => null
     };
