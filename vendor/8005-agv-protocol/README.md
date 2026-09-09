@@ -5,11 +5,13 @@
 ## 为什么是副本而不是引用
 
 `manifest/release.json` 是发布身份、63 条消息面与 11 条 denylist 的权威定义，`schemas/` 是
-63 条消息与公共类型的权威形状，`errors/error-codes.json` 是 54 个错误码的权威集合——三者的
+63 条消息与公共类型的权威形状，`errors/error-codes.json` 是 54 个错误码的权威集合，
+`integration-slices/index.json` 是 16 个切片与 31 个一致性向量的权威划分——四者的
 权威副本都在 `8005-agv-protocol`。本仓库的 `ProtocolIdentityArchitectureTests`、
-`ProtocolMessageSurfaceArchitectureTests`、`ProtocolPayloadShapeArchitectureTests` 与
-`ReasonCodeRegistryArchitectureTests` 要把它们当清单来源用，而**读兄弟目录不成立**：两个仓库
-是各自独立的克隆，没有 submodule 也没有包，跑测试的机器上未必有协议仓。
+`ProtocolMessageSurfaceArchitectureTests`、`ProtocolPayloadShapeArchitectureTests`、
+`ReasonCodeRegistryArchitectureTests` 与 `ProtocolVectorTestBindingArchitectureTests` 要把它们
+当清单来源用，而**读兄弟目录不成立**：两个仓库是各自独立的克隆，没有 submodule 也没有包，
+跑测试的机器上未必有协议仓。
 
 所以取用方式是 vendor 一份副本，**并把它按字节钉住**。副本被改一个字符，那条测试立刻红——
 这正是它不构成「第二份手抄清单」的原因：手抄清单会悄悄漂移，按字节绑定的副本不会。
@@ -22,8 +24,8 @@
    `SQCD.Agv.Contracts.WireToGateRelease.ManifestSha256`——车载端每条报文的信封都带着这个值。
    `ProtocolIdentityArchitectureTests.TheVendoredManifestIsTheProtocolManifestByteForByte`
    直接拿那个常量去核副本：常量让副本可信，副本让常量可查，两边互为凭据。
-2. 其余 70 个文件（69 个 schema ＋ 1 份错误码注册表）**逐个出现在该 manifest 自己的 `files`
-   表里**，`role`／`bytes`／`sha256` 齐全，`sha256` 是原始字节摘要而非规范化摘要。
+2. 其余 71 个文件（69 个 schema ＋ 1 份错误码注册表 ＋ 1 份切片索引）**逐个出现在该 manifest
+   自己的 `files` 表里**，`role`／`bytes`／`sha256` 齐全，`sha256` 是原始字节摘要而非规范化摘要。
    `ProtocolIdentityArchitectureTests.EveryOtherVendoredFileIsPinnedByTheManifestFileTable`
    遍历本目录，逐个与那张表比对，并断言没有一个文件游离在表外。
 
@@ -35,7 +37,7 @@
 
 ## 当前副本
 
-三份都取自同一个提交。
+四份都取自同一个提交。
 
 | 项 | 值 |
 | --- | --- |
@@ -48,6 +50,7 @@
 | `manifest/release.json` | `status CONTENT_SNAPSHOT`、`releaseVersion 1.0.0`、`protocolVersion 2`、`profileId AGV_FULL_PRODUCT`、63 条消息、11 条 denylist、1758 条文件表项 |
 | `schemas/`（整棵树） | 69 个文件，`$id` 段 `agv-full-product/v2` |
 | `errors/error-codes.json` | `registryVersion 2`、`appendOnly true`、54 个码（v1 的 43 个一个未删） |
+| `integration-slices/index.json` | 16 个切片 `FP-IS-00`～`FP-IS-15`、`vectorIds` 条目 34 条、去重 31 个向量 |
 
 那个提交即协议 v2 候选，G1 于 2026-09-08 在协议仓 self-hosted runner 上实跑通过（run
 [34212719223](https://github.com/trytoreachpeak0/8005-agv-protocol/actions/runs/34212719223)）。
@@ -67,6 +70,7 @@
    cp <8005-agv-protocol>/manifest/release.json vendor/8005-agv-protocol/manifest/release.json
    cp <8005-agv-protocol>/errors/error-codes.json vendor/8005-agv-protocol/errors/error-codes.json
    cp -r <8005-agv-protocol>/schemas/. vendor/8005-agv-protocol/schemas/
+   cp <8005-agv-protocol>/integration-slices/index.json       vendor/8005-agv-protocol/integration-slices/index.json
    ```
 
 2. 算 manifest 的新哈希：
@@ -78,9 +82,9 @@
 3. 把它填进 `src/SQCD.Agv.Contracts/WireToGateProtocol.cs` 的 `ManifestSha256`，**并把那里
    其余八个常量一起改到位**——那不是抄哈希，那是换一次协议身份，
    `ProtocolIdentityArchitectureTests` 会逐字段核对。最后更新上表的来源提交与取用日期。
-   其余 70 个文件不需要任何人抄哈希：它们由新 manifest 的 `files` 表自动重新钉住。
+   其余 71 个文件不需要任何人抄哈希：它们由新 manifest 的 `files` 表自动重新钉住。
 
-4. 跑测试。三处会随之报缺或报多，**都不是测试写错了**：
+4. 跑测试。四处会随之报缺或报多，**都不是测试写错了**：
 
    - **消息面增删** → `ProtocolMessageSurfaceArchitectureTests`：新消息车载端还没实现（钉进
      `MessagesWithoutAnImplementation` 并写明理由），或者某条已实现的消息还留着钉。
@@ -88,6 +92,8 @@
      一个新增的必填字段，或者还带着一个已被删掉的字段，或者某个枚举值已不在表内。
    - **错误码增删** → `ReasonCodeRegistryArchitectureTests`：`IsProtocolErrorCode` 那份内联
      清单与注册表不再逐个相等。
+   - **切片或向量增删** → `ProtocolVectorTestBindingArchitectureTests`：切片数／条目数／去重向量数
+     不再是 16／34／31，或者某个新向量还没有车载端具名测试与之绑定。
 
 **整份拷贝，不要手工编辑副本。**副本与上游的差异没有任何机制能自动发现，唯一的保障是
 「它永远是 `cp` 出来的」这条纪律。

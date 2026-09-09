@@ -7,6 +7,7 @@ namespace SQCD.Agv.UnitTests;
 public sealed class WireToGateRecoveryVectorExecutorTests
 {
     [Fact]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
     public async Task ClearSkipsEmptySlotsAndUnlocksOnlyOccupiedSlots()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
@@ -34,6 +35,7 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-REQUEST-FIRST-RESULT-REPLAY")]
     public async Task ReplayingACompletedVectorKeepsTheSameObservedAtAndDoesNotPulse()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
@@ -59,6 +61,7 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-LOAD-CORRECTION")]
     public async Task CorrectionRequiresEmptyThenOccupiedSequence()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
@@ -83,6 +86,7 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task UnknownSnapshotFailsClosedWithoutUnlock()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
@@ -104,6 +108,8 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task ActiveUnlockCheckpointIsNotPulsedAgainAfterUncertainFailure()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(

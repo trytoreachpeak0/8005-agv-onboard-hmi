@@ -92,6 +92,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-PREDEPARTURE-SAFETY-EXPIRES")]
     public async Task ExpiredEvidenceIsUnknownAndDoesNotPreserveStopped()
     {
         StubHandler handler = new((_, _) => Task.FromResult(JsonResponse(new

@@ -1,4 +1,4 @@
 # 协议仓副本按字节绑定 SHA-256：`manifest/release.json` 的摘要就是每条报文都带着的
-# `WireToGateRelease.ManifestSha256`，其余 70 个文件由该 manifest 自己的 `files` 表逐个钉住。
+# `WireToGateRelease.ManifestSha256`，其余 71 个文件由该 manifest 自己的 `files` 表逐个钉住。
 # checkout 时把 LF 换成 CRLF 会让全部摘要漂移。整份 cp 自 8005-agv-protocol，不手工编辑。
 vendor/8005-agv-protocol/** -text

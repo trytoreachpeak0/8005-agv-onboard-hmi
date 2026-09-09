@@ -24,7 +24,7 @@ namespace SQCD.Agv.UnitTests;
 /// definition <see cref="WireToGateRelease.ManifestSha256"/> -- the value this onboard puts on every
 /// envelope it sends -- so the constant vouches for the copy and the copy makes the constant
 /// checkable. Every other vendored file is listed in that manifest's own <c>files</c> table with its
-/// raw-byte digest, so one wire-borne value pins all seventy-one.
+/// raw-byte digest, so one wire-borne value pins all seventy-two.
 /// <c>vendor/8005-agv-protocol/README.md</c> is how the copy is refreshed.
 /// </para>
 /// </remarks>
@@ -56,7 +56,7 @@ public sealed class ProtocolIdentityArchitectureTests
         Dictionary<string, string> table = ManifestFileTable();
         string[] vendored = VendoredFiles();
 
-        Assert.Equal(70, vendored.Length);
+        Assert.Equal(71, vendored.Length);
         Assert.Equal(69, vendored.Count(path => path.StartsWith("schemas/", StringComparison.Ordinal)));
 
         List<string> offences = [];

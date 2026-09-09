@@ -53,6 +53,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
     public async Task AuthoritativeJourneyMustContainMatchingSublotBeforeScan()
     {
         WireToGateJourneySnapshot journey = WireToGateJourneySnapshot.Empty;
@@ -124,6 +125,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-REQUEST-FIRST-RESULT-REPLAY")]
     public async Task DuplicateOperationIdDoesNotUnlockAgain()
     {
         FakeIoModule io = new();
@@ -172,6 +174,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-DESTINATION-UNLOAD-ALL-EMPTY")]
     public async Task UnloadFlowRequiresCargoAndReportsEmptySlot()
     {
         FakeIoModule io = new() { FinalHasCargo = false };
@@ -329,6 +332,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task AllUnknownIoStatesAreReportedWithoutImplyingSingleSlotFault()
     {
         FakeIoModule io = new();
@@ -345,6 +349,7 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task SingleUnknownIoStateIdentifiesAffectedPhysicalSlot()
     {
         FakeIoModule io = new();
@@ -537,6 +542,8 @@ public sealed class OnboardControllerTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-CONNECTION-LOSS-SAFE-FINISH")]
+    [Trait("ProtocolVector", "CV-RELIABLE-RETRY-SAME-CONTENT")]
     public async Task SuccessfulResultIsRetriedWithSameMessageAfterConnectionRecovers()
     {
         FakeIoModule io = new();

@@ -10,6 +10,7 @@ public sealed class WireToGateHmiPresentationTests
         new(2026, 8, 30, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
+    [Trait("ProtocolVector", "CV-SESSION-RECOVERY-HAPPY")]
     public void ReadyWireToGateSessionDoesNotRemainInLegacyConnectingState()
     {
         WireToGateSessionSnapshot session = Session(WireToGateSessionReadiness.Ready);
@@ -26,6 +27,7 @@ public sealed class WireToGateHmiPresentationTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-SESSION-RECOVERY-HAPPY")]
     public void RecoveryRequiredIsVisibleWithTheServerReason()
     {
         WireToGateSessionSnapshot session = Session(

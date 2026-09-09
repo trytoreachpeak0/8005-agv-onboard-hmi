@@ -34,6 +34,7 @@ public sealed class WireToGateJourneySnapshotTests
     /// The behaviour v1 had, unchanged: one demand on both sides agrees.
     /// </summary>
     [Fact]
+    [Trait("ProtocolVector", "CV-DEMAND-ACCEPT-TO-PICKUP")]
     public void APlanWhoseLegsAllNameTheWorklistDemandIsConsistent()
     {
         WireToGateJourneySnapshot journey = Journey(Worklist(DemandA), Plan(DemandA, DemandA));
@@ -62,6 +63,7 @@ public sealed class WireToGateJourneySnapshotTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-DEMAND-ACCEPT-TO-PICKUP")]
     public void APlanNamingADifferentDemandThanTheWorklistIsNotConsistent()
     {
         WireToGateJourneySnapshot journey = Journey(Worklist(DemandA), Plan(DemandB, DemandB));

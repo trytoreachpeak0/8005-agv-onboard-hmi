@@ -6,6 +6,7 @@ namespace SQCD.Agv.UnitTests;
 public sealed class SafetyRulesTests
 {
     [Fact]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
     public void ResumeAuthorizationRequiresExactPersistedAttemptAndCheckpoint()
     {
         WireToGateRecoveryState state = new(
@@ -250,6 +251,7 @@ public sealed class SafetyRulesTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-PREDEPARTURE-SAFETY-EXPIRES")]
     public void StaleSnapshotIsRejectedBeforeUnlockAndDeparture()
     {
         ScanAuthorization authorization = CreateAuthorization(OperationType.Load, slotIndex: 0);

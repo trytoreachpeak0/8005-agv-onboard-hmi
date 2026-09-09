@@ -7,6 +7,8 @@ namespace SQCD.Agv.UnitTests;
 public sealed class WireToGateSlotOperationExecutorTests
 {
     [Fact]
+    [Trait("ProtocolVector", "CV-CONNECTION-LOSS-SAFE-FINISH")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
     public async Task LoadUsesOnlyServerFrozenSlotsAndJournalsBeforePulses()
     {
         string directory = Path.Combine(Path.GetTempPath(), "w2g-executor", Guid.NewGuid().ToString("N"));
@@ -66,6 +68,7 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-DESTINATION-UNLOAD-ALL-EMPTY")]
     public async Task UnloadAllTargetSlotsRequiresEverySlotToReachEmpty()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
@@ -94,6 +97,7 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task UnknownSnapshotFailsClosedWithoutUnlock()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
@@ -111,6 +115,7 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
     public async Task ResumeSkipsSlotsAlreadyAtDesiredFinalState()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
@@ -158,6 +163,7 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
     public async Task ResumeWithoutOriginalContextFailsClosed()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(
@@ -185,6 +191,7 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
     public async Task ResumeRejectsDifferentCommandHashWithoutUnlock()
     {
         await using TestFixture fixture = await TestFixture.CreateAsync(

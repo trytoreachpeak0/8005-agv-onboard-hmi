@@ -1,0 +1,738 @@
+{
+  "schemaVersion": "2.0.0",
+  "slices": [
+    {
+      "integrationSliceId": "FP-IS-00",
+      "sequence": 0,
+      "prerequisites": [],
+      "vectorIds": [
+        "CV-SESSION-RECOVERY-HAPPY",
+        "CV-SESSION-RECONNECT-DURING-RECOVERY",
+        "CV-SNAPSHOT-REPLACE-AND-ACK",
+        "CV-SNAPSHOT-SAME-REVISION-CONFLICT"
+      ],
+      "gates": [
+        "G1",
+        "CONTROL_SERVER_G2",
+        "ONBOARD_HMI_G2",
+        "G3"
+      ],
+      "definition": {
+        "scope": "SESSION_HANDSHAKE_RECOVERY_AND_SNAPSHOT",
+        "requiredOutcomes": [
+          "EXACTLY_ONE_ACTIVE_SESSION",
+          "READINESS_DECIDED_BY_CONTROL_SERVER",
+          "SNAPSHOTS_REPLACED_NOT_MERGED"
+        ],
+        "authorityModel": {
+          "controlServerFact": "SessionGeneration",
+          "wireMessages": [
+            "SessionHello",
+            "SessionAccepted",
+            "SessionReadiness"
+          ],
+          "onboardMode": [
+            "READ_ONLY_COMMITTED_PROJECTION",
+            "PHYSICAL_EXECUTION_AUTHORITY"
+          ]
+        },
+        "ownerResponsibilities": {
+          "controlServer": [
+            "FENCE_STALE_GENERATIONS",
+            "DECIDE_READINESS"
+          ],
+          "onboardHmi": [
+            "REPORT_UNSETTLED_STATE",
+            "ADOPT_READINESS_DECISION"
+          ]
+        }
+      },
+      "forbidUnclosedFailOrInconclusive": true
+    },
+    {
+      "integrationSliceId": "FP-IS-01",
+      "sequence": 1,
+      "prerequisites": [
+        "FP-IS-00"
+      ],
+      "vectorIds": [
+        "CV-DEMAND-ACCEPT-TO-PICKUP"
+      ],
+      "gates": [
+        "G1",
+        "CONTROL_SERVER_G2",
+        "ONBOARD_HMI_G2",
+        "G3"
+      ],
+      "definition": {
+        "scope": "DEMAND_ACCEPTANCE_AND_TO_PICKUP",
+        "requiredOutcomes": [
+          "EXACTLY_ONE_ACCEPTED_DEMAND_SNAPSHOT",
+          "EXACTLY_ONE_TO_PICKUP_INTENT",
+          "EXACTLY_ONE_RIOT_ORDER",
+          "TRUSTED_PICKUP_ARRIVAL",
+          "COMMITTED_DEMAND_JOURNEY_PROJECTED"
+        ],
+        "authorityModel": {
+          "controlServerFact": "AcceptedDemandSnapshot",
+          "wireMessages": [
+            "UpcomingStopPlanSnapshot",
+            "CurrentStopWorklistSnapshot"
+          ],
+          "onboardMode": [
+            "READ_ONLY_COMMITTED_PROJECTION"
+          ]
+        },
+        "ownerResponsibilities": {
+          "controlServer": [
+            "MESINGEST_FINAL_REREAD",
+            "ATOMIC_DEMAND_ACCEPTANCE",
+            "DEDUPLICATED_TO_PICKUP_INTENT",
+            "RIOT_ORDER_RECONCILIATION",
+            "TRUSTED_PICKUP_ARRIVAL_ADOPTION"
+          ],
+          "onboardHmi": [
+            "DISPLAY_COMMITTED_DEMAND_JOURNEY",
+            "DISPLAY_CURRENT_STOP",
+            "NEVER_DISCOVER_SELECT_OR_BIND_DEMAND"
+          ]
+        }
+      },
+      "forbidUnclosedFailOrInconclusive": true
+    },
+    {
+      "integrationSliceId": "FP-IS-02",
+      "sequence": 2,
+      "prerequisites": [
+        "FP-IS-01"
+      ],
+      "vectorIds": [
+        "CV-PICKUP-SUBLOT-LOAD",
+        "CV-LOAD-CORRECTION",
+        "CV-LOAD-CANCELLATION-ALL-EMPTY"
+      ],
+      "gates": [
+        "G1",
+        "CONTROL_SERVER_G2",
+        "ONBOARD_HMI_G2",
+        "G3"
+      ],
+      "definition": {
+        "scope": "STATION_PICKUP_AND_MULTI_SLOT_LOAD",
+        "requiredOutcomes": [
+          "SUBLOT_BOUND_TO_OPERATION_SESSION",
+          "SLOT_SET_AUTHORIZED_ONCE",
+          "CORRECTION_AND_CANCELLATION_AUTHORIZED"
+        ],
+        "authorityModel": {
+          "controlServerFact": "OperationSession",
+          "wireMessages": [
+            "SublotEntryRequested",
+            "SlotOperationCommand",
+            "OperationResult"
+          ],
+          "onboardMode": [
+            "PHYSICAL_EXECUTION_AUTHORITY",
+            "OPERATOR_CONFIRMATION_SOURCE"
+          ]
+        },
+        "ownerResponsibilities": {
+          "controlServer": [
+            "AUTHORIZE_SLOT_SET",
+            "RECONCILE_LOAD_OUTCOME"
+          ],
+          "onboardHmi": [
+            "SUBMIT_SCANNED_SUBLOT",
+            "LOAD_ONLY_AUTHORIZED_SLOTS"
+          ]
+        }
+      },
+      "forbidUnclosedFailOrInconclusive": true
+    },
+    {
+      "integrationSliceId": "FP-IS-03",
+      "sequence": 3,
+      "prerequisites": [
+        "FP-IS-02"
+      ],
+      "vectorIds": [
+        "CV-PREDEPARTURE-SAFETY-EXPIRES",
+        "CV-OPERATION-RESULT-UNKNOWN-RECONCILE"
+      ],
+      "gates": [
+        "G1",
+        "CONTROL_SERVER_G2",
+        "ONBOARD_HMI_G2",
+        "G3"
+      ],
+      "definition": {
+        "scope": "PREDEPARTURE_SAFETY_AND_RESULT_RECONCILE",
+        "requiredOutcomes": [
+          "NEVER_DEPART_ON_EXPIRED_CHECK",
+          "UNKNOWN_NEVER_TREATED_AS_SUCCESS"
+        ],
+        "authorityModel": {
+          "controlServerFact": "PreDepartureSafetyCheck",
+          "wireMessages": [
+            "PreDepartureSafetyCheck",
+            "PreDepartureSafetyCheckResult",
+            "SafetyStateChanged"
+          ],
+          "onboardMode": [
+            "PHYSICAL_EXECUTION_AUTHORITY"
+          ]
+        },
+        "ownerResponsibilities": {
+          "controlServer": [
+            "EXPIRE_CHECK_ON_STATE_CHANGE",
+            "RECONCILE_FROM_REPORTED_JOURNAL"
+          ],
+          "onboardHmi": [
+            "REPORT_SAFETY_STATE_PROMPTLY",
+            "REPORT_UNKNOWN_AS_UNKNOWN"
+          ]
+        }
+      },
+      "forbidUnclosedFailOrInconclusive": true
+    },
+    {
+      "integrationSliceId": "FP-IS-04",
+      "sequence": 4,
+      "prerequisites": [
+        "FP-IS-03"
+      ],
+      "vectorIds": [
+        "CV-DESTINATION-UNLOAD-ALL-EMPTY"
+      ],
+      "gates": [
+        "G1",
+        "CONTROL_SERVER_G2",
+        "ONBOARD_HMI_G2",
+        "G3"
+      ],
+      "definition": {
+        "scope": "DESTINATION_BATCH_UNLOAD",
+        "requiredOutcomes": [
+          "UNLOAD_COMMITTED_ONCE",
+          "FINAL_PHYSICAL_STATE_PROVEN_EMPTY"
+        ],
+        "authorityModel": {
+          "controlServerFact": "OperationSession",
+          "wireMessages": [
+            "SlotOperationCommand",
+            "OperationResult"
+          ],
+          "onboardMode": [
+            "PHYSICAL_EXECUTION_AUTHORITY"
+          ]
+        },
+        "ownerResponsibilities": {
+          "controlServer": [
+            "COMMIT_UNLOAD_ONCE"
+          ],
+          "onboardHmi": [
+            "UNLOAD_AUTHORIZED_SLOTS_ONLY",
+            "REPORT_FINAL_PHYSICAL_STATE"
+          ]
+        }
+      },
+      "forbidUnclosedFailOrInconclusive": true
+    },
+    {
+      "integrationSliceId": "FP-IS-05",
+      "sequence": 5,
+      "prerequisites": [
+        "FP-IS-00"
+      ],
+      "vectorIds": [
+        "CV-CONNECTION-LOSS-SAFE-FINISH",
+        "CV-SESSION-RECONNECT-DURING-RECOVERY"
+      ],
+      "gates": [
+        "G1",
+        "CONTROL_SERVER_G2",
+        "ONBOARD_HMI_G2",
+        "G3"
+      ],
+      "definition": {
+        "scope": "CONNECTION_LOSS_SAFE_FINISH",
+        "requiredOutcomes": [
+          "IN_PROGRESS_OPERATION_FINISHED_SAFELY",
+          "NEVER_READY_BEFORE_RECONCILIATION"
+        ],
+        "authorityModel": {
+          "controlServerFact": "SessionGeneration",
+          "wireMessages": [
+            "RecoveryStateReport",
+            "SessionReadiness"
+          ],
+          "onboardMode": [
+            "PHYSICAL_EXECUTION_AUTHORITY"
+          ]
+        },
+        "ownerResponsibilities": {
+          "controlServer": [
+            "WITHHOLD_READINESS_UNTIL_RECONCILED"
+          ],
+          "onboardHmi": [
+            "FINISH_SAFELY_OFFLINE",
+            "JOURNAL_BEFORE_IRREVERSIBLE_IO"
+          ]
+        }
+      },
+      "forbidUnclosedFailOrInconclusive": true
+    },
+    {
+      "integrationSliceId": "FP-IS-06",
+      "sequence": 6,
+      "prerequisites": [
+        "FP-IS-00"
+      ],
+      "vectorIds": [
+        "CV-RELIABLE-RETRY-SAME-CONTENT",
+        "CV-RELIABLE-RETRY-DIFFERENT-CONTENT",
+        "CV-REQUEST-FIRST-RESULT-REPLAY"
+      ],
+      "gates": [
+        "G1",
+        "CONTROL_SERVER_G2",
+        "ONBOARD_HMI_G2",
+        "G3"
+      ],
+      "definition": {
+        "scope": "RELIABLE_DELIVERY_AND_RESULT_REPLAY",
+        "requiredOutcomes": [
+          "RETRY_IS_IDEMPOTENT",
+          "CONFLICTING_RETRY_REJECTED",
+          "PENDING_RESULT_REPLAYED"
+        ],
+        "authorityModel": {
+          "controlServerFact": "DurableAcceptance",
+          "wireMessages": [
+            "DurableAck",
+            "ProtocolProblem"
+          ],
+          "onboardMode": [
+            "PHYSICAL_EXECUTION_AUTHORITY"
+          ]
+        },
+        "ownerResponsibilities": {
+          "controlServer": [
+            "ACK_WITHOUT_DUPLICATE_EFFECT",
+            "REPLAY_NOT_RECOMPUTE"
+          ],
+          "onboardHmi": [
+            "RETRY_WITH_IDENTICAL_CONTENT",
+            "ADOPT_REPLAYED_RESULT"
+          ]
+        }
+      },
+      "forbidUnclosedFailOrInconclusive": true
+    },
+    {
+      "integrationSliceId": "FP-IS-07",
+      "sequence": 7,
+      "prerequisites": [
+        "FP-IS-00"
+      ],
+      "vectorIds": [
+        "CV-OPERATION-RESULT-UNKNOWN-RECONCILE",
+        "CV-EXCEPTION-RESUME",
+        "CV-EXCEPTION-COMPENSATE",
+        "CV-FAULT-CARGO-HANDOFF",
+        "CV-FORCED-MECHANICAL-RECOVERY",
+        "CV-MANUAL-CHARGING-RETURN"
+      ],
+      "gates": [
+        "G1",
+        "CONTROL_SERVER_G2",
+        "ONBOARD_HMI_G2",
+        "G3"
+      ],
+      "definition": {
+        "scope": "EXCEPTION_RECOVERY_AND_MANUAL_RETURN",
+        "requiredOutcomes": [
+          "RECOVERY_SESSION_REQUIRES_VERIFIED_ADMINISTRATOR",
+          "EVERY_RECOVERY_ACTION_AUTHORIZED",
+          "FORCED_RECOVERY_FENCED_BY_GENERATION"
+        ],
+        "authorityModel": {
+          "controlServerFact": "ExceptionRecoverySession",
+          "wireMessages": [
+            "ExceptionRecoverySessionOpened",
+            "RecoveryActionAccepted",
+            "ForcedMechanicalRecoveryCommand"
+          ],
+          "onboardMode": [
+            "PHYSICAL_EXECUTION_AUTHORITY",
+            "OPERATOR_CONFIRMATION_SOURCE"
+          ]
+        },
+        "ownerResponsibilities": {
+          "controlServer": [
+            "AUTHORIZE_EVERY_RECOVERY_ACTION",
+            "FENCE_BY_GENERATION"
+          ],
+          "onboardHmi": [
+            "ACT_ONLY_ON_AUTHORIZED_SCOPE",
+            "REPORT_RECOVERY_OUTCOME"
+          ]
+        }
+      },
+      "forbidUnclosedFailOrInconclusive": true
+    },
+    {
+      "integrationSliceId": "FP-IS-08",
+      "sequence": 8,
+      "prerequisites": [
+        "FP-IS-04"
+      ],
+      "vectorIds": [
+        "CV-MULTI-STOP-PLAN-NINE-LEGS"
+      ],
+      "gates": [
+        "G1",
+        "CONTROL_SERVER_G2",
+        "ONBOARD_HMI_G2",
+        "G3"
+      ],
+      "definition": {
+        "scope": "MULTI_STOP_JOURNEY_PLAN",
+        "requiredOutcomes": [
+          "UP_TO_NINE_LEGS_PLANNED",
+          "EVERY_STOP_HAS_PURPOSE_CATEGORY",
+          "LEGS_ORDERED_BY_SEQUENCE"
+        ],
+        "authorityModel": {
+          "controlServerFact": "JourneyPlan",
+          "wireMessages": [
+            "UpcomingStopPlanSnapshot"
+          ],
+          "onboardMode": [
+            "READ_ONLY_COMMITTED_PROJECTION"
+          ]
+        },
+        "ownerResponsibilities": {
+          "controlServer": [
+            "PLAN_AND_REVISE_JOURNEY"
+          ],
+          "onboardHmi": [
+            "DISPLAY_FULL_JOURNEY_PLAN",
+            "NEVER_REORDER_LEGS_LOCALLY"
+          ]
+        }
+      },
+      "forbidUnclosedFailOrInconclusive": true
+    },
+    {
+      "integrationSliceId": "FP-IS-09",
+      "sequence": 9,
+      "prerequisites": [
+        "FP-IS-08"
+      ],
+      "vectorIds": [
+        "CV-WORKLIST-SELECTION-ACCEPTED",
+        "CV-WORKLIST-SELECTION-STALE-REVISION"
+      ],
+      "gates": [
+        "G1",
+        "CONTROL_SERVER_G2",
+        "ONBOARD_HMI_G2",
+        "G3"
+      ],
+      "definition": {
+        "scope": "ONBOARD_WORKLIST_SELECTION",
+        "requiredOutcomes": [
+          "SELECTION_CONFINED_TO_COMMITTED_WORKLIST",
+          "STALE_REVISION_REJECTED"
+        ],
+        "authorityModel": {
+          "controlServerFact": "CommittedWorklist",
+          "wireMessages": [
+            "CurrentStopWorklistSnapshot",
+            "DemandSelectionRequested",
+            "DemandSelectionResult"
+          ],
+          "onboardMode": [
+            "SELECTION_WITHIN_COMMITTED_SET",
+            "READ_ONLY_COMMITTED_PROJECTION"
+          ]
+        },
+        "ownerResponsibilities": {
+          "controlServer": [
+            "COMMIT_THE_WORKLIST",
+            "REJECT_STALE_SELECTION"
+          ],
+          "onboardHmi": [
+            "SELECT_WITHIN_COMMITTED_SET",
+            "CARRY_WORKLIST_REVISION"
+          ]
+        }
+      },
+      "forbidUnclosedFailOrInconclusive": true
+    },
+    {
+      "integrationSliceId": "FP-IS-10",
+      "sequence": 10,
+      "prerequisites": [
+        "FP-IS-01"
+      ],
+      "vectorIds": [
+        "CV-TASK-TYPE-ADMISSION-FAIL-CLOSED"
+      ],
+      "gates": [
+        "G1",
+        "CONTROL_SERVER_G2",
+        "ONBOARD_HMI_G2",
+        "G3"
+      ],
+      "definition": {
+        "scope": "TASK_TYPE_ADMISSION_FAIL_CLOSED",
+        "requiredOutcomes": [
+          "ONLY_BOUND_TASK_TYPES_ADMITTED",
+          "MISSING_BINDING_FAILS_CLOSED"
+        ],
+        "authorityModel": {
+          "controlServerFact": "TaskTypePublicStationRuleVersion",
+          "wireMessages": [
+            "VehicleBusinessStateSnapshot"
+          ],
+          "onboardMode": [
+            "READ_ONLY_COMMITTED_PROJECTION"
+          ]
+        },
+        "ownerResponsibilities": {
+          "controlServer": [
+            "ADMIT_ON_BINDING_ONLY",
+            "BLOCK_ON_MISSING_BINDING"
+          ],
+          "onboardHmi": [
+            "DISPLAY_ADMISSION_BLOCK_REASON",
+            "NEVER_INFER_UNBOUND_TASK_TYPE"
+          ]
+        }
+      },
+      "forbidUnclosedFailOrInconclusive": true
+    },
+    {
+      "integrationSliceId": "FP-IS-11",
+      "sequence": 11,
+      "prerequisites": [
+        "FP-IS-10"
+      ],
+      "vectorIds": [
+        "CV-REVERSED-DIRECTION-JOURNEY"
+      ],
+      "gates": [
+        "G1",
+        "CONTROL_SERVER_G2",
+        "ONBOARD_HMI_G2",
+        "G3"
+      ],
+      "definition": {
+        "scope": "REVERSED_DIRECTION_JOURNEY",
+        "requiredOutcomes": [
+          "DIRECTION_DERIVED_FROM_RULE",
+          "ORIGIN_AND_DESTINATION_NEVER_SWAPPED"
+        ],
+        "authorityModel": {
+          "controlServerFact": "TaskTypePublicStationRuleVersion",
+          "wireMessages": [
+            "UpcomingStopPlanSnapshot"
+          ],
+          "onboardMode": [
+            "READ_ONLY_COMMITTED_PROJECTION"
+          ]
+        },
+        "ownerResponsibilities": {
+          "controlServer": [
+            "DERIVE_DIRECTION_FROM_RULE"
+          ],
+          "onboardHmi": [
+            "DISPLAY_DIRECTION_AS_PLANNED"
+          ]
+        }
+      },
+      "forbidUnclosedFailOrInconclusive": true
+    },
+    {
+      "integrationSliceId": "FP-IS-12",
+      "sequence": 12,
+      "prerequisites": [
+        "FP-IS-04"
+      ],
+      "vectorIds": [
+        "CV-WAITING-POINT-IDLE-RETURN"
+      ],
+      "gates": [
+        "G1",
+        "CONTROL_SERVER_G2",
+        "ONBOARD_HMI_G2",
+        "G3"
+      ],
+      "definition": {
+        "scope": "WAITING_POINT_IDLE_RETURN",
+        "requiredOutcomes": [
+          "WAITING_POINT_CLAIMED_EXCLUSIVELY",
+          "RELEASED_ON_DEPARTURE_EVIDENCE"
+        ],
+        "authorityModel": {
+          "controlServerFact": "VehiclePurposeClaim",
+          "wireMessages": [
+            "UpcomingStopPlanSnapshot",
+            "VehicleBusinessStateSnapshot"
+          ],
+          "onboardMode": [
+            "READ_ONLY_COMMITTED_PROJECTION"
+          ]
+        },
+        "ownerResponsibilities": {
+          "controlServer": [
+            "CLAIM_AND_RELEASE_WAITING_POINT"
+          ],
+          "onboardHmi": [
+            "TREAT_WAITING_POINT_AS_NON_BUSINESS_STOP"
+          ]
+        }
+      },
+      "forbidUnclosedFailOrInconclusive": true
+    },
+    {
+      "integrationSliceId": "FP-IS-13",
+      "sequence": 13,
+      "prerequisites": [
+        "FP-IS-12"
+      ],
+      "vectorIds": [
+        "CV-AUTOMATIC-CHARGING-CYCLE",
+        "CV-UNABLE-TO-CHARGE-FIELD-CONFIRMATION",
+        "CV-MANUAL-STATION-CLEARANCE",
+        "CV-MANUAL-CHARGING-RETURN"
+      ],
+      "gates": [
+        "G1",
+        "CONTROL_SERVER_G2",
+        "ONBOARD_HMI_G2",
+        "G3"
+      ],
+      "definition": {
+        "scope": "AUTOMATIC_CHARGING_CYCLE_AND_CLEARANCE",
+        "requiredOutcomes": [
+          "CHARGING_CLAIMS_THE_VEHICLE",
+          "CHARGING_POLICY_DECIDED_CENTRALLY",
+          "STATION_RELEASED_ONLY_ON_CONFIRMED_CLEARANCE"
+        ],
+        "authorityModel": {
+          "controlServerFact": "VehiclePurposeClaim",
+          "wireMessages": [
+            "UnableToChargeFieldConfirmationRequested",
+            "ManualStationClearanceConfirmationRequested",
+            "VehicleBusinessStateSnapshot"
+          ],
+          "onboardMode": [
+            "OPERATOR_CONFIRMATION_SOURCE",
+            "READ_ONLY_COMMITTED_PROJECTION"
+          ]
+        },
+        "ownerResponsibilities": {
+          "controlServer": [
+            "DECIDE_CHARGING_POLICY",
+            "RELEASE_STATION_ON_CONFIRMATION"
+          ],
+          "onboardHmi": [
+            "REPORT_FIELD_OBSERVATION_WITH_OPERATOR",
+            "NEVER_DECIDE_POLICY_LOCALLY"
+          ]
+        }
+      },
+      "forbidUnclosedFailOrInconclusive": true
+    },
+    {
+      "integrationSliceId": "FP-IS-14",
+      "sequence": 14,
+      "prerequisites": [
+        "FP-IS-00"
+      ],
+      "vectorIds": [
+        "CV-SLOT-CONFIGURATION-ACTIVATION"
+      ],
+      "gates": [
+        "G1",
+        "CONTROL_SERVER_G2",
+        "ONBOARD_HMI_G2",
+        "G3"
+      ],
+      "definition": {
+        "scope": "SLOT_CONFIGURATION_ACTIVATION",
+        "requiredOutcomes": [
+          "FINGERPRINT_VERIFIED_BEFORE_ACTIVATION",
+          "ACTIVATION_NEVER_GUESSED_SUCCESSFUL"
+        ],
+        "authorityModel": {
+          "controlServerFact": "SlotConfigurationVersion",
+          "wireMessages": [
+            "SlotConfigurationActivationCommand",
+            "SlotConfigurationActivationResult",
+            "CapabilitySnapshot"
+          ],
+          "onboardMode": [
+            "PHYSICAL_EXECUTION_AUTHORITY"
+          ]
+        },
+        "ownerResponsibilities": {
+          "controlServer": [
+            "ISSUE_AND_VERIFY_ACTIVATION"
+          ],
+          "onboardHmi": [
+            "REPORT_ACTIVATION_OUTCOME_INCLUDING_UNKNOWN",
+            "REPLAY_PENDING_RESULT"
+          ]
+        }
+      },
+      "forbidUnclosedFailOrInconclusive": true
+    },
+    {
+      "integrationSliceId": "FP-IS-15",
+      "sequence": 15,
+      "prerequisites": [
+        "FP-IS-00"
+      ],
+      "vectorIds": [
+        "CV-ONBOARD-ALARM-SNAPSHOT"
+      ],
+      "gates": [
+        "G1",
+        "CONTROL_SERVER_G2",
+        "ONBOARD_HMI_G2",
+        "G3"
+      ],
+      "definition": {
+        "scope": "ONBOARD_ALARM_SNAPSHOT",
+        "requiredOutcomes": [
+          "ALARM_SET_PUBLISHED_COMPLETE",
+          "STALE_ALARM_STATE_NEVER_DISPLAYED"
+        ],
+        "authorityModel": {
+          "controlServerFact": "AlarmSnapshotRevision",
+          "wireMessages": [
+            "OnboardAlarmSnapshot",
+            "SnapshotAppliedAck"
+          ],
+          "onboardMode": [
+            "PHYSICAL_EXECUTION_AUTHORITY"
+          ]
+        },
+        "ownerResponsibilities": {
+          "controlServer": [
+            "ADOPT_ALARM_SNAPSHOT_BY_REVISION"
+          ],
+          "onboardHmi": [
+            "PUBLISH_COMPLETE_ALARM_SET",
+            "NEVER_PUBLISH_STALE_ALARM_STATE"
+          ]
+        }
+      },
+      "forbidUnclosedFailOrInconclusive": true
+    }
+  ]
+}

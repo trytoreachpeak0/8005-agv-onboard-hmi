@@ -22,6 +22,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-SESSION-RECOVERY-HAPPY")]
     public async Task HappyPathCompletesFullSequenceAndBecomesReady()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -45,6 +46,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-SESSION-RECONNECT-DURING-RECOVERY")]
     public async Task ReconnectDuringRecoveryRebindsDurableReportWithoutUnlockSideEffects()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -137,6 +139,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-SNAPSHOT-REPLACE-AND-ACK")]
     public async Task SnapshotReplaceAndAckAcceptsHigherRevisionOnNewConnection()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -162,6 +165,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-SNAPSHOT-SAME-REVISION-CONFLICT")]
     public async Task SameRevisionDifferentContentFailsClosedWithProtocolProblemReasonCode()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -194,6 +198,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-RELIABLE-RETRY-SAME-CONTENT")]
     public async Task DurableOutboxIsAcknowledgedAfterServerDurableAck()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -225,6 +230,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
     public async Task RecoverySessionAndActionResponsesAreCorrelatedWithoutPhysicalIo()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -281,6 +287,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
     public async Task ManualChargingReturnToServiceAcceptedResultIsCorrelatedToRequestedMessage()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -328,6 +335,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
     public async Task ManualChargingReturnToServiceRejectedResultPreservesRegisteredProblem()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -368,6 +376,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
     public async Task DuplicateManualChargingReturnToServiceResultDoesNotRaiseSecondCommand()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -414,6 +423,8 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
+    [Trait("ProtocolVector", "CV-REQUEST-FIRST-RESULT-REPLAY")]
     public async Task MissingManualChargingReturnToServiceResultTimesOutExplicitly()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -447,6 +458,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-SESSION-RECOVERY-HAPPY")]
     public async Task BusinessBootstrapsRecoveryRequestBeforeServerSnapshot()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -716,6 +728,7 @@ public sealed class WireToGateG2Tests
     /// sent the pick-up half, whose values v2 did not change.
     /// </remarks>
     [Fact]
+    [Trait("ProtocolVector", "CV-DEMAND-ACCEPT-TO-PICKUP")]
     public async Task DropoffStopSnapshotsAreProjectedRatherThanRefused()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -752,6 +765,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-SNAPSHOT-REPLACE-AND-ACK")]
     public async Task JourneySnapshotsAreProjectedAndHeartbeatDoesNotStealAsyncMessages()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -787,6 +801,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-SESSION-RECONNECT-DURING-RECOVERY")]
     public async Task SameJourneyRevisionsWithStablePayloadAreAcceptedAcrossSessionGenerations()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -903,6 +918,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-SNAPSHOT-SAME-REVISION-CONFLICT")]
     public async Task AppliedJourneyJournalUsesCanonicalPayloadForSameRevisionIdentity()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -939,6 +955,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-DEMAND-ACCEPT-TO-PICKUP")]
     public async Task DemandAcceptanceSnapshotsArePersistedBeforeAcknowledgement()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1000,6 +1017,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-DEMAND-ACCEPT-TO-PICKUP")]
     public async Task PersistedDemandProjectionIsRestoredWhenServerDoesNotResendIt()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1034,6 +1052,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-SNAPSHOT-SAME-REVISION-CONFLICT")]
     public async Task SameJourneyRevisionWithDifferentContentFailsClosed()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1058,6 +1077,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
     public async Task FormalSlotOperationCommandIsValidatedAndRaisedWithoutPhysicalSideEffect()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1082,6 +1102,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-RELIABLE-RETRY-SAME-CONTENT")]
     public async Task BusinessProgressUsesStableDurableMessageAndDoesNotDuplicateAfterAck()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1114,6 +1135,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
     public async Task DurableOutboxRejectsDifferentContentForSameDeduplicationKey()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1224,6 +1246,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-RELIABLE-RETRY-SAME-CONTENT")]
     public async Task LostSafetyStateChangedAckReplaysSameIdentityAndBusinessContentFromJournal()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1293,6 +1316,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-PREDEPARTURE-SAFETY-EXPIRES")]
     public async Task DelayedStoppedSafetyRevisionRecoversSessionToReadyWithoutIoSideEffects()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1340,6 +1364,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-PREDEPARTURE-SAFETY-EXPIRES")]
     public async Task FailedThenStoppedProviderRefreshFlowsThroughBusinessServiceToReady()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
@@ -1443,6 +1468,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("ProtocolVector", "CV-CONNECTION-LOSS-SAFE-FINISH")]
     public async Task BusinessSafetySendFailureDisconnectsAndReplaysPendingRevision()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
