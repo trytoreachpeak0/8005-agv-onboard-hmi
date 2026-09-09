@@ -223,7 +223,7 @@ function Invoke-LoggedCommand {
 # 2026-09-09 逐步实测过：只补第 2 步时 `pnpm g1` 报
 # `'node' is not recognized as an internal or external command`；三步齐全时 G1 返回
 # "status": "PASS"，candidateManifestSha256 与协议仓已提交的 evidence/g1-result.json 逐字段相同。
-function Resolve-ProtocolG1Toolchain {
+function Initialize-ProtocolG1Toolchain {
     $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
     $nodeExecutable = if ($null -ne $nodeCommand) {
         $nodeCommand.Source
@@ -249,7 +249,8 @@ function Resolve-ProtocolG1Toolchain {
 function Invoke-ProtocolG1 {
     param([string]$LogPath)
 
-    $toolchain = Resolve-ProtocolG1Toolchain
+    # Initialize-，不是 Resolve-：它会改 $env:PATH。进程作用域，跑完就没了，但名字要说出来。
+    $toolchain = Initialize-ProtocolG1Toolchain
     if ($null -eq $toolchain) {
         Add-Failure '这台机器上找不到可用的 node/pnpm，协议 G1 无法运行。'
         return [pscustomobject]@{ ExitCode = 1; Output = ''; Status = 'NOT_RUN' }
@@ -298,6 +299,14 @@ function Invoke-ProtocolG1 {
             $installExitCode = $LASTEXITCODE
             if ($installExitCode -ne 0) {
                 $installOutput | Out-File -LiteralPath $LogPath -Encoding utf8
+                # 起了就要有对应的收尾事件，否则 transcript 上这一段悬着，读的人分不清
+                # 「装依赖失败」与「跑到一半被杀」。
+                Add-Event $transcript 'protocol.g1.completed' @{
+                    exitCode = $installExitCode
+                    status = 'NOT_RUN'
+                    stage = 'install'
+                    log = (Split-Path -Leaf $LogPath)
+                }
                 Add-Failure "协议依赖安装失败，G1 未运行：exitCode=$installExitCode"
                 return [pscustomobject]@{
                     ExitCode = $installExitCode
@@ -308,7 +317,9 @@ function Invoke-ProtocolG1 {
             $g1Arguments = $toolchain.PrefixArguments + @('g1')
             $output = & $toolchain.FilePath $g1Arguments 2>&1
             $exitCode = $LASTEXITCODE
-            ($installOutput + $output) | Out-File -LiteralPath $LogPath -Encoding utf8
+            # @() 包一层再相加：两边都可能是单个字符串，而 'a' + @('b','c') 在 PowerShell 里
+            # 是字符串拼接（得到 "ab c"），会把整份 G1 日志压成一行。
+            (@($installOutput) + @($output)) | Out-File -LiteralPath $LogPath -Encoding utf8
         } finally {
             Pop-Location
         }
