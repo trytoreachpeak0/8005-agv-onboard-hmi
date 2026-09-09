@@ -137,6 +137,7 @@ public sealed record WireToGateExceptionRecoverySessionSnapshot(
     string AdministratorRole,
     string EventId,
     string? DemandId,
+    string? SlotOperationAttemptId,
     IReadOnlyList<int> Slots,
     string? SelectedAction,
     IReadOnlyList<string> AllowedActions,

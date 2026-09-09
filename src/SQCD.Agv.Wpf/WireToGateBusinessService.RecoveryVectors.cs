@@ -198,8 +198,7 @@ public sealed partial class WireToGateBusinessService
             return vector.VectorType == vectorType;
         }
 
-        if (state.OperationContext is not { OperationType: OperationType.Load } context
-            || state.UnsettledSlotOperationAttemptId != context.SlotOperationAttemptId)
+        if (FindRecoveryLoadOperation(state) is not { } context)
         {
             return false;
         }
@@ -429,12 +428,8 @@ public sealed partial class WireToGateBusinessService
     {
         WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
             .ConfigureAwait(false);
-        WireToGateRecoveryOperationContext? operation = state.OperationContext;
-        if (operation is not { OperationType: OperationType.Load }
-            || state.UnsettledSlotOperationAttemptId != operation.SlotOperationAttemptId)
-        {
-            throw new InvalidOperationException("RECOVERY_OPERATION_CONTEXT_MISSING");
-        }
+        WireToGateRecoveryOperationContext operation = FindRecoveryLoadOperation(state)
+            ?? throw new InvalidOperationException("RECOVERY_OPERATION_CONTEXT_MISSING");
 
         WireToGateRecoveryVectorContext? vector = state.RecoveryVector;
         if (vector is not null && vector.VectorType != vectorType)
@@ -478,6 +473,7 @@ public sealed partial class WireToGateBusinessService
                 snapshot!.SentAt,
                 snapshot.EventId,
                 operation.DemandId,
+                snapshot.SlotOperationAttemptId,
                 operation.Slots,
                 snapshot.RecoverySessionRevision);
             requestId = opened.RequestId;
@@ -508,6 +504,7 @@ public sealed partial class WireToGateBusinessService
                     snapshot.SentAt,
                     snapshot.EventId,
                     snapshot.DemandId,
+                    snapshot.SlotOperationAttemptId,
                     snapshot.Slots,
                     snapshot.RecoverySessionRevision);
             }
@@ -629,6 +626,7 @@ public sealed partial class WireToGateBusinessService
                 accepted.ExceptionRecoverySessionId,
                 opened.ExceptionRecoverySessionId,
                 StringComparison.Ordinal)
+            || !AttemptMatches(accepted.SlotOperationAttemptId, operation)
             || !string.Equals(accepted.AcceptedAction, action, StringComparison.Ordinal))
         {
             throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
@@ -995,6 +993,7 @@ public sealed partial class WireToGateBusinessService
         {
             WireToGateRecoveryOperationContext operation =
                 state.OperationContext
+                ?? state.LastCompletedLoadOperationContext
                 ?? throw new InvalidDataException("RECOVERY_OPERATION_CONTEXT_MISSING");
             if (operation.OperationType != OperationType.Load
                 || operation.DemandId != demandId
@@ -1283,6 +1282,37 @@ public sealed partial class WireToGateBusinessService
         Volatile.Write(ref _lastRecoveryState, state);
     }
 
+    /// <summary>
+    /// The load this recovery is about.  The armed operation is preferred, but an operation whose
+    /// result the vehicle already recorded is still a valid subject: the server may judge that same
+    /// attempt <c>RecoveryRequired</c> while the vehicle believes it finished, and that is exactly
+    /// the state a compensation exists for.  <c>MarkResultRecordedAsync</c> keeps the settled
+    /// identity in <see cref="WireToGateRecoveryState.LastCompletedLoadOperationContext"/> for this
+    /// case, so nothing here is guessed -- the identity is read, never reconstructed.
+    /// </summary>
+    private static WireToGateRecoveryOperationContext? FindRecoveryLoadOperation(
+        WireToGateRecoveryState state) =>
+        state.OperationContext is { OperationType: OperationType.Load } armed
+            && state.UnsettledSlotOperationAttemptId == armed.SlotOperationAttemptId
+            ? armed
+            : state.LastCompletedLoadOperationContext;
+
+    /// <summary>
+    /// The server names the attempt every recovery message is scoped to (protocol-v0.3.0).  It is
+    /// the authority -- the vehicle's own copy is its belief about an operation the server has
+    /// judged differently -- so a disagreement is never resolved silently in the vehicle's favour;
+    /// the request is refused and the operator sees the scope mismatch.  A null means the server
+    /// has no station operation for this session, which leaves the local identity unchallenged.
+    /// </summary>
+    private static bool AttemptMatches(
+        string? serverSlotOperationAttemptId,
+        WireToGateRecoveryOperationContext operation) =>
+        serverSlotOperationAttemptId is null
+        || string.Equals(
+            serverSlotOperationAttemptId,
+            operation.SlotOperationAttemptId,
+            StringComparison.Ordinal);
+
     private static WireToGateRecoveryOperationContext RequireUnsettledLoadOperation(
         WireToGateRecoveryState state)
     {
@@ -1346,6 +1376,7 @@ public sealed partial class WireToGateBusinessService
     {
         if (snapshot.State == "CLOSED"
             || !string.Equals(snapshot.DemandId, operation.DemandId, StringComparison.Ordinal)
+            || !AttemptMatches(snapshot.SlotOperationAttemptId, operation)
             || !snapshot.Slots.SequenceEqual(operation.Slots))
         {
             throw new InvalidDataException("RECOVERY_SCOPE_MISMATCH");
@@ -1361,6 +1392,7 @@ public sealed partial class WireToGateBusinessService
         if (!string.Equals(opened.RequestId, requestId, StringComparison.Ordinal)
             || !string.Equals(opened.EventId, eventId, StringComparison.Ordinal)
             || !string.Equals(opened.DemandId, operation.DemandId, StringComparison.Ordinal)
+            || !AttemptMatches(opened.SlotOperationAttemptId, operation)
             || !opened.Slots.SequenceEqual(operation.Slots))
         {
             throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");

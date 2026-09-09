@@ -129,6 +129,7 @@ public sealed record ExceptionRecoverySessionOpenedPayload(
     DateTimeOffset OpenedAt,
     string EventId,
     string? DemandId,
+    string? SlotOperationAttemptId,
     IReadOnlyList<int> Slots,
     long RecoverySessionRevision);
 
@@ -145,6 +146,7 @@ public sealed record RecoveryActionSubmittedPayload(
 public sealed record RecoveryActionAcceptedPayload(
     string RecoveryActionId,
     string ExceptionRecoverySessionId,
+    string? SlotOperationAttemptId,
     string AcceptedAction,
     long RecoverySessionRevision,
     DateTimeOffset AcceptedAt);
@@ -170,6 +172,7 @@ public sealed record ExceptionRecoverySessionSnapshotPayload(
     string AdministratorRole,
     string EventId,
     string? DemandId,
+    string? SlotOperationAttemptId,
     IReadOnlyList<int> Slots,
     string? SelectedAction,
     IReadOnlyList<string> AllowedActions,

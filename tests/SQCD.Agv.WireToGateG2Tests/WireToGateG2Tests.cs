@@ -874,6 +874,164 @@ public sealed class WireToGateG2Tests
         }
     }
 
+    /// <summary>
+    /// 8005-agv-control-server#5 那条卡死的路：服务端把这一次装载判成 <c>RecoveryRequired</c>，而车辆
+    /// 认为它成功了——<c>MarkResultRecordedAsync</c> 已经把 <c>OperationContext</c> 与
+    /// <c>UnsettledSlotOperationAttemptId</c> 清空。补偿入口原来只认这两样，于是**恰恰在需要补偿的
+    /// 那一刻**申请不出来。现在它认已结算的那份身份，而 attempt 由服务端在
+    /// <c>ExceptionRecoverySessionOpened</c> / <c>RecoveryActionAccepted</c> 里点名（protocol-v0.3.0），
+    /// 两端对不上就整条拒掉、不擅自换作用域。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task CompensationIsRequestableAfterTheVehicleAlreadySettledTheLoad()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        const string operatorVariable = "W2G_G2_COMPENSATION_OPERATOR";
+        const string proofVariable = "W2G_G2_COMPENSATION_PROOF";
+        string? previousOperator = Environment.GetEnvironmentVariable(operatorVariable);
+        string? previousProof = Environment.GetEnvironmentVariable(proofVariable);
+        Environment.SetEnvironmentVariable(operatorVariable, "maintenance-003");
+        Environment.SetEnvironmentVariable(proofVariable, "test-proof");
+
+        try
+        {
+            const string demandId = "11111111-1111-4111-8111-111111111111";
+            string attemptId = FakeControlServer.SlotOperationAttemptId;
+            string journalPath = NewJournalPath();
+            await SeedSettledLoadAsync(journalPath, demandId, attemptId, testToken);
+
+            await using FakeControlServer server = new(IPAddress.Loopback)
+            {
+                RespondToRecoveryRequests = true,
+                RecoverySessionSlotOperationAttemptId = FakeControlServer.SlotOperationAttemptId,
+                SendReadinessAfterRecoveryAck = true,
+                SendRecoveryRequiredReadinessAfterOperationResultAck = true
+            };
+            FakeIoModuleClient io = new();
+            NullLogger logger = new();
+            await using WireToGateSessionService session = new(
+                CreateSessionOptions(server),
+                io,
+                new SqliteWireToGateJournal(journalPath),
+                logger,
+                new SystemClock(),
+                new DelegateVehicleSafetySignalProvider(() => false),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(500));
+            await using WireToGateBusinessService business = new(
+                session,
+                io,
+                logger,
+                new SystemClock(),
+                () => false,
+                new WireToGateSlotOperationExecutorOptions(
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromMilliseconds(10),
+                    TimeSpan.FromSeconds(30)),
+                operatorVariable,
+                recoveryOptions: new WireToGateRecoveryOptions(
+                    true,
+                    proofVariable,
+                    "MAINTENANCE_ADMINISTRATOR",
+                    "CONFIGURED_PROOF"));
+
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+
+            // 服务端宣布这一次会话需要恢复。车辆这边的 attempt 身份此时已经是结算过的那份。
+            await session.Client.SendOperationResultAsync(
+                $"operation-result:{attemptId}",
+                attemptId,
+                new WireToGateOperationResultPayload(
+                    demandId,
+                    attemptId,
+                    "LOAD",
+                    "FAILED",
+                    [
+                        new WireToGateSlotResultPayload(
+                            1,
+                            "FAILED",
+                            "EMPTY",
+                            "UNLOCKED",
+                            "RESET",
+                            ["SLOT_EMPTY_AFTER_LOAD"])
+                    ],
+                    DateTimeOffset.UtcNow,
+                    "NONE",
+                    new string('0', 64)),
+                testToken);
+
+            await WaitUntilAsync(
+                () => session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired,
+                testToken);
+            await WaitUntilAsync(() => business.CanRequestLoadCompensation, testToken);
+
+            Assert.True(await business.RequestLoadCompensationAsync(
+                "现场确认装货无法继续，申请补偿清空目标仓位。",
+                testToken));
+
+            await WaitUntilAsync(
+                () => server.ReceivedEnvelopes.Any(envelope =>
+                    envelope.MessageType == "LoadCompensationRequested"),
+                testToken);
+            (int _, string _, string _, string wireLine) = Assert.Single(
+                server.ReceivedEnvelopes,
+                envelope => envelope.MessageType == "LoadCompensationRequested");
+            using JsonDocument document = JsonDocument.Parse(wireLine);
+            JsonElement payload = document.RootElement.GetProperty("payload");
+            Assert.Equal(attemptId, payload.GetProperty("slotOperationAttemptId").GetString());
+            Assert.Equal(demandId, payload.GetProperty("demandId").GetString());
+
+            // 申请本身不碰仓门 IO：动作要等服务端把 LoadCompensationCommand 发回来。
+            Assert.Equal(0, io.UnlockCount);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(operatorVariable, previousOperator);
+            Environment.SetEnvironmentVariable(proofVariable, previousProof);
+        }
+    }
+
+    /// <summary>
+    /// 复现 <c>MarkResultRecordedAsync</c> 写完之后的日志状态：物理断点与在途 attempt 都已清空，
+    /// 只剩下最近一次已结算装载的身份。
+    /// </summary>
+    private static async Task SeedSettledLoadAsync(
+        string journalPath,
+        string demandId,
+        string attemptId,
+        CancellationToken cancellationToken)
+    {
+        await using SqliteWireToGateJournal journal = new(journalPath);
+        await journal.InitializeAsync(cancellationToken);
+        WireToGateRecoveryState state = await journal.ReadRecoveryStateAsync(cancellationToken);
+        await journal.WriteRecoveryStateAsync(
+            state with
+            {
+                UnsettledSlotOperationAttemptId = null,
+                ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ResultRecorded,
+                OperationContext = null,
+                LastCompletedLoadOperationContext = new WireToGateRecoveryOperationContext(
+                    "99999999-9999-4999-8999-999999999999",
+                    null,
+                    1,
+                    DateTimeOffset.UtcNow,
+                    demandId,
+                    "33333333-3333-4333-8333-333333333333",
+                    attemptId,
+                    OperationType.Load,
+                    [1],
+                    1,
+                    true,
+                    new string('0', 64))
+            },
+            cancellationToken);
+    }
+
     [Fact]
     [Trait("IntegrationSlice", "W2G-IS-01")]
     public async Task JourneySnapshotsAreProjectedAndHeartbeatDoesNotStealAsyncMessages()
