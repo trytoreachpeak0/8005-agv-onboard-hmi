@@ -237,6 +237,154 @@ public sealed class WireToGateSlotOperationExecutorTests
         Assert.Equal(1, fixture.Io.UnlockCount);
     }
 
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public async Task OppositeOccupancyReopensTheSlotInsteadOfFailingIt()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        List<(string Phase, int PromptRound)> phases = [];
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1], expectedOccupied: true),
+            (phase, active, completed, promptRound, token) =>
+            {
+                phases.Add((phase, promptRound));
+                if (phase == "WAITING_OPERATOR")
+                {
+                    // 第一轮操作员关了门却什么都没放，第二轮才放料。
+                    fixture.Io.CloseDoor(active[0] - 1, cargo: promptRound >= 1);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.Equal("COMPLETED", result.SlotResults.Single().Outcome);
+        Assert.Empty(result.SlotResults.Single().ReasonCodes);
+        Assert.Equal(2, fixture.Io.UnlockCount(0));
+        Assert.Equal(
+            [("UNLOCKING", 0), ("WAITING_OPERATOR", 0), ("UNLOCKING", 1), ("WAITING_OPERATOR", 1)],
+            phases.Where(item => item.Phase is "UNLOCKING" or "WAITING_OPERATOR").ToArray());
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public async Task CompletedSlotIsNotReopenedWhileAnotherSlotKeepsReopening()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true),
+            (phase, active, completed, promptRound, token) =>
+            {
+                if (phase == "WAITING_OPERATOR")
+                {
+                    int physicalSlot = active[0];
+                    // 1 号仓一次到位，2 号仓来回折腾三轮。
+                    fixture.Io.CloseDoor(
+                        physicalSlot - 1,
+                        cargo: physicalSlot == 1 || promptRound >= 2);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.All(result.SlotResults, slot => Assert.Equal("COMPLETED", slot.Outcome));
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+        Assert.Equal(3, fixture.Io.UnlockCount(1));
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public async Task OperationTimeoutOnlyPromptsAgainInsteadOfFailingTheSlot()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        List<(string Phase, int PromptRound)> phases = [];
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1], expectedOccupied: true),
+            (phase, active, completed, promptRound, token) =>
+            {
+                phases.Add((phase, promptRound));
+                // 第一轮操作员干脆没动，仓门一直开着，等到 OperationTimeout 走完。
+                if (phase == "WAITING_OPERATOR" && promptRound >= 1)
+                {
+                    fixture.Io.CloseDoor(active[0] - 1, cargo: true);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        // 提示节拍到期时仓门还开着，不重复脉冲。
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+        Assert.Equal([0], phases.Where(item => item.Phase == "UNLOCKING").Select(item => item.PromptRound));
+        Assert.Equal(
+            [0, 1],
+            phases.Where(item => item.Phase == "WAITING_OPERATOR").Select(item => item.PromptRound));
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
+    public async Task IoGoingUnknownDuringOperatorWaitStillEntersRecovery()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1], expectedOccupied: true),
+            (phase, active, completed, promptRound, token) =>
+            {
+                if (phase == "WAITING_OPERATOR")
+                {
+                    fixture.Io.Disconnect();
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        Assert.Equal("UNKNOWN", result.SlotResults.Single().Outcome);
+        Assert.Contains("SLOT_STATE_UNKNOWN", result.SlotResults.Single().ReasonCodes);
+        Assert.Equal("ACTIVE_UNLOCK_SET", result.JournalCheckpoint);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-03")]
+    public async Task SlotsNeverStartedKeepRealReadingsAndCarryNoReasonCodes()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        // 1 号仓的锁卡住不弹，开锁反馈等不到——决策 2 认定的三件事之一。
+        fixture.Io.JamLock(0);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true),
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        WireToGateSlotExecutionResult failed = result.SlotResults.Single(slot => slot.SlotNo == 1);
+        Assert.Equal("UNKNOWN", failed.Outcome);
+        Assert.NotEmpty(failed.ReasonCodes);
+
+        WireToGateSlotExecutionResult neverStarted = result.SlotResults.Single(slot => slot.SlotNo == 2);
+        Assert.Equal("NOT_STARTED", neverStarted.Outcome);
+        Assert.Empty(neverStarted.ReasonCodes);
+        Assert.Equal("EMPTY", neverStarted.FinalPhysicalState);
+        Assert.Equal("LOCKED", neverStarted.LockState);
+        Assert.Equal("RESET", neverStarted.UnlockOutputState);
+        Assert.Equal(0, fixture.Io.UnlockCount(1));
+    }
+
     private static WireToGateSlotOperationCommand CreateCommand(
         OperationType operationType,
         IReadOnlyList<int> slots,
@@ -424,6 +572,191 @@ public sealed class WireToGateSlotOperationExecutorTests
             DateTimeOffset now = DateTimeOffset.UtcNow;
             CurrentSnapshot = new IoSnapshot(true, _lockers.ToArray(), now);
             SnapshotChanged?.Invoke(this, new ValueChangedEventArgs<IoSnapshot>(CurrentSnapshot));
+        }
+    }
+
+    private sealed class ScriptedFixture : IAsyncDisposable
+    {
+        private ScriptedFixture(
+            ScriptedIo io,
+            SqliteWireToGateJournal journal,
+            WireToGateSlotOperationExecutor executor)
+        {
+            Io = io;
+            Journal = journal;
+            Executor = executor;
+        }
+
+        public ScriptedIo Io { get; }
+
+        public SqliteWireToGateJournal Journal { get; }
+
+        public WireToGateSlotOperationExecutor Executor { get; }
+
+        public static async Task<ScriptedFixture> CreateAsync(CancellationToken cancellationToken)
+        {
+            string directory = Path.Combine(
+                Path.GetTempPath(),
+                "w2g-executor",
+                Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            SqliteWireToGateJournal journal = new(Path.Combine(directory, "journal.db"));
+            await journal.InitializeAsync(cancellationToken);
+            ScriptedIo io = new();
+            WireToGateSlotOperationExecutor executor = new(
+                io,
+                journal,
+                new SystemClock(),
+                new WireToGateSlotOperationExecutorOptions(
+                    TimeSpan.FromMilliseconds(200),
+                    TimeSpan.FromMilliseconds(200),
+                    TimeSpan.FromMilliseconds(200),
+                    TimeSpan.Zero,
+                    TimeSpan.FromSeconds(30)));
+            return new ScriptedFixture(io, journal, executor);
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await Executor.DisposeAsync();
+            await Journal.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// 与 SimulationIo 不同，这个替身不会自己把仓位推向目标态：状态只由测试显式
+    /// 改动。目标态闭环要验的正是「操作员没动作」与「操作员做错了」两种停留，
+    /// 一个会自己走完流程的替身表达不了它们。
+    /// </summary>
+    private sealed class ScriptedIo : IIoModuleClient
+    {
+        private readonly LockerSnapshot[] _lockers;
+        private readonly int[] _unlockCounts = new int[8];
+        private readonly HashSet<int> _jammed = [];
+        private readonly object _sync = new();
+
+        public ScriptedIo()
+        {
+            _lockers = Enumerable.Range(0, 8)
+                .Select(index => new LockerSnapshot(
+                    index,
+                    index + 1,
+                    false,
+                    true,
+                    true,
+                    DateTimeOffset.UtcNow))
+                .ToArray();
+            CurrentSnapshot = new IoSnapshot(true, _lockers.ToArray(), DateTimeOffset.UtcNow);
+            _ = ConnectionChanged;
+            _ = SnapshotChanged;
+        }
+
+        public bool IsConnected => CurrentSnapshot.IsConnected;
+
+        public IoSnapshot CurrentSnapshot { get; private set; }
+
+        public event EventHandler<ValueChangedEventArgs<bool>>? ConnectionChanged;
+
+        public event EventHandler<ValueChangedEventArgs<IoSnapshot>>? SnapshotChanged;
+
+        public int UnlockCount(int slotIndex)
+        {
+            lock (_sync)
+            {
+                return _unlockCounts[slotIndex];
+            }
+        }
+
+        public void JamLock(int slotIndex)
+        {
+            lock (_sync)
+            {
+                _jammed.Add(slotIndex);
+            }
+        }
+
+        public void CloseDoor(int slotIndex, bool cargo)
+        {
+            lock (_sync)
+            {
+                Update(slotIndex, locker => locker with
+                {
+                    LockFeedbackRaw = true,
+                    UnlockOutputRaw = false,
+                    LightCurtainRaw = !cargo,
+                    ObservedAt = DateTimeOffset.UtcNow
+                });
+            }
+        }
+
+        public void Disconnect()
+        {
+            lock (_sync)
+            {
+                CurrentSnapshot = IoSnapshot.Unknown(DateTimeOffset.UtcNow);
+            }
+        }
+
+        public Task StartAsync(CancellationToken applicationStopping) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task PulseUnlockAsync(int slotIndex, CancellationToken cancellationToken)
+        {
+            lock (_sync)
+            {
+                _unlockCounts[slotIndex]++;
+                bool jammed = _jammed.Contains(slotIndex);
+                Update(slotIndex, locker => locker with
+                {
+                    UnlockOutputRaw = true,
+                    LockFeedbackRaw = jammed,
+                    ObservedAt = DateTimeOffset.UtcNow
+                });
+                Update(slotIndex, locker => locker with
+                {
+                    UnlockOutputRaw = false,
+                    ObservedAt = DateTimeOffset.UtcNow
+                });
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public async Task<LockerSnapshot> WaitForLockerAsync(
+            int slotIndex,
+            Func<LockerSnapshot, bool> predicate,
+            TimeSpan timeout,
+            TimeSpan stableWindow,
+            CancellationToken cancellationToken)
+        {
+            DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+            while (DateTimeOffset.UtcNow < deadline)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                IoSnapshot snapshot = CurrentSnapshot;
+                if (!snapshot.IsConnected)
+                {
+                    throw new IOException("等待仓位反馈时IO连接已断开。");
+                }
+
+                if (predicate(snapshot.GetLocker(slotIndex)))
+                {
+                    return snapshot.GetLocker(slotIndex);
+                }
+
+                await Task.Delay(5, cancellationToken);
+            }
+
+            throw new TimeoutException();
+        }
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        private void Update(int slotIndex, Func<LockerSnapshot, LockerSnapshot> update)
+        {
+            _lockers[slotIndex] = update(_lockers[slotIndex]);
+            CurrentSnapshot = new IoSnapshot(true, _lockers.ToArray(), DateTimeOffset.UtcNow);
         }
     }
 }
