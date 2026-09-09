@@ -1,4 +1,33 @@
+# 行尾在这里定，不由每台机器碰巧配成什么来定。
+#
+# `.editorconfig` 的 `[*]` 段一直写着 `end_of_line = lf`，仓库里存的也一直是 LF，缺的只是这
+# 个文件。没有它，一台带 Git for Windows 默认 `core.autocrlf=true` 的机器——这里每一台都是
+# ——checkout 出来就是 CRLF，于是 `dotnet format --verify-no-changes` 会对仓库的每一行报一个
+# ENDOFLINE。本线 2026-09-09 实测 22093 条 ENDOFLINE ＋ 16 条 WHITESPACE、62 个 .cs 文件、
+# `exit=2`，这正是 ONBOARD_HMI_G2 从未绿过的原因。加上本文件后同一条命令 `exit=0`、零诊断。
+#
+# `eol=lf` 也覆盖 `.ps1`，与隔壁 ControlServer 仓不同：本仓的 `.editorconfig` 没有为它开
+# 例外，而 PowerShell 7 不在意行尾。
+#
+# 这一条搬自 w2g/normalize-line-endings 的 9ee7e4d（Zhengyu Shao，2026-09-09）。那份只有下面
+# 这一行——它从 MVP 线出，那条线没有 vendor 目录，所以不能直接 cherry-pick 过来。
+* text=auto eol=lf
+
 # 协议仓副本按字节绑定 SHA-256：`manifest/release.json` 的摘要就是每条报文都带着的
 # `WireToGateRelease.ManifestSha256`，其余 71 个文件由该 manifest 自己的 `files` 表逐个钉住。
 # checkout 时把 LF 换成 CRLF 会让全部摘要漂移。整份 cp 自 8005-agv-protocol，不手工编辑。
+#
+# 这一条排在 `* text=auto` 之后，是为了让它赢：.gitattributes 后面的规则覆盖前面的。
+# 2026-09-09 把四种组合都真跑了一遍（删掉 manifest 再 checkout，核 SHA-256）：
+#
+#   | 全局那条            | vendor 这条的位置 | vendor 的 text | manifest 摘要      |
+#   | ------------------- | ----------------- | -------------- | ------------------ |
+#   | `text=auto eol=lf`  | 之后（本文件）    | unset          | 84f984ea… 不变     |
+#   | `text=auto eol=lf`  | 之前              | auto           | 84f984ea… 不变     |
+#   | `text=auto`         | 之后              | unset          | 84f984ea… 不变     |
+#   | `text=auto`         | 之前              | auto           | a0501d80… **漂移** |
+#
+# 也就是说：只要上面那条带着 `eol=lf`，顺序不影响字节；一旦有人把 `eol=lf` 删掉、退回让
+# `core.autocrlf` 决定，顺序就成了摘要漂不漂的唯一分界。`-text` 让 vendor 的字节与 `eol`
+# 属性无关，顺序让它在那种情况下仍然生效——两件都要，别只留一件。
 vendor/8005-agv-protocol/** -text
