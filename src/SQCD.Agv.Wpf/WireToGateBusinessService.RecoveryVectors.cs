@@ -220,6 +220,14 @@ public sealed partial class WireToGateBusinessService
         string reason,
         CancellationToken cancellationToken)
     {
+        // 先把在途的仓位操作停下来，再读日志。ADR-cross-0058 决策 1 之后目标态闭环没有
+        // 自然终点，而取消向量走的是另一个执行器、另一把锁——不中止就会有两个执行器同时
+        // 驱动同一个 IO 模块，一个还在循环脉冲开锁，另一个在验证仓位清空。
+        //
+        // 中止排在请求授权之前，代价是服务端若拒绝这次取消，操作已经停了、仓门可能还开着。
+        // 那种局面操作员就在车前，看得见也关得上，而且被拒绝的取消本来就要人处理；反过来
+        // 让两个执行器对同一把机械锁并发发脉冲，是没人看得见的。
+        _executor.AbortActiveOperation();
         WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
             .ConfigureAwait(false);
         if (state.RecoveryVector is { } existingVector)
