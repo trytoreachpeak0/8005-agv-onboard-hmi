@@ -1531,6 +1531,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         out WireToGateServerCommand? command)
     {
         command = null;
+        // 新增消息走注册表：加一个 IWireToGateServerCommandTranslator 文件即可，不改本文件。
+        // 下面的 switch 是这道缝之前就有的那些消息，保持原样。
+        if (WireToGateServerCommandTranslatorRegistry.Discovered.TryTranslate(envelope, out command))
+        {
+            return true;
+        }
+
         switch (envelope.MessageType)
         {
             case "SublotEntryRequested":
