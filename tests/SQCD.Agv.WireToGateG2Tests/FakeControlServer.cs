@@ -13,6 +13,14 @@ public sealed class FakeControlServer : IAsyncDisposable
     private static readonly int[] SingleSlot = [1];
     private static readonly DateTimeOffset StableJourneyObservedAt =
         new(2026, 8, 29, 6, 30, 0, TimeSpan.Zero);
+
+    /// <summary>
+    /// 服务端掌握的本站截止时间。**每一份作业清单都要带它**——协议里它是 required，真服务端也总在发；
+    /// 假服务端漏发的话，车载端拿到的会是 null，而 null 在界面上是「无倒计时」这个完全不同的意思。
+    /// 取常量是为了让 <see cref="ReplayJourneySnapshotsWithStableIdentity"/> 的重放仍然逐字节相同。
+    /// </summary>
+    private static readonly DateTimeOffset StableStationDepartureDeadlineAt =
+        StableJourneyObservedAt + TimeSpan.FromMinutes(10);
     private readonly TcpListener _listener;
     private readonly CancellationTokenSource _stopping = new();
     private readonly Task _acceptLoop;
@@ -913,6 +921,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                 stationId = "ST-01",
                 worklistRevision = 1,
                 operationSessionId = (string?)null,
+                stationDepartureDeadlineAt = StableStationDepartureDeadlineAt,
                 items = new[]
                 {
                     new
@@ -974,6 +983,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                     stationId = "ST-01",
                     worklistRevision = 1,
                     operationSessionId = (string?)null,
+                    stationDepartureDeadlineAt = StableStationDepartureDeadlineAt,
                     items = new[]
                     {
                         new
@@ -1063,6 +1073,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                 stationId = "ST-01",
                 worklistRevision = 1,
                 operationSessionId = (string?)null,
+                stationDepartureDeadlineAt = StableStationDepartureDeadlineAt,
                 items = new[]
                 {
                     new

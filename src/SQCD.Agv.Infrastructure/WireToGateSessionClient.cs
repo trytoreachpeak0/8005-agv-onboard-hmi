@@ -1376,6 +1376,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                                 payload.StationId,
                                 payload.WorklistRevision,
                                 payload.OperationSessionId,
+                                payload.StationDepartureDeadlineAt,
                                 payload.Items.Select(ToCoreWorklistItem).ToArray(),
                                 payloadContentSha256),
                             UpdatedAt = _clock.Now

@@ -101,7 +101,7 @@ public partial class App : System.Windows.Application, IDisposable
                 LogSeverity.Information,
                 nameof(App),
                 $"车载端启动：agvId={settings.AgvId}，environment={settings.Environment}，version={version}。");
-            MainViewModel viewModel = new(_controller, _logger, settings.AgvId);
+            MainViewModel viewModel = new(_controller, _logger, new SystemClock(), settings.AgvId);
             MainWindow window = new() { DataContext = viewModel };
             MainWindow = window;
             if (settings.WireToGate.Enabled)

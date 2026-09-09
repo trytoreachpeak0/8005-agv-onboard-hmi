@@ -13,6 +13,13 @@ $checks = [ordered]@{
     recoveryActions = ($xaml -match 'Content="重新上报结果"') -and ($xaml -match 'Content="重新打开仓门"') -and ($xaml -match 'Content="取消本次操作"')
     visibleDepartureFact = ($xaml -match 'Text="\{Binding DepartureText\}"')
     visibleJourneyFact = ($xaml -match 'Text="\{Binding VisitText\}"')
+    # ADR-cross-0055 要求本站倒计时全程可见，ADR-cross-0058 决策 3 把这个时刻的所有权交给服务端。
+    # 三档配色（Warning / Critical / Expired）与「无倒计时」的 Absent 档缺一档都不算满足。
+    visibleStationDeadline = ($xaml -match 'Text="\{Binding StationDepartureCountdownText\}"') -and
+        ($xaml -match 'Binding StationDepartureCountdownTier\}" Value="Warning"') -and
+        ($xaml -match 'Binding StationDepartureCountdownTier\}" Value="Critical"') -and
+        ($xaml -match 'Binding StationDepartureCountdownTier\}" Value="Expired"') -and
+        ($xaml -match 'Binding StationDepartureCountdownTier\}" Value="Absent"')
     blockingGuidance = ($xaml -match 'Text="\{Binding Guidance\}"')
     dangerStyle = ($xaml -match 'Background="\{StaticResource DangerBrush\}"')
     boundedLogPanel = ($xaml -match 'Height="110"') -and ($xaml -match '操作记录（最近300条）')

@@ -221,6 +221,52 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Row="0" VerticalAlignment="Center" FontSize="15" FontWeight="Bold" Text="{Binding StateText}" />
+                <!--
+                    本站倒计时（ADR-cross-0055 Consequences / ADR-cross-0058 决策 3）。挂在状态条上而不是
+                    顶栏那排小字里：它是操作员在车前唯一需要盯着的数字，而「已到期，等待服务端结算」这条
+                    文案在顶栏的窄格子里只会被裁掉。三档配色靠 Tier，最后 10 秒的逐秒闪烁靠 Dimmed。
+                -->
+                <StackPanel Grid.Row="0"
+                            Grid.Column="2"
+                            Margin="12,0,0,0"
+                            VerticalAlignment="Center"
+                            Visibility="{Binding HasStationDepartureCountdown, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock HorizontalAlignment="Right"
+                               FontSize="12"
+                               Foreground="{StaticResource MutedBrush}"
+                               Text="本站剩余" />
+                    <TextBlock Margin="0,2,0,0"
+                               HorizontalAlignment="Right"
+                               FontSize="20"
+                               FontWeight="Bold"
+                               Text="{Binding StationDepartureCountdownText}">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Foreground" Value="#1F2933" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding StationDepartureCountdownTier}" Value="Absent">
+                                        <Setter Property="FontSize" Value="15" />
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                        <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding StationDepartureCountdownTier}" Value="Warning">
+                                        <Setter Property="Foreground" Value="#C08A00" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding StationDepartureCountdownTier}" Value="Critical">
+                                        <Setter Property="Foreground" Value="#C62828" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding StationDepartureCountdownTier}" Value="Expired">
+                                        <Setter Property="FontSize" Value="15" />
+                                        <Setter Property="Foreground" Value="#C62828" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding StationDepartureCountdownDimmed}" Value="True">
+                                        <Setter Property="Opacity" Value="0.15" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                </StackPanel>
                 <ScrollViewer Grid.Row="0"
                               Grid.Column="1"
                               MaxHeight="48"

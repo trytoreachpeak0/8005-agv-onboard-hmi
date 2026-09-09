@@ -4,6 +4,7 @@ using System.Windows.Threading;
 using SQCD.Agv.Application;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
+using CountdownTier = SQCD.Agv.Application.StationDepartureCountdownTier;
 
 namespace SQCD.Agv.Wpf.ViewModels;
 
@@ -12,7 +13,9 @@ public sealed class MainViewModel : ViewModelBase
     private const int MaxLogEntries = 300;
     private readonly OnboardController _controller;
     private readonly IAppLogger _logger;
+    private readonly IClock _clock;
     private readonly OperatorRecordFormatter _operatorRecordFormatter = new();
+    private DispatcherTimer? _stationDepartureCountdownTimer;
     private string _scanText = string.Empty;
     private string _ruleConnectionText = "离线";
     private string _ioConnectionText = "离线";
@@ -35,6 +38,11 @@ public sealed class MainViewModel : ViewModelBase
     private bool _canRequestFaultCargoHandoff;
     private bool _hasWireToGateJourney;
     private bool _hasUpcomingPlan;
+    private bool _hasStationDepartureCountdown;
+    private DateTimeOffset? _stationDepartureDeadlineAt;
+    private string _stationDepartureCountdownText = string.Empty;
+    private string _stationDepartureCountdownTier = nameof(CountdownTier.Absent);
+    private bool _stationDepartureCountdownDimmed;
     private bool _wireToGateEnabled;
     private WireToGateSessionSnapshot? _wireToGateSession;
     private WireToGateHmiOperationSnapshot? _wireToGateOperation;
@@ -57,10 +65,12 @@ public sealed class MainViewModel : ViewModelBase
     public MainViewModel(
         OnboardController controller,
         IAppLogger logger,
+        IClock clock,
         string agvId)
     {
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         AgvId = agvId;
         Lockers = new ObservableCollection<LockerCardViewModel>(
             Enumerable.Range(0, 8).Select(index => new LockerCardViewModel(index)));
@@ -98,6 +108,38 @@ public sealed class MainViewModel : ViewModelBase
     {
         get => _hasUpcomingPlan;
         private set => SetProperty(ref _hasUpcomingPlan, value);
+    }
+
+    /// <summary>
+    /// 是否显示本站倒计时。只要这一站的作业清单已经同步就显示——**没有截止时间也要显示**，
+    /// 那时写「无倒计时」。整块藏起来会让「服务端没给期限」和「清单还没到」看起来一模一样。
+    /// </summary>
+    public bool HasStationDepartureCountdown
+    {
+        get => _hasStationDepartureCountdown;
+        private set => SetProperty(ref _hasStationDepartureCountdown, value);
+    }
+
+    public string StationDepartureCountdownText
+    {
+        get => _stationDepartureCountdownText;
+        private set => SetProperty(ref _stationDepartureCountdownText, value);
+    }
+
+    /// <summary>
+    /// <c>StationDepartureCountdownTier</c> 枚举值的名字，供 XAML 的 DataTrigger 选配色。
+    /// </summary>
+    public string StationDepartureCountdownTier
+    {
+        get => _stationDepartureCountdownTier;
+        private set => SetProperty(ref _stationDepartureCountdownTier, value);
+    }
+
+    /// <summary>最后 10 秒逐秒闪烁时的「灭」相位。</summary>
+    public bool StationDepartureCountdownDimmed
+    {
+        get => _stationDepartureCountdownDimmed;
+        private set => SetProperty(ref _stationDepartureCountdownDimmed, value);
     }
 
     public AsyncCommand ScannerSubmitCommand { get; }
@@ -157,6 +199,9 @@ public sealed class MainViewModel : ViewModelBase
     internal void UpdateWireToGateJourney(WireToGateJourneySnapshot snapshot) => RunOnUiThread(() =>
     {
         _hasWireToGateJourney = true;
+        _stationDepartureDeadlineAt = snapshot.CurrentStopWorklist?.StationDepartureDeadlineAt;
+        HasStationDepartureCountdown = snapshot.CurrentStopWorklist is not null;
+        RefreshStationDepartureCountdownCore();
         if (snapshot.CurrentStopWorklist is { } worklist)
         {
             // 一次停靠可以有多项。原先这里取 SingleOrDefault()，两项就抛，而这条路径跑在 UI 线程
@@ -366,8 +411,42 @@ public sealed class MainViewModel : ViewModelBase
     public async Task InitializeAsync()
     {
         _controller.StateChanged += OnStateChanged;
+        StartStationDepartureCountdownTimer();
         ApplySnapshot(_controller.Current);
         await _controller.StartAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// 重算本站倒计时。截止时间是个绝对时刻，剩余时间只能由它和当前时间算出来——期限本身会在
+    /// 同一次停靠内往后跳，所以这里不保留任何递减状态。
+    /// </summary>
+    internal void RefreshStationDepartureCountdown() =>
+        RunOnUiThread(RefreshStationDepartureCountdownCore);
+
+    private void StartStationDepartureCountdownTimer()
+    {
+        if (_stationDepartureCountdownTimer is not null)
+        {
+            return;
+        }
+
+        // 250 ms 而不是 1 s：最后 10 秒要逐秒闪烁，而闪烁相位取自绝对秒数。刷新节拍等于秒长时，
+        // 它与秒边界的相对位置会漂移，跨过边界那一下会连着两次落在同一相位上，看着像卡住。
+        _stationDepartureCountdownTimer = new DispatcherTimer(DispatcherPriority.Normal)
+        {
+            Interval = TimeSpan.FromMilliseconds(250)
+        };
+        _stationDepartureCountdownTimer.Tick += (_, _) => RefreshStationDepartureCountdownCore();
+        _stationDepartureCountdownTimer.Start();
+    }
+
+    private void RefreshStationDepartureCountdownCore()
+    {
+        StationDepartureCountdownView view =
+            StationDepartureCountdownFormatter.Format(_stationDepartureDeadlineAt, _clock.Now);
+        StationDepartureCountdownText = view.Text;
+        StationDepartureCountdownTier = view.Tier.ToString();
+        StationDepartureCountdownDimmed = view.Dimmed;
     }
 
     private async Task SubmitAsync(ScanInputMethod inputMethod)
