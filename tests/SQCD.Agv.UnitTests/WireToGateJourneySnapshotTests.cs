@@ -34,6 +34,7 @@ public sealed class WireToGateJourneySnapshotTests
     /// The behaviour v1 had, unchanged: one demand on both sides agrees.
     /// </summary>
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-01")]
     [Trait("ProtocolVector", "CV-DEMAND-ACCEPT-TO-PICKUP")]
     public void APlanWhoseLegsAllNameTheWorklistDemandIsConsistent()
     {
@@ -63,6 +64,7 @@ public sealed class WireToGateJourneySnapshotTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-01")]
     [Trait("ProtocolVector", "CV-DEMAND-ACCEPT-TO-PICKUP")]
     public void APlanNamingADifferentDemandThanTheWorklistIsNotConsistent()
     {

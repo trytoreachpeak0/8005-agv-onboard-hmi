@@ -7,6 +7,8 @@ namespace SQCD.Agv.UnitTests;
 public sealed class WireToGateSlotOperationExecutorTests
 {
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("IntegrationSlice", "FP-IS-05")]
     [Trait("ProtocolVector", "CV-CONNECTION-LOSS-SAFE-FINISH")]
     [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
     public async Task LoadUsesOnlyServerFrozenSlotsAndJournalsBeforePulses()
@@ -68,6 +70,7 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-04")]
     [Trait("ProtocolVector", "CV-DESTINATION-UNLOAD-ALL-EMPTY")]
     public async Task UnloadAllTargetSlotsRequiresEverySlotToReachEmpty()
     {
@@ -97,6 +100,8 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task UnknownSnapshotFailsClosedWithoutUnlock()
     {
@@ -115,6 +120,7 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
     public async Task ResumeSkipsSlotsAlreadyAtDesiredFinalState()
     {
@@ -163,6 +169,7 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
     public async Task ResumeWithoutOriginalContextFailsClosed()
     {
@@ -191,6 +198,7 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
     public async Task ResumeRejectsDifferentCommandHashWithoutUnlock()
     {

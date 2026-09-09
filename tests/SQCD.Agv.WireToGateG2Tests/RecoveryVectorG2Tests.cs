@@ -78,6 +78,7 @@ public sealed class RecoveryVectorG2Tests
     /// REPORT_HANDOFF_OUTCOME, and the authorized half of HANDOFF_ONLY_ON_AUTHORIZED_COMMAND.
     /// </summary>
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
     public async Task AuthorizedFaultCargoCommandIsExecutedAndItsOutcomeIsReported()
     {
@@ -126,6 +127,7 @@ public sealed class RecoveryVectorG2Tests
     /// have pulsed the first slot before anything else could fail.
     /// </remarks>
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
     public async Task FaultCargoCommandNamingADifferentHandoffIsRefusedWithoutSlotIo()
     {
@@ -149,6 +151,7 @@ public sealed class RecoveryVectorG2Tests
     /// from ever claiming.
     /// </summary>
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
     public async Task ForcedMechanicalRecoveryOutcomeIsReportedWithNeitherProofClaimed()
     {
@@ -198,6 +201,7 @@ public sealed class RecoveryVectorG2Tests
     /// command would have pulsed one before it could fail for any other reason.
     /// </remarks>
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
     public async Task StaleForcedRecoveryGenerationIsRefusedWithoutSlotIoOrResult()
     {
@@ -238,6 +242,7 @@ public sealed class RecoveryVectorG2Tests
     /// </para>
     /// </remarks>
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
     public async Task ForcedRecoveryGenerationIsNotRaisedByACommandRefusedOnScope()
     {

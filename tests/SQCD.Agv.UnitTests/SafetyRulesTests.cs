@@ -6,6 +6,7 @@ namespace SQCD.Agv.UnitTests;
 public sealed class SafetyRulesTests
 {
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
     public void ResumeAuthorizationRequiresExactPersistedAttemptAndCheckpoint()
     {
@@ -251,6 +252,7 @@ public sealed class SafetyRulesTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("ProtocolVector", "CV-PREDEPARTURE-SAFETY-EXPIRES")]
     public void StaleSnapshotIsRejectedBeforeUnlockAndDeparture()
     {

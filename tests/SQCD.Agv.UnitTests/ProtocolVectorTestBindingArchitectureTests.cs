@@ -1,6 +1,4 @@
-using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using SQCD.Agv.Contracts;
 
 namespace SQCD.Agv.UnitTests;
@@ -69,7 +67,7 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// Path of the vendored slice index, relative to the vendor root -- and, spelled exactly like
     /// this, its key in the manifest's own <c>files</c> table.
     /// </summary>
-    private const string IndexRelativePath = "integration-slices/index.json";
+    private const string IndexRelativePath = VendoredSliceIndex.IndexRelativePath;
 
     /// <summary>
     /// The <c>sequence</c> of the last slice this batch implements. Sequences 0 through 7 are
@@ -87,7 +85,7 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// stated as a sequence at all: it pins each slice's id to its own sequence, so "sequence 7" and
     /// "<c>FP-IS-07</c>" cannot drift apart.
     /// </remarks>
-    private const int LastSliceSequenceThisBatchImplements = 7;
+    internal const int LastSliceSequenceThisBatchImplements = 7;
 
     /// <summary>
     /// The frozen vectors that have no named test <b>because nobody has built their slice yet</b>,
@@ -170,56 +168,6 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     private static readonly IReadOnlyDictionary<string, string> VectorsThisBatchOwesANamedTest =
         new SortedDictionary<string, string>(StringComparer.Ordinal);
 
-    /// <summary>
-    /// A vector claim anywhere inside an attribute list. The trait name is interpolated from
-    /// <see cref="VectorTrait"/> rather than spelled again: a second, uncompared copy of it here
-    /// would go blind the day the trait is renamed, which is the same drift the vendoring
-    /// discipline exists to prevent.
-    /// </summary>
-    /// <remarks>
-    /// Not anchored to <c>[</c>, so it reads a combined list -- <c>[Fact, Trait(...)]</c> -- as
-    /// well as the one-attribute-per-line form this repository writes. It is only ever run over
-    /// text already established to be an attribute list.
-    /// </remarks>
-    private static readonly Regex VectorTraitRegex = new(
-        @"\bTrait\s*\(\s*""" + VectorTrait + @"""\s*,\s*""(?<vectorId>[^""]*)""\s*\)",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    /// <summary>
-    /// A <c>[Fact]</c> or <c>[Theory]</c> as an element of an attribute list, with its arguments.
-    /// </summary>
-    private static readonly Regex RunnableTestAttributeRegex = new(
-        @"(?<=[\[,])\s*(?:Fact|Theory)\b\s*(?:\((?<arguments>[^)]*)\))?",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    /// <summary>
-    /// The <c>Skip</c> argument specifically, not the word anywhere in the arguments -- a
-    /// <c>[Fact(DisplayName = "Skips empty slots")]</c> is a test that runs.
-    /// </summary>
-    private static readonly Regex SkipArgumentRegex = new(
-        @"\bSkip\s*=",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static readonly Regex TypeDeclarationRegex = new(
-        @"\b(?:class|record|struct|interface|enum)\s+[A-Za-z_][A-Za-z0-9_]*",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    /// <summary>
-    /// A member declaration, which this repository always writes with an explicit accessibility
-    /// modifier (<c>.editorconfig</c>: <c>dotnet_style_require_accessibility_modifiers = always</c>).
-    /// </summary>
-    /// <remarks>
-    /// Requiring the modifier is what lets a claim that lands on something which is not a
-    /// declaration at all be reported rather than bound to the file. Without it, the line after a
-    /// block-commented-out test -- or after a stray bracket run -- would silently become the
-    /// declaration a vector is proved by.
-    /// </remarks>
-    private static readonly Regex MemberDeclarationRegex = new(
-        @"^\s*(?:public|private|internal|protected)\b[^;=]*?\b(?<name>[A-Za-z_][A-Za-z0-9_]*)\s*\(",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private sealed record Slice(string SliceId, int Sequence, IReadOnlyList<string> VectorIds);
-
     private sealed record VectorBinding(string VectorId, string TestName);
 
     private sealed record ScanResult(
@@ -227,24 +175,6 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
         IReadOnlyList<string> TypeLevelClaims,
         IReadOnlyList<string> ClaimsOnTestsThatDoNotRun,
         IReadOnlyList<string> UnattributableClaims);
-
-    /// <summary>
-    /// What one pass of the scanner collects. The four lists always travel together, so they travel
-    /// as one thing rather than as four parameters.
-    /// </summary>
-    private sealed class ClaimAccumulator
-    {
-        public List<VectorBinding> Bindings { get; } = [];
-
-        public List<string> TypeLevelClaims { get; } = [];
-
-        public List<string> ClaimsOnTestsThatDoNotRun { get; } = [];
-
-        public List<string> UnattributableClaims { get; } = [];
-
-        public ScanResult ToResult() => new(
-            Bindings, TypeLevelClaims, ClaimsOnTestsThatDoNotRun, UnattributableClaims);
-    }
 
     /// <summary>
     /// The vendored index is the protocol's own file, pinned by the manifest this onboard's wire
@@ -807,308 +737,37 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
 
     private static ScanResult Scan() => Scan(TestsRoot());
 
-    private static ScanResult Scan(string root)
-    {
-        ClaimAccumulator claims = new();
+    private static ScanResult Scan(string root) =>
+        Adapt(TestSourceTraitScanner.Scan(root, VectorTrait));
 
-        foreach (string path in Directory
-            .EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
-            .Where(IsHandWrittenSource)
-            .Order(StringComparer.Ordinal))
-        {
-            ScanText(
-                File.ReadAllText(path),
-                Path.GetRelativePath(RepositoryRoot(), path).Replace('\\', '/'),
-                claims);
-        }
-
-        return claims.ToResult();
-    }
-
-    private static ScanResult ScanText(string source, string path)
-    {
-        ClaimAccumulator claims = new();
-        ScanText(source, path, claims);
-        return claims.ToResult();
-    }
+    private static ScanResult ScanText(string source, string path) =>
+        Adapt(TestSourceTraitScanner.ScanText(source, path, VectorTrait));
 
     /// <summary>
-    /// Reads every attribute list in one file and attributes its vector claims to the declaration
-    /// the list sits on.
+    /// The shared scanner's per-test view, flattened back into the one-binding-per-claim shape the
+    /// assertions above are written against.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// Comments are blanked first, so a commented-out test cannot go on proving its vector. That is
-    /// the one blind spot here that failed <i>green</i> rather than red:
-    /// <see cref="TheScannerIgnoresATraitInsideABlockComment"/> is the proof.
-    /// </para>
-    /// <para>
-    /// A block then starts on a line whose trimmed form opens with <c>[</c> and runs until its
-    /// brackets balance, so a multi-line attribute is read whole; consecutive lists are gathered
-    /// into one block, which is how this repository writes them. A collection expression opening a
-    /// line satisfies the same rule and is picked up too -- harmless, because a block yielding no
-    /// <see cref="VectorTrait"/> match is discarded before anything else happens.
-    /// </para>
-    /// <para>
-    /// The declaration is the line after the block, and it has to <b>be</b> a declaration.
-    /// Everything else is reported as unattributable rather than bound to the file, because a claim
-    /// the scanner cannot place is a claim nobody is checking.
-    /// </para>
+    /// The scanner moved to <see cref="TestSourceTraitScanner"/> when
+    /// <see cref="IntegrationSliceTraitArchitectureTests"/> needed the same four behaviours over two
+    /// traits at once. This adapter is what let that happen without touching one assertion here --
+    /// and the vacuity proofs below, which drive the scanner through
+    /// <see cref="ScanText(string, string)"/>, are what say the move changed no behaviour.
     /// </remarks>
-    private static void ScanText(string source, string path, ClaimAccumulator claims)
-    {
-        string[] lines = BlankOutComments(
-            source.Replace("\r\n", "\n", StringComparison.Ordinal)).Split('\n');
-
-        int index = 0;
-        while (index < lines.Length)
-        {
-            if (!OpensAnAttributeList(lines[index]))
-            {
-                index++;
-                continue;
-            }
-
-            int start = index;
-            while (index < lines.Length && OpensAnAttributeList(lines[index]))
-            {
-                int depth = 0;
-                do
-                {
-                    depth += BracketDelta(lines[index]);
-                    index++;
-                }
-                while (index < lines.Length && depth > 0);
-            }
-
-            string block = string.Join('\n', lines[start..index]);
-            string[] claimed =
-            [
-                .. VectorTraitRegex.Matches(block).Select(match => match.Groups["vectorId"].Value)
-            ];
-            if (claimed.Length == 0)
-            {
-                continue;
-            }
-
-            // C# allows whitespace and comments between an attribute list and what it decorates,
-            // and comments are blank by the time we get here, so the declaration is the next line
-            // with anything on it.
-            int declarationLine = index;
-            while (declarationLine < lines.Length
-                && string.IsNullOrWhiteSpace(lines[declarationLine]))
-            {
-                declarationLine++;
-            }
-
-            string declaration = declarationLine < lines.Length
-                ? lines[declarationLine]
-                : string.Empty;
-            string site = $"{path}:{start + 1}";
-
-            if (TypeDeclarationRegex.IsMatch(declaration))
-            {
-                Record(claims.TypeLevelClaims, claimed, site, "on a type declaration");
-                continue;
-            }
-
-            Match member = MemberDeclarationRegex.Match(declaration);
-            if (!member.Success)
-            {
-                Record(
-                    claims.UnattributableClaims,
-                    claimed,
-                    site,
-                    "on something that is not a declaration");
-                continue;
-            }
-
-            if (!RunsAsATest(block))
-            {
-                Record(
-                    claims.ClaimsOnTestsThatDoNotRun,
-                    claimed,
-                    site,
-                    "on a member that does not run as a test");
-                continue;
-            }
-
-            string testName = $"{member.Groups["name"].Value} ({site})";
-            foreach (string vectorId in claimed)
-            {
-                claims.Bindings.Add(new VectorBinding(vectorId, testName));
-            }
-        }
-    }
-
-    private static void Record(
-        List<string> destination,
-        IEnumerable<string> claimed,
-        string site,
-        string what)
-    {
-        foreach (string vectorId in claimed)
-        {
-            destination.Add($"{site} claims {vectorId} {what}");
-        }
-    }
-
-    private static bool OpensAnAttributeList(string line) => line.TrimStart().StartsWith('[');
-
-    /// <summary>
-    /// Net bracket depth contributed by one line, ignoring brackets inside string literals.
-    /// </summary>
-    private static int BracketDelta(string line)
-    {
-        int delta = 0;
-        for (int i = 0; i < line.Length; i++)
-        {
-            if (line[i] == '"')
-            {
-                i = EndOfStringLiteral(line, i);
-                continue;
-            }
-
-            if (line[i] == '[')
-            {
-                delta++;
-            }
-            else if (line[i] == ']')
-            {
-                delta--;
-            }
-        }
-
-        return delta;
-    }
-
-    /// <summary>
-    /// Replaces every comment with blanks, keeping the file's line numbering intact so reported
-    /// sites still point at the right line.
-    /// </summary>
-    private static string BlankOutComments(string source)
-    {
-        StringBuilder builder = new(source.Length);
-        for (int i = 0; i < source.Length; i++)
-        {
-            if (source[i] == '"')
-            {
-                int end = EndOfStringLiteral(source, i);
-                builder.Append(source, i, end - i + 1);
-                i = end;
-                continue;
-            }
-
-            if (source[i] != '/' || i + 1 >= source.Length)
-            {
-                builder.Append(source[i]);
-                continue;
-            }
-
-            int commentEnd;
-            if (source[i + 1] == '/')
-            {
-                int newline = source.IndexOf('\n', i);
-                commentEnd = newline < 0 ? source.Length : newline;
-            }
-            else if (source[i + 1] == '*')
-            {
-                int close = source.IndexOf("*/", i + 2, StringComparison.Ordinal);
-                commentEnd = close < 0 ? source.Length : close + 2;
-            }
-            else
-            {
-                builder.Append(source[i]);
-                continue;
-            }
-
-            for (int j = i; j < commentEnd; j++)
-            {
-                builder.Append(source[j] == '\n' ? '\n' : ' ');
-            }
-
-            i = commentEnd - 1;
-        }
-
-        return builder.ToString();
-    }
-
-    /// <summary>
-    /// Index of the closing quote of the string literal opening at <paramref name="quote"/>,
-    /// handling verbatim literals and escapes.
-    /// </summary>
-    private static int EndOfStringLiteral(string text, int quote)
-    {
-        bool verbatim = quote > 0 && text[quote - 1] == '@';
-        for (int i = quote + 1; i < text.Length; i++)
-        {
-            if (!verbatim && text[i] == '\\')
-            {
-                i++;
-                continue;
-            }
-
-            if (text[i] != '"')
-            {
-                continue;
-            }
-
-            if (verbatim && i + 1 < text.Length && text[i + 1] == '"')
-            {
-                i++;
-                continue;
-            }
-
-            return i;
-        }
-
-        return text.Length - 1;
-    }
-
-    private static bool RunsAsATest(string attributeBlock) => RunnableTestAttributeRegex
-        .Matches(attributeBlock)
-        .Any(match => !SkipArgumentRegex.IsMatch(match.Groups["arguments"].Value));
-
-    /// <summary>
-    /// Hand-written source only: <c>bin/</c> and <c>obj/</c> hold generated and copied files, and a
-    /// stale build output there would let a deleted test go on binding its vector.
-    /// </summary>
-    private static bool IsHandWrittenSource(string path)
-    {
-        string normalised = path.Replace('\\', '/');
-        return !normalised.Contains("/bin/", StringComparison.Ordinal)
-            && !normalised.Contains("/obj/", StringComparison.Ordinal);
-    }
-
-    private static string[] FrozenVectorIds() =>
-    [
-        .. Slices()
-            .SelectMany(slice => slice.VectorIds)
-            .Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal)
-    ];
-
-    private static Slice[] Slices()
-    {
-        using JsonDocument index = JsonDocument.Parse(File.ReadAllBytes(IndexPath()));
-
-        return
+    private static ScanResult Adapt(TraitScanResult scan) => new(
         [
-            .. index.RootElement.GetProperty("slices").EnumerateArray().Select(slice => new Slice(
-                slice.GetProperty("integrationSliceId").GetString()!,
-                slice.GetProperty("sequence").GetInt32(),
-                [
-                    .. slice.GetProperty("vectorIds").EnumerateArray()
-                        .Select(vectorId => vectorId.GetString()!)
-                ]))
-        ];
-    }
+            .. scan.Tests.SelectMany(test => test.ValuesOf(VectorTrait)
+                .Select(vectorId => new VectorBinding(vectorId, test.TestName)))
+        ],
+        scan.TypeLevelClaims,
+        scan.ClaimsOnTestsThatDoNotRun,
+        scan.UnattributableClaims);
 
-    private static string IndexPath() => Path.Combine(
-        ProtocolIdentityArchitectureTests.VendorRoot(),
-        IndexRelativePath.Replace('/', Path.DirectorySeparatorChar));
+    private static string[] FrozenVectorIds() => VendoredSliceIndex.FrozenVectorIds();
 
-    private static string TestsRoot() => Path.Combine(RepositoryRoot(), "tests");
+    private static Slice[] Slices() => VendoredSliceIndex.Slices();
 
-    private static string RepositoryRoot() => ProtocolIdentityArchitectureTests.RepositoryRoot();
+    private static string IndexPath() => VendoredSliceIndex.IndexPath();
+
+    private static string TestsRoot() => VendoredSliceIndex.TestsRoot();
 }

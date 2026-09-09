@@ -92,6 +92,7 @@ public sealed class ControlServerVehicleSafetySignalProviderTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("ProtocolVector", "CV-PREDEPARTURE-SAFETY-EXPIRES")]
     public async Task ExpiredEvidenceIsUnknownAndDoesNotPreserveStopped()
     {

@@ -22,6 +22,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
     [Trait("ProtocolVector", "CV-SESSION-RECOVERY-HAPPY")]
     public async Task HappyPathCompletesFullSequenceAndBecomesReady()
     {
@@ -46,6 +47,8 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("IntegrationSlice", "FP-IS-05")]
     [Trait("ProtocolVector", "CV-SESSION-RECONNECT-DURING-RECOVERY")]
     public async Task ReconnectDuringRecoveryRebindsDurableReportWithoutUnlockSideEffects()
     {
@@ -139,6 +142,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
     [Trait("ProtocolVector", "CV-SNAPSHOT-REPLACE-AND-ACK")]
     public async Task SnapshotReplaceAndAckAcceptsHigherRevisionOnNewConnection()
     {
@@ -165,6 +169,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
     [Trait("ProtocolVector", "CV-SNAPSHOT-SAME-REVISION-CONFLICT")]
     public async Task SameRevisionDifferentContentFailsClosedWithProtocolProblemReasonCode()
     {
@@ -198,6 +203,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-06")]
     [Trait("ProtocolVector", "CV-RELIABLE-RETRY-SAME-CONTENT")]
     public async Task DurableOutboxIsAcknowledgedAfterServerDurableAck()
     {
@@ -230,6 +236,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
     public async Task RecoverySessionAndActionResponsesAreCorrelatedWithoutPhysicalIo()
     {
@@ -287,6 +294,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
     public async Task ManualChargingReturnToServiceAcceptedResultIsCorrelatedToRequestedMessage()
     {
@@ -335,6 +343,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
     public async Task ManualChargingReturnToServiceRejectedResultPreservesRegisteredProblem()
     {
@@ -376,6 +385,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
     public async Task DuplicateManualChargingReturnToServiceResultDoesNotRaiseSecondCommand()
     {
@@ -423,6 +433,8 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-06")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
     [Trait("ProtocolVector", "CV-REQUEST-FIRST-RESULT-REPLAY")]
     public async Task MissingManualChargingReturnToServiceResultTimesOutExplicitly()
@@ -458,6 +470,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
     [Trait("ProtocolVector", "CV-SESSION-RECOVERY-HAPPY")]
     public async Task BusinessBootstrapsRecoveryRequestBeforeServerSnapshot()
     {
@@ -728,6 +741,7 @@ public sealed class WireToGateG2Tests
     /// sent the pick-up half, whose values v2 did not change.
     /// </remarks>
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-01")]
     [Trait("ProtocolVector", "CV-DEMAND-ACCEPT-TO-PICKUP")]
     public async Task DropoffStopSnapshotsAreProjectedRatherThanRefused()
     {
@@ -765,6 +779,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
     [Trait("ProtocolVector", "CV-SNAPSHOT-REPLACE-AND-ACK")]
     public async Task JourneySnapshotsAreProjectedAndHeartbeatDoesNotStealAsyncMessages()
     {
@@ -801,6 +816,8 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("IntegrationSlice", "FP-IS-05")]
     [Trait("ProtocolVector", "CV-SESSION-RECONNECT-DURING-RECOVERY")]
     public async Task SameJourneyRevisionsWithStablePayloadAreAcceptedAcrossSessionGenerations()
     {
@@ -918,6 +935,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
     [Trait("ProtocolVector", "CV-SNAPSHOT-SAME-REVISION-CONFLICT")]
     public async Task AppliedJourneyJournalUsesCanonicalPayloadForSameRevisionIdentity()
     {
@@ -955,6 +973,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-01")]
     [Trait("ProtocolVector", "CV-DEMAND-ACCEPT-TO-PICKUP")]
     public async Task DemandAcceptanceSnapshotsArePersistedBeforeAcknowledgement()
     {
@@ -1017,6 +1036,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-01")]
     [Trait("ProtocolVector", "CV-DEMAND-ACCEPT-TO-PICKUP")]
     public async Task PersistedDemandProjectionIsRestoredWhenServerDoesNotResendIt()
     {
@@ -1052,6 +1072,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
     [Trait("ProtocolVector", "CV-SNAPSHOT-SAME-REVISION-CONFLICT")]
     public async Task SameJourneyRevisionWithDifferentContentFailsClosed()
     {
@@ -1077,6 +1098,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
     public async Task FormalSlotOperationCommandIsValidatedAndRaisedWithoutPhysicalSideEffect()
     {
@@ -1102,6 +1124,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-06")]
     [Trait("ProtocolVector", "CV-RELIABLE-RETRY-SAME-CONTENT")]
     public async Task BusinessProgressUsesStableDurableMessageAndDoesNotDuplicateAfterAck()
     {
@@ -1135,6 +1158,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-06")]
     [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
     public async Task DurableOutboxRejectsDifferentContentForSameDeduplicationKey()
     {
@@ -1246,6 +1270,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-06")]
     [Trait("ProtocolVector", "CV-RELIABLE-RETRY-SAME-CONTENT")]
     public async Task LostSafetyStateChangedAckReplaysSameIdentityAndBusinessContentFromJournal()
     {
@@ -1316,6 +1341,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("ProtocolVector", "CV-PREDEPARTURE-SAFETY-EXPIRES")]
     public async Task DelayedStoppedSafetyRevisionRecoversSessionToReadyWithoutIoSideEffects()
     {
@@ -1364,6 +1390,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("ProtocolVector", "CV-PREDEPARTURE-SAFETY-EXPIRES")]
     public async Task FailedThenStoppedProviderRefreshFlowsThroughBusinessServiceToReady()
     {
@@ -1468,6 +1495,7 @@ public sealed class WireToGateG2Tests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-05")]
     [Trait("ProtocolVector", "CV-CONNECTION-LOSS-SAFE-FINISH")]
     public async Task BusinessSafetySendFailureDisconnectsAndReplaysPendingRevision()
     {

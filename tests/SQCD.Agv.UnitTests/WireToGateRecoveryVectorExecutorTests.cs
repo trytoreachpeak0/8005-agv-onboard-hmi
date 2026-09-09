@@ -7,6 +7,7 @@ namespace SQCD.Agv.UnitTests;
 public sealed class WireToGateRecoveryVectorExecutorTests
 {
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
     public async Task ClearSkipsEmptySlotsAndUnlocksOnlyOccupiedSlots()
     {
@@ -35,6 +36,7 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-06")]
     [Trait("ProtocolVector", "CV-REQUEST-FIRST-RESULT-REPLAY")]
     public async Task ReplayingACompletedVectorKeepsTheSameObservedAtAndDoesNotPulse()
     {
@@ -61,6 +63,7 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("ProtocolVector", "CV-LOAD-CORRECTION")]
     public async Task CorrectionRequiresEmptyThenOccupiedSequence()
     {
@@ -86,6 +89,8 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task UnknownSnapshotFailsClosedWithoutUnlock()
     {
@@ -108,6 +113,8 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     }
 
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
     [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task ActiveUnlockCheckpointIsNotPulsedAgainAfterUncertainFailure()

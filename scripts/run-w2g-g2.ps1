@@ -2,6 +2,15 @@
 param(
     [string]$ProtocolRoot = '',
     [string]$EvidenceRoot = '',
+    # Without this the run tests the whole solution and writes one verdict, which is all
+    # ONBOARD_HMI_G2 could ever say before the IntegrationSlice trait existed: FP-IS-00 and
+    # FP-IS-01 shared a conclusion and the other six slices did not appear at all. With it the run
+    # certifies exactly one slice and writes a gate-result.json for it, so eight runs make the eight
+    # per-slice artefacts track A's recertification is defined in terms of.
+    #
+    # The pattern is the frozen sixteen. A slice that is in the family but has no test here is
+    # refused rather than certified -- see the preflight below.
+    [ValidatePattern('^FP-IS-(0[0-9]|1[0-5])$')][string]$Slice,
     [switch]$SkipProtocolG1
 )
 
@@ -41,7 +50,60 @@ $runUtc = [DateTime]::UtcNow
 $runId = $runUtc.ToString('yyyyMMddTHHmmssfffZ')
 $hmiCommit = (& git -C $hmiRoot rev-parse HEAD).Trim()
 $shortHmiCommit = if ($hmiCommit.Length -ge 12) { $hmiCommit.Substring(0, 12) } else { $hmiCommit }
+
+# The slice preflight runs before any directory exists, and before the Release build the run would
+# otherwise pay for. A filter that selects nothing exits 0 -- measured on this solution, 2026-09-09,
+# `--filter "IntegrationSlice=FP-IS-13"` returned exit code 0 over zero executed tests -- so without
+# this a slice nobody has built here would be written out as PASS. That is the defect ticket 14
+# closed on the control server side (docs/defects/20260908-empty-slice-filter-mints-a-green-g2.md);
+# this is the same hole on this end.
+#
+# Refusing, rather than writing INCONCLUSIVE evidence. An evidence directory that exists is a run
+# that happened; a slice with no tests here has nothing to run, and the honest artefact is none.
+#
+# The listing is matched on the test namespace rather than on indentation: VSTest prints each test
+# indented under "The following Tests are available:" today, but a gate-blocking decision should not
+# rest on a console layout, and SQCD.Agv. is a prefix this repository controls.
+#
+# The second dot is load-bearing, and this is why. This preflight runs before the script's own build
+# step, so `dotnet test --list-tests` builds, and MSBuild prints one "  SQCD.Agv.Core -> ...\*.dll"
+# line per project. Measured on 2026-09-09, before the dot was required: -Slice FP-IS-04 counted 11
+# where the truth is 2 -- the nine build lines plus the two tests -- and wrote that 11 into
+# gate-result.json. A fully qualified test name always has a dot after the assembly's namespace; a
+# build line has a space there.
+$sliceIndexPath = Join-Path $ProtocolRoot 'integration-slices\index.json'
+$sliceEntry = $null
+$selectedTestCount = $null
+$sliceIndexSha256 = $null
+if (-not [string]::IsNullOrWhiteSpace($Slice)) {
+    if (-not (Test-Path -LiteralPath $sliceIndexPath -PathType Leaf)) {
+        throw "找不到切片索引：$sliceIndexPath"
+    }
+    $sliceIndexSha256 = (Get-FileHash -LiteralPath $sliceIndexPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    $sliceEntry = (Get-Content -LiteralPath $sliceIndexPath -Raw | ConvertFrom-Json).slices |
+        Where-Object { $_.integrationSliceId -eq $Slice }
+    if ($null -eq $sliceEntry) {
+        throw "切片 '$Slice' 不在协议冻结的切片族里：$sliceIndexPath"
+    }
+
+    Push-Location $hmiRoot
+    try {
+        $listed = @(& dotnet test '.\SQCD_8005AGV.sln' -c Release --list-tests --filter "IntegrationSlice=$Slice" |
+            Where-Object { $_ -match '^\s+SQCD\.Agv\.\S+\.\S' })
+    } finally {
+        Pop-Location
+    }
+    $selectedTestCount = $listed.Count
+    if ($selectedTestCount -eq 0) {
+        throw ("切片 '$Slice' 在本仓选不中任何测试，ONBOARD_HMI_G2 没有东西可证。" +
+               "它的向量是 " + ($sliceEntry.vectorIds -join ', ') + '。')
+    }
+}
+
 $runDirectory = Join-Path (Join-Path $EvidenceRoot $expected.Tag) ($runId + '-' + $shortHmiCommit)
+if (-not [string]::IsNullOrWhiteSpace($Slice)) {
+    $runDirectory = Join-Path (Join-Path (Join-Path $EvidenceRoot $expected.Tag) $Slice) ($runId + '-' + $shortHmiCommit)
+}
 $logsDirectory = Join-Path $runDirectory 'logs'
 $resultsDirectory = Join-Path $runDirectory 'test-results'
 New-Item -ItemType Directory -Force -Path $logsDirectory, $resultsDirectory | Out-Null
@@ -184,6 +246,8 @@ Add-Event $transcript 'run.started' @{
     runId = $runId
     hmiRoot = $hmiRoot
     protocolRoot = $ProtocolRoot
+    integrationSliceId = $Slice
+    selectedTestCount = $selectedTestCount
 }
 Add-Event $journal 'run.started' @{ runId = $runId; evidenceDirectory = $runDirectory }
 
@@ -253,7 +317,37 @@ if (-not $SkipProtocolG1) {
 }
 
 $build = Invoke-LoggedCommand -Name 'dotnet-build-release' -FilePath 'dotnet' -Arguments @('build', '.\SQCD_8005AGV.sln', '-c', 'Release') -LogPath (Join-Path $logsDirectory 'dotnet-build-release.log')
-$test = Invoke-LoggedCommand -Name 'dotnet-test-release' -FilePath 'dotnet' -Arguments @('test', '.\SQCD_8005AGV.sln', '-c', 'Release', '--no-build', '--results-directory', $resultsDirectory) -LogPath (Join-Path $logsDirectory 'dotnet-test-release.log')
+
+# Build and format stay whole-repository even for a slice run. They are properties of the tree, not
+# of the slice, and narrowing them would leave each slice's evidence covering only the files that
+# slice happens to touch.
+$testArguments = @('test', '.\SQCD_8005AGV.sln', '-c', 'Release', '--no-build', '--results-directory', $resultsDirectory)
+if (-not [string]::IsNullOrWhiteSpace($Slice)) {
+    # LogFilePrefix, not LogFileName. This solution has two test projects and a slice can select
+    # tests in both; LogFileName gives them the same path and the second silently overwrites the
+    # first. Measured on 2026-09-09: -Slice FP-IS-01 selected 5 tests and left one .trx holding 3.
+    # The prefix form appends the framework and a timestamp, so each project keeps its own file.
+    $testArguments += @('--filter', "IntegrationSlice=$Slice", '--logger', "trx;LogFilePrefix=onboard-$Slice")
+}
+$test = Invoke-LoggedCommand -Name 'dotnet-test-release' -FilePath 'dotnet' -Arguments $testArguments -LogPath (Join-Path $logsDirectory 'dotnet-test-release.log')
+
+# The prefix only makes a collision unlikely -- its timestamp has one-second resolution, and two
+# projects can finish inside one second. So the evidence is counted rather than trusted: the results
+# it records must be exactly the tests the preflight said the filter selects. This is what turns a
+# lost .trx from a quiet under-report into a FAIL, and it also catches a filter that selected one
+# set and ran another.
+$recordedTestCount = $null
+if (-not [string]::IsNullOrWhiteSpace($Slice)) {
+    $recordedTestCount = 0
+    foreach ($trx in @(Get-ChildItem -LiteralPath $resultsDirectory -Filter '*.trx' -File)) {
+        $recordedTestCount += ([regex]::Matches(
+            (Get-Content -LiteralPath $trx.FullName -Raw), '<UnitTestResult\b')).Count
+    }
+    if ($recordedTestCount -ne $selectedTestCount) {
+        Add-Failure ("切片 $Slice 的测试结果条数与选中条数不符：trx 里 $recordedTestCount 条，" +
+                     "选中 $selectedTestCount 条。证据不能声称覆盖了它没记下的测试。")
+    }
+}
 $format = Invoke-LoggedCommand -Name 'dotnet-format-verify' -FilePath 'dotnet' -Arguments @('format', '.\SQCD_8005AGV.sln', '--verify-no-changes', '--no-restore') -LogPath (Join-Path $logsDirectory 'dotnet-format-verify.log')
 
 $g1Text = if ($g1Result) { $g1Result.Output } else { '' }
@@ -282,12 +376,59 @@ Add-Event $journal 'hmi.validation.completed' @{
     testSummary = if ($testSummaryMatch.Success) { $testSummaryMatch.Value } else { 'unparsed' }
 }
 
+# One row per slice this run has something to say about. Without -Slice that is still the two the
+# whole-solution run could ever speak for, and they still share $hmiStatus -- which is exactly the
+# limitation -Slice exists to remove, so the knownLimitations entry below stays on that path.
+function New-SliceRow {
+    param([object]$Entry)
+
+    $row = [ordered]@{
+        integrationSliceId = $Entry.integrationSliceId
+        vectorIds = @($Entry.vectorIds)
+        onboardHmiG2 = $hmiStatus
+        controlServerG2 = 'PENDING_EXTERNAL'
+        g3 = 'PENDING_JOINT'
+    }
+
+    # FP-IS-01 carries three facts about where its demand comes from. They are properties of that
+    # slice, not of the run, so they travel with the row rather than with the caller.
+    if ($Entry.integrationSliceId -eq 'FP-IS-01') {
+        $row['demandMode'] = 'READ_ONLY_COMMITTED_PROJECTION'
+        $row['demandSource'] = 'CONTROL_SERVER_SNAPSHOTS_ONLY'
+        $row['controlServerOutcomes'] = @(
+            'MESINGEST_FINAL_REREAD',
+            'ATOMIC_DEMAND_ACCEPTANCE',
+            'DEDUPLICATED_TO_PICKUP_INTENT',
+            'RIOT_ORDER_RECONCILIATION',
+            'TRUSTED_PICKUP_ARRIVAL'
+        )
+    }
+
+    $row['forbidUnclosedFailOrInconclusive'] = [bool]$Entry.forbidUnclosedFailOrInconclusive
+    return $row
+}
+
+$sliceRows = if ($null -ne $sliceEntry) {
+    @((New-SliceRow $sliceEntry))
+} else {
+    @((New-SliceRow $is00), (New-SliceRow $is01))
+}
+
 $summary = [ordered]@{
-    schemaVersion = '1.0.0'
+    # 1.1.0, not 1.0.0: this run adds integrationSliceId, selectedTestCount and
+    # integrationSliceIndexSha256, matching the control server's gate-result bump for the same three
+    # facts. Additive, so a 1.0.0 reader still parses it -- but a consumer that cannot tell the two
+    # shapes apart cannot tell a whole-solution verdict from a per-slice one either, which is the
+    # whole reason -Slice exists.
+    schemaVersion = '1.1.0'
     evidenceType = 'ONBOARD_HMI_LOCAL_G2'
     status = if ($failures.Count -eq 0) { 'PASS' } else { 'FAIL' }
     generatedAtUtc = $runUtc.ToString('o')
     runId = $runId
+    integrationSliceId = $Slice
+    selectedTestCount = $selectedTestCount
+    recordedTestCount = $recordedTestCount
+    integrationSliceIndexSha256 = $sliceIndexSha256
     hmi = [ordered]@{
         commit = $hmiCommit
         branch = (& git -C $hmiRoot branch --show-current).Trim()
@@ -314,39 +455,14 @@ $summary = [ordered]@{
         test = [ordered]@{ exitCode = $test.ExitCode; log = 'logs/dotnet-test-release.log'; resultsDirectory = 'test-results' }
         format = [ordered]@{ exitCode = $format.ExitCode; log = 'logs/dotnet-format-verify.log' }
     }
-    slices = @(
-        [ordered]@{
-            integrationSliceId = 'FP-IS-00'
-            vectorIds = @($is00.vectorIds)
-            onboardHmiG2 = $hmiStatus
-            controlServerG2 = 'PENDING_EXTERNAL'
-            g3 = 'PENDING_JOINT'
-            forbidUnclosedFailOrInconclusive = [bool]$is00.forbidUnclosedFailOrInconclusive
-        },
-        [ordered]@{
-            integrationSliceId = 'FP-IS-01'
-            vectorIds = @($is01.vectorIds)
-            onboardHmiG2 = $hmiStatus
-            controlServerG2 = 'PENDING_EXTERNAL'
-            g3 = 'PENDING_JOINT'
-            demandMode = 'READ_ONLY_COMMITTED_PROJECTION'
-            demandSource = 'CONTROL_SERVER_SNAPSHOTS_ONLY'
-            controlServerOutcomes = @(
-                'MESINGEST_FINAL_REREAD',
-                'ATOMIC_DEMAND_ACCEPTANCE',
-                'DEDUPLICATED_TO_PICKUP_INTENT',
-                'RIOT_ORDER_RECONCILIATION',
-                'TRUSTED_PICKUP_ARRIVAL'
-            )
-            forbidUnclosedFailOrInconclusive = [bool]$is01.forbidUnclosedFailOrInconclusive
-        }
-    )
+    slices = @($sliceRows)
     failures = @($failures)
     artifacts = [ordered]@{
         transcript = 'transcript.ndjson'
         journal = 'journal.ndjson'
         logs = 'logs'
         testResults = 'test-results'
+        gateResult = if ([string]::IsNullOrWhiteSpace($Slice)) { $null } else { 'gate-result.json' }
     }
     knownLimitations = @(
         '本证据是 OnboardHmi 本机 G2；ControlServer G2 和联合 G3 仍需外部/现场门禁。',
@@ -354,8 +470,14 @@ $summary = [ordered]@{
         '真实车辆停稳信号、Modbus/锁/门/光幕和现场明文网络未在本机证据中宣称完成。',
         ('本证据绑定的是协议 v2 候选，approvalStatus=' + $expected.ApprovalStatus + '，不是已批准发布：' +
             $expected.Tag + ' 这个 tag 在协议仓里尚未打出（规格 6.6 第 6 条要两名产品负责人 attestation）。'),
-        ('本脚本跑整个解决方案的测试，不按切片过滤；summary.json 里 FP-IS-00 与 FP-IS-01 两片共享同一个 ' +
-            'onboardHmiG2 结论。按切片分别出证需要车载端先有 IntegrationSlice trait，那是票 20 的范围。')
+        $(if ([string]::IsNullOrWhiteSpace($Slice)) {
+            '本次未传 -Slice：测试跑的是整个解决方案，不按切片过滤，summary.json 里 FP-IS-00 与 FP-IS-01 ' +
+            '两片共享同一个 onboardHmiG2 结论。按切片各出一份证据请传 -Slice FP-IS-NN。'
+        } else {
+            '本次只证 ' + $Slice + ' 一片：测试按 IntegrationSlice=' + $Slice + ' 过滤，选中 ' +
+            $selectedTestCount + ' 条。构建与 dotnet format 仍是全仓的，不随切片收窄。' +
+            '其余切片的结论不在本目录里。'
+        })
     )
 }
 
@@ -363,6 +485,43 @@ Add-Event $transcript 'run.completed' @{ status = $summary.status; failures = $f
 $transcript | Set-Content -LiteralPath $transcriptPath -Encoding utf8
 $journal | Set-Content -LiteralPath $journalPath -Encoding utf8
 $summary | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath (Join-Path $runDirectory 'summary.json') -Encoding utf8
+
+# A slice run also writes gate-result.json, in the shape test-wire-to-gate.ps1 writes on the control
+# server side. Two ends of one slice should be readable by one reader: the field names, the
+# schemaVersion and the PASS/FAIL rule are that side's, and only `gate` and the implementation
+# repository differ. summary.json stays as well -- it carries the transcript, the G1 result and the
+# identity checks, none of which the gate result has room for.
+if (-not [string]::IsNullOrWhiteSpace($Slice)) {
+    $gateResult = [ordered]@{
+        schemaVersion = '1.1.0'
+        gate = 'ONBOARD_HMI_G2'
+        integrationSliceId = $Slice
+        status = $summary.status
+        startedAt = $runUtc.ToString('o')
+        finishedAt = ([DateTime]::UtcNow).ToString('o')
+        implementationRepository = '8005-agv-onboard-hmi'
+        implementationCommit = $hmiCommit
+        implementationBranch = $summary.hmi.branch
+        protocolReleaseVersion = $expected.ReleaseVersion
+        protocolTag = $expected.Tag
+        protocolProfileId = $expected.ProfileId
+        protocolVersion = $expected.ProtocolVersion
+        protocolApprovalStatus = $expected.ApprovalStatus
+        protocolRepositoryCommit = $expected.Commit
+        protocolManifestSha256 = $expected.ManifestSha256
+        protocolSchemaBundleSha256 = $expected.SchemaBundleSha256
+        protocolVectorsSha256 = $expected.VectorsSha256
+        integrationSliceIndexSha256 = $sliceIndexSha256
+        selectedTestCount = $selectedTestCount
+        recordedTestCount = $recordedTestCount
+        vectorIds = @($sliceEntry.vectorIds)
+        buildExitCode = $build.ExitCode
+        testExitCode = $test.ExitCode
+        formatExitCode = $format.ExitCode
+    }
+    $gateResult | ConvertTo-Json -Depth 30 |
+        Set-Content -LiteralPath (Join-Path $runDirectory 'gate-result.json') -Encoding utf8
+}
 
 Write-Host "G2 evidence: $runDirectory"
 Write-Host "Status: $($summary.status)"
