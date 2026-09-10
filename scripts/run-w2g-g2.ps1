@@ -148,6 +148,7 @@ function Read-SchemaConformance {
         linesChecked = $coverage.linesChecked
         linesInViolation = $coverage.linesInViolation
         linesInKnownViolation = $coverage.linesInKnownViolation
+        linesInDeliberateViolation = $coverage.linesInDeliberateViolation
         coverage = $RelativeDirectory + '/schema-coverage.json'
     }
 }
