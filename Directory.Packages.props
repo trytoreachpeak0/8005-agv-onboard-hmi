@@ -4,6 +4,9 @@
     <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Pinned by 8005-agv-protocol compatibility/implementation-version-matrix.json. Only
+         tools/SQCD.Agv.SchemaConformance may reference it; see that project for why. -->
+    <PackageVersion Include="Corvus.Json.Validator" Version="4.6.7" />
     <PackageVersion Include="Microsoft.Data.Sqlite.Core" Version="8.0.30" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageVersion Include="SQLitePCLRaw.provider.winsqlite3" Version="2.1.11" />

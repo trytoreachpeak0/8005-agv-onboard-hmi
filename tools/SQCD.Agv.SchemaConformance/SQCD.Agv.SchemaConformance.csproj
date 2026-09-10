@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- A separate process, never a referenced library. Corvus.Json.Validator brings System.Text.Json
+       10.0.4 and Roslyn; loaded into the test host, that System.Text.Json replaces the 8.0 one the
+       vehicle ships with, and every G2 test would then measure a serializer production never runs. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Corvus.Json.Validator" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/SQCD.Agv.Contracts/SQCD.Agv.Contracts.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="../../vendor/8005-agv-protocol/protocol-v0.3.0/**/*" LinkBase="protocol-v0.3.0/" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

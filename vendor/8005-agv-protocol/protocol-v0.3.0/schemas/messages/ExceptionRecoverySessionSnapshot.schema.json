@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/ExceptionRecoverySessionSnapshot.schema.json",
+  "title": "ExceptionRecoverySessionSnapshot",
+  "type": "object",
+  "properties": {
+    "protocolVersion": {
+      "type": "integer",
+      "const": 3
+    },
+    "profileId": {
+      "type": "string",
+      "minLength": 1,
+      "const": "WIRE_TO_GATE_MVP"
+    },
+    "protocolReleaseVersion": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "examples": [
+        "0.1.0"
+      ]
+    },
+    "protocolReleaseManifestSha256": {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/Sha256"
+    },
+    "messageType": {
+      "type": "string",
+      "minLength": 1,
+      "const": "ExceptionRecoverySessionSnapshot"
+    },
+    "messageId": {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/Id"
+    },
+    "correlationId": {
+      "type": "null"
+    },
+    "agvId": {
+      "type": "string",
+      "minLength": 1,
+      "examples": [
+        "AGV-8005-01"
+      ]
+    },
+    "sessionGeneration": {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/Generation"
+    },
+    "sentAt": {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/Instant"
+    },
+    "payload": {
+      "type": "object",
+      "properties": {
+        "exceptionRecoverySessionId": {
+          "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/Id"
+        },
+        "recoverySessionRevision": {
+          "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/Revision"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "OPEN",
+            "ACTION_SELECTED",
+            "EXECUTING",
+            "CLOSED"
+          ]
+        },
+        "administratorId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "administratorRole": {
+          "type": "string",
+          "enum": [
+            "MAINTENANCE_ADMINISTRATOR",
+            "SYSTEM_ADMINISTRATOR"
+          ]
+        },
+        "eventId": {
+          "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/Id"
+        },
+        "demandId": {
+          "anyOf": [
+            {
+              "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "slotOperationAttemptId": {
+          "anyOf": [
+            {
+              "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "slots": {
+          "type": "array",
+          "items": {
+            "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/SlotNo"
+          },
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "x-sortedAscending": true
+        },
+        "selectedAction": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "RESUME_AFTER_REPAIR",
+                "COMPENSATE_LOAD_ALL_EMPTY",
+                "FAULT_CARGO_HANDOFF",
+                "FORCED_MECHANICAL_RECOVERY"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "allowedActions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "RESUME_AFTER_REPAIR",
+              "COMPENSATE_LOAD_ALL_EMPTY",
+              "FAULT_CARGO_HANDOFF",
+              "FORCED_MECHANICAL_RECOVERY"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "blockingFacts": {
+          "type": "array",
+          "items": {
+            "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/BlockingFact"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "exceptionRecoverySessionId",
+        "recoverySessionRevision",
+        "state",
+        "administratorId",
+        "administratorRole",
+        "eventId",
+        "demandId",
+        "slotOperationAttemptId",
+        "slots",
+        "selectedAction",
+        "allowedActions",
+        "blockingFacts"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "protocolVersion",
+    "profileId",
+    "protocolReleaseVersion",
+    "protocolReleaseManifestSha256",
+    "messageType",
+    "messageId",
+    "correlationId",
+    "agvId",
+    "sessionGeneration",
+    "sentAt",
+    "payload"
+  ],
+  "additionalProperties": false
+}

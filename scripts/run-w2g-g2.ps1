@@ -100,17 +100,26 @@ function Invoke-LoggedCommand {
         [string]$Name,
         [string]$FilePath,
         [string[]]$Arguments,
-        [string]$LogPath
+        [string]$LogPath,
+        [string]$SchemaReportDirectory = ''
     )
 
     Add-Event $transcript 'command.started' @{ name = $Name; arguments = $Arguments }
     Push-Location $hmiRoot
+    # WireToGateG2Tests 在测试进程结束时把本次发出的每一条协议报文交给 tools/SQCD.Agv.SchemaConformance
+    # 对 protocol JSON Schema 逐条验（OutboundSchemaConformance.cs）。违约让 dotnet test 退出码非 0，
+    # 而控制台摘要仍写 Failed: 0——所以这里一律按退出码判。schema-coverage.json 与（违约时）
+    # schema-violations.json 落在这个目录里。
+    if (-not [string]::IsNullOrWhiteSpace($SchemaReportDirectory)) {
+        $env:WIRE_TO_GATE_SCHEMA_REPORT_DIR = $SchemaReportDirectory
+    }
     try {
         $output = & $FilePath @Arguments 2>&1
         $exitCode = $LASTEXITCODE
         $output | Out-File -LiteralPath $LogPath -Encoding utf8
     } finally {
         Pop-Location
+        Remove-Item Env:WIRE_TO_GATE_SCHEMA_REPORT_DIR -ErrorAction SilentlyContinue
     }
     Add-Event $transcript 'command.completed' @{ name = $Name; exitCode = $exitCode; log = (Split-Path -Leaf $LogPath) }
     if ($exitCode -ne 0) {
@@ -121,6 +130,26 @@ function Invoke-LoggedCommand {
         ExitCode = $exitCode
         Output = ($output -join [Environment]::NewLine)
         LogPath = $LogPath
+    }
+}
+
+function Read-SchemaConformance {
+    param(
+        [string]$Directory,
+        [string]$RelativeDirectory
+    )
+
+    $path = Join-Path $Directory 'schema-coverage.json'
+    if (-not (Test-Path -LiteralPath $path)) {
+        return $null
+    }
+    $coverage = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+    return [ordered]@{
+        linesChecked = $coverage.linesChecked
+        linesInViolation = $coverage.linesInViolation
+        linesInKnownViolation = $coverage.linesInKnownViolation
+        linesInDeliberateViolation = $coverage.linesInDeliberateViolation
+        coverage = $RelativeDirectory + '/schema-coverage.json'
     }
 }
 
@@ -247,7 +276,13 @@ if (-not $SkipProtocolG1) {
 }
 
 $build = Invoke-LoggedCommand -Name 'dotnet-build-release' -FilePath 'dotnet' -Arguments @('build', '.\SQCD_8005AGV.sln', '-c', 'Release') -LogPath (Join-Path $logsDirectory 'dotnet-build-release.log')
-$test = Invoke-LoggedCommand -Name 'dotnet-test-release' -FilePath 'dotnet' -Arguments @('test', '.\SQCD_8005AGV.sln', '-c', 'Release', '--no-build', '--results-directory', $resultsDirectory) -LogPath (Join-Path $logsDirectory 'dotnet-test-release.log')
+$test = Invoke-LoggedCommand -Name 'dotnet-test-release' -FilePath 'dotnet' -Arguments @('test', '.\SQCD_8005AGV.sln', '-c', 'Release', '--no-build', '--results-directory', $resultsDirectory) -LogPath (Join-Path $logsDirectory 'dotnet-test-release.log') -SchemaReportDirectory $resultsDirectory
+# 整仓那一趟一定跑到 WireToGateG2Tests，所以那里没有 schema-coverage.json 只有一种解释：校验没挂上。
+# 不判死的话，删掉 fixture 会让这道门禁无声消失。
+$schemaConformance = Read-SchemaConformance $resultsDirectory 'test-results'
+if ($null -eq $schemaConformance) {
+    Add-Failure '整仓 dotnet test 没有产出 schema-coverage.json：出站 schema 校验没有运行'
+}
 $format = Invoke-LoggedCommand -Name 'dotnet-format-verify' -FilePath 'dotnet' -Arguments @('format', '.\SQCD_8005AGV.sln', '--verify-no-changes', '--no-restore') -LogPath (Join-Path $logsDirectory 'dotnet-format-verify.log')
 
 # 整仓那一趟是**前置**：它跑掉全部 193 条，包括没有挂切片标注的横切测试，以及守着标注本身的
@@ -264,7 +299,8 @@ foreach ($slice in $index.slices) {
         -Name ('dotnet-test-' + $sliceId) `
         -FilePath 'dotnet' `
         -Arguments @('test', '.\SQCD_8005AGV.sln', '-c', 'Release', '--no-build', '--filter', ('IntegrationSlice=' + $sliceId), '--results-directory', $sliceResults) `
-        -LogPath (Join-Path $logsDirectory ('dotnet-test-' + $sliceId + '.log'))
+        -LogPath (Join-Path $logsDirectory ('dotnet-test-' + $sliceId + '.log')) `
+        -SchemaReportDirectory $sliceResults
 
     # VSTest 对「过滤器一条都没选中」返回 0。不数一遍的话，标注写错会让切片静默变绿——
     # 那正是这次改造要消灭的失败形态，所以空结果在这里当失败。
@@ -293,6 +329,8 @@ foreach ($slice in $index.slices) {
         ExitCode = $sliceRun.ExitCode
         Log = 'logs/dotnet-test-' + $sliceId + '.log'
         Results = 'test-results/' + $sliceId
+        # null 表示这一刀没选中 WireToGateG2Tests 里的任何测试，校验器没有东西可验；违约由上面的退出码判。
+        SchemaConformance = Read-SchemaConformance $sliceResults ('test-results/' + $sliceId)
     }
 }
 
@@ -357,6 +395,7 @@ $summary = [ordered]@{
         status = $preconditionStatus
         scope = 'WHOLE_SOLUTION_BUILD_TEST_FORMAT'
         note = '含未挂切片标注的横切测试，以及守着标注本身的 IntegrationSliceCoverageArchitectureTests。'
+        schemaConformance = $schemaConformance
     }
     slices = @(
         foreach ($slice in $index.slices) {
@@ -373,6 +412,7 @@ $summary = [ordered]@{
                 testsFailed = $run.Failed
                 testLog = $run.Log
                 testResults = $run.Results
+                schemaConformance = $run.SchemaConformance
                 forbidUnclosedFailOrInconclusive = [bool]$slice.forbidUnclosedFailOrInconclusive
             }
             if ($sliceId -eq 'W2G-IS-01') {
@@ -401,7 +441,8 @@ $summary = [ordered]@{
         'G1 使用临时盘符运行，仅规避 Windows 工作区路径含 # 时的 Node URL 解码问题，不改变协议仓库内容。',
         '真实车辆停稳信号、Modbus/锁/门/光幕和现场明文网络未在本机证据中宣称完成。',
         '切片结论来自 [Trait("IntegrationSlice", ...)] 选出的测试子集：证据声称的是「本仓有这些具名测试覆盖该切片的车载端职责」，不是「该切片端到端已验证」——端到端属于 G3。',
-        '标注本身由 IntegrationSliceCoverageArchitectureTests 守卫：切片集双向相等、每切片下限 3 条、vendored index.json 按哈希钉字节。'
+        '标注本身由 IntegrationSliceCoverageArchitectureTests 守卫：切片集双向相等、每切片下限 3 条、vendored index.json 按哈希钉字节。',
+        '出站 schema 校验只看 WireToGateG2Tests 进程里经 WireToGateProtocolSerializer.Create / RebindSessionGeneration 产出的报文（产品与 FakeControlServer 两个产地）；入站不验；messageType 覆盖率只报告不判死——没被任何测试发出的消息，它的发送方法缺字段这道校验看不见。'
     )
 }
 

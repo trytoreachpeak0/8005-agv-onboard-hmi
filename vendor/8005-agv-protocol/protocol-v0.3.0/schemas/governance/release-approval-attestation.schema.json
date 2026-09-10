@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.8005-agv.local/wire-to-gate/v1/governance/release-approval-attestation.schema.json",
+  "title": "ProtocolReleaseApprovalAttestation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "candidateVersion",
+    "status",
+    "protocolCommit",
+    "contentManifestSha256",
+    "approvals",
+    "statement"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0.0" },
+    "candidateVersion": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+    "status": { "enum": ["PENDING", "APPROVED"] },
+    "protocolCommit": { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" },
+    "contentManifestSha256": { "type": ["string", "null"], "pattern": "^[0-9a-f]{64}$" },
+    "approvals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["ownerId", "decidedAt", "decision", "statement"],
+        "properties": {
+          "ownerId": { "type": "string", "minLength": 1 },
+          "decidedAt": { "type": "string", "format": "date-time" },
+          "decision": { "const": "APPROVED" },
+          "statement": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "statement": { "type": "string", "minLength": 1 }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "status": { "const": "PENDING" } }, "required": ["status"] },
+      "then": {
+        "properties": {
+          "protocolCommit": { "type": "null" },
+          "contentManifestSha256": { "type": "null" },
+          "approvals": { "maxItems": 0 }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "status": { "const": "APPROVED" } }, "required": ["status"] },
+      "then": {
+        "properties": {
+          "protocolCommit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+          "contentManifestSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "approvals": { "minItems": 1, "maxItems": 1 }
+        }
+      }
+    }
+  ]
+}
