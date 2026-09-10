@@ -1032,6 +1032,48 @@ public sealed class WireToGateG2Tests
             cancellationToken);
     }
 
+    /// <summary>
+    /// 多需求旅程的行程带：N 个取货停靠加一个关卡。车辆侧原本写死只收 2 条腿，而 protocol 的
+    /// schema 允许 10 条，于是服务端发的合法报文被判 PROTOCOL_SCHEMA_INVALID。
+    ///
+    /// 后果不是少显示一条腿。服务端每次会话恢复都重发同一个 messageId、而报文里的时间戳变了，
+    /// 于是撞上它自己的幂等保护（ProtocolContentConflictException）并关掉连接，车辆两秒后重连、
+    /// 再拒、再关——2026-09-10 的现场窗口就锁死在这个循环里，八分半后车载端进程直接消失。
+    /// 单需求旅程恰好只有两条腿，所以这行代码从写下起就没有过反例。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
+    public async Task MultiDemandUpcomingStopPlanWithMoreThanTwoLegsIsAccepted()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            SendJourneySnapshotsAfterRecovery = true,
+            // 四个需求装满八仓 —— 现场那趟的形状：四个取货停靠加一个关卡。
+            UpcomingStopPlanLegCount = 5
+        };
+        string journalPath = NewJournalPath();
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionClient client = CreateClient(server, io, journalPath);
+
+        await client.ConnectAndRecoverAsync(testToken);
+        await WaitUntilAsync(
+            () => client.CurrentJourney.UpcomingStopPlan is not null,
+            testToken);
+
+        WireToGateUpcomingStopPlan plan = client.CurrentJourney.UpcomingStopPlan!;
+        Assert.Equal(5, plan.Legs.Count);
+        Assert.Equal([1, 2, 3, 4, 5], plan.Legs.Select(leg => leg.Sequence).ToArray());
+        Assert.Equal("TO_GATE", plan.Legs[^1].LegType);
+        Assert.Equal(4, plan.Legs.Count(leg => leg.LegType == "TO_PICKUP"));
+
+        // 收下了才算数：连接没被拒，车辆侧照常应答。一条被拒的报文会让会话在这里断掉。
+        await WaitUntilAsync(
+            () => server.Received.Any(item => item.MessageType == "SnapshotAppliedAck"),
+            testToken);
+    }
+
     [Fact]
     [Trait("IntegrationSlice", "W2G-IS-01")]
     public async Task JourneySnapshotsAreProjectedAndHeartbeatDoesNotStealAsyncMessages()

@@ -2313,7 +2313,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         if (payload.PlanRevision < 0
             || payload.DemandId is not null && !IsUuid(payload.DemandId)
             || payload.Legs is null
-            || payload.Legs.Count > 2
+            // 上限跟 protocol 的 schema 走（UpcomingStopPlanSnapshot.schema.json 的 legs.maxItems），
+            // 不是车辆侧自己另定一个。原来写死的 2 只够单需求旅程——一个取货停靠加一个关卡——
+            // 而多需求旅程是 N 个取货加一个关卡，N>=2 就被这里判成 PROTOCOL_SCHEMA_INVALID。
+            // 服务端发的报文完全合法，车辆侧拒收，服务端每次会话恢复重发同一条、内容里的时间戳
+            // 变了，于是撞上自己的幂等保护并关连接：2026-09-10 现场窗口就锁死在这个循环里，
+            // 8 分半后车载端进程直接消失，日志末尾只有又一条重连警告。
+            || payload.Legs.Count > 10
             || payload.Legs.Any(leg => leg is null)
             || payload.Legs.Select(leg => leg.Sequence).Distinct().Count() != payload.Legs.Count
             || payload.Legs.OrderBy(leg => leg.Sequence).Select((leg, index) => leg.Sequence == index + 1).Any(valid => !valid)
