@@ -110,6 +110,14 @@ public partial class App : System.Windows.Application, IDisposable
                     // 一条告警是各个故障面自己的事。空的告警板照样要发快照：一份空快照说的是「这台车
                     // 此刻没有告警」，与「这台车从没报过」在看板上是两种显示。
                     new OnboardAlarmBoard(settings.AgvId, TimeProvider.System),
+                    // 生效配置与激活结果一起落在同一份原子文档里（#27）：分两次写会留下一个窗口——配置
+                    // 已切、结果没记下，重连补报时车会以为自己没激活过，于是再激活一次。初始那一份是本机
+                    // 自述的配置，由设置渲染出来；文档里已有内容时以文档为准。
+                    new SlotConfigurationActivationCoordinator(
+                        new DocumentActiveSlotConfigurationStore(
+                            new AtomicJsonFile(settings.WireToGate.ActiveSlotConfigurationPath),
+                            OnboardActiveSlotConfigurationFactory.Create(settings.WireToGate, settings.IoModule)),
+                        TimeProvider.System),
                     TimeSpan.FromMilliseconds(settings.Workflow.IoSnapshotMaxAgeMs),
                     TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs),
                     TimeSpan.FromMilliseconds(settings.VehicleSafety.ClockSkewToleranceMs));

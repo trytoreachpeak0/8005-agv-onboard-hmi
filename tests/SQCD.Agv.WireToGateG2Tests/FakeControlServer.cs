@@ -86,6 +86,27 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool SendSlotOperationCommandAfterRecovery { get; set; }
 
+    /// <summary>恢复完成后下发一次仓位配置激活（协议 v2 消息 7）。</summary>
+    public bool SendSlotConfigurationActivationAfterRecovery { get; set; }
+
+    /// <summary>
+    /// 下发的目标指纹。
+    /// </summary>
+    /// <remarks>
+    /// 默认是那份已批准八仓事实的指纹，也就是车手上那份会算出来的值——正例走这个。要走
+    /// <c>SLOT_CONFIGURATION_FINGERPRINT_MISMATCH</c> 那条分支，把它换成别的值。
+    /// </remarks>
+    public string SlotConfigurationActivationFingerprint { get; set; } =
+        G2SlotConfigurationFixtures.Approved().Fingerprint;
+
+    /// <summary>下发的目标版本名。</summary>
+    public string SlotConfigurationActivationVersion { get; set; } = "approved-v7";
+
+    /// <summary>车报上来的那些激活结果，按到达顺序。</summary>
+    public IReadOnlyList<JsonElement> ReceivedActivationResults => _activationResults;
+
+    private readonly List<JsonElement> _activationResults = [];
+
     public bool RespondToRecoveryRequests { get; set; }
 
     public bool RespondToManualChargingReturnToServiceRequests { get; set; }
@@ -388,6 +409,15 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "Heartbeat":
                         await WriteEnvelopeAsync(context, CreateHeartbeatAck(context, root)).ConfigureAwait(false);
                         break;
+                    // 协议 v2 消息 8。RELIABLE，所以要 DurableAck——用 RESPONSE 就没有补报语义，断线
+                    // 即丢，服务端除了猜没有别的可做，而 REQ-0264 要的恰恰是不能猜。
+                    case "SlotConfigurationActivationResult":
+                        lock (_sync)
+                        {
+                            _activationResults.Add(root.Clone());
+                        }
+                        await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        break;
                     case "OperationResult":
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
                         if (SendRecoveryRequiredReadinessAfterOperationResultAck)
@@ -672,6 +702,11 @@ public sealed class FakeControlServer : IAsyncDisposable
             {
                 await SendSlotOperationCommandAsync(context).ConfigureAwait(false);
             }
+
+            if (SendSlotConfigurationActivationAfterRecovery)
+            {
+                await SendSlotConfigurationActivationCommandAsync(context).ConfigureAwait(false);
+            }
         }
 
         if (drop)
@@ -679,6 +714,33 @@ public sealed class FakeControlServer : IAsyncDisposable
             context.Client.Close();
         }
     }
+
+    /// <summary>
+    /// 协议 v2 消息 7 <c>SlotConfigurationActivationCommand</c>。
+    /// </summary>
+    /// <remarks>
+    /// 它**不带配置内容**——整个协议里没有一条消息带仓位 IO 绑定。带的是版本号与指纹，车拿自己手上那份
+    /// 算指纹与之比对，相等才切换。
+    /// </remarks>
+    private Task SendSlotConfigurationActivationCommandAsync(ConnectionContext context) =>
+        WriteEnvelopeAsync(context, CreateEnvelope(
+            context,
+            "SlotConfigurationActivationCommand",
+            correlationId: null,
+            new
+            {
+                activationId = "55555555-5555-4555-8555-555555555555",
+                targetSlotConfigurationVersion = SlotConfigurationActivationVersion,
+                targetSlotConfigurationFingerprint = SlotConfigurationActivationFingerprint,
+                expectedActiveSlotConfigurationVersion = (string?)null,
+                administrator = new
+                {
+                    operatorId = "op-g2",
+                    verificationMethod = "BADGE",
+                    verifiedAt = "2026-09-09T12:00:00Z"
+                },
+                issuedAt = "2026-09-09T12:00:00Z"
+            }));
 
     private async Task HandleRecoverySessionRequestAsync(
         ConnectionContext context,

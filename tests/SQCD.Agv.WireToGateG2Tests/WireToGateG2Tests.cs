@@ -512,6 +512,11 @@ public sealed class WireToGateG2Tests
                 new SystemClock(),
                 new DelegateVehicleSafetySignalProvider(() => false),
                 new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+                new SlotConfigurationActivationCoordinator(
+                    new DocumentActiveSlotConfigurationStore(
+                        new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                    G2SlotConfigurationFixtures.Approved()),
+                    TimeProvider.System),
                 TimeSpan.FromSeconds(30),
                 TimeSpan.FromSeconds(5),
                 TimeSpan.FromMilliseconds(500));
@@ -671,6 +676,11 @@ public sealed class WireToGateG2Tests
                 new SystemClock(),
                 new DelegateVehicleSafetySignalProvider(() => false),
                 new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+                new SlotConfigurationActivationCoordinator(
+                    new DocumentActiveSlotConfigurationStore(
+                        new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                    G2SlotConfigurationFixtures.Approved()),
+                    TimeProvider.System),
                 TimeSpan.FromSeconds(30),
                 TimeSpan.FromSeconds(5),
                 TimeSpan.FromMilliseconds(500));
@@ -1136,6 +1146,132 @@ public sealed class WireToGateG2Tests
         Assert.Equal(0, io.UnlockCount);
     }
 
+    /// <summary>
+    /// 协议 v2 消息 9：握手里报一次当下的全量告警，服务端 ack。
+    /// </summary>
+    /// <remarks>
+    /// 车载端在 <c>FP-IS-15</c> 上的义务是 <c>PUBLISH_COMPLETE_ALARM_SET</c> 与
+    /// <c>NEVER_PUBLISH_STALE_ALARM_STATE</c>。快照而不是事件流，正是后一条的实现方式：每一份都是当下
+    /// 的全部告警，后一份整体取代前一份，重连之后服务端手上立刻是当下的事实，不需要任何补发。所以它发
+    /// 在握手里——重连即报，而不是等下一次告警变化才报。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-15")]
+    [Trait("ProtocolVector", "CV-ONBOARD-ALARM-SNAPSHOT")]
+    public async Task TheOnboardAlarmSnapshotIsPublishedInTheHandshakeAndAckedUnderItsOwnKind()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback) { SendReadinessAfterRecoveryAck = true };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionClient client = CreateClient(server, io, NewJournalPath());
+
+        await client.ConnectAndRecoverAsync(testToken);
+
+        // 握手的顺序：能力、安全态、告警，然后恢复报告。
+        Assert.Equal(
+            [
+                "SessionHello", "CapabilitySnapshot", "SafetyStateSnapshot", "OnboardAlarmSnapshot",
+                "RecoveryStateReport"
+            ],
+            InboundMessageTypes(server));
+
+        WireToGateEnvelope snapshot = server.ReceivedEnvelopes
+            .Where(item => item.MessageType == "OnboardAlarmSnapshot")
+            .Select(item => WireToGateProtocolSerializer.DeserializeAndValidate(item.WireLine, "AGV-8005-01"))
+            .Single();
+        JsonElement payload = snapshot.Payload;
+        // 一份空快照也要发：它说的是「此刻没有告警」，与「从没报过」在服务端看板上是两种显示。
+        Assert.Equal(JsonValueKind.Array, payload.GetProperty("alarms").ValueKind);
+        Assert.Empty(payload.GetProperty("alarms").EnumerateArray());
+        Assert.Equal(1, payload.GetProperty("alarmSnapshotRevision").GetInt64());
+        // SNAPSHOT，不是 RESPONSE：它自己带 messageId，correlationId 是 null。
+        Assert.Null(snapshot.CorrelationId);
+
+        Assert.Contains(
+            ("OnboardAlarmSnapshot", 1L),
+            server.AppliedSnapshots.ToArray());
+        Assert.Equal(0, io.UnlockCount);
+    }
+
+    /// <summary>
+    /// 协议 v2 消息 7／8 的正例：指纹相等，车切到那一版并把结果报回去。
+    /// </summary>
+    /// <remarks>
+    /// 消息 7 不带配置内容，所以这一步不是「装上一份新配置」，而是确认「服务端批准的那一版就是你手上
+    /// 这份」。切换动的只有版本名，指纹不变——它变了才说明车换了硬件事实，而车没有权力换。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-14")]
+    [Trait("ProtocolVector", "CV-SLOT-CONFIGURATION-ACTIVATION")]
+    public async Task SlotConfigurationActivationVerifiesTheFingerprintAndReportsTheOutcome()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            SendSlotConfigurationActivationAfterRecovery = true
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionClient client = CreateClient(server, io, NewJournalPath());
+
+        await client.ConnectAndRecoverAsync(testToken);
+        await WaitUntilAsync(() => server.ReceivedActivationResults.Count == 1, testToken);
+
+        JsonElement payload = server.ReceivedActivationResults[0].GetProperty("payload");
+        Assert.Equal("ACTIVATED", payload.GetProperty("outcome").GetString());
+        Assert.Equal(
+            "55555555-5555-4555-8555-555555555555",
+            payload.GetProperty("activationId").GetString());
+        Assert.Equal(JsonValueKind.Null, payload.GetProperty("problem").ValueKind);
+        // 版本名换成服务端的，指纹不变——硬件事实一个字节没动。
+        Assert.Equal("approved-v7", payload.GetProperty("activeSlotConfigurationVersion").GetString());
+        Assert.Equal(
+            G2SlotConfigurationFixtures.Approved().Fingerprint,
+            payload.GetProperty("activeSlotConfigurationFingerprint").GetString());
+        // 结果是 RELIABLE，不是 RESPONSE：它自己带 messageId，correlationId 是 null。
+        Assert.Equal(
+            JsonValueKind.Null,
+            server.ReceivedActivationResults[0].GetProperty("correlationId").ValueKind);
+        Assert.Equal(0, io.UnlockCount);
+    }
+
+    /// <summary>
+    /// 指纹对不上就拒绝，报向量点名的那个稳定错误码，生效配置不动。
+    /// </summary>
+    /// <remarks>
+    /// 服务端批准的那一版与车手上这份不是同一份硬件事实。车不该改口——协议里根本没有一条消息能把配置
+    /// 内容送过来，所以「按服务端说的算」等于宣称自己装着从没收到过的东西。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-14")]
+    [Trait("ProtocolVector", "CV-SLOT-CONFIGURATION-ACTIVATION")]
+    public async Task SlotConfigurationActivationIsRejectedWithTheStableCodeWhenTheFingerprintDisagrees()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            SendSlotConfigurationActivationAfterRecovery = true,
+            SlotConfigurationActivationFingerprint = new string('b', 64)
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionClient client = CreateClient(server, io, NewJournalPath());
+
+        await client.ConnectAndRecoverAsync(testToken);
+        await WaitUntilAsync(() => server.ReceivedActivationResults.Count == 1, testToken);
+
+        JsonElement payload = server.ReceivedActivationResults[0].GetProperty("payload");
+        Assert.Equal("REJECTED", payload.GetProperty("outcome").GetString());
+        Assert.Equal(
+            "SLOT_CONFIGURATION_FINGERPRINT_MISMATCH",
+            payload.GetProperty("problem").GetProperty("reasonCode").GetString());
+        // 报的是车此刻真正装着的那个指纹，不是服务端刚才说的那个——补报的价值就在于说出实情。
+        Assert.Equal(
+            G2SlotConfigurationFixtures.Approved().Fingerprint,
+            payload.GetProperty("activeSlotConfigurationFingerprint").GetString());
+        Assert.Equal(0, io.UnlockCount);
+    }
+
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-06")]
     [Trait("ProtocolVector", "CV-RELIABLE-RETRY-SAME-CONTENT")]
@@ -1444,6 +1580,11 @@ public sealed class WireToGateG2Tests
             new SystemClock(),
             provider,
             new OnboardAlarmBoard("AGV-G2", TimeProvider.System),
+            new SlotConfigurationActivationCoordinator(
+                new DocumentActiveSlotConfigurationStore(
+                    new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                    G2SlotConfigurationFixtures.Approved()),
+                TimeProvider.System),
             TimeSpan.FromSeconds(30),
             TimeSpan.FromSeconds(5),
             TimeSpan.FromMilliseconds(500));
@@ -1534,6 +1675,11 @@ public sealed class WireToGateG2Tests
             new SystemClock(),
             provider,
             new OnboardAlarmBoard("AGV-G2", TimeProvider.System),
+            new SlotConfigurationActivationCoordinator(
+                new DocumentActiveSlotConfigurationStore(
+                    new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                    G2SlotConfigurationFixtures.Approved()),
+                TimeProvider.System),
             TimeSpan.FromSeconds(30),
             TimeSpan.FromSeconds(5),
             TimeSpan.FromMilliseconds(500));
@@ -1610,6 +1756,11 @@ public sealed class WireToGateG2Tests
             new SystemClock(),
             new DelegateVehicleSafetySignalProvider(vehicleStoppedProvider ?? (() => true)),
             new OnboardAlarmBoard("AGV-G2", TimeProvider.System),
+            new SlotConfigurationActivationCoordinator(
+                new DocumentActiveSlotConfigurationStore(
+                    new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                    G2SlotConfigurationFixtures.Approved()),
+                TimeProvider.System),
             TimeSpan.FromSeconds(30),
             TimeSpan.FromSeconds(5),
             TimeSpan.FromMilliseconds(500));

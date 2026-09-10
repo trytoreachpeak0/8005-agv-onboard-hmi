@@ -92,8 +92,6 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
                 + "case label, so the onboard never submits a record and has no result to read",
             ["ManualStationClearanceConfirmationRequested"] = "FP-IS-13, batch 8",
             ["ManualStationClearanceConfirmationResult"] = "FP-IS-13, batch 8",
-            ["SlotConfigurationActivationCommand"] = "FP-IS-14, batch 3",
-            ["SlotConfigurationActivationResult"] = "FP-IS-14, batch 3",
             ["UnableToChargeFieldConfirmationRequested"] = "FP-IS-13, batch 8",
             ["UnableToChargeFieldConfirmationResult"] = "FP-IS-13, batch 8"
         };

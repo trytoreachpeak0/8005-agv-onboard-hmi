@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Net;
 using System.Text.Json;
+using SQCD.Agv.Core;
 
 namespace SQCD.Agv.Infrastructure;
 
@@ -271,6 +273,16 @@ public sealed class WireToGateSettings
 
     public string ActiveSlotConfigurationVersion { get; init; } = "eight-slot-modbus-v1";
 
+    /// <summary>
+    /// 生效配置与激活结果那份原子文档放在哪。
+    /// </summary>
+    /// <remarks>
+    /// 与日志、日志簿分开：它是**车对自己装着什么的唯一权威记录**，重启之后
+    /// <c>CapabilitySnapshot</c> 报的指纹与版本名都从它读。默认落在日志簿旁边，好让一台车的持久状态
+    /// 集中在一处，现场备份不会漏。
+    /// </remarks>
+    public string ActiveSlotConfigurationPath { get; init; } = "active-slot-configuration.json";
+
     public bool SupportsBatchUnlock { get; init; }
 
     public int JourneySnapshotMaxAgeMs { get; init; } = 5_000;
@@ -517,6 +529,12 @@ public sealed class IoModuleSettings
             throw new InvalidDataException("8个仓位的开锁DO通道不得重复。");
         }
 
+        if (Slots.Any(slot => string.IsNullOrWhiteSpace(slot.SignalPolarity)
+            || slot.PulseResetMilliseconds <= 0))
+        {
+            throw new InvalidDataException("仓位信号极性不得为空，开锁脉冲复位毫秒必须为正。");
+        }
+
         ushort[] allDiChannels = Slots
             .SelectMany(slot => new[] { slot.LockFeedbackDiChannel, slot.LightCurtainDiChannel })
             .ToArray();
@@ -549,6 +567,60 @@ public sealed class SlotIoMapping
     public ushort LockFeedbackDiChannel { get; init; }
 
     public ushort LightCurtainDiChannel { get; init; }
+
+    /// <summary>
+    /// 这个仓的信号极性与开锁脉冲复位毫秒。
+    /// </summary>
+    /// <remarks>
+    /// 它们是**协议 v2 的仓位配置指纹要算进去的硬件事实**，不是本机的运行参数——服务端手上有它批准的
+    /// 一份同样的东西，激活时两边算同一个摘要来核对。默认值取自 REQ-0267 已批准的八仓事实
+    /// （<c>ACTIVE_HIGH</c>、500ms）；现场若与服务端那份对不上，激活会被拒并报
+    /// <c>SLOT_CONFIGURATION_FINGERPRINT_MISMATCH</c>，那正是这条握手存在的意义。
+    /// </remarks>
+    public string SignalPolarity { get; init; } = "ACTIVE_HIGH";
+
+    public int PulseResetMilliseconds { get; init; } = 500;
+}
+
+/// <summary>
+/// 本机自述的整车仓位配置：协议 v2 的指纹算的就是它。
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>它是车对「我装着什么」的自述，不是服务端下发的东西。</b>协议里没有任何一条消息携带仓位 IO
+/// 绑定——消息 7 只带版本号与指纹。所以配置内容来自本机设置，激活是一次核验：服务端发它批准的那一版
+/// 的指纹，车拿这份自述配置算指纹与之比对。
+/// </para>
+/// <para>
+/// IO 点名由通道号渲染：<c>DO{通道+1}</c>、<c>DI{通道+1}</c>。默认通道映射渲染出来正好是 REQ-0267
+/// 已批准的 <c>DO1..DO8</c>／<c>DI1..DI8</c>／<c>DI9..DI16</c>。现场改了通道映射而服务端那份没跟着改，
+/// 指纹就对不上，激活被拒——这是这条握手要抓的事，不是要绕开的事。
+/// </para>
+/// </remarks>
+public static class OnboardActiveSlotConfigurationFactory
+{
+    public static ActiveSlotConfiguration Create(WireToGateSettings wireToGate, IoModuleSettings ioModule)
+    {
+        ArgumentNullException.ThrowIfNull(wireToGate);
+        ArgumentNullException.ThrowIfNull(ioModule);
+
+        return new ActiveSlotConfiguration(
+            wireToGate.SlotModelVersion,
+            wireToGate.ActiveSlotConfigurationVersion,
+            [
+                .. ioModule.Slots.OrderBy(slot => slot.SlotIndex).Select(slot => new SlotConfigurationEntry(
+                    slot.SlotIndex + 1,
+                    slot.SlotIndex < 4 ? "LEFT" : "RIGHT",
+                    Point("DO", slot.DoChannel),
+                    Point("DI", slot.LockFeedbackDiChannel),
+                    Point("DI", slot.LightCurtainDiChannel),
+                    slot.SignalPolarity,
+                    slot.PulseResetMilliseconds))
+            ]);
+    }
+
+    private static string Point(string prefix, ushort channel) =>
+        string.Create(CultureInfo.InvariantCulture, $"{prefix}{channel + 1}");
 }
 
 public sealed class WorkflowSettings

@@ -33,6 +33,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     private readonly IClock _clock;
     private readonly IVehicleSafetySignalProvider _vehicleSafetySignalProvider;
     private readonly OnboardAlarmBoard _alarmBoard;
+    private readonly SlotConfigurationActivationCoordinator _activationCoordinator;
     private readonly TimeSpan _ioSnapshotMaxAge;
     private readonly TimeSpan _vehicleSafetyMaxAge;
     private readonly TimeSpan _vehicleSafetyClockSkewTolerance;
@@ -61,6 +62,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         IClock clock,
         IVehicleSafetySignalProvider vehicleSafetySignalProvider,
         OnboardAlarmBoard alarmBoard,
+        SlotConfigurationActivationCoordinator activationCoordinator,
         TimeSpan ioSnapshotMaxAge,
         TimeSpan vehicleSafetyMaxAge,
         TimeSpan vehicleSafetyClockSkewTolerance)
@@ -72,6 +74,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         _vehicleSafetySignalProvider = vehicleSafetySignalProvider
             ?? throw new ArgumentNullException(nameof(vehicleSafetySignalProvider));
         _alarmBoard = alarmBoard ?? throw new ArgumentNullException(nameof(alarmBoard));
+        _activationCoordinator = activationCoordinator
+            ?? throw new ArgumentNullException(nameof(activationCoordinator));
         _ioSnapshotMaxAge = ioSnapshotMaxAge;
         _vehicleSafetyMaxAge = vehicleSafetyMaxAge;
         _vehicleSafetyClockSkewTolerance = vehicleSafetyClockSkewTolerance;
@@ -539,8 +543,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         _options.CapabilityVersion,
                         _clock.Now.ToUniversalTime(),
                         _options.SlotModelVersion,
-                        _options.ActiveSlotConfigurationVersion,
-                        ActiveSlotConfigurationFingerprint(_options, slotStates),
+                        _activationCoordinator.ActiveConfiguration.ConfigurationVersion,
+                        // 报**本机生效配置**的指纹，不是从配置项现算的那个：激活成功之后车装着的是哪
+                        // 一版，只有生效配置存储说了算。从配置项现算会让每次激活之后两端立刻对不上。
+                        _activationCoordinator.ActiveConfiguration.Fingerprint,
                         slotStates,
                         _options.SupportsBatchUnlock,
                         1),
@@ -997,6 +1003,79 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     }
 
     /// <summary>
+    /// 协议 v2 消息 7／8：收一次激活命令，核指纹，把结果报回去。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>结果走 RELIABLE，等 <c>DurableAck</c>。</b>REQ-0264 的「不能猜测成功」正是
+    /// <c>PENDING_RESULT_REPLAY</c> 存在的理由：用 REQUEST/RESPONSE 就没有补报语义，断线即丢，服务端
+    /// 除了猜没有别的可做。
+    /// </para>
+    /// <para>
+    /// <b>补报不需要这一层记任何东西。</b>结果与生效配置在 #27 的原子文档里一起落盘；服务端重连后按
+    /// <c>SLOT_CONFIGURATION</c> 这个恢复角色重发同一条命令，
+    /// <see cref="SlotConfigurationActivationCoordinator.Activate"/> 认出这个 <c>activationId</c> 已经
+    /// 有结果，原样返回，不产生第二次激活。所以这里对补报与首次是同一段代码。
+    /// </para>
+    /// </remarks>
+    private async Task HandleSlotConfigurationActivationAsync(
+        WireToGateEnvelope envelope,
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        if (envelope.CorrelationId is not null)
+        {
+            throw new InvalidDataException("CORRELATION_INVALID");
+        }
+
+        SlotConfigurationActivationCommandPayload command = WireToGateProtocolSerializer
+            .DeserializePayload<SlotConfigurationActivationCommandPayload>(envelope);
+        RequireUuid(command.ActivationId, nameof(command.ActivationId));
+        RequireSha256(command.TargetSlotConfigurationFingerprint, nameof(command.TargetSlotConfigurationFingerprint));
+        if (string.IsNullOrWhiteSpace(command.TargetSlotConfigurationVersion))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        SlotConfigurationActivationResult result = _activationCoordinator.Activate(
+            new SlotConfigurationActivationRequest(
+                command.ActivationId,
+                command.TargetSlotConfigurationVersion,
+                command.TargetSlotConfigurationFingerprint));
+
+        string messageId = Guid.NewGuid().ToString("D");
+        WireToGateEnvelope report = WireToGateProtocolSerializer.Create(
+            "SlotConfigurationActivationResult",
+            messageId,
+            null,
+            _options.AgvId,
+            generation,
+            _clock.Now.ToUniversalTime(),
+            new SlotConfigurationActivationResultPayload(
+                result.ActivationId,
+                result.Status == SlotConfigurationActivationStatus.Activated ? "ACTIVATED" : "REJECTED",
+                result.ReasonCode is null
+                    ? null
+                    : new ProtocolProblem(
+                        result.ReasonCode,
+                        "payload.targetSlotConfigurationFingerprint",
+                        null),
+                _activationCoordinator.ActiveConfiguration.ConfigurationVersion,
+                result.ResultingFingerprint,
+                result.SettledAt));
+        await SendEnvelopeAsync(report, cancellationToken).ConfigureAwait(false);
+
+        // 直接读下一行，不走 _responseWaiters：这段代码跑在接收循环**里**，注册等待表然后 await 会
+        // 让循环停在这里等一条只有循环自己才读得到的消息——死锁。握手期的
+        // SendSnapshotAndRequireAckAsync 用的是同一种直接读，前提也一样：这条 RELIABLE 消息的下一行
+        // 就是它的 DurableAck。
+        WireToGateEnvelope ackEnvelope = await ReadEnvelopeAsync(generation, cancellationToken)
+            .ConfigureAwait(false);
+        ThrowIfProtocolProblem(ackEnvelope);
+        WireToGateProtocolSerializer.RequireMessage(ackEnvelope, "DurableAck", messageId);
+    }
+
+    /// <summary>
     /// 协议 v2 消息 9 <c>OnboardAlarmSnapshot</c>：把车载端当前全量告警报上去。
     /// </summary>
     /// <remarks>
@@ -1309,6 +1388,17 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     && _responseWaiters.TryRemove(envelope.CorrelationId, out TaskCompletionSource<WireToGateEnvelope>? response))
                 {
                     response.TrySetResult(envelope);
+                    continue;
+                }
+
+                // 协议 v2 消息 7。整条链路都在这一层里走完：收命令、核指纹、发结果，不经过应用层，
+                // 因为 REQ-0265 说得很清楚——一次激活动作已经包含重新投运意图，中间没有第二道人工
+                // 审批关卡，也就没有任何要交给界面去等的东西。
+                if (string.Equals(
+                    envelope.MessageType, "SlotConfigurationActivationCommand", StringComparison.Ordinal))
+                {
+                    await HandleSlotConfigurationActivationAsync(envelope, generation, stopping.Token)
+                        .ConfigureAwait(false);
                     continue;
                 }
 
@@ -2906,6 +2996,27 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         IReadOnlyList<ProtocolSlotState> SlotStates,
         bool SupportsBatchUnlock,
         int OnboardJournalFormatVersion);
+
+    private sealed record SlotConfigurationActivationCommandPayload(
+        string ActivationId,
+        string TargetSlotConfigurationVersion,
+        string TargetSlotConfigurationFingerprint,
+        string? ExpectedActiveSlotConfigurationVersion,
+        OperatorContextPayload Administrator,
+        DateTimeOffset IssuedAt);
+
+    private sealed record OperatorContextPayload(
+        string OperatorId,
+        string VerificationMethod,
+        DateTimeOffset VerifiedAt);
+
+    private sealed record SlotConfigurationActivationResultPayload(
+        string ActivationId,
+        string Outcome,
+        ProtocolProblem? Problem,
+        string ActiveSlotConfigurationVersion,
+        string ActiveSlotConfigurationFingerprint,
+        DateTimeOffset VerifiedAt);
 
     private sealed record OnboardAlarmSnapshotPayload(
         long AlarmSnapshotRevision,

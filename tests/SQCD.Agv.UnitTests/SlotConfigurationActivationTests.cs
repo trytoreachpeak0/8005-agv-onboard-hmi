@@ -19,23 +19,56 @@ public sealed class SlotConfigurationActivationTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 9, 12, 0, 0, TimeSpan.Zero);
 
+    /// <summary>
+    /// 指纹相等时激活成功，记下服务端对这一版的命名；硬件事实一个字节没动，所以指纹不变。
+    /// </summary>
+    /// <remarks>
+    /// 消息 7 不带配置内容，所以「切换」不是把一份新配置装上去——车手上那份已经是对的，激活确认的是
+    /// 「服务端批准的那一版就是你手上这份」。因此指纹不变是**正确**的：它变了才说明车换了硬件事实，
+    /// 而车没有权力换。
+    /// </remarks>
     [Fact]
-    public void ActivationSwitchesTheWholeConfigurationAndTheFingerprintFollowsItImmediately()
+    public void ActivationConfirmsTheHeldConfigurationAndRecordsTheServersVersionNameWithoutChangingTheFingerprint()
     {
         Fixture fixture = new();
         string before = fixture.Store.Current.Fingerprint;
 
         SlotConfigurationActivationResult result = fixture.Coordinator.Activate(
-            new SlotConfigurationActivationRequest("ACT-1", Configuration("v2", pulseMs: 400)));
+            new SlotConfigurationActivationRequest("ACT-1", "v2", before));
 
         Assert.Equal(SlotConfigurationActivationStatus.Activated, result.Status);
         Assert.Equal("v2", fixture.Store.Current.ConfigurationVersion);
-        // 指纹跟着**硬件事实**变，不跟着版本名变：这里换的是脉冲复位毫秒。只换版本名的话指纹不该动
-        // ——版本名不在两端共用的那套摘要里。
-        Assert.NotEqual(before, fixture.Store.Current.Fingerprint);
-        // 能力快照带的就是这个值：激活后立刻反映新配置，不是下一次会话才更新。
+        Assert.Equal(before, fixture.Store.Current.Fingerprint);
+        // 能力快照带的就是这个值：激活后立刻反映当下的生效配置，不是下一次会话才更新。
         Assert.Equal(fixture.Store.Current.Fingerprint, result.ResultingFingerprint);
         Assert.Equal(1, fixture.Coordinator.ActivationsPerformed);
+    }
+
+    /// <summary>
+    /// 指纹对不上就拒绝，生效配置一个字段不动。
+    /// </summary>
+    /// <remarks>
+    /// 服务端批准的那一版与车手上这份不是同一份硬件事实。双方都不该让步：服务端改口就丢了权威，车改口
+    /// 就是宣称自己装着从没收到过的东西——协议里根本没有一条消息能把配置内容送过来。拒绝，报向量点名
+    /// 的那个稳定错误码，让人去查。
+    /// </remarks>
+    [Fact]
+    public void AFingerprintThatDisagreesIsRejectedWithTheStableCodeAndTheLiveConfigurationIsUntouched()
+    {
+        Fixture fixture = new();
+        ActiveSlotConfiguration original = fixture.Store.Current;
+
+        SlotConfigurationActivationResult result = fixture.Coordinator.Activate(
+            new SlotConfigurationActivationRequest("ACT-1", "v2", new string('b', 64)));
+
+        Assert.Equal(SlotConfigurationActivationStatus.Rejected, result.Status);
+        Assert.Equal(
+            SlotConfigurationActivationCoordinator.FingerprintMismatchReasonCode,
+            result.ReasonCode);
+        // 报的是车此刻真正装着的那个指纹，不是服务端刚才说的那个——补报的价值就在于说出实情。
+        Assert.Equal(original.Fingerprint, result.ResultingFingerprint);
+        Assert.Equal(original, fixture.Store.Current);
+        Assert.Equal(0, fixture.Coordinator.ActivationsPerformed);
     }
 
     [Fact]
@@ -46,19 +79,20 @@ public sealed class SlotConfigurationActivationTests
         Assert.Equal(8, original.Slots.Count);
         Assert.Equal(8, ActiveSlotConfiguration.RequiredSlotCount);
 
-        ActiveSlotConfiguration sevenSlots = original with
-        {
-            ConfigurationVersion = "v2",
-            Slots = [.. original.Slots.Take(7)]
-        };
-        SlotConfigurationActivationResult result = fixture.Coordinator.Activate(
-            new SlotConfigurationActivationRequest("ACT-1", sevenSlots));
+        // 本机手上那份就只有七个仓：不合法的配置绝不允许被认作生效版本，这条判断不需要服务端参与，
+        // 也排在指纹核对之前——先说清「你手上这份本身就不成立」，比说「和我批准的那份对不上」准确。
+        ActiveSlotConfiguration sevenSlots = original with { Slots = [.. original.Slots.Take(7)] };
+        Fixture broken = new(initial: sevenSlots);
+        SlotConfigurationActivationResult result = broken.Coordinator.Activate(
+            new SlotConfigurationActivationRequest("ACT-1", "v2", sevenSlots.Fingerprint));
 
         Assert.Equal(SlotConfigurationActivationStatus.Rejected, result.Status);
         Assert.Equal("SLOT_COUNT_INVALID", result.ReasonCode);
+        Assert.Equal(sevenSlots, broken.Store.Current);
+        Assert.Equal(0, broken.Coordinator.ActivationsPerformed);
+        // 那台正常的车不受影响。
         Assert.Equal(original, fixture.Store.Current);
         Assert.Equal(8, fixture.Store.Current.Slots.Count);
-        Assert.Equal(0, fixture.Coordinator.ActivationsPerformed);
     }
 
     [Fact]
@@ -66,7 +100,7 @@ public sealed class SlotConfigurationActivationTests
     {
         Fixture fixture = new();
         SlotConfigurationActivationRequest request =
-            new("ACT-1", Configuration("v2", pulseMs: 500));
+            new("ACT-1", "v2", Configuration("v1", pulseMs: 500).Fingerprint);
 
         SlotConfigurationActivationResult first = fixture.Coordinator.Activate(request);
         // 结果没送达，服务端重连后重发同一条命令：PENDING_RESULT_REPLAY 补报同一个结果。
@@ -82,7 +116,7 @@ public sealed class SlotConfigurationActivationTests
         FaultyDocument document = new();
         Fixture first = new(document);
         SlotConfigurationActivationRequest request =
-            new("ACT-1", Configuration("v2", pulseMs: 500));
+            new("ACT-1", "v2", Configuration("v1", pulseMs: 500).Fingerprint);
         SlotConfigurationActivationResult original = first.Coordinator.Activate(request);
 
         // 进程重启：重新从同一份文档建起来。
@@ -106,7 +140,7 @@ public sealed class SlotConfigurationActivationTests
         document.FailAt = faultPoint;
 
         Assert.Throws<IOException>(() => fixture.Coordinator.Activate(
-            new SlotConfigurationActivationRequest("ACT-1", Configuration("v2", pulseMs: 500))));
+            new SlotConfigurationActivationRequest("ACT-1", "v2", Configuration("v1", pulseMs: 500).Fingerprint)));
 
         // 进程内与磁盘上都是完整的旧版本，没有中间态。
         Assert.Equal(original, fixture.Store.Current);
@@ -122,7 +156,7 @@ public sealed class SlotConfigurationActivationTests
         FaultyDocument document = new();
         Fixture fixture = new(document);
         SlotConfigurationActivationResult result = fixture.Coordinator.Activate(
-            new SlotConfigurationActivationRequest("ACT-1", Configuration("v2", pulseMs: 500)));
+            new SlotConfigurationActivationRequest("ACT-1", "v2", Configuration("v1", pulseMs: 500).Fingerprint));
 
         // 断线只是结果没送出去；本机状态已经落盘，重启后两半都在。
         Fixture restarted = new(document);
@@ -232,10 +266,10 @@ public sealed class SlotConfigurationActivationTests
 
     private sealed class Fixture
     {
-        public Fixture(IAtomicDocument? document = null)
+        public Fixture(IAtomicDocument? document = null, ActiveSlotConfiguration? initial = null)
         {
             Store = new DocumentActiveSlotConfigurationStore(
-                document ?? new FaultyDocument(), Configuration("v1", pulseMs: 500));
+                document ?? new FaultyDocument(), initial ?? Configuration("v1", pulseMs: 500));
             Coordinator = new SlotConfigurationActivationCoordinator(
                 Store, new FixedTimeProvider(Now));
         }

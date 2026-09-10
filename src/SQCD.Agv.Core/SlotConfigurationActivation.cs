@@ -128,10 +128,23 @@ public enum SlotConfigurationActivationStatus
     Rejected
 }
 
-/// <summary>服务端下发的一次激活。</summary>
+/// <summary>
+/// 服务端下发的一次激活。
+/// </summary>
+/// <remarks>
+/// <b>它不带配置内容，因为协议里没有任何一条消息带。</b>消息 7
+/// <c>SlotConfigurationActivationCommand</c> 带的是版本号与指纹，所以那次激活是一次**核验**：车拿自己
+/// 手上那份配置算指纹，与 <see cref="TargetFingerprint"/> 比，相等才把这一版认作生效版本，不等就拒绝
+/// 并报 <c>SLOT_CONFIGURATION_FINGERPRINT_MISMATCH</c>。
+///
+/// <see cref="TargetConfigurationVersion"/> 是服务端对这一版的命名，车不参与命名，也不据它做任何判断
+/// ——核验只看指纹。它的用处是激活成功后把这个名字记在本机生效配置上，好让
+/// <c>CapabilitySnapshot.activeSlotConfigurationVersion</c> 报得出服务端认得的那个名字。
+/// </remarks>
 public sealed record SlotConfigurationActivationRequest(
     string ActivationId,
-    ActiveSlotConfiguration Configuration);
+    string TargetConfigurationVersion,
+    string TargetFingerprint);
 
 /// <summary>
 /// 一次激活的结果。断线时它不会丢：重连后按 <c>PENDING_RESULT_REPLAY</c> 补报的就是这一份。
@@ -174,12 +187,24 @@ public sealed class SlotConfigurationActivationCoordinator(
     /// <summary>协议 v2 为这条可靠消息新增的 <c>recoveryRole</c>。</summary>
     public const string RecoveryRole = "SLOT_CONFIGURATION";
 
+    /// <summary>指纹核不上时的稳定错误码，取自协议那本封闭注册表。</summary>
+    public const string FingerprintMismatchReasonCode = "SLOT_CONFIGURATION_FINGERPRINT_MISMATCH";
+
     private readonly IActiveSlotConfigurationStore _store =
         store ?? throw new ArgumentNullException(nameof(store));
     private readonly TimeProvider _clock = clock ?? throw new ArgumentNullException(nameof(clock));
 
     /// <summary>本进程内真正执行过多少次激活。补报不增加它。</summary>
     public int ActivationsPerformed { get; private set; }
+
+    /// <summary>
+    /// 本机此刻的生效配置。<c>CapabilitySnapshot</c> 报的版本名与指纹取自它。
+    /// </summary>
+    /// <remarks>
+    /// 从配置项现算那两项会让每次激活之后两端立刻对不上：激活记下的是服务端对这一版的命名，而配置项
+    /// 里写的是本机自述的那个名字，两者本来就可以不同。
+    /// </remarks>
+    public ActiveSlotConfiguration ActiveConfiguration => _store.Current;
 
     public SlotConfigurationActivationResult Activate(SlotConfigurationActivationRequest request)
     {
@@ -194,26 +219,39 @@ public sealed class SlotConfigurationActivationCoordinator(
             return recorded;
         }
 
-        string? rejection = request.Configuration.RejectionReasonCode();
+        ActiveSlotConfiguration held = _store.Current;
+
+        // 先看本机这份配置本身合不合法。不合法的配置绝不允许被认作生效版本——半个配置比旧配置危险
+        // 得多，而这条判断不需要服务端参与。
+        string? rejection = held.RejectionReasonCode()
+            // 再核指纹。不等意味着服务端批准的那一版与车手上这份不是同一份硬件事实，双方都不该让步：
+            // 服务端改口就丢了权威，车改口就是宣称自己装着从没收到过的东西。拒绝，让人去查。
+            ?? (string.Equals(held.Fingerprint, request.TargetFingerprint, StringComparison.Ordinal)
+                ? null
+                : FingerprintMismatchReasonCode);
         if (rejection is not null)
         {
             SlotConfigurationActivationResult rejected = new(
                 request.ActivationId,
                 SlotConfigurationActivationStatus.Rejected,
-                _store.Current.Fingerprint,
+                held.Fingerprint,
                 rejection,
                 _clock.GetUtcNow());
             _store.Commit(configuration: null, rejected);
             return rejected;
         }
 
+        // 指纹相等，所以「切换」不动任何硬件事实——它把服务端对这一版的命名记到本机生效配置上，
+        // 好让 CapabilitySnapshot 报得出服务端认得的那个名字。指纹因此不变，这是对的。
+        ActiveSlotConfiguration activatedConfiguration =
+            held with { ConfigurationVersion = request.TargetConfigurationVersion };
         SlotConfigurationActivationResult activated = new(
             request.ActivationId,
             SlotConfigurationActivationStatus.Activated,
-            request.Configuration.Fingerprint,
+            activatedConfiguration.Fingerprint,
             null,
             _clock.GetUtcNow());
-        _store.Commit(request.Configuration, activated);
+        _store.Commit(activatedConfiguration, activated);
         ActivationsPerformed++;
         return activated;
     }

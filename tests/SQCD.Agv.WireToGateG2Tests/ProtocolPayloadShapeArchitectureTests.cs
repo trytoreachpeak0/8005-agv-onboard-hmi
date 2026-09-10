@@ -283,7 +283,9 @@ public sealed class ProtocolPayloadShapeArchitectureTests
             SendJourneySnapshotsAfterRecovery = true,
             RespondToRecoveryRequests = true,
             RespondToManualChargingReturnToServiceRequests = true,
-            ManualChargingReturnToServiceVehicleBusinessStateRevision = 4
+            ManualChargingReturnToServiceVehicleBusinessStateRevision = 4,
+            // 协议 v2 消息 7 的下发，把消息 8 的 payload 形状也拉进这次会话里检查。
+            SendSlotConfigurationActivationAfterRecovery = true
         };
 
         try
@@ -311,6 +313,11 @@ public sealed class ProtocolPayloadShapeArchitectureTests
                 new SystemClock(),
                 new AlwaysStopped(),
                 new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+                new SlotConfigurationActivationCoordinator(
+                    new DocumentActiveSlotConfigurationStore(
+                        new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                    G2SlotConfigurationFixtures.Approved()),
+                    TimeProvider.System),
                 TimeSpan.FromSeconds(30),
                 TimeSpan.FromSeconds(5),
                 TimeSpan.FromMilliseconds(500));
@@ -321,6 +328,7 @@ public sealed class ProtocolPayloadShapeArchitectureTests
             await WaitUntilAsync(
                 () => server.Received.Count(item => item.MessageType == "SnapshotAppliedAck") == 3,
                 token);
+            await WaitUntilAsync(() => server.ReceivedActivationResults.Count == 1, token);
 
             await client.SendHeartbeatAsync(token);
 
