@@ -26,10 +26,12 @@ public sealed class SlotConfigurationActivationTests
         string before = fixture.Store.Current.Fingerprint;
 
         SlotConfigurationActivationResult result = fixture.Coordinator.Activate(
-            new SlotConfigurationActivationRequest("ACT-1", Configuration("v2", pulseMs: 500)));
+            new SlotConfigurationActivationRequest("ACT-1", Configuration("v2", pulseMs: 400)));
 
         Assert.Equal(SlotConfigurationActivationStatus.Activated, result.Status);
         Assert.Equal("v2", fixture.Store.Current.ConfigurationVersion);
+        // 指纹跟着**硬件事实**变，不跟着版本名变：这里换的是脉冲复位毫秒。只换版本名的话指纹不该动
+        // ——版本名不在两端共用的那套摘要里。
         Assert.NotEqual(before, fixture.Store.Current.Fingerprint);
         // 能力快照带的就是这个值：激活后立刻反映新配置，不是下一次会话才更新。
         Assert.Equal(fixture.Store.Current.Fingerprint, result.ResultingFingerprint);
@@ -160,8 +162,42 @@ public sealed class SlotConfigurationActivationTests
         Assert.Equal("SLOT_CONFIGURATION", SlotConfigurationActivationCoordinator.RecoveryRole);
     }
 
+    /// <summary>
+    /// 规范化摘要钉在一个固定值上，两个仓各钉一份同样的。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 消息 7 不带配置内容，激活是一次核验：服务端发它批准的那一版的指纹，车算自己手上那份的指纹，
+    /// 相等才切换。两端的实现互相看不见——车载端在
+    /// <see cref="ActiveSlotConfiguration"/>，控制服务端在
+    /// <c>ControlServer.Domain.SlotConfigurationFingerprint</c>——所以「两边算法一致」这句话在任何
+    /// 一个仓里都不可能靠对比来证。
+    /// </para>
+    /// <para>
+    /// 固定值是唯一能证的形式：同一批输入，同一个字面量，两个仓各断言一次。哪一边改了规范化形式，
+    /// 那一边当场变红，而不是等到现场那台车拒收激活的时候才发现。控制服务端那一份在
+    /// <c>SlotConfigurationActivationTests.TheCanonicalFingerprintOfTheSharedExampleIsTheValueTheOnboardSideAlsoComputes</c>。
+    /// </para>
+    /// </remarks>
     [Fact]
-    public void TheFingerprintIsDerivedFromContentSoTwoIdenticalConfigurationsAgreeAndAnyChangeShows()
+    public void TheFingerprintMatchesTheValueTheControlServerComputes()
+    {
+        // 与控制服务端那份测试逐字段相同的一批输入：八个仓，DO{n}／DI{n}／DI{n+8}，ACTIVE_HIGH，500ms。
+        Assert.Equal(
+            "de93ca3d9eda7b619dd3ea2e8824f8592a3471b11ff723eba3dbc12ea6f69da9",
+            Configuration("v1", pulseMs: 500).Fingerprint);
+    }
+
+    /// <summary>
+    /// 指纹取自硬件事实，与版本名无关。
+    /// </summary>
+    /// <remarks>
+    /// 协议 v2 的消息 7 不带配置内容，那次激活是一次核验：服务端发它批准的那一版的指纹，车算自己手上
+    /// 那份的指纹，相等才切换。所以摘要只能取两端都有的东西——版本名是服务端自己的命名，车不知道；
+    /// <c>SlotPosition</c> 是车本机的位置名，服务端没有这个概念。摘要把版本名算进去，两端就永远对不上。
+    /// </remarks>
+    [Fact]
+    public void TheFingerprintIsDerivedFromTheHardwareFactsAloneAndNotFromTheVersionNames()
     {
         Assert.Equal(
             Configuration("v1", pulseMs: 500).Fingerprint,
@@ -169,17 +205,25 @@ public sealed class SlotConfigurationActivationTests
         Assert.NotEqual(
             Configuration("v1", pulseMs: 500).Fingerprint,
             Configuration("v1", pulseMs: 400).Fingerprint);
-        Assert.NotEqual(
+        // 只有版本名不同：同一份硬件事实，同一个指纹。
+        Assert.Equal(
             Configuration("v1", pulseMs: 500).Fingerprint,
             Configuration("v2", pulseMs: 500).Fingerprint);
+        // 仓位位置名同理：它只在车上有，服务端算不出带着它的那个值。
+        Assert.Equal(
+            Configuration("v1", pulseMs: 500).Fingerprint,
+            Configuration("v1", pulseMs: 500, slotPosition: "REAR").Fingerprint);
     }
 
-    private static ActiveSlotConfiguration Configuration(string version, int pulseMs) => new(
+    private static ActiveSlotConfiguration Configuration(
+        string version,
+        int pulseMs,
+        string? slotPosition = null) => new(
         "eight-slot-v1",
         version,
         [.. Enumerable.Range(1, 8).Select(number => new SlotConfigurationEntry(
             number,
-            number <= 4 ? "LEFT" : "RIGHT",
+            slotPosition ?? (number <= 4 ? "LEFT" : "RIGHT"),
             $"DO{number}",
             $"DI{number}",
             $"DI{number + 8}",
