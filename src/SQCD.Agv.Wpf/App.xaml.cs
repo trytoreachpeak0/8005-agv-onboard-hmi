@@ -106,6 +106,10 @@ public partial class App : System.Windows.Application, IDisposable
                     _logger,
                     new SystemClock(),
                     vehicleSafetySignalProvider,
+                    // 告警板此刻还没有生产者——#28 定的是 Raise/Clear 与快照语义，谁在什么时候抬起
+                    // 一条告警是各个故障面自己的事。空的告警板照样要发快照：一份空快照说的是「这台车
+                    // 此刻没有告警」，与「这台车从没报过」在看板上是两种显示。
+                    new OnboardAlarmBoard(settings.AgvId, TimeProvider.System),
                     TimeSpan.FromMilliseconds(settings.Workflow.IoSnapshotMaxAgeMs),
                     TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs),
                     TimeSpan.FromMilliseconds(settings.VehicleSafety.ClockSkewToleranceMs));

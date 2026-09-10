@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -31,6 +32,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     private readonly IWireToGateJournal _journal;
     private readonly IClock _clock;
     private readonly IVehicleSafetySignalProvider _vehicleSafetySignalProvider;
+    private readonly OnboardAlarmBoard _alarmBoard;
     private readonly TimeSpan _ioSnapshotMaxAge;
     private readonly TimeSpan _vehicleSafetyMaxAge;
     private readonly TimeSpan _vehicleSafetyClockSkewTolerance;
@@ -58,6 +60,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         IWireToGateJournal journal,
         IClock clock,
         IVehicleSafetySignalProvider vehicleSafetySignalProvider,
+        OnboardAlarmBoard alarmBoard,
         TimeSpan ioSnapshotMaxAge,
         TimeSpan vehicleSafetyMaxAge,
         TimeSpan vehicleSafetyClockSkewTolerance)
@@ -68,6 +71,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         _clock = clock;
         _vehicleSafetySignalProvider = vehicleSafetySignalProvider
             ?? throw new ArgumentNullException(nameof(vehicleSafetySignalProvider));
+        _alarmBoard = alarmBoard ?? throw new ArgumentNullException(nameof(alarmBoard));
         _ioSnapshotMaxAge = ioSnapshotMaxAge;
         _vehicleSafetyMaxAge = vehicleSafetyMaxAge;
         _vehicleSafetyClockSkewTolerance = vehicleSafetyClockSkewTolerance;
@@ -556,6 +560,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         slotStates),
                     cancellationToken).ConfigureAwait(false);
 
+                await SendOnboardAlarmSnapshotAsync(generation, cancellationToken).ConfigureAwait(false);
                 await SendRecoveryStateReportAsync(generation, io, cancellationToken).ConfigureAwait(false);
             }
 
@@ -989,6 +994,88 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         {
             throw new InvalidDataException("CONTENT_HASH_MISMATCH");
         }
+    }
+
+    /// <summary>
+    /// 协议 v2 消息 9 <c>OnboardAlarmSnapshot</c>：把车载端当前全量告警报上去。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>SNAPSHOT，不是事件流。</b>每一份都是当下的全部告警，后一份整体取代前一份。事件流断线重连
+    /// 那段正是 REQ-0269 禁止的东西：重连后不知道漏了什么，只能显示一个不确定新旧的旧值。所以握手里
+    /// 就发一份——重连之后服务端手上立刻是当下的事实，不需要任何补发。
+    /// </para>
+    /// <para>
+    /// 一份空快照也要发。它说的是「这台车此刻没有告警」，与「这台车从没报过」是两件事——后者在服务端
+    /// 看板上显示的是「尚未收到该车快照」，那是一个拿不到事实的状态，不该由一台正常在线的车造成。
+    /// </para>
+    /// </remarks>
+    public Task PublishAlarmSnapshotAsync(long generation, CancellationToken cancellationToken) =>
+        SendOnboardAlarmSnapshotAsync(generation, cancellationToken);
+
+    private Task SendOnboardAlarmSnapshotAsync(long generation, CancellationToken cancellationToken)
+    {
+        OnboardAlarmSnapshot snapshot = _alarmBoard.Capture();
+        return SendSnapshotAndRequireAckAsync(
+            "OnboardAlarmSnapshot",
+            "ONBOARD_ALARM",
+            snapshot.SnapshotSequence,
+            generation,
+            new OnboardAlarmSnapshotPayload(
+                snapshot.SnapshotSequence,
+                snapshot.CapturedAt,
+                [.. snapshot.Alarms.Select(ToWireAlarm)]),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// 车载端的告警模型翻成线上的 <c>AlarmEntry</c>。
+    /// </summary>
+    /// <remarks>
+    /// <c>subjectType</c>／<c>subjectId</c> 是协议表达「这条告警是关于什么的」的方式，服务端凭它
+    /// 把告警分到车载界面还是看板。<see cref="AlarmScope"/> 描述的是同一件事，所以映射是一一对应的，
+    /// 不引入第三套词汇。
+    /// </remarks>
+    private static WireAlarmEntry ToWireAlarm(AlarmEntry alarm) => alarm.Scope switch
+    {
+        AlarmScope.CurrentStop => new WireAlarmEntry(
+            StableAlarmId(alarm), alarm.AlarmCode, alarm.Severity, alarm.RaisedAt,
+            "STATION", alarm.StationId, alarm.Message),
+        AlarmScope.CurrentOperation => new WireAlarmEntry(
+            StableAlarmId(alarm), alarm.AlarmCode, alarm.Severity, alarm.RaisedAt,
+            "SLOT_OPERATION", alarm.SlotOperationAttemptId, alarm.Message),
+        AlarmScope.CurrentVehicle when alarm.PhysicalSlotNumber is int slot => new WireAlarmEntry(
+            StableAlarmId(alarm), alarm.AlarmCode, alarm.Severity, alarm.RaisedAt,
+            "SLOT", slot.ToString(CultureInfo.InvariantCulture), alarm.Message),
+        AlarmScope.CurrentVehicle => new WireAlarmEntry(
+            StableAlarmId(alarm), alarm.AlarmCode, alarm.Severity, alarm.RaisedAt,
+            "VEHICLE", null, alarm.Message),
+        _ => new WireAlarmEntry(
+            StableAlarmId(alarm), alarm.AlarmCode, alarm.Severity, alarm.RaisedAt,
+            "FLEET", null, alarm.Message)
+    };
+
+    /// <summary>
+    /// 一条告警的线上身份，由它的内容算出来。
+    /// </summary>
+    /// <remarks>
+    /// 协议要求每条 <c>AlarmEntry</c> 带一个 <c>Id</c>，而 #28 的告警板不给告警发身份——它按告警码
+    /// 保存当前全量告警，同一个码同时只有一条。用 <c>Guid.NewGuid()</c> 会让每一份快照里的同一条告警
+    /// 都换一个身份，看上去像告警一直在重新发生。所以由内容派生：同一条告警在多份快照里是同一个 id，
+    /// 变了就是另一条。
+    /// </remarks>
+    private static string StableAlarmId(AlarmEntry alarm)
+    {
+        string canonical = string.Join(
+            '',
+            alarm.AlarmCode,
+            alarm.Severity,
+            alarm.RaisedAt.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture),
+            alarm.Scope.ToString(),
+            alarm.StationId ?? string.Empty,
+            alarm.SlotOperationAttemptId ?? string.Empty,
+            alarm.PhysicalSlotNumber?.ToString(CultureInfo.InvariantCulture) ?? string.Empty);
+        return new Guid(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)).AsSpan(0, 16)).ToString("D");
     }
 
     private async Task SendRecoveryStateReportAsync(
@@ -2819,6 +2906,20 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         IReadOnlyList<ProtocolSlotState> SlotStates,
         bool SupportsBatchUnlock,
         int OnboardJournalFormatVersion);
+
+    private sealed record OnboardAlarmSnapshotPayload(
+        long AlarmSnapshotRevision,
+        DateTimeOffset ObservedAt,
+        IReadOnlyList<WireAlarmEntry> Alarms);
+
+    private sealed record WireAlarmEntry(
+        string AlarmId,
+        string Code,
+        string Severity,
+        DateTimeOffset RaisedAt,
+        string SubjectType,
+        string? SubjectId,
+        string? DisplayMessage);
 
     private sealed record SafetyStateSnapshotPayload(
         long SafetyStateVersion,

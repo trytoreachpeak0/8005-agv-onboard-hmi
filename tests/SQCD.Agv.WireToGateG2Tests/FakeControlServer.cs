@@ -375,6 +375,10 @@ public sealed class FakeControlServer : IAsyncDisposable
                         break;
                     case "CapabilitySnapshot":
                     case "SafetyStateSnapshot":
+                    // 协议 v2 消息 9。真服务端收下它并回 SnapshotAppliedAck（snapshotKind
+                    // ONBOARD_ALARM）；这个假服务端不跟上的话，车载端握手会卡在等 ack 上，而那是假车
+                    // 与真服务端行为不一致造成的红，不是车载端的问题。
+                    case "OnboardAlarmSnapshot":
                         await HandleSnapshotAsync(context, line, messageType, root).ConfigureAwait(false);
                         break;
                     case "RecoveryStateReport":
@@ -504,9 +508,13 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     private async Task HandleSnapshotAsync(ConnectionContext context, string line, string messageType, JsonElement snapshot)
     {
-        long revision = messageType == "CapabilitySnapshot"
-            ? snapshot.GetProperty("payload").GetProperty("capabilityVersion").GetInt64()
-            : snapshot.GetProperty("payload").GetProperty("safetyStateVersion").GetInt64();
+        long revision = messageType switch
+        {
+            "CapabilitySnapshot" => snapshot.GetProperty("payload").GetProperty("capabilityVersion").GetInt64(),
+            "OnboardAlarmSnapshot" =>
+                snapshot.GetProperty("payload").GetProperty("alarmSnapshotRevision").GetInt64(),
+            _ => snapshot.GetProperty("payload").GetProperty("safetyStateVersion").GetInt64()
+        };
         string contentSha256 = WireToGateProtocolSerializer.ComputeSha256(Encoding.UTF8.GetBytes(line));
         if (messageType == "CapabilitySnapshot")
         {
@@ -516,7 +524,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                 _acceptedCapabilityVersion = revision;
             }
         }
-        else
+        // 显式判 SafetyStateSnapshot，不用 else：告警快照带的是它自己的 alarmSnapshotRevision，
+        // 落进 else 会把它当成安全态版本记下去，握手随后就报 HANDSHAKE_SEQUENCE_INVALID。
+        else if (messageType == "SafetyStateSnapshot")
         {
             context.SafetyStateVersion = revision;
             lock (_sync)
@@ -582,7 +592,12 @@ public sealed class FakeControlServer : IAsyncDisposable
         var ackPayload = new
         {
             snapshotMessageId = snapshot.GetProperty("messageId").GetString()!,
-            snapshotKind = messageType == "CapabilitySnapshot" ? "CAPABILITY" : "SAFETY_STATE",
+            snapshotKind = messageType switch
+            {
+                "CapabilitySnapshot" => "CAPABILITY",
+                "OnboardAlarmSnapshot" => "ONBOARD_ALARM",
+                _ => "SAFETY_STATE"
+            },
             appliedRevision = revision,
             appliedContentSha256 = contentSha256
         };

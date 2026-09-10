@@ -41,7 +41,12 @@ public sealed class WireToGateG2Tests
         Assert.True(client.IsReady);
         Assert.All(server.IdentityValidationResults, result => Assert.Equal("PASS", result));
         Assert.Equal(
-            ["SessionHello", "CapabilitySnapshot", "SafetyStateSnapshot", "RecoveryStateReport"],
+            // 协议 v2 起，握手里多一份 OnboardAlarmSnapshot：车一上线就把当下的全量告警报一次，
+            // 服务端因此不需要任何补发就有当下的事实（REQ-0269）。
+            [
+                "SessionHello", "CapabilitySnapshot", "SafetyStateSnapshot", "OnboardAlarmSnapshot",
+                "RecoveryStateReport"
+            ],
             InboundMessageTypes(server));
         Assert.Equal(0, io.UnlockCount);
     }
@@ -163,7 +168,10 @@ public sealed class WireToGateG2Tests
 
         Assert.Equal(WireToGateSessionReadiness.Ready, snapshot.Readiness);
         Assert.Equal(
-            [("CapabilitySnapshot", 1L), ("SafetyStateSnapshot", 1L), ("CapabilitySnapshot", 2L), ("SafetyStateSnapshot", 2L)],
+            [
+                ("CapabilitySnapshot", 1L), ("SafetyStateSnapshot", 1L), ("OnboardAlarmSnapshot", 1L),
+                ("CapabilitySnapshot", 2L), ("SafetyStateSnapshot", 2L)
+            ],
             server.AppliedSnapshots.ToArray());
         Assert.Equal(0, io.UnlockCount);
     }
@@ -500,6 +508,7 @@ public sealed class WireToGateG2Tests
                 logger,
                 new SystemClock(),
                 new DelegateVehicleSafetySignalProvider(() => false),
+                new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
                 TimeSpan.FromSeconds(30),
                 TimeSpan.FromSeconds(5),
                 TimeSpan.FromMilliseconds(500));
@@ -658,6 +667,7 @@ public sealed class WireToGateG2Tests
                 logger,
                 new SystemClock(),
                 new DelegateVehicleSafetySignalProvider(() => false),
+                new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
                 TimeSpan.FromSeconds(30),
                 TimeSpan.FromSeconds(5),
                 TimeSpan.FromMilliseconds(500));
@@ -1430,6 +1440,7 @@ public sealed class WireToGateG2Tests
             logger,
             new SystemClock(),
             provider,
+            new OnboardAlarmBoard("AGV-G2", TimeProvider.System),
             TimeSpan.FromSeconds(30),
             TimeSpan.FromSeconds(5),
             TimeSpan.FromMilliseconds(500));
@@ -1519,6 +1530,7 @@ public sealed class WireToGateG2Tests
             logger,
             new SystemClock(),
             provider,
+            new OnboardAlarmBoard("AGV-G2", TimeProvider.System),
             TimeSpan.FromSeconds(30),
             TimeSpan.FromSeconds(5),
             TimeSpan.FromMilliseconds(500));
@@ -1594,6 +1606,7 @@ public sealed class WireToGateG2Tests
             new SqliteWireToGateJournal(journalPath),
             new SystemClock(),
             new DelegateVehicleSafetySignalProvider(vehicleStoppedProvider ?? (() => true)),
+            new OnboardAlarmBoard("AGV-G2", TimeProvider.System),
             TimeSpan.FromSeconds(30),
             TimeSpan.FromSeconds(5),
             TimeSpan.FromMilliseconds(500));

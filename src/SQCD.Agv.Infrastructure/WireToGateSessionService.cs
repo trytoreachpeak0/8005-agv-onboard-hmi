@@ -21,6 +21,7 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         IAppLogger logger,
         IClock clock,
         IVehicleSafetySignalProvider vehicleSafetySignalProvider,
+        OnboardAlarmBoard alarmBoard,
         TimeSpan ioSnapshotMaxAge,
         TimeSpan vehicleSafetyMaxAge,
         TimeSpan vehicleSafetyClockSkewTolerance)
@@ -38,6 +39,7 @@ public sealed class WireToGateSessionService : IAsyncDisposable
             journal,
             clock,
             vehicleSafetySignalProvider,
+            alarmBoard,
             ioSnapshotMaxAge,
             vehicleSafetyMaxAge,
             vehicleSafetyClockSkewTolerance);

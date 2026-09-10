@@ -310,6 +310,7 @@ public sealed class ProtocolPayloadShapeArchitectureTests
                 new SqliteWireToGateJournal(journalPath),
                 new SystemClock(),
                 new AlwaysStopped(),
+                new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
                 TimeSpan.FromSeconds(30),
                 TimeSpan.FromSeconds(5),
                 TimeSpan.FromMilliseconds(500));
