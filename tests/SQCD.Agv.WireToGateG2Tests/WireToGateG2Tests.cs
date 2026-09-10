@@ -168,9 +168,12 @@ public sealed class WireToGateG2Tests
 
         Assert.Equal(WireToGateSessionReadiness.Ready, snapshot.Readiness);
         Assert.Equal(
+            // 第二次连接的告警快照序号仍然是 1——告警板的序号活在进程里，新的客户端从头开始。它照样
+            // 被采纳，因为采纳判据是 (会话代, 序号)：不这样的话，车重启之后它的告警就再也上不去，
+            // 看板停在重启前那一批，正是 REQ-0269 禁止的旧值。
             [
                 ("CapabilitySnapshot", 1L), ("SafetyStateSnapshot", 1L), ("OnboardAlarmSnapshot", 1L),
-                ("CapabilitySnapshot", 2L), ("SafetyStateSnapshot", 2L)
+                ("CapabilitySnapshot", 2L), ("SafetyStateSnapshot", 2L), ("OnboardAlarmSnapshot", 1L)
             ],
             server.AppliedSnapshots.ToArray());
         Assert.Equal(0, io.UnlockCount);

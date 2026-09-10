@@ -19,7 +19,8 @@ public sealed class FakeControlServer : IAsyncDisposable
     private readonly CancellationTokenSource _stopping = new();
     private readonly Task _acceptLoop;
     private readonly List<string> _identityValidations = [];
-    private readonly Dictionary<string, (long Revision, string ContentSha256)> _appliedSnapshots = new();
+    private readonly Dictionary<string, (long Generation, long Revision, string ContentSha256)> _appliedSnapshots
+        = new();
     private readonly Dictionary<string, string> _acceptedSafetyStateChanges = new(StringComparer.Ordinal);
     private readonly object _sync = new();
     private long _sessionGeneration;
@@ -535,22 +536,31 @@ public sealed class FakeControlServer : IAsyncDisposable
             }
         }
 
+        // **只有告警快照按会话代分域。**它的修订号是车载端告警板的进程内计数，车一重启就从 1 重新
+        // 开始，真服务端因此按 (会话代, 序号) 这一对采纳。能力与安全态快照的修订号来自配置，跨代
+        // 可比，同一修订号换了内容仍然是冲突——把它们也按代分域会让那条 fail-closed 的规则在每次
+        // 重连时失效。
+        long generation = messageType == "OnboardAlarmSnapshot"
+            ? snapshot.GetProperty("sessionGeneration").GetInt64()
+            : 0L;
         string? problemCode = null;
         bool apply;
         lock (_sync)
         {
-            if (_appliedSnapshots.TryGetValue(messageType, out (long Revision, string ContentSha256) applied))
+            if (_appliedSnapshots.TryGetValue(
+                messageType, out (long Generation, long Revision, string ContentSha256) applied))
             {
-                if (revision < applied.Revision)
+                bool sameGeneration = generation == applied.Generation;
+                if (generation < applied.Generation || (sameGeneration && revision < applied.Revision))
                 {
                     problemCode = "SNAPSHOT_REVISION_REGRESSION";
                 }
-                else if (revision == applied.Revision && contentSha256 != applied.ContentSha256)
+                else if (sameGeneration && revision == applied.Revision && contentSha256 != applied.ContentSha256)
                 {
                     problemCode = "SNAPSHOT_REVISION_CONTENT_CONFLICT";
                 }
 
-                apply = revision > applied.Revision;
+                apply = generation > applied.Generation || (sameGeneration && revision > applied.Revision);
             }
             else
             {
@@ -559,7 +569,7 @@ public sealed class FakeControlServer : IAsyncDisposable
 
             if (apply)
             {
-                _appliedSnapshots[messageType] = (revision, contentSha256);
+                _appliedSnapshots[messageType] = (generation, revision, contentSha256);
                 var appliedList = AppliedSnapshots.ToList();
                 appliedList.Add((messageType, revision));
                 AppliedSnapshots = appliedList;
