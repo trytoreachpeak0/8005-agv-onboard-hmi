@@ -68,6 +68,13 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool SendJourneySnapshotsAfterRecovery { get; set; }
 
+    /// <summary>
+    /// How many legs the UpcomingStopPlanSnapshot carries. 1 is the single-demand shape every other
+    /// test here assumes; a multi-demand journey sends one leg per pickup stop plus the gate, so the
+    /// real server sends N+1. The protocol schema allows up to 10.
+    /// </summary>
+    public int UpcomingStopPlanLegCount { get; set; } = 1;
+
     public bool SendDemandAcceptanceSnapshotsAfterRecovery { get; set; }
 
     public bool SendDemandAcceptanceSnapshotsOnlyFirstConnection { get; set; }
@@ -953,18 +960,21 @@ public sealed class FakeControlServer : IAsyncDisposable
             {
                 planRevision = 1,
                 demandId,
-                legs = new[]
+                // 多需求旅程是 N 个取货停靠加一个关卡，腿数不是常数 1。默认仍发一条，既有断言
+                // 一行不用改；要多需求那个形状的测试把 UpcomingStopPlanLegCount 调大。
+                legs = Enumerable.Range(1, UpcomingStopPlanLegCount).Select(sequence => new
                 {
-                    new
-                    {
-                        movementLegId,
-                        legType = "TO_PICKUP",
-                        sequence = 1,
-                        stationId = "ST-01",
-                        mapId = "MAP-01",
-                        state = "ACTIVE"
-                    }
-                }
+                    movementLegId = sequence == 1
+                        ? movementLegId
+                        : $"00000000-0000-4000-8000-{sequence:D12}",
+                    legType = sequence == UpcomingStopPlanLegCount && UpcomingStopPlanLegCount > 1
+                        ? "TO_GATE"
+                        : "TO_PICKUP",
+                    sequence,
+                    stationId = sequence == 1 ? "ST-01" : $"ST-{sequence:D2}",
+                    mapId = "MAP-01",
+                    state = sequence == 1 ? "ACTIVE" : "PLANNED"
+                }).ToArray()
             })).ConfigureAwait(false);
 
         if (SendSublotEntryRequestAfterRecovery)
