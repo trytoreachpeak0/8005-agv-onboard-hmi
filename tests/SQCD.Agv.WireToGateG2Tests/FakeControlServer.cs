@@ -822,7 +822,10 @@ public sealed class FakeControlServer : IAsyncDisposable
             {
                 readiness = ready ? "READY" : "RECOVERY_REQUIRED",
                 decidedAt = DateTimeOffset.UtcNow,
-                reasonCodes = ready ? Array.Empty<string>() : ["DEPARTURE_SAFETY_NOT_READY"],
+                // The wire value, not the server's internal session reason: ControlServer maps its
+                // DEPARTURE_SAFETY_NOT_READY onto DEPARTURE_UNSAFE before sending
+                // (ProtocolErrorCodes.ToSessionReadinessReasonCode), and only the latter is an ErrorCode.
+                reasonCodes = ready ? Array.Empty<string>() : ["DEPARTURE_UNSAFE"],
                 acceptedCapabilityVersion = Math.Max(context.CapabilityVersion, context.AcceptedCapabilityVersion),
                 acceptedSafetyStateVersion = Math.Max(context.SafetyStateVersion, context.AcceptedSafetyStateVersion),
                 vehicleBusinessStateRevision = 0
@@ -1150,7 +1153,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                     fieldPath = (string?)null,
                     displayMessage = (string?)null
                 },
-                expectedProtocolVersion = 1,
+                expectedProtocolVersion = WireToGateRelease.ProtocolVersion,
                 expectedProfileId = WireToGateRelease.ProfileId,
                 expectedProtocolReleaseManifestSha256 = WireToGateRelease.ManifestSha256
             });

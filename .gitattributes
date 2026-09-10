@@ -9,3 +9,8 @@
 # eol=lf applies to .ps1 too, unlike the sibling ControlServer repository: this repository's
 # .editorconfig makes no exception for it, and PowerShell 7 does not care.
 * text=auto eol=lf
+
+# The vendored protocol files are checked against WireToGateRelease by hash (ManifestSha256 on the
+# manifest, SchemaBundleSha256 recomputed over schemas/), so they must stay exactly the bytes the
+# protocol tag holds.
+vendor/8005-agv-protocol/** -text

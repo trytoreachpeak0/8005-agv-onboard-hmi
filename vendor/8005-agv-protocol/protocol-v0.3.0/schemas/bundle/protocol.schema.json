@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.8005-agv.local/wire-to-gate/v1/bundle/protocol.schema.json",
+  "title": "WIRE_TO_GATE MVP protocol bundle",
+  "oneOf": [
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/SessionHello.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/SessionAccepted.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/SessionRejected.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/Heartbeat.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/HeartbeatAck.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/CapabilitySnapshotRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/CapabilitySnapshot.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/RecoveryStateReport.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/SessionReadiness.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/SafetyStateChanged.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/SafetyStateSnapshotRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/SafetyStateSnapshot.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/PreDepartureSafetyCheck.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/PreDepartureSafetyCheckResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/VehicleBusinessStateSnapshot.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/CurrentStopWorklistSnapshot.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/UpcomingStopPlanSnapshot.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/SublotEntryRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/SublotSubmitted.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/SublotRejected.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/SlotOperationCommand.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/SlotOperationCommandRejected.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/OperationProgress.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/OperationResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/ManualChargingReturnToServiceRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/ManualChargingReturnToServiceResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/LoadCorrectionRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/LoadCorrectionRejected.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/LoadCorrectionCommand.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/LoadCorrectionResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/LoadCancellationStartRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/LoadCancellationAuthorization.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/LoadCancellationResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/LoadCompensationRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/LoadCompensationRejected.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/LoadCompensationCommand.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/LoadCompensationResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/ExceptionRecoverySessionRequested.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/ExceptionRecoverySessionOpened.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/ExceptionRecoverySessionRejected.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/ExceptionRecoverySessionSnapshot.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/RecoveryActionSubmitted.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/RecoveryActionAccepted.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/RecoveryActionRejected.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/HardwareRecoveryRecordSubmitted.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/HardwareRecoveryRecordResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/SlotOperationResumeCommand.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/FaultCargoRecoveryCommand.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/FaultCargoRecoveryResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/ForcedMechanicalRecoveryCommand.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/ForcedMechanicalRecoveryResult.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/DurableAck.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/SnapshotAppliedAck.schema.json"
+    },
+    {
+      "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/messages/ProtocolProblem.schema.json"
+    }
+  ]
+}

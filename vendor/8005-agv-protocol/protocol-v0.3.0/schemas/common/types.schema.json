@@ -1,0 +1,457 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json",
+  "title": "WIRE_TO_GATE MVP common types",
+  "$defs": {
+    "Id": {
+      "type": "string",
+      "minLength": 1,
+      "format": "uuid",
+      "examples": [
+        "00000000-0000-4000-8000-000000000001"
+      ]
+    },
+    "Revision": {
+      "type": "integer",
+      "minimum": 0,
+      "examples": [
+        1
+      ]
+    },
+    "Generation": {
+      "type": "integer",
+      "minimum": 0,
+      "examples": [
+        1
+      ]
+    },
+    "Instant": {
+      "type": "string",
+      "minLength": 1,
+      "format": "date-time",
+      "examples": [
+        "2026-08-25T09:00:00Z"
+      ]
+    },
+    "Sha256": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[0-9a-f]{64}$",
+      "examples": [
+        "0000000000000000000000000000000000000000000000000000000000000000"
+      ]
+    },
+    "CommitSha": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[0-9a-f]{40}$",
+      "examples": [
+        "0000000000000000000000000000000000000000"
+      ]
+    },
+    "SlotNo": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 8,
+      "examples": [
+        1
+      ]
+    },
+    "ErrorCode": {
+      "type": "string",
+      "minLength": 1,
+      "enum": [
+        "PROTOCOL_ENVELOPE_INVALID",
+        "PROTOCOL_SCHEMA_INVALID",
+        "UNSUPPORTED_PROTOCOL_VERSION",
+        "PROTOCOL_RELEASE_IDENTITY_MISMATCH",
+        "UNKNOWN_MESSAGE_TYPE",
+        "PROFILE_MESSAGE_NOT_ALLOWED",
+        "MESSAGE_ID_CONTENT_CONFLICT",
+        "CORRELATION_INVALID",
+        "CONTENT_HASH_MISMATCH",
+        "VEHICLE_CREDENTIAL_INVALID",
+        "AGV_ID_MISMATCH",
+        "STALE_SESSION_GENERATION",
+        "DUPLICATE_ACTIVE_SESSION",
+        "HANDSHAKE_SEQUENCE_INVALID",
+        "CAPABILITY_VERSION_GAP",
+        "SAFETY_STATE_VERSION_GAP",
+        "SNAPSHOT_REVISION_REGRESSION",
+        "SNAPSHOT_REVISION_CONTENT_CONFLICT",
+        "SESSION_RECOVERY_REQUIRED",
+        "BUSINESS_ID_CONTENT_CONFLICT",
+        "VEHICLE_NOT_READY",
+        "DEMAND_NOT_CURRENT",
+        "OPERATION_SESSION_MISMATCH",
+        "STATION_MISMATCH",
+        "WORKLIST_REVISION_STALE",
+        "SUBLOT_MISMATCH",
+        "SLOT_SET_INVALID",
+        "EXPECTED_BASKET_COUNT_MISMATCH",
+        "SLOT_OPERATION_CONFLICT",
+        "ACTION_NOT_ALLOWED_IN_STATE",
+        "MANUAL_CHARGING_HOLD_ACTIVE",
+        "CAPABILITY_UNKNOWN",
+        "SLOT_INOPERABLE",
+        "SLOT_STATE_UNKNOWN",
+        "LOCK_NOT_CLOSED",
+        "UNLOCK_OUTPUT_NOT_RESET",
+        "DEPARTURE_UNSAFE",
+        "PREDEPARTURE_CHECK_EXPIRED",
+        "RECOVERY_SESSION_NOT_OPEN",
+        "RECOVERY_SCOPE_MISMATCH",
+        "RECOVERY_CHECKPOINT_NOT_UNIQUE",
+        "RECOVERY_AUTHENTICATION_FAILED",
+        "FORCED_RECOVERY_GENERATION_STALE",
+        "OPERATOR_TIMEOUT"
+      ],
+      "examples": [
+        "ACTION_NOT_ALLOWED_IN_STATE"
+      ]
+    },
+    "ProtocolReleaseIdentity": {
+      "type": "object",
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1,
+          "const": "8005-agv-protocol"
+        },
+        "releaseVersion": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+          "examples": [
+            "0.1.0"
+          ]
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^protocol-v",
+          "examples": [
+            "protocol-v0.1.0"
+          ]
+        },
+        "commit": {
+          "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/CommitSha"
+        },
+        "protocolVersion": {
+          "type": "integer",
+          "const": 3
+        },
+        "profileId": {
+          "type": "string",
+          "minLength": 1,
+          "const": "WIRE_TO_GATE_MVP"
+        },
+        "manifestSha256": {
+          "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/Sha256"
+        },
+        "schemaBundleSha256": {
+          "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/Sha256"
+        },
+        "vectorsSha256": {
+          "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/Sha256"
+        }
+      },
+      "required": [
+        "repository",
+        "releaseVersion",
+        "tag",
+        "commit",
+        "protocolVersion",
+        "profileId",
+        "manifestSha256",
+        "schemaBundleSha256",
+        "vectorsSha256"
+      ],
+      "additionalProperties": false
+    },
+    "Problem": {
+      "type": "object",
+      "properties": {
+        "reasonCode": {
+          "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/ErrorCode"
+        },
+        "fieldPath": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "displayMessage": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "reasonCode",
+        "fieldPath",
+        "displayMessage"
+      ],
+      "additionalProperties": false
+    },
+    "SlotState": {
+      "type": "object",
+      "properties": {
+        "slotNo": {
+          "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/SlotNo"
+        },
+        "operability": {
+          "type": "string",
+          "enum": [
+            "OPERABLE",
+            "INOPERABLE",
+            "UNKNOWN"
+          ]
+        },
+        "administrativeAvailability": {
+          "type": "string",
+          "enum": [
+            "ENABLED",
+            "DISABLE_PENDING",
+            "DISABLED"
+          ]
+        },
+        "physicalState": {
+          "type": "string",
+          "enum": [
+            "EMPTY",
+            "OCCUPIED",
+            "UNKNOWN"
+          ]
+        },
+        "lockState": {
+          "type": "string",
+          "enum": [
+            "LOCKED",
+            "UNLOCKED",
+            "UNKNOWN"
+          ]
+        },
+        "unlockOutputState": {
+          "type": "string",
+          "enum": [
+            "RESET",
+            "ACTIVE",
+            "UNKNOWN"
+          ]
+        },
+        "reasonCodes": {
+          "type": "array",
+          "items": {
+            "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/ErrorCode"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "slotNo",
+        "operability",
+        "administrativeAvailability",
+        "physicalState",
+        "lockState",
+        "unlockOutputState",
+        "reasonCodes"
+      ],
+      "additionalProperties": false
+    },
+    "SlotResult": {
+      "type": "object",
+      "properties": {
+        "slotNo": {
+          "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/SlotNo"
+        },
+        "outcome": {
+          "type": "string",
+          "enum": [
+            "COMPLETED",
+            "FAILED",
+            "NOT_STARTED",
+            "UNKNOWN"
+          ]
+        },
+        "finalPhysicalState": {
+          "type": "string",
+          "enum": [
+            "EMPTY",
+            "OCCUPIED",
+            "UNKNOWN"
+          ]
+        },
+        "lockState": {
+          "type": "string",
+          "enum": [
+            "LOCKED",
+            "UNLOCKED",
+            "UNKNOWN"
+          ]
+        },
+        "unlockOutputState": {
+          "type": "string",
+          "enum": [
+            "RESET",
+            "ACTIVE",
+            "UNKNOWN"
+          ]
+        },
+        "reasonCodes": {
+          "type": "array",
+          "items": {
+            "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/ErrorCode"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "slotNo",
+        "outcome",
+        "finalPhysicalState",
+        "lockState",
+        "unlockOutputState",
+        "reasonCodes"
+      ],
+      "additionalProperties": false
+    },
+    "SafetySummary": {
+      "type": "object",
+      "properties": {
+        "departureSafe": {
+          "type": "boolean"
+        },
+        "vehicleStopped": {
+          "type": "boolean"
+        },
+        "allTargetSlotsLocked": {
+          "type": "boolean"
+        },
+        "allUnlockOutputsReset": {
+          "type": "boolean"
+        },
+        "unknownPresent": {
+          "type": "boolean"
+        },
+        "reasonCodes": {
+          "type": "array",
+          "items": {
+            "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/ErrorCode"
+          },
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "departureSafe",
+        "vehicleStopped",
+        "allTargetSlotsLocked",
+        "allUnlockOutputsReset",
+        "unknownPresent",
+        "reasonCodes"
+      ],
+      "additionalProperties": false
+    },
+    "OperatorContext": {
+      "type": "object",
+      "properties": {
+        "operatorId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "verificationMethod": {
+          "type": "string",
+          "enum": [
+            "BADGE",
+            "SESSION"
+          ]
+        },
+        "verifiedAt": {
+          "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/Instant"
+        }
+      },
+      "required": [
+        "operatorId",
+        "verificationMethod",
+        "verifiedAt"
+      ],
+      "additionalProperties": false
+    },
+    "PendingResultRef": {
+      "type": "object",
+      "properties": {
+        "messageType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "messageId": {
+          "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/Id"
+        },
+        "businessId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "contentSha256": {
+          "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/Sha256"
+        }
+      },
+      "required": [
+        "messageType",
+        "messageId",
+        "businessId",
+        "contentSha256"
+      ],
+      "additionalProperties": false
+    },
+    "BlockingFact": {
+      "type": "object",
+      "properties": {
+        "reasonCode": {
+          "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/ErrorCode"
+        },
+        "subjectType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subjectId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "minLength": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "reasonCode",
+        "subjectType",
+        "subjectId"
+      ],
+      "additionalProperties": false
+    },
+    "SlotNoArray": {
+      "type": "array",
+      "items": {
+        "$ref": "https://schemas.8005-agv.local/wire-to-gate/v1/common/types.schema.json#/$defs/SlotNo"
+      },
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "x-sortedAscending": true
+    }
+  }
+}

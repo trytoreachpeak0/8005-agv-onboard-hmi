@@ -71,6 +71,17 @@ public static class WireToGateProtocolSerializer
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow
     };
 
+    /// <summary>
+    /// Sees every envelope built for sending: each one <see cref="Create"/> makes, and each pending
+    /// durable message <see cref="RebindSessionGeneration"/> rebinds. It is handed the messageType and
+    /// <see cref="Serialize"/> of that envelope, the bytes <see cref="SerializeLine"/> puts on the wire.
+    /// Only the G2 test host sets it: SQCD.Agv.WireToGateG2Tests checks what it collects against the
+    /// protocol's JSON Schema (8005-agv-program#34). Product code never assigns it, so on a vehicle this
+    /// costs a null check. It is deliberately not called from <see cref="Serialize"/>, which also hashes
+    /// envelopes this side received -- and inbound lines are the peer's to validate (#27, point 5).
+    /// </summary>
+    public static Action<string, string>? OutboundObserver { get; set; }
+
     public static WireToGateEnvelope Create(
         string messageType,
         string messageId,
@@ -93,7 +104,7 @@ public static class WireToGateProtocolSerializer
             throw new ArgumentOutOfRangeException(nameof(sessionGeneration));
         }
 
-        return new WireToGateEnvelope(
+        return Observed(new WireToGateEnvelope(
             WireToGateRelease.ProtocolVersion,
             WireToGateRelease.ProfileId,
             WireToGateRelease.ReleaseVersion,
@@ -104,7 +115,7 @@ public static class WireToGateProtocolSerializer
             agvId,
             sessionGeneration,
             sentAt,
-            JsonSerializer.SerializeToElement(payload, SerializerOptions));
+            JsonSerializer.SerializeToElement(payload, SerializerOptions)));
     }
 
     public static string Serialize(WireToGateEnvelope envelope) =>
@@ -125,7 +136,13 @@ public static class WireToGateProtocolSerializer
         ArgumentNullException.ThrowIfNull(envelope);
         ArgumentOutOfRangeException.ThrowIfNegative(sessionGeneration);
 
-        return envelope with { SessionGeneration = sessionGeneration };
+        return Observed(envelope with { SessionGeneration = sessionGeneration });
+    }
+
+    private static WireToGateEnvelope Observed(WireToGateEnvelope envelope)
+    {
+        OutboundObserver?.Invoke(envelope.MessageType, Serialize(envelope));
+        return envelope;
     }
 
     public static WireToGateEnvelope DeserializeAndValidate(

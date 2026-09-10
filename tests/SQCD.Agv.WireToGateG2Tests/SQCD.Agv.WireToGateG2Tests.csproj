@@ -18,5 +18,8 @@
     <ProjectReference Include="../../src/SQCD.Agv.Core/SQCD.Agv.Core.csproj" />
     <ProjectReference Include="../../src/SQCD.Agv.Infrastructure/SQCD.Agv.Infrastructure.csproj" />
     <ProjectReference Include="../../src/SQCD.Agv.Wpf/SQCD.Agv.Wpf.csproj" />
+    <!-- Build order only: OutboundSchemaConformance runs this validator as its own process. Never let
+         its assembly in here: its System.Text.Json 10 would replace the one the vehicle runs. -->
+    <ProjectReference Include="../../tools/SQCD.Agv.SchemaConformance/SQCD.Agv.SchemaConformance.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
 </Project>

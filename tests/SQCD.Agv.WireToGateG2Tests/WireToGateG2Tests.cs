@@ -851,7 +851,7 @@ public sealed class WireToGateG2Tests
                             "EMPTY",
                             "UNLOCKED",
                             "RESET",
-                            ["SLOT_EMPTY_AFTER_LOAD"])
+                            ["OPERATOR_TIMEOUT"])
                     ],
                     DateTimeOffset.UtcNow,
                     "NONE",
@@ -958,7 +958,7 @@ public sealed class WireToGateG2Tests
                             "EMPTY",
                             "UNLOCKED",
                             "RESET",
-                            ["SLOT_EMPTY_AFTER_LOAD"])
+                            ["OPERATOR_TIMEOUT"])
                     ],
                     DateTimeOffset.UtcNow,
                     "NONE",
@@ -1707,7 +1707,7 @@ public sealed class WireToGateG2Tests
             secondMessageId = await secondClient.SendSafetyStateChangedAsync(
                 1,
                 observedAt,
-                new WireToGateSafetySummaryPayload(false, true, true, true, false, ["VEHICLE_NOT_STOPPED"]),
+                new WireToGateSafetySummaryPayload(false, true, true, true, false, ["VEHICLE_NOT_READY"]),
                 [2],
                 testToken);
         }
@@ -1815,7 +1815,7 @@ public sealed class WireToGateG2Tests
         WireToGateSessionSnapshot blocked = await client.ConnectAndRecoverAsync(testToken);
 
         Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, blocked.Readiness);
-        Assert.Contains("DEPARTURE_SAFETY_NOT_READY", blocked.ReasonCodes);
+        Assert.Contains("DEPARTURE_UNSAFE", blocked.ReasonCodes);
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendOperationProgressAsync(
             "44444444-4444-4444-4444-444444444444",
             "PREPARING",

@@ -1,0 +1,37 @@
+[
+  {
+    "messageType": "ExceptionRecoverySessionRequested",
+    "pointer": "#/payload/administrator/verificationMethod",
+    "keyword": "enum",
+    "actual": "\"CONFIGURED_PROOF\"",
+    "issue": "https://github.com/trytoreachpeak0/8005-agv-protocol/issues/9"
+  },
+  {
+    "messageType": "RecoveryActionSubmitted",
+    "pointer": "#/payload/operator/verificationMethod",
+    "keyword": "enum",
+    "actual": "\"CONFIGURED_PROOF\"",
+    "issue": "https://github.com/trytoreachpeak0/8005-agv-protocol/issues/9"
+  },
+  {
+    "messageType": "SublotEntryRequested",
+    "pointer": "#/payload/expectedSublots",
+    "keyword": "minItems",
+    "actual": "[]",
+    "deliberate": "WireToGateG2Tests.EmptyExpectedSublotsFailClosed"
+  },
+  {
+    "messageType": "SublotEntryRequested",
+    "pointer": "#/payload/expectedSublots",
+    "keyword": "maxItems",
+    "actual": "[\"S-1\",\"S-2\",\"S-3\",\"S-4\",\"S-5\",\"S-6\",\"S-7\",\"S-8\",\"S-9\"]",
+    "deliberate": "WireToGateG2Tests.NineExpectedSublotsFailClosed"
+  },
+  {
+    "messageType": "SublotEntryRequested",
+    "pointer": "#/payload/expectedSublots/*",
+    "keyword": "uniqueItems",
+    "actual": "\"SUBLOT-001\"",
+    "deliberate": "WireToGateG2Tests.DuplicateExpectedSublotsFailClosed"
+  }
+]
