@@ -143,9 +143,10 @@ public sealed class OnboardAlarmSnapshotTests
 
     private static HashSet<string> ReadProtocolErrorCodes()
     {
+        // v0.3.0 线把 vendor 按发布版本分目录（vendor/8005-agv-protocol/protocol-v0.3.0/...），v2 线
+        // 直接就是那一份候选本身，少一层。这里跟 v2 线的布局。
         string path = Path.Combine(
-            FindRepositoryRoot(),
-            "vendor", "8005-agv-protocol", "protocol-v0.3.0", "errors", "error-codes.json");
+            FindRepositoryRoot(), "vendor", "8005-agv-protocol", "errors", "error-codes.json");
         using JsonDocument document = JsonDocument.Parse(File.ReadAllBytes(path));
         HashSet<string> codes = new(StringComparer.Ordinal);
         foreach (JsonElement entry in document.RootElement.GetProperty("codes").EnumerateArray())
