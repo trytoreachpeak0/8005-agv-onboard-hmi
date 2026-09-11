@@ -216,6 +216,113 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// 结算一次执行到一半、执行它的进程就没了的仓位操作（8005-agv-program#40）。只读实时 IO，
+    /// 不输出任何开锁脉冲，把日志里那一次未结算的 attempt 交成一份结果。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 进程在开锁之后、结果写出之前退出——关窗口、崩溃、断电、系统更新重启都一样——日志里留下
+    /// 一个未结算的 attempt，之后没有任何东西会结算它：车辆只在收到命令或恢复动作时才结算，
+    /// 服务端没有结果就不判 RecoveryRequired、不让旅程停摆，而恢复入口要求旅程已经停摆。两端
+    /// 就此互相等对方，现场实测过。
+    /// </para>
+    /// <para>
+    /// 收尾照 ADR-cross-0017：重启后不得再输出开锁，只按实时物理状态收掉当前开锁集合，后面的
+    /// 仓位要服务端授权才能继续。所以结论只有两种。每个开过的目标仓都已处在最终态、而且没有
+    /// 未开始的仓位——上一个进程没了之后操作员把活干完了——结论是确定的 COMPLETED，说成不知道
+    /// 就是把一次已经确定的结果误判成未知。其余一律 UNKNOWN，由服务端判 RecoveryRequired 走恢复。
+    /// </para>
+    /// <para>
+    /// 不给确定失败：FAILED 的前提是本站期限已过（ADR-cross-0058 决策 5），进程重启不是期限。
+    /// 物理字段一律填读到的真实读数（决策 6）——不知道的是这次操作该怎么往下走，不是仓位长什么样。
+    /// </para>
+    /// <para>
+    /// 调用方负责确认这一次 attempt 确实没有人在执行：本方法看不出来，断网重连时执行器还在跑，
+    /// 而日志的样子与进程重启后一模一样。
+    /// </para>
+    /// </remarks>
+    public async Task<WireToGateOperationExecutionResult> SettleInterruptedAsync(
+        CancellationToken cancellationToken = default) =>
+        await RunExclusiveAsync(SettleInterruptedCoreAsync, cancellationToken).ConfigureAwait(false);
+
+    private async Task<WireToGateOperationExecutionResult> SettleInterruptedCoreAsync(
+        CancellationToken cancellationToken)
+    {
+        WireToGateRecoveryState state = await _journal
+            .ReadRecoveryStateAsync(cancellationToken)
+            .ConfigureAwait(false);
+        WireToGateRecoveryOperationContext context = state.OperationContext
+            ?? throw new InvalidDataException("RECOVERY_OPERATION_CONTEXT_MISSING");
+        // 恢复向量有自己的日志与自己的续做规则，不归这里。
+        if (!string.Equals(
+                state.UnsettledSlotOperationAttemptId,
+                context.SlotOperationAttemptId,
+                StringComparison.Ordinal)
+            || state.RecoveryVector is not null)
+        {
+            throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
+        }
+
+        WireToGateSlotOperationCommand command = context.ToCommand();
+        IoSnapshot snapshot = _ioModule.CurrentSnapshot;
+        bool fresh = snapshot.IsConnected
+            && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge);
+        List<int> completed = [];
+        List<int> stillActive = [];
+        List<WireToGateSlotExecutionResult> results = [];
+        foreach (int physicalSlot in command.Slots)
+        {
+            LockerSnapshot locker = fresh
+                ? TryGetLocker(snapshot, physicalSlot - 1)
+                : LockerSnapshot.Unknown(physicalSlot - 1, snapshot.ObservedAt);
+            bool opened = state.ActiveUnlockSlots.Contains(physicalSlot)
+                || state.CompletedSlots.Contains(physicalSlot);
+            if (!opened)
+            {
+                // 从未开过：门是关的、锁是闭的，读得到就照实填，reasonCodes 留空（决策 6）。
+                UpsertResult(results, CreateSlotResult(locker, "NOT_STARTED", []));
+            }
+            else if (IsFinalState(locker, command.ExpectedOccupied))
+            {
+                // 日志说完成过的仓位也要重读：检查点之后物理状态变了，它就不再算完成。
+                UpsertResult(results, CreateSlotResult(locker, "COMPLETED", []));
+                completed.Add(physicalSlot);
+            }
+            else
+            {
+                // 读得到时，不确定的只是下一步：重新开锁接着装，还是放弃这一单，日志与 IO
+                // 推不出唯一答案（ADR-cross-0017 的「唯一合法下一步」）。读不到时就是读不到。
+                UpsertResult(
+                    results,
+                    CreateSlotResult(
+                        locker,
+                        "UNKNOWN",
+                        [fresh ? "RECOVERY_CHECKPOINT_NOT_UNIQUE" : "SLOT_STATE_UNKNOWN"]));
+                if (!fresh || !IsSafeFinish(snapshot, physicalSlot - 1))
+                {
+                    stillActive.Add(physicalSlot);
+                }
+            }
+        }
+
+        bool allCompleted = completed.Count == command.Slots.Count;
+        WireToGateRecoveryCheckpoint checkpoint = stillActive.Count == 0
+            ? WireToGateRecoveryCheckpoint.SafeFinishReached
+            : WireToGateRecoveryCheckpoint.ActiveUnlockSet;
+        // 与执行中途判 UNKNOWN 的那条路写成同一个形状：日志保留 OperationContext 与未结 attempt，
+        // 补偿与恢复向量认的正是它们。CancellationToken.None 同理——结论读完了就要落盘。
+        await WriteRecoveryStateAsync(
+            context,
+            checkpoint,
+            stillActive,
+            completed,
+            results,
+            state,
+            CancellationToken.None).ConfigureAwait(false);
+        return CreateResult(command, allCompleted ? "COMPLETED" : "UNKNOWN", results, checkpoint);
+    }
+
     public ValueTask DisposeAsync()
     {
         _operationGate.Dispose();

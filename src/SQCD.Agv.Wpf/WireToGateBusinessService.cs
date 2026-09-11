@@ -576,6 +576,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return;
             }
 
+            if (await TrySettleInterruptedOperationAsync(context, cancellationToken).ConfigureAwait(false))
+            {
+                return;
+            }
+
             WireToGateHmiOperationSnapshot operation = new(
                 context.SlotOperationAttemptId,
                 context.OperationType,
@@ -601,6 +606,119 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 exception);
         }
     }
+
+    /// <summary>
+    /// 日志里那一次未结算的 attempt 若没有人在执行、也从没交过结果，就按实时 IO 把它交成一份
+    /// 结果（8005-agv-program#40）。返回 true 表示这里接手了它。
+    /// </summary>
+    /// <remarks>
+    /// 那样的 attempt 只可能出自上一个进程：它开了锁、在等操作员时没了。之后两端互相等——车辆
+    /// 只在收到命令时结算 attempt，服务端没有结果就不让旅程停摆，恢复入口又要求旅程已停摆——
+    /// 所以结果必须由车辆这一端主动交。
+    ///
+    /// 判「没有人在执行」靠的是本进程自己的在途集合，不是日志：执行器挂在服务生命周期上、不跟
+    /// 连接走，断网重连时它还在跑，而那时握手上报的日志与进程重启后一字不差。服务端从报文里分不出
+    /// 这两种情况，这也是这件事必须修在车辆这一端的原因。先占住在途集合再查结果，免得与同一
+    /// attempt 的命令处理并发。
+    /// </remarks>
+    private async Task<bool> TrySettleInterruptedOperationAsync(
+        WireToGateRecoveryOperationContext context,
+        CancellationToken cancellationToken)
+    {
+        string attemptId = context.SlotOperationAttemptId;
+        lock (_operationAttemptGate)
+        {
+            if (!_operationAttempts.Add(attemptId))
+            {
+                return false;
+            }
+        }
+
+        try
+        {
+            // 与 HandleSlotOperationAsync 同一个去重键：结果一旦进了持久发件箱，要么已被确认，
+            // 要么随握手重放，已经交过的结论不重做。执行中途判 UNKNOWN 的那份也在这里被认出来。
+            string resultKey = $"operation-result:{attemptId}";
+            if (await _session.Journal
+                    .ReadOutgoingByDeduplicationKeyAsync(resultKey, cancellationToken)
+                    .ConfigureAwait(false) is not null)
+            {
+                return false;
+            }
+
+            WireToGateOperationExecutionResult execution = await _executor
+                .SettleInterruptedAsync(cancellationToken)
+                .ConfigureAwait(false);
+            WireToGateSlotOperationCommand command = context.ToCommand();
+            bool completedSuccessfully = string.Equals(
+                execution.OverallOutcome,
+                "COMPLETED",
+                StringComparison.Ordinal);
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"上次仓位操作在执行中中断，未再输出开锁，按实时IO结算：attempt={attemptId}，outcome={execution.OverallOutcome}，checkpoint={execution.JournalCheckpoint}。");
+            WireToGateHmiOperationStage finalStage = completedSuccessfully
+                ? WireToGateHmiOperationStage.Completed
+                : WireToGateHmiOperationStage.RecoveryRequired;
+            string guidance = completedSuccessfully
+                ? $"上次{FormatOperationType(command)}在执行中中断，{FormatSlots(command.Slots)}已按实时状态确认完成，正在上报结果。"
+                : $"上次{FormatOperationType(command)}在执行中中断：{FormatSlots(command.Slots)}，未再开锁，需要管理员恢复。";
+            PublishOperation(command, finalStage, guidance, "interrupted-final");
+            try
+            {
+                // 会话此刻是 RecoveryRequired——正是因为这一次 attempt 没了结——所以走允许
+                // RecoveryRequired 的那条发送路径；报文与 HandleSlotOperationAsync 发的是同一种
+                // OperationResult、同一个 messageId。
+                await _session.SendRecoveryOperationResultAsync(
+                    resultKey,
+                    attemptId,
+                    CreateOperationResultPayload(execution),
+                    cancellationToken).ConfigureAwait(false);
+                if (completedSuccessfully)
+                {
+                    await _executor.MarkResultRecordedAsync(attemptId, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                PublishOperatorEvent(
+                    $"interrupted-operation-result:{attemptId}:{execution.OverallOutcome}",
+                    completedSuccessfully ? "OPERATION_COMPLETED" : "OPERATION_RECOVERY_REQUIRED",
+                    guidance,
+                    new WireToGateHmiOperationSnapshot(
+                        attemptId,
+                        command.OperationType,
+                        command.Slots,
+                        finalStage,
+                        guidance,
+                        _clock.Now.ToUniversalTime()));
+            }
+            catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
+            {
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    $"中断操作的结算结果暂未收到DurableAck：attempt={attemptId}。",
+                    exception);
+                PublishOperatorEvent(
+                    $"interrupted-operation-result-pending:{attemptId}",
+                    "RESULT_ACK_PENDING",
+                    "中断操作的结算结果已持久化，等待服务端确认；不会再次执行仓门IO。");
+            }
+
+            return true;
+        }
+        finally
+        {
+            lock (_operationAttemptGate)
+            {
+                _operationAttempts.Remove(attemptId);
+            }
+        }
+    }
+
+    private static string FormatOperationType(WireToGateSlotOperationCommand command) =>
+        command.OperationType == OperationType.Load ? "装货" : "卸货";
 
     private void OnIoSnapshotChanged(object? sender, ValueChangedEventArgs<IoSnapshot> args)
     {

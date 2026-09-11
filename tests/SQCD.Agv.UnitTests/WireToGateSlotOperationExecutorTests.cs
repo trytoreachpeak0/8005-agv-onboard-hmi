@@ -571,6 +571,176 @@ public sealed class WireToGateSlotOperationExecutorTests
         fixture.Executor.AbortActiveOperation();
     }
 
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task AnOperationInterruptedWhileWaitingSettlesAsUnknownWithRealReadingsAndNoPulse()
+    {
+        // 8005-agv-program#40 的现场：开了锁、在等操作员时进程没了，操作员把门关上、没放货。
+        // 重启后要交得出结果，否则两端互相等；但不得再开锁（ADR-cross-0017），也不得把读得到的
+        // 物理字段报成不知道（决策 6）。
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true);
+        await InterruptWhileWaitingAsync(fixture, command);
+        fixture.Io.CloseDoor(0, cargo: false);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.SettleInterruptedAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        Assert.Equal(command.SlotOperationAttemptId, result.SlotOperationAttemptId);
+        WireToGateSlotExecutionResult interrupted = result.SlotResults.Single(slot => slot.SlotNo == 1);
+        Assert.Equal("UNKNOWN", interrupted.Outcome);
+        Assert.Equal(["RECOVERY_CHECKPOINT_NOT_UNIQUE"], interrupted.ReasonCodes);
+        Assert.Equal("EMPTY", interrupted.FinalPhysicalState);
+        Assert.Equal("LOCKED", interrupted.LockState);
+        Assert.Equal("RESET", interrupted.UnlockOutputState);
+        WireToGateSlotExecutionResult neverStarted = result.SlotResults.Single(slot => slot.SlotNo == 2);
+        Assert.Equal("NOT_STARTED", neverStarted.Outcome);
+        Assert.Empty(neverStarted.ReasonCodes);
+        Assert.Equal("EMPTY", neverStarted.FinalPhysicalState);
+        Assert.Equal("SAFE_FINISH_REACHED", result.JournalCheckpoint);
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+        Assert.Equal(0, fixture.Io.UnlockCount(1));
+
+        // 日志与执行中途判 UNKNOWN 时同形：补偿与恢复向量认的正是这一次 attempt 与它的上下文。
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
+            TestContext.Current.CancellationToken);
+        Assert.Equal(command.SlotOperationAttemptId, state.UnsettledSlotOperationAttemptId);
+        Assert.NotNull(state.OperationContext);
+        Assert.Equal(WireToGateRecoveryCheckpoint.SafeFinishReached, state.ProvenRecoveryCheckpoint);
+        Assert.Empty(state.ActiveUnlockSlots);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task AnOperationTheOperatorFinishedAfterTheProcessDiedSettlesAsCompleted()
+    {
+        // 进程没了之后操作员把货放进去、关好门。仓位的最终态读得清清楚楚，日志说它是开着的那一仓，
+        // 这是唯一解释——报 UNKNOWN 就是把一次已经确定的结果误判成未知，一单好好的货会被补偿清掉。
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
+        await InterruptWhileWaitingAsync(fixture, command);
+        fixture.Io.CloseDoor(0, cargo: true);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.SettleInterruptedAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        WireToGateSlotExecutionResult slot = result.SlotResults.Single();
+        Assert.Equal("COMPLETED", slot.Outcome);
+        Assert.Empty(slot.ReasonCodes);
+        Assert.Equal("OCCUPIED", slot.FinalPhysicalState);
+        Assert.Equal("LOCKED", slot.LockState);
+        Assert.Equal("RESET", slot.UnlockOutputState);
+        Assert.Equal("SAFE_FINISH_REACHED", result.JournalCheckpoint);
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task AnInterruptedOperationWithOnlyOneOfItsSlotsDoneIsNotCompleted()
+    {
+        // 第一仓装好了、第二仓还没开过。第二仓开不开要服务端授权（ADR-cross-0017），
+        // 所以这不是完成，哪怕每一个读数都是已知的。
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true);
+        await InterruptWhileWaitingAsync(fixture, command);
+        fixture.Io.CloseDoor(0, cargo: true);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.SettleInterruptedAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        Assert.Equal("COMPLETED", result.SlotResults.Single(slot => slot.SlotNo == 1).Outcome);
+        Assert.Equal("NOT_STARTED", result.SlotResults.Single(slot => slot.SlotNo == 2).Outcome);
+        Assert.Equal(0, fixture.Io.UnlockCount(1));
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task AnInterruptedSlotWhoseDoorIsStillOpenStaysInTheActiveSet()
+    {
+        // 门还开着：不是安全收尾，检查点留在 ACTIVE_UNLOCK_SET、仓位留在开锁集合里。补偿向量
+        // 不去驱动一扇开着的门，维护人员得先把门关上。
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
+        await InterruptWhileWaitingAsync(fixture, command);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.SettleInterruptedAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        WireToGateSlotExecutionResult slot = result.SlotResults.Single();
+        Assert.Equal("UNKNOWN", slot.Outcome);
+        Assert.Equal("UNLOCKED", slot.LockState);
+        Assert.Equal("ACTIVE_UNLOCK_SET", result.JournalCheckpoint);
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
+            TestContext.Current.CancellationToken);
+        Assert.Equal([1], state.ActiveUnlockSlots);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task AnInterruptedOperationSettledWithoutIoSaysItCannotReadTheSlots()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
+        await InterruptWhileWaitingAsync(fixture, command);
+        fixture.Io.Disconnect();
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.SettleInterruptedAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        WireToGateSlotExecutionResult slot = result.SlotResults.Single();
+        Assert.Equal(["SLOT_STATE_UNKNOWN"], slot.ReasonCodes);
+        Assert.Equal("UNKNOWN", slot.FinalPhysicalState);
+        Assert.Equal("ACTIVE_UNLOCK_SET", result.JournalCheckpoint);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task SettlingWithNothingUnsettledFailsClosed()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            fixture.Executor.SettleInterruptedAsync(TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// 让一次操作停在「开了锁、在等操作员」，然后像进程消失那样把它掐断：不写结果，日志里只留下
+    /// 未结算的 attempt 与开锁集合。
+    /// </summary>
+    private static async Task InterruptWhileWaitingAsync(
+        ScriptedFixture fixture,
+        WireToGateSlotOperationCommand command)
+    {
+        TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<WireToGateOperationExecutionResult> operation = fixture.Executor.ExecuteAsync(
+            command,
+            (phase, active, completed, promptRound, token) =>
+            {
+                if (phase == "WAITING_OPERATOR")
+                {
+                    waiting.TrySetResult();
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+        await waiting.Task;
+        fixture.Executor.AbortActiveOperation();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => operation);
+    }
+
     private static WireToGateSlotOperationCommand CreateCommand(
         OperationType operationType,
         IReadOnlyList<int> slots,
