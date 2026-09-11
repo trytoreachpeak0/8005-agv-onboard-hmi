@@ -47,49 +47,144 @@ public sealed partial class WireToGateBusinessService
             FaultCargoHandoffAction,
             WireToGateRecoveryVectorTypes.FaultCargoHandoff);
 
-    public Task<bool> RequestLoadCancellationAsync(
+    public async Task<bool> RequestLoadCancellationAsync(
         string reason = "现场确认装货取消，申请将目标仓位清空。",
         CancellationToken cancellationToken = default) =>
-        RunRecoveryRequestAsync(
-            WireToGateRecoveryVectorTypes.LoadCancellation,
-            () => RequestLoadCancellationCoreAsync(reason, cancellationToken),
-            cancellationToken);
+        (await RequestRecoveryAsync(
+                OnboardAutomationRecoveryActions.LoadCancellation,
+                reason,
+                cancellationToken)
+            .ConfigureAwait(false)).Accepted;
 
-    public Task<bool> RequestLoadCompensationAsync(
+    public async Task<bool> RequestLoadCompensationAsync(
         string reason = "现场确认装货无法继续，申请补偿清空目标仓位。",
         CancellationToken cancellationToken = default) =>
-        RunRecoveryRequestAsync(
-            WireToGateRecoveryVectorTypes.LoadCompensation,
-            () => RequestRecoveryActionVectorCoreAsync(
-                CompensateLoadAction,
-                WireToGateRecoveryVectorTypes.LoadCompensation,
+        (await RequestRecoveryAsync(
+                OnboardAutomationRecoveryActions.CompensateLoadAllEmpty,
                 reason,
-                cancellationToken),
-            cancellationToken);
+                cancellationToken)
+            .ConfigureAwait(false)).Accepted;
 
-    public Task<bool> RequestLoadCorrectionAsync(
+    public async Task<bool> RequestLoadCorrectionAsync(
         string reason = "现场确认需要修正已完成的装货结果。",
         CancellationToken cancellationToken = default) =>
-        RunRecoveryRequestAsync(
-            WireToGateRecoveryVectorTypes.LoadCorrection,
-            () => RequestLoadCorrectionCoreAsync(reason, cancellationToken),
-            cancellationToken);
+        (await RequestRecoveryAsync(
+                OnboardAutomationRecoveryActions.LoadCorrection,
+                reason,
+                cancellationToken)
+            .ConfigureAwait(false)).Accepted;
 
-    public Task<bool> RequestFaultCargoHandoffAsync(
+    public async Task<bool> RequestFaultCargoHandoffAsync(
         string reason = "现场确认故障仓货物需要交接处理。",
         CancellationToken cancellationToken = default) =>
-        RunRecoveryRequestAsync(
-            WireToGateRecoveryVectorTypes.FaultCargoHandoff,
-            () => RequestRecoveryActionVectorCoreAsync(
-                FaultCargoHandoffAction,
-                WireToGateRecoveryVectorTypes.FaultCargoHandoff,
+        (await RequestRecoveryAsync(
+                OnboardAutomationRecoveryActions.FaultCargoHandoff,
                 reason,
-                cancellationToken),
-            cancellationToken);
+                cancellationToken)
+            .ConfigureAwait(false)).Accepted;
 
-    private async Task<bool> RunRecoveryRequestAsync(
+    /// <summary>
+    /// Whether the HMI would currently offer the button for <paramref name="action"/>. The
+    /// automation face gates on this and on nothing looser, so a script is offered exactly the
+    /// buttons an operator is. That matters beyond symmetry: for compensation and fault-cargo
+    /// handoff this predicate is the only place <c>recoveryResumeEnabled</c> is enforced -- their
+    /// request paths never re-check it.
+    /// </summary>
+    public bool CanRequestRecovery(string action) => action switch
+    {
+        OnboardAutomationRecoveryActions.ResumeAfterRepair => CanRequestResumeAfterRepair,
+        OnboardAutomationRecoveryActions.CompensateLoadAllEmpty => CanRequestLoadCompensation,
+        OnboardAutomationRecoveryActions.FaultCargoHandoff => CanRequestFaultCargoHandoff,
+        OnboardAutomationRecoveryActions.LoadCancellation => CanRequestLoadCancellation,
+        OnboardAutomationRecoveryActions.LoadCorrection => CanRequestLoadCorrection,
+        _ => false
+    };
+
+    /// <summary>
+    /// Names the first precondition keeping <paramref name="action"/>'s button hidden, for a caller
+    /// with no screen to look at. The order is the order they would have to be fixed in. When all
+    /// of them hold it is the recovery state itself that does not admit the action, and the code
+    /// says no more than that.
+    /// </summary>
+    public string DiagnoseRecoveryUnavailable(string action)
+    {
+        WireToGateSessionSnapshot session = _session.Current;
+        if (!session.Connected
+            || session.Readiness is not (WireToGateSessionReadiness.Ready
+                or WireToGateSessionReadiness.RecoveryRequired))
+        {
+            return "WIRE_TO_GATE_NOT_READY";
+        }
+
+        if (string.IsNullOrWhiteSpace(
+                Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable)))
+        {
+            return "WIRE_TO_GATE_OPERATOR_NOT_READY";
+        }
+
+        // Cancelling a stop with nothing loaded is the one request that does not need the recovery
+        // window (see CanUseStopOperator). Reaching here for it means that short path is not open
+        // either, and every other path to a cancellation does need the window.
+        if (!_recoveryOptions.ResumeAfterRepairEnabled)
+        {
+            return "RECOVERY_RESUME_DISABLED";
+        }
+
+        bool requiresProof = action is OnboardAutomationRecoveryActions.ResumeAfterRepair
+            or OnboardAutomationRecoveryActions.CompensateLoadAllEmpty
+            or OnboardAutomationRecoveryActions.FaultCargoHandoff;
+        if (requiresProof
+            && string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
+                _recoveryOptions.AuthenticationProofEnvironmentVariable)))
+        {
+            return "RECOVERY_AUTHENTICATION_REQUIRED";
+        }
+
+        return "RECOVERY_ACTION_NOT_AVAILABLE";
+    }
+
+    /// <summary>
+    /// The request behind each recovery button, keeping the refusal's reason code instead of
+    /// collapsing it into a boolean. The buttons drop the code -- the operator reads it from the
+    /// operator event -- and the automation face returns it.
+    /// </summary>
+    public Task<WireToGateRecoveryRequestOutcome> RequestRecoveryAsync(
+        string action,
+        string reason,
+        CancellationToken cancellationToken = default) => action switch
+        {
+            OnboardAutomationRecoveryActions.ResumeAfterRepair =>
+                RequestResumeAfterRepairOutcomeAsync(reason, cancellationToken),
+            OnboardAutomationRecoveryActions.CompensateLoadAllEmpty => RunRecoveryRequestAsync(
+                WireToGateRecoveryVectorTypes.LoadCompensation,
+                () => RequestRecoveryActionVectorCoreAsync(
+                    CompensateLoadAction,
+                    WireToGateRecoveryVectorTypes.LoadCompensation,
+                    reason,
+                    cancellationToken),
+                cancellationToken),
+            OnboardAutomationRecoveryActions.FaultCargoHandoff => RunRecoveryRequestAsync(
+                WireToGateRecoveryVectorTypes.FaultCargoHandoff,
+                () => RequestRecoveryActionVectorCoreAsync(
+                    FaultCargoHandoffAction,
+                    WireToGateRecoveryVectorTypes.FaultCargoHandoff,
+                    reason,
+                    cancellationToken),
+                cancellationToken),
+            OnboardAutomationRecoveryActions.LoadCancellation => RunRecoveryRequestAsync(
+                WireToGateRecoveryVectorTypes.LoadCancellation,
+                () => RequestLoadCancellationCoreAsync(reason, cancellationToken),
+                cancellationToken),
+            OnboardAutomationRecoveryActions.LoadCorrection => RunRecoveryRequestAsync(
+                WireToGateRecoveryVectorTypes.LoadCorrection,
+                () => RequestLoadCorrectionCoreAsync(reason, cancellationToken),
+                cancellationToken),
+            _ => throw new ArgumentOutOfRangeException(nameof(action), action, null)
+        };
+
+    private async Task<WireToGateRecoveryRequestOutcome> RunRecoveryRequestAsync(
         string vectorType,
-        Func<Task<bool>> action,
+        Func<Task<WireToGateRecoveryRequestOutcome>> action,
         CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
@@ -117,7 +212,7 @@ public sealed partial class WireToGateBusinessService
                 $"recovery-vector-request-failed:{vectorType}:{exception.Message}",
                 "RECOVERY_BLOCKED",
                 $"恢复向量被阻断：{exception.Message}。请确认车辆停稳、仓门状态和服务端授权。 ");
-            return false;
+            return WireToGateRecoveryRequestOutcome.Refused(exception.Message);
         }
         finally
         {
@@ -216,7 +311,7 @@ public sealed partial class WireToGateBusinessService
             && snapshot.Slots.SequenceEqual(context.Slots);
     }
 
-    private async Task<bool> RequestLoadCancellationCoreAsync(
+    private async Task<WireToGateRecoveryRequestOutcome> RequestLoadCancellationCoreAsync(
         string reason,
         CancellationToken cancellationToken)
     {
@@ -278,7 +373,8 @@ public sealed partial class WireToGateBusinessService
                 $"load-cancellation-rejected:{cancellationId}",
                 "RECOVERY_BLOCKED",
                 $"服务端拒绝装货取消：{authorization.Problem?.ReasonCode ?? "ACTION_NOT_ALLOWED_IN_STATE"}。 ");
-            return false;
+            return WireToGateRecoveryRequestOutcome.Refused(
+                authorization.Problem?.ReasonCode ?? "ACTION_NOT_ALLOWED_IN_STATE");
         }
 
         if (authorization.Slots.Count == 0
@@ -325,7 +421,7 @@ public sealed partial class WireToGateBusinessService
     /// slotResults being minItems 1. The authorization ends the journey on the server, and the
     /// operator sees the stop clear.
     /// </summary>
-    private async Task<bool> RequestLoadCancellationBeforeLoadAsync(
+    private async Task<WireToGateRecoveryRequestOutcome> RequestLoadCancellationBeforeLoadAsync(
         string reason,
         CancellationToken cancellationToken)
     {
@@ -348,7 +444,8 @@ public sealed partial class WireToGateBusinessService
                 $"load-cancellation-rejected:{cancellationId}",
                 "RECOVERY_BLOCKED",
                 $"服务端拒绝取消本站装货：{authorization.Problem?.ReasonCode ?? "ACTION_NOT_ALLOWED_IN_STATE"}。 ");
-            return false;
+            return WireToGateRecoveryRequestOutcome.Refused(
+                authorization.Problem?.ReasonCode ?? "ACTION_NOT_ALLOWED_IN_STATE");
         }
 
         // An authorization naming slots or an attempt would mean the server matched this request to
@@ -362,10 +459,10 @@ public sealed partial class WireToGateBusinessService
             $"load-cancellation-before-load:{cancellationId}",
             "RECOVERY_VECTOR_AUTHORIZED",
             "本站装货已取消，车辆可以接下一单。 ");
-        return true;
+        return WireToGateRecoveryRequestOutcome.Succeeded;
     }
 
-    private async Task<bool> RequestLoadCorrectionCoreAsync(
+    private async Task<WireToGateRecoveryRequestOutcome> RequestLoadCorrectionCoreAsync(
         string reason,
         CancellationToken cancellationToken)
     {
@@ -425,10 +522,10 @@ public sealed partial class WireToGateBusinessService
             $"load-correction-requested:{vector.PrimaryId}",
             "RECOVERY_VECTOR_REQUESTED",
             $"已提交{FormatSlots(vector.Slots)}装货修正请求，等待服务端下发修正命令。 ");
-        return true;
+        return WireToGateRecoveryRequestOutcome.Succeeded;
     }
 
-    private async Task<bool> RequestRecoveryActionVectorCoreAsync(
+    private async Task<WireToGateRecoveryRequestOutcome> RequestRecoveryActionVectorCoreAsync(
         string action,
         string vectorType,
         string reason,
@@ -597,7 +694,7 @@ public sealed partial class WireToGateBusinessService
                 $"recovery-action-already-accepted:{actionId}",
                 "RECOVERY_ACTION_SUBMITTED",
                 $"恢复动作 {action} 已被服务端接受，等待车载端收到对应命令。 ");
-            return true;
+            return WireToGateRecoveryRequestOutcome.Succeeded;
         }
 
         RecoveryActionAcceptedPayload accepted;
@@ -653,7 +750,7 @@ public sealed partial class WireToGateBusinessService
             $"recovery-action-submitted:{actionId}",
             "RECOVERY_ACTION_SUBMITTED",
             $"恢复动作 {action} 已通过服务端授权，等待车载端收到对应命令。 ");
-        return true;
+        return WireToGateRecoveryRequestOutcome.Succeeded;
     }
 
     private async Task ClearRejectedRecoveryActionVectorAsync(
@@ -904,7 +1001,7 @@ public sealed partial class WireToGateBusinessService
             try
             {
                 EnsureVehicleStoppedAndFresh();
-                bool completed = await ExecuteRecoveryVectorAndReportAsync(
+                _ = await ExecuteRecoveryVectorAndReportAsync(
                         context,
                         correction,
                         cancellationToken,
@@ -914,7 +1011,6 @@ public sealed partial class WireToGateBusinessService
                             result,
                             cancellationToken))
                     .ConfigureAwait(false);
-                _ = completed;
             }
             finally
             {
@@ -1034,7 +1130,7 @@ public sealed partial class WireToGateBusinessService
         return context;
     }
 
-    private async Task<bool> ExecuteRecoveryVectorAndReportAsync(
+    private async Task<WireToGateRecoveryRequestOutcome> ExecuteRecoveryVectorAndReportAsync(
         WireToGateRecoveryVectorContext context,
         bool correction,
         CancellationToken cancellationToken,
@@ -1103,7 +1199,7 @@ public sealed partial class WireToGateBusinessService
                     $"recovery-vector-result-pending:{context.VectorType}:{context.PrimaryId}",
                     "RESULT_ACK_PENDING",
                     "恢复结果已持久化，等待服务端确认；不会重复执行仓门IO。 ");
-                return false;
+                return WireToGateRecoveryRequestOutcome.Refused("RESULT_ACK_PENDING");
             }
         }
 
@@ -1119,14 +1215,14 @@ public sealed partial class WireToGateBusinessService
                 $"recovery-vector-completed:{context.VectorType}:{context.PrimaryId}",
                 "RECOVERY_VECTOR_COMPLETED",
                 $"恢复向量 {context.VectorType} 已完成并收到服务端确认。 ");
-            return true;
+            return WireToGateRecoveryRequestOutcome.Succeeded;
         }
 
         PublishOperatorEvent(
             $"recovery-vector-recovery-required:{context.VectorType}:{context.PrimaryId}",
             "OPERATION_RECOVERY_REQUIRED",
             "恢复结果已上报，但物理状态仍未达到可确认条件；请保持车辆停稳并等待下一步处理。 ");
-        return false;
+        return WireToGateRecoveryRequestOutcome.Refused("OPERATION_RECOVERY_REQUIRED");
     }
 
     private Task<string> SendRecoveryVectorResultAsync(

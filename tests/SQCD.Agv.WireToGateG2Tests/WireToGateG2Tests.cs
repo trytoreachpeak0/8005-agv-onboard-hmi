@@ -997,6 +997,269 @@ public sealed class WireToGateG2Tests
     }
 
     /// <summary>
+    /// 自动化面发起的恢复必须是按钮自己的那条请求，而不是绕过按钮的路。最要紧的一条是恢复窗口：
+    /// 补偿清空的请求路径（<c>RequestRecoveryActionVectorCoreAsync</c>）自己**不复查**
+    /// <c>recoveryResumeEnabled</c>，守这个开关的只有按钮的可用性谓词。自动化面要是只调请求方法、
+    /// 不看谓词，窗口关着也照样开得出恢复会话——这条测试就是在那种写法下变红的。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task AutomationRecoveryIsRefusedWhileTheRecoveryWindowIsClosed()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using SettledLoadRecoveryRig rig = await SettledLoadRecoveryRig.StartAsync(
+            recoveryEnabled: false,
+            proof: "test-proof",
+            configure: null,
+            testToken);
+
+        OnboardAutomationRecoveryOutcome outcome = await rig.Facade.RequestRecoveryAsync(
+            OnboardAutomationRecoveryActions.CompensateLoadAllEmpty,
+            "窗口关着时的补偿清空。",
+            testToken);
+
+        Assert.False(outcome.Accepted);
+        Assert.Equal("RECOVERY_RESUME_DISABLED", outcome.ReasonCode);
+        Assert.Empty(outcome.Snapshot.AvailableRecoveryActions);
+        await Task.Delay(TimeSpan.FromMilliseconds(300), testToken);
+        Assert.DoesNotContain(
+            rig.Server.ReceivedEnvelopes,
+            envelope => envelope.MessageType is "ExceptionRecoverySessionRequested"
+                or "RecoveryActionSubmitted"
+                or "LoadCompensationRequested");
+        Assert.Equal(0, rig.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// 凭据只从车上的环境变量读，调用方给不了：没设就拒 <c>RECOVERY_AUTHENTICATION_REQUIRED</c>，
+    /// 一条报文都不发。设上之后快照里才出现这个动作，发出去的是与按钮同一条
+    /// <c>LoadCompensationRequested</c>，理由原样进 <c>ExceptionRecoverySessionRequested</c>。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task AutomationCompensationNeedsTheVehiclesOwnProofThenMakesTheButtonsRequest()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using SettledLoadRecoveryRig rig = await SettledLoadRecoveryRig.StartAsync(
+            recoveryEnabled: true,
+            proof: null,
+            configure: null,
+            testToken);
+
+        OnboardAutomationRecoveryOutcome withoutProof = await rig.Facade.RequestRecoveryAsync(
+            OnboardAutomationRecoveryActions.CompensateLoadAllEmpty,
+            "凭据未设时的补偿清空。",
+            testToken);
+        Assert.False(withoutProof.Accepted);
+        Assert.Equal("RECOVERY_AUTHENTICATION_REQUIRED", withoutProof.ReasonCode);
+        Assert.DoesNotContain(
+            OnboardAutomationRecoveryActions.CompensateLoadAllEmpty,
+            withoutProof.Snapshot.AvailableRecoveryActions);
+        Assert.DoesNotContain(
+            rig.Server.ReceivedEnvelopes,
+            envelope => envelope.MessageType == "ExceptionRecoverySessionRequested");
+
+        rig.SetProof("test-proof");
+        await WaitUntilAsync(() => rig.Business.CanRequestLoadCompensation, testToken);
+        Assert.Contains(
+            OnboardAutomationRecoveryActions.CompensateLoadAllEmpty,
+            rig.Facade.ReadSnapshot().AvailableRecoveryActions);
+
+        OnboardAutomationRecoveryOutcome outcome = await rig.Facade.RequestRecoveryAsync(
+            OnboardAutomationRecoveryActions.CompensateLoadAllEmpty,
+            "无人验收：补偿清空。",
+            testToken);
+
+        Assert.True(outcome.Accepted);
+        Assert.Null(outcome.ReasonCode);
+        await WaitUntilAsync(
+            () => rig.Server.ReceivedEnvelopes.Any(envelope =>
+                envelope.MessageType == "LoadCompensationRequested"),
+            testToken);
+        (int _, string _, string _, string sessionLine) = Assert.Single(
+            rig.Server.ReceivedEnvelopes,
+            envelope => envelope.MessageType == "ExceptionRecoverySessionRequested");
+        using JsonDocument session = JsonDocument.Parse(sessionLine);
+        Assert.Equal(
+            "无人验收：补偿清空。",
+            session.RootElement.GetProperty("payload").GetProperty("reason").GetString());
+        Assert.Equal(0, rig.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// 被拒时带回服务端自己的原因码。按钮那条路把它压成一个 <c>false</c>，界面只弹「补偿清空请求
+    /// 未被接受」，真实原因只在日志里——现场窗口一的 <c>RECOVERY_DEMAND_NOT_BLOCKED</c> 就是这么
+    /// 查到的。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task AutomationRecoveryReturnsTheServersRefusalCodeVerbatim()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using SettledLoadRecoveryRig rig = await SettledLoadRecoveryRig.StartAsync(
+            recoveryEnabled: true,
+            proof: "test-proof",
+            configure: server => server.RecoverySessionRejectionReasonCode = "RECOVERY_SCOPE_MISMATCH",
+            testToken);
+        await WaitUntilAsync(() => rig.Business.CanRequestLoadCompensation, testToken);
+
+        OnboardAutomationRecoveryOutcome outcome = await rig.Facade.RequestRecoveryAsync(
+            OnboardAutomationRecoveryActions.CompensateLoadAllEmpty,
+            "服务端会拒绝的补偿清空。",
+            testToken);
+
+        Assert.False(outcome.Accepted);
+        Assert.Equal("RECOVERY_SCOPE_MISMATCH", outcome.ReasonCode);
+        Assert.DoesNotContain(
+            rig.Server.ReceivedEnvelopes,
+            envelope => envelope.MessageType is "RecoveryActionSubmitted" or "LoadCompensationRequested");
+    }
+
+    /// <summary>
+    /// 车辆已经结算完一次装载、服务端却宣布会话需要恢复：补偿清空恰好该出现的那个状态。与
+    /// <see cref="CompensationIsRequestableAfterTheVehicleAlreadySettledTheLoad"/> 同一套布置，外加
+    /// 真的 <see cref="WpfOnboardAutomationFacade"/>。环境变量按实例起名，不和别的测试抢。
+    /// </summary>
+    private sealed class SettledLoadRecoveryRig : IAsyncDisposable
+    {
+        private readonly string _operatorVariable = $"W2G_G2_AUTOMATION_OPERATOR_{Guid.NewGuid():N}";
+        private readonly string _proofVariable = $"W2G_G2_AUTOMATION_PROOF_{Guid.NewGuid():N}";
+        private readonly List<IAsyncDisposable> _owned = [];
+
+        private SettledLoadRecoveryRig(FakeControlServer server)
+        {
+            Server = server;
+            _owned.Add(server);
+        }
+
+        public FakeControlServer Server { get; }
+
+        public FakeIoModuleClient Io { get; } = new();
+
+        public WireToGateBusinessService Business { get; private set; } = null!;
+
+        public WpfOnboardAutomationFacade Facade { get; private set; } = null!;
+
+        public static async Task<SettledLoadRecoveryRig> StartAsync(
+            bool recoveryEnabled,
+            string? proof,
+            Action<FakeControlServer>? configure,
+            CancellationToken cancellationToken)
+        {
+            const string demandId = "11111111-1111-4111-8111-111111111111";
+            string attemptId = FakeControlServer.SlotOperationAttemptId;
+            string journalPath = NewJournalPath();
+            await SeedSettledLoadAsync(journalPath, demandId, attemptId, cancellationToken);
+
+            FakeControlServer server = new(IPAddress.Loopback)
+            {
+                RespondToRecoveryRequests = true,
+                RecoverySessionSlotOperationAttemptId = attemptId,
+                SendReadinessAfterRecoveryAck = true,
+                SendRecoveryRequiredReadinessAfterOperationResultAck = true
+            };
+            configure?.Invoke(server);
+            SettledLoadRecoveryRig rig = new(server);
+            Environment.SetEnvironmentVariable(rig._operatorVariable, "maintenance-003");
+            rig.SetProof(proof);
+
+            NullLogger logger = new();
+            WireToGateSessionService session = new(
+                CreateSessionOptions(server),
+                rig.Io,
+                new SqliteWireToGateJournal(journalPath),
+                logger,
+                new SystemClock(),
+                new DelegateVehicleSafetySignalProvider(() => false),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(500));
+            rig._owned.Add(session);
+            rig.Business = new WireToGateBusinessService(
+                session,
+                rig.Io,
+                logger,
+                new SystemClock(),
+                () => false,
+                new WireToGateSlotOperationExecutorOptions(
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromMilliseconds(10),
+                    TimeSpan.FromSeconds(30)),
+                rig._operatorVariable,
+                recoveryOptions: new WireToGateRecoveryOptions(
+                    recoveryEnabled,
+                    rig._proofVariable,
+                    "MAINTENANCE_ADMINISTRATOR",
+                    "CONFIGURED_PROOF"));
+            rig._owned.Add(rig.Business);
+            OnboardController controller = new(
+                rig.Io,
+                new DisabledRuleGateway(),
+                logger,
+                new SystemClock(),
+                new OnboardWorkflowOptions(
+                    TimeSpan.FromMilliseconds(50),
+                    TimeSpan.FromMilliseconds(50),
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.Zero,
+                    TimeSpan.FromSeconds(1),
+                    128,
+                    2));
+            rig._owned.Add(controller);
+            rig.Facade = new WpfOnboardAutomationFacade(
+                "AGV-8005-01",
+                controller,
+                session,
+                rig.Business,
+                new SystemClock());
+
+            rig.Business.Start();
+            await session.Client.ConnectAndRecoverAsync(cancellationToken);
+            await session.Client.SendOperationResultAsync(
+                $"operation-result:{attemptId}",
+                attemptId,
+                new WireToGateOperationResultPayload(
+                    demandId,
+                    attemptId,
+                    "LOAD",
+                    "FAILED",
+                    [
+                        new WireToGateSlotResultPayload(
+                            1,
+                            "FAILED",
+                            "EMPTY",
+                            "UNLOCKED",
+                            "RESET",
+                            ["OPERATOR_TIMEOUT"])
+                    ],
+                    DateTimeOffset.UtcNow,
+                    "NONE",
+                    new string('0', 64)),
+                cancellationToken);
+            await WaitUntilAsync(
+                () => session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired,
+                cancellationToken);
+            return rig;
+        }
+
+        public void SetProof(string? proof) =>
+            Environment.SetEnvironmentVariable(_proofVariable, proof);
+
+        public async ValueTask DisposeAsync()
+        {
+            for (int index = _owned.Count - 1; index >= 0; index--)
+            {
+                await _owned[index].DisposeAsync();
+            }
+
+            Environment.SetEnvironmentVariable(_operatorVariable, null);
+            Environment.SetEnvironmentVariable(_proofVariable, null);
+        }
+    }
+
+    /// <summary>
     /// 复现 <c>MarkResultRecordedAsync</c> 写完之后的日志状态：物理断点与在途 attempt 都已清空，
     /// 只剩下最近一次已结算装载的身份。
     /// </summary>

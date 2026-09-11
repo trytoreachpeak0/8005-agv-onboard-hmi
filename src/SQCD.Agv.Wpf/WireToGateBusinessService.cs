@@ -167,7 +167,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
     public async Task<bool> RequestResumeAfterRepairAsync(
         string reason = "现场维修完成，申请恢复原仓位操作。",
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        (await RequestResumeAfterRepairOutcomeAsync(reason, cancellationToken).ConfigureAwait(false))
+            .Accepted;
+
+    private async Task<WireToGateRecoveryRequestOutcome> RequestResumeAfterRepairOutcomeAsync(
+        string reason,
+        CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
         await _recoveryRequestGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -178,7 +184,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 PublishOperatorResponse(
                     "RECOVERY_BLOCKED",
                     "RESUME_AFTER_REPAIR功能未启用。请由维护人员完成配置后再操作。 ");
-                return false;
+                return WireToGateRecoveryRequestOutcome.Refused("RECOVERY_RESUME_DISABLED");
             }
 
             WireToGateSessionSnapshot session = _session.Current;
@@ -210,7 +216,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 PublishOperatorResponse(
                     "RECOVERY_ACTION_SUBMITTED",
                     "当前恢复会话已经提交恢复申请，等待服务端下发原操作续作命令。 ");
-                return false;
+                return WireToGateRecoveryRequestOutcome.Refused("RECOVERY_ACTION_ALREADY_SELECTED");
             }
 
             if (activeRecovery
@@ -221,7 +227,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 PublishOperatorResponse(
                     "RECOVERY_BLOCKED",
                     "当前恢复会话不允许恢复原仓位操作。 ");
-                return false;
+                return WireToGateRecoveryRequestOutcome.Refused("RECOVERY_ACTION_NOT_ALLOWED");
             }
 
             string operatorId = Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable)
@@ -364,7 +370,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             PublishOperatorResponse(
                 "RECOVERY_ACTION_SUBMITTED",
                 "恢复申请已通过服务端授权，等待下发原操作续作命令。 ");
-            return true;
+            return WireToGateRecoveryRequestOutcome.Succeeded;
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -386,7 +392,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             PublishOperatorResponse(
                 "RECOVERY_BLOCKED",
                 $"恢复申请被阻断：{exception.Message}。请检查授权、现场安全条件和服务端状态。 ");
-            return false;
+            return WireToGateRecoveryRequestOutcome.Refused(exception.Message);
         }
         finally
         {

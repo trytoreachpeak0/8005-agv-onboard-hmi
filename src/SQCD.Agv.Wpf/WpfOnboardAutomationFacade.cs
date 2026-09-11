@@ -8,7 +8,8 @@ namespace SQCD.Agv.Wpf;
 /// <summary>
 /// Adapter between the WPF/application layer and the embedded automation host.
 /// Only business-safe methods cross this boundary; WPF controls and raw IO are
-/// intentionally not exposed.
+/// intentionally not exposed. Recovery requests cross it as the button's own
+/// request, never as a way around the button's availability.
 /// </summary>
 public sealed class WpfOnboardAutomationFacade : IOnboardAutomationFacade
 {
@@ -60,7 +61,56 @@ public sealed class WpfOnboardAutomationFacade : IOnboardAutomationFacade
             _business.ExpectedSublots,
             currentAttemptId,
             currentPhase,
+            OnboardAutomationRecoveryActions.All
+                .Where(action => FindRecoveryBlocker(action, diagnose: false) is null)
+                .ToArray(),
             _clock.Now.ToUniversalTime());
+    }
+
+    public async Task<OnboardAutomationRecoveryOutcome> RequestRecoveryAsync(
+        string action,
+        string reason,
+        CancellationToken cancellationToken = default)
+    {
+        if (FindRecoveryBlocker(action, diagnose: true) is { } blocker)
+        {
+            return new OnboardAutomationRecoveryOutcome(false, blocker, ReadSnapshot());
+        }
+
+        WireToGateRecoveryRequestOutcome outcome = await _business
+            .RequestRecoveryAsync(action, reason, cancellationToken)
+            .ConfigureAwait(false);
+        return new OnboardAutomationRecoveryOutcome(
+            outcome.Accepted,
+            outcome.ReasonCode,
+            ReadSnapshot());
+    }
+
+    /// <summary>
+    /// The same two things that decide whether the HMI shows a recovery button: a faulted
+    /// controller hides all of them (MainViewModel.ApplyWireToGatePresentationCore), and otherwise
+    /// the business service's predicate for that one button decides.
+    /// </summary>
+    private string? FindRecoveryBlocker(string action, bool diagnose)
+    {
+        if (!OnboardAutomationRecoveryActions.All.Contains(action, StringComparer.Ordinal))
+        {
+            return "RECOVERY_ACTION_UNKNOWN";
+        }
+
+        if (_controller.Current.State == OnboardState.Faulted)
+        {
+            return "ONBOARD_FAULTED";
+        }
+
+        if (_business.CanRequestRecovery(action))
+        {
+            return null;
+        }
+
+        return diagnose
+            ? _business.DiagnoseRecoveryUnavailable(action)
+            : "RECOVERY_ACTION_NOT_AVAILABLE";
     }
 
     public async Task<OnboardAutomationSubmitOutcome> SubmitSublotAsync(

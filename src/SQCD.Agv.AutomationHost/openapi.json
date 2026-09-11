@@ -3,7 +3,7 @@
   "info": {
     "title": "8005 onboard HMI automation API",
     "version": "1.0.0",
-    "description": "Loopback-only, safety-preserving observation and sublot submission API. Physical unlock and recovery bypass endpoints are intentionally absent."
+    "description": "Loopback-only, safety-preserving observation, sublot submission and recovery request API. Physical unlock endpoints are intentionally absent. A recovery request is the HMI button's own request: it is refused unless the HMI currently offers that button, the operator identity and recovery proof are read from the vehicle's environment and never from the caller, and the server authorizes or refuses it as it would a press."
   },
   "servers": [{ "url": "http://127.0.0.1:58007" }],
   "paths": {
@@ -26,6 +26,18 @@
       "post": {
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SublotSubmitRequest" } } } },
         "responses": { "200": { "description": "Submitted" }, "400": { "description": "Invalid request" }, "409": { "description": "State or command conflict" } }
+      }
+    },
+    "/api/v1/recovery/requests": {
+      "post": {
+        "description": "Makes the request behind one HMI recovery button. Idempotent per commandId: replaying the same body returns the same outcome, and is how a caller reads an outcome that was still IN_PROGRESS. Only one recovery runs at a time. The reason is sent to the server prefixed with 【车载端自动化接口】.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RecoveryRequest" } } } },
+        "responses": {
+          "200": { "description": "ACCEPTED", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RecoveryResponse" } } } },
+          "202": { "description": "IN_PROGRESS: the request has not finished within the host's response wait. Replay the commandId to read the outcome.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RecoveryResponse" } } } },
+          "400": { "description": "INVALID_HTTP_REQUEST or RECOVERY_ACTION_UNKNOWN" },
+          "409": { "description": "REJECTED with the refusal's reasonCode (RecoveryResponse), or RUN_ID_MISMATCH, COMMAND_ID_CONFLICT, REVISION_CONFLICT, RECOVERY_REQUEST_IN_PROGRESS (error response)" }
+        }
       }
     }
   },
@@ -54,6 +66,7 @@
           "expectedSublots",
           "currentOperationAttemptId",
           "currentOperationPhase",
+          "availableRecoveryActions",
           "observedAt"
         ],
         "properties": {
@@ -70,6 +83,11 @@
             "nullable": true,
             "enum": ["PREPARING", "UNLOCKING", "WAITING_OPERATOR", "VERIFYING", "SAFE_FINISH", "PAUSED"]
           },
+          "availableRecoveryActions": {
+            "type": "array",
+            "description": "The recovery buttons the HMI currently offers.",
+            "items": { "$ref": "#/components/schemas/RecoveryAction" }
+          },
           "observedAt": { "type": "string", "format": "date-time" }
         }
       },
@@ -81,6 +99,42 @@
           "commandId": { "type": "string", "format": "uuid" },
           "expectedRevision": { "type": "integer", "format": "int64", "minimum": 1 },
           "sublot": { "type": "string", "minLength": 1 }
+        }
+      },
+      "RecoveryAction": {
+        "type": "string",
+        "enum": ["RESUME_AFTER_REPAIR", "COMPENSATE_LOAD_ALL_EMPTY", "FAULT_CARGO_HANDOFF", "LOAD_CANCELLATION", "LOAD_CORRECTION"]
+      },
+      "RecoveryRequest": {
+        "type": "object",
+        "required": ["runId", "commandId", "expectedRevision", "action", "reason"],
+        "properties": {
+          "runId": { "type": "string", "format": "uuid" },
+          "commandId": { "type": "string", "format": "uuid" },
+          "expectedRevision": { "type": "integer", "format": "int64", "minimum": 1 },
+          "action": { "$ref": "#/components/schemas/RecoveryAction" },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      },
+      "RecoveryResponse": {
+        "type": "object",
+        "required": ["schemaVersion", "agvId", "runId", "revision", "observedAt", "commandId", "action", "status", "replayed", "reasonCode", "state"],
+        "properties": {
+          "schemaVersion": { "type": "string" },
+          "agvId": { "type": "string" },
+          "runId": { "type": "string", "format": "uuid" },
+          "revision": { "type": "integer", "format": "int64", "minimum": 1 },
+          "observedAt": { "type": "string", "format": "date-time" },
+          "commandId": { "type": "string", "format": "uuid" },
+          "action": { "$ref": "#/components/schemas/RecoveryAction" },
+          "status": { "type": "string", "enum": ["ACCEPTED", "REJECTED", "IN_PROGRESS"] },
+          "replayed": { "type": "boolean" },
+          "reasonCode": {
+            "type": "string",
+            "nullable": true,
+            "description": "Null unless REJECTED. The server's own problem code when the server refused; otherwise the vehicle's guard code, e.g. RECOVERY_RESUME_DISABLED, RECOVERY_AUTHENTICATION_REQUIRED, WIRE_TO_GATE_OPERATOR_NOT_READY, ONBOARD_FAULTED, RECOVERY_ACTION_NOT_AVAILABLE, RESULT_ACK_PENDING, OPERATION_RECOVERY_REQUIRED."
+          },
+          "state": { "$ref": "#/components/schemas/OnboardAutomationSnapshot" }
         }
       }
     }

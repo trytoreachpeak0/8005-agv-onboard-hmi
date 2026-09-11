@@ -8,19 +8,29 @@ using SQCD.Agv.Core;
 
 namespace SQCD.Agv.AutomationHost;
 
+/// <param name="RecoveryResponseWait">
+/// How long a recovery request is held open for its outcome before the host answers
+/// <c>IN_PROGRESS</c>. Most recovery requests end at the server's authorization, a few protocol
+/// round trips; cancelling a load that is underway runs the whole clearing vector first, and that
+/// waits on an operator. Defaults to 15 seconds, five times the configured message timeout.
+/// </param>
 public sealed record OnboardAutomationHostOptions(
     string ListenAddress,
-    int Port)
+    int Port,
+    TimeSpan? RecoveryResponseWait = null)
 {
     public string Endpoint => $"http://{ListenAddress}:{Port}";
+
+    public TimeSpan EffectiveRecoveryResponseWait => RecoveryResponseWait ?? TimeSpan.FromSeconds(15);
 
     public void Validate()
     {
         if (!System.Net.IPAddress.TryParse(ListenAddress, out System.Net.IPAddress? address)
             || !System.Net.IPAddress.IsLoopback(address)
-            || Port is < 1 or > 65_535)
+            || Port is < 1 or > 65_535
+            || EffectiveRecoveryResponseWait <= TimeSpan.Zero)
         {
-            throw new InvalidDataException("车载端自动化接口必须绑定loopback地址并使用有效端口。 ");
+            throw new InvalidDataException("车载端自动化接口必须绑定loopback地址、使用有效端口，恢复请求等待时长必须为正。 ");
         }
     }
 }
@@ -77,7 +87,11 @@ public sealed class OnboardAutomationHttpServer : IAsyncDisposable
                 options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 
             WebApplication application = builder.Build();
-            OnboardAutomationApi.Map(application, _facade, RunId);
+            OnboardAutomationApi.Map(
+                application,
+                _facade,
+                RunId,
+                _options.EffectiveRecoveryResponseWait);
             try
             {
                 await application.StartAsync(cancellationToken).ConfigureAwait(false);
