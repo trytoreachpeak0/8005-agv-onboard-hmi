@@ -107,6 +107,45 @@ public sealed class OnboardControllerTests
         Assert.Equal("SUBLOT_NOT_IN_WORKLIST", controller.Current.ErrorCode);
     }
 
+    /// <summary>
+    /// 清单可以有多项（schema 上限 8），判据是「子批在清单里」，不是「清单恰好一项且等于它」。原先这里
+    /// 取 <c>SingleOrDefault()</c>：两项就抛异常，而不是放行或判 SUBLOT_NOT_IN_WORKLIST。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public async Task AuthoritativeJourneyWithSeveralItemsAcceptsAnyListedSublot()
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        WireToGateJourneySnapshot journey = new(
+            new WireToGateVehicleBusinessState(1, "READY", false, "SUFFICIENT", [], now, new string('a', 64)),
+            new WireToGateCurrentStopWorklist(
+                "ST-01",
+                1,
+                null,
+                null,
+                [
+                    new WireToGateWorklistItem(
+                        "11111111-1111-1111-1111-111111111111", "TD-001", "SUBLOT-001", "WIRE_TO_GATE", "PICKUP", 1),
+                    new WireToGateWorklistItem(
+                        "11111111-1111-4111-8111-000000000002", "TD-002", "SUBLOT-002", "WIRE_TO_GATE", "PICKUP", 1)
+                ],
+                new string('b', 64)),
+            null,
+            now);
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-JOURNEY-MULTI");
+        await using OnboardController controller = CreateController(io, rule, () => true, () => journey);
+        await controller.StartAsync(TestContext.Current.CancellationToken);
+
+        await controller.SubmitScanAsync("WRONG-SUBLOT", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
+        Assert.Equal(0, io.PulseCount);
+        Assert.Equal("SUBLOT_NOT_IN_WORKLIST", controller.Current.ErrorCode);
+
+        await controller.SubmitScanAsync("SUBLOT-002", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
+        Assert.Equal(1, io.PulseCount);
+        Assert.True(Assert.Single(rule.Results).Success);
+    }
+
     [Fact]
     [Trait("IntegrationSlice", "W2G-IS-02")]
     public async Task LoadFlowUnlocksOnceAndReportsSuccess()

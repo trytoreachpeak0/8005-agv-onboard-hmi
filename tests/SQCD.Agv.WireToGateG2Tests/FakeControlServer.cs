@@ -75,6 +75,14 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </summary>
     public int UpcomingStopPlanLegCount { get; set; } = 1;
 
+    /// <summary>
+    /// How many items the CurrentStopWorklistSnapshot carries. 1 is the pickup-stop shape every other
+    /// test here assumes. Anything larger switches to the gate shape the real server sends when a
+    /// multi-demand journey arrives at the gate: one GATE item per loaded demand, no departure
+    /// deadline. The protocol schema allows up to 8.
+    /// </summary>
+    public int CurrentStopWorklistItemCount { get; set; } = 1;
+
     public bool SendDemandAcceptanceSnapshotsAfterRecovery { get; set; }
 
     public bool SendDemandAcceptanceSnapshotsOnlyFirstConnection { get; set; }
@@ -947,6 +955,7 @@ public sealed class FakeControlServer : IAsyncDisposable
     {
         string demandId = "11111111-1111-1111-1111-111111111111";
         string movementLegId = "22222222-2222-2222-2222-222222222222";
+        bool gateWorklist = CurrentStopWorklistItemCount > 1;
         DateTimeOffset observedAt = ReplayJourneySnapshotsWithStableIdentity
             ? StableJourneyObservedAt
             : DateTimeOffset.UtcNow;
@@ -967,22 +976,21 @@ public sealed class FakeControlServer : IAsyncDisposable
             "CurrentStopWorklistSnapshot",
             new
             {
-                stationId = "ST-01",
+                stationId = gateWorklist ? "GATE-01" : "ST-01",
                 worklistRevision = 1,
                 operationSessionId = (string?)null,
-                stationDepartureDeadlineAt = StableStationDepartureDeadlineAt,
-                items = new[]
+                stationDepartureDeadlineAt = gateWorklist ? (DateTimeOffset?)null : StableStationDepartureDeadlineAt,
+                // 多需求旅程开到关卡时，一份清单里是装上车的每条需求各一项，项数不是常数 1。默认仍发
+                // 一项取货清单，既有断言一行不用改；要关卡那个形状的测试把 CurrentStopWorklistItemCount 调大。
+                items = Enumerable.Range(1, CurrentStopWorklistItemCount).Select(index => new
                 {
-                    new
-                    {
-                        demandId,
-                        transportDemandKey = "TD-001",
-                        sublot = "SUBLOT-001",
-                        workType = "WIRE_TO_GATE",
-                        stopRole = "PICKUP",
-                        expectedBasketCount = 2
-                    }
-                }
+                    demandId = index == 1 ? demandId : $"11111111-1111-4111-8111-{index:D12}",
+                    transportDemandKey = $"TD-{index:D3}",
+                    sublot = $"SUBLOT-{index:D3}",
+                    workType = "WIRE_TO_GATE",
+                    stopRole = gateWorklist ? "GATE" : "PICKUP",
+                    expectedBasketCount = 2
+                }).ToArray()
             })).ConfigureAwait(false);
         await WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(
             context,

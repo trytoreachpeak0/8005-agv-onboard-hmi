@@ -1337,6 +1337,60 @@ public sealed class WireToGateG2Tests
             testToken);
     }
 
+    /// <summary>
+    /// 多需求旅程开到关卡时的作业清单：装上车的每条需求各一项。车辆侧原本写死只收 1 项，而
+    /// protocol 的 schema 允许 8 项，于是服务端发的合法报文被判 PROTOCOL_SCHEMA_INVALID。
+    ///
+    /// 与 <see cref="MultiDemandUpcomingStopPlanWithMoreThanTwoLegsIsAccepted"/> 同一个形状、同一个后果：
+    /// 服务端每次会话恢复重发同一个 messageId、时间戳变了，撞上它自己的幂等保护关连接，车辆重连、
+    /// 再拒、再关。2026-09-11 的整窗彩排里真装置第一次把三需求旅程开到关卡，会话就锁死在这里，
+    /// 三条卸货命令一条都没确认。取货站每站恰好 1 项，所以这行代码从写下起就没有过反例。
+    /// 3 是现场那趟的形状，8 是 schema 的上界。
+    /// </summary>
+    [Theory]
+    [InlineData(3)]
+    [InlineData(8)]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
+    public async Task MultiDemandGateWorklistWithMoreThanOneItemIsAccepted(int itemCount)
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            SendJourneySnapshotsAfterRecovery = true,
+            CurrentStopWorklistItemCount = itemCount
+        };
+        string journalPath = NewJournalPath();
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionClient client = CreateClient(server, io, journalPath);
+
+        await client.ConnectAndRecoverAsync(testToken);
+        await WaitUntilAsync(
+            () => client.CurrentJourney.CurrentStopWorklist is not null
+                && client.CurrentJourney.UpcomingStopPlan is not null,
+            testToken);
+
+        WireToGateCurrentStopWorklist worklist = client.CurrentJourney.CurrentStopWorklist!;
+        Assert.Equal(itemCount, worklist.Items.Count);
+        Assert.All(worklist.Items, item => Assert.Equal("GATE", item.StopRole));
+        Assert.Equal(itemCount, worklist.Items.Select(item => item.DemandId).Distinct(StringComparer.Ordinal).Count());
+        Assert.Null(worklist.StationDepartureDeadlineAt);
+
+        // 收下了才算数：三份快照都有应答，其中一份是作业清单的，而且车辆侧没有回 ProtocolProblem。
+        await WaitUntilAsync(
+            () => server.Received.Count(item => item.MessageType == "SnapshotAppliedAck") == 3,
+            testToken);
+        Assert.Contains(
+            server.ReceivedEnvelopes.Where(item => item.MessageType == "SnapshotAppliedAck"),
+            item =>
+            {
+                using JsonDocument document = JsonDocument.Parse(item.WireLine);
+                return document.RootElement.GetProperty("payload").GetProperty("snapshotKind").GetString()
+                    == "CURRENT_STOP_WORKLIST";
+            });
+        Assert.DoesNotContain(server.Received, item => item.MessageType == "ProtocolProblem");
+    }
+
     [Fact]
     [Trait("IntegrationSlice", "W2G-IS-01")]
     public async Task JourneySnapshotsAreProjectedAndHeartbeatDoesNotStealAsyncMessages()

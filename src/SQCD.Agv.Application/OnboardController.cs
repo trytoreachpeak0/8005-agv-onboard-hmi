@@ -1679,10 +1679,13 @@ public sealed class OnboardController : IAsyncDisposable
             return null;
         }
 
-        WireToGateWorklistItem? item = _journeyProvider()?.CurrentStopWorklist?.Items.SingleOrDefault();
-        return item is null
+        // 判据是集合归属：清单可以有多项（CurrentStopWorklistSnapshot.schema.json 的 items.maxItems 是 8）。
+        // 原先取 SingleOrDefault()，两项就抛 InvalidOperationException，被外层映射成 RULE_OFFLINE，
+        // 操作员看到的是「任务系统连接中断」，而不是放行或 SUBLOT_NOT_IN_WORKLIST。
+        IReadOnlyList<WireToGateWorklistItem>? items = _journeyProvider()?.CurrentStopWorklist?.Items;
+        return items is null || items.Count == 0
             ? "WIRE_TO_GATE_JOURNEY_NOT_READY"
-            : string.Equals(item.Sublot, sublot, StringComparison.Ordinal)
+            : items.Any(item => string.Equals(item.Sublot, sublot, StringComparison.Ordinal))
                 ? null
                 : "SUBLOT_NOT_IN_WORKLIST";
     }
