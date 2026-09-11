@@ -245,7 +245,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 .ConfigureAwait(false);
             WireToGateRecoveryOperationContext context = state.OperationContext
                 ?? throw new InvalidDataException("RECOVERY_OPERATION_CONTEXT_MISSING");
-            if (state.RecoveryOperatorId is not null
+            if (activeRecovery
+                && state.RecoveryOperatorId is not null
                 && !string.Equals(state.RecoveryOperatorId, operatorId, StringComparison.Ordinal))
             {
                 throw new InvalidDataException("RECOVERY_OPERATOR_MISMATCH");
@@ -263,11 +264,18 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 throw new InvalidOperationException("RECOVERY_SESSION_STATE_PENDING");
             }
 
-            string requestId = state.RecoverySessionRequestId ?? Guid.NewGuid().ToString("D");
+            // Without an open session this press is a new request with a new id, and nothing an
+            // earlier press persisted binds it: that press was refused, or never reached the server,
+            // or opened a session whose snapshot has not arrived -- and then the server refuses this
+            // one with RECOVERY_SESSION_ALREADY_OPEN. Reusing the old id could only replay a refusal
+            // or conflict with the bytes the server kept (see RequestRecoveryActionVectorCoreAsync).
+            string requestId = activeRecovery
+                ? state.RecoverySessionRequestId ?? Guid.NewGuid().ToString("D")
+                : Guid.NewGuid().ToString("D");
             string eventId = activeRecovery ? recoverySnapshot!.EventId : requestId;
-            string recoveryReason = state.RecoveryReason ?? reason;
-            string recoveryOperatorId = state.RecoveryOperatorId ?? operatorId;
-            DateTimeOffset recoveryVerifiedAt = state.RecoveryOperatorVerifiedAt
+            string recoveryReason = (activeRecovery ? state.RecoveryReason : null) ?? reason;
+            string recoveryOperatorId = (activeRecovery ? state.RecoveryOperatorId : null) ?? operatorId;
+            DateTimeOffset recoveryVerifiedAt = (activeRecovery ? state.RecoveryOperatorVerifiedAt : null)
                 ?? _clock.Now.ToUniversalTime();
             state = state with
             {
@@ -332,8 +340,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
             }
 
+            // The action keeps its id across presses -- the server deduplicates by it and records
+            // nothing when it refuses -- but every send is a message of its own.
             string actionId = state.RecoveryActionId ?? Guid.NewGuid().ToString("D");
-            string actionMessageId = state.RecoveryActionRequestId ?? actionId;
+            string actionMessageId = Guid.NewGuid().ToString("D");
             state = state with
             {
                 ExceptionRecoverySessionId = opened.ExceptionRecoverySessionId,

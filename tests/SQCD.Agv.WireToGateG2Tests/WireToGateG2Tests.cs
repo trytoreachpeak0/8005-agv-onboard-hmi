@@ -1116,6 +1116,90 @@ public sealed class WireToGateG2Tests
     }
 
     /// <summary>
+    /// 被拒过一次，同一个 attempt 还得能再请求。请求 id 原来由 attempt 算出来，于是第二次按下带着
+    /// 同一个 messageId、却是新的 <c>verifiedAt</c>/<c>reason</c>/<c>sentAt</c>——真服务端判内容冲突、
+    /// 掐连接，就算内容逐字节相同也只会回放那条拒绝（8005-agv-program#49，现场旅程 54d2cf63 就卡在
+    /// 这里）。每次按下是一条新消息、拿新 id；之前那次到底开没开出会话由服务端快照回答。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task RecoveryCanBeRequestedAgainAfterTheServerRefusedTheSession()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using SettledLoadRecoveryRig rig = await SettledLoadRecoveryRig.StartAsync(
+            recoveryEnabled: true,
+            proof: "test-proof",
+            configure: server => server.RecoverySessionRejectionReasonCode = "RECOVERY_SCOPE_MISMATCH",
+            testToken);
+        await WaitUntilAsync(() => rig.Business.CanRequestLoadCompensation, testToken);
+
+        OnboardAutomationRecoveryOutcome refused = await rig.Facade.RequestRecoveryAsync(
+            OnboardAutomationRecoveryActions.CompensateLoadAllEmpty,
+            "旅程还没 Blocked 时的补偿清空。",
+            testToken);
+        Assert.Equal("RECOVERY_SCOPE_MISMATCH", refused.ReasonCode);
+
+        rig.Server.RecoverySessionRejectionReasonCode = null;
+        await WaitUntilAsync(() => rig.Business.CanRequestLoadCompensation, testToken);
+        OnboardAutomationRecoveryOutcome accepted = await rig.Facade.RequestRecoveryAsync(
+            OnboardAutomationRecoveryActions.CompensateLoadAllEmpty,
+            "旅程转 Blocked 之后再请求一次。",
+            testToken);
+
+        Assert.True(accepted.Accepted, accepted.ReasonCode);
+        await WaitUntilAsync(
+            () => rig.Server.ReceivedEnvelopes.Any(envelope =>
+                envelope.MessageType == "LoadCompensationRequested"),
+            testToken);
+        Assert.Empty(rig.Server.RecoveryRequestConflicts);
+        var sessionRequests = rig.Server.ReceivedEnvelopes
+            .Where(envelope => envelope.MessageType == "ExceptionRecoverySessionRequested")
+            .ToArray();
+        Assert.Equal(2, sessionRequests.Length);
+        Assert.NotEqual(sessionRequests[0].MessageId, sessionRequests[1].MessageId);
+        foreach (var request in sessionRequests)
+        {
+            using JsonDocument document = JsonDocument.Parse(request.WireLine);
+            Assert.Equal(
+                request.MessageId,
+                document.RootElement.GetProperty("payload").GetProperty("requestId").GetString());
+        }
+    }
+
+    /// <summary>
+    /// 现场留下来的状态：车辆日志里存着一个请求 id，服务端早就带着另一份内容收过它，而车辆从没收到
+    /// 过拒绝——服务端判冲突时是直接掐连接的。所以「收到拒绝再退役」救不了这台车，下一次按下必须
+    /// 根本不去读日志里那个 id。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task ARequestIdTheServerAlreadyHoldsIsNotSentAgain()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        const string burnedRequestId = "55d12a30-3d36-4f54-9d05-4edb22a3129e";
+        await using SettledLoadRecoveryRig rig = await SettledLoadRecoveryRig.StartAsync(
+            recoveryEnabled: true,
+            proof: "test-proof",
+            configure: server => server.PreloadRecoveryRequestLine(
+                burnedRequestId,
+                "{\"messageType\":\"ExceptionRecoverySessionRequested\",\"note\":\"10:23 那一次\"}"),
+            testToken,
+            persistedRecoverySessionRequestId: burnedRequestId);
+        await WaitUntilAsync(() => rig.Business.CanRequestLoadCompensation, testToken);
+
+        OnboardAutomationRecoveryOutcome outcome = await rig.Facade.RequestRecoveryAsync(
+            OnboardAutomationRecoveryActions.CompensateLoadAllEmpty,
+            "现场旅程 54d2cf63 的补偿清空。",
+            testToken);
+
+        Assert.True(outcome.Accepted, outcome.ReasonCode);
+        Assert.Empty(rig.Server.RecoveryRequestConflicts);
+        Assert.DoesNotContain(
+            rig.Server.ReceivedEnvelopes,
+            envelope => envelope.MessageId == burnedRequestId);
+    }
+
+    /// <summary>
     /// 车辆已经结算完一次装载、服务端却宣布会话需要恢复：补偿清空恰好该出现的那个状态。与
     /// <see cref="CompensationIsRequestableAfterTheVehicleAlreadySettledTheLoad"/> 同一套布置，外加
     /// 真的 <see cref="WpfOnboardAutomationFacade"/>。环境变量按实例起名，不和别的测试抢。
@@ -1144,12 +1228,18 @@ public sealed class WireToGateG2Tests
             bool recoveryEnabled,
             string? proof,
             Action<FakeControlServer>? configure,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            string? persistedRecoverySessionRequestId = null)
         {
             const string demandId = "11111111-1111-4111-8111-111111111111";
             string attemptId = FakeControlServer.SlotOperationAttemptId;
             string journalPath = NewJournalPath();
-            await SeedSettledLoadAsync(journalPath, demandId, attemptId, cancellationToken);
+            await SeedSettledLoadAsync(
+                journalPath,
+                demandId,
+                attemptId,
+                cancellationToken,
+                persistedRecoverySessionRequestId);
 
             FakeControlServer server = new(IPAddress.Loopback)
             {
@@ -1267,7 +1357,8 @@ public sealed class WireToGateG2Tests
         string journalPath,
         string demandId,
         string attemptId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? recoverySessionRequestId = null)
     {
         await using SqliteWireToGateJournal journal = new(journalPath);
         await journal.InitializeAsync(cancellationToken);
@@ -1275,6 +1366,7 @@ public sealed class WireToGateG2Tests
         await journal.WriteRecoveryStateAsync(
             state with
             {
+                RecoverySessionRequestId = recoverySessionRequestId,
                 UnsettledSlotOperationAttemptId = null,
                 ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ResultRecorded,
                 OperationContext = null,
