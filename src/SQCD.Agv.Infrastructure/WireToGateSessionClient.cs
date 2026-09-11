@@ -2294,7 +2294,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             || payload.WorklistRevision < 0
             || payload.OperationSessionId is not null && !IsUuid(payload.OperationSessionId)
             || payload.Items is null
-            || payload.Items.Count > 1
+            // 上限跟 protocol 的 schema 走（CurrentStopWorklistSnapshot.schema.json 的 items.maxItems），
+            // 不是车辆侧自己另定一个。原来写死的 1 只够取货站——每站恰好一条需求——而多需求旅程开到
+            // 关卡时，清单里是装上车的每条需求各一项，于是被这里判成 PROTOCOL_SCHEMA_INVALID。服务端
+            // 发的报文完全合法，车辆侧拒收，服务端每次会话恢复重发同一条、内容里的时间戳变了，撞上
+            // 自己的幂等保护并关连接：2026-09-11 的整窗彩排第一次把三需求旅程开到关卡，会话就锁死在
+            // 这个循环里，三条卸货命令一条都没确认。与 ValidateUpcomingStopPlan 那条（#37）同一个形状。
+            || payload.Items.Count > 8
             || payload.Items.Any(item =>
                 item is null
                 || !IsUuid(item.DemandId)
