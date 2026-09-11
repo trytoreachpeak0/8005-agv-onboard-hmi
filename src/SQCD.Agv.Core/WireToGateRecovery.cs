@@ -42,6 +42,19 @@ public static class WireToGateRecoveryVectorTypes
         or FaultCargoHandoff;
 }
 
+/// <summary>
+/// What a recovery request came to. <see cref="ReasonCode"/> is null exactly when the request was
+/// accepted; otherwise it is the code the refusal carried -- the server's own problem code when the
+/// server refused, the vehicle's guard code when it never got that far.
+/// </summary>
+public sealed record WireToGateRecoveryRequestOutcome(bool Accepted, string? ReasonCode)
+{
+    public static WireToGateRecoveryRequestOutcome Succeeded { get; } = new(true, null);
+
+    public static WireToGateRecoveryRequestOutcome Refused(string reasonCode) =>
+        new(false, reasonCode);
+}
+
 public static class WireToGateRecoveryCommandHash
 {
     public static string Compute(params string[] parts) =>

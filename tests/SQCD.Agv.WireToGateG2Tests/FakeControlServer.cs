@@ -630,6 +630,28 @@ public sealed class FakeControlServer : IAsyncDisposable
         JsonElement request)
     {
         JsonElement payload = request.GetProperty("payload");
+        if (RecoverySessionRejectionReasonCode is { } rejection)
+        {
+            await WriteEnvelopeAsync(
+                context,
+                CreateEnvelope(
+                    context,
+                    "ExceptionRecoverySessionRejected",
+                    request.GetProperty("messageId").GetString(),
+                    new
+                    {
+                        requestId = payload.GetProperty("requestId").GetString(),
+                        problem = new
+                        {
+                            reasonCode = rejection,
+                            fieldPath = "payload",
+                            displayMessage = "恢复会话被拒绝。"
+                        }
+                    }))
+                .ConfigureAwait(false);
+            return;
+        }
+
         string sessionId = "77777777-7777-4777-8777-777777777777";
         await WriteEnvelopeAsync(
             context,
@@ -892,6 +914,12 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// 不被挑战。要测两端对得上（或对不上）的测试自己设它。
     /// </summary>
     public string? RecoverySessionSlotOperationAttemptId { get; set; }
+
+    /// <summary>
+    /// 设了就用这个原因码回 <c>ExceptionRecoverySessionRejected</c>，不开会话。合成对端的出站报文
+    /// 也过 schema，所以只能用 0.3.0 <c>ErrorCode</c> 里登记过的码。
+    /// </summary>
+    public string? RecoverySessionRejectionReasonCode { get; set; }
 
     private static async Task SendSlotOperationCommandAsync(ConnectionContext context)
     {

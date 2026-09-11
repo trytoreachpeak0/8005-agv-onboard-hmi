@@ -10,13 +10,23 @@ namespace SQCD.Agv.AutomationHost;
 
 public static class OnboardAutomationApi
 {
+    /// <summary>
+    /// Prepended to every recovery reason sent through this face. The protocol has no field for
+    /// where a request came from, and the reason is the one free-text field the server keeps, so
+    /// this is what lets a scripted recovery be told apart from a pressed button afterwards.
+    /// </summary>
+    public const string RecoveryReasonPrefix = "【车载端自动化接口】";
+
     public static void Map(
         WebApplication app,
         IOnboardAutomationFacade facade,
-        string runId)
+        string runId,
+        TimeSpan recoveryResponseWait)
     {
         AutomationRevisionState revision = new(facade, runId);
         ConcurrentDictionary<string, CachedSubmit> submissions = new(StringComparer.Ordinal);
+        ConcurrentDictionary<string, CachedRecovery> recoveries = new(StringComparer.Ordinal);
+        CachedRecovery? latestRecovery = null;
         SemaphoreSlim commandGate = new(1, 1);
 
         app.UseStatusCodePages(async statusContext =>
@@ -162,6 +172,148 @@ public static class OnboardAutomationApi
             }
         });
 
+        // Recovery is the button's own request, reached without the button. What that must not
+        // become is a way around it, so nothing the caller sends can widen what the button could do:
+        // the operator identity and the recovery proof stay in the vehicle's environment, the action
+        // must be one the HMI currently offers (the facade decides that), and the server authorizes
+        // or refuses it exactly as it would a press.
+        group.MapPost("/recovery/requests", async (
+            AutomationRecoveryRequest request,
+            CancellationToken cancellationToken) =>
+        {
+            if (string.IsNullOrWhiteSpace(request.RunId)
+                || string.IsNullOrWhiteSpace(request.CommandId)
+                || request.ExpectedRevision is null
+                || string.IsNullOrWhiteSpace(request.Action)
+                || string.IsNullOrWhiteSpace(request.Reason)
+                || !Guid.TryParseExact(request.RunId, "D", out _)
+                || !Guid.TryParseExact(request.CommandId, "D", out _)
+                || request.ExpectedRevision.Value < 1)
+            {
+                return Results.Json(
+                    CreateError(revision.Read(), request.CommandId, "INVALID_HTTP_REQUEST", "runId、commandId、expectedRevision、action和reason均为必填项。"),
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            if (!OnboardAutomationRecoveryActions.All.Contains(request.Action, StringComparer.Ordinal))
+            {
+                return Results.Json(
+                    CreateError(revision.Read(), request.CommandId, "RECOVERY_ACTION_UNKNOWN", $"action必须是{string.Join('、', OnboardAutomationRecoveryActions.All)}之一。"),
+                    statusCode: StatusCodes.Status400BadRequest);
+            }
+
+            if (!string.Equals(request.RunId, runId, StringComparison.Ordinal))
+            {
+                return Results.Json(
+                    CreateError(revision.Read(), request.CommandId, "RUN_ID_MISMATCH", "runId不属于当前自动化进程。"),
+                    statusCode: StatusCodes.Status409Conflict);
+            }
+
+            string reason = request.Reason.Trim();
+            string fingerprint = JsonSerializer.Serialize(new
+            {
+                request.RunId,
+                request.CommandId,
+                request.ExpectedRevision,
+                request.Action,
+                Reason = reason
+            });
+            CachedRecovery recovery;
+            bool replayed;
+            await commandGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                AutomationState current = revision.Read();
+                if (recoveries.TryGetValue(request.CommandId, out CachedRecovery? cached))
+                {
+                    if (!string.Equals(cached.Fingerprint, fingerprint, StringComparison.Ordinal))
+                    {
+                        return Results.Json(
+                            CreateError(current, request.CommandId, "COMMAND_ID_CONFLICT", "同一commandId对应了不同请求内容。"),
+                            statusCode: StatusCodes.Status409Conflict);
+                    }
+
+                    recovery = cached;
+                    replayed = true;
+                }
+                else
+                {
+                    // One recovery at a time. A second one issued while the first is still running
+                    // was decided against a state that is in motion, and the business service would
+                    // only queue it behind the first and run it against whatever state that left.
+                    if (latestRecovery is { Outcome.IsCompleted: false })
+                    {
+                        return Results.Json(
+                            CreateError(current, request.CommandId, "RECOVERY_REQUEST_IN_PROGRESS", "上一条恢复请求尚未结束，请用它的commandId重放以读取结果。"),
+                            statusCode: StatusCodes.Status409Conflict);
+                    }
+
+                    if (request.ExpectedRevision.Value != current.Revision)
+                    {
+                        return Results.Json(
+                            CreateError(current, request.CommandId, "REVISION_CONFLICT", "快照revision已经变化，请重新读取快照。"),
+                            statusCode: StatusCodes.Status409Conflict);
+                    }
+
+                    // Not the HTTP request's token. A caller that hangs up must not abort a recovery
+                    // halfway through its slot IO; the button does not cancel either.
+                    recovery = new CachedRecovery(
+                        fingerprint,
+                        facade.RequestRecoveryAsync(
+                            request.Action,
+                            RecoveryReasonPrefix + reason,
+                            CancellationToken.None));
+                    recoveries[request.CommandId] = recovery;
+                    latestRecovery = recovery;
+                    replayed = false;
+                }
+            }
+            finally
+            {
+                commandGate.Release();
+            }
+
+            // Replaying the commandId is how a caller reads an outcome that was still IN_PROGRESS.
+            await Task.WhenAny(recovery.Outcome, Task.Delay(recoveryResponseWait, cancellationToken))
+                .ConfigureAwait(false);
+            if (!recovery.Outcome.IsCompleted)
+            {
+                AutomationState pending = revision.Read();
+                return Results.Json(
+                    new AutomationRecoveryResponse(
+                        "1.0.0",
+                        pending.Snapshot.AgvId,
+                        runId,
+                        pending.Revision,
+                        DateTimeOffset.UtcNow,
+                        request.CommandId,
+                        request.Action,
+                        AutomationRecoveryStatus.InProgress,
+                        replayed,
+                        null,
+                        pending.Snapshot),
+                    statusCode: StatusCodes.Status202Accepted);
+            }
+
+            OnboardAutomationRecoveryOutcome outcome = await recovery.Outcome.ConfigureAwait(false);
+            AutomationState after = revision.Read();
+            AutomationRecoveryResponse response = new(
+                "1.0.0",
+                after.Snapshot.AgvId,
+                runId,
+                after.Revision,
+                DateTimeOffset.UtcNow,
+                request.CommandId,
+                request.Action,
+                outcome.Accepted ? AutomationRecoveryStatus.Accepted : AutomationRecoveryStatus.Rejected,
+                replayed,
+                outcome.ReasonCode,
+                after.Snapshot);
+            return outcome.Accepted
+                ? Results.Json(response)
+                : Results.Json(response, statusCode: StatusCodes.Status409Conflict);
+        });
+
         app.MapGet("/openapi/v1.json", () =>
             Results.File(OpenApiDocument, "application/json", enableRangeProcessing: false));
     }
@@ -173,7 +325,7 @@ public static class OnboardAutomationApi
         string message) =>
         new(
             "1.0.0",
-            state.Snapshot.AgvId,
+            state.RunId,
             state.Revision,
             DateTimeOffset.UtcNow,
             commandId,
@@ -193,6 +345,10 @@ public static class OnboardAutomationApi
     }
 
     private sealed record CachedSubmit(string Fingerprint, AutomationSubmitResponse Response);
+
+    private sealed record CachedRecovery(
+        string Fingerprint,
+        Task<OnboardAutomationRecoveryOutcome> Outcome);
 
     private sealed class AutomationRevisionState
     {

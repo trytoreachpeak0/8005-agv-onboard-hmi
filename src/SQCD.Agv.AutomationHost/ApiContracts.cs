@@ -8,6 +8,33 @@ public sealed record AutomationSublotSubmitRequest(
     long? ExpectedRevision,
     string? Sublot);
 
+public sealed record AutomationRecoveryRequest(
+    string? RunId,
+    string? CommandId,
+    long? ExpectedRevision,
+    string? Action,
+    string? Reason);
+
+public static class AutomationRecoveryStatus
+{
+    public const string Accepted = "ACCEPTED";
+    public const string Rejected = "REJECTED";
+    public const string InProgress = "IN_PROGRESS";
+}
+
+public sealed record AutomationRecoveryResponse(
+    string SchemaVersion,
+    string AgvId,
+    string RunId,
+    long Revision,
+    DateTimeOffset ObservedAt,
+    string CommandId,
+    string Action,
+    string Status,
+    bool Replayed,
+    string? ReasonCode,
+    OnboardAutomationSnapshot State);
+
 public sealed record AutomationHealthResponse(
     string SchemaVersion,
     string AgvId,
