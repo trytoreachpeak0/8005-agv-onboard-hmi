@@ -21,6 +21,8 @@ public sealed class MainViewModel : ViewModelBase
     private string _departureText = "禁止发车";
     private string _stateText = "启动中";
     private string _guidance = "系统正在启动…";
+    private string _alarmText = string.Empty;
+    private bool _hasAlarms;
     private bool _canSubmit;
     private bool _hasError;
     private bool _hasWarning;
@@ -123,6 +125,28 @@ public sealed class MainViewModel : ViewModelBase
         get => _wireToGateText;
         private set => SetProperty(ref _wireToGateText, value);
     }
+
+    public string AlarmText
+    {
+        get => _alarmText;
+        private set => SetProperty(ref _alarmText, value);
+    }
+
+    public bool HasAlarms
+    {
+        get => _hasAlarms;
+        private set => SetProperty(ref _hasAlarms, value);
+    }
+
+    /// <summary>
+    /// 本机界面上的告警。只显示与这台车、当前停靠、当前操作直接相关的那些（REQ-0270），由调用方收敛好传进来。
+    /// </summary>
+    internal void UpdateOnboardAlarms(IReadOnlyList<AlarmEntry> alarms) => RunOnUiThread(() =>
+    {
+        ArgumentNullException.ThrowIfNull(alarms);
+        HasAlarms = alarms.Count > 0;
+        AlarmText = string.Join("；", alarms.Select(alarm => alarm.Message));
+    });
 
     internal void UpdateWireToGateStatus(WireToGateSessionSnapshot snapshot) => RunOnUiThread(() =>
     {

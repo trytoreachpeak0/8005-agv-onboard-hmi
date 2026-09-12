@@ -122,6 +122,7 @@
                 <Grid.RowDefinitions>
                     <RowDefinition />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -140,7 +141,17 @@
                                Text="{Binding Guidance}"
                                TextWrapping="Wrap" />
                 </ScrollViewer>
-                <WrapPanel Grid.Row="1"
+                <TextBlock Grid.Row="1"
+                           Grid.Column="0"
+                           Grid.ColumnSpan="3"
+                           Margin="0,8,0,0"
+                           FontSize="14"
+                           FontWeight="Bold"
+                           Foreground="{StaticResource DangerBrush}"
+                           Text="{Binding AlarmText, StringFormat=告警：{0}}"
+                           TextWrapping="Wrap"
+                           Visibility="{Binding HasAlarms, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <WrapPanel Grid.Row="2"
                            Grid.Column="0"
                            Grid.ColumnSpan="3"
                            Margin="0,8,0,0"

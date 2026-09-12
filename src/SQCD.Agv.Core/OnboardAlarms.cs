@@ -5,8 +5,8 @@ namespace SQCD.Agv.Core;
 /// </summary>
 /// <remarks>
 /// REQ-0270 的收敛在本期不是按人分权——本期没有人员认证——而是按「哪个界面看得到什么」分：与当前
-/// AGV／当前停靠／当前操作直接相关的显示在本机界面，其余进看板。所以这个枚举描述的是关系，不是
-/// 权限，求值时不需要也不接受任何身份输入。
+/// AGV／当前停靠／当前操作直接相关的显示在本机界面；服务端看板集中显示全部，不按这个枚举过滤。所以
+/// 这个枚举描述的是关系，不是权限，求值时不需要也不接受任何身份输入。
 /// </remarks>
 public enum AlarmScope
 {
@@ -19,7 +19,7 @@ public enum AlarmScope
     /// <summary>与车当前正在执行的那次操作直接相关。</summary>
     CurrentOperation,
 
-    /// <summary>与以上三者都不直接相关。本机界面不显示，它归看板。</summary>
+    /// <summary>与以上三者都不直接相关。本机界面不显示，只在看板上显示。</summary>
     Fleet
 }
 
@@ -69,6 +69,10 @@ public sealed record OnboardAlarmContext(
 /// <summary>
 /// 车载端的告警板：持有当前全量告警，产出快照，并挑出该显示在本机界面的那些。
 /// </summary>
+/// <remarks>
+/// 线程安全。三方同时碰它：告警监视器在后台整份替换，会话客户端在握手里和会话中途各自抓快照，界面
+/// 读当前内容。
+/// </remarks>
 public sealed class OnboardAlarmBoard(string agvId, TimeProvider clock)
 {
     private readonly string _agvId = !string.IsNullOrWhiteSpace(agvId)
@@ -76,6 +80,7 @@ public sealed class OnboardAlarmBoard(string agvId, TimeProvider clock)
         : throw new ArgumentException("agvId 不能为空。", nameof(agvId));
     private readonly TimeProvider _clock = clock ?? throw new ArgumentNullException(nameof(clock));
     private readonly Dictionary<string, AlarmEntry> _active = new(StringComparer.Ordinal);
+    private readonly object _gate = new();
 
     private long _sequence;
 
@@ -85,7 +90,10 @@ public sealed class OnboardAlarmBoard(string agvId, TimeProvider clock)
         ArgumentNullException.ThrowIfNull(alarm);
         ArgumentException.ThrowIfNullOrWhiteSpace(alarm.AlarmCode);
 
-        _active[alarm.AlarmCode] = alarm;
+        lock (_gate)
+        {
+            _active[alarm.AlarmCode] = alarm;
+        }
     }
 
     /// <summary>清掉一条告警。</summary>
@@ -93,17 +101,79 @@ public sealed class OnboardAlarmBoard(string agvId, TimeProvider clock)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(alarmCode);
 
-        _active.Remove(alarmCode);
+        lock (_gate)
+        {
+            _active.Remove(alarmCode);
+        }
+    }
+
+    /// <summary>
+    /// 用一次求值的结果整份替换当前告警，返回内容是否变了。
+    /// </summary>
+    /// <remarks>
+    /// 一条告警持续存在、别的都没变时，保留它**第一次**抬起的 <see cref="AlarmEntry.RaisedAt"/>。求值器每一轮
+    /// 都拿「此刻」当抬起时间，照单全收会让一条挂了十分钟的告警在每一份快照里都像刚刚发生——线上的告警身份
+    /// 由内容派生，也会跟着每轮换一次。
+    /// </remarks>
+    public bool ReplaceAll(IEnumerable<AlarmEntry> alarms)
+    {
+        ArgumentNullException.ThrowIfNull(alarms);
+
+        lock (_gate)
+        {
+            Dictionary<string, AlarmEntry> next = new(StringComparer.Ordinal);
+            foreach (AlarmEntry alarm in alarms)
+            {
+                ArgumentNullException.ThrowIfNull(alarm);
+                ArgumentException.ThrowIfNullOrWhiteSpace(alarm.AlarmCode);
+
+                next[alarm.AlarmCode] =
+                    _active.TryGetValue(alarm.AlarmCode, out AlarmEntry? existing)
+                    && existing with { RaisedAt = alarm.RaisedAt } == alarm
+                        ? existing
+                        : alarm;
+            }
+
+            bool changed = next.Count != _active.Count
+                || next.Any(pair => !_active.TryGetValue(pair.Key, out AlarmEntry? existing) || existing != pair.Value);
+            _active.Clear();
+            foreach (KeyValuePair<string, AlarmEntry> pair in next)
+            {
+                _active[pair.Key] = pair.Value;
+            }
+
+            return changed;
+        }
     }
 
     /// <summary>
     /// 产出当前全量快照。每次调用序号加一，内容是此刻的全部告警——不是自上次以来的增量。
     /// </summary>
-    public OnboardAlarmSnapshot Capture() => new(
-        _agvId,
-        ++_sequence,
-        _clock.GetUtcNow(),
-        [.. _active.Values.OrderBy(alarm => alarm.AlarmCode, StringComparer.Ordinal)]);
+    public OnboardAlarmSnapshot Capture()
+    {
+        lock (_gate)
+        {
+            return new(_agvId, ++_sequence, _clock.GetUtcNow(), OrderedAlarms());
+        }
+    }
+
+    /// <summary>
+    /// 读当前全量告警，不推进序号。
+    /// </summary>
+    /// <remarks>
+    /// 序号是最近一次 <see cref="Capture"/> 用掉的那个，从没抓过时是 0。它只给本机界面和「服务端手上是不是
+    /// 已经是这一份」的比对用，本身不上线——上线的每一份都由 <see cref="Capture"/> 产出。
+    /// </remarks>
+    public OnboardAlarmSnapshot Peek()
+    {
+        lock (_gate)
+        {
+            return new(_agvId, _sequence, _clock.GetUtcNow(), OrderedAlarms());
+        }
+    }
+
+    private AlarmEntry[] OrderedAlarms() =>
+        [.. _active.Values.OrderBy(alarm => alarm.AlarmCode, StringComparer.Ordinal)];
 }
 
 /// <summary>
@@ -142,19 +212,54 @@ public static class OnboardAlarmVisibility
 }
 
 /// <summary>
-/// 车载端目前会抬起的告警码。
+/// 车载端定义的告警码。
 /// </summary>
 /// <remarks>
 /// 这是一个**开放集合**的当前内容，不是它的定义。加一个码就是往这里加一行，不需要动协议、不需要
-/// 发版——这正是它不能是 enum 的理由。
+/// 发版——这正是它不能是 enum 的理由。什么条件下抬起哪一条，见 <see cref="OnboardAlarmEvaluator"/>。
 /// </remarks>
 public static class OnboardAlarmCodes
 {
+    /// <summary>仓门控制模块（IO）离线。</summary>
     public const string IoModuleDisconnected = "ONBOARD_IO_MODULE_DISCONNECTED";
+
+    /// <summary>IO 在线且读数新鲜，但有仓位的锁反馈读不到。</summary>
     public const string SlotLockFeedbackLost = "ONBOARD_SLOT_LOCK_FEEDBACK_LOST";
+
+    /// <summary>
+    /// 光幕被挡。**定义了，不抬起。**光幕被挡就是仓里有货，车载着货走是常态，照这个条件会一直报；要报的是
+    /// 「与作业期望不符」，那需要知道每个仓此刻该不该有货，本端的求值输入里没有这一项。
+    /// </summary>
     public const string SlotLightCurtainBlocked = "ONBOARD_SLOT_LIGHT_CURTAIN_BLOCKED";
+
+    /// <summary>
+    /// 旧任务系统网关断开。**只在不走 WIRE_TO_GATE 的旧模式下判**：v2 线上网关是空实现，连接状态恒为断开。
+    /// </summary>
     public const string RuleGatewayDisconnected = "ONBOARD_RULE_GATEWAY_DISCONNECTED";
+
+    /// <summary>旧模式下作业超时：控制器报了开锁反馈、开锁输出复位或关门装卸超时。</summary>
     public const string StationOperationOverdue = "ONBOARD_STATION_OPERATION_OVERDUE";
+
+    /// <summary>
+    /// WIRE_TO_GATE 模式下一次仓位操作没有完成、等待恢复处理。v2 线上超时与 IO 失败在执行器里走同一条路，
+    /// 结果都是这个状态，所以这一条不叫「超时」。
+    /// </summary>
+    public const string SlotOperationUnfinished = "ONBOARD_SLOT_OPERATION_UNFINISHED";
+
+    /// <summary>车载端控制器进入故障锁定，禁止继续操作。</summary>
+    public const string SafetyFaultLatched = "ONBOARD_SAFETY_FAULT_LATCHED";
+
+    /// <summary>出发安全信号（车辆是否停稳）读不到或已经过期。</summary>
+    public const string DepartureSafetySignalUnavailable = "ONBOARD_DEPARTURE_SAFETY_SIGNAL_UNAVAILABLE";
+
+    /// <summary>IO 在线，但仓门状态超过允许的时长没有刷新。</summary>
+    public const string SlotStateStale = "ONBOARD_SLOT_STATE_STALE";
+
+    /// <summary>车辆行驶中，有仓门未锁或开锁输出未复位。</summary>
+    public const string SlotUnsecuredWhileMoving = "ONBOARD_SLOT_UNSECURED_WHILE_MOVING";
+
+    /// <summary>本车生效的仓位配置指纹与服务端批准的不一致，会话因此不就绪。</summary>
+    public const string SlotConfigurationMismatch = "ONBOARD_SLOT_CONFIGURATION_MISMATCH";
 
     public static IReadOnlyList<string> All { get; } =
     [
@@ -162,6 +267,12 @@ public static class OnboardAlarmCodes
         SlotLockFeedbackLost,
         SlotLightCurtainBlocked,
         RuleGatewayDisconnected,
-        StationOperationOverdue
+        StationOperationOverdue,
+        SlotOperationUnfinished,
+        SafetyFaultLatched,
+        DepartureSafetySignalUnavailable,
+        SlotStateStale,
+        SlotUnsecuredWhileMoving,
+        SlotConfigurationMismatch
     ];
 }
