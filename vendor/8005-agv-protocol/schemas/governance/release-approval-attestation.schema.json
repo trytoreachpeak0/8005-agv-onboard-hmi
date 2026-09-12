@@ -48,12 +48,23 @@
         "additionalProperties": false,
         "required": [
           "ownerId",
+          "approverKind",
           "decidedAt",
           "decision",
           "statement"
         ],
         "properties": {
           "ownerId": {
+            "type": "string",
+            "minLength": 1
+          },
+          "approverKind": {
+            "enum": [
+              "PRODUCT_OWNER",
+              "AI_AGENT"
+            ]
+          },
+          "authorizedBy": {
             "type": "string",
             "minLength": 1
           },
@@ -68,6 +79,21 @@
             "type": "string",
             "minLength": 1
           }
+        },
+        "if": {
+          "properties": {
+            "approverKind": {
+              "const": "AI_AGENT"
+            }
+          },
+          "required": [
+            "approverKind"
+          ]
+        },
+        "then": {
+          "required": [
+            "authorizedBy"
+          ]
         }
       }
     },

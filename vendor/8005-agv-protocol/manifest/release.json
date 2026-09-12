@@ -7,8 +7,8 @@
   "generatedAt": "2026-09-04T00:00:00Z",
   "hashAlgorithm": "SHA-256",
   "jsonCanonicalization": "RFC8785-compatible sorted-key JCS for semantic collections; raw bytes for file entries",
-  "fileTableSha256": "5ecae021890b626f660eeba0aae0bc36a6304d9a6719d1c5525e969e4cdc4596",
-  "schemaBundleSha256": "225a83340eb5f27c4e6dfd7bf8aba8007cf787d29f1df860deaf0ba039baf3ff",
+  "fileTableSha256": "f7828f0f02e14c9dcf218390b4a43fbf4ca3885ebefc78038886c00efed2ce8f",
+  "schemaBundleSha256": "885191e7a9e5da98a44f17f131756f9eb2033e7e11f13f4df965d4e35ac55685",
   "examplesSha256": "c9488eb4b334a6549483e4f5eeed70050d25ecf4e0652fb1c9632744dffe52d6",
   "vectorsSha256": "51c5aaca2ca02326d16e02af7e76c9954d84414a9772c5b208a92969a417d1df",
   "errorRegistrySha256": "ea538d5999b8fa641803c0669e6c4319aaec3df311809bfe25472a97c41a67e7",
@@ -1005,14 +1005,14 @@
     {
       "path": "CLAUDE.md",
       "role": "CLAUDE.md",
-      "bytes": 5987,
-      "sha256": "f45fbd60360482e56de969783d2e017cc5e5812eb6f5340ee88dc2f5cf13bce4"
+      "bytes": 6094,
+      "sha256": "8359c127c18b3034ce85377fac53568e5188227e74d78aa8c06706d7b7e11b49"
     },
     {
       "path": "README.md",
       "role": "README.md",
-      "bytes": 1532,
-      "sha256": "014b014d218ea195e0c5277a40efd214f263ada47e61a50a3150f1199064a01b"
+      "bytes": 1597,
+      "sha256": "72cd1c1438e36a292e0157117a679cc7eb4f3c3f9bec29acad426a092c65958a"
     },
     {
       "path": "THIRD-PARTY-NOTICES.md",
@@ -1041,14 +1041,14 @@
     {
       "path": "docs/candidate-limitations.md",
       "role": "docs",
-      "bytes": 1889,
-      "sha256": "d31336329e022d170ab2eff3deb8e9162503f5b4b6551ad4c63e4dc897760cc8"
+      "bytes": 1961,
+      "sha256": "3de55679f0d22a81a1f29482e6608019e8c20229befdbf38d2e707414a0a7d5f"
     },
     {
       "path": "docs/release-governance.md",
       "role": "docs",
-      "bytes": 3140,
-      "sha256": "ae635a2d2e1a6557a8fd60bdf9ba0664e262526fcb8a5a166293bcf3e065da6b"
+      "bytes": 3568,
+      "sha256": "affc641f605f5cf353ccd00c14b29e126332f9eb7fc3052879bcdc127a941c4d"
     },
     {
       "path": "errors/error-codes.json",
@@ -10773,8 +10773,8 @@
     {
       "path": "schemas/governance/release-approval-attestation.schema.json",
       "role": "schemas",
-      "bytes": 2725,
-      "sha256": "f887c8a668f90410b82cefcbeba2301fff32ffba0960c49bab90a886ec307691"
+      "bytes": 3281,
+      "sha256": "cff371b98ea73e18647bc25933f2544042bac82972818c2026b0eed7408473dc"
     },
     {
       "path": "schemas/messages/CapabilitySnapshot.schema.json",

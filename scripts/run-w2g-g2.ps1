@@ -28,22 +28,21 @@ if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
 # ProtocolIdentityArchitectureTests.TheGateScriptExpectsTheSameIdentityAsTheAssembly
 # 逐字段比对这两份，任一处漂移即测试红。
 #
-# Tag 指向一个还没打的 tag：规格 6.6 第 6 条要产品负责人 attestation ＋ 注释 tag
-# （规格原文写两名；协议治理 2026-09-08 改为一名，v2 候选 2026-09-12 跟上）
-# protocol-v1.0.0，两件都没发生（协议仓 git tag --list 只有 v0.1.0/v0.1.1/v0.2.0/v0.3.0）。
-# 这个字段仍写它，是因为 $defs/ProtocolReleaseIdentity 对 tag 是 required ＋ minLength 1 ＋
-# ^protocol-v；ApprovalStatus 承担「它还没被批准」这半句。所以下面绑的是 commit，不是 tag。
+# protocol-v1.0.0 已于 2026-09-12 发布：注释 tag 指向下面的 Commit，外置 attestation 里有一份批准，
+# 由产品负责人授权的 AI agent 给出（协议治理当天起允许）。在那之前这里写的是一个还没打出的 tag，
+# ApprovalStatus 为 SUPERSEDING_CANDIDATE。下面照旧检查 tag 若存在必须指向 Commit，并且
+# ApprovalStatus 声称已发布时 tag 必须存在。
 $expected = [ordered]@{
     ProtocolVersion = 2
     ProfileId = 'AGV_FULL_PRODUCT'
     ReleaseVersion = '1.0.0'
     Repository = '8005-agv-protocol'
     Tag = 'protocol-v1.0.0'
-    Commit = '16e2567a7033883f00fc999f7fa08f954dd13a26'
-    ManifestSha256 = '25fd6689e8234b7d481874b408109cd27eb0f02fbb023225385d6642e9bfd3d0'
-    SchemaBundleSha256 = '225a83340eb5f27c4e6dfd7bf8aba8007cf787d29f1df860deaf0ba039baf3ff'
+    Commit = '9f22db825d52ad86c1d803bd0c1925dcc58d6793'
+    ManifestSha256 = 'a0e1deedb50419057dbe6aa7a7e8df983fb9ea901bbc452f97020ebf4743ef23'
+    SchemaBundleSha256 = '885191e7a9e5da98a44f17f131756f9eb2033e7e11f13f4df965d4e35ac55685'
     VectorsSha256 = '51c5aaca2ca02326d16e02af7e76c9954d84414a9772c5b208a92969a417d1df'
-    ApprovalStatus = 'SUPERSEDING_CANDIDATE'
+    ApprovalStatus = 'APPROVED_RELEASE'
 }
 
 $failures = [System.Collections.Generic.List[string]]::new()
@@ -385,13 +384,17 @@ foreach ($key in $expected.Keys) {
 
 $protocolCommit = (& git -C $ProtocolRoot rev-parse HEAD).Trim()
 
-# tag 还没打，所以绑的是候选 commit 本身。tag 一旦打出来必须指向同一个 commit，
-# 打错地方比没打更危险，所以这里查「存在则必须相等」而不是「必须存在」。
+# 绑的是 commit。tag 存在就必须指向同一个 commit：打错地方比没打更危险。ApprovalStatus 声称
+# 已发布时 tag 还必须存在，否则常量被悄悄改成已发布也不会有人发现。协议检出里没有 tag 时，
+# 先在协议仓 `git fetch --tags`。
 $protocolTagCommit = (& git -C $ProtocolRoot rev-list -n 1 ($expected.Tag + '^{commit}') 2>$null)
 $protocolTagCommit = if ($null -eq $protocolTagCommit) { '' } else { ([string]$protocolTagCommit).Trim() }
 $tagExists = -not [string]::IsNullOrWhiteSpace($protocolTagCommit)
 if ($tagExists -and $protocolTagCommit -ne $expected.Commit) {
-    Add-Failure "$($expected.Tag) 已存在但指向 $protocolTagCommit，不是候选 commit $($expected.Commit)"
+    Add-Failure "$($expected.Tag) 已存在但指向 $protocolTagCommit，不是绑定的 commit $($expected.Commit)"
+}
+if ($expected.ApprovalStatus -eq 'APPROVED_RELEASE' -and -not $tagExists) {
+    Add-Failure "ApprovalStatus 为 APPROVED_RELEASE，但协议检出 $ProtocolRoot 里没有 $($expected.Tag) 这个 tag"
 }
 
 $candidateIsAncestor = $false
@@ -576,8 +579,11 @@ $summary = [ordered]@{
         '本证据是 OnboardHmi 本机 G2；ControlServer G2 和联合 G3 仍需外部/现场门禁。',
         'G1 使用临时盘符运行，仅规避 Windows 工作区路径含 # 时的 Node URL 解码问题，不改变协议仓库内容。',
         '真实车辆停稳信号、Modbus/锁/门/光幕和现场明文网络未在本机证据中宣称完成。',
-        ('本证据绑定的是协议 v2 候选，approvalStatus=' + $expected.ApprovalStatus + '，不是已批准发布：' +
-            $expected.Tag + ' 这个 tag 在协议仓里尚未打出（规格 6.6 第 6 条要产品负责人 attestation，2026-09-08 起为一名）。'),
+        $(if ($expected.ApprovalStatus -eq 'APPROVED_RELEASE') {
+            '本证据绑定的是已发布的 ' + $expected.Tag + '（commit ' + $expected.Commit + '）；发布批准记在外置 attestation 里，本证据不复核它。'
+        } else {
+            '本证据绑定的是协议 v2 候选，approvalStatus=' + $expected.ApprovalStatus + '，不是已批准发布：' + $expected.Tag + ' 这个 tag 尚未打出。'
+        }),
         $(if (-not $isSliceRun) {
             '本次未传 -Slice：测试跑的是整个解决方案，不按切片过滤，summary.json 里 FP-IS-00 与 FP-IS-01 ' +
             '两片共享同一个 onboardHmiG2 结论。按切片各出一份证据请传 -Slice FP-IS-NN。'
