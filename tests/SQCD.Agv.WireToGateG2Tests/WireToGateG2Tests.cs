@@ -232,24 +232,26 @@ public sealed class WireToGateG2Tests
     }
 
     /// <summary>
-    /// 恢复会话快照与三份旅程快照同属服务端所有的快照：protocol 的 SnapshotAppliedAck 给它留了
-    /// snapshotKind = EXCEPTION_RECOVERY_SESSION，服务端也按 recoverySessionRevision 核对后确认。车辆侧却只把它
-    /// 当命令分派、从不回 ack，服务端那一行于是永远挂着——被新 revision 取代的会被 fence，最后那份 CLOSED 不会，
-    /// 之后每次重连都被重放进新会话（8005-agv-control-server#31，L2 real-onboard-compensate-then-reconnect）。
-    /// OPEN 是会话开着时的形状，CLOSED 是现场留下来的那一份。
+    /// 恢复会话快照只确认 CLOSED 那一份（8005-agv-control-server#31，L2 real-onboard-compensate-then-reconnect）。
+    ///
+    /// 服务端在每次 RecoveryStateReport 之后，重放既没确认、也没被新 revision 取代的恢复会话快照。车辆侧只在内存里
+    /// 留着当前恢复会话，不落 journal，所以一个开着的会话，WPF 重启之后只能靠这次重放拿回来——确认了 OPEN，重启后的车
+    /// 就只剩 journal 里一个会话 id，恢复按钮抛 RECOVERY_SESSION_STATE_PENDING，再申请又被服务端以
+    /// RECOVERY_SESSION_ALREADY_OPEN 拒绝。CLOSED 是一个会话的最后一个 revision：没有东西会取代它，不确认就被重放进
+    /// 之后的每一个会话、每个恢复会话留下一行；而车离了它什么都不缺。
+    ///
+    /// 服务端先 OPEN 后 CLOSED 各发一份：等到 CLOSED 的应答时，OPEN 那一行早已在同一条流上处理过，它若回了应答一定先到。
     /// </summary>
-    [Theory]
-    [InlineData("OPEN")]
-    [InlineData("CLOSED")]
+    [Fact]
     [Trait("IntegrationSlice", "W2G-IS-07")]
-    public async Task RecoverySessionSnapshotIsAcknowledgedAsAnAppliedSnapshot(string state)
+    public async Task OnlyTheClosedRecoverySessionSnapshotIsAcknowledged()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
         await using FakeControlServer server = new(IPAddress.Loopback)
         {
             SendReadinessAfterRecoveryAck = true,
             RespondToRecoveryRequests = true,
-            RecoverySessionSnapshotStateAfterOpened = state
+            RecoverySessionSnapshotStatesAfterOpened = ["OPEN", "CLOSED"]
         };
         FakeIoModuleClient io = new();
         await using WireToGateSessionClient client = CreateClient(server, io, NewJournalPath());
@@ -271,23 +273,31 @@ public sealed class WireToGateG2Tests
                 testToken);
         Assert.Equal(requestId, opened.RequestId);
 
+        await WaitUntilAsync(() => server.SentRecoverySessionSnapshots.Count == 2, testToken);
+        (string closedMessageId, string closedLine) = server.SentRecoverySessionSnapshots[1];
         await WaitUntilAsync(
-            () => server.Received.Any(item => item.MessageType == "SnapshotAppliedAck"),
+            () => server.ReceivedEnvelopes.Any(item =>
+                item.MessageType == "SnapshotAppliedAck" && CorrelationId(item.WireLine) == closedMessageId),
             testToken);
-        (string snapshotMessageId, string snapshotLine) = Assert.Single(server.SentRecoverySessionSnapshots);
+
         var acknowledgement = Assert.Single(
             server.ReceivedEnvelopes,
             item => item.MessageType == "SnapshotAppliedAck");
         using JsonDocument document = JsonDocument.Parse(acknowledgement.WireLine);
         JsonElement payload = document.RootElement.GetProperty("payload");
-        Assert.Equal(snapshotMessageId, document.RootElement.GetProperty("correlationId").GetString());
-        Assert.Equal(snapshotMessageId, payload.GetProperty("snapshotMessageId").GetString());
+        Assert.Equal(closedMessageId, payload.GetProperty("snapshotMessageId").GetString());
         Assert.Equal("EXCEPTION_RECOVERY_SESSION", payload.GetProperty("snapshotKind").GetString());
-        Assert.Equal(state == "CLOSED" ? 4 : 1, payload.GetProperty("appliedRevision").GetInt64());
+        Assert.Equal(4, payload.GetProperty("appliedRevision").GetInt64());
         Assert.Equal(
-            WireToGateProtocolSerializer.ComputeSha256(Encoding.UTF8.GetBytes(snapshotLine)),
+            WireToGateProtocolSerializer.ComputeSha256(Encoding.UTF8.GetBytes(closedLine)),
             payload.GetProperty("appliedContentSha256").GetString());
         Assert.DoesNotContain(server.Received, item => item.MessageType == "ProtocolProblem");
+
+        static string? CorrelationId(string wireLine)
+        {
+            using JsonDocument envelope = JsonDocument.Parse(wireLine);
+            return envelope.RootElement.GetProperty("correlationId").GetString();
+        }
     }
 
     [Fact]
