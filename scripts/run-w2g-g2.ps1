@@ -28,7 +28,8 @@ if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
 # ProtocolIdentityArchitectureTests.TheGateScriptExpectsTheSameIdentityAsTheAssembly
 # 逐字段比对这两份，任一处漂移即测试红。
 #
-# Tag 指向一个还没打的 tag：规格 6.6 第 6 条要两名产品负责人 attestation ＋ 注释 tag
+# Tag 指向一个还没打的 tag：规格 6.6 第 6 条要产品负责人 attestation ＋ 注释 tag
+# （规格原文写两名；协议治理 2026-09-08 改为一名，v2 候选 2026-09-12 跟上）
 # protocol-v1.0.0，两件都没发生（协议仓 git tag --list 只有 v0.1.0/v0.1.1/v0.2.0/v0.3.0）。
 # 这个字段仍写它，是因为 $defs/ProtocolReleaseIdentity 对 tag 是 required ＋ minLength 1 ＋
 # ^protocol-v；ApprovalStatus 承担「它还没被批准」这半句。所以下面绑的是 commit，不是 tag。
@@ -38,9 +39,9 @@ $expected = [ordered]@{
     ReleaseVersion = '1.0.0'
     Repository = '8005-agv-protocol'
     Tag = 'protocol-v1.0.0'
-    Commit = 'f6ee75defe6e2d18f63f4082bee445dbb678ab1b'
-    ManifestSha256 = '84f984eabf17106e92666c415b63100d404e9ec69a9a710dfddf17683cc42788'
-    SchemaBundleSha256 = '71146c881e8ec199e9a977779ec1a557bed96a9ab71e36cfc3dfb7b329351c6b'
+    Commit = '16e2567a7033883f00fc999f7fa08f954dd13a26'
+    ManifestSha256 = '25fd6689e8234b7d481874b408109cd27eb0f02fbb023225385d6642e9bfd3d0'
+    SchemaBundleSha256 = '225a83340eb5f27c4e6dfd7bf8aba8007cf787d29f1df860deaf0ba039baf3ff'
     VectorsSha256 = '51c5aaca2ca02326d16e02af7e76c9954d84414a9772c5b208a92969a417d1df'
     ApprovalStatus = 'SUPERSEDING_CANDIDATE'
 }
@@ -568,7 +569,7 @@ $summary = [ordered]@{
         'G1 使用临时盘符运行，仅规避 Windows 工作区路径含 # 时的 Node URL 解码问题，不改变协议仓库内容。',
         '真实车辆停稳信号、Modbus/锁/门/光幕和现场明文网络未在本机证据中宣称完成。',
         ('本证据绑定的是协议 v2 候选，approvalStatus=' + $expected.ApprovalStatus + '，不是已批准发布：' +
-            $expected.Tag + ' 这个 tag 在协议仓里尚未打出（规格 6.6 第 6 条要两名产品负责人 attestation）。'),
+            $expected.Tag + ' 这个 tag 在协议仓里尚未打出（规格 6.6 第 6 条要产品负责人 attestation，2026-09-08 起为一名）。'),
         $(if (-not $isSliceRun) {
             '本次未传 -Slice：测试跑的是整个解决方案，不按切片过滤，summary.json 里 FP-IS-00 与 FP-IS-01 ' +
             '两片共享同一个 onboardHmiG2 结论。按切片各出一份证据请传 -Slice FP-IS-NN。'

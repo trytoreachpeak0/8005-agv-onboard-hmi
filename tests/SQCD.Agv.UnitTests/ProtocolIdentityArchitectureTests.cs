@@ -164,7 +164,8 @@ public sealed class ProtocolIdentityArchitectureTests
     /// <remarks>
     /// The two are checked together because either alone is a lie. <c>protocol-v1.0.0</c> has not
     /// been cut in the protocol repository -- section 6.6 item 6 of the full-product scope
-    /// specification wants two product owners' attestation first -- but the schema requires a
+    /// specification wants the product owner's attestation first (one owner since the protocol's
+    /// governance changed on 2026-09-08; the specification still says two) -- but the schema requires a
     /// non-empty <c>^protocol-v</c> tag, so the name is carried and
     /// <see cref="WireToGateRelease.ApprovalStatus"/> carries the truth about it. This test is what
     /// stops the status being quietly promoted to <c>APPROVED_RELEASE</c> without the tag existing.

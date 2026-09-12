@@ -13,10 +13,11 @@ namespace SQCD.Agv.Contracts;
 /// <para>
 /// <b>This names the v2 candidate, and the candidate is not an approved release.</b> Every value
 /// below is read off <c>8005-agv-protocol</c> commit
-/// <c>f6ee75defe6e2d18f63f4082bee445dbb678ab1b</c> (branch <c>fp/v2-candidate</c>), the candidate
-/// G1 passed on 2026-09-08. <see cref="ApprovalStatus"/> says <c>SUPERSEDING_CANDIDATE</c> rather
-/// than <c>APPROVED_RELEASE</c> for exactly that reason, and it is the field to read before
-/// treating this identity as releasable.
+/// <c>16e2567a7033883f00fc999f7fa08f954dd13a26</c> (branch <c>fp/v2-candidate</c>), the candidate
+/// G1 passed on 2026-09-12 once the single-owner release rule was carried over.
+/// <see cref="ApprovalStatus"/> says <c>SUPERSEDING_CANDIDATE</c> rather than
+/// <c>APPROVED_RELEASE</c> for exactly that reason, and it is the field to read before treating
+/// this identity as releasable.
 /// </para>
 /// <para>
 /// <b>These nine values are byte-for-byte the control server's.</b> <c>ProtocolCandidateIdentity</c>
@@ -49,9 +50,9 @@ public static class WireToGateRelease
     public const string ReleaseVersion = "1.0.0";
     public const string Repository = "8005-agv-protocol";
     public const string Tag = "protocol-v1.0.0";
-    public const string Commit = "f6ee75defe6e2d18f63f4082bee445dbb678ab1b";
-    public const string ManifestSha256 = "84f984eabf17106e92666c415b63100d404e9ec69a9a710dfddf17683cc42788";
-    public const string SchemaBundleSha256 = "71146c881e8ec199e9a977779ec1a557bed96a9ab71e36cfc3dfb7b329351c6b";
+    public const string Commit = "16e2567a7033883f00fc999f7fa08f954dd13a26";
+    public const string ManifestSha256 = "25fd6689e8234b7d481874b408109cd27eb0f02fbb023225385d6642e9bfd3d0";
+    public const string SchemaBundleSha256 = "225a83340eb5f27c4e6dfd7bf8aba8007cf787d29f1df860deaf0ba039baf3ff";
     public const string VectorsSha256 = "51c5aaca2ca02326d16e02af7e76c9954d84414a9772c5b208a92969a417d1df";
     public const string ApprovalStatus = "SUPERSEDING_CANDIDATE";
 
