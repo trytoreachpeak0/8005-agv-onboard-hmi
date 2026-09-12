@@ -1212,6 +1212,22 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     ServerCommandReceived?.Invoke(
                         this,
                         new ValueChangedEventArgs<WireToGateServerCommand>(command!));
+                    if (command is WireToGateExceptionRecoverySessionSnapshot recoverySnapshot)
+                    {
+                        // A server-owned snapshot like the three journey snapshots, acknowledged the same
+                        // way once the handlers have taken it. Unacknowledged, the server keeps the row
+                        // pending: each new revision fences the one before, but nothing supersedes the
+                        // CLOSED revision, so it was replayed into every later session
+                        // (8005-agv-control-server#31).
+                        await SendSnapshotAppliedAckAsync(
+                            envelope,
+                            "EXCEPTION_RECOVERY_SESSION",
+                            recoverySnapshot.RecoverySessionRevision,
+                            WireToGateProtocolSerializer.ComputeContentSha256(envelope),
+                            generation,
+                            stopping.Token).ConfigureAwait(false);
+                    }
+
                     continue;
                 }
 

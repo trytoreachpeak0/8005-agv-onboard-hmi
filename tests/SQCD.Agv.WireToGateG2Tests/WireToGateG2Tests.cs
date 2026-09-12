@@ -231,6 +231,65 @@ public sealed class WireToGateG2Tests
         Assert.Equal("Heartbeat", InboundMessageTypes(server).Last());
     }
 
+    /// <summary>
+    /// 恢复会话快照与三份旅程快照同属服务端所有的快照：protocol 的 SnapshotAppliedAck 给它留了
+    /// snapshotKind = EXCEPTION_RECOVERY_SESSION，服务端也按 recoverySessionRevision 核对后确认。车辆侧却只把它
+    /// 当命令分派、从不回 ack，服务端那一行于是永远挂着——被新 revision 取代的会被 fence，最后那份 CLOSED 不会，
+    /// 之后每次重连都被重放进新会话（8005-agv-control-server#31，L2 real-onboard-compensate-then-reconnect）。
+    /// OPEN 是会话开着时的形状，CLOSED 是现场留下来的那一份。
+    /// </summary>
+    [Theory]
+    [InlineData("OPEN")]
+    [InlineData("CLOSED")]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task RecoverySessionSnapshotIsAcknowledgedAsAnAppliedSnapshot(string state)
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            RespondToRecoveryRequests = true,
+            RecoverySessionSnapshotStateAfterOpened = state
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionClient client = CreateClient(server, io, NewJournalPath());
+        await client.ConnectAndRecoverAsync(testToken);
+
+        string requestId = "77777777-7777-4777-8777-777777777770";
+        ExceptionRecoverySessionOpenedPayload opened = await client
+            .RequestExceptionRecoverySessionAsync(
+                requestId,
+                new ExceptionRecoverySessionRequestedPayload(
+                    requestId,
+                    new WireToGateOperatorContextPayload("maintenance-001", "CONFIGURED_PROOF", DateTimeOffset.UtcNow),
+                    "MAINTENANCE_ADMINISTRATOR",
+                    "88888888-8888-4888-8888-888888888888",
+                    "99999999-9999-4999-8999-999999999999",
+                    [1, 2],
+                    "repair complete",
+                    "test-proof"),
+                testToken);
+        Assert.Equal(requestId, opened.RequestId);
+
+        await WaitUntilAsync(
+            () => server.Received.Any(item => item.MessageType == "SnapshotAppliedAck"),
+            testToken);
+        (string snapshotMessageId, string snapshotLine) = Assert.Single(server.SentRecoverySessionSnapshots);
+        var acknowledgement = Assert.Single(
+            server.ReceivedEnvelopes,
+            item => item.MessageType == "SnapshotAppliedAck");
+        using JsonDocument document = JsonDocument.Parse(acknowledgement.WireLine);
+        JsonElement payload = document.RootElement.GetProperty("payload");
+        Assert.Equal(snapshotMessageId, document.RootElement.GetProperty("correlationId").GetString());
+        Assert.Equal(snapshotMessageId, payload.GetProperty("snapshotMessageId").GetString());
+        Assert.Equal("EXCEPTION_RECOVERY_SESSION", payload.GetProperty("snapshotKind").GetString());
+        Assert.Equal(state == "CLOSED" ? 4 : 1, payload.GetProperty("appliedRevision").GetInt64());
+        Assert.Equal(
+            WireToGateProtocolSerializer.ComputeSha256(Encoding.UTF8.GetBytes(snapshotLine)),
+            payload.GetProperty("appliedContentSha256").GetString());
+        Assert.DoesNotContain(server.Received, item => item.MessageType == "ProtocolProblem");
+    }
+
     [Fact]
     [Trait("IntegrationSlice", "W2G-IS-07")]
     public async Task RecoverySessionAndActionResponsesAreCorrelatedWithoutPhysicalIo()

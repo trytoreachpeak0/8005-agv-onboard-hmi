@@ -14,6 +14,13 @@
     "issue": "https://github.com/trytoreachpeak0/8005-agv-protocol/issues/9"
   },
   {
+    "messageType": "ExceptionRecoverySessionSnapshot",
+    "pointer": "#/payload/blockingFacts/*/reasonCode",
+    "keyword": "enum",
+    "actual": "\"RECOVERY_ACTION_REQUIRED\"",
+    "issue": "https://github.com/trytoreachpeak0/8005-agv-protocol/issues/8"
+  },
+  {
     "messageType": "SublotEntryRequested",
     "pointer": "#/payload/expectedSublots",
     "keyword": "minItems",
