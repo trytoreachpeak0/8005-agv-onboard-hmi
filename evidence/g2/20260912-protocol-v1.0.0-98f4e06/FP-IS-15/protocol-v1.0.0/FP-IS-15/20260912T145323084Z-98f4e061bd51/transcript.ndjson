@@ -1,0 +1,11 @@
+{"timestampUtc":"2026-09-12T14:53:29.8766554Z","kind":"run.started","data":{"runId":"20260912T145323084Z","selectedTestCount":3,"evidenceType":"ONBOARD_HMI_LOCAL_G2","hmiRoot":"C:\\Users\\szy\\8005-b3\\onboard-g2-98f4e06","protocolRoot":"C:\\Users\\szy\\8005-b3\\proto-rel-9f22db8","integrationSliceId":"FP-IS-15"}}
+{"timestampUtc":"2026-09-12T14:53:30.1481431Z","kind":"protocol.g1.started","data":{"drive":"X:"}}
+{"timestampUtc":"2026-09-12T14:53:34.9291782Z","kind":"protocol.g1.completed","data":{"status":"PASS","exitCode":0,"log":"protocol-g1.log"}}
+{"timestampUtc":"2026-09-12T14:53:34.9328430Z","kind":"command.started","data":{"arguments":["build",".\\SQCD_8005AGV.sln","-c","Release"],"name":"dotnet-build-release"}}
+{"timestampUtc":"2026-09-12T14:53:36.9883555Z","kind":"command.completed","data":{"exitCode":0,"log":"dotnet-build-release.log","name":"dotnet-build-release"}}
+{"timestampUtc":"2026-09-12T14:53:36.9890209Z","kind":"command.started","data":{"arguments":["test",".\\SQCD_8005AGV.sln","-c","Release","--no-build","--results-directory","C:\\Users\\szy\\8005-b3\\hmi-b3\\evidence\\g2\\20260912-protocol-v1.0.0-98f4e06\\FP-IS-15\\protocol-v1.0.0\\FP-IS-15\\20260912T145323084Z-98f4e061bd51\\test-results","--filter","IntegrationSlice=FP-IS-15","--logger","trx;LogFilePrefix=onboard-FP-IS-15"],"name":"dotnet-test-release"}}
+{"timestampUtc":"2026-09-12T14:53:40.1980178Z","kind":"command.completed","data":{"exitCode":0,"log":"dotnet-test-release.log","name":"dotnet-test-release"}}
+{"timestampUtc":"2026-09-12T14:53:40.2433633Z","kind":"command.started","data":{"arguments":["format",".\\SQCD_8005AGV.sln","--verify-no-changes","--no-restore"],"name":"dotnet-format-verify"}}
+{"timestampUtc":"2026-09-12T14:53:58.1983788Z","kind":"command.completed","data":{"exitCode":0,"log":"dotnet-format-verify.log","name":"dotnet-format-verify"}}
+{"timestampUtc":"2026-09-12T14:53:58.2041932Z","kind":"evidence.journal.bound","data":{"protocolCommit":"9f22db825d52ad86c1d803bd0c1925dcc58d6793","hmiStatus":"PASS","hmiCommit":"98f4e061bd518fc2598fb8f11b8e4838c8ab9496","g1Status":"PASS"}}
+{"timestampUtc":"2026-09-12T14:53:58.3126494Z","kind":"run.completed","data":{"status":"PASS","failures":0}}

@@ -1,0 +1,25 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="04d1ec79-2750-4520-9929-201a694853b8" name="szy@LAB-WIN-01 2026-09-12 22:50:13" runUser="LAB-WIN-01\szy" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-09-12T22:50:13.2916330+08:00" queuing="2026-09-12T22:50:13.2916335+08:00" start="2026-09-12T22:50:12.3042461+08:00" finish="2026-09-12T22:50:13.2921794+08:00" />
+  <TestSettings name="default" id="67fa187a-61ee-4ec6-8af4-0573a430ad6f">
+    <Deployment runDeploymentRoot="szy_LAB-WIN-01_2026-09-12_22_50_13" />
+  </TestSettings>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="0" executed="0" passed="0" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 8.0.31)&#xD;
+[xUnit.net 00:00:00.26]   Discovering: SQCD.Agv.WireToGateG2Tests&#xD;
+[xUnit.net 00:00:00.54]   Discovered:  SQCD.Agv.WireToGateG2Tests&#xD;
+</StdOut>
+    </Output>
+    <RunInfos>
+      <RunInfo computerName="LAB-WIN-01" outcome="Warning" timestamp="2026-09-12T22:50:13.2275502+08:00">
+        <Text>No test matches the given testcase filter `IntegrationSlice=FP-IS-04` in C:\Users\szy\8005-b3\onboard-g2-98f4e06\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll</Text>
+      </RunInfo>
+    </RunInfos>
+  </ResultSummary>
+</TestRun>

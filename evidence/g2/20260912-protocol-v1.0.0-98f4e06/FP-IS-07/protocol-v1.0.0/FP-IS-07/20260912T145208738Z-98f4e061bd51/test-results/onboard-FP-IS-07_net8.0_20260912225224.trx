@@ -1,0 +1,82 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="5c959be9-df69-4185-9b36-4ed8238f5bc9" name="szy@LAB-WIN-01 2026-09-12 22:52:24" runUser="LAB-WIN-01\szy" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-09-12T22:52:24.8819358+08:00" queuing="2026-09-12T22:52:24.8819363+08:00" start="2026-09-12T22:52:23.1762504+08:00" finish="2026-09-12T22:52:24.8871199+08:00" />
+  <TestSettings name="default" id="3c047f29-bdd3-4f92-bb35-ce0e24c56b2c">
+    <Deployment runDeploymentRoot="szy_LAB-WIN-01_2026-09-12_22_52_24" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="46a860dc-e36e-4255-9fa8-99d7dbd82fb3" testId="2da9f828-416a-30eb-77f1-e7653b8bec99" testName="SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ActiveUnlockCheckpointIsNotPulsedAgainAfterUncertainFailure" computerName="LAB-WIN-01" duration="00:00:00.0763518" startTime="2026-09-12T22:52:24.5093181+08:00" endTime="2026-09-12T22:52:24.5857338+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="46a860dc-e36e-4255-9fa8-99d7dbd82fb3" />
+    <UnitTestResult executionId="c1c1f062-186f-4445-b229-c399fb48f970" testId="de1ed800-12fd-3ea5-1a3d-08dbf5ce07a3" testName="SQCD.Agv.UnitTests.OnboardControllerTests.AllUnknownIoStatesAreReportedWithoutImplyingSingleSlotFault" computerName="LAB-WIN-01" duration="00:00:00.0549703" startTime="2026-09-12T22:52:24.3134931+08:00" endTime="2026-09-12T22:52:24.3752133+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c1c1f062-186f-4445-b229-c399fb48f970" />
+    <UnitTestResult executionId="e83fdf92-857c-4db7-a2ba-f7b5aa1c25a0" testId="f9d82407-5c1b-b32e-3af4-2b13464f6aef" testName="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ResumeWithoutOriginalContextFailsClosed" computerName="LAB-WIN-01" duration="00:00:00.0208586" startTime="2026-09-12T22:52:24.4634446+08:00" endTime="2026-09-12T22:52:24.4843597+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e83fdf92-857c-4db7-a2ba-f7b5aa1c25a0" />
+    <UnitTestResult executionId="71e5e34e-9cb2-41ba-9dd6-0480964fedfa" testId="c796ac1b-71cc-d145-124a-68ebe4066add" testName="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.UnknownSnapshotFailsClosedWithoutUnlock" computerName="LAB-WIN-01" duration="00:00:00.1425449" startTime="2026-09-12T22:52:24.3134959+08:00" endTime="2026-09-12T22:52:24.4627768+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="71e5e34e-9cb2-41ba-9dd6-0480964fedfa" />
+    <UnitTestResult executionId="a39f7b13-c6bb-405e-a2a7-774041378229" testId="825bc5c4-2d99-a83b-e434-3ae66e59af3a" testName="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ResumeSkipsSlotsAlreadyAtDesiredFinalState" computerName="LAB-WIN-01" duration="00:00:00.1602374" startTime="2026-09-12T22:52:24.4854103+08:00" endTime="2026-09-12T22:52:24.6466912+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a39f7b13-c6bb-405e-a2a7-774041378229" />
+    <UnitTestResult executionId="6ffef52d-a1ff-4c93-b6e9-4f323f94e4a3" testId="a7917e60-783d-fb4c-1f28-b96b54a1abd8" testName="SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.UnknownSnapshotFailsClosedWithoutUnlock" computerName="LAB-WIN-01" duration="00:00:00.1881143" startTime="2026-09-12T22:52:24.3134835+08:00" endTime="2026-09-12T22:52:24.5083366+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6ffef52d-a1ff-4c93-b6e9-4f323f94e4a3" />
+    <UnitTestResult executionId="41b5746a-c143-42b4-b2fe-c69eea80583d" testId="35e07b21-0c48-a9c3-ff7f-857fcc9e03d7" testName="SQCD.Agv.UnitTests.OnboardControllerTests.SingleUnknownIoStateIdentifiesAffectedPhysicalSlot" computerName="LAB-WIN-01" duration="00:00:00.0013535" startTime="2026-09-12T22:52:24.3759089+08:00" endTime="2026-09-12T22:52:24.3773349+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="41b5746a-c143-42b4-b2fe-c69eea80583d" />
+    <UnitTestResult executionId="ff2ab1b5-a122-49b7-9be6-ec6611dac8af" testId="0c315bcb-852d-24a0-6308-ebce372ce3d9" testName="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ResumeRejectsDifferentCommandHashWithoutUnlock" computerName="LAB-WIN-01" duration="00:00:00.0727317" startTime="2026-09-12T22:52:24.6500115+08:00" endTime="2026-09-12T22:52:24.7228148+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="ff2ab1b5-a122-49b7-9be6-ec6611dac8af" />
+    <UnitTestResult executionId="a7873fad-9607-4984-84c3-1dc092d57198" testId="f87f400e-514e-528c-9b50-8fdbfcbfd5c4" testName="SQCD.Agv.UnitTests.SafetyRulesTests.ResumeAuthorizationRequiresExactPersistedAttemptAndCheckpoint" computerName="LAB-WIN-01" duration="00:00:00.0150151" startTime="2026-09-12T22:52:24.3134796+08:00" endTime="2026-09-12T22:52:24.3374908+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a7873fad-9607-4984-84c3-1dc092d57198" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ResumeSkipsSlotsAlreadyAtDesiredFinalState" storage="c:\users\szy\8005-b3\onboard-g2-98f4e06\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="825bc5c4-2d99-a83b-e434-3ae66e59af3a">
+      <Execution id="a39f7b13-c6bb-405e-a2a7-774041378229" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\onboard-g2-98f4e06\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests" name="ResumeSkipsSlotsAlreadyAtDesiredFinalState" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ActiveUnlockCheckpointIsNotPulsedAgainAfterUncertainFailure" storage="c:\users\szy\8005-b3\onboard-g2-98f4e06\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="2da9f828-416a-30eb-77f1-e7653b8bec99">
+      <Execution id="46a860dc-e36e-4255-9fa8-99d7dbd82fb3" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\onboard-g2-98f4e06\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests" name="ActiveUnlockCheckpointIsNotPulsedAgainAfterUncertainFailure" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.UnitTests.OnboardControllerTests.SingleUnknownIoStateIdentifiesAffectedPhysicalSlot" storage="c:\users\szy\8005-b3\onboard-g2-98f4e06\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="35e07b21-0c48-a9c3-ff7f-857fcc9e03d7">
+      <Execution id="41b5746a-c143-42b4-b2fe-c69eea80583d" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\onboard-g2-98f4e06\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.OnboardControllerTests" name="SingleUnknownIoStateIdentifiesAffectedPhysicalSlot" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ResumeWithoutOriginalContextFailsClosed" storage="c:\users\szy\8005-b3\onboard-g2-98f4e06\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="f9d82407-5c1b-b32e-3af4-2b13464f6aef">
+      <Execution id="e83fdf92-857c-4db7-a2ba-f7b5aa1c25a0" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\onboard-g2-98f4e06\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests" name="ResumeWithoutOriginalContextFailsClosed" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.UnitTests.SafetyRulesTests.ResumeAuthorizationRequiresExactPersistedAttemptAndCheckpoint" storage="c:\users\szy\8005-b3\onboard-g2-98f4e06\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="f87f400e-514e-528c-9b50-8fdbfcbfd5c4">
+      <Execution id="a7873fad-9607-4984-84c3-1dc092d57198" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\onboard-g2-98f4e06\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.SafetyRulesTests" name="ResumeAuthorizationRequiresExactPersistedAttemptAndCheckpoint" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.UnknownSnapshotFailsClosedWithoutUnlock" storage="c:\users\szy\8005-b3\onboard-g2-98f4e06\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="c796ac1b-71cc-d145-124a-68ebe4066add">
+      <Execution id="71e5e34e-9cb2-41ba-9dd6-0480964fedfa" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\onboard-g2-98f4e06\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests" name="UnknownSnapshotFailsClosedWithoutUnlock" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.UnitTests.OnboardControllerTests.AllUnknownIoStatesAreReportedWithoutImplyingSingleSlotFault" storage="c:\users\szy\8005-b3\onboard-g2-98f4e06\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="de1ed800-12fd-3ea5-1a3d-08dbf5ce07a3">
+      <Execution id="c1c1f062-186f-4445-b229-c399fb48f970" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\onboard-g2-98f4e06\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.OnboardControllerTests" name="AllUnknownIoStatesAreReportedWithoutImplyingSingleSlotFault" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ResumeRejectsDifferentCommandHashWithoutUnlock" storage="c:\users\szy\8005-b3\onboard-g2-98f4e06\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="0c315bcb-852d-24a0-6308-ebce372ce3d9">
+      <Execution id="ff2ab1b5-a122-49b7-9be6-ec6611dac8af" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\onboard-g2-98f4e06\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests" name="ResumeRejectsDifferentCommandHashWithoutUnlock" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.UnknownSnapshotFailsClosedWithoutUnlock" storage="c:\users\szy\8005-b3\onboard-g2-98f4e06\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="a7917e60-783d-fb4c-1f28-b96b54a1abd8">
+      <Execution id="6ffef52d-a1ff-4c93-b6e9-4f323f94e4a3" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\onboard-g2-98f4e06\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests" name="UnknownSnapshotFailsClosedWithoutUnlock" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="2da9f828-416a-30eb-77f1-e7653b8bec99" executionId="46a860dc-e36e-4255-9fa8-99d7dbd82fb3" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="de1ed800-12fd-3ea5-1a3d-08dbf5ce07a3" executionId="c1c1f062-186f-4445-b229-c399fb48f970" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f9d82407-5c1b-b32e-3af4-2b13464f6aef" executionId="e83fdf92-857c-4db7-a2ba-f7b5aa1c25a0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c796ac1b-71cc-d145-124a-68ebe4066add" executionId="71e5e34e-9cb2-41ba-9dd6-0480964fedfa" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="825bc5c4-2d99-a83b-e434-3ae66e59af3a" executionId="a39f7b13-c6bb-405e-a2a7-774041378229" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a7917e60-783d-fb4c-1f28-b96b54a1abd8" executionId="6ffef52d-a1ff-4c93-b6e9-4f323f94e4a3" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="35e07b21-0c48-a9c3-ff7f-857fcc9e03d7" executionId="41b5746a-c143-42b4-b2fe-c69eea80583d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="0c315bcb-852d-24a0-6308-ebce372ce3d9" executionId="ff2ab1b5-a122-49b7-9be6-ec6611dac8af" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f87f400e-514e-528c-9b50-8fdbfcbfd5c4" executionId="a7873fad-9607-4984-84c3-1dc092d57198" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="9" executed="9" passed="9" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 8.0.31)&#xD;
+[xUnit.net 00:00:00.19]   Discovering: SQCD.Agv.UnitTests&#xD;
+[xUnit.net 00:00:00.52]   Discovered:  SQCD.Agv.UnitTests&#xD;
+[xUnit.net 00:00:00.72]   Starting:    SQCD.Agv.UnitTests&#xD;
+[xUnit.net 00:00:01.20]   Finished:    SQCD.Agv.UnitTests (ID = '919b29f455bfef6b75dca12525625ca3e71d837f080fc42a5db66693ea05e5e4')&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>
