@@ -1,0 +1,11 @@
+{"timestampUtc":"2026-09-12T10:13:51.8699721Z","kind":"run.started","data":{"hmiRoot":"C:\\Users\\szy\\8005-b3\\hmi-g2-e30d421","integrationSliceId":"FP-IS-15","evidenceType":"ONBOARD_HMI_LOCAL_G2","protocolRoot":"C:\\Users\\szy\\8005-b3\\proto-g1-16e2567","runId":"20260912T101346771Z","selectedTestCount":3}}
+{"timestampUtc":"2026-09-12T10:13:52.0760875Z","kind":"protocol.g1.started","data":{"drive":"X:"}}
+{"timestampUtc":"2026-09-12T10:13:52.8659785Z","kind":"protocol.g1.completed","data":{"status":"NOT_RUN","stage":"install","exitCode":1,"log":"protocol-g1.log"}}
+{"timestampUtc":"2026-09-12T10:13:52.8987655Z","kind":"command.started","data":{"name":"dotnet-build-release","arguments":["build",".\\SQCD_8005AGV.sln","-c","Release"]}}
+{"timestampUtc":"2026-09-12T10:13:55.2303351Z","kind":"command.completed","data":{"name":"dotnet-build-release","exitCode":0,"log":"dotnet-build-release.log"}}
+{"timestampUtc":"2026-09-12T10:13:55.2313569Z","kind":"command.started","data":{"name":"dotnet-test-release","arguments":["test",".\\SQCD_8005AGV.sln","-c","Release","--no-build","--results-directory","C:\\Users\\szy\\8005-b3\\hmi-b3\\evidence\\g2\\20260912-fp-is-14-15-single-owner-e30d421$s\\protocol-v1.0.0\\FP-IS-15\\20260912T101346771Z-e30d421b6eae\\test-results","--filter","IntegrationSlice=FP-IS-15","--logger","trx;LogFilePrefix=onboard-FP-IS-15"]}}
+{"timestampUtc":"2026-09-12T10:13:59.0936875Z","kind":"command.completed","data":{"name":"dotnet-test-release","exitCode":0,"log":"dotnet-test-release.log"}}
+{"timestampUtc":"2026-09-12T10:13:59.1446940Z","kind":"command.started","data":{"name":"dotnet-format-verify","arguments":["format",".\\SQCD_8005AGV.sln","--verify-no-changes","--no-restore"]}}
+{"timestampUtc":"2026-09-12T10:14:16.4988723Z","kind":"command.completed","data":{"name":"dotnet-format-verify","exitCode":0,"log":"dotnet-format-verify.log"}}
+{"timestampUtc":"2026-09-12T10:14:16.5059991Z","kind":"evidence.journal.bound","data":{"hmiStatus":"PASS","hmiCommit":"e30d421b6eaed4e3fcd4dc0bd716a2f18ea26b0b","g1Status":"NOT_RUN","protocolCommit":"16e2567a7033883f00fc999f7fa08f954dd13a26"}}
+{"timestampUtc":"2026-09-12T10:14:16.5805373Z","kind":"run.completed","data":{"failures":1,"status":"FAIL"}}

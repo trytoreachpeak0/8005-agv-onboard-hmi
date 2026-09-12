@@ -1,0 +1,4 @@
+install: unknown option -- frozen-lockfile
+Try 'install --help' for more information.
+undefined
+[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command "install --frozen-lockfile" not found
