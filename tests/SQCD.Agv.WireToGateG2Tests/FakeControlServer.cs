@@ -127,11 +127,12 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool RespondToRecoveryRequests { get; set; }
 
     /// <summary>
-    /// When set, ExceptionRecoverySessionOpened is followed by the ExceptionRecoverySessionSnapshot the
-    /// real server sends for that session, in this state. Null sends none, which is what every test did
-    /// before 8005-agv-control-server#31 -- and why none of them saw the vehicle never acknowledge one.
+    /// ExceptionRecoverySessionOpened is followed by one ExceptionRecoverySessionSnapshot per state here,
+    /// in order, shaped as the real server sends them ("OPEN" or "CLOSED"). Empty sends none, which is what
+    /// every test did before 8005-agv-control-server#31 -- and why none of them saw how the vehicle
+    /// acknowledges one.
     /// </summary>
-    public string? RecoverySessionSnapshotStateAfterOpened { get; set; }
+    public IReadOnlyList<string> RecoverySessionSnapshotStatesAfterOpened { get; set; } = [];
 
     /// <summary>The recovery session snapshots this server wrote, exactly as they went on the wire.</summary>
     public IReadOnlyList<(string MessageId, string WireLine)> SentRecoverySessionSnapshots { get; private set; } = [];
@@ -699,52 +700,55 @@ public sealed class FakeControlServer : IAsyncDisposable
                 }))
             .ConfigureAwait(false);
 
-        if (RecoverySessionSnapshotStateAfterOpened is not { } state)
-        {
-            return;
-        }
-
         // The real server's shapes: an OPEN session offers actions and blocks on choosing one; a CLOSED one
         // offers nothing and blocks on nothing, and is the last revision a session ever gets.
-        bool closed = state == "CLOSED";
-        WireToGateEnvelope snapshot = CreateEnvelope(
-            context,
-            "ExceptionRecoverySessionSnapshot",
-            correlationId: null,
-            new
-            {
-                exceptionRecoverySessionId = sessionId,
-                recoverySessionRevision = closed ? 4 : 1,
-                state,
-                administratorId = "maintenance-001",
-                administratorRole = "MAINTENANCE_ADMINISTRATOR",
-                eventId = payload.GetProperty("eventId").GetString(),
-                demandId = payload.TryGetProperty("demandId", out JsonElement snapshotDemandId)
-                    ? snapshotDemandId.GetString()
-                    : null,
-                slotOperationAttemptId = RecoverySessionSlotOperationAttemptId,
-                slots = payload.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()).ToArray(),
-                selectedAction = closed ? "COMPENSATE_LOAD_ALL_EMPTY" : null,
-                allowedActions = closed ? Array.Empty<string>() : ["RESUME_AFTER_REPAIR", "FORCED_MECHANICAL_RECOVERY"],
-                blockingFacts = closed
-                    ? []
-                    : new[]
-                    {
-                        new
-                        {
-                            reasonCode = "RECOVERY_ACTION_REQUIRED",
-                            subjectType = "EXCEPTION_RECOVERY_SESSION",
-                            subjectId = sessionId
-                        }
-                    }
-            });
-        string line = WireToGateProtocolSerializer.Serialize(snapshot);
-        lock (_sync)
+        foreach (string state in RecoverySessionSnapshotStatesAfterOpened)
         {
-            SentRecoverySessionSnapshots = [.. SentRecoverySessionSnapshots, (snapshot.MessageId, line)];
-        }
+            bool closed = state switch
+            {
+                "OPEN" => false,
+                "CLOSED" => true,
+                _ => throw new InvalidOperationException($"No real-server shape for a {state} recovery session snapshot.")
+            };
+            WireToGateEnvelope snapshot = CreateEnvelope(
+                context,
+                "ExceptionRecoverySessionSnapshot",
+                correlationId: null,
+                new
+                {
+                    exceptionRecoverySessionId = sessionId,
+                    recoverySessionRevision = closed ? 4 : 1,
+                    state,
+                    administratorId = "maintenance-001",
+                    administratorRole = "MAINTENANCE_ADMINISTRATOR",
+                    eventId = payload.GetProperty("eventId").GetString(),
+                    demandId = payload.TryGetProperty("demandId", out JsonElement snapshotDemandId)
+                        ? snapshotDemandId.GetString()
+                        : null,
+                    slotOperationAttemptId = RecoverySessionSlotOperationAttemptId,
+                    slots = payload.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()).ToArray(),
+                    selectedAction = closed ? "COMPENSATE_LOAD_ALL_EMPTY" : null,
+                    allowedActions = closed ? Array.Empty<string>() : ["RESUME_AFTER_REPAIR", "FORCED_MECHANICAL_RECOVERY"],
+                    blockingFacts = closed
+                        ? []
+                        : new[]
+                        {
+                            new
+                            {
+                                reasonCode = "RECOVERY_ACTION_REQUIRED",
+                                subjectType = "EXCEPTION_RECOVERY_SESSION",
+                                subjectId = sessionId
+                            }
+                        }
+                });
+            string line = WireToGateProtocolSerializer.Serialize(snapshot);
+            lock (_sync)
+            {
+                SentRecoverySessionSnapshots = [.. SentRecoverySessionSnapshots, (snapshot.MessageId, line)];
+            }
 
-        await WriteEnvelopeAsync(context, snapshot).ConfigureAwait(false);
+            await WriteEnvelopeAsync(context, snapshot).ConfigureAwait(false);
+        }
     }
 
     private async Task HandleLoadCancellationStartRequestedAsync(
