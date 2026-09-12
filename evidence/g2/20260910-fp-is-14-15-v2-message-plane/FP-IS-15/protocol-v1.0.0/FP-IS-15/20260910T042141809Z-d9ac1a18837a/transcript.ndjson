@@ -1,0 +1,10 @@
+{"timestampUtc":"2026-09-10T04:21:52.5764506Z","kind":"run.started","data":{"hmiRoot":"C:\\Users\\szy\\8005-b3\\hmi-b3","runId":"20260910T042141809Z","protocolRoot":"C:\\Users\\szy\\8005-b3\\proto-v2c","integrationSliceId":"FP-IS-15","evidenceType":"ONBOARD_HMI_LOCAL_G2","selectedTestCount":1}}
+{"timestampUtc":"2026-09-10T04:21:53.0759073Z","kind":"protocol.g1.skipped","data":{"reason":"SkipProtocolG1"}}
+{"timestampUtc":"2026-09-10T04:21:53.0805623Z","kind":"command.started","data":{"name":"dotnet-build-release","arguments":["build",".\\SQCD_8005AGV.sln","-c","Release"]}}
+{"timestampUtc":"2026-09-10T04:21:56.5972196Z","kind":"command.completed","data":{"exitCode":0,"name":"dotnet-build-release","log":"dotnet-build-release.log"}}
+{"timestampUtc":"2026-09-10T04:21:56.6043041Z","kind":"command.started","data":{"name":"dotnet-test-release","arguments":["test",".\\SQCD_8005AGV.sln","-c","Release","--no-build","--results-directory",".\\evidence\\g2\\20260910-fp-is-14-15-v2-message-plane\\FP-IS-15\\protocol-v1.0.0\\FP-IS-15\\20260910T042141809Z-d9ac1a18837a\\test-results","--filter","IntegrationSlice=FP-IS-15","--logger","trx;LogFilePrefix=onboard-FP-IS-15"]}}
+{"timestampUtc":"2026-09-10T04:22:02.1882648Z","kind":"command.completed","data":{"exitCode":0,"name":"dotnet-test-release","log":"dotnet-test-release.log"}}
+{"timestampUtc":"2026-09-10T04:22:02.2716717Z","kind":"command.started","data":{"name":"dotnet-format-verify","arguments":["format",".\\SQCD_8005AGV.sln","--verify-no-changes","--no-restore"]}}
+{"timestampUtc":"2026-09-10T04:22:32.1006007Z","kind":"command.completed","data":{"exitCode":0,"name":"dotnet-format-verify","log":"dotnet-format-verify.log"}}
+{"timestampUtc":"2026-09-10T04:22:32.1115261Z","kind":"evidence.journal.bound","data":{"hmiStatus":"PASS","protocolCommit":"f6ee75defe6e2d18f63f4082bee445dbb678ab1b","g1Status":"SKIPPED","hmiCommit":"d9ac1a18837a2684ba67c3aeab55258d291d596b"}}
+{"timestampUtc":"2026-09-10T04:22:32.3249022Z","kind":"run.completed","data":{"status":"PASS","failures":0}}

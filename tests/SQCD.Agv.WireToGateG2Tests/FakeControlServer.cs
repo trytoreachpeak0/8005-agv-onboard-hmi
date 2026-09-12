@@ -19,7 +19,8 @@ public sealed class FakeControlServer : IAsyncDisposable
     private readonly CancellationTokenSource _stopping = new();
     private readonly Task _acceptLoop;
     private readonly List<string> _identityValidations = [];
-    private readonly Dictionary<string, (long Revision, string ContentSha256)> _appliedSnapshots = new();
+    private readonly Dictionary<string, (long Generation, long Revision, string ContentSha256)> _appliedSnapshots
+        = new();
     private readonly Dictionary<string, string> _acceptedSafetyStateChanges = new(StringComparer.Ordinal);
     private readonly object _sync = new();
     private long _sessionGeneration;
@@ -84,6 +85,27 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool ReplayJourneySnapshotsWithStableIdentity { get; set; }
 
     public bool SendSlotOperationCommandAfterRecovery { get; set; }
+
+    /// <summary>恢复完成后下发一次仓位配置激活（协议 v2 消息 7）。</summary>
+    public bool SendSlotConfigurationActivationAfterRecovery { get; set; }
+
+    /// <summary>
+    /// 下发的目标指纹。
+    /// </summary>
+    /// <remarks>
+    /// 默认是那份已批准八仓事实的指纹，也就是车手上那份会算出来的值——正例走这个。要走
+    /// <c>SLOT_CONFIGURATION_FINGERPRINT_MISMATCH</c> 那条分支，把它换成别的值。
+    /// </remarks>
+    public string SlotConfigurationActivationFingerprint { get; set; } =
+        G2SlotConfigurationFixtures.Approved().Fingerprint;
+
+    /// <summary>下发的目标版本名。</summary>
+    public string SlotConfigurationActivationVersion { get; set; } = "approved-v7";
+
+    /// <summary>车报上来的那些激活结果，按到达顺序。</summary>
+    public IReadOnlyList<JsonElement> ReceivedActivationResults => _activationResults;
+
+    private readonly List<JsonElement> _activationResults = [];
 
     public bool RespondToRecoveryRequests { get; set; }
 
@@ -375,6 +397,10 @@ public sealed class FakeControlServer : IAsyncDisposable
                         break;
                     case "CapabilitySnapshot":
                     case "SafetyStateSnapshot":
+                    // 协议 v2 消息 9。真服务端收下它并回 SnapshotAppliedAck（snapshotKind
+                    // ONBOARD_ALARM）；这个假服务端不跟上的话，车载端握手会卡在等 ack 上，而那是假车
+                    // 与真服务端行为不一致造成的红，不是车载端的问题。
+                    case "OnboardAlarmSnapshot":
                         await HandleSnapshotAsync(context, line, messageType, root).ConfigureAwait(false);
                         break;
                     case "RecoveryStateReport":
@@ -382,6 +408,15 @@ public sealed class FakeControlServer : IAsyncDisposable
                         break;
                     case "Heartbeat":
                         await WriteEnvelopeAsync(context, CreateHeartbeatAck(context, root)).ConfigureAwait(false);
+                        break;
+                    // 协议 v2 消息 8。RELIABLE，所以要 DurableAck——用 RESPONSE 就没有补报语义，断线
+                    // 即丢，服务端除了猜没有别的可做，而 REQ-0264 要的恰恰是不能猜。
+                    case "SlotConfigurationActivationResult":
+                        lock (_sync)
+                        {
+                            _activationResults.Add(root.Clone());
+                        }
+                        await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
                         break;
                     case "OperationResult":
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
@@ -504,9 +539,13 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     private async Task HandleSnapshotAsync(ConnectionContext context, string line, string messageType, JsonElement snapshot)
     {
-        long revision = messageType == "CapabilitySnapshot"
-            ? snapshot.GetProperty("payload").GetProperty("capabilityVersion").GetInt64()
-            : snapshot.GetProperty("payload").GetProperty("safetyStateVersion").GetInt64();
+        long revision = messageType switch
+        {
+            "CapabilitySnapshot" => snapshot.GetProperty("payload").GetProperty("capabilityVersion").GetInt64(),
+            "OnboardAlarmSnapshot" =>
+                snapshot.GetProperty("payload").GetProperty("alarmSnapshotRevision").GetInt64(),
+            _ => snapshot.GetProperty("payload").GetProperty("safetyStateVersion").GetInt64()
+        };
         string contentSha256 = WireToGateProtocolSerializer.ComputeSha256(Encoding.UTF8.GetBytes(line));
         if (messageType == "CapabilitySnapshot")
         {
@@ -516,7 +555,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                 _acceptedCapabilityVersion = revision;
             }
         }
-        else
+        // 显式判 SafetyStateSnapshot，不用 else：告警快照带的是它自己的 alarmSnapshotRevision，
+        // 落进 else 会把它当成安全态版本记下去，握手随后就报 HANDSHAKE_SEQUENCE_INVALID。
+        else if (messageType == "SafetyStateSnapshot")
         {
             context.SafetyStateVersion = revision;
             lock (_sync)
@@ -525,22 +566,31 @@ public sealed class FakeControlServer : IAsyncDisposable
             }
         }
 
+        // **只有告警快照按会话代分域。**它的修订号是车载端告警板的进程内计数，车一重启就从 1 重新
+        // 开始，真服务端因此按 (会话代, 序号) 这一对采纳。能力与安全态快照的修订号来自配置，跨代
+        // 可比，同一修订号换了内容仍然是冲突——把它们也按代分域会让那条 fail-closed 的规则在每次
+        // 重连时失效。
+        long generation = messageType == "OnboardAlarmSnapshot"
+            ? snapshot.GetProperty("sessionGeneration").GetInt64()
+            : 0L;
         string? problemCode = null;
         bool apply;
         lock (_sync)
         {
-            if (_appliedSnapshots.TryGetValue(messageType, out (long Revision, string ContentSha256) applied))
+            if (_appliedSnapshots.TryGetValue(
+                messageType, out (long Generation, long Revision, string ContentSha256) applied))
             {
-                if (revision < applied.Revision)
+                bool sameGeneration = generation == applied.Generation;
+                if (generation < applied.Generation || (sameGeneration && revision < applied.Revision))
                 {
                     problemCode = "SNAPSHOT_REVISION_REGRESSION";
                 }
-                else if (revision == applied.Revision && contentSha256 != applied.ContentSha256)
+                else if (sameGeneration && revision == applied.Revision && contentSha256 != applied.ContentSha256)
                 {
                     problemCode = "SNAPSHOT_REVISION_CONTENT_CONFLICT";
                 }
 
-                apply = revision > applied.Revision;
+                apply = generation > applied.Generation || (sameGeneration && revision > applied.Revision);
             }
             else
             {
@@ -549,7 +599,7 @@ public sealed class FakeControlServer : IAsyncDisposable
 
             if (apply)
             {
-                _appliedSnapshots[messageType] = (revision, contentSha256);
+                _appliedSnapshots[messageType] = (generation, revision, contentSha256);
                 var appliedList = AppliedSnapshots.ToList();
                 appliedList.Add((messageType, revision));
                 AppliedSnapshots = appliedList;
@@ -582,7 +632,12 @@ public sealed class FakeControlServer : IAsyncDisposable
         var ackPayload = new
         {
             snapshotMessageId = snapshot.GetProperty("messageId").GetString()!,
-            snapshotKind = messageType == "CapabilitySnapshot" ? "CAPABILITY" : "SAFETY_STATE",
+            snapshotKind = messageType switch
+            {
+                "CapabilitySnapshot" => "CAPABILITY",
+                "OnboardAlarmSnapshot" => "ONBOARD_ALARM",
+                _ => "SAFETY_STATE"
+            },
             appliedRevision = revision,
             appliedContentSha256 = contentSha256
         };
@@ -647,6 +702,11 @@ public sealed class FakeControlServer : IAsyncDisposable
             {
                 await SendSlotOperationCommandAsync(context).ConfigureAwait(false);
             }
+
+            if (SendSlotConfigurationActivationAfterRecovery)
+            {
+                await SendSlotConfigurationActivationCommandAsync(context).ConfigureAwait(false);
+            }
         }
 
         if (drop)
@@ -654,6 +714,33 @@ public sealed class FakeControlServer : IAsyncDisposable
             context.Client.Close();
         }
     }
+
+    /// <summary>
+    /// 协议 v2 消息 7 <c>SlotConfigurationActivationCommand</c>。
+    /// </summary>
+    /// <remarks>
+    /// 它**不带配置内容**——整个协议里没有一条消息带仓位 IO 绑定。带的是版本号与指纹，车拿自己手上那份
+    /// 算指纹与之比对，相等才切换。
+    /// </remarks>
+    private Task SendSlotConfigurationActivationCommandAsync(ConnectionContext context) =>
+        WriteEnvelopeAsync(context, CreateEnvelope(
+            context,
+            "SlotConfigurationActivationCommand",
+            correlationId: null,
+            new
+            {
+                activationId = "55555555-5555-4555-8555-555555555555",
+                targetSlotConfigurationVersion = SlotConfigurationActivationVersion,
+                targetSlotConfigurationFingerprint = SlotConfigurationActivationFingerprint,
+                expectedActiveSlotConfigurationVersion = (string?)null,
+                administrator = new
+                {
+                    operatorId = "op-g2",
+                    verificationMethod = "BADGE",
+                    verifiedAt = "2026-09-09T12:00:00Z"
+                },
+                issuedAt = "2026-09-09T12:00:00Z"
+            }));
 
     private async Task HandleRecoverySessionRequestAsync(
         ConnectionContext context,

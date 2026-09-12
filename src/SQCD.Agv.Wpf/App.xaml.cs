@@ -20,6 +20,7 @@ public partial class App : System.Windows.Application, IDisposable
     private WireToGateBusinessService? _wireToGateBusiness;
     private OnboardAutomationHttpServer? _automationServer;
     private ControlServerVehicleSafetySignalProvider? _vehicleSafetySignalProvider;
+    private OnboardAlarmMonitor? _alarmMonitor;
     private bool _disposed;
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -96,6 +97,8 @@ public partial class App : System.Windows.Application, IDisposable
             MainViewModel viewModel = new(_controller, _logger, settings.AgvId);
             MainWindow window = new() { DataContext = viewModel };
             MainWindow = window;
+            // 告警板两种模式下都有：旧模式没有会话可以报，本机界面照样要显示。
+            OnboardAlarmBoard alarmBoard = new(settings.AgvId, TimeProvider.System);
             if (settings.WireToGate.Enabled)
             {
                 SqliteWireToGateJournal journal = new(settings.WireToGate.JournalPath);
@@ -106,6 +109,17 @@ public partial class App : System.Windows.Application, IDisposable
                     _logger,
                     new SystemClock(),
                     vehicleSafetySignalProvider,
+                    // 告警板的生产者是下面的 OnboardAlarmMonitor。握手报的是那一刻告警板上的全量，空的也报：
+                    // 一份空快照说的是「这台车此刻没有告警」，与「这台车从没报过」在看板上是两种显示。
+                    alarmBoard,
+                    // 生效配置与激活结果一起落在同一份原子文档里（#27）：分两次写会留下一个窗口——配置
+                    // 已切、结果没记下，重连补报时车会以为自己没激活过，于是再激活一次。初始那一份是本机
+                    // 自述的配置，由设置渲染出来；文档里已有内容时以文档为准。
+                    new SlotConfigurationActivationCoordinator(
+                        new DocumentActiveSlotConfigurationStore(
+                            new AtomicJsonFile(settings.WireToGate.ActiveSlotConfigurationPath),
+                            OnboardActiveSlotConfigurationFactory.Create(settings.WireToGate, settings.IoModule)),
+                        TimeProvider.System),
                     TimeSpan.FromMilliseconds(settings.Workflow.IoSnapshotMaxAgeMs),
                     TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs),
                     TimeSpan.FromMilliseconds(settings.VehicleSafety.ClockSkewToleranceMs));
@@ -174,6 +188,27 @@ public partial class App : System.Windows.Application, IDisposable
                 _wireToGateBusiness.Start();
             }
 
+            // 告警的生产者（REQ-0269／REQ-0270）：一秒一轮，相关事件发生时提前一轮。
+            _alarmMonitor = new OnboardAlarmMonitor(
+                alarmBoard,
+                () => ReadAlarmInputs(settings, vehicleSafetySignalProvider),
+                _wireToGate?.Client,
+                _logger,
+                TimeSpan.FromSeconds(1));
+            _alarmMonitor.AlarmsChanged += (_, args) => viewModel.UpdateOnboardAlarms(
+                OnboardAlarmVisibility.ForLocalDisplay(args.Value, CurrentAlarmContext(settings.AgvId)));
+            _ioModule.ConnectionChanged += (_, _) => _alarmMonitor?.RequestEvaluation();
+            _ioModule.SnapshotChanged += (_, _) => _alarmMonitor?.RequestEvaluation();
+            _controller.StateChanged += (_, _) => _alarmMonitor?.RequestEvaluation();
+            if (_wireToGate is not null)
+            {
+                _wireToGate.StateChanged += (_, _) => _alarmMonitor?.RequestEvaluation();
+            }
+            if (_wireToGateBusiness is not null)
+            {
+                _wireToGateBusiness.OperatorEventPublished += (_, _) => _alarmMonitor?.RequestEvaluation();
+            }
+
             DispatcherUnhandledException += OnDispatcherUnhandledException;
             window.Show();
             await viewModel.InitializeAsync().ConfigureAwait(true);
@@ -185,6 +220,9 @@ public partial class App : System.Windows.Application, IDisposable
                 // promoted to STOPPED merely to make startup succeed.
                 await vehicleSafetySignalProvider.WaitForFirstRefreshAsync().ConfigureAwait(true);
             }
+            // 握手之前先求值一轮：握手报的是告警板上的全量，不先算，第一份就是空的，要等下一轮才补上。
+            await _alarmMonitor.EvaluateOnceAsync().ConfigureAwait(true);
+            _alarmMonitor.Start();
             _wireToGate?.Start();
             if (settings.Automation.Enabled)
             {
@@ -241,6 +279,7 @@ public partial class App : System.Windows.Application, IDisposable
         try
         {
             _automationServer?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+            _alarmMonitor?.DisposeAsync().AsTask().GetAwaiter().GetResult();
             _wireToGateBusiness?.DisposeAsync().AsTask().GetAwaiter().GetResult();
             _wireToGate?.DisposeAsync().AsTask().GetAwaiter().GetResult();
             _controller?.DisposeAsync().AsTask().GetAwaiter().GetResult();
@@ -255,6 +294,41 @@ public partial class App : System.Windows.Application, IDisposable
 
         GC.SuppressFinalize(this);
     }
+
+    private OnboardAlarmInputs ReadAlarmInputs(
+        OnboardSettings settings,
+        ControlServerVehicleSafetySignalProvider vehicleSafetySignalProvider)
+    {
+        ModbusTcpIoModuleClient io = _ioModule ?? throw new InvalidOperationException("IO模块未初始化。");
+        OnboardController controller = _controller ?? throw new InvalidOperationException("控制器未初始化。");
+        bool ioConnected = io.IsConnected;
+        IoSnapshot ioSnapshot = io.CurrentSnapshot;
+        // 旧任务系统网关在 WIRE_TO_GATE 模式下是空实现，连接状态恒为断开，不适用就不判。
+        bool? legacyRuleGatewayConnected = settings.WireToGate.Enabled ? null : _ruleGateway?.IsConnected == true;
+        // 出发安全信号只在 WIRE_TO_GATE 模式下轮询。
+        VehicleSafetySignal? vehicleSafety = settings.WireToGate.Enabled ? vehicleSafetySignalProvider.Read() : null;
+        // 时刻最后取：先取时刻再读 IO，一次恰好落在两者之间的轮询会让快照「来自未来」，被判成陈旧。
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        return new OnboardAlarmInputs(
+            now,
+            ioConnected,
+            ioSnapshot,
+            TimeSpan.FromMilliseconds(settings.Workflow.IoSnapshotMaxAgeMs),
+            legacyRuleGatewayConnected,
+            controller.Current,
+            vehicleSafety,
+            TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs),
+            TimeSpan.FromMilliseconds(settings.VehicleSafety.ClockSkewToleranceMs),
+            _wireToGate?.Current.ReasonCodes ?? [],
+            _wireToGateBusiness?.CurrentOperationSnapshot);
+    }
+
+    // 本端的求值器不产出与停靠相关的告警，停靠不参与收敛。
+    private OnboardAlarmContext CurrentAlarmContext(string agvId) => new(
+        agvId,
+        null,
+        _wireToGateBusiness?.CurrentOperationSnapshot?.SlotOperationAttemptId
+            ?? _controller?.Current.ActiveOperation?.OperationId);
 
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {

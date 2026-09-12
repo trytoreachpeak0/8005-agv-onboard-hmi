@@ -126,7 +126,9 @@ public sealed class IntegrationSliceTraitArchitectureTests
     public void NoTestCarriesASliceThisBatchDoesNotImplement()
     {
         HashSet<string> implemented = new(SlicesThisBatchImplements(), StringComparer.Ordinal);
-        Assert.Equal(8, implemented.Count);
+        // 八条重证的（FP-IS-00～07）加上批次 3 新落的两条（FP-IS-14、FP-IS-15）。数字写在这里而不是
+        // 算出来，是为了让「这条线到底建了几个切片」在改的时候必须被看见一次。
+        Assert.Equal(10, implemented.Count);
 
         string[] offences =
         [
@@ -335,14 +337,15 @@ public sealed class IntegrationSliceTraitArchitectureTests
 
     /// <summary>
     /// The batch boundary, read from
-    /// <see cref="ProtocolVectorTestBindingArchitectureTests.LastSliceSequenceThisBatchImplements"/>
-    /// rather than restated -- a second 7 here is how the two guards would come to disagree about
+    /// <see cref="ProtocolVectorTestBindingArchitectureTests.SlicesThisLineImplements"/>
+    /// rather than restated -- a second copy here is how the two guards would come to disagree about
     /// which slices this batch owes.
     /// </summary>
     private static Slice[] ImplementedSlices() =>
     [
-        .. VendoredSliceIndex.Slices().Where(slice => slice.Sequence
-            <= ProtocolVectorTestBindingArchitectureTests.LastSliceSequenceThisBatchImplements)
+        .. VendoredSliceIndex.Slices().Where(slice =>
+            ProtocolVectorTestBindingArchitectureTests.SlicesThisLineImplements.Contains(
+                slice.SliceId, StringComparer.Ordinal))
     ];
 
     private static TraitedTest[] SlicedTestsUnder(string project) =>

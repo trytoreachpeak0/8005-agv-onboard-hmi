@@ -375,6 +375,12 @@ public sealed class RecoveryVectorG2Tests
                     logger,
                     new SystemClock(),
                     safety,
+                    new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+                    new SlotConfigurationActivationCoordinator(
+                        new DocumentActiveSlotConfigurationStore(
+                            new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                    G2SlotConfigurationFixtures.Approved()),
+                        TimeProvider.System),
                     TimeSpan.FromSeconds(30),
                     TimeSpan.FromSeconds(5),
                     TimeSpan.FromMilliseconds(500));

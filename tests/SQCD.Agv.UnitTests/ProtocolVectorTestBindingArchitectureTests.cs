@@ -76,16 +76,30 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// specification.
     /// </summary>
     /// <remarks>
-    /// One integer rather than a second vector list. The slice-to-batch mapping is deliberately kept
-    /// out of the protocol repository -- section 7.2 says so, because rescheduling a batch must not
-    /// become a protocol change that voids both ends' gate evidence -- so the boundary has to be
-    /// stated somewhere on this side, and this is the smallest form it takes. The two pin sets below
-    /// are what make the number load-bearing instead of decorative, and
+    /// <para>
+    /// This was one integer -- "the last sequence this batch implements" -- while the implemented set
+    /// was the contiguous run 0 through 7. Batch 3 breaks that shape: it lands 14 and 15 without 8
+    /// through 13, so a bound stated as a sequence would either have to claim six slices nobody built
+    /// or stop covering the two this batch does. A set says the same thing for a contiguous run and
+    /// keeps saying it for a sparse one.
+    /// </para>
+    /// <para>
+    /// The slice-to-batch mapping is deliberately kept out of the protocol repository -- section 7.2
+    /// says so, because rescheduling a batch must not become a protocol change that voids both ends'
+    /// gate evidence -- so the boundary has to be stated somewhere on this side, and this is the
+    /// smallest form it takes. The two pin sets below are what make it load-bearing instead of
+    /// decorative, and
     /// <see cref="TheIndexParsesIntoSixteenSlicesAndThirtyOneDistinctVectors"/> is what lets it be
-    /// stated as a sequence at all: it pins each slice's id to its own sequence, so "sequence 7" and
-    /// "<c>FP-IS-07</c>" cannot drift apart.
+    /// stated as slice ids at all: it pins each slice's id to its own sequence, so the ids named here
+    /// and the sequences the index carries cannot drift apart.
+    /// </para>
     /// </remarks>
-    internal const int LastSliceSequenceThisBatchImplements = 7;
+    internal static readonly string[] SlicesThisLineImplements =
+    [
+        .. Enumerable.Range(0, 8).Select(sequence => FormattableString.Invariant($"FP-IS-{sequence:D2}")),
+        "FP-IS-14",
+        "FP-IS-15"
+    ];
 
     /// <summary>
     /// The frozen vectors that have no named test <b>because nobody has built their slice yet</b>,
@@ -121,9 +135,7 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
             ["CV-AUTOMATIC-CHARGING-CYCLE"] = "FP-IS-13, batch 8",
             ["CV-MANUAL-STATION-CLEARANCE"] = "FP-IS-13, batch 8",
             ["CV-MULTI-STOP-PLAN-NINE-LEGS"] = "FP-IS-08, batch 6",
-            ["CV-ONBOARD-ALARM-SNAPSHOT"] = "FP-IS-15, batch 3",
             ["CV-REVERSED-DIRECTION-JOURNEY"] = "FP-IS-11, batch 4 second stage",
-            ["CV-SLOT-CONFIGURATION-ACTIVATION"] = "FP-IS-14, batch 3",
             ["CV-TASK-TYPE-ADMISSION-FAIL-CLOSED"] = "FP-IS-10, batch 4",
             ["CV-UNABLE-TO-CHARGE-FIELD-CONFIRMATION"] = "FP-IS-13, batch 8",
             ["CV-WAITING-POINT-IDLE-RETURN"] = "FP-IS-12, batch 5",
@@ -698,7 +710,7 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     private static bool BelongsToASliceThisBatchImplements(
         IEnumerable<Slice> slices,
         string vectorId) => slices.Any(slice =>
-            slice.Sequence <= LastSliceSequenceThisBatchImplements
+            SlicesThisLineImplements.Contains(slice.SliceId, StringComparer.Ordinal)
             && slice.VectorIds.Contains(vectorId, StringComparer.Ordinal));
 
     /// <summary>

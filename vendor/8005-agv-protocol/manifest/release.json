@@ -7,8 +7,8 @@
   "generatedAt": "2026-09-04T00:00:00Z",
   "hashAlgorithm": "SHA-256",
   "jsonCanonicalization": "RFC8785-compatible sorted-key JCS for semantic collections; raw bytes for file entries",
-  "fileTableSha256": "33803bc0b602282db26c45b65a675460751dac4d50222c4d16016770d879d226",
-  "schemaBundleSha256": "71146c881e8ec199e9a977779ec1a557bed96a9ab71e36cfc3dfb7b329351c6b",
+  "fileTableSha256": "5ecae021890b626f660eeba0aae0bc36a6304d9a6719d1c5525e969e4cdc4596",
+  "schemaBundleSha256": "225a83340eb5f27c4e6dfd7bf8aba8007cf787d29f1df860deaf0ba039baf3ff",
   "examplesSha256": "c9488eb4b334a6549483e4f5eeed70050d25ecf4e0652fb1c9632744dffe52d6",
   "vectorsSha256": "51c5aaca2ca02326d16e02af7e76c9954d84414a9772c5b208a92969a417d1df",
   "errorRegistrySha256": "ea538d5999b8fa641803c0669e6c4319aaec3df311809bfe25472a97c41a67e7",
@@ -1005,8 +1005,8 @@
     {
       "path": "CLAUDE.md",
       "role": "CLAUDE.md",
-      "bytes": 5808,
-      "sha256": "72eed63d9bbc414c2361b655bb9ca24df1146f017518f1c73cb0b6b6d99e8573"
+      "bytes": 5987,
+      "sha256": "f45fbd60360482e56de969783d2e017cc5e5812eb6f5340ee88dc2f5cf13bce4"
     },
     {
       "path": "README.md",
@@ -1047,8 +1047,8 @@
     {
       "path": "docs/release-governance.md",
       "role": "docs",
-      "bytes": 2547,
-      "sha256": "f416954f293691273244a18448a1cb691e63393653802a2dbd9c3a9b7be358af"
+      "bytes": 3140,
+      "sha256": "ae635a2d2e1a6557a8fd60bdf9ba0664e262526fcb8a5a166293bcf3e065da6b"
     },
     {
       "path": "errors/error-codes.json",
@@ -10774,7 +10774,7 @@
       "path": "schemas/governance/release-approval-attestation.schema.json",
       "role": "schemas",
       "bytes": 2725,
-      "sha256": "3074c819b5a254692a576a8c322321e831d8c8b161f6a2f1e0a9f4c9acd6ecd0"
+      "sha256": "f887c8a668f90410b82cefcbeba2301fff32ffba0960c49bab90a886ec307691"
     },
     {
       "path": "schemas/messages/CapabilitySnapshot.schema.json",
@@ -11163,8 +11163,8 @@
     {
       "path": "tools/g1-validate.mjs",
       "role": "tools",
-      "bytes": 13840,
-      "sha256": "46243b9dd2f4b6cc73207588511718b62b627a237e050320e2349fc72a7d39da"
+      "bytes": 13845,
+      "sha256": "5886639edc76347673cd562ca5c1b484776ec7d437c56799ac2ed42e5e60961b"
     },
     {
       "path": "vectors/CV-AUTOMATIC-CHARGING-CYCLE/expected.json",

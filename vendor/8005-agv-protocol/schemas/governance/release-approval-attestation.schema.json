@@ -124,8 +124,8 @@
             "pattern": "^[0-9a-f]{64}$"
           },
           "approvals": {
-            "minItems": 2,
-            "maxItems": 2
+            "minItems": 1,
+            "maxItems": 1
           }
         }
       }

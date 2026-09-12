@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "1.1.0",
+  "gate": "ONBOARD_HMI_G2",
+  "integrationSliceId": "FP-IS-15",
+  "status": "PASS",
+  "startedAt": "2026-09-10T04:21:41.8095094Z",
+  "finishedAt": "2026-09-10T04:22:32.3419627Z",
+  "implementationRepository": "8005-agv-onboard-hmi",
+  "implementationCommit": "d9ac1a18837a2684ba67c3aeab55258d291d596b",
+  "implementationBranch": "w2g/b3-on-v2",
+  "protocolReleaseVersion": "1.0.0",
+  "protocolTag": "protocol-v1.0.0",
+  "protocolProfileId": "AGV_FULL_PRODUCT",
+  "protocolVersion": 2,
+  "protocolApprovalStatus": "SUPERSEDING_CANDIDATE",
+  "protocolRepositoryCommit": "f6ee75defe6e2d18f63f4082bee445dbb678ab1b",
+  "protocolManifestSha256": "84f984eabf17106e92666c415b63100d404e9ec69a9a710dfddf17683cc42788",
+  "protocolSchemaBundleSha256": "71146c881e8ec199e9a977779ec1a557bed96a9ab71e36cfc3dfb7b329351c6b",
+  "protocolVectorsSha256": "51c5aaca2ca02326d16e02af7e76c9954d84414a9772c5b208a92969a417d1df",
+  "integrationSliceIndexSha256": "71e0a63d49d1973653e1f70addc19c334faff5e53e8597733c1423a7307bd82f",
+  "selectedTestCount": 1,
+  "recordedTestCount": 1,
+  "vectorIds": [
+    "CV-ONBOARD-ALARM-SNAPSHOT"
+  ],
+  "buildExitCode": 0,
+  "testExitCode": 0,
+  "formatExitCode": 0
+}
