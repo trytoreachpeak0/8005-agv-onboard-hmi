@@ -295,8 +295,16 @@ function Invoke-ProtocolG1 {
         try {
             # --frozen-lockfile：装的就是锁文件里那几个包，不会顺手改动被测仓库的依赖状态。
             # node_modules 在协议仓的 .gitignore 里，装完那个仓的工作树仍然干净。
+            #
+            # 参数一律 splat（@installArguments），不能把数组当一个参数传。PATH 上的 pnpm 若是
+            # corepack 装的 pnpm.ps1，`& pnpm.ps1 $数组` 会把两个元素并成一个字符串
+            # "install --frozen-lockfile" 交给 pnpm，pnpm 当它是要执行的命令名，最后落到
+            # GNU install 上报 `unknown option -- frozen-lockfile`。2026-09-09 没暴露，是因为那时
+            # pnpm 不在 PATH，走的是 `node pnpm.cjs`，原生程序会把数组逐项展开。2026-09-12 在
+            # 控制端 PATH 上有 C:\Program Files\nodejs 时实测复现，run-staged-g3.ps1 的
+            # Invoke-LoggedCommand 一直是 splat，不受影响。
             $installArguments = $toolchain.PrefixArguments + @('install', '--frozen-lockfile')
-            $installOutput = & $toolchain.FilePath $installArguments 2>&1
+            $installOutput = & $toolchain.FilePath @installArguments 2>&1
             $installExitCode = $LASTEXITCODE
             if ($installExitCode -ne 0) {
                 $installOutput | Out-File -LiteralPath $LogPath -Encoding utf8
@@ -316,7 +324,7 @@ function Invoke-ProtocolG1 {
                 }
             }
             $g1Arguments = $toolchain.PrefixArguments + @('g1')
-            $output = & $toolchain.FilePath $g1Arguments 2>&1
+            $output = & $toolchain.FilePath @g1Arguments 2>&1
             $exitCode = $LASTEXITCODE
             # @() 包一层再相加：两边都可能是单个字符串，而 'a' + @('b','c') 在 PowerShell 里
             # 是字符串拼接（得到 "ab c"），会把整份 G1 日志压成一行。
