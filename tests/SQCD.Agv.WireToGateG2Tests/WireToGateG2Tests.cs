@@ -753,6 +753,96 @@ public sealed class WireToGateG2Tests
     }
 
     /// <summary>
+    /// REQ-0237 keeps load correction to the time before the vehicle leaves the pickup, and the
+    /// control server now holds the vehicle there for a departure wait after the load commits. The
+    /// operator can only use that wait if 「修正装货」 is offered as soon as the load is recorded.
+    /// </summary>
+    /// <remarks>
+    /// The entry reads a cached copy of the recovery state, and recording the result wrote the
+    /// journal without refreshing that copy -- the entry waited for some unrelated session event.
+    /// On the real rig that event was the departure itself: the G3 FP-IS-02 run closed its second
+    /// door at 21:29:33, the server sent the vehicle away at 21:29:55 after its 20 s wait, and the
+    /// entry appeared at 21:29:57. This fake IO raises no snapshot events, so nothing else refreshes
+    /// the copy here either.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CORRECTION")]
+    public async Task ACompletedLoadOffersTheCorrectionEntryAsSoonAsItsResultIsRecorded()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        const string operatorVariable = "W2G_G2_CORRECTION_ENTRY_OPERATOR";
+        string? previousOperator = Environment.GetEnvironmentVariable(operatorVariable);
+        Environment.SetEnvironmentVariable(operatorVariable, "operator-003");
+
+        try
+        {
+            await using FakeControlServer server = new(IPAddress.Loopback)
+            {
+                SendReadinessAfterRecoveryAck = true,
+                SendSlotOperationCommandAfterRecovery = true
+            };
+            FakeIoModuleClient io = new() { SimulateOperatorLoad = true };
+            NullLogger logger = new();
+            await using WireToGateSessionService session = new(
+                CreateSessionOptions(server),
+                io,
+                new SqliteWireToGateJournal(NewJournalPath()),
+                logger,
+                new SystemClock(),
+                new DelegateVehicleSafetySignalProvider(() => true),
+                new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+                new SlotConfigurationActivationCoordinator(
+                    new DocumentActiveSlotConfigurationStore(
+                        new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                    G2SlotConfigurationFixtures.Approved()),
+                    TimeProvider.System),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(500));
+            await using WireToGateBusinessService business = new(
+                session,
+                io,
+                logger,
+                new SystemClock(),
+                () => true,
+                new WireToGateSlotOperationExecutorOptions(
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromMilliseconds(10),
+                    TimeSpan.FromSeconds(30)),
+                operatorVariable,
+                recoveryOptions: new WireToGateRecoveryOptions(
+                    true,
+                    "W2G_G2_CORRECTION_ENTRY_PROOF",
+                    "MAINTENANCE_ADMINISTRATOR",
+                    "CONFIGURED_PROOF"));
+            bool completed = false;
+            business.OperatorEventPublished += (_, args) =>
+            {
+                if (args.Value.Kind == "OPERATION_COMPLETED")
+                {
+                    completed = true;
+                }
+            };
+
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            Assert.False(business.CanRequestLoadCorrection);
+
+            await WaitUntilAsync(() => completed, testToken);
+            Assert.Equal(1, io.UnlockCount);
+
+            await WaitUntilAsync(() => business.CanRequestLoadCorrection, testToken);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(operatorVariable, previousOperator);
+        }
+    }
+
+    /// <summary>
     /// A drop-off journey is projected rather than refused.
     /// </summary>
     /// <remarks>

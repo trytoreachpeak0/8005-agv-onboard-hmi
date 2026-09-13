@@ -1033,6 +1033,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     await _executor.MarkResultRecordedAsync(
                         command.SlotOperationAttemptId,
                         cancellationToken).ConfigureAwait(false);
+                    // Same refresh as the formal load path: a resumed load that completes is the
+                    // last completed load, and the correction entry must see it now.
+                    await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
                 }
 
                 PublishOperatorEvent(
@@ -1170,6 +1173,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     await _executor.MarkResultRecordedAsync(
                         command.SlotOperationAttemptId,
                         cancellationToken).ConfigureAwait(false);
+                    // Recording the result is what makes the load correctable
+                    // (LastCompletedLoadOperationContext), and the CanRequest* gates read a cached
+                    // copy. Without this refresh the correction entry waited for an unrelated session
+                    // event -- on the real rig, the departure that ends the correction window
+                    // (G3 FP-IS-02, 2026-09-13). The operator event below re-evaluates the gates.
+                    await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
                 }
                 PublishOperatorEvent(
                     $"operation-result:{command.SlotOperationAttemptId}:{execution.OverallOutcome}",
