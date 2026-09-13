@@ -222,6 +222,18 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
         return result;
     }
 
+    /// <summary>
+    /// 事务号在 1～255 之间循环。现场三台车上的康耐德 C2000 仓位模块只回写 MBAP 事务号的低 8 位，
+    /// 16 位递增时第 256 条请求的应答是 0，严格比对就断开，而且重连后每一条都对不上（onboard-hmi#52）。
+    /// 1～255 内完整回写 16 位的模块（slots-simulator）与只回写低 8 位的模块答出的是同一个值。
+    /// 只在持有 <see cref="_transportLock"/> 时调用，所以不需要原子操作。
+    /// </summary>
+    private ushort NextTransactionId()
+    {
+        _transactionId = (_transactionId % byte.MaxValue) + 1;
+        return (ushort)_transactionId;
+    }
+
     private async Task<byte[]> ExecuteRequestAsync(byte[] pdu, byte expectedFunction, CancellationToken cancellationToken)
     {
         await _transportLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -229,7 +241,7 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
         {
             await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
             NetworkStream stream = _stream ?? throw new IOException("Modbus TCP连接不可用。");
-            ushort transactionId = unchecked((ushort)Interlocked.Increment(ref _transactionId));
+            ushort transactionId = NextTransactionId();
 
             byte[] request = new byte[7 + pdu.Length];
             BinaryPrimitives.WriteUInt16BigEndian(request.AsSpan(0, 2), transactionId);
