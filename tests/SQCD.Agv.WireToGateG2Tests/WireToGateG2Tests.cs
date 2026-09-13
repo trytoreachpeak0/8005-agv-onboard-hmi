@@ -45,18 +45,20 @@ public sealed class WireToGateG2Tests
         Assert.Equal(0, io.UnlockCount);
     }
 
+    /// <summary>
+    /// 恢复握手途中断线：<c>RecoveryStateReport</c> 已经写进 journal 发了出去，ack 没回来。下一条连接不补发这份旧报告，
+    /// 照常走完整握手、发一份新的——恢复状态报告说的是发出它那次握手时的事实，新报告取代它，旧的在新报告被确认之后
+    /// 标为已确认。补发旧报告在真服务端面前走不通：服务端按它重算就绪、立即回 <c>SessionReadiness</c>，再重放待确认的
+    /// 恢复命令，全都夹在车还没发完的快照中间（8005-agv-control-server#33）。
+    /// <c>CV-SESSION-RECONNECT-DURING-RECOVERY</c> 只列要紧的几条报文，快照的位置由 <c>CV-SESSION-RECOVERY-HAPPY</c> 规定。
+    /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "W2G-IS-00")]
     [Trait("IntegrationSlice", "W2G-IS-05")]
-    public async Task ReconnectDuringRecoveryRebindsDurableReportWithoutUnlockSideEffects()
+    public async Task ReconnectDuringRecoverySupersedesInterruptedReportWithFreshHandshake()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
-        await using FakeControlServer server = new(IPAddress.Loopback)
-        {
-            DropBeforeRecoveryAck = true,
-            InitialAcceptedCapabilityVersion = 1,
-            InitialAcceptedSafetyStateVersion = 1
-        };
+        await using FakeControlServer server = new(IPAddress.Loopback) { DropBeforeRecoveryAck = true };
         string journalPath = NewJournalPath();
         FakeIoModuleClient io = new();
         await using SqliteWireToGateJournal journal = new(journalPath);
@@ -101,41 +103,30 @@ public sealed class WireToGateG2Tests
         WireToGateSessionSnapshot resumed = await client.ConnectAndRecoverAsync(testToken);
 
         Assert.Equal(WireToGateSessionReadiness.Ready, resumed.Readiness);
-
-        string[] received = server.Received.Select(item => item.MessageType).ToArray();
         Assert.Equal(
-            ["CONNECTED", "SessionHello", "RecoveryStateReport", "CONNECTED", "SessionHello", "RecoveryStateReport"],
-            received);
-        Assert.DoesNotContain("CapabilitySnapshot", received);
+            [
+                "CONNECTED", "SessionHello", "CapabilitySnapshot", "SafetyStateSnapshot", "RecoveryStateReport",
+                "CONNECTED", "SessionHello", "CapabilitySnapshot", "SafetyStateSnapshot", "RecoveryStateReport"
+            ],
+            server.Received.Select(item => item.MessageType).ToArray());
         Assert.Equal(0, io.UnlockCount);
+        Assert.Empty(server.StaleGenerationRejections);
 
-        var replayed = server.ReceivedEnvelopes
+        // Each connection sent a report of its own; the interrupted one never went out again.
+        var reports = server.ReceivedEnvelopes
             .Where(item => item.MessageType == "RecoveryStateReport")
             .ToArray();
-        Assert.Equal(2, replayed.Length);
-        Assert.All(replayed, item => Assert.Equal(originalMessageId, item.MessageId));
-        WireToGateEnvelope[] replayedEnvelopes = replayed
-            .Select(item => WireToGateProtocolSerializer.DeserializeAndValidate(item.WireLine, "AGV-8005-01"))
-            .ToArray();
-        Assert.Equal([1L, 2L], replayedEnvelopes.Select(item => item.SessionGeneration).ToArray());
-        Assert.All(replayedEnvelopes, item => Assert.True(JsonNode.DeepEquals(
-            JsonNode.Parse(originalReport.Payload.GetRawText()),
-            JsonNode.Parse(item.Payload.GetRawText()))));
-        Assert.Equal(
-            originalContentSha256,
-            WireToGateProtocolSerializer.ComputeContentSha256(replayedEnvelopes[0]));
-        string reboundContentSha256 = WireToGateProtocolSerializer.ComputeContentSha256(replayedEnvelopes[1]);
-        Assert.NotEqual(originalContentSha256, reboundContentSha256);
-        Assert.NotEqual(replayed[0].WireLine, replayed[1].WireLine);
-        Assert.Empty(server.StaleGenerationRejections);
+        Assert.Equal([1, 2], reports.Select(item => item.Connection).ToArray());
+        Assert.DoesNotContain(reports, item => item.MessageId == originalMessageId);
+        Assert.NotEqual(reports[0].MessageId, reports[1].MessageId);
 
         WireToGateDurableMessage? stored = await journal.ReadOutgoingByDeduplicationKeyAsync(
             "recovery:0:interrupted",
             testToken);
         Assert.NotNull(stored);
         Assert.True(stored!.Acknowledged);
-        Assert.Equal(reboundContentSha256, stored.ContentSha256);
-        Assert.Equal(replayed[1].WireLine + "\n", stored.WireLine);
+        Assert.Equal(originalContentSha256, stored.ContentSha256);
+        Assert.Equal(originalWireLine, stored.WireLine);
         Assert.Empty(await journal.ReadUnacknowledgedOutgoingAsync(testToken));
     }
 
@@ -170,7 +161,11 @@ public sealed class WireToGateG2Tests
     public async Task SameRevisionDifferentContentFailsClosedWithProtocolProblemReasonCode()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
-        await using FakeControlServer server = new(IPAddress.Loopback) { SendReadinessAfterRecoveryAck = true };
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            RetainSnapshotRevisionsAcrossSessions = true
+        };
         string journalPath = NewJournalPath();
         FakeIoModuleClient io = new();
 
@@ -2564,6 +2559,79 @@ public sealed class WireToGateG2Tests
         Assert.Empty(await journal.ReadUnacknowledgedOutgoingAsync(testToken));
     }
 
+    /// <summary>
+    /// 8005-agv-control-server#33：装载结果被服务端收下、ack 丢了，车重连后补发。真服务端对补发只回
+    /// <c>DurableAck</c>，不跟 <c>SessionReadiness</c>——新会话还没收到任何快照，就绪判定没有变化。车若在补发之后
+    /// 就去等 readiness，只能等到超时断开、再重连一次走完整握手。补发之后必须在同一条连接上把握手走完。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-00")]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
+    public async Task LostOperationResultAckIsReplayedAndTheSameConnectionCompletesTheHandshake()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            DropBeforeOperationResultAck = true,
+            SendReadinessAfterRecoveryAck = true
+        };
+        string journalPath = NewJournalPath();
+        const string onboardInstanceId = "0198f1a2-7c3d-4e5f-8a9b-c0de5a7e3301";
+        const string demandId = "11111111-1111-4111-8111-111111111111";
+        const string attemptId = "33333333-3333-4333-8333-333333333333";
+        FakeIoModuleClient io = new();
+
+        await using (WireToGateSessionClient firstClient = CreateClient(
+            server,
+            io,
+            journalPath,
+            onboardInstanceId: onboardInstanceId))
+        {
+            await firstClient.ConnectAndRecoverAsync(testToken);
+            await Assert.ThrowsAnyAsync<IOException>(() => firstClient.SendOperationResultAsync(
+                $"operation-result:{attemptId}",
+                attemptId,
+                new WireToGateOperationResultPayload(
+                    demandId,
+                    attemptId,
+                    "LOAD",
+                    "COMPLETED",
+                    [new WireToGateSlotResultPayload(1, "COMPLETED", "OCCUPIED", "LOCKED", "RESET", [])],
+                    DateTimeOffset.UtcNow,
+                    "RESULT_RECORDED",
+                    new string('0', 64)),
+                testToken));
+        }
+
+        server.DropBeforeOperationResultAck = false;
+        await using (WireToGateSessionClient secondClient = CreateClient(
+            server,
+            io,
+            journalPath,
+            onboardInstanceId: onboardInstanceId))
+        {
+            WireToGateSessionSnapshot resumed = await secondClient.ConnectAndRecoverAsync(testToken);
+            Assert.Equal(WireToGateSessionReadiness.Ready, resumed.Readiness);
+        }
+
+        Assert.Equal(
+            ["SessionHello", "OperationResult", "CapabilitySnapshot", "SafetyStateSnapshot", "RecoveryStateReport"],
+            server.Received
+                .Where(item => item.Connection == 2 && item.MessageType != "CONNECTED")
+                .Select(item => item.MessageType)
+                .ToArray());
+        Assert.DoesNotContain(server.Received, item => item.Connection > 2);
+        var results = server.ReceivedEnvelopes.Where(item => item.MessageType == "OperationResult").ToArray();
+        Assert.Equal([1, 2], results.Select(item => item.Connection).ToArray());
+        Assert.Equal(results[0].MessageId, results[1].MessageId);
+        Assert.Empty(server.StaleGenerationRejections);
+        Assert.Equal(0, io.UnlockCount);
+
+        await using SqliteWireToGateJournal journal = new(journalPath);
+        await journal.InitializeAsync(testToken);
+        Assert.Empty(await journal.ReadUnacknowledgedOutgoingAsync(testToken));
+    }
+
     [Fact]
     [Trait("IntegrationSlice", "W2G-IS-03")]
     public async Task DelayedStoppedSafetyRevisionRecoversSessionToReadyWithoutIoSideEffects()
@@ -2802,11 +2870,11 @@ public sealed class WireToGateG2Tests
     /// 静止是关键条件。车一动安全签名自然会变，去重就跨过去了——那次五趟实跑里飞行途中掉进去的
     /// 那趟两分钟就自愈了，停着的那趟没有。
     ///
-    /// 换代用「安全消息的 ack 丢了」制造，而不是现场那样的干净重连：FakeControlServer 跨重连保留
-    /// 快照 revision 记忆（见 SameRevisionDifferentContentFailsClosedWithProtocolProblemReasonCode），
-    /// 而重连必然换 sessionGeneration、整信封哈希必然变，所以干净重连在这个假服务端上一定会以
-    /// SNAPSHOT_REVISION_CONTENT_CONFLICT 收场，建模不了。走重放这条路还多盖住一处：重放被服务端
-    /// 认下之后，pending 对账会把 _lastSafetySignature 重新填上，换代重置必须排在它之后才有效。
+    /// 换代用「安全消息的 ack 丢了」制造，而不是现场那样的干净重连。当初这么选，是因为 FakeControlServer
+    /// 那时跨重连保留快照 revision 记忆、干净重连会以 SNAPSHOT_REVISION_CONTENT_CONFLICT 收场；这一条
+    /// 2026-09-13 已改成与真服务端一样按会话清空（8005-agv-control-server#33）。留着重放这条路，是因为它
+    /// 多盖住一处：重放被服务端认下之后，pending 对账会把 _lastSafetySignature 重新填上，换代重置必须排在
+    /// 它之后才有效。
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "W2G-IS-00")]

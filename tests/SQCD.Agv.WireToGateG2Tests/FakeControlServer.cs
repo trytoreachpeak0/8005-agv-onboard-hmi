@@ -26,7 +26,8 @@ public sealed class FakeControlServer : IAsyncDisposable
     private readonly Task _acceptLoop;
     private readonly List<string> _identityValidations = [];
     private readonly Dictionary<string, (long Revision, string ContentSha256)> _appliedSnapshots = new();
-    private readonly Dictionary<string, string> _acceptedSafetyStateChanges = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (string Payload, long Generation)> _acceptedSafetyStateChanges =
+        new(StringComparer.Ordinal);
     private readonly object _sync = new();
     private long _sessionGeneration;
     private int _recoveryAckCount;
@@ -51,6 +52,21 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool DropBeforeRecoveryAck { get; set; }
 
     public bool DropBeforeSafetyStateChangedAck { get; set; }
+
+    /// <summary>
+    /// Closes the connection after an OperationResult arrives and before its DurableAck goes out: the
+    /// server has taken the result, the vehicle never hears so. That is the window
+    /// real-onboard-durable-ack-lost opens with a proxy (8005-agv-control-server#33).
+    /// </summary>
+    public bool DropBeforeOperationResultAck { get; set; }
+
+    /// <summary>
+    /// Keeps applied snapshot revisions across sessions of the same onboard instance, so a reconnect whose
+    /// snapshot repeats a revision with different content draws SNAPSHOT_REVISION_CONTENT_CONFLICT.
+    /// ControlServer does not do this -- it compares revisions within one session -- so leave it off
+    /// unless the test is about how the vehicle fails closed on that ProtocolProblem.
+    /// </summary>
+    public bool RetainSnapshotRevisionsAcrossSessions { get; set; }
 
     public bool SendReadinessAfterRecoveryAck { get; set; }
 
@@ -156,10 +172,6 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool SendResumeCommandAfterRecoveryAction { get; set; }
 
-    public long InitialAcceptedCapabilityVersion { get; set; }
-
-    public long InitialAcceptedSafetyStateVersion { get; set; }
-
     public IReadOnlyList<string> IdentityValidationResults
     {
         get
@@ -242,12 +254,8 @@ public sealed class FakeControlServer : IAsyncDisposable
             long acceptedSafetyStateVersion;
             lock (_sync)
             {
-                acceptedCapabilityVersion = _acceptedCapabilityVersion != 0
-                    ? _acceptedCapabilityVersion
-                    : InitialAcceptedCapabilityVersion;
-                acceptedSafetyStateVersion = _acceptedSafetyStateVersion != 0
-                    ? _acceptedSafetyStateVersion
-                    : InitialAcceptedSafetyStateVersion;
+                acceptedCapabilityVersion = _acceptedCapabilityVersion;
+                acceptedSafetyStateVersion = _acceptedSafetyStateVersion;
             }
 
             client.NoDelay = true;
@@ -391,6 +399,12 @@ public sealed class FakeControlServer : IAsyncDisposable
                         await WriteEnvelopeAsync(context, CreateHeartbeatAck(context, root)).ConfigureAwait(false);
                         break;
                     case "OperationResult":
+                        if (DropBeforeOperationResultAck)
+                        {
+                            context.Client.Close();
+                            return;
+                        }
+
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
                         if (SendRecoveryRequiredReadinessAfterOperationResultAck)
                         {
@@ -475,18 +489,21 @@ public sealed class FakeControlServer : IAsyncDisposable
         lock (_sync)
         {
             generation = ++_sessionGeneration;
-            // A different runtime instance starts a fresh snapshot revision
-            // baseline, mirroring how real ControlServer accepts new journal
-            // generations.  The same instance reconnecting (same journal)
-            // keeps server-side revision memory so same-revision conflicts
-            // stay enforced.
+            // ControlServer compares snapshot revisions within one session only:
+            // BeginSessionRecoveryAsync clears them for every new generation, so
+            // the handshake after a reconnect is applied afresh. This used to
+            // keep them across reconnects of the same instance, which is why the
+            // vehicle's handshake could skip its snapshots after a replay here and
+            // nowhere else (8005-agv-control-server#33).
             string onboardInstanceId =
                 hello.GetProperty("payload").GetProperty("onboardInstanceId").GetString() ?? string.Empty;
-            if (!string.Equals(onboardInstanceId, _lastAcceptedInstanceId, StringComparison.Ordinal))
+            if (!RetainSnapshotRevisionsAcrossSessions
+                || !string.Equals(onboardInstanceId, _lastAcceptedInstanceId, StringComparison.Ordinal))
             {
                 _appliedSnapshots.Clear();
-                _lastAcceptedInstanceId = onboardInstanceId;
             }
+
+            _lastAcceptedInstanceId = onboardInstanceId;
         }
 
         context.Generation = generation;
@@ -860,13 +877,17 @@ public sealed class FakeControlServer : IAsyncDisposable
         long safetyStateVersion = payload.GetProperty("safetyStateVersion").GetInt64();
         bool departureSafe = payload.GetProperty("safety").GetProperty("departureSafe").GetBoolean();
         bool conflict;
+        bool replayedIntoLaterSession;
         lock (_sync)
         {
-            conflict = _acceptedSafetyStateChanges.TryGetValue(messageId, out string? acceptedPayload)
-                && !string.Equals(acceptedPayload, payloadJson, StringComparison.Ordinal);
-            if (!conflict && acceptedPayload is null)
+            bool accepted = _acceptedSafetyStateChanges.TryGetValue(
+                messageId,
+                out (string Payload, long Generation) first);
+            conflict = accepted && !string.Equals(first.Payload, payloadJson, StringComparison.Ordinal);
+            replayedIntoLaterSession = accepted && !conflict && first.Generation < context.Generation;
+            if (!accepted)
             {
-                _acceptedSafetyStateChanges.Add(messageId, payloadJson);
+                _acceptedSafetyStateChanges.Add(messageId, (payloadJson, context.Generation));
             }
         }
 
@@ -897,7 +918,10 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
 
         await WriteEnvelopeAsync(context, CreateDurableAck(context, message)).ConfigureAwait(false);
-        if (SendReadinessAfterSafetyStateChangedAck)
+        // ControlServer answers a replay into a later session from its first acceptance
+        // (RebindDurableAckAsync): the ack alone, since a generation that has not finished its
+        // handshake has no change of readiness to announce (8005-agv-control-server#33).
+        if (SendReadinessAfterSafetyStateChangedAck && !replayedIntoLaterSession)
         {
             await WriteEnvelopeAsync(context, CreateSessionReadiness(context)).ConfigureAwait(false);
         }

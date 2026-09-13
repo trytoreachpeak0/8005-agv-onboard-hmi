@@ -493,60 +493,79 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             WireToGateProtocolSerializer.RequireExactReleaseIdentity(accepted.AcceptedProtocolReleaseIdentity);
             Publish(true, generation, WireToGateSessionReadiness.Recovering, []);
 
+            // Durable messages the previous session never saw acknowledged are replayed first, so the
+            // report below finds them reconciled. The handshake then runs in full, replay or not: the
+            // server starts every generation with no capability, safety or report, and answers a
+            // replay with its DurableAck alone, so a vehicle that skipped the snapshots waited for a
+            // SessionReadiness that never came, timed out and reconnected once more
+            // (8005-agv-control-server#33).
+            //
+            // A RecoveryStateReport is the one durable message not replayed. It states what was true
+            // at the handshake it was sent in, and this handshake sends a fresh one. Replaying it would
+            // also make the server answer with a SessionReadiness and then replay its pending recovery
+            // commands, all of it landing between the snapshots still to be acknowledged here.
             IReadOnlyList<WireToGateDurableMessage> unacknowledged = await _journal
                 .ReadUnacknowledgedOutgoingAsync(cancellationToken)
                 .ConfigureAwait(false);
-            bool resumingInterruptedRecovery = unacknowledged.Count > 0;
-            if (resumingInterruptedRecovery)
+            List<WireToGateDurableMessage> supersededReports = [];
+            foreach (WireToGateDurableMessage pending in unacknowledged)
             {
-                foreach (WireToGateDurableMessage pending in unacknowledged)
+                if (string.Equals(pending.MessageType, "RecoveryStateReport", StringComparison.Ordinal))
                 {
-                    await ReplayDurableOutgoingAsync(pending, generation, cancellationToken)
-                        .ConfigureAwait(false);
+                    supersededReports.Add(pending);
+                    continue;
                 }
+
+                await ReplayDurableOutgoingAsync(pending, generation, cancellationToken)
+                    .ConfigureAwait(false);
             }
-            else
-            {
-                IoSnapshot io = _ioModule.CurrentSnapshot;
-                ProtocolSlotState[] slotStates = CreateSlotStates(io);
-                await SendSnapshotAndRequireAckAsync(
-                    "CapabilitySnapshot",
-                    "CAPABILITY",
+
+            IoSnapshot io = _ioModule.CurrentSnapshot;
+            ProtocolSlotState[] slotStates = CreateSlotStates(io);
+            await SendSnapshotAndRequireAckAsync(
+                "CapabilitySnapshot",
+                "CAPABILITY",
+                _options.CapabilityVersion,
+                generation,
+                new CapabilitySnapshotPayload(
                     _options.CapabilityVersion,
-                    generation,
-                    new CapabilitySnapshotPayload(
-                        _options.CapabilityVersion,
-                        _clock.Now.ToUniversalTime(),
-                        _options.SlotModelVersion,
-                        _options.ActiveSlotConfigurationVersion,
-                        slotStates,
-                        _options.SupportsBatchUnlock,
-                        1),
-                    cancellationToken).ConfigureAwait(false);
+                    _clock.Now.ToUniversalTime(),
+                    _options.SlotModelVersion,
+                    _options.ActiveSlotConfigurationVersion,
+                    slotStates,
+                    _options.SupportsBatchUnlock,
+                    1),
+                cancellationToken).ConfigureAwait(false);
 
-                WireToGateSafetySummaryPayload safety = CreateSafetySummary(io);
-                long safetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
-                await SendSnapshotAndRequireAckAsync(
-                    "SafetyStateSnapshot",
-                    "SAFETY_STATE",
+            WireToGateSafetySummaryPayload safety = CreateSafetySummary(io);
+            long safetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
+            await SendSnapshotAndRequireAckAsync(
+                "SafetyStateSnapshot",
+                "SAFETY_STATE",
+                safetyStateVersion,
+                generation,
+                new SafetyStateSnapshotPayload(
                     safetyStateVersion,
-                    generation,
-                    new SafetyStateSnapshotPayload(
-                        safetyStateVersion,
-                        _clock.Now.ToUniversalTime(),
-                        safety,
-                        slotStates),
-                    cancellationToken).ConfigureAwait(false);
+                    _clock.Now.ToUniversalTime(),
+                    safety,
+                    slotStates),
+                cancellationToken).ConfigureAwait(false);
 
-                await SendRecoveryStateReportAsync(generation, io, cancellationToken).ConfigureAwait(false);
+            await SendRecoveryStateReportAsync(generation, io, cancellationToken).ConfigureAwait(false);
+            // No DurableAck ever came for these. Acknowledged here means nothing is owed to the server
+            // any more, the way ComputeContentSha256Async already leaves reports out of the pending
+            // business messages.
+            foreach (WireToGateDurableMessage superseded in supersededReports)
+            {
+                await _journal
+                    .MarkOutgoingAcknowledgedAsync(superseded.MessageId, superseded.ContentSha256, cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             WireToGateEnvelope readinessEnvelope = await ReadEnvelopeAsync(generation, cancellationToken)
                 .ConfigureAwait(false);
             ThrowIfProtocolProblem(readinessEnvelope);
-            ApplySessionReadiness(
-                readinessEnvelope,
-                requireExactConfiguredBaseline: !resumingInterruptedRecovery);
+            ApplySessionReadiness(readinessEnvelope, requireExactConfiguredBaseline: true);
             StartReceiveLoop(generation);
             return Current;
         }
