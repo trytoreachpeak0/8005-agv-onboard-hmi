@@ -3,8 +3,8 @@ using SQCD.Agv.Core;
 namespace SQCD.Agv.Wpf.ViewModels;
 
 /// <summary>
-/// 行程带上的一段。协议把一趟限制在最多两段——去取货点的 TO_PICKUP 与去交货闸口的 TO_GATE——
-/// 且 sequence 从 1 起连续，所以这条带子最宽也就两格。
+/// 行程带上的一段：去取货点的 TO_PICKUP、去交货闸口的 TO_GATE，或去充电桩的 TO_CHARGER。
+/// 协议允许一趟最多 10 段，sequence 唯一但不保证连续，带子按 sequence 排。
 /// </summary>
 public sealed record StopLegViewModel(WireToGateMovementLeg Leg)
 {
@@ -16,6 +16,7 @@ public sealed record StopLegViewModel(WireToGateMovementLeg Leg)
     {
         "TO_PICKUP" => "取货",
         "TO_GATE" => "交货",
+        "TO_CHARGER" => "充电",
         _ => Leg.LegType
     };
 

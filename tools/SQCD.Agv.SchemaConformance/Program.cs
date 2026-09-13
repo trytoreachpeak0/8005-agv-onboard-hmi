@@ -12,12 +12,20 @@ using SQCD.Agv.Contracts;
 // (ADR-cross-0058 map: 8005-agv-program#27 decided it, #34 is this side).
 //
 //   SQCD.Agv.SchemaConformance --lines <ndjson> --report <directory> [--known <json>]
+//   SQCD.Agv.SchemaConformance --judge <ndjson> --report <directory>
 //
-// Each input line is {"messageType","origin","site","line"}: origin is product, synthetic-peer
+// --lines: each input line is {"messageType","origin","site","line"}: origin is product, synthetic-peer
 // (FakeControlServer) or test, site names the sending method. Writes schema-coverage.json always and
 // schema-violations.json when anything failed. Exit 0 = every line conforms or every violation is
 // already on file, 1 = violations, 2 = the vendored contract does not match WireToGateRelease or the
 // input is unusable.
+//
+// --judge: each input line is {"id","messageType","line"}; writes judgements.json, one
+// {"id","valid","errors"} per input line in input order, and exits 0 whatever the verdicts. It only says
+// whether the schema accepts a line -- nothing is a violation and nothing is on file. The inbound schema
+// boundary census (SQCD.Agv.WireToGateG2Tests, onboard-hmi#44) asks it about the variants it generates
+// before feeding them to the vehicle: a variant the schema rejects is a generator bug, and must never be
+// read as the vehicle being stricter than the schema.
 //
 // It runs as its own process on purpose. Corvus.Json.Validator 4.6.7 is the version the protocol
 // repository pins for an "isolated .NET conformance process", and it brings System.Text.Json 10.0.4
@@ -28,7 +36,14 @@ const string SchemaBaseUri = "https://schemas.8005-agv.local/wire-to-gate/v1/";
 const int ErrorsPerLine = 5;
 
 Dictionary<string, string> arguments = ParseArguments(args);
-string linesPath = arguments.GetValueOrDefault("lines") ?? throw new ArgumentException("--lines is required.");
+string? judgePath = arguments.GetValueOrDefault("judge");
+if (judgePath is not null && (arguments.ContainsKey("lines") || arguments.ContainsKey("known")))
+{
+    throw new ArgumentException("--judge takes neither --lines nor --known.");
+}
+string linesPath = judgePath is not null
+    ? string.Empty
+    : arguments.GetValueOrDefault("lines") ?? throw new ArgumentException("--lines or --judge is required.");
 string reportDirectory = arguments.GetValueOrDefault("report") ?? throw new ArgumentException("--report is required.");
 Directory.CreateDirectory(reportDirectory);
 KnownViolation[] known = arguments.GetValueOrDefault("known") is { } knownPath
@@ -67,6 +82,18 @@ if (schemaBundleSha256 != WireToGateRelease.SchemaBundleSha256)
 System.Text.Json.Nodes.JsonObject messages = JsonNode.Parse(File.ReadAllText(manifestPath))?["messages"]?.AsObject()
     ?? throw new InvalidDataException("Vendored manifest has no messages table.");
 
+PrepopulatedDocumentResolver resolver = new();
+foreach (string file in Directory.EnumerateFiles(schemaRoot, "*.json", SearchOption.AllDirectories))
+{
+    resolver.AddDocument(SchemaBaseUri + RelativeUnixPath(schemaRoot, file), JsonDocument.Parse(File.ReadAllBytes(file)));
+}
+JsonSchema.Options schemaOptions = new(resolver, false, null, true);
+
+if (judgePath is not null)
+{
+    return Judge(judgePath);
+}
+
 List<ObservedLine> observed = [];
 foreach (string text in File.ReadLines(linesPath))
 {
@@ -80,13 +107,6 @@ foreach (string text in File.ReadLines(linesPath))
 
 // A test calling WireToGateProtocolSerializer.Create itself is exercising the envelope, not sending anything.
 ObservedLine[] checkedLines = observed.Where(line => line.Origin != "test").ToArray();
-
-PrepopulatedDocumentResolver resolver = new();
-foreach (string file in Directory.EnumerateFiles(schemaRoot, "*.json", SearchOption.AllDirectories))
-{
-    resolver.AddDocument(SchemaBaseUri + RelativeUnixPath(schemaRoot, file), JsonDocument.Parse(File.ReadAllBytes(file)));
-}
-JsonSchema.Options schemaOptions = new(resolver, false, null, true);
 
 Dictionary<string, Violation> violations = [];
 Stopwatch compileTime = new();
@@ -205,6 +225,44 @@ foreach (Violation violation in ordered)
     }
 }
 return unknownViolations > 0 ? 1 : 0;
+
+int Judge(string path)
+{
+    Dictionary<string, JsonSchema> compiled = new(StringComparer.Ordinal);
+    List<Judgement> judgements = [];
+    foreach (string text in File.ReadLines(path))
+    {
+        if (text.Length == 0)
+        {
+            continue;
+        }
+        JudgedLine item = JsonSerializer.Deserialize<JudgedLine>(text, JsonSerializerOptions.Web)
+            ?? throw new InvalidDataException("Empty record in " + path);
+        Error[] errors;
+        if (messages[item.MessageType]?["schema"]?.GetValue<string>() is not { } schemaPath)
+        {
+            errors = [new Error("#", "messageType", $"'{item.MessageType}' is not a message of {WireToGateRelease.Tag}.", Quote(item.MessageType))];
+        }
+        else
+        {
+            if (!compiled.TryGetValue(item.MessageType, out JsonSchema schema))
+            {
+                string schemaRelative = schemaPath["schemas/".Length..];
+                schema = JsonSchema.FromText(
+                    File.ReadAllText(Path.Combine(schemaRoot, schemaRelative)), SchemaBaseUri + schemaRelative, schemaOptions);
+                compiled[item.MessageType] = schema;
+            }
+            errors = Validate(schema, item.Line);
+        }
+        judgements.Add(new Judgement(item.Id, errors.Length == 0, errors));
+    }
+    // Read by the census, not by people: no indentation.
+    File.WriteAllText(Path.Combine(reportDirectory, "judgements.json"), JsonSerializer.Serialize(judgements, JsonSerializerOptions.Web) + "\n");
+    Console.WriteLine(string.Create(
+        CultureInfo.InvariantCulture,
+        $"Judged {judgements.Count} lines against {compiled.Count} message schemas ({WireToGateRelease.Tag}): {judgements.Count(judgement => !judgement.Valid)} invalid."));
+    return 0;
+}
 
 void Record(ObservedLine line, Error[] errors)
 {
@@ -357,6 +415,10 @@ static Dictionary<string, string> ParseArguments(string[] values)
 internal sealed record ObservedLine(string MessageType, string Origin, string Site, string Line);
 
 internal sealed record Error(string Pointer, string Keyword, string Message, string Actual);
+
+internal sealed record JudgedLine(string Id, string MessageType, string Line);
+
+internal sealed record Judgement(string Id, bool Valid, Error[] Errors);
 
 internal sealed record Violation(string MessageType, string Origin, string Site, Error[] Errors, string SampleLine)
 {

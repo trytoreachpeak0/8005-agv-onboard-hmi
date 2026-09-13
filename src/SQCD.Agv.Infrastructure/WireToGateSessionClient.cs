@@ -1367,13 +1367,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         string payloadContentSha256,
         CancellationToken cancellationToken)
     {
-        switch (envelope.MessageType)
+        switch (ReadJourneySnapshotPayload(envelope))
         {
-            case "VehicleBusinessStateSnapshot":
+            case VehicleBusinessStateSnapshotPayload payload:
                 {
-                    VehicleBusinessStateSnapshotPayload payload =
-                        WireToGateProtocolSerializer.DeserializePayload<VehicleBusinessStateSnapshotPayload>(envelope);
-                    ValidateVehicleBusinessState(payload);
                     ApplyJourneyRevision(
                         envelope.MessageType,
                         payload.VehicleBusinessStateRevision,
@@ -1398,11 +1395,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         cancellationToken);
                     return (payload.VehicleBusinessStateRevision, "VEHICLE_BUSINESS_STATE");
                 }
-            case "CurrentStopWorklistSnapshot":
+            case CurrentStopWorklistSnapshotPayload payload:
                 {
-                    CurrentStopWorklistSnapshotPayload payload =
-                        WireToGateProtocolSerializer.DeserializePayload<CurrentStopWorklistSnapshotPayload>(envelope);
-                    ValidateCurrentStopWorklist(payload);
                     ApplyJourneyRevision(
                         envelope.MessageType,
                         payload.WorklistRevision,
@@ -1421,11 +1415,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         cancellationToken);
                     return (payload.WorklistRevision, "CURRENT_STOP_WORKLIST");
                 }
-            case "UpcomingStopPlanSnapshot":
+            case UpcomingStopPlanSnapshotPayload payload:
                 {
-                    UpcomingStopPlanSnapshotPayload payload =
-                        WireToGateProtocolSerializer.DeserializePayload<UpcomingStopPlanSnapshotPayload>(envelope);
-                    ValidateUpcomingStopPlan(payload);
                     ApplyJourneyRevision(
                         envelope.MessageType,
                         payload.PlanRevision,
@@ -1441,6 +1432,42 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         },
                         cancellationToken);
                     return (payload.PlanRevision, "UPCOMING_STOP_PLAN");
+                }
+            default:
+                // ReadJourneySnapshotPayload already refused every other message type.
+                throw new System.Diagnostics.UnreachableException();
+        }
+    }
+
+    /// <summary>
+    /// Reads a journey snapshot's payload and runs its context-free checks, before anything of it is
+    /// applied. <see cref="CheckInboundShape"/> calls this same method, so the inbound schema boundary
+    /// census measures exactly what the read loop does.
+    /// </summary>
+    private static object ReadJourneySnapshotPayload(WireToGateEnvelope envelope)
+    {
+        switch (envelope.MessageType)
+        {
+            case "VehicleBusinessStateSnapshot":
+                {
+                    VehicleBusinessStateSnapshotPayload payload =
+                        WireToGateProtocolSerializer.DeserializePayload<VehicleBusinessStateSnapshotPayload>(envelope);
+                    ValidateVehicleBusinessState(payload);
+                    return payload;
+                }
+            case "CurrentStopWorklistSnapshot":
+                {
+                    CurrentStopWorklistSnapshotPayload payload =
+                        WireToGateProtocolSerializer.DeserializePayload<CurrentStopWorklistSnapshotPayload>(envelope);
+                    ValidateCurrentStopWorklist(payload);
+                    return payload;
+                }
+            case "UpcomingStopPlanSnapshot":
+                {
+                    UpcomingStopPlanSnapshotPayload payload =
+                        WireToGateProtocolSerializer.DeserializePayload<UpcomingStopPlanSnapshotPayload>(envelope);
+                    ValidateUpcomingStopPlan(payload);
+                    return payload;
                 }
             default:
                 throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
@@ -1562,6 +1589,57 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         "UpcomingStopPlanSnapshot" => true,
         _ => false
     };
+
+    /// <summary>
+    /// The inbound message types <see cref="CheckInboundShape"/> reaches. The other inbound types still
+    /// check their shape in the same statements that match a pending request or session state, and get an
+    /// entry once that is pulled apart (8005-agv-onboard-hmi#45).
+    /// </summary>
+    internal static IReadOnlySet<string> InboundShapeCheckedMessageTypes { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "VehicleBusinessStateSnapshot",
+        "CurrentStopWorklistSnapshot",
+        "UpcomingStopPlanSnapshot",
+        "SublotEntryRequested",
+        "SublotRejected",
+        "SlotOperationCommand",
+        "SlotOperationResumeCommand",
+        "PreDepartureSafetyCheck",
+        "ExceptionRecoverySessionSnapshot",
+        "LoadCompensationCommand",
+        "LoadCorrectionCommand",
+        "FaultCargoRecoveryCommand"
+    };
+
+    /// <summary>
+    /// Runs the checks the read loop applies to an inbound message before accepting it that need neither
+    /// local state nor a pending request, by calling the methods the read loop itself calls: a journey
+    /// snapshot's <see cref="ReadJourneySnapshotPayload"/>, a server command's
+    /// <see cref="TryCreateServerCommand"/>. It adds no check of its own; the one it leaves out is a journey
+    /// snapshot's <c>correlationId</c> check in <see cref="ApplyJourneySnapshotAsync"/>, which is about the
+    /// envelope, not the payload. Throwing is refusing. Only the inbound schema boundary census calls it
+    /// (SQCD.Agv.WireToGateG2Tests, 8005-agv-onboard-hmi#44).
+    /// </summary>
+    internal static void CheckInboundShape(WireToGateEnvelope envelope)
+    {
+        if (!InboundShapeCheckedMessageTypes.Contains(envelope.MessageType))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(envelope),
+                envelope.MessageType,
+                "No context-free shape check is exposed for this inbound message type.");
+        }
+
+        if (IsJourneySnapshot(envelope.MessageType))
+        {
+            _ = ReadJourneySnapshotPayload(envelope);
+        }
+        else if (!TryCreateServerCommand(envelope, out _))
+        {
+            // The read loop refuses a message no command comes out of; so must this.
+            throw new InvalidOperationException("TryCreateServerCommand created no command for " + envelope.MessageType + ".");
+        }
+    }
 
     private static bool TryCreateServerCommand(
         WireToGateEnvelope envelope,
@@ -2364,12 +2442,17 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             // 8 分半后车载端进程直接消失，日志末尾只有又一条重连警告。
             || payload.Legs.Count > 10
             || payload.Legs.Any(leg => leg is null)
+            // sequence 只要求唯一。范围 1–10 与按 sequence 排序是 schema 的事（minimum/maximum、x-sortedBy），
+            // 这里原来另要求「从 1 连续编号」，没有契约依据：MainViewModel 只按 Sequence 排序，不依赖连续。
+            // 入站 schema 边界普查（onboard-hmi#44）第一次跑就红在这一条和下面的 legType 上。
             || payload.Legs.Select(leg => leg.Sequence).Distinct().Count() != payload.Legs.Count
-            || payload.Legs.OrderBy(leg => leg.Sequence).Select((leg, index) => leg.Sequence == index + 1).Any(valid => !valid)
             || payload.Legs.Any(leg =>
                 leg is null
                 || !IsUuid(leg.MovementLegId)
-                || leg.LegType is not ("TO_PICKUP" or "TO_GATE")
+                // legType 跟 schema 的枚举走。服务端今天不发 TO_CHARGER——自动充电另建 AutoChargingRuns，
+                // 不进计划快照——但把充电腿画进计划快照是顺理成章的下一步，那一步会以 #37 的形状锁死会话：
+                // 车辆拒收并断开，服务端每次恢复都重发同一份快照。
+                || leg.LegType is not ("TO_PICKUP" or "TO_GATE" or "TO_CHARGER")
                 || string.IsNullOrWhiteSpace(leg.StationId)
                 || string.IsNullOrWhiteSpace(leg.MapId)
                 || leg.State is not ("PLANNED" or "ACTIVE" or "ARRIVED" or "COMPLETED" or "BLOCKED")))

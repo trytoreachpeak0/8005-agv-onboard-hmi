@@ -57,29 +57,15 @@ public sealed class OutboundSchemaConformance : IAsyncDisposable
         await File.WriteAllLinesAsync(linesPath, _lines.Select(line => JsonSerializer.Serialize(line, RecordOptions)));
         try
         {
-            ProcessStartInfo start = new(ValidatorPath())
-            {
-                ArgumentList =
-                {
-                    "--lines", linesPath,
-                    "--report", reportDirectory,
-                    "--known", Path.Combine(RepositoryRoot(), "tests", "SQCD.Agv.WireToGateG2Tests", "schema-known-violations.json")
-                },
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false
-            };
-            using Process process = Process.Start(start)
-                ?? throw new InvalidOperationException("Could not start " + start.FileName);
-            Task<string> output = process.StandardOutput.ReadToEndAsync();
-            Task<string> error = process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
-            string report = await output + await error;
+            (int exitCode, string report) = await RunValidatorAsync(
+                "--lines", linesPath,
+                "--report", reportDirectory,
+                "--known", Path.Combine(RepositoryRoot(), "tests", "SQCD.Agv.WireToGateG2Tests", "schema-known-violations.json"));
             await File.WriteAllTextAsync(Path.Combine(reportDirectory, "schema-conformance.txt"), report);
-            if (process.ExitCode != 0)
+            if (exitCode != 0)
             {
                 throw new InvalidOperationException(
-                    $"Outbound schema conformance failed (exit {process.ExitCode}); report in {reportDirectory}.{Environment.NewLine}{report}");
+                    $"Outbound schema conformance failed (exit {exitCode}); report in {reportDirectory}.{Environment.NewLine}{report}");
             }
         }
         finally
@@ -170,7 +156,7 @@ public sealed class OutboundSchemaConformance : IAsyncDisposable
         return type;
     }
 
-    private static string RepositoryRoot()
+    internal static string RepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "SQCD_8005AGV.sln")))
@@ -181,7 +167,31 @@ public sealed class OutboundSchemaConformance : IAsyncDisposable
             ?? throw new DirectoryNotFoundException("No SQCD_8005AGV.sln above " + AppContext.BaseDirectory);
     }
 
-    private static string ValidatorPath()
+    /// <summary>
+    /// Runs tools/SQCD.Agv.SchemaConformance to completion. Returns its exit code, and its standard output
+    /// followed by its standard error.
+    /// </summary>
+    internal static async Task<(int ExitCode, string Output)> RunValidatorAsync(params string[] arguments)
+    {
+        ProcessStartInfo start = new(ValidatorPath())
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false
+        };
+        foreach (string argument in arguments)
+        {
+            start.ArgumentList.Add(argument);
+        }
+        using Process process = Process.Start(start)
+            ?? throw new InvalidOperationException("Could not start " + start.FileName);
+        Task<string> output = process.StandardOutput.ReadToEndAsync();
+        Task<string> error = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        return (process.ExitCode, await output + await error);
+    }
+
+    internal static string ValidatorPath()
     {
         string configuration = typeof(OutboundSchemaConformance).Assembly
             .GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration ?? "Release";
