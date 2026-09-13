@@ -1306,9 +1306,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 "COMPLETED",
                 StringComparison.Ordinal);
             // ADR-cross-0058 决策 5：确定失败不进恢复。现场没有一件事是不确定的——每个仓位
-            // 都报得出已知的占用状态、已闭的门与已复位的开锁输出——所以它不需要管理员，
-            // 需要的是操作员取消本次装货。把它和 UNKNOWN 混在一起显示，操作员会去找一个
-            // 根本不必来的人。
+            // 都报得出已知的占用状态、已闭的门与已复位的开锁输出——所以它不需要管理员。
+            // 它也不需要操作员取消：服务端收到这份结果就自己把需求判 Cancelled、结束本站
+            // （8005-agv-program#39）；出厂配置下这一刻也根本没有取消按钮——恢复入口关着，
+            // 而这次 attempt 没有结算（8005-agv-onboard-hmi#39）。把它和 UNKNOWN 混在一起
+            // 显示，操作员会去找一个根本不必来的人。
             bool determinateFailure = string.Equals(
                 execution.OverallOutcome,
                 "FAILED",
@@ -1324,7 +1326,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 completedSuccessfully
                     ? $"{FormatSlots(command.Slots)}操作完成，正在上报结果。"
                     : determinateFailure
-                        ? $"{FormatSlots(command.Slots)}本站期限已过，货物未交接，请在界面上取消本次装货。"
+                        ? $"{FormatSlots(command.Slots)}本站期限已过，货物未交接，服务端会结束本站，不需要操作。"
                         : $"{FormatSlots(command.Slots)}操作未完成，需要恢复处理。",
                 "final");
             try
@@ -1351,7 +1353,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     completedSuccessfully
                         ? $"{FormatSlots(command.Slots)}操作结果已被服务端确认。"
                         : determinateFailure
-                            ? $"{FormatSlots(command.Slots)}本站期限已过、货物未交接，服务端已收到结果。不需要管理员恢复，请在界面上取消本次装货。"
+                            ? $"{FormatSlots(command.Slots)}本站期限已过、货物未交接，服务端已收到结果并会结束本站。不需要管理员恢复，也不需要取消装货。"
                             : $"{FormatSlots(command.Slots)}操作失败或状态未知，服务端已收到结果，等待管理员恢复。",
                     new WireToGateHmiOperationSnapshot(
                         command.SlotOperationAttemptId,
@@ -1361,7 +1363,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         completedSuccessfully
                             ? "操作完成。"
                             : determinateFailure
-                                ? "本站期限已过，货物未交接，请取消本次装货。"
+                                ? "本站期限已过，货物未交接，等待服务端结束本站。"
                                 : "操作需要管理员恢复。",
                         execution.ObservedAt));
             }
