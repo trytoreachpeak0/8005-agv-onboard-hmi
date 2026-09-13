@@ -1,0 +1,40 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="c553c371-a4de-446d-b051-29f5648eaedb" name="szy@LAB-WIN-01 2026-09-13 23:18:50" runUser="LAB-WIN-01\szy" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-09-13T23:18:50.5562753+08:00" queuing="2026-09-13T23:18:50.5562759+08:00" start="2026-09-13T23:18:49.0888876+08:00" finish="2026-09-13T23:18:50.5618641+08:00" />
+  <TestSettings name="default" id="23c0708d-6928-4b5e-97f5-698143f0c4c4">
+    <Deployment runDeploymentRoot="szy_LAB-WIN-01_2026-09-13_23_18_50" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="909edca7-5580-4cb1-9182-75d88945bc48" testId="0e450af2-ec94-2e9d-1b94-95d1992115f2" testName="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.SlotConfigurationActivationVerifiesTheFingerprintAndReportsTheOutcome" computerName="LAB-WIN-01" duration="00:00:00.2337920" startTime="2026-09-13T23:18:50.1416897+08:00" endTime="2026-09-13T23:18:50.3831509+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="909edca7-5580-4cb1-9182-75d88945bc48" />
+    <UnitTestResult executionId="520ce32f-dc51-47c1-b7c8-0fe3a431d438" testId="a4053509-0c56-7fe0-9750-98604102ca96" testName="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.SlotConfigurationActivationIsRejectedWithTheStableCodeWhenTheFingerprintDisagrees" computerName="LAB-WIN-01" duration="00:00:00.0419877" startTime="2026-09-13T23:18:50.3907188+08:00" endTime="2026-09-13T23:18:50.4328304+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="520ce32f-dc51-47c1-b7c8-0fe3a431d438" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.SlotConfigurationActivationVerifiesTheFingerprintAndReportsTheOutcome" storage="c:\users\szy\8005-b3\hmi-b3\tests\sqcd.agv.wiretogateg2tests\bin\release\net8.0-windows\win-x64\sqcd.agv.wiretogateg2tests.dll" id="0e450af2-ec94-2e9d-1b94-95d1992115f2">
+      <Execution id="909edca7-5580-4cb1-9182-75d88945bc48" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests" name="SlotConfigurationActivationVerifiesTheFingerprintAndReportsTheOutcome" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.SlotConfigurationActivationIsRejectedWithTheStableCodeWhenTheFingerprintDisagrees" storage="c:\users\szy\8005-b3\hmi-b3\tests\sqcd.agv.wiretogateg2tests\bin\release\net8.0-windows\win-x64\sqcd.agv.wiretogateg2tests.dll" id="a4053509-0c56-7fe0-9750-98604102ca96">
+      <Execution id="520ce32f-dc51-47c1-b7c8-0fe3a431d438" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests" name="SlotConfigurationActivationIsRejectedWithTheStableCodeWhenTheFingerprintDisagrees" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="0e450af2-ec94-2e9d-1b94-95d1992115f2" executionId="909edca7-5580-4cb1-9182-75d88945bc48" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a4053509-0c56-7fe0-9750-98604102ca96" executionId="520ce32f-dc51-47c1-b7c8-0fe3a431d438" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="2" executed="2" passed="2" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 8.0.31)&#xD;
+[xUnit.net 00:00:00.20]   Discovering: SQCD.Agv.WireToGateG2Tests&#xD;
+[xUnit.net 00:00:00.45]   Discovered:  SQCD.Agv.WireToGateG2Tests&#xD;
+[xUnit.net 00:00:00.65]   Starting:    SQCD.Agv.WireToGateG2Tests&#xD;
+[xUnit.net 00:00:01.00]   Finished:    SQCD.Agv.WireToGateG2Tests (ID = 'd6d9776723557d28074b4394b5df9d34f4671b5758f9b7bf22398f0084de1550')&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>
