@@ -332,6 +332,28 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
         }
     }
 
+    public async Task<WireToGateDurableMessage?> ReadOutgoingByMessageIdAsync(
+        string messageId,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        RequireUuid(messageId, nameof(messageId));
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using SqliteCommand command = connection.CreateCommand();
+            command.CommandText = "SELECT * FROM WireToGateDurableOutbox WHERE MessageId = $messageId";
+            command.Parameters.AddWithValue("$messageId", messageId);
+            await using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? ReadMessage(reader) : null;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task MarkOutgoingAcknowledgedAsync(
         string messageId,
         string acceptedContentSha256,

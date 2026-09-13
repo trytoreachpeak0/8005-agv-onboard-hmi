@@ -923,6 +923,135 @@ public sealed class WireToGateG2Tests
     }
 
     /// <summary>
+    /// CV-OPERATION-RESULT-UNKNOWN-RECONCILE, the vehicle's half: a load that ends UNKNOWN is reported
+    /// as UNKNOWN and acknowledged; after a restart the RecoveryStateReport names that result as
+    /// pending, and once the report is acknowledged the vehicle replays the same result under the new
+    /// session generation -- without touching a door again.
+    /// </summary>
+    /// <remarks>
+    /// Before 2026-09-13 pendingResults was always empty, because nothing ever put a result in it, and
+    /// an acknowledged result was never sent again: the control server had no way to reconcile from
+    /// the vehicle's journal, which is what the vector's replay is for.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AnUnknownResultIsReportedAsPendingAfterARestartAndReplayedOnceTheReportIsAcknowledged()
+    {
+        const string attemptId = "44444444-4444-4444-4444-444444444444";
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            SendSlotOperationCommandAfterRecovery = true
+        };
+        FakeIoModuleClient io = new() { LockerWaitTimesOut = true };
+        NullLogger logger = new();
+        string journalPath = NewJournalPath();
+
+        WireToGateSessionService NewSession() => new(
+            CreateSessionOptions(server),
+            io,
+            new SqliteWireToGateJournal(journalPath),
+            logger,
+            new SystemClock(),
+            new DelegateVehicleSafetySignalProvider(() => true),
+            new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+            new SlotConfigurationActivationCoordinator(
+                new DocumentActiveSlotConfigurationStore(
+                    new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                    G2SlotConfigurationFixtures.Approved()),
+                TimeProvider.System),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(500));
+        WireToGateBusinessService NewBusiness(WireToGateSessionService session) => new(
+            session,
+            io,
+            logger,
+            new SystemClock(),
+            () => true,
+            new WireToGateSlotOperationExecutorOptions(
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(2),
+                TimeSpan.FromMilliseconds(10),
+                TimeSpan.FromSeconds(30)),
+            "W2G_G2_UNKNOWN_RECONCILE_OPERATOR");
+
+        await using (WireToGateSessionService session = NewSession())
+        await using (WireToGateBusinessService business = NewBusiness(session))
+        {
+            // The same kind is also raised as soon as the journal holds the unsettled operation, long
+            // before its result is sent; only the one after the server has the result means the
+            // DurableAck came back.
+            bool acknowledged = false;
+            business.OperatorEventPublished += (_, args) =>
+            {
+                if (args.Value.Kind == "OPERATION_RECOVERY_REQUIRED"
+                    && server.ReceivedEnvelopes.Any(item => item.MessageType == "OperationResult"))
+                {
+                    acknowledged = true;
+                }
+            };
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            await WaitUntilAsync(() => acknowledged, testToken);
+        }
+
+        int unlocksBeforeRestart = io.UnlockCount;
+        server.SendSlotOperationCommandAfterRecovery = false;
+        server.SimulateOnboardProcessRestart();
+        await using (WireToGateSessionService session = NewSession())
+        await using (WireToGateBusinessService business = NewBusiness(session))
+        {
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            await WaitUntilAsync(
+                () => server.ReceivedEnvelopes.Count(item => item.MessageType == "OperationResult") == 2,
+                testToken);
+            Assert.True(session.Current.Connected);
+        }
+
+        (int Connection, string MessageType, string MessageId, string WireLine)[] results = server.ReceivedEnvelopes
+            .Where(item => item.MessageType == "OperationResult")
+            .ToArray();
+        Assert.NotEqual(results[0].Connection, results[1].Connection);
+        Assert.Equal(results[0].MessageId, results[1].MessageId);
+        string[] afterRestart = server.ReceivedEnvelopes
+            .Where(item => item.Connection == results[1].Connection)
+            .Select(item => item.MessageType)
+            .ToArray();
+        Assert.True(
+            Array.IndexOf(afterRestart, "RecoveryStateReport") < Array.IndexOf(afterRestart, "OperationResult"),
+            string.Join(", ", afterRestart));
+
+        WireToGateEnvelope first = WireToGateProtocolSerializer.DeserializeAndValidate(results[0].WireLine, "AGV-8005-01");
+        WireToGateEnvelope replayed = WireToGateProtocolSerializer.DeserializeAndValidate(results[1].WireLine, "AGV-8005-01");
+        Assert.Equal("UNKNOWN", first.Payload.GetProperty("overallOutcome").GetString());
+        Assert.NotEqual(first.SessionGeneration, replayed.SessionGeneration);
+        Assert.True(System.Text.Json.Nodes.JsonNode.DeepEquals(
+            System.Text.Json.Nodes.JsonNode.Parse(first.Payload.GetRawText()),
+            System.Text.Json.Nodes.JsonNode.Parse(replayed.Payload.GetRawText())));
+
+        WireToGateEnvelope report = server.ReceivedEnvelopes
+            .Where(item => item.Connection == results[1].Connection && item.MessageType == "RecoveryStateReport")
+            .Select(item => WireToGateProtocolSerializer.DeserializeAndValidate(item.WireLine, "AGV-8005-01"))
+            .Single();
+        Assert.Equal(attemptId, report.Payload.GetProperty("unsettledSlotOperationAttemptId").GetString());
+        JsonElement pending = Assert.Single(report.Payload.GetProperty("pendingResults").EnumerateArray());
+        Assert.Equal("OperationResult", pending.GetProperty("messageType").GetString());
+        Assert.Equal(results[0].MessageId, pending.GetProperty("messageId").GetString());
+        Assert.Equal(attemptId, pending.GetProperty("businessId").GetString());
+        Assert.Equal(
+            first.Payload.GetProperty("resultContentSha256").GetString(),
+            pending.GetProperty("contentSha256").GetString());
+
+        Assert.Equal(unlocksBeforeRestart, io.UnlockCount);
+    }
+
+    /// <summary>
     /// A drop-off journey is projected rather than refused.
     /// </summary>
     /// <remarks>

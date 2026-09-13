@@ -1023,6 +1023,18 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 $"recovery:{command.RecoveryActionId}:final");
             try
             {
+                if (!completedSuccessfully && execution.JournalCheckpoint != "NONE")
+                {
+                    await _executor.RecordPendingResultAsync(
+                        command.SlotOperationAttemptId,
+                        new WireToGatePendingResult(
+                            "OperationResult",
+                            resultMessageId,
+                            command.SlotOperationAttemptId,
+                            payload.ResultContentSha256),
+                        cancellationToken).ConfigureAwait(false);
+                }
+
                 await _session.SendRecoveryOperationResultAsync(
                     recoveryResultKey,
                     resultMessageId,
@@ -1162,6 +1174,21 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 "final");
             try
             {
+                if (!completedSuccessfully
+                    && !string.Equals(execution.JournalCheckpoint, "NONE", StringComparison.Ordinal))
+                {
+                    // Kept pending until the operation settles: every later session reports it and
+                    // replays it (CV-OPERATION-RESULT-UNKNOWN-RECONCILE).
+                    await _executor.RecordPendingResultAsync(
+                        command.SlotOperationAttemptId,
+                        new WireToGatePendingResult(
+                            "OperationResult",
+                            command.SlotOperationAttemptId,
+                            command.SlotOperationAttemptId,
+                            payload.ResultContentSha256),
+                        cancellationToken).ConfigureAwait(false);
+                }
+
                 await _session.SendOperationResultAsync(
                     operationDeduplicationKey,
                     command.SlotOperationAttemptId,

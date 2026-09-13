@@ -177,6 +177,21 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public long InitialAcceptedSafetyStateVersion { get; set; }
 
+    /// <summary>
+    /// The onboard process restarts on the same journal. Its session client starts again from the
+    /// configured capability and safety baselines, and the real control server answers each new
+    /// session with the versions that session's snapshots reported; only a reconnect of the same
+    /// running client carries the versions accepted before.
+    /// </summary>
+    public void SimulateOnboardProcessRestart()
+    {
+        lock (_sync)
+        {
+            _acceptedCapabilityVersion = 0;
+            _acceptedSafetyStateVersion = 0;
+        }
+    }
+
     public IReadOnlyList<string> IdentityValidationResults
     {
         get

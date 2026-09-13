@@ -111,6 +111,47 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Puts a result that leaves its operation unsettled on the journal's pending list, so the next
+    /// session's RecoveryStateReport names it and the session client sends it again once that report
+    /// is acknowledged (CV-OPERATION-RESULT-UNKNOWN-RECONCILE, REPLAY_RESULT_ON_RECONNECT).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Recorded before the result is sent, alongside the durable send itself, so no restart can leave
+    /// a sent result the journal does not know is pending.
+    /// </para>
+    /// <para>
+    /// A result is pending exactly while its operation is the journal's unsettled one. Whatever settles
+    /// the operation -- a completed resume, a cancellation or compensation proof -- clears or replaces
+    /// that attempt, and the report only names entries for the attempt still unsettled; this write
+    /// also drops entries left behind by attempts settled that way.
+    /// </para>
+    /// </remarks>
+    public async Task RecordPendingResultAsync(
+        string slotOperationAttemptId,
+        WireToGatePendingResult pending,
+        CancellationToken cancellationToken = default)
+    {
+        RequireUuid(slotOperationAttemptId, nameof(slotOperationAttemptId));
+        ArgumentNullException.ThrowIfNull(pending);
+        WireToGateRecoveryState state = await _journal.ReadRecoveryStateAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (!string.Equals(state.UnsettledSlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal)
+            || !string.Equals(pending.BusinessId, slotOperationAttemptId, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("SLOT_OPERATION_CONFLICT");
+        }
+
+        WireToGatePendingResult[] kept = state.PendingResults
+            .Where(item => string.Equals(item.BusinessId, slotOperationAttemptId, StringComparison.Ordinal)
+                && !string.Equals(item.MessageId, pending.MessageId, StringComparison.Ordinal))
+            .Append(pending)
+            .ToArray();
+        await _journal.WriteRecoveryStateAsync(state with { PendingResults = kept }, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
     public async Task MarkResultRecordedAsync(
         string slotOperationAttemptId,
         CancellationToken cancellationToken = default)
@@ -129,6 +170,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 UnsettledSlotOperationAttemptId = null,
                 ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ResultRecorded,
                 ActiveUnlockSlots = [],
+                PendingResults = [],
                 OperationContext = null,
                 CompletedSlots = [],
                 SlotResults = [],

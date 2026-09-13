@@ -26,6 +26,13 @@ public sealed class FakeIoModuleClient : IIoModuleClient
     /// </summary>
     public bool SimulateOperatorLoad { get; init; }
 
+    /// <summary>
+    /// The locker never reaches the state the executor waits for, the way a door closed without a
+    /// basket times out on the real rig: the operation ends UNKNOWN instead of throwing past the
+    /// executor.
+    /// </summary>
+    public bool LockerWaitTimesOut { get; init; }
+
     public bool IsConnected => true;
 
     public IoSnapshot CurrentSnapshot { get; private set; }
@@ -74,6 +81,11 @@ public sealed class FakeIoModuleClient : IIoModuleClient
         TimeSpan stableWindow,
         CancellationToken cancellationToken)
     {
+        if (LockerWaitTimesOut)
+        {
+            throw new TimeoutException("G2 fake: the locker never reached the expected state.");
+        }
+
         if (!SimulateOperatorLoad)
         {
             throw new NotSupportedException("G2会话测试不执行仓位操作。");
