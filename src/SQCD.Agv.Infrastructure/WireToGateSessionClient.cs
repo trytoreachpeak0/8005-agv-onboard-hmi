@@ -2440,12 +2440,17 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             // 8 分半后车载端进程直接消失，日志末尾只有又一条重连警告。
             || payload.Legs.Count > 10
             || payload.Legs.Any(leg => leg is null)
+            // sequence 只要求唯一。范围 1–10 与按 sequence 排序是 schema 的事（minimum/maximum、x-sortedBy），
+            // 这里原来另要求「从 1 连续编号」，没有契约依据：MainViewModel 只按 Sequence 排序，不依赖连续。
+            // 入站 schema 边界普查（onboard-hmi#44）第一次跑就红在这一条和下面的 legType 上。
             || payload.Legs.Select(leg => leg.Sequence).Distinct().Count() != payload.Legs.Count
-            || payload.Legs.OrderBy(leg => leg.Sequence).Select((leg, index) => leg.Sequence == index + 1).Any(valid => !valid)
             || payload.Legs.Any(leg =>
                 leg is null
                 || !IsUuid(leg.MovementLegId)
-                || leg.LegType is not ("TO_PICKUP" or "TO_GATE")
+                // legType 跟 schema 的枚举走。服务端今天不发 TO_CHARGER——自动充电另建 AutoChargingRuns，
+                // 不进计划快照——但把充电腿画进计划快照是顺理成章的下一步，那一步会以 #37 的形状锁死会话：
+                // 车辆拒收并断开，服务端每次恢复都重发同一份快照。
+                || leg.LegType is not ("TO_PICKUP" or "TO_GATE" or "TO_CHARGER")
                 || string.IsNullOrWhiteSpace(leg.StationId)
                 || string.IsNullOrWhiteSpace(leg.MapId)
                 || leg.State is not ("PLANNED" or "ACTIVE" or "ARRIVED" or "COMPLETED" or "BLOCKED")))

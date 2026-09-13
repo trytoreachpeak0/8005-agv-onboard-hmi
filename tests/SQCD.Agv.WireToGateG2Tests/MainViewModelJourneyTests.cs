@@ -79,7 +79,7 @@ public sealed class MainViewModelJourneyTests
     [Trait("IntegrationSlice", "W2G-IS-01")]
     public void UpcomingPlanRendersEveryLegInSequenceOrder()
     {
-        // 协议保证 sequence 从 1 起连续，但不保证数组本身有序——这里故意倒着发。
+        // 带子按 sequence 排，不按数组顺序——这里故意倒着发。
         MainViewModel viewModel = CreateViewModel();
 
         viewModel.UpdateWireToGateJourney(JourneyWithLegs(
@@ -91,6 +91,22 @@ public sealed class MainViewModelJourneyTests
         Assert.Equal(["取货", "交货"], viewModel.UpcomingLegs.Select(leg => leg.LegTypeText));
         Assert.Equal(["ST-01", "ST-09"], viewModel.UpcomingLegs.Select(leg => leg.StationId));
         Assert.Equal(["行进中", "待走"], viewModel.UpcomingLegs.Select(leg => leg.StateText));
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-01")]
+    public void ChargingLegAndNonContiguousSequenceAreShownLikeAnyOtherLeg()
+    {
+        // schema 允许 TO_CHARGER，也只要求 sequence 唯一、不要求连续（onboard-hmi#44 的普查照此放宽了入站校验）。
+        // 充电腿要有中文文案，不能把枚举原样摆给操作员。
+        MainViewModel viewModel = CreateViewModel();
+
+        viewModel.UpdateWireToGateJourney(JourneyWithLegs(
+            Leg(7, "TO_CHARGER", "CHARGER-01", "PLANNED"),
+            Leg(3, "TO_PICKUP", "ST-01", "ACTIVE")));
+
+        Assert.Equal([3, 7], viewModel.UpcomingLegs.Select(leg => leg.Sequence));
+        Assert.Equal(["取货", "充电"], viewModel.UpcomingLegs.Select(leg => leg.LegTypeText));
     }
 
     [Fact]
