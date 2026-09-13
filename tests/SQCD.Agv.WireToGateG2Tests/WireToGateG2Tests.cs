@@ -2311,6 +2311,11 @@ public sealed class WireToGateG2Tests
         await WaitUntilAsync(
             () => client.Current.Readiness == WireToGateSessionReadiness.Disconnected,
             testToken);
+        // 车辆写出 ProtocolProblem 之后才发布 Disconnected，但替身在它自己的读循环里记录收到的行，
+        // 两边没有先后保证：看到 Disconnected 时替身未必已经读到那一行。
+        await WaitUntilAsync(
+            () => server.Received.Any(item => item.MessageType == "ProtocolProblem"),
+            testToken);
 
         Assert.Equal(WireToGateJourneySnapshot.Empty, client.CurrentJourney);
         Assert.Contains(server.Received, item => item.MessageType == "ProtocolProblem");
