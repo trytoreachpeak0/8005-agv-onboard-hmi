@@ -1,0 +1,86 @@
+{
+  "schemaVersion": "1.1.0",
+  "evidenceType": "ONBOARD_HMI_LOCAL_G2",
+  "status": "PASS",
+  "generatedAtUtc": "2026-09-13T14:39:12.8962593Z",
+  "runId": "20260913T143912896Z",
+  "integrationSliceId": "FP-IS-06",
+  "selectedTestCount": 8,
+  "recordedTestCount": 8,
+  "integrationSliceIndexSha256": "71e0a63d49d1973653e1f70addc19c334faff5e53e8597733c1423a7307bd82f",
+  "hmi": {
+    "commit": "8a2fed9a4eeb8f74524174e3626114b2ab7d0007",
+    "branch": "w2g/b3-on-v2",
+    "workingTreeStatus": [],
+    "protocolIdentity": {
+      "ProtocolVersion": 2,
+      "ProfileId": "AGV_FULL_PRODUCT",
+      "ReleaseVersion": "1.0.0",
+      "Tag": "protocol-v1.0.0",
+      "Commit": "9f22db825d52ad86c1d803bd0c1925dcc58d6793",
+      "ManifestSha256": "a0e1deedb50419057dbe6aa7a7e8df983fb9ea901bbc452f97020ebf4743ef23",
+      "SchemaBundleSha256": "885191e7a9e5da98a44f17f131756f9eb2033e7e11f13f4df965d4e35ac55685",
+      "VectorsSha256": "51c5aaca2ca02326d16e02af7e76c9954d84414a9772c5b208a92969a417d1df",
+      "ApprovalStatus": "APPROVED_RELEASE"
+    }
+  },
+  "protocol": {
+    "repository": "8005-agv-protocol",
+    "headCommit": "9f22db825d52ad86c1d803bd0c1925dcc58d6793",
+    "tag": "protocol-v1.0.0",
+    "tagExists": true,
+    "tagCommit": "9f22db825d52ad86c1d803bd0c1925dcc58d6793",
+    "candidateCommit": "9f22db825d52ad86c1d803bd0c1925dcc58d6793",
+    "candidateIsAncestorOfHead": true,
+    "approvalStatus": "APPROVED_RELEASE",
+    "g1Status": "PASS",
+    "g1CandidateManifestSha256": "a0e1deedb50419057dbe6aa7a7e8df983fb9ea901bbc452f97020ebf4743ef23",
+    "releaseFile": "manifest/release.json",
+    "schemaBundleSha256": "885191e7a9e5da98a44f17f131756f9eb2033e7e11f13f4df965d4e35ac55685",
+    "vectorsSha256": "51c5aaca2ca02326d16e02af7e76c9954d84414a9772c5b208a92969a417d1df"
+  },
+  "commands": {
+    "build": {
+      "exitCode": 0,
+      "log": "logs/dotnet-build-release.log"
+    },
+    "test": {
+      "exitCode": 0,
+      "log": "logs/dotnet-test-release.log",
+      "resultsDirectory": "test-results"
+    },
+    "format": {
+      "exitCode": 0,
+      "log": "logs/dotnet-format-verify.log"
+    }
+  },
+  "slices": [
+    {
+      "integrationSliceId": "FP-IS-06",
+      "vectorIds": [
+        "CV-RELIABLE-RETRY-SAME-CONTENT",
+        "CV-RELIABLE-RETRY-DIFFERENT-CONTENT",
+        "CV-REQUEST-FIRST-RESULT-REPLAY"
+      ],
+      "onboardHmiG2": "PASS",
+      "controlServerG2": "PENDING_EXTERNAL",
+      "g3": "PENDING_JOINT",
+      "forbidUnclosedFailOrInconclusive": true
+    }
+  ],
+  "failures": [],
+  "artifacts": {
+    "transcript": "transcript.ndjson",
+    "journal": "journal.ndjson",
+    "logs": "logs",
+    "testResults": "test-results",
+    "gateResult": "gate-result.json"
+  },
+  "knownLimitations": [
+    "本证据是 OnboardHmi 本机 G2；ControlServer G2 和联合 G3 仍需外部/现场门禁。",
+    "G1 使用临时盘符运行，仅规避 Windows 工作区路径含 # 时的 Node URL 解码问题，不改变协议仓库内容。",
+    "真实车辆停稳信号、Modbus/锁/门/光幕和现场明文网络未在本机证据中宣称完成。",
+    "本证据绑定的是已发布的 protocol-v1.0.0（commit 9f22db825d52ad86c1d803bd0c1925dcc58d6793）；发布批准记在外置 attestation 里，本证据不复核它。",
+    "本次只证 FP-IS-06 一片：测试按 IntegrationSlice=FP-IS-06 过滤，选中 8 条。构建与 dotnet format 仍是全仓的，不随切片收窄。其余切片的结论不在本目录里。"
+  ]
+}
