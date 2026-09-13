@@ -1272,6 +1272,24 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
         try
         {
+            // 在途集合只记本进程正在执行的；装货取消中止执行器之后这次 attempt 就不在里面了，而服务端
+            // 还在重发命令。日志说它开始过、没结算，那就不是新命令——执行器也会拒绝，这里先认出来，
+            // 免得界面被翻回「准备执行」。
+            WireToGateRecoveryState journaled = await _session.Journal
+                .ReadRecoveryStateAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (string.Equals(
+                    journaled.UnsettledSlotOperationAttemptId,
+                    command.SlotOperationAttemptId,
+                    StringComparison.Ordinal))
+            {
+                _logger.Write(
+                    LogSeverity.Information,
+                    nameof(WireToGateBusinessService),
+                    $"忽略重复SlotOperationCommand：attempt={command.SlotOperationAttemptId}已开始且未结算，未再次执行仓门IO。");
+                return;
+            }
+
             PublishOperation(
                 command,
                 WireToGateHmiOperationStage.Preparing,

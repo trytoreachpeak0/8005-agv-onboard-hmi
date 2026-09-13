@@ -715,6 +715,61 @@ public sealed class WireToGateSlotOperationExecutorTests
             fixture.Executor.SettleInterruptedAsync(TestContext.Current.CancellationToken));
     }
 
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task ACommandForAnAttemptAlreadyInTheJournalIsNotExecutedAgain()
+    {
+        // 装货途中按「取消装货」先中止执行器，日志里留下未结算的 attempt。服务端的发件箱在收到结果之前
+        // 一直重发同一条 SlotOperationCommand，中止之后到的那一条原来被当成新命令再执行一遍：门开着，
+        // 预检判 LOCK_NOT_CLOSED，编出一份 FAILED + NOT_STARTED + 三个 UNKNOWN 的结果——那一仓明明
+        // 开过锁、读数也清楚——服务端据此判 RecoveryRequired。门要是已经关上，预检还会放行、再开一次锁。
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
+        await InterruptWhileWaitingAsync(fixture, command);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => fixture.Executor.ExecuteAsync(
+            command,
+            null,
+            TestContext.Current.CancellationToken));
+
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
+            TestContext.Current.CancellationToken);
+        Assert.Equal(command.SlotOperationAttemptId, state.UnsettledSlotOperationAttemptId);
+        Assert.Equal([1], state.ActiveUnlockSlots);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task AnAttemptWithAPendingLoadCancellationIsNotSettledAsInterrupted()
+    {
+        // 同一个 attempt 的另一条路：取消请求发出、应答还没到（或丢了），这时会话快照一变，
+        // 8005-agv-program#40 的中断结算就把它当成死进程留下的孤儿交成 UNKNOWN。它有主人——
+        // 日志里那条未得应答的取消——结论归取消向量给。
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
+        await InterruptWhileWaitingAsync(fixture, command);
+        WireToGateRecoveryState interrupted = await fixture.Journal.ReadRecoveryStateAsync(
+            TestContext.Current.CancellationToken);
+        await fixture.Journal.WriteRecoveryStateAsync(
+            interrupted with
+            {
+                PendingLoadCancellation = new WireToGatePendingLoadCancellation(
+                    Guid.NewGuid().ToString("D"),
+                    "operator-001",
+                    "SESSION",
+                    DateTimeOffset.UtcNow,
+                    "装货途中取消。")
+            },
+            TestContext.Current.CancellationToken);
+        fixture.Io.CloseDoor(0, cargo: false);
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            fixture.Executor.SettleInterruptedAsync(TestContext.Current.CancellationToken));
+    }
+
     /// <summary>
     /// 让一次操作停在「开了锁、在等操作员」，然后像进程消失那样把它掐断：不写结果，日志里只留下
     /// 未结算的 attempt 与开锁集合。
