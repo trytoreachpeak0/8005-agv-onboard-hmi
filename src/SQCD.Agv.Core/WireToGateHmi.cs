@@ -12,8 +12,8 @@ public enum WireToGateHmiOperationStage
 
     /// <summary>
     /// 本站期限过了，货物始终没有交接。ADR-cross-0058 决策 5 的确定失败：现场没有任何
-    /// 一件事是不确定的，所以它不是 <see cref="RecoveryRequired"/>——不需要管理员，
-    /// 需要的是操作员在 HMI 上取消本次装货（ADR-cross-0015、ADR-cross-0046）。
+    /// 一件事是不确定的，所以它不是 <see cref="RecoveryRequired"/>——不需要管理员，也不需要
+    /// 操作员取消：服务端收到这份结果就自己结束本站（8005-agv-program#39）。
     /// </summary>
     StationDeadlineExpired
 }
