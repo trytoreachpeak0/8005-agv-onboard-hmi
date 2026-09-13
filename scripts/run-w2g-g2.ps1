@@ -229,8 +229,9 @@ foreach ($key in $expected.Keys) {
     Assert-Equal "HMI identity.$key" $hmiIdentity[$key] $expected[$key]
 }
 
-$protocolCommit = (& git -C $ProtocolRoot rev-parse HEAD).Trim()
-$protocolTagCommit = (& git -C $ProtocolRoot rev-list -n 1 ($expected.Tag + '^{commit}')).Trim()
+# git 查不到时 stdout 为空、PowerShell 拿到 $null；用 ?. 让它落到下面的空值判断记失败，而不是在这里崩掉、连 summary.json 都不写。
+$protocolCommit = (& git -C $ProtocolRoot rev-parse HEAD)?.Trim()
+$protocolTagCommit = (& git -C $ProtocolRoot rev-list -n 1 ($expected.Tag + '^{commit}'))?.Trim()
 Assert-Equal 'protocol tag commit' $protocolTagCommit $expected.Commit
 $tagIsAncestor = $false
 $hasProtocolIdentity = -not [string]::IsNullOrWhiteSpace($protocolCommit) -and -not [string]::IsNullOrWhiteSpace($protocolTagCommit)
@@ -370,7 +371,8 @@ $summary = [ordered]@{
     runId = $runId
     hmi = [ordered]@{
         commit = $hmiCommit
-        branch = (& git -C $hmiRoot branch --show-current).Trim()
+        # detached HEAD（红基线常用 git worktree add --detach 跑）上 git 什么都不打印，branch 记 null。
+        branch = (& git -C $hmiRoot branch --show-current)?.Trim()
         workingTreeStatus = @(& git -C $hmiRoot status --porcelain)
         protocolIdentity = $hmiIdentity
     }
