@@ -32,7 +32,8 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// cross-field rule the schema cannot state. <c>intentional</c>: the vehicle is stricter on a contract
 /// basis the entry cites (an <c>x-*</c> annotation or protocol text). <c>issue</c>: a filed defect,
 /// including one waiting for the next protocol batch. Everything else stricter than the schema is loosened
-/// in the vehicle. An entry that no longer matches anything fails too, so the file cannot rot.
+/// in the vehicle. An entry that matches no variant, or whose refused variant the vehicle now accepts,
+/// fails too, so the file cannot rot.
 /// </para>
 /// <para>
 /// No <c>IntegrationSlice</c> trait on purpose: run-w2g-g2.ps1 runs it once, in the whole-repository pass,
@@ -71,7 +72,7 @@ public sealed class InboundSchemaBoundaryCensus(InboundSchemaBoundaryCensusFixtu
             }
 
             RegistryEntry? onFile = variant.Boundary is null ? null : census.Registry.StricterOnFile(messageType, variant.Boundary);
-            Exception? refusal = Refusal(variant);
+            Exception? refusal = RefusalOf(variant);
             if (refusal is not null && onFile is null)
             {
                 failures.Add(
@@ -89,7 +90,7 @@ public sealed class InboundSchemaBoundaryCensus(InboundSchemaBoundaryCensusFixtu
                 refusedOnFile++;
             }
         }
-        failures.AddRange(result.UnmatchedCompanions.Select(entry => $"STALE ENTRY (this companion matches no variant; delete or correct it):\n  {entry}"));
+        failures.AddRange(result.UnmatchedEntries.Select(entry => $"STALE ENTRY (matches no variant of {messageType}; delete or correct it):\n  {entry}"));
 
         TestContext.Current.TestOutputHelper?.WriteLine(
             $"{messageType}: {result.Variants.Count} variants including the seed, " +
@@ -102,7 +103,8 @@ public sealed class InboundSchemaBoundaryCensus(InboundSchemaBoundaryCensusFixtu
             string.Join("\n\n", failures));
     }
 
-    private static Exception? Refusal(CensusVariant variant)
+    /// <summary>What the vehicle throws on receiving this variant, or null when it accepts it.</summary>
+    private static Exception? RefusalOf(CensusVariant variant)
     {
         try
         {
@@ -174,6 +176,11 @@ public sealed class InboundSchemaBoundaryCensusFixture : IAsyncLifetime
 
         ProtocolSchemas schemas = ProtocolSchemas.Load(Path.Combine(release, "schemas"));
         Registry = CensusRegistry.Load(Path.Combine(repository, "tests", "SQCD.Agv.WireToGateG2Tests", "inbound-stricter-than-schema.json"));
+        if (Registry.MessageTypes.FirstOrDefault(type => !WireToGateSessionClient.InboundShapeCheckedMessageTypes.Contains(type)) is { } uncovered)
+        {
+            throw new InvalidDataException(
+                $"inbound-stricter-than-schema.json has entries for {uncovered}, which the census does not check: they could never match anything.");
+        }
 
         foreach (string messageType in WireToGateSessionClient.InboundShapeCheckedMessageTypes.Order(StringComparer.Ordinal))
         {
@@ -196,11 +203,14 @@ public sealed class InboundSchemaBoundaryCensusFixture : IAsyncLifetime
             {
                 List<string> notes = [];
                 JsonObject envelope = generator.Apply(seed, boundary, notes);
-                foreach (RegistryEntry companion in Registry.Companions(messageType, boundary))
+                foreach (RegistryEntry entry in Registry.Matching(messageType, boundary))
                 {
-                    companion.ApplyTo(envelope, generator);
-                    matched.Add(companion);
-                    notes.Add("companion " + companion.SetText);
+                    matched.Add(entry);
+                    if (entry.Disposition == "companion")
+                    {
+                        entry.ApplyTo(envelope, generator);
+                        notes.Add("companion " + entry.SetText);
+                    }
                 }
                 variants.Add(new CensusVariant(boundary.Describe(messageType), boundary, envelope, notes));
             }
@@ -210,7 +220,7 @@ public sealed class InboundSchemaBoundaryCensusFixture : IAsyncLifetime
             }
             _byMessageType[messageType] = new MessageCensus(
                 variants,
-                Registry.CompanionsOf(messageType).Where(entry => !matched.Contains(entry)).ToArray());
+                Registry.Of(messageType).Where(entry => !matched.Contains(entry)).ToArray());
         }
 
         Dictionary<string, IReadOnlyList<string>> judgements = await JudgeAsync(
@@ -233,23 +243,11 @@ public sealed class InboundSchemaBoundaryCensusFixture : IAsyncLifetime
             string input = Path.Combine(work, "variants.ndjson");
             await File.WriteAllLinesAsync(input, variants.Select(item => JsonSerializer.Serialize(
                 new { id = item.Variant.Id, messageType = item.MessageType, line = item.Variant.Line })));
-            ProcessStartInfo start = new(OutboundSchemaConformance.ValidatorPath())
-            {
-                ArgumentList = { "--judge", input, "--report", work },
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false
-            };
-            using Process process = Process.Start(start)
-                ?? throw new InvalidOperationException("Could not start " + start.FileName);
-            Task<string> output = process.StandardOutput.ReadToEndAsync();
-            Task<string> error = process.StandardError.ReadToEndAsync();
-            await process.WaitForExitAsync();
-            string report = await output + await error;
-            if (process.ExitCode != 0)
+            (int exitCode, string report) = await OutboundSchemaConformance.RunValidatorAsync("--judge", input, "--report", work);
+            if (exitCode != 0)
             {
                 throw new InvalidOperationException(
-                    $"The schema validator could not judge the census variants (exit {process.ExitCode}).{Environment.NewLine}{report}");
+                    $"The schema validator could not judge the census variants (exit {exitCode}).{Environment.NewLine}{report}");
             }
             JsonArray judged = JsonNode.Parse(await File.ReadAllBytesAsync(Path.Combine(work, "judgements.json")))!.AsArray();
             return judged.ToDictionary(
@@ -268,7 +266,7 @@ public sealed class InboundSchemaBoundaryCensusFixture : IAsyncLifetime
     private static string Sha256Hex(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 }
 
-internal sealed record MessageCensus(IReadOnlyList<CensusVariant> Variants, IReadOnlyList<RegistryEntry> UnmatchedCompanions);
+internal sealed record MessageCensus(IReadOnlyList<CensusVariant> Variants, IReadOnlyList<RegistryEntry> UnmatchedEntries);
 
 /// <summary>A seed (no <see cref="Boundary"/>) or one boundary variant, as the line both judges see.</summary>
 internal sealed class CensusVariant(string id, SchemaBoundary? boundary, JsonObject envelope, IReadOnlyList<string> notes)
@@ -302,14 +300,15 @@ internal sealed class CensusRegistry(IReadOnlyList<RegistryEntry> entries)
     public static CensusRegistry Load(string path) =>
         new(JsonNode.Parse(File.ReadAllBytes(path))!.AsArray().Select(node => new RegistryEntry(node!.AsObject())).ToArray());
 
-    public IEnumerable<RegistryEntry> Companions(string messageType, SchemaBoundary boundary) =>
-        entries.Where(entry => entry.Disposition == "companion" && entry.Matches(messageType, boundary));
+    public IEnumerable<string> MessageTypes => entries.Select(entry => entry.MessageType).Distinct(StringComparer.Ordinal);
 
-    public IEnumerable<RegistryEntry> CompanionsOf(string messageType) =>
-        entries.Where(entry => entry.Disposition == "companion" && entry.MessageType == messageType);
+    public IEnumerable<RegistryEntry> Of(string messageType) => entries.Where(entry => entry.MessageType == messageType);
+
+    public IEnumerable<RegistryEntry> Matching(string messageType, SchemaBoundary boundary) =>
+        entries.Where(entry => entry.Matches(messageType, boundary));
 
     public RegistryEntry? StricterOnFile(string messageType, SchemaBoundary boundary) =>
-        entries.FirstOrDefault(entry => entry.Disposition is "intentional" or "issue" && entry.Matches(messageType, boundary));
+        Matching(messageType, boundary).FirstOrDefault(entry => entry.Disposition is "intentional" or "issue");
 }
 
 /// <summary>
@@ -373,16 +372,16 @@ internal sealed class RegistryEntry
             JsonNode? value = directive switch
             {
                 JsonObject { Count: 1 } length when length["lengthOf"] is JsonValue of =>
-                    JsonValue.Create(BoundaryVariantGenerator.Get(envelope, of.GetValue<string>())!.AsArray().Count),
+                    JsonValue.Create(JsonPointer.Get(envelope, of.GetValue<string>())!.AsArray().Count),
                 JsonObject { Count: 1 } resize when resize["itemsCountFrom"] is JsonValue from =>
                     generator.BuildArray(
-                        BoundaryVariantGenerator.Get(envelope, pointer) as JsonArray,
-                        BoundaryVariantGenerator.Get(envelope, from.GetValue<string>())!.GetValue<int>(),
+                        JsonPointer.Get(envelope, pointer) as JsonArray,
+                        JsonPointer.Get(envelope, from.GetValue<string>())!.GetValue<int>(),
                         generator.SchemaAt(pointer)),
                 JsonObject => throw new InvalidDataException("Unknown companion directive " + directive.ToJsonString()),
                 _ => directive?.DeepClone()
             };
-            BoundaryVariantGenerator.Set(envelope, pointer, value);
+            JsonPointer.Set(envelope, pointer, value);
         }
     }
 

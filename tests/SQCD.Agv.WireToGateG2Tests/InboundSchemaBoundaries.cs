@@ -1,13 +1,55 @@
+using System.Globalization;
 using System.Text.Json.Nodes;
 
 namespace SQCD.Agv.WireToGateG2Tests;
+
+/// <summary>Reads and replaces values at concrete JSON Pointers (array indices, never <c>*</c>).</summary>
+internal static class JsonPointer
+{
+    public static JsonNode? Get(JsonObject document, string pointer)
+    {
+        JsonNode? node = document;
+        foreach (string segment in Segments(pointer))
+        {
+            node = Step(node, segment);
+        }
+        return node;
+    }
+
+    public static void Set(JsonObject document, string pointer, JsonNode? value)
+    {
+        string[] segments = Segments(pointer);
+        JsonNode container = document;
+        foreach (string segment in segments[..^1])
+        {
+            container = Step(container, segment) ?? throw new InvalidDataException("Nothing at " + pointer);
+        }
+        if (container is JsonArray array)
+        {
+            array[Index(segments[^1])] = value;
+        }
+        else
+        {
+            container[segments[^1]] = value;
+        }
+    }
+
+    private static string[] Segments(string pointer) => pointer.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+    private static JsonNode? Step(JsonNode? node, string segment) =>
+        node is JsonArray array ? array[Index(segment)] : node?[segment];
+
+    private static int Index(string segment) => int.Parse(segment, CultureInfo.InvariantCulture);
+}
 
 /// <summary>
 /// The vendored JSON Schemas of the pinned protocol release, read with nothing but the framework's own
 /// System.Text.Json -- the validator's library must stay out of the test host (see
 /// <see cref="OutboundSchemaConformance"/>). Only what the inbound schema boundary census needs is
-/// understood: absolute <c>$ref</c> and <c>anyOf</c>/<c>oneOf</c>. Anything else that would move a
-/// boundary throws instead of being guessed at.
+/// understood: absolute <c>$ref</c> and <c>anyOf</c>/<c>oneOf</c>; a reference it cannot follow throws.
+/// Conditional keywords (<c>allOf</c>/<c>if</c>/<c>then</c>, which SlotOperationCommand uses) are not read:
+/// a cross-field rule reaches the census as a companion in inbound-stricter-than-schema.json, and since the
+/// validator judges every variant, a missing companion shows up as a generator error, not as a silent gap.
 /// </summary>
 internal sealed class ProtocolSchemas
 {
@@ -128,6 +170,12 @@ internal static class SchemaBoundaryEnumerator
         }
         foreach (JsonObject shape in schemas.Branches(schema).Where(branch => !ProtocolSchemas.IsNullType(branch)))
         {
+            if (shape.ContainsKey("exclusiveMinimum") || shape.ContainsKey("exclusiveMaximum"))
+            {
+                // Not in v0.3.0. Deriving them means choosing the nearest value inside the bound; until someone
+                // does, a schema that starts using them must not lose those boundaries silently.
+                throw new NotSupportedException("Exclusive numeric bounds are not derived yet: " + shape.ToJsonString());
+            }
             if (shape.ContainsKey("const"))
             {
                 continue;
@@ -189,37 +237,6 @@ internal sealed class BoundaryVariantGenerator(ProtocolSchemas schemas, JsonObje
         string[] segments = boundary.Pointer.Split('/', StringSplitOptions.RemoveEmptyEntries);
         Descend(envelope, Resolve(messageSchema), segments, 0, boundary, notes, string.Empty);
         return envelope;
-    }
-
-    /// <summary>Replaces the value at a concrete pointer (no <c>*</c>).</summary>
-    public static void Set(JsonObject envelope, string pointer, JsonNode? value)
-    {
-        string[] segments = pointer.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        JsonNode container = envelope;
-        foreach (string segment in segments[..^1])
-        {
-            container = (container is JsonArray array ? array[int.Parse(segment, System.Globalization.CultureInfo.InvariantCulture)] : container[segment])
-                ?? throw new InvalidDataException("Nothing at " + pointer);
-        }
-        string last = segments[^1];
-        if (container is JsonArray items)
-        {
-            items[int.Parse(last, System.Globalization.CultureInfo.InvariantCulture)] = value;
-        }
-        else
-        {
-            container[last] = value;
-        }
-    }
-
-    public static JsonNode? Get(JsonObject envelope, string pointer)
-    {
-        JsonNode? node = envelope;
-        foreach (string segment in pointer.Split('/', StringSplitOptions.RemoveEmptyEntries))
-        {
-            node = node is JsonArray array ? array[int.Parse(segment, System.Globalization.CultureInfo.InvariantCulture)] : node?[segment];
-        }
-        return node;
     }
 
     /// <summary>The non-null shape of the schema at a pointer; <c>*</c> and array indices both step into <c>items</c>.</summary>

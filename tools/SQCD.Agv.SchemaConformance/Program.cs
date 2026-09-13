@@ -37,6 +37,10 @@ const int ErrorsPerLine = 5;
 
 Dictionary<string, string> arguments = ParseArguments(args);
 string? judgePath = arguments.GetValueOrDefault("judge");
+if (judgePath is not null && (arguments.ContainsKey("lines") || arguments.ContainsKey("known")))
+{
+    throw new ArgumentException("--judge takes neither --lines nor --known.");
+}
 string linesPath = judgePath is not null
     ? string.Empty
     : arguments.GetValueOrDefault("lines") ?? throw new ArgumentException("--lines or --judge is required.");

@@ -1434,7 +1434,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     return (payload.PlanRevision, "UPCOMING_STOP_PLAN");
                 }
             default:
-                throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+                // ReadJourneySnapshotPayload already refused every other message type.
+                throw new System.Diagnostics.UnreachableException();
         }
     }
 
@@ -1633,9 +1634,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         {
             _ = ReadJourneySnapshotPayload(envelope);
         }
-        else
+        else if (!TryCreateServerCommand(envelope, out _))
         {
-            _ = TryCreateServerCommand(envelope, out _);
+            // The read loop refuses a message no command comes out of; so must this.
+            throw new InvalidOperationException("TryCreateServerCommand created no command for " + envelope.MessageType + ".");
         }
     }
 
