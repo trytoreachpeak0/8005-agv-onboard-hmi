@@ -255,12 +255,14 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             .ConfigureAwait(false);
         WireToGateRecoveryOperationContext context = state.OperationContext
             ?? throw new InvalidDataException("RECOVERY_OPERATION_CONTEXT_MISSING");
-        // 恢复向量有自己的日志与自己的续做规则，不归这里。
+        // 恢复向量有自己的日志与自己的续做规则，不归这里。未得应答的装货取消也一样：操作员按下取消时
+        // 执行器是被中止的、不是进程没了，服务端可能已经授权，结论归那条取消。
         if (!string.Equals(
                 state.UnsettledSlotOperationAttemptId,
                 context.SlotOperationAttemptId,
                 StringComparison.Ordinal)
-            || state.RecoveryVector is not null)
+            || state.RecoveryVector is not null
+            || state.PendingLoadCancellation is not null)
         {
             throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
         }
@@ -335,6 +337,20 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         Func<string, IReadOnlyList<int>, IReadOnlyList<int>, int, CancellationToken, Task>? progress,
         CancellationToken cancellationToken)
     {
+        // 这一次 attempt 已经开过锁、还没结算：它的结论归取消向量、恢复动作或中断结算，不归再来的
+        // 同一条命令。操作员取消装货会先中止执行器，而服务端在收到结果之前一直重发这条命令；中止之后
+        // 再执行一遍，门开着时预检编出一份 NOT_STARTED + UNKNOWN 的假结果，门关着时还会再开一次锁
+        // （ADR-cross-0016 命令不可重放，ADR-cross-0017 没有授权不得再开锁）。
+        WireToGateRecoveryState journaled = await _journal.ReadRecoveryStateAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (string.Equals(
+                journaled.UnsettledSlotOperationAttemptId,
+                command.SlotOperationAttemptId,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("SLOT_OPERATION_ALREADY_STARTED");
+        }
+
         DateTimeOffset started = _clock.Now;
         IoSnapshot initial = _ioModule.CurrentSnapshot;
         string? precheckFailure = ValidateBeforeOperation(initial, command, command.Slots);
