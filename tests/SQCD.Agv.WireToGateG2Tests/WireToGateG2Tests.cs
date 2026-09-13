@@ -1247,7 +1247,7 @@ public sealed class WireToGateG2Tests
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "W2G-IS-02")]
-    public async Task ALostCancellationAuthorizationIsAskedForAgainWithTheFirstPressesContentAcrossARestart()
+    public async Task ALostCancellationAuthorizationIsAskedForAgainWithTheFirstPressContentAcrossARestart()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
         await using FakeControlServer server = CreateBeforeLoadServer("AUTHORIZED");

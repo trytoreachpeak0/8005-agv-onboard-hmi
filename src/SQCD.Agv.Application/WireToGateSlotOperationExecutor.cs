@@ -209,6 +209,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 RecoveryOperatorVerifiedAt = null,
                 RecoveryVector = null,
                 RecoveryResultObservedAt = null,
+                PendingLoadCancellation = null,
                 LastCompletedLoadOperationContext = state.OperationContext?.OperationType == OperationType.Load
                     ? state.OperationContext
                     : state.LastCompletedLoadOperationContext
