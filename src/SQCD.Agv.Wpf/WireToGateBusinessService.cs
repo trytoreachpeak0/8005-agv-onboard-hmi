@@ -592,6 +592,14 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return;
             }
 
+            // 操作员按了取消装货、应答还没到（或丢了）：执行器是取消自己中止的，这次 attempt 等的是那条
+            // 取消，不是中断结算，也不是管理员。会话快照一变——比如操作员把门关上——就在这里交一份
+            // UNKNOWN，服务端会判 RecoveryRequired，而服务端那边可能早已授权了取消。
+            if (state.PendingLoadCancellation is not null)
+            {
+                return;
+            }
+
             if (await TrySettleInterruptedOperationAsync(context, cancellationToken).ConfigureAwait(false))
             {
                 return;

@@ -255,12 +255,14 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             .ConfigureAwait(false);
         WireToGateRecoveryOperationContext context = state.OperationContext
             ?? throw new InvalidDataException("RECOVERY_OPERATION_CONTEXT_MISSING");
-        // 恢复向量有自己的日志与自己的续做规则，不归这里。
+        // 恢复向量有自己的日志与自己的续做规则，不归这里。未得应答的装货取消也一样：操作员按下取消时
+        // 执行器是被中止的、不是进程没了，服务端可能已经授权，结论归那条取消。
         if (!string.Equals(
                 state.UnsettledSlotOperationAttemptId,
                 context.SlotOperationAttemptId,
                 StringComparison.Ordinal)
-            || state.RecoveryVector is not null)
+            || state.RecoveryVector is not null
+            || state.PendingLoadCancellation is not null)
         {
             throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
         }
