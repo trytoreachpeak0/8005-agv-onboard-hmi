@@ -172,10 +172,6 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool SendResumeCommandAfterRecoveryAction { get; set; }
 
-    public long InitialAcceptedCapabilityVersion { get; set; }
-
-    public long InitialAcceptedSafetyStateVersion { get; set; }
-
     public IReadOnlyList<string> IdentityValidationResults
     {
         get
@@ -258,12 +254,8 @@ public sealed class FakeControlServer : IAsyncDisposable
             long acceptedSafetyStateVersion;
             lock (_sync)
             {
-                acceptedCapabilityVersion = _acceptedCapabilityVersion != 0
-                    ? _acceptedCapabilityVersion
-                    : InitialAcceptedCapabilityVersion;
-                acceptedSafetyStateVersion = _acceptedSafetyStateVersion != 0
-                    ? _acceptedSafetyStateVersion
-                    : InitialAcceptedSafetyStateVersion;
+                acceptedCapabilityVersion = _acceptedCapabilityVersion;
+                acceptedSafetyStateVersion = _acceptedSafetyStateVersion;
             }
 
             client.NoDelay = true;

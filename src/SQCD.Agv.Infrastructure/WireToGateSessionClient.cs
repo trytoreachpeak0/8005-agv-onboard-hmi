@@ -552,6 +552,9 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
 
             await SendRecoveryStateReportAsync(generation, io, cancellationToken).ConfigureAwait(false);
+            // No DurableAck ever came for these. Acknowledged here means nothing is owed to the server
+            // any more, the way ComputeContentSha256Async already leaves reports out of the pending
+            // business messages.
             foreach (WireToGateDurableMessage superseded in supersededReports)
             {
                 await _journal
