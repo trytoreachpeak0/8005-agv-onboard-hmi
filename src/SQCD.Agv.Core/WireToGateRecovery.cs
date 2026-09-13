@@ -231,6 +231,15 @@ public sealed record WireToGateRecoveryState(
     /// </summary>
     public WireToGateRecoveryOperationContext? LastCompletedLoadOperationContext { get; init; }
 
+    /// <summary>
+    /// A load cancellation that went out and has had no answer yet. The server keeps an
+    /// authorization under the cancellationId and compares every later request's whole payload
+    /// with the first, so a retry must repeat this operator and reason -- verifiedAt included --
+    /// rather than take the retrying press's. A refusal leaves nothing on the server, so the entry
+    /// goes as soon as either answer arrives.
+    /// </summary>
+    public WireToGatePendingLoadCancellation? PendingLoadCancellation { get; init; }
+
     public static WireToGateRecoveryState Empty { get; } = new(
         null,
         WireToGateRecoveryCheckpoint.None,
@@ -238,6 +247,13 @@ public sealed record WireToGateRecoveryState(
         0,
         []);
 }
+
+public sealed record WireToGatePendingLoadCancellation(
+    string CancellationId,
+    string OperatorId,
+    string OperatorVerificationMethod,
+    DateTimeOffset OperatorVerifiedAt,
+    string Reason);
 
 public sealed record WireToGateDurableMessage(
     string DeduplicationKey,
