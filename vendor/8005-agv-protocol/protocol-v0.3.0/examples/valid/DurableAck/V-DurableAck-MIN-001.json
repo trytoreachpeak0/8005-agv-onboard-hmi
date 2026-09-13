@@ -1,0 +1,18 @@
+{
+  "protocolVersion": 3,
+  "profileId": "WIRE_TO_GATE_MVP",
+  "protocolReleaseVersion": "0.1.0",
+  "protocolReleaseManifestSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "messageType": "DurableAck",
+  "messageId": "00000000-0000-4000-8000-000000000103",
+  "correlationId": "00000000-0000-4000-8000-000000000104",
+  "agvId": "AGV-8005-01",
+  "sessionGeneration": 1,
+  "sentAt": "2026-08-25T09:00:00Z",
+  "payload": {
+    "acceptedMessageId": "00000000-0000-4000-8000-000000000001",
+    "acceptedMessageType": "OperationResult",
+    "acceptedContentSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "durablyAcceptedAt": "2026-08-25T09:00:00Z"
+  }
+}

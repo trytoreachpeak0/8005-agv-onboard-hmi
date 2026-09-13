@@ -1,0 +1,46 @@
+[
+  {
+    "messageType": "SlotOperationCommand",
+    "pointer": "/payload/slots",
+    "keywords": ["minItems", "maxItems"],
+    "disposition": "companion",
+    "set": {
+      "/payload/expectedBasketCount": { "lengthOf": "/payload/slots" }
+    },
+    "basis": "跨字段：expectedBasketCount 等于 slots 的条数，schema 写不出来（8005-agv-onboard-hmi#38 决议第二节点名的 companion）。"
+  },
+  {
+    "messageType": "SlotOperationCommand",
+    "pointer": "/payload/expectedBasketCount",
+    "keywords": ["minimum", "maximum"],
+    "disposition": "companion",
+    "set": {
+      "/payload/slots": { "itemsCountFrom": "/payload/expectedBasketCount" }
+    },
+    "basis": "跨字段：同上一条，从篮数一侧改时仓位条数跟着走。"
+  },
+  {
+    "messageType": "SlotOperationCommand",
+    "pointer": "/payload/operationType",
+    "keywords": ["enum"],
+    "value": "UNLOAD",
+    "disposition": "companion",
+    "set": {
+      "/correlationId": null,
+      "/payload/expectedFinalPhysicalState": "EMPTY"
+    },
+    "basis": "跨字段：schema 的 allOf 规定 UNLOAD 的 correlationId 为 null（manifest 的 correlationRule 是 LOAD_REQUIRES_SUBLOT_CORRELATION_UNLOAD_NULL）；卸货的终态是 EMPTY，与下一条配对。"
+  },
+  {
+    "messageType": "SlotOperationCommand",
+    "pointer": "/payload/expectedFinalPhysicalState",
+    "keywords": ["enum"],
+    "value": "EMPTY",
+    "disposition": "companion",
+    "set": {
+      "/payload/operationType": "UNLOAD",
+      "/correlationId": null
+    },
+    "basis": "跨字段：终态 EMPTY 属于 UNLOAD、OCCUPIED 属于 LOAD，schema 只各自列两个枚举，写不出配对；装货必带 correlationId、卸货必为 null。"
+  }
+]

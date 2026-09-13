@@ -170,7 +170,7 @@ public sealed class OutboundSchemaConformance : IAsyncDisposable
         return type;
     }
 
-    private static string RepositoryRoot()
+    internal static string RepositoryRoot()
     {
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
         while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "SQCD_8005AGV.sln")))
@@ -181,7 +181,7 @@ public sealed class OutboundSchemaConformance : IAsyncDisposable
             ?? throw new DirectoryNotFoundException("No SQCD_8005AGV.sln above " + AppContext.BaseDirectory);
     }
 
-    private static string ValidatorPath()
+    internal static string ValidatorPath()
     {
         string configuration = typeof(OutboundSchemaConformance).Assembly
             .GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration ?? "Release";

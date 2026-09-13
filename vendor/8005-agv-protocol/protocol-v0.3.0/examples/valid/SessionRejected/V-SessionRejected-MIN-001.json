@@ -1,0 +1,31 @@
+{
+  "protocolVersion": 3,
+  "profileId": "WIRE_TO_GATE_MVP",
+  "protocolReleaseVersion": "0.1.0",
+  "protocolReleaseManifestSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "messageType": "SessionRejected",
+  "messageId": "00000000-0000-4000-8000-000000000005",
+  "correlationId": "00000000-0000-4000-8000-000000000006",
+  "agvId": "AGV-8005-01",
+  "sessionGeneration": null,
+  "sentAt": "2026-08-25T09:00:00Z",
+  "payload": {
+    "problem": {
+      "reasonCode": "ACTION_NOT_ALLOWED_IN_STATE",
+      "fieldPath": "fieldPath-test",
+      "displayMessage": "displayMessage-test"
+    },
+    "expectedProtocolVersion": 3,
+    "expectedProtocolReleaseIdentity": {
+      "repository": "8005-agv-protocol",
+      "releaseVersion": "0.1.0",
+      "tag": "protocol-v0.1.0",
+      "commit": "0000000000000000000000000000000000000000",
+      "protocolVersion": 3,
+      "profileId": "WIRE_TO_GATE_MVP",
+      "manifestSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "schemaBundleSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "vectorsSha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  }
+}

@@ -7,4 +7,8 @@
     <ProjectReference Include="../SQCD.Agv.Core/SQCD.Agv.Core.csproj" />
     <ProjectReference Include="../SQCD.Agv.Contracts/SQCD.Agv.Contracts.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- The inbound schema boundary census calls WireToGateSessionClient.CheckInboundShape. -->
+    <InternalsVisibleTo Include="SQCD.Agv.WireToGateG2Tests" />
+  </ItemGroup>
 </Project>

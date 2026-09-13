@@ -1,0 +1,26 @@
+{
+  "protocolVersion": 3,
+  "profileId": "WIRE_TO_GATE_MVP",
+  "protocolReleaseVersion": "0.1.0",
+  "protocolReleaseManifestSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "messageType": "SublotEntryRequested",
+  "messageId": "00000000-0000-4000-8000-000000000035",
+  "correlationId": null,
+  "agvId": "AGV-8005-01",
+  "sessionGeneration": 1,
+  "sentAt": "2026-08-25T09:00:00Z",
+  "payload": {
+    "demandId": "00000000-0000-4000-8000-000000000001",
+    "operationSessionId": "00000000-0000-4000-8000-000000000001",
+    "stationId": "STATION-001",
+    "worklistRevision": 1,
+    "entryMethods": [
+      "SCANNER",
+      "KEYBOARD"
+    ],
+    "expiresOnRevisionChange": true,
+    "expectedSublots": [
+      "TEST-SUBLOT-001"
+    ]
+  }
+}

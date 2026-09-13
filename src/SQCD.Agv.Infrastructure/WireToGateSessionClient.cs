@@ -1367,13 +1367,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         string payloadContentSha256,
         CancellationToken cancellationToken)
     {
-        switch (envelope.MessageType)
+        switch (ReadJourneySnapshotPayload(envelope))
         {
-            case "VehicleBusinessStateSnapshot":
+            case VehicleBusinessStateSnapshotPayload payload:
                 {
-                    VehicleBusinessStateSnapshotPayload payload =
-                        WireToGateProtocolSerializer.DeserializePayload<VehicleBusinessStateSnapshotPayload>(envelope);
-                    ValidateVehicleBusinessState(payload);
                     ApplyJourneyRevision(
                         envelope.MessageType,
                         payload.VehicleBusinessStateRevision,
@@ -1398,11 +1395,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         cancellationToken);
                     return (payload.VehicleBusinessStateRevision, "VEHICLE_BUSINESS_STATE");
                 }
-            case "CurrentStopWorklistSnapshot":
+            case CurrentStopWorklistSnapshotPayload payload:
                 {
-                    CurrentStopWorklistSnapshotPayload payload =
-                        WireToGateProtocolSerializer.DeserializePayload<CurrentStopWorklistSnapshotPayload>(envelope);
-                    ValidateCurrentStopWorklist(payload);
                     ApplyJourneyRevision(
                         envelope.MessageType,
                         payload.WorklistRevision,
@@ -1421,11 +1415,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         cancellationToken);
                     return (payload.WorklistRevision, "CURRENT_STOP_WORKLIST");
                 }
-            case "UpcomingStopPlanSnapshot":
+            case UpcomingStopPlanSnapshotPayload payload:
                 {
-                    UpcomingStopPlanSnapshotPayload payload =
-                        WireToGateProtocolSerializer.DeserializePayload<UpcomingStopPlanSnapshotPayload>(envelope);
-                    ValidateUpcomingStopPlan(payload);
                     ApplyJourneyRevision(
                         envelope.MessageType,
                         payload.PlanRevision,
@@ -1441,6 +1432,41 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         },
                         cancellationToken);
                     return (payload.PlanRevision, "UPCOMING_STOP_PLAN");
+                }
+            default:
+                throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+    }
+
+    /// <summary>
+    /// Reads a journey snapshot's payload and runs its context-free checks, before anything of it is
+    /// applied. <see cref="CheckInboundShape"/> calls this same method, so the inbound schema boundary
+    /// census measures exactly what the read loop does.
+    /// </summary>
+    private static object ReadJourneySnapshotPayload(WireToGateEnvelope envelope)
+    {
+        switch (envelope.MessageType)
+        {
+            case "VehicleBusinessStateSnapshot":
+                {
+                    VehicleBusinessStateSnapshotPayload payload =
+                        WireToGateProtocolSerializer.DeserializePayload<VehicleBusinessStateSnapshotPayload>(envelope);
+                    ValidateVehicleBusinessState(payload);
+                    return payload;
+                }
+            case "CurrentStopWorklistSnapshot":
+                {
+                    CurrentStopWorklistSnapshotPayload payload =
+                        WireToGateProtocolSerializer.DeserializePayload<CurrentStopWorklistSnapshotPayload>(envelope);
+                    ValidateCurrentStopWorklist(payload);
+                    return payload;
+                }
+            case "UpcomingStopPlanSnapshot":
+                {
+                    UpcomingStopPlanSnapshotPayload payload =
+                        WireToGateProtocolSerializer.DeserializePayload<UpcomingStopPlanSnapshotPayload>(envelope);
+                    ValidateUpcomingStopPlan(payload);
+                    return payload;
                 }
             default:
                 throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
@@ -1562,6 +1588,56 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         "UpcomingStopPlanSnapshot" => true,
         _ => false
     };
+
+    /// <summary>
+    /// The inbound message types <see cref="CheckInboundShape"/> reaches. The other inbound types still
+    /// check their shape in the same statements that match a pending request or session state, and get an
+    /// entry once that is pulled apart (8005-agv-onboard-hmi#45).
+    /// </summary>
+    internal static IReadOnlySet<string> InboundShapeCheckedMessageTypes { get; } = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "VehicleBusinessStateSnapshot",
+        "CurrentStopWorklistSnapshot",
+        "UpcomingStopPlanSnapshot",
+        "SublotEntryRequested",
+        "SublotRejected",
+        "SlotOperationCommand",
+        "SlotOperationResumeCommand",
+        "PreDepartureSafetyCheck",
+        "ExceptionRecoverySessionSnapshot",
+        "LoadCompensationCommand",
+        "LoadCorrectionCommand",
+        "FaultCargoRecoveryCommand"
+    };
+
+    /// <summary>
+    /// Runs the checks the read loop applies to an inbound message before accepting it that need neither
+    /// local state nor a pending request, by calling the methods the read loop itself calls: a journey
+    /// snapshot's <see cref="ReadJourneySnapshotPayload"/>, a server command's
+    /// <see cref="TryCreateServerCommand"/>. It adds no check of its own; the one it leaves out is a journey
+    /// snapshot's <c>correlationId</c> check in <see cref="ApplyJourneySnapshotAsync"/>, which is about the
+    /// envelope, not the payload. Throwing is refusing. Only the inbound schema boundary census calls it
+    /// (SQCD.Agv.WireToGateG2Tests, 8005-agv-onboard-hmi#44).
+    /// </summary>
+    internal static void CheckInboundShape(WireToGateEnvelope envelope)
+    {
+        if (!InboundShapeCheckedMessageTypes.Contains(envelope.MessageType))
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(envelope),
+                envelope.MessageType,
+                "No context-free shape check is exposed for this inbound message type.");
+        }
+
+        if (IsJourneySnapshot(envelope.MessageType))
+        {
+            _ = ReadJourneySnapshotPayload(envelope);
+        }
+        else
+        {
+            _ = TryCreateServerCommand(envelope, out _);
+        }
+    }
 
     private static bool TryCreateServerCommand(
         WireToGateEnvelope envelope,
