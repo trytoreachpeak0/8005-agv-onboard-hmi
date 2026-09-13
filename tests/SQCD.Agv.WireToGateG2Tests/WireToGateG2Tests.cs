@@ -1448,7 +1448,8 @@ public sealed class WireToGateG2Tests
             {
                 throw new InvalidOperationException(
                     $"The stop never opened: readiness={rig._session.Current.Readiness}, "
-                    + $"received=[{string.Join(',', server.ReceivedEnvelopes.Select(item => item.MessageType))}], "                    + $"sentJourney=[{string.Join(',', server.SentJourneyEnvelopes.Select(item => item.MessageType))}]");
+                    + $"received=[{string.Join(',', server.ReceivedEnvelopes.Select(item => item.MessageType))}], "
+                    + $"sentJourney=[{string.Join(',', server.SentJourneyEnvelopes.Select(item => item.MessageType))}]");
             }
 
             return rig;
