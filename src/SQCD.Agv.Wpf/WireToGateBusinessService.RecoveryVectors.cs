@@ -357,7 +357,7 @@ public sealed partial class WireToGateBusinessService
         WireToGateRecoveryOperationContext operation = RequireUnsettledLoadOperation(state);
         string cancellationId = StableUuid(
             $"{operation.DemandId}|{operation.SlotOperationAttemptId}|load-cancellation");
-        WireToGatePendingLoadCancellation pending = await RecordLoadCancellationRequestAsync(
+        WireToGatePendingLoadCancellation pending = await RecallOrRecordLoadCancellationAsync(
                 state,
                 cancellationId,
                 reason,
@@ -439,7 +439,7 @@ public sealed partial class WireToGateBusinessService
         WireToGateSublotEntryRequest request = Volatile.Read(ref _currentEntryRequest)
             ?? throw new InvalidOperationException("WIRE_TO_GATE_JOURNEY_NOT_READY");
         string cancellationId = StableUuid($"{request.DemandId}|before-load|load-cancellation");
-        WireToGatePendingLoadCancellation pending = await RecordLoadCancellationRequestAsync(
+        WireToGatePendingLoadCancellation pending = await RecallOrRecordLoadCancellationAsync(
                 state,
                 cancellationId,
                 reason,
@@ -1376,7 +1376,8 @@ public sealed partial class WireToGateBusinessService
                     RecoveryOperatorId = null,
                     RecoveryOperatorVerifiedAt = null,
                     RecoveryResultObservedAt = null,
-                    RecoveryVector = null
+                    RecoveryVector = null,
+                    PendingLoadCancellation = null
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -1524,7 +1525,7 @@ public sealed partial class WireToGateBusinessService
     /// a messageId to the exact bytes it first carried, and sentAt is new on every press, so reusing
     /// one ends in a content conflict or in a replay of the first answer.
     /// </summary>
-    private async Task<WireToGatePendingLoadCancellation> RecordLoadCancellationRequestAsync(
+    private async Task<WireToGatePendingLoadCancellation> RecallOrRecordLoadCancellationAsync(
         WireToGateRecoveryState state,
         string cancellationId,
         string reason,
