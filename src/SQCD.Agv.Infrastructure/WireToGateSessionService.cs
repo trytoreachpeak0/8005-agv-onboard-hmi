@@ -252,6 +252,12 @@ public sealed class WireToGateSessionService : IAsyncDisposable
             affectedSlots,
             cancellationToken);
 
+    public Task RejectServerCommandAsync(
+        WireToGateServerCommand command,
+        string reasonCode,
+        CancellationToken cancellationToken = default) =>
+        _client.RejectServerCommandAsync(command, reasonCode, cancellationToken);
+
     public Task<string> SendDurableAsync(
         string messageType,
         string deduplicationKey,

@@ -86,6 +86,15 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool SendSlotOperationCommandAfterRecovery { get; set; }
 
+    /// <summary>
+    /// When set, a PreDepartureSafetyCheck asking about this safety state version is sent after the
+    /// recovery handshake. A version below the one the vehicle has had accepted is a check that has
+    /// already expired.
+    /// </summary>
+    public long? PreDepartureSafetyCheckExpectedVersionAfterRecovery { get; set; }
+
+    public const string PreDepartureSafetyCheckIdAfterRecovery = "55555555-5555-4555-8555-555555555555";
+
     /// <summary>恢复完成后下发一次仓位配置激活（协议 v2 消息 7）。</summary>
     public bool SendSlotConfigurationActivationAfterRecovery { get; set; }
 
@@ -701,6 +710,22 @@ public sealed class FakeControlServer : IAsyncDisposable
             if (SendSlotOperationCommandAfterRecovery)
             {
                 await SendSlotOperationCommandAsync(context).ConfigureAwait(false);
+            }
+
+            if (PreDepartureSafetyCheckExpectedVersionAfterRecovery is long expectedSafetyStateVersion)
+            {
+                await WriteEnvelopeAsync(context, CreateEnvelope(
+                    context,
+                    "PreDepartureSafetyCheck",
+                    correlationId: null,
+                    new
+                    {
+                        preDepartureSafetyCheckId = PreDepartureSafetyCheckIdAfterRecovery,
+                        demandId = "11111111-1111-4111-8111-111111111111",
+                        movementLegId = "22222222-2222-4222-8222-222222222222",
+                        expectedSafetyStateVersion,
+                        targetStationId = "ST-GATE"
+                    })).ConfigureAwait(false);
             }
 
             if (SendSlotConfigurationActivationAfterRecovery)

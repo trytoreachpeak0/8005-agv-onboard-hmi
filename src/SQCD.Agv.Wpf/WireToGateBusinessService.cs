@@ -1323,6 +1323,25 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         WireToGatePreDepartureSafetyCheck command,
         CancellationToken cancellationToken)
     {
+        // CV-PREDEPARTURE-SAFETY-EXPIRES. The check names the safety state version it is asking about.
+        // Once this vehicle has had a later version accepted, the question is about a state that no
+        // longer holds: answering would report today's safety against it. Refused as
+        // PREDEPARTURE_CHECK_EXPIRED, session kept; the control server retires the check and asks
+        // again against the current version.
+        long acceptedSafetyStateVersion = _session.Current.SafetyStateVersion;
+        if (command.ExpectedSafetyStateVersion < acceptedSafetyStateVersion)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"出发前安全检查已过期：check={command.PreDepartureSafetyCheckId}，" +
+                $"询问的安全版本={command.ExpectedSafetyStateVersion}，本端已被接受的版本={acceptedSafetyStateVersion}。" +
+                "回PREDEPARTURE_CHECK_EXPIRED，不作答。");
+            await _session.RejectServerCommandAsync(command, "PREDEPARTURE_CHECK_EXPIRED", cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
         SafetyEvaluation evaluation = EvaluateSafety(_ioModule.CurrentSnapshot);
         bool safe = evaluation.Safety.DepartureSafe;
         long safetyStateVersion = _session.Current.SafetyStateVersion;

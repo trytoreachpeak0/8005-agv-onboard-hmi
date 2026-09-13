@@ -1803,17 +1803,51 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         string reasonCode,
         CancellationToken cancellationToken)
     {
-        WireToGateEnvelope problem = WireToGateProtocolSerializer.Create(
+        await SendEnvelopeAsync(
+                CreateProtocolProblem(rejected.MessageId, rejected.MessageType, generation, reasonCode),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Refuses a well-formed server command that no longer applies, with a ProtocolProblem correlated
+    /// to it, and keeps the session.
+    /// </summary>
+    /// <remarks>
+    /// The parse-time refusal above is for a command this client cannot accept at all and ends the
+    /// session after it. A business refusal is different: the command was valid when it was sent and
+    /// has since been overtaken -- a pre-departure check asking about a safety state the vehicle has
+    /// already moved past is the case CV-PREDEPARTURE-SAFETY-EXPIRES names.
+    /// </remarks>
+    public async Task RejectServerCommandAsync(
+        WireToGateServerCommand command,
+        string reasonCode,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reasonCode);
+        await SendEnvelopeAsync(
+                CreateProtocolProblem(command.MessageId, command.MessageType, command.SessionGeneration, reasonCode),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private WireToGateEnvelope CreateProtocolProblem(
+        string rejectedMessageId,
+        string rejectedMessageType,
+        long generation,
+        string reasonCode) =>
+        WireToGateProtocolSerializer.Create(
             "ProtocolProblem",
             Guid.NewGuid().ToString("D"),
-            rejected.MessageId,
+            rejectedMessageId,
             _options.AgvId,
             generation,
             _clock.Now.ToUniversalTime(),
             new
             {
-                rejectedMessageId = rejected.MessageId,
-                rejectedMessageType = rejected.MessageType,
+                rejectedMessageId,
+                rejectedMessageType,
                 problem = new
                 {
                     reasonCode,
@@ -1824,8 +1858,6 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 expectedProfileId = WireToGateRelease.ProfileId,
                 expectedProtocolReleaseManifestSha256 = WireToGateRelease.ManifestSha256
             });
-        await SendEnvelopeAsync(problem, cancellationToken).ConfigureAwait(false);
-    }
 
     private static bool IsJourneySnapshot(string messageType) => messageType switch
     {

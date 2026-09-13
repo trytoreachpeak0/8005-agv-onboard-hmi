@@ -843,6 +843,86 @@ public sealed class WireToGateG2Tests
     }
 
     /// <summary>
+    /// CV-PREDEPARTURE-SAFETY-EXPIRES, the vehicle's half: a PreDepartureSafetyCheck that asks about a
+    /// safety state older than the one this vehicle has already had accepted is spent. Answering it
+    /// would report today's safety against yesterday's question, so the vehicle refuses it as
+    /// PREDEPARTURE_CHECK_EXPIRED and keeps the session, and the control server asks again against
+    /// the current version.
+    /// </summary>
+    /// <remarks>
+    /// The second case is the control: a check that is not behind is answered as before, so the
+    /// refusal cannot pass by refusing everything. Before 2026-09-13 the vehicle answered every check
+    /// and neither end ever produced PREDEPARTURE_CHECK_EXPIRED.
+    /// </remarks>
+    [Theory]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("ProtocolVector", "CV-PREDEPARTURE-SAFETY-EXPIRES")]
+    [InlineData(0L, true)]
+    [InlineData(1_000_000L, false)]
+    public async Task ACheckAskedAboutAnOlderSafetyStateIsRefusedAsExpiredWithoutEndingTheSession(
+        long expectedSafetyStateVersion,
+        bool expired)
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            PreDepartureSafetyCheckExpectedVersionAfterRecovery = expectedSafetyStateVersion
+        };
+        FakeIoModuleClient io = new();
+        NullLogger logger = new();
+        await using WireToGateSessionService session = new(
+            CreateSessionOptions(server),
+            io,
+            new SqliteWireToGateJournal(NewJournalPath()),
+            logger,
+            new SystemClock(),
+            new DelegateVehicleSafetySignalProvider(() => true),
+            new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+            new SlotConfigurationActivationCoordinator(
+                new DocumentActiveSlotConfigurationStore(
+                    new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                G2SlotConfigurationFixtures.Approved()),
+                TimeProvider.System),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(500));
+        await using WireToGateBusinessService business = new(
+            session,
+            io,
+            logger,
+            new SystemClock(),
+            () => true,
+            new WireToGateSlotOperationExecutorOptions(
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(2),
+                TimeSpan.FromMilliseconds(10),
+                TimeSpan.FromSeconds(30)),
+            "W2G_G2_EXPIRED_CHECK_OPERATOR");
+
+        business.Start();
+        await session.Client.ConnectAndRecoverAsync(testToken);
+
+        string answer = expired ? "ProtocolProblem" : "PreDepartureSafetyCheckResult";
+        string mustNotAppear = expired ? "PreDepartureSafetyCheckResult" : "ProtocolProblem";
+        await WaitUntilAsync(() => server.Received.Any(item => item.MessageType == answer), testToken);
+
+        if (expired)
+        {
+            string line = server.ReceivedEnvelopes.First(envelope => envelope.MessageType == "ProtocolProblem").WireLine;
+            using JsonDocument document = JsonDocument.Parse(line);
+            JsonElement payload = document.RootElement.GetProperty("payload");
+            Assert.Equal("PreDepartureSafetyCheck", payload.GetProperty("rejectedMessageType").GetString());
+            Assert.Equal(
+                "PREDEPARTURE_CHECK_EXPIRED",
+                payload.GetProperty("problem").GetProperty("reasonCode").GetString());
+        }
+        Assert.DoesNotContain(server.Received, item => item.MessageType == mustNotAppear);
+        Assert.True(session.Current.Connected);
+    }
+
+    /// <summary>
     /// A drop-off journey is projected rather than refused.
     /// </summary>
     /// <remarks>
