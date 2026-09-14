@@ -1,0 +1,94 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="dc94fe1b-fe25-4c5a-a2a0-8df69099f32b" name="szy@LAB-WIN-01 2026-09-14 17:50:05" runUser="LAB-WIN-01\szy" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-09-14T17:50:05.4203893+08:00" queuing="2026-09-14T17:50:05.4203896+08:00" start="2026-09-14T17:50:03.5753417+08:00" finish="2026-09-14T17:50:05.8105603+08:00" />
+  <TestSettings name="default" id="5388704d-d150-40d0-870d-a1c91aefbfae">
+    <Deployment runDeploymentRoot="szy_LAB-WIN-01_2026-09-14_17_50_05" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="a41b740d-7675-4255-8cf8-a58c4868d100" testId="bac7d342-e0d2-2a0e-692f-eeed9be9cd64" testName="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.JourneySnapshotsAreProjectedAndHeartbeatDoesNotStealAsyncMessages" computerName="LAB-WIN-01" duration="00:00:00.0608286" startTime="2026-09-14T17:50:05.3622957+08:00" endTime="2026-09-14T17:50:05.4231917+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a41b740d-7675-4255-8cf8-a58c4868d100" />
+    <UnitTestResult executionId="c92cf42b-0025-448d-8991-72b82918c1ed" testId="f6c0c995-35f1-a0c6-edd5-9a8c97bc3f32" testName="SQCD.Agv.WireToGateG2Tests.WireToGateHmiPresentationTests.RecoveryRequiredIsVisibleWithTheServerReason" computerName="LAB-WIN-01" duration="00:00:00.1421642" startTime="2026-09-14T17:50:04.6112617+08:00" endTime="2026-09-14T17:50:04.7603804+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c92cf42b-0025-448d-8991-72b82918c1ed" />
+    <UnitTestResult executionId="8716ca15-90b6-4d69-b91f-24d0200a5ba0" testId="7e1384ab-f873-a516-f2a1-465bc6653de2" testName="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.SameJourneyRevisionWithDifferentContentFailsClosed" computerName="LAB-WIN-01" duration="00:00:00.4808541" startTime="2026-09-14T17:50:04.6112581+08:00" endTime="2026-09-14T17:50:05.0977861+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8716ca15-90b6-4d69-b91f-24d0200a5ba0" />
+    <UnitTestResult executionId="c188f2e7-fca6-4de9-8fa1-9c13d2e8095e" testId="603ad3a3-e4d3-110d-f8d1-b03840415f73" testName="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.SameRevisionDifferentContentFailsClosedWithProtocolProblemReasonCode" computerName="LAB-WIN-01" duration="00:00:00.0520694" startTime="2026-09-14T17:50:05.1003851+08:00" endTime="2026-09-14T17:50:05.1525478+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="c188f2e7-fca6-4de9-8fa1-9c13d2e8095e" />
+    <UnitTestResult executionId="28a78352-11ff-4be6-8d8e-96ec87c7e7dd" testId="a45faffc-6496-b421-b277-b5b696cb28c3" testName="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.SnapshotReplaceAndAckAcceptsHigherRevisionOnNewConnection" computerName="LAB-WIN-01" duration="00:00:00.0606940" startTime="2026-09-14T17:50:05.6040226+08:00" endTime="2026-09-14T17:50:05.6647815+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="28a78352-11ff-4be6-8d8e-96ec87c7e7dd" />
+    <UnitTestResult executionId="9ab5515d-8248-43c6-8a02-9ba4706df499" testId="5c8cbc23-4c39-93e6-c994-961233596649" testName="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.BusinessBootstrapsRecoveryRequestBeforeServerSnapshot" computerName="LAB-WIN-01" duration="00:00:00.2080620" startTime="2026-09-14T17:50:05.1533804+08:00" endTime="2026-09-14T17:50:05.3615130+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9ab5515d-8248-43c6-8a02-9ba4706df499" />
+    <UnitTestResult executionId="b47b6f0b-ca36-4bf4-9518-e76838e5f022" testId="44113ac2-11a1-591d-3dba-0b7f34012175" testName="SQCD.Agv.WireToGateG2Tests.WireToGateHmiPresentationTests.ReadyWireToGateSessionDoesNotRemainInLegacyConnectingState" computerName="LAB-WIN-01" duration="00:00:00.0003678" startTime="2026-09-14T17:50:04.7652332+08:00" endTime="2026-09-14T17:50:04.7656856+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="b47b6f0b-ca36-4bf4-9518-e76838e5f022" />
+    <UnitTestResult executionId="e72acb77-8b15-486a-a634-cc98f41631aa" testId="b0cee52e-7514-cc9e-6519-6e79c253a91c" testName="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.ReconnectDuringRecoveryRebindsDurableReportWithoutUnlockSideEffects" computerName="LAB-WIN-01" duration="00:00:00.0677430" startTime="2026-09-14T17:50:05.6656565+08:00" endTime="2026-09-14T17:50:05.7334770+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="e72acb77-8b15-486a-a634-cc98f41631aa" />
+    <UnitTestResult executionId="be7576ec-05a9-4d47-89d9-5c0dac43f221" testId="dd814b2e-1119-bae4-e863-51cb5fe709d7" testName="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.SameJourneyRevisionsWithStablePayloadAreAcceptedAcrossSessionGenerations" computerName="LAB-WIN-01" duration="00:00:00.1055679" startTime="2026-09-14T17:50:05.4977575+08:00" endTime="2026-09-14T17:50:05.6033932+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="be7576ec-05a9-4d47-89d9-5c0dac43f221" />
+    <UnitTestResult executionId="d0498b6d-4700-4adc-8072-ae1588ef1134" testId="245c8553-5cba-0f7d-99e5-d981be8d66a7" testName="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AppliedJourneyJournalUsesCanonicalPayloadForSameRevisionIdentity" computerName="LAB-WIN-01" duration="00:00:00.0296981" startTime="2026-09-14T17:50:05.4673949+08:00" endTime="2026-09-14T17:50:05.4971544+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d0498b6d-4700-4adc-8072-ae1588ef1134" />
+    <UnitTestResult executionId="d02cf147-8f9e-47b3-bac8-cf8e66b8df44" testId="4cda975d-2c02-c58b-8078-7e58318a6210" testName="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.HappyPathCompletesFullSequenceAndBecomesReady" computerName="LAB-WIN-01" duration="00:00:00.0365020" startTime="2026-09-14T17:50:05.4299066+08:00" endTime="2026-09-14T17:50:05.4664911+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="d02cf147-8f9e-47b3-bac8-cf8e66b8df44" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.ReconnectDuringRecoveryRebindsDurableReportWithoutUnlockSideEffects" storage="c:\users\szy\8005-b3\hmi-b3\tests\sqcd.agv.wiretogateg2tests\bin\release\net8.0-windows\win-x64\sqcd.agv.wiretogateg2tests.dll" id="b0cee52e-7514-cc9e-6519-6e79c253a91c">
+      <Execution id="e72acb77-8b15-486a-a634-cc98f41631aa" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests" name="ReconnectDuringRecoveryRebindsDurableReportWithoutUnlockSideEffects" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.SameRevisionDifferentContentFailsClosedWithProtocolProblemReasonCode" storage="c:\users\szy\8005-b3\hmi-b3\tests\sqcd.agv.wiretogateg2tests\bin\release\net8.0-windows\win-x64\sqcd.agv.wiretogateg2tests.dll" id="603ad3a3-e4d3-110d-f8d1-b03840415f73">
+      <Execution id="c188f2e7-fca6-4de9-8fa1-9c13d2e8095e" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests" name="SameRevisionDifferentContentFailsClosedWithProtocolProblemReasonCode" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.WireToGateG2Tests.WireToGateHmiPresentationTests.RecoveryRequiredIsVisibleWithTheServerReason" storage="c:\users\szy\8005-b3\hmi-b3\tests\sqcd.agv.wiretogateg2tests\bin\release\net8.0-windows\win-x64\sqcd.agv.wiretogateg2tests.dll" id="f6c0c995-35f1-a0c6-edd5-9a8c97bc3f32">
+      <Execution id="c92cf42b-0025-448d-8991-72b82918c1ed" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.WireToGateG2Tests.WireToGateHmiPresentationTests" name="RecoveryRequiredIsVisibleWithTheServerReason" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AppliedJourneyJournalUsesCanonicalPayloadForSameRevisionIdentity" storage="c:\users\szy\8005-b3\hmi-b3\tests\sqcd.agv.wiretogateg2tests\bin\release\net8.0-windows\win-x64\sqcd.agv.wiretogateg2tests.dll" id="245c8553-5cba-0f7d-99e5-d981be8d66a7">
+      <Execution id="d0498b6d-4700-4adc-8072-ae1588ef1134" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests" name="AppliedJourneyJournalUsesCanonicalPayloadForSameRevisionIdentity" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.HappyPathCompletesFullSequenceAndBecomesReady" storage="c:\users\szy\8005-b3\hmi-b3\tests\sqcd.agv.wiretogateg2tests\bin\release\net8.0-windows\win-x64\sqcd.agv.wiretogateg2tests.dll" id="4cda975d-2c02-c58b-8078-7e58318a6210">
+      <Execution id="d02cf147-8f9e-47b3-bac8-cf8e66b8df44" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests" name="HappyPathCompletesFullSequenceAndBecomesReady" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.JourneySnapshotsAreProjectedAndHeartbeatDoesNotStealAsyncMessages" storage="c:\users\szy\8005-b3\hmi-b3\tests\sqcd.agv.wiretogateg2tests\bin\release\net8.0-windows\win-x64\sqcd.agv.wiretogateg2tests.dll" id="bac7d342-e0d2-2a0e-692f-eeed9be9cd64">
+      <Execution id="a41b740d-7675-4255-8cf8-a58c4868d100" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests" name="JourneySnapshotsAreProjectedAndHeartbeatDoesNotStealAsyncMessages" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.SameJourneyRevisionsWithStablePayloadAreAcceptedAcrossSessionGenerations" storage="c:\users\szy\8005-b3\hmi-b3\tests\sqcd.agv.wiretogateg2tests\bin\release\net8.0-windows\win-x64\sqcd.agv.wiretogateg2tests.dll" id="dd814b2e-1119-bae4-e863-51cb5fe709d7">
+      <Execution id="be7576ec-05a9-4d47-89d9-5c0dac43f221" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests" name="SameJourneyRevisionsWithStablePayloadAreAcceptedAcrossSessionGenerations" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.BusinessBootstrapsRecoveryRequestBeforeServerSnapshot" storage="c:\users\szy\8005-b3\hmi-b3\tests\sqcd.agv.wiretogateg2tests\bin\release\net8.0-windows\win-x64\sqcd.agv.wiretogateg2tests.dll" id="5c8cbc23-4c39-93e6-c994-961233596649">
+      <Execution id="9ab5515d-8248-43c6-8a02-9ba4706df499" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests" name="BusinessBootstrapsRecoveryRequestBeforeServerSnapshot" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.SameJourneyRevisionWithDifferentContentFailsClosed" storage="c:\users\szy\8005-b3\hmi-b3\tests\sqcd.agv.wiretogateg2tests\bin\release\net8.0-windows\win-x64\sqcd.agv.wiretogateg2tests.dll" id="7e1384ab-f873-a516-f2a1-465bc6653de2">
+      <Execution id="8716ca15-90b6-4d69-b91f-24d0200a5ba0" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests" name="SameJourneyRevisionWithDifferentContentFailsClosed" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.WireToGateG2Tests.WireToGateHmiPresentationTests.ReadyWireToGateSessionDoesNotRemainInLegacyConnectingState" storage="c:\users\szy\8005-b3\hmi-b3\tests\sqcd.agv.wiretogateg2tests\bin\release\net8.0-windows\win-x64\sqcd.agv.wiretogateg2tests.dll" id="44113ac2-11a1-591d-3dba-0b7f34012175">
+      <Execution id="b47b6f0b-ca36-4bf4-9518-e76838e5f022" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.WireToGateG2Tests.WireToGateHmiPresentationTests" name="ReadyWireToGateSessionDoesNotRemainInLegacyConnectingState" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.SnapshotReplaceAndAckAcceptsHigherRevisionOnNewConnection" storage="c:\users\szy\8005-b3\hmi-b3\tests\sqcd.agv.wiretogateg2tests\bin\release\net8.0-windows\win-x64\sqcd.agv.wiretogateg2tests.dll" id="a45faffc-6496-b421-b277-b5b696cb28c3">
+      <Execution id="28a78352-11ff-4be6-8d8e-96ec87c7e7dd" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests" name="SnapshotReplaceAndAckAcceptsHigherRevisionOnNewConnection" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="bac7d342-e0d2-2a0e-692f-eeed9be9cd64" executionId="a41b740d-7675-4255-8cf8-a58c4868d100" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="f6c0c995-35f1-a0c6-edd5-9a8c97bc3f32" executionId="c92cf42b-0025-448d-8991-72b82918c1ed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7e1384ab-f873-a516-f2a1-465bc6653de2" executionId="8716ca15-90b6-4d69-b91f-24d0200a5ba0" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="603ad3a3-e4d3-110d-f8d1-b03840415f73" executionId="c188f2e7-fca6-4de9-8fa1-9c13d2e8095e" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="a45faffc-6496-b421-b277-b5b696cb28c3" executionId="28a78352-11ff-4be6-8d8e-96ec87c7e7dd" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="5c8cbc23-4c39-93e6-c994-961233596649" executionId="9ab5515d-8248-43c6-8a02-9ba4706df499" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="44113ac2-11a1-591d-3dba-0b7f34012175" executionId="b47b6f0b-ca36-4bf4-9518-e76838e5f022" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="b0cee52e-7514-cc9e-6519-6e79c253a91c" executionId="e72acb77-8b15-486a-a634-cc98f41631aa" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="dd814b2e-1119-bae4-e863-51cb5fe709d7" executionId="be7576ec-05a9-4d47-89d9-5c0dac43f221" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="245c8553-5cba-0f7d-99e5-d981be8d66a7" executionId="d0498b6d-4700-4adc-8072-ae1588ef1134" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="4cda975d-2c02-c58b-8078-7e58318a6210" executionId="d02cf147-8f9e-47b3-bac8-cf8e66b8df44" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="11" executed="11" passed="11" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 8.0.31)&#xD;
+[xUnit.net 00:00:00.20]   Discovering: SQCD.Agv.WireToGateG2Tests&#xD;
+[xUnit.net 00:00:00.45]   Discovered:  SQCD.Agv.WireToGateG2Tests&#xD;
+[xUnit.net 00:00:00.65]   Starting:    SQCD.Agv.WireToGateG2Tests&#xD;
+[xUnit.net 00:00:01.83]   Finished:    SQCD.Agv.WireToGateG2Tests (ID = 'd6d9776723557d28074b4394b5df9d34f4671b5758f9b7bf22398f0084de1550')&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>
