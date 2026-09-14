@@ -118,6 +118,53 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool RespondToRecoveryRequests { get; set; }
 
+    /// <summary>
+    /// 设了就用 <c>ExceptionRecoverySessionRejected</c> 拒绝每一个恢复会话请求，原因码是这个值。
+    /// </summary>
+    public string? RecoverySessionRejectionReasonCode { get; set; }
+
+    /// <summary>
+    /// 带着别的字节重复到达的恢复请求 messageId。真服务端的 <c>ProtocolInbox</c> 把 messageId 绑死在
+    /// 它第一次带来的整行字节上（<c>WireContentHash.Sha256(line)</c>），之后内容不同就抛
+    /// <c>ProtocolContentConflictException</c> 并掐掉连接。替身照做——不照做的话，车辆复用一个
+    /// messageId 在 G2 里永远是绿的，而车辆每次发送的 <c>sentAt</c> 都是新的，到了真服务端必然冲突。
+    /// </summary>
+    public IReadOnlyList<string> RecoveryRequestConflicts { get; private set; } = [];
+
+    private readonly Dictionary<string, string> _recoveryRequestLines = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// 让替身假装早就收到过这个 messageId 的恢复请求：车辆日志里存着的请求身份，服务端那边
+    /// 已经带着另一份内容落过库。
+    /// </summary>
+    public void PreloadRecoveryRequestLine(string messageId, string wireLine)
+    {
+        lock (_sync)
+        {
+            _recoveryRequestLines[messageId] = wireLine;
+        }
+    }
+
+    private bool BindRecoveryRequestLine(string messageId, string wireLine)
+    {
+        lock (_sync)
+        {
+            if (_recoveryRequestLines.TryGetValue(messageId, out string? boundLine))
+            {
+                if (string.Equals(boundLine, wireLine, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+
+                RecoveryRequestConflicts = [.. RecoveryRequestConflicts, messageId];
+                return false;
+            }
+
+            _recoveryRequestLines.Add(messageId, wireLine);
+            return true;
+        }
+    }
+
     public bool RespondToManualChargingReturnToServiceRequests { get; set; }
 
     /// <summary>
@@ -419,6 +466,13 @@ public sealed class FakeControlServer : IAsyncDisposable
                         messageType,
                         "STALE_SESSION_GENERATION")).ConfigureAwait(false);
                     continue;
+                }
+
+                if (messageType is "ExceptionRecoverySessionRequested" or "RecoveryActionSubmitted"
+                    && !BindRecoveryRequestLine(messageId, line))
+                {
+                    context.Client.Close();
+                    return;
                 }
 
                 switch (messageType)
@@ -794,6 +848,28 @@ public sealed class FakeControlServer : IAsyncDisposable
         JsonElement request)
     {
         JsonElement payload = request.GetProperty("payload");
+        if (RecoverySessionRejectionReasonCode is { } rejectionReasonCode)
+        {
+            await WriteEnvelopeAsync(
+                context,
+                CreateEnvelope(
+                    context,
+                    "ExceptionRecoverySessionRejected",
+                    request.GetProperty("messageId").GetString(),
+                    new
+                    {
+                        requestId = payload.GetProperty("requestId").GetString(),
+                        problem = new
+                        {
+                            reasonCode = rejectionReasonCode,
+                            fieldPath = "payload",
+                            displayMessage = "The recovery session request was refused."
+                        }
+                    }))
+                .ConfigureAwait(false);
+            return;
+        }
+
         string sessionId = "77777777-7777-4777-8777-777777777777";
         await WriteEnvelopeAsync(
             context,

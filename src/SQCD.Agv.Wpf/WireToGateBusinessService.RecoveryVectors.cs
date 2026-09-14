@@ -392,15 +392,29 @@ public sealed partial class WireToGateBusinessService
 
         string? proof = null;
         WireToGateOperatorContextPayload operatorContext;
+        string actionReason;
         string requestId;
         string eventId;
         ExceptionRecoverySessionOpenedPayload opened;
         string actionId;
-        string actionMessageId;
+
+        // Every recovery request below leaves with a messageId of its own, never one an earlier
+        // press already used. The server's ProtocolInbox binds a messageId to the exact bytes it
+        // first carried and to its first answer, and no press here reproduces those bytes -- sentAt
+        // is always new, and so is the session generation after a reconnect. Reusing one therefore
+        // ends in one of two ways: the old answer comes back (a refusal stays a refusal forever) or
+        // the content conflicts and the server drops the connection. The logical identity lives in
+        // the payload instead -- recoveryActionId, which the server deduplicates by business content
+        // and records nothing for when it refuses.
+        string actionMessageId = Guid.NewGuid().ToString("D");
 
         if (vector is not null)
         {
+            // The action was prepared and sent, and no answer came back. If the server did accept
+            // it, the retry must match the accepted business content exactly, so it carries the
+            // persisted operator and reason rather than this press's.
             operatorContext = RequirePersistedOperator(vector);
+            actionReason = state.RecoveryReason ?? RequireReason(reason);
             opened = new(
                 state.RecoverySessionRequestId
                     ?? throw new InvalidDataException("RECOVERY_SESSION_REQUEST_MISSING"),
@@ -414,12 +428,11 @@ public sealed partial class WireToGateBusinessService
             requestId = opened.RequestId;
             eventId = opened.EventId;
             actionId = vector.PrimaryId;
-            actionMessageId = state.RecoveryActionRequestId
-                ?? StableUuid($"{actionId}|recovery-action");
         }
         else
         {
             operatorContext = ReadOperatorContext();
+            actionReason = RequireReason(reason);
             proof = ReadRecoveryProof();
             bool activeSession = snapshot is not null && snapshot.State != "CLOSED";
             if (!activeSession && _session.Current.Readiness != WireToGateSessionReadiness.RecoveryRequired)
@@ -427,8 +440,14 @@ public sealed partial class WireToGateBusinessService
                 throw new InvalidOperationException("RECOVERY_SESSION_NOT_READY");
             }
 
-            requestId = state.RecoverySessionRequestId
-                ?? StableUuid($"{operation.SlotOperationAttemptId}|exception-recovery-session");
+            // A session request is rebuilt from this press -- operator, verifiedAt, reason -- so it is
+            // a new message and takes a new id; deriving the id from the attempt meant that one
+            // refusal refused that attempt for good. Whether an earlier press did open a session is
+            // the snapshot's to say, and while it is still on its way the server answers a second
+            // request with RECOVERY_SESSION_ALREADY_OPEN rather than opening another.
+            requestId = activeSession
+                ? state.RecoverySessionRequestId ?? Guid.NewGuid().ToString("D")
+                : Guid.NewGuid().ToString("D");
             eventId = activeSession ? snapshot!.EventId : requestId;
             if (activeSession)
             {
@@ -453,7 +472,7 @@ public sealed partial class WireToGateBusinessService
                         state with
                         {
                             RecoverySessionRequestId = requestId,
-                            RecoveryReason = RequireReason(reason),
+                            RecoveryReason = actionReason,
                             RecoveryOperatorId = operatorContext.OperatorId,
                             RecoveryOperatorVerifiedAt = operatorContext.VerifiedAt
                         },
@@ -468,7 +487,7 @@ public sealed partial class WireToGateBusinessService
                             eventId,
                             operation.DemandId,
                             operation.Slots,
-                            RequireReason(reason),
+                            actionReason,
                             proof),
                         cancellationToken)
                     .ConfigureAwait(false);
@@ -477,8 +496,6 @@ public sealed partial class WireToGateBusinessService
             ValidateOpenedRecoverySession(opened, requestId, eventId, operation);
             actionId = state.RecoveryActionId
                 ?? StableUuid($"{opened.ExceptionRecoverySessionId}|{action}");
-            actionMessageId = state.RecoveryActionRequestId
-                ?? StableUuid($"{actionId}|recovery-action");
             string? handoffId = action == FaultCargoHandoffAction
                 ? StableUuid($"{actionId}|fault-cargo-handoff")
                 : null;
@@ -496,10 +513,11 @@ public sealed partial class WireToGateBusinessService
                 operatorContext.VerifiedAt);
             state = state with
             {
+                RecoverySessionRequestId = requestId,
                 ExceptionRecoverySessionId = opened.ExceptionRecoverySessionId,
                 RecoveryActionId = actionId,
                 RecoveryActionRequestId = actionMessageId,
-                RecoveryReason = RequireReason(reason),
+                RecoveryReason = actionReason,
                 RecoveryOperatorId = operatorContext.OperatorId,
                 RecoveryOperatorVerifiedAt = operatorContext.VerifiedAt
             };
@@ -512,10 +530,7 @@ public sealed partial class WireToGateBusinessService
         {
             if (action == CompensateLoadAction)
             {
-                await SendLoadCompensationRequestAsync(
-                        vector,
-                        StableUuid($"{actionId}|load-compensation-request"),
-                        cancellationToken)
+                await SendLoadCompensationRequestAsync(vector, cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -539,7 +554,7 @@ public sealed partial class WireToGateBusinessService
                         operation.DemandId,
                         operation.Slots,
                         operatorContext,
-                        RequireReason(reason)),
+                        actionReason),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -567,10 +582,7 @@ public sealed partial class WireToGateBusinessService
 
         if (action == CompensateLoadAction)
         {
-            await SendLoadCompensationRequestAsync(
-                    vector,
-                    StableUuid($"{actionId}|load-compensation-request"),
-                    cancellationToken)
+            await SendLoadCompensationRequestAsync(vector, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -609,13 +621,18 @@ public sealed partial class WireToGateBusinessService
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Sent again whenever the operator presses while the server already holds the accepted action,
+    /// so each send carries a messageId of its own (see <c>RequestRecoveryActionVectorCoreAsync</c>).
+    /// The server authorizes by recoveryActionId and binds its compensation command only once;
+    /// another request simply re-sends the persisted command.
+    /// </summary>
     private async Task SendLoadCompensationRequestAsync(
         WireToGateRecoveryVectorContext vector,
-        string requestId,
         CancellationToken cancellationToken)
     {
         await _session.RequestLoadCompensationAsync(
-                requestId,
+                Guid.NewGuid().ToString("D"),
                 new LoadCompensationRequestedPayload(
                     vector.PrimaryId,
                     vector.ExceptionRecoverySessionId

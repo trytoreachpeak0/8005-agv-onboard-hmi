@@ -268,6 +268,86 @@ public sealed class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// 被拒过一次，同一个 attempt 还得能再请求。请求 id 原来由 attempt 算出来，于是第二次按下带着
+    /// 同一个 messageId、却是新的 <c>verifiedAt</c>/<c>sentAt</c>——真服务端判内容冲突、掐连接，就算
+    /// 内容逐字节相同也只会回放那条拒绝。每次按下是一条新消息、拿新 id。
+    /// </summary>
+    /// <remarks>
+    /// 移植自 MVP 线 <c>ab346ed</c> 的同名测试。v2 没有自动化面的恢复端点，所以直接按业务服务的
+    /// 「补偿清空」，布置用本类的 <see cref="RecoveryVectorHarness"/>。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task RecoveryCanBeRequestedAgainAfterTheServerRefusedTheSession()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.RecoverySessionRejectionReasonCode = "RECOVERY_SCOPE_MISMATCH");
+
+        Assert.True(harness.Business.CanRequestLoadCompensation);
+        Assert.False(await harness.Business.RequestLoadCompensationAsync(
+            "旅程还没 Blocked 时的补偿清空。", token));
+        await harness.WaitForRecoveryBlockedAsync(token);
+
+        harness.Server.RecoverySessionRejectionReasonCode = null;
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCompensation,
+            "the compensation entry to be offered again after the refusal",
+            token);
+        bool accepted = await harness.Business.RequestLoadCompensationAsync(
+            "旅程转 Blocked 之后再请求一次。", token);
+
+        Assert.Empty(harness.Server.RecoveryRequestConflicts);
+        Assert.True(accepted);
+        await harness.WaitForInboundAsync("LoadCompensationRequested", token);
+        var sessionRequests = harness.Server.ReceivedEnvelopes
+            .Where(envelope => envelope.MessageType == "ExceptionRecoverySessionRequested")
+            .ToArray();
+        Assert.Equal(2, sessionRequests.Length);
+        Assert.NotEqual(sessionRequests[0].MessageId, sessionRequests[1].MessageId);
+        foreach (var request in sessionRequests)
+        {
+            using JsonDocument document = JsonDocument.Parse(request.WireLine);
+            Assert.Equal(
+                request.MessageId,
+                document.RootElement.GetProperty("payload").GetProperty("requestId").GetString());
+        }
+    }
+
+    /// <summary>
+    /// 车辆日志里存着一个请求 id，服务端早就带着另一份内容收过它，而车辆从没收到过拒绝——服务端判
+    /// 冲突时是直接掐连接的。所以「收到拒绝再退役」救不了这台车，下一次按下必须根本不去读日志里那个 id。
+    /// </summary>
+    /// <remarks>移植自 MVP 线 <c>ab346ed</c> 的同名测试，布置同上。</remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ARequestIdTheServerAlreadyHoldsIsNotSentAgain()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        const string burnedRequestId = "55d12a30-3d36-4f54-9d05-4edb22a3129e";
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.PreloadRecoveryRequestLine(
+                burnedRequestId,
+                "{\"messageType\":\"ExceptionRecoverySessionRequested\",\"note\":\"an earlier press\"}"),
+            persistedRecoverySessionRequestId: burnedRequestId);
+
+        Assert.True(harness.Business.CanRequestLoadCompensation);
+        bool accepted = await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token);
+
+        Assert.Empty(harness.Server.RecoveryRequestConflicts);
+        Assert.True(accepted);
+        await harness.WaitForInboundAsync("LoadCompensationRequested", token);
+        Assert.DoesNotContain(
+            harness.Server.ReceivedEnvelopes,
+            envelope => envelope.MessageId == burnedRequestId);
+    }
+
+    /// <summary>
     /// One connected onboard sitting on an unsettled load operation, with an authenticated recovery
     /// operator, talking to a control server that issues the vector command an accepted action
     /// calls for.
@@ -327,7 +407,8 @@ public sealed class RecoveryVectorG2Tests
             CancellationToken cancellationToken,
             Action<FakeControlServer>? configure = null,
             long seededForcedRecoveryGeneration = 0,
-            bool cargoInTargetSlots = false)
+            bool cargoInTargetSlots = false,
+            string? persistedRecoverySessionRequestId = null)
         {
             FakeControlServer server = new(IPAddress.Loopback)
             {
@@ -415,6 +496,7 @@ public sealed class RecoveryVectorG2Tests
                         seededForcedRecoveryGeneration,
                         [])
                     {
+                        RecoverySessionRequestId = persistedRecoverySessionRequestId,
                         OperationContext = new WireToGateRecoveryOperationContext(
                             CommandMessageId,
                             null,
@@ -512,7 +594,7 @@ public sealed class RecoveryVectorG2Tests
         /// refusal tests establish that a guard ran at all, so their timeout is a real result and
         /// deserves to read like one.
         /// </remarks>
-        private static async Task WaitUntilAsync(
+        public static async Task WaitUntilAsync(
             Func<bool> predicate,
             string expectation,
             CancellationToken cancellationToken)
