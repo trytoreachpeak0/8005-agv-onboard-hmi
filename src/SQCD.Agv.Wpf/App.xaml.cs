@@ -184,6 +184,12 @@ public partial class App : System.Windows.Application, IDisposable
                         cancellationToken: cancellationToken),
                     () => _wireToGateBusiness.CanRequestFaultCargoHandoff,
                     cancellationToken => _wireToGateBusiness.RequestFaultCargoHandoffAsync(
+                        cancellationToken: cancellationToken),
+                    () => _wireToGateBusiness.CanRequestForcedMechanicalRecovery,
+                    cancellationToken => _wireToGateBusiness.RequestForcedMechanicalRecoveryAsync(
+                        cancellationToken: cancellationToken),
+                    () => _wireToGateBusiness.CanRequestManualChargingReturnToService,
+                    cancellationToken => _wireToGateBusiness.RequestManualChargingReturnToServiceAsync(
                         cancellationToken: cancellationToken));
                 _wireToGateBusiness.Start();
             }

@@ -353,6 +353,161 @@ public sealed class WireToGateG2Tests
             requestDocument.RootElement.GetProperty("payload").GetProperty("requestId").GetString());
     }
 
+    /// <summary>
+    /// CV-MANUAL-CHARGING-RETURN from the operator's entry: the business service sends the request with
+    /// the configured administrator, reports what the control server decided, and leaves the manual
+    /// charging hold exactly as the server last published it (REQUEST_RETURN_WITH_OPERATOR_CONTEXT,
+    /// NEVER_CLEAR_HOLD_LOCALLY).
+    /// </summary>
+    /// <remarks>
+    /// Before 2026-09-14 only the session client could send this request; nothing an operator could
+    /// reach did, so the vector had no path from the HMI at all.
+    /// </remarks>
+    [Theory]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
+    [InlineData("RETURNED_TO_ELIGIBILITY_EVALUATION", true)]
+    [InlineData("REJECTED", false)]
+    public async Task TheManualChargingReturnEntrySendsTheAdministratorAndLeavesTheHoldToTheServer(
+        string outcome,
+        bool accepted)
+    {
+        const string operatorVariable = "W2G_G2_MANUAL_RETURN_OPERATOR";
+        const string proofVariable = "W2G_G2_MANUAL_RETURN_PROOF";
+        Environment.SetEnvironmentVariable(operatorVariable, "maintenance-007");
+        Environment.SetEnvironmentVariable(proofVariable, "manual-return-proof");
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            SendJourneySnapshotsAfterRecovery = true,
+            ManualChargingHoldInSnapshots = true,
+            RespondToManualChargingReturnToServiceRequests = true,
+            ManualChargingReturnToServiceOutcome = outcome,
+            ManualChargingReturnToServiceProblem = accepted
+                ? null
+                : new WireToGateProblemPayload(
+                    "SESSION_RECOVERY_REQUIRED",
+                    "payload.requestId",
+                    "The session has facts to reconcile before the vehicle can take work again.")
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionService session = CreateManualReturnSession(server, io);
+        await using WireToGateBusinessService business = CreateManualReturnBusiness(
+            session, io, operatorVariable, proofVariable);
+        List<WireToGateOperatorEvent> events = [];
+        business.OperatorEventPublished += (_, args) =>
+        {
+            lock (events)
+            {
+                events.Add(args.Value);
+            }
+        };
+
+        business.Start();
+        await session.Client.ConnectAndRecoverAsync(testToken);
+        await WaitUntilAsync(
+            () => session.Client.CurrentJourney.VehicleBusinessState?.ManualChargingHold == true,
+            testToken);
+
+        Assert.True(business.CanRequestManualChargingReturnToService);
+        Assert.Equal(
+            accepted,
+            await business.RequestManualChargingReturnToServiceAsync("手动充电结束，申请返回服务。", 86.5, testToken));
+
+        var request = server.ReceivedEnvelopes.Single(item => item.MessageType == "ManualChargingReturnToServiceRequested");
+        using JsonDocument document = JsonDocument.Parse(request.WireLine);
+        JsonElement payload = document.RootElement.GetProperty("payload");
+        Assert.Equal("maintenance-007", payload.GetProperty("administrator").GetProperty("operatorId").GetString());
+        Assert.Equal("MAINTENANCE_ADMINISTRATOR", payload.GetProperty("administratorRole").GetString());
+        Assert.Equal("手动充电结束，申请返回服务。", payload.GetProperty("reason").GetString());
+        Assert.Equal(86.5, payload.GetProperty("observedBatteryPercent").GetDouble());
+        Assert.Equal(payload.GetProperty("requestId").GetString(), request.MessageId);
+
+        // The hold is the server's to lift, whatever it decided.
+        Assert.True(session.Client.CurrentJourney.VehicleBusinessState!.ManualChargingHold);
+        lock (events)
+        {
+            Assert.Contains(
+                events,
+                item => item.Kind == (accepted ? "MANUAL_CHARGING_RETURN_ACCEPTED" : "RECOVERY_BLOCKED"));
+        }
+    }
+
+    /// <summary>
+    /// REQUIRE_VERIFIED_ADMINISTRATOR on the vehicle's side: without the configured administrator
+    /// proof the entry is not offered and pressing it anyway sends nothing.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
+    public async Task TheManualChargingReturnEntryIsNotOfferedWithoutAVerifiedAdministrator()
+    {
+        const string operatorVariable = "W2G_G2_MANUAL_RETURN_UNVERIFIED_OPERATOR";
+        const string proofVariable = "W2G_G2_MANUAL_RETURN_UNSET_PROOF";
+        Environment.SetEnvironmentVariable(operatorVariable, "maintenance-008");
+        Environment.SetEnvironmentVariable(proofVariable, null);
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            RespondToManualChargingReturnToServiceRequests = true
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionService session = CreateManualReturnSession(server, io);
+        await using WireToGateBusinessService business = CreateManualReturnBusiness(
+            session, io, operatorVariable, proofVariable);
+
+        business.Start();
+        await session.Client.ConnectAndRecoverAsync(testToken);
+
+        Assert.False(business.CanRequestManualChargingReturnToService);
+        Assert.False(await business.RequestManualChargingReturnToServiceAsync("手动充电结束，申请返回服务。", null, testToken));
+        Assert.DoesNotContain(server.Received, item => item.MessageType == "ManualChargingReturnToServiceRequested");
+    }
+
+    private static WireToGateSessionService CreateManualReturnSession(FakeControlServer server, FakeIoModuleClient io) =>
+        new(
+            CreateSessionOptions(server),
+            io,
+            new SqliteWireToGateJournal(NewJournalPath()),
+            new NullLogger(),
+            new SystemClock(),
+            new DelegateVehicleSafetySignalProvider(() => true),
+            new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+            new SlotConfigurationActivationCoordinator(
+                new DocumentActiveSlotConfigurationStore(
+                    new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                    G2SlotConfigurationFixtures.Approved()),
+                TimeProvider.System),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(500));
+
+    private static WireToGateBusinessService CreateManualReturnBusiness(
+        WireToGateSessionService session,
+        FakeIoModuleClient io,
+        string operatorVariable,
+        string proofVariable) =>
+        new(
+            session,
+            io,
+            new NullLogger(),
+            new SystemClock(),
+            () => true,
+            new WireToGateSlotOperationExecutorOptions(
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(2),
+                TimeSpan.FromMilliseconds(10),
+                TimeSpan.FromSeconds(30)),
+            operatorVariable,
+            recoveryOptions: new WireToGateRecoveryOptions(
+                true,
+                proofVariable,
+                "MAINTENANCE_ADMINISTRATOR",
+                "CONFIGURED_PROOF"));
+
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]

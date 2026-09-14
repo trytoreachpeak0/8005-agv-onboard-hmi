@@ -120,6 +120,13 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool RespondToManualChargingReturnToServiceRequests { get; set; }
 
+    /// <summary>
+    /// The vehicle business state snapshots say the vehicle is held for manual charging. The real
+    /// control server publishes false today; this is what a test needs to show the onboard never
+    /// clears a hold on its own authority.
+    /// </summary>
+    public bool ManualChargingHoldInSnapshots { get; set; }
+
     public string ManualChargingReturnToServiceOutcome { get; set; } =
         "RETURNED_TO_ELIGIBILITY_EVALUATION";
 
@@ -1130,7 +1137,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                 vehicleBusinessStateRevision = 1,
                 readiness = "READY",
                 activePurpose = "TRANSPORT",
-                manualChargingHold = false,
+                manualChargingHold = ManualChargingHoldInSnapshots,
                 batteryState = "SUFFICIENT",
                 blockingFacts = Array.Empty<object>(),
                 observedAt

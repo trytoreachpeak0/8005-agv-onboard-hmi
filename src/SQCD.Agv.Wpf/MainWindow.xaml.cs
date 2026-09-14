@@ -267,6 +267,44 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnForcedMechanicalRecoveryClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null
+            || MessageBox.Show(
+                "请确认目标仓门无法电动解锁，并由授权维护人员现场确认需要人工撬开处理。\n\n强制机械恢复不证明仓位已清空、也不证明车辆可以恢复作业，车辆会保持需恢复状态，等待重新核对。是否继续？",
+                "强制机械恢复",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.RequestForcedMechanicalRecoveryAsync())
+        {
+            ShowRecoveryFailure("强制机械恢复请求未被接受。请检查授权、恢复会话和服务端状态。", "强制机械恢复失败");
+        }
+    }
+
+    private async void OnManualChargingReturnClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null
+            || MessageBox.Show(
+                "请由授权维护人员确认手动充电已经结束、充电线已经拔除。\n\n系统只向服务端申请重新评估车辆业务资格，是否恢复接单以服务端的决定为准。是否继续？",
+                "充电后返回服务",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.RequestManualChargingReturnAsync())
+        {
+            ShowRecoveryFailure("返回服务请求未被服务端受理。请查看日志中的原因，车辆保持原状态。", "返回服务未受理");
+        }
+    }
+
     private static void ShowRecoveryFailure(string message, string title) =>
         MessageBox.Show(
             message,
