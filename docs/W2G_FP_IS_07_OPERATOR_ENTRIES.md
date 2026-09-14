@@ -35,4 +35,6 @@
 | 新增 G2 测试 `TheManualChargingReturnEntryIsNotOfferedWithoutAVerifiedAdministrator` | 同上修复前编译失败；修复后绿：未配置管理员凭据时入口不可用、按下也不发请求 |
 | `FakeControlServer.ManualChargingHoldInSnapshots` | 新开关：车辆业务状态快照带手动充电保持 |
 | 界面按钮与接线 | 无单元测试可覆盖 XAML；由控制服务端 G3 `FP-IS-07` 在真车载端上用 UI Automation 点击驱动 |
+| 控制服务端 L2 `g3-forced-mechanical-recovery`（真车载端 `f14f8af`；调试运行 `forced-001`，证据未入库） | 5/5 PASS：「强制机械恢复」按钮出现并可点，确认后发出 `RecoveryActionSubmitted(FORCED_MECHANICAL_RECOVERY)`，收到命令后报 `MECHANICALLY_ISOLATED`、代数与命令一致、两项证明均为 `false`，未开锁 |
+| 控制服务端 L2 `g3-manual-charging-return`（真车载端 `f14f8af`；调试运行 `manual-005`，证据未入库） | 4/4 PASS：「充电后返回服务」按钮出现并可点；会话需恢复时申请被拒（`SESSION_RECOVERY_REQUIRED`），就绪后申请被受理（`RETURNED_TO_ELIGIBILITY_EVALUATION`）；两次请求都带 `L2-OPERATOR` 与 `MAINTENANCE_ADMINISTRATOR`；无任何业务或物理副作用。此前 `manual-001`～`004` 的失败都是场景脚本的写法问题，产品侧四次判定均正确 |
 | 全量 | `SQCD.Agv.UnitTests` 200 passed，`SQCD.Agv.WireToGateG2Tests` 54 passed，`dotnet format --verify-no-changes` 通过 |
