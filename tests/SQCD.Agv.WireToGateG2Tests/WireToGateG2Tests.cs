@@ -353,6 +353,161 @@ public sealed class WireToGateG2Tests
             requestDocument.RootElement.GetProperty("payload").GetProperty("requestId").GetString());
     }
 
+    /// <summary>
+    /// CV-MANUAL-CHARGING-RETURN from the operator's entry: the business service sends the request with
+    /// the configured administrator, reports what the control server decided, and leaves the manual
+    /// charging hold exactly as the server last published it (REQUEST_RETURN_WITH_OPERATOR_CONTEXT,
+    /// NEVER_CLEAR_HOLD_LOCALLY).
+    /// </summary>
+    /// <remarks>
+    /// Before 2026-09-14 only the session client could send this request; nothing an operator could
+    /// reach did, so the vector had no path from the HMI at all.
+    /// </remarks>
+    [Theory]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
+    [InlineData("RETURNED_TO_ELIGIBILITY_EVALUATION", true)]
+    [InlineData("REJECTED", false)]
+    public async Task TheManualChargingReturnEntrySendsTheAdministratorAndLeavesTheHoldToTheServer(
+        string outcome,
+        bool accepted)
+    {
+        const string operatorVariable = "W2G_G2_MANUAL_RETURN_OPERATOR";
+        const string proofVariable = "W2G_G2_MANUAL_RETURN_PROOF";
+        Environment.SetEnvironmentVariable(operatorVariable, "maintenance-007");
+        Environment.SetEnvironmentVariable(proofVariable, "manual-return-proof");
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            SendJourneySnapshotsAfterRecovery = true,
+            ManualChargingHoldInSnapshots = true,
+            RespondToManualChargingReturnToServiceRequests = true,
+            ManualChargingReturnToServiceOutcome = outcome,
+            ManualChargingReturnToServiceProblem = accepted
+                ? null
+                : new WireToGateProblemPayload(
+                    "SESSION_RECOVERY_REQUIRED",
+                    "payload.requestId",
+                    "The session has facts to reconcile before the vehicle can take work again.")
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionService session = CreateManualReturnSession(server, io);
+        await using WireToGateBusinessService business = CreateManualReturnBusiness(
+            session, io, operatorVariable, proofVariable);
+        List<WireToGateOperatorEvent> events = [];
+        business.OperatorEventPublished += (_, args) =>
+        {
+            lock (events)
+            {
+                events.Add(args.Value);
+            }
+        };
+
+        business.Start();
+        await session.Client.ConnectAndRecoverAsync(testToken);
+        await WaitUntilAsync(
+            () => session.Client.CurrentJourney.VehicleBusinessState?.ManualChargingHold == true,
+            testToken);
+
+        Assert.True(business.CanRequestManualChargingReturnToService);
+        Assert.Equal(
+            accepted,
+            await business.RequestManualChargingReturnToServiceAsync("手动充电结束，申请返回服务。", 86.5, testToken));
+
+        var request = server.ReceivedEnvelopes.Single(item => item.MessageType == "ManualChargingReturnToServiceRequested");
+        using JsonDocument document = JsonDocument.Parse(request.WireLine);
+        JsonElement payload = document.RootElement.GetProperty("payload");
+        Assert.Equal("maintenance-007", payload.GetProperty("administrator").GetProperty("operatorId").GetString());
+        Assert.Equal("MAINTENANCE_ADMINISTRATOR", payload.GetProperty("administratorRole").GetString());
+        Assert.Equal("手动充电结束，申请返回服务。", payload.GetProperty("reason").GetString());
+        Assert.Equal(86.5, payload.GetProperty("observedBatteryPercent").GetDouble());
+        Assert.Equal(payload.GetProperty("requestId").GetString(), request.MessageId);
+
+        // The hold is the server's to lift, whatever it decided.
+        Assert.True(session.Client.CurrentJourney.VehicleBusinessState!.ManualChargingHold);
+        lock (events)
+        {
+            Assert.Contains(
+                events,
+                item => item.Kind == (accepted ? "MANUAL_CHARGING_RETURN_ACCEPTED" : "RECOVERY_BLOCKED"));
+        }
+    }
+
+    /// <summary>
+    /// REQUIRE_VERIFIED_ADMINISTRATOR on the vehicle's side: without the configured administrator
+    /// proof the entry is not offered and pressing it anyway sends nothing.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
+    public async Task TheManualChargingReturnEntryIsNotOfferedWithoutAVerifiedAdministrator()
+    {
+        const string operatorVariable = "W2G_G2_MANUAL_RETURN_UNVERIFIED_OPERATOR";
+        const string proofVariable = "W2G_G2_MANUAL_RETURN_UNSET_PROOF";
+        Environment.SetEnvironmentVariable(operatorVariable, "maintenance-008");
+        Environment.SetEnvironmentVariable(proofVariable, null);
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            RespondToManualChargingReturnToServiceRequests = true
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionService session = CreateManualReturnSession(server, io);
+        await using WireToGateBusinessService business = CreateManualReturnBusiness(
+            session, io, operatorVariable, proofVariable);
+
+        business.Start();
+        await session.Client.ConnectAndRecoverAsync(testToken);
+
+        Assert.False(business.CanRequestManualChargingReturnToService);
+        Assert.False(await business.RequestManualChargingReturnToServiceAsync("手动充电结束，申请返回服务。", null, testToken));
+        Assert.DoesNotContain(server.Received, item => item.MessageType == "ManualChargingReturnToServiceRequested");
+    }
+
+    private static WireToGateSessionService CreateManualReturnSession(FakeControlServer server, FakeIoModuleClient io) =>
+        new(
+            CreateSessionOptions(server),
+            io,
+            new SqliteWireToGateJournal(NewJournalPath()),
+            new NullLogger(),
+            new SystemClock(),
+            new DelegateVehicleSafetySignalProvider(() => true),
+            new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+            new SlotConfigurationActivationCoordinator(
+                new DocumentActiveSlotConfigurationStore(
+                    new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                    G2SlotConfigurationFixtures.Approved()),
+                TimeProvider.System),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(500));
+
+    private static WireToGateBusinessService CreateManualReturnBusiness(
+        WireToGateSessionService session,
+        FakeIoModuleClient io,
+        string operatorVariable,
+        string proofVariable) =>
+        new(
+            session,
+            io,
+            new NullLogger(),
+            new SystemClock(),
+            () => true,
+            new WireToGateSlotOperationExecutorOptions(
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(2),
+                TimeSpan.FromMilliseconds(10),
+                TimeSpan.FromSeconds(30)),
+            operatorVariable,
+            recoveryOptions: new WireToGateRecoveryOptions(
+                true,
+                proofVariable,
+                "MAINTENANCE_ADMINISTRATOR",
+                "CONFIGURED_PROOF"));
+
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
@@ -750,6 +905,305 @@ public sealed class WireToGateG2Tests
             Environment.SetEnvironmentVariable(operatorVariable, previousOperator);
             Environment.SetEnvironmentVariable(proofVariable, previousProof);
         }
+    }
+
+    /// <summary>
+    /// REQ-0237 keeps load correction to the time before the vehicle leaves the pickup, and the
+    /// control server now holds the vehicle there for a departure wait after the load commits. The
+    /// operator can only use that wait if 「修正装货」 is offered as soon as the load is recorded.
+    /// </summary>
+    /// <remarks>
+    /// The entry reads a cached copy of the recovery state, and recording the result wrote the
+    /// journal without refreshing that copy -- the entry waited for some unrelated session event.
+    /// On the real rig that event was the departure itself: the G3 FP-IS-02 run closed its second
+    /// door at 21:29:33, the server sent the vehicle away at 21:29:55 after its 20 s wait, and the
+    /// entry appeared at 21:29:57. This fake IO raises no snapshot events, so nothing else refreshes
+    /// the copy here either.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CORRECTION")]
+    public async Task ACompletedLoadOffersTheCorrectionEntryAsSoonAsItsResultIsRecorded()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        const string operatorVariable = "W2G_G2_CORRECTION_ENTRY_OPERATOR";
+        string? previousOperator = Environment.GetEnvironmentVariable(operatorVariable);
+        Environment.SetEnvironmentVariable(operatorVariable, "operator-003");
+
+        try
+        {
+            await using FakeControlServer server = new(IPAddress.Loopback)
+            {
+                SendReadinessAfterRecoveryAck = true,
+                SendSlotOperationCommandAfterRecovery = true
+            };
+            FakeIoModuleClient io = new() { SimulateOperatorLoad = true };
+            NullLogger logger = new();
+            await using WireToGateSessionService session = new(
+                CreateSessionOptions(server),
+                io,
+                new SqliteWireToGateJournal(NewJournalPath()),
+                logger,
+                new SystemClock(),
+                new DelegateVehicleSafetySignalProvider(() => true),
+                new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+                new SlotConfigurationActivationCoordinator(
+                    new DocumentActiveSlotConfigurationStore(
+                        new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                    G2SlotConfigurationFixtures.Approved()),
+                    TimeProvider.System),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(500));
+            await using WireToGateBusinessService business = new(
+                session,
+                io,
+                logger,
+                new SystemClock(),
+                () => true,
+                new WireToGateSlotOperationExecutorOptions(
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromMilliseconds(10),
+                    TimeSpan.FromSeconds(30)),
+                operatorVariable,
+                recoveryOptions: new WireToGateRecoveryOptions(
+                    true,
+                    "W2G_G2_CORRECTION_ENTRY_PROOF",
+                    "MAINTENANCE_ADMINISTRATOR",
+                    "CONFIGURED_PROOF"));
+            bool completed = false;
+            business.OperatorEventPublished += (_, args) =>
+            {
+                if (args.Value.Kind == "OPERATION_COMPLETED")
+                {
+                    completed = true;
+                }
+            };
+
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            Assert.False(business.CanRequestLoadCorrection);
+
+            await WaitUntilAsync(() => completed, testToken);
+            Assert.Equal(1, io.UnlockCount);
+
+            await WaitUntilAsync(() => business.CanRequestLoadCorrection, testToken);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(operatorVariable, previousOperator);
+        }
+    }
+
+    /// <summary>
+    /// CV-PREDEPARTURE-SAFETY-EXPIRES, the vehicle's half: a PreDepartureSafetyCheck that asks about a
+    /// safety state older than the one this vehicle has already had accepted is spent. Answering it
+    /// would report today's safety against yesterday's question, so the vehicle refuses it as
+    /// PREDEPARTURE_CHECK_EXPIRED and keeps the session, and the control server asks again against
+    /// the current version.
+    /// </summary>
+    /// <remarks>
+    /// The second case is the control: a check that is not behind is answered as before, so the
+    /// refusal cannot pass by refusing everything. Before 2026-09-13 the vehicle answered every check
+    /// and neither end ever produced PREDEPARTURE_CHECK_EXPIRED.
+    /// </remarks>
+    [Theory]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("ProtocolVector", "CV-PREDEPARTURE-SAFETY-EXPIRES")]
+    [InlineData(0L, true)]
+    [InlineData(1_000_000L, false)]
+    public async Task ACheckAskedAboutAnOlderSafetyStateIsRefusedAsExpiredWithoutEndingTheSession(
+        long expectedSafetyStateVersion,
+        bool expired)
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            PreDepartureSafetyCheckExpectedVersionAfterRecovery = expectedSafetyStateVersion
+        };
+        FakeIoModuleClient io = new();
+        NullLogger logger = new();
+        await using WireToGateSessionService session = new(
+            CreateSessionOptions(server),
+            io,
+            new SqliteWireToGateJournal(NewJournalPath()),
+            logger,
+            new SystemClock(),
+            new DelegateVehicleSafetySignalProvider(() => true),
+            new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+            new SlotConfigurationActivationCoordinator(
+                new DocumentActiveSlotConfigurationStore(
+                    new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                G2SlotConfigurationFixtures.Approved()),
+                TimeProvider.System),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(500));
+        await using WireToGateBusinessService business = new(
+            session,
+            io,
+            logger,
+            new SystemClock(),
+            () => true,
+            new WireToGateSlotOperationExecutorOptions(
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(2),
+                TimeSpan.FromMilliseconds(10),
+                TimeSpan.FromSeconds(30)),
+            "W2G_G2_EXPIRED_CHECK_OPERATOR");
+
+        business.Start();
+        await session.Client.ConnectAndRecoverAsync(testToken);
+
+        string answer = expired ? "ProtocolProblem" : "PreDepartureSafetyCheckResult";
+        string mustNotAppear = expired ? "PreDepartureSafetyCheckResult" : "ProtocolProblem";
+        await WaitUntilAsync(() => server.Received.Any(item => item.MessageType == answer), testToken);
+
+        if (expired)
+        {
+            string line = server.ReceivedEnvelopes.First(envelope => envelope.MessageType == "ProtocolProblem").WireLine;
+            using JsonDocument document = JsonDocument.Parse(line);
+            JsonElement payload = document.RootElement.GetProperty("payload");
+            Assert.Equal("PreDepartureSafetyCheck", payload.GetProperty("rejectedMessageType").GetString());
+            Assert.Equal(
+                "PREDEPARTURE_CHECK_EXPIRED",
+                payload.GetProperty("problem").GetProperty("reasonCode").GetString());
+        }
+        Assert.DoesNotContain(server.Received, item => item.MessageType == mustNotAppear);
+        Assert.True(session.Current.Connected);
+    }
+
+    /// <summary>
+    /// CV-OPERATION-RESULT-UNKNOWN-RECONCILE, the vehicle's half: a load that ends UNKNOWN is reported
+    /// as UNKNOWN and acknowledged; after a restart the RecoveryStateReport names that result as
+    /// pending, and once the report is acknowledged the vehicle replays the same result under the new
+    /// session generation -- without touching a door again.
+    /// </summary>
+    /// <remarks>
+    /// Before 2026-09-13 pendingResults was always empty, because nothing ever put a result in it, and
+    /// an acknowledged result was never sent again: the control server had no way to reconcile from
+    /// the vehicle's journal, which is what the vector's replay is for.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AnUnknownResultIsReportedAsPendingAfterARestartAndReplayedOnceTheReportIsAcknowledged()
+    {
+        const string attemptId = "44444444-4444-4444-4444-444444444444";
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            SendSlotOperationCommandAfterRecovery = true
+        };
+        FakeIoModuleClient io = new() { LockerWaitTimesOut = true };
+        NullLogger logger = new();
+        string journalPath = NewJournalPath();
+
+        WireToGateSessionService NewSession() => new(
+            CreateSessionOptions(server),
+            io,
+            new SqliteWireToGateJournal(journalPath),
+            logger,
+            new SystemClock(),
+            new DelegateVehicleSafetySignalProvider(() => true),
+            new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+            new SlotConfigurationActivationCoordinator(
+                new DocumentActiveSlotConfigurationStore(
+                    new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                    G2SlotConfigurationFixtures.Approved()),
+                TimeProvider.System),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(500));
+        WireToGateBusinessService NewBusiness(WireToGateSessionService session) => new(
+            session,
+            io,
+            logger,
+            new SystemClock(),
+            () => true,
+            new WireToGateSlotOperationExecutorOptions(
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(2),
+                TimeSpan.FromMilliseconds(10),
+                TimeSpan.FromSeconds(30)),
+            "W2G_G2_UNKNOWN_RECONCILE_OPERATOR");
+
+        await using (WireToGateSessionService session = NewSession())
+        await using (WireToGateBusinessService business = NewBusiness(session))
+        {
+            // The same kind is also raised as soon as the journal holds the unsettled operation, long
+            // before its result is sent; only the one after the server has the result means the
+            // DurableAck came back.
+            bool acknowledged = false;
+            business.OperatorEventPublished += (_, args) =>
+            {
+                if (args.Value.Kind == "OPERATION_RECOVERY_REQUIRED"
+                    && server.ReceivedEnvelopes.Any(item => item.MessageType == "OperationResult"))
+                {
+                    acknowledged = true;
+                }
+            };
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            await WaitUntilAsync(() => acknowledged, testToken);
+        }
+
+        int unlocksBeforeRestart = io.UnlockCount;
+        server.SendSlotOperationCommandAfterRecovery = false;
+        server.SimulateOnboardProcessRestart();
+        await using (WireToGateSessionService session = NewSession())
+        await using (WireToGateBusinessService business = NewBusiness(session))
+        {
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            await WaitUntilAsync(
+                () => server.ReceivedEnvelopes.Count(item => item.MessageType == "OperationResult") == 2,
+                testToken);
+            Assert.True(session.Current.Connected);
+        }
+
+        (int Connection, string MessageType, string MessageId, string WireLine)[] results = server.ReceivedEnvelopes
+            .Where(item => item.MessageType == "OperationResult")
+            .ToArray();
+        Assert.NotEqual(results[0].Connection, results[1].Connection);
+        Assert.Equal(results[0].MessageId, results[1].MessageId);
+        string[] afterRestart = server.ReceivedEnvelopes
+            .Where(item => item.Connection == results[1].Connection)
+            .Select(item => item.MessageType)
+            .ToArray();
+        Assert.True(
+            Array.IndexOf(afterRestart, "RecoveryStateReport") < Array.IndexOf(afterRestart, "OperationResult"),
+            string.Join(", ", afterRestart));
+
+        WireToGateEnvelope first = WireToGateProtocolSerializer.DeserializeAndValidate(results[0].WireLine, "AGV-8005-01");
+        WireToGateEnvelope replayed = WireToGateProtocolSerializer.DeserializeAndValidate(results[1].WireLine, "AGV-8005-01");
+        Assert.Equal("UNKNOWN", first.Payload.GetProperty("overallOutcome").GetString());
+        Assert.NotEqual(first.SessionGeneration, replayed.SessionGeneration);
+        Assert.True(System.Text.Json.Nodes.JsonNode.DeepEquals(
+            System.Text.Json.Nodes.JsonNode.Parse(first.Payload.GetRawText()),
+            System.Text.Json.Nodes.JsonNode.Parse(replayed.Payload.GetRawText())));
+
+        WireToGateEnvelope report = server.ReceivedEnvelopes
+            .Where(item => item.Connection == results[1].Connection && item.MessageType == "RecoveryStateReport")
+            .Select(item => WireToGateProtocolSerializer.DeserializeAndValidate(item.WireLine, "AGV-8005-01"))
+            .Single();
+        Assert.Equal(attemptId, report.Payload.GetProperty("unsettledSlotOperationAttemptId").GetString());
+        JsonElement pending = Assert.Single(report.Payload.GetProperty("pendingResults").EnumerateArray());
+        Assert.Equal("OperationResult", pending.GetProperty("messageType").GetString());
+        Assert.Equal(results[0].MessageId, pending.GetProperty("messageId").GetString());
+        Assert.Equal(attemptId, pending.GetProperty("businessId").GetString());
+        Assert.Equal(
+            first.Payload.GetProperty("resultContentSha256").GetString(),
+            pending.GetProperty("contentSha256").GetString());
+
+        Assert.Equal(unlocksBeforeRestart, io.UnlockCount);
     }
 
     /// <summary>

@@ -35,6 +35,8 @@ public sealed class MainViewModel : ViewModelBase
     private bool _canRequestLoadCompensation;
     private bool _canRequestLoadCorrection;
     private bool _canRequestFaultCargoHandoff;
+    private bool _canRequestForcedMechanicalRecovery;
+    private bool _canRequestManualChargingReturn;
     private bool _hasWireToGateJourney;
     private bool _wireToGateEnabled;
     private WireToGateSessionSnapshot? _wireToGateSession;
@@ -54,6 +56,10 @@ public sealed class MainViewModel : ViewModelBase
     private Func<CancellationToken, Task<bool>>? _wireToGateLoadCompensationRequester;
     private Func<CancellationToken, Task<bool>>? _wireToGateLoadCorrectionRequester;
     private Func<CancellationToken, Task<bool>>? _wireToGateFaultCargoHandoffRequester;
+    private Func<bool>? _wireToGateCanRequestForcedMechanicalRecovery;
+    private Func<CancellationToken, Task<bool>>? _wireToGateForcedMechanicalRecoveryRequester;
+    private Func<bool>? _wireToGateCanRequestManualChargingReturn;
+    private Func<CancellationToken, Task<bool>>? _wireToGateManualChargingReturnRequester;
 
     public MainViewModel(
         OnboardController controller,
@@ -195,7 +201,11 @@ public sealed class MainViewModel : ViewModelBase
         Func<bool>? canRequestLoadCorrection = null,
         Func<CancellationToken, Task<bool>>? loadCorrectionRequester = null,
         Func<bool>? canRequestFaultCargoHandoff = null,
-        Func<CancellationToken, Task<bool>>? faultCargoHandoffRequester = null)
+        Func<CancellationToken, Task<bool>>? faultCargoHandoffRequester = null,
+        Func<bool>? canRequestForcedMechanicalRecovery = null,
+        Func<CancellationToken, Task<bool>>? forcedMechanicalRecoveryRequester = null,
+        Func<bool>? canRequestManualChargingReturn = null,
+        Func<CancellationToken, Task<bool>>? manualChargingReturnRequester = null)
     {
         _wireToGateSubmitter = submitter ?? throw new ArgumentNullException(nameof(submitter));
         _wireToGateCanSubmit = canSubmit ?? throw new ArgumentNullException(nameof(canSubmit));
@@ -209,6 +219,10 @@ public sealed class MainViewModel : ViewModelBase
         _wireToGateLoadCorrectionRequester = loadCorrectionRequester;
         _wireToGateCanRequestFaultCargoHandoff = canRequestFaultCargoHandoff;
         _wireToGateFaultCargoHandoffRequester = faultCargoHandoffRequester;
+        _wireToGateCanRequestForcedMechanicalRecovery = canRequestForcedMechanicalRecovery;
+        _wireToGateForcedMechanicalRecoveryRequester = forcedMechanicalRecoveryRequester;
+        _wireToGateCanRequestManualChargingReturn = canRequestManualChargingReturn;
+        _wireToGateManualChargingReturnRequester = manualChargingReturnRequester;
         _wireToGateEnabled = true;
         RefreshWireToGateInputStateCore();
         ApplyWireToGatePresentationCore();
@@ -245,6 +259,8 @@ public sealed class MainViewModel : ViewModelBase
         CanRequestLoadCompensation = _wireToGateCanRequestLoadCompensation?.Invoke() == true;
         CanRequestLoadCorrection = _wireToGateCanRequestLoadCorrection?.Invoke() == true;
         CanRequestFaultCargoHandoff = _wireToGateCanRequestFaultCargoHandoff?.Invoke() == true;
+        CanRequestForcedMechanicalRecovery = _wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true;
+        CanRequestManualChargingReturn = _wireToGateCanRequestManualChargingReturn?.Invoke() == true;
     }
 
     public string VisitText
@@ -350,6 +366,18 @@ public sealed class MainViewModel : ViewModelBase
         private set => SetProperty(ref _canRequestFaultCargoHandoff, value);
     }
 
+    public bool CanRequestForcedMechanicalRecovery
+    {
+        get => _canRequestForcedMechanicalRecovery;
+        private set => SetProperty(ref _canRequestForcedMechanicalRecovery, value);
+    }
+
+    public bool CanRequestManualChargingReturn
+    {
+        get => _canRequestManualChargingReturn;
+        private set => SetProperty(ref _canRequestManualChargingReturn, value);
+    }
+
     public string RecoverySlotName
     {
         get => _recoverySlotName;
@@ -410,6 +438,16 @@ public sealed class MainViewModel : ViewModelBase
         _wireToGateFaultCargoHandoffRequester is null
             ? Task.FromResult(false)
             : _wireToGateFaultCargoHandoffRequester(cancellationToken);
+
+    public Task<bool> RequestForcedMechanicalRecoveryAsync(CancellationToken cancellationToken = default) =>
+        _wireToGateForcedMechanicalRecoveryRequester is null
+            ? Task.FromResult(false)
+            : _wireToGateForcedMechanicalRecoveryRequester(cancellationToken);
+
+    public Task<bool> RequestManualChargingReturnAsync(CancellationToken cancellationToken = default) =>
+        _wireToGateManualChargingReturnRequester is null
+            ? Task.FromResult(false)
+            : _wireToGateManualChargingReturnRequester(cancellationToken);
 
     private void OnStateChanged(object? sender, ValueChangedEventArgs<OnboardSnapshot> args)
     {
@@ -497,6 +535,8 @@ public sealed class MainViewModel : ViewModelBase
             CanRequestLoadCompensation = false;
             CanRequestLoadCorrection = false;
             CanRequestFaultCargoHandoff = false;
+            CanRequestForcedMechanicalRecovery = false;
+            CanRequestManualChargingReturn = false;
             return;
         }
 
@@ -518,6 +558,8 @@ public sealed class MainViewModel : ViewModelBase
         CanRequestLoadCompensation = _wireToGateCanRequestLoadCompensation?.Invoke() == true;
         CanRequestLoadCorrection = _wireToGateCanRequestLoadCorrection?.Invoke() == true;
         CanRequestFaultCargoHandoff = _wireToGateCanRequestFaultCargoHandoff?.Invoke() == true;
+        CanRequestForcedMechanicalRecovery = _wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true;
+        CanRequestManualChargingReturn = _wireToGateCanRequestManualChargingReturn?.Invoke() == true;
     }
 
     private void RefreshLockerCardsCore()
@@ -547,7 +589,7 @@ public sealed class MainViewModel : ViewModelBase
 
     private static OperatorRecordKind MapOperatorEventKind(string kind) => kind switch
     {
-        "OPERATION_COMPLETED" => OperatorRecordKind.Success,
+        "OPERATION_COMPLETED" or "MANUAL_CHARGING_RETURN_ACCEPTED" => OperatorRecordKind.Success,
         "OPERATION_RECOVERY_REQUIRED" or "RECOVERY_BLOCKED" => OperatorRecordKind.Error,
         "RESULT_ACK_PENDING" or "RECOVERY_AUTHORIZED" => OperatorRecordKind.Warning,
         "SUBLOT_ENTRY_REQUESTED" or "SUBLOT_SUBMITTED" or "OPERATION_PROGRESS" or "OPERATION_REPLAY" =>

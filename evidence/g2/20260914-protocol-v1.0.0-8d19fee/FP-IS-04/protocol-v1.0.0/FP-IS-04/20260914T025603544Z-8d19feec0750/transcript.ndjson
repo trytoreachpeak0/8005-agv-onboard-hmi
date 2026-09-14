@@ -1,0 +1,11 @@
+{"timestampUtc":"2026-09-14T02:56:08.3436827Z","kind":"run.started","data":{"protocolRoot":"C:\\Users\\szy\\8005-b3\\proto-gov","runId":"20260914T025603544Z","evidenceType":"ONBOARD_HMI_LOCAL_G2","hmiRoot":"C:\\Users\\szy\\8005-b3\\hmi-b3","integrationSliceId":"FP-IS-04","selectedTestCount":2}}
+{"timestampUtc":"2026-09-14T02:56:08.6142938Z","kind":"protocol.g1.started","data":{"drive":"X:"}}
+{"timestampUtc":"2026-09-14T02:56:12.8724810Z","kind":"protocol.g1.completed","data":{"exitCode":0,"status":"PASS","log":"protocol-g1.log"}}
+{"timestampUtc":"2026-09-14T02:56:12.8776210Z","kind":"command.started","data":{"name":"dotnet-build-release","arguments":["build",".\\SQCD_8005AGV.sln","-c","Release"]}}
+{"timestampUtc":"2026-09-14T02:56:14.7347024Z","kind":"command.completed","data":{"exitCode":0,"log":"dotnet-build-release.log","name":"dotnet-build-release"}}
+{"timestampUtc":"2026-09-14T02:56:14.7353155Z","kind":"command.started","data":{"name":"dotnet-test-release","arguments":["test",".\\SQCD_8005AGV.sln","-c","Release","--no-build","--results-directory","C:\\Users\\szy\\8005-b3\\hmi-b3\\evidence\\g2\\protocol-v1.0.0\\FP-IS-04\\20260914T025603544Z-8d19feec0750\\test-results","--filter","IntegrationSlice=FP-IS-04","--logger","trx;LogFilePrefix=onboard-FP-IS-04"]}}
+{"timestampUtc":"2026-09-14T02:56:17.6787328Z","kind":"command.completed","data":{"exitCode":0,"log":"dotnet-test-release.log","name":"dotnet-test-release"}}
+{"timestampUtc":"2026-09-14T02:56:17.7242025Z","kind":"command.started","data":{"name":"dotnet-format-verify","arguments":["format",".\\SQCD_8005AGV.sln","--verify-no-changes","--no-restore"]}}
+{"timestampUtc":"2026-09-14T02:56:35.9388938Z","kind":"command.completed","data":{"exitCode":0,"log":"dotnet-format-verify.log","name":"dotnet-format-verify"}}
+{"timestampUtc":"2026-09-14T02:56:35.9461373Z","kind":"evidence.journal.bound","data":{"hmiStatus":"PASS","hmiCommit":"8d19feec07501df68c49a2867a2efa44420aa26d","g1Status":"PASS","protocolCommit":"9f22db825d52ad86c1d803bd0c1925dcc58d6793"}}
+{"timestampUtc":"2026-09-14T02:56:36.0837482Z","kind":"run.completed","data":{"status":"PASS","failures":0}}

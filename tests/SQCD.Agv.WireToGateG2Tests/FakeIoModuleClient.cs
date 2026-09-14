@@ -18,6 +18,21 @@ public sealed class FakeIoModuleClient : IIoModuleClient
 
     public int UnlockCount { get; private set; }
 
+    /// <summary>
+    /// Off by default, and then a slot operation is refused outright: the session tests perform none,
+    /// and a wait that quietly succeeded would hide one that ran by mistake. On, it plays a
+    /// cooperative operator the way the unit tests' simulation does -- the pulse unlocks the slot,
+    /// the output resets, and the door closes again over a basket.
+    /// </summary>
+    public bool SimulateOperatorLoad { get; init; }
+
+    /// <summary>
+    /// The locker never reaches the state the executor waits for, the way a door closed without a
+    /// basket times out on the real rig: the operation ends UNKNOWN instead of throwing past the
+    /// executor.
+    /// </summary>
+    public bool LockerWaitTimesOut { get; init; }
+
     public bool IsConnected => true;
 
     public IoSnapshot CurrentSnapshot { get; private set; }
@@ -42,17 +57,82 @@ public sealed class FakeIoModuleClient : IIoModuleClient
 
     public Task PulseUnlockAsync(int slotIndex, CancellationToken cancellationToken)
     {
-        UnlockCount++;
+        lock (_sync)
+        {
+            UnlockCount++;
+            if (SimulateOperatorLoad)
+            {
+                Update(slotIndex, locker => locker with
+                {
+                    LockFeedbackRaw = false,
+                    UnlockOutputRaw = true,
+                    ObservedAt = DateTimeOffset.UtcNow
+                });
+            }
+        }
+
         return Task.CompletedTask;
     }
 
-    public Task<LockerSnapshot> WaitForLockerAsync(
+    public async Task<LockerSnapshot> WaitForLockerAsync(
         int slotIndex,
         Func<LockerSnapshot, bool> predicate,
         TimeSpan timeout,
         TimeSpan stableWindow,
-        CancellationToken cancellationToken) =>
-        throw new NotSupportedException("G2会话测试不执行仓位操作。");
+        CancellationToken cancellationToken)
+    {
+        if (LockerWaitTimesOut)
+        {
+            throw new TimeoutException("G2 fake: the locker never reached the expected state.");
+        }
+
+        if (!SimulateOperatorLoad)
+        {
+            throw new NotSupportedException("G2会话测试不执行仓位操作。");
+        }
+
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout;
+        while (DateTimeOffset.UtcNow < deadline)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            lock (_sync)
+            {
+                LockerSnapshot locker = CurrentSnapshot.GetLocker(slotIndex);
+                if (predicate(locker))
+                {
+                    return locker;
+                }
+
+                if (locker.LockFeedbackRaw is false && locker.UnlockOutputRaw is true)
+                {
+                    Update(slotIndex, current => current with
+                    {
+                        UnlockOutputRaw = false,
+                        ObservedAt = DateTimeOffset.UtcNow
+                    });
+                }
+                else if (locker.LockFeedbackRaw is false)
+                {
+                    Update(slotIndex, current => current with
+                    {
+                        LockFeedbackRaw = true,
+                        LightCurtainRaw = false,
+                        ObservedAt = DateTimeOffset.UtcNow
+                    });
+                }
+            }
+
+            await Task.Delay(1, cancellationToken);
+        }
+
+        throw new TimeoutException();
+    }
+
+    private void Update(int slotIndex, Func<LockerSnapshot, LockerSnapshot> change)
+    {
+        _lockers[slotIndex] = change(_lockers[slotIndex]);
+        CurrentSnapshot = new IoSnapshot(true, _lockers.ToArray(), DateTimeOffset.UtcNow);
+    }
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 }

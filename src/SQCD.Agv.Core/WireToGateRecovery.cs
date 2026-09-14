@@ -305,6 +305,14 @@ public interface IWireToGateJournal : IAsyncDisposable
         string deduplicationKey,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Finds a durable message by its wire identity. A pending result is recorded by the message it
+    /// was sent as, not by the business key that produced it.
+    /// </summary>
+    public Task<WireToGateDurableMessage?> ReadOutgoingByMessageIdAsync(
+        string messageId,
+        CancellationToken cancellationToken = default);
+
     public Task MarkOutgoingAcknowledgedAsync(
         string messageId,
         string acceptedContentSha256,

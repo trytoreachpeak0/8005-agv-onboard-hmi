@@ -544,6 +544,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 .ReadUnacknowledgedOutgoingAsync(cancellationToken)
                 .ConfigureAwait(false);
             bool resumingInterruptedRecovery = unacknowledged.Count > 0;
+            IReadOnlyList<WireToGateDurableMessage> pendingResultReplays = [];
             if (resumingInterruptedRecovery)
             {
                 foreach (WireToGateDurableMessage pending in unacknowledged)
@@ -589,7 +590,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     cancellationToken).ConfigureAwait(false);
 
                 await SendOnboardAlarmSnapshotAsync(generation, cancellationToken).ConfigureAwait(false);
-                await SendRecoveryStateReportAsync(generation, io, cancellationToken).ConfigureAwait(false);
+                pendingResultReplays = await SendRecoveryStateReportAsync(generation, io, cancellationToken)
+                    .ConfigureAwait(false);
             }
 
             WireToGateEnvelope readinessEnvelope = await ReadEnvelopeAsync(generation, cancellationToken)
@@ -599,6 +601,12 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 readinessEnvelope,
                 requireExactConfiguredBaseline: !resumingInterruptedRecovery);
             StartReceiveLoop(generation);
+            foreach (WireToGateDurableMessage pendingResult in pendingResultReplays)
+            {
+                await ReplayAcknowledgedResultAsync(pendingResult, generation, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             return Current;
         }
         catch
@@ -1270,13 +1278,37 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         return new Guid(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)).AsSpan(0, 16)).ToString("D");
     }
 
-    private async Task SendRecoveryStateReportAsync(
+    /// <summary>
+    /// Sends this session's RecoveryStateReport and returns the acknowledged results it named as
+    /// pending, for <see cref="ReplayAcknowledgedResultAsync"/> once the handshake is through.
+    /// </summary>
+    /// <remarks>
+    /// Only results of the operation still unsettled are named, and only those this journal can send
+    /// again: naming one it cannot replay would leave the control server waiting for it for good.
+    /// </remarks>
+    private async Task<IReadOnlyList<WireToGateDurableMessage>> SendRecoveryStateReportAsync(
         long generation,
         IoSnapshot io,
         CancellationToken cancellationToken)
     {
         WireToGateRecoveryState recovery = await _journal.ReadRecoveryStateAsync(cancellationToken)
             .ConfigureAwait(false);
+        List<(WireToGatePendingResult Pending, WireToGateDurableMessage Message)> replayable = [];
+        foreach (WireToGatePendingResult pending in recovery.PendingResults.Where(item => string.Equals(
+                     item.BusinessId,
+                     recovery.UnsettledSlotOperationAttemptId,
+                     StringComparison.Ordinal)))
+        {
+            WireToGateDurableMessage? message = await _journal
+                .ReadOutgoingByMessageIdAsync(pending.MessageId, cancellationToken)
+                .ConfigureAwait(false);
+            if (message is { Acknowledged: true }
+                && string.Equals(message.MessageType, pending.MessageType, StringComparison.Ordinal))
+            {
+                replayable.Add((pending, message));
+            }
+        }
+
         string journalSha256 = await _journal.ComputeContentSha256Async(cancellationToken).ConfigureAwait(false);
         int[] observedActiveSlots = io.Lockers
             .Where(locker => locker.UnlockOutputRaw is true)
@@ -1301,11 +1333,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 ToProtocolCheckpoint(recovery.ProvenRecoveryCheckpoint),
                 observedActiveSlots,
                 recovery.ForcedRecoveryGeneration,
-                recovery.PendingResults.Select(item => new PendingResultPayload(
-                    item.MessageType,
-                    item.MessageId,
-                    item.BusinessId,
-                    item.ContentSha256)).ToArray(),
+                replayable.Select(item => new PendingResultPayload(
+                    item.Pending.MessageType,
+                    item.Pending.MessageId,
+                    item.Pending.BusinessId,
+                    item.Pending.ContentSha256)).ToArray(),
                 journalSha256));
         string contentSha256 = WireToGateProtocolSerializer.ComputeContentSha256(report);
         string wireLine = WireToGateProtocolSerializer.SerializeLine(report);
@@ -1335,6 +1367,66 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
         await _journal.MarkOutgoingAcknowledgedAsync(messageId, contentSha256, cancellationToken)
             .ConfigureAwait(false);
+        return replayable.Select(item => item.Message).ToArray();
+    }
+
+    /// <summary>
+    /// Sends an already acknowledged result again, rebound to this session's generation, after the
+    /// RecoveryStateReport that named it as pending (CV-OPERATION-RESULT-UNKNOWN-RECONCILE,
+    /// REPLAY_RESULT_ON_RECONNECT).
+    /// </summary>
+    /// <remarks>
+    /// The journal row is left alone: it was acknowledged once and stays so, and the rebound line is
+    /// derived from it again on every reconnect for as long as the operation stays unsettled. The
+    /// DurableAck is awaited through the receive loop rather than read inline, because the control
+    /// server replays its own pending commands right after the readiness line and one of them may
+    /// arrive first.
+    /// </remarks>
+    private async Task ReplayAcknowledgedResultAsync(
+        WireToGateDurableMessage result,
+        long generation,
+        CancellationToken cancellationToken)
+    {
+        WireToGateEnvelope stored = WireToGateProtocolSerializer.DeserializeAndValidate(
+            result.WireLine.TrimEnd('\r', '\n'),
+            _options.AgvId);
+        if (stored.MessageId != result.MessageId
+            || stored.MessageType != result.MessageType
+            || WireToGateProtocolSerializer.ComputeContentSha256(stored) != result.ContentSha256)
+        {
+            throw new InvalidDataException("DURABLE_OUTBOX_CONTENT_MISMATCH");
+        }
+
+        WireToGateEnvelope rebound = WireToGateProtocolSerializer.RebindSessionGeneration(stored, generation);
+        string contentSha256 = WireToGateProtocolSerializer.ComputeContentSha256(rebound);
+        TaskCompletionSource<WireToGateEnvelope> response = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_responseWaiters.TryAdd(rebound.MessageId, response))
+        {
+            throw new InvalidOperationException("重复的WIRE_TO_GATE业务messageId。");
+        }
+
+        try
+        {
+            await SendLineAsync(WireToGateProtocolSerializer.SerializeLine(rebound), cancellationToken)
+                .ConfigureAwait(false);
+            WireToGateEnvelope ackEnvelope = await response.Task
+                .WaitAsync(_options.MessageTimeout, cancellationToken)
+                .ConfigureAwait(false);
+            ThrowIfProtocolProblem(ackEnvelope);
+            WireToGateProtocolSerializer.RequireMessage(ackEnvelope, "DurableAck", rebound.MessageId);
+            DurableAckPayload ack = WireToGateProtocolSerializer.DeserializePayload<DurableAckPayload>(ackEnvelope);
+            if (ack.AcceptedMessageId != rebound.MessageId
+                || ack.AcceptedMessageType != rebound.MessageType
+                || ack.AcceptedContentSha256 != contentSha256)
+            {
+                throw new InvalidDataException("CONTENT_HASH_MISMATCH");
+            }
+        }
+        finally
+        {
+            _responseWaiters.TryRemove(rebound.MessageId, out _);
+        }
     }
 
     private async Task ReplayDurableOutgoingAsync(
@@ -1803,17 +1895,51 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         string reasonCode,
         CancellationToken cancellationToken)
     {
-        WireToGateEnvelope problem = WireToGateProtocolSerializer.Create(
+        await SendEnvelopeAsync(
+                CreateProtocolProblem(rejected.MessageId, rejected.MessageType, generation, reasonCode),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Refuses a well-formed server command that no longer applies, with a ProtocolProblem correlated
+    /// to it, and keeps the session.
+    /// </summary>
+    /// <remarks>
+    /// The parse-time refusal above is for a command this client cannot accept at all and ends the
+    /// session after it. A business refusal is different: the command was valid when it was sent and
+    /// has since been overtaken -- a pre-departure check asking about a safety state the vehicle has
+    /// already moved past is the case CV-PREDEPARTURE-SAFETY-EXPIRES names.
+    /// </remarks>
+    public async Task RejectServerCommandAsync(
+        WireToGateServerCommand command,
+        string reasonCode,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reasonCode);
+        await SendEnvelopeAsync(
+                CreateProtocolProblem(command.MessageId, command.MessageType, command.SessionGeneration, reasonCode),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    private WireToGateEnvelope CreateProtocolProblem(
+        string rejectedMessageId,
+        string rejectedMessageType,
+        long generation,
+        string reasonCode) =>
+        WireToGateProtocolSerializer.Create(
             "ProtocolProblem",
             Guid.NewGuid().ToString("D"),
-            rejected.MessageId,
+            rejectedMessageId,
             _options.AgvId,
             generation,
             _clock.Now.ToUniversalTime(),
             new
             {
-                rejectedMessageId = rejected.MessageId,
-                rejectedMessageType = rejected.MessageType,
+                rejectedMessageId,
+                rejectedMessageType,
                 problem = new
                 {
                     reasonCode,
@@ -1824,8 +1950,6 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 expectedProfileId = WireToGateRelease.ProfileId,
                 expectedProtocolReleaseManifestSha256 = WireToGateRelease.ManifestSha256
             });
-        await SendEnvelopeAsync(problem, cancellationToken).ConfigureAwait(false);
-    }
 
     private static bool IsJourneySnapshot(string messageType) => messageType switch
     {

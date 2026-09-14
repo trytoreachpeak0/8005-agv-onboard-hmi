@@ -1,0 +1,16 @@
+Test run for C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+Test run for C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+Results File: C:\Users\szy\8005-b3\hmi-b3\evidence\g2\protocol-v1.0.0\FP-IS-02\20260913T143701901Z-8a2fed9a4eeb\test-results\onboard-FP-IS-02_net8.0_20260913223716.trx
+
+Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2, Duration: 484 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+Results File: C:\Users\szy\8005-b3\hmi-b3\evidence\g2\protocol-v1.0.0\FP-IS-02\20260913T143701901Z-8a2fed9a4eeb\test-results\onboard-FP-IS-02_net8.0_20260913223717.trx
+
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 609 ms - SQCD.Agv.UnitTests.dll (net8.0)

@@ -1,0 +1,46 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="4d21ef13-9448-49c9-ae8c-ff69f94cc7d1" name="szy@LAB-WIN-01 2026-09-13 23:17:40" runUser="LAB-WIN-01\szy" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-09-13T23:17:40.4514687+08:00" queuing="2026-09-13T23:17:40.4514689+08:00" start="2026-09-13T23:17:38.9698746+08:00" finish="2026-09-13T23:17:40.4554608+08:00" />
+  <TestSettings name="default" id="13d97411-fd4c-44b9-9384-1859733bf592">
+    <Deployment runDeploymentRoot="szy_LAB-WIN-01_2026-09-13_23_17_40" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="852fb078-ccb8-4c2e-8fa8-e6f9323ec6fa" testId="f186af85-c06e-283d-fb7c-7f73c45fbc43" testName="SQCD.Agv.UnitTests.OnboardControllerTests.DuplicateOperationIdDoesNotUnlockAgain" computerName="LAB-WIN-01" duration="00:00:00.0020358" startTime="2026-09-13T23:17:40.3317033+08:00" endTime="2026-09-13T23:17:40.3337862+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="852fb078-ccb8-4c2e-8fa8-e6f9323ec6fa" />
+    <UnitTestResult executionId="9b1a481d-d79d-4e9b-b247-bd9c751b08f3" testId="bcaa7955-a9bb-0e1a-e51c-f1592896d384" testName="SQCD.Agv.UnitTests.OnboardControllerTests.SuccessfulResultIsRetriedWithSameMessageAfterConnectionRecovers" computerName="LAB-WIN-01" duration="00:00:00.2584230" startTime="2026-09-13T23:17:40.0639382+08:00" endTime="2026-09-13T23:17:40.3285219+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="9b1a481d-d79d-4e9b-b247-bd9c751b08f3" />
+    <UnitTestResult executionId="37f36216-f89e-48f8-9182-a9a13f235955" testId="7e6042ad-69a0-6ed8-937c-42eb4387fe5b" testName="SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ReplayingACompletedVectorKeepsTheSameObservedAtAndDoesNotPulse" computerName="LAB-WIN-01" duration="00:00:00.1746471" startTime="2026-09-13T23:17:40.0639394+08:00" endTime="2026-09-13T23:17:40.2455983+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="37f36216-f89e-48f8-9182-a9a13f235955" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="SQCD.Agv.UnitTests.OnboardControllerTests.SuccessfulResultIsRetriedWithSameMessageAfterConnectionRecovers" storage="c:\users\szy\8005-b3\hmi-b3\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="bcaa7955-a9bb-0e1a-e51c-f1592896d384">
+      <Execution id="9b1a481d-d79d-4e9b-b247-bd9c751b08f3" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.OnboardControllerTests" name="SuccessfulResultIsRetriedWithSameMessageAfterConnectionRecovers" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ReplayingACompletedVectorKeepsTheSameObservedAtAndDoesNotPulse" storage="c:\users\szy\8005-b3\hmi-b3\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="7e6042ad-69a0-6ed8-937c-42eb4387fe5b">
+      <Execution id="37f36216-f89e-48f8-9182-a9a13f235955" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests" name="ReplayingACompletedVectorKeepsTheSameObservedAtAndDoesNotPulse" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.UnitTests.OnboardControllerTests.DuplicateOperationIdDoesNotUnlockAgain" storage="c:\users\szy\8005-b3\hmi-b3\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="f186af85-c06e-283d-fb7c-7f73c45fbc43">
+      <Execution id="852fb078-ccb8-4c2e-8fa8-e6f9323ec6fa" />
+      <TestMethod codeBase="C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.OnboardControllerTests" name="DuplicateOperationIdDoesNotUnlockAgain" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="f186af85-c06e-283d-fb7c-7f73c45fbc43" executionId="852fb078-ccb8-4c2e-8fa8-e6f9323ec6fa" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="bcaa7955-a9bb-0e1a-e51c-f1592896d384" executionId="9b1a481d-d79d-4e9b-b247-bd9c751b08f3" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="7e6042ad-69a0-6ed8-937c-42eb4387fe5b" executionId="37f36216-f89e-48f8-9182-a9a13f235955" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="3" executed="3" passed="3" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 8.0.31)&#xD;
+[xUnit.net 00:00:00.20]   Discovering: SQCD.Agv.UnitTests&#xD;
+[xUnit.net 00:00:00.51]   Discovered:  SQCD.Agv.UnitTests&#xD;
+[xUnit.net 00:00:00.70]   Starting:    SQCD.Agv.UnitTests&#xD;
+[xUnit.net 00:00:01.03]   Finished:    SQCD.Agv.UnitTests (ID = '2636e28e8d300550c239002ed2f5387d3b7f532c63e15fa622bea62f745cc40c')&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

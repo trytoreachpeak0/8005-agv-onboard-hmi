@@ -1023,6 +1023,18 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 $"recovery:{command.RecoveryActionId}:final");
             try
             {
+                if (!completedSuccessfully && execution.JournalCheckpoint != "NONE")
+                {
+                    await _executor.RecordPendingResultAsync(
+                        command.SlotOperationAttemptId,
+                        new WireToGatePendingResult(
+                            "OperationResult",
+                            resultMessageId,
+                            command.SlotOperationAttemptId,
+                            payload.ResultContentSha256),
+                        cancellationToken).ConfigureAwait(false);
+                }
+
                 await _session.SendRecoveryOperationResultAsync(
                     recoveryResultKey,
                     resultMessageId,
@@ -1033,6 +1045,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     await _executor.MarkResultRecordedAsync(
                         command.SlotOperationAttemptId,
                         cancellationToken).ConfigureAwait(false);
+                    // Same refresh as the formal load path: a resumed load that completes is the
+                    // last completed load, and the correction entry must see it now.
+                    await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
                 }
 
                 PublishOperatorEvent(
@@ -1159,6 +1174,21 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 "final");
             try
             {
+                if (!completedSuccessfully
+                    && !string.Equals(execution.JournalCheckpoint, "NONE", StringComparison.Ordinal))
+                {
+                    // Kept pending until the operation settles: every later session reports it and
+                    // replays it (CV-OPERATION-RESULT-UNKNOWN-RECONCILE).
+                    await _executor.RecordPendingResultAsync(
+                        command.SlotOperationAttemptId,
+                        new WireToGatePendingResult(
+                            "OperationResult",
+                            command.SlotOperationAttemptId,
+                            command.SlotOperationAttemptId,
+                            payload.ResultContentSha256),
+                        cancellationToken).ConfigureAwait(false);
+                }
+
                 await _session.SendOperationResultAsync(
                     operationDeduplicationKey,
                     command.SlotOperationAttemptId,
@@ -1170,6 +1200,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     await _executor.MarkResultRecordedAsync(
                         command.SlotOperationAttemptId,
                         cancellationToken).ConfigureAwait(false);
+                    // Recording the result is what makes the load correctable
+                    // (LastCompletedLoadOperationContext), and the CanRequest* gates read a cached
+                    // copy. Without this refresh the correction entry waited for an unrelated session
+                    // event -- on the real rig, the departure that ends the correction window
+                    // (G3 FP-IS-02, 2026-09-13). The operator event below re-evaluates the gates.
+                    await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
                 }
                 PublishOperatorEvent(
                     $"operation-result:{command.SlotOperationAttemptId}:{execution.OverallOutcome}",
@@ -1314,6 +1350,25 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         WireToGatePreDepartureSafetyCheck command,
         CancellationToken cancellationToken)
     {
+        // CV-PREDEPARTURE-SAFETY-EXPIRES. The check names the safety state version it is asking about.
+        // Once this vehicle has had a later version accepted, the question is about a state that no
+        // longer holds: answering would report today's safety against it. Refused as
+        // PREDEPARTURE_CHECK_EXPIRED, session kept; the control server retires the check and asks
+        // again against the current version.
+        long acceptedSafetyStateVersion = _session.Current.SafetyStateVersion;
+        if (command.ExpectedSafetyStateVersion < acceptedSafetyStateVersion)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"出发前安全检查已过期：check={command.PreDepartureSafetyCheckId}，" +
+                $"询问的安全版本={command.ExpectedSafetyStateVersion}，本端已被接受的版本={acceptedSafetyStateVersion}。" +
+                "回PREDEPARTURE_CHECK_EXPIRED，不作答。");
+            await _session.RejectServerCommandAsync(command, "PREDEPARTURE_CHECK_EXPIRED", cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
         SafetyEvaluation evaluation = EvaluateSafety(_ioModule.CurrentSnapshot);
         bool safe = evaluation.Safety.DepartureSafe;
         long safetyStateVersion = _session.Current.SafetyStateVersion;

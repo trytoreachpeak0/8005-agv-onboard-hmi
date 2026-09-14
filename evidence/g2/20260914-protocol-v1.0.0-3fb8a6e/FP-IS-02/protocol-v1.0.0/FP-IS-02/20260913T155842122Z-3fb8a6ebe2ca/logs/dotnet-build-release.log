@@ -1,0 +1,17 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  SQCD.Agv.Contracts -> C:\Users\szy\8005-b3\hmi-b3\src\SQCD.Agv.Contracts\bin\Release\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.RuleMock -> C:\Users\szy\8005-b3\hmi-b3\tools\SQCD.Agv.RuleMock\bin\Release\net8.0\win-x64\SQCD.Agv.RuleMock.dll
+  SQCD.Agv.Core -> C:\Users\szy\8005-b3\hmi-b3\src\SQCD.Agv.Core\bin\Release\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Infrastructure -> C:\Users\szy\8005-b3\hmi-b3\src\SQCD.Agv.Infrastructure\bin\Release\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.Application -> C:\Users\szy\8005-b3\hmi-b3\src\SQCD.Agv.Application\bin\Release\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.AutomationHost -> C:\Users\szy\8005-b3\hmi-b3\src\SQCD.Agv.AutomationHost\bin\Release\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.UnitTests -> C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll
+  SQCD.Agv.Wpf -> C:\Users\szy\8005-b3\hmi-b3\src\SQCD.Agv.Wpf\bin\Release\net8.0-windows\win-x64\SQCD.Agv.Wpf.dll
+  SQCD.Agv.WireToGateG2Tests -> C:\Users\szy\8005-b3\hmi-b3\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:01.58
