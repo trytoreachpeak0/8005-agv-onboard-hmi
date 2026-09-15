@@ -42,6 +42,43 @@ public sealed class ModbusTcpIoModuleClientIntegrationTests
         await client.StopAsync(timeout.Token);
     }
 
+    // 现场三台车上的康耐德 C2000 仓位模块只回写 MBAP 事务号的低 8 位：第 256 条请求的应答事务号是 0（onboard-hmi#52）。
+    // 客户端若按 16 位递增并严格比对，约 255 条请求后就断开，而且重连后每一条都对不上。
+    [Fact]
+    public async Task ClientKeepsReadingPastTransaction255WhenModuleEchoesOnlyLowByte()
+    {
+        await using FakeModbusServer server = new(echoOnlyLowTransactionByte: true);
+        server.Start();
+        IoModuleSettings settings = new()
+        {
+            Host = "127.0.0.1",
+            Port = server.Port,
+            PollIntervalMs = 1,
+            RequestTimeoutMs = 500,
+            ReconnectDelayMs = 50
+        };
+        await using ModbusTcpIoModuleClient client = new(settings, new NullLogger());
+        int disconnects = 0;
+        client.ConnectionChanged += (_, args) =>
+        {
+            if (!args.Value)
+            {
+                Interlocked.Increment(ref disconnects);
+            }
+        };
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(30));
+        await client.StartAsync(timeout.Token);
+        await WaitUntilAsync(() => client.IsConnected, timeout.Token);
+
+        await WaitUntilAsync(() => server.RequestCount >= 600 || Volatile.Read(ref disconnects) > 0, timeout.Token);
+
+        Assert.Equal(0, Volatile.Read(ref disconnects));
+        Assert.True(client.IsConnected);
+        Assert.Equal(1, server.AcceptedConnections);
+
+        await client.StopAsync(timeout.Token);
+    }
+
     private static async Task WaitUntilAsync(Func<bool> condition, CancellationToken cancellationToken)
     {
         while (!condition())
@@ -50,7 +87,7 @@ public sealed class ModbusTcpIoModuleClientIntegrationTests
         }
     }
 
-    private sealed class FakeModbusServer : IAsyncDisposable
+    private sealed class FakeModbusServer(bool echoOnlyLowTransactionByte = false) : IAsyncDisposable
     {
         private readonly object _stateGate = new();
         private readonly bool[] _outputs = new bool[16];
@@ -60,8 +97,14 @@ public sealed class ModbusTcpIoModuleClientIntegrationTests
         private Task? _serverTask;
         private int _writeCount;
         private int _lastWriteAddress;
+        private int _requestCount;
+        private int _acceptedConnections;
 
         public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
+
+        public int RequestCount => Volatile.Read(ref _requestCount);
+
+        public int AcceptedConnections => Volatile.Read(ref _acceptedConnections);
 
         public int WriteCount => Volatile.Read(ref _writeCount);
 
@@ -86,6 +129,7 @@ public sealed class ModbusTcpIoModuleClientIntegrationTests
             try
             {
                 using TcpClient client = await _listener.AcceptTcpClientAsync(cancellationToken);
+                Interlocked.Increment(ref _acceptedConnections);
                 NetworkStream stream = client.GetStream();
                 while (!cancellationToken.IsCancellationRequested)
                 {
@@ -95,9 +139,15 @@ public sealed class ModbusTcpIoModuleClientIntegrationTests
                     byte[] requestPdu = new byte[length - 1];
                     await stream.ReadExactlyAsync(requestPdu, cancellationToken);
                     byte[] responsePdu = CreateResponse(requestPdu);
+                    Interlocked.Increment(ref _requestCount);
 
                     byte[] response = new byte[7 + responsePdu.Length];
                     header.AsSpan(0, 4).CopyTo(response);
+                    if (echoOnlyLowTransactionByte)
+                    {
+                        // 高字节清零，只留低 8 位，与现场 C2000 模块的应答一致。
+                        response[0] = 0;
+                    }
                     BinaryPrimitives.WriteUInt16BigEndian(response.AsSpan(4, 2), (ushort)(responsePdu.Length + 1));
                     response[6] = header[6];
                     responsePdu.CopyTo(response, 7);
