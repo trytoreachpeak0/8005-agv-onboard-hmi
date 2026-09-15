@@ -1023,7 +1023,34 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 case WireToGateRecoveryCommand recovery:
                     if (recovery.MessageType == "SublotRejected")
                     {
-                        Volatile.Write(ref _currentEntryRequest, null);
+                        // 服务端拒收了这次录入：说清原因、撤掉录入请求、让界面再刷一次按钮。原来这里只清请求，
+                        // 然后落到下面的通用分支，操作员看到的是「恢复动作被安全策略阻断」，与子批毫不相干
+                        // （8005-agv-program#86：旅程已结束之后到达的扫码，服务端现在明确拒收）。
+                        WireToGateSublotEntryRequest? rejectedEntry =
+                            Interlocked.Exchange(ref _currentEntryRequest, null);
+                        using System.Text.Json.JsonDocument rejected =
+                            System.Text.Json.JsonDocument.Parse(recovery.PayloadJson);
+                        System.Text.Json.JsonElement problem = rejected.RootElement.GetProperty("problem");
+                        string reasonCode = problem.GetProperty("reasonCode").GetString() ?? "SUBLOT_REJECTED";
+                        string? displayMessage =
+                            problem.TryGetProperty("displayMessage", out System.Text.Json.JsonElement display)
+                            && display.ValueKind == System.Text.Json.JsonValueKind.String
+                                ? display.GetString()
+                                : null;
+                        PublishOperatorEvent(
+                            $"sublot-rejected:{recovery.MessageId}",
+                            "SUBLOT_REJECTED",
+                            string.IsNullOrWhiteSpace(displayMessage)
+                                ? $"服务端拒收子批：{reasonCode}。"
+                                : $"服务端拒收子批：{displayMessage}（{reasonCode}）。");
+                        if (rejectedEntry is not null)
+                        {
+                            SublotEntryExpired?.Invoke(
+                                this,
+                                new ValueChangedEventArgs<WireToGateSublotEntryRequest>(rejectedEntry));
+                        }
+
+                        break;
                     }
                     else if (recovery.MessageType is "LoadCorrectionRejected"
                         or "LoadCompensationRejected")

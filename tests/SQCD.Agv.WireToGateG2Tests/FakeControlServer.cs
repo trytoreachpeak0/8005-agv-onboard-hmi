@@ -1308,6 +1308,39 @@ public sealed class FakeControlServer : IAsyncDisposable
             })).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// 服务端拒收一条已提交的子批：它所属的旅程已经结束（8005-agv-control-server 的
+    /// OnboardRecoveryCoordinator.RejectSublotForEndedJourneyAsync 发的就是这个形状）。
+    /// </summary>
+    public async Task SendSublotRejectedAsync(string submittedMessageId, string reasonCode, string displayMessage)
+    {
+        ConnectionContext context;
+        lock (_sync)
+        {
+            context = _latestContext ?? throw new InvalidOperationException("替身还没有接受过任何连接。");
+        }
+
+        await WriteEnvelopeAsync(context, WireToGateProtocolSerializer.Create(
+            "SublotRejected",
+            Guid.NewGuid().ToString("D"),
+            submittedMessageId,
+            context.AgvId,
+            context.Generation,
+            DateTimeOffset.UtcNow,
+            new
+            {
+                demandId = "11111111-1111-1111-1111-111111111111",
+                operationSessionId = "33333333-3333-3333-3333-333333333333",
+                problem = new
+                {
+                    reasonCode,
+                    fieldPath = "payload.worklistRevision",
+                    displayMessage
+                },
+                currentWorklistRevision = 2
+            })).ConfigureAwait(false);
+    }
+
     private static async Task SendDemandAcceptanceSnapshotsAsync(ConnectionContext context)
     {
         string demandId = "11111111-1111-1111-1111-111111111111";

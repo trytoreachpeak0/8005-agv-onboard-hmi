@@ -780,6 +780,101 @@ public sealed class WireToGateG2Tests
     }
 
     /// <summary>
+    /// 服务端拒收一条已提交的子批：旅程已经结束之后才到达的扫码（8005-agv-program#86）。车要撤掉录入请求，
+    /// 操作员看到的是拒收原因——原来这条落到恢复消息的通用分支，显示的是「恢复动作被安全策略阻断」。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public async Task ARefusedSublotSaysWhyAndWithdrawsTheEntry()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        const string operatorVariable = "W2G_G2_SUBLOT_REFUSED_OPERATOR";
+        string? previousOperator = Environment.GetEnvironmentVariable(operatorVariable);
+        Environment.SetEnvironmentVariable(operatorVariable, "operator-001");
+
+        try
+        {
+            await using FakeControlServer server = new(IPAddress.Loopback)
+            {
+                SendReadinessAfterRecoveryAck = true,
+                SendJourneySnapshotsAfterRecovery = true,
+                SendSublotEntryRequestAfterRecovery = true
+            };
+            FakeIoModuleClient io = new();
+            NullLogger logger = new();
+            await using WireToGateSessionService session = new(
+                CreateSessionOptions(server),
+                io,
+                new SqliteWireToGateJournal(NewJournalPath()),
+                logger,
+                new SystemClock(),
+                new DelegateVehicleSafetySignalProvider(() => true),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(500));
+            await using WireToGateBusinessService business = new(
+                session,
+                io,
+                logger,
+                new SystemClock(),
+                () => true,
+                new WireToGateSlotOperationExecutorOptions(
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromMilliseconds(10),
+                    TimeSpan.FromSeconds(30)),
+                operatorVariable);
+            List<WireToGateOperatorEvent> events = [];
+            business.OperatorEventPublished += (_, args) =>
+            {
+                lock (events)
+                {
+                    events.Add(args.Value);
+                }
+            };
+            int expired = 0;
+            business.SublotEntryExpired += (_, _) => Interlocked.Increment(ref expired);
+
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            await WaitUntilAsync(() => business.CanSubmitSublot, testToken);
+
+            string submitted = await business.SubmitSublotAsync("SUBLOT-001", "SCANNER", testToken);
+            await server.SendSublotRejectedAsync(
+                submitted,
+                "WORKLIST_REVISION_STALE",
+                "本站已结束，这次录入不再处理。");
+            await WaitUntilAsync(
+                () =>
+                {
+                    lock (events)
+                    {
+                        return !business.CanSubmitSublot
+                            && events.Any(item => item.Kind == "SUBLOT_REJECTED");
+                    }
+                },
+                testToken);
+
+            lock (events)
+            {
+                WireToGateOperatorEvent refusal = Assert.Single(events, item => item.Kind == "SUBLOT_REJECTED");
+                Assert.Contains("本站已结束，这次录入不再处理。", refusal.Message, StringComparison.Ordinal);
+                Assert.Contains("WORKLIST_REVISION_STALE", refusal.Message, StringComparison.Ordinal);
+                Assert.DoesNotContain(events, item => item.Kind == "RECOVERY_BLOCKED");
+            }
+
+            Assert.False(business.CanRequestLoadCancellation);
+            Assert.Equal(1, Volatile.Read(ref expired));
+            Assert.Equal(0, io.UnlockCount);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(operatorVariable, previousOperator);
+        }
+    }
+
+    /// <summary>
     /// The same stop, but the server refuses. The peer must report the refusal and change nothing:
     /// a rejected cancellation leaves the entry open, because the demand is still the vehicle's.
     /// </summary>
