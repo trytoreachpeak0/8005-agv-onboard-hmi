@@ -701,6 +701,85 @@ public sealed class WireToGateG2Tests
     }
 
     /// <summary>
+    /// 服务端单方面结束了本站（站点等待超时、扫码前取消被授权、恢复结束最后一单）之后发来一份版本更高、
+    /// 条目为空的作业清单。车必须撤掉录入请求和「取消装货」：服务端发的每条 SublotEntryRequested 都声明了
+    /// expiresOnRevisionChange=true。2026-09-15 agv01 上车没有撤，按下取消被拒，再按一次被掐连接。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public async Task ANewerWorklistRevisionWithdrawsTheSublotEntryAndItsCancellation()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        const string operatorVariable = "W2G_G2_STOP_CLOSED_OPERATOR";
+        string? previousOperator = Environment.GetEnvironmentVariable(operatorVariable);
+        Environment.SetEnvironmentVariable(operatorVariable, "operator-001");
+
+        try
+        {
+            await using FakeControlServer server = new(IPAddress.Loopback)
+            {
+                SendReadinessAfterRecoveryAck = true,
+                SendJourneySnapshotsAfterRecovery = true,
+                SendSublotEntryRequestAfterRecovery = true
+            };
+            FakeIoModuleClient io = new();
+            NullLogger logger = new();
+            await using WireToGateSessionService session = new(
+                CreateSessionOptions(server),
+                io,
+                new SqliteWireToGateJournal(NewJournalPath()),
+                logger,
+                new SystemClock(),
+                new DelegateVehicleSafetySignalProvider(() => true),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(500));
+            await using WireToGateBusinessService business = new(
+                session,
+                io,
+                logger,
+                new SystemClock(),
+                () => true,
+                new WireToGateSlotOperationExecutorOptions(
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromMilliseconds(10),
+                    TimeSpan.FromSeconds(30)),
+                operatorVariable);
+            int expired = 0;
+            business.SublotEntryExpired += (_, _) => Interlocked.Increment(ref expired);
+
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            await WaitUntilAsync(() => business.CanSubmitSublot, testToken);
+            Assert.True(business.CanRequestLoadCancellation);
+
+            await server.SendStopClosedSnapshotsAsync(worklistRevision: 2, planRevision: 2);
+            // 清单与行程是两条报文，前者一到录入请求就撤了；等两条都应用完再看。
+            await WaitUntilAsync(
+                () => !business.CanSubmitSublot
+                    && session.CurrentJourney.UpcomingStopPlan is { Revision: 2 },
+                testToken);
+
+            Assert.False(business.CanRequestLoadCancellation);
+            Assert.Empty(business.ExpectedSublots);
+            Assert.Equal(1, Volatile.Read(ref expired));
+            WireToGateCurrentStopWorklist worklist =
+                Assert.IsType<WireToGateCurrentStopWorklist>(session.CurrentJourney.CurrentStopWorklist);
+            Assert.Equal(2, worklist.Revision);
+            Assert.Empty(worklist.Items);
+            Assert.Null(worklist.StationDepartureDeadlineAt);
+            Assert.Empty(Assert.IsType<WireToGateUpcomingStopPlan>(session.CurrentJourney.UpcomingStopPlan).Legs);
+            Assert.Equal(0, io.UnlockCount);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(operatorVariable, previousOperator);
+        }
+    }
+
+    /// <summary>
     /// The same stop, but the server refuses. The peer must report the refusal and change nothing:
     /// a rejected cancellation leaves the entry open, because the demand is still the vehicle's.
     /// </summary>

@@ -156,6 +156,10 @@ public partial class App : System.Windows.Application, IDisposable
                         $"服务端请求录入Sublot：demandId={args.Value.DemandId}，revision={args.Value.WorklistRevision}。 ");
                     viewModel.RefreshWireToGateInputState();
                 };
+                // 界面在业务服务之前订阅了 JourneyChanged，清单刷新的那一刻录入请求还没撤，
+                // 所以撤销之后要再刷一次按钮。
+                _wireToGateBusiness.SublotEntryExpired += (_, _) =>
+                    viewModel.RefreshWireToGateInputState();
                 _wireToGateBusiness.OperatorEventPublished += (_, args) =>
                     viewModel.ApplyWireToGateOperatorEvent(args.Value);
                 viewModel.ConfigureWireToGate(

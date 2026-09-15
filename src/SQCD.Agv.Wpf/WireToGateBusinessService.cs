@@ -120,6 +120,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
     public event EventHandler<ValueChangedEventArgs<WireToGateSublotEntryRequest>>? SublotEntryRequested;
 
+    /// <summary>
+    /// The entry request was withdrawn because a newer worklist superseded it. Raised after the
+    /// journey projection changed, so anything bound to <see cref="CanSubmitSublot"/> has to look again.
+    /// </summary>
+    public event EventHandler<ValueChangedEventArgs<WireToGateSublotEntryRequest>>? SublotEntryExpired;
+
     public event EventHandler<ValueChangedEventArgs<WireToGateOperatorEvent>>? OperatorEventPublished;
 
     public bool CanSubmitSublot =>
@@ -464,6 +470,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         _started = true;
         _session.ServerCommandReceived += OnServerCommandReceived;
         _session.StateChanged += OnSessionStateChanged;
+        _session.JourneyChanged += OnJourneyChanged;
         _ioModule.SnapshotChanged += OnIoSnapshotChanged;
         if (_observableVehicleSafetySignalProvider is not null)
         {
@@ -485,6 +492,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         {
             _session.ServerCommandReceived -= OnServerCommandReceived;
             _session.StateChanged -= OnSessionStateChanged;
+            _session.JourneyChanged -= OnJourneyChanged;
             _ioModule.SnapshotChanged -= OnIoSnapshotChanged;
             if (_observableVehicleSafetySignalProvider is not null)
             {
@@ -518,6 +526,45 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         await _executor.DisposeAsync().ConfigureAwait(false);
         await _vectorExecutor.DisposeAsync().ConfigureAwait(false);
         GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// A worklist at a newer revision than the entry request withdraws the request: the server sends
+    /// every SublotEntryRequested with expiresOnRevisionChange=true. Until this existed the vehicle
+    /// ignored that, and a stop the server had already ended on its own -- the station wait expired, an
+    /// operator cancellation was authorised, a recovery ended the last demand -- went on offering
+    /// sublot entry and 取消装货, whose press was refused and whose second press dropped the
+    /// connection (2026-09-15, agv01).
+    /// </summary>
+    /// <remarks>
+    /// Only a strictly newer revision withdraws. A new round at the same stop publishes its worklist
+    /// and then its entry request at one new revision, so a worklist never withdraws the request it
+    /// announces; and a journal restore on reconnect replays revisions the request was issued against.
+    /// </remarks>
+    private void OnJourneyChanged(object? sender, ValueChangedEventArgs<WireToGateJourneySnapshot> args)
+    {
+        if (_disposed || args.Value.CurrentStopWorklist is not { } worklist)
+        {
+            return;
+        }
+
+        WireToGateSublotEntryRequest? entry = Volatile.Read(ref _currentEntryRequest);
+        if (entry is null
+            || worklist.Revision <= entry.WorklistRevision
+            || Interlocked.CompareExchange(ref _currentEntryRequest, null, entry) != entry)
+        {
+            return;
+        }
+
+        PublishOperatorEvent(
+            $"sublot-entry-expired:{entry.MessageId}",
+            "SUBLOT_ENTRY_EXPIRED",
+            worklist.Items.Count == 0
+                ? "本站已结束，录入请求已撤销。"
+                : "作业清单已更新，旧的录入请求已撤销。");
+        SublotEntryExpired?.Invoke(
+            this,
+            new ValueChangedEventArgs<WireToGateSublotEntryRequest>(entry));
     }
 
     private void OnServerCommandReceived(object? sender, ValueChangedEventArgs<WireToGateServerCommand> args)

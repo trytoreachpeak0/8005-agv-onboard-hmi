@@ -193,13 +193,17 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
     }
 
-    private sealed class ConnectionContext
+    private sealed class ConnectionContext : IDisposable
     {
+        public void Dispose() => WriteGate.Dispose();
+
         public required int ConnectionIndex;
         public required TcpClient Client;
         public required StreamReader Reader;
         public required StreamWriter Writer;
         public required ConcurrentQueue<string> ReceivedOrder;
+        // 连接循环在回应答，测试又会从外面主动推快照；两边同时写同一个 StreamWriter 会把行写花。
+        public readonly SemaphoreSlim WriteGate = new(1, 1);
         public string AgvId = string.Empty;
         public long Generation;
         public long CapabilityVersion;
@@ -256,6 +260,10 @@ public sealed class FakeControlServer : IAsyncDisposable
                 AcceptedSafetyStateVersion = acceptedSafetyStateVersion
             };
             RecordConnection(connectionIndex, context.ReceivedOrder);
+            lock (_sync)
+            {
+                _latestContext = context;
+            }
             _ = Task.Run(() => HandleConnectionAsync(connectionIndex, context, stoppingToken), stoppingToken);
         }
     }
@@ -430,6 +438,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             context.Writer.Dispose();
             context.Reader.Dispose();
             context.Client.Dispose();
+            context.Dispose();
         }
     }
 
@@ -1251,7 +1260,52 @@ public sealed class FakeControlServer : IAsyncDisposable
             SentJourneyEnvelopes = sent;
         }
 
-        await context.Writer.WriteLineAsync(wireLine).ConfigureAwait(false);
+        await context.WriteGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await context.Writer.WriteLineAsync(wireLine).ConfigureAwait(false);
+        }
+        finally
+        {
+            context.WriteGate.Release();
+        }
+    }
+
+    private ConnectionContext? _latestContext;
+
+    /// <summary>
+    /// 服务端单方面结束了本站：在最近一条连接上推一份条目为空、没有截止时间的作业清单，和一份没有腿的
+    /// 行程，版本都比之前的高。真服务端在站点超时、扫码前取消被授权、恢复结束最后一单时发的就是这个形状
+    /// （8005-agv-control-server 的 OnboardJourneyPublisher.QueueStopClosedAsync）。
+    /// </summary>
+    public async Task SendStopClosedSnapshotsAsync(long worklistRevision, long planRevision)
+    {
+        ConnectionContext context;
+        lock (_sync)
+        {
+            context = _latestContext ?? throw new InvalidOperationException("替身还没有接受过任何连接。");
+        }
+
+        await WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(
+            context,
+            "CurrentStopWorklistSnapshot",
+            new
+            {
+                stationId = "ST-01",
+                worklistRevision,
+                operationSessionId = (string?)null,
+                stationDepartureDeadlineAt = (DateTimeOffset?)null,
+                items = Array.Empty<object>()
+            })).ConfigureAwait(false);
+        await WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(
+            context,
+            "UpcomingStopPlanSnapshot",
+            new
+            {
+                planRevision,
+                demandId = (string?)null,
+                legs = Array.Empty<object>()
+            })).ConfigureAwait(false);
     }
 
     private static async Task SendDemandAcceptanceSnapshotsAsync(ConnectionContext context)
@@ -1351,7 +1405,15 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     private static async Task WriteEnvelopeAsync(ConnectionContext context, WireToGateEnvelope envelope)
     {
-        await context.Writer.WriteLineAsync(WireToGateProtocolSerializer.Serialize(envelope)).ConfigureAwait(false);
+        await context.WriteGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await context.Writer.WriteLineAsync(WireToGateProtocolSerializer.Serialize(envelope)).ConfigureAwait(false);
+        }
+        finally
+        {
+            context.WriteGate.Release();
+        }
     }
 
     public async ValueTask DisposeAsync()
