@@ -120,6 +120,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
     public event EventHandler<ValueChangedEventArgs<WireToGateSublotEntryRequest>>? SublotEntryRequested;
 
+    /// <summary>
+    /// The entry request was withdrawn because a newer worklist superseded it. Raised after the
+    /// journey projection changed, so anything bound to <see cref="CanSubmitSublot"/> has to look again.
+    /// </summary>
+    public event EventHandler<ValueChangedEventArgs<WireToGateSublotEntryRequest>>? SublotEntryExpired;
+
     public event EventHandler<ValueChangedEventArgs<WireToGateOperatorEvent>>? OperatorEventPublished;
 
     public bool CanSubmitSublot =>
@@ -464,6 +470,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         _started = true;
         _session.ServerCommandReceived += OnServerCommandReceived;
         _session.StateChanged += OnSessionStateChanged;
+        _session.JourneyChanged += OnJourneyChanged;
         _ioModule.SnapshotChanged += OnIoSnapshotChanged;
         if (_observableVehicleSafetySignalProvider is not null)
         {
@@ -485,6 +492,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         {
             _session.ServerCommandReceived -= OnServerCommandReceived;
             _session.StateChanged -= OnSessionStateChanged;
+            _session.JourneyChanged -= OnJourneyChanged;
             _ioModule.SnapshotChanged -= OnIoSnapshotChanged;
             if (_observableVehicleSafetySignalProvider is not null)
             {
@@ -518,6 +526,45 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         await _executor.DisposeAsync().ConfigureAwait(false);
         await _vectorExecutor.DisposeAsync().ConfigureAwait(false);
         GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// A worklist at a newer revision than the entry request withdraws the request: the server sends
+    /// every SublotEntryRequested with expiresOnRevisionChange=true. Until this existed the vehicle
+    /// ignored that, and a stop the server had already ended on its own -- the station wait expired, an
+    /// operator cancellation was authorised, a recovery ended the last demand -- went on offering
+    /// sublot entry and 取消装货, whose press was refused and whose second press dropped the
+    /// connection (2026-09-15, agv01).
+    /// </summary>
+    /// <remarks>
+    /// Only a strictly newer revision withdraws. A new round at the same stop publishes its worklist
+    /// and then its entry request at one new revision, so a worklist never withdraws the request it
+    /// announces; and a journal restore on reconnect replays revisions the request was issued against.
+    /// </remarks>
+    private void OnJourneyChanged(object? sender, ValueChangedEventArgs<WireToGateJourneySnapshot> args)
+    {
+        if (_disposed || args.Value.CurrentStopWorklist is not { } worklist)
+        {
+            return;
+        }
+
+        WireToGateSublotEntryRequest? entry = Volatile.Read(ref _currentEntryRequest);
+        if (entry is null
+            || worklist.Revision <= entry.WorklistRevision
+            || Interlocked.CompareExchange(ref _currentEntryRequest, null, entry) != entry)
+        {
+            return;
+        }
+
+        PublishOperatorEvent(
+            $"sublot-entry-expired:{entry.MessageId}",
+            "SUBLOT_ENTRY_EXPIRED",
+            worklist.Items.Count == 0
+                ? "本站已结束，录入请求已撤销。"
+                : "作业清单已更新，旧的录入请求已撤销。");
+        SublotEntryExpired?.Invoke(
+            this,
+            new ValueChangedEventArgs<WireToGateSublotEntryRequest>(entry));
     }
 
     private void OnServerCommandReceived(object? sender, ValueChangedEventArgs<WireToGateServerCommand> args)
@@ -1306,9 +1353,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 "COMPLETED",
                 StringComparison.Ordinal);
             // ADR-cross-0058 决策 5：确定失败不进恢复。现场没有一件事是不确定的——每个仓位
-            // 都报得出已知的占用状态、已闭的门与已复位的开锁输出——所以它不需要管理员，
-            // 需要的是操作员取消本次装货。把它和 UNKNOWN 混在一起显示，操作员会去找一个
-            // 根本不必来的人。
+            // 都报得出已知的占用状态、已闭的门与已复位的开锁输出——所以它不需要管理员。
+            // 它也不需要操作员取消：服务端收到这份结果就自己把需求判 Cancelled、结束本站
+            // （8005-agv-program#39）；出厂配置下这一刻也根本没有取消按钮——恢复入口关着，
+            // 而这次 attempt 没有结算（8005-agv-onboard-hmi#39）。把它和 UNKNOWN 混在一起
+            // 显示，操作员会去找一个根本不必来的人。
             bool determinateFailure = string.Equals(
                 execution.OverallOutcome,
                 "FAILED",
@@ -1324,7 +1373,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 completedSuccessfully
                     ? $"{FormatSlots(command.Slots)}操作完成，正在上报结果。"
                     : determinateFailure
-                        ? $"{FormatSlots(command.Slots)}本站期限已过，货物未交接，请在界面上取消本次装货。"
+                        ? $"{FormatSlots(command.Slots)}本站期限已过，货物未交接，服务端会结束本站，不需要操作。"
                         : $"{FormatSlots(command.Slots)}操作未完成，需要恢复处理。",
                 "final");
             try
@@ -1351,7 +1400,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     completedSuccessfully
                         ? $"{FormatSlots(command.Slots)}操作结果已被服务端确认。"
                         : determinateFailure
-                            ? $"{FormatSlots(command.Slots)}本站期限已过、货物未交接，服务端已收到结果。不需要管理员恢复，请在界面上取消本次装货。"
+                            ? $"{FormatSlots(command.Slots)}本站期限已过、货物未交接，服务端已收到结果并会结束本站。不需要管理员恢复，也不需要取消装货。"
                             : $"{FormatSlots(command.Slots)}操作失败或状态未知，服务端已收到结果，等待管理员恢复。",
                     new WireToGateHmiOperationSnapshot(
                         command.SlotOperationAttemptId,
@@ -1361,7 +1410,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         completedSuccessfully
                             ? "操作完成。"
                             : determinateFailure
-                                ? "本站期限已过，货物未交接，请取消本次装货。"
+                                ? "本站期限已过，货物未交接，等待服务端结束本站。"
                                 : "操作需要管理员恢复。",
                         execution.ObservedAt));
             }

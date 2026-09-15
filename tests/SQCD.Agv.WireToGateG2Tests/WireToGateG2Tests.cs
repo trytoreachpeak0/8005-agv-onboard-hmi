@@ -701,6 +701,85 @@ public sealed class WireToGateG2Tests
     }
 
     /// <summary>
+    /// 服务端单方面结束了本站（站点等待超时、扫码前取消被授权、恢复结束最后一单）之后发来一份版本更高、
+    /// 条目为空的作业清单。车必须撤掉录入请求和「取消装货」：服务端发的每条 SublotEntryRequested 都声明了
+    /// expiresOnRevisionChange=true。2026-09-15 agv01 上车没有撤，按下取消被拒，再按一次被掐连接。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public async Task ANewerWorklistRevisionWithdrawsTheSublotEntryAndItsCancellation()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        const string operatorVariable = "W2G_G2_STOP_CLOSED_OPERATOR";
+        string? previousOperator = Environment.GetEnvironmentVariable(operatorVariable);
+        Environment.SetEnvironmentVariable(operatorVariable, "operator-001");
+
+        try
+        {
+            await using FakeControlServer server = new(IPAddress.Loopback)
+            {
+                SendReadinessAfterRecoveryAck = true,
+                SendJourneySnapshotsAfterRecovery = true,
+                SendSublotEntryRequestAfterRecovery = true
+            };
+            FakeIoModuleClient io = new();
+            NullLogger logger = new();
+            await using WireToGateSessionService session = new(
+                CreateSessionOptions(server),
+                io,
+                new SqliteWireToGateJournal(NewJournalPath()),
+                logger,
+                new SystemClock(),
+                new DelegateVehicleSafetySignalProvider(() => true),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(500));
+            await using WireToGateBusinessService business = new(
+                session,
+                io,
+                logger,
+                new SystemClock(),
+                () => true,
+                new WireToGateSlotOperationExecutorOptions(
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromMilliseconds(10),
+                    TimeSpan.FromSeconds(30)),
+                operatorVariable);
+            int expired = 0;
+            business.SublotEntryExpired += (_, _) => Interlocked.Increment(ref expired);
+
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            await WaitUntilAsync(() => business.CanSubmitSublot, testToken);
+            Assert.True(business.CanRequestLoadCancellation);
+
+            await server.SendStopClosedSnapshotsAsync(worklistRevision: 2, planRevision: 2);
+            // 清单与行程是两条报文，前者一到录入请求就撤了；等两条都应用完再看。
+            await WaitUntilAsync(
+                () => !business.CanSubmitSublot
+                    && session.CurrentJourney.UpcomingStopPlan is { Revision: 2 },
+                testToken);
+
+            Assert.False(business.CanRequestLoadCancellation);
+            Assert.Empty(business.ExpectedSublots);
+            Assert.Equal(1, Volatile.Read(ref expired));
+            WireToGateCurrentStopWorklist worklist =
+                Assert.IsType<WireToGateCurrentStopWorklist>(session.CurrentJourney.CurrentStopWorklist);
+            Assert.Equal(2, worklist.Revision);
+            Assert.Empty(worklist.Items);
+            Assert.Null(worklist.StationDepartureDeadlineAt);
+            Assert.Empty(Assert.IsType<WireToGateUpcomingStopPlan>(session.CurrentJourney.UpcomingStopPlan).Legs);
+            Assert.Equal(0, io.UnlockCount);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(operatorVariable, previousOperator);
+        }
+    }
+
+    /// <summary>
     /// The same stop, but the server refuses. The peer must report the refusal and change nothing:
     /// a rejected cancellation leaves the entry open, because the demand is still the vehicle's.
     /// </summary>
@@ -1200,6 +1279,285 @@ public sealed class WireToGateG2Tests
     }
 
     /// <summary>
+    /// 被拒过的装货取消再按一次，得到的应该还是一次拒绝，而不是一次掐连接。取消请求的 messageId 原来就是
+    /// 由需求算出来的 <c>cancellationId</c>，第二次按下带着同一个 messageId、却是新的
+    /// <c>sentAt</c>/<c>verifiedAt</c>——真服务端的 <c>ProtocolInbox</c> 判内容冲突、掐连接
+    /// （8005-agv-onboard-hmi#39，与恢复请求那一次 8005-agv-program#49 同形）。服务端拒绝不落行，
+    /// 所以每次发送拿新 messageId，逻辑身份 <c>cancellationId</c> 留在 payload 里。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public async Task ARefusedLoadCancellationIsRefusedAgainInsteadOfDroppingTheConnection()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = CreateBeforeLoadServer("REJECTED");
+        await using BeforeLoadStopRig rig = await BeforeLoadStopRig.StartAsync(
+            server,
+            NewJournalPath(),
+            "operator-001",
+            testToken);
+
+        WireToGateRecoveryRequestOutcome first = await rig.Business.RequestRecoveryAsync(
+            OnboardAutomationRecoveryActions.LoadCancellation,
+            "现场确认本站没有要装的货。",
+            testToken);
+        WireToGateRecoveryRequestOutcome second = await rig.Business.RequestRecoveryAsync(
+            OnboardAutomationRecoveryActions.LoadCancellation,
+            "被拒之后又按了一次。",
+            testToken);
+
+        Assert.Equal("ACTION_NOT_ALLOWED_IN_STATE", first.ReasonCode);
+        Assert.Equal("ACTION_NOT_ALLOWED_IN_STATE", second.ReasonCode);
+        Assert.Empty(server.RecoveryRequestConflicts);
+        var requests = server.ReceivedEnvelopes
+            .Where(envelope => envelope.MessageType == "LoadCancellationStartRequested")
+            .ToArray();
+        Assert.Equal(2, requests.Length);
+        Assert.NotEqual(requests[0].MessageId, requests[1].MessageId);
+        Assert.Equal(requests[0].Connection, requests[1].Connection);
+    }
+
+    /// <summary>
+    /// 服务端已经授权、车辆却没收下应答（超时、应答途中断线），之后车载端还重启了。再按一次必须拿到同一个
+    /// 授权：服务端按 <c>cancellationId</c> 找回之前那次授权，但拿整个 payload 与首次比对
+    /// （<c>UpsertSimpleWorkflowAsync</c>），所以重试得带首发的操作员与理由——连同那一次的
+    /// <c>verifiedAt</c>——而不是这一次按下的。那份内容只能从日志里来，进程内存撑不过重启。修之前，这一单
+    /// 只能改库（8005-agv-onboard-hmi#39）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public async Task ALostCancellationAuthorizationIsAskedForAgainWithTheFirstPressContentAcrossARestart()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = CreateBeforeLoadServer("AUTHORIZED");
+        server.LoadCancellationAuthorizationsToDrop = 1;
+        string journalPath = NewJournalPath();
+
+        WireToGateRecoveryRequestOutcome lost;
+        await using (BeforeLoadStopRig beforeRestart = await BeforeLoadStopRig.StartAsync(
+            server,
+            journalPath,
+            "operator-001",
+            testToken))
+        {
+            lost = await beforeRestart.Business.RequestRecoveryAsync(
+                OnboardAutomationRecoveryActions.LoadCancellation,
+                "现场确认本站没有要装的货。",
+                testToken);
+        }
+
+        // The double runs its handshake choreography once per instance, so the restarted vehicle
+        // meets a fresh one that carries over what the server keeps durably. The restarted vehicle
+        // comes back with a higher baseline, as PersistedDemandProjectionIsRestoredWhenServerDoesNotResendIt
+        // does: the journal already holds the safety revision the first run advanced to.
+        await using FakeControlServer serverAfterRestart = CreateBeforeLoadServer("AUTHORIZED");
+        serverAfterRestart.AdoptDurableRecoveryMemoryFrom(server);
+        await using BeforeLoadStopRig afterRestart = await BeforeLoadStopRig.StartAsync(
+            serverAfterRestart,
+            journalPath,
+            "operator-002",
+            testToken,
+            baselineRevision: 2);
+        WireToGateRecoveryRequestOutcome retried = await afterRestart.Business.RequestRecoveryAsync(
+            OnboardAutomationRecoveryActions.LoadCancellation,
+            "重启之后换了个人再按一次。",
+            testToken);
+
+        Assert.False(lost.Accepted);
+        Assert.True(retried.Accepted, retried.ReasonCode);
+        Assert.Empty(server.RecoveryRequestConflicts);
+        Assert.Empty(serverAfterRestart.RecoveryRequestConflicts);
+        var requests = server.ReceivedEnvelopes
+            .Concat(serverAfterRestart.ReceivedEnvelopes)
+            .Where(envelope => envelope.MessageType == "LoadCancellationStartRequested")
+            .ToArray();
+        Assert.Equal(2, requests.Length);
+        Assert.NotEqual(requests[0].MessageId, requests[1].MessageId);
+        using JsonDocument firstRequest = JsonDocument.Parse(requests[0].WireLine);
+        using JsonDocument retriedRequest = JsonDocument.Parse(requests[1].WireLine);
+        JsonElement retriedPayload = retriedRequest.RootElement.GetProperty("payload");
+        Assert.Equal(
+            firstRequest.RootElement.GetProperty("payload").GetRawText(),
+            retriedPayload.GetRawText());
+        Assert.Equal(
+            "operator-001",
+            retriedPayload.GetProperty("operator").GetProperty("operatorId").GetString());
+    }
+
+    /// <summary>
+    /// 同一件事发生在装载途中的取消上，而这一路真车上够得着：装载结果 UNKNOWN 或确定失败之后车辆不结算
+    /// 那次 attempt，恢复入口开着时「取消装货」照常显示；服务端因为操作已 <c>RecoveryRequired</c>、或需求
+    /// 已被判 <c>Cancelled</c> 而拒绝，操作员再按——原来就是一次重连。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task ARefusedCancellationOfAnUnsettledLoadIsRefusedAgainInsteadOfDroppingTheConnection()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using SettledLoadRecoveryRig rig = await SettledLoadRecoveryRig.StartAsync(
+            recoveryEnabled: true,
+            proof: null,
+            configure: server =>
+            {
+                server.RespondToLoadCancellationRequests = true;
+                server.LoadCancellationDecision = "REJECTED";
+            },
+            testToken,
+            unsettledLoad: true);
+        await WaitUntilAsync(() => rig.Business.CanRequestLoadCancellation, testToken);
+
+        OnboardAutomationRecoveryOutcome first = await rig.Facade.RequestRecoveryAsync(
+            OnboardAutomationRecoveryActions.LoadCancellation,
+            "装载结果未知，现场申请取消。",
+            testToken);
+        OnboardAutomationRecoveryOutcome second = await rig.Facade.RequestRecoveryAsync(
+            OnboardAutomationRecoveryActions.LoadCancellation,
+            "被拒之后又按了一次。",
+            testToken);
+
+        Assert.Equal("ACTION_NOT_ALLOWED_IN_STATE", first.ReasonCode);
+        Assert.Equal("ACTION_NOT_ALLOWED_IN_STATE", second.ReasonCode);
+        Assert.Empty(rig.Server.RecoveryRequestConflicts);
+        var requests = rig.Server.ReceivedEnvelopes
+            .Where(envelope => envelope.MessageType == "LoadCancellationStartRequested")
+            .ToArray();
+        Assert.Equal(2, requests.Length);
+        Assert.NotEqual(requests[0].MessageId, requests[1].MessageId);
+        Assert.Equal(requests[0].Connection, requests[1].Connection);
+        Assert.Equal(
+            [FakeControlServer.SlotOperationAttemptId, FakeControlServer.SlotOperationAttemptId],
+            rig.Server.ReceivedLoadCancellationAttemptIds);
+    }
+
+    /// <summary>
+    /// 修正请求没有应答，服务端受理之后另发修正命令。命令还没到时操作员再按一次——按钮一直亮着——原来会带着
+    /// 由 <c>correctionId</c> 算出的同一个 messageId、却是新的 <c>sentAt</c> 与这一次的理由：真服务端先在
+    /// <c>ProtocolInbox</c> 判冲突，换了 messageId 又在工作流那一层比 payload。每次发送拿新 messageId，
+    /// 理由沿用首发那一次（操作员本来就从日志里的恢复向量读）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task ALoadCorrectionPressedAgainBeforeItsCommandArrivesRepeatsTheFirstRequest()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using SettledLoadRecoveryRig rig = await SettledLoadRecoveryRig.StartAsync(
+            recoveryEnabled: true,
+            proof: null,
+            configure: null,
+            testToken);
+        await WaitUntilAsync(() => rig.Business.CanRequestLoadCorrection, testToken);
+
+        OnboardAutomationRecoveryOutcome first = await rig.Facade.RequestRecoveryAsync(
+            OnboardAutomationRecoveryActions.LoadCorrection,
+            "第一次修正请求。",
+            testToken);
+        OnboardAutomationRecoveryOutcome second = await rig.Facade.RequestRecoveryAsync(
+            OnboardAutomationRecoveryActions.LoadCorrection,
+            "命令还没到，又按了一次。",
+            testToken);
+        await WaitUntilAsync(() => rig.Server.JudgedRecoveryRequests == 2, testToken);
+
+        Assert.True(first.Accepted, first.ReasonCode);
+        Assert.True(second.Accepted, second.ReasonCode);
+        Assert.Empty(rig.Server.RecoveryRequestConflicts);
+        var requests = rig.Server.ReceivedEnvelopes
+            .Where(envelope => envelope.MessageType == "LoadCorrectionRequested")
+            .ToArray();
+        Assert.Equal(2, requests.Length);
+        Assert.NotEqual(requests[0].MessageId, requests[1].MessageId);
+        using JsonDocument firstRequest = JsonDocument.Parse(requests[0].WireLine);
+        using JsonDocument secondRequest = JsonDocument.Parse(requests[1].WireLine);
+        Assert.Equal(
+            firstRequest.RootElement.GetProperty("payload").GetRawText(),
+            secondRequest.RootElement.GetProperty("payload").GetRawText());
+    }
+
+    /// <summary>
+    /// 取货停靠开着录入、还没向仓位下发任何操作：扫码前取消的起点。服务端归调用方，这样同一个替身能跨过
+    /// 一次车载端重启——两个 rig 先后打开同一个日志文件，就是重启。
+    /// </summary>
+    private sealed class BeforeLoadStopRig : IAsyncDisposable
+    {
+        private readonly string _operatorVariable = $"W2G_G2_BEFORE_LOAD_OPERATOR_{Guid.NewGuid():N}";
+        private WireToGateSessionService _session = null!;
+
+        public WireToGateBusinessService Business { get; private set; } = null!;
+
+        public static async Task<BeforeLoadStopRig> StartAsync(
+            FakeControlServer server,
+            string journalPath,
+            string operatorId,
+            CancellationToken cancellationToken,
+            long baselineRevision = 1)
+        {
+            BeforeLoadStopRig rig = new();
+            Environment.SetEnvironmentVariable(rig._operatorVariable, operatorId);
+            FakeIoModuleClient io = new();
+            NullLogger logger = new();
+            rig._session = new WireToGateSessionService(
+                CreateSessionOptions(server, capability: baselineRevision, safety: baselineRevision),
+                io,
+                new SqliteWireToGateJournal(journalPath),
+                logger,
+                new SystemClock(),
+                new DelegateVehicleSafetySignalProvider(() => true),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(500));
+            rig.Business = new WireToGateBusinessService(
+                rig._session,
+                io,
+                logger,
+                new SystemClock(),
+                () => true,
+                new WireToGateSlotOperationExecutorOptions(
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromMilliseconds(10),
+                    TimeSpan.FromSeconds(30)),
+                rig._operatorVariable);
+            rig.Business.Start();
+            await rig._session.Client.ConnectAndRecoverAsync(cancellationToken);
+            try
+            {
+                await WaitUntilAsync(() => rig.Business.CanSubmitSublot, cancellationToken);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new InvalidOperationException(
+                    $"The stop never opened: readiness={rig._session.Current.Readiness}, "
+                    + $"received=[{string.Join(',', server.ReceivedEnvelopes.Select(item => item.MessageType))}], "
+                    + $"sentJourney=[{string.Join(',', server.SentJourneyEnvelopes.Select(item => item.MessageType))}]");
+            }
+
+            return rig;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await Business.DisposeAsync();
+            await _session.DisposeAsync();
+            Environment.SetEnvironmentVariable(_operatorVariable, null);
+        }
+    }
+
+    /// <summary>
+    /// 旅程报文用稳定身份：重启后的车辆日志里已经采纳过同一修订号，内容一变就会判冲突断开，而那不是
+    /// 这些测试要看的东西。
+    /// </summary>
+    private static FakeControlServer CreateBeforeLoadServer(string decision) =>
+        new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            SendJourneySnapshotsAfterRecovery = true,
+            SendSublotEntryRequestAfterRecovery = true,
+            ReplayJourneySnapshotsWithStableIdentity = true,
+            RespondToLoadCancellationRequests = true,
+            LoadCancellationDecision = decision
+        };
+
+    /// <summary>
     /// 车辆已经结算完一次装载、服务端却宣布会话需要恢复：补偿清空恰好该出现的那个状态。与
     /// <see cref="CompensationIsRequestableAfterTheVehicleAlreadySettledTheLoad"/> 同一套布置，外加
     /// 真的 <see cref="WpfOnboardAutomationFacade"/>。环境变量按实例起名，不和别的测试抢。
@@ -1229,7 +1587,8 @@ public sealed class WireToGateG2Tests
             string? proof,
             Action<FakeControlServer>? configure,
             CancellationToken cancellationToken,
-            string? persistedRecoverySessionRequestId = null)
+            string? persistedRecoverySessionRequestId = null,
+            bool unsettledLoad = false)
         {
             const string demandId = "11111111-1111-4111-8111-111111111111";
             string attemptId = FakeControlServer.SlotOperationAttemptId;
@@ -1239,7 +1598,8 @@ public sealed class WireToGateG2Tests
                 demandId,
                 attemptId,
                 cancellationToken,
-                persistedRecoverySessionRequestId);
+                persistedRecoverySessionRequestId,
+                unsettledLoad);
 
             FakeControlServer server = new(IPAddress.Loopback)
             {
@@ -1307,6 +1667,13 @@ public sealed class WireToGateG2Tests
 
             rig.Business.Start();
             await session.Client.ConnectAndRecoverAsync(cancellationToken);
+            if (unsettledLoad)
+            {
+                // The result of the unsettled attempt went out and was acknowledged before this
+                // journal was written; the vehicle comes back holding the attempt, nothing more.
+                return rig;
+            }
+
             await session.Client.SendOperationResultAsync(
                 $"operation-result:{attemptId}",
                 attemptId,
@@ -1351,38 +1718,43 @@ public sealed class WireToGateG2Tests
 
     /// <summary>
     /// 复现 <c>MarkResultRecordedAsync</c> 写完之后的日志状态：物理断点与在途 attempt 都已清空，
-    /// 只剩下最近一次已结算装载的身份。
+    /// 只剩下最近一次已结算装载的身份。<paramref name="unsettled"/> 换成结果没有记录的那一种：UNKNOWN 或
+    /// 确定失败之后，车辆不调 <c>MarkResultRecordedAsync</c>，那次 attempt 停在安全收尾上。
     /// </summary>
     private static async Task SeedSettledLoadAsync(
         string journalPath,
         string demandId,
         string attemptId,
         CancellationToken cancellationToken,
-        string? recoverySessionRequestId = null)
+        string? recoverySessionRequestId = null,
+        bool unsettled = false)
     {
         await using SqliteWireToGateJournal journal = new(journalPath);
         await journal.InitializeAsync(cancellationToken);
         WireToGateRecoveryState state = await journal.ReadRecoveryStateAsync(cancellationToken);
+        WireToGateRecoveryOperationContext load = new(
+            "99999999-9999-4999-8999-999999999999",
+            null,
+            1,
+            DateTimeOffset.UtcNow,
+            demandId,
+            "33333333-3333-4333-8333-333333333333",
+            attemptId,
+            OperationType.Load,
+            [1],
+            1,
+            true,
+            new string('0', 64));
         await journal.WriteRecoveryStateAsync(
             state with
             {
                 RecoverySessionRequestId = recoverySessionRequestId,
-                UnsettledSlotOperationAttemptId = null,
-                ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ResultRecorded,
-                OperationContext = null,
-                LastCompletedLoadOperationContext = new WireToGateRecoveryOperationContext(
-                    "99999999-9999-4999-8999-999999999999",
-                    null,
-                    1,
-                    DateTimeOffset.UtcNow,
-                    demandId,
-                    "33333333-3333-4333-8333-333333333333",
-                    attemptId,
-                    OperationType.Load,
-                    [1],
-                    1,
-                    true,
-                    new string('0', 64))
+                UnsettledSlotOperationAttemptId = unsettled ? attemptId : null,
+                ProvenRecoveryCheckpoint = unsettled
+                    ? WireToGateRecoveryCheckpoint.SafeFinishReached
+                    : WireToGateRecoveryCheckpoint.ResultRecorded,
+                OperationContext = unsettled ? load : null,
+                LastCompletedLoadOperationContext = unsettled ? null : load
             },
             cancellationToken);
     }

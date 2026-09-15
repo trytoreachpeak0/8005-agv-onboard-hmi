@@ -110,6 +110,12 @@ public sealed class FakeControlServer : IAsyncDisposable
     public string LoadCancellationDecision { get; set; } = "AUTHORIZED";
 
     /// <summary>
+    /// 这么多次取消请求受理了却不回应答：服务端已经授权（内容已按 <c>cancellationId</c> 绑定），车辆等到
+    /// <c>messageTimeout</c> 也没收下。真车上是应答途中断线或超时。
+    /// </summary>
+    public int LoadCancellationAuthorizationsToDrop { get; set; }
+
+    /// <summary>
     /// The expectedSublots the SublotEntryRequested carries. One entry by default; a test hands it
     /// several to exercise set membership, or a value the schema forbids -- empty, over the cap of
     /// eight, duplicated -- to exercise the parser's refusal.
@@ -187,13 +193,17 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
     }
 
-    private sealed class ConnectionContext
+    private sealed class ConnectionContext : IDisposable
     {
+        public void Dispose() => WriteGate.Dispose();
+
         public required int ConnectionIndex;
         public required TcpClient Client;
         public required StreamReader Reader;
         public required StreamWriter Writer;
         public required ConcurrentQueue<string> ReceivedOrder;
+        // 连接循环在回应答，测试又会从外面主动推快照；两边同时写同一个 StreamWriter 会把行写花。
+        public readonly SemaphoreSlim WriteGate = new(1, 1);
         public string AgvId = string.Empty;
         public long Generation;
         public long CapabilityVersion;
@@ -250,6 +260,10 @@ public sealed class FakeControlServer : IAsyncDisposable
                 AcceptedSafetyStateVersion = acceptedSafetyStateVersion
             };
             RecordConnection(connectionIndex, context.ReceivedOrder);
+            lock (_sync)
+            {
+                _latestContext = context;
+            }
             _ = Task.Run(() => HandleConnectionAsync(connectionIndex, context, stoppingToken), stoppingToken);
         }
     }
@@ -351,7 +365,8 @@ public sealed class FakeControlServer : IAsyncDisposable
                 }
 
                 if (messageType is "ExceptionRecoverySessionRequested" or "RecoveryActionSubmitted"
-                    && !BindRecoveryRequestLine(messageId, line))
+                        or "LoadCancellationStartRequested" or "LoadCorrectionRequested"
+                    && !JudgeRecoveryRequest(messageType, messageId, line, root))
                 {
                     context.Client.Close();
                     return;
@@ -423,6 +438,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             context.Writer.Dispose();
             context.Reader.Dispose();
             context.Client.Dispose();
+            context.Dispose();
         }
     }
 
@@ -700,6 +716,12 @@ public sealed class FakeControlServer : IAsyncDisposable
         JsonElement attempt = payload.GetProperty("slotOperationAttemptId");
         string? attemptId = attempt.ValueKind == JsonValueKind.Null ? null : attempt.GetString();
         _receivedLoadCancellationAttemptIds.Enqueue(attemptId ?? "(null)");
+        if (LoadCancellationAuthorizationsToDrop > 0)
+        {
+            LoadCancellationAuthorizationsToDrop--;
+            return;
+        }
+
         bool authorized = LoadCancellationDecision == "AUTHORIZED";
         await WriteEnvelopeAsync(
             context,
@@ -941,6 +963,7 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// 它第一次带来的整行字节上（<c>WireContentHash.Sha256(line)</c>），之后内容不同就抛
     /// <c>ProtocolContentConflictException</c> 并掐掉连接。替身照做——不照做的话，车辆复用一个
     /// messageId 在 G2 里永远是绿的，而车辆每次发送的 <c>sentAt</c> 都是新的，到了真服务端必然冲突。
+    /// 取消与修正在工作流那一层撞上的 id（见 <see cref="BindRecoveryWorkflowContent"/>）也记在这里。
     /// </summary>
     public IReadOnlyList<string> RecoveryRequestConflicts { get; private set; } = [];
 
@@ -974,6 +997,97 @@ public sealed class FakeControlServer : IAsyncDisposable
             }
 
             _recoveryRequestLines.Add(messageId, wireLine);
+            return true;
+        }
+    }
+
+    private readonly Dictionary<string, string> _recoveryWorkflowContents = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// 接过另一个替身落过库的那部分记忆——<c>ProtocolInbox</c> 的行与 <c>RecoveryWorkflows</c> 的内容——
+    /// 让一次车载端重启面对的仍是「同一个服务端」。
+    /// </summary>
+    public void AdoptDurableRecoveryMemoryFrom(FakeControlServer previous)
+    {
+        lock (previous._sync)
+        {
+            lock (_sync)
+            {
+                foreach ((string messageId, string line) in previous._recoveryRequestLines)
+                {
+                    _recoveryRequestLines[messageId] = line;
+                }
+
+                foreach ((string workflowId, string content) in previous._recoveryWorkflowContents)
+                {
+                    _recoveryWorkflowContents[workflowId] = content;
+                }
+            }
+        }
+    }
+
+    private int _judgedRecoveryRequests;
+
+    /// <summary>
+    /// 已经判过的恢复请求行数，冲突的也算。车辆发出的是没有应答的请求时（修正），测试靠它等替身读完那一行。
+    /// </summary>
+    public int JudgedRecoveryRequests => Volatile.Read(ref _judgedRecoveryRequests);
+
+    private bool JudgeRecoveryRequest(
+        string messageType,
+        string messageId,
+        string wireLine,
+        JsonElement root)
+    {
+        try
+        {
+            return BindRecoveryRequestLine(messageId, wireLine)
+                && BindRecoveryWorkflowContent(messageType, root);
+        }
+        finally
+        {
+            Interlocked.Increment(ref _judgedRecoveryRequests);
+        }
+    }
+
+    /// <summary>
+    /// messageId 之外真服务端还有一道：取消与修正落成 <c>RecoveryWorkflows</c> 行，主键是
+    /// <c>cancellationId</c>/<c>correctionId</c>，之后同一个 id 带来的 payload 字节不同就抛
+    /// <c>Recovery workflow id was replayed with different content.</c> 并掐连接
+    /// （<c>OnboardRecoveryCoordinator.UpsertSimpleWorkflowAsync</c>）。拒绝不落行，所以只绑定会被受理的请求。
+    /// 替身不照做的话，换了 messageId、却每次按下都带新 <c>verifiedAt</c> 的重试在 G2 里是绿的。
+    /// </summary>
+    private bool BindRecoveryWorkflowContent(string messageType, JsonElement root)
+    {
+        JsonElement payload = root.GetProperty("payload");
+        string? workflowId = messageType switch
+        {
+            "LoadCancellationStartRequested" when RespondToLoadCancellationRequests
+                && LoadCancellationDecision == "AUTHORIZED" =>
+                payload.GetProperty("cancellationId").GetString(),
+            "LoadCorrectionRequested" => payload.GetProperty("correctionId").GetString(),
+            _ => null
+        };
+        if (workflowId is null)
+        {
+            return true;
+        }
+
+        string content = payload.GetRawText();
+        lock (_sync)
+        {
+            if (_recoveryWorkflowContents.TryGetValue(workflowId, out string? boundContent))
+            {
+                if (string.Equals(boundContent, content, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+
+                RecoveryRequestConflicts = [.. RecoveryRequestConflicts, workflowId];
+                return false;
+            }
+
+            _recoveryWorkflowContents.Add(workflowId, content);
             return true;
         }
     }
@@ -1120,6 +1234,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                 "VehicleBusinessStateSnapshot" => "00000000-0000-4000-8000-000000009101",
                 "CurrentStopWorklistSnapshot" => "00000000-0000-4000-8000-000000009102",
                 "UpcomingStopPlanSnapshot" => "00000000-0000-4000-8000-000000009103",
+                "SublotEntryRequested" => "00000000-0000-4000-8000-000000009104",
                 _ => throw new InvalidDataException("Unsupported journey snapshot type.")
             }
             : Guid.NewGuid().ToString("D");
@@ -1145,7 +1260,52 @@ public sealed class FakeControlServer : IAsyncDisposable
             SentJourneyEnvelopes = sent;
         }
 
-        await context.Writer.WriteLineAsync(wireLine).ConfigureAwait(false);
+        await context.WriteGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await context.Writer.WriteLineAsync(wireLine).ConfigureAwait(false);
+        }
+        finally
+        {
+            context.WriteGate.Release();
+        }
+    }
+
+    private ConnectionContext? _latestContext;
+
+    /// <summary>
+    /// 服务端单方面结束了本站：在最近一条连接上推一份条目为空、没有截止时间的作业清单，和一份没有腿的
+    /// 行程，版本都比之前的高。真服务端在站点超时、扫码前取消被授权、恢复结束最后一单时发的就是这个形状
+    /// （8005-agv-control-server 的 OnboardJourneyPublisher.QueueStopClosedAsync）。
+    /// </summary>
+    public async Task SendStopClosedSnapshotsAsync(long worklistRevision, long planRevision)
+    {
+        ConnectionContext context;
+        lock (_sync)
+        {
+            context = _latestContext ?? throw new InvalidOperationException("替身还没有接受过任何连接。");
+        }
+
+        await WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(
+            context,
+            "CurrentStopWorklistSnapshot",
+            new
+            {
+                stationId = "ST-01",
+                worklistRevision,
+                operationSessionId = (string?)null,
+                stationDepartureDeadlineAt = (DateTimeOffset?)null,
+                items = Array.Empty<object>()
+            })).ConfigureAwait(false);
+        await WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(
+            context,
+            "UpcomingStopPlanSnapshot",
+            new
+            {
+                planRevision,
+                demandId = (string?)null,
+                legs = Array.Empty<object>()
+            })).ConfigureAwait(false);
     }
 
     private static async Task SendDemandAcceptanceSnapshotsAsync(ConnectionContext context)
@@ -1245,7 +1405,15 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     private static async Task WriteEnvelopeAsync(ConnectionContext context, WireToGateEnvelope envelope)
     {
-        await context.Writer.WriteLineAsync(WireToGateProtocolSerializer.Serialize(envelope)).ConfigureAwait(false);
+        await context.WriteGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await context.Writer.WriteLineAsync(WireToGateProtocolSerializer.Serialize(envelope)).ConfigureAwait(false);
+        }
+        finally
+        {
+            context.WriteGate.Release();
+        }
     }
 
     public async ValueTask DisposeAsync()
