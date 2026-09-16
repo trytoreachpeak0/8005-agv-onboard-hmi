@@ -776,6 +776,17 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
         ValidateOptionalUuid(state.RecoverySessionRequestId, nameof(state.RecoverySessionRequestId));
         ValidateOptionalUuid(state.RecoveryActionRequestId, nameof(state.RecoveryActionRequestId));
 
+        if (state.PendingLoadCancellation is { } cancellation)
+        {
+            RequireUuid(cancellation.CancellationId, nameof(cancellation.CancellationId));
+            ValidateOptionalUuid(
+                cancellation.SlotOperationAttemptId,
+                nameof(cancellation.SlotOperationAttemptId));
+            ArgumentException.ThrowIfNullOrWhiteSpace(cancellation.OperatorId);
+            ArgumentException.ThrowIfNullOrWhiteSpace(cancellation.OperatorVerificationMethod);
+            ArgumentException.ThrowIfNullOrWhiteSpace(cancellation.Reason);
+        }
+
         foreach (WireToGatePendingResult pending in state.PendingResults)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(pending.MessageType);

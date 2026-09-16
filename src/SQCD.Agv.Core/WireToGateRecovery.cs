@@ -234,6 +234,17 @@ public sealed record WireToGateRecoveryState(
     /// </summary>
     public WireToGateRecoveryOperationContext? LastCompletedLoadOperationContext { get; init; }
 
+    /// <summary>
+    /// A load cancellation that went out and has had no answer yet. The server keeps an
+    /// authorization under the cancellationId and compares every later request's whole payload
+    /// with the first, so a retry must repeat this operator and reason -- verifiedAt included --
+    /// rather than take the retrying press's. A refusal leaves nothing on the server, so the entry
+    /// goes as soon as either answer arrives. It also goes wherever the recovery state is reset -- a
+    /// settled operation, a completed vector, a new slot operation -- and is only ever reused for the
+    /// same cancellationId, so one left behind cannot speak for another cancellation.
+    /// </summary>
+    public WireToGatePendingLoadCancellation? PendingLoadCancellation { get; init; }
+
     public static WireToGateRecoveryState Empty { get; } = new(
         null,
         WireToGateRecoveryCheckpoint.None,
@@ -241,6 +252,20 @@ public sealed record WireToGateRecoveryState(
         0,
         []);
 }
+
+/// <param name="SlotOperationAttemptId">
+/// The load operation being cancelled, or <c>null</c> for a cancellation raised before any load was
+/// commanded -- the server's own payload allows that shape, and 批次5-27 (onboard-hmi#76) builds its
+/// before-scan entry on this record. Nothing on this branch produces a null today; the field is here
+/// so that entry does not have to change the record's shape to arrive.
+/// </param>
+public sealed record WireToGatePendingLoadCancellation(
+    string CancellationId,
+    string? SlotOperationAttemptId,
+    string OperatorId,
+    string OperatorVerificationMethod,
+    DateTimeOffset OperatorVerifiedAt,
+    string Reason);
 
 public sealed record WireToGateDurableMessage(
     string DeduplicationKey,
