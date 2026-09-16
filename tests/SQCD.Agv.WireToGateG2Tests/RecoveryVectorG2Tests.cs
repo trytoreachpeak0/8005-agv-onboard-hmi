@@ -581,19 +581,92 @@ public sealed class RecoveryVectorG2Tests
     }
 
     /// <summary>
-    /// 与 <see cref="RecoveryVectorHarness"/> 自己建的那个同形，外加应答取消请求；用例持有它，
+    /// <see cref="RecoveryVectorHarness"/> 自己建的那个替身，外加应答取消请求；用例持有它，
     /// 好让它跨过一次车载端重启。
     /// </summary>
-    private static FakeControlServer NewCancellationServer() =>
-        new(IPAddress.Loopback)
+    private static FakeControlServer NewCancellationServer()
+    {
+        FakeControlServer server = RecoveryVectorHarness.NewServer();
+        server.RespondToLoadCancellationRequests = true;
+        return server;
+    }
+
+    /// <summary>
+    /// 会话没就绪时按下的取消，一个字节都没发出去，就不算「首发」：不能把这次的操作员与
+    /// <c>verifiedAt</c> 记成待答内容。否则就绪之后再按，沿用的是一份服务端从没见过、而且可能
+    /// 已经过时的核验——服务端也无从察觉，因为它比对的「首次」本来就是那次重发。
+    /// </summary>
+    /// <remarks>
+    /// 「未就绪」用关掉替身来造：连接断开后会话客户端在发送之前就判 <c>WIRE_TO_GATE_NOT_READY</c>。
+    /// 「就绪后再按」用一次重启来造，这样第二次按键面对的是一条新连接、同一个日志，换一个操作员
+    /// 就能看出重发带的是哪一次的核验。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task ACancellationPressedWhileTheSessionIsNotReadyIsNotRememberedAsTheFirstPress()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Path.Combine(
+            Path.GetTempPath(), "w2g-vector", Guid.NewGuid().ToString("N"), "journal.db");
+        string? originalOperator = Environment.GetEnvironmentVariable(OperatorVariable);
+        FakeControlServer lostServer = NewCancellationServer();
+
+        try
         {
-            RequireSafeSafetyForReadiness = true,
-            SendReadinessAfterRecoveryAck = true,
-            RespondToRecoveryRequests = true,
-            SendRecoveryVectorCommandAfterRecoveryAction = true,
-            RecoveryVectorSlotOperationAttemptId = AttemptId,
-            RespondToLoadCancellationRequests = true
-        };
+            Environment.SetEnvironmentVariable(OperatorVariable, "maintenance-001");
+            await using (RecoveryVectorHarness notReady = await RecoveryVectorHarness.StartAsync(
+                token,
+                existingServer: lostServer,
+                journalPath: journalPath))
+            {
+                await lostServer.DisposeAsync();
+                await RecoveryVectorHarness.WaitUntilAsync(
+                    () => !notReady.Business.CanRequestLoadCancellation,
+                    "the session to drop once the control server is gone",
+                    token);
+
+                Assert.False(await notReady.Business.RequestLoadCancellationAsync(
+                    "连接断了还是按了一次取消。", token));
+                Assert.Null((await notReady.ReadRecoveryStateAsync(token)).PendingLoadCancellation);
+            }
+
+            Assert.DoesNotContain(
+                lostServer.ReceivedEnvelopes,
+                envelope => envelope.MessageType == "LoadCancellationStartRequested");
+
+            await using FakeControlServer server = NewCancellationServer();
+            Environment.SetEnvironmentVariable(OperatorVariable, "maintenance-002");
+            await using RecoveryVectorHarness ready = await RecoveryVectorHarness.StartAsync(
+                token,
+                existingServer: server,
+                journalPath: journalPath,
+                baselineRevision: 2,
+                restart: true);
+            await RecoveryVectorHarness.WaitUntilAsync(
+                () => ready.Business.CanRequestLoadCancellation,
+                "the load cancellation entry to be offered once the session is ready",
+                token);
+
+            Assert.True(await ready.Business.RequestLoadCancellationAsync(
+                "会话就绪之后再按一次。", token));
+
+            Assert.Empty(server.RecoveryRequestConflicts);
+            string request = Assert.Single(
+                server.ReceivedEnvelopes,
+                envelope => envelope.MessageType == "LoadCancellationStartRequested").WireLine;
+            using JsonDocument document = JsonDocument.Parse(request);
+            JsonElement payload = document.RootElement.GetProperty("payload");
+            Assert.Equal(
+                "maintenance-002",
+                payload.GetProperty("operator").GetProperty("operatorId").GetString());
+            Assert.Equal("会话就绪之后再按一次。", payload.GetProperty("reason").GetString());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(OperatorVariable, originalOperator);
+        }
+    }
 
     /// <summary>
     /// 修正请求没有应答，服务端受理之后另发修正命令。命令还没到时操作员再按一次——按钮一直亮着——原来会带着
@@ -714,6 +787,20 @@ public sealed class RecoveryVectorG2Tests
         /// behind, so the seeded state is not written again -- seeding it would erase exactly what
         /// the restart is meant to carry over.
         /// </param>
+        /// <summary>
+        /// The double every harness stands up on its own. A test that has to keep the double across
+        /// a vehicle restart builds it here too, so the two cannot drift apart.
+        /// </summary>
+        public static FakeControlServer NewServer() =>
+            new(IPAddress.Loopback)
+            {
+                RequireSafeSafetyForReadiness = true,
+                SendReadinessAfterRecoveryAck = true,
+                RespondToRecoveryRequests = true,
+                SendRecoveryVectorCommandAfterRecoveryAction = true,
+                RecoveryVectorSlotOperationAttemptId = AttemptId
+            };
+
         public static async Task<RecoveryVectorHarness> StartAsync(
             CancellationToken cancellationToken,
             Action<FakeControlServer>? configure = null,
@@ -728,14 +815,7 @@ public sealed class RecoveryVectorG2Tests
             bool restart = false)
         {
             bool ownsServer = existingServer is null;
-            FakeControlServer server = existingServer ?? new(IPAddress.Loopback)
-            {
-                RequireSafeSafetyForReadiness = true,
-                SendReadinessAfterRecoveryAck = true,
-                RespondToRecoveryRequests = true,
-                SendRecoveryVectorCommandAfterRecoveryAction = true,
-                RecoveryVectorSlotOperationAttemptId = AttemptId
-            };
+            FakeControlServer server = existingServer ?? NewServer();
             configure?.Invoke(server);
 
             try

@@ -232,6 +232,14 @@ public sealed partial class WireToGateBusinessService
         WireToGateRecoveryOperationContext operation = RequireUnsettledLoadOperation(state);
         string cancellationId = StableUuid(
             $"{operation.DemandId}|{operation.SlotOperationAttemptId}|load-cancellation");
+        // Only a press that can actually send becomes the first press. One refused for readiness
+        // leaves no bytes on the wire, and remembering its operator would have the next press repeat
+        // a verification the server never saw.
+        RequireSessionReadyToSend();
+        bool recalled = string.Equals(
+            state.PendingLoadCancellation?.CancellationId,
+            cancellationId,
+            StringComparison.Ordinal);
         WireToGatePendingLoadCancellation pending = await RecallOrRecordLoadCancellationAsync(
                 state,
                 cancellationId,
@@ -248,12 +256,27 @@ public sealed partial class WireToGateBusinessService
             pending.Reason);
         // A messageId of its own for every send, as in RequestRecoveryActionVectorCoreAsync: the
         // identity the server keeps is cancellationId, which stays in the payload.
-        LoadCancellationAuthorizationPayload authorization = await _session
-            .RequestLoadCancellationStartAsync(
-                Guid.NewGuid().ToString("D"),
-                request,
-                cancellationToken)
-            .ConfigureAwait(false);
+        LoadCancellationAuthorizationPayload authorization;
+        try
+        {
+            authorization = await _session
+                .RequestLoadCancellationStartAsync(
+                    Guid.NewGuid().ToString("D"),
+                    request,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (InvalidOperationException exception) when (
+            !recalled
+                && string.Equals(exception.Message, "WIRE_TO_GATE_NOT_READY", StringComparison.Ordinal))
+        {
+            // The session dropped between the check above and the send; the client refuses before
+            // writing anything, so what this press recorded was never a first press either. An entry
+            // recalled from an earlier press did go out and stays.
+            await ForgetLoadCancellationRequestAsync(cancellationId, cancellationToken)
+                .ConfigureAwait(false);
+            throw;
+        }
         if (authorization.Decision == "REJECTED")
         {
             await ForgetLoadCancellationRequestAsync(cancellationId, cancellationToken)
@@ -1502,7 +1525,9 @@ public sealed partial class WireToGateBusinessService
     /// request -- timed out, the answer lost on the way, the process restarted in between -- must
     /// repeat that content, or the server takes it for a different request under the same id and
     /// drops the connection. The journal is what outlives a restart, so the content is written there
-    /// before the request leaves.
+    /// once the session has been found ready and immediately before the send; the caller checks
+    /// readiness first and forgets an entry this press wrote if the client still refuses it as not
+    /// ready, so a press that never left is never remembered as the first.
     ///
     /// The messageId is no part of this; every send takes a new one. The server's ProtocolInbox binds
     /// a messageId to the exact bytes it first carried, and sentAt is new on every press, so reusing
@@ -1556,6 +1581,22 @@ public sealed partial class WireToGateBusinessService
                     state with { PendingLoadCancellation = null },
                     cancellationToken)
                 .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// The same readiness <c>WireToGateSessionClient.SendRecoveryRequestAsync</c> demands before it
+    /// writes a byte, asked here so that nothing is journaled for a request that cannot leave.
+    /// </summary>
+    private void RequireSessionReadyToSend()
+    {
+        WireToGateSessionSnapshot session = _session.Current;
+        if (!session.Connected
+            || session.SessionGeneration is null
+            || session.Readiness is not (WireToGateSessionReadiness.Ready
+                or WireToGateSessionReadiness.RecoveryRequired))
+        {
+            throw new InvalidOperationException("WIRE_TO_GATE_NOT_READY");
         }
     }
 
