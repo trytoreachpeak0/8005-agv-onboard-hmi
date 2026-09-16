@@ -168,6 +168,24 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </remarks>
     public string? RecoverySlotOperationAttemptId { get; set; }
 
+    /// <summary>
+    /// Per-message overrides of <see cref="RecoverySlotOperationAttemptId"/>, keyed by message type
+    /// (<c>ExceptionRecoverySessionOpened</c>, <c>ExceptionRecoverySessionSnapshot</c>,
+    /// <c>RecoveryActionAccepted</c>). A key present with a <c>null</c> value sends <c>null</c>.
+    /// </summary>
+    /// <remarks>
+    /// The real server derives all three from one source, so they agree; a disagreement between
+    /// them is a server defect the vehicle has to refuse (8005-agv-program#95, commit
+    /// <c>6ed3564</c>). This is how a test puts that defect on the wire.
+    /// </remarks>
+    public IReadOnlyDictionary<string, string?> RecoveryAttemptIdByMessageType { get; set; } =
+        new Dictionary<string, string?>();
+
+    private string? RecoveryAttemptIdFor(string messageType) =>
+        RecoveryAttemptIdByMessageType.TryGetValue(messageType, out string? overridden)
+            ? overridden
+            : RecoverySlotOperationAttemptId;
+
     public bool SendSlotOperationCommandAfterRecovery { get; set; }
 
     /// <summary>
@@ -1130,7 +1148,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                     demandId = payload.TryGetProperty("demandId", out JsonElement demandId)
                         ? demandId.GetString()
                         : null,
-                    slotOperationAttemptId = RecoverySlotOperationAttemptId,
+                    slotOperationAttemptId = RecoveryAttemptIdFor("ExceptionRecoverySessionOpened"),
                     slots = payload.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()).ToArray(),
                     recoverySessionRevision = 1
                 }))
@@ -1162,6 +1180,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                     demandId = payload.TryGetProperty("demandId", out JsonElement snapshotDemandId)
                         ? snapshotDemandId.GetString()
                         : null,
+                    slotOperationAttemptId = RecoveryAttemptIdFor("ExceptionRecoverySessionSnapshot"),
                     slots = payload.GetProperty("slots").EnumerateArray()
                         .Select(item => item.GetInt32())
                         .ToArray(),
@@ -1253,7 +1272,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                 {
                     recoveryActionId = actionId,
                     exceptionRecoverySessionId = sessionId,
-                    slotOperationAttemptId = RecoverySlotOperationAttemptId,
+                    slotOperationAttemptId = RecoveryAttemptIdFor("RecoveryActionAccepted"),
                     acceptedAction = payload.GetProperty("action").GetString(),
                     recoverySessionRevision = 2,
                     acceptedAt = DateTimeOffset.UtcNow

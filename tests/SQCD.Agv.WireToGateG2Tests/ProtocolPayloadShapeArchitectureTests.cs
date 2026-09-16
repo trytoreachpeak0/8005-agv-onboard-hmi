@@ -285,7 +285,10 @@ public sealed class ProtocolPayloadShapeArchitectureTests
             RespondToManualChargingReturnToServiceRequests = true,
             ManualChargingReturnToServiceVehicleBusinessStateRevision = 4,
             // 协议 v2 消息 7 的下发，把消息 8 的 payload 形状也拉进这次会话里检查。
-            SendSlotConfigurationActivationAfterRecovery = true
+            SendSlotConfigurationActivationAfterRecovery = true,
+            // 恢复会话快照也要进这次检查：替身的快照漏过 2.0.0 新增的必填字段，而车载端反序列化时
+            // 缺字段只会得到 null、不会报错，别的测试都发现不了。OPEN 与 CLOSED 两种形状都发一份。
+            RecoverySessionSnapshotStatesAfterOpened = ["OPEN", "CLOSED"]
         };
 
         try
