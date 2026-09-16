@@ -833,6 +833,141 @@ public sealed class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// Within one recovery session the server may not change the attempt it named: a session that
+    /// opened naming an attempt and then accepts the action naming <c>null</c> is refused whole.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The local check cannot catch this -- <c>null</c> challenges nothing, and the named value is
+    /// the vehicle's own -- so the rule is a separate one: the first value a session gives, <c>null</c>
+    /// included, is fixed for that session. The source is the fill rule in commit <c>6ed3564</c>
+    /// (<c>8005-agv-program#95</c>): the value follows from the session's <c>demandId</c> and whether
+    /// that demand had a slot operation, neither of which can change while a recovery session is
+    /// open, so the three messages "should give the same value; a disagreement means two sources, and
+    /// is a defect".
+    /// </para>
+    /// <para>
+    /// This is not the same statement as "a <c>null</c> does not challenge the local identity".
+    /// That one is the vehicle against the server; this one is the server against itself.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ARecoverySessionThatNamesAnAttemptAndThenNullIsRefusedWhole()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.RecoveryAttemptIdByMessageType = new Dictionary<string, string?>
+            {
+                ["ExceptionRecoverySessionOpened"] = AttemptId,
+                ["RecoveryActionAccepted"] = null
+            },
+            cargoInTargetSlots: true);
+
+        Assert.False(await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token));
+
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_RESPONSE_SCOPE_MISMATCH", token);
+        Assert.Empty(harness.ResultsOfType("LoadCompensationRequested"));
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// The mirror: a session that opened naming <c>null</c> and then accepts the action naming an
+    /// attempt is refused whole too.
+    /// </summary>
+    /// <remarks>
+    /// Named apart from the other direction because the two fail differently if the rule is written
+    /// as "a later non-null must match an earlier non-null": that version passes this case, since the
+    /// first value it would compare against is absent.
+    /// </remarks>
+    [Fact]
+    public async Task ARecoverySessionThatNamesNullAndThenAnAttemptIsRefusedWhole()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.RecoveryAttemptIdByMessageType = new Dictionary<string, string?>
+            {
+                ["ExceptionRecoverySessionOpened"] = null,
+                ["RecoveryActionAccepted"] = AttemptId
+            },
+            cargoInTargetSlots: true);
+
+        Assert.False(await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token));
+
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_RESPONSE_SCOPE_MISMATCH", token);
+        Assert.Empty(harness.ResultsOfType("LoadCompensationRequested"));
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// A held OPEN recovery session snapshot naming another attempt closes the entry that snapshot
+    /// would otherwise offer, and a press through it is refused.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Once an OPEN snapshot is held, a press builds its scope from the snapshot instead of asking the
+    /// server again, and the entries are offered off the snapshot too. The snapshot's own attempt id is
+    /// what gates that. The double's OPEN snapshot allows <c>FORCED_MECHANICAL_RECOVERY</c> and not
+    /// compensation, so that is the entry examined: a compensation entry would be shut by the
+    /// allowed-actions list whatever the attempt said.
+    /// </para>
+    /// <para>
+    /// The control half runs the identical scenario with the snapshot naming nothing, and the entry is
+    /// open -- so the attempt id is the only thing that differs between the two, and the only thing
+    /// the closed entry can be put down to. On the request path the refusal is also reached by the
+    /// scope rebuilt from the snapshot, which carries the same attempt id; the entry is where the
+    /// snapshot's check is the sole guard.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ARecoverySessionSnapshotNamingAnotherAttemptIsRefusedOnTheSnapshotPath()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+
+        foreach ((string? named, bool offered) in new[] { ((string?)null, true), (ForeignAttemptId, false) })
+        {
+            await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+                token,
+                server =>
+                {
+                    server.RecoverySlotOperationAttemptId = named;
+                    server.RecoverySessionSnapshotStatesAfterOpened = ["OPEN"];
+                },
+                cargoInTargetSlots: true);
+
+            // A resume press opens the session. It is used rather than a press on the entry under
+            // examination because it leaves no recovery vector behind, and a vector would open that
+            // entry on its own. The OPEN snapshot comes after the opened response.
+            await harness.Business.RequestResumeAfterRepairAsync(
+                "现场维修完成，申请恢复原仓位操作。", token);
+            await RecoveryVectorHarness.WaitUntilAsync(
+                () => harness.Server.SentRecoverySessionSnapshots.Count == 1
+                    && harness.Business.CanRequestForcedMechanicalRecovery == offered,
+                $"the OPEN snapshot naming {named ?? "null"} to leave the entry {(offered ? "open" : "shut")}",
+                token);
+
+            if (offered)
+            {
+                continue;
+            }
+
+            int blockedBefore = harness.RecoveryBlockedCount;
+            Assert.False(await harness.Business.RequestForcedMechanicalRecoveryAsync(
+                "现场确认仓门无法电动解锁，申请强制机械恢复。", token));
+            await harness.WaitForRecoveryBlockedAsync("RECOVERY_RESPONSE_SCOPE_MISMATCH", token);
+            Assert.True(harness.RecoveryBlockedCount > blockedBefore);
+
+            // One session request: the second press went through the held snapshot.
+            Assert.Single(harness.ResultsOfType("ExceptionRecoverySessionRequested"));
+            Assert.Empty(harness.ResultsOfType("ForcedMechanicalRecoveryResult"));
+            Assert.Equal(0, harness.Io.UnlockCount);
+        }
+    }
+
+    /// <summary>
     /// The same refusal on the <c>RESUME_AFTER_REPAIR</c> path, which reaches the server through a
     /// different method and would otherwise have no check at all.
     /// </summary>
@@ -1317,6 +1452,17 @@ public sealed class RecoveryVectorG2Tests
         /// RECOVERY_BLOCKED event is published by the guard itself, so waiting on it is waiting for
         /// the refusal to have actually been decided.
         /// </remarks>
+        public int RecoveryBlockedCount
+        {
+            get
+            {
+                lock (_recoveryBlockedEvents)
+                {
+                    return _recoveryBlockedEvents.Count;
+                }
+            }
+        }
+
         public async Task WaitForRecoveryBlockedAsync(CancellationToken cancellationToken)
         {
             await WaitUntilAsync(

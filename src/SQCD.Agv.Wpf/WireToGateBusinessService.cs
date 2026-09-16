@@ -48,6 +48,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private readonly SemaphoreSlim _recoveryRequestGate = new(1, 1);
     private WireToGateSublotEntryRequest? _currentEntryRequest;
     private WireToGateExceptionRecoverySessionSnapshot? _recoverySessionSnapshot;
+    private readonly object _recoverySessionAttemptGate = new();
+    private (string ExceptionRecoverySessionId, string? SlotOperationAttemptId)? _recoverySessionAttempt;
+    private string? _inconsistentRecoverySessionId;
     private WireToGateHmiOperationSnapshot? _currentOperationSnapshot;
     private SafetyChangeWork? _pendingSafetyChange;
     private string? _lastSafetySignature;
@@ -252,8 +255,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             // the same way it does on every other recovery path.
             if (activeRecovery)
             {
+                ObserveRecoverySessionAttempt(
+                    recoverySnapshot!.ExceptionRecoverySessionId,
+                    recoverySnapshot.SlotOperationAttemptId);
                 RequireSameSlotOperationAttempt(
-                    recoverySnapshot!.SlotOperationAttemptId, context);
+                    recoverySnapshot.SlotOperationAttemptId, context);
             }
 
             if (state.UnsettledSlotOperationAttemptId != context.SlotOperationAttemptId
@@ -336,6 +342,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         cancellationToken)
                     .ConfigureAwait(false);
             }
+            ObserveRecoverySessionAttempt(
+                opened.ExceptionRecoverySessionId, opened.SlotOperationAttemptId);
             RequireSameSlotOperationAttempt(opened.SlotOperationAttemptId, context);
             if (!string.Equals(opened.RequestId, requestId, StringComparison.Ordinal)
                 || !string.Equals(opened.EventId, eventId, StringComparison.Ordinal)
@@ -371,6 +379,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         recoveryReason),
                     cancellationToken)
                 .ConfigureAwait(false);
+            ObserveRecoverySessionAttempt(
+                accepted.ExceptionRecoverySessionId, accepted.SlotOperationAttemptId);
             RequireSameSlotOperationAttempt(accepted.SlotOperationAttemptId, context);
             if (!string.Equals(accepted.RecoveryActionId, actionId, StringComparison.Ordinal)
                 || !string.Equals(
@@ -989,6 +999,28 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         new ValueChangedEventArgs<WireToGateSublotEntryRequest>(sublot));
                     break;
                 case WireToGateExceptionRecoverySessionSnapshot recoverySnapshot:
+                    try
+                    {
+                        ObserveRecoverySessionAttempt(
+                            recoverySnapshot.ExceptionRecoverySessionId,
+                            recoverySnapshot.SlotOperationAttemptId);
+                    }
+                    catch (InvalidDataException exception)
+                    {
+                        // The snapshot is still stored below: the session exists and the operator
+                        // should see its state. What it may no longer do is authorize anything --
+                        // the compensation gate and every request path refuse this session from now on.
+                        _logger.Write(
+                            LogSeverity.Warning,
+                            nameof(WireToGateBusinessService),
+                            $"恢复会话 {recoverySnapshot.ExceptionRecoverySessionId} 前后给出的 slotOperationAttemptId 不一致：reason={exception.Message}。",
+                            exception);
+                        PublishOperatorEvent(
+                            $"recovery-session-attempt-inconsistent:{recoverySnapshot.ExceptionRecoverySessionId}",
+                            "RECOVERY_BLOCKED",
+                            $"恢复会话被阻断：{exception.Message}。服务端前后给出的装货作业身份不一致，请联系管理员。 ");
+                    }
+
                     Volatile.Write(
                         ref _recoverySessionSnapshot,
                         recoverySnapshot.State == "CLOSED" ? null : recoverySnapshot);
