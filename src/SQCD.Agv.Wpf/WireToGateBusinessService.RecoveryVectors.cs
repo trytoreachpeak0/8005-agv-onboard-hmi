@@ -119,8 +119,7 @@ public sealed partial class WireToGateBusinessService
                 nameof(WireToGateBusinessService),
                 $"恢复向量{vectorType}未执行：reason={exception.Message}。",
                 exception);
-            PublishOperatorEvent(
-                $"recovery-vector-request-failed:{vectorType}:{exception.Message}",
+            PublishOperatorResponse(
                 "RECOVERY_BLOCKED",
                 $"恢复向量被阻断：{exception.Message}。请确认车辆停稳、仓门状态和服务端授权。 ");
             return false;
@@ -231,22 +230,58 @@ public sealed partial class WireToGateBusinessService
         }
 
         WireToGateRecoveryOperationContext operation = RequireUnsettledLoadOperation(state);
-        WireToGateOperatorContextPayload operatorContext = ReadOperatorContext();
         string cancellationId = StableUuid(
             $"{operation.DemandId}|{operation.SlotOperationAttemptId}|load-cancellation");
+        // Only a press that can actually send becomes the first press. One refused for readiness
+        // leaves no bytes on the wire, and remembering its operator would have the next press repeat
+        // a verification the server never saw.
+        RequireSessionReadyToSend();
+        bool recalled = string.Equals(
+            state.PendingLoadCancellation?.CancellationId,
+            cancellationId,
+            StringComparison.Ordinal);
+        WireToGatePendingLoadCancellation pending = await RecallOrRecordLoadCancellationAsync(
+                state,
+                cancellationId,
+                operation.SlotOperationAttemptId,
+                reason,
+                cancellationToken)
+            .ConfigureAwait(false);
+        WireToGateOperatorContextPayload operatorContext = OperatorOf(pending);
         LoadCancellationStartRequestedPayload request = new(
             cancellationId,
             operation.DemandId,
             operation.SlotOperationAttemptId,
             operatorContext,
-            RequireReason(reason));
-        LoadCancellationAuthorizationPayload authorization = await _session
-            .RequestLoadCancellationStartAsync(cancellationId, request, cancellationToken)
-            .ConfigureAwait(false);
+            pending.Reason);
+        // A messageId of its own for every send, as in RequestRecoveryActionVectorCoreAsync: the
+        // identity the server keeps is cancellationId, which stays in the payload.
+        LoadCancellationAuthorizationPayload authorization;
+        try
+        {
+            authorization = await _session
+                .RequestLoadCancellationStartAsync(
+                    Guid.NewGuid().ToString("D"),
+                    request,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (InvalidOperationException exception) when (
+            !recalled
+                && string.Equals(exception.Message, "WIRE_TO_GATE_NOT_READY", StringComparison.Ordinal))
+        {
+            // The session dropped between the check above and the send; the client refuses before
+            // writing anything, so what this press recorded was never a first press either. An entry
+            // recalled from an earlier press did go out and stays.
+            await ForgetLoadCancellationRequestAsync(cancellationId, cancellationToken)
+                .ConfigureAwait(false);
+            throw;
+        }
         if (authorization.Decision == "REJECTED")
         {
-            PublishOperatorEvent(
-                $"load-cancellation-rejected:{cancellationId}",
+            await ForgetLoadCancellationRequestAsync(cancellationId, cancellationToken)
+                .ConfigureAwait(false);
+            PublishOperatorResponse(
                 "RECOVERY_BLOCKED",
                 $"服务端拒绝装货取消：{authorization.Problem?.ReasonCode ?? "ACTION_NOT_ALLOWED_IN_STATE"}。 ");
             return false;
@@ -270,10 +305,12 @@ public sealed partial class WireToGateBusinessService
             operatorContext.OperatorId,
             operatorContext.VerificationMethod,
             operatorContext.VerifiedAt);
-        await WriteRecoveryVectorPreparedAsync(state, vector, cancellationToken)
+        await WriteRecoveryVectorPreparedAsync(
+                state with { PendingLoadCancellation = null },
+                vector,
+                cancellationToken)
             .ConfigureAwait(false);
-        PublishOperatorEvent(
-            $"load-cancellation-authorized:{vector.PrimaryId}",
+        PublishOperatorResponse(
             "RECOVERY_VECTOR_AUTHORIZED",
             $"装货取消已获服务端授权，开始将{FormatSlots(vector.Slots)}清空。 ");
         return await ExecuteRecoveryVectorAndReportAsync(
@@ -302,9 +339,14 @@ public sealed partial class WireToGateBusinessService
         }
 
         WireToGateRecoveryVectorContext vector;
+        string correctionReason;
         if (existingVector is not null)
         {
+            // Pressed again while the correction command is on its way. The server compares this
+            // request's whole payload with the one it accepted, so the reason is the first press's;
+            // the operator already comes from the journaled vector.
             vector = existingVector;
+            correctionReason = state.RecoveryReason ?? RequireReason(reason);
         }
         else
         {
@@ -314,6 +356,7 @@ public sealed partial class WireToGateBusinessService
             WireToGateOperatorContextPayload operatorContext = ReadOperatorContext();
             string correctionId = StableUuid(
                 $"{operation.DemandId}|{operation.SlotOperationAttemptId}|load-correction");
+            correctionReason = RequireReason(reason);
             vector = new(
                 WireToGateRecoveryVectorTypes.LoadCorrection,
                 correctionId,
@@ -326,14 +369,18 @@ public sealed partial class WireToGateBusinessService
                 operatorContext.OperatorId,
                 operatorContext.VerificationMethod,
                 operatorContext.VerifiedAt);
-            await WriteRecoveryVectorPreparedAsync(state, vector, cancellationToken)
+            await WriteRecoveryVectorPreparedAsync(
+                    state with { RecoveryReason = correctionReason },
+                    vector,
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
 
         WireToGateOperatorContextPayload context = RequirePersistedOperator(vector);
-        string requestId = StableUuid($"{vector.PrimaryId}|load-correction-request");
+        // A messageId of its own for every send, as in RequestRecoveryActionVectorCoreAsync: the
+        // identity the server keeps is correctionId.
         await _session.RequestLoadCorrectionAsync(
-                requestId,
+                Guid.NewGuid().ToString("D"),
                 new LoadCorrectionRequestedPayload(
                     vector.PrimaryId,
                     vector.DemandId,
@@ -341,11 +388,10 @@ public sealed partial class WireToGateBusinessService
                         ?? throw new InvalidDataException("RECOVERY_COMMAND_INVALID"),
                     vector.Slots,
                     context,
-                    RequireReason(reason)),
+                    correctionReason),
                 cancellationToken)
             .ConfigureAwait(false);
-        PublishOperatorEvent(
-            $"load-correction-requested:{vector.PrimaryId}",
+        PublishOperatorResponse(
             "RECOVERY_VECTOR_REQUESTED",
             $"已提交{FormatSlots(vector.Slots)}装货修正请求，等待服务端下发修正命令。 ");
         return true;
@@ -529,8 +575,7 @@ public sealed partial class WireToGateBusinessService
                     .ConfigureAwait(false);
             }
 
-            PublishOperatorEvent(
-                $"recovery-action-already-accepted:{actionId}",
+            PublishOperatorResponse(
                 "RECOVERY_ACTION_SUBMITTED",
                 $"恢复动作 {action} 已被服务端接受，等待车载端收到对应命令。 ");
             return true;
@@ -559,8 +604,7 @@ public sealed partial class WireToGateBusinessService
         {
             await ClearRejectedRecoveryActionVectorAsync(actionId, cancellationToken)
                 .ConfigureAwait(false);
-            PublishOperatorEvent(
-                $"recovery-action-rejected:{actionId}",
+            PublishOperatorResponse(
                 "RECOVERY_BLOCKED",
                 $"服务端拒绝恢复动作 {action}：{exception.Message}。未执行仓门IO。 ");
             throw;
@@ -581,8 +625,7 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
         }
 
-        PublishOperatorEvent(
-            $"recovery-action-submitted:{actionId}",
+        PublishOperatorResponse(
             "RECOVERY_ACTION_SUBMITTED",
             $"恢复动作 {action} 已通过服务端授权，等待车载端收到对应命令。 ");
         return true;
@@ -1336,7 +1379,8 @@ public sealed partial class WireToGateBusinessService
                     RecoveryOperatorId = null,
                     RecoveryOperatorVerifiedAt = null,
                     RecoveryResultObservedAt = null,
-                    RecoveryVector = null
+                    RecoveryVector = null,
+                    PendingLoadCancellation = null
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -1472,6 +1516,93 @@ public sealed partial class WireToGateBusinessService
         _recoveryOptions.VerificationMethod is "BADGE" or "SESSION"
             ? _recoveryOptions.VerificationMethod
             : "SESSION";
+
+    /// <summary>
+    /// The operator and reason a load cancellation goes out with, fixed by the first press that
+    /// sends it. The cancellationId is derived from the demand and the attempt, so every press asks
+    /// about the same cancellation, and the server compares each request's whole payload with the
+    /// one it authorized first (<c>UpsertSimpleWorkflowAsync</c>). A press retrying an unanswered
+    /// request -- timed out, the answer lost on the way, the process restarted in between -- must
+    /// repeat that content, or the server takes it for a different request under the same id and
+    /// drops the connection. The journal is what outlives a restart, so the content is written there
+    /// once the session has been found ready and immediately before the send; the caller checks
+    /// readiness first and forgets an entry this press wrote if the client still refuses it as not
+    /// ready, so a press that never left is never remembered as the first.
+    ///
+    /// The messageId is no part of this; every send takes a new one. The server's ProtocolInbox binds
+    /// a messageId to the exact bytes it first carried, and sentAt is new on every press, so reusing
+    /// one ends in a content conflict or in a replay of the first answer.
+    /// </summary>
+    private async Task<WireToGatePendingLoadCancellation> RecallOrRecordLoadCancellationAsync(
+        WireToGateRecoveryState state,
+        string cancellationId,
+        string? slotOperationAttemptId,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        if (state.PendingLoadCancellation is { } unanswered
+            && string.Equals(unanswered.CancellationId, cancellationId, StringComparison.Ordinal))
+        {
+            return unanswered;
+        }
+
+        WireToGateOperatorContextPayload operatorContext = ReadOperatorContext();
+        WireToGatePendingLoadCancellation pending = new(
+            cancellationId,
+            slotOperationAttemptId,
+            operatorContext.OperatorId,
+            operatorContext.VerificationMethod,
+            operatorContext.VerifiedAt,
+            RequireReason(reason));
+        await WriteRecoveryStateCachedAsync(
+                state with { PendingLoadCancellation = pending },
+                cancellationToken)
+            .ConfigureAwait(false);
+        return pending;
+    }
+
+    /// <summary>
+    /// Either answer settles a load cancellation: a refusal records nothing on the server, and an
+    /// authorization is journaled as the vector it starts. The next press is a new request, built
+    /// from that press.
+    /// </summary>
+    private async Task ForgetLoadCancellationRequestAsync(
+        string cancellationId,
+        CancellationToken cancellationToken)
+    {
+        WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (string.Equals(
+                state.PendingLoadCancellation?.CancellationId,
+                cancellationId,
+                StringComparison.Ordinal))
+        {
+            await WriteRecoveryStateCachedAsync(
+                    state with { PendingLoadCancellation = null },
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// The same readiness <c>WireToGateSessionClient.SendRecoveryRequestAsync</c> demands before it
+    /// writes a byte, asked here so that nothing is journaled for a request that cannot leave.
+    /// </summary>
+    private void RequireSessionReadyToSend()
+    {
+        WireToGateSessionSnapshot session = _session.Current;
+        if (!session.Connected
+            || session.SessionGeneration is null
+            || session.Readiness is not (WireToGateSessionReadiness.Ready
+                or WireToGateSessionReadiness.RecoveryRequired))
+        {
+            throw new InvalidOperationException("WIRE_TO_GATE_NOT_READY");
+        }
+    }
+
+    private static WireToGateOperatorContextPayload OperatorOf(
+        WireToGatePendingLoadCancellation pending) =>
+        new(pending.OperatorId, pending.OperatorVerificationMethod, pending.OperatorVerifiedAt);
 
     private static string RequireReason(string reason) =>
         string.IsNullOrWhiteSpace(reason)

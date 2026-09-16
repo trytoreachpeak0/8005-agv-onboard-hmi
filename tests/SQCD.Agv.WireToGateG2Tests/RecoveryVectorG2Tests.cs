@@ -459,6 +459,257 @@ public sealed class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// 被拒过的在途装货取消再按一次，得到的应该还是一次拒绝，而不是一次掐连接。取消请求的 messageId
+    /// 原来就是由需求与 attempt 算出来的 <c>cancellationId</c>，第二次按下带着同一个 messageId、却是新的
+    /// <c>sentAt</c>／<c>verifiedAt</c>——真服务端的 <c>ProtocolInbox</c> 判内容冲突、掐连接
+    /// （onboard-hmi#39，与恢复请求那一次 program#49 同形）。服务端拒绝不落工作流行，所以每次发送拿
+    /// 新 messageId，逻辑身份 <c>cancellationId</c> 留在 payload 里。
+    /// </summary>
+    /// <remarks>移植自 MVP 线 <c>297dd81</c>。v2 没有扫码前取消那一段，所以只在在途取消上做。</remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task ARefusedLoadCancellationIsRefusedAgainInsteadOfDroppingTheConnection()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server =>
+            {
+                server.RespondToLoadCancellationRequests = true;
+                server.LoadCancellationDecision = "REJECTED";
+            });
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCancellation,
+            "the load cancellation entry to be offered",
+            token);
+
+        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+            "装载结果未知，现场申请取消。", token));
+        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+            "被拒之后又按了一次。", token));
+
+        Assert.Empty(harness.Server.RecoveryRequestConflicts);
+        var requests = harness.Server.ReceivedEnvelopes
+            .Where(envelope => envelope.MessageType == "LoadCancellationStartRequested")
+            .ToArray();
+        Assert.Equal(2, requests.Length);
+        Assert.NotEqual(requests[0].MessageId, requests[1].MessageId);
+        Assert.Equal(requests[0].Connection, requests[1].Connection);
+        Assert.Equal([AttemptId, AttemptId], harness.Server.ReceivedLoadCancellationAttemptIds);
+    }
+
+    /// <summary>
+    /// 服务端已经授权、车辆却没收下应答（超时、应答途中断线），之后车载端还重启了。再按一次必须拿到同一个
+    /// 授权：服务端按 <c>cancellationId</c> 找回之前那次授权，但拿整个 payload 与首次比对
+    /// （<c>UpsertSimpleWorkflowAsync</c>），所以重试得带首发的操作员与理由——连同那一次的
+    /// <c>verifiedAt</c>——而不是这一次按下的。那份内容只能从日志里来，进程内存撑不过重启。修之前，这一单
+    /// 只能改库（onboard-hmi#39）。
+    /// </summary>
+    /// <remarks>
+    /// 移植自 MVP 线 <c>297dd81</c>。MVP 是在扫码前取消上做的，v2 没有那一段，所以改在在途取消上：
+    /// 两个 harness 先后打开同一个日志文件，就是一次重启；替身由本用例持有，第二个替身接过前一个
+    /// 落过库的那部分记忆，让重启后的车面对的仍是「同一个服务端」。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task ALostCancellationAuthorizationIsAskedForAgainWithTheFirstPressContentAcrossARestart()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Path.Combine(
+            Path.GetTempPath(), "w2g-vector", Guid.NewGuid().ToString("N"), "journal.db");
+        string? originalOperator = Environment.GetEnvironmentVariable(OperatorVariable);
+        await using FakeControlServer server = NewCancellationServer();
+        server.LoadCancellationAuthorizationsToDrop = 1;
+
+        try
+        {
+            Environment.SetEnvironmentVariable(OperatorVariable, "maintenance-001");
+            await using (RecoveryVectorHarness beforeRestart = await RecoveryVectorHarness.StartAsync(
+                token,
+                existingServer: server,
+                journalPath: journalPath))
+            {
+                await RecoveryVectorHarness.WaitUntilAsync(
+                    () => beforeRestart.Business.CanRequestLoadCancellation,
+                    "the load cancellation entry to be offered",
+                    token);
+                Assert.False(await beforeRestart.Business.RequestLoadCancellationAsync(
+                    "装载结果未知，现场申请取消。", token));
+            }
+
+            await using FakeControlServer serverAfterRestart = NewCancellationServer();
+            serverAfterRestart.AdoptDurableRecoveryMemoryFrom(server);
+            Environment.SetEnvironmentVariable(OperatorVariable, "maintenance-002");
+            await using RecoveryVectorHarness afterRestart = await RecoveryVectorHarness.StartAsync(
+                token,
+                existingServer: serverAfterRestart,
+                journalPath: journalPath,
+                baselineRevision: 2,
+                restart: true);
+            await RecoveryVectorHarness.WaitUntilAsync(
+                () => afterRestart.Business.CanRequestLoadCancellation,
+                "the load cancellation entry to be offered after the restart",
+                token);
+
+            Assert.True(await afterRestart.Business.RequestLoadCancellationAsync(
+                "重启之后换了个人再按一次。", token));
+
+            Assert.Empty(server.RecoveryRequestConflicts);
+            Assert.Empty(serverAfterRestart.RecoveryRequestConflicts);
+            var requests = server.ReceivedEnvelopes
+                .Concat(serverAfterRestart.ReceivedEnvelopes)
+                .Where(envelope => envelope.MessageType == "LoadCancellationStartRequested")
+                .ToArray();
+            Assert.Equal(2, requests.Length);
+            Assert.NotEqual(requests[0].MessageId, requests[1].MessageId);
+            using JsonDocument first = JsonDocument.Parse(requests[0].WireLine);
+            using JsonDocument retried = JsonDocument.Parse(requests[1].WireLine);
+            JsonElement retriedPayload = retried.RootElement.GetProperty("payload");
+            Assert.Equal(
+                first.RootElement.GetProperty("payload").GetRawText(),
+                retriedPayload.GetRawText());
+            Assert.Equal(
+                "maintenance-001",
+                retriedPayload.GetProperty("operator").GetProperty("operatorId").GetString());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(OperatorVariable, originalOperator);
+        }
+    }
+
+    /// <summary>
+    /// <see cref="RecoveryVectorHarness"/> 自己建的那个替身，外加应答取消请求；用例持有它，
+    /// 好让它跨过一次车载端重启。
+    /// </summary>
+    private static FakeControlServer NewCancellationServer()
+    {
+        FakeControlServer server = RecoveryVectorHarness.NewServer();
+        server.RespondToLoadCancellationRequests = true;
+        return server;
+    }
+
+    /// <summary>
+    /// 会话没就绪时按下的取消，一个字节都没发出去，就不算「首发」：不能把这次的操作员与
+    /// <c>verifiedAt</c> 记成待答内容。否则就绪之后再按，沿用的是一份服务端从没见过、而且可能
+    /// 已经过时的核验——服务端也无从察觉，因为它比对的「首次」本来就是那次重发。
+    /// </summary>
+    /// <remarks>
+    /// 「未就绪」用关掉替身来造：连接断开后会话客户端在发送之前就判 <c>WIRE_TO_GATE_NOT_READY</c>。
+    /// 「就绪后再按」用一次重启来造，这样第二次按键面对的是一条新连接、同一个日志，换一个操作员
+    /// 就能看出重发带的是哪一次的核验。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task ACancellationPressedWhileTheSessionIsNotReadyIsNotRememberedAsTheFirstPress()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Path.Combine(
+            Path.GetTempPath(), "w2g-vector", Guid.NewGuid().ToString("N"), "journal.db");
+        string? originalOperator = Environment.GetEnvironmentVariable(OperatorVariable);
+        FakeControlServer lostServer = NewCancellationServer();
+
+        try
+        {
+            Environment.SetEnvironmentVariable(OperatorVariable, "maintenance-001");
+            await using (RecoveryVectorHarness notReady = await RecoveryVectorHarness.StartAsync(
+                token,
+                existingServer: lostServer,
+                journalPath: journalPath))
+            {
+                await lostServer.DisposeAsync();
+                await RecoveryVectorHarness.WaitUntilAsync(
+                    () => !notReady.Business.CanRequestLoadCancellation,
+                    "the session to drop once the control server is gone",
+                    token);
+
+                Assert.False(await notReady.Business.RequestLoadCancellationAsync(
+                    "连接断了还是按了一次取消。", token));
+                Assert.Null((await notReady.ReadRecoveryStateAsync(token)).PendingLoadCancellation);
+            }
+
+            Assert.DoesNotContain(
+                lostServer.ReceivedEnvelopes,
+                envelope => envelope.MessageType == "LoadCancellationStartRequested");
+
+            await using FakeControlServer server = NewCancellationServer();
+            Environment.SetEnvironmentVariable(OperatorVariable, "maintenance-002");
+            await using RecoveryVectorHarness ready = await RecoveryVectorHarness.StartAsync(
+                token,
+                existingServer: server,
+                journalPath: journalPath,
+                baselineRevision: 2,
+                restart: true);
+            await RecoveryVectorHarness.WaitUntilAsync(
+                () => ready.Business.CanRequestLoadCancellation,
+                "the load cancellation entry to be offered once the session is ready",
+                token);
+
+            Assert.True(await ready.Business.RequestLoadCancellationAsync(
+                "会话就绪之后再按一次。", token));
+
+            Assert.Empty(server.RecoveryRequestConflicts);
+            string request = Assert.Single(
+                server.ReceivedEnvelopes,
+                envelope => envelope.MessageType == "LoadCancellationStartRequested").WireLine;
+            using JsonDocument document = JsonDocument.Parse(request);
+            JsonElement payload = document.RootElement.GetProperty("payload");
+            Assert.Equal(
+                "maintenance-002",
+                payload.GetProperty("operator").GetProperty("operatorId").GetString());
+            Assert.Equal("会话就绪之后再按一次。", payload.GetProperty("reason").GetString());
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(OperatorVariable, originalOperator);
+        }
+    }
+
+    /// <summary>
+    /// 修正请求没有应答，服务端受理之后另发修正命令。命令还没到时操作员再按一次——按钮一直亮着——原来会带着
+    /// 由 <c>correctionId</c> 算出的同一个 messageId、却是新的 <c>sentAt</c> 与这一次的理由：真服务端先在
+    /// <c>ProtocolInbox</c> 判冲突，换了 messageId 又在工作流那一层比 payload。每次发送拿新 messageId，
+    /// 理由沿用首发那一次（操作员本来就从日志里的恢复向量读）。
+    /// </summary>
+    /// <remarks>移植自 MVP 线 <c>297dd81</c> 的同名测试。</remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CORRECTION")]
+    public async Task ALoadCorrectionPressedAgainBeforeItsCommandArrivesRepeatsTheFirstRequest()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            loadAlreadySettled: true);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCorrection,
+            "the load correction entry to be offered",
+            token);
+
+        Assert.True(await harness.Business.RequestLoadCorrectionAsync("第一次修正请求。", token));
+        Assert.True(await harness.Business.RequestLoadCorrectionAsync("命令还没到，又按了一次。", token));
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Server.JudgedRecoveryRequests == 2,
+            "the control server to have judged both correction requests",
+            token);
+
+        Assert.Empty(harness.Server.RecoveryRequestConflicts);
+        var requests = harness.Server.ReceivedEnvelopes
+            .Where(envelope => envelope.MessageType == "LoadCorrectionRequested")
+            .ToArray();
+        Assert.Equal(2, requests.Length);
+        Assert.NotEqual(requests[0].MessageId, requests[1].MessageId);
+        using JsonDocument first = JsonDocument.Parse(requests[0].WireLine);
+        using JsonDocument second = JsonDocument.Parse(requests[1].WireLine);
+        Assert.Equal(
+            first.RootElement.GetProperty("payload").GetRawText(),
+            second.RootElement.GetProperty("payload").GetRawText());
+    }
+
+    /// <summary>
     /// One connected onboard sitting on an unsettled load operation, with an authenticated recovery
     /// operator, talking to a control server that issues the vector command an accepted action
     /// calls for.
@@ -484,9 +735,11 @@ public sealed class RecoveryVectorG2Tests
         private readonly WireToGateSessionService _session;
         private readonly SqliteWireToGateJournal _journal;
         private readonly List<WireToGateOperatorEvent> _recoveryBlockedEvents;
+        private readonly bool _ownsServer;
 
         private RecoveryVectorHarness(
             FakeControlServer server,
+            bool ownsServer,
             FakeIoModuleClient io,
             WireToGateSessionService session,
             WireToGateBusinessService business,
@@ -494,6 +747,7 @@ public sealed class RecoveryVectorG2Tests
             List<WireToGateOperatorEvent> recoveryBlockedEvents)
         {
             Server = server;
+            _ownsServer = ownsServer;
             Io = io;
             _session = session;
             Business = business;
@@ -514,16 +768,31 @@ public sealed class RecoveryVectorG2Tests
         /// so worth nothing as an assertion. The refusal tests set it; the tests that want a
         /// COMPLETED outcome leave it alone.
         /// </param>
-        public static async Task<RecoveryVectorHarness> StartAsync(
-            CancellationToken cancellationToken,
-            Action<FakeControlServer>? configure = null,
-            long seededForcedRecoveryGeneration = 0,
-            bool cargoInTargetSlots = false,
-            string? persistedRecoverySessionRequestId = null,
-            bool loadAlreadySettled = false,
-            bool armedUnloadOverSettledLoad = false)
-        {
-            FakeControlServer server = new(IPAddress.Loopback)
+        /// <param name="existingServer">
+        /// A double the caller owns and disposes. One vehicle restart is two harnesses over the
+        /// same journal, and the server they meet has to be the same one across it -- so the second
+        /// harness takes the double rather than standing up a fresh one with no memory.
+        /// </param>
+        /// <param name="journalPath">
+        /// The journal file to open. Passing the first harness's path is what makes the second one
+        /// a restart of the same vehicle rather than a different vehicle.
+        /// </param>
+        /// <param name="baselineRevision">
+        /// The capability and safety revisions the session starts from. A restarted vehicle comes
+        /// back with a higher baseline: the journal already holds the revision the first run
+        /// advanced to.
+        /// </param>
+        /// <param name="restart">
+        /// This harness is the same vehicle coming back up over a journal an earlier harness left
+        /// behind, so the seeded state is not written again -- seeding it would erase exactly what
+        /// the restart is meant to carry over.
+        /// </param>
+        /// <summary>
+        /// The double every harness stands up on its own. A test that has to keep the double across
+        /// a vehicle restart builds it here too, so the two cannot drift apart.
+        /// </summary>
+        public static FakeControlServer NewServer() =>
+            new(IPAddress.Loopback)
             {
                 RequireSafeSafetyForReadiness = true,
                 SendReadinessAfterRecoveryAck = true,
@@ -531,6 +800,22 @@ public sealed class RecoveryVectorG2Tests
                 SendRecoveryVectorCommandAfterRecoveryAction = true,
                 RecoveryVectorSlotOperationAttemptId = AttemptId
             };
+
+        public static async Task<RecoveryVectorHarness> StartAsync(
+            CancellationToken cancellationToken,
+            Action<FakeControlServer>? configure = null,
+            long seededForcedRecoveryGeneration = 0,
+            bool cargoInTargetSlots = false,
+            string? persistedRecoverySessionRequestId = null,
+            bool loadAlreadySettled = false,
+            bool armedUnloadOverSettledLoad = false,
+            FakeControlServer? existingServer = null,
+            string? journalPath = null,
+            long baselineRevision = 1,
+            bool restart = false)
+        {
+            bool ownsServer = existingServer is null;
+            FakeControlServer server = existingServer ?? NewServer();
             configure?.Invoke(server);
 
             try
@@ -553,11 +838,11 @@ public sealed class RecoveryVectorG2Tests
 
                 RecordingLogger logger = new();
                 MutableSafetySignalProvider safety = new();
-                string journalPath = Path.Combine(
+                string databasePath = journalPath ?? Path.Combine(
                     Path.GetTempPath(), "w2g-vector", Guid.NewGuid().ToString("N"), "journal.db");
-                Directory.CreateDirectory(Path.GetDirectoryName(journalPath)!);
+                Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
 
-                SqliteWireToGateJournal journal = new(journalPath);
+                SqliteWireToGateJournal journal = new(databasePath);
                 WireToGateSessionService session = new(
                     new WireToGateSessionOptions(
                         "127.0.0.1",
@@ -568,8 +853,8 @@ public sealed class RecoveryVectorG2Tests
                         CredentialVariable,
                         TimeSpan.FromSeconds(2),
                         TimeSpan.FromSeconds(2),
-                        1,
-                        1,
+                        baselineRevision,
+                        baselineRevision,
                         "eight-slot-v1",
                         "eight-slot-modbus-v1",
                         SupportsBatchUnlock: false),
@@ -643,6 +928,23 @@ public sealed class RecoveryVectorG2Tests
                 // and no unsettled attempt, with the identity kept in
                 // LastCompletedLoadOperationContext. That is the state the vehicle is in when it has
                 // reported COMPLETED and the server has judged the same attempt RecoveryRequired.
+                // A restart reopens the journal the first run left behind; seeding it again would
+                // erase exactly what the restart is meant to carry over.
+                if (restart)
+                {
+                    return await FinishStartAsync(
+                        server,
+                        ownsServer,
+                        io,
+                        journal,
+                        session,
+                        business,
+                        safety,
+                        loadAlreadySettled,
+                        armedUnloadOverSettledLoad,
+                        cancellationToken);
+                }
+
                 await journal.WriteRecoveryStateAsync(
                     new WireToGateRecoveryState(
                         armedUnloadOverSettledLoad
@@ -666,72 +968,101 @@ public sealed class RecoveryVectorG2Tests
                     },
                     cancellationToken);
 
-                // The readiness has to be RECOVERY_REQUIRED when the action is submitted -- with no
-                // open recovery session that is the only state
-                // RequestRecoveryActionVectorCoreAsync will open one from -- while the vehicle has
-                // to be stopped for the execution that follows, because EnsureVehicleStoppedAndFresh
-                // gates it. One signal feeds both: the handshake's SafetyStateSnapshot is what the
-                // double reads departureSafe from.
-                //
-                // So the vehicle is unknown across the handshake and stopped from then on. The
-                // provider is not IObservableVehicleSafetySignalProvider, so nothing pushes the
-                // change; the pump sends one SafetyStateChanged when it starts, and the double is
-                // not configured to re-announce readiness after one.
-                WireToGateSessionSnapshot connected =
-                    await session.Client.ConnectAndRecoverAsync(cancellationToken);
-                Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, connected.Readiness);
-
-                safety.SetStopped();
-
-                // Subscribed before the pump starts, so no refusal can be published into the gap.
-                List<WireToGateOperatorEvent> blocked = [];
-                business.OperatorEventPublished += (_, args) =>
-                {
-                    if (args.Value.Kind == "RECOVERY_BLOCKED")
-                    {
-                        lock (blocked)
-                        {
-                            blocked.Add(args.Value);
-                        }
-                    }
-                };
-                business.Start();
-
-                // The CanRequest* gates read a cached copy of the recovery state that the pump
-                // refreshes on its first pass; the seeded journal alone does not answer them. The
-                // request path reads the journal directly, so this wait is what makes the gates
-                // meaningful to assert rather than what makes the request work.
-                if (loadAlreadySettled)
-                {
-                    // Nothing is armed, so no operation snapshot is surfaced. The correction entry
-                    // already reads LastCompletedLoadOperationContext on this branch, so it turning
-                    // true is the pump having refreshed the cached recovery state -- a different code
-                    // path from the compensation entry the settled-load tests assert on.
-                    await WaitUntilAsync(
-                        () => business.CanRequestLoadCorrection,
-                        "the business pump to surface the seeded settled load",
-                        cancellationToken);
-                }
-                else
-                {
-                    await WaitUntilAsync(
-                        () => business.CurrentOperationSnapshot?.Stage
-                            == WireToGateHmiOperationStage.RecoveryRequired,
-                        "the business pump to surface the seeded recovery state",
-                        cancellationToken);
-                    Assert.Equal(
-                        armedUnloadOverSettledLoad ? UnloadAttemptId : AttemptId,
-                        business.CurrentOperationSnapshot!.SlotOperationAttemptId);
-                }
-
-                return new RecoveryVectorHarness(
-                    server, io, session, business, journal, blocked);
+                return await FinishStartAsync(
+                    server,
+                    ownsServer,
+                    io,
+                    journal,
+                    session,
+                    business,
+                    safety,
+                    loadAlreadySettled,
+                    armedUnloadOverSettledLoad,
+                    cancellationToken);
             }
             catch
             {
-                await server.DisposeAsync();
+                if (ownsServer)
+                {
+                    await server.DisposeAsync();
+                }
+
                 throw;
             }
+        }
+
+        private static async Task<RecoveryVectorHarness> FinishStartAsync(
+            FakeControlServer server,
+            bool ownsServer,
+            FakeIoModuleClient io,
+            SqliteWireToGateJournal journal,
+            WireToGateSessionService session,
+            WireToGateBusinessService business,
+            MutableSafetySignalProvider safety,
+            bool loadAlreadySettled,
+            bool armedUnloadOverSettledLoad,
+            CancellationToken cancellationToken)
+        {
+            // The readiness has to be RECOVERY_REQUIRED when the action is submitted -- with no
+            // open recovery session that is the only state
+            // RequestRecoveryActionVectorCoreAsync will open one from -- while the vehicle has
+            // to be stopped for the execution that follows, because EnsureVehicleStoppedAndFresh
+            // gates it. One signal feeds both: the handshake's SafetyStateSnapshot is what the
+            // double reads departureSafe from.
+            //
+            // So the vehicle is unknown across the handshake and stopped from then on. The
+            // provider is not IObservableVehicleSafetySignalProvider, so nothing pushes the
+            // change; the pump sends one SafetyStateChanged when it starts, and the double is
+            // not configured to re-announce readiness after one.
+            WireToGateSessionSnapshot connected =
+                await session.Client.ConnectAndRecoverAsync(cancellationToken);
+            Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, connected.Readiness);
+
+            safety.SetStopped();
+
+            // Subscribed before the pump starts, so no refusal can be published into the gap.
+            List<WireToGateOperatorEvent> blocked = [];
+            business.OperatorEventPublished += (_, args) =>
+            {
+                if (args.Value.Kind == "RECOVERY_BLOCKED")
+                {
+                    lock (blocked)
+                    {
+                        blocked.Add(args.Value);
+                    }
+                }
+            };
+            business.Start();
+
+            // The CanRequest* gates read a cached copy of the recovery state that the pump
+            // refreshes on its first pass; the seeded journal alone does not answer them. The
+            // request path reads the journal directly, so this wait is what makes the gates
+            // meaningful to assert rather than what makes the request work.
+            if (loadAlreadySettled)
+            {
+                // Nothing is armed, so no operation snapshot is surfaced. The correction entry
+                // already reads LastCompletedLoadOperationContext on this branch, so it turning
+                // true is the pump having refreshed the cached recovery state -- a different code
+                // path from the compensation entry the settled-load tests assert on.
+                await WaitUntilAsync(
+                    () => business.CanRequestLoadCorrection,
+                    "the business pump to surface the seeded settled load",
+                    cancellationToken);
+            }
+            else
+            {
+                await WaitUntilAsync(
+                    () => business.CurrentOperationSnapshot?.Stage
+                        == WireToGateHmiOperationStage.RecoveryRequired,
+                    "the business pump to surface the seeded recovery state",
+                    cancellationToken);
+                Assert.Equal(
+                    armedUnloadOverSettledLoad ? UnloadAttemptId : AttemptId,
+                    business.CurrentOperationSnapshot!.SlotOperationAttemptId);
+            }
+
+            return new RecoveryVectorHarness(
+                server, ownsServer, io, session, business, journal, blocked);
         }
 
         public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(
@@ -818,7 +1149,10 @@ public sealed class RecoveryVectorG2Tests
         {
             await Business.DisposeAsync();
             await _session.DisposeAsync();
-            await Server.DisposeAsync();
+            if (_ownsServer)
+            {
+                await Server.DisposeAsync();
+            }
         }
     }
 

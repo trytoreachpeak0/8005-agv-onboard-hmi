@@ -43,8 +43,7 @@ public sealed partial class WireToGateBusinessService
         ThrowIfDisposed();
         if (!CanRequestManualChargingReturnToService)
         {
-            PublishOperatorEvent(
-                "manual-charging-return-unavailable",
+            PublishOperatorResponse(
                 "RECOVERY_BLOCKED",
                 "返回服务需要已验证的管理员和在线会话，本次未发送请求。 ");
             return false;
@@ -70,8 +69,7 @@ public sealed partial class WireToGateBusinessService
 
             if (string.Equals(result.Outcome, ManualChargingReturnAccepted, StringComparison.Ordinal))
             {
-                PublishOperatorEvent(
-                    $"manual-charging-return-accepted:{requestId}",
+                PublishOperatorResponse(
                     "MANUAL_CHARGING_RETURN_ACCEPTED",
                     "服务端已受理返回服务请求，正在重新评估车辆业务资格；手动充电保持以服务端下发的状态为准。 ");
                 return true;
@@ -82,8 +80,7 @@ public sealed partial class WireToGateBusinessService
                 LogSeverity.Warning,
                 nameof(WireToGateBusinessService),
                 $"返回服务请求被服务端拒绝：requestId={requestId}，reason={reasonCode}。");
-            PublishOperatorEvent(
-                $"manual-charging-return-rejected:{requestId}",
+            PublishOperatorResponse(
                 "RECOVERY_BLOCKED",
                 $"服务端未受理返回服务请求：{reasonCode}。车辆保持原状态。 ");
             return false;
@@ -103,8 +100,7 @@ public sealed partial class WireToGateBusinessService
                 nameof(WireToGateBusinessService),
                 $"返回服务请求未完成：reason={exception.Message}。",
                 exception);
-            PublishOperatorEvent(
-                $"manual-charging-return-failed:{exception.Message}",
+            PublishOperatorResponse(
                 "RECOVERY_BLOCKED",
                 $"返回服务请求未完成：{exception.Message}。车辆保持原状态。 ");
             return false;

@@ -43,7 +43,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private readonly object _operationAttemptGate = new();
     private readonly HashSet<Task> _tasks = [];
     private readonly HashSet<string> _operationAttempts = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _publishedOperatorEventKeys = new(StringComparer.Ordinal);
+    private readonly OperatorEventDeduplicator _operatorEventDeduplicator = new();
     private readonly SemaphoreSlim _safetySendGate = new(1, 1);
     private readonly SemaphoreSlim _recoveryRequestGate = new(1, 1);
     private WireToGateSublotEntryRequest? _currentEntryRequest;
@@ -168,8 +168,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         {
             if (!_recoveryOptions.ResumeAfterRepairEnabled)
             {
-                PublishOperatorEvent(
-                    "recovery-disabled",
+                PublishOperatorResponse(
                     "RECOVERY_BLOCKED",
                     "RESUME_AFTER_REPAIR功能未启用。请由维护人员完成配置后再操作。 ");
                 return false;
@@ -201,8 +200,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             if (activeRecovery
                 && recoverySnapshot!.SelectedAction is "RESUME_AFTER_REPAIR")
             {
-                PublishOperatorEvent(
-                    $"recovery-action-already-selected:{recoverySnapshot.ExceptionRecoverySessionId}",
+                PublishOperatorResponse(
                     "RECOVERY_ACTION_SUBMITTED",
                     "当前恢复会话已经提交恢复申请，等待服务端下发原操作续作命令。 ");
                 return false;
@@ -213,8 +211,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     "RESUME_AFTER_REPAIR",
                     StringComparer.Ordinal))
             {
-                PublishOperatorEvent(
-                    $"recovery-action-not-allowed:{recoverySnapshot.ExceptionRecoverySessionId}",
+                PublishOperatorResponse(
                     "RECOVERY_BLOCKED",
                     "当前恢复会话不允许恢复原仓位操作。 ");
                 return false;
@@ -364,8 +361,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
             }
 
-            PublishOperatorEvent(
-                $"recovery-action-submitted:{actionId}",
+            PublishOperatorResponse(
                 "RECOVERY_ACTION_SUBMITTED",
                 "恢复申请已通过服务端授权，等待下发原操作续作命令。 ");
             return true;
@@ -387,8 +383,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 nameof(WireToGateBusinessService),
                 $"恢复申请未执行：session={recoveryId}，reason={exception.Message}。",
                 exception);
-            PublishOperatorEvent(
-                $"recovery-request-failed:{recoveryId}",
+            PublishOperatorResponse(
                 "RECOVERY_BLOCKED",
                 $"恢复申请被阻断：{exception.Message}。请检查授权、现场安全条件和服务端状态。 ");
             return false;
@@ -433,8 +428,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             "SESSION",
             _clock.Now.ToUniversalTime(),
             cancellationToken).ConfigureAwait(false);
-        PublishOperatorEvent(
-            $"sublot-submitted:{messageId}",
+        PublishOperatorResponse(
             "SUBLOT_SUBMITTED",
             $"子批 {sublot.Trim()} 已提交，等待服务端下发仓位操作。");
         return messageId;
@@ -535,6 +529,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
     private void OnSessionStateChanged(object? sender, ValueChangedEventArgs<WireToGateSessionSnapshot> args)
     {
+        _operatorEventDeduplicator.ResetOnNewGeneration(args.Value.SessionGeneration);
+
         if (args.Value.Readiness != WireToGateSessionReadiness.Ready)
         {
             Volatile.Write(ref _currentEntryRequest, null);
@@ -1453,6 +1449,19 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             operation);
     }
 
+    // 操作员事件分两类，走两条路，别混：
+    //
+    // 「广播」是状态推送——服务端重放同一条命令、快照轮询重复读到同一版本，都会让同一句话
+    // 被推很多遍，去重是它存在的理由（见 OperatorEventDeduplicator）。键必须带 MessageId /
+    // SlotOperationAttemptId / RecoveryActionId 这类每次唯一的标识，否则它去掉的就不是重复
+    // 而是后来的真事件。
+    //
+    // 「应答」是对操作员按下某个按钮的直接回答。人按一次就该被回答一次，去重在这里没有任何
+    // 好处：它的产生源是人手，天然稀疏，刷不了屏；而一旦吞掉，界面上是彻底的沉默——按钮没反应，
+    // 没有报错也没有日志能让操作员看见。这条路因此完全不去重。
+    private void PublishOperatorResponse(string kind, string message) =>
+        RaiseOperatorEvent(kind, message, operation: null);
+
     private void PublishOperatorEvent(
         string deduplicationKey,
         string kind,
@@ -1464,14 +1473,18 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             Volatile.Write(ref _currentOperationSnapshot, operation);
         }
 
-        lock (_operationAttemptGate)
+        if (!_operatorEventDeduplicator.ShouldPublish(deduplicationKey))
         {
-            if (!_publishedOperatorEventKeys.Add(deduplicationKey))
-            {
-                return;
-            }
+            return;
         }
 
+        RaiseOperatorEvent(kind, message, operation);
+    }
+
+    private void RaiseOperatorEvent(
+        string kind,
+        string message,
+        WireToGateHmiOperationSnapshot? operation) =>
         OperatorEventPublished?.Invoke(
             this,
             new ValueChangedEventArgs<WireToGateOperatorEvent>(
@@ -1480,7 +1493,6 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     kind,
                     message,
                     operation)));
-    }
 
     private static WireToGateHmiOperationStage MapOperationStage(string phase) => phase switch
     {
