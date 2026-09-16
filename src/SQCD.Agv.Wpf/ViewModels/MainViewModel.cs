@@ -13,6 +13,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly OnboardController _controller;
     private readonly IAppLogger _logger;
     private readonly OperatorRecordFormatter _operatorRecordFormatter = new();
+    private readonly SlotGroupLayout _slotGroupLayout;
     private string _scanText = string.Empty;
     private string _ruleConnectionText = "离线";
     private string _ioConnectionText = "离线";
@@ -22,6 +23,7 @@ public sealed class MainViewModel : ViewModelBase
     private string _stateText = "启动中";
     private string _guidance = "系统正在启动…";
     private string _alarmText = string.Empty;
+    private string _openingSideText = string.Empty;
     private bool _hasAlarms;
     private bool _canSubmit;
     private bool _hasError;
@@ -61,16 +63,26 @@ public sealed class MainViewModel : ViewModelBase
     private Func<bool>? _wireToGateCanRequestManualChargingReturn;
     private Func<CancellationToken, Task<bool>>? _wireToGateManualChargingReturnRequester;
 
+    /// <param name="slotConfiguration">
+    /// 本机生效仓位配置，仓位区按它的 <c>SlotPosition</c> 分前后两组。启动时读一次就够：激活只改版本名，
+    /// 位置名不在指纹里、激活也不动它。
+    /// </param>
     public MainViewModel(
         OnboardController controller,
         IAppLogger logger,
-        string agvId)
+        string agvId,
+        ActiveSlotConfiguration slotConfiguration)
     {
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         AgvId = agvId;
         Lockers = new ObservableCollection<LockerCardViewModel>(
             Enumerable.Range(0, 8).Select(index => new LockerCardViewModel(index)));
+        _slotGroupLayout = SlotGroupPresentation.Create(slotConfiguration, _logger);
+        SlotGroups = new ObservableCollection<SlotGroupViewModel>(
+            _slotGroupLayout.Groups.Select(group => new SlotGroupViewModel(
+                group,
+                [.. group.PhysicalSlotNumbers.Select(number => Lockers[number - 1])])));
         ScannerSubmitCommand = new AsyncCommand(
             () => SubmitAsync(ScanInputMethod.Scanner),
             () => CanSubmit && !string.IsNullOrWhiteSpace(ScanText),
@@ -92,6 +104,24 @@ public sealed class MainViewModel : ViewModelBase
     public string AgvId { get; }
 
     public ObservableCollection<LockerCardViewModel> Lockers { get; }
+
+    /// <summary>仓位区的前后两侧分组；卡片与 <see cref="Lockers"/> 是同一批实例。</summary>
+    public ObservableCollection<SlotGroupViewModel> SlotGroups { get; }
+
+    /// <summary>仓位区顶部的「本次开门：前侧／后侧／前后两侧」。没有目标仓时为空。</summary>
+    public string OpeningSideText
+    {
+        get => _openingSideText;
+        private set
+        {
+            if (SetProperty(ref _openingSideText, value))
+            {
+                OnPropertyChanged(nameof(HasOpeningSide));
+            }
+        }
+    }
+
+    public bool HasOpeningSide => OpeningSideText.Length > 0;
 
     public ObservableCollection<LogLineViewModel> Logs { get; } = [];
 
@@ -492,6 +522,7 @@ public sealed class MainViewModel : ViewModelBase
             LockerSnapshot state = snapshot.Io.GetLocker(locker.SlotIndex);
             locker.Update(state, snapshot.ActiveOperation, _wireToGateOperation);
         }
+        RefreshSlotGroupsCore();
 
         AppendOperatorRecord(snapshot);
         LogOperatorVisibleError(snapshot);
@@ -577,6 +608,17 @@ public sealed class MainViewModel : ViewModelBase
                 snapshot.ActiveOperation,
                 _wireToGateOperation);
         }
+        RefreshSlotGroupsCore();
+    }
+
+    private void RefreshSlotGroupsCore()
+    {
+        int[] targetSlots = [.. Lockers.Where(locker => locker.IsTarget).Select(locker => locker.PhysicalNumber)];
+        foreach (SlotGroupViewModel group in SlotGroups)
+        {
+            group.IsTarget = group.Group.ContainsAnyOf(targetSlots);
+        }
+        OpeningSideText = SlotGroupPresentation.OpeningSideText(_slotGroupLayout, targetSlots);
     }
 
     private void TrimLogs()

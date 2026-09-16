@@ -7,7 +7,7 @@ $xamlPath = Join-Path $hmiRoot 'src\SQCD.Agv.Wpf\MainWindow.xaml'
 $xaml = Get-Content -LiteralPath $xamlPath -Raw
 $checks = [ordered]@{
     prototypeViewport = ($xaml -match 'Width="1000"[\s\S]*Height="700"[\s\S]*WindowState="Maximized"')
-    eightSlotFourByTwo = ($xaml -match 'UniformGrid Columns="4" Rows="2"')
+    frontRearSlotGroups = ($xaml -match 'ItemsSource="\{Binding SlotGroups\}"') -and ($xaml -match 'UniformGrid Columns="4"') -and ($xaml -match 'Text="\{Binding OpeningSideText\}"')
     singlePrimaryScanAction = ($xaml -match 'x:Name="ScanTextBox"') -and ($xaml -match 'Content="手动提交"')
     safetyReviewAction = ($xaml -match 'Content="启动安全复核"')
     recoveryActions = ($xaml -match 'Content="重新上报结果"') -and ($xaml -match 'Content="重新打开仓门"') -and ($xaml -match 'Content="取消本次操作"')

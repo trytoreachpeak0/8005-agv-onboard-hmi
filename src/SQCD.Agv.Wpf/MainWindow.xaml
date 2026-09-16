@@ -247,44 +247,87 @@
                       Margin="0,6"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto">
-            <ItemsControl MinHeight="200" ItemsSource="{Binding Lockers}">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <UniformGrid Columns="4" Rows="2" />
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate DataType="{x:Type vm:LockerCardViewModel}">
-                        <Border MinHeight="92" Margin="4" Padding="8" Background="White" CornerRadius="8" BorderThickness="2">
-                            <Border.Style>
-                                <Style TargetType="Border">
-                                    <Setter Property="BorderBrush" Value="#D9E1EA" />
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsTarget}" Value="True">
-                                            <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}" />
-                                            <Setter Property="Background" Value="#F0F6FF" />
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding IsKnown}" Value="False">
-                                            <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}" />
-                                            <Setter Property="Background" Value="#FFF5F5" />
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </Border.Style>
-                            <StackPanel>
-                                <TextBlock FontSize="16" FontWeight="Bold" Text="{Binding Title}" />
-                                <TextBlock Margin="0,4,0,0" FontSize="14" Text="{Binding DoorText}" />
-                                <TextBlock Margin="0,1,0,0" FontSize="14" FontWeight="SemiBold" Text="{Binding CargoText}" />
-                                <TextBlock Margin="0,2,0,0"
-                                           FontSize="12"
-                                           FontWeight="SemiBold"
-                                           Foreground="{StaticResource PrimaryBrush}"
-                                           Text="{Binding TargetText}" />
+            <ScrollViewer.Resources>
+                <DataTemplate DataType="{x:Type vm:LockerCardViewModel}">
+                    <Border MinHeight="92" Margin="4" Padding="8" Background="White" CornerRadius="8" BorderThickness="2">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="BorderBrush" Value="#D9E1EA" />
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsTarget}" Value="True">
+                                        <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}" />
+                                        <Setter Property="Background" Value="#F0F6FF" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsKnown}" Value="False">
+                                        <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}" />
+                                        <Setter Property="Background" Value="#FFF5F5" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel>
+                            <TextBlock FontSize="16" FontWeight="Bold" Text="{Binding Title}" />
+                            <TextBlock Margin="0,4,0,0" FontSize="14" Text="{Binding DoorText}" />
+                            <TextBlock Margin="0,1,0,0" FontSize="14" FontWeight="SemiBold" Text="{Binding CargoText}" />
+                            <TextBlock Margin="0,2,0,0"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       Foreground="{StaticResource PrimaryBrush}"
+                                       Text="{Binding TargetText}" />
+                        </StackPanel>
+                    </Border>
+                </DataTemplate>
+            </ScrollViewer.Resources>
+            <StackPanel MinHeight="200">
+                <TextBlock Margin="4,0,4,2"
+                           FontSize="15"
+                           FontWeight="Bold"
+                           Foreground="{StaticResource PrimaryBrush}"
+                           Text="{Binding OpeningSideText}"
+                           Visibility="{Binding HasOpeningSide, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <ItemsControl ItemsSource="{Binding SlotGroups}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate DataType="{x:Type vm:SlotGroupViewModel}">
+                            <StackPanel Margin="0,2,0,2">
+                                <Border Margin="4,2,4,0" Padding="8,2" HorizontalAlignment="Left" CornerRadius="4">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="Transparent" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsTarget}" Value="True">
+                                                    <Setter Property="Background" Value="{StaticResource PrimaryBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <TextBlock FontSize="14" FontWeight="Bold" Text="{Binding Title}">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Foreground" Value="#334155" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsUnknownSide}" Value="True">
+                                                        <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsTarget}" Value="True">
+                                                        <Setter Property="Foreground" Value="White" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Border>
+                                <ItemsControl ItemsSource="{Binding Lockers}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <UniformGrid Columns="4" />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                </ItemsControl>
                             </StackPanel>
-                        </Border>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </StackPanel>
         </ScrollViewer>
 
         <Border Grid.Row="4" Padding="8" Background="#17212E" CornerRadius="8">
