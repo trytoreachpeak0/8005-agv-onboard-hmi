@@ -915,6 +915,20 @@ public sealed class RecoveryVectorG2Tests
 
         public WireToGateBusinessService Business { get; }
 
+        /// <summary>
+        /// The double every harness stands up on its own. A test that has to keep the double across
+        /// a vehicle restart builds it here too, so the two cannot drift apart.
+        /// </summary>
+        public static FakeControlServer NewServer() =>
+            new(IPAddress.Loopback)
+            {
+                RequireSafeSafetyForReadiness = true,
+                SendReadinessAfterRecoveryAck = true,
+                RespondToRecoveryRequests = true,
+                SendRecoveryVectorCommandAfterRecoveryAction = true,
+                RecoveryVectorSlotOperationAttemptId = AttemptId
+            };
+
         /// <param name="cargoInTargetSlots">
         /// Puts cargo in slots 1 and 2. Without it the clear reaches a safe finish without pulsing
         /// anything, because the executor short-circuits an already-empty slot -- which would make
@@ -946,20 +960,6 @@ public sealed class RecoveryVectorG2Tests
         /// the attempt a server might name. The case the batch 5-15 rule and the attempt check both
         /// have to leave hard-blocked.
         /// </param>
-        /// <summary>
-        /// The double every harness stands up on its own. A test that has to keep the double across
-        /// a vehicle restart builds it here too, so the two cannot drift apart.
-        /// </summary>
-        public static FakeControlServer NewServer() =>
-            new(IPAddress.Loopback)
-            {
-                RequireSafeSafetyForReadiness = true,
-                SendReadinessAfterRecoveryAck = true,
-                RespondToRecoveryRequests = true,
-                SendRecoveryVectorCommandAfterRecoveryAction = true,
-                RecoveryVectorSlotOperationAttemptId = AttemptId
-            };
-
         public static async Task<RecoveryVectorHarness> StartAsync(
             CancellationToken cancellationToken,
             Action<FakeControlServer>? configure = null,
