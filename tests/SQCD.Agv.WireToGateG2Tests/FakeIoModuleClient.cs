@@ -27,9 +27,9 @@ public sealed class FakeIoModuleClient : IIoModuleClient
     public bool SimulateOperatorLoad { get; init; }
 
     /// <summary>
-    /// The locker never reaches the state the executor waits for, the way a door closed without a
-    /// basket times out on the real rig: the operation ends UNKNOWN instead of throwing past the
-    /// executor.
+    /// The locker never reaches the state the executor waits for -- not even the lock releasing after
+    /// the pulse, which is feedback the vehicle cannot trust: the operation ends UNKNOWN instead of
+    /// throwing past the executor.
     /// </summary>
     public bool LockerWaitTimesOut { get; init; }
 
@@ -40,6 +40,14 @@ public sealed class FakeIoModuleClient : IIoModuleClient
     /// entry nothing else will ever settle.
     /// </summary>
     public bool OperatorNeverActs { get; init; }
+
+    /// <summary>
+    /// With <see cref="SimulateOperatorLoad"/>, how many times the operator shuts the door over an
+    /// empty slot before putting the basket in. Each one is a reopen (ADR-cross-0058 decision 1).
+    /// </summary>
+    public int EmptyClosesBeforeLoad { get; init; }
+
+    private int _emptyClosesDone;
 
     public bool IsConnected => true;
 
@@ -175,10 +183,12 @@ public sealed class FakeIoModuleClient : IIoModuleClient
                 }
                 else if (locker.LockFeedbackRaw is false)
                 {
+                    bool loaded = _emptyClosesDone >= EmptyClosesBeforeLoad;
+                    _emptyClosesDone += loaded ? 0 : 1;
                     Update(slotIndex, current => current with
                     {
                         LockFeedbackRaw = true,
-                        LightCurtainRaw = false,
+                        LightCurtainRaw = !loaded,
                         ObservedAt = DateTimeOffset.UtcNow
                     });
                 }

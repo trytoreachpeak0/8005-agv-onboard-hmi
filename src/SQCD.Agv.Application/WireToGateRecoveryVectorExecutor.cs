@@ -129,7 +129,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 && IsFinalState(locker!, correction));
             if (!activeSetProvenSafe)
             {
-                AddUnknownResults(context.Slots, state.ActiveUnlockSlots, results);
+                AddUnknownResults(replaySnapshot, context.Slots, state.ActiveUnlockSlots, results);
                 await WriteVectorStateAsync(
                     context,
                     WireToGateRecoveryCheckpoint.ActiveUnlockSet,
@@ -176,7 +176,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         string? precheckFailure = ValidateInitialSnapshot(initial, context.Slots, correction);
         if (precheckFailure is not null)
         {
-            AddFailureResults(context.Slots, results, precheckFailure);
+            AddRejectedResults(initial, context.Slots, completed, results, correction);
             await WriteVectorStateAsync(
                 context,
                 WireToGateRecoveryCheckpoint.Prepared,
@@ -229,7 +229,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 LockerSnapshot locker = GetLocker(initial, slot);
                 if (!IsFinalState(locker, correction))
                 {
-                    AddUnknownResults(context.Slots, [slot], results);
+                    AddUnknownResults(initial, context.Slots, [slot], results);
                     await WriteVectorStateAsync(
                         context,
                         WireToGateRecoveryCheckpoint.ActiveUnlockSet,
@@ -293,7 +293,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 correction);
             if (slotPrecheckFailure is not null)
             {
-                AddFailureResults(context.Slots, results, slotPrecheckFailure);
+                AddRejectedResults(beforePulse, context.Slots, completed, results, correction);
                 await WriteVectorStateAsync(
                     context,
                     WireToGateRecoveryCheckpoint.ActiveUnlockSet,
@@ -389,20 +389,20 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             catch (Exception exception) when (
                 exception is IOException or TimeoutException or InvalidDataException)
             {
-                LockerSnapshot latest = GetLocker(_ioModule.CurrentSnapshot, slotIndex + 1);
+                // One snapshot for the failed slot and the slots never started. The failed slot's
+                // own UNKNOWN is not overwritten, and a slot never opened reports what the IO reads
+                // with no reason code (ADR-cross-0058 decision 6).
+                IoSnapshot failureSnapshot = _ioModule.CurrentSnapshot;
                 string reason = MapFailureReason(exception);
-                UpsertResult(results, CreateSlotResult(latest, "UNKNOWN", [reason]));
-                foreach (int notStarted in context.Slots.Where(slot => !completed.Contains(slot)))
+                UpsertResult(
+                    results,
+                    CreateSlotResult(ReadPhysicalSlot(failureSnapshot, physicalSlot), "UNKNOWN", [reason]));
+                foreach (int notStarted in context.Slots
+                    .Where(slot => slot != physicalSlot && !completed.Contains(slot)))
                 {
                     UpsertResult(
                         results,
-                        new WireToGateSlotExecutionResult(
-                            notStarted,
-                            "NOT_STARTED",
-                            "UNKNOWN",
-                            "UNKNOWN",
-                            "UNKNOWN",
-                            [reason]));
+                        CreateSlotResult(ReadPhysicalSlot(failureSnapshot, notStarted), "NOT_STARTED", []));
                 }
 
                 await WriteVectorStateAsync(
@@ -578,6 +578,14 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         snapshot.IsConnected
         && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge);
 
+    /// <summary>
+    /// What a result may state about a slot: the reading when the snapshot is fresh, otherwise UNKNOWN.
+    /// </summary>
+    private LockerSnapshot ReadPhysicalSlot(IoSnapshot snapshot, int physicalSlot) =>
+        IsFresh(snapshot)
+            ? GetLocker(snapshot, physicalSlot)
+            : LockerSnapshot.Unknown(physicalSlot - 1, snapshot.ObservedAt);
+
     private static string? ValidateKnownLockerStates(
         IoSnapshot snapshot,
         IReadOnlyList<int> slots,
@@ -642,26 +650,31 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             locker.IsKnown ? locker.UnlockOutputRaw is true ? "ACTIVE" : "RESET" : "UNKNOWN",
             reasons);
 
-    private static void AddFailureResults(
+    /// <summary>
+    /// A precheck refused the rest of the vector. Slots already completed keep their result; every
+    /// other slot is NOT_STARTED with the fields the IO reads, and only a slot that fails the precheck
+    /// on its own carries its reason -- all of them when the snapshot itself cannot be trusted.
+    /// </summary>
+    private void AddRejectedResults(
+        IoSnapshot snapshot,
         IReadOnlyList<int> slots,
+        IReadOnlyList<int> completed,
         List<WireToGateSlotExecutionResult> results,
-        string reason)
+        bool correction)
     {
-        foreach (int slot in slots)
+        foreach (int slot in slots.Where(slot => !completed.Contains(slot)))
         {
             UpsertResult(
                 results,
-                new WireToGateSlotExecutionResult(
-                    slot,
+                CreateSlotResult(
+                    ReadPhysicalSlot(snapshot, slot),
                     "NOT_STARTED",
-                    "UNKNOWN",
-                    "UNKNOWN",
-                    "UNKNOWN",
-                    [reason]));
+                    ValidateInitialSnapshot(snapshot, [slot], correction) is { } reason ? [reason] : []));
         }
     }
 
-    private static void AddUnknownResults(
+    private void AddUnknownResults(
+        IoSnapshot snapshot,
         IReadOnlyList<int> slots,
         IReadOnlyList<int> affectedSlots,
         List<WireToGateSlotExecutionResult> results)
@@ -684,13 +697,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             {
                 UpsertResult(
                     results,
-                    new WireToGateSlotExecutionResult(
-                        slot,
-                        "NOT_STARTED",
-                        "UNKNOWN",
-                        "UNKNOWN",
-                        "UNKNOWN",
-                        ["SLOT_STATE_UNKNOWN"]));
+                    CreateSlotResult(ReadPhysicalSlot(snapshot, slot), "NOT_STARTED", []));
             }
         }
     }
@@ -794,7 +801,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         if (options.UnlockFeedbackTimeout <= TimeSpan.Zero
             || options.UnlockOutputResetTimeout <= TimeSpan.Zero
             || options.OperationTimeout <= TimeSpan.Zero
-            || options.FeedbackStableWindow < TimeSpan.Zero
+            || options.FeedbackStableWindow <= TimeSpan.Zero
             || options.IoSnapshotMaxAge <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(options));

@@ -27,8 +27,9 @@ public sealed class WireToGateSlotOperationExecutorTests
                 TimeSpan.FromSeconds(1),
                 TimeSpan.FromSeconds(1),
                 TimeSpan.FromSeconds(5),
-                TimeSpan.Zero,
-                TimeSpan.FromSeconds(1)));
+                TimeSpan.FromMilliseconds(1),
+                TimeSpan.FromSeconds(1)),
+            () => true);
         await using (executor)
         {
             WireToGateSlotOperationCommand command = new(
@@ -306,9 +307,9 @@ public sealed class WireToGateSlotOperationExecutorTests
         using CancellationTokenSource interrupt = new();
         Task<WireToGateOperationExecutionResult> operation = fixture.Executor.ExecuteAsync(
             command,
-            (phase, active, completed, token) =>
+            (progress, token) =>
             {
-                if (phase == "WAITING_OPERATOR")
+                if (progress.Phase == "WAITING_OPERATOR")
                 {
                     interrupt.Cancel();
                 }
@@ -324,20 +325,28 @@ public sealed class WireToGateSlotOperationExecutorTests
         private ScriptedFixture(
             ScriptedIo io,
             SqliteWireToGateJournal journal,
-            WireToGateSlotOperationExecutor executor)
+            WireToGateSlotOperationExecutor executor,
+            SafetyGate gate)
         {
             Io = io;
             Journal = journal;
             Executor = executor;
+            Gate = gate;
         }
 
         public ScriptedIo Io { get; }
+
+        /// <summary>The vehicle safety fact the executor asks before a reopen pulse.</summary>
+        public SafetyGate Gate { get; }
 
         public SqliteWireToGateJournal Journal { get; }
 
         public WireToGateSlotOperationExecutor Executor { get; }
 
-        public static async Task<ScriptedFixture> CreateAsync(CancellationToken cancellationToken)
+        public static async Task<ScriptedFixture> CreateAsync(
+            CancellationToken cancellationToken,
+            TimeSpan? operationTimeout = null,
+            TimeSpan? unlockOutputResetTimeout = null)
         {
             string directory = Path.Combine(
                 Path.GetTempPath(),
@@ -347,23 +356,36 @@ public sealed class WireToGateSlotOperationExecutorTests
             SqliteWireToGateJournal journal = new(Path.Combine(directory, "journal.db"));
             await journal.InitializeAsync(cancellationToken);
             ScriptedIo io = new();
+            SafetyGate gate = new();
             WireToGateSlotOperationExecutor executor = new(
                 io,
                 journal,
                 new SystemClock(),
                 new WireToGateSlotOperationExecutorOptions(
                     TimeSpan.FromSeconds(1),
-                    TimeSpan.FromSeconds(1),
-                    TimeSpan.FromSeconds(5),
-                    TimeSpan.Zero,
-                    TimeSpan.FromSeconds(30)));
-            return new ScriptedFixture(io, journal, executor);
+                    unlockOutputResetTimeout ?? TimeSpan.FromSeconds(1),
+                    operationTimeout ?? TimeSpan.FromSeconds(5),
+                    TimeSpan.FromMilliseconds(1),
+                    TimeSpan.FromSeconds(30)),
+                () => gate.Permitted);
+            return new ScriptedFixture(io, journal, executor, gate);
         }
 
         public async ValueTask DisposeAsync()
         {
             await Executor.DisposeAsync();
             await Journal.DisposeAsync();
+        }
+    }
+
+    private sealed class SafetyGate
+    {
+        private volatile bool _permitted = true;
+
+        public bool Permitted
+        {
+            get => _permitted;
+            set => _permitted = value;
         }
     }
 
@@ -377,6 +399,8 @@ public sealed class WireToGateSlotOperationExecutorTests
     {
         private readonly LockerSnapshot[] _lockers;
         private readonly int[] _unlockCounts = new int[8];
+        private readonly HashSet<int> _jammed = [];
+        private readonly HashSet<int> _stuckOutputs = [];
         private readonly object _sync = new();
         private bool _connected = true;
 
@@ -421,11 +445,14 @@ public sealed class WireToGateSlotOperationExecutorTests
             {
                 _unlockCounts[slotIndex]++;
                 // The pulse is over by the time it returns: the lock has released and the output has
-                // already fallen back, which is what the executor waits for next.
+                // already fallen back, which is what the executor waits for next -- unless the test
+                // jammed the lock or welded the output.
+                bool jammed = _jammed.Contains(slotIndex);
+                bool stuck = _stuckOutputs.Contains(slotIndex);
                 Update(slotIndex, locker => locker with
                 {
-                    LockFeedbackRaw = false,
-                    UnlockOutputRaw = false,
+                    LockFeedbackRaw = jammed,
+                    UnlockOutputRaw = stuck,
                     ObservedAt = DateTimeOffset.UtcNow
                 });
             }
@@ -487,6 +514,71 @@ public sealed class WireToGateSlotOperationExecutorTests
                     LockFeedbackRaw = true,
                     LightCurtainRaw = !cargo,
                     UnlockOutputRaw = true,
+                    ObservedAt = DateTimeOffset.UtcNow
+                });
+            }
+        }
+
+        /// <summary>The lock does not release on the next pulses: its feedback never confirms one.</summary>
+        public void JamLock(int slotIndex)
+        {
+            lock (_sync)
+            {
+                _jammed.Add(slotIndex);
+            }
+        }
+
+        public void UnjamLock(int slotIndex)
+        {
+            lock (_sync)
+            {
+                _jammed.Remove(slotIndex);
+            }
+        }
+
+        /// <summary>The unlock output stays energised after the next pulses.</summary>
+        public void StickUnlockOutput(int slotIndex)
+        {
+            lock (_sync)
+            {
+                _stuckOutputs.Add(slotIndex);
+            }
+        }
+
+        /// <summary>The unlock output falls back, late.</summary>
+        public void ReleaseUnlockOutput(int slotIndex)
+        {
+            lock (_sync)
+            {
+                Update(slotIndex, locker => locker with
+                {
+                    UnlockOutputRaw = false,
+                    ObservedAt = DateTimeOffset.UtcNow
+                });
+            }
+        }
+
+        /// <summary>The light curtain input stops reading while the bus stays up.</summary>
+        public void LoseOccupancyReading(int slotIndex)
+        {
+            lock (_sync)
+            {
+                Update(slotIndex, locker => locker with
+                {
+                    LightCurtainRaw = null,
+                    ObservedAt = DateTimeOffset.UtcNow
+                });
+            }
+        }
+
+        /// <summary>The lock feedback input stops reading while the bus stays up.</summary>
+        public void LoseLockFeedback(int slotIndex)
+        {
+            lock (_sync)
+            {
+                Update(slotIndex, locker => locker with
+                {
+                    LockFeedbackRaw = null,
                     ObservedAt = DateTimeOffset.UtcNow
                 });
             }
@@ -728,13 +820,13 @@ public sealed class WireToGateSlotOperationExecutorTests
         using CancellationTokenSource interrupt = new();
         Task<WireToGateOperationExecutionResult> operation = fixture.Executor.ExecuteAsync(
             command,
-            (phase, active, completed, token) =>
+            (progress, token) =>
             {
-                if (phase == "WAITING_OPERATOR")
+                if (progress.Phase == "WAITING_OPERATOR")
                 {
-                    if (completed.Count == 0)
+                    if (progress.Completed.Count == 0)
                     {
-                        fixture.Io.CloseDoor(active.Single() - 1, command.ExpectedOccupied);
+                        fixture.Io.CloseDoor(progress.Active.Single() - 1, command.ExpectedOccupied);
                     }
                     else
                     {
@@ -746,6 +838,645 @@ public sealed class WireToGateSlotOperationExecutorTests
             },
             interrupt.Token);
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => operation);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task ALoadDoorShutEmptyIsReopenedEveryRoundUntilTheBasketIsIn()
+    {
+        // ADR-cross-0058 decision 1: a door shut over an empty slot is not a failure and not
+        // recovery. Three empty rounds before the basket goes in -- more than two, because having no
+        // limit is the point (ADR-cross-0040).
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        List<(string Phase, int PromptRound)> phases = [];
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1], expectedOccupied: true),
+            (progress, token) =>
+            {
+                phases.Add((progress.Phase, progress.PromptRound));
+                if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    fixture.Io.CloseDoor(progress.Active.Single() - 1, cargo: progress.PromptRound >= 3);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        WireToGateSlotExecutionResult slot = Assert.Single(result.SlotResults);
+        Assert.Equal("COMPLETED", slot.Outcome);
+        Assert.Empty(slot.ReasonCodes);
+        Assert.Equal(4, fixture.Io.UnlockCount(0));
+        Assert.Equal(
+            [
+                ("UNLOCKING", 0), ("WAITING_OPERATOR", 0),
+                ("UNLOCKING", 1), ("WAITING_OPERATOR", 1),
+                ("UNLOCKING", 2), ("WAITING_OPERATOR", 2),
+                ("UNLOCKING", 3), ("WAITING_OPERATOR", 3)
+            ],
+            phases.Where(item => item.Phase is "UNLOCKING" or "WAITING_OPERATOR").ToArray());
+        Assert.DoesNotContain(phases, item => item.Phase == "PAUSED");
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
+            TestContext.Current.CancellationToken);
+        Assert.Equal(WireToGateRecoveryCheckpoint.SafeFinishReached, state.ProvenRecoveryCheckpoint);
+        Assert.All(state.SlotResults, item => Assert.Equal("COMPLETED", item.Outcome));
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-04")]
+    [Trait("ProtocolVector", "CV-DESTINATION-UNLOAD-ALL-EMPTY")]
+    public async Task AnUnloadDoorShutOverTheBasketIsReopenedUntilTheSlotIsEmpty()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        fixture.Io.CloseDoor(0, cargo: true);
+        List<string> phases = [];
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Unload, [1], expectedOccupied: false),
+            (progress, token) =>
+            {
+                phases.Add(progress.Phase);
+                if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    fixture.Io.CloseDoor(progress.Active.Single() - 1, cargo: progress.PromptRound < 2);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        WireToGateSlotExecutionResult slot = Assert.Single(result.SlotResults);
+        Assert.Equal("COMPLETED", slot.Outcome);
+        Assert.Equal("EMPTY", slot.FinalPhysicalState);
+        Assert.Equal(3, fixture.Io.UnlockCount(0));
+        Assert.DoesNotContain("PAUSED", phases);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task ASlotAlreadyLoadedIsNotReopenedWhileAnotherKeepsBeingReopened()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        WireToGateSlotOperationCommand command = CreateCommand(
+            OperationType.Load,
+            [1, 2, 3],
+            expectedOccupied: true);
+        List<int> reopenedSlots = [];
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            command,
+            (progress, token) =>
+            {
+                if (progress.Phase == "UNLOCKING" && progress.PromptRound > 0)
+                {
+                    reopenedSlots.Add(progress.Active.Single());
+                }
+
+                if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    // 1 and 3 are loaded the first time; 2 is shut empty three times.
+                    int physicalSlot = progress.Active.Single();
+                    fixture.Io.CloseDoor(physicalSlot - 1, cargo: physicalSlot != 2 || progress.PromptRound >= 3);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        AssertCompletedMeetsServerCompletionCondition(command, result);
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+        Assert.Equal(4, fixture.Io.UnlockCount(1));
+        Assert.Equal(1, fixture.Io.UnlockCount(2));
+        Assert.Equal([2, 2, 2], reopenedSlots);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task OperationTimeoutOnlyPromptsAgainWithoutAPulseOrAnEnd()
+    {
+        // Decision 3: the door stays open past OperationTimeout. That is one more prompt -- no second
+        // pulse to a lock that is already open, no result, no recovery -- and the command goes on
+        // waiting until the door is shut.
+        TimeSpan cadence = TimeSpan.FromMilliseconds(300);
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken,
+            operationTimeout: cadence);
+        List<(string Phase, int PromptRound)> phases = [];
+        DateTimeOffset firstPrompt = default;
+        DateTimeOffset secondPrompt = default;
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1], expectedOccupied: true),
+            (progress, token) =>
+            {
+                phases.Add((progress.Phase, progress.PromptRound));
+                if (progress.Phase == "WAITING_OPERATOR" && progress.PromptRound == 0)
+                {
+                    firstPrompt = DateTimeOffset.UtcNow;
+                }
+                else if (progress.Phase == "WAITING_OPERATOR" && progress.PromptRound == 1)
+                {
+                    secondPrompt = DateTimeOffset.UtcNow;
+                    fixture.Io.CloseDoor(progress.Active.Single() - 1, cargo: true);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+        Assert.Equal(
+            [("UNLOCKING", 0), ("WAITING_OPERATOR", 0), ("WAITING_OPERATOR", 1)],
+            phases.Where(item => item.Phase is "UNLOCKING" or "WAITING_OPERATOR").ToArray());
+        Assert.True(
+            secondPrompt - firstPrompt >= cadence - TimeSpan.FromMilliseconds(50),
+            $"the second prompt came {(secondPrompt - firstPrompt).TotalMilliseconds} ms after the first");
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AnOccupancyReadingLostWhileWaitingIsUnknown()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1], expectedOccupied: true),
+            (progress, token) =>
+            {
+                if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    fixture.Io.LoseOccupancyReading(progress.Active.Single() - 1);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        WireToGateSlotExecutionResult slot = Assert.Single(result.SlotResults);
+        Assert.Equal("UNKNOWN", slot.Outcome);
+        Assert.Equal(["SLOT_STATE_UNKNOWN"], slot.ReasonCodes);
+        Assert.Equal("UNKNOWN", slot.FinalPhysicalState);
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ALockFeedbackLostWhileWaitingIsUnknown()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1], expectedOccupied: true),
+            (progress, token) =>
+            {
+                if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    fixture.Io.LoseLockFeedback(progress.Active.Single() - 1);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        WireToGateSlotExecutionResult slot = Assert.Single(result.SlotResults);
+        Assert.Equal("UNKNOWN", slot.Outcome);
+        Assert.Equal(["SLOT_STATE_UNKNOWN"], slot.ReasonCodes);
+        Assert.Equal("UNKNOWN", slot.LockState);
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AnUnlockOutputThatDoesNotResetAfterThePulseIsUnknownAndNotReopened()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken,
+            unlockOutputResetTimeout: TimeSpan.FromMilliseconds(200));
+        fixture.Io.StickUnlockOutput(0);
+        List<string> phases = [];
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1], expectedOccupied: true),
+            (progress, token) =>
+            {
+                phases.Add(progress.Phase);
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        WireToGateSlotExecutionResult slot = Assert.Single(result.SlotResults);
+        Assert.Equal("UNKNOWN", slot.Outcome);
+        Assert.Equal("ACTIVE", slot.UnlockOutputState);
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+        Assert.DoesNotContain("WAITING_OPERATOR", phases);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ADoorShutOverTheBasketWithTheUnlockOutputStuckActiveIsUnknownNotCompleted()
+    {
+        // onboard-hmi#49: the target state includes the unlock output having fallen back. Locked and
+        // loaded with the output still energised gets UnlockOutputResetTimeout; an output that does
+        // not fall back is decision 2's "cannot be confirmed reset", not a completion.
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken,
+            unlockOutputResetTimeout: TimeSpan.FromMilliseconds(200));
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1], expectedOccupied: true),
+            (progress, token) =>
+            {
+                if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    fixture.Io.CloseDoorWithUnlockOutputStuckActive(progress.Active.Single() - 1, cargo: true);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        WireToGateSlotExecutionResult slot = Assert.Single(result.SlotResults);
+        Assert.Equal("UNKNOWN", slot.Outcome);
+        Assert.Equal("OCCUPIED", slot.FinalPhysicalState);
+        Assert.Equal("LOCKED", slot.LockState);
+        Assert.Equal("ACTIVE", slot.UnlockOutputState);
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
+            TestContext.Current.CancellationToken);
+        Assert.Empty(state.CompletedSlots);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task SlotsNeverStartedKeepTheirRealReadingsAndTheFailedSlotKeepsItsUnknown()
+    {
+        // ADR-cross-0058 Verification, decision 6: NOT_STARTED with the real IO readings and empty
+        // reasonCodes, and the failed slot is not overwritten as NOT_STARTED afterwards.
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        fixture.Io.JamLock(1);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1, 2, 4], expectedOccupied: true),
+            (progress, token) =>
+            {
+                if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    fixture.Io.CloseDoor(progress.Active.Single() - 1, cargo: true);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        Assert.Equal([1, 2, 4], result.SlotResults.Select(slot => slot.SlotNo));
+        Assert.Equal("COMPLETED", result.SlotResults[0].Outcome);
+
+        WireToGateSlotExecutionResult failed = result.SlotResults[1];
+        Assert.Equal("UNKNOWN", failed.Outcome);
+        Assert.Equal(["ACTION_NOT_ALLOWED_IN_STATE"], failed.ReasonCodes);
+        Assert.Equal("EMPTY", failed.FinalPhysicalState);
+        Assert.Equal("LOCKED", failed.LockState);
+        Assert.Equal("RESET", failed.UnlockOutputState);
+
+        WireToGateSlotExecutionResult neverStarted = result.SlotResults[2];
+        Assert.Equal("NOT_STARTED", neverStarted.Outcome);
+        Assert.Empty(neverStarted.ReasonCodes);
+        Assert.Equal("EMPTY", neverStarted.FinalPhysicalState);
+        Assert.Equal("LOCKED", neverStarted.LockState);
+        Assert.Equal("RESET", neverStarted.UnlockOutputState);
+        Assert.Equal(0, fixture.Io.UnlockCount(3));
+
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
+            TestContext.Current.CancellationToken);
+        Assert.Equal(
+            ["COMPLETED", "UNKNOWN", "NOT_STARTED"],
+            state.SlotResults.Select(slot => slot.Outcome));
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task ARefusedCommandReportsRealReadingsAndPutsTheReasonOnlyOnTheOffendingSlot()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        fixture.Io.CloseDoor(1, cargo: true);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true),
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("FAILED", result.OverallOutcome);
+        Assert.All(result.SlotResults, slot =>
+        {
+            Assert.Equal("NOT_STARTED", slot.Outcome);
+            Assert.Equal("LOCKED", slot.LockState);
+            Assert.Equal("RESET", slot.UnlockOutputState);
+        });
+        Assert.Empty(result.SlotResults[0].ReasonCodes);
+        Assert.Equal("EMPTY", result.SlotResults[0].FinalPhysicalState);
+        Assert.Equal(["SLOT_OPERATION_CONFLICT"], result.SlotResults[1].ReasonCodes);
+        Assert.Equal("OCCUPIED", result.SlotResults[1].FinalPhysicalState);
+        Assert.Equal(0, fixture.Io.UnlockCount(0));
+        Assert.Equal(0, fixture.Io.UnlockCount(1));
+    }
+
+    [Theory]
+    [InlineData(OperationType.Load)]
+    [InlineData(OperationType.Unload)]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("IntegrationSlice", "FP-IS-04")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    [Trait("ProtocolVector", "CV-DESTINATION-UNLOAD-ALL-EMPTY")]
+    public async Task EveryCompletedMainPathResultMeetsTheServerCompletionCondition(OperationType operationType)
+    {
+        // The invariant of onboard-hmi#49 on the main path. Each door is shut at the expected
+        // occupancy while its unlock output is still energised, and the output falls back a moment
+        // later: a completion taken from the shut door alone would report ACTIVE.
+        bool expectedOccupied = operationType == OperationType.Load;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        WireToGateSlotOperationCommand command = CreateCommand(
+            operationType,
+            [1, 3, 5],
+            expectedOccupied);
+        foreach (int physicalSlot in command.Slots)
+        {
+            fixture.Io.CloseDoor(physicalSlot - 1, cargo: !expectedOccupied);
+        }
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            command,
+            (progress, token) =>
+            {
+                if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    ShutWithTheOutputFallingBackLate(fixture.Io, progress.Active.Single() - 1, expectedOccupied);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        AssertCompletedMeetsServerCompletionCondition(command, result);
+        Assert.All(command.Slots, slot => Assert.Equal(1, fixture.Io.UnlockCount(slot - 1)));
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task EveryCompletedResumeResultMeetsTheServerCompletionCondition()
+    {
+        // The same invariant on the resume path: the first slot completed before the failure and is
+        // reused, the second is driven again and its output falls back late.
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        WireToGateSlotOperationCommand command = CreateCommand(
+            OperationType.Load,
+            [1, 2],
+            expectedOccupied: true);
+        fixture.Io.JamLock(1);
+        WireToGateOperationExecutionResult first = await fixture.Executor.ExecuteAsync(
+            command,
+            (progress, token) =>
+            {
+                if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    fixture.Io.CloseDoor(progress.Active.Single() - 1, cargo: true);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+        Assert.Equal("UNKNOWN", first.OverallOutcome);
+        Assert.Equal("SAFE_FINISH_REACHED", first.JournalCheckpoint);
+        fixture.Io.UnjamLock(1);
+
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
+            TestContext.Current.CancellationToken);
+        await fixture.Journal.WriteRecoveryStateAsync(state with
+        {
+            ExceptionRecoverySessionId = "44444444-4444-4444-8444-444444444444",
+            RecoveryActionId = "55555555-5555-4555-8555-555555555555"
+        }, TestContext.Current.CancellationToken);
+        WireToGateSlotOperationResumeCommand resume = new(
+            "66666666-6666-4666-8666-666666666666",
+            2,
+            DateTimeOffset.UtcNow,
+            "44444444-4444-4444-8444-444444444444",
+            "55555555-5555-4555-8555-555555555555",
+            command.DemandId,
+            command.SlotOperationAttemptId,
+            WireToGateRecoveryCheckpoint.SafeFinishReached,
+            command.Slots,
+            command.CommandContentSha256);
+
+        WireToGateOperationExecutionResult resumed = await fixture.Executor.ResumeAsync(
+            resume,
+            (progress, token) =>
+            {
+                if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    ShutWithTheOutputFallingBackLate(fixture.Io, progress.Active.Single() - 1, cargo: true);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        AssertCompletedMeetsServerCompletionCondition(command, resumed);
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+        Assert.Equal(2, fixture.Io.UnlockCount(1));
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task AReopenIsHeldWithoutAPulseWhileTheVehicleSafetyFactSaysNo()
+    {
+        // The door is shut over an empty slot while the vehicle is in an emergency stop (the safety
+        // projection is not STOPPED). No reopen pulse goes out; the operator is told why; once the
+        // fact allows it the slot is reopened and the load completes.
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        List<(string Phase, WireToGatePromptCause Cause)> phases = [];
+        int unlocksWhileHeld = -1;
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1], expectedOccupied: true),
+            (progress, token) =>
+            {
+                phases.Add((progress.Phase, progress.Cause));
+                if (progress.Phase == "WAITING_OPERATOR" && progress.Cause == WireToGatePromptCause.FirstOpen)
+                {
+                    fixture.Gate.Permitted = false;
+                    fixture.Io.CloseDoor(0, cargo: false);
+                }
+                else if (progress.Cause == WireToGatePromptCause.ReopenHeldBySafety)
+                {
+                    _ = Task.Run(
+                        async () =>
+                        {
+                            await Task.Delay(400, CancellationToken.None);
+                            unlocksWhileHeld = fixture.Io.UnlockCount(0);
+                            fixture.Gate.Permitted = true;
+                        },
+                        CancellationToken.None);
+                }
+                else if (progress.Phase == "WAITING_OPERATOR" && progress.Cause == WireToGatePromptCause.OppositeReopen)
+                {
+                    fixture.Io.CloseDoor(0, cargo: true);
+                }
+
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.Equal(1, unlocksWhileHeld);
+        Assert.Equal(2, fixture.Io.UnlockCount(0));
+        Assert.Equal(
+            [
+                ("UNLOCKING", WireToGatePromptCause.FirstOpen),
+                ("WAITING_OPERATOR", WireToGatePromptCause.FirstOpen),
+                ("WAITING_OPERATOR", WireToGatePromptCause.ReopenHeldBySafety),
+                ("UNLOCKING", WireToGatePromptCause.OppositeReopen),
+                ("WAITING_OPERATOR", WireToGatePromptCause.OppositeReopen)
+            ],
+            phases.Where(item => item.Phase is "UNLOCKING" or "WAITING_OPERATOR").ToArray());
+        Assert.DoesNotContain(phases, item => item.Phase == "PAUSED");
+    }
+
+    [Theory]
+    [InlineData("IO")]
+    [InlineData("TIMEOUT")]
+    [InlineData("INVALID_DATA")]
+    [InlineData("INVALID_OPERATION")]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task AProgressReportThatCannotBeSentDoesNotMakeTheSlotUnknown(string failure)
+    {
+        // Every progress report fails the way a dropped connection makes it fail. That says nothing
+        // about the slot: UNKNOWN comes from IO readings only, and the operation completes.
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true),
+            (progress, token) =>
+            {
+                if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    fixture.Io.CloseDoor(progress.Active.Single() - 1, cargo: true);
+                }
+
+                throw failure switch
+                {
+                    "IO" => new IOException("connection dropped"),
+                    "TIMEOUT" => new TimeoutException("send timed out"),
+                    "INVALID_DATA" => new InvalidDataException("LOCK_NOT_CLOSED"),
+                    _ => new InvalidOperationException("session not ready")
+                };
+            },
+            TestContext.Current.CancellationToken);
+
+        AssertCompletedMeetsServerCompletionCondition(
+            CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true),
+            result);
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+        Assert.Equal(1, fixture.Io.UnlockCount(1));
+    }
+
+    [Fact]
+    public async Task AFeedbackStableWindowOfZeroIsRefusedByBothExecutors()
+    {
+        // With no stable window the Modbus client returns on the first matching read, and a single
+        // glitching light-curtain reading would reopen a slot.
+        string directory = Path.Combine(Path.GetTempPath(), "w2g-executor", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        await using SqliteWireToGateJournal journal = new(Path.Combine(directory, "journal.db"));
+        WireToGateSlotOperationExecutorOptions zeroWindow = new(
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.Zero,
+            TimeSpan.FromSeconds(1));
+
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new WireToGateSlotOperationExecutor(new ScriptedIo(), journal, new SystemClock(), zeroWindow, () => true));
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new WireToGateRecoveryVectorExecutor(new ScriptedIo(), journal, new SystemClock(), zeroWindow));
+        await using WireToGateSlotOperationExecutor accepted = new(
+            new ScriptedIo(),
+            journal,
+            new SystemClock(),
+            zeroWindow with { FeedbackStableWindow = TimeSpan.FromMilliseconds(1) },
+            () => true);
+    }
+
+    /// <summary>
+    /// What the server checks before it accepts a completed operation (program#54, onboard-hmi#49):
+    /// an overall COMPLETED covers every slot of the command, and each one is COMPLETED at the
+    /// expected occupancy, LOCKED and RESET.
+    /// </summary>
+    private static void AssertCompletedMeetsServerCompletionCondition(
+        WireToGateSlotOperationCommand command,
+        WireToGateOperationExecutionResult result)
+    {
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.Equal(command.Slots, result.SlotResults.Select(slot => slot.SlotNo).ToArray());
+        string expectedState = command.ExpectedOccupied ? "OCCUPIED" : "EMPTY";
+        Assert.All(result.SlotResults, slot =>
+        {
+            Assert.Equal("COMPLETED", slot.Outcome);
+            Assert.Equal(expectedState, slot.FinalPhysicalState);
+            Assert.Equal("LOCKED", slot.LockState);
+            Assert.Equal("RESET", slot.UnlockOutputState);
+            Assert.Empty(slot.ReasonCodes);
+        });
+    }
+
+    /// <summary>
+    /// The door is shut at the given occupancy with the unlock output still energised, and the output
+    /// falls back 100 ms later -- well inside the fixture's UnlockOutputResetTimeout.
+    /// </summary>
+    private static void ShutWithTheOutputFallingBackLate(ScriptedIo io, int slotIndex, bool cargo)
+    {
+        io.CloseDoorWithUnlockOutputStuckActive(slotIndex, cargo);
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(100);
+            io.ReleaseUnlockOutput(slotIndex);
+        });
     }
 
     private static WireToGateSlotOperationCommand CreateCommand(
@@ -805,8 +1536,9 @@ public sealed class WireToGateSlotOperationExecutorTests
                     TimeSpan.FromSeconds(1),
                     TimeSpan.FromSeconds(1),
                     TimeSpan.FromSeconds(5),
-                    TimeSpan.Zero,
-                    TimeSpan.FromSeconds(1)));
+                    TimeSpan.FromMilliseconds(1),
+                    TimeSpan.FromSeconds(1)),
+                () => true);
             return new TestFixture(io, journal, executor);
         }
 

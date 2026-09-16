@@ -14,30 +14,79 @@ public sealed record WireToGateSlotOperationExecutorOptions(
     TimeSpan FeedbackStableWindow,
     TimeSpan IoSnapshotMaxAge);
 
+/// <summary>
+/// Why a prompt went out, so the HMI states it instead of inferring it from the round number.
+/// </summary>
+public enum WireToGatePromptCause
+{
+    /// <summary>Not a prompt round: preparing, verifying, finishing, pausing.</summary>
+    None,
+
+    /// <summary>The slot's first unlock and the first wait for the operator.</summary>
+    FirstOpen,
+
+    /// <summary>The door was shut over the opposite occupancy and the slot is opened again.</summary>
+    OppositeReopen,
+
+    /// <summary>OperationTimeout passed with the door still open; only the prompt repeats.</summary>
+    PromptCadence,
+
+    /// <summary>
+    /// The slot is to be reopened, but the vehicle safety fact does not allow an unlock pulse (an
+    /// emergency stop, or a safety projection that cannot be trusted). Nothing is pulsed until it does.
+    /// </summary>
+    ReopenHeldBySafety
+}
+
+/// <summary>
+/// One progress report from an executor. <paramref name="PromptRound"/> counts the rounds of waiting
+/// for the operator on the active slot, so a prompt deduplicated by key still differs from the round
+/// before it.
+/// </summary>
+public sealed record WireToGateOperationProgress(
+    string Phase,
+    IReadOnlyList<int> Active,
+    IReadOnlyList<int> Completed,
+    int PromptRound = 0,
+    WireToGatePromptCause Cause = WireToGatePromptCause.None);
+
 public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 {
     private readonly IIoModuleClient _ioModule;
     private readonly IWireToGateJournal _journal;
     private readonly IClock _clock;
+    private static readonly TimeSpan ReopenPermissionPollInterval = TimeSpan.FromMilliseconds(100);
+
     private readonly WireToGateSlotOperationExecutorOptions _options;
+    private readonly Func<bool> _reopenPermitted;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
 
+    /// <param name="reopenPermitted">
+    /// Asked before every automatic reopen pulse. Nothing on this vehicle reads the emergency stop
+    /// directly, and nothing in this repository establishes that an emergency stop cuts the unlock
+    /// output in hardware, so the executor asks the vehicle safety fact instead: false while the
+    /// vehicle is not proven stopped -- RIoT reporting an emergency state that is not OK makes the
+    /// control server's projection UNKNOWN (RIOT_EMERGENCY_NOT_OK) -- or while that projection is
+    /// stale or unreadable. The first unlock of a slot is the server's command and is not gated here.
+    /// </param>
     public WireToGateSlotOperationExecutor(
         IIoModuleClient ioModule,
         IWireToGateJournal journal,
         IClock clock,
-        WireToGateSlotOperationExecutorOptions options)
+        WireToGateSlotOperationExecutorOptions options,
+        Func<bool> reopenPermitted)
     {
         _ioModule = ioModule;
         _journal = journal;
         _clock = clock;
         _options = options;
+        _reopenPermitted = reopenPermitted ?? throw new ArgumentNullException(nameof(reopenPermitted));
         ValidateOptions(options);
     }
 
     public async Task<WireToGateOperationExecutionResult> ExecuteAsync(
         WireToGateSlotOperationCommand command,
-        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>? progress,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
@@ -62,7 +111,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// </summary>
     public async Task<WireToGateOperationExecutionResult> ResumeAsync(
         WireToGateSlotOperationResumeCommand resume,
-        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>? progress,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resume);
@@ -332,7 +381,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
     private async Task<WireToGateOperationExecutionResult> ExecuteExclusiveAsync(
         WireToGateSlotOperationCommand command,
-        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>? progress,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
         CancellationToken cancellationToken)
     {
         DateTimeOffset started = _clock.Now;
@@ -340,7 +389,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         string? precheckFailure = ValidateBeforeOperation(initial, command, command.Slots);
         if (precheckFailure is not null)
         {
-            return CreateRejectedResult(command, precheckFailure, started);
+            return CreateRejectedResult(command, initial, started);
         }
 
         WireToGateRecoveryOperationContext context =
@@ -355,7 +404,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             results,
             WireToGateRecoveryState.Empty,
             cancellationToken).ConfigureAwait(false);
-        await SendProgressAsync(progress, "PREPARING", [], [], cancellationToken).ConfigureAwait(false);
+        await SendProgressAsync(progress, new("PREPARING", [], []), cancellationToken).ConfigureAwait(false);
 
         return await ExecuteRemainingSlotsAsync(
             command,
@@ -363,7 +412,6 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             WireToGateRecoveryState.Empty,
             completed,
             results,
-            started,
             progress,
             cancellationToken).ConfigureAwait(false);
     }
@@ -371,10 +419,9 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     private async Task<WireToGateOperationExecutionResult> ResumeExclusiveAsync(
         WireToGateSlotOperationCommand command,
         WireToGateRecoveryState state,
-        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>? progress,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
         CancellationToken cancellationToken)
     {
-        DateTimeOffset started = _clock.Now;
         IoSnapshot snapshot = _ioModule.CurrentSnapshot;
         if (!snapshot.IsConnected
             || !SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge))
@@ -429,7 +476,8 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             results,
             state,
             cancellationToken).ConfigureAwait(false);
-        await SendProgressAsync(progress, "PREPARING", [], completed, cancellationToken).ConfigureAwait(false);
+        await SendProgressAsync(progress, new("PREPARING", [], completed), cancellationToken)
+            .ConfigureAwait(false);
 
         return await ExecuteRemainingSlotsAsync(
             command,
@@ -437,7 +485,6 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             state,
             completed,
             results,
-            started,
             progress,
             cancellationToken).ConfigureAwait(false);
     }
@@ -448,11 +495,9 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         WireToGateRecoveryState existingState,
         List<int> completed,
         List<WireToGateSlotExecutionResult> results,
-        DateTimeOffset started,
-        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>? progress,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
         CancellationToken cancellationToken)
     {
-        DateTimeOffset deadline = started + _options.OperationTimeout;
         foreach (int physicalSlot in command.Slots)
         {
             if (completed.Contains(physicalSlot))
@@ -462,6 +507,9 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
             cancellationToken.ThrowIfCancellationRequested();
             int slotIndex = physicalSlot - 1;
+            // Written once per slot, not once per reopen: the seventeenth reopen answers the same
+            // recovery question as the first -- this slot is in the active set and its door may be
+            // open -- so the journal bytes would not change.
             await WriteRecoveryStateAsync(
                 context,
                 WireToGateRecoveryCheckpoint.ActiveUnlockSet,
@@ -470,41 +518,14 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 results,
                 existingState,
                 cancellationToken).ConfigureAwait(false);
-            await SendProgressAsync(progress, "UNLOCKING", [physicalSlot], completed, cancellationToken)
-                .ConfigureAwait(false);
 
             try
             {
-                EnsureRemaining(deadline, cancellationToken);
-                await _ioModule.PulseUnlockAsync(slotIndex, cancellationToken).ConfigureAwait(false);
-                LockerSnapshot unlocked = await _ioModule.WaitForLockerAsync(
-                    slotIndex,
-                    locker => locker.IsKnown && !locker.IsLocked,
-                    MinTimeout(_options.UnlockFeedbackTimeout, GetRemaining(deadline)),
-                    _options.FeedbackStableWindow,
-                    cancellationToken).ConfigureAwait(false);
-                await _ioModule.WaitForLockerAsync(
-                    slotIndex,
-                    locker => locker.IsKnown
-                        && locker.ObservedAt >= unlocked.ObservedAt
-                        && locker.UnlockOutputRaw is false,
-                    MinTimeout(_options.UnlockOutputResetTimeout, GetRemaining(deadline)),
-                    _options.FeedbackStableWindow,
-                    cancellationToken).ConfigureAwait(false);
-
-                await SendProgressAsync(
-                    progress,
-                    "WAITING_OPERATOR",
-                    [physicalSlot],
+                LockerSnapshot completedLocker = await DriveSlotToTargetStateAsync(
+                    command,
+                    physicalSlot,
                     completed,
-                    cancellationToken).ConfigureAwait(false);
-                LockerSnapshot completedLocker = await _ioModule.WaitForLockerAsync(
-                    slotIndex,
-                    locker => locker.IsKnown
-                        && locker.IsLocked
-                        && locker.HasCargo == command.ExpectedOccupied,
-                    MinTimeout(_options.OperationTimeout, GetRemaining(deadline)),
-                    _options.FeedbackStableWindow,
+                    progress,
                     cancellationToken).ConfigureAwait(false);
 
                 WireToGateSlotExecutionResult result = CreateSlotResult(
@@ -521,7 +542,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     results,
                     existingState,
                     cancellationToken).ConfigureAwait(false);
-                await SendProgressAsync(progress, "VERIFYING", [], completed, cancellationToken)
+                await SendProgressAsync(progress, new("VERIFYING", [], completed), cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException)
@@ -530,23 +551,27 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             }
             catch (Exception exception) when (exception is IOException or TimeoutException or InvalidDataException)
             {
-                LockerSnapshot latest = TryGetLocker(_ioModule.CurrentSnapshot, slotIndex);
+                // Only the three conditions of ADR-cross-0058 decision 2 reach this branch: the slot
+                // state cannot be read, the lock feedback is not valid, or the unlock output cannot be
+                // confirmed reset. An operator who has not loaded, unloaded or shut the door is still
+                // inside DriveSlotToTargetStateAsync. One snapshot serves the failed slot and the
+                // slots never started, so the two cannot disagree about what was read.
+                IoSnapshot failureSnapshot = _ioModule.CurrentSnapshot;
                 string reason = MapFailureReason(exception);
-                UpsertResult(results, CreateSlotResult(latest, "UNKNOWN", [reason]));
-                foreach (int notStarted in command.Slots.Where(slot => !completed.Contains(slot)))
+                UpsertResult(
+                    results,
+                    CreateSlotResult(ReadLocker(failureSnapshot, slotIndex), "UNKNOWN", [reason]));
+                foreach (int notStarted in command.Slots
+                    .Where(slot => slot != physicalSlot && !completed.Contains(slot)))
                 {
+                    // Decision 6: a slot never opened has nothing uncertain about it. Its three
+                    // fields are what the IO reads, and reasonCodes stay empty -- why the operation
+                    // stopped belongs to the slot that stopped it, not to this one.
                     UpsertResult(
                         results,
-                        new WireToGateSlotExecutionResult(
-                            notStarted,
-                            "NOT_STARTED",
-                            "UNKNOWN",
-                            "UNKNOWN",
-                            "UNKNOWN",
-                            [reason]));
+                        CreateSlotResult(ReadLocker(failureSnapshot, notStarted - 1), "NOT_STARTED", []));
                 }
 
-                IoSnapshot failureSnapshot = _ioModule.CurrentSnapshot;
                 bool safeFinish = IsSafeFinish(failureSnapshot, slotIndex);
                 WireToGateRecoveryCheckpoint failureCheckpoint = safeFinish
                     ? WireToGateRecoveryCheckpoint.SafeFinishReached
@@ -562,9 +587,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     CancellationToken.None).ConfigureAwait(false);
                 await SendProgressAsync(
                         progress,
-                        safeFinish ? "SAFE_FINISH" : "PAUSED",
-                        failureActiveSlots,
-                        completed,
+                        new(safeFinish ? "SAFE_FINISH" : "PAUSED", failureActiveSlots, completed),
                         CancellationToken.None)
                     .ConfigureAwait(false);
                 return CreateResult(command, "UNKNOWN", results, failureCheckpoint);
@@ -579,8 +602,229 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             results,
             existingState,
             cancellationToken).ConfigureAwait(false);
-        await SendProgressAsync(progress, "SAFE_FINISH", [], completed, cancellationToken).ConfigureAwait(false);
+        await SendProgressAsync(progress, new("SAFE_FINISH", [], completed), cancellationToken)
+            .ConfigureAwait(false);
         return CreateResult(command, "COMPLETED", results, WireToGateRecoveryCheckpoint.SafeFinishReached);
+    }
+
+    /// <summary>
+    /// Drives one slot to its target state (ADR-cross-0058 decision 1). A door shut over the opposite
+    /// occupancy -- loading without putting a basket in, unloading without taking it out -- gets a
+    /// fresh unlock pulse and another prompt: not a failure, not recovery, and no retry limit
+    /// (ADR-cross-0040). A door that stays open meets neither condition, and every
+    /// <see cref="WireToGateSlotOperationExecutorOptions.OperationTimeout"/> it only prompts again
+    /// (decision 3). Returns the reading that satisfied <see cref="IsFinalState"/>; throws only for
+    /// the decision 2 conditions, which the caller turns into UNKNOWN.
+    /// </summary>
+    /// <remarks>
+    /// With no deadline any more, a reopen can come long after the command did, so every reopen pulse
+    /// first asks the vehicle safety fact. While it says no, the slot is held: the door is shut and
+    /// locked, nothing is pulsed, and the operator is told why on the prompt cadence.
+    /// </remarks>
+    private async Task<LockerSnapshot> DriveSlotToTargetStateAsync(
+        WireToGateSlotOperationCommand command,
+        int physicalSlot,
+        IReadOnlyList<int> completed,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
+        CancellationToken cancellationToken)
+    {
+        int slotIndex = physicalSlot - 1;
+        bool unlockNeeded = true;
+        WireToGatePromptCause cause = WireToGatePromptCause.FirstOpen;
+        for (int promptRound = 0; ; promptRound++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (unlockNeeded && cause == WireToGatePromptCause.OppositeReopen && !_reopenPermitted())
+            {
+                promptRound = await HoldReopenUntilPermittedAsync(
+                    physicalSlot,
+                    completed,
+                    promptRound,
+                    progress,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            if (unlockNeeded)
+            {
+                await SendProgressAsync(
+                    progress,
+                    new("UNLOCKING", [physicalSlot], completed, promptRound, cause),
+                    cancellationToken).ConfigureAwait(false);
+                await _ioModule.PulseUnlockAsync(slotIndex, cancellationToken).ConfigureAwait(false);
+                // Both are hardware responses in milliseconds. Missing either one means the lock
+                // feedback or the unlock output cannot be trusted -- decision 2, not the operator.
+                LockerSnapshot unlocked = await _ioModule.WaitForLockerAsync(
+                    slotIndex,
+                    locker => locker.IsKnown && !locker.IsLocked,
+                    _options.UnlockFeedbackTimeout,
+                    _options.FeedbackStableWindow,
+                    cancellationToken).ConfigureAwait(false);
+                await _ioModule.WaitForLockerAsync(
+                    slotIndex,
+                    locker => locker.IsKnown
+                        && locker.ObservedAt >= unlocked.ObservedAt
+                        && locker.UnlockOutputRaw is false,
+                    _options.UnlockOutputResetTimeout,
+                    _options.FeedbackStableWindow,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
+            await SendProgressAsync(
+                progress,
+                new("WAITING_OPERATOR", [physicalSlot], completed, promptRound, cause),
+                cancellationToken).ConfigureAwait(false);
+            (SlotWaitOutcome outcome, LockerSnapshot? closed) = await WaitForClosedDoorAsync(
+                slotIndex,
+                command.ExpectedOccupied,
+                cancellationToken).ConfigureAwait(false);
+            switch (outcome)
+            {
+                case SlotWaitOutcome.Unknown:
+                    throw new InvalidDataException("SLOT_STATE_UNKNOWN");
+                case SlotWaitOutcome.PromptCadence:
+                    // The door is still open. Another pulse means nothing to a lock that is already
+                    // released, so this round only prompts again.
+                    unlockNeeded = false;
+                    cause = WireToGatePromptCause.PromptCadence;
+                    continue;
+            }
+
+            // The door is shut and the occupancy is known either way; an output still energised is
+            // given its reset timeout, and one that does not fall back throws from here (decision 2).
+            LockerSnapshot settled = closed!.UnlockOutputRaw is false
+                ? closed
+                : await _ioModule.WaitForLockerAsync(
+                    slotIndex,
+                    locker => locker.IsKnown
+                        && locker.IsLocked
+                        && locker.HasCargo == closed.HasCargo
+                        && locker.UnlockOutputRaw is false,
+                    _options.UnlockOutputResetTimeout,
+                    _options.FeedbackStableWindow,
+                    cancellationToken).ConfigureAwait(false);
+            if (outcome == SlotWaitOutcome.Reached)
+            {
+                return settled;
+            }
+
+            unlockNeeded = true;
+            cause = WireToGatePromptCause.OppositeReopen;
+        }
+    }
+
+    /// <summary>
+    /// Waits, without pulsing, until the vehicle safety fact allows the reopen. Prompts once at once
+    /// and again every <see cref="WireToGateSlotOperationExecutorOptions.OperationTimeout"/>, each as a
+    /// round of its own. Returns the round the reopen itself uses.
+    /// </summary>
+    private async Task<int> HoldReopenUntilPermittedAsync(
+        int physicalSlot,
+        IReadOnlyList<int> completed,
+        int promptRound,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
+        CancellationToken cancellationToken)
+    {
+        await SendProgressAsync(
+            progress,
+            new("WAITING_OPERATOR", [physicalSlot], completed, promptRound, WireToGatePromptCause.ReopenHeldBySafety),
+            cancellationToken).ConfigureAwait(false);
+        DateTimeOffset nextPrompt = _clock.Now + _options.OperationTimeout;
+        while (!_reopenPermitted())
+        {
+            await Task.Delay(ReopenPermissionPollInterval, cancellationToken).ConfigureAwait(false);
+            if (_clock.Now >= nextPrompt)
+            {
+                promptRound++;
+                await SendProgressAsync(
+                    progress,
+                    new("WAITING_OPERATOR", [physicalSlot], completed, promptRound, WireToGatePromptCause.ReopenHeldBySafety),
+                    cancellationToken).ConfigureAwait(false);
+                nextPrompt = _clock.Now + _options.OperationTimeout;
+            }
+        }
+
+        return promptRound + 1;
+    }
+
+    private enum SlotWaitOutcome
+    {
+        Reached,
+        Opposite,
+        Unknown,
+        PromptCadence
+    }
+
+    /// <summary>
+    /// Waits for the first of: the door shut over the expected occupancy, the door shut over the
+    /// opposite one, the slot turning unreadable -- each held for
+    /// <see cref="WireToGateSlotOperationExecutorOptions.FeedbackStableWindow"/> -- or one
+    /// <see cref="WireToGateSlotOperationExecutorOptions.OperationTimeout"/> passing with none of them.
+    /// </summary>
+    /// <remarks>
+    /// The closed-door predicates leave the unlock output out on purpose: a door shut with the output
+    /// still energised is the case <see cref="DriveSlotToTargetStateAsync"/> gives its reset timeout,
+    /// and folding the output in here would turn it into an open door that prompts forever.
+    /// </remarks>
+    private async Task<(SlotWaitOutcome Outcome, LockerSnapshot? Locker)> WaitForClosedDoorAsync(
+        int slotIndex,
+        bool expectedOccupied,
+        CancellationToken cancellationToken)
+    {
+        using CancellationTokenSource waitCts =
+            CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Task<LockerSnapshot> reachedTask = _ioModule.WaitForLockerAsync(
+            slotIndex,
+            locker => locker.IsKnown && locker.IsLocked && locker.HasCargo == expectedOccupied,
+            _options.OperationTimeout,
+            _options.FeedbackStableWindow,
+            waitCts.Token);
+        Task<LockerSnapshot> oppositeTask = _ioModule.WaitForLockerAsync(
+            slotIndex,
+            locker => locker.IsKnown && locker.IsLocked && locker.HasCargo != expectedOccupied,
+            _options.OperationTimeout,
+            _options.FeedbackStableWindow,
+            waitCts.Token);
+        Task<LockerSnapshot> unknownTask = _ioModule.WaitForLockerAsync(
+            slotIndex,
+            locker => !locker.IsKnown,
+            _options.OperationTimeout,
+            _options.FeedbackStableWindow,
+            waitCts.Token);
+        try
+        {
+            Task<LockerSnapshot> winner = await Task.WhenAny(reachedTask, oppositeTask, unknownTask)
+                .ConfigureAwait(false);
+            LockerSnapshot locker = await winner.ConfigureAwait(false);
+            return winner == reachedTask
+                ? (SlotWaitOutcome.Reached, locker)
+                : winner == oppositeTask
+                    ? (SlotWaitOutcome.Opposite, locker)
+                    : (SlotWaitOutcome.Unknown, locker);
+        }
+        catch (TimeoutException)
+        {
+            return (SlotWaitOutcome.PromptCadence, null);
+        }
+        finally
+        {
+            await waitCts.CancelAsync().ConfigureAwait(false);
+            await ObserveAsync(reachedTask).ConfigureAwait(false);
+            await ObserveAsync(oppositeTask).ConfigureAwait(false);
+            await ObserveAsync(unknownTask).ConfigureAwait(false);
+        }
+    }
+
+    private static async Task ObserveAsync(Task task)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch (Exception exception)
+            when (exception is OperationCanceledException or TimeoutException or IOException)
+        {
+            // The round was decided by another wait; how the losing one ended changes nothing.
+        }
     }
 
     private async Task WriteRecoveryStateAsync(
@@ -668,19 +912,21 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         return null;
     }
 
+    /// <remarks>
+    /// Nothing was opened, so every slot is NOT_STARTED with the fields the IO reads (decision 6).
+    /// Each slot that fails the precheck on its own carries its own refusal reason -- all of them when
+    /// the snapshot itself cannot be trusted -- and a slot that was merely next to one carries none.
+    /// </remarks>
     private WireToGateOperationExecutionResult CreateRejectedResult(
         WireToGateSlotOperationCommand command,
-        string reason,
+        IoSnapshot snapshot,
         DateTimeOffset observedAt)
     {
         IReadOnlyList<WireToGateSlotExecutionResult> results = command.Slots
-            .Select(slot => new WireToGateSlotExecutionResult(
-                slot,
+            .Select(slot => CreateSlotResult(
+                ReadLocker(snapshot, slot - 1),
                 "NOT_STARTED",
-                "UNKNOWN",
-                "UNKNOWN",
-                "UNKNOWN",
-                [reason]))
+                ValidateBeforeOperation(snapshot, command, [slot]) is { } reason ? [reason] : []))
             .ToArray();
         return CreateResult(command, "FAILED", results, WireToGateRecoveryCheckpoint.None, observedAt);
     }
@@ -746,6 +992,15 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         snapshot.Lockers.FirstOrDefault(locker => locker.SlotIndex == slotIndex)
         ?? LockerSnapshot.Unknown(slotIndex, snapshot.ObservedAt);
 
+    /// <summary>
+    /// What a result may state about a slot: the reading itself when the snapshot is connected and
+    /// fresh, otherwise UNKNOWN -- a stale reading is not a reading.
+    /// </summary>
+    private LockerSnapshot ReadLocker(IoSnapshot snapshot, int slotIndex) =>
+        snapshot.IsConnected && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge)
+            ? TryGetLocker(snapshot, slotIndex)
+            : LockerSnapshot.Unknown(slotIndex, snapshot.ObservedAt);
+
     private static string MapFailureReason(Exception exception) => exception switch
     {
         TimeoutException => "ACTION_NOT_ALLOWED_IN_STATE",
@@ -755,30 +1010,35 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         _ => "SLOT_STATE_UNKNOWN"
     };
 
+    /// <summary>
+    /// Progress is advisory. Reporting it can fail -- the connection drops while the operator is
+    /// still at the door -- and that says nothing about the slot, so a failure never reaches the
+    /// IO failure branch: UNKNOWN comes from IO readings only. The caller logs its own failures; only
+    /// cancellation of the operation itself passes through.
+    /// </summary>
     private static async Task SendProgressAsync(
-        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>? progress,
-        string phase,
-        IReadOnlyList<int> active,
-        IReadOnlyList<int> completed,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
+        WireToGateOperationProgress report,
         CancellationToken cancellationToken)
     {
-        if (progress is not null)
+        if (progress is null)
         {
-            await progress(phase, active, completed, cancellationToken).ConfigureAwait(false);
-        }
-    }
-
-    private void EnsureRemaining(DateTimeOffset deadline, CancellationToken cancellationToken)
-    {
-        if (GetRemaining(deadline) <= TimeSpan.Zero)
-        {
-            throw new TimeoutException("WIRE_TO_GATE操作超时。");
+            return;
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
+        try
+        {
+            await progress(report, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // Deliberately swallowed; see the summary.
+        }
     }
-
-    private TimeSpan GetRemaining(DateTimeOffset deadline) => deadline - _clock.Now;
 
     private bool IsSafeFinish(IoSnapshot snapshot, int slotIndex)
     {
@@ -791,9 +1051,6 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         LockerSnapshot locker = TryGetLocker(snapshot, slotIndex);
         return locker.IsKnown && locker.IsLocked && locker.UnlockOutputRaw is false;
     }
-
-    private static TimeSpan MinTimeout(TimeSpan configured, TimeSpan remaining) =>
-        remaining <= TimeSpan.Zero ? TimeSpan.FromMilliseconds(1) : configured < remaining ? configured : remaining;
 
     private static void ValidateCommand(WireToGateSlotOperationCommand command)
     {
@@ -840,7 +1097,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         if (options.UnlockFeedbackTimeout <= TimeSpan.Zero
             || options.UnlockOutputResetTimeout <= TimeSpan.Zero
             || options.OperationTimeout <= TimeSpan.Zero
-            || options.FeedbackStableWindow < TimeSpan.Zero
+            || options.FeedbackStableWindow <= TimeSpan.Zero
             || options.IoSnapshotMaxAge <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(options));

@@ -151,6 +151,73 @@ public sealed class WireToGateRecoveryVectorExecutorTests
         Assert.Contains("SLOT_STATE_UNKNOWN", Assert.Single(replay.SlotResults).ReasonCodes);
     }
 
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AFailedVectorSlotKeepsItsUnknownAndSlotsNeverStartedKeepTheirReadings()
+    {
+        // The same overwrite the slot operation executor had (ADR-cross-0058 decision 6): the slot
+        // whose feedback failed stays UNKNOWN, and the slot never opened is NOT_STARTED with what the
+        // IO reads and no reason code.
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            [true, true, true],
+            failOnWaitCall: 4,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
+            CreateContext(
+                WireToGateRecoveryVectorTypes.LoadCompensation,
+                "abababab-abab-4bab-8bab-abababababab",
+                [1, 2, 3]),
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        Assert.Equal([1, 2, 3], result.SlotResults.Select(item => item.SlotNo));
+        Assert.Equal("COMPLETED", result.SlotResults[0].Outcome);
+        Assert.Equal("UNKNOWN", result.SlotResults[1].Outcome);
+        Assert.Equal(["SLOT_STATE_UNKNOWN"], result.SlotResults[1].ReasonCodes);
+        WireToGateSlotExecutionResult neverStarted = result.SlotResults[2];
+        Assert.Equal("NOT_STARTED", neverStarted.Outcome);
+        Assert.Empty(neverStarted.ReasonCodes);
+        Assert.Equal("OCCUPIED", neverStarted.FinalPhysicalState);
+        Assert.Equal("LOCKED", neverStarted.LockState);
+        Assert.Equal("RESET", neverStarted.UnlockOutputState);
+        Assert.Equal(2, fixture.Io.UnlockCount);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ARefusedVectorPutsTheReasonOnlyOnTheSlotThatFailsThePrecheck()
+    {
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            [true, true],
+            cancellationToken: TestContext.Current.CancellationToken);
+        fixture.Io.OpenDoor(1);
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
+            CreateContext(
+                WireToGateRecoveryVectorTypes.LoadCompensation,
+                "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd",
+                [1, 2]),
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("FAILED", result.OverallOutcome);
+        Assert.All(result.SlotResults, item => Assert.Equal("NOT_STARTED", item.Outcome));
+        Assert.Empty(result.SlotResults[0].ReasonCodes);
+        Assert.Equal("OCCUPIED", result.SlotResults[0].FinalPhysicalState);
+        Assert.Equal("LOCKED", result.SlotResults[0].LockState);
+        Assert.Equal(["LOCK_NOT_CLOSED"], result.SlotResults[1].ReasonCodes);
+        Assert.Equal("UNLOCKED", result.SlotResults[1].LockState);
+        Assert.Equal(0, fixture.Io.UnlockCount);
+    }
+
     private static WireToGateRecoveryVectorContext CreateContext(
         string vectorType,
         string primaryId,
@@ -213,7 +280,7 @@ public sealed class WireToGateRecoveryVectorExecutorTests
                     TimeSpan.FromSeconds(1),
                     TimeSpan.FromSeconds(1),
                     TimeSpan.FromSeconds(5),
-                    TimeSpan.Zero,
+                    TimeSpan.FromMilliseconds(1),
                     TimeSpan.FromSeconds(1)));
             return new TestFixture(io, journal, executor);
         }
@@ -336,6 +403,9 @@ public sealed class WireToGateRecoveryVectorExecutorTests
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        public void OpenDoor(int slotIndex) =>
+            UpdateLocker(slotIndex, current => current with { LockFeedbackRaw = false });
 
         public void SetUnknown()
         {
