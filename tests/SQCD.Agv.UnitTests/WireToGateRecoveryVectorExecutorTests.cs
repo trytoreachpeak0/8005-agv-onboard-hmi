@@ -280,7 +280,7 @@ public sealed class WireToGateRecoveryVectorExecutorTests
                     TimeSpan.FromSeconds(1),
                     TimeSpan.FromSeconds(1),
                     TimeSpan.FromSeconds(5),
-                    TimeSpan.Zero,
+                    TimeSpan.FromMilliseconds(1),
                     TimeSpan.FromSeconds(1)));
             return new TestFixture(io, journal, executor);
         }

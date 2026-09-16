@@ -14,30 +14,79 @@ public sealed record WireToGateSlotOperationExecutorOptions(
     TimeSpan FeedbackStableWindow,
     TimeSpan IoSnapshotMaxAge);
 
+/// <summary>
+/// Why a prompt went out, so the HMI states it instead of inferring it from the round number.
+/// </summary>
+public enum WireToGatePromptCause
+{
+    /// <summary>Not a prompt round: preparing, verifying, finishing, pausing.</summary>
+    None,
+
+    /// <summary>The slot's first unlock and the first wait for the operator.</summary>
+    FirstOpen,
+
+    /// <summary>The door was shut over the opposite occupancy and the slot is opened again.</summary>
+    OppositeReopen,
+
+    /// <summary>OperationTimeout passed with the door still open; only the prompt repeats.</summary>
+    PromptCadence,
+
+    /// <summary>
+    /// The slot is to be reopened, but the vehicle safety fact does not allow an unlock pulse (an
+    /// emergency stop, or a safety projection that cannot be trusted). Nothing is pulsed until it does.
+    /// </summary>
+    ReopenHeldBySafety
+}
+
+/// <summary>
+/// One progress report from an executor. <paramref name="PromptRound"/> counts the rounds of waiting
+/// for the operator on the active slot, so a prompt deduplicated by key still differs from the round
+/// before it.
+/// </summary>
+public sealed record WireToGateOperationProgress(
+    string Phase,
+    IReadOnlyList<int> Active,
+    IReadOnlyList<int> Completed,
+    int PromptRound = 0,
+    WireToGatePromptCause Cause = WireToGatePromptCause.None);
+
 public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 {
     private readonly IIoModuleClient _ioModule;
     private readonly IWireToGateJournal _journal;
     private readonly IClock _clock;
+    private static readonly TimeSpan ReopenPermissionPollInterval = TimeSpan.FromMilliseconds(100);
+
     private readonly WireToGateSlotOperationExecutorOptions _options;
+    private readonly Func<bool> _reopenPermitted;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
 
+    /// <param name="reopenPermitted">
+    /// Asked before every automatic reopen pulse. Nothing on this vehicle reads the emergency stop
+    /// directly, and nothing in this repository establishes that an emergency stop cuts the unlock
+    /// output in hardware, so the executor asks the vehicle safety fact instead: false while the
+    /// vehicle is not proven stopped -- RIoT reporting an emergency state that is not OK makes the
+    /// control server's projection UNKNOWN (RIOT_EMERGENCY_NOT_OK) -- or while that projection is
+    /// stale or unreadable. The first unlock of a slot is the server's command and is not gated here.
+    /// </param>
     public WireToGateSlotOperationExecutor(
         IIoModuleClient ioModule,
         IWireToGateJournal journal,
         IClock clock,
-        WireToGateSlotOperationExecutorOptions options)
+        WireToGateSlotOperationExecutorOptions options,
+        Func<bool> reopenPermitted)
     {
         _ioModule = ioModule;
         _journal = journal;
         _clock = clock;
         _options = options;
+        _reopenPermitted = reopenPermitted ?? throw new ArgumentNullException(nameof(reopenPermitted));
         ValidateOptions(options);
     }
 
     public async Task<WireToGateOperationExecutionResult> ExecuteAsync(
         WireToGateSlotOperationCommand command,
-        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, int, CancellationToken, Task>? progress,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(command);
@@ -62,7 +111,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// </summary>
     public async Task<WireToGateOperationExecutionResult> ResumeAsync(
         WireToGateSlotOperationResumeCommand resume,
-        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, int, CancellationToken, Task>? progress,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resume);
@@ -332,7 +381,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
     private async Task<WireToGateOperationExecutionResult> ExecuteExclusiveAsync(
         WireToGateSlotOperationCommand command,
-        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, int, CancellationToken, Task>? progress,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
         CancellationToken cancellationToken)
     {
         DateTimeOffset started = _clock.Now;
@@ -355,7 +404,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             results,
             WireToGateRecoveryState.Empty,
             cancellationToken).ConfigureAwait(false);
-        await SendProgressAsync(progress, "PREPARING", [], [], 0, cancellationToken).ConfigureAwait(false);
+        await SendProgressAsync(progress, new("PREPARING", [], []), cancellationToken).ConfigureAwait(false);
 
         return await ExecuteRemainingSlotsAsync(
             command,
@@ -370,7 +419,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     private async Task<WireToGateOperationExecutionResult> ResumeExclusiveAsync(
         WireToGateSlotOperationCommand command,
         WireToGateRecoveryState state,
-        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, int, CancellationToken, Task>? progress,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
         CancellationToken cancellationToken)
     {
         IoSnapshot snapshot = _ioModule.CurrentSnapshot;
@@ -427,7 +476,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             results,
             state,
             cancellationToken).ConfigureAwait(false);
-        await SendProgressAsync(progress, "PREPARING", [], completed, 0, cancellationToken)
+        await SendProgressAsync(progress, new("PREPARING", [], completed), cancellationToken)
             .ConfigureAwait(false);
 
         return await ExecuteRemainingSlotsAsync(
@@ -446,7 +495,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         WireToGateRecoveryState existingState,
         List<int> completed,
         List<WireToGateSlotExecutionResult> results,
-        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, int, CancellationToken, Task>? progress,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
         CancellationToken cancellationToken)
     {
         foreach (int physicalSlot in command.Slots)
@@ -493,7 +542,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     results,
                     existingState,
                     cancellationToken).ConfigureAwait(false);
-                await SendProgressAsync(progress, "VERIFYING", [], completed, 0, cancellationToken)
+                await SendProgressAsync(progress, new("VERIFYING", [], completed), cancellationToken)
                     .ConfigureAwait(false);
             }
             catch (OperationCanceledException)
@@ -538,10 +587,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     CancellationToken.None).ConfigureAwait(false);
                 await SendProgressAsync(
                         progress,
-                        safeFinish ? "SAFE_FINISH" : "PAUSED",
-                        failureActiveSlots,
-                        completed,
-                        0,
+                        new(safeFinish ? "SAFE_FINISH" : "PAUSED", failureActiveSlots, completed),
                         CancellationToken.None)
                     .ConfigureAwait(false);
                 return CreateResult(command, "UNKNOWN", results, failureCheckpoint);
@@ -556,7 +602,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             results,
             existingState,
             cancellationToken).ConfigureAwait(false);
-        await SendProgressAsync(progress, "SAFE_FINISH", [], completed, 0, cancellationToken)
+        await SendProgressAsync(progress, new("SAFE_FINISH", [], completed), cancellationToken)
             .ConfigureAwait(false);
         return CreateResult(command, "COMPLETED", results, WireToGateRecoveryCheckpoint.SafeFinishReached);
     }
@@ -571,30 +617,38 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// the decision 2 conditions, which the caller turns into UNKNOWN.
     /// </summary>
     /// <remarks>
-    /// <paramref name="promptRound"/> counts the rounds of waiting for the operator, whether a round
-    /// began with a reopen or with the prompt cadence, so an HMI that deduplicates its prompts can
-    /// still tell round two from round one.
+    /// With no deadline any more, a reopen can come long after the command did, so every reopen pulse
+    /// first asks the vehicle safety fact. While it says no, the slot is held: the door is shut and
+    /// locked, nothing is pulsed, and the operator is told why on the prompt cadence.
     /// </remarks>
     private async Task<LockerSnapshot> DriveSlotToTargetStateAsync(
         WireToGateSlotOperationCommand command,
         int physicalSlot,
         IReadOnlyList<int> completed,
-        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, int, CancellationToken, Task>? progress,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
         CancellationToken cancellationToken)
     {
         int slotIndex = physicalSlot - 1;
         bool unlockNeeded = true;
+        WireToGatePromptCause cause = WireToGatePromptCause.FirstOpen;
         for (int promptRound = 0; ; promptRound++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (unlockNeeded && cause == WireToGatePromptCause.OppositeReopen && !_reopenPermitted())
+            {
+                promptRound = await HoldReopenUntilPermittedAsync(
+                    physicalSlot,
+                    completed,
+                    promptRound,
+                    progress,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
             if (unlockNeeded)
             {
                 await SendProgressAsync(
                     progress,
-                    "UNLOCKING",
-                    [physicalSlot],
-                    completed,
-                    promptRound,
+                    new("UNLOCKING", [physicalSlot], completed, promptRound, cause),
                     cancellationToken).ConfigureAwait(false);
                 await _ioModule.PulseUnlockAsync(slotIndex, cancellationToken).ConfigureAwait(false);
                 // Both are hardware responses in milliseconds. Missing either one means the lock
@@ -617,10 +671,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
             await SendProgressAsync(
                 progress,
-                "WAITING_OPERATOR",
-                [physicalSlot],
-                completed,
-                promptRound,
+                new("WAITING_OPERATOR", [physicalSlot], completed, promptRound, cause),
                 cancellationToken).ConfigureAwait(false);
             (SlotWaitOutcome outcome, LockerSnapshot? closed) = await WaitForClosedDoorAsync(
                 slotIndex,
@@ -634,6 +685,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     // The door is still open. Another pulse means nothing to a lock that is already
                     // released, so this round only prompts again.
                     unlockNeeded = false;
+                    cause = WireToGatePromptCause.PromptCadence;
                     continue;
             }
 
@@ -656,7 +708,42 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             }
 
             unlockNeeded = true;
+            cause = WireToGatePromptCause.OppositeReopen;
         }
+    }
+
+    /// <summary>
+    /// Waits, without pulsing, until the vehicle safety fact allows the reopen. Prompts once at once
+    /// and again every <see cref="WireToGateSlotOperationExecutorOptions.OperationTimeout"/>, each as a
+    /// round of its own. Returns the round the reopen itself uses.
+    /// </summary>
+    private async Task<int> HoldReopenUntilPermittedAsync(
+        int physicalSlot,
+        IReadOnlyList<int> completed,
+        int promptRound,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
+        CancellationToken cancellationToken)
+    {
+        await SendProgressAsync(
+            progress,
+            new("WAITING_OPERATOR", [physicalSlot], completed, promptRound, WireToGatePromptCause.ReopenHeldBySafety),
+            cancellationToken).ConfigureAwait(false);
+        DateTimeOffset nextPrompt = _clock.Now + _options.OperationTimeout;
+        while (!_reopenPermitted())
+        {
+            await Task.Delay(ReopenPermissionPollInterval, cancellationToken).ConfigureAwait(false);
+            if (_clock.Now >= nextPrompt)
+            {
+                promptRound++;
+                await SendProgressAsync(
+                    progress,
+                    new("WAITING_OPERATOR", [physicalSlot], completed, promptRound, WireToGatePromptCause.ReopenHeldBySafety),
+                    cancellationToken).ConfigureAwait(false);
+                nextPrompt = _clock.Now + _options.OperationTimeout;
+            }
+        }
+
+        return promptRound + 1;
     }
 
     private enum SlotWaitOutcome
@@ -923,17 +1010,33 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         _ => "SLOT_STATE_UNKNOWN"
     };
 
+    /// <summary>
+    /// Progress is advisory. Reporting it can fail -- the connection drops while the operator is
+    /// still at the door -- and that says nothing about the slot, so a failure never reaches the
+    /// IO failure branch: UNKNOWN comes from IO readings only. The caller logs its own failures; only
+    /// cancellation of the operation itself passes through.
+    /// </summary>
     private static async Task SendProgressAsync(
-        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, int, CancellationToken, Task>? progress,
-        string phase,
-        IReadOnlyList<int> active,
-        IReadOnlyList<int> completed,
-        int promptRound,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
+        WireToGateOperationProgress report,
         CancellationToken cancellationToken)
     {
-        if (progress is not null)
+        if (progress is null)
         {
-            await progress(phase, active, completed, promptRound, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        try
+        {
+            await progress(report, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // Deliberately swallowed; see the summary.
         }
     }
 
@@ -994,7 +1097,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         if (options.UnlockFeedbackTimeout <= TimeSpan.Zero
             || options.UnlockOutputResetTimeout <= TimeSpan.Zero
             || options.OperationTimeout <= TimeSpan.Zero
-            || options.FeedbackStableWindow < TimeSpan.Zero
+            || options.FeedbackStableWindow <= TimeSpan.Zero
             || options.IoSnapshotMaxAge <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(options));

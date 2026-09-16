@@ -396,13 +396,13 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 string reason = MapFailureReason(exception);
                 UpsertResult(
                     results,
-                    CreateSlotResult(ReadLocker(failureSnapshot, physicalSlot), "UNKNOWN", [reason]));
+                    CreateSlotResult(ReadPhysicalSlot(failureSnapshot, physicalSlot), "UNKNOWN", [reason]));
                 foreach (int notStarted in context.Slots
                     .Where(slot => slot != physicalSlot && !completed.Contains(slot)))
                 {
                     UpsertResult(
                         results,
-                        CreateSlotResult(ReadLocker(failureSnapshot, notStarted), "NOT_STARTED", []));
+                        CreateSlotResult(ReadPhysicalSlot(failureSnapshot, notStarted), "NOT_STARTED", []));
                 }
 
                 await WriteVectorStateAsync(
@@ -581,7 +581,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
     /// <summary>
     /// What a result may state about a slot: the reading when the snapshot is fresh, otherwise UNKNOWN.
     /// </summary>
-    private LockerSnapshot ReadLocker(IoSnapshot snapshot, int physicalSlot) =>
+    private LockerSnapshot ReadPhysicalSlot(IoSnapshot snapshot, int physicalSlot) =>
         IsFresh(snapshot)
             ? GetLocker(snapshot, physicalSlot)
             : LockerSnapshot.Unknown(physicalSlot - 1, snapshot.ObservedAt);
@@ -667,7 +667,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             UpsertResult(
                 results,
                 CreateSlotResult(
-                    ReadLocker(snapshot, slot),
+                    ReadPhysicalSlot(snapshot, slot),
                     "NOT_STARTED",
                     ValidateInitialSnapshot(snapshot, [slot], correction) is { } reason ? [reason] : []));
         }
@@ -697,7 +697,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             {
                 UpsertResult(
                     results,
-                    CreateSlotResult(ReadLocker(snapshot, slot), "NOT_STARTED", []));
+                    CreateSlotResult(ReadPhysicalSlot(snapshot, slot), "NOT_STARTED", []));
             }
         }
     }
@@ -801,7 +801,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         if (options.UnlockFeedbackTimeout <= TimeSpan.Zero
             || options.UnlockOutputResetTimeout <= TimeSpan.Zero
             || options.OperationTimeout <= TimeSpan.Zero
-            || options.FeedbackStableWindow < TimeSpan.Zero
+            || options.FeedbackStableWindow <= TimeSpan.Zero
             || options.IoSnapshotMaxAge <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(options));

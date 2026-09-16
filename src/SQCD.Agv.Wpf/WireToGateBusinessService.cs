@@ -110,7 +110,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             ioModule,
             session.Journal,
             clock,
-            executorOptions);
+            executorOptions,
+            IsReopenPermitted);
         _vectorExecutor = new WireToGateRecoveryVectorExecutor(
             ioModule,
             session.Journal,
@@ -1226,24 +1227,23 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 WireToGateHmiOperationStage.Preparing,
                 $"恢复原操作：{FormatSlots(command.Slots)}。",
                 $"recovery:{command.RecoveryActionId}:start");
-            async Task SendProgress(
-                string phase,
-                IReadOnlyList<int> active,
-                IReadOnlyList<int> completed,
-                int promptRound,
-                CancellationToken progressToken)
+            async Task SendProgress(WireToGateOperationProgress progress, CancellationToken progressToken)
             {
                 PublishOperation(
                     original,
-                    MapOperationStage(phase),
-                    OperationGuidance(original, phase, active, completed, promptRound),
-                    $"recovery:{command.RecoveryActionId}:{OperationDetailKey(phase, active, completed, promptRound)}");
-                await _session.SendRecoveryOperationProgressAsync(
+                    MapOperationStage(progress.Phase),
+                    OperationGuidance(original, progress),
+                    $"recovery:{command.RecoveryActionId}:{OperationDetailKey(progress)}");
+                await SendProgressLoggingFailuresAsync(
+                    () => _session.SendRecoveryOperationProgressAsync(
+                        command.SlotOperationAttemptId,
+                        progress.Phase,
+                        progress.Active,
+                        progress.Completed,
+                        cancellationToken: progressToken),
                     command.SlotOperationAttemptId,
-                    phase,
-                    active,
-                    completed,
-                    cancellationToken: progressToken).ConfigureAwait(false);
+                    progress,
+                    progressToken).ConfigureAwait(false);
             }
 
             WireToGateOperationExecutionResult execution = await _executor
@@ -1376,24 +1376,23 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 WireToGateHmiOperationStage.Preparing,
                 $"准备执行{FormatOperationType(command.OperationType)}：{FormatSlots(command.Slots)}。",
                 "initial");
-            async Task SendProgress(
-                string phase,
-                IReadOnlyList<int> active,
-                IReadOnlyList<int> completed,
-                int promptRound,
-                CancellationToken progressToken)
+            async Task SendProgress(WireToGateOperationProgress progress, CancellationToken progressToken)
             {
                 PublishOperation(
                     command,
-                    MapOperationStage(phase),
-                    OperationGuidance(command, phase, active, completed, promptRound),
-                    OperationDetailKey(phase, active, completed, promptRound));
-                await _session.SendOperationProgressAsync(
+                    MapOperationStage(progress.Phase),
+                    OperationGuidance(command, progress),
+                    OperationDetailKey(progress));
+                await SendProgressLoggingFailuresAsync(
+                    () => _session.SendOperationProgressAsync(
+                        command.SlotOperationAttemptId,
+                        progress.Phase,
+                        progress.Active,
+                        progress.Completed,
+                        cancellationToken: progressToken),
                     command.SlotOperationAttemptId,
-                    phase,
-                    active,
-                    completed,
-                    cancellationToken: progressToken).ConfigureAwait(false);
+                    progress,
+                    progressToken).ConfigureAwait(false);
             }
 
             WireToGateOperationExecutionResult execution = await _executor
@@ -1577,32 +1576,68 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     // The prompt round has to be part of the key. A reopen's second round repeats the first one's
     // phase, active and completed sets exactly, so without it PublishOperatorEvent swallows every
     // prompt after the first -- and ADR-cross-0058 decision 1 puts no limit on reopening.
-    private static string OperationDetailKey(
-        string phase,
-        IReadOnlyList<int> active,
-        IReadOnlyList<int> completed,
-        int promptRound) =>
-        $"{phase}:{string.Join(',', active)}:{string.Join(',', completed)}:{promptRound}";
+    private static string OperationDetailKey(WireToGateOperationProgress progress) =>
+        $"{progress.Phase}:{string.Join(',', progress.Active)}:{string.Join(',', progress.Completed)}:{progress.PromptRound}";
 
-    // The executor only sends UNLOCKING after round 0 when the door was shut over the opposite
-    // occupancy, so that is what the text says. The round counts reopens and prompt cadence alike,
-    // which is why the reopen text does not print it.
+    /// <summary>
+    /// A progress message that cannot be sent -- the connection dropped while the operator is still at
+    /// the door -- is logged and dropped. It must not reach the executor, where it would be read as
+    /// a slot whose state is unknown; UNKNOWN comes from IO readings only. Cancellation of the
+    /// operation itself still passes.
+    /// </summary>
+    private async Task SendProgressLoggingFailuresAsync(
+        Func<Task> send,
+        string slotOperationAttemptId,
+        WireToGateOperationProgress progress,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await send().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"仓位操作进度未能发送，不影响仓位判定：attempt={slotOperationAttemptId}，" +
+                $"phase={progress.Phase}，round={progress.PromptRound}，error={exception.GetType().Name}。");
+        }
+    }
+
+    /// <summary>
+    /// The executor asks this before every automatic reopen pulse. Nothing on this vehicle reads the
+    /// emergency stop, so the vehicle safety fact stands in for it: RIoT reporting an emergency state
+    /// other than OK leaves the control server's projection UNKNOWN (RIOT_EMERGENCY_NOT_OK), and a
+    /// stale or unreadable projection is treated the same way.
+    /// </summary>
+    private bool IsReopenPermitted() =>
+        ReadVehicleSafety().IsStoppedAndFresh(
+            _clock.Now,
+            _vehicleSafetyMaxAge,
+            _vehicleSafetyClockSkewTolerance);
+
+    // The text follows the cause the executor states, not a guess from the round number.
     private static string OperationGuidance(
         WireToGateSlotOperationCommand command,
-        string phase,
-        IReadOnlyList<int> active,
-        IReadOnlyList<int> completed,
-        int promptRound) => phase switch
+        WireToGateOperationProgress progress) => progress.Phase switch
         {
             "PREPARING" => $"正在检查{FormatSlots(command.Slots)}的安全条件。",
-            "UNLOCKING" => promptRound == 0
-                ? $"正在打开{FormatSlots(active)}。"
-                : $"{FormatSlots(active)}关门时货物状态与预期不符，正在重新打开。",
+            "UNLOCKING" => progress.Cause == WireToGatePromptCause.OppositeReopen
+                ? $"{FormatSlots(progress.Active)}关门时货物状态与预期不符，正在重新打开。"
+                : $"正在打开{FormatSlots(progress.Active)}。",
+            "WAITING_OPERATOR" when progress.Cause == WireToGatePromptCause.ReopenHeldBySafety =>
+                $"{FormatSlots(progress.Active)}关门时货物状态与预期不符，但车辆安全状态未确认（急停或未停稳），" +
+                "暂不重新打开；安全状态恢复后自动打开。",
             "WAITING_OPERATOR" => (command.OperationType == OperationType.Load
-                ? $"请向{FormatSlots(active)}放入货物并关门。"
-                : $"请从{FormatSlots(active)}取出货物并关门。")
-                + (promptRound == 0 ? string.Empty : $"（第{promptRound + 1}次提示）"),
-            "VERIFYING" => $"正在核对仓门、货物和输出状态；已完成 {completed.Count}/{command.Slots.Count}。",
+                ? $"请向{FormatSlots(progress.Active)}放入货物并关门。"
+                : $"请从{FormatSlots(progress.Active)}取出货物并关门。")
+                + (progress.PromptRound == 0 ? string.Empty : $"（第{progress.PromptRound + 1}次提示）"),
+            "VERIFYING" => $"正在核对仓门、货物和输出状态；已完成 {progress.Completed.Count}/{command.Slots.Count}。",
             "SAFE_FINISH" => "全部目标仓已达到安全收尾状态，正在上报结果。",
             _ => $"正在处理{FormatSlots(command.Slots)}。"
         };
