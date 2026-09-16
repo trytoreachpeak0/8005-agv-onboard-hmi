@@ -21,7 +21,8 @@ public sealed class FakeControlServer : IAsyncDisposable
     private readonly List<string> _identityValidations = [];
     private readonly Dictionary<string, (long Generation, long Revision, string ContentSha256)> _appliedSnapshots
         = new();
-    private readonly Dictionary<string, string> _acceptedSafetyStateChanges = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (string Payload, long Generation)> _acceptedSafetyStateChanges =
+        new(StringComparer.Ordinal);
     private readonly object _sync = new();
     private long _sessionGeneration;
     private int _recoveryAckCount;
@@ -46,6 +47,20 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool DropBeforeRecoveryAck { get; set; }
 
     public bool DropBeforeSafetyStateChangedAck { get; set; }
+
+    /// <summary>
+    /// 收下 OperationResult、在 DurableAck 发出去之前断开连接：服务端已经把结果收下了，车却听不到。
+    /// 这正是真装置 L2 场景 real-onboard-durable-ack-lost 用代理打开的那扇窗
+    /// （8005-agv-control-server#33）。
+    /// </summary>
+    public bool DropBeforeOperationResultAck { get; set; }
+
+    /// <summary>
+    /// 跨同一车载实例的多个会话保留已采纳的快照修订号，于是重连时同修订号不同内容的快照会被判
+    /// SNAPSHOT_REVISION_CONTENT_CONFLICT。真服务端不这样做——它只在一个会话之内比对修订号——所以
+    /// 除非这条测试要证的就是「车载端收到这个 ProtocolProblem 之后 fail-closed」，否则别打开。
+    /// </summary>
+    public bool RetainSnapshotRevisionsAcrossSessions { get; set; }
 
     public bool SendReadinessAfterRecoveryAck { get; set; }
 
@@ -227,10 +242,6 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </summary>
     public IReadOnlyList<int>? RecoveryVectorSlotsOverride { get; set; }
 
-    public long InitialAcceptedCapabilityVersion { get; set; }
-
-    public long InitialAcceptedSafetyStateVersion { get; set; }
-
     /// <summary>
     /// The onboard process restarts on the same journal. Its session client starts again from the
     /// configured capability and safety baselines, and the real control server answers each new
@@ -343,12 +354,8 @@ public sealed class FakeControlServer : IAsyncDisposable
             long acceptedSafetyStateVersion;
             lock (_sync)
             {
-                acceptedCapabilityVersion = _acceptedCapabilityVersion != 0
-                    ? _acceptedCapabilityVersion
-                    : InitialAcceptedCapabilityVersion;
-                acceptedSafetyStateVersion = _acceptedSafetyStateVersion != 0
-                    ? _acceptedSafetyStateVersion
-                    : InitialAcceptedSafetyStateVersion;
+                acceptedCapabilityVersion = _acceptedCapabilityVersion;
+                acceptedSafetyStateVersion = _acceptedSafetyStateVersion;
             }
 
             client.NoDelay = true;
@@ -504,6 +511,12 @@ public sealed class FakeControlServer : IAsyncDisposable
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
                         break;
                     case "OperationResult":
+                        if (DropBeforeOperationResultAck)
+                        {
+                            context.Client.Close();
+                            return;
+                        }
+
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
                         if (SendRecoveryRequiredReadinessAfterOperationResultAck)
                         {
@@ -592,18 +605,19 @@ public sealed class FakeControlServer : IAsyncDisposable
         lock (_sync)
         {
             generation = ++_sessionGeneration;
-            // A different runtime instance starts a fresh snapshot revision
-            // baseline, mirroring how real ControlServer accepts new journal
-            // generations.  The same instance reconnecting (same journal)
-            // keeps server-side revision memory so same-revision conflicts
-            // stay enforced.
+            // 真服务端只在一个会话之内比对快照修订号：BeginSessionRecoveryAsync 每个新世代都会清空，
+            // 所以重连之后的那次握手是从零采纳的。这里原来跨同一实例的重连一直留着记忆，正是因为这个
+            // 差别，车载端「补发之后跳过快照」的握手才只在这个替身上过得去、在真服务端上过不去
+            // （8005-agv-control-server#33）。
             string onboardInstanceId =
                 hello.GetProperty("payload").GetProperty("onboardInstanceId").GetString() ?? string.Empty;
-            if (!string.Equals(onboardInstanceId, _lastAcceptedInstanceId, StringComparison.Ordinal))
+            if (!RetainSnapshotRevisionsAcrossSessions
+                || !string.Equals(onboardInstanceId, _lastAcceptedInstanceId, StringComparison.Ordinal))
             {
                 _appliedSnapshots.Clear();
-                _lastAcceptedInstanceId = onboardInstanceId;
             }
+
+            _lastAcceptedInstanceId = onboardInstanceId;
         }
 
         context.Generation = generation;
@@ -1042,13 +1056,17 @@ public sealed class FakeControlServer : IAsyncDisposable
         long safetyStateVersion = payload.GetProperty("safetyStateVersion").GetInt64();
         bool departureSafe = payload.GetProperty("safety").GetProperty("departureSafe").GetBoolean();
         bool conflict;
+        bool replayedIntoLaterSession;
         lock (_sync)
         {
-            conflict = _acceptedSafetyStateChanges.TryGetValue(messageId, out string? acceptedPayload)
-                && !string.Equals(acceptedPayload, payloadJson, StringComparison.Ordinal);
-            if (!conflict && acceptedPayload is null)
+            bool accepted = _acceptedSafetyStateChanges.TryGetValue(
+                messageId,
+                out (string Payload, long Generation) first);
+            conflict = accepted && !string.Equals(first.Payload, payloadJson, StringComparison.Ordinal);
+            replayedIntoLaterSession = accepted && !conflict && first.Generation < context.Generation;
+            if (!accepted)
             {
-                _acceptedSafetyStateChanges.Add(messageId, payloadJson);
+                _acceptedSafetyStateChanges.Add(messageId, (payloadJson, context.Generation));
             }
         }
 
@@ -1079,7 +1097,9 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
 
         await WriteEnvelopeAsync(context, CreateDurableAck(context, message)).ConfigureAwait(false);
-        if (SendReadinessAfterSafetyStateChangedAck)
+        // 真服务端对「补发进后一个会话」的报文按首次受理作答（RebindDurableAckAsync）：只回 ack，
+        // 因为一个还没走完握手的世代没有任何就绪变化可宣告（8005-agv-control-server#33）。
+        if (SendReadinessAfterSafetyStateChangedAck && !replayedIntoLaterSession)
         {
             await WriteEnvelopeAsync(context, CreateSessionReadiness(context)).ConfigureAwait(false);
         }

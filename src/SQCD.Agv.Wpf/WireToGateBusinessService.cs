@@ -51,6 +51,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private WireToGateHmiOperationSnapshot? _currentOperationSnapshot;
     private SafetyChangeWork? _pendingSafetyChange;
     private string? _lastSafetySignature;
+    private long? _lastSafetyGeneration;
     private long _nextSafetyStateVersion;
     private int _safetyRefreshPending;
     private int _safetyRefreshWorkerActive;
@@ -701,6 +702,22 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 _lastSafetySignature = _pendingSafetyChange.Signature;
                 _pendingSafetyChange = null;
             }
+            // 换代必须重新全量上报一次安全快照（ADR-cross-0022「连接时全量同步，变化时可靠增量」
+            // 的前半句，它在重连时同样适用）。签名去重是进程内状态而会话不是：服务端重启后新会话
+            // 手上没有上一代的快照，车载端进程没重启、签名照旧，那份快照就永远不会重发，服务端的
+            // readiness 一直卡在 DEPARTURE_SAFETY_NOT_READY。车静止时安全签名恒定，正是它永远
+            // 跨不过下面那道 return 的时候——也就是最需要重发的那一种。
+            //
+            // 这一段必须排在上面的 pending 对账之后：SafetyStateVersion 是进程内单调递增的，
+            // 跨代不回退，所以换代之后它仍可能不小于 pending 的版本，让对账把签名恢复回去。
+            // _nextSafetyStateVersion 会随换代自动重新基线（紧接着的几行），签名不会，
+            // 这个不对称就是缺陷本身。
+            if (_lastSafetyGeneration != current.SessionGeneration)
+            {
+                _lastSafetyGeneration = current.SessionGeneration;
+                _lastSafetySignature = null;
+            }
+
             _nextSafetyStateVersion = Math.Max(
                 _nextSafetyStateVersion,
                 checked(current.SafetyStateVersion + 1));
