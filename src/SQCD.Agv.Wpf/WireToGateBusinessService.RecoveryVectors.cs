@@ -187,8 +187,7 @@ public sealed partial class WireToGateBusinessService
             return vector.VectorType == vectorType;
         }
 
-        if (state.OperationContext is not { OperationType: OperationType.Load } context
-            || state.UnsettledSlotOperationAttemptId != context.SlotOperationAttemptId)
+        if (FindRecoveryLoadOperation(state) is not { } context)
         {
             return false;
         }
@@ -360,12 +359,8 @@ public sealed partial class WireToGateBusinessService
     {
         WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
             .ConfigureAwait(false);
-        WireToGateRecoveryOperationContext? operation = state.OperationContext;
-        if (operation is not { OperationType: OperationType.Load }
-            || state.UnsettledSlotOperationAttemptId != operation.SlotOperationAttemptId)
-        {
-            throw new InvalidOperationException("RECOVERY_OPERATION_CONTEXT_MISSING");
-        }
+        WireToGateRecoveryOperationContext operation = FindRecoveryLoadOperation(state)
+            ?? throw new InvalidOperationException("RECOVERY_OPERATION_CONTEXT_MISSING");
 
         WireToGateRecoveryVectorContext? vector = state.RecoveryVector;
         if (vector is not null && vector.VectorType != vectorType)
@@ -1047,8 +1042,12 @@ public sealed partial class WireToGateBusinessService
         }
         else
         {
+            // The settled load is a valid subject here for the same reason it is at the entry: the
+            // server may judge RecoveryRequired the attempt the vehicle just reported COMPLETED, and
+            // without this fallback the request goes out but its command cannot be executed.
             WireToGateRecoveryOperationContext operation =
                 state.OperationContext
+                ?? state.LastCompletedLoadOperationContext
                 ?? throw new InvalidDataException("RECOVERY_OPERATION_CONTEXT_MISSING");
             if (operation.OperationType != OperationType.Load
                 || operation.DemandId != demandId
@@ -1392,6 +1391,21 @@ public sealed partial class WireToGateBusinessService
         await _session.Journal.WriteRecoveryStateAsync(state, cancellationToken).ConfigureAwait(false);
         Volatile.Write(ref _lastRecoveryState, state);
     }
+
+    /// <summary>
+    /// The load this recovery is about. The armed operation is preferred, but an operation whose
+    /// result the vehicle already recorded is still a valid subject: the server may judge that same
+    /// attempt <c>RecoveryRequired</c> while the vehicle believes it finished, and that is exactly
+    /// the state a compensation exists for. <c>MarkResultRecordedAsync</c> keeps the settled
+    /// identity in <see cref="WireToGateRecoveryState.LastCompletedLoadOperationContext"/> for this
+    /// case, so nothing here is guessed -- the identity is read, never reconstructed.
+    /// </summary>
+    private static WireToGateRecoveryOperationContext? FindRecoveryLoadOperation(
+        WireToGateRecoveryState state) =>
+        state.OperationContext is { OperationType: OperationType.Load } armed
+            && state.UnsettledSlotOperationAttemptId == armed.SlotOperationAttemptId
+            ? armed
+            : state.LastCompletedLoadOperationContext;
 
     private static WireToGateRecoveryOperationContext RequireUnsettledLoadOperation(
         WireToGateRecoveryState state)

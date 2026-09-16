@@ -1628,6 +1628,25 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     ServerCommandReceived?.Invoke(
                         this,
                         new ValueChangedEventArgs<WireToGateServerCommand>(command!));
+                    if (command is WireToGateExceptionRecoverySessionSnapshot { State: "CLOSED" } closedRecovery)
+                    {
+                        // Only the CLOSED revision is acknowledged (8005-agv-control-server#31). After
+                        // every RecoveryStateReport the server replays each recovery session snapshot
+                        // that is neither acknowledged nor fenced by a newer revision, and that replay
+                        // is the only way a restarted client gets an open session back: the session
+                        // lives in memory, and the journal keeps just its id. An acknowledged OPEN
+                        // snapshot left a restarted HMI holding an id and no session. Nothing
+                        // supersedes CLOSED, so unacknowledged it was replayed into every later
+                        // session -- and a client that has it needs nothing more.
+                        await SendSnapshotAppliedAckAsync(
+                            envelope,
+                            "EXCEPTION_RECOVERY_SESSION",
+                            closedRecovery.RecoverySessionRevision,
+                            WireToGateProtocolSerializer.ComputeContentSha256(envelope),
+                            generation,
+                            stopping.Token).ConfigureAwait(false);
+                    }
+
                     continue;
                 }
 

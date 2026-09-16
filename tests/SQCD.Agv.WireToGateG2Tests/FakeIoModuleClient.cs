@@ -33,6 +33,14 @@ public sealed class FakeIoModuleClient : IIoModuleClient
     /// </summary>
     public bool LockerWaitTimesOut { get; init; }
 
+    /// <summary>
+    /// The operator never acts. The pulse opens the slot and lets its own output fall back, and then
+    /// the wait for a shut door never finishes -- it ends only when the process that started it goes
+    /// away. That is the shape of 8005-agv-program#40: an unlocked slot, no result, and a journal
+    /// entry nothing else will ever settle.
+    /// </summary>
+    public bool OperatorNeverActs { get; init; }
+
     public bool IsConnected => true;
 
     public IoSnapshot CurrentSnapshot { get; private set; }
@@ -51,6 +59,24 @@ public sealed class FakeIoModuleClient : IIoModuleClient
         }
     }
 
+    /// <summary>
+    /// What the vehicle finds when it comes back: the operator shut the door at some point while
+    /// nothing was running, and whether a basket went in is visible only from the light curtain.
+    /// </summary>
+    public void CloseDoor(int slotIndex, bool cargo)
+    {
+        lock (_sync)
+        {
+            Update(slotIndex, locker => locker with
+            {
+                LockFeedbackRaw = true,
+                LightCurtainRaw = !cargo,
+                UnlockOutputRaw = false,
+                ObservedAt = DateTimeOffset.UtcNow
+            });
+        }
+    }
+
     public Task StartAsync(CancellationToken applicationStopping) => Task.CompletedTask;
 
     public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
@@ -60,7 +86,17 @@ public sealed class FakeIoModuleClient : IIoModuleClient
         lock (_sync)
         {
             UnlockCount++;
-            if (SimulateOperatorLoad)
+            if (OperatorNeverActs)
+            {
+                // The pulse is over: the lock has released and the output has already fallen back.
+                Update(slotIndex, locker => locker with
+                {
+                    LockFeedbackRaw = false,
+                    UnlockOutputRaw = false,
+                    ObservedAt = DateTimeOffset.UtcNow
+                });
+            }
+            else if (SimulateOperatorLoad)
             {
                 Update(slotIndex, locker => locker with
                 {
@@ -84,6 +120,24 @@ public sealed class FakeIoModuleClient : IIoModuleClient
         if (LockerWaitTimesOut)
         {
             throw new TimeoutException("G2 fake: the locker never reached the expected state.");
+        }
+
+        if (OperatorNeverActs)
+        {
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                lock (_sync)
+                {
+                    LockerSnapshot locker = CurrentSnapshot.GetLocker(slotIndex);
+                    if (predicate(locker))
+                    {
+                        return locker;
+                    }
+                }
+
+                await Task.Delay(1, cancellationToken);
+            }
         }
 
         if (!SimulateOperatorLoad)

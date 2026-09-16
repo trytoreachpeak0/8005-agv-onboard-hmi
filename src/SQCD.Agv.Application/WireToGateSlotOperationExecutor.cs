@@ -190,6 +190,139 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Settles a slot operation whose executing process is gone (8005-agv-program#40). It reads the
+    /// live IO only, emits no unlock pulse at all, and turns the journal's one unsettled attempt into
+    /// a result.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A process that exits after the unlock and before the result is written -- a closed window, a
+    /// crash, a power cut, a servicing reboot -- leaves an unsettled attempt behind that nothing else
+    /// ever settles: the vehicle only settles an attempt when a command or a recovery action arrives,
+    /// the server does not judge a journey Blocked while no result has come, and the recovery entry
+    /// requires the journey to be Blocked already. Both ends then wait for each other, as measured on
+    /// the rig.
+    /// </para>
+    /// <para>
+    /// The wrap-up follows ADR-cross-0017: after a restart no further unlock may go out, so the live
+    /// physical state is all there is to go on and only two conclusions are available. Every target
+    /// slot that was opened sits in its desired final state and none is left unopened -- the operator
+    /// finished the job after the last process died -- makes the outcome a definite COMPLETED, and
+    /// calling that unknown would turn a settled result into an unsettled one. Everything else is
+    /// UNKNOWN, which the server turns into RecoveryRequired.
+    /// </para>
+    /// <para>
+    /// A definite failure is never produced here: FAILED presupposes the station deadline has passed
+    /// (ADR-cross-0058 decision 5), and a restart is not a deadline. The physical fields always carry
+    /// the real readings (decision 6) -- what is unknown is how this operation should proceed, not
+    /// what the slot looks like. A slot only reaches COMPLETED when <see cref="IsFinalState"/> holds,
+    /// which includes the unlock output having fallen back, so this path and the executor's other two
+    /// agree on what a completed slot is (onboard-hmi#49).
+    /// </para>
+    /// <para>
+    /// The caller is responsible for establishing that nobody is executing this attempt: this method
+    /// cannot tell. The executor outlives a connection, so during a reconnect it may still be running
+    /// while the journal looks exactly as it does after a restart.
+    /// </para>
+    /// </remarks>
+    public async Task<WireToGateOperationExecutionResult> SettleInterruptedAsync(
+        CancellationToken cancellationToken = default)
+    {
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await SettleInterruptedExclusiveAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
+    private async Task<WireToGateOperationExecutionResult> SettleInterruptedExclusiveAsync(
+        CancellationToken cancellationToken)
+    {
+        WireToGateRecoveryState state = await _journal
+            .ReadRecoveryStateAsync(cancellationToken)
+            .ConfigureAwait(false);
+        WireToGateRecoveryOperationContext context = state.OperationContext
+            ?? throw new InvalidDataException("RECOVERY_OPERATION_CONTEXT_MISSING");
+        // A recovery vector has its own journal entry and its own resume rules; not this path's job.
+        if (!string.Equals(
+                state.UnsettledSlotOperationAttemptId,
+                context.SlotOperationAttemptId,
+                StringComparison.Ordinal)
+            || state.RecoveryVector is not null)
+        {
+            throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
+        }
+
+        WireToGateSlotOperationCommand command = context.ToCommand();
+        IoSnapshot snapshot = _ioModule.CurrentSnapshot;
+        bool fresh = snapshot.IsConnected
+            && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge);
+        List<int> completed = [];
+        List<int> stillActive = [];
+        List<WireToGateSlotExecutionResult> results = [];
+        foreach (int physicalSlot in command.Slots)
+        {
+            LockerSnapshot locker = fresh
+                ? TryGetLocker(snapshot, physicalSlot - 1)
+                : LockerSnapshot.Unknown(physicalSlot - 1, snapshot.ObservedAt);
+            bool opened = state.ActiveUnlockSlots.Contains(physicalSlot)
+                || state.CompletedSlots.Contains(physicalSlot);
+            if (!opened)
+            {
+                // Never opened: the door is shut and the lock closed, so report what is read and
+                // leave reasonCodes empty (decision 6).
+                UpsertResult(results, CreateSlotResult(locker, "NOT_STARTED", []));
+            }
+            else if (IsFinalState(locker, command.ExpectedOccupied))
+            {
+                // A slot the journal calls completed is re-read too: a physical change since the
+                // checkpoint stops it counting as completed.
+                UpsertResult(results, CreateSlotResult(locker, "COMPLETED", []));
+                completed.Add(physicalSlot);
+            }
+            else
+            {
+                // When the readings are there, the only unknown is the next step -- unlock again and
+                // keep loading, or give this demand up; the journal and the IO do not imply a single
+                // answer (the "single lawful next step" of ADR-cross-0017). When they are not there,
+                // it is simply unreadable.
+                UpsertResult(
+                    results,
+                    CreateSlotResult(
+                        locker,
+                        "UNKNOWN",
+                        [fresh ? "RECOVERY_CHECKPOINT_NOT_UNIQUE" : "SLOT_STATE_UNKNOWN"]));
+                if (!fresh || !IsSafeFinish(snapshot, physicalSlot - 1))
+                {
+                    stillActive.Add(physicalSlot);
+                }
+            }
+        }
+
+        bool allCompleted = completed.Count == command.Slots.Count;
+        WireToGateRecoveryCheckpoint checkpoint = stillActive.Count == 0
+            ? WireToGateRecoveryCheckpoint.SafeFinishReached
+            : WireToGateRecoveryCheckpoint.ActiveUnlockSet;
+        // Written in the same shape as an UNKNOWN decided mid-execution: the journal keeps the
+        // OperationContext and the unsettled attempt, which is exactly what compensation and the
+        // recovery vectors recognise. CancellationToken.None for the same reason -- once the
+        // conclusion has been read it has to reach the disk.
+        await WriteRecoveryStateAsync(
+            context,
+            checkpoint,
+            stillActive,
+            completed,
+            results,
+            state,
+            CancellationToken.None).ConfigureAwait(false);
+        return CreateResult(command, allCompleted ? "COMPLETED" : "UNKNOWN", results, checkpoint);
+    }
+
     public ValueTask DisposeAsync()
     {
         _operationGate.Dispose();
