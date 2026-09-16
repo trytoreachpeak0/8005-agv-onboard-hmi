@@ -182,7 +182,11 @@ public partial class App : System.Windows.Application, IDisposable
                         cancellationToken: cancellationToken),
                     () => _wireToGateBusiness.CanRequestFaultCargoHandoff,
                     cancellationToken => _wireToGateBusiness.RequestFaultCargoHandoffAsync(
-                        cancellationToken: cancellationToken));
+                        cancellationToken: cancellationToken),
+                    // 按名字传：这一条是「取消装货」在故障态下唯一还开着的那半边判据，
+                    // 请求走的仍是上面那个 RequestLoadCancellationAsync（onboard-hmi#85）。
+                    canRequestLoadCancellationBeforeLoad: () =>
+                        _wireToGateBusiness.CanRequestLoadCancellationBeforeLoad);
                 _wireToGateBusiness.Start();
             }
 
