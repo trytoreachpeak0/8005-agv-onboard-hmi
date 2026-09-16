@@ -156,6 +156,59 @@ public sealed class FakeControlServer : IAsyncDisposable
     public string? RejectedSublotOverride { get; set; }
 
     /// <summary>
+    /// After each <c>SublotRejected</c>, send the same entry request again, the way the real server
+    /// keeps an entry open within one worklist revision.
+    /// </summary>
+    /// <remarks>
+    /// The vehicle clears its outstanding entry request on a rejection, so without this an operator
+    /// could not scan again at all -- and scanning the same sublot again after a rejection is exactly
+    /// the case <c>businessDedupKeys: []</c> exists for.
+    /// </remarks>
+    public bool ResendSublotEntryRequestAfterRejection { get; set; }
+
+    /// <summary>
+    /// Drop the connection on receiving a <c>SublotSubmitted</c>, before acknowledging it, so the
+    /// vehicle has to send it again on the next connection.
+    /// </summary>
+    public bool DropBeforeSublotSubmittedAck { get; set; }
+
+    /// <summary>
+    /// <c>SublotSubmitted</c> messageIds that arrived again carrying a different submission.
+    /// </summary>
+    /// <remarks>
+    /// The real server binds a messageId to what it first carried (<c>ProtocolInbox</c>) and treats a
+    /// different submission under the same id as a conflict. What it does not do for this message is
+    /// deduplicate by business key: <c>SublotSubmitted</c> has <c>businessDedupKeys: []</c> in 2.0.0,
+    /// so two submissions of the same sublot under two ids are two submissions, not a conflict. The
+    /// binding here is on the payload and <c>sentAt</c> -- a reconnect replay rebinds only the session
+    /// generation, so a faithful replay binds equal.
+    /// </remarks>
+    public IReadOnlyList<string> SublotSubmissionConflicts { get; private set; } = [];
+
+    private readonly Dictionary<string, string> _sublotSubmissionContents = new(StringComparer.Ordinal);
+
+    private bool BindSublotSubmission(string messageId, JsonElement root)
+    {
+        string content = root.GetProperty("sentAt").GetRawText() + root.GetProperty("payload").GetRawText();
+        lock (_sync)
+        {
+            if (_sublotSubmissionContents.TryGetValue(messageId, out string? bound))
+            {
+                if (string.Equals(bound, content, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+
+                SublotSubmissionConflicts = [.. SublotSubmissionConflicts, messageId];
+                return false;
+            }
+
+            _sublotSubmissionContents.Add(messageId, content);
+            return true;
+        }
+    }
+
+    /// <summary>
     /// The <c>slotOperationAttemptId</c> this fake puts on all three recovery messages.
     /// </summary>
     /// <remarks>
@@ -747,6 +800,18 @@ public sealed class FakeControlServer : IAsyncDisposable
                         }
 
                         break;
+                    case "SublotSubmitted" when DropBeforeSublotSubmittedAck:
+                        BindSublotSubmission(messageId, root);
+                        context.Client.Close();
+                        return;
+                    case "SublotSubmitted" when !BindSublotSubmission(messageId, root):
+                        await WriteEnvelopeAsync(context, CreateProtocolProblem(
+                            context,
+                            messageId,
+                            messageType,
+                            "MESSAGE_ID_CONTENT_CONFLICT")).ConfigureAwait(false);
+                        context.Client.Close();
+                        return;
                     case "SublotSubmitted" when RejectSublotSubmissionsWith is { } reasonCode:
                         await WriteEnvelopeAsync(
                             context, CreateDurableAck(context, root)).ConfigureAwait(false);
@@ -769,6 +834,11 @@ public sealed class FakeControlServer : IAsyncDisposable
                                 rejectedSublot = RejectedSublotOverride
                                     ?? root.GetProperty("payload").GetProperty("sublot").GetString()
                             })).ConfigureAwait(false);
+                        if (ResendSublotEntryRequestAfterRejection)
+                        {
+                            await SendSublotEntryRequestAsync(context).ConfigureAwait(false);
+                        }
+
                         break;
                     case "SublotSubmitted":
                     case "OperationProgress":
@@ -1650,22 +1720,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                 legs = new[] { Leg(movementLegId, legType, demandId, "ACTIVE") }
             })).ConfigureAwait(false);
 
-        if (SublotEntryExpectedSublots is { } expectedSublots)
-        {
-            await WriteEnvelopeAsync(context, CreateEnvelope(
-                context,
-                "SublotEntryRequested",
-                correlationId: null,
-                new
-                {
-                    operationSessionId = OperationSessionId,
-                    stationId = "ST-01",
-                    worklistRevision = 1,
-                    expectedSublots,
-                    entryMethods = FrozenEntryMethods,
-                    expiresOnRevisionChange = true
-                })).ConfigureAwait(false);
-        }
+        await SendSublotEntryRequestAsync(context).ConfigureAwait(false);
 
         if (SendJourneyRevisionConflict)
         {
@@ -1692,6 +1747,28 @@ public sealed class FakeControlServer : IAsyncDisposable
                     }
                 })).ConfigureAwait(false);
         }
+    }
+
+    private async Task SendSublotEntryRequestAsync(ConnectionContext context)
+    {
+        if (SublotEntryExpectedSublots is not { } expectedSublots)
+        {
+            return;
+        }
+
+        await WriteEnvelopeAsync(context, CreateEnvelope(
+            context,
+            "SublotEntryRequested",
+            correlationId: null,
+            new
+            {
+                operationSessionId = OperationSessionId,
+                stationId = "ST-01",
+                worklistRevision = 1,
+                expectedSublots,
+                entryMethods = FrozenEntryMethods,
+                expiresOnRevisionChange = true
+            })).ConfigureAwait(false);
     }
 
     /// <summary>

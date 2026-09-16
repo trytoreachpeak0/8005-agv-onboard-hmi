@@ -141,10 +141,25 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// </summary>
     public event EventHandler<ValueChangedEventArgs<WireToGateServerCommand>>? ServerCommandReceived;
 
+    /// <summary>
+    /// Sends one operator entry. Every call is a new entry and gets a messageId of its own.
+    /// </summary>
     /// <remarks>
-    /// The demand id left the payload in protocol 2.0.0, and with it the deduplication key: the
-    /// control server resolves the demand from the sublot inside the current dispatch scope. The key
-    /// still identifies the same submission, by the three values that do identify it.
+    /// <para>
+    /// <b>The messageId is minted per entry, not derived from the sublot.</b> It used to be
+    /// <c>StableUuid(operationSessionId, worklistRevision, sublot)</c>, and the outbox key with it,
+    /// so scanning the same sublot again after a rejection landed on the first entry's journal
+    /// record: a different operator or <c>verifiedAt</c> threw <c>BUSINESS_ID_CONTENT_CONFLICT</c>
+    /// here, and an identical one returned the old id without sending anything. Protocol 2.0.0 gives
+    /// <c>SublotSubmitted</c> <c>businessDedupKeys: []</c> so that such a retry is a new submission
+    /// rather than a conflict.
+    /// </para>
+    /// <para>
+    /// <b>A resend of the same entry still keeps its id.</b> The durable record written below carries
+    /// the messageId, and a reconnect replays that record, so an entry whose acknowledgement was lost
+    /// goes out again under the id it first had. The outbox key is the messageId for the same reason:
+    /// one entry, one record.
+    /// </para>
     /// </remarks>
     public Task<string> SendSublotSubmittedAsync(
         string operationSessionId,
@@ -155,11 +170,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         string operatorId,
         string verificationMethod,
         DateTimeOffset verifiedAt,
-        CancellationToken cancellationToken = default) =>
-        SendDurableAsync(
+        CancellationToken cancellationToken = default)
+    {
+        string messageId = Guid.NewGuid().ToString("D");
+        return SendDurableAsync(
             "SublotSubmitted",
-            $"sublot:{operationSessionId}:{worklistRevision}:{sublot}",
-            StableUuid($"sublot:{operationSessionId}:{worklistRevision}:{sublot}"),
+            $"sublot-submitted:{messageId}",
+            messageId,
             null,
             new SublotSubmittedPayload(
                 operationSessionId,
@@ -169,6 +186,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 entryMethod,
                 new WireToGateOperatorContextPayload(operatorId, verificationMethod, verifiedAt)),
             cancellationToken);
+    }
 
     public Task<string> SendOperationProgressAsync(
         string slotOperationAttemptId,
