@@ -40,6 +40,8 @@ public sealed class RecoveryVectorG2Tests
     private const string OperationSessionId = "22222222-2222-4222-8222-222222222222";
     private const string AttemptId = "33333333-3333-4333-8333-333333333333";
     private const string CommandMessageId = "44444444-4444-4444-8444-444444444444";
+    private const string UnloadAttemptId = "55555555-5555-4555-8555-555555555555";
+    private const string UnloadCommandMessageId = "66666666-6666-4666-8666-666666666666";
 
     /// <summary>The exception recovery session id <see cref="FakeControlServer"/> always opens.</summary>
     private const string RecoverySessionId = "77777777-7777-4777-8777-777777777777";
@@ -132,6 +134,55 @@ public sealed class RecoveryVectorG2Tests
         Assert.Equal(
             ActionIdFor(CompensateLoadAction),
             result.GetProperty("recoveryActionId").GetString());
+    }
+
+    /// <summary>
+    /// An unload the vehicle is in the middle of is not a settled load's stand-in: the compensation
+    /// entry stays shut while an unrelated operation is armed, however recent the last completed
+    /// load is.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is the ordinary sequence at the gate -- the load completed, so its identity sits in
+    /// <c>LastCompletedLoadOperationContext</c>, and the vehicle is now unloading with a door open.
+    /// Falling back to the settled load here would be wrong twice over. The entry would open on a
+    /// load nobody is asking about, and taking it would overwrite the journal: preparing a vector
+    /// rewrites <c>UnsettledSlotOperationAttemptId</c> to the vector's attempt and empties
+    /// <c>ActiveUnlockSlots</c>, so the record of the door standing open right now would be gone.
+    /// </para>
+    /// <para>
+    /// So the rule the two ends of this share is "whatever is armed and unsettled is the subject" --
+    /// a load if that is what it is, and otherwise nothing -- and only an operation the vehicle has
+    /// finished with lets the settled load take over. The entry and the bind path read it through
+    /// the same helper, because an entry that opens on a subject the bind path then refuses is the
+    /// very failure this batch exists to remove.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task AnArmedUnloadKeepsTheCompensationEntryShutEvenWithASettledLoadOnFile()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            armedUnloadOverSettledLoad: true);
+
+        // The unload is still the journal's unsettled operation: the interrupted settlement that ran
+        // on this seeded state read slot 3 as still full and reported UNKNOWN, which settles nothing.
+        WireToGateRecoveryState seeded = await harness.ReadRecoveryStateAsync(token);
+        Assert.Equal(UnloadAttemptId, seeded.UnsettledSlotOperationAttemptId);
+        Assert.Equal(OperationType.Unload, seeded.OperationContext!.OperationType);
+        Assert.NotNull(seeded.LastCompletedLoadOperationContext);
+
+        Assert.False(harness.Business.CanRequestLoadCompensation);
+        Assert.Empty(harness.ResultsOfType("LoadCompensationRequested"));
+
+        // And the unload is still the subject afterwards -- preparing a compensation vector here
+        // would have rewritten this attempt to the settled load's.
+        WireToGateRecoveryState after = await harness.ReadRecoveryStateAsync(token);
+        Assert.Equal(UnloadAttemptId, after.UnsettledSlotOperationAttemptId);
+        Assert.Equal(OperationType.Unload, after.OperationContext!.OperationType);
     }
 
     /// <summary>
@@ -469,7 +520,8 @@ public sealed class RecoveryVectorG2Tests
             long seededForcedRecoveryGeneration = 0,
             bool cargoInTargetSlots = false,
             string? persistedRecoverySessionRequestId = null,
-            bool loadAlreadySettled = false)
+            bool loadAlreadySettled = false,
+            bool armedUnloadOverSettledLoad = false)
         {
             FakeControlServer server = new(IPAddress.Loopback)
             {
@@ -488,6 +540,15 @@ public sealed class RecoveryVectorG2Tests
                 {
                     io.SetCargoPresent(0, true);
                     io.SetCargoPresent(1, true);
+                }
+
+                if (armedUnloadOverSettledLoad)
+                {
+                    // The unload has not emptied slot 3 yet, so the interrupted settlement that runs
+                    // on this seeded journal reports UNKNOWN and leaves the unload unsettled -- which
+                    // is the state this case is about. Empty it, and the settlement would report
+                    // COMPLETED and clear the very entry the test is examining.
+                    io.SetCargoPresent(2, true);
                 }
 
                 RecordingLogger logger = new();
@@ -562,23 +623,46 @@ public sealed class RecoveryVectorG2Tests
                     2,
                     true,
                     new string('0', 64));
+                // The unload the vehicle is in the middle of at the gate, after that load completed:
+                // slot 3 is open, and the load's identity is still in
+                // LastCompletedLoadOperationContext because MarkResultRecordedAsync put it there.
+                WireToGateRecoveryOperationContext unload = new(
+                    UnloadCommandMessageId,
+                    null,
+                    1,
+                    DateTimeOffset.UtcNow,
+                    DemandId,
+                    OperationSessionId,
+                    UnloadAttemptId,
+                    OperationType.Unload,
+                    [3],
+                    1,
+                    false,
+                    new string('0', 64));
                 // A settled load is what MarkResultRecordedAsync leaves behind: no armed operation
                 // and no unsettled attempt, with the identity kept in
                 // LastCompletedLoadOperationContext. That is the state the vehicle is in when it has
                 // reported COMPLETED and the server has judged the same attempt RecoveryRequired.
                 await journal.WriteRecoveryStateAsync(
                     new WireToGateRecoveryState(
-                        loadAlreadySettled ? null : AttemptId,
-                        loadAlreadySettled
-                            ? WireToGateRecoveryCheckpoint.ResultRecorded
-                            : WireToGateRecoveryCheckpoint.Prepared,
-                        [],
+                        armedUnloadOverSettledLoad
+                            ? UnloadAttemptId
+                            : loadAlreadySettled ? null : AttemptId,
+                        armedUnloadOverSettledLoad
+                            ? WireToGateRecoveryCheckpoint.ActiveUnlockSet
+                            : loadAlreadySettled
+                                ? WireToGateRecoveryCheckpoint.ResultRecorded
+                                : WireToGateRecoveryCheckpoint.Prepared,
+                        armedUnloadOverSettledLoad ? [3] : [],
                         seededForcedRecoveryGeneration,
                         [])
                     {
                         RecoverySessionRequestId = persistedRecoverySessionRequestId,
-                        OperationContext = loadAlreadySettled ? null : load,
-                        LastCompletedLoadOperationContext = loadAlreadySettled ? load : null
+                        OperationContext = armedUnloadOverSettledLoad
+                            ? unload
+                            : loadAlreadySettled ? null : load,
+                        LastCompletedLoadOperationContext =
+                            loadAlreadySettled || armedUnloadOverSettledLoad ? load : null
                     },
                     cancellationToken);
 
@@ -635,7 +719,9 @@ public sealed class RecoveryVectorG2Tests
                             == WireToGateHmiOperationStage.RecoveryRequired,
                         "the business pump to surface the seeded recovery state",
                         cancellationToken);
-                    Assert.Equal(AttemptId, business.CurrentOperationSnapshot!.SlotOperationAttemptId);
+                    Assert.Equal(
+                        armedUnloadOverSettledLoad ? UnloadAttemptId : AttemptId,
+                        business.CurrentOperationSnapshot!.SlotOperationAttemptId);
                 }
 
                 return new RecoveryVectorHarness(

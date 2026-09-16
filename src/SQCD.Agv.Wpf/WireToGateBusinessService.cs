@@ -587,7 +587,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 context.OperationType,
                 context.Slots,
                 WireToGateHmiOperationStage.RecoveryRequired,
-                $"上次{(context.OperationType == OperationType.Load ? "装货" : "卸货")}操作未完成：{FormatSlots(context.Slots)}，需要管理员恢复。",
+                $"上次{FormatOperationType(context.OperationType)}操作未完成：{FormatSlots(context.Slots)}，需要管理员恢复。",
                 _clock.Now.ToUniversalTime());
             PublishOperatorEvent(
                 $"recovery-operation-restored:{context.SlotOperationAttemptId}",
@@ -678,8 +678,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 ? WireToGateHmiOperationStage.Completed
                 : WireToGateHmiOperationStage.RecoveryRequired;
             string guidance = completedSuccessfully
-                ? $"上次{FormatOperationType(command)}在执行中中断，{FormatSlots(command.Slots)}已按实时状态确认完成，正在上报结果。"
-                : $"上次{FormatOperationType(command)}在执行中中断：{FormatSlots(command.Slots)}，未再开锁，需要管理员恢复。";
+                ? $"上次{FormatOperationType(command.OperationType)}在执行中中断，{FormatSlots(command.Slots)}已按实时状态确认完成，正在上报结果。"
+                : $"上次{FormatOperationType(command.OperationType)}在执行中中断：{FormatSlots(command.Slots)}，未再开锁，需要管理员恢复。";
             PublishOperation(command, finalStage, guidance, "interrupted-final");
             try
             {
@@ -749,8 +749,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         }
     }
 
-    private static string FormatOperationType(WireToGateSlotOperationCommand command) =>
-        command.OperationType == OperationType.Load ? "装货" : "卸货";
+    private static string FormatOperationType(OperationType operationType) =>
+        operationType == OperationType.Load ? "装货" : "卸货";
 
     private void OnIoSnapshotChanged(object? sender, ValueChangedEventArgs<IoSnapshot> args)
     {
@@ -1310,7 +1310,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             PublishOperation(
                 command,
                 WireToGateHmiOperationStage.Preparing,
-                $"准备执行{(command.OperationType == OperationType.Load ? "装货" : "卸货")}：{FormatSlots(command.Slots)}。",
+                $"准备执行{FormatOperationType(command.OperationType)}：{FormatSlots(command.Slots)}。",
                 "initial");
             async Task SendProgress(
                 string phase,

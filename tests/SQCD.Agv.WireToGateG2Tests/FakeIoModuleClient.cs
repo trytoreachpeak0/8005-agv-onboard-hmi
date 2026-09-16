@@ -124,7 +124,11 @@ public sealed class FakeIoModuleClient : IIoModuleClient
 
         if (OperatorNeverActs)
         {
-            while (true)
+            // The executor's own timeout still applies, so a wait that is meant to end this way ends
+            // by cancellation when the process goes away -- not by running out. Timing out anyway
+            // keeps a stuck test reading like the other branches here instead of hanging.
+            DateTimeOffset neverActsDeadline = DateTimeOffset.UtcNow + timeout;
+            while (DateTimeOffset.UtcNow < neverActsDeadline)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 lock (_sync)
@@ -138,6 +142,10 @@ public sealed class FakeIoModuleClient : IIoModuleClient
 
                 await Task.Delay(1, cancellationToken);
             }
+
+            throw new TimeoutException(
+                $"G2 fake: slot {slotIndex + 1} never reached the expected state within {timeout}, "
+                + "and OperatorNeverActs means nothing was going to move it.");
         }
 
         if (!SimulateOperatorLoad)

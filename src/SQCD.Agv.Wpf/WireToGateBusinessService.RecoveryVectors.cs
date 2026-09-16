@@ -1042,12 +1042,11 @@ public sealed partial class WireToGateBusinessService
         }
         else
         {
-            // The settled load is a valid subject here for the same reason it is at the entry: the
-            // server may judge RecoveryRequired the attempt the vehicle just reported COMPLETED, and
-            // without this fallback the request goes out but its command cannot be executed.
-            WireToGateRecoveryOperationContext operation =
-                state.OperationContext
-                ?? state.LastCompletedLoadOperationContext
+            // Read through the same helper the entry and the request path use. A settled load is a
+            // valid subject here for the same reason it is there -- the server may judge
+            // RecoveryRequired the attempt the vehicle just reported COMPLETED -- and reading it any
+            // other way is how an entry opens on one subject while the bind refuses a different one.
+            WireToGateRecoveryOperationContext operation = FindRecoveryLoadOperation(state)
                 ?? throw new InvalidDataException("RECOVERY_OPERATION_CONTEXT_MISSING");
             if (operation.OperationType != OperationType.Load
                 || operation.DemandId != demandId
@@ -1393,19 +1392,42 @@ public sealed partial class WireToGateBusinessService
     }
 
     /// <summary>
-    /// The load this recovery is about. The armed operation is preferred, but an operation whose
-    /// result the vehicle already recorded is still a valid subject: the server may judge that same
-    /// attempt <c>RecoveryRequired</c> while the vehicle believes it finished, and that is exactly
-    /// the state a compensation exists for. <c>MarkResultRecordedAsync</c> keeps the settled
-    /// identity in <see cref="WireToGateRecoveryState.LastCompletedLoadOperationContext"/> for this
-    /// case, so nothing here is guessed -- the identity is read, never reconstructed.
+    /// The load this recovery is about, or null when there is none.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Whatever is armed and unsettled is the subject: a load if that is what it is, and otherwise
+    /// nothing. Only once the vehicle has finished with its armed operation does the settled load
+    /// take over -- an operation whose result the vehicle already recorded is still a valid subject,
+    /// because the server may judge that same attempt <c>RecoveryRequired</c> while the vehicle
+    /// believes it finished, and that is exactly the state a compensation exists for.
+    /// <c>MarkResultRecordedAsync</c> keeps the settled identity in
+    /// <see cref="WireToGateRecoveryState.LastCompletedLoadOperationContext"/> for this case, so
+    /// nothing here is guessed -- the identity is read, never reconstructed.
+    /// </para>
+    /// <para>
+    /// An armed unload is therefore not a settled load's stand-in, however recent that load is. The
+    /// ordinary sequence at the gate produces exactly that pair -- the load completed, the unload is
+    /// running with a door open -- and falling back there would open the entry on a load nobody is
+    /// asking about, then overwrite the journal when it was taken:
+    /// <see cref="WriteRecoveryVectorPreparedAsync"/> rewrites the unsettled attempt to the vector's
+    /// and empties the active unlock set, losing the record of the door standing open right now.
+    /// </para>
+    /// <para>
+    /// Every caller reads the subject through this one helper -- the entry gates, the request path
+    /// and the bind path -- because an entry that opens on a subject the bind path then refuses is
+    /// the failure this fix exists to remove.
+    /// </para>
+    /// </remarks>
     private static WireToGateRecoveryOperationContext? FindRecoveryLoadOperation(
         WireToGateRecoveryState state) =>
-        state.OperationContext is { OperationType: OperationType.Load } armed
-            && state.UnsettledSlotOperationAttemptId == armed.SlotOperationAttemptId
-            ? armed
-            : state.LastCompletedLoadOperationContext;
+        state.OperationContext is { } armed
+            && string.Equals(
+                state.UnsettledSlotOperationAttemptId,
+                armed.SlotOperationAttemptId,
+                StringComparison.Ordinal)
+                ? armed.OperationType == OperationType.Load ? armed : null
+                : state.LastCompletedLoadOperationContext;
 
     private static WireToGateRecoveryOperationContext RequireUnsettledLoadOperation(
         WireToGateRecoveryState state)
