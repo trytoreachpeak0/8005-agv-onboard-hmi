@@ -31,10 +31,13 @@ namespace SQCD.Agv.Contracts;
 /// protocol version writes the pair <c>(profileId, protocolVersion)</c>.
 /// </para>
 /// <para>
-/// <b>These nine values are byte-for-byte the control server's.</b> <c>ProtocolCandidateIdentity</c>
-/// in <c>8005-agv-control-server</c> carries the same ones, because the handshake compares
-/// <c>commit</c>, <c>manifestSha256</c>, <c>profileId</c> and <c>protocolVersion</c> and refuses the
-/// session on any difference. Neither end copied the other: both read the candidate.
+/// <b>These nine values have to match the control server's, and today they do not yet.</b>
+/// <c>ProtocolCandidateIdentity</c> in <c>8005-agv-control-server</c> is the other copy, and the
+/// handshake compares <c>commit</c>, <c>manifestSha256</c>, <c>profileId</c> and
+/// <c>protocolVersion</c> and refuses the session on any difference. That end moves to the same
+/// candidate in <c>8005-agv-control-server#84</c>; until it merges, this build and the control
+/// server's integration branch are on different identities and will not complete a handshake.
+/// Neither end copies the other: both read the candidate's published identity table.
 /// </para>
 /// <para>
 /// <b>Evidence produced on this identity is development-grade.</b> A <c>ONBOARD_HMI_G2</c> run
@@ -99,7 +102,8 @@ public sealed record WireToGateEnvelope(
     JsonElement Payload);
 
 /// <summary>
-/// Minimal strict serializer for the immutable protocol-v1.0.0 candidate envelope.
+/// Minimal strict serializer for the envelope of the protocol release named by
+/// <see cref="WireToGateRelease"/> -- currently the 2.0.0 candidate.
 /// Message payloads remain explicit at their call sites so that later slices can be
 /// generated from the tagged JSON Schemas without changing the transport contract.
 /// </summary>
