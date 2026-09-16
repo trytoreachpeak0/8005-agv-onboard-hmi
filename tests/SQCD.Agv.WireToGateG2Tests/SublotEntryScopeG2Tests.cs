@@ -91,6 +91,28 @@ public sealed class SublotEntryScopeG2Tests
     }
 
     /// <summary>
+    /// A whitespace-only element in <c>expectedSublots</c> does not take the session down.
+    /// </summary>
+    /// <remarks>
+    /// The schema says <c>minLength: 1</c> and nothing more, so <c>" "</c> is a legal element. No
+    /// scanner or keyboard entry can ever match it -- entries are trimmed -- so accepting it costs
+    /// nothing, while refusing it would answer a schema-legal request with
+    /// <c>PROTOCOL_SCHEMA_INVALID</c>, which is exactly the stricter-than-the-contract inbound check
+    /// <c>8005-agv-onboard-hmi#38</c> is about.
+    /// </remarks>
+    [Fact]
+    public async Task AWhitespaceExpectedSublotIsAcceptedBecauseTheSchemaAllowsIt()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using SublotHarness harness = await SublotHarness.StartAsync(
+            [" ", "SUBLOT-001"], token);
+
+        Assert.Equal([" ", "SUBLOT-001"], harness.Business.ExpectedSublots);
+        await harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token);
+        await harness.WaitForSubmissionAsync(token);
+    }
+
+    /// <summary>
     /// An entry outside the set is refused locally, and nothing is sent.
     /// </summary>
     [Fact]

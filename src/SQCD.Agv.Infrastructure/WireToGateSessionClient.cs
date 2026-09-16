@@ -2022,14 +2022,17 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         WireToGateProtocolSerializer.DeserializePayload<SublotEntryRequestedPayload>(envelope);
                     RequireUuid(payload.OperationSessionId, nameof(payload.OperationSessionId));
 
-                    // expectedSublots is minItems 1, maxItems 8, uniqueItems -- read straight off
-                    // the frozen schema rather than narrowed to the single-element form a
-                    // one-demand dispatch happens to produce today.
+                    // expectedSublots is minItems 1, maxItems 8, uniqueItems, and each element
+                    // minLength 1 -- read straight off the frozen schema rather than narrowed to
+                    // the single-element form a one-demand dispatch happens to produce today, and
+                    // with IsNullOrEmpty rather than IsNullOrWhiteSpace for the same reason: " " is
+                    // schema-legal, no trimmed entry can ever match it, and refusing it would be an
+                    // inbound check stricter than the contract.
                     if (string.IsNullOrWhiteSpace(payload.StationId)
                         || payload.WorklistRevision < 0
                         || payload.ExpectedSublots is null
                         || payload.ExpectedSublots.Count is < 1 or > 8
-                        || payload.ExpectedSublots.Any(string.IsNullOrWhiteSpace)
+                        || payload.ExpectedSublots.Any(string.IsNullOrEmpty)
                         || payload.ExpectedSublots.Distinct(StringComparer.Ordinal).Count()
                             != payload.ExpectedSublots.Count
                         || payload.EntryMethods is null
@@ -2231,8 +2234,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
                     RequireUuid(payload.OperationSessionId, nameof(payload.OperationSessionId));
                     ValidateProblem(payload.Problem);
+                    // minLength 1, so empty is refused and whitespace is not: see the same
+                    // reasoning on expectedSublots above.
                     if (payload.CurrentWorklistRevision < 0
-                        || string.IsNullOrWhiteSpace(payload.RejectedSublot))
+                        || string.IsNullOrEmpty(payload.RejectedSublot))
                     {
                         throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
                     }
