@@ -693,6 +693,17 @@ public sealed class WireToGateG2Tests
                 server.Received,
                 item => item.MessageType == "LoadCancellationResult");
             Assert.Equal(0, io.UnlockCount);
+
+            // The authorization settles this demand's entry request, so the button goes with it.
+            // It used to stay up until the next worklist revision; a second press then went out
+            // under the same cancellationId with a new verifiedAt, and the server dropped the whole
+            // session as a replay with different content (8005-agv-onboard-hmi#89).
+            Assert.False(business.CanSubmitSublot);
+            Assert.False(business.CanRequestLoadCancellation);
+            Assert.False(await business.RequestLoadCancellationAsync(
+                "现场确认本站没有要装的货。",
+                testToken));
+            Assert.Single(server.ReceivedLoadCancellationAttemptIds);
         }
         finally
         {
