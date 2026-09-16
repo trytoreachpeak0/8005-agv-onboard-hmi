@@ -1230,13 +1230,14 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 string phase,
                 IReadOnlyList<int> active,
                 IReadOnlyList<int> completed,
+                int promptRound,
                 CancellationToken progressToken)
             {
                 PublishOperation(
                     original,
                     MapOperationStage(phase),
-                    OperationGuidance(original, phase, active, completed),
-                    $"recovery:{command.RecoveryActionId}:{phase}:{string.Join(',', active)}:{string.Join(',', completed)}");
+                    OperationGuidance(original, phase, active, completed, promptRound),
+                    $"recovery:{command.RecoveryActionId}:{OperationDetailKey(phase, active, completed, promptRound)}");
                 await _session.SendRecoveryOperationProgressAsync(
                     command.SlotOperationAttemptId,
                     phase,
@@ -1379,13 +1380,14 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 string phase,
                 IReadOnlyList<int> active,
                 IReadOnlyList<int> completed,
+                int promptRound,
                 CancellationToken progressToken)
             {
                 PublishOperation(
                     command,
                     MapOperationStage(phase),
-                    OperationGuidance(command, phase, active, completed),
-                    $"{phase}:{string.Join(',', active)}:{string.Join(',', completed)}");
+                    OperationGuidance(command, phase, active, completed, promptRound),
+                    OperationDetailKey(phase, active, completed, promptRound));
                 await _session.SendOperationProgressAsync(
                     command.SlotOperationAttemptId,
                     phase,
@@ -1572,17 +1574,34 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         _ => WireToGateHmiOperationStage.Preparing
     };
 
+    // The prompt round has to be part of the key. A reopen's second round repeats the first one's
+    // phase, active and completed sets exactly, so without it PublishOperatorEvent swallows every
+    // prompt after the first -- and ADR-cross-0058 decision 1 puts no limit on reopening.
+    private static string OperationDetailKey(
+        string phase,
+        IReadOnlyList<int> active,
+        IReadOnlyList<int> completed,
+        int promptRound) =>
+        $"{phase}:{string.Join(',', active)}:{string.Join(',', completed)}:{promptRound}";
+
+    // The executor only sends UNLOCKING after round 0 when the door was shut over the opposite
+    // occupancy, so that is what the text says. The round counts reopens and prompt cadence alike,
+    // which is why the reopen text does not print it.
     private static string OperationGuidance(
         WireToGateSlotOperationCommand command,
         string phase,
         IReadOnlyList<int> active,
-        IReadOnlyList<int> completed) => phase switch
+        IReadOnlyList<int> completed,
+        int promptRound) => phase switch
         {
             "PREPARING" => $"正在检查{FormatSlots(command.Slots)}的安全条件。",
-            "UNLOCKING" => $"正在打开{FormatSlots(active)}。",
-            "WAITING_OPERATOR" => command.OperationType == OperationType.Load
+            "UNLOCKING" => promptRound == 0
+                ? $"正在打开{FormatSlots(active)}。"
+                : $"{FormatSlots(active)}关门时货物状态与预期不符，正在重新打开。",
+            "WAITING_OPERATOR" => (command.OperationType == OperationType.Load
                 ? $"请向{FormatSlots(active)}放入货物并关门。"
-                : $"请从{FormatSlots(active)}取出货物并关门。",
+                : $"请从{FormatSlots(active)}取出货物并关门。")
+                + (promptRound == 0 ? string.Empty : $"（第{promptRound + 1}次提示）"),
             "VERIFYING" => $"正在核对仓门、货物和输出状态；已完成 {completed.Count}/{command.Slots.Count}。",
             "SAFE_FINISH" => "全部目标仓已达到安全收尾状态，正在上报结果。",
             _ => $"正在处理{FormatSlots(command.Slots)}。"

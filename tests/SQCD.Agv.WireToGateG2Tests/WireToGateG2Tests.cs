@@ -947,6 +947,98 @@ public sealed class WireToGateG2Tests
     }
 
     /// <summary>
+    /// A door shut over an empty slot is reopened with no limit (ADR-cross-0058 decision 1), and the
+    /// operator has to see every round of it. The HMI deduplicates its operation prompts by key, and a
+    /// reopen repeats the previous round's phase and slot sets exactly -- a key without the round in
+    /// it swallows every prompt after the first, and the vehicle reopens a door in silence.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task EveryReopenRoundReachesTheOperatorAsItsOwnPrompt()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            SendSlotOperationCommandAfterRecovery = true
+        };
+        FakeIoModuleClient io = new() { SimulateOperatorLoad = true, EmptyClosesBeforeLoad = 2 };
+        NullLogger logger = new();
+        await using WireToGateSessionService session = new(
+            CreateSessionOptions(server),
+            io,
+            new SqliteWireToGateJournal(NewJournalPath()),
+            logger,
+            new SystemClock(),
+            new DelegateVehicleSafetySignalProvider(() => true),
+            new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+            new SlotConfigurationActivationCoordinator(
+                new DocumentActiveSlotConfigurationStore(
+                    new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                    G2SlotConfigurationFixtures.Approved()),
+                TimeProvider.System),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(500));
+        await using WireToGateBusinessService business = new(
+            session,
+            io,
+            logger,
+            new SystemClock(),
+            () => true,
+            new WireToGateSlotOperationExecutorOptions(
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(2),
+                TimeSpan.FromMilliseconds(10),
+                TimeSpan.FromSeconds(30)),
+            "W2G_G2_REOPEN_PROMPT_OPERATOR");
+        List<WireToGateOperatorEvent> prompts = [];
+        bool completed = false;
+        business.OperatorEventPublished += (_, args) =>
+        {
+            lock (prompts)
+            {
+                if (args.Value.Kind == "OPERATION_PROGRESS")
+                {
+                    prompts.Add(args.Value);
+                }
+                else if (args.Value.Kind == "OPERATION_COMPLETED")
+                {
+                    completed = true;
+                }
+            }
+        };
+
+        business.Start();
+        await session.Client.ConnectAndRecoverAsync(testToken);
+        await WaitUntilAsync(() => completed, testToken);
+
+        Assert.Equal(3, io.UnlockCount);
+        string[] waiting;
+        string[] unlocking;
+        lock (prompts)
+        {
+            waiting = prompts
+                .Where(item => item.Operation?.Stage == WireToGateHmiOperationStage.WaitingOperator)
+                .Select(item => item.Message)
+                .ToArray();
+            unlocking = prompts
+                .Where(item => item.Operation?.Stage == WireToGateHmiOperationStage.Unlocking)
+                .Select(item => item.Message)
+                .ToArray();
+        }
+
+        Assert.Equal(
+            ["请向1号仓放入货物并关门。", "请向1号仓放入货物并关门。（第2次提示）", "请向1号仓放入货物并关门。（第3次提示）"],
+            waiting);
+        Assert.Equal(
+            ["正在打开1号仓。", "1号仓关门时货物状态与预期不符，正在重新打开。", "1号仓关门时货物状态与预期不符，正在重新打开。"],
+            unlocking);
+    }
+
+    /// <summary>
     /// REQ-0237 keeps load correction to the time before the vehicle leaves the pickup, and the
     /// control server now holds the vehicle there for a departure wait after the load commits. The
     /// operator can only use that wait if 「修正装货」 is offered as soon as the load is recorded.
