@@ -540,66 +540,81 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             WireToGateProtocolSerializer.RequireExactReleaseIdentity(accepted.AcceptedProtocolReleaseIdentity);
             Publish(true, generation, WireToGateSessionReadiness.Recovering, []);
 
+            // 上一个会话没等到 ack 的持久报文先补发，下面那份报告因此看到的是已经对齐的账。补发与否，
+            // 握手都照常走完：真服务端每个新世代都从零开始，手上没有能力快照、安全快照和恢复状态报告，
+            // 对补发只回一条 DurableAck，所以跳过快照的车会去等一条永远不来的 SessionReadiness，
+            // 超时断开、再重连一次（8005-agv-control-server#33）。v2 服务端判 Ready 更要求本代次三者
+            // 齐全，缺一样都出不来。
+            //
+            // 唯一不补发的持久报文是 RecoveryStateReport：它说的是发出它那次握手时的事实，而这次握手
+            // 会发一份新的取代它。补发旧报告还会让服务端立即回一条 SessionReadiness、再重放它待确认的
+            // 恢复命令，全都夹在这里还没发完的快照中间。
             IReadOnlyList<WireToGateDurableMessage> unacknowledged = await _journal
                 .ReadUnacknowledgedOutgoingAsync(cancellationToken)
                 .ConfigureAwait(false);
-            bool resumingInterruptedRecovery = unacknowledged.Count > 0;
-            IReadOnlyList<WireToGateDurableMessage> pendingResultReplays = [];
-            if (resumingInterruptedRecovery)
+            List<WireToGateDurableMessage> supersededReports = [];
+            foreach (WireToGateDurableMessage pending in unacknowledged)
             {
-                foreach (WireToGateDurableMessage pending in unacknowledged)
+                if (string.Equals(pending.MessageType, "RecoveryStateReport", StringComparison.Ordinal))
                 {
-                    await ReplayDurableOutgoingAsync(pending, generation, cancellationToken)
-                        .ConfigureAwait(false);
+                    supersededReports.Add(pending);
+                    continue;
                 }
+
+                await ReplayDurableOutgoingAsync(pending, generation, cancellationToken)
+                    .ConfigureAwait(false);
             }
-            else
-            {
-                IoSnapshot io = _ioModule.CurrentSnapshot;
-                ProtocolSlotState[] slotStates = CreateSlotStates(io);
-                await SendSnapshotAndRequireAckAsync(
-                    "CapabilitySnapshot",
-                    "CAPABILITY",
+
+            IoSnapshot io = _ioModule.CurrentSnapshot;
+            ProtocolSlotState[] slotStates = CreateSlotStates(io);
+            await SendSnapshotAndRequireAckAsync(
+                "CapabilitySnapshot",
+                "CAPABILITY",
+                _options.CapabilityVersion,
+                generation,
+                new CapabilitySnapshotPayload(
                     _options.CapabilityVersion,
-                    generation,
-                    new CapabilitySnapshotPayload(
-                        _options.CapabilityVersion,
-                        _clock.Now.ToUniversalTime(),
-                        _options.SlotModelVersion,
-                        _activationCoordinator.ActiveConfiguration.ConfigurationVersion,
-                        // 报**本机生效配置**的指纹，不是从配置项现算的那个：激活成功之后车装着的是哪
-                        // 一版，只有生效配置存储说了算。从配置项现算会让每次激活之后两端立刻对不上。
-                        _activationCoordinator.ActiveConfiguration.Fingerprint,
-                        slotStates,
-                        _options.SupportsBatchUnlock,
-                        1),
-                    cancellationToken).ConfigureAwait(false);
+                    _clock.Now.ToUniversalTime(),
+                    _options.SlotModelVersion,
+                    _activationCoordinator.ActiveConfiguration.ConfigurationVersion,
+                    // 报**本机生效配置**的指纹，不是从配置项现算的那个：激活成功之后车装着的是哪
+                    // 一版，只有生效配置存储说了算。从配置项现算会让每次激活之后两端立刻对不上。
+                    _activationCoordinator.ActiveConfiguration.Fingerprint,
+                    slotStates,
+                    _options.SupportsBatchUnlock,
+                    1),
+                cancellationToken).ConfigureAwait(false);
 
-                WireToGateSafetySummaryPayload safety = CreateSafetySummary(io);
-                long safetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
-                await SendSnapshotAndRequireAckAsync(
-                    "SafetyStateSnapshot",
-                    "SAFETY_STATE",
+            WireToGateSafetySummaryPayload safety = CreateSafetySummary(io);
+            long safetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
+            await SendSnapshotAndRequireAckAsync(
+                "SafetyStateSnapshot",
+                "SAFETY_STATE",
+                safetyStateVersion,
+                generation,
+                new SafetyStateSnapshotPayload(
                     safetyStateVersion,
-                    generation,
-                    new SafetyStateSnapshotPayload(
-                        safetyStateVersion,
-                        _clock.Now.ToUniversalTime(),
-                        safety,
-                        slotStates),
-                    cancellationToken).ConfigureAwait(false);
+                    _clock.Now.ToUniversalTime(),
+                    safety,
+                    slotStates),
+                cancellationToken).ConfigureAwait(false);
 
-                await SendOnboardAlarmSnapshotAsync(generation, cancellationToken).ConfigureAwait(false);
-                pendingResultReplays = await SendRecoveryStateReportAsync(generation, io, cancellationToken)
+            await SendOnboardAlarmSnapshotAsync(generation, cancellationToken).ConfigureAwait(false);
+            IReadOnlyList<WireToGateDurableMessage> pendingResultReplays =
+                await SendRecoveryStateReportAsync(generation, io, cancellationToken).ConfigureAwait(false);
+            // 这几份报告从来没收到过 DurableAck。这里标 Acknowledged 的意思是不再欠服务端这一份，与
+            // ComputeContentSha256Async 本来就把恢复状态报告排除在待确认业务报文之外一致。
+            foreach (WireToGateDurableMessage superseded in supersededReports)
+            {
+                await _journal
+                    .MarkOutgoingAcknowledgedAsync(superseded.MessageId, superseded.ContentSha256, cancellationToken)
                     .ConfigureAwait(false);
             }
 
             WireToGateEnvelope readinessEnvelope = await ReadEnvelopeAsync(generation, cancellationToken)
                 .ConfigureAwait(false);
             ThrowIfProtocolProblem(readinessEnvelope);
-            ApplySessionReadiness(
-                readinessEnvelope,
-                requireExactConfiguredBaseline: !resumingInterruptedRecovery);
+            ApplySessionReadiness(readinessEnvelope, requireExactConfiguredBaseline: true);
             StartReceiveLoop(generation);
             foreach (WireToGateDurableMessage pendingResult in pendingResultReplays)
             {
