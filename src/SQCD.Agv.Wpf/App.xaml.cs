@@ -94,7 +94,21 @@ public partial class App : System.Windows.Application, IDisposable
                 LogSeverity.Information,
                 nameof(App),
                 $"车载端启动：agvId={settings.AgvId}，environment={settings.Environment}，version={version}。");
-            MainViewModel viewModel = new(_controller, _logger, settings.AgvId);
+            // 生效配置与激活结果一起落在同一份原子文档里（#27）：分两次写会留下一个窗口——配置已切、结果没记下，
+            // 重连补报时车会以为自己没激活过，于是再激活一次。初始那一份是本机自述的配置，由设置渲染出来；文档里
+            // 已有内容时以文档为准。仓位区的前后分组读的也是它，所以放在界面之前建。
+            ActiveSlotConfiguration localSlotConfiguration =
+                OnboardActiveSlotConfigurationFactory.Create(settings.WireToGate, settings.IoModule);
+            DocumentActiveSlotConfigurationStore? slotConfigurationStore = settings.WireToGate.Enabled
+                ? new DocumentActiveSlotConfigurationStore(
+                    new AtomicJsonFile(settings.WireToGate.ActiveSlotConfigurationPath),
+                    localSlotConfiguration)
+                : null;
+            MainViewModel viewModel = new(
+                _controller,
+                _logger,
+                settings.AgvId,
+                slotConfigurationStore?.Current ?? localSlotConfiguration);
             MainWindow window = new() { DataContext = viewModel };
             MainWindow = window;
             // 告警板两种模式下都有：旧模式没有会话可以报，本机界面照样要显示。
@@ -112,14 +126,7 @@ public partial class App : System.Windows.Application, IDisposable
                     // 告警板的生产者是下面的 OnboardAlarmMonitor。握手报的是那一刻告警板上的全量，空的也报：
                     // 一份空快照说的是「这台车此刻没有告警」，与「这台车从没报过」在看板上是两种显示。
                     alarmBoard,
-                    // 生效配置与激活结果一起落在同一份原子文档里（#27）：分两次写会留下一个窗口——配置
-                    // 已切、结果没记下，重连补报时车会以为自己没激活过，于是再激活一次。初始那一份是本机
-                    // 自述的配置，由设置渲染出来；文档里已有内容时以文档为准。
-                    new SlotConfigurationActivationCoordinator(
-                        new DocumentActiveSlotConfigurationStore(
-                            new AtomicJsonFile(settings.WireToGate.ActiveSlotConfigurationPath),
-                            OnboardActiveSlotConfigurationFactory.Create(settings.WireToGate, settings.IoModule)),
-                        TimeProvider.System),
+                    new SlotConfigurationActivationCoordinator(slotConfigurationStore!, TimeProvider.System),
                     TimeSpan.FromMilliseconds(settings.Workflow.IoSnapshotMaxAgeMs),
                     TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs),
                     TimeSpan.FromMilliseconds(settings.VehicleSafety.ClockSkewToleranceMs));

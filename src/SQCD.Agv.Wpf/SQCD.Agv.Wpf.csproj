@@ -12,6 +12,10 @@
     <ProjectReference Include="../SQCD.Agv.Infrastructure/SQCD.Agv.Infrastructure.csproj" />
   </ItemGroup>
   <ItemGroup>
+    <!-- 仓位区组标题高亮要从 MainViewModel 的内部入口驱动（ApplyWireToGateOperatorEvent）。 -->
+    <InternalsVisibleTo Include="SQCD.Agv.WireToGateG2Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <None Update="appsettings.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

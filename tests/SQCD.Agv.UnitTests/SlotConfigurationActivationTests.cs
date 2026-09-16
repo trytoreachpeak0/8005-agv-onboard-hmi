@@ -257,7 +257,7 @@ public sealed class SlotConfigurationActivationTests
         version,
         [.. Enumerable.Range(1, 8).Select(number => new SlotConfigurationEntry(
             number,
-            slotPosition ?? (number <= 4 ? "LEFT" : "RIGHT"),
+            slotPosition ?? (number <= 4 ? "FRONT" : "REAR"),
             $"DO{number}",
             $"DI{number}",
             $"DI{number + 8}",
