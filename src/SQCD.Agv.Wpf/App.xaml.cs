@@ -163,7 +163,7 @@ public partial class App : System.Windows.Application, IDisposable
                 _wireToGateBusiness.OperatorEventPublished += (_, args) =>
                     viewModel.ApplyWireToGateOperatorEvent(args.Value);
                 viewModel.ConfigureWireToGate(
-                    (sublot, inputMethod, cancellationToken) => _wireToGateBusiness.SubmitSublotAsync(
+                    (sublot, inputMethod, cancellationToken) => _wireToGateBusiness.SubmitSublotFromOperatorAsync(
                         sublot,
                         inputMethod == ScanInputMethod.Scanner ? "SCANNER" : "KEYBOARD",
                         cancellationToken),

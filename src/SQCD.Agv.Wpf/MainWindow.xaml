@@ -350,7 +350,7 @@
                             IsEnabled="{Binding CanSafetyReview}"
                             Visibility="{Binding CanSafetyReview, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnSafetyReviewClick"
-                            Content="启动安全复核" />
+                            Content="安全复核并复位" />
                 </WrapPanel>
             </Grid>
         </Border>

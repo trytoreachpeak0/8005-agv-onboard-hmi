@@ -525,8 +525,9 @@ public sealed class MainViewModel : ViewModelBase
         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? snapshot.State == OnboardState.ReadyToScan;
         HasWarning = hasWarning;
         HasError = hasBlockingError;
+        // 锁存的严重安全故障同样走这个入口，否则它在 HMI 上没有任何出路（onboard-hmi#82）。
         CanSafetyReview = snapshot.State == OnboardState.Faulted
-            && snapshot.ErrorCode == "STARTUP_STATE_UNSAFE"
+            && (snapshot.ErrorCode == "STARTUP_STATE_UNSAFE" || _controller.IsFatalFaultLatched)
             && snapshot.ActiveOperation is null;
         CanReopenOperation = _controller.CanReopenCurrentOperation;
         CanCancelOperation = _controller.CanCancelCurrentOperation;
@@ -546,15 +547,47 @@ public sealed class MainViewModel : ViewModelBase
         ApplyWireToGatePresentationCore();
     }
 
+    /// <summary>
+    /// 界面命令的顶层兜底。这里要分两种情况，原来不分：命令被业务规则拒绝、通道中断、
+    /// 超时、响应不合法，都是可预期的运行结论，提示一次就够；只有其余异常才说明界面
+    /// 自身状态已不可信，需要锁存严重安全故障。
+    /// </summary>
+    /// <remarks>
+    /// 原来一律锁存，于是「扫的这个子批不在当前作业清单里」被报成「设备异常／已停止开门／
+    /// 请联系维护人员」，而且锁存之后没有出路——现场的扫码入口因此钉死了 2 小时 50 分
+    /// （onboard-hmi#82）。
+    /// </remarks>
     private void HandleCommandError(Exception exception)
     {
+        if (!OnboardController.IsFatalCommandFailure(exception))
+        {
+            string errorCode = OnboardController.GetCommandFailureCode(exception);
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(MainViewModel),
+                $"界面命令未执行，code={errorCode}。",
+                exception);
+            Guidance = _controller.GetOperatorGuidance(errorCode);
+            HasWarning = true;
+            HasError = false;
+            return;
+        }
+
         _logger.Write(LogSeverity.Error, nameof(MainViewModel), "界面命令执行失败。", exception);
-        _controller.EnterFatalFault(
-            "UI_COMMAND_FAILED",
-            "操作界面出现异常，已停止开门。请确认仓门状态并联系维护人员。");
-        Guidance = "操作界面出现异常，已停止开门。请确认仓门状态并联系维护人员。";
+        _controller.EnterFatalFault("UI_COMMAND_FAILED", UiCommandFailedGuidance);
+        Guidance = UiCommandFailedGuidance;
         HasError = true;
     }
+
+    /// <summary>
+    /// 锁存后显示给操作员的话。原文是「已停止开门」，那是不实的：锁存只挡得住本界面的
+    /// 扫码和发车提示，服务端下发的 SlotOperationCommand 走的是另一条执行路径，不受它
+    /// 约束——现场实测锁存之后车照常开锁作业并完成了三趟旅程（onboard-hmi#82）。一个
+    /// 兜不住它声称要兜的东西的安全闸，比没有这个闸更危险，所以这里只说它真能做到的事。
+    /// </summary>
+    private const string UiCommandFailedGuidance =
+        "操作界面出现异常，本界面已禁止扫码开门（服务端下发的仓位操作不受影响）。"
+        + "请确认仓门状态并联系维护人员，由维护人员现场确认后执行安全复核复位。";
 
     private void AppendOperatorRecord(OnboardSnapshot snapshot)
     {
@@ -635,7 +668,8 @@ public sealed class MainViewModel : ViewModelBase
     {
         "OPERATION_COMPLETED" => OperatorRecordKind.Success,
         "OPERATION_RECOVERY_REQUIRED" or "RECOVERY_BLOCKED" => OperatorRecordKind.Error,
-        "RESULT_ACK_PENDING" or "RECOVERY_AUTHORIZED" => OperatorRecordKind.Warning,
+        "RESULT_ACK_PENDING" or "RECOVERY_AUTHORIZED" or "SUBLOT_ENTRY_REJECTED" =>
+            OperatorRecordKind.Warning,
         "SUBLOT_ENTRY_REQUESTED" or "SUBLOT_SUBMITTED" or "OPERATION_PROGRESS" or "OPERATION_REPLAY" =>
             OperatorRecordKind.Operation,
         _ => OperatorRecordKind.System

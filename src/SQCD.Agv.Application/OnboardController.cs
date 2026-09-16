@@ -41,7 +41,9 @@ public sealed class OnboardController : IAsyncDisposable
     private bool _started;
     // 是否已经释放资源、不能继续使用
     private bool _disposed;
-    // 一旦写入便保持到进程退出，普通状态发布不得覆盖严重安全故障。
+    // 写入后由普通状态发布无法覆盖。唯一的出路是维护人员在现场确认安全之后执行安全复核
+    // （ConfirmSafeStartupStateAsync），此前它保持到进程退出——现场因此把扫码入口钉死过
+    // 2 小时 50 分，而 HMI 上没有任何入口能解开（onboard-hmi#82）。
     private FatalFault? _fatalFault;
 
     // 创建控制器时，外部必须把五项依赖传进来。
@@ -554,6 +556,17 @@ public sealed class OnboardController : IAsyncDisposable
         Publish(OnboardState.Connecting, "车载端服务已停止。");
     }
 
+    /// <summary>
+    /// 维护人员在现场确认安全之后的复位入口。它清两样东西：启动安全校验未通过的标记
+    /// <see cref="_startupValidated"/>，以及已锁存的严重安全故障 <see cref="_fatalFault"/>。
+    /// </summary>
+    /// <remarks>
+    /// 锁存原本没有任何出路：<see cref="_fatalFault"/> 只写不清，唯一的解法是重启车载端进程，
+    /// 而 HMI 上没有这个入口，现场也无从知道需要这么做（onboard-hmi#82，现场界面因此钉死了
+    /// 2 小时 50 分）。这里不另开一个按钮，因为判据与启动安全复核本来就是同一条——IO 在线、
+    /// 快照新鲜、仓门全锁、开锁输出全 0，并且都要维护人员在现场先看过仓门。多一个按钮只会
+    /// 让操作员去分辨两个他分辨不出的东西。
+    /// </remarks>
     public async Task<bool> ConfirmSafeStartupStateAsync(CancellationToken cancellationToken = default)
     {
         if (!await _operationLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
@@ -565,9 +578,11 @@ public sealed class OnboardController : IAsyncDisposable
         try
         {
             OnboardSnapshot current = Current;
-            if (current.State != OnboardState.Faulted || current.ErrorCode != "STARTUP_STATE_UNSAFE")
+            FatalFault? latched = Volatile.Read(ref _fatalFault);
+            if (latched is null
+                && (current.State != OnboardState.Faulted || current.ErrorCode != "STARTUP_STATE_UNSAFE"))
             {
-                Publish(current.State, "当前故障不允许通过启动安全复核清除。", current.ErrorCode);
+                Publish(current.State, "当前故障不允许通过安全复核清除。", current.ErrorCode);
                 return false;
             }
 
@@ -575,15 +590,32 @@ public sealed class OnboardController : IAsyncDisposable
             string? unsafeReason = ValidateRecoverableStartupSnapshot(io);
             if (unsafeReason is not null)
             {
-                Publish(OnboardState.Faulted, $"安全复核未通过：{unsafeReason}", "STARTUP_STATE_UNSAFE");
+                // 锁存期间 PublishCore 会改写每一次发布，所以不先换掉锁存里的提示，操作员
+                // 看到的还是原来那条横幅，根本不知道复核为什么没过。错误码保持不变——被改写
+                // 的只有给人看的那句话，而且只能由维护人员亲手触发，此刻操作锁也在手上。
+                if (latched is not null)
+                {
+                    Volatile.Write(
+                        ref _fatalFault,
+                        latched with { Guidance = $"安全复核未通过：{unsafeReason}处理后可再次复核。" });
+                }
+
+                Publish(
+                    OnboardState.Faulted,
+                    $"安全复核未通过：{unsafeReason}",
+                    latched?.ErrorCode ?? "STARTUP_STATE_UNSAFE");
                 return false;
             }
 
+            FatalFault? cleared = Interlocked.Exchange(ref _fatalFault, null);
             _startupValidated = true;
             _logger.Write(LogSeverity.Warning, nameof(OnboardController),
-                "维护人员已执行启动安全复核：DO全0、仓门全锁、快照有效；保留当前货物反馈。 ");
-            Publish(OnboardState.Connecting, "启动安全复核通过，正在重新评估通信和到站状态。");
-            ReevaluateIdleState("启动安全复核通过，已保留当前仓位货物状态。");
+                cleared is null
+                    ? "维护人员已执行启动安全复核：DO全0、仓门全锁、快照有效；保留当前货物反馈。 "
+                    : $"维护人员已执行安全复核并解除严重安全故障锁存，code={cleared.ErrorCode}；"
+                        + "DO全0、仓门全锁、快照有效；保留当前货物反馈。 ");
+            Publish(OnboardState.Connecting, "安全复核通过，正在重新评估通信和到站状态。");
+            ReevaluateIdleState("安全复核通过，已保留当前仓位货物状态。");
             return true;
         }
         finally
@@ -591,6 +623,46 @@ public sealed class OnboardController : IAsyncDisposable
             _operationLock.Release();
         }
     }
+
+    /// <summary>
+    /// 界面命令抛出的这个异常，该不该升级为严重安全故障。
+    /// </summary>
+    /// <remarks>
+    /// 判据与 <see cref="SubmitScanAsync"/> 自己的 catch 过滤器同一套：业务拒绝、通道中断、
+    /// 超时、响应不合法都是可预期的运行异常，提示一次就够，不是设备故障。把它们一律锁存，
+    /// 结果是一次普通的重扫被报成「设备异常／已停止开门／请联系维护人员」，而且锁存之后
+    /// 再也解不开（onboard-hmi#82）。其余异常（空引用这类）说明界面自身的状态已不可信，
+    /// 仍然锁存。
+    /// </remarks>
+    public static bool IsFatalCommandFailure(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        return exception is not (IOException
+            or TimeoutException
+            or InvalidDataException
+            or InvalidOperationException);
+    }
+
+    /// <summary>
+    /// 把界面命令抛出的异常翻译成业务错误码，与控制器内部用的是同一张表。
+    /// </summary>
+    public static string GetCommandFailureCode(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        return GetFailureCode(null, exception);
+    }
+
+    /// <summary>
+    /// 把错误码翻译成操作员看的提示。界面层用它，免得把同一套文案再抄一份。
+    /// </summary>
+    public string GetOperatorGuidance(string errorCode)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(errorCode);
+        return GetOperatorMessage(errorCode);
+    }
+
+    /// <summary>严重安全故障是否已锁存。界面据此决定要不要显示复位入口。</summary>
+    public bool IsFatalFaultLatched => Volatile.Read(ref _fatalFault) is not null;
 
     public void EnterFatalFault(string errorCode, string guidance)
     {
@@ -1473,6 +1545,7 @@ public sealed class OnboardController : IAsyncDisposable
             InvalidOperationException when exception.Message is
                 "WIRE_TO_GATE_NOT_READY"
                 or "WIRE_TO_GATE_JOURNEY_NOT_READY"
+                or "WIRE_TO_GATE_OPERATOR_NOT_READY"
                 or "SUBLOT_NOT_IN_WORKLIST" => exception.Message,
             InvalidOperationException => "RULE_OFFLINE",
             _ => "OPERATION_FAILED"
@@ -1500,6 +1573,8 @@ public sealed class OnboardController : IAsyncDisposable
                 "上层安全会话尚未就绪，已禁止扫码、开门和发车。请等待连接及恢复完成。",
             "WIRE_TO_GATE_JOURNEY_NOT_READY" =>
                 "服务端旅程或当前站点任务尚未同步，已禁止扫码和开门。请等待任务恢复。",
+            "WIRE_TO_GATE_OPERATOR_NOT_READY" =>
+                "本机未配置操作员身份，无法提交扫码，请联系维护人员。",
             "SUBLOT_NOT_IN_WORKLIST" =>
                 "当前条码不属于服务端下发的站点任务，请核对条码或等待任务刷新。",
             "VISIT_NOT_ACTIVE" => "车辆尚未到站或本次作业已经结束，请等待新的到站任务。",
