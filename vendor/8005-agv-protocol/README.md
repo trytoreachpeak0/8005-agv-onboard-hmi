@@ -5,8 +5,8 @@
 ## 为什么是副本而不是引用
 
 `manifest/release.json` 是发布身份、63 条消息面与 11 条 denylist 的权威定义，`schemas/` 是
-63 条消息与公共类型的权威形状，`errors/error-codes.json` 是 54 个错误码的权威集合，
-`integration-slices/index.json` 是 16 个切片与 31 个一致性向量的权威划分——四者的
+63 条消息与公共类型的权威形状，`errors/error-codes.json` 是 58 个错误码的权威集合，
+`integration-slices/index.json` 是 16 个切片与 33 个一致性向量的权威划分——四者的
 权威副本都在 `8005-agv-protocol`。本仓库的 `ProtocolIdentityArchitectureTests`、
 `ProtocolMessageSurfaceArchitectureTests`、`ProtocolPayloadShapeArchitectureTests`、
 `ReasonCodeRegistryArchitectureTests` 与 `ProtocolVectorTestBindingArchitectureTests` 要把它们
@@ -31,8 +31,8 @@
 
 于是整棵副本的可信度**追溯到线上那一个值**，链条上没有任何一处是人手抄进测试的。
 
-`manifest` 里的 `errorRegistrySha256`（`ea538d59…`）不是这里用的那个：它由协议仓自己的
-规范化算法（JCS）算出，与原始字节摘要（`6692bfd2…`）不同。本仓不复现那个算法——复现它就
+`manifest` 里的 `errorRegistrySha256`（`75857a50…`）不是这里用的那个：它由协议仓自己的
+规范化算法（JCS）算出，与原始字节摘要（`a52d7151…`）不同。本仓不复现那个算法——复现它就
 变成了重新实现一个算法，而不是核对一份副本。`files` 表那一栏才是按字节的。
 
 ## 当前副本
@@ -42,22 +42,29 @@
 | 项 | 值 |
 | --- | --- |
 | 来源仓库 | `8005-agv-protocol` |
-| 来源提交 | `f6ee75defe6e2d18f63f4082bee445dbb678ab1b`（分支 `fp/v2-candidate`） |
-| 取用日期 | 2026-09-09 |
+| 来源提交 | `86575456c847041515b7b75e8851a00e0d939804`（分支 `fp/v2-candidate` 的顶端） |
+| 取用日期 | 2026-09-16 |
 
 | 来源路径 | 内容 |
 | --- | --- |
-| `manifest/release.json` | `status CONTENT_SNAPSHOT`、`releaseVersion 1.0.0`、`protocolVersion 2`、`profileId AGV_FULL_PRODUCT`、63 条消息、11 条 denylist、1758 条文件表项 |
-| `schemas/`（整棵树） | 69 个文件，`$id` 段 `agv-full-product/v2` |
-| `errors/error-codes.json` | `registryVersion 2`、`appendOnly true`、54 个码（v1 的 43 个一个未删） |
-| `integration-slices/index.json` | 16 个切片 `FP-IS-00`～`FP-IS-15`、`vectorIds` 条目 34 条、去重 31 个向量 |
+| `manifest/release.json` | `status CONTENT_SNAPSHOT`、`releaseVersion 2.0.0`、`protocolVersion 3`、`profileId AGV_FULL_PRODUCT`、63 条消息、11 条 denylist、1785 条文件表项 |
+| `schemas/`（整棵树） | 69 个文件，`$id` 段 `agv-full-product/v3` |
+| `errors/error-codes.json` | `registryVersion 1.1.0`、`appendOnly true`、58 个码（1.0.0 的 54 个一个未删，新增 `SUBLOT_NOT_IN_DISPATCH_SCOPE`、`SUBLOT_BOX_COUNT_UNAVAILABLE`、`PACKAGE_CAPACITY_UNRESOLVED`、`OPERATOR_TIMEOUT`） |
+| `integration-slices/index.json` | 16 个切片 `FP-IS-00`～`FP-IS-15`、`vectorIds` 条目 36 条、去重 33 个向量（新增 `CV-LOAD-CANCELLATION-BEFORE-LOAD`、`CV-SUBLOT-REJECTED-AFTER-ENTRY`，都挂 `FP-IS-02`） |
 
-那个提交即协议 v2 候选，G1 于 2026-09-08 在协议仓 self-hosted runner 上实跑通过（run
-[34212719223](https://github.com/trytoreachpeak0/8005-agv-protocol/actions/runs/34212719223)）。
+那个提交即协议 `v2.0.0` 候选，由 `8005-agv-program#96` 交付并冻结，G1 于 2026-09-15 在协议仓
+CI 上实跑通过（run
+[35049199772](https://github.com/trytoreachpeak0/8005-agv-protocol/actions/runs/35049199772)），
+合入 `fp/v2-candidate` 后在干净克隆上复跑 PASS。
 
 **它是候选，不是已批准发布。** `WireToGateRelease.ApprovalStatus` 写着
-`SUPERSEDING_CANDIDATE`，`Tag` 写着 `protocol-v1.0.0` 而那个 tag 在协议仓里还没打——两个字段
-一起读才是如实的。理由见 `src/SQCD.Agv.Contracts/WireToGateProtocol.cs` 的注释。
+`SUPERSEDING_CANDIDATE`，`Tag` 写着 `protocol-v2.0.0` 而那个 tag 在协议仓里还没打——它由
+`8005-agv-program#97` 在同一个 commit 上创建——两个字段一起读才是如实的。理由见
+`src/SQCD.Agv.Contracts/WireToGateProtocol.cs` 的注释。
+
+**`protocolVersion` 同为 3 的还有 MVP 线的 `WIRE_TO_GATE_MVP 0.3.0`。** 这个整数只在同一
+`profileId` 内单调递增，所以身份比较一律比完整的 `ProtocolReleaseIdentity`，日志与证据里写协议
+版本时成对写 `(profileId, protocolVersion)`。
 
 ## 上游改了以后怎么刷新
 
@@ -93,7 +100,7 @@
    - **错误码增删** → `ReasonCodeRegistryArchitectureTests`：`IsProtocolErrorCode` 那份内联
      清单与注册表不再逐个相等。
    - **切片或向量增删** → `ProtocolVectorTestBindingArchitectureTests`：切片数／条目数／去重向量数
-     不再是 16／34／31，或者某个新向量还没有车载端具名测试与之绑定。
+     不再是 16／36／33，或者某个新向量还没有车载端具名测试与之绑定。
 
 **整份拷贝，不要手工编辑副本。**副本与上游的差异没有任何机制能自动发现，唯一的保障是
 「它永远是 `cp` 出来的」这条纪律。

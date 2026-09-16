@@ -7,15 +7,22 @@ public abstract record WireToGateServerCommand(
     long SessionGeneration,
     DateTimeOffset SentAt);
 
+/// <summary>
+/// The server's request for an operator sublot entry.
+/// </summary>
+/// <remarks>
+/// <see cref="ExpectedSublots"/> replaced protocol 1.0.0's single <c>ExpectedSublot</c> and its
+/// <c>DemandId</c>. The entry is checked for membership in this set, and the vehicle binds no
+/// demand at all.
+/// </remarks>
 public sealed record WireToGateSublotEntryRequest(
     string MessageId,
     long SessionGeneration,
     DateTimeOffset SentAt,
-    string DemandId,
     string OperationSessionId,
     string StationId,
     long WorklistRevision,
-    string ExpectedSublot,
+    IReadOnlyList<string> ExpectedSublots,
     IReadOnlyList<string> EntryMethods,
     bool ExpiresOnRevisionChange)
     : WireToGateServerCommand("SublotEntryRequested", MessageId, null, SessionGeneration, SentAt);
@@ -149,6 +156,13 @@ public sealed record WireToGateRecoveryBlockingFact(
     string SubjectType,
     string? SubjectId);
 
+/// <summary>
+/// The server's view of an open recovery session.
+/// </summary>
+/// <remarks>
+/// <see cref="SlotOperationAttemptId"/> arrived with protocol 2.0.0 and is the server naming which
+/// slot operation attempt this recovery is about. <c>null</c> means the session has none attached.
+/// </remarks>
 public sealed record WireToGateExceptionRecoverySessionSnapshot(
     string MessageId,
     string? CorrelationId,
@@ -161,6 +175,7 @@ public sealed record WireToGateExceptionRecoverySessionSnapshot(
     string AdministratorRole,
     string EventId,
     string? DemandId,
+    string? SlotOperationAttemptId,
     IReadOnlyList<int> Slots,
     string? SelectedAction,
     IReadOnlyList<string> AllowedActions,

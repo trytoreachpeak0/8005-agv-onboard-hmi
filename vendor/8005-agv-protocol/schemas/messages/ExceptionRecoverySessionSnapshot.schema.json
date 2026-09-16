@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.8005-agv.local/agv-full-product/v2/messages/ExceptionRecoverySessionSnapshot.schema.json",
+  "$id": "https://schemas.8005-agv.local/agv-full-product/v3/messages/ExceptionRecoverySessionSnapshot.schema.json",
   "title": "ExceptionRecoverySessionSnapshot",
   "type": "object",
   "properties": {
     "protocolVersion": {
       "type": "integer",
-      "const": 2
+      "const": 3
     },
     "profileId": {
       "type": "string",
@@ -18,11 +18,11 @@
       "minLength": 1,
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
       "examples": [
-        "1.0.0"
+        "2.0.0"
       ]
     },
     "protocolReleaseManifestSha256": {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Sha256"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Sha256"
     },
     "messageType": {
       "type": "string",
@@ -30,7 +30,7 @@
       "const": "ExceptionRecoverySessionSnapshot"
     },
     "messageId": {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Id"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Id"
     },
     "correlationId": {
       "type": "null"
@@ -43,19 +43,19 @@
       ]
     },
     "sessionGeneration": {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Generation"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Generation"
     },
     "sentAt": {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Instant"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Instant"
     },
     "payload": {
       "type": "object",
       "properties": {
         "exceptionRecoverySessionId": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Id"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Id"
         },
         "recoverySessionRevision": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Revision"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Revision"
         },
         "state": {
           "type": "string",
@@ -78,12 +78,22 @@
           ]
         },
         "eventId": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Id"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Id"
         },
         "demandId": {
           "anyOf": [
             {
-              "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Id"
+              "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "slotOperationAttemptId": {
+          "anyOf": [
+            {
+              "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Id"
             },
             {
               "type": "null"
@@ -93,7 +103,7 @@
         "slots": {
           "type": "array",
           "items": {
-            "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/SlotNo"
+            "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/SlotNo"
           },
           "minItems": 1,
           "maxItems": 8,
@@ -132,7 +142,7 @@
         "blockingFacts": {
           "type": "array",
           "items": {
-            "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/BlockingFact"
+            "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/BlockingFact"
           },
           "uniqueItems": true
         }
@@ -145,6 +155,7 @@
         "administratorRole",
         "eventId",
         "demandId",
+        "slotOperationAttemptId",
         "slots",
         "selectedAction",
         "allowedActions",

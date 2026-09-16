@@ -198,10 +198,15 @@ public sealed partial class WireToGateBusinessService
             return _session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired;
         }
 
+        // The subject is #80's and only #80's; the server's attempt id is an extra condition on it,
+        // never a way to pick a different one. A disagreement greys the entry out here and is
+        // refused loudly on the request path.
         return snapshot.SelectedAction is null
+            && !IsInconsistentRecoverySession(snapshot.ExceptionRecoverySessionId)
             && snapshot.AllowedActions.Contains(action, StringComparer.Ordinal)
             && string.Equals(snapshot.DemandId, context.DemandId, StringComparison.Ordinal)
-            && snapshot.Slots.SequenceEqual(context.Slots);
+            && snapshot.Slots.SequenceEqual(context.Slots)
+            && IsSameSlotOperationAttempt(snapshot.SlotOperationAttemptId, context);
     }
 
     private async Task<bool> RequestLoadCancellationCoreAsync(
@@ -423,6 +428,8 @@ public sealed partial class WireToGateBusinessService
                 throw new InvalidOperationException("RECOVERY_SESSION_STATE_PENDING");
             }
 
+            ObserveRecoverySessionAttempt(
+                snapshot.ExceptionRecoverySessionId, snapshot.SlotOperationAttemptId);
             ValidateRecoverySessionSnapshot(snapshot, operation);
             if (snapshot.SelectedAction is not null
                 && !string.Equals(snapshot.SelectedAction, action, StringComparison.Ordinal))
@@ -464,6 +471,7 @@ public sealed partial class WireToGateBusinessService
                 snapshot!.SentAt,
                 snapshot.EventId,
                 operation.DemandId,
+                snapshot.SlotOperationAttemptId,
                 operation.Slots,
                 snapshot.RecoverySessionRevision);
             requestId = opened.RequestId;
@@ -492,13 +500,16 @@ public sealed partial class WireToGateBusinessService
             eventId = activeSession ? snapshot!.EventId : requestId;
             if (activeSession)
             {
-                ValidateRecoverySessionSnapshot(snapshot!, operation);
+                ObserveRecoverySessionAttempt(
+                    snapshot!.ExceptionRecoverySessionId, snapshot.SlotOperationAttemptId);
+                ValidateRecoverySessionSnapshot(snapshot, operation);
                 opened = new(
                     requestId,
                     snapshot!.ExceptionRecoverySessionId,
                     snapshot.SentAt,
                     snapshot.EventId,
                     snapshot.DemandId,
+                    snapshot.SlotOperationAttemptId,
                     snapshot.Slots,
                     snapshot.RecoverySessionRevision);
             }
@@ -534,6 +545,8 @@ public sealed partial class WireToGateBusinessService
                     .ConfigureAwait(false);
             }
 
+            ObserveRecoverySessionAttempt(
+                opened.ExceptionRecoverySessionId, opened.SlotOperationAttemptId);
             ValidateOpenedRecoverySession(opened, requestId, eventId, operation);
             actionId = state.RecoveryActionId
                 ?? StableUuid($"{opened.ExceptionRecoverySessionId}|{action}");
@@ -609,6 +622,9 @@ public sealed partial class WireToGateBusinessService
                 $"服务端拒绝恢复动作 {action}：{exception.Message}。未执行仓门IO。 ");
             throw;
         }
+        ObserveRecoverySessionAttempt(
+            accepted.ExceptionRecoverySessionId, accepted.SlotOperationAttemptId);
+        RequireSameSlotOperationAttempt(accepted.SlotOperationAttemptId, operation);
         if (!string.Equals(accepted.RecoveryActionId, actionId, StringComparison.Ordinal)
             || !string.Equals(
                 accepted.ExceptionRecoverySessionId,
@@ -1617,10 +1633,107 @@ public sealed partial class WireToGateBusinessService
             ? new(context.OperatorId, context.OperatorVerificationMethod, verifiedAt)
             : throw new InvalidDataException("RECOVERY_OPERATOR_CONTEXT_MISSING");
 
+    /// <summary>
+    /// Refuses a recovery response that names an attempt other than the one in scope.
+    /// </summary>
+    /// <remarks>
+    /// Applied to all three of the server's recovery messages, because the scope they agree on is
+    /// what the compensation request is later sent under. A <c>null</c> here is the server naming
+    /// no attempt, which challenges nothing.
+    /// </remarks>
+    /// <summary>
+    /// Fixes the first <c>slotOperationAttemptId</c> a recovery session gives -- <c>null</c>
+    /// included -- and refuses any later message of the same session that gives a different one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The rule is the fill rule in <c>8005-agv-program#95</c> (commit <c>6ed3564</c>): the value
+    /// follows from the session's <c>demandId</c> and whether that demand had a slot operation, and
+    /// no slot operation starts while a recovery session is open, so the three messages of one
+    /// session "should give the same value; a disagreement means two sources, and is a defect".
+    /// </para>
+    /// <para>
+    /// It is a different check from <see cref="RequireSameSlotOperationAttempt"/>. That one is the
+    /// vehicle's record against the server's name, and a <c>null</c> name challenges nothing. This
+    /// one is the server against itself, and a <c>null</c> after a name -- or a name after a
+    /// <c>null</c> -- is exactly the disagreement it exists for. Once a session disagrees it stays
+    /// refused: a later message agreeing with one of the two values does not say which was right.
+    /// </para>
+    /// <para>
+    /// Held in memory. After a restart the server re-sends the session's snapshot, so the first value
+    /// is re-established from the wire rather than from a journal that could itself be stale.
+    /// </para>
+    /// </remarks>
+    private void ObserveRecoverySessionAttempt(
+        string exceptionRecoverySessionId,
+        string? slotOperationAttemptId)
+    {
+        lock (_recoverySessionAttemptGate)
+        {
+            if (string.Equals(
+                    _inconsistentRecoverySessionId,
+                    exceptionRecoverySessionId,
+                    StringComparison.Ordinal))
+            {
+                throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
+            }
+
+            if (_recoverySessionAttempt is not { } first
+                || !string.Equals(
+                    first.ExceptionRecoverySessionId,
+                    exceptionRecoverySessionId,
+                    StringComparison.Ordinal))
+            {
+                _recoverySessionAttempt = (exceptionRecoverySessionId, slotOperationAttemptId);
+                return;
+            }
+
+            if (!string.Equals(
+                    first.SlotOperationAttemptId,
+                    slotOperationAttemptId,
+                    StringComparison.Ordinal))
+            {
+                _inconsistentRecoverySessionId = exceptionRecoverySessionId;
+                throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
+            }
+        }
+    }
+
+    private bool IsInconsistentRecoverySession(string exceptionRecoverySessionId)
+    {
+        lock (_recoverySessionAttemptGate)
+        {
+            return string.Equals(
+                _inconsistentRecoverySessionId,
+                exceptionRecoverySessionId,
+                StringComparison.Ordinal);
+        }
+    }
+
+    private static void RequireSameSlotOperationAttempt(
+        string? serverNamedSlotOperationAttemptId,
+        WireToGateRecoveryOperationContext operation)
+    {
+        if (!IsSameSlotOperationAttempt(serverNamedSlotOperationAttemptId, operation))
+        {
+            throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
+        }
+    }
+
+    private static bool IsSameSlotOperationAttempt(
+        string? serverNamedSlotOperationAttemptId,
+        WireToGateRecoveryOperationContext operation) =>
+        serverNamedSlotOperationAttemptId is null
+        || string.Equals(
+            serverNamedSlotOperationAttemptId,
+            operation.SlotOperationAttemptId,
+            StringComparison.Ordinal);
+
     private static void ValidateRecoverySessionSnapshot(
         WireToGateExceptionRecoverySessionSnapshot snapshot,
         WireToGateRecoveryOperationContext operation)
     {
+        RequireSameSlotOperationAttempt(snapshot.SlotOperationAttemptId, operation);
         if (snapshot.State == "CLOSED"
             || !string.Equals(snapshot.DemandId, operation.DemandId, StringComparison.Ordinal)
             || !snapshot.Slots.SequenceEqual(operation.Slots))
@@ -1635,6 +1748,7 @@ public sealed partial class WireToGateBusinessService
         string eventId,
         WireToGateRecoveryOperationContext operation)
     {
+        RequireSameSlotOperationAttempt(opened.SlotOperationAttemptId, operation);
         if (!string.Equals(opened.RequestId, requestId, StringComparison.Ordinal)
             || !string.Equals(opened.EventId, eventId, StringComparison.Ordinal)
             || !string.Equals(opened.DemandId, operation.DemandId, StringComparison.Ordinal)

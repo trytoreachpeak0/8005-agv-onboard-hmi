@@ -57,7 +57,7 @@ public sealed class WpfOnboardAutomationFacade : IOnboardAutomationFacade
             _session.CurrentJourney,
             recovery,
             _business.CanSubmitSublot,
-            _business.ExpectedSublot,
+            _business.ExpectedSublots,
             currentAttemptId,
             currentPhase,
             _clock.Now.ToUniversalTime());

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.8005-agv.local/agv-full-product/v2/governance/integration-slice-index.schema.json",
+  "$id": "https://schemas.8005-agv.local/agv-full-product/v3/governance/integration-slice-index.schema.json",
   "title": "IntegrationSliceIndex",
   "type": "object",
   "additionalProperties": false,

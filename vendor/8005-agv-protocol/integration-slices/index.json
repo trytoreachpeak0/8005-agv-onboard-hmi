@@ -109,7 +109,9 @@
       "vectorIds": [
         "CV-PICKUP-SUBLOT-LOAD",
         "CV-LOAD-CORRECTION",
-        "CV-LOAD-CANCELLATION-ALL-EMPTY"
+        "CV-LOAD-CANCELLATION-ALL-EMPTY",
+        "CV-LOAD-CANCELLATION-BEFORE-LOAD",
+        "CV-SUBLOT-REJECTED-AFTER-ENTRY"
       ],
       "gates": [
         "G1",

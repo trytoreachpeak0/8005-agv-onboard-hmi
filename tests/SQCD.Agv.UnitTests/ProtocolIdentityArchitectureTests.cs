@@ -159,17 +159,20 @@ public sealed class ProtocolIdentityArchitectureTests
     }
 
     /// <summary>
-    /// The tag is schema-legal, and the approval status says it names the approved release.
+    /// The tag is schema-legal, and the approval status says it is a candidate rather than a
+    /// release.
     /// </summary>
     /// <remarks>
-    /// The two are checked together because either alone says too little. Until 2026-09-12
-    /// <c>protocol-v1.0.0</c> had not been cut and this test asserted <c>SUPERSEDING_CANDIDATE</c>. The
-    /// change was made here on purpose the day the annotated tag and its approval attestation were
-    /// published. That the tag really points at <see cref="WireToGateRelease.Commit"/> is checked by
-    /// <c>scripts/run-w2g-g2.ps1</c> against a protocol checkout, which this assembly does not have.
+    /// The two are checked together because either alone says too little. <c>protocol-v2.0.0</c> has
+    /// not been cut -- <c>8005-agv-program#97</c> creates it on
+    /// <see cref="WireToGateRelease.Commit"/> -- so a tag name alone would read as a release this
+    /// build is not bound to. The pair is what tells the truth, and this assertion moved back to
+    /// <c>SUPERSEDING_CANDIDATE</c> the day the identity moved to the 2.0.0 candidate. That the tag,
+    /// once it exists, really points at that commit is checked by <c>scripts/run-w2g-g2.ps1</c>
+    /// against a protocol checkout, which this assembly does not have.
     /// </remarks>
     [Fact]
-    public void TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsTheApprovedRelease()
+    public void TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsAnUnreleasedCandidate()
     {
         using JsonDocument types = JsonDocument.Parse(File.ReadAllBytes(
             Path.Combine(VendorRoot(), "schemas", "common", "types.schema.json")));
@@ -178,7 +181,69 @@ public sealed class ProtocolIdentityArchitectureTests
 
         Assert.Matches(tag.GetProperty("pattern").GetString()!, WireToGateRelease.Tag);
         Assert.True(WireToGateRelease.Tag.Length >= tag.GetProperty("minLength").GetInt32());
-        Assert.Equal("APPROVED_RELEASE", WireToGateRelease.ApprovalStatus);
+        Assert.Equal("SUPERSEDING_CANDIDATE", WireToGateRelease.ApprovalStatus);
+    }
+
+    /// <summary>
+    /// An envelope whose <c>protocolVersion</c> is this build's 3 but whose release is
+    /// <c>WIRE_TO_GATE_MVP 0.3.0</c> is refused.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The integer is only monotonic <i>within</i> a profile: <c>WIRE_TO_GATE_MVP 0.2.0</c> and
+    /// <c>AGV_FULL_PRODUCT 1.0.0</c> were both 2, and <c>WIRE_TO_GATE_MVP 0.3.0</c> and
+    /// <c>AGV_FULL_PRODUCT 2.0.0</c> are both 3. So a peer on the MVP line now agrees with this
+    /// build on the one field that looks like a version, and a comparison that stopped there would
+    /// admit its payloads -- which have different shapes under the same message names.
+    /// </para>
+    /// <para>
+    /// The three variants below are the three remaining identity fields, each wrong on its own with
+    /// <c>protocolVersion</c> left matching, so the test fails if any single one of them stops being
+    /// compared rather than only if all three do.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AnEnvelopeOnADifferentReleaseWithTheSameProtocolVersionIsRefused()
+    {
+        Assert.Equal(3, WireToGateRelease.ProtocolVersion);
+
+        foreach ((string what, string line) in ForeignReleaseEnvelopes())
+        {
+            InvalidDataException failure = Assert.Throws<InvalidDataException>(
+                () => WireToGateProtocolSerializer.DeserializeAndValidate(line, "AGV-001"));
+            Assert.Equal("PROTOCOL_RELEASE_IDENTITY_MISMATCH", failure.Message);
+            Assert.False(
+                string.IsNullOrEmpty(what),
+                "every variant is named so a failure says which field stopped being compared");
+        }
+    }
+
+    /// <summary>
+    /// Envelopes that agree on <c>protocolVersion</c> and differ in exactly one other identity
+    /// field, written as raw bytes rather than built from the constants they are meant to differ
+    /// from.
+    /// </summary>
+    private static IEnumerable<(string What, string Line)> ForeignReleaseEnvelopes()
+    {
+        const string ManifestOfAnotherRelease =
+            "0000000000000000000000000000000000000000000000000000000000000000";
+
+        yield return ("profileId", Envelope(
+            "WIRE_TO_GATE_MVP", WireToGateRelease.ReleaseVersion, WireToGateRelease.ManifestSha256));
+        yield return ("releaseVersion", Envelope(
+            WireToGateRelease.ProfileId, "0.3.0", WireToGateRelease.ManifestSha256));
+        yield return ("protocolReleaseManifestSha256", Envelope(
+            WireToGateRelease.ProfileId, WireToGateRelease.ReleaseVersion, ManifestOfAnotherRelease));
+
+        static string Envelope(string profileId, string releaseVersion, string manifestSha256) =>
+            $$"""
+            {"protocolVersion":{{WireToGateRelease.ProtocolVersion}},"profileId":"{{profileId}}",
+            "protocolReleaseVersion":"{{releaseVersion}}",
+            "protocolReleaseManifestSha256":"{{manifestSha256}}",
+            "messageType":"Heartbeat","messageId":"00000000-0000-4000-8000-000000000001",
+            "correlationId":null,"agvId":"AGV-001","sessionGeneration":1,"payload":{},
+            "sentAt":"2026-09-16T00:00:00+00:00"}
+            """.ReplaceLineEndings(string.Empty);
     }
 
     /// <summary>

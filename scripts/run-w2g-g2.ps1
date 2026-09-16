@@ -28,21 +28,24 @@ if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
 # ProtocolIdentityArchitectureTests.TheGateScriptExpectsTheSameIdentityAsTheAssembly
 # 逐字段比对这两份，任一处漂移即测试红。
 #
-# protocol-v1.0.0 已于 2026-09-12 发布：注释 tag 指向下面的 Commit，外置 attestation 里有一份批准，
-# 由产品负责人授权的 AI agent 给出（协议治理当天起允许）。在那之前这里写的是一个还没打出的 tag，
-# ApprovalStatus 为 SUPERSEDING_CANDIDATE。下面照旧检查 tag 若存在必须指向 Commit，并且
-# ApprovalStatus 声称已发布时 tag 必须存在。
+# 2026-09-16 起绑定的是 v2.0.0 候选（8005-agv-program#96 公布的身份表），不是已发布版本：
+# Tag 写的 protocol-v2.0.0 此刻还不存在，由 8005-agv-program#97 在同一个 commit 上创建，
+# ApprovalStatus 因此是 SUPERSEDING_CANDIDATE——两个字段一起读才是如实的。下面照旧检查
+# tag 若存在必须指向 Commit，并且 ApprovalStatus 声称已发布时 tag 必须存在。
+#
+# ProtocolVersion 同为 3 的还有 WIRE_TO_GATE_MVP 0.3.0：整数只在同一 profileId 内单调递增，
+# 所以身份比较一律逐字段比完整身份，不得只比这个整数。
 $expected = [ordered]@{
-    ProtocolVersion = 2
+    ProtocolVersion = 3
     ProfileId = 'AGV_FULL_PRODUCT'
-    ReleaseVersion = '1.0.0'
+    ReleaseVersion = '2.0.0'
     Repository = '8005-agv-protocol'
-    Tag = 'protocol-v1.0.0'
-    Commit = '9f22db825d52ad86c1d803bd0c1925dcc58d6793'
-    ManifestSha256 = 'a0e1deedb50419057dbe6aa7a7e8df983fb9ea901bbc452f97020ebf4743ef23'
-    SchemaBundleSha256 = '885191e7a9e5da98a44f17f131756f9eb2033e7e11f13f4df965d4e35ac55685'
-    VectorsSha256 = '51c5aaca2ca02326d16e02af7e76c9954d84414a9772c5b208a92969a417d1df'
-    ApprovalStatus = 'APPROVED_RELEASE'
+    Tag = 'protocol-v2.0.0'
+    Commit = '86575456c847041515b7b75e8851a00e0d939804'
+    ManifestSha256 = '4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7'
+    SchemaBundleSha256 = '9db0dbdc22fed7e39edf8d01b1fc40a12f5d70a7414f696f909ab2a87eb8c221'
+    VectorsSha256 = '391fa69a7d6e9f86ea139ba4c74eadf4994bf0a87e89d3dc5258dd7968d9182a'
+    ApprovalStatus = 'SUPERSEDING_CANDIDATE'
 }
 
 $failures = [System.Collections.Generic.List[string]]::new()
@@ -473,9 +476,14 @@ Add-Event $transcript 'evidence.journal.bound' @{
     g1Status = $protocolStatus
     hmiStatus = $hmiStatus
 }
+# profileId 与 protocolVersion 一起写，从不单写后者：同一个整数在两个 profile 上都出现过
+# （WIRE_TO_GATE_MVP 0.3.0 与 AGV_FULL_PRODUCT 2.0.0 都是 3），单写的证据读不出是哪一条线。
 Add-Event $journal 'protocol.identity.checked' @{
     protocolCommit = $protocolCommit
     protocolTag = $expected.Tag
+    profileId = $expected.ProfileId
+    protocolVersion = $expected.ProtocolVersion
+    releaseVersion = $expected.ReleaseVersion
     manifestSha256 = if ($g1ManifestMatch.Success) { $g1ManifestMatch.Groups[1].Value } else { $hmiIdentity.ManifestSha256 }
     schemaBundleSha256 = $expected.SchemaBundleSha256
     vectorsSha256 = $expected.VectorsSha256
@@ -550,6 +558,9 @@ $summary = [ordered]@{
         repository = $expected.Repository
         headCommit = $protocolCommit
         tag = $expected.Tag
+        profileId = $expected.ProfileId
+        protocolVersion = $expected.ProtocolVersion
+        releaseVersion = $expected.ReleaseVersion
         tagExists = $tagExists
         tagCommit = $protocolTagCommit
         candidateCommit = $expected.Commit
@@ -582,7 +593,10 @@ $summary = [ordered]@{
         $(if ($expected.ApprovalStatus -eq 'APPROVED_RELEASE') {
             '本证据绑定的是已发布的 ' + $expected.Tag + '（commit ' + $expected.Commit + '）；发布批准记在外置 attestation 里，本证据不复核它。'
         } else {
-            '本证据绑定的是协议 v2 候选，approvalStatus=' + $expected.ApprovalStatus + '，不是已批准发布：' + $expected.Tag + ' 这个 tag 尚未打出。'
+            '本证据绑定的是协议候选 (' + $expected.ProfileId + ', protocolVersion ' + $expected.ProtocolVersion +
+            ') releaseVersion ' + $expected.ReleaseVersion + '，approvalStatus=' + $expected.ApprovalStatus +
+            '，不是已批准发布：' + $expected.Tag + ' 这个 tag 尚未打出。同一个 protocolVersion 在 MVP 线的 ' +
+            'WIRE_TO_GATE_MVP 0.3.0 上也出现过，所以身份要连 profileId 一起读。'
         }),
         $(if (-not $isSliceRun) {
             '本次未传 -Slice：测试跑的是整个解决方案，不按切片过滤，summary.json 里 FP-IS-00 与 FP-IS-01 ' +

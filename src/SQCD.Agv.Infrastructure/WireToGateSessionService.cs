@@ -65,7 +65,6 @@ public sealed class WireToGateSessionService : IAsyncDisposable
     public event EventHandler<ValueChangedEventArgs<WireToGateServerCommand>>? ServerCommandReceived;
 
     public Task<string> SendSublotSubmittedAsync(
-        string demandId,
         string operationSessionId,
         string stationId,
         long worklistRevision,
@@ -76,7 +75,6 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         DateTimeOffset verifiedAt,
         CancellationToken cancellationToken = default) =>
         _client.SendSublotSubmittedAsync(
-            demandId,
             operationSessionId,
             stationId,
             worklistRevision,

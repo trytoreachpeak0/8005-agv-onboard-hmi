@@ -11,26 +11,39 @@ namespace SQCD.Agv.Contracts;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This names <c>protocol-v1.0.0</c>, an approved release.</b> Every value below is read off
-/// <c>8005-agv-protocol</c> commit <c>9f22db825d52ad86c1d803bd0c1925dcc58d6793</c>, the commit the
-/// annotated tag <c>protocol-v1.0.0</c> points at. It was released on 2026-09-12 with one approval
-/// in its external attestation (the GitHub Release Asset <c>release-approval.json</c>, SHA-256
-/// <c>545fba1c6d67be0cf2b834142340001e36ab9b3245ec1fc1eabaf9b28ccf22e0</c>), given by an AI agent the
-/// product owner authorized, as the protocol's governance allows since that day.
-/// <see cref="ApprovalStatus"/> is the field to read before treating this identity as releasable.
+/// <b>This names the <c>2.0.0</c> candidate, which is not a release.</b> Every value below is read
+/// off <c>8005-agv-protocol</c> commit <c>86575456c847041515b7b75e8851a00e0d939804</c>, the frozen
+/// head of <c>fp/v2-candidate</c> published by the candidate's own delivery ticket
+/// (<c>8005-agv-program#96</c>). <see cref="Tag"/> names <c>protocol-v2.0.0</c>, a tag that does
+/// <b>not</b> exist yet -- <c>8005-agv-program#97</c> creates it on this same commit -- so
+/// <see cref="Tag"/> and <see cref="ApprovalStatus"/> have to be read together to be read
+/// truthfully. <see cref="ApprovalStatus"/> is the field to read before treating this identity as
+/// releasable, and it says <c>SUPERSEDING_CANDIDATE</c>.
 /// </para>
 /// <para>
-/// <b>These nine values are byte-for-byte the control server's.</b> <c>ProtocolCandidateIdentity</c>
-/// in <c>8005-agv-control-server</c> carries the same ones, because the handshake compares
-/// <c>commit</c>, <c>manifestSha256</c>, <c>profileId</c> and <c>protocolVersion</c> and refuses the
-/// session on any difference. Neither end copied the other: both read the candidate.
+/// <b><see cref="ProtocolVersion"/> stays 3 across two different releases, so never compare it
+/// alone.</b> The integer only increases monotonically <i>within</i> one <c>profileId</c>:
+/// <c>WIRE_TO_GATE_MVP 0.2.0</c> and <c>AGV_FULL_PRODUCT 1.0.0</c> were both 2, and
+/// <c>WIRE_TO_GATE_MVP 0.3.0</c> and <c>AGV_FULL_PRODUCT 2.0.0</c> are both 3. Every identity
+/// comparison -- the handshake's and
+/// <see cref="WireToGateProtocolSerializer.DeserializeAndValidate"/>'s -- therefore compares the
+/// whole <see cref="ProtocolReleaseIdentity"/>, and every log or evidence field that records a
+/// protocol version writes the pair <c>(profileId, protocolVersion)</c>.
 /// </para>
 /// <para>
-/// <b><see cref="Tag"/> names a tag that exists.</b> Until 2026-09-12 it named one that did not, and
-/// <see cref="ApprovalStatus"/> said <c>SUPERSEDING_CANDIDATE</c> so that the pair told the truth.
-/// <c>scripts/run-w2g-g2.ps1</c> still fails a run whose protocol checkout has the tag pointing
-/// anywhere but <see cref="Commit"/>, and now also one where this status claims a release whose tag
-/// is absent.
+/// <b>These nine values have to match the control server's, and today they do not yet.</b>
+/// <c>ProtocolCandidateIdentity</c> in <c>8005-agv-control-server</c> is the other copy, and the
+/// handshake compares <c>commit</c>, <c>manifestSha256</c>, <c>profileId</c> and
+/// <c>protocolVersion</c> and refuses the session on any difference. That end moves to the same
+/// candidate in <c>8005-agv-control-server#84</c>; until it merges, this build and the control
+/// server's integration branch are on different identities and will not complete a handshake.
+/// Neither end copies the other: both read the candidate's published identity table.
+/// </para>
+/// <para>
+/// <b>Evidence produced on this identity is development-grade.</b> A <c>ONBOARD_HMI_G2</c> run
+/// against a <c>SUPERSEDING_CANDIDATE</c> is not the gate's formal evidence; the formal run happens
+/// after the release, on <c>8005-agv-onboard-hmi#79</c>. The evidence recorded on
+/// <c>protocol-v1.0.0</c> stops being current evidence the moment this constant moves.
 /// </para>
 /// <para>
 /// <see cref="ApprovalStatus"/> is deliberately <b>not</b> part of <see cref="Identity"/>: the
@@ -41,16 +54,16 @@ namespace SQCD.Agv.Contracts;
 /// </remarks>
 public static class WireToGateRelease
 {
-    public const int ProtocolVersion = 2;
+    public const int ProtocolVersion = 3;
     public const string ProfileId = "AGV_FULL_PRODUCT";
-    public const string ReleaseVersion = "1.0.0";
+    public const string ReleaseVersion = "2.0.0";
     public const string Repository = "8005-agv-protocol";
-    public const string Tag = "protocol-v1.0.0";
-    public const string Commit = "9f22db825d52ad86c1d803bd0c1925dcc58d6793";
-    public const string ManifestSha256 = "a0e1deedb50419057dbe6aa7a7e8df983fb9ea901bbc452f97020ebf4743ef23";
-    public const string SchemaBundleSha256 = "885191e7a9e5da98a44f17f131756f9eb2033e7e11f13f4df965d4e35ac55685";
-    public const string VectorsSha256 = "51c5aaca2ca02326d16e02af7e76c9954d84414a9772c5b208a92969a417d1df";
-    public const string ApprovalStatus = "APPROVED_RELEASE";
+    public const string Tag = "protocol-v2.0.0";
+    public const string Commit = "86575456c847041515b7b75e8851a00e0d939804";
+    public const string ManifestSha256 = "4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7";
+    public const string SchemaBundleSha256 = "9db0dbdc22fed7e39edf8d01b1fc40a12f5d70a7414f696f909ab2a87eb8c221";
+    public const string VectorsSha256 = "391fa69a7d6e9f86ea139ba4c74eadf4994bf0a87e89d3dc5258dd7968d9182a";
+    public const string ApprovalStatus = "SUPERSEDING_CANDIDATE";
 
     public static ProtocolReleaseIdentity Identity { get; } = new(
         Repository,
@@ -89,7 +102,8 @@ public sealed record WireToGateEnvelope(
     JsonElement Payload);
 
 /// <summary>
-/// Minimal strict serializer for the immutable protocol-v1.0.0 candidate envelope.
+/// Minimal strict serializer for the envelope of the protocol release named by
+/// <see cref="WireToGateRelease"/> -- currently the 2.0.0 candidate.
 /// Message payloads remain explicit at their call sites so that later slices can be
 /// generated from the tagged JSON Schemas without changing the transport contract.
 /// </summary>

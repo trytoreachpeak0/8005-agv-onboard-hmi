@@ -141,8 +141,27 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// </summary>
     public event EventHandler<ValueChangedEventArgs<WireToGateServerCommand>>? ServerCommandReceived;
 
+    /// <summary>
+    /// Sends one operator entry. Every call is a new entry and gets a messageId of its own.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The messageId is minted per entry, not derived from the sublot.</b> It used to be
+    /// <c>StableUuid(operationSessionId, worklistRevision, sublot)</c>, and the outbox key with it,
+    /// so scanning the same sublot again after a rejection landed on the first entry's journal
+    /// record: a different operator or <c>verifiedAt</c> threw <c>BUSINESS_ID_CONTENT_CONFLICT</c>
+    /// here, and an identical one returned the old id without sending anything. Protocol 2.0.0 gives
+    /// <c>SublotSubmitted</c> <c>businessDedupKeys: []</c> so that such a retry is a new submission
+    /// rather than a conflict.
+    /// </para>
+    /// <para>
+    /// <b>A resend of the same entry still keeps its id.</b> The durable record written below carries
+    /// the messageId, and a reconnect replays that record, so an entry whose acknowledgement was lost
+    /// goes out again under the id it first had. The outbox key is the messageId for the same reason:
+    /// one entry, one record.
+    /// </para>
+    /// </remarks>
     public Task<string> SendSublotSubmittedAsync(
-        string demandId,
         string operationSessionId,
         string stationId,
         long worklistRevision,
@@ -151,14 +170,15 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         string operatorId,
         string verificationMethod,
         DateTimeOffset verifiedAt,
-        CancellationToken cancellationToken = default) =>
-        SendDurableAsync(
+        CancellationToken cancellationToken = default)
+    {
+        string messageId = Guid.NewGuid().ToString("D");
+        return SendDurableAsync(
             "SublotSubmitted",
-            $"sublot:{demandId}:{operationSessionId}:{worklistRevision}:{sublot}",
-            StableUuid($"sublot:{demandId}:{operationSessionId}:{worklistRevision}:{sublot}"),
+            $"sublot-submitted:{messageId}",
+            messageId,
             null,
             new SublotSubmittedPayload(
-                demandId,
                 operationSessionId,
                 stationId,
                 worklistRevision,
@@ -166,6 +186,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 entryMethod,
                 new WireToGateOperatorContextPayload(operatorId, verificationMethod, verifiedAt)),
             cancellationToken);
+    }
 
     public Task<string> SendOperationProgressAsync(
         string slotOperationAttemptId,
@@ -1785,6 +1806,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                                 payload.ActivePurpose,
                                 payload.ManualChargingHold,
                                 payload.BatteryState,
+                                payload.ChargingCycleState,
+                                payload.LoadingPhase is null
+                                    ? null
+                                    : new WireToGateLoadingPhase(
+                                        payload.LoadingPhase.State,
+                                        payload.LoadingPhase.CargoHoldingDeadlineAt,
+                                        payload.LoadingPhase.ClosedReason),
                                 payload.BlockingFacts
                                     .Select(item => new WireToGateBlockingFact(
                                         item.ReasonCode,
@@ -1813,6 +1841,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                                 payload.StationId,
                                 payload.WorklistRevision,
                                 payload.OperationSessionId,
+                                payload.StationDepartureDeadlineAt,
                                 payload.Items.Select(ToCoreWorklistItem).ToArray(),
                                 payloadContentSha256),
                             UpdatedAt = _clock.Now
@@ -2009,11 +2038,21 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
                     SublotEntryRequestedPayload payload =
                         WireToGateProtocolSerializer.DeserializePayload<SublotEntryRequestedPayload>(envelope);
-                    RequireUuid(payload.DemandId, nameof(payload.DemandId));
                     RequireUuid(payload.OperationSessionId, nameof(payload.OperationSessionId));
+
+                    // expectedSublots is minItems 1, maxItems 8, uniqueItems, and each element
+                    // minLength 1 -- read straight off the frozen schema rather than narrowed to
+                    // the single-element form a one-demand dispatch happens to produce today, and
+                    // with IsNullOrEmpty rather than IsNullOrWhiteSpace for the same reason: " " is
+                    // schema-legal, no trimmed entry can ever match it, and refusing it would be an
+                    // inbound check stricter than the contract.
                     if (string.IsNullOrWhiteSpace(payload.StationId)
                         || payload.WorklistRevision < 0
-                        || string.IsNullOrWhiteSpace(payload.ExpectedSublot)
+                        || payload.ExpectedSublots is null
+                        || payload.ExpectedSublots.Count is < 1 or > 8
+                        || payload.ExpectedSublots.Any(string.IsNullOrEmpty)
+                        || payload.ExpectedSublots.Distinct(StringComparer.Ordinal).Count()
+                            != payload.ExpectedSublots.Count
                         || payload.EntryMethods is null
                         || payload.EntryMethods.SequenceEqual(["SCANNER", "KEYBOARD"]) is false
                         || payload.ExpiresOnRevisionChange is false)
@@ -2025,11 +2064,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         envelope.MessageId,
                         envelope.SessionGeneration!.Value,
                         envelope.SentAt,
-                        payload.DemandId,
                         payload.OperationSessionId,
                         payload.StationId,
                         payload.WorklistRevision,
-                        payload.ExpectedSublot,
+                        payload.ExpectedSublots,
                         payload.EntryMethods,
                         payload.ExpiresOnRevisionChange);
                     return true;
@@ -2187,6 +2225,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         payload.AdministratorRole,
                         payload.EventId,
                         payload.DemandId,
+                        payload.SlotOperationAttemptId,
                         payload.Slots,
                         payload.SelectedAction,
                         payload.AllowedActions,
@@ -2201,10 +2240,22 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     RequireCorrelatedProblem(envelope, typeof(SublotRejectedPayload));
                     SublotRejectedPayload payload =
                         WireToGateProtocolSerializer.DeserializePayload<SublotRejectedPayload>(envelope);
-                    RequireUuid(payload.DemandId, nameof(payload.DemandId));
+
+                    // demandId is nullable since 2.0.0 and null is a legal, meaningful value: a
+                    // sublot outside the dispatch scope has no demand to be named against.
+                    // Demanding a uuid here would refuse exactly the rejection the operator most
+                    // needs to see.
+                    if (payload.DemandId is not null)
+                    {
+                        RequireUuid(payload.DemandId, nameof(payload.DemandId));
+                    }
+
                     RequireUuid(payload.OperationSessionId, nameof(payload.OperationSessionId));
                     ValidateProblem(payload.Problem);
-                    if (payload.CurrentWorklistRevision < 0)
+                    // minLength 1, so empty is refused and whitespace is not: see the same
+                    // reasoning on expectedSublots above.
+                    if (payload.CurrentWorklistRevision < 0
+                        || string.IsNullOrEmpty(payload.RejectedSublot))
                     {
                         throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
                     }
@@ -2507,7 +2558,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
         }
 
-        ValidateSlotResults(payload.SlotResults);
+        ValidateSlotResults(payload.SlotResults, minimumCount: 0);
     }
 
     private static void ValidateLoadCompensationResult(
@@ -2586,11 +2637,24 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         ValidateOperatorContext(payload.Operator);
     }
 
+    /// <summary>
+    /// Validates a <c>slotResults</c> array against the frozen schema, with the lower bound the
+    /// message's own.
+    /// </summary>
+    /// <remarks>
+    /// <c>minItems</c> is 1 on every result message except <c>LoadCancellationResult</c>, where the
+    /// 2.0.0 candidate lowered it to 0: a cancellation that arrives before any slot was opened has
+    /// nothing to report per slot, and inventing an entry would be the vehicle claiming an
+    /// observation it never made. The parameter exists so the difference is stated once per call
+    /// site rather than by loosening the rule for everyone.
+    /// </remarks>
     private static void ValidateSlotResults(
-        IReadOnlyList<WireToGateSlotResultPayload> results)
+        IReadOnlyList<WireToGateSlotResultPayload> results,
+        int minimumCount = 1)
     {
         if (results is null
-            || results.Count is < 1 or > 8
+            || results.Count < minimumCount
+            || results.Count > 8
             || results.Select(result => result.SlotNo).Distinct().Count() != results.Count
             || results.Any(result =>
                 result.SlotNo is < 1 or > 8
@@ -2752,13 +2816,45 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             leg.MapId,
             leg.State);
 
+    /// <summary>
+    /// The <c>loadingPhase</c> object exactly as the frozen schema declares it, including the
+    /// <c>if/then/else</c> that ties <c>closedReason</c> to <c>state</c>.
+    /// </summary>
+    /// <remarks>
+    /// The conditional is the schema's own, not a narrowing of it: <c>closedReason</c> is a string
+    /// when <c>state</c> is <c>CLOSED</c> and <c>null</c> for every other state. A whole-object
+    /// <c>null</c> is legal and means the vehicle has no loading phase right now.
+    /// </remarks>
+    private static bool IsSchemaLegalLoadingPhase(WireToGateLoadingPhasePayload? phase)
+    {
+        if (phase is null)
+        {
+            return true;
+        }
+
+        if (phase.State is not
+            ("LOADING" or "CARGO_HOLDING_WAIT" or "VEHICLE_FULL" or "CLOSED"))
+        {
+            return false;
+        }
+
+        return phase.State is "CLOSED"
+            ? phase.ClosedReason is ("VEHICLE_FULL" or "CARGO_HOLDING_TIMEOUT"
+                or "WAITING_STATION_YIELD" or "PLANNED_LOADING_COMPLETE")
+            : phase.ClosedReason is null;
+    }
+
     private static void ValidateVehicleBusinessState(VehicleBusinessStateSnapshotPayload payload)
     {
         if (payload.VehicleBusinessStateRevision < 0
             || payload.Readiness is not ("READY" or "RECOVERY_REQUIRED")
             || payload.ActivePurpose is not (null
                 or "TRANSPORT" or "CHARGING" or "CLEARING_MAINTENANCE" or "IDLE_RETURN")
-            || payload.BatteryState is not ("SUFFICIENT" or "LOW" or "UNKNOWN")
+            || payload.BatteryState is not
+                ("SUFFICIENT" or "LOW" or "UNKNOWN" or "MANDATORY_CHARGE")
+            || payload.ChargingCycleState is not ("NOT_CHARGING" or "ALLOCATED" or "EN_ROUTE"
+                or "CHARGING" or "COMPLETE" or "UNABLE_TO_CHARGE" or "UNKNOWN")
+            || !IsSchemaLegalLoadingPhase(payload.LoadingPhase)
             || payload.BlockingFacts is null
             || payload.BlockingFacts.Distinct().Count() != payload.BlockingFacts.Count
             || payload.BlockingFacts.Any(fact =>
@@ -2825,7 +2921,16 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         or "RECOVERY_OPERATION_NOT_FOUND"
         or "PROVEN_RECOVERY_CHECKPOINT_REQUIRED"
         or "RECOVERY_ACTION_REQUIRED"
-        or "RECOVERY_RESULT_REQUIRED";
+        or "RECOVERY_RESULT_REQUIRED"
+        // Registered by the 2.0.0 candidate.  The three rejection codes are the control server's
+        // verdicts on a sublot entry this vehicle forwarded; OPERATOR_TIMEOUT is never produced
+        // here -- past the station departure deadline this onboard reopens rather than settling a
+        // determinate failure -- but it is still a protocol code, and this predicate answers "is
+        // this a protocol code", not "does this build emit it".
+        or "SUBLOT_NOT_IN_DISPATCH_SCOPE"
+        or "SUBLOT_BOX_COUNT_UNAVAILABLE"
+        or "PACKAGE_CAPACITY_UNRESOLVED"
+        or "OPERATOR_TIMEOUT";
 
     /// <summary>
     /// Checks an inbound worklist snapshot, and is <b>stricter than the frozen v2 schema on two

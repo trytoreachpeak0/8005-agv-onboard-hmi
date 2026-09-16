@@ -11,7 +11,8 @@ namespace SQCD.Agv.UnitTests;
 /// <remarks>
 /// <para>
 /// "The onboard proves its half of the vectors" was a sentence nobody had even counted by hand. v2
-/// took the vector set to 31 and the slice family table to 16 rows, and this repository carried
+/// took the vector set to 31 and the slice family table to 16 rows -- the 2.0.0 candidate then took
+/// the vector set to 33 without moving the table -- and this repository carried
 /// <b>zero</b> vector traits and zero slice traits -- a vector could be added to the protocol, or
 /// the last test proving one deleted, and every gate here would stay green. The control server grew
 /// the same guard in its own repository; this is the other end of it, and the two ends were measured
@@ -89,7 +90,7 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// gate evidence -- so the boundary has to be stated somewhere on this side, and this is the
     /// smallest form it takes. The two pin sets below are what make it load-bearing instead of
     /// decorative, and
-    /// <see cref="TheIndexParsesIntoSixteenSlicesAndThirtyOneDistinctVectors"/> is what lets it be
+    /// <see cref="TheIndexParsesIntoSixteenSlicesAndThirtyThreeDistinctVectors"/> is what lets it be
     /// stated as slice ids at all: it pins each slice's id to its own sequence, so the ids named here
     /// and the sequences the index carries cannot drift apart.
     /// </para>
@@ -132,15 +133,15 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     private static readonly IReadOnlyDictionary<string, string> VectorsAwaitingTheirSlice =
         new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
-            ["CV-AUTOMATIC-CHARGING-CYCLE"] = "FP-IS-13, batch 8",
-            ["CV-MANUAL-STATION-CLEARANCE"] = "FP-IS-13, batch 8",
-            ["CV-MULTI-STOP-PLAN-NINE-LEGS"] = "FP-IS-08, batch 6",
-            ["CV-REVERSED-DIRECTION-JOURNEY"] = "FP-IS-11, batch 4 second stage",
-            ["CV-TASK-TYPE-ADMISSION-FAIL-CLOSED"] = "FP-IS-10, batch 4",
-            ["CV-UNABLE-TO-CHARGE-FIELD-CONFIRMATION"] = "FP-IS-13, batch 8",
-            ["CV-WAITING-POINT-IDLE-RETURN"] = "FP-IS-12, batch 5",
-            ["CV-WORKLIST-SELECTION-ACCEPTED"] = "FP-IS-09, batch 7",
-            ["CV-WORKLIST-SELECTION-STALE-REVISION"] = "FP-IS-09, batch 7"
+            ["CV-AUTOMATIC-CHARGING-CYCLE"] = "FP-IS-13, batch 9",
+            ["CV-MANUAL-STATION-CLEARANCE"] = "FP-IS-13, batch 9",
+            ["CV-MULTI-STOP-PLAN-NINE-LEGS"] = "FP-IS-08, batch 7",
+            ["CV-REVERSED-DIRECTION-JOURNEY"] = "FP-IS-11, batch 6",
+            ["CV-TASK-TYPE-ADMISSION-FAIL-CLOSED"] = "FP-IS-10, batch 6",
+            ["CV-UNABLE-TO-CHARGE-FIELD-CONFIRMATION"] = "FP-IS-13, batch 9",
+            ["CV-WAITING-POINT-IDLE-RETURN"] = "FP-IS-12, batch 8",
+            ["CV-WORKLIST-SELECTION-ACCEPTED"] = "FP-IS-09, batch 11",
+            ["CV-WORKLIST-SELECTION-STALE-REVISION"] = "FP-IS-09, batch 11"
         };
 
     /// <summary>
@@ -171,14 +172,36 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// recovery-vector path end to end for each.
     /// </para>
     /// <para>
-    /// <b>Keep the field now that it is empty</b> -- empty is itself the assertion, and the two
-    /// rules below still run over it. <c>FP-IS-07</c> is inside track A's recertification scope,
-    /// and an empty set here is the statement that the recertification has no vector debt left to
-    /// dispose of on this end.
+    /// <b>It emptied, and the 2.0.0 candidate refilled it with two.</b> Both are new in that
+    /// candidate, both are frozen onto <c>FP-IS-02</c>, and neither can be bound here: this ticket
+    /// carries the protocol shapes and nothing else, while the behaviour each vector describes is
+    /// another ticket's. <c>CV-LOAD-CANCELLATION-BEFORE-LOAD</c> needs a cancellation answered with
+    /// an empty <c>slotResults</c>, which is <c>8005-agv-onboard-hmi#76</c>;
+    /// <c>CV-SUBLOT-REJECTED-AFTER-ENTRY</c> needs a rejection shown as its real reason, which is
+    /// <c>8005-agv-onboard-hmi#77</c>. Each note names the ticket that owes the test.
+    /// </para>
+    /// <para>
+    /// <b>They are pinned here rather than in <see cref="VectorsAwaitingTheirSlice"/>.</b> The
+    /// ticket asked for the other set, and the other set will not hold them:
+    /// <see cref="EveryScheduledPinBelongsOnlyToSlicesThisBatchDoesNotImplement"/> refuses a
+    /// schedule pin on any vector whose slice this line implements, and <c>FP-IS-02</c> is one it
+    /// does. Widening that rule to admit them would delete the one thing keeping the schedule set
+    /// from absorbing any inconvenient red. The substance of the request -- pin it, and name the
+    /// ticket that claims it -- is what the notes below carry.
     /// </para>
     /// </remarks>
     private static readonly IReadOnlyDictionary<string, string> VectorsThisBatchOwesANamedTest =
-        new SortedDictionary<string, string>(StringComparer.Ordinal);
+        new SortedDictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["CV-LOAD-CANCELLATION-BEFORE-LOAD"] =
+                "FP-IS-02, 批次5-27 (8005-agv-onboard-hmi#76) -- new in the 2.0.0 candidate; this "
+                + "ticket lands only the shape that allows an empty slotResults, not the sending of "
+                + "one",
+            ["CV-SUBLOT-REJECTED-AFTER-ENTRY"] =
+                "FP-IS-02, 批次5-28 (8005-agv-onboard-hmi#77) -- new in the 2.0.0 candidate; this "
+                + "ticket lands only rejectedSublot and the nullable demandId, not the display that "
+                + "stops treating a rejection as a recovery message"
+        };
 
     private sealed record VectorBinding(string VectorId, string TestName);
 
@@ -225,22 +248,23 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// </summary>
     /// <remarks>
     /// Without this, every assertion below could pass over an empty parse. The three counts are the
-    /// ones that differ from each other -- 16 slices, 34 <c>vectorIds</c> entries, 31 distinct
+    /// ones that differ from each other -- 16 slices, 36 <c>vectorIds</c> entries, 33 distinct
     /// vectors -- so a parse that lost a slice, or one that forgot to deduplicate, is reported here
     /// rather than silently narrowing what the binding check covers. The three vectors shared across
-    /// slices are counted rather than named: the count is the entire difference between 34 and 31,
+    /// slices are counted rather than named: the count is the entire difference between 36 and 33,
     /// and writing their ids out would put a hand-copied fragment of the vector list in a file whose
-    /// whole point is not to hold one.
+    /// whole point is not to hold one. The 2.0.0 candidate added two vectors to <c>FP-IS-02</c> and
+    /// no slice, which is why only the first two counts moved.
     /// </remarks>
     [Fact]
-    public void TheIndexParsesIntoSixteenSlicesAndThirtyOneDistinctVectors()
+    public void TheIndexParsesIntoSixteenSlicesAndThirtyThreeDistinctVectors()
     {
         Slice[] slices = Slices();
         string[] entries = [.. slices.SelectMany(slice => slice.VectorIds)];
 
         Assert.Equal(16, slices.Length);
-        Assert.Equal(34, entries.Length);
-        Assert.Equal(31, FrozenVectorIds().Length);
+        Assert.Equal(36, entries.Length);
+        Assert.Equal(33, FrozenVectorIds().Length);
 
         // Each slice's id paired with its own sequence, not the two sets compared separately.
         // LastSliceSequenceThisBatchImplements is stated as a sequence and read as a batch boundary
@@ -497,8 +521,8 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// to be one the suite really binds -- and by construction no such vector is in the real pins.
     /// It also means this proof survives the day batches 3 through 8 empty
     /// <see cref="VectorsAwaitingTheirSlice"/> and the recertification empties
-    /// <see cref="VectorsThisBatchOwesANamedTest"/>, which is exactly when someone might be tempted
-    /// to delete the comparison it guards.
+    /// <see cref="VectorsThisBatchOwesANamedTest"/> again, which is exactly when someone might be
+    /// tempted to delete the comparison it guards.
     /// </remarks>
     [Fact]
     public void TheBindingCheckCatchesAPinnedVectorThatSomethingNowBinds()
