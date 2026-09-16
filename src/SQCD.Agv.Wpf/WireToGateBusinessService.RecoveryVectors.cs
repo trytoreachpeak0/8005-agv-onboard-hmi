@@ -474,6 +474,19 @@ public sealed partial class WireToGateBusinessService
 
         await ForgetLoadCancellationRequestAsync(cancellationId, cancellationToken)
             .ConfigureAwait(false);
+        // The authorization settles the entry request this demand was the subject of, so withdraw it
+        // here rather than wait for the server's next worklist revision. Left in place it kept the
+        // button up: a second press rebuilt the request under the same cancellationId with a new
+        // verifiedAt, and the server dropped the session as a replay with different content. At a
+        // stop with a second demand it also meant cancelling that one sent the first one's id
+        // (8005-agv-onboard-hmi#89). The next demand asks again under its own entry request.
+        if (Interlocked.CompareExchange(ref _currentEntryRequest, null, request) == request)
+        {
+            SublotEntryExpired?.Invoke(
+                this,
+                new ValueChangedEventArgs<WireToGateSublotEntryRequest>(request));
+        }
+
         PublishOperatorResponse(
             "RECOVERY_VECTOR_AUTHORIZED",
             "本站装货已取消，车辆可以接下一单。 ");
