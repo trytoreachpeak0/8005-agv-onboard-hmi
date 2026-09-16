@@ -155,7 +155,7 @@ public sealed class OnboardAutomationHostTests
                 WireToGateJourneySnapshot.Empty,
                 WireToGateRecoveryState.Empty,
                 true,
-                "SUBLOT-001",
+                ["SUBLOT-001"],
                 null,
                 null,
                 now);

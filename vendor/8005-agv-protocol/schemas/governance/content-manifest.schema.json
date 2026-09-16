@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.8005-agv.local/agv-full-product/v2/governance/content-manifest.schema.json",
+  "$id": "https://schemas.8005-agv.local/agv-full-product/v3/governance/content-manifest.schema.json",
   "title": "ProtocolContentManifest",
   "type": "object",
   "additionalProperties": false,

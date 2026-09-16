@@ -102,6 +102,61 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool ReplayJourneySnapshotsWithStableIdentity { get; set; }
 
+    /// <summary>
+    /// The <c>stationDepartureDeadlineAt</c> this fake puts on every worklist snapshot.
+    /// </summary>
+    /// <remarks>
+    /// Required and nullable since protocol 2.0.0, and <c>null</c> by default because that is what
+    /// the control server sends when a stop carries no deadline for continuing to load -- the case
+    /// every existing scenario here is written for. A test that needs a countdown sets it.
+    /// </remarks>
+    public DateTimeOffset? StationDepartureDeadlineAt { get; set; }
+
+    /// <summary>
+    /// The <c>operationSessionId</c> this fake puts on the worklist snapshot and on the sublot
+    /// entry request, so the two agree the way the real server makes them agree.
+    /// </summary>
+    /// <remarks>
+    /// <c>null</c> -- no operation session -- is what the existing scenarios here run under, and
+    /// the worklist schema allows it. The entry request's own <c>operationSessionId</c> is not
+    /// nullable, so a test that drives an entry sets this.
+    /// </remarks>
+    public string? OperationSessionId { get; set; }
+
+    /// <summary>
+    /// When set, a <c>SublotEntryRequested</c> naming these sublots follows the journey snapshots.
+    /// </summary>
+    /// <remarks>
+    /// A set of 1 to 8, per the 2.0.0 schema. Protocol 1.0.0 had a single <c>expectedSublot</c> and
+    /// a <c>demandId</c> here; both are gone, and the vehicle checks membership instead.
+    /// </remarks>
+    public IReadOnlyList<string>? SublotEntryExpectedSublots { get; set; }
+
+    /// <summary>
+    /// When set, every <c>SublotSubmitted</c> is answered with a <c>SublotRejected</c> carrying this
+    /// reason code.
+    /// </summary>
+    /// <remarks>
+    /// The 2.0.0 rejection names the refused sublot itself and allows a <c>null</c> demandId,
+    /// because <c>SUBLOT_NOT_IN_DISPATCH_SCOPE</c> is by definition a sublot with no demand to name
+    /// it against. The vehicle-side display of this is <c>8005-agv-onboard-hmi#77</c>; what this
+    /// fake owes is the shape.
+    /// </remarks>
+    public string? RejectSublotSubmissionsWith { get; set; }
+
+    /// <summary>
+    /// The <c>slotOperationAttemptId</c> this fake puts on all three recovery messages.
+    /// </summary>
+    /// <remarks>
+    /// <b><c>null</c> by default, and that default is load-bearing.</b> On the MVP line the same
+    /// field was seeded with a fixed constant, which immediately broke every case running under a
+    /// different attempt -- the double stopped being able to represent "this recovery names your
+    /// attempt" and "this recovery names none" as different things. A scenario that needs the server
+    /// to name an attempt sets this to that attempt, and one that needs a mismatch sets it to
+    /// another.
+    /// </remarks>
+    public string? RecoverySlotOperationAttemptId { get; set; }
+
     public bool SendSlotOperationCommandAfterRecovery { get; set; }
 
     /// <summary>
@@ -663,6 +718,29 @@ public sealed class FakeControlServer : IAsyncDisposable
                         }
 
                         break;
+                    case "SublotSubmitted" when RejectSublotSubmissionsWith is { } reasonCode:
+                        await WriteEnvelopeAsync(
+                            context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        await WriteEnvelopeAsync(context, CreateEnvelope(
+                            context,
+                            "SublotRejected",
+                            messageId,
+                            new
+                            {
+                                demandId = (string?)null,
+                                operationSessionId = root.GetProperty("payload")
+                                    .GetProperty("operationSessionId").GetString(),
+                                problem = new
+                                {
+                                    reasonCode,
+                                    fieldPath = (string?)null,
+                                    displayMessage = (string?)null
+                                },
+                                currentWorklistRevision = 1,
+                                rejectedSublot = root.GetProperty("payload")
+                                    .GetProperty("sublot").GetString()
+                            })).ConfigureAwait(false);
+                        break;
                     case "SublotSubmitted":
                     case "OperationProgress":
                     case "PreDepartureSafetyCheckResult":
@@ -1041,6 +1119,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                     demandId = payload.TryGetProperty("demandId", out JsonElement demandId)
                         ? demandId.GetString()
                         : null,
+                    slotOperationAttemptId = RecoverySlotOperationAttemptId,
                     slots = payload.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()).ToArray(),
                     recoverySessionRevision = 1
                 }))
@@ -1163,6 +1242,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                 {
                     recoveryActionId = actionId,
                     exceptionRecoverySessionId = sessionId,
+                    slotOperationAttemptId = RecoverySlotOperationAttemptId,
                     acceptedAction = payload.GetProperty("action").GetString(),
                     recoverySessionRevision = 2,
                     acceptedAt = DateTimeOffset.UtcNow
@@ -1406,6 +1486,11 @@ public sealed class FakeControlServer : IAsyncDisposable
             });
     }
 
+    /// <summary>
+    /// The entry methods <c>SublotEntryRequested</c> freezes as a <c>const</c> array in its schema.
+    /// </summary>
+    private static readonly string[] FrozenEntryMethods = ["SCANNER", "KEYBOARD"];
+
     private static readonly string[] RecoveryRequiredReasonCodes = ["SESSION_RECOVERY_REQUIRED"];
 
     /// <summary>
@@ -1499,6 +1584,8 @@ public sealed class FakeControlServer : IAsyncDisposable
                 activePurpose = "TRANSPORT",
                 manualChargingHold = ManualChargingHoldInSnapshots,
                 batteryState = "SUFFICIENT",
+                chargingCycleState = "NOT_CHARGING",
+                loadingPhase = (object?)null,
                 blockingFacts = Array.Empty<object>(),
                 observedAt
             })).ConfigureAwait(false);
@@ -1509,7 +1596,8 @@ public sealed class FakeControlServer : IAsyncDisposable
             {
                 stationId = "ST-01",
                 worklistRevision = 1,
-                operationSessionId = (string?)null,
+                operationSessionId = OperationSessionId,
+                stationDepartureDeadlineAt = StationDepartureDeadlineAt,
                 items = new[]
                 {
                     new
@@ -1532,6 +1620,23 @@ public sealed class FakeControlServer : IAsyncDisposable
                 legs = new[] { Leg(movementLegId, legType, demandId, "ACTIVE") }
             })).ConfigureAwait(false);
 
+        if (SublotEntryExpectedSublots is { } expectedSublots)
+        {
+            await WriteEnvelopeAsync(context, CreateEnvelope(
+                context,
+                "SublotEntryRequested",
+                correlationId: null,
+                new
+                {
+                    operationSessionId = OperationSessionId,
+                    stationId = "ST-01",
+                    worklistRevision = 1,
+                    expectedSublots,
+                    entryMethods = FrozenEntryMethods,
+                    expiresOnRevisionChange = true
+                })).ConfigureAwait(false);
+        }
+
         if (SendJourneyRevisionConflict)
         {
             await WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(
@@ -1541,7 +1646,8 @@ public sealed class FakeControlServer : IAsyncDisposable
                 {
                     stationId = "ST-01",
                     worklistRevision = 1,
-                    operationSessionId = (string?)null,
+                    operationSessionId = OperationSessionId,
+                    stationDepartureDeadlineAt = StationDepartureDeadlineAt,
                     items = new[]
                     {
                         new
@@ -1641,7 +1747,8 @@ public sealed class FakeControlServer : IAsyncDisposable
             {
                 stationId = "ST-01",
                 worklistRevision = 1,
-                operationSessionId = (string?)null,
+                operationSessionId = OperationSessionId,
+                stationDepartureDeadlineAt = StationDepartureDeadlineAt,
                 items = new[]
                 {
                     new

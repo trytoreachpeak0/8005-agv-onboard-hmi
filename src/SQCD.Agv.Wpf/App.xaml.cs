@@ -159,7 +159,9 @@ public partial class App : System.Windows.Application, IDisposable
                     _logger.Write(
                         LogSeverity.Information,
                         nameof(App),
-                        $"服务端请求录入Sublot：demandId={args.Value.DemandId}，revision={args.Value.WorklistRevision}。 ");
+                        $"服务端请求录入Sublot：station={args.Value.StationId}，"
+                        + $"revision={args.Value.WorklistRevision}，"
+                        + $"expectedSublots={string.Join("、", args.Value.ExpectedSublots)}。 ");
                     viewModel.RefreshWireToGateInputState();
                 };
                 _wireToGateBusiness.OperatorEventPublished += (_, args) =>

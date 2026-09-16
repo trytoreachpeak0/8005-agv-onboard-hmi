@@ -81,12 +81,15 @@ public sealed class OnboardControllerTests
                 "TRANSPORT",
                 false,
                 "SUFFICIENT",
+                "NOT_CHARGING",
+                null,
                 [],
                 now,
                 new string('a', 64)),
             new WireToGateCurrentStopWorklist(
                 "ST-01",
                 1,
+                null,
                 null,
                 [new WireToGateWorklistItem(
                     "11111111-1111-1111-1111-111111111111",

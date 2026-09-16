@@ -123,7 +123,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         _session.Current.Readiness == WireToGateSessionReadiness.Ready
         && Volatile.Read(ref _currentEntryRequest) is not null;
 
-    public string? ExpectedSublot => Volatile.Read(ref _currentEntryRequest)?.ExpectedSublot;
+    /// <summary>
+    /// The sublots the server's outstanding entry request will accept, or <c>null</c> when there is
+    /// no outstanding request.
+    /// </summary>
+    /// <remarks>
+    /// A set rather than a single value since protocol 2.0.0. A one-demand dispatch puts one
+    /// element in it, but nothing downstream may read it as "the expected sublot".
+    /// </remarks>
+    public IReadOnlyList<string>? ExpectedSublots =>
+        Volatile.Read(ref _currentEntryRequest)?.ExpectedSublots;
 
     /// <summary>
     /// Read-only projection of the latest operation progress emitted by the
@@ -238,6 +247,15 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             {
                 throw new InvalidDataException("RECOVERY_OPERATOR_MISMATCH");
             }
+            // A resume is by definition about the attempt still in flight, so there is no settled
+            // fallback to choose between here -- but the server's name still has to agree with it,
+            // the same way it does on every other recovery path.
+            if (activeRecovery)
+            {
+                RequireSameSlotOperationAttempt(
+                    recoverySnapshot!.SlotOperationAttemptId, context);
+            }
+
             if (state.UnsettledSlotOperationAttemptId != context.SlotOperationAttemptId
                 || activeRecovery
                     && (recoverySnapshot!.DemandId != context.DemandId
@@ -297,6 +315,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     recovery.SentAt,
                     recovery.EventId,
                     recovery.DemandId,
+                    recovery.SlotOperationAttemptId,
                     recovery.Slots,
                     recovery.RecoverySessionRevision);
             }
@@ -317,6 +336,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         cancellationToken)
                     .ConfigureAwait(false);
             }
+            RequireSameSlotOperationAttempt(opened.SlotOperationAttemptId, context);
             if (!string.Equals(opened.RequestId, requestId, StringComparison.Ordinal)
                 || !string.Equals(opened.EventId, eventId, StringComparison.Ordinal)
                 || !string.Equals(opened.DemandId, context.DemandId, StringComparison.Ordinal)
@@ -351,6 +371,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         recoveryReason),
                     cancellationToken)
                 .ConfigureAwait(false);
+            RequireSameSlotOperationAttempt(accepted.SlotOperationAttemptId, context);
             if (!string.Equals(accepted.RecoveryActionId, actionId, StringComparison.Ordinal)
                 || !string.Equals(
                     accepted.ExceptionRecoverySessionId,
@@ -404,8 +425,23 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(entryMethod);
         WireToGateSublotEntryRequest request = Volatile.Read(ref _currentEntryRequest)
             ?? throw new InvalidOperationException("WIRE_TO_GATE_JOURNEY_NOT_READY");
+
+        // Protocol 2.0.0 replaced the request's single expectedSublot and its demandId with a set.
+        // The local check moved with it: the request has to still be the one this worklist asked
+        // for -- same operation session, same revision, same station -- and the entry has to be a
+        // member of the set. Whether an entry outside the set belongs to some other demand is the
+        // control server's judgement (SUBLOT_NOT_IN_DISPATCH_SCOPE); this end never binds a demand.
+        WireToGateCurrentStopWorklist? worklist =
+            _session.CurrentJourney.CurrentStopWorklist;
         if (!request.EntryMethods.Contains(entryMethod, StringComparer.Ordinal)
-            || !string.Equals(request.ExpectedSublot, sublot.Trim(), StringComparison.Ordinal))
+            || worklist is null
+            || !string.Equals(
+                worklist.OperationSessionId,
+                request.OperationSessionId,
+                StringComparison.Ordinal)
+            || worklist.Revision != request.WorklistRevision
+            || !string.Equals(worklist.StationId, request.StationId, StringComparison.Ordinal)
+            || !request.ExpectedSublots.Contains(sublot.Trim(), StringComparer.Ordinal))
         {
             throw new InvalidOperationException("SUBLOT_NOT_IN_WORKLIST");
         }
@@ -418,7 +454,6 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         }
 
         string messageId = await _session.SendSublotSubmittedAsync(
-            request.DemandId,
             request.OperationSessionId,
             request.StationId,
             request.WorklistRevision,
@@ -948,7 +983,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     PublishOperatorEvent(
                         $"sublot-requested:{sublot.MessageId}",
                         "SUBLOT_ENTRY_REQUESTED",
-                        $"收到子批录入请求：{sublot.ExpectedSublot}。");
+                        $"收到子批录入请求：{string.Join("、", sublot.ExpectedSublots)}。");
                     SublotEntryRequested?.Invoke(
                         this,
                         new ValueChangedEventArgs<WireToGateSublotEntryRequest>(sublot));

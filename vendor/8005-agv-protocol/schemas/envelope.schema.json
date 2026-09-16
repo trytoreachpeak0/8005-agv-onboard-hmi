@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.8005-agv.local/agv-full-product/v2/envelope.schema.json",
+  "$id": "https://schemas.8005-agv.local/agv-full-product/v3/envelope.schema.json",
   "title": "ProtocolEnvelope",
   "type": "object",
   "properties": {
     "protocolVersion": {
       "type": "integer",
-      "const": 2
+      "const": 3
     },
     "profileId": {
       "type": "string",
@@ -18,23 +18,23 @@
       "minLength": 1,
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
       "examples": [
-        "1.0.0"
+        "2.0.0"
       ]
     },
     "protocolReleaseManifestSha256": {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Sha256"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Sha256"
     },
     "messageType": {
       "type": "string",
       "minLength": 1
     },
     "messageId": {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Id"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Id"
     },
     "correlationId": {
       "anyOf": [
         {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Id"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Id"
         },
         {
           "type": "null"
@@ -51,7 +51,7 @@
     "sessionGeneration": {
       "anyOf": [
         {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Generation"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Generation"
         },
         {
           "type": "null"
@@ -59,7 +59,7 @@
       ]
     },
     "sentAt": {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v2/common/types.schema.json#/$defs/Instant"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Instant"
     },
     "payload": {
       "type": "object",

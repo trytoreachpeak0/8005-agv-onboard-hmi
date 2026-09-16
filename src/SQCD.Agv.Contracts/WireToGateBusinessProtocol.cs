@@ -1,16 +1,41 @@
 namespace SQCD.Agv.Contracts;
 
+/// <summary>
+/// The C_TO_O sublot entry request, shaped by the 2.0.0 candidate's
+/// <c>SublotEntryRequested.schema.json</c>.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b><c>demandId</c> and <c>expectedSublot</c> are gone; <c>expectedSublots</c> replaces both.</b>
+/// The vehicle never binds a demand -- <c>FP-IS-01</c> gives this end
+/// <c>NEVER_DISCOVER_SELECT_OR_BIND_DEMAND</c> -- so a demand id here was a value it could only
+/// echo. What it checks instead is membership: the operator's entry has to be one of the 1 to 8
+/// unique sublots the server says this stop expects. A sublot outside that set is the control
+/// server's verdict to give, as <c>SUBLOT_NOT_IN_DISPATCH_SCOPE</c>, not this end's to guess.
+/// </para>
+/// <para>
+/// A one-demand dispatch produces a single-element set, but nothing here may assume that: parsing
+/// and checking are written over the set.
+/// </para>
+/// </remarks>
 public sealed record SublotEntryRequestedPayload(
-    string DemandId,
     string OperationSessionId,
     string StationId,
     long WorklistRevision,
-    string ExpectedSublot,
+    IReadOnlyList<string> ExpectedSublots,
     IReadOnlyList<string> EntryMethods,
     bool ExpiresOnRevisionChange);
 
+/// <summary>
+/// The O_TO_C sublot submission, shaped by the 2.0.0 candidate's
+/// <c>SublotSubmitted.schema.json</c>.
+/// </summary>
+/// <remarks>
+/// <b>No <c>demandId</c>.</b> The control server resolves the demand from the entered sublot within
+/// the current dispatch scope (<c>8005-agv-control-server#82</c>). The payload object is
+/// <c>additionalProperties: false</c>, so carrying one would make every submission schema-invalid.
+/// </remarks>
 public sealed record SublotSubmittedPayload(
-    string DemandId,
     string OperationSessionId,
     string StationId,
     long WorklistRevision,
@@ -23,11 +48,23 @@ public sealed record WireToGateOperatorContextPayload(
     string VerificationMethod,
     DateTimeOffset VerifiedAt);
 
+/// <summary>
+/// The C_TO_O rejection of a sublot submission, shaped by the 2.0.0 candidate's
+/// <c>SublotRejected.schema.json</c>.
+/// </summary>
+/// <remarks>
+/// <b><c>DemandId</c> became nullable and <c>RejectedSublot</c> is new; both are required.</b> The
+/// two go together: a sublot outside the current dispatch scope is refused with
+/// <c>SUBLOT_NOT_IN_DISPATCH_SCOPE</c>, and there is by definition no demand to name it against, so
+/// the message identifies what was refused by the sublot itself. <c>correlationId</c> stays
+/// required on the envelope -- a rejection nothing can be matched to is refused on arrival.
+/// </remarks>
 public sealed record SublotRejectedPayload(
-    string DemandId,
+    string? DemandId,
     string OperationSessionId,
     WireToGateProblemPayload Problem,
-    long CurrentWorklistRevision);
+    long CurrentWorklistRevision,
+    string RejectedSublot);
 
 public sealed record SlotOperationCommandPayload(
     string DemandId,
@@ -118,12 +155,24 @@ public sealed record ExceptionRecoverySessionRequestedPayload(
     string Reason,
     string AuthenticationProof);
 
+/// <summary>
+/// The C_TO_O acknowledgement that a recovery session is open, shaped by the 2.0.0 candidate's
+/// <c>ExceptionRecoverySessionOpened.schema.json</c>.
+/// </summary>
+/// <remarks>
+/// <b><c>SlotOperationAttemptId</c> is new in 2.0.0: required, and nullable.</b> It is the server
+/// naming which slot operation attempt this recovery is about. <c>null</c> says the session has no
+/// slot operation attached -- a recovery opened before any loading began -- and is a value this end
+/// has to distinguish from a name, because a name is authoritative and an absence is not. See
+/// <c>WireToGateBusinessService.RecoveryVectors</c> for what the vehicle does with each.
+/// </remarks>
 public sealed record ExceptionRecoverySessionOpenedPayload(
     string RequestId,
     string ExceptionRecoverySessionId,
     DateTimeOffset OpenedAt,
     string EventId,
     string? DemandId,
+    string? SlotOperationAttemptId,
     IReadOnlyList<int> Slots,
     long RecoverySessionRevision);
 
@@ -137,9 +186,19 @@ public sealed record RecoveryActionSubmittedPayload(
     WireToGateOperatorContextPayload Operator,
     string Reason);
 
+/// <summary>
+/// The C_TO_O acceptance of a recovery action, shaped by the 2.0.0 candidate's
+/// <c>RecoveryActionAccepted.schema.json</c>.
+/// </summary>
+/// <remarks>
+/// <b><c>SlotOperationAttemptId</c> is new in 2.0.0: required, and nullable.</b> The three messages
+/// of one recovery session are expected to name the same attempt; a disagreement between them is a
+/// defect rather than a scope this end should follow.
+/// </remarks>
 public sealed record RecoveryActionAcceptedPayload(
     string RecoveryActionId,
     string ExceptionRecoverySessionId,
+    string? SlotOperationAttemptId,
     string AcceptedAction,
     long RecoverySessionRevision,
     DateTimeOffset AcceptedAt);
@@ -157,6 +216,14 @@ public sealed record ManualChargingReturnToServiceResultPayload(
     WireToGateProblemPayload? Problem,
     long VehicleBusinessStateRevision);
 
+/// <summary>
+/// The C_TO_O recovery session snapshot, shaped by the 2.0.0 candidate's
+/// <c>ExceptionRecoverySessionSnapshot.schema.json</c>.
+/// </summary>
+/// <remarks>
+/// <b><c>SlotOperationAttemptId</c> is new in 2.0.0: required, and nullable.</b> Same field, same
+/// meaning, as on the other two recovery messages.
+/// </remarks>
 public sealed record ExceptionRecoverySessionSnapshotPayload(
     string ExceptionRecoverySessionId,
     long RecoverySessionRevision,
@@ -165,6 +232,7 @@ public sealed record ExceptionRecoverySessionSnapshotPayload(
     string AdministratorRole,
     string EventId,
     string? DemandId,
+    string? SlotOperationAttemptId,
     IReadOnlyList<int> Slots,
     string? SelectedAction,
     IReadOnlyList<string> AllowedActions,

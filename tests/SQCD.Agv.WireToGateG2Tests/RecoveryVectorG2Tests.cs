@@ -102,8 +102,15 @@ public sealed class RecoveryVectorG2Tests
     public async Task TheCompensationEntryAppearsForALoadTheVehicleAlreadySettled()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
+
+        // The server names the settled load's attempt on all three recovery messages, the way the
+        // 2.0.0 control server does once loading had started (8005-agv-program#95). This is the
+        // 8005-agv-control-server#5 case on the v2 line: the recovery is decided after the vehicle
+        // cleared the attempt, and the compensation still goes out -- and executes -- carrying the
+        // attempt the server named.
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
             token,
+            server => server.RecoverySlotOperationAttemptId = AttemptId,
             loadAlreadySettled: true);
 
         WireToGateRecoveryState seeded = await harness.ReadRecoveryStateAsync(token);
@@ -710,6 +717,153 @@ public sealed class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// An attempt id no local context here ever carries, used as the server naming a scope this
+    /// vehicle is not in.
+    /// </summary>
+    private const string ForeignAttemptId = "88888888-8888-4888-8888-888888888888";
+
+    /// <summary>
+    /// A recovery response naming an attempt the vehicle does not hold is refused whole, and
+    /// nothing is opened.
+    /// </summary>
+    /// <remarks>
+    /// The server's name is authoritative, so a disagreement is not something to reconcile by
+    /// quietly preferring the local record -- which would be the vehicle acting on one scope while
+    /// the server settles another. It is also not a reason to switch to the server's: the vehicle
+    /// has no context under that id, so following it would mean fabricating one.
+    /// </remarks>
+    [Fact]
+    public async Task ARecoveryResponseNamingAnotherAttemptIsRefusedWhole()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.RecoverySlotOperationAttemptId = ForeignAttemptId,
+            cargoInTargetSlots: true);
+
+        Assert.False(await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token));
+
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_RESPONSE_SCOPE_MISMATCH", token);
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.Empty(harness.ResultsOfType("LoadCompensationRequested"));
+    }
+
+    /// <summary>
+    /// A <c>null</c> attempt id on the recovery messages leaves the local identity unchallenged.
+    /// </summary>
+    /// <remarks>
+    /// <c>null</c> is the server saying this session has no slot operation attached, not the server
+    /// saying the vehicle's is wrong. Treating the two the same would refuse every recovery opened
+    /// before loading began.
+    /// </remarks>
+    [Fact]
+    public async Task ARecoveryResponseNamingNoAttemptDoesNotChallengeTheLocalOne()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.RecoverySlotOperationAttemptId = null);
+
+        Assert.True(await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token));
+
+        await harness.WaitForInboundAsync("LoadCompensationRequested", token);
+        Assert.Equal(AttemptId, AttemptIdOfRequest(harness));
+    }
+
+    /// <summary>
+    /// No local context at all, and a server naming an attempt: still hard-blocked, and no door is
+    /// opened.
+    /// </summary>
+    /// <remarks>
+    /// The identity is read out of the vehicle's own record or it is not had. Synthesising one from
+    /// the server's name would let a message decide which slots this vehicle opens, which is the
+    /// hole <c>8005-agv-onboard-hmi#36</c> closed.
+    /// </remarks>
+    [Fact]
+    public async Task ANamedAttemptWithNoLocalContextStaysHardBlocked()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.RecoverySlotOperationAttemptId = AttemptId,
+            cargoInTargetSlots: true,
+            nothingOnFile: true);
+
+        Assert.False(harness.Business.CanRequestLoadCompensation);
+        Assert.False(await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token));
+
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_OPERATION_CONTEXT_MISSING", token);
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.Empty(harness.ResultsOfType("LoadCompensationRequested"));
+    }
+
+    /// <summary>
+    /// An armed unload over a settled load stays fail-closed even when the server names the settled
+    /// load's attempt.
+    /// </summary>
+    /// <remarks>
+    /// The server's attempt id is an extra condition on the subject
+    /// <c>FindRecoveryLoadOperation</c> picks, never a way to pick a different one. Here that
+    /// subject is nothing -- the unload is armed and unsettled -- and a name pointing at the settled
+    /// load must not reopen the entry the batch 5-15 rule keeps shut. Doing so would also rewrite the
+    /// journal's unsettled attempt from the unload to the load, erasing the record of the door
+    /// standing open.
+    /// </remarks>
+    [Fact]
+    public async Task AServerNamingTheSettledLoadDoesNotReopenCompensationOverAnArmedUnload()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.RecoverySlotOperationAttemptId = AttemptId,
+            armedUnloadOverSettledLoad: true);
+
+        Assert.False(harness.Business.CanRequestLoadCompensation);
+        Assert.False(await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token));
+
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_OPERATION_CONTEXT_MISSING", token);
+        Assert.Empty(harness.ResultsOfType("LoadCompensationRequested"));
+        WireToGateRecoveryState after = await harness.ReadRecoveryStateAsync(token);
+        Assert.Equal(UnloadAttemptId, after.UnsettledSlotOperationAttemptId);
+        Assert.Equal(OperationType.Unload, after.OperationContext!.OperationType);
+    }
+
+    /// <summary>
+    /// The same refusal on the <c>RESUME_AFTER_REPAIR</c> path, which reaches the server through a
+    /// different method and would otherwise have no check at all.
+    /// </summary>
+    [Fact]
+    public async Task ResumeAfterRepairRefusesARecoveryResponseNamingAnotherAttempt()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.RecoverySlotOperationAttemptId = ForeignAttemptId,
+            cargoInTargetSlots: true);
+
+        Assert.False(await harness.Business.RequestResumeAfterRepairAsync(
+            "现场确认仓门已修复，申请续作原操作。", token));
+
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_RESPONSE_SCOPE_MISMATCH", token);
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// The <c>slotOperationAttemptId</c> on the single compensation request the vehicle sent.
+    /// </summary>
+    private static string? AttemptIdOfRequest(RecoveryVectorHarness harness)
+    {
+        using JsonDocument document = JsonDocument.Parse(
+            Assert.Single(harness.ResultsOfType("LoadCompensationRequested")));
+        return document.RootElement.GetProperty("payload")
+            .GetProperty("slotOperationAttemptId").GetString();
+    }
+
+    /// <summary>
     /// One connected onboard sitting on an unsettled load operation, with an authenticated recovery
     /// operator, talking to a control server that issues the vector command an accepted action
     /// calls for.
@@ -787,6 +941,11 @@ public sealed class RecoveryVectorG2Tests
         /// behind, so the seeded state is not written again -- seeding it would erase exactly what
         /// the restart is meant to carry over.
         /// </param>
+        /// <param name="nothingOnFile">
+        /// Seeds neither an armed operation nor a settled load: a vehicle with no record at all of
+        /// the attempt a server might name. The case the batch 5-15 rule and the attempt check both
+        /// have to leave hard-blocked.
+        /// </param>
         /// <summary>
         /// The double every harness stands up on its own. A test that has to keep the double across
         /// a vehicle restart builds it here too, so the two cannot drift apart.
@@ -812,7 +971,8 @@ public sealed class RecoveryVectorG2Tests
             FakeControlServer? existingServer = null,
             string? journalPath = null,
             long baselineRevision = 1,
-            bool restart = false)
+            bool restart = false,
+            bool nothingOnFile = false)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -894,6 +1054,20 @@ public sealed class RecoveryVectorG2Tests
                         "MAINTENANCE_ADMINISTRATOR",
                         "CONFIGURED_PROOF"));
 
+                WireToGateRecoveryOperationContext loadContext = new(
+                    CommandMessageId,
+                    null,
+                    1,
+                    DateTimeOffset.UtcNow,
+                    DemandId,
+                    OperationSessionId,
+                    AttemptId,
+                    OperationType.Load,
+                    [1, 2],
+                    2,
+                    true,
+                    new string('0', 64));
+
                 await journal.InitializeAsync(cancellationToken);
                 WireToGateRecoveryOperationContext load = new(
                     CommandMessageId,
@@ -942,6 +1116,7 @@ public sealed class RecoveryVectorG2Tests
                         safety,
                         loadAlreadySettled,
                         armedUnloadOverSettledLoad,
+                        nothingOnFile,
                         cancellationToken);
                 }
 
@@ -949,7 +1124,7 @@ public sealed class RecoveryVectorG2Tests
                     new WireToGateRecoveryState(
                         armedUnloadOverSettledLoad
                             ? UnloadAttemptId
-                            : loadAlreadySettled ? null : AttemptId,
+                            : loadAlreadySettled || nothingOnFile ? null : AttemptId,
                         armedUnloadOverSettledLoad
                             ? WireToGateRecoveryCheckpoint.ActiveUnlockSet
                             : loadAlreadySettled
@@ -962,7 +1137,7 @@ public sealed class RecoveryVectorG2Tests
                         RecoverySessionRequestId = persistedRecoverySessionRequestId,
                         OperationContext = armedUnloadOverSettledLoad
                             ? unload
-                            : loadAlreadySettled ? null : load,
+                            : loadAlreadySettled || nothingOnFile ? null : load,
                         LastCompletedLoadOperationContext =
                             loadAlreadySettled || armedUnloadOverSettledLoad ? load : null
                     },
@@ -978,6 +1153,7 @@ public sealed class RecoveryVectorG2Tests
                     safety,
                     loadAlreadySettled,
                     armedUnloadOverSettledLoad,
+                    nothingOnFile,
                     cancellationToken);
             }
             catch
@@ -1001,6 +1177,7 @@ public sealed class RecoveryVectorG2Tests
             MutableSafetySignalProvider safety,
             bool loadAlreadySettled,
             bool armedUnloadOverSettledLoad,
+            bool nothingOnFile,
             CancellationToken cancellationToken)
         {
             // The readiness has to be RECOVERY_REQUIRED when the action is submitted -- with no
@@ -1038,7 +1215,16 @@ public sealed class RecoveryVectorG2Tests
             // refreshes on its first pass; the seeded journal alone does not answer them. The
             // request path reads the journal directly, so this wait is what makes the gates
             // meaningful to assert rather than what makes the request work.
-            if (loadAlreadySettled)
+            if (nothingOnFile)
+            {
+                // No operation snapshot and no entry can turn true here, so neither is a signal the
+                // pump ran. The one SafetyStateChanged it sends when it starts is.
+                await WaitUntilAsync(
+                    () => server.Received.Any(item => item.MessageType == "SafetyStateChanged"),
+                    "the business pump to start over an empty recovery journal",
+                    cancellationToken);
+            }
+            else if (loadAlreadySettled)
             {
                 // Nothing is armed, so no operation snapshot is surfaced. The correction entry
                 // already reads LastCompletedLoadOperationContext on this branch, so it turning
@@ -1143,6 +1329,37 @@ public sealed class RecoveryVectorG2Tests
                 },
                 "a guard to publish a RECOVERY_BLOCKED operator event",
                 cancellationToken);
+        }
+
+        /// <summary>
+        /// Waits for a RECOVERY_BLOCKED event naming <paramref name="reasonCode"/>, and returns it.
+        /// </summary>
+        /// <remarks>
+        /// The request paths turn a guard's exception into <c>false</c> plus this event, so the
+        /// event text is where the reason is observable from outside. Waiting on the code rather
+        /// than on any refusal is what keeps a test from passing on a different guard's refusal.
+        /// </remarks>
+        public async Task<WireToGateOperatorEvent> WaitForRecoveryBlockedAsync(
+            string reasonCode,
+            CancellationToken cancellationToken)
+        {
+            await WaitUntilAsync(
+                () =>
+                {
+                    lock (_recoveryBlockedEvents)
+                    {
+                        return _recoveryBlockedEvents.Any(
+                            item => item.Message.Contains(reasonCode, StringComparison.Ordinal));
+                    }
+                },
+                $"a guard to refuse with {reasonCode}",
+                cancellationToken);
+
+            lock (_recoveryBlockedEvents)
+            {
+                return _recoveryBlockedEvents.First(
+                    item => item.Message.Contains(reasonCode, StringComparison.Ordinal));
+            }
         }
 
         public async ValueTask DisposeAsync()

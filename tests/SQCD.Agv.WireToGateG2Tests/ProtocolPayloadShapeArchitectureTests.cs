@@ -341,7 +341,7 @@ public sealed class ProtocolPayloadShapeArchitectureTests
                 "operator-001", "BADGE", DateTimeOffset.UtcNow);
 
             await client.SendSublotSubmittedAsync(
-                demandId, sessionId, "ST-01", 1, "SUBLOT-001", "SCANNER",
+                sessionId, "ST-01", 1, "SUBLOT-001", "SCANNER",
                 operatorContext.OperatorId, operatorContext.VerificationMethod,
                 operatorContext.VerifiedAt, token);
             await client.SendOperationProgressAsync(

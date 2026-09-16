@@ -78,7 +78,7 @@ public sealed class WireToGateJourneySnapshotTests
         WireToGateUpcomingStopPlan plan) =>
         new(
             new WireToGateVehicleBusinessState(
-                1, "READY", "TRANSPORT", false, "SUFFICIENT", [],
+                1, "READY", "TRANSPORT", false, "SUFFICIENT", "NOT_CHARGING", null, [],
                 DateTimeOffset.UnixEpoch, new string('a', 64)),
             worklist,
             plan,
@@ -88,6 +88,7 @@ public sealed class WireToGateJourneySnapshotTests
         new(
             "ST-01",
             1,
+            null,
             null,
             [new WireToGateWorklistItem(demandId, "TD-001", "SUBLOT-001", "WIRE_TO_GATE", "PICKUP", 1)],
             new string('b', 64));

@@ -198,10 +198,14 @@ public sealed partial class WireToGateBusinessService
             return _session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired;
         }
 
+        // The subject is #80's and only #80's; the server's attempt id is an extra condition on it,
+        // never a way to pick a different one. A disagreement greys the entry out here and is
+        // refused loudly on the request path.
         return snapshot.SelectedAction is null
             && snapshot.AllowedActions.Contains(action, StringComparer.Ordinal)
             && string.Equals(snapshot.DemandId, context.DemandId, StringComparison.Ordinal)
-            && snapshot.Slots.SequenceEqual(context.Slots);
+            && snapshot.Slots.SequenceEqual(context.Slots)
+            && IsSameSlotOperationAttempt(snapshot.SlotOperationAttemptId, context);
     }
 
     private async Task<bool> RequestLoadCancellationCoreAsync(
@@ -464,6 +468,7 @@ public sealed partial class WireToGateBusinessService
                 snapshot!.SentAt,
                 snapshot.EventId,
                 operation.DemandId,
+                snapshot.SlotOperationAttemptId,
                 operation.Slots,
                 snapshot.RecoverySessionRevision);
             requestId = opened.RequestId;
@@ -499,6 +504,7 @@ public sealed partial class WireToGateBusinessService
                     snapshot.SentAt,
                     snapshot.EventId,
                     snapshot.DemandId,
+                    snapshot.SlotOperationAttemptId,
                     snapshot.Slots,
                     snapshot.RecoverySessionRevision);
             }
@@ -609,6 +615,7 @@ public sealed partial class WireToGateBusinessService
                 $"服务端拒绝恢复动作 {action}：{exception.Message}。未执行仓门IO。 ");
             throw;
         }
+        RequireSameSlotOperationAttempt(accepted.SlotOperationAttemptId, operation);
         if (!string.Equals(accepted.RecoveryActionId, actionId, StringComparison.Ordinal)
             || !string.Equals(
                 accepted.ExceptionRecoverySessionId,
@@ -1617,10 +1624,38 @@ public sealed partial class WireToGateBusinessService
             ? new(context.OperatorId, context.OperatorVerificationMethod, verifiedAt)
             : throw new InvalidDataException("RECOVERY_OPERATOR_CONTEXT_MISSING");
 
+    /// <summary>
+    /// Refuses a recovery response that names an attempt other than the one in scope.
+    /// </summary>
+    /// <remarks>
+    /// Applied to all three of the server's recovery messages, because the scope they agree on is
+    /// what the compensation request is later sent under. A <c>null</c> here is the server naming
+    /// no attempt, which challenges nothing.
+    /// </remarks>
+    private static void RequireSameSlotOperationAttempt(
+        string? serverNamedSlotOperationAttemptId,
+        WireToGateRecoveryOperationContext operation)
+    {
+        if (!IsSameSlotOperationAttempt(serverNamedSlotOperationAttemptId, operation))
+        {
+            throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
+        }
+    }
+
+    private static bool IsSameSlotOperationAttempt(
+        string? serverNamedSlotOperationAttemptId,
+        WireToGateRecoveryOperationContext operation) =>
+        serverNamedSlotOperationAttemptId is null
+        || string.Equals(
+            serverNamedSlotOperationAttemptId,
+            operation.SlotOperationAttemptId,
+            StringComparison.Ordinal);
+
     private static void ValidateRecoverySessionSnapshot(
         WireToGateExceptionRecoverySessionSnapshot snapshot,
         WireToGateRecoveryOperationContext operation)
     {
+        RequireSameSlotOperationAttempt(snapshot.SlotOperationAttemptId, operation);
         if (snapshot.State == "CLOSED"
             || !string.Equals(snapshot.DemandId, operation.DemandId, StringComparison.Ordinal)
             || !snapshot.Slots.SequenceEqual(operation.Slots))
@@ -1635,6 +1670,7 @@ public sealed partial class WireToGateBusinessService
         string eventId,
         WireToGateRecoveryOperationContext operation)
     {
+        RequireSameSlotOperationAttempt(opened.SlotOperationAttemptId, operation);
         if (!string.Equals(opened.RequestId, requestId, StringComparison.Ordinal)
             || !string.Equals(opened.EventId, eventId, StringComparison.Ordinal)
             || !string.Equals(opened.DemandId, operation.DemandId, StringComparison.Ordinal)

@@ -1,5 +1,5 @@
 {
-  "registryVersion": "1.0.0",
+  "registryVersion": "1.1.0",
   "appendOnly": true,
   "displayMessageAuthoritative": false,
   "codes": [
@@ -551,6 +551,46 @@
       ],
       "retryDisposition": "AFTER_STATE_CHANGE",
       "introducedInRelease": "1.0.0"
+    },
+    {
+      "code": "SUBLOT_NOT_IN_DISPATCH_SCOPE",
+      "category": "BUSINESS",
+      "meaning": "The SUBLOT entered by the operator does not belong to any demand in the current dispatch scope, so the control server rejects the entry (FR-001 AC-4).",
+      "allowedMessageTypes": [
+        "SublotRejected"
+      ],
+      "retryDisposition": "NEW_MESSAGE_ID",
+      "introducedInRelease": "2.0.0"
+    },
+    {
+      "code": "SUBLOT_BOX_COUNT_UNAVAILABLE",
+      "category": "BUSINESS",
+      "meaning": "Revalidation after SUBLOT entry found no usable SUBLOT_BOX_COUNT: the lookup failed, returned nothing or returned a non-positive count (BR-013 section 2).",
+      "allowedMessageTypes": [
+        "SublotRejected"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "2.0.0"
+    },
+    {
+      "code": "PACKAGE_CAPACITY_UNRESOLVED",
+      "category": "BUSINESS",
+      "meaning": "Revalidation after SUBLOT entry could not resolve basket capacity: PACKAGE is missing, or the approved capacity mapping has no match or conflicting matches (BR-013 section 2).",
+      "allowedMessageTypes": [
+        "SublotRejected"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "2.0.0"
+    },
+    {
+      "code": "OPERATOR_TIMEOUT",
+      "category": "BUSINESS",
+      "meaning": "The operator did not complete the slot operation before the station departure deadline; the slot door is closed and the unlock output reset, so the slot is settled as a determinate failure rather than an unknown outcome (ADR-cross-0058 decision 5). The WIRE_TO_GATE_MVP line introduced a code of the same name and meaning in protocol-v0.3.0.",
+      "allowedMessageTypes": [
+        "OperationResult"
+      ],
+      "retryDisposition": "AFTER_STATE_CHANGE",
+      "introducedInRelease": "2.0.0"
     }
   ]
 }

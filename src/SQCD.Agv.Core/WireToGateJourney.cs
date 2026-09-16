@@ -1,14 +1,32 @@
 namespace SQCD.Agv.Core;
 
+/// <summary>
+/// The business projection of the server-owned vehicle business state.
+/// </summary>
+/// <remarks>
+/// <see cref="ChargingCycleState"/> and <see cref="LoadingPhase"/> arrived with protocol 2.0.0 and
+/// are carried, not consumed: cargo holding is batch 7 and the charging cycle is batch 9. Carrying
+/// them is what lets those batches read a value instead of re-shaping the projection.
+/// </remarks>
 public sealed record WireToGateVehicleBusinessState(
     long Revision,
     string Readiness,
     string? ActivePurpose,
     bool ManualChargingHold,
     string BatteryState,
+    string ChargingCycleState,
+    WireToGateLoadingPhase? LoadingPhase,
     IReadOnlyList<WireToGateBlockingFact> BlockingFacts,
     DateTimeOffset ObservedAt,
     string ContentSha256);
+
+/// <summary>
+/// Where this stop's loading stands, as projected from protocol 2.0.0's <c>loadingPhase</c>.
+/// </summary>
+public sealed record WireToGateLoadingPhase(
+    string State,
+    DateTimeOffset? CargoHoldingDeadlineAt,
+    string? ClosedReason);
 
 public sealed record WireToGateBlockingFact(
     string ReasonCode,
@@ -23,10 +41,20 @@ public sealed record WireToGateWorklistItem(
     string StopRole,
     int ExpectedBasketCount);
 
+/// <summary>
+/// The business projection of the current stop worklist.
+/// </summary>
+/// <remarks>
+/// <see cref="StationDepartureDeadlineAt"/> is carried through from protocol 2.0.0 rather than
+/// consumed here. <c>null</c> means this stop has no deadline for continuing to load. The display
+/// that counts down to it is <c>8005-agv-onboard-hmi#75</c>; this record is what gives that ticket
+/// something to read.
+/// </remarks>
 public sealed record WireToGateCurrentStopWorklist(
     string StationId,
     long Revision,
     string? OperationSessionId,
+    DateTimeOffset? StationDepartureDeadlineAt,
     IReadOnlyList<WireToGateWorklistItem> Items,
     string ContentSha256);
 
