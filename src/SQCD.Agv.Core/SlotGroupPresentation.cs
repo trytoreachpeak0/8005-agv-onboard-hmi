@@ -38,7 +38,7 @@ public sealed record SlotGroupLayout(
     IReadOnlyList<SlotGroup> Groups,
     IReadOnlyList<UnrecognizedSlot> UnrecognizedSlots)
 {
-    public SlotSide SideOf(int physicalSlotNumber) =>
+    public SlotSide SideOfSlot(int physicalSlotNumber) =>
         Groups.FirstOrDefault(group => group.PhysicalSlotNumbers.Contains(physicalSlotNumber))?.Side
         ?? SlotSide.Unknown;
 }
@@ -80,7 +80,7 @@ public static class SlotGroupPresentation
             {
                 string? position = configuration.Slots
                     .FirstOrDefault(slot => slot.PhysicalSlotNumber == number)?.SlotPosition;
-                return (number, position, SideOf(position));
+                return (number, position, SideOfPosition(position));
             })];
         List<SlotGroup> groups = [];
         foreach (SlotSide side in DisplayOrder)
@@ -131,7 +131,7 @@ public static class SlotGroupPresentation
         ArgumentNullException.ThrowIfNull(layout);
         ArgumentNullException.ThrowIfNull(targetSlotNumbers);
 
-        HashSet<SlotSide> sides = [.. targetSlotNumbers.Select(layout.SideOf)];
+        HashSet<SlotSide> sides = [.. targetSlotNumbers.Select(layout.SideOfSlot)];
         if (sides.Count == 0)
         {
             return string.Empty;
@@ -173,7 +173,7 @@ public static class SlotGroupPresentation
         return $"{string.Join("、", runs)} 号";
     }
 
-    private static SlotSide SideOf(string? slotPosition) => slotPosition switch
+    private static SlotSide SideOfPosition(string? slotPosition) => slotPosition switch
     {
         FrontPosition => SlotSide.Front,
         RearPosition => SlotSide.Rear,

@@ -83,7 +83,7 @@ public sealed class SlotGroupPresentationTests
 
         Assert.Equal(["前侧仓门（1～2、4 号）", "后侧仓门（5～8 号）", "分组未知（3 号）"],
             layout.Groups.Select(group => group.Title));
-        Assert.Equal(SlotSide.Unknown, layout.SideOf(3));
+        Assert.Equal(SlotSide.Unknown, layout.SideOfSlot(3));
         Assert.Equal([new UnrecognizedSlot(3, position)], layout.UnrecognizedSlots);
         LogEntry entry = Assert.Single(logger.Entries);
         Assert.Equal(LogSeverity.Warning, entry.Severity);

@@ -610,7 +610,7 @@ public static class OnboardActiveSlotConfigurationFactory
             [
                 .. ioModule.Slots.OrderBy(slot => slot.SlotIndex).Select(slot => new SlotConfigurationEntry(
                     slot.SlotIndex + 1,
-                    slot.SlotIndex < 4 ? "FRONT" : "REAR",
+                    slot.SlotIndex < 4 ? SlotGroupPresentation.FrontPosition : SlotGroupPresentation.RearPosition,
                     Point("DO", slot.DoChannel),
                     Point("DI", slot.LockFeedbackDiChannel),
                     Point("DI", slot.LightCurtainDiChannel),
