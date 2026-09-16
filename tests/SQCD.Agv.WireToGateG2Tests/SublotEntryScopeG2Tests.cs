@@ -163,6 +163,38 @@ public sealed class SublotEntryScopeG2Tests
         Assert.True(harness.Session.Current.Connected);
     }
 
+    /// <summary>
+    /// A whitespace-only <c>rejectedSublot</c> is accepted, for the same reason a whitespace-only
+    /// <c>expectedSublots</c> element is.
+    /// </summary>
+    /// <remarks>
+    /// The schema says <c>minLength: 1</c> for both. The first relaxation covered only the entry
+    /// request, so a stricter-than-the-contract check on the rejection could have come back without
+    /// anything noticing.
+    /// </remarks>
+    [Fact]
+    public async Task AWhitespaceRejectedSublotIsAcceptedBecauseTheSchemaAllowsIt()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using SublotHarness harness = await SublotHarness.StartAsync(
+            ["SUBLOT-001"],
+            token,
+            server =>
+            {
+                server.RejectSublotSubmissionsWith = "SUBLOT_NOT_IN_DISPATCH_SCOPE";
+                server.RejectedSublotOverride = " ";
+            });
+
+        await harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token);
+        await harness.WaitForSubmissionAsync(token);
+
+        await SublotHarness.WaitUntilAsync(
+            () => !harness.Business.CanSubmitSublot,
+            "the whitespace rejection to be parsed and clear the outstanding entry request",
+            token);
+        Assert.True(harness.Session.Current.Connected);
+    }
+
     private sealed class SublotHarness : IAsyncDisposable
     {
         private readonly FakeControlServer _server;

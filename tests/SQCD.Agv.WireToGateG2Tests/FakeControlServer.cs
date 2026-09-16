@@ -145,6 +145,17 @@ public sealed class FakeControlServer : IAsyncDisposable
     public string? RejectSublotSubmissionsWith { get; set; }
 
     /// <summary>
+    /// When set, the <c>rejectedSublot</c> this fake puts on its rejections instead of the sublot the
+    /// vehicle submitted.
+    /// </summary>
+    /// <remarks>
+    /// The vehicle trims what it submits, so echoing the submission can never produce the
+    /// whitespace-only value the schema's <c>minLength: 1</c> still allows. This is how a test gets
+    /// that legal-but-odd value onto the wire.
+    /// </remarks>
+    public string? RejectedSublotOverride { get; set; }
+
+    /// <summary>
     /// The <c>slotOperationAttemptId</c> this fake puts on all three recovery messages.
     /// </summary>
     /// <remarks>
@@ -737,8 +748,8 @@ public sealed class FakeControlServer : IAsyncDisposable
                                     displayMessage = (string?)null
                                 },
                                 currentWorklistRevision = 1,
-                                rejectedSublot = root.GetProperty("payload")
-                                    .GetProperty("sublot").GetString()
+                                rejectedSublot = RejectedSublotOverride
+                                    ?? root.GetProperty("payload").GetProperty("sublot").GetString()
                             })).ConfigureAwait(false);
                         break;
                     case "SublotSubmitted":
