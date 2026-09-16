@@ -54,6 +54,7 @@ public sealed class MainViewModel : ViewModelBase
     private Func<bool>? _wireToGateCanRequestRecovery;
     private Func<CancellationToken, Task<bool>>? _wireToGateRecoveryRequester;
     private Func<bool>? _wireToGateCanRequestLoadCancellation;
+    private Func<bool>? _wireToGateCanRequestLoadCancellationBeforeLoad;
     private Func<bool>? _wireToGateCanRequestLoadCompensation;
     private Func<bool>? _wireToGateCanRequestLoadCorrection;
     private Func<bool>? _wireToGateCanRequestFaultCargoHandoff;
@@ -247,13 +248,15 @@ public sealed class MainViewModel : ViewModelBase
         Func<bool>? canRequestLoadCorrection = null,
         Func<CancellationToken, Task<bool>>? loadCorrectionRequester = null,
         Func<bool>? canRequestFaultCargoHandoff = null,
-        Func<CancellationToken, Task<bool>>? faultCargoHandoffRequester = null)
+        Func<CancellationToken, Task<bool>>? faultCargoHandoffRequester = null,
+        Func<bool>? canRequestLoadCancellationBeforeLoad = null)
     {
         _wireToGateSubmitter = submitter ?? throw new ArgumentNullException(nameof(submitter));
         _wireToGateCanSubmit = canSubmit ?? throw new ArgumentNullException(nameof(canSubmit));
         _wireToGateCanRequestRecovery = canRequestRecovery;
         _wireToGateRecoveryRequester = recoveryRequester;
         _wireToGateCanRequestLoadCancellation = canRequestLoadCancellation;
+        _wireToGateCanRequestLoadCancellationBeforeLoad = canRequestLoadCancellationBeforeLoad;
         _wireToGateLoadCancellationRequester = loadCancellationRequester;
         _wireToGateCanRequestLoadCompensation = canRequestLoadCompensation;
         _wireToGateLoadCompensationRequester = loadCompensationRequester;
@@ -292,11 +295,46 @@ public sealed class MainViewModel : ViewModelBase
     private void RefreshWireToGateInputStateCore()
     {
         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? CanSubmit;
+        if (ApplyFaultedRecoveryEntryAvailability())
+        {
+            return;
+        }
+
         CanRequestWireToGateRecovery = _wireToGateCanRequestRecovery?.Invoke() == true;
         CanRequestLoadCancellation = _wireToGateCanRequestLoadCancellation?.Invoke() == true;
         CanRequestLoadCompensation = _wireToGateCanRequestLoadCompensation?.Invoke() == true;
         CanRequestLoadCorrection = _wireToGateCanRequestLoadCorrection?.Invoke() == true;
         CanRequestFaultCargoHandoff = _wireToGateCanRequestFaultCargoHandoff?.Invoke() == true;
+    }
+
+    /// <summary>
+    /// 故障态下哪些恢复入口还开着。返回 true 表示已经定完，调用方不要再按正常态算一遍。
+    /// </summary>
+    /// <remarks>
+    /// 两个刷新入口都要问它。控制器快照走 <see cref="ApplyWireToGatePresentationCore"/>，
+    /// 服务端的录入请求走 <see cref="RefreshWireToGateInputStateCore"/>，而后者原来不判故障态
+    /// ——于是故障态下按钮会随刷新来源忽隐忽现，现场看到的是哪一次刷新排在最后。
+    /// </remarks>
+    private bool ApplyFaultedRecoveryEntryAvailability()
+    {
+        if (_lastControllerSnapshot?.State != OnboardState.Faulted)
+        {
+            return false;
+        }
+
+        CanRequestWireToGateRecovery = false;
+        // 故障态下「取消装货」只留「本站还没开始装」这一条路。它不开仓门、不动货，只是告诉
+        // 服务端这一站不装了；挡掉它的唯一结果是干等 5 分钟站点超时，而超时会写
+        // TransportDemandSuppressions 把那张需求单永久抑制——比操作员主动取消
+        // （CANCELLED_BY_OPERATOR）更重的后果。原来五个入口一视同仁地关掉，等于在出故障时
+        // 强制走后果更重的那条路，而且不给选（onboard-hmi#85）。
+        CanRequestLoadCancellation =
+            _wireToGateCanRequestLoadCancellationBeforeLoad?.Invoke() == true;
+        // 其余三个要么要先写入恢复向量，要么要驱动仓门，与取消装货不是一类；故障态仍然关闭。
+        CanRequestLoadCompensation = false;
+        CanRequestLoadCorrection = false;
+        CanRequestFaultCargoHandoff = false;
+        return true;
     }
 
     public string VisitText
@@ -609,13 +647,8 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        if (_lastControllerSnapshot?.State == OnboardState.Faulted)
+        if (ApplyFaultedRecoveryEntryAvailability())
         {
-            CanRequestWireToGateRecovery = false;
-            CanRequestLoadCancellation = false;
-            CanRequestLoadCompensation = false;
-            CanRequestLoadCorrection = false;
-            CanRequestFaultCargoHandoff = false;
             return;
         }
 

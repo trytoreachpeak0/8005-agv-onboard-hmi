@@ -17,7 +17,18 @@ public sealed partial class WireToGateBusinessService
     public bool CanRequestLoadCancellation =>
         (CanUseRecoveryOperator(requireProof: false)
             && HasRecoveryVectorOrLoadOperation(WireToGateRecoveryVectorTypes.LoadCancellation))
-        || (CanUseStopOperator() && HasSublotEntryPending);
+        || CanRequestLoadCancellationBeforeLoad;
+
+    /// <summary>
+    /// The half of <see cref="CanRequestLoadCancellation"/> that opens no slot and drives no IO:
+    /// the stop has nothing commanded to it yet, so cancelling only tells the server this stop will
+    /// not be loaded. Named separately because the HMI has to offer exactly this half while the
+    /// onboard controller is faulted -- blanket-closing every recovery entry there left the
+    /// operator with no exit but the five-minute station timeout, and a timeout suppresses the
+    /// demand permanently while an operator cancellation does not (onboard-hmi#85).
+    /// </summary>
+    public bool CanRequestLoadCancellationBeforeLoad =>
+        CanUseStopOperator() && HasSublotEntryPending;
 
     /// <summary>
     /// The stop is waiting for a sublot and nothing has been commanded to a slot yet. This is
