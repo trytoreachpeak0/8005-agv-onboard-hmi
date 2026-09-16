@@ -367,6 +367,91 @@ public sealed class OnboardControllerTests
         Assert.False(controller.Current.DeparturePermitted);
     }
 
+    /// <summary>
+    /// 界面命令抛出的可预期运行异常不能升级为严重安全故障：现场扫到一个不在当前作业清单里的
+    /// 子批，被报成「设备异常／已停止开门」并永久锁存，扫码入口因此钉死了 2 小时 50 分
+    /// （onboard-hmi#82）。其余异常说明界面自身状态已不可信，仍然要锁存。
+    /// </summary>
+    [Theory]
+    [Trait("IntegrationSlice", "W2G-IS-05")]
+    [InlineData("SUBLOT_NOT_IN_WORKLIST", "当前条码不属于服务端下发的站点任务，请核对条码或等待任务刷新。")]
+    [InlineData("WIRE_TO_GATE_JOURNEY_NOT_READY", "服务端旅程或当前站点任务尚未同步，已禁止扫码和开门。请等待任务恢复。")]
+    [InlineData("WIRE_TO_GATE_OPERATOR_NOT_READY", "本机未配置操作员身份，无法提交扫码，请联系维护人员。")]
+    public async Task ExpectedCommandFailuresAreOperatorMessagesRatherThanFatalFaults(
+        string errorCode,
+        string expectedGuidance)
+    {
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-CLASSIFY");
+        await using OnboardController controller = CreateController(io, rule);
+        await controller.StartAsync(TestContext.Current.CancellationToken);
+
+        InvalidOperationException rejection = new(errorCode);
+
+        Assert.False(OnboardController.IsFatalCommandFailure(rejection));
+        Assert.Equal(errorCode, OnboardController.GetCommandFailureCode(rejection));
+        Assert.Equal(expectedGuidance, controller.GetOperatorGuidance(errorCode));
+        Assert.True(OnboardController.IsFatalCommandFailure(new ArgumentOutOfRangeException(nameof(errorCode))));
+    }
+
+    /// <summary>
+    /// 锁存之后必须有一条恢复路径。原来 <c>_fatalFault</c> 只写不清，唯一的出路是重启车载端
+    /// 进程，而 HMI 上没有这个入口（onboard-hmi#82）。现在维护人员在现场确认仓门之后执行
+    /// 安全复核即可解除，解除后扫码和开门恢复正常。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-05")]
+    public async Task LatchedFatalFaultIsClearedByOnSiteSafetyReview()
+    {
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-FATAL-RESET");
+        await using OnboardController controller = CreateController(io, rule);
+        await controller.StartAsync(TestContext.Current.CancellationToken);
+
+        controller.EnterFatalFault("UI_COMMAND_FAILED", "测试：界面命令异常已锁存。");
+        Assert.True(controller.IsFatalFaultLatched);
+        Assert.Equal(OnboardState.Faulted, controller.Current.State);
+
+        bool cleared = await controller.ConfirmSafeStartupStateAsync(TestContext.Current.CancellationToken);
+
+        Assert.True(cleared);
+        Assert.False(controller.IsFatalFaultLatched);
+        Assert.Equal(OnboardState.ReadyToScan, controller.Current.State);
+        Assert.True(controller.Current.DeparturePermitted);
+
+        // 真正的判据不是横幅消失，而是扫码重新能开门。
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, io.PulseCount);
+        OperationResult result = Assert.Single(rule.Results);
+        Assert.True(result.Success);
+    }
+
+    /// <summary>
+    /// 复核不成立时锁存要保持，并且要说清为什么没过——锁存期间 PublishCore 会改写每一次发布，
+    /// 所以这条原因必须先进到锁存里，否则操作员只看得到原来那条横幅。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-05")]
+    public async Task SafetyReviewKeepsTheLatchAndSaysWhyWhenTheSiteIsNotSafe()
+    {
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-FATAL-REFUSE");
+        await using OnboardController controller = CreateController(io, rule);
+        await controller.StartAsync(TestContext.Current.CancellationToken);
+        controller.EnterFatalFault("UI_COMMAND_FAILED", "测试：界面命令异常已锁存。");
+        io.SetUnknown(2);
+
+        bool cleared = await controller.ConfirmSafeStartupStateAsync(TestContext.Current.CancellationToken);
+
+        Assert.False(cleared);
+        Assert.True(controller.IsFatalFaultLatched);
+        Assert.Equal(OnboardState.Faulted, controller.Current.State);
+        Assert.Equal("UI_COMMAND_FAILED", controller.Current.ErrorCode);
+        Assert.Contains("安全复核未通过", controller.Current.Guidance);
+        Assert.Contains("部分仓位状态未读取到", controller.Current.Guidance);
+    }
+
     [Fact]
     [Trait("IntegrationSlice", "W2G-IS-05")]
     public async Task IoConnectionLossDuringOperationIsReportedAsSystemWideFault()

@@ -2279,6 +2279,50 @@ public sealed class WireToGateG2Tests
             });
 
     /// <summary>
+    /// 操作员在 HMI 上扫到范围外的子批，拒绝要以一条操作员提示落地，绝不能变成异常抛给界面。
+    /// </summary>
+    /// <remarks>
+    /// 抛出去的话，它一路冒泡到 WPF 命令层的顶层兜底，被当成界面异常锁存成严重安全故障——
+    /// 2026-09-16 现场就是这样：一次本该重扫的普通拒绝，被报成「设备异常／已停止开门／请联系
+    /// 维护人员」，之后扫码入口再也没恢复过，钉了 2 小时 50 分（onboard-hmi#82）。自动化接口
+    /// 走的仍是会抛的那条（<see cref="SublotOutsideTheExpectedSetIsStillRefused"/>），它要的
+    /// 正是异常里的 reasonCode。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public Task AnOperatorSideRefusalIsAMessageNotAnException() =>
+        RunWithSublotEntryAsync(
+            ["SUBLOT-001", "SUBLOT-002"],
+            async (server, business, testToken) =>
+            {
+                List<WireToGateOperatorEvent> events = [];
+                business.OperatorEventPublished += (_, args) =>
+                {
+                    lock (events)
+                    {
+                        events.Add(args.Value);
+                    }
+                };
+
+                bool accepted = await business.SubmitSublotFromOperatorAsync("SUBLOT-009", "SCANNER", testToken);
+
+                Assert.False(accepted);
+                Assert.DoesNotContain(server.Received, item => item.MessageType == "SublotSubmitted");
+                WireToGateOperatorEvent rejection = Assert.Single(
+                    events,
+                    item => item.Kind == "SUBLOT_ENTRY_REJECTED");
+                Assert.Contains("不属于服务端下发的站点任务", rejection.Message, StringComparison.Ordinal);
+
+                // 拒绝之后扫码入口必须还在：合法的子批照样提交得上去。
+                Assert.True(business.CanSubmitSublot);
+                Assert.True(await business.SubmitSublotFromOperatorAsync("SUBLOT-001", "SCANNER", testToken));
+                Assert.Contains(
+                    server.ReceivedEnvelopes,
+                    item => item.MessageType == "SublotSubmitted"
+                        && item.WireLine.Contains("SUBLOT-001", StringComparison.Ordinal));
+            });
+
+    /// <summary>
     /// 上限是 8，八项本身合法。这条与 <see cref="NineExpectedSublotsFailClosed"/> 一起把边界钉在
     /// 8/9 之间——只测拒绝的那一半，上限写成 7 也会通过。
     /// </summary>

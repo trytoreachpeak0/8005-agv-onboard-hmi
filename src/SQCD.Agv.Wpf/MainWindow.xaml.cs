@@ -75,8 +75,10 @@ public partial class MainWindow : Window
         }
 
         MessageBoxResult confirmation = MessageBox.Show(
-            "请先现场确认：所有仓门均已可靠锁闭，界面显示的货物状态与实际一致。\n\n安全复核不会清空货物状态，是否继续？",
-            "启动安全复核",
+            "请先现场确认：所有仓门均已可靠锁闭，界面显示的货物状态与实际一致。\n\n"
+                + "复核通过将解除当前故障状态（含已锁存的严重安全故障），并恢复本界面的扫码入口；"
+                + "复核不会清空货物状态。是否继续？",
+            "安全复核并复位",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning,
             MessageBoxResult.No);

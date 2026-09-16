@@ -416,6 +416,50 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// 被业务规则挡下的录入，各自对应一句操作员看得懂的话。这些是业务结论，不是设备故障。
+    /// </summary>
+    private static readonly Dictionary<string, string> SublotEntryRejections = new(StringComparer.Ordinal)
+    {
+        ["SUBLOT_NOT_IN_WORKLIST"] =
+            "当前条码不属于服务端下发的站点任务，请核对条码，或等待任务刷新后重新扫码。",
+        ["WIRE_TO_GATE_JOURNEY_NOT_READY"] =
+            "服务端旅程或当前站点任务尚未同步，暂时不能扫码，请等待任务恢复。",
+        ["WIRE_TO_GATE_OPERATOR_NOT_READY"] =
+            "本机未配置操作员身份，无法提交扫码，请联系维护人员。"
+    };
+
+    /// <summary>
+    /// 操作员在 HMI 上提交子批。与 <see cref="SubmitSublotAsync"/> 只差失败的归宿：录入被
+    /// 业务规则挡下时就地发一条操作员提示并返回 false，不把异常抛给界面。
+    /// </summary>
+    /// <remarks>
+    /// 抛出去的话，它会一路冒泡到 WPF 命令层的顶层兜底，被当成界面异常锁存成严重安全故障
+    /// ——现场 2026-09-16 就这样把扫码入口钉死了 2 小时 50 分（onboard-hmi#82）。自动化接口
+    /// 仍然走 <see cref="SubmitSublotAsync"/>，它要的正是异常里那个 reasonCode。
+    /// </remarks>
+    public async Task<bool> SubmitSublotFromOperatorAsync(
+        string sublot,
+        string entryMethod,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await SubmitSublotAsync(sublot, entryMethod, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (InvalidOperationException exception)
+            when (SublotEntryRejections.ContainsKey(exception.Message))
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"操作员录入被拒：code={exception.Message}，sublot={sublot.Trim()}。");
+            PublishOperatorResponse("SUBLOT_ENTRY_REJECTED", SublotEntryRejections[exception.Message]);
+            return false;
+        }
+    }
+
     public async Task<string> SubmitSublotAsync(
         string sublot,
         string entryMethod,
