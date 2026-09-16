@@ -25,6 +25,9 @@ public sealed class FakeControlServer : IAsyncDisposable
         new(StringComparer.Ordinal);
     private readonly object _sync = new();
     private long _sessionGeneration;
+    private static readonly string[] OpenRecoverySessionAllowedActions =
+        ["RESUME_AFTER_REPAIR", "FORCED_MECHANICAL_RECOVERY"];
+
     private int _recoveryAckCount;
     private string? _lastAcceptedInstanceId;
     private long _acceptedCapabilityVersion;
@@ -132,6 +135,23 @@ public sealed class FakeControlServer : IAsyncDisposable
     private readonly List<JsonElement> _activationResults = [];
 
     public bool RespondToRecoveryRequests { get; set; }
+
+    /// <summary>
+    /// ExceptionRecoverySessionOpened is followed by one ExceptionRecoverySessionSnapshot per state
+    /// listed here, in order, shaped the way the real server sends them ("OPEN" or "CLOSED"). Empty
+    /// sends none, which is what every test did before 8005-agv-control-server#31 -- and why none of
+    /// them saw how the vehicle acknowledges one.
+    /// </summary>
+    public IReadOnlyList<string> RecoverySessionSnapshotStatesAfterOpened { get; set; } = [];
+
+    /// <summary>
+    /// The recovery session snapshots this server wrote, exactly as they went on the wire.
+    /// </summary>
+    public IReadOnlyList<(string MessageId, string WireLine)> SentRecoverySessionSnapshots
+    {
+        get;
+        private set;
+    } = [];
 
     /// <summary>
     /// 设了就用 <c>ExceptionRecoverySessionRejected</c> 拒绝每一个恢复会话请求，原因码是这个值。
@@ -904,6 +924,58 @@ public sealed class FakeControlServer : IAsyncDisposable
                     recoverySessionRevision = 1
                 }))
             .ConfigureAwait(false);
+
+        // The real server's shapes: an OPEN session offers actions and blocks on choosing one; a
+        // CLOSED one offers nothing, blocks on nothing, and is the last revision a session ever gets.
+        foreach (string state in RecoverySessionSnapshotStatesAfterOpened)
+        {
+            bool closed = state switch
+            {
+                "OPEN" => false,
+                "CLOSED" => true,
+                _ => throw new InvalidOperationException(
+                    $"No real-server shape for a {state} recovery session snapshot.")
+            };
+            WireToGateEnvelope snapshot = CreateEnvelope(
+                context,
+                "ExceptionRecoverySessionSnapshot",
+                correlationId: null,
+                new
+                {
+                    exceptionRecoverySessionId = sessionId,
+                    recoverySessionRevision = closed ? 4 : 1,
+                    state,
+                    administratorId = "maintenance-001",
+                    administratorRole = "MAINTENANCE_ADMINISTRATOR",
+                    eventId = payload.GetProperty("eventId").GetString(),
+                    demandId = payload.TryGetProperty("demandId", out JsonElement snapshotDemandId)
+                        ? snapshotDemandId.GetString()
+                        : null,
+                    slots = payload.GetProperty("slots").EnumerateArray()
+                        .Select(item => item.GetInt32())
+                        .ToArray(),
+                    selectedAction = closed ? "COMPENSATE_LOAD_ALL_EMPTY" : null,
+                    allowedActions = closed ? Array.Empty<string>() : OpenRecoverySessionAllowedActions,
+                    blockingFacts = closed
+                        ? []
+                        : new[]
+                        {
+                            new
+                            {
+                                reasonCode = "RECOVERY_ACTION_REQUIRED",
+                                subjectType = "EXCEPTION_RECOVERY_SESSION",
+                                subjectId = sessionId
+                            }
+                        }
+                });
+            string line = WireToGateProtocolSerializer.Serialize(snapshot);
+            lock (_sync)
+            {
+                SentRecoverySessionSnapshots = [.. SentRecoverySessionSnapshots, (snapshot.MessageId, line)];
+            }
+
+            await WriteEnvelopeAsync(context, snapshot).ConfigureAwait(false);
+        }
     }
 
     private async Task HandleRecoveryActionSubmittedAsync(
@@ -991,6 +1063,30 @@ public sealed class FakeControlServer : IAsyncDisposable
                                     $"{actionId}|fault-cargo-handoff"),
                             commandContentSha256 = FakeControlServerIdentifiers.RecoveryActionContentSha256(
                                 actionId, demandId ?? string.Empty, attemptId, slots, 0)
+                        }))
+                    .ConfigureAwait(false);
+                break;
+            case "COMPENSATE_LOAD_ALL_EMPTY":
+                await WriteEnvelopeAsync(
+                    context,
+                    CreateEnvelope(
+                        context,
+                        "LoadCompensationCommand",
+                        null,
+                        new
+                        {
+                            recoveryActionId = actionId,
+                            exceptionRecoverySessionId = sessionId,
+                            demandId,
+                            slotOperationAttemptId = attemptId,
+                            slots,
+                            expectedFinalPhysicalState = "EMPTY",
+                            commandContentSha256 =
+                                FakeControlServerIdentifiers.LoadCompensationContentSha256(
+                                    actionId,
+                                    demandId ?? string.Empty,
+                                    attemptId,
+                                    slots)
                         }))
                     .ConfigureAwait(false);
                 break;
@@ -1483,6 +1579,21 @@ internal static class FakeControlServerIdentifiers
         bytes[8] = (byte)((bytes[8] & 0x3F) | 0x80);
         return new Guid(bytes).ToString("D");
     }
+
+    /// <summary>Mirrors <c>WireToGateRecoveryCommandHash.ForLoadCompensation</c>: four parts, no
+    /// forced recovery generation.</summary>
+    public static string LoadCompensationContentSha256(
+        string recoveryActionId,
+        string demandId,
+        string slotOperationAttemptId,
+        IReadOnlyList<int> slots) =>
+        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(string.Join(
+                '|',
+                recoveryActionId,
+                demandId,
+                slotOperationAttemptId,
+                JsonSerializer.Serialize(slots)))))
+            .ToLowerInvariant();
 
     /// <summary>Mirrors <c>RecoveryCommandHash.ForRecoveryAction</c>.</summary>
     public static string RecoveryActionContentSha256(

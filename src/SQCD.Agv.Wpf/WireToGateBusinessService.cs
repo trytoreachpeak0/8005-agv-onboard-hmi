@@ -577,12 +577,17 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return;
             }
 
+            if (await TrySettleInterruptedOperationAsync(context, cancellationToken).ConfigureAwait(false))
+            {
+                return;
+            }
+
             WireToGateHmiOperationSnapshot operation = new(
                 context.SlotOperationAttemptId,
                 context.OperationType,
                 context.Slots,
                 WireToGateHmiOperationStage.RecoveryRequired,
-                $"上次{(context.OperationType == OperationType.Load ? "装货" : "卸货")}操作未完成：{FormatSlots(context.Slots)}，需要管理员恢复。",
+                $"上次{FormatOperationType(context.OperationType)}操作未完成：{FormatSlots(context.Slots)}，需要管理员恢复。",
                 _clock.Now.ToUniversalTime());
             PublishOperatorEvent(
                 $"recovery-operation-restored:{context.SlotOperationAttemptId}",
@@ -602,6 +607,150 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 exception);
         }
     }
+
+    /// <summary>
+    /// Settles the journal's unsettled attempt from the live IO when nobody is executing it and no
+    /// result has ever been sent for it (8005-agv-program#40). Returns true when it took it over.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Such an attempt can only come from a previous process: it unlocked a slot and died while
+    /// waiting for the operator. After that both ends wait for each other -- the vehicle settles an
+    /// attempt only when a command arrives, the server does not stall the journey while no result has
+    /// come, and the recovery entry requires the journey stalled -- so the result has to come from
+    /// the vehicle's own side.
+    /// </para>
+    /// <para>
+    /// "Nobody is executing it" is decided from this process's own in-flight set, not from the
+    /// journal: the executor is tied to the service lifetime rather than to a connection, so during a
+    /// reconnect it may still be running while the journal reads exactly as it does after a restart.
+    /// The server cannot tell those two apart from the wire, which is why this belongs on the
+    /// vehicle. The in-flight set is claimed before the result is looked up, so a command for the
+    /// same attempt cannot race this.
+    /// </para>
+    /// <para>
+    /// An UNKNOWN settlement is recorded as pending before it is sent, exactly like the formal path:
+    /// the operation stays unsettled, so every later session reports the result and replays it until
+    /// something settles the operation (CV-OPERATION-RESULT-UNKNOWN-RECONCILE).
+    /// </para>
+    /// </remarks>
+    private async Task<bool> TrySettleInterruptedOperationAsync(
+        WireToGateRecoveryOperationContext context,
+        CancellationToken cancellationToken)
+    {
+        string attemptId = context.SlotOperationAttemptId;
+        lock (_operationAttemptGate)
+        {
+            if (!_operationAttempts.Add(attemptId))
+            {
+                return false;
+            }
+        }
+
+        try
+        {
+            // The same deduplication key HandleSlotOperationAsync uses: once a result is in the
+            // durable outbox it has either been acknowledged or is replayed by the handshake, and a
+            // conclusion already given is never redone. An UNKNOWN decided mid-execution is
+            // recognised here too.
+            string resultKey = $"operation-result:{attemptId}";
+            if (await _session.Journal
+                    .ReadOutgoingByDeduplicationKeyAsync(resultKey, cancellationToken)
+                    .ConfigureAwait(false) is not null)
+            {
+                return false;
+            }
+
+            WireToGateOperationExecutionResult execution = await _executor
+                .SettleInterruptedAsync(cancellationToken)
+                .ConfigureAwait(false);
+            WireToGateOperationResultPayload payload = CreateOperationResultPayload(execution);
+            WireToGateSlotOperationCommand command = context.ToCommand();
+            bool completedSuccessfully = string.Equals(
+                execution.OverallOutcome,
+                "COMPLETED",
+                StringComparison.Ordinal);
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"上次仓位操作在执行中中断，未再输出开锁，按实时IO结算：attempt={attemptId}，outcome={execution.OverallOutcome}，checkpoint={execution.JournalCheckpoint}。");
+            WireToGateHmiOperationStage finalStage = completedSuccessfully
+                ? WireToGateHmiOperationStage.Completed
+                : WireToGateHmiOperationStage.RecoveryRequired;
+            string guidance = completedSuccessfully
+                ? $"上次{FormatOperationType(command.OperationType)}在执行中中断，{FormatSlots(command.Slots)}已按实时状态确认完成，正在上报结果。"
+                : $"上次{FormatOperationType(command.OperationType)}在执行中中断：{FormatSlots(command.Slots)}，未再开锁，需要管理员恢复。";
+            PublishOperation(command, finalStage, guidance, "interrupted-final");
+            try
+            {
+                if (!completedSuccessfully
+                    && !string.Equals(execution.JournalCheckpoint, "NONE", StringComparison.Ordinal))
+                {
+                    await _executor.RecordPendingResultAsync(
+                        attemptId,
+                        new WireToGatePendingResult(
+                            "OperationResult",
+                            attemptId,
+                            attemptId,
+                            payload.ResultContentSha256),
+                        cancellationToken).ConfigureAwait(false);
+                }
+
+                // The session is RecoveryRequired at this moment -- precisely because this attempt
+                // was never settled -- so this takes the send path that allows it. The message is the
+                // same OperationResult under the same messageId HandleSlotOperationAsync would send.
+                await _session.SendRecoveryOperationResultAsync(
+                    resultKey,
+                    attemptId,
+                    payload,
+                    cancellationToken).ConfigureAwait(false);
+                if (completedSuccessfully)
+                {
+                    await _executor.MarkResultRecordedAsync(attemptId, cancellationToken)
+                        .ConfigureAwait(false);
+                    // Same refresh as the formal load path: recording the result is what makes the
+                    // load correctable, and the CanRequest* gates read a cached copy.
+                    await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
+                }
+
+                PublishOperatorEvent(
+                    $"interrupted-operation-result:{attemptId}:{execution.OverallOutcome}",
+                    completedSuccessfully ? "OPERATION_COMPLETED" : "OPERATION_RECOVERY_REQUIRED",
+                    guidance,
+                    new WireToGateHmiOperationSnapshot(
+                        attemptId,
+                        command.OperationType,
+                        command.Slots,
+                        finalStage,
+                        guidance,
+                        _clock.Now.ToUniversalTime()));
+            }
+            catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
+            {
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    $"中断操作的结算结果暂未收到DurableAck：attempt={attemptId}。",
+                    exception);
+                PublishOperatorEvent(
+                    $"interrupted-operation-result-pending:{attemptId}",
+                    "RESULT_ACK_PENDING",
+                    "中断操作的结算结果已持久化，等待服务端确认；不会再次执行仓门IO。");
+            }
+
+            return true;
+        }
+        finally
+        {
+            lock (_operationAttemptGate)
+            {
+                _operationAttempts.Remove(attemptId);
+            }
+        }
+    }
+
+    private static string FormatOperationType(OperationType operationType) =>
+        operationType == OperationType.Load ? "装货" : "卸货";
 
     private void OnIoSnapshotChanged(object? sender, ValueChangedEventArgs<IoSnapshot> args)
     {
@@ -1161,7 +1310,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             PublishOperation(
                 command,
                 WireToGateHmiOperationStage.Preparing,
-                $"准备执行{(command.OperationType == OperationType.Load ? "装货" : "卸货")}：{FormatSlots(command.Slots)}。",
+                $"准备执行{FormatOperationType(command.OperationType)}：{FormatSlots(command.Slots)}。",
                 "initial");
             async Task SendProgress(
                 string phase,

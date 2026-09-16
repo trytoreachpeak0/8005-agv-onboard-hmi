@@ -2526,6 +2526,428 @@ public sealed class WireToGateG2Tests
             .Where(item => item.MessageType == "OnboardAlarmSnapshot")
             .Select(item => WireToGateProtocolSerializer.DeserializeAndValidate(item.WireLine, "AGV-8005-01").Payload)];
 
+    /// <summary>
+    /// An operation whose process died while the slot stood unlocked is settled from the live IO on
+    /// the next session, and its result travels the pending-result path.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The gap this closes was measured on the rig (8005-agv-program#40, ported from MVP
+    /// <c>6846e98</c>): the vehicle only settles an attempt when a command or a recovery action
+    /// arrives, the server does not judge a journey Blocked while no result has come, and the
+    /// recovery entry needs the journey Blocked already. Nobody moves, and the vehicle stands at the
+    /// pick-up point.
+    /// </para>
+    /// <para>
+    /// No second unlock goes out (ADR-cross-0017) and the outcome follows the live readings: every
+    /// opened slot at its final state means COMPLETED, anything else UNKNOWN (ADR-cross-0058
+    /// decision 2). Here the operator shut the door without loading, so it is UNKNOWN -- and an
+    /// UNKNOWN result stays pending until something settles the operation, which is what makes the
+    /// next session report and replay it (CV-OPERATION-RESULT-UNKNOWN-RECONCILE).
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AnOperationInterruptedWhileWaitingForTheOperatorIsSettledFromLiveIoOnTheNextSession()
+    {
+        const string attemptId = "44444444-4444-4444-4444-444444444444";
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            SendSlotOperationCommandAfterRecovery = true
+        };
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        NullLogger logger = new();
+        string journalPath = NewJournalPath();
+
+        WireToGateSessionService NewSession() => new(
+            CreateSessionOptions(server),
+            io,
+            new SqliteWireToGateJournal(journalPath),
+            logger,
+            new SystemClock(),
+            new DelegateVehicleSafetySignalProvider(() => true),
+            new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+            new SlotConfigurationActivationCoordinator(
+                new DocumentActiveSlotConfigurationStore(
+                    new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                    G2SlotConfigurationFixtures.Approved()),
+                TimeProvider.System),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(500));
+        WireToGateBusinessService NewBusiness(WireToGateSessionService session) => new(
+            session,
+            io,
+            logger,
+            new SystemClock(),
+            () => true,
+            new WireToGateSlotOperationExecutorOptions(
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromMinutes(5),
+                TimeSpan.FromMilliseconds(10),
+                TimeSpan.FromSeconds(30)),
+            "W2G_G2_INTERRUPTED_SETTLEMENT_OPERATOR");
+
+        // First process: the command arrives, the slot is unlocked, and the process goes away while
+        // it waits for an operator who never comes.
+        await using (WireToGateSessionService session = NewSession())
+        {
+            WireToGateBusinessService business = NewBusiness(session);
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            await WaitUntilAsync(
+                () => server.ReceivedEnvelopes.Any(item =>
+                    item.MessageType == "OperationProgress"
+                    && item.WireLine.Contains("WAITING_OPERATOR", StringComparison.Ordinal)),
+                testToken);
+            await business.DisposeAsync();
+        }
+
+        Assert.DoesNotContain(server.ReceivedEnvelopes, item => item.MessageType == "OperationResult");
+        int unlocksBeforeRestart = io.UnlockCount;
+        server.SendSlotOperationCommandAfterRecovery = false;
+        server.SimulateOnboardProcessRestart();
+        // The operator shut the door while nothing was running, and put nothing in.
+        io.CloseDoor(0, cargo: false);
+
+        // Second process: nothing sends another command, so the settlement has to come from the
+        // vehicle's own side.
+        await using (WireToGateSessionService session = NewSession())
+        await using (WireToGateBusinessService business = NewBusiness(session))
+        {
+            // The same kind is raised as soon as the journal holds the unsettled operation, long
+            // before its result is sent; only the one raised once the server has the result means the
+            // DurableAck came back, and only then does a restart exercise the replay rather than the
+            // unacknowledged-outbox path.
+            bool acknowledged = false;
+            business.OperatorEventPublished += (_, args) =>
+            {
+                if (args.Value.Kind == "OPERATION_RECOVERY_REQUIRED"
+                    && server.ReceivedEnvelopes.Any(item => item.MessageType == "OperationResult"))
+                {
+                    acknowledged = true;
+                }
+            };
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            await WaitUntilAsync(() => acknowledged, testToken);
+        }
+
+        (int Connection, string MessageType, string MessageId, string WireLine) settled =
+            server.ReceivedEnvelopes.Single(item => item.MessageType == "OperationResult");
+        WireToGateEnvelope result = WireToGateProtocolSerializer.DeserializeAndValidate(
+            settled.WireLine,
+            "AGV-8005-01");
+        Assert.Equal(attemptId, result.Payload.GetProperty("slotOperationAttemptId").GetString());
+        Assert.Equal("UNKNOWN", result.Payload.GetProperty("overallOutcome").GetString());
+        JsonElement slot = Assert.Single(result.Payload.GetProperty("slotResults").EnumerateArray());
+        Assert.Equal("UNKNOWN", slot.GetProperty("outcome").GetString());
+        Assert.Equal("EMPTY", slot.GetProperty("finalPhysicalState").GetString());
+        Assert.Equal("LOCKED", slot.GetProperty("lockState").GetString());
+        Assert.Equal("RESET", slot.GetProperty("unlockOutputState").GetString());
+        Assert.Equal(unlocksBeforeRestart, io.UnlockCount);
+
+        // Third process: the unsettled attempt and its pending result are what the next report names,
+        // and the same result is replayed once that report is acknowledged.
+        server.SimulateOnboardProcessRestart();
+        await using (WireToGateSessionService session = NewSession())
+        await using (WireToGateBusinessService business = NewBusiness(session))
+        {
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            await WaitUntilAsync(
+                () => server.ReceivedEnvelopes.Count(item => item.MessageType == "OperationResult") == 2,
+                testToken);
+        }
+
+        (int Connection, string MessageType, string MessageId, string WireLine)[] results =
+            server.ReceivedEnvelopes.Where(item => item.MessageType == "OperationResult").ToArray();
+        Assert.NotEqual(results[0].Connection, results[1].Connection);
+        Assert.Equal(results[0].MessageId, results[1].MessageId);
+        WireToGateEnvelope report = server.ReceivedEnvelopes
+            .Where(item => item.Connection == results[1].Connection && item.MessageType == "RecoveryStateReport")
+            .Select(item => WireToGateProtocolSerializer.DeserializeAndValidate(item.WireLine, "AGV-8005-01"))
+            .Single();
+        Assert.Equal(attemptId, report.Payload.GetProperty("unsettledSlotOperationAttemptId").GetString());
+        JsonElement pending = Assert.Single(report.Payload.GetProperty("pendingResults").EnumerateArray());
+        Assert.Equal("OperationResult", pending.GetProperty("messageType").GetString());
+        Assert.Equal(results[0].MessageId, pending.GetProperty("messageId").GetString());
+        Assert.Equal(attemptId, pending.GetProperty("businessId").GetString());
+        Assert.Equal(
+            result.Payload.GetProperty("resultContentSha256").GetString(),
+            pending.GetProperty("contentSha256").GetString());
+        Assert.Equal(unlocksBeforeRestart, io.UnlockCount);
+    }
+
+    /// <summary>
+    /// The operator finished the job after the process died, so the settlement is a definite
+    /// COMPLETED and nothing stays pending.
+    /// </summary>
+    /// <remarks>
+    /// Reporting UNKNOWN here would send a perfectly good load into recovery and let a compensation
+    /// empty the slot again. The completed result also settles the attempt, which is what clears the
+    /// journal's unsettled entry -- so the next report names none and replays nothing.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AnInterruptedOperationTheOperatorFinishedIsSettledAsCompletedAndLeavesNothingPending()
+    {
+        const string attemptId = "44444444-4444-4444-4444-444444444444";
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            SendSlotOperationCommandAfterRecovery = true
+        };
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        NullLogger logger = new();
+        string journalPath = NewJournalPath();
+
+        WireToGateSessionService NewSession() => new(
+            CreateSessionOptions(server),
+            io,
+            new SqliteWireToGateJournal(journalPath),
+            logger,
+            new SystemClock(),
+            new DelegateVehicleSafetySignalProvider(() => true),
+            new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+            new SlotConfigurationActivationCoordinator(
+                new DocumentActiveSlotConfigurationStore(
+                    new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                    G2SlotConfigurationFixtures.Approved()),
+                TimeProvider.System),
+            TimeSpan.FromSeconds(30),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(500));
+        WireToGateBusinessService NewBusiness(WireToGateSessionService session) => new(
+            session,
+            io,
+            logger,
+            new SystemClock(),
+            () => true,
+            new WireToGateSlotOperationExecutorOptions(
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromMinutes(5),
+                TimeSpan.FromMilliseconds(10),
+                TimeSpan.FromSeconds(30)),
+            "W2G_G2_INTERRUPTED_COMPLETED_OPERATOR");
+
+        await using (WireToGateSessionService session = NewSession())
+        {
+            WireToGateBusinessService business = NewBusiness(session);
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            await WaitUntilAsync(
+                () => server.ReceivedEnvelopes.Any(item =>
+                    item.MessageType == "OperationProgress"
+                    && item.WireLine.Contains("WAITING_OPERATOR", StringComparison.Ordinal)),
+                testToken);
+            await business.DisposeAsync();
+        }
+
+        server.SendSlotOperationCommandAfterRecovery = false;
+        server.SimulateOnboardProcessRestart();
+        // The basket went in and the door was shut while nothing was running.
+        io.CloseDoor(0, cargo: true);
+
+        await using (WireToGateSessionService session = NewSession())
+        await using (WireToGateBusinessService business = NewBusiness(session))
+        {
+            bool acknowledged = false;
+            business.OperatorEventPublished += (_, args) =>
+            {
+                if (args.Value.Kind == "OPERATION_COMPLETED"
+                    && server.ReceivedEnvelopes.Any(item => item.MessageType == "OperationResult"))
+                {
+                    acknowledged = true;
+                }
+            };
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            await WaitUntilAsync(() => acknowledged, testToken);
+        }
+
+        WireToGateEnvelope result = WireToGateProtocolSerializer.DeserializeAndValidate(
+            server.ReceivedEnvelopes.Single(item => item.MessageType == "OperationResult").WireLine,
+            "AGV-8005-01");
+        Assert.Equal(attemptId, result.Payload.GetProperty("slotOperationAttemptId").GetString());
+        Assert.Equal("COMPLETED", result.Payload.GetProperty("overallOutcome").GetString());
+        JsonElement slot = Assert.Single(result.Payload.GetProperty("slotResults").EnumerateArray());
+        Assert.Equal("COMPLETED", slot.GetProperty("outcome").GetString());
+        Assert.Equal("OCCUPIED", slot.GetProperty("finalPhysicalState").GetString());
+        Assert.Equal("LOCKED", slot.GetProperty("lockState").GetString());
+        Assert.Equal("RESET", slot.GetProperty("unlockOutputState").GetString());
+
+        server.SimulateOnboardProcessRestart();
+        await using (WireToGateSessionService session = NewSession())
+        await using (WireToGateBusinessService business = NewBusiness(session))
+        {
+            business.Start();
+            await session.Client.ConnectAndRecoverAsync(testToken);
+            await WaitUntilAsync(
+                () => server.ReceivedEnvelopes.Count(item =>
+                    item.MessageType == "RecoveryStateReport") >= 3,
+                testToken);
+        }
+
+        WireToGateEnvelope lastReport = server.ReceivedEnvelopes
+            .Where(item => item.MessageType == "RecoveryStateReport")
+            .Select(item => WireToGateProtocolSerializer.DeserializeAndValidate(item.WireLine, "AGV-8005-01"))
+            .Last();
+        Assert.Equal(
+            JsonValueKind.Null,
+            lastReport.Payload.GetProperty("unsettledSlotOperationAttemptId").ValueKind);
+        Assert.Empty(lastReport.Payload.GetProperty("pendingResults").EnumerateArray());
+        Assert.Single(server.ReceivedEnvelopes, item => item.MessageType == "OperationResult");
+    }
+
+    /// <summary>
+    /// Only the CLOSED recovery session snapshot is acknowledged
+    /// (8005-agv-control-server#31, L2 real-onboard-compensate-then-reconnect).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// After every RecoveryStateReport the server replays each recovery session snapshot that is
+    /// neither acknowledged nor fenced by a newer revision. The vehicle keeps the current recovery
+    /// session in memory only -- the journal holds just its id -- so that replay is the only way a
+    /// restarted HMI gets an open session back. Acknowledging OPEN left a restarted vehicle holding
+    /// an id and no session: the recovery button threw RECOVERY_SESSION_STATE_PENDING and asking
+    /// again was refused with RECOVERY_SESSION_ALREADY_OPEN.
+    /// </para>
+    /// <para>
+    /// CLOSED is the last revision a session ever gets. Nothing supersedes it, so left unacknowledged
+    /// it is replayed into every later session and leaves a row behind for each one -- and a vehicle
+    /// that has it needs nothing more from it.
+    /// </para>
+    /// <para>
+    /// The server sends OPEN and then CLOSED: by the time the answer to CLOSED arrives, OPEN has long
+    /// been handled on the same stream, so an acknowledgement of it would have arrived first.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("ProtocolVector", "CV-SNAPSHOT-REPLACE-AND-ACK")]
+    public async Task OnlyTheClosedRecoverySessionSnapshotIsAcknowledged()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            RespondToRecoveryRequests = true,
+            RecoverySessionSnapshotStatesAfterOpened = ["OPEN", "CLOSED"]
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionClient client = CreateClient(server, io, NewJournalPath());
+        await client.ConnectAndRecoverAsync(testToken);
+
+        string requestId = "77777777-7777-4777-8777-777777777770";
+        ExceptionRecoverySessionOpenedPayload opened = await client
+            .RequestExceptionRecoverySessionAsync(
+                requestId,
+                new ExceptionRecoverySessionRequestedPayload(
+                    requestId,
+                    new WireToGateOperatorContextPayload(
+                        "maintenance-001",
+                        "CONFIGURED_PROOF",
+                        DateTimeOffset.UtcNow),
+                    "MAINTENANCE_ADMINISTRATOR",
+                    "88888888-8888-4888-8888-888888888888",
+                    "99999999-9999-4999-8999-999999999999",
+                    [1, 2],
+                    "repair complete",
+                    "test-proof"),
+                testToken);
+        Assert.Equal(requestId, opened.RequestId);
+
+        await WaitUntilAsync(() => server.SentRecoverySessionSnapshots.Count == 2, testToken);
+        (string closedMessageId, string closedLine) = server.SentRecoverySessionSnapshots[1];
+        await WaitUntilAsync(
+            () => server.ReceivedEnvelopes.Any(item =>
+                item.MessageType == "SnapshotAppliedAck"
+                && CorrelationId(item.WireLine) == closedMessageId),
+            testToken);
+
+        (int Connection, string MessageType, string MessageId, string WireLine) acknowledgement =
+            Assert.Single(server.ReceivedEnvelopes, item => item.MessageType == "SnapshotAppliedAck");
+        using JsonDocument document = JsonDocument.Parse(acknowledgement.WireLine);
+        JsonElement payload = document.RootElement.GetProperty("payload");
+        Assert.Equal(closedMessageId, payload.GetProperty("snapshotMessageId").GetString());
+        Assert.Equal("EXCEPTION_RECOVERY_SESSION", payload.GetProperty("snapshotKind").GetString());
+        Assert.Equal(4, payload.GetProperty("appliedRevision").GetInt64());
+        Assert.Equal(
+            WireToGateProtocolSerializer.ComputeSha256(Encoding.UTF8.GetBytes(closedLine)),
+            payload.GetProperty("appliedContentSha256").GetString());
+        Assert.DoesNotContain(server.Received, item => item.MessageType == "ProtocolProblem");
+
+        static string? CorrelationId(string wireLine)
+        {
+            using JsonDocument envelope = JsonDocument.Parse(wireLine);
+            return envelope.RootElement.GetProperty("correlationId").GetString();
+        }
+    }
+
+    /// <summary>
+    /// An OPEN recovery session snapshot is left unacknowledged, so the server keeps replaying it and
+    /// a restarted vehicle can get the session back (8005-agv-control-server#31, onboard-hmi#41 was
+    /// the regression this replaced).
+    /// </summary>
+    /// <remarks>
+    /// The barrier is the heartbeat: the vehicle answers what it reads on a stream in order, so an
+    /// acknowledgement of the snapshot would have been written before a heartbeat the test sends
+    /// afterwards. The server having the heartbeat and no acknowledgement is therefore the absence
+    /// itself, not a race that has yet to finish.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("ProtocolVector", "CV-SNAPSHOT-REPLACE-AND-ACK")]
+    public async Task AnOpenRecoverySessionSnapshotIsLeftUnacknowledgedSoItKeepsBeingReplayed()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            RespondToRecoveryRequests = true,
+            RecoverySessionSnapshotStatesAfterOpened = ["OPEN"]
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionClient client = CreateClient(server, io, NewJournalPath());
+        await client.ConnectAndRecoverAsync(testToken);
+
+        string requestId = "77777777-7777-4777-8777-777777777771";
+        await client.RequestExceptionRecoverySessionAsync(
+            requestId,
+            new ExceptionRecoverySessionRequestedPayload(
+                requestId,
+                new WireToGateOperatorContextPayload(
+                    "maintenance-001",
+                    "CONFIGURED_PROOF",
+                    DateTimeOffset.UtcNow),
+                "MAINTENANCE_ADMINISTRATOR",
+                "88888888-8888-4888-8888-888888888888",
+                "99999999-9999-4999-8999-999999999999",
+                [1, 2],
+                "repair complete",
+                "test-proof"),
+            testToken);
+        await WaitUntilAsync(() => server.SentRecoverySessionSnapshots.Count == 1, testToken);
+
+        await client.SendHeartbeatAsync(testToken);
+        await WaitUntilAsync(
+            () => server.ReceivedEnvelopes.Any(item => item.MessageType == "Heartbeat"),
+            testToken);
+
+        Assert.DoesNotContain(server.Received, item => item.MessageType == "SnapshotAppliedAck");
+        Assert.DoesNotContain(server.Received, item => item.MessageType == "ProtocolProblem");
+    }
+
     private static string[] InboundMessageTypes(FakeControlServer server) =>
         server.Received
             .Select(item => item.MessageType)
