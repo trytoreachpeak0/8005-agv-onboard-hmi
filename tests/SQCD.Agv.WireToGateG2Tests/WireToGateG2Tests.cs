@@ -73,7 +73,21 @@ public sealed class WireToGateG2Tests
         await using WireToGateSessionClient client = CreateClient(server, io, journalPath);
 
         await journal.InitializeAsync(testToken);
+        // 当下的恢复现场：一个未结清的装卸 attempt、已经开过锁、被强制恢复过一轮。被中断的那份旧报告
+        // 说的是另一套事实（没有未结清 attempt、NONE、没开锁），所以「新报告取代旧报告」不只是换了个
+        // messageId——下面逐字段断言两条连接发出去的都是**这一套**事实。
+        const string unsettledAttemptId = "44444444-4444-4444-8444-444444444444";
+        await journal.WriteRecoveryStateAsync(
+            new WireToGateRecoveryState(
+                unsettledAttemptId,
+                WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                [3],
+                7,
+                []),
+            testToken);
+        string journalContentSha256 = await journal.ComputeContentSha256Async(testToken);
         string originalMessageId = Guid.NewGuid().ToString("D");
+        string originalReportId = Guid.NewGuid().ToString("D");
         WireToGateEnvelope originalReport = WireToGateProtocolSerializer.Create(
             "RecoveryStateReport",
             originalMessageId,
@@ -83,7 +97,7 @@ public sealed class WireToGateG2Tests
             DateTimeOffset.UtcNow,
             new
             {
-                reportId = Guid.NewGuid().ToString("D"),
+                reportId = originalReportId,
                 observedAt = DateTimeOffset.UtcNow,
                 unsettledSlotOperationAttemptId = (string?)null,
                 provenRecoveryCheckpoint = "NONE",
@@ -129,6 +143,33 @@ public sealed class WireToGateG2Tests
         Assert.Equal([1, 2], reports.Select(item => item.Connection).ToArray());
         Assert.DoesNotContain(reports, item => item.MessageId == originalMessageId);
         Assert.NotEqual(reports[0].MessageId, reports[1].MessageId);
+
+        // 两份新报告的内容：都点名当下这个未结清 attempt 与它的恢复现场，都不是被中断那份说的事实。
+        // 报告排在换代之后，所以 sessionGeneration 逐条递增；journalContentSha256 两份相同，因为
+        // ComputeContentSha256Async 本来就把恢复状态报告排除在待确认业务报文之外——被中断那一份躺在
+        // outbox 里也不会改变它。
+        WireToGateEnvelope[] reportEnvelopes = reports
+            .Select(item => WireToGateProtocolSerializer.DeserializeAndValidate(item.WireLine, "AGV-8005-01"))
+            .ToArray();
+        Assert.Equal([1L, 2L], reportEnvelopes.Select(item => item.SessionGeneration).ToArray());
+        JsonElement[] reportPayloads = reportEnvelopes.Select(item => item.Payload).ToArray();
+        Assert.All(reportPayloads, payload =>
+        {
+            Assert.Equal(
+                unsettledAttemptId,
+                payload.GetProperty("unsettledSlotOperationAttemptId").GetString());
+            Assert.Equal("ACTIVE_UNLOCK_SET", payload.GetProperty("provenRecoveryCheckpoint").GetString());
+            Assert.Equal(
+                [3],
+                payload.GetProperty("activeUnlockSlots").EnumerateArray().Select(slot => slot.GetInt32()));
+            Assert.Equal(7L, payload.GetProperty("forcedRecoveryGeneration").GetInt64());
+            Assert.Empty(payload.GetProperty("pendingResults").EnumerateArray());
+            Assert.Equal(journalContentSha256, payload.GetProperty("journalContentSha256").GetString());
+            Assert.NotEqual(originalReportId, payload.GetProperty("reportId").GetString());
+        });
+        Assert.NotEqual(
+            reportPayloads[0].GetProperty("reportId").GetString(),
+            reportPayloads[1].GetProperty("reportId").GetString());
 
         WireToGateDurableMessage? stored = await journal.ReadOutgoingByDeduplicationKeyAsync(
             "recovery:0:interrupted",
@@ -2285,8 +2326,9 @@ public sealed class WireToGateG2Tests
             () => session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired,
             testToken);
         // 重放之后还有第四条：换代要求重新全量上报一份，见
-        // BusinessResendsSafetyStateAfterSessionGenerationChangeWhileVehicleIdle。
-        await WaitUntilAsync(() => server.AcceptedSafetyStateChangedCount == 3, testToken);
+        // BusinessResendsSafetyStateAfterSessionGenerationChangeWhileVehicleIdle。等的和断的是同一个
+        // 对象——收到的 SafetyStateChanged 条数，不是服务端的受理计数。
+        await WaitUntilAsync(() => ReceivedCount(server, "SafetyStateChanged") == 4, testToken);
 
         var changed = server.ReceivedEnvelopes
             .Where(item => item.MessageType == "SafetyStateChanged")
@@ -2457,14 +2499,16 @@ public sealed class WireToGateG2Tests
         WireToGateSessionSnapshot recovered = await session.Client.ConnectAndRecoverAsync(testToken);
         Assert.Equal(2L, recovered.SessionGeneration!.Value);
 
-        // 修复前这里会永远停在 1：重放被认下之后签名又变回原值，而车静止、签名不变，
-        // 去重把重发挡住了。
-        await WaitUntilAsync(() => server.AcceptedSafetyStateChangedCount == 2, testToken);
+        // 修复前这里会永远停在 2（第一条加它的重放），第三条永远不来：重放被认下之后签名又变回原值，
+        // 而车静止、签名不变，去重把重发挡住了。等的和断的是同一个对象——收到的 SafetyStateChanged
+        // 条数，不是服务端的受理计数——否则安全评估周期（500 ms）再转一轮多出一条就会把断言弄红。
+        await WaitUntilAsync(() => ReceivedCount(server, "SafetyStateChanged") == 3, testToken);
 
         var changed = server.ReceivedEnvelopes
             .Where(item => item.MessageType == "SafetyStateChanged")
             .ToArray();
         Assert.Equal(3, changed.Length);
+        Assert.Equal(2, server.AcceptedSafetyStateChangedCount);
         Assert.Equal([1, 2, 2], changed.Select(item => item.Connection).ToArray());
         // 前两条是同一条消息的重放，第三条才是换代后重新评估出来的。内容一样但版本变了，
         // 所以 messageId 不同——服务端按 messageId 去重，原样重放那条到不了任何地方。
@@ -2473,6 +2517,9 @@ public sealed class WireToGateG2Tests
         Assert.Equal(0, io.UnlockCount);
         Assert.Empty(server.StaleGenerationRejections);
     }
+
+    private static int ReceivedCount(FakeControlServer server, string messageType) =>
+        server.ReceivedEnvelopes.Count(item => item.MessageType == messageType);
 
     private static JsonElement[] AlarmSnapshotPayloads(FakeControlServer server) =>
         [.. server.ReceivedEnvelopes

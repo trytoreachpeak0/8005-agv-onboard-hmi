@@ -49,17 +49,16 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool DropBeforeSafetyStateChangedAck { get; set; }
 
     /// <summary>
-    /// Closes the connection after an OperationResult arrives and before its DurableAck goes out: the
-    /// server has taken the result, the vehicle never hears so. That is the window
-    /// real-onboard-durable-ack-lost opens with a proxy (8005-agv-control-server#33).
+    /// 收下 OperationResult、在 DurableAck 发出去之前断开连接：服务端已经把结果收下了，车却听不到。
+    /// 这正是真装置 L2 场景 real-onboard-durable-ack-lost 用代理打开的那扇窗
+    /// （8005-agv-control-server#33）。
     /// </summary>
     public bool DropBeforeOperationResultAck { get; set; }
 
     /// <summary>
-    /// Keeps applied snapshot revisions across sessions of the same onboard instance, so a reconnect whose
-    /// snapshot repeats a revision with different content draws SNAPSHOT_REVISION_CONTENT_CONFLICT.
-    /// ControlServer does not do this -- it compares revisions within one session -- so leave it off
-    /// unless the test is about how the vehicle fails closed on that ProtocolProblem.
+    /// 跨同一车载实例的多个会话保留已采纳的快照修订号，于是重连时同修订号不同内容的快照会被判
+    /// SNAPSHOT_REVISION_CONTENT_CONFLICT。真服务端不这样做——它只在一个会话之内比对修订号——所以
+    /// 除非这条测试要证的就是「车载端收到这个 ProtocolProblem 之后 fail-closed」，否则别打开。
     /// </summary>
     public bool RetainSnapshotRevisionsAcrossSessions { get; set; }
 
@@ -606,12 +605,10 @@ public sealed class FakeControlServer : IAsyncDisposable
         lock (_sync)
         {
             generation = ++_sessionGeneration;
-            // ControlServer compares snapshot revisions within one session only:
-            // BeginSessionRecoveryAsync clears them for every new generation, so
-            // the handshake after a reconnect is applied afresh. This used to
-            // keep them across reconnects of the same instance, which is why the
-            // vehicle's handshake could skip its snapshots after a replay here and
-            // nowhere else (8005-agv-control-server#33).
+            // 真服务端只在一个会话之内比对快照修订号：BeginSessionRecoveryAsync 每个新世代都会清空，
+            // 所以重连之后的那次握手是从零采纳的。这里原来跨同一实例的重连一直留着记忆，正是因为这个
+            // 差别，车载端「补发之后跳过快照」的握手才只在这个替身上过得去、在真服务端上过不去
+            // （8005-agv-control-server#33）。
             string onboardInstanceId =
                 hello.GetProperty("payload").GetProperty("onboardInstanceId").GetString() ?? string.Empty;
             if (!RetainSnapshotRevisionsAcrossSessions
@@ -1100,9 +1097,8 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
 
         await WriteEnvelopeAsync(context, CreateDurableAck(context, message)).ConfigureAwait(false);
-        // ControlServer answers a replay into a later session from its first acceptance
-        // (RebindDurableAckAsync): the ack alone, since a generation that has not finished its
-        // handshake has no change of readiness to announce (8005-agv-control-server#33).
+        // 真服务端对「补发进后一个会话」的报文按首次受理作答（RebindDurableAckAsync）：只回 ack，
+        // 因为一个还没走完握手的世代没有任何就绪变化可宣告（8005-agv-control-server#33）。
         if (SendReadinessAfterSafetyStateChangedAck && !replayedIntoLaterSession)
         {
             await WriteEnvelopeAsync(context, CreateSessionReadiness(context)).ConfigureAwait(false);
