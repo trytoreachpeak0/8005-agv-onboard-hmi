@@ -20,9 +20,29 @@ public sealed partial class WireToGateBusinessService
     /// entry behind <c>recoveryResumeEnabled</c>, or before any sublot was entered, which is not.
     /// </summary>
     public bool CanRequestLoadCancellation =>
-        CanUseRecoveryOperator(requireProof: false)
-            && HasRecoveryVectorOrLoadOperation(WireToGateRecoveryVectorTypes.LoadCancellation)
+        (CanUseRecoveryOperator(requireProof: false)
+            && HasRecoveryVectorOrLoadOperation(WireToGateRecoveryVectorTypes.LoadCancellation))
         || CanRequestLoadCancellationBeforeSublot();
+
+    /// <summary>
+    /// Whether a cancellation before any sublot has gone out and is not settled: sent and not
+    /// refused, or authorized and its result not yet acknowledged.
+    /// </summary>
+    /// <remarks>
+    /// Read from the cached recovery state, which the press writes before the request leaves. A
+    /// refusal forgets the pending entry and an acknowledged result clears both, so either answer
+    /// reopens sublot entry -- the first only if the stop is still waiting for one.
+    /// </remarks>
+    public bool IsLoadCancellationBeforeSublotOpen
+    {
+        get
+        {
+            WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+            return state.PendingLoadCancellation is { SlotOperationAttemptId: null }
+                || state.RecoveryVector is { } vector
+                    && WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector);
+        }
+    }
 
     public bool CanRequestLoadCompensation =>
         CanUseRecoveryOperator(requireProof: true)
@@ -433,6 +453,15 @@ public sealed partial class WireToGateBusinessService
                 reason,
                 cancellationToken)
             .ConfigureAwait(false);
+        if (slotOperationAttemptId is null)
+        {
+            // Published before the send, which waits for the answer: sublot entry closes from here
+            // (CanSubmitSublot), and the operator sees why while the request is out.
+            PublishOperatorResponse(
+                "RECOVERY_VECTOR_REQUESTED",
+                "已申请取消本站装货，等待服务端答复；取消结束前暂停扫码。 ");
+        }
+
         WireToGateOperatorContextPayload operatorContext = OperatorOf(pending);
         LoadCancellationStartRequestedPayload request = new(
             cancellationId,

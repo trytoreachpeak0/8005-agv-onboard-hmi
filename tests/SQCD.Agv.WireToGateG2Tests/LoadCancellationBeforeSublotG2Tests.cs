@@ -324,7 +324,7 @@ public sealed class LoadCancellationBeforeSublotG2Tests
         WireToGateRecoveryState unacknowledged = await harness.ReadRecoveryStateAsync(token);
         Assert.NotNull(unacknowledged.PendingLoadCancellation);
         Assert.NotNull(unacknowledged.RecoveryVector);
-        Assert.True(harness.Business.CanSubmitSublot);
+        await AssertSublotEntryClosedAsync(harness, token);
         Assert.True(harness.Business.CanRequestLoadCancellation);
         Assert.Null(harness.Business.CurrentOperationSnapshot);
 
@@ -399,7 +399,55 @@ public sealed class LoadCancellationBeforeSublotG2Tests
         WireToGateRecoveryState state = await harness.ReadRecoveryStateAsync(cancellationToken);
         Assert.Null(state.RecoveryVector);
         Assert.Null(harness.Business.CurrentOperationSnapshot);
+        // 服务端已按 cancellationId 落了授权记录、站点被它挂住，待答记录留着，扫码也就仍然关着。
+        Assert.False(harness.Business.CanSubmitSublot);
+    }
+
+    /// <summary>
+    /// 扫码前取消已发出、还没有答复时不能提交子批：服务端取消记录开着时不会开始装货，提交了只会让操作员
+    /// 干等仓位操作。服务端拒绝之后待答记录清掉，提交子批恢复，并且真的发得出去。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task SublotEntryClosesWhileTheCancellationIsOutAndReopensOnceItIsRefused()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
+            token,
+            server =>
+            {
+                server.LoadCancellationAuthorizationsToDrop = 1;
+                server.LoadCancellationDecision = "REJECTED";
+            });
+
+        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+            "到站后现场确认本站没有要装的货。", token));
+        Assert.True(harness.Business.IsLoadCancellationBeforeSublotOpen);
+        await AssertSublotEntryClosedAsync(harness, token);
+
+        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+            "再按一次，这次服务端拒绝。", token));
+        await harness.WaitForRecoveryBlockedAsync("ACTION_NOT_ALLOWED_IN_STATE", token);
+
+        Assert.False(harness.Business.IsLoadCancellationBeforeSublotOpen);
         Assert.True(harness.Business.CanSubmitSublot);
+        await harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token);
+        await BeforeSublotHarness.WaitUntilAsync(
+            () => harness.PayloadsReceived("SublotSubmitted").Count == 1,
+            "the sublot submitted after the refusal to reach the server",
+            token);
+    }
+
+    private static async Task AssertSublotEntryClosedAsync(
+        BeforeSublotHarness harness,
+        CancellationToken cancellationToken)
+    {
+        Assert.False(harness.Business.CanSubmitSublot);
+        InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", cancellationToken));
+        Assert.Equal("LOAD_CANCELLATION_IN_PROGRESS", refused.Message);
+        Assert.Empty(harness.PayloadsReceived("SublotSubmitted"));
     }
 
     private static void AssertRetriedWithTheFirstPressContent(
@@ -585,9 +633,10 @@ public sealed class LoadCancellationBeforeSublotG2Tests
                     return harness;
                 }
 
-                // 录入请求跟在工作清单后面，入口判定两样都读。
+                // 录入请求跟在工作清单后面，入口判定两样都读。看 ExpectedSublots 而不看 CanSubmitSublot：
+                // 重启前留下的扫码前取消没结时，提交子批本来就关着。
                 await WaitUntilAsync(
-                    () => business.CanSubmitSublot
+                    () => business.ExpectedSublots is not null
                         && session.CurrentJourney.CurrentStopWorklist is not null,
                     "the entry request and its worklist to arrive",
                     cancellationToken);
