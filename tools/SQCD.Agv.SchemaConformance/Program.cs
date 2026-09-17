@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using Corvus.Json;
 using Corvus.Json.Validator;
 using SQCD.Agv.Contracts;
@@ -201,7 +202,12 @@ object OriginCoverage(string origin, params string[] directions)
     };
 }
 
-JsonSerializerOptions reportOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+JsonSerializerOptions reportOptions = new(JsonSerializerDefaults.Web)
+{
+    WriteIndented = true,
+    // The reports are read by people, and a sample line with every quote escaped is not readable.
+    Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+};
 File.WriteAllText(
     Path.Combine(reportDirectory, "schema-coverage.json"),
     JsonSerializer.Serialize(new
@@ -350,6 +356,17 @@ static Error Describe(ValidationResult result, JsonElement root)
         // message always does: "Validation const - the value '1' did not match '3'."
         keyword = text[MessagePrefix.Length..end];
     }
+    const string RequiredPrefix = "the required property '";
+    if (keyword == "required" && result.Message is { } required &&
+        required.IndexOf(RequiredPrefix, StringComparison.Ordinal) is >= 0 and var start &&
+        required.IndexOf('\'', start + RequiredPrefix.Length) is > 0 and var close)
+    {
+        // Point at the missing property itself, not at the object that lacks it: the object's raw text
+        // carries ids that differ on every line, which would split one defect into as many groups as
+        // lines and make it impossible to register.
+        string name = required[(start + RequiredPrefix.Length)..close];
+        pointer += "/" + name.Replace("~", "~0", StringComparison.Ordinal).Replace("/", "~1", StringComparison.Ordinal);
+    }
     string actual = Resolve(root, pointer) is { } value ? Truncate(value.GetRawText()) : "(absent)";
     string message = string.IsNullOrEmpty(result.Message) ? "violates '" + keyword + "'" : result.Message;
     return new Error("#" + pointer, keyword, message, actual);
@@ -450,8 +467,10 @@ internal sealed record Violation(string MessageType, string Origin, string Site,
 // so a new defect riding on the same line still fails. Array indices in Pointer are written '*'.
 internal sealed record KnownViolation(string MessageType, string Pointer, string Keyword, string Actual, string? Issue, string? Deliberate)
 {
+    [JsonIgnore]
     public bool IsDeliberate => !string.IsNullOrWhiteSpace(Deliberate);
 
+    [JsonIgnore]
     public bool IsWellFormed =>
         !string.IsNullOrWhiteSpace(MessageType) && !string.IsNullOrWhiteSpace(Pointer) &&
         !string.IsNullOrWhiteSpace(Keyword) && Actual is not null &&
