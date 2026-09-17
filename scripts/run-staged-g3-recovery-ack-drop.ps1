@@ -1,3 +1,33 @@
+<#
+.SYNOPSIS
+    诊断用 runner：在真实双端（ControlServer + OnboardHmi + slots-simulator）上
+    复现首个 RecoveryStateReport durable Ack 丢失的时序。
+
+.DESCRIPTION
+    本 runner 是诊断用，不参与正式切片判定。
+
+    它产出的 run-result.json 只描述这一次诊断运行观察到了什么
+    （officialSliceEvidence: false），不构成任何切片的门禁证据，也不代替任何
+    gate-result.json。
+
+    FP-IS-00 与 FP-IS-06 的正式 G3 证据由 8005-agv-control-server 的
+    scripts/run-staged-g3.ps1 承担；G3 切片归属表与守卫在该仓
+    scripts/g3-slice-evidence.ps1。
+
+    保留本 runner 的理由：它能稳定复现 ack 丢失这一类时序问题，诊断定位足够。
+    若把它同改为按片出证、带分级状态，就是与服务端 runner 重复建设一套归属表
+    与守卫，且两处归属会漂移。
+
+    产物 schema（run-result.json）：
+      - schemaVersion 1.1.0（上一版 1.0.0）：增量改动，为声明诊断定位而升一级。
+        新增 officialSliceEvidence 字段；startedScope 更名为 diagnosticScope；
+        status 取值统一为 DIAGNOSTIC_* 前缀。原有字段语义未变，旧字段名与旧
+        状态串不再产出。
+      - officialSliceEvidence 恒为 false：本 runner 不产出正式切片证据。
+
+    本脚本仍会起真实双端与桌面，运行前请按仓库根 CLAUDE.md 的冲突边界与授权要求
+    确认可以占用本机资源。
+#>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
@@ -537,21 +567,27 @@ $recovered = $null -ne $sessionSnapshot `
     -and [long]$sessionSnapshot.sessionGeneration -ge 2 `
     -and $sessionSnapshot.reasonCode -eq 'DEPARTURE_SAFETY_NOT_READY'
 
+# 诊断结论，不参与正式切片判定（见脚本头注释）。全部带 DIAGNOSTIC_ 前缀，
+# 使任何一份产物单看 status 就能自证这不是切片门禁证据。
 $status = if ($recovered -and -not $staleGenerationObserved) {
-    'PASS_WITH_OFFICIAL_SLICES_REMAINING_INCONCLUSIVE'
+    'DIAGNOSTIC_PASS'
 } elseif ($replayedExactIdentity -and $staleGenerationObserved) {
-    'FAIL_CROSS_REPOSITORY_RECOVERY_REPLAY'
+    'DIAGNOSTIC_FAIL_CROSS_REPOSITORY_RECOVERY_REPLAY'
 } elseif ($timedOutWaitingForReplay) {
-    'INCONCLUSIVE_REPLAY_NOT_OBSERVED_BEFORE_TIMEOUT'
+    'DIAGNOSTIC_INCONCLUSIVE_REPLAY_NOT_OBSERVED_BEFORE_TIMEOUT'
 } else {
-    'INCONCLUSIVE_UNCLASSIFIED'
+    'DIAGNOSTIC_INCONCLUSIVE_UNCLASSIFIED'
 }
 
 $runResult = [ordered]@{
-    schemaVersion = '1.0.0'
+    schemaVersion = '1.1.0'
+    # 恒为 false：本 runner 是诊断用，产出的证据不参与正式切片判定。
+    officialSliceEvidence = $false
     runKind = 'STAGED_G3_REAL_PEERS_RECOVERY_ACK_DROP'
     runId = Split-Path -Leaf $StageRoot
-    startedScope = @('FP-IS-00', 'FP-IS-06')
+    # 本次诊断涉及的消息面（原字段名 startedScope）。不表示切片归属：
+    # FP-IS-00 / FP-IS-06 的正式 G3 证据由服务端 scripts/run-staged-g3.ps1 出。
+    diagnosticScope = @('FP-IS-00', 'FP-IS-06')
     status = $status
     protocol = [ordered]@{
         tag = $version.protocolTag
