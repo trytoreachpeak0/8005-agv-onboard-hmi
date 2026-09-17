@@ -191,17 +191,32 @@ function Invoke-LoggedCommand {
         [string]$Name,
         [string]$FilePath,
         [string[]]$Arguments,
-        [string]$LogPath
+        [string]$LogPath,
+        [string]$SchemaReportDirectory = ''
     )
 
     Add-Event $transcript 'command.started' @{ name = $Name; arguments = $Arguments }
     Push-Location $hmiRoot
+    # WireToGateG2Tests 在测试进程结束时，把本次经 WireToGateProtocolSerializer.Create／RebindSessionGeneration
+    # 发出的每一条协议报文（车载端产品与 FakeControlServer 两个产地）交给独立进程
+    # tools/SQCD.Agv.SchemaConformance，按本仓 vendor 的协议 schema 逐条校验（OutboundSchemaConformance.cs，
+    # 8005-agv-onboard-hmi#74）。违约以 test assembly cleanup failure 让 dotnet test 退出码非 0，而控制台
+    # 摘要仍写 Failed: 0——所以一律按退出码判，不解析摘要。schema-coverage.json 与（违约时）
+    # schema-violations.json、schema-conformance.txt 落在这个目录里。
+    #
+    # 成本：每次跑到 WireToGateG2Tests 多出约 45～75 秒 schema 编译（2026-09-17 本机实测 45、61、62、
+    # 75 秒，随机器负载波动；逐条校验约 4 秒，测试本身约 8 秒）。试过把各消息 schema 合成一份只编译
+    # 一次，同一批报文 70 秒只降到 57 秒——开销在代码生成本身，不值得为此让错误定位变复杂，所以没换。
+    if (-not [string]::IsNullOrWhiteSpace($SchemaReportDirectory)) {
+        $env:WIRE_TO_GATE_SCHEMA_REPORT_DIR = $SchemaReportDirectory
+    }
     try {
         $output = & $FilePath @Arguments 2>&1
         $exitCode = $LASTEXITCODE
         $output | Out-File -LiteralPath $LogPath -Encoding utf8
     } finally {
         Pop-Location
+        Remove-Item Env:WIRE_TO_GATE_SCHEMA_REPORT_DIR -ErrorAction SilentlyContinue
     }
     Add-Event $transcript 'command.completed' @{ name = $Name; exitCode = $exitCode; log = (Split-Path -Leaf $LogPath) }
     if ($exitCode -ne 0) {
@@ -212,6 +227,26 @@ function Invoke-LoggedCommand {
         ExitCode = $exitCode
         Output = ($output -join [Environment]::NewLine)
         LogPath = $LogPath
+    }
+}
+
+function Read-SchemaConformance {
+    param(
+        [string]$Directory,
+        [string]$RelativeDirectory
+    )
+
+    $path = Join-Path $Directory 'schema-coverage.json'
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+        return $null
+    }
+    $coverage = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+    return [ordered]@{
+        linesChecked = $coverage.linesChecked
+        linesInViolation = $coverage.linesInViolation
+        linesInKnownViolation = $coverage.linesInKnownViolation
+        schemaCompilationMilliseconds = $coverage.schemaCompilationMilliseconds
+        coverage = $RelativeDirectory + '/schema-coverage.json'
     }
 }
 
@@ -443,7 +478,22 @@ if ($isSliceRun) {
     # The prefix form appends the framework and a timestamp, so each project keeps its own file.
     $testArguments += @('--filter', "IntegrationSlice=$Slice", '--logger', "trx;LogFilePrefix=onboard-$Slice")
 }
-$test = Invoke-LoggedCommand -Name 'dotnet-test-release' -FilePath 'dotnet' -Arguments $testArguments -LogPath (Join-Path $logsDirectory 'dotnet-test-release.log')
+$test = Invoke-LoggedCommand -Name 'dotnet-test-release' -FilePath 'dotnet' -Arguments $testArguments -LogPath (Join-Path $logsDirectory 'dotnet-test-release.log') -SchemaReportDirectory $resultsDirectory
+
+# 出站 schema 校验的摘要。整仓那一趟一定跑到 WireToGateG2Tests，所以那里没有 schema-coverage.json 只有
+# 一种解释：校验没挂上（fixture 被删、观察点被摘、校验器没构建）。不判失败的话，删掉 fixture 会让这道
+# 门禁无声消失。-Slice 那一趟只在选中了 WireToGateG2Tests 的测试时才有东西可验：选中了就同样要求覆盖
+# 文件在；没选中时摘要写 null，违约仍由上面的退出码判。
+$runReachesG2Tests = -not $isSliceRun -or
+    @($listed | Where-Object { $_ -match '^\s*SQCD\.Agv\.WireToGateG2Tests\.\S' }).Count -gt 0
+$schemaConformance = $null
+if ($runReachesG2Tests) {
+    $schemaConformance = Read-SchemaConformance $resultsDirectory 'test-results'
+    if ($null -eq $schemaConformance) {
+        Add-Failure ('dotnet test 跑到了 WireToGateG2Tests，却没有产出 test-results/schema-coverage.json：' +
+                     '出站 schema 校验没有运行（OutboundSchemaConformance 没挂上，或校验器没构建）。')
+    }
+}
 
 # The prefix only makes a collision unlikely -- its timestamp has one-second resolution, and two
 # projects can finish inside one second. So the evidence is counted rather than trusted: the results
@@ -534,12 +584,13 @@ $sliceRows = if ($null -ne $sliceEntry) {
 }
 
 $summary = [ordered]@{
-    # 1.1.0, not 1.0.0: this run adds integrationSliceId, selectedTestCount and
-    # integrationSliceIndexSha256, matching the control server's gate-result bump for the same three
-    # facts. Additive, so a 1.0.0 reader still parses it -- but a consumer that cannot tell the two
-    # shapes apart cannot tell a whole-solution verdict from a per-slice one either, which is the
-    # whole reason -Slice exists.
-    schemaVersion = '1.1.0'
+    # 1.1.0 added integrationSliceId, selectedTestCount and integrationSliceIndexSha256, matching the
+    # control server's gate-result bump for the same three facts: a consumer that cannot tell the two
+    # shapes apart cannot tell a whole-solution verdict from a per-slice one either, which is the whole
+    # reason -Slice exists. 1.2.0 adds schemaConformance, the outbound schema gate
+    # (8005-agv-onboard-hmi#74). Both additive, so an older reader still parses it; the bump lets a
+    # reader tell "this run had no schema gate" from "this slice selected no G2 test" (null).
+    schemaVersion = '1.2.0'
     evidenceType = 'ONBOARD_HMI_LOCAL_G2'
     status = if ($failures.Count -eq 0) { 'PASS' } else { 'FAIL' }
     generatedAtUtc = $runUtc.ToString('o')
@@ -577,6 +628,7 @@ $summary = [ordered]@{
         test = [ordered]@{ exitCode = $test.ExitCode; log = 'logs/dotnet-test-release.log'; resultsDirectory = 'test-results' }
         format = [ordered]@{ exitCode = $format.ExitCode; log = 'logs/dotnet-format-verify.log' }
     }
+    schemaConformance = $schemaConformance
     slices = @($sliceRows)
     failures = @($failures)
     artifacts = [ordered]@{
@@ -590,6 +642,10 @@ $summary = [ordered]@{
         '本证据是 OnboardHmi 本机 G2；ControlServer G2 和联合 G3 仍需外部/现场门禁。',
         'G1 使用临时盘符运行，仅规避 Windows 工作区路径含 # 时的 Node URL 解码问题，不改变协议仓库内容。',
         '真实车辆停稳信号、Modbus/锁/门/光幕和现场明文网络未在本机证据中宣称完成。',
+        ('出站 schema 校验（schemaConformance）只验 WireToGateG2Tests 进程里经 WireToGateProtocolSerializer.Create／' +
+         'RebindSessionGeneration 产出的报文（车载端产品与 FakeControlServer 两个产地）；入站不验；messageType ' +
+         '覆盖只报告不判死——没被任何测试发出的消息，它的发送方法缺字段这道门禁看不见。违约按 dotnet test 退出码判，' +
+         '控制台摘要仍会写 Failed: 0。'),
         $(if ($expected.ApprovalStatus -eq 'APPROVED_RELEASE') {
             '本证据绑定的是已发布的 ' + $expected.Tag + '（commit ' + $expected.Commit + '）；发布批准记在外置 attestation 里，本证据不复核它。'
         } else {
@@ -628,7 +684,9 @@ $summary | ConvertTo-Json -Depth 30 | Set-Content -LiteralPath (Join-Path $runDi
 # of which the gate result has room for.
 if ($isSliceRun) {
     $gateResult = [ordered]@{
-        schemaVersion = '1.1.0'
+        # 1.2.0: adds schemaConformance (see the summary's schemaVersion). null when this slice selected
+        # no WireToGateG2Tests test; a violation still fails the run through testExitCode.
+        schemaVersion = '1.2.0'
         gate = 'ONBOARD_HMI_G2'
         integrationSliceId = $Slice
         status = $summary.status
@@ -653,6 +711,7 @@ if ($isSliceRun) {
         buildExitCode = $build.ExitCode
         testExitCode = $test.ExitCode
         formatExitCode = $format.ExitCode
+        schemaConformance = $schemaConformance
     }
     $gateResult | ConvertTo-Json -Depth 30 |
         Set-Content -LiteralPath (Join-Path $runDirectory 'gate-result.json') -Encoding utf8

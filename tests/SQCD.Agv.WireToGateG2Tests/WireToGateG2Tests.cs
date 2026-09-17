@@ -303,7 +303,7 @@ public sealed class WireToGateG2Tests
         string requestId = "77777777-7777-4777-8777-777777777770";
         WireToGateOperatorContextPayload operatorContext = new(
             "maintenance-001",
-            "CONFIGURED_PROOF",
+            "SESSION",
             DateTimeOffset.UtcNow);
         ExceptionRecoverySessionOpenedPayload opened = await client
             .RequestExceptionRecoverySessionAsync(
@@ -923,7 +923,7 @@ public sealed class WireToGateG2Tests
                             "EMPTY",
                             "UNLOCKED",
                             "RESET",
-                            ["SLOT_EMPTY_AFTER_LOAD"])
+                            ["LOCK_NOT_CLOSED"])
                     ],
                     DateTimeOffset.UtcNow,
                     "NONE",
@@ -2104,7 +2104,7 @@ public sealed class WireToGateG2Tests
             secondMessageId = await secondClient.SendSafetyStateChangedAsync(
                 1,
                 observedAt,
-                new WireToGateSafetySummaryPayload(false, true, true, true, false, ["VEHICLE_NOT_STOPPED"]),
+                new WireToGateSafetySummaryPayload(false, true, true, true, false, ["VEHICLE_NOT_READY"]),
                 [2],
                 testToken);
         }
@@ -2214,7 +2214,7 @@ public sealed class WireToGateG2Tests
         WireToGateSessionSnapshot blocked = await client.ConnectAndRecoverAsync(testToken);
 
         Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, blocked.Readiness);
-        Assert.Contains("DEPARTURE_SAFETY_NOT_READY", blocked.ReasonCodes);
+        Assert.Contains("DEPARTURE_UNSAFE", blocked.ReasonCodes);
         await Assert.ThrowsAsync<InvalidOperationException>(() => client.SendOperationProgressAsync(
             "44444444-4444-4444-4444-444444444444",
             "PREPARING",
@@ -2948,7 +2948,7 @@ public sealed class WireToGateG2Tests
                     requestId,
                     new WireToGateOperatorContextPayload(
                         "maintenance-001",
-                        "CONFIGURED_PROOF",
+                        "SESSION",
                         DateTimeOffset.UtcNow),
                     "MAINTENANCE_ADMINISTRATOR",
                     "88888888-8888-4888-8888-888888888888",
@@ -3020,7 +3020,7 @@ public sealed class WireToGateG2Tests
                 requestId,
                 new WireToGateOperatorContextPayload(
                     "maintenance-001",
-                    "CONFIGURED_PROOF",
+                    "SESSION",
                     DateTimeOffset.UtcNow),
                 "MAINTENANCE_ADMINISTRATOR",
                 "88888888-8888-4888-8888-888888888888",

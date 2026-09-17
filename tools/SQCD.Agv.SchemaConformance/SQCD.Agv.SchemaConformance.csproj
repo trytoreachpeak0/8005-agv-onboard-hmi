@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- A separate process, never a referenced library. Corvus.Json.Validator brings System.Text.Json
+       10.x and Roslyn; loaded into the test host, that System.Text.Json replaces the 8.0 one the
+       vehicle ships with, and every G2 test would then measure a serializer production never runs.
+       The G2 test project references this one for build order only (ReferenceOutputAssembly="false"),
+       and PrivateAssets="all" keeps the package out of that project's dependency graph as well. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Corvus.Json.Validator" PrivateAssets="all" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../src/SQCD.Agv.Contracts/SQCD.Agv.Contracts.csproj" />
+  </ItemGroup>
+</Project>
