@@ -4,6 +4,11 @@
     <CentralPackageVersionOverrideEnabled>false</CentralPackageVersionOverrideEnabled>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Pinned by 8005-agv-protocol compatibility/implementation-version-matrix.json (pinnedPackages,
+         consumer "isolated .NET conformance process"). Only tools/SQCD.Agv.SchemaConformance may
+         reference it: it brings System.Text.Json 10.x, which must never reach a product or test
+         assembly; that project says why. -->
+    <PackageVersion Include="Corvus.Json.Validator" Version="4.6.7" />
     <PackageVersion Include="Microsoft.Data.Sqlite.Core" Version="8.0.30" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.8.1" />
     <PackageVersion Include="SQLitePCLRaw.provider.winsqlite3" Version="2.1.11" />

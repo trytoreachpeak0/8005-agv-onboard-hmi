@@ -41,6 +41,31 @@ scripts/run-w2g-g2.ps1 为每次本机验证创建一个不可复用的证据目
 `[Trait("ProtocolVector", ...)]` 按协议切片索引的投影——`IntegrationSliceTraitArchitectureTests`
 钉住这条等式，投影只到本条线已实现的切片（`FP-IS-00`～`07`、`FP-IS-14`、`FP-IS-15`）。
 
+## 出站报文 schema 校验（`schemaConformance`）
+
+`WireToGateG2Tests` 在测试进程结束时，把本次经 `WireToGateProtocolSerializer.Create`／
+`RebindSessionGeneration` 发出的每一条协议报文——车载端产品发的，与 `FakeControlServer` 发的——交给
+独立进程 `tools/SQCD.Agv.SchemaConformance`，按本仓 `vendor/8005-agv-protocol` 的 schema 逐条校验
+（8005-agv-onboard-hmi#74）。脚本把 `WIRE_TO_GATE_SCHEMA_REPORT_DIR` 指向本次的 `test-results/`，
+`schema-coverage.json`、`schema-conformance.txt` 与（违约时）`schema-violations.json` 落在那里。
+
+**一律按 `dotnet test` 的退出码判。** 违约以 test assembly cleanup failure 让退出码非 0，控制台摘要
+却仍写 `Failed: 0`。
+
+- 整仓那一趟一定跑到 `WireToGateG2Tests`，没有产出 `schema-coverage.json` 就判失败：删掉 fixture 不能让
+  这道门禁无声消失。
+- `-Slice` 那一趟选中了 `WireToGateG2Tests` 的测试时同样要求覆盖文件在；一条都没选中时
+  `schemaConformance` 为 `null`，违约仍由退出码判。
+- `summary.json` 与 `gate-result.json` 因此升到 `schemaVersion 1.2.0`，多出 `schemaConformance`
+  （`linesChecked`、`linesInViolation`、`linesInKnownViolation`、`schemaCompilationMilliseconds`、
+  覆盖文件相对路径）。
+- 已知违约登记在 `tests/SQCD.Agv.WireToGateG2Tests/schema-known-violations.json`：每条要么指向已开的
+  缺陷 issue，要么点名故意发它的测试（`deliberate`，只豁免替身的行，永远不豁免产品的行）。
+- 只验出站，入站不验；messageType 覆盖只报告不判死——没被任何测试发出的消息，它的发送方法缺字段
+  这道门禁看不见。
+- 成本：整份 G2 多出约 45～75 秒 schema 编译（2026-09-17 本机实测四次：45、61、62、75 秒，随机器负载波动；校验本身约
+  4 秒），测试本身约 8 秒。
+
 ## 身份校验
 
 脚本逐字段核对 `$expected` 身份。当前绑定的是协议 `v2.0.0` 候选：commit

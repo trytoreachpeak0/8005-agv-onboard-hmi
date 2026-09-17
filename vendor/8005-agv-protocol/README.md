@@ -105,6 +105,20 @@ CI 上实跑通过（run
 **整份拷贝，不要手工编辑副本。**副本与上游的差异没有任何机制能自动发现，唯一的保障是
 「它永远是 `cp` 出来的」这条纪律。
 
+## G2 用它做出站报文 schema 校验
+
+`tools/SQCD.Agv.SchemaConformance`（由 `WireToGateG2Tests` 的 `OutboundSchemaConformance` 在测试进程
+结束时启动）**直接读本目录**的 `manifest/release.json` 与 `schemas/`，不另拷协议文件。每次先核
+manifest 字节的 SHA-256 等于 `WireToGateRelease.ManifestSha256`、`schemas/` 每个文件与 manifest 的
+`files` 表双向一致，对不上退出码 2、G2 失败。所以门禁验的永远是本仓当前绑定的那份契约，身份换了
+（8005-agv-onboard-hmi#79）它自动跟随。
+
+`envelope.schema.json` 的 `payload` 是一个封闭的空对象，它只描述信封：校验器拿它验「payload 换成
+`{}` 之后的那一行」，再拿 `messages/<Type>.schema.json` 验原样的整行。
+
+违约让 `dotnet test` 退出码非 0，但控制台摘要仍写 `Failed: 0`——**一律按退出码判**。细节见
+`docs/LOCAL_G2_EVIDENCE.md`。
+
 ## 行尾
 
 仓库根的 `.gitattributes` 给这个目录挂了 `-text`，禁止行尾转换。哈希是按字节绑定的，
