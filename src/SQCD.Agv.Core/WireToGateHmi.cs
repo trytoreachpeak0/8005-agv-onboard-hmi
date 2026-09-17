@@ -48,3 +48,23 @@ public sealed record WireToGateOperatorEvent(
     string Kind,
     string Message,
     WireToGateHmiOperationSnapshot? Operation = null);
+
+/// <summary>
+/// The server's latest refusal of an entered sublot, held for the prompt area until the operator
+/// enters again or the stop moves on (8005-agv-onboard-hmi#77).
+/// </summary>
+/// <remarks>
+/// <see cref="DemandId"/> is <c>null</c> for a sublot outside the dispatch scope: there is no demand
+/// to name it against, and that is exactly the rejection the operator most needs to see.
+/// <see cref="EntryRequestKept"/> records whether the vehicle kept its entry request -- it does when
+/// the rejection names the worklist revision that request was made at.
+/// </remarks>
+public sealed record WireToGateSublotRejection(
+    string MessageId,
+    string? DemandId,
+    string OperationSessionId,
+    string ReasonCode,
+    long CurrentWorklistRevision,
+    string RejectedSublot,
+    bool EntryRequestKept,
+    DateTimeOffset ReceivedAt);

@@ -135,7 +135,7 @@ public sealed class SublotEntryScopeG2Tests
     /// </summary>
     /// <remarks>
     /// The vehicle's handling of it -- showing the real reason rather than treating it as a
-    /// recovery message -- is <c>8005-agv-onboard-hmi#77</c>. What is proved here is that the
+    /// recovery message -- is <c>SublotRejectedAfterEntryG2Tests</c>. What is proved here is that the
     /// message is accepted at all: the payload record is a closed schema, so a missing
     /// <c>rejectedSublot</c> would have thrown on arrival and taken the session down.
     /// </remarks>
@@ -151,15 +151,16 @@ public sealed class SublotEntryScopeG2Tests
         await harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token);
         await harness.WaitForSubmissionAsync(token);
 
-        // Clearing the outstanding entry request is what this build already does on a rejection, so
-        // it is the observable that says the message was parsed rather than dropped: the payload
-        // record is a closed schema, and a rejection carrying rejectedSublot would otherwise have
-        // thrown on the receive pump and taken the session down. Whether clearing the request and
-        // logging it as a recovery message is the right handling is 8005-agv-onboard-hmi#77.
+        // The rejection the business service holds for the prompt area is the observable that says the
+        // message was parsed rather than dropped: the payload record is a closed schema, and a
+        // rejection carrying rejectedSublot would otherwise have thrown on the receive pump and taken
+        // the session down.
         await SublotHarness.WaitUntilAsync(
-            () => !harness.Business.CanSubmitSublot,
-            "the rejection to be parsed and clear the outstanding entry request",
+            () => harness.Business.CurrentSublotRejection is not null,
+            "the rejection to be parsed and held for the operator",
             token);
+        Assert.Null(harness.Business.CurrentSublotRejection!.DemandId);
+        Assert.Equal("SUBLOT-001", harness.Business.CurrentSublotRejection.RejectedSublot);
         Assert.True(harness.Session.Current.Connected);
     }
 
@@ -189,9 +190,10 @@ public sealed class SublotEntryScopeG2Tests
         await harness.WaitForSubmissionAsync(token);
 
         await SublotHarness.WaitUntilAsync(
-            () => !harness.Business.CanSubmitSublot,
-            "the whitespace rejection to be parsed and clear the outstanding entry request",
+            () => harness.Business.CurrentSublotRejection is not null,
+            "the whitespace rejection to be parsed and held for the operator",
             token);
+        Assert.Equal(" ", harness.Business.CurrentSublotRejection!.RejectedSublot);
         Assert.True(harness.Session.Current.Connected);
     }
 
@@ -233,12 +235,11 @@ public sealed class SublotEntryScopeG2Tests
             "the first submission to reach the server",
             token);
 
-        // The rejection clears the outstanding request and the resent request re-arms it. Waiting
-        // for the submissions count first is what makes this wait about the resend and not about the
-        // request the harness started with.
+        // The rejection names the revision the request was made at, so the request is kept; waiting
+        // for the rejection itself is what keeps the second scan from racing the first answer.
         await SublotHarness.WaitUntilAsync(
-            () => harness.Business.CanSubmitSublot,
-            "the entry request to be re-armed after the rejection",
+            () => harness.Business.CurrentSublotRejection is not null && harness.Business.CanSubmitSublot,
+            "the rejection to arrive with the entry request still open",
             token);
 
         string second = await harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token);

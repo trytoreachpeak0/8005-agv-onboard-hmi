@@ -14,7 +14,8 @@ public static class WireToGateHmiPresentation
         WireToGateSessionSnapshot session,
         WireToGateHmiOperationSnapshot? operation,
         bool canSubmit,
-        bool loadCancellationPending = false)
+        bool loadCancellationPending = false,
+        bool sublotRejected = false)
     {
         if (operation is { Stage: WireToGateHmiOperationStage.RecoveryRequired })
         {
@@ -59,6 +60,13 @@ public static class WireToGateHmiPresentation
             WireToGateSessionReadiness.Ready when loadCancellationPending => new(
                 "取消中",
                 "正在取消本站装货，等待服务端结果；取消结束前暂停扫码。",
+                HasWarning: true,
+                HasError: false),
+            // The server refused the last entry (onboard-hmi#77). Its reason has a line of its own;
+            // this row says what to do next, which turns on whether the entry request was kept.
+            WireToGateSessionReadiness.Ready when sublotRejected => new(
+                "子批被拒收",
+                WireToGateSublotRejectionText.NextStep(canSubmit),
                 HasWarning: true,
                 HasError: false),
             WireToGateSessionReadiness.Ready when canSubmit => new(

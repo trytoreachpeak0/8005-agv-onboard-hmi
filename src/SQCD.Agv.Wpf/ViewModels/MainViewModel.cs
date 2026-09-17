@@ -70,6 +70,10 @@ public sealed class MainViewModel : ViewModelBase
     private Func<CancellationToken, Task<bool>>? _wireToGateForcedMechanicalRecoveryRequester;
     private Func<bool>? _wireToGateCanRequestManualChargingReturn;
     private Func<bool>? _wireToGateLoadCancellationPending;
+    private Func<WireToGateSublotRejection?>? _wireToGateSublotRejection;
+    private bool _hasSublotRejection;
+    private string _sublotRejectionText = string.Empty;
+    private string _sublotRejectionReasonCode = string.Empty;
     private Func<CancellationToken, Task<bool>>? _wireToGateManualChargingReturnRequester;
 
     /// <param name="slotConfiguration">
@@ -250,7 +254,8 @@ public sealed class MainViewModel : ViewModelBase
         Func<CancellationToken, Task<bool>>? forcedMechanicalRecoveryRequester = null,
         Func<bool>? canRequestManualChargingReturn = null,
         Func<CancellationToken, Task<bool>>? manualChargingReturnRequester = null,
-        Func<bool>? loadCancellationPending = null)
+        Func<bool>? loadCancellationPending = null,
+        Func<WireToGateSublotRejection?>? sublotRejection = null)
     {
         _wireToGateSubmitter = submitter ?? throw new ArgumentNullException(nameof(submitter));
         _wireToGateCanSubmit = canSubmit ?? throw new ArgumentNullException(nameof(canSubmit));
@@ -269,6 +274,7 @@ public sealed class MainViewModel : ViewModelBase
         _wireToGateCanRequestManualChargingReturn = canRequestManualChargingReturn;
         _wireToGateManualChargingReturnRequester = manualChargingReturnRequester;
         _wireToGateLoadCancellationPending = loadCancellationPending;
+        _wireToGateSublotRejection = sublotRejection;
         _wireToGateEnabled = true;
         RefreshWireToGateInputStateCore();
         ApplyWireToGatePresentationCore();
@@ -437,6 +443,29 @@ public sealed class MainViewModel : ViewModelBase
     /// 离站期限倒计时用的车载端时钟，默认系统时钟。测试靠它控制「现在」。
     /// </summary>
     internal IClock Clock { get; init; } = new SystemClock();
+
+    /// <summary>
+    /// 提示区是否显示子批拒收原因（onboard-hmi#77）。操作员再录入、停靠换了会话时撤下。
+    /// </summary>
+    public bool HasSublotRejection
+    {
+        get => _hasSublotRejection;
+        private set => SetProperty(ref _hasSublotRejection, value);
+    }
+
+    /// <summary>拒收原因那一行字：被拒的子批与中文原因，文案集中在 <c>WireToGateSublotRejectionText</c>。</summary>
+    public string SublotRejectionText
+    {
+        get => _sublotRejectionText;
+        private set => SetProperty(ref _sublotRejectionText, value);
+    }
+
+    /// <summary>服务端给的原始原因码。UIA 的 ItemStatus 读它，服务端 G3 场景据此判「显示了原因」，不比文案全文。</summary>
+    public string SublotRejectionReasonCode
+    {
+        get => _sublotRejectionReasonCode;
+        private set => SetProperty(ref _sublotRejectionReasonCode, value);
+    }
 
     /// <summary>
     /// 倒计时定时器挂在哪个 Dispatcher 上，默认是 WPF 应用的 UI 线程；没有 WPF 应用（单元测试）时为空，不起定时器。
@@ -711,11 +740,18 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
+        WireToGateSublotRejection? sublotRejection = _wireToGateSublotRejection?.Invoke();
+        HasSublotRejection = sublotRejection is not null;
+        SublotRejectionText = sublotRejection is null
+            ? string.Empty
+            : WireToGateSublotRejectionText.Describe(sublotRejection);
+        SublotRejectionReasonCode = sublotRejection?.ReasonCode ?? string.Empty;
         WireToGateHmiBanner banner = WireToGateHmiPresentation.Create(
             _wireToGateSession,
             _wireToGateOperation,
             _wireToGateCanSubmit?.Invoke() == true,
-            _wireToGateLoadCancellationPending?.Invoke() == true);
+            _wireToGateLoadCancellationPending?.Invoke() == true,
+            sublotRejection is not null);
         RuleConnectionText = _wireToGateSession.Connected ? "在线" : "离线";
         StateText = banner.StateText;
         Guidance = banner.Guidance;
@@ -774,7 +810,7 @@ public sealed class MainViewModel : ViewModelBase
     {
         "OPERATION_COMPLETED" or "MANUAL_CHARGING_RETURN_ACCEPTED" => OperatorRecordKind.Success,
         "OPERATION_RECOVERY_REQUIRED" or "RECOVERY_BLOCKED" => OperatorRecordKind.Error,
-        "RESULT_ACK_PENDING" or "RECOVERY_AUTHORIZED" => OperatorRecordKind.Warning,
+        "RESULT_ACK_PENDING" or "RECOVERY_AUTHORIZED" or "SUBLOT_REJECTED" => OperatorRecordKind.Warning,
         "SUBLOT_ENTRY_REQUESTED" or "SUBLOT_SUBMITTED" or "OPERATION_PROGRESS" or "OPERATION_REPLAY" =>
             OperatorRecordKind.Operation,
         _ => OperatorRecordKind.System

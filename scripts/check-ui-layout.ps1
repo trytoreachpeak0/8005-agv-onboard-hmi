@@ -21,6 +21,7 @@ $checks = [ordered]@{
     visibleJourneyFact = ($xaml -match 'Text="\{Binding VisitText\}"')
     blockingGuidance = ($xaml -match 'Text="\{Binding Guidance\}"')
     visibleStationDeadline = ($xaml -match 'AutomationProperties\.AutomationId="StationDepartureCountdown"') -and ($xaml -match 'Text="\{Binding StationDepartureCountdownText\}"') -and $stationDeadlineTiersStyled -and $stationDeadlineFixedSize
+    visibleSublotRejectionReason = ($xaml -match 'AutomationProperties\.AutomationId="SublotRejectionReason"') -and ($xaml -match 'AutomationProperties\.ItemStatus="\{Binding SublotRejectionReasonCode\}"') -and ($xaml -match 'Text="\{Binding SublotRejectionText\}"') -and ($xaml -match 'Binding HasSublotRejection, Converter')
     dangerStyle = ($xaml -match 'Background="\{StaticResource DangerBrush\}"')
     boundedLogPanel = ($xaml -match 'Height="110"') -and ($xaml -match '操作记录（最近300条）')
 }
