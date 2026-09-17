@@ -185,6 +185,16 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool ResendSublotEntryRequestAfterRejection { get; set; }
 
     /// <summary>
+    /// After each <c>SublotRejected</c>, send a <c>SlotOperationCommand</c> without waiting for another
+    /// entry: the stop moves on to loading while the vehicle still holds the rejection.
+    /// </summary>
+    /// <remarks>
+    /// A rescan already withdraws the rejection before it is sent, so this is the only way a test
+    /// reaches a load starting with a rejection still on show (<c>8005-agv-onboard-hmi#77</c> review).
+    /// </remarks>
+    public bool SendSlotOperationCommandAfterRejection { get; set; }
+
+    /// <summary>
     /// Drop the connection on receiving a <c>SublotSubmitted</c>, before acknowledging it, so the
     /// vehicle has to send it again on the next connection.
     /// </summary>
@@ -874,6 +884,11 @@ public sealed class FakeControlServer : IAsyncDisposable
                         if (ResendSublotEntryRequestAfterRejection)
                         {
                             await SendSublotEntryRequestAsync(context).ConfigureAwait(false);
+                        }
+
+                        if (SendSlotOperationCommandAfterRejection)
+                        {
+                            await SendSlotOperationCommandAsync(context).ConfigureAwait(false);
                         }
 
                         break;

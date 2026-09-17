@@ -1455,6 +1455,14 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             }
         }
 
+        // The vehicle is taking this stop's load in hand, so a rejection still on show describes an
+        // entry the stop has moved past; left up, it would sit beside a load in progress. Cleared
+        // before the first progress event so the prompt area never shows both.
+        if (Volatile.Read(ref _currentSublotRejection) is { } shownRejection)
+        {
+            Interlocked.CompareExchange(ref _currentSublotRejection, null, shownRejection);
+        }
+
         try
         {
             PublishOperation(

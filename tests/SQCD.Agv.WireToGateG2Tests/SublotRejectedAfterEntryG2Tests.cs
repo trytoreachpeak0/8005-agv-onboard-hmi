@@ -4,6 +4,7 @@ using SQCD.Agv.Application;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
 using SQCD.Agv.Wpf;
+using SQCD.Agv.Wpf.ViewModels;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
@@ -189,6 +190,96 @@ public sealed class SublotRejectedAfterEntryG2Tests
             () => harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token));
         Assert.Equal("WIRE_TO_GATE_JOURNEY_NOT_READY", refused.Message);
         Assert.Equal(1, harness.SubmissionCount);
+    }
+
+    /// <summary>
+    /// 拒收之后服务端直接开始装货（没有再录入）：车载端接手仓位命令时撤下拒收，提示区不在装货进行中挂着
+    /// 上一次的拒收原因（#77 审查）。界面这一步照 <c>App</c> 的接法把 <see cref="MainViewModel"/> 接到业务服务上。
+    /// </summary>
+    [Fact]
+    public async Task ALoadStartingAfterARejectionWithdrawsItFromThePromptArea()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RejectionHarness harness = await RejectionHarness.StartAsync(
+            server =>
+            {
+                server.RejectSublotSubmissionsWith = "SUBLOT_NOT_IN_DISPATCH_SCOPE";
+                server.SendSlotOperationCommandAfterRejection = true;
+            },
+            token);
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = new(
+            controller,
+            new RecordingLogger(),
+            "agv02",
+            OnboardActiveSlotConfigurationFactory.Create(new WireToGateSettings(), new IoModuleSettings()))
+        {
+            StationDepartureCountdownDispatcher = null
+        };
+        await viewModel.InitializeAsync();
+        viewModel.ConfigureWireToGate(
+            (sublot, _, cancellationToken) => harness.Business.SubmitSublotAsync(sublot, "SCANNER", cancellationToken),
+            () => harness.Business.CanSubmitSublot,
+            sublotRejection: () => harness.Business.CurrentSublotRejection);
+        viewModel.UpdateWireToGateStatus(harness.Session.Current);
+        ConcurrentQueue<(string Kind, bool HasSublotRejection)> shown = new();
+        harness.Business.OperatorEventPublished += (_, args) =>
+        {
+            viewModel.ApplyWireToGateOperatorEvent(args.Value);
+            shown.Enqueue((args.Value.Kind, viewModel.HasSublotRejection));
+        };
+
+        await harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token);
+        await RejectionHarness.WaitUntilAsync(
+            () => shown.Any(item => item.Kind == "OPERATION_PROGRESS"),
+            "the slot operation to start after the rejection",
+            token);
+
+        Assert.Contains(shown, item => item is { Kind: "SUBLOT_REJECTED", HasSublotRejection: true });
+        Assert.Null(harness.Business.CurrentSublotRejection);
+        Assert.False(viewModel.HasSublotRejection);
+        Assert.All(
+            shown.Where(item => item.Kind == "OPERATION_PROGRESS"),
+            item => Assert.False(item.HasSublotRejection));
+    }
+
+    private static OnboardController Controller() => new(
+        new FakeIoModuleClient(),
+        new IdleRuleGateway(),
+        new RecordingLogger(),
+        new SystemClock(),
+        new OnboardWorkflowOptions(
+            TimeSpan.FromSeconds(3),
+            TimeSpan.FromSeconds(3),
+            TimeSpan.FromMinutes(2),
+            TimeSpan.FromMilliseconds(300),
+            TimeSpan.FromSeconds(1),
+            128,
+            2));
+
+    private sealed class IdleRuleGateway : IRuleGateway
+    {
+        public bool IsConnected => false;
+
+        public VisitContext? CurrentVisit => null;
+
+        public event EventHandler<ValueChangedEventArgs<bool>>? ConnectionChanged;
+
+        public event EventHandler<ValueChangedEventArgs<VisitContext?>>? VisitChanged;
+
+        public Task StartAsync(CancellationToken applicationStopping) => Task.CompletedTask;
+
+        public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<ScanAuthorization> VerifyScanAsync(
+            ScanVerificationRequest request,
+            CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("本测试不扫码。");
+
+        public Task<bool> ReportOperationAsync(OperationResult result, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("本测试不上报。");
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     private sealed class RejectionHarness : IAsyncDisposable
