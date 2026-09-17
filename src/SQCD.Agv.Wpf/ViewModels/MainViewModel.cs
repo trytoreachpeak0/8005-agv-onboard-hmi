@@ -69,6 +69,7 @@ public sealed class MainViewModel : ViewModelBase
     private Func<bool>? _wireToGateCanRequestForcedMechanicalRecovery;
     private Func<CancellationToken, Task<bool>>? _wireToGateForcedMechanicalRecoveryRequester;
     private Func<bool>? _wireToGateCanRequestManualChargingReturn;
+    private Func<bool>? _wireToGateLoadCancellationPending;
     private Func<CancellationToken, Task<bool>>? _wireToGateManualChargingReturnRequester;
 
     /// <param name="slotConfiguration">
@@ -248,7 +249,8 @@ public sealed class MainViewModel : ViewModelBase
         Func<bool>? canRequestForcedMechanicalRecovery = null,
         Func<CancellationToken, Task<bool>>? forcedMechanicalRecoveryRequester = null,
         Func<bool>? canRequestManualChargingReturn = null,
-        Func<CancellationToken, Task<bool>>? manualChargingReturnRequester = null)
+        Func<CancellationToken, Task<bool>>? manualChargingReturnRequester = null,
+        Func<bool>? loadCancellationPending = null)
     {
         _wireToGateSubmitter = submitter ?? throw new ArgumentNullException(nameof(submitter));
         _wireToGateCanSubmit = canSubmit ?? throw new ArgumentNullException(nameof(canSubmit));
@@ -266,6 +268,7 @@ public sealed class MainViewModel : ViewModelBase
         _wireToGateForcedMechanicalRecoveryRequester = forcedMechanicalRecoveryRequester;
         _wireToGateCanRequestManualChargingReturn = canRequestManualChargingReturn;
         _wireToGateManualChargingReturnRequester = manualChargingReturnRequester;
+        _wireToGateLoadCancellationPending = loadCancellationPending;
         _wireToGateEnabled = true;
         RefreshWireToGateInputStateCore();
         ApplyWireToGatePresentationCore();
@@ -288,6 +291,9 @@ public sealed class MainViewModel : ViewModelBase
                 operatorEvent.Message));
             ClearLogsCommand.RaiseCanExecuteChanged();
             TrimLogs();
+            // An event can open or close sublot entry without any snapshot arriving -- a cancellation
+            // before any sublot being sent, refused or settled -- so the input gates are read again.
+            RefreshWireToGateInputStateCore();
             ApplyWireToGatePresentationCore();
             RefreshLockerCardsCore();
         });
@@ -708,7 +714,8 @@ public sealed class MainViewModel : ViewModelBase
         WireToGateHmiBanner banner = WireToGateHmiPresentation.Create(
             _wireToGateSession,
             _wireToGateOperation,
-            _wireToGateCanSubmit?.Invoke() == true);
+            _wireToGateCanSubmit?.Invoke() == true,
+            _wireToGateLoadCancellationPending?.Invoke() == true);
         RuleConnectionText = _wireToGateSession.Connected ? "在线" : "离线";
         StateText = banner.StateText;
         Guidance = banner.Guidance;

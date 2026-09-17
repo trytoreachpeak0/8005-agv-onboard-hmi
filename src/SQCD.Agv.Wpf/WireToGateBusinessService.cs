@@ -123,9 +123,15 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
     public event EventHandler<ValueChangedEventArgs<WireToGateOperatorEvent>>? OperatorEventPublished;
 
+    /// <remarks>
+    /// Closed while a cancellation before any sublot is open: the control server starts no load
+    /// while its cancellation record is open (control-server#83), so an entry submitted then would
+    /// leave the operator waiting for a slot operation that never comes.
+    /// </remarks>
     public bool CanSubmitSublot =>
         _session.Current.Readiness == WireToGateSessionReadiness.Ready
-        && Volatile.Read(ref _currentEntryRequest) is not null;
+        && Volatile.Read(ref _currentEntryRequest) is not null
+        && !IsLoadCancellationBeforeSublotOpen;
 
     /// <summary>
     /// The sublots the server's outstanding entry request will accept, or <c>null</c> when there is
@@ -436,6 +442,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(entryMethod);
         WireToGateSublotEntryRequest request = Volatile.Read(ref _currentEntryRequest)
             ?? throw new InvalidOperationException("WIRE_TO_GATE_JOURNEY_NOT_READY");
+        if (IsLoadCancellationBeforeSublotOpen)
+        {
+            throw new InvalidOperationException("LOAD_CANCELLATION_IN_PROGRESS");
+        }
 
         // Protocol 2.0.0 replaced the request's single expectedSublot and its demandId with a set.
         // The local check moved with it: the request has to still be the one this worklist asked
@@ -605,6 +615,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             Volatile.Write(ref _lastRecoveryState, state);
             if (state.RecoveryVector is { } vector)
             {
+                if (WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector))
+                {
+                    await RestoreLoadCancellationBeforeSublotAsync(vector, cancellationToken)
+                        .ConfigureAwait(false);
+                    return;
+                }
+
                 PublishRecoveryVectorRestored(vector);
                 return;
             }

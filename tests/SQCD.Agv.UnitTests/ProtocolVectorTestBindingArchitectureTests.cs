@@ -181,6 +181,10 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// <c>8005-agv-onboard-hmi#77</c>. Each note names the ticket that owes the test.
     /// </para>
     /// <para>
+    /// <c>CV-LOAD-CANCELLATION-BEFORE-LOAD</c> left when #76 landed the cancellation before any
+    /// sublot; <c>LoadCancellationBeforeSublotG2Tests</c> binds it.
+    /// </para>
+    /// <para>
     /// <b>They are pinned here rather than in <see cref="VectorsAwaitingTheirSlice"/>.</b> The
     /// ticket asked for the other set, and the other set will not hold them:
     /// <see cref="EveryScheduledPinBelongsOnlyToSlicesThisBatchDoesNotImplement"/> refuses a
@@ -193,10 +197,6 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     private static readonly IReadOnlyDictionary<string, string> VectorsThisBatchOwesANamedTest =
         new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
-            ["CV-LOAD-CANCELLATION-BEFORE-LOAD"] =
-                "FP-IS-02, 批次5-27 (8005-agv-onboard-hmi#76) -- new in the 2.0.0 candidate; this "
-                + "ticket lands only the shape that allows an empty slotResults, not the sending of "
-                + "one",
             ["CV-SUBLOT-REJECTED-AFTER-ENTRY"] =
                 "FP-IS-02, 批次5-28 (8005-agv-onboard-hmi#77) -- new in the 2.0.0 candidate; this "
                 + "ticket lands only rejectedSublot and the nullable demandId, not the display that "

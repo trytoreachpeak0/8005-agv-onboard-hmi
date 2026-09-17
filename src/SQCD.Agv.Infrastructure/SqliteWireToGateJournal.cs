@@ -845,8 +845,12 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
         ValidateOptionalUuid(vector.ExceptionRecoverySessionId, nameof(vector.ExceptionRecoverySessionId));
         ValidateOptionalUuid(vector.SlotOperationAttemptId, nameof(vector.SlotOperationAttemptId));
         ValidateOptionalUuid(vector.HandoffId, nameof(vector.HandoffId));
+        // Only the cancellation before any sublot is entered carries no slot; every other vector names
+        // the slots it puts into a proven state.
         if (vector.Slots is null
-            || vector.Slots.Count is < 1 or > 8
+            || vector.Slots.Count > 8
+            || vector.Slots.Count == 0
+                && !WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector)
             || vector.Slots.Any(slot => slot is < 1 or > 8)
             || vector.Slots.Distinct().Count() != vector.Slots.Count
             || !vector.Slots.SequenceEqual(vector.Slots.Order())

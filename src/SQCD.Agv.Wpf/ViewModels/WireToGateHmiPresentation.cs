@@ -13,7 +13,8 @@ public static class WireToGateHmiPresentation
     public static WireToGateHmiBanner Create(
         WireToGateSessionSnapshot session,
         WireToGateHmiOperationSnapshot? operation,
-        bool canSubmit)
+        bool canSubmit,
+        bool loadCancellationPending = false)
     {
         if (operation is { Stage: WireToGateHmiOperationStage.RecoveryRequired })
         {
@@ -51,6 +52,13 @@ public static class WireToGateHmiPresentation
             WireToGateSessionReadiness.RecoveryRequired => new(
                 "需要恢复",
                 RecoveryGuidance(session.ReasonCodes),
+                HasWarning: true,
+                HasError: false),
+            // A cancellation before any sublot is out: the server starts no load meanwhile, so
+            // scanning is paused and the operator is told why rather than invited to scan.
+            WireToGateSessionReadiness.Ready when loadCancellationPending => new(
+                "取消中",
+                "正在取消本站装货，等待服务端结果；取消结束前暂停扫码。",
                 HasWarning: true,
                 HasError: false),
             WireToGateSessionReadiness.Ready when canSubmit => new(

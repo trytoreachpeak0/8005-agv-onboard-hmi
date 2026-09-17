@@ -42,6 +42,24 @@ public static class WireToGateRecoveryVectorTypes
         or LoadCorrection
         or FaultCargoHandoff
         or ForcedMechanicalRecovery;
+
+    /// <summary>
+    /// Whether <paramref name="vector"/> is a load cancellation authorized before any sublot was
+    /// entered (ADR-cross-0046, first case; 批次5-27, onboard-hmi#76): no slot operation, no recovery
+    /// session, and an empty slot set.
+    /// </summary>
+    /// <remarks>
+    /// It is the one vector allowed an empty slot set. Nothing was commanded, so there is no slot to
+    /// prove empty and the vehicle's whole report is <c>ALL_EMPTY</c> with no slot results. Every
+    /// other vector exists to put named slots into a proven state, and an empty set there would be a
+    /// vector that proves nothing -- which is why the rule is this shape and not a lower bound of 0.
+    /// </remarks>
+    public static bool IsLoadCancellationBeforeSublot(WireToGateRecoveryVectorContext vector) =>
+        vector.VectorType == LoadCancellation
+        && vector.SlotOperationAttemptId is null
+        && vector.ExceptionRecoverySessionId is null
+        && vector.HandoffId is null
+        && vector.Slots is { Count: 0 };
 }
 
 public static class WireToGateRecoveryCommandHash
@@ -255,9 +273,7 @@ public sealed record WireToGateRecoveryState(
 
 /// <param name="SlotOperationAttemptId">
 /// The load operation being cancelled, or <c>null</c> for a cancellation raised before any load was
-/// commanded -- the server's own payload allows that shape, and 批次5-27 (onboard-hmi#76) builds its
-/// before-scan entry on this record. Nothing on this branch produces a null today; the field is here
-/// so that entry does not have to change the record's shape to arrive.
+/// commanded -- the cancellation before any sublot is entered, 批次5-27 (onboard-hmi#76).
 /// </param>
 public sealed record WireToGatePendingLoadCancellation(
     string CancellationId,

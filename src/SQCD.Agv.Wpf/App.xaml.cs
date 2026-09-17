@@ -199,7 +199,8 @@ public partial class App : System.Windows.Application, IDisposable
                         cancellationToken: cancellationToken),
                     () => _wireToGateBusiness.CanRequestManualChargingReturnToService,
                     cancellationToken => _wireToGateBusiness.RequestManualChargingReturnToServiceAsync(
-                        cancellationToken: cancellationToken));
+                        cancellationToken: cancellationToken),
+                    () => _wireToGateBusiness.IsLoadCancellationBeforeSublotOpen);
                 _wireToGateBusiness.Start();
             }
 

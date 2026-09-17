@@ -15,9 +15,34 @@ public sealed partial class WireToGateBusinessService
     private readonly WireToGateRecoveryVectorExecutor _vectorExecutor;
     private WireToGateRecoveryState _lastRecoveryState = WireToGateRecoveryState.Empty;
 
+    /// <summary>
+    /// Whether the load cancellation entry is offered: over a load in flight, which is a recovery
+    /// entry behind <c>recoveryResumeEnabled</c>, or before any sublot was entered, which is not.
+    /// </summary>
     public bool CanRequestLoadCancellation =>
-        CanUseRecoveryOperator(requireProof: false)
-        && HasRecoveryVectorOrLoadOperation(WireToGateRecoveryVectorTypes.LoadCancellation);
+        (CanUseRecoveryOperator(requireProof: false)
+            && HasRecoveryVectorOrLoadOperation(WireToGateRecoveryVectorTypes.LoadCancellation))
+        || CanRequestLoadCancellationBeforeSublot();
+
+    /// <summary>
+    /// Whether a cancellation before any sublot has gone out and is not settled: sent and not
+    /// refused, or authorized and its result not yet acknowledged.
+    /// </summary>
+    /// <remarks>
+    /// Read from the cached recovery state, which the press writes before the request leaves. A
+    /// refusal forgets the pending entry and an acknowledged result clears both, so either answer
+    /// reopens sublot entry -- the first only if the stop is still waiting for one.
+    /// </remarks>
+    public bool IsLoadCancellationBeforeSublotOpen
+    {
+        get
+        {
+            WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+            return state.PendingLoadCancellation is { SlotOperationAttemptId: null }
+                || state.RecoveryVector is { } vector
+                    && WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector);
+        }
+    }
 
     public bool CanRequestLoadCompensation =>
         CanUseRecoveryOperator(requireProof: true)
@@ -171,6 +196,102 @@ public sealed partial class WireToGateBusinessService
                 StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The cancellation before any sublot is entered (ADR-cross-0046, first case; onboard-hmi#76):
+    /// the server's entry request is outstanding, nothing was commanded for its demand, and no other
+    /// cancellation is open. Or the one this entry already started is waiting for its result to be
+    /// acknowledged, and pressing again reports it again.
+    /// </summary>
+    /// <remarks>
+    /// Not behind <c>recoveryResumeEnabled</c>, and needing no proof: an operator at the station who
+    /// finds nothing to load cancels as an ordinary step before leaving, not as maintenance. What it
+    /// can never do is open a door -- the server authorizes it with no slots, and the vehicle's
+    /// whole answer is <c>ALL_EMPTY</c> with nothing per slot.
+    /// </remarks>
+    private bool CanRequestLoadCancellationBeforeSublot()
+    {
+        WireToGateSessionSnapshot session = _session.Current;
+        if (!session.Connected
+            || string.IsNullOrWhiteSpace(
+                Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable)))
+        {
+            return false;
+        }
+
+        WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+        if (state.RecoveryVector is { } vector)
+        {
+            return WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector)
+                && session.Readiness is WireToGateSessionReadiness.Ready
+                    or WireToGateSessionReadiness.RecoveryRequired;
+        }
+
+        return session.Readiness == WireToGateSessionReadiness.Ready
+            && state.PendingLoadCancellation?.SlotOperationAttemptId is null
+            && FindLoadCancellationBeforeSublot(state) is not null;
+    }
+
+    private sealed record LoadCancellationBeforeSublotTarget(string CancellationId, string DemandId);
+
+    /// <summary>
+    /// The demand a cancellation before any sublot would cancel, or <c>null</c> when there is none.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Protocol 2.0.0 took <c>demandId</c> off the entry request, so the demand is read from the
+    /// worklist the request belongs to -- same operation session, revision and station, the check
+    /// <c>SubmitSublotAsync</c> makes -- and only when that worklist names exactly one demand. With
+    /// more than one the vehicle would be choosing which demand to cancel, and choosing a demand is
+    /// never this end's (<c>NEVER_DISCOVER_SELECT_OR_BIND_DEMAND</c>).
+    /// </para>
+    /// <para>
+    /// "Nothing commanded" is read from what this vehicle holds: no slot operation unsettled or
+    /// running, and neither the armed nor the last settled load belonging to this demand. The server
+    /// makes the same judgement from its side and refuses a cancellation once a load command exists.
+    /// </para>
+    /// <para>
+    /// The cancellationId is derived from the demand and the operation session, so every press at
+    /// this stop -- across a lost answer and a restart -- asks about the same cancellation.
+    /// </para>
+    /// </remarks>
+    private LoadCancellationBeforeSublotTarget? FindLoadCancellationBeforeSublot(
+        WireToGateRecoveryState state)
+    {
+        if (Volatile.Read(ref _currentEntryRequest) is not { } request
+            || _session.CurrentJourney.CurrentStopWorklist is not { } worklist
+            || !string.Equals(
+                worklist.OperationSessionId,
+                request.OperationSessionId,
+                StringComparison.Ordinal)
+            || worklist.Revision != request.WorklistRevision
+            || !string.Equals(worklist.StationId, request.StationId, StringComparison.Ordinal)
+            || worklist.Items is not [{ } item])
+        {
+            return null;
+        }
+
+        bool running;
+        lock (_operationAttemptGate)
+        {
+            running = _operationAttempts.Count > 0;
+        }
+
+        if (running
+            || state.UnsettledSlotOperationAttemptId is not null
+            || string.Equals(state.OperationContext?.DemandId, item.DemandId, StringComparison.Ordinal)
+            || string.Equals(
+                state.LastCompletedLoadOperationContext?.DemandId,
+                item.DemandId,
+                StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        return new(
+            StableUuid($"{item.DemandId}|{request.OperationSessionId}|load-cancellation-before-sublot"),
+            item.DemandId);
+    }
+
     private bool HasRecoveryVectorOrCompletedLoad(string vectorType)
     {
         WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
@@ -222,6 +343,12 @@ public sealed partial class WireToGateBusinessService
                 throw new InvalidDataException("RECOVERY_VECTOR_CONFLICT");
             }
 
+            if (WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(existingVector))
+            {
+                return await ReportLoadCancellationBeforeSublotAsync(existingVector, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
             return await ExecuteRecoveryVectorAndReportAsync(
                     existingVector,
                     correction: false,
@@ -234,61 +361,24 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
         }
 
+        if (state.UnsettledSlotOperationAttemptId is null)
+        {
+            return await RequestLoadCancellationBeforeSublotAsync(state, reason, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         WireToGateRecoveryOperationContext operation = RequireUnsettledLoadOperation(state);
         string cancellationId = StableUuid(
             $"{operation.DemandId}|{operation.SlotOperationAttemptId}|load-cancellation");
-        // Only a press that can actually send becomes the first press. One refused for readiness
-        // leaves no bytes on the wire, and remembering its operator would have the next press repeat
-        // a verification the server never saw.
-        RequireSessionReadyToSend();
-        bool recalled = string.Equals(
-            state.PendingLoadCancellation?.CancellationId,
-            cancellationId,
-            StringComparison.Ordinal);
-        WireToGatePendingLoadCancellation pending = await RecallOrRecordLoadCancellationAsync(
+        if (await AskForLoadCancellationAsync(
                 state,
                 cancellationId,
+                operation.DemandId,
                 operation.SlotOperationAttemptId,
                 reason,
                 cancellationToken)
-            .ConfigureAwait(false);
-        WireToGateOperatorContextPayload operatorContext = OperatorOf(pending);
-        LoadCancellationStartRequestedPayload request = new(
-            cancellationId,
-            operation.DemandId,
-            operation.SlotOperationAttemptId,
-            operatorContext,
-            pending.Reason);
-        // A messageId of its own for every send, as in RequestRecoveryActionVectorCoreAsync: the
-        // identity the server keeps is cancellationId, which stays in the payload.
-        LoadCancellationAuthorizationPayload authorization;
-        try
+            .ConfigureAwait(false) is not var (authorization, operatorContext))
         {
-            authorization = await _session
-                .RequestLoadCancellationStartAsync(
-                    Guid.NewGuid().ToString("D"),
-                    request,
-                    cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch (InvalidOperationException exception) when (
-            !recalled
-                && string.Equals(exception.Message, "WIRE_TO_GATE_NOT_READY", StringComparison.Ordinal))
-        {
-            // The session dropped between the check above and the send; the client refuses before
-            // writing anything, so what this press recorded was never a first press either. An entry
-            // recalled from an earlier press did go out and stays.
-            await ForgetLoadCancellationRequestAsync(cancellationId, cancellationToken)
-                .ConfigureAwait(false);
-            throw;
-        }
-        if (authorization.Decision == "REJECTED")
-        {
-            await ForgetLoadCancellationRequestAsync(cancellationId, cancellationToken)
-                .ConfigureAwait(false);
-            PublishOperatorResponse(
-                "RECOVERY_BLOCKED",
-                $"服务端拒绝装货取消：{authorization.Problem?.ReasonCode ?? "ACTION_NOT_ALLOWED_IN_STATE"}。 ");
             return false;
         }
 
@@ -329,6 +419,288 @@ public sealed partial class WireToGateBusinessService
                     cancellationToken))
             .ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Sends one <c>LoadCancellationStartRequested</c> and returns its authorization, or <c>null</c>
+    /// once a refusal has been shown to the operator.
+    /// </summary>
+    /// <remarks>
+    /// Shared by the cancellation of a load in flight and the one before any sublot, which differ only
+    /// in the attempt they name: the content of a retry is the first press's
+    /// (<see cref="RecallOrRecordLoadCancellationAsync"/>) and every send takes a new messageId.
+    /// </remarks>
+    private async Task<(LoadCancellationAuthorizationPayload Authorization, WireToGateOperatorContextPayload Operator)?>
+        AskForLoadCancellationAsync(
+            WireToGateRecoveryState state,
+            string cancellationId,
+            string demandId,
+            string? slotOperationAttemptId,
+            string reason,
+            CancellationToken cancellationToken)
+    {
+        // Only a press that can actually send becomes the first press. One refused for readiness
+        // leaves no bytes on the wire, and remembering its operator would have the next press repeat
+        // a verification the server never saw.
+        RequireSessionReadyToSend();
+        bool recalled = string.Equals(
+            state.PendingLoadCancellation?.CancellationId,
+            cancellationId,
+            StringComparison.Ordinal);
+        WireToGatePendingLoadCancellation pending = await RecallOrRecordLoadCancellationAsync(
+                state,
+                cancellationId,
+                slotOperationAttemptId,
+                reason,
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (slotOperationAttemptId is null)
+        {
+            // Published before the send, which waits for the answer: sublot entry closes from here
+            // (CanSubmitSublot), and the operator sees why while the request is out.
+            PublishOperatorResponse(
+                "RECOVERY_VECTOR_REQUESTED",
+                "已申请取消本站装货，等待服务端答复；取消结束前暂停扫码。 ");
+        }
+
+        WireToGateOperatorContextPayload operatorContext = OperatorOf(pending);
+        LoadCancellationStartRequestedPayload request = new(
+            cancellationId,
+            demandId,
+            slotOperationAttemptId,
+            operatorContext,
+            pending.Reason);
+        // A messageId of its own for every send, as in RequestRecoveryActionVectorCoreAsync: the
+        // identity the server keeps is cancellationId, which stays in the payload.
+        LoadCancellationAuthorizationPayload authorization;
+        try
+        {
+            authorization = await _session
+                .RequestLoadCancellationStartAsync(
+                    Guid.NewGuid().ToString("D"),
+                    request,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (InvalidOperationException exception) when (
+            !recalled
+                && string.Equals(exception.Message, "WIRE_TO_GATE_NOT_READY", StringComparison.Ordinal))
+        {
+            // The session dropped between the check above and the send; the client refuses before
+            // writing anything, so what this press recorded was never a first press either. An entry
+            // recalled from an earlier press did go out and stays.
+            await ForgetLoadCancellationRequestAsync(cancellationId, cancellationToken)
+                .ConfigureAwait(false);
+            throw;
+        }
+        if (authorization.Decision == "REJECTED")
+        {
+            await ForgetLoadCancellationRequestAsync(cancellationId, cancellationToken)
+                .ConfigureAwait(false);
+            PublishOperatorResponse(
+                "RECOVERY_BLOCKED",
+                $"服务端拒绝装货取消：{authorization.Problem?.ReasonCode ?? "ACTION_NOT_ALLOWED_IN_STATE"}。 ");
+            return null;
+        }
+
+        return (authorization, operatorContext);
+    }
+
+    /// <summary>
+    /// The cancellation before any sublot is entered: ask, and on an authorization naming no slot and
+    /// no attempt, report <c>ALL_EMPTY</c> with no slot results. No door is opened on any path.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An authorization that names a slot is not a narrower or wider version of this cancellation
+    /// but a different one -- this vehicle commanded nothing, so there is no slot the server could
+    /// mean -- and is refused before anything is journaled. The attempt is held to the request's
+    /// <c>null</c> by <c>ValidateLoadCancellationAuthorization</c> already; both refusals reach the
+    /// operator as <c>RECOVERY_RESPONSE_SCOPE_MISMATCH</c>.
+    /// </para>
+    /// <para>
+    /// The unanswered request stays on file until the result is acknowledged, not merely until it is
+    /// authorized: the entry request and the pending cancellation go together, once the server has
+    /// the result. Whether the stop is then over is the server's to say in its next snapshot; nothing
+    /// here marks the task cancelled.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> RequestLoadCancellationBeforeSublotAsync(
+        WireToGateRecoveryState state,
+        string reason,
+        CancellationToken cancellationToken)
+    {
+        LoadCancellationBeforeSublotTarget target = FindLoadCancellationBeforeSublot(state)
+            ?? throw new InvalidOperationException("RECOVERY_OPERATION_CONTEXT_MISSING");
+        if (state.PendingLoadCancellation?.SlotOperationAttemptId is not null)
+        {
+            throw new InvalidDataException("RECOVERY_VECTOR_CONFLICT");
+        }
+
+        if (await AskForLoadCancellationAsync(
+                state,
+                target.CancellationId,
+                target.DemandId,
+                null,
+                reason,
+                cancellationToken)
+            .ConfigureAwait(false) is not var (authorization, operatorContext))
+        {
+            return false;
+        }
+
+        if (authorization.Slots.Count != 0)
+        {
+            throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
+        }
+
+        WireToGateRecoveryVectorContext vector = new(
+            WireToGateRecoveryVectorTypes.LoadCancellation,
+            authorization.CancellationId,
+            null,
+            authorization.DemandId,
+            null,
+            null,
+            [],
+            null,
+            operatorContext.OperatorId,
+            operatorContext.VerificationMethod,
+            operatorContext.VerifiedAt);
+        WireToGateRecoveryState authorized = await ReadRecoveryStateCachedAsync(cancellationToken)
+            .ConfigureAwait(false);
+        await WriteRecoveryVectorPreparedAsync(authorized, vector, cancellationToken)
+            .ConfigureAwait(false);
+        PublishOperatorResponse(
+            "RECOVERY_VECTOR_AUTHORIZED",
+            "装货取消已获服务端授权。本站尚未录入子批、没有要清空的仓位，不会打开仓门，正在上报结果。 ");
+        return await ReportLoadCancellationBeforeSublotAsync(vector, cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Reports the authorized cancellation before any sublot as <c>ALL_EMPTY</c> with no slot
+    /// results, and settles it once the server acknowledges.
+    /// </summary>
+    /// <remarks>
+    /// The result goes through the recovery vector executor's empty-slot branch, which touches no IO
+    /// and journals the observation time, so a press repeated after a lost acknowledgement sends the
+    /// same bytes. The vehicle-stopped check the other vectors make is not made here: it guards door
+    /// IO, and there is none.
+    /// </remarks>
+    private async Task<bool> ReportLoadCancellationBeforeSublotAsync(
+        WireToGateRecoveryVectorContext vector,
+        CancellationToken cancellationToken)
+    {
+        WireToGateRecoveryVectorExecutionResult result = await _vectorExecutor
+            .ExecuteClearAsync(vector, progress: null, cancellationToken)
+            .ConfigureAwait(false);
+        try
+        {
+            await SendRecoveryVectorResultAsync(
+                    vector,
+                    LoadCancellationResultKey(vector),
+                    result,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is IOException or TimeoutException or InvalidOperationException)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"扫码前装货取消的结果暂未收到DurableAck：cancellation={vector.PrimaryId}。",
+                exception);
+            PublishOperatorEvent(
+                $"recovery-vector-result-pending:{vector.VectorType}:{vector.PrimaryId}",
+                "RESULT_ACK_PENDING",
+                "装货取消结果已持久化，等待服务端确认；没有打开任何仓门。 ");
+            return false;
+        }
+
+        await SettleLoadCancellationBeforeSublotAsync(vector, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>
+    /// Clears the journal and the outstanding entry request once the result is acknowledged.
+    /// </summary>
+    /// <remarks>
+    /// The entry request is dropped unless it provably belongs to another demand -- a worklist under
+    /// the same operation session that does not name this one. The task itself is left as the server
+    /// last described it: ending the stop, or not, arrives as the server's next snapshot.
+    /// </remarks>
+    private async Task SettleLoadCancellationBeforeSublotAsync(
+        WireToGateRecoveryVectorContext vector,
+        CancellationToken cancellationToken)
+    {
+        await CompleteRecoveryVectorStateAsync(vector, cancellationToken).ConfigureAwait(false);
+        if (Volatile.Read(ref _currentEntryRequest) is { } request
+            && !(_session.CurrentJourney.CurrentStopWorklist is { } worklist
+                && string.Equals(
+                    worklist.OperationSessionId,
+                    request.OperationSessionId,
+                    StringComparison.Ordinal)
+                && worklist.Items.All(item => !string.Equals(
+                    item.DemandId,
+                    vector.DemandId,
+                    StringComparison.Ordinal))))
+        {
+            Interlocked.CompareExchange(ref _currentEntryRequest, null, request);
+        }
+
+        PublishOperatorEvent(
+            $"recovery-vector-completed:{vector.VectorType}:{vector.PrimaryId}",
+            "RECOVERY_VECTOR_COMPLETED",
+            "装货取消结果已被服务端确认，未打开任何仓门；本站任务以服务端下发的状态为准。 ");
+    }
+
+    /// <summary>
+    /// On a session coming up, settles a cancellation before any sublot whose result the handshake
+    /// has already had acknowledged.
+    /// </summary>
+    /// <remarks>
+    /// An unacknowledged result is replayed during the handshake, before the session is ready, so by
+    /// the time this runs the journal says whether the server has it. Without this the vector would
+    /// outlive the stop: once the server ends the stop it sends no further entry request, and the
+    /// vector would refuse every later cancellation as a conflict.
+    /// </remarks>
+    private async Task RestoreLoadCancellationBeforeSublotAsync(
+        WireToGateRecoveryVectorContext vector,
+        CancellationToken cancellationToken)
+    {
+        WireToGateDurableMessage? result = await _session.Journal
+            .ReadOutgoingByDeduplicationKeyAsync(LoadCancellationResultKey(vector), cancellationToken)
+            .ConfigureAwait(false);
+        if (result is not { Acknowledged: true })
+        {
+            PublishOperatorEvent(
+                $"load-cancellation-before-sublot-restored:{vector.PrimaryId}",
+                "RESULT_ACK_PENDING",
+                "装货取消已获服务端授权，结果尚未得到服务端确认；可再按一次「取消装货」补报，不会打开仓门。 ");
+            return;
+        }
+
+        await _recoveryRequestGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (state.RecoveryVector is { } current
+                && WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(current)
+                && current.PrimaryId == vector.PrimaryId)
+            {
+                await SettleLoadCancellationBeforeSublotAsync(current, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+        }
+        finally
+        {
+            _recoveryRequestGate.Release();
+        }
+    }
+
+    private static string LoadCancellationResultKey(WireToGateRecoveryVectorContext vector) =>
+        $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCancellation}:{vector.PrimaryId}";
 
     private async Task<bool> RequestLoadCorrectionCoreAsync(
         string reason,

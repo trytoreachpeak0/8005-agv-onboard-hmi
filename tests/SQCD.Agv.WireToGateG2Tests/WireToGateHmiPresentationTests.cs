@@ -46,6 +46,26 @@ public sealed class WireToGateHmiPresentationTests
         Assert.True(banner.HasWarning);
     }
 
+    /// <summary>
+    /// 扫码前取消未结时，提示区说明正在取消、不邀请扫码（onboard-hmi#76 审查）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public void APendingCancellationBeforeAnySublotReplacesTheScanPrompt()
+    {
+        WireToGateHmiBanner banner = WireToGateHmiPresentation.Create(
+            Session(WireToGateSessionReadiness.Ready),
+            operation: null,
+            canSubmit: false,
+            loadCancellationPending: true);
+
+        Assert.Equal("取消中", banner.StateText);
+        Assert.Contains("正在取消", banner.Guidance, StringComparison.Ordinal);
+        Assert.Contains("暂停扫码", banner.Guidance, StringComparison.Ordinal);
+        Assert.True(banner.HasWarning);
+    }
+
     [Fact]
     public void OperationProjectionOverridesReadyBannerAndTargetsEveryPhysicalSlot()
     {
