@@ -159,20 +159,19 @@ public sealed class ProtocolIdentityArchitectureTests
     }
 
     /// <summary>
-    /// The tag is schema-legal, and the approval status says it is a candidate rather than a
-    /// release.
+    /// The tag is schema-legal, and the approval status says it names the approved release.
     /// </summary>
     /// <remarks>
-    /// The two are checked together because either alone says too little. <c>protocol-v2.0.0</c> has
-    /// not been cut -- <c>8005-agv-program#97</c> creates it on
-    /// <see cref="WireToGateRelease.Commit"/> -- so a tag name alone would read as a release this
-    /// build is not bound to. The pair is what tells the truth, and this assertion moved back to
-    /// <c>SUPERSEDING_CANDIDATE</c> the day the identity moved to the 2.0.0 candidate. That the tag,
-    /// once it exists, really points at that commit is checked by <c>scripts/run-w2g-g2.ps1</c>
-    /// against a protocol checkout, which this assembly does not have.
+    /// The two are checked together because either alone says too little. Until 2026-09-16
+    /// <c>protocol-v2.0.0</c> had not been cut and this test asserted <c>SUPERSEDING_CANDIDATE</c>.
+    /// The change was made here on purpose the day the annotated tag and its approval attestation
+    /// were published, and it is also what stops the development-grade G2 runs made on the candidate
+    /// from counting as the gate's evidence -- a run binds the identity this constant held when it
+    /// ran. That the tag really points at <see cref="WireToGateRelease.Commit"/> is checked by
+    /// <c>scripts/run-w2g-g2.ps1</c> against a protocol checkout, which this assembly does not have.
     /// </remarks>
     [Fact]
-    public void TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsAnUnreleasedCandidate()
+    public void TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsTheApprovedRelease()
     {
         using JsonDocument types = JsonDocument.Parse(File.ReadAllBytes(
             Path.Combine(VendorRoot(), "schemas", "common", "types.schema.json")));
@@ -181,7 +180,7 @@ public sealed class ProtocolIdentityArchitectureTests
 
         Assert.Matches(tag.GetProperty("pattern").GetString()!, WireToGateRelease.Tag);
         Assert.True(WireToGateRelease.Tag.Length >= tag.GetProperty("minLength").GetInt32());
-        Assert.Equal("SUPERSEDING_CANDIDATE", WireToGateRelease.ApprovalStatus);
+        Assert.Equal("APPROVED_RELEASE", WireToGateRelease.ApprovalStatus);
     }
 
     /// <summary>
