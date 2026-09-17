@@ -41,12 +41,12 @@ namespace SQCD.Agv.Contracts;
 /// Neither end copies the other: both read the candidate's published identity table.
 /// </para>
 /// <para>
-/// <b>Evidence produced on this identity is the gate's evidence.</b> A run binds whatever identity
-/// this constant held when it ran, so the development-grade <c>ONBOARD_HMI_G2</c> runs made while the
-/// constant still named the candidate stop counting the moment it moved here
-/// (<c>8005-agv-onboard-hmi#79</c>); the ten slices of the formal run are recorded in
-/// <c>8005-agv-control-server#90</c>. The evidence recorded on <c>protocol-v1.0.0</c> stops being
-/// current evidence for the same reason.
+/// <b>Evidence produced on this identity is current evidence -- which is not the same as the gate's
+/// verdict.</b> A run binds whatever identity this constant held when it ran, so the development-grade
+/// <c>ONBOARD_HMI_G2</c> runs made while the constant still named the candidate stop counting the
+/// moment it moved here (<c>8005-agv-onboard-hmi#79</c>). The ten slices of the formal
+/// <c>ONBOARD_HMI_G2</c> are recorded in <c>8005-agv-control-server#90</c>. The evidence recorded on
+/// <c>protocol-v1.0.0</c> stops being current for the same reason.
 /// </para>
 /// <para>
 /// <see cref="ApprovalStatus"/> is deliberately <b>not</b> part of <see cref="Identity"/>: the
