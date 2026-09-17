@@ -42,7 +42,7 @@
 | 项 | 值 |
 | --- | --- |
 | 来源仓库 | `8005-agv-protocol` |
-| 来源提交 | `86575456c847041515b7b75e8851a00e0d939804`（分支 `fp/v2-candidate` 的顶端） |
+| 来源提交 | `86575456c847041515b7b75e8851a00e0d939804`（注释 tag `protocol-v2.0.0` 指向的提交） |
 | 取用日期 | 2026-09-16 |
 
 | 来源路径 | 内容 |
@@ -52,14 +52,18 @@
 | `errors/error-codes.json` | `registryVersion 1.1.0`、`appendOnly true`、58 个码（1.0.0 的 54 个一个未删，新增 `SUBLOT_NOT_IN_DISPATCH_SCOPE`、`SUBLOT_BOX_COUNT_UNAVAILABLE`、`PACKAGE_CAPACITY_UNRESOLVED`、`OPERATOR_TIMEOUT`） |
 | `integration-slices/index.json` | 16 个切片 `FP-IS-00`～`FP-IS-15`、`vectorIds` 条目 36 条、去重 33 个向量（新增 `CV-LOAD-CANCELLATION-BEFORE-LOAD`、`CV-SUBLOT-REJECTED-AFTER-ENTRY`，都挂 `FP-IS-02`） |
 
-那个提交即协议 `v2.0.0` 候选，由 `8005-agv-program#96` 交付并冻结，G1 于 2026-09-15 在协议仓
-CI 上实跑通过（run
-[35049199772](https://github.com/trytoreachpeak0/8005-agv-protocol/actions/runs/35049199772)），
-合入 `fp/v2-candidate` 后在干净克隆上复跑 PASS。
+那个提交先由 `8005-agv-program#96` 作为 `v2.0.0` 候选交付并冻结，G1 于 2026-09-15 在协议仓 CI 上
+实跑通过（run
+[35049199772](https://github.com/trytoreachpeak0/8005-agv-protocol/actions/runs/35049199772)）。
+2026-09-16 它被发布为 `protocol-v2.0.0`（`8005-agv-program#97`）：发布打的注释 tag 解引用到同一个
+提交，**内容一字未改**，所以这次换身份不需要重新 vendor 任何文件——四份副本仍是候选那一刻的字节。
 
-**它是候选，不是已批准发布。** `WireToGateRelease.ApprovalStatus` 写着
-`SUPERSEDING_CANDIDATE`，`Tag` 写着 `protocol-v2.0.0` 而那个 tag 在协议仓里还没打——它由
-`8005-agv-program#97` 在同一个 commit 上创建——两个字段一起读才是如实的。理由见
+**它是已批准发布，不是候选。** `WireToGateRelease.ApprovalStatus` 写着 `APPROVED_RELEASE`，
+`Tag` 写着 `protocol-v2.0.0`，而这个 tag 在协议仓里已经打出并指向上面那个提交。发布批准记在外置
+attestation 里（Release 附件 `release-approval.json`，SHA-256
+`db745d0dffd6fa4c206003d7d4b49d771327cc6fcc6276ff19de97c01e3631f6`）：一份批准，`approverKind`
+为 `AI_AGENT`、`authorizedBy` 为 Zhengyu Shao（协议治理 2026-09-12 起允许 AI 批准，当次由用户在
+对话里授权）。attestation 不进 manifest，所以它的哈希不影响本目录任何一个字节。理由见
 `src/SQCD.Agv.Contracts/WireToGateProtocol.cs` 的注释。
 
 **`protocolVersion` 同为 3 的还有 MVP 线的 `WIRE_TO_GATE_MVP 0.3.0`。** 这个整数只在同一
