@@ -23,15 +23,16 @@ if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
     $EvidenceRoot = Join-Path $hmiRoot 'evidence\g2'
 }
 
-# 协议 v2 候选的身份。这是本仓库的第二份副本，权威副本是
+# 协议 v2.0.0 的身份。这是本仓库的第二份副本，权威副本是
 # src/SQCD.Agv.Contracts/WireToGateProtocol.cs 的 WireToGateRelease；
 # ProtocolIdentityArchitectureTests.TheGateScriptExpectsTheSameIdentityAsTheAssembly
 # 逐字段比对这两份，任一处漂移即测试红。
 #
-# 2026-09-16 起绑定的是 v2.0.0 候选（8005-agv-program#96 公布的身份表），不是已发布版本：
-# Tag 写的 protocol-v2.0.0 此刻还不存在，由 8005-agv-program#97 在同一个 commit 上创建，
-# ApprovalStatus 因此是 SUPERSEDING_CANDIDATE——两个字段一起读才是如实的。下面照旧检查
-# tag 若存在必须指向 Commit，并且 ApprovalStatus 声称已发布时 tag 必须存在。
+# protocol-v2.0.0 已于 2026-09-16 发布（8005-agv-program#97）：注释 tag 指向下面的 Commit，
+# 外置 attestation 里有一份批准，由产品负责人授权的 AI agent 给出（协议治理 2026-09-12 起允许）。
+# 发布内容与候选一字未改，所以九个身份值原样保留，只把 ApprovalStatus 由
+# SUPERSEDING_CANDIDATE 改为 APPROVED_RELEASE；候选期的绑定见 8005-agv-onboard-hmi#73。
+# 下面照旧检查 tag 若存在必须指向 Commit，并且 ApprovalStatus 声称已发布时 tag 必须存在。
 #
 # ProtocolVersion 同为 3 的还有 WIRE_TO_GATE_MVP 0.3.0：整数只在同一 profileId 内单调递增，
 # 所以身份比较一律逐字段比完整身份，不得只比这个整数。
@@ -45,7 +46,7 @@ $expected = [ordered]@{
     ManifestSha256 = '4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7'
     SchemaBundleSha256 = '9db0dbdc22fed7e39edf8d01b1fc40a12f5d70a7414f696f909ab2a87eb8c221'
     VectorsSha256 = '391fa69a7d6e9f86ea139ba4c74eadf4994bf0a87e89d3dc5258dd7968d9182a'
-    ApprovalStatus = 'SUPERSEDING_CANDIDATE'
+    ApprovalStatus = 'APPROVED_RELEASE'
 }
 
 $failures = [System.Collections.Generic.List[string]]::new()

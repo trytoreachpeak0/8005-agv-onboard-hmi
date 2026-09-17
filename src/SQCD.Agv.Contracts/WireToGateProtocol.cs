@@ -11,14 +11,15 @@ namespace SQCD.Agv.Contracts;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This names the <c>2.0.0</c> candidate, which is not a release.</b> Every value below is read
-/// off <c>8005-agv-protocol</c> commit <c>86575456c847041515b7b75e8851a00e0d939804</c>, the frozen
-/// head of <c>fp/v2-candidate</c> published by the candidate's own delivery ticket
-/// (<c>8005-agv-program#96</c>). <see cref="Tag"/> names <c>protocol-v2.0.0</c>, a tag that does
-/// <b>not</b> exist yet -- <c>8005-agv-program#97</c> creates it on this same commit -- so
-/// <see cref="Tag"/> and <see cref="ApprovalStatus"/> have to be read together to be read
-/// truthfully. <see cref="ApprovalStatus"/> is the field to read before treating this identity as
-/// releasable, and it says <c>SUPERSEDING_CANDIDATE</c>.
+/// <b>This names <c>protocol-v2.0.0</c>, an approved release.</b> Every value below is read off
+/// <c>8005-agv-protocol</c> commit <c>86575456c847041515b7b75e8851a00e0d939804</c>, the commit the
+/// annotated tag <c>protocol-v2.0.0</c> points at. It was released on 2026-09-16 with one approval in
+/// its external attestation (the GitHub Release Asset <c>release-approval.json</c>, SHA-256
+/// <c>db745d0dffd6fa4c206003d7d4b49d771327cc6fcc6276ff19de97c01e3631f6</c>), given by an AI agent the
+/// product owner authorized, as the protocol's governance has allowed since 2026-09-12. The release
+/// cut no new content: the tag dereferences to the candidate's own commit, so the vendored copy below
+/// is still byte-for-byte the candidate's. <see cref="ApprovalStatus"/> is the field to read before
+/// treating this identity as releasable, and it says <c>APPROVED_RELEASE</c>.
 /// </para>
 /// <para>
 /// <b><see cref="ProtocolVersion"/> stays 3 across two different releases, so never compare it
@@ -40,10 +41,12 @@ namespace SQCD.Agv.Contracts;
 /// Neither end copies the other: both read the candidate's published identity table.
 /// </para>
 /// <para>
-/// <b>Evidence produced on this identity is development-grade.</b> A <c>ONBOARD_HMI_G2</c> run
-/// against a <c>SUPERSEDING_CANDIDATE</c> is not the gate's formal evidence; the formal run happens
-/// after the release, on <c>8005-agv-onboard-hmi#79</c>. The evidence recorded on
-/// <c>protocol-v1.0.0</c> stops being current evidence the moment this constant moves.
+/// <b>Evidence produced on this identity is the gate's evidence.</b> A run binds whatever identity
+/// this constant held when it ran, so the development-grade <c>ONBOARD_HMI_G2</c> runs made while the
+/// constant still named the candidate stop counting the moment it moved here
+/// (<c>8005-agv-onboard-hmi#79</c>); the ten slices of the formal run are recorded in
+/// <c>8005-agv-control-server#90</c>. The evidence recorded on <c>protocol-v1.0.0</c> stops being
+/// current evidence for the same reason.
 /// </para>
 /// <para>
 /// <see cref="ApprovalStatus"/> is deliberately <b>not</b> part of <see cref="Identity"/>: the
@@ -63,7 +66,7 @@ public static class WireToGateRelease
     public const string ManifestSha256 = "4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7";
     public const string SchemaBundleSha256 = "9db0dbdc22fed7e39edf8d01b1fc40a12f5d70a7414f696f909ab2a87eb8c221";
     public const string VectorsSha256 = "391fa69a7d6e9f86ea139ba4c74eadf4994bf0a87e89d3dc5258dd7968d9182a";
-    public const string ApprovalStatus = "SUPERSEDING_CANDIDATE";
+    public const string ApprovalStatus = "APPROVED_RELEASE";
 
     public static ProtocolReleaseIdentity Identity { get; } = new(
         Repository,
@@ -103,7 +106,7 @@ public sealed record WireToGateEnvelope(
 
 /// <summary>
 /// Minimal strict serializer for the envelope of the protocol release named by
-/// <see cref="WireToGateRelease"/> -- currently the 2.0.0 candidate.
+/// <see cref="WireToGateRelease"/> -- currently the released 2.0.0 identity.
 /// Message payloads remain explicit at their call sites so that later slices can be
 /// generated from the tagged JSON Schemas without changing the transport contract.
 /// </summary>
