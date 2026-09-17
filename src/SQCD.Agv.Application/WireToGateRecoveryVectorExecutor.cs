@@ -105,6 +105,32 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 recordedAt);
         }
 
+        if (context.Slots.Count == 0)
+        {
+            // The cancellation before any sublot is entered: nothing was commanded, so there is no
+            // slot to read, open or prove, and the IO module is not consulted at all -- not even for
+            // freshness, because a stale snapshot has nothing here to be wrong about. Journaled the
+            // same way as a clear that reached its safe finish, so a retry reports the same
+            // observedAt.
+            await WriteVectorStateAsync(
+                context,
+                WireToGateRecoveryCheckpoint.SafeFinishReached,
+                [],
+                [],
+                [],
+                state,
+                cancellationToken).ConfigureAwait(false);
+            DateTimeOffset emptyObservedAt = await EnsureResultObservedAtAsync(
+                context,
+                CancellationToken.None).ConfigureAwait(false);
+            return CreateResult(
+                context,
+                "COMPLETED",
+                [],
+                WireToGateRecoveryCheckpoint.SafeFinishReached,
+                emptyObservedAt);
+        }
+
         List<int> completed = resuming
             ? state.CompletedSlots.Where(context.Slots.Contains).Distinct().Order().ToList()
             : [];
@@ -787,7 +813,10 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             || context.HandoffId is not null
                 && !Guid.TryParseExact(context.HandoffId, "D", out _)
             || context.Slots is null
-            || context.Slots.Count is < 1 or > 8
+            || context.Slots.Count > 8
+            || context.Slots.Count == 0
+                && (correction
+                    || !WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(context))
             || context.Slots.Any(slot => slot is < 1 or > 8)
             || context.Slots.Distinct().Count() != context.Slots.Count
             || !context.Slots.SequenceEqual(context.Slots.Order()))

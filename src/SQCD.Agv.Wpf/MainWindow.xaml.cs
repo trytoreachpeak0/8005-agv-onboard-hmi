@@ -195,7 +195,7 @@ public partial class MainWindow : Window
     {
         if (_viewModel is null
             || MessageBox.Show(
-                "请确认车辆已停稳、目标仓门已锁好，并由授权人员确认本次装货应取消。\n\n系统只会执行服务端授权的目标仓位清空，不会重新选择仓位。是否继续？",
+                "请确认车辆已停稳、目标仓门已锁好，并由授权人员确认本次装货应取消。\n\n系统只会执行服务端授权的目标仓位清空，不会重新选择仓位；本站尚未录入子批时不会打开任何仓门。是否继续？",
                 "取消装货",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,

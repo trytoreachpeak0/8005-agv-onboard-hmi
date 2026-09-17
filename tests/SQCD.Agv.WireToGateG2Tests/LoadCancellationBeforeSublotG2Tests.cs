@@ -1,0 +1,699 @@
+using System.Net;
+using System.Text.Json;
+using SQCD.Agv.Application;
+using SQCD.Agv.Core;
+using SQCD.Agv.Infrastructure;
+using SQCD.Agv.Wpf;
+using Xunit;
+
+namespace SQCD.Agv.WireToGateG2Tests;
+
+/// <summary>
+/// 扫码前取消的车载端半边（批次5-27，onboard-hmi#76）：服务端的录入请求挂着、本需求还没发过仓位操作时，
+/// 站点操作员可以取消；服务端以空仓位集合授权，车报 <c>ALL_EMPTY</c>、<c>slotResults</c> 为空，全程不开仓门。
+/// </summary>
+/// <remarks>
+/// <para>
+/// 按 ADR-cross-0046 第一种情形的原形做，四步是 <c>CV-LOAD-CANCELLATION-BEFORE-LOAD</c>：
+/// <c>LoadCancellationStartRequested</c>（attempt 为 null）→ <c>LoadCancellationAuthorization</c>（slots
+/// 为空）→ <c>LoadCancellationResult</c> → <c>DurableAck</c>。服务端半边是 control-server#83（PR #116），
+/// 替身按它的形状应答。
+/// </para>
+/// <para>
+/// 这里的 harness 用出厂配置（<c>recoveryResumeEnabled=false</c>）：这个入口不是维护权限，出厂配置下就得
+/// 出现。业务服务在连接之前启动，与 <c>App</c> 的顺序一致，会话就绪时的恢复投影因此照常跑。
+/// </para>
+/// </remarks>
+public sealed class LoadCancellationBeforeSublotG2Tests
+{
+    private const string OperatorVariable = "W2G_G2_BEFORE_SUBLOT_OPERATOR";
+    private const string CredentialVariable = "W2G_G2_BEFORE_SUBLOT_CREDENTIAL";
+    private const string OperationSessionId = "88888888-8888-4888-8888-888888888888";
+
+    /// <summary><see cref="FakeControlServer"/> 工作清单里那唯一一条需求。</summary>
+    private const string DemandId = "11111111-1111-1111-1111-111111111111";
+
+    private const string AttemptId = "33333333-3333-4333-8333-333333333333";
+
+    static LoadCancellationBeforeSublotG2Tests()
+    {
+        Environment.SetEnvironmentVariable(CredentialVariable, "g2-before-sublot-credential");
+        Environment.SetEnvironmentVariable(OperatorVariable, "operator-001");
+    }
+
+    /// <summary>
+    /// <c>CV-LOAD-CANCELLATION-BEFORE-LOAD</c> 四步走到 <c>DurableAck</c>：请求不带 attempt，授权没有仓位，
+    /// 结果是 <c>ALL_EMPTY</c> 加空 <c>slotResults</c>；目标仓里有货也一次都不开锁。收到确认后清掉录入请求与
+    /// 待答取消记录，本地不发任何仓位操作快照，任务状态留给服务端的下一份快照。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task ACancellationBeforeAnySublotReportsAllEmptyWithoutOpeningADoor()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(token);
+        Assert.True(harness.Business.CanRequestLoadCancellation);
+
+        Assert.True(await harness.Business.RequestLoadCancellationAsync(
+            "到站后现场确认本站没有要装的货。", token));
+
+        JsonElement request = Assert.Single(harness.PayloadsReceived("LoadCancellationStartRequested"));
+        Assert.Equal(DemandId, request.GetProperty("demandId").GetString());
+        Assert.Equal(JsonValueKind.Null, request.GetProperty("slotOperationAttemptId").ValueKind);
+
+        JsonElement authorization = Assert.Single(harness.PayloadsSent("LoadCancellationAuthorization"));
+        Assert.Equal("AUTHORIZED", authorization.GetProperty("decision").GetString());
+        Assert.Equal(0, authorization.GetProperty("slots").GetArrayLength());
+
+        (string resultMessageId, JsonElement result) = Assert.Single(harness.ResultsReceived());
+        Assert.Equal(
+            request.GetProperty("cancellationId").GetString(),
+            result.GetProperty("cancellationId").GetString());
+        Assert.Equal(DemandId, result.GetProperty("demandId").GetString());
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("slotOperationAttemptId").ValueKind);
+        Assert.Equal("ALL_EMPTY", result.GetProperty("overallOutcome").GetString());
+        Assert.Equal(0, result.GetProperty("slotResults").GetArrayLength());
+
+        string[] order =
+        [
+            .. harness.Server.Received
+                .Select(item => item.MessageType)
+                .Where(type => type is "LoadCancellationStartRequested" or "LoadCancellationResult")
+        ];
+        Assert.Equal(["LoadCancellationStartRequested", "LoadCancellationResult"], order);
+        Assert.Contains(
+            harness.PayloadsSent("DurableAck"),
+            ack => ack.GetProperty("acceptedMessageId").GetString() == resultMessageId);
+
+        Assert.Equal(0, harness.Io.UnlockCount);
+        WireToGateRecoveryState state = await harness.ReadRecoveryStateAsync(token);
+        Assert.Null(state.RecoveryVector);
+        Assert.Null(state.PendingLoadCancellation);
+        Assert.Null(state.UnsettledSlotOperationAttemptId);
+        Assert.False(harness.Business.CanSubmitSublot);
+        Assert.False(harness.Business.CanRequestLoadCancellation);
+        Assert.Null(harness.Business.CurrentOperationSnapshot);
+    }
+
+    /// <summary>
+    /// 本需求已经发过仓位操作（车上记着它的已结算装货）时，扫码前取消的入口不出现，按下也什么都不发。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task TheEntryIsNotOfferedOnceALoadWasCommandedForTheDemand()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
+            token,
+            seed: WireToGateRecoveryState.Empty with
+            {
+                ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ResultRecorded,
+                LastCompletedLoadOperationContext = SettledLoad()
+            });
+
+        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+            "录入过的需求也按了一次取消。", token));
+
+        Assert.False(harness.Business.CanRequestLoadCancellation);
+        Assert.Empty(harness.PayloadsReceived("LoadCancellationStartRequested"));
+    }
+
+    /// <summary>
+    /// 已经有一个在途取消（待答记录带着 attempt）时，扫码前取消的入口不出现，按下被判为冲突、什么都不发。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task TheEntryIsNotOfferedWhileAnotherCancellationIsOpen()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
+            token,
+            seed: WireToGateRecoveryState.Empty with
+            {
+                PendingLoadCancellation = new WireToGatePendingLoadCancellation(
+                    "c7b1f2a4-9d3e-4c8a-8f52-0a1b2c3d4e5f",
+                    AttemptId,
+                    "operator-000",
+                    "SESSION",
+                    DateTimeOffset.UtcNow,
+                    "在途装货的取消，还没等到应答。")
+            });
+
+        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+            "又按了扫码前的取消。", token));
+
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_VECTOR_CONFLICT", token);
+        Assert.False(harness.Business.CanRequestLoadCancellation);
+        Assert.Empty(harness.PayloadsReceived("LoadCancellationStartRequested"));
+    }
+
+    /// <summary>
+    /// 授权里带了仓位：车载端没发过任何仓位操作，没有服务端能指的仓，按范围不符拒绝，不上报结果、不开锁，
+    /// 并提示操作员。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task AnAuthorizationNamingASlotIsRefusedWithoutSlotIo()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
+            token,
+            server => server.LoadCancellationBeforeSublotAuthorizedSlots = [1]);
+
+        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+            "到站后现场确认本站没有要装的货。", token));
+
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_RESPONSE_SCOPE_MISMATCH", token);
+        await AssertNothingExecutedAsync(harness, token);
+    }
+
+    /// <summary>
+    /// 授权里带了 attempt：与请求的 null 对不上，同样按范围不符拒绝、不执行，并提示操作员。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task AnAuthorizationNamingAnAttemptIsRefusedWithoutSlotIo()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
+            token,
+            server => server.LoadCancellationBeforeSublotAuthorizedAttemptId = AttemptId);
+
+        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+            "到站后现场确认本站没有要装的货。", token));
+
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_RESPONSE_SCOPE_MISMATCH", token);
+        await AssertNothingExecutedAsync(harness, token);
+    }
+
+    /// <summary>
+    /// 服务端拒绝：如实显示原因，录入请求留着（本地清单不变），待答记录清掉，下一次按下是新的请求。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task ARefusalShowsItsReasonAndLeavesTheEntryRequestInPlace()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
+            token,
+            server => server.LoadCancellationDecision = "REJECTED");
+
+        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+            "到站后现场确认本站没有要装的货。", token));
+
+        await harness.WaitForRecoveryBlockedAsync("ACTION_NOT_ALLOWED_IN_STATE", token);
+        Assert.True(harness.Business.CanSubmitSublot);
+        Assert.True(harness.Business.CanRequestLoadCancellation);
+        WireToGateRecoveryState state = await harness.ReadRecoveryStateAsync(token);
+        Assert.Null(state.PendingLoadCancellation);
+        Assert.Null(state.RecoveryVector);
+        Assert.Empty(harness.ResultsReceived());
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// 授权应答丢了之后再按：沿用首发的操作员、理由与 <c>verifiedAt</c>，换一个 messageId，
+    /// <c>cancellationId</c> 不变；替身按真服务端的规则比对，没有冲突。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task ALostAuthorizationIsAskedForAgainWithTheFirstPressContent()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string? originalOperator = Environment.GetEnvironmentVariable(OperatorVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(OperatorVariable, "operator-001");
+            await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
+                token,
+                server => server.LoadCancellationAuthorizationsToDrop = 1);
+
+            Assert.False(await harness.Business.RequestLoadCancellationAsync(
+                "到站后现场确认本站没有要装的货。", token));
+            Assert.NotNull((await harness.ReadRecoveryStateAsync(token)).PendingLoadCancellation);
+            Assert.True(harness.Business.CanRequestLoadCancellation);
+
+            Environment.SetEnvironmentVariable(OperatorVariable, "operator-002");
+            Assert.True(await harness.Business.RequestLoadCancellationAsync(
+                "换了个人又按了一次。", token));
+
+            AssertRetriedWithTheFirstPressContent(harness.Server.ReceivedEnvelopes);
+            Assert.Empty(harness.Server.RecoveryRequestConflicts);
+            Assert.Equal(0, harness.Io.UnlockCount);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(OperatorVariable, originalOperator);
+        }
+    }
+
+    /// <summary>
+    /// 同上，但两次按下之间车载端重启：首发内容只能从日志里来。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task ALostAuthorizationIsAskedForAgainWithTheFirstPressContentAcrossARestart()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = NewJournalPath();
+        string? originalOperator = Environment.GetEnvironmentVariable(OperatorVariable);
+        await using FakeControlServer server = BeforeSublotHarness.NewServer();
+        server.LoadCancellationAuthorizationsToDrop = 1;
+        try
+        {
+            Environment.SetEnvironmentVariable(OperatorVariable, "operator-001");
+            await using (BeforeSublotHarness beforeRestart = await BeforeSublotHarness.StartAsync(
+                token,
+                existingServer: server,
+                journalPath: journalPath))
+            {
+                Assert.False(await beforeRestart.Business.RequestLoadCancellationAsync(
+                    "到站后现场确认本站没有要装的货。", token));
+            }
+
+            await using FakeControlServer serverAfterRestart = BeforeSublotHarness.NewServer();
+            serverAfterRestart.AdoptDurableRecoveryMemoryFrom(server);
+            Environment.SetEnvironmentVariable(OperatorVariable, "operator-002");
+            await using BeforeSublotHarness afterRestart = await BeforeSublotHarness.StartAsync(
+                token,
+                existingServer: serverAfterRestart,
+                journalPath: journalPath,
+                baselineRevision: 2);
+            Assert.True(afterRestart.Business.CanRequestLoadCancellation);
+
+            Assert.True(await afterRestart.Business.RequestLoadCancellationAsync(
+                "重启之后换了个人再按一次。", token));
+
+            AssertRetriedWithTheFirstPressContent(
+                [.. server.ReceivedEnvelopes, .. serverAfterRestart.ReceivedEnvelopes]);
+            Assert.Empty(server.RecoveryRequestConflicts);
+            Assert.Empty(serverAfterRestart.RecoveryRequestConflicts);
+            Assert.Equal(0, afterRestart.Io.UnlockCount);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(OperatorVariable, originalOperator);
+        }
+    }
+
+    /// <summary>
+    /// 结果没等到 <c>DurableAck</c> 时，录入请求与待答取消记录都还在；再按一次补报的是同一条结果（同一个
+    /// messageId），确认之后两者才一起清掉。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task TheEntryRequestAndThePendingCancellationGoOnlyOnceTheResultIsAcknowledged()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
+            token,
+            server => server.LoadCancellationResultAcksToDrop = 1);
+
+        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+            "到站后现场确认本站没有要装的货。", token));
+
+        WireToGateRecoveryState unacknowledged = await harness.ReadRecoveryStateAsync(token);
+        Assert.NotNull(unacknowledged.PendingLoadCancellation);
+        Assert.NotNull(unacknowledged.RecoveryVector);
+        Assert.True(harness.Business.CanSubmitSublot);
+        Assert.True(harness.Business.CanRequestLoadCancellation);
+        Assert.Null(harness.Business.CurrentOperationSnapshot);
+
+        Assert.True(await harness.Business.RequestLoadCancellationAsync(
+            "再按一次补报结果。", token));
+
+        (string MessageId, JsonElement Payload)[] results = [.. harness.ResultsReceived()];
+        Assert.Equal(2, results.Length);
+        Assert.Equal(results[0].MessageId, results[1].MessageId);
+        Assert.Equal(results[0].Payload.GetRawText(), results[1].Payload.GetRawText());
+        Assert.Single(harness.PayloadsReceived("LoadCancellationStartRequested"));
+
+        WireToGateRecoveryState acknowledged = await harness.ReadRecoveryStateAsync(token);
+        Assert.Null(acknowledged.PendingLoadCancellation);
+        Assert.Null(acknowledged.RecoveryVector);
+        Assert.False(harness.Business.CanSubmitSublot);
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// 结果没等到确认就重启：重连握手补发结果并得到确认，会话就绪后车载端自己把这次取消收尾，不留下一个
+    /// 永远结不掉的恢复向量。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task AResultAcknowledgedOnReconnectSettlesTheCancellation()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = NewJournalPath();
+        await using FakeControlServer server = BeforeSublotHarness.NewServer();
+        server.LoadCancellationResultAcksToDrop = 1;
+
+        await using (BeforeSublotHarness beforeRestart = await BeforeSublotHarness.StartAsync(
+            token,
+            existingServer: server,
+            journalPath: journalPath))
+        {
+            Assert.False(await beforeRestart.Business.RequestLoadCancellationAsync(
+                "到站后现场确认本站没有要装的货。", token));
+            Assert.NotNull((await beforeRestart.ReadRecoveryStateAsync(token)).RecoveryVector);
+        }
+
+        await using BeforeSublotHarness afterRestart = await BeforeSublotHarness.StartAsync(
+            token,
+            existingServer: server,
+            journalPath: journalPath,
+            baselineRevision: 2,
+            awaitEntryRequest: false);
+
+        await BeforeSublotHarness.WaitUntilAsync(
+            () => afterRestart.ReadRecoveryStateAsync(token).GetAwaiter().GetResult() is
+            { RecoveryVector: null, PendingLoadCancellation: null },
+            "the reconnect to settle the acknowledged cancellation",
+            token);
+        (string MessageId, JsonElement Payload)[] results = [.. afterRestart.ResultsReceived()];
+        Assert.Equal(2, results.Length);
+        Assert.Equal(results[0].MessageId, results[1].MessageId);
+        Assert.Contains(
+            afterRestart.PayloadsSent("DurableAck"),
+            ack => ack.GetProperty("acceptedMessageId").GetString() == results[1].MessageId);
+        Assert.Single(afterRestart.PayloadsReceived("LoadCancellationStartRequested"));
+        Assert.Equal(0, afterRestart.Io.UnlockCount);
+    }
+
+    private static async Task AssertNothingExecutedAsync(
+        BeforeSublotHarness harness,
+        CancellationToken cancellationToken)
+    {
+        Assert.Empty(harness.ResultsReceived());
+        Assert.Equal(0, harness.Io.UnlockCount);
+        WireToGateRecoveryState state = await harness.ReadRecoveryStateAsync(cancellationToken);
+        Assert.Null(state.RecoveryVector);
+        Assert.Null(harness.Business.CurrentOperationSnapshot);
+        Assert.True(harness.Business.CanSubmitSublot);
+    }
+
+    private static void AssertRetriedWithTheFirstPressContent(
+        IEnumerable<(int Connection, string MessageType, string MessageId, string WireLine)> received)
+    {
+        var requests = received
+            .Where(envelope => envelope.MessageType == "LoadCancellationStartRequested")
+            .ToArray();
+        Assert.Equal(2, requests.Length);
+        Assert.NotEqual(requests[0].MessageId, requests[1].MessageId);
+        using JsonDocument first = JsonDocument.Parse(requests[0].WireLine);
+        using JsonDocument retried = JsonDocument.Parse(requests[1].WireLine);
+        JsonElement retriedPayload = retried.RootElement.GetProperty("payload");
+        Assert.Equal(first.RootElement.GetProperty("payload").GetRawText(), retriedPayload.GetRawText());
+        Assert.Equal(
+            "operator-001",
+            retriedPayload.GetProperty("operator").GetProperty("operatorId").GetString());
+        Assert.Equal(JsonValueKind.Null, retriedPayload.GetProperty("slotOperationAttemptId").ValueKind);
+    }
+
+    private static WireToGateRecoveryOperationContext SettledLoad() =>
+        new(
+            "44444444-4444-4444-8444-444444444444",
+            null,
+            1,
+            DateTimeOffset.UtcNow,
+            DemandId,
+            OperationSessionId,
+            AttemptId,
+            OperationType.Load,
+            [1, 2],
+            2,
+            true,
+            new string('0', 64));
+
+    private static string NewJournalPath() =>
+        Path.Combine(Path.GetTempPath(), "w2g-before-sublot", Guid.NewGuid().ToString("N"), "journal.db");
+
+    private sealed class BeforeSublotHarness : IAsyncDisposable
+    {
+        private readonly WireToGateSessionService _session;
+        private readonly SqliteWireToGateJournal _journal;
+        private readonly List<WireToGateOperatorEvent> _blocked;
+        private readonly bool _ownsServer;
+
+        private BeforeSublotHarness(
+            FakeControlServer server,
+            bool ownsServer,
+            FakeIoModuleClient io,
+            WireToGateSessionService session,
+            WireToGateBusinessService business,
+            SqliteWireToGateJournal journal,
+            List<WireToGateOperatorEvent> blocked)
+        {
+            Server = server;
+            _ownsServer = ownsServer;
+            Io = io;
+            _session = session;
+            Business = business;
+            _journal = journal;
+            _blocked = blocked;
+        }
+
+        public FakeControlServer Server { get; }
+
+        public FakeIoModuleClient Io { get; }
+
+        public WireToGateBusinessService Business { get; }
+
+        public static FakeControlServer NewServer() =>
+            new(IPAddress.Loopback)
+            {
+                SendReadinessAfterRecoveryAck = true,
+                SendJourneySnapshotsAfterRecovery = true,
+                // 一次重启会让同一辆车再收一遍同修订号的快照；时间戳每次都新，车载端会判成同修订内容冲突。
+                ReplayJourneySnapshotsWithStableIdentity = true,
+                OperationSessionId = OperationSessionId,
+                SublotEntryExpectedSublots = ["SUBLOT-001"],
+                RespondToLoadCancellationRequests = true
+            };
+
+        /// <param name="awaitEntryRequest">
+        /// 等录入请求与工作清单到了再返回。重连时车载端自己收尾一次取消会清掉录入请求，与替身重发的请求谁先谁后不定，
+        /// 那种用例不等。
+        /// </param>
+        /// <param name="seed">写进一份新日志的恢复状态；重启（沿用 <paramref name="journalPath"/>）时不写。</param>
+        public static async Task<BeforeSublotHarness> StartAsync(
+            CancellationToken cancellationToken,
+            Action<FakeControlServer>? configure = null,
+            WireToGateRecoveryState? seed = null,
+            FakeControlServer? existingServer = null,
+            string? journalPath = null,
+            long baselineRevision = 1,
+            bool awaitEntryRequest = true)
+        {
+            bool ownsServer = existingServer is null;
+            FakeControlServer server = existingServer ?? NewServer();
+            configure?.Invoke(server);
+
+            try
+            {
+                // 目标仓里有货：一次清空会去开锁，所以 UnlockCount == 0 才说明真的没开。
+                FakeIoModuleClient io = new();
+                io.SetCargoPresent(0, true);
+                io.SetCargoPresent(1, true);
+                RecordingLogger logger = new();
+                StoppedVehicle safety = new();
+
+                string databasePath = journalPath ?? NewJournalPath();
+                Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
+                SqliteWireToGateJournal journal = new(databasePath);
+                await journal.InitializeAsync(cancellationToken);
+                if (seed is not null)
+                {
+                    await journal.WriteRecoveryStateAsync(seed, cancellationToken);
+                }
+
+                WireToGateSessionService session = new(
+                    new WireToGateSessionOptions(
+                        "127.0.0.1",
+                        server.Port,
+                        "AGV-8005-01",
+                        Guid.NewGuid().ToString("D"),
+                        new string('a', 40),
+                        CredentialVariable,
+                        TimeSpan.FromSeconds(2),
+                        TimeSpan.FromSeconds(2),
+                        baselineRevision,
+                        baselineRevision,
+                        "eight-slot-v1",
+                        "eight-slot-modbus-v1",
+                        SupportsBatchUnlock: false),
+                    io,
+                    journal,
+                    logger,
+                    new SystemClock(),
+                    safety,
+                    new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+                    new SlotConfigurationActivationCoordinator(
+                        new DocumentActiveSlotConfigurationStore(
+                            new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                            G2SlotConfigurationFixtures.Approved()),
+                        TimeProvider.System),
+                    TimeSpan.FromSeconds(30),
+                    TimeSpan.FromSeconds(5),
+                    TimeSpan.FromMilliseconds(500));
+                // 不传 WireToGateRecoveryOptions：出厂默认 ResumeAfterRepairEnabled=false。
+                WireToGateBusinessService business = new(
+                    session,
+                    io,
+                    logger,
+                    new SystemClock(),
+                    () => safety.Read().MotionState == VehicleMotionState.Stopped,
+                    new WireToGateSlotOperationExecutorOptions(
+                        TimeSpan.FromSeconds(1),
+                        TimeSpan.FromSeconds(1),
+                        TimeSpan.FromSeconds(2),
+                        TimeSpan.FromMilliseconds(10),
+                        TimeSpan.FromSeconds(30)),
+                    OperatorVariable,
+                    safety,
+                    TimeSpan.FromSeconds(30),
+                    TimeSpan.FromMilliseconds(500));
+
+                List<WireToGateOperatorEvent> blocked = [];
+                business.OperatorEventPublished += (_, args) =>
+                {
+                    if (args.Value.Kind == "RECOVERY_BLOCKED")
+                    {
+                        lock (blocked)
+                        {
+                            blocked.Add(args.Value);
+                        }
+                    }
+                };
+                business.Start();
+                await session.Client.ConnectAndRecoverAsync(cancellationToken);
+
+                BeforeSublotHarness harness = new(
+                    server, ownsServer, io, session, business, journal, blocked);
+                if (!awaitEntryRequest)
+                {
+                    return harness;
+                }
+
+                // 录入请求跟在工作清单后面，入口判定两样都读。
+                await WaitUntilAsync(
+                    () => business.CanSubmitSublot
+                        && session.CurrentJourney.CurrentStopWorklist is not null,
+                    "the entry request and its worklist to arrive",
+                    cancellationToken);
+
+                // 入口读的是会话就绪时刷新的恢复状态缓存；等它与日志一致，入口判定才有意义。
+                WireToGateRecoveryState journaled = await journal.ReadRecoveryStateAsync(cancellationToken);
+                if (seed is null && journaled.RecoveryVector is null)
+                {
+                    await WaitUntilAsync(
+                        () => business.CanRequestLoadCancellation,
+                        "the cancellation entry to be offered",
+                        cancellationToken);
+                }
+
+                return harness;
+            }
+            catch
+            {
+                if (ownsServer)
+                {
+                    await server.DisposeAsync();
+                }
+
+                throw;
+            }
+        }
+
+        public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(
+            CancellationToken cancellationToken) =>
+            _journal.ReadRecoveryStateAsync(cancellationToken);
+
+        public IReadOnlyList<JsonElement> PayloadsReceived(string messageType) =>
+            Payloads(Server.ReceivedEnvelopes, messageType);
+
+        public IReadOnlyList<JsonElement> PayloadsSent(string messageType) =>
+            Payloads(Server.SentEnvelopes, messageType);
+
+        public IReadOnlyList<(string MessageId, JsonElement Payload)> ResultsReceived() =>
+        [
+            .. Server.ReceivedEnvelopes
+                .Where(envelope => envelope.MessageType == "LoadCancellationResult")
+                .Select(envelope => (envelope.MessageId, Payload(envelope.WireLine)))
+        ];
+
+        public async Task WaitForRecoveryBlockedAsync(
+            string reasonCode,
+            CancellationToken cancellationToken) =>
+            await WaitUntilAsync(
+                () =>
+                {
+                    lock (_blocked)
+                    {
+                        return _blocked.Any(
+                            item => item.Message.Contains(reasonCode, StringComparison.Ordinal));
+                    }
+                },
+                $"a RECOVERY_BLOCKED event naming {reasonCode}",
+                cancellationToken);
+
+        public static async Task WaitUntilAsync(
+            Func<bool> predicate,
+            string expectation,
+            CancellationToken cancellationToken)
+        {
+            DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+            while (!predicate())
+            {
+                if (DateTimeOffset.UtcNow > deadline)
+                {
+                    Assert.Fail($"Timed out after 5s waiting for: {expectation}");
+                }
+
+                await Task.Delay(5, cancellationToken);
+            }
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await Business.DisposeAsync();
+            await _session.DisposeAsync();
+            if (_ownsServer)
+            {
+                await Server.DisposeAsync();
+            }
+        }
+
+        private static IReadOnlyList<JsonElement> Payloads(
+            IEnumerable<(int Connection, string MessageType, string MessageId, string WireLine)> envelopes,
+            string messageType) =>
+        [
+            .. envelopes
+                .Where(envelope => envelope.MessageType == messageType)
+                .Select(envelope => Payload(envelope.WireLine))
+        ];
+
+        private static JsonElement Payload(string wireLine)
+        {
+            using JsonDocument document = JsonDocument.Parse(wireLine);
+            return document.RootElement.GetProperty("payload").Clone();
+        }
+
+        /// <summary>车一直停着、读数一直新鲜；这里没有东西取决于运动状态。</summary>
+        private sealed class StoppedVehicle : IVehicleSafetySignalProvider
+        {
+            public VehicleSafetySignal Read() =>
+                new(VehicleMotionState.Stopped, DateTimeOffset.UtcNow, "BEFORE_SUBLOT_TEST");
+        }
+    }
+}

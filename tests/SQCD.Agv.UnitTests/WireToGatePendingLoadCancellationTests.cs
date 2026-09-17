@@ -13,9 +13,8 @@ namespace SQCD.Agv.UnitTests;
 /// 所以它得落到日志里。
 /// </para>
 /// <para>
-/// <c>slotOperationAttemptId</c> 可空，是给 批次5-27（onboard-hmi#76）的扫码前取消留的：那条路上
-/// 还没有任何仓位操作，服务端自己的 payload 也允许这个字段为 null。本批次不实现那个入口，只让
-/// 记录的形状能表达它——否则 #76 到来时要改的是记录结构，而不是只加一个入口。
+/// <c>slotOperationAttemptId</c> 可空，是 批次5-27（onboard-hmi#76）的扫码前取消用的：那条路上
+/// 还没有任何仓位操作，服务端自己的 payload 也允许这个字段为 null。
 /// </para>
 /// </remarks>
 public sealed class WireToGatePendingLoadCancellationTests
@@ -68,6 +67,68 @@ public sealed class WireToGatePendingLoadCancellationTests
 
         Assert.Equal(AttemptId, read.PendingLoadCancellation!.SlotOperationAttemptId);
     }
+
+    /// <summary>
+    /// 扫码前取消获得授权后落成的恢复向量没有仓位、没有 attempt，日志要能存下它，并连同待答记录一起读回：
+    /// 待答记录留到结果得到确认才清。
+    /// </summary>
+    [Fact]
+    public async Task AnAuthorizedCancellationBeforeAnySublotSurvivesTheJournalWithNoSlots()
+    {
+        await using SqliteWireToGateJournal journal = await OpenJournalAsync();
+        WireToGateRecoveryVectorContext vector = BeforeSublotVector();
+        WireToGatePendingLoadCancellation pending = new(
+            CancellationId,
+            null,
+            "operator-001",
+            "SESSION",
+            new DateTimeOffset(2026, 9, 16, 8, 0, 0, TimeSpan.Zero),
+            "扫码之前现场确认本站没有要装的货。");
+
+        await journal.WriteRecoveryStateAsync(
+            WireToGateRecoveryState.Empty with
+            {
+                RecoveryVector = vector,
+                PendingLoadCancellation = pending
+            },
+            TestContext.Current.CancellationToken);
+        WireToGateRecoveryState read = await journal.ReadRecoveryStateAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.True(WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(read.RecoveryVector!));
+        Assert.Empty(read.RecoveryVector!.Slots);
+        Assert.Equal(pending, read.PendingLoadCancellation);
+    }
+
+    /// <summary>
+    /// 空仓位集合只放给扫码前取消：一个带 attempt 的取消向量没有仓位，日志照旧拒收。
+    /// </summary>
+    [Fact]
+    public async Task AVectorNamingAnAttemptWithNoSlotsIsRefusedByTheJournal()
+    {
+        await using SqliteWireToGateJournal journal = await OpenJournalAsync();
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => journal.WriteRecoveryStateAsync(
+            WireToGateRecoveryState.Empty with
+            {
+                RecoveryVector = BeforeSublotVector() with { SlotOperationAttemptId = AttemptId }
+            },
+            TestContext.Current.CancellationToken));
+    }
+
+    private static WireToGateRecoveryVectorContext BeforeSublotVector() =>
+        new(
+            WireToGateRecoveryVectorTypes.LoadCancellation,
+            CancellationId,
+            null,
+            "11111111-1111-4111-8111-111111111111",
+            null,
+            null,
+            [],
+            null,
+            "operator-001",
+            "SESSION",
+            new DateTimeOffset(2026, 9, 16, 8, 0, 0, TimeSpan.Zero));
 
     private static async Task<SqliteWireToGateJournal> OpenJournalAsync()
     {

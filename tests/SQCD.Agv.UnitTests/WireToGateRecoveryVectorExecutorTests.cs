@@ -218,6 +218,73 @@ public sealed class WireToGateRecoveryVectorExecutorTests
         Assert.Equal(0, fixture.Io.UnlockCount);
     }
 
+    /// <summary>
+    /// 扫码前取消（onboard-hmi#76）走执行器的空集合分支：不读 IO、不开锁，结果是没有逐仓结果的
+    /// COMPLETED；读数未知、目标仓有货都不影响，因为没有要证明的仓。重放拿到同一个 observedAt。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task ACancellationBeforeAnySublotCompletesWithoutTouchingIo()
+    {
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            [true, true],
+            cancellationToken: TestContext.Current.CancellationToken);
+        fixture.Io.SetUnknown();
+        WireToGateRecoveryVectorContext context = CreateContext(
+            WireToGateRecoveryVectorTypes.LoadCancellation,
+            "13131313-1313-4313-8313-131313131313",
+            []) with
+        {
+            SlotOperationAttemptId = null
+        };
+
+        WireToGateRecoveryVectorExecutionResult first = await fixture.Executor.ExecuteClearAsync(
+            context,
+            null,
+            TestContext.Current.CancellationToken);
+        WireToGateRecoveryVectorExecutionResult replay = await fixture.Executor.ExecuteClearAsync(
+            context,
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("COMPLETED", first.OverallOutcome);
+        Assert.Empty(first.SlotResults);
+        Assert.Equal(first.ObservedAt, replay.ObservedAt);
+        Assert.Equal("COMPLETED", replay.OverallOutcome);
+        Assert.Equal(0, fixture.Io.UnlockCount);
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
+            TestContext.Current.CancellationToken);
+        Assert.Equal(WireToGateRecoveryCheckpoint.SafeFinishReached, state.ProvenRecoveryCheckpoint);
+        Assert.Empty(state.ActiveUnlockSlots);
+    }
+
+    /// <summary>
+    /// 空仓位集合只属于扫码前取消。带着 attempt 的取消、补偿与修正拿到空集合都是无效命令，照旧拒绝。
+    /// </summary>
+    [Theory]
+    [InlineData(WireToGateRecoveryVectorTypes.LoadCancellation, false)]
+    [InlineData(WireToGateRecoveryVectorTypes.LoadCompensation, false)]
+    [InlineData(WireToGateRecoveryVectorTypes.LoadCorrection, true)]
+    public async Task AnEmptySlotSetIsRefusedForEveryOtherVector(string vectorType, bool correction)
+    {
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            [true],
+            correction,
+            cancellationToken: TestContext.Current.CancellationToken);
+        WireToGateRecoveryVectorContext context = CreateContext(
+            vectorType,
+            "14141414-1414-4414-8414-141414141414",
+            []);
+
+        InvalidDataException failure = await Assert.ThrowsAsync<InvalidDataException>(() => correction
+            ? fixture.Executor.ExecuteCorrectionAsync(context, null, TestContext.Current.CancellationToken)
+            : fixture.Executor.ExecuteClearAsync(context, null, TestContext.Current.CancellationToken));
+
+        Assert.Equal("RECOVERY_COMMAND_INVALID", failure.Message);
+        Assert.Equal(0, fixture.Io.UnlockCount);
+    }
+
     private static WireToGateRecoveryVectorContext CreateContext(
         string vectorType,
         string primaryId,

@@ -327,6 +327,25 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </summary>
     public int LoadCancellationAuthorizationsToDrop { get; set; }
 
+    /// <summary>
+    /// 扫码前取消（请求里 <c>slotOperationAttemptId</c> 为 null）授权时回给车载端的仓位。默认空，与服务端
+    /// control-server#83 的授权同形：那时还没有发过任何仓位操作，没有要证明清空的仓。测试设成非空，造的是
+    /// 与车载端对不上的授权。
+    /// </summary>
+    public IReadOnlyList<int> LoadCancellationBeforeSublotAuthorizedSlots { get; set; } = [];
+
+    /// <summary>
+    /// 扫码前取消授权里回的 <c>slotOperationAttemptId</c>。默认 null，即照抄请求；测试设成一个 attempt，
+    /// 造的是服务端说出了车载端从没收到过的仓位操作。
+    /// </summary>
+    public string? LoadCancellationBeforeSublotAuthorizedAttemptId { get; set; }
+
+    /// <summary>
+    /// 这么多条 <c>LoadCancellationResult</c> 收下了却不回 <c>DurableAck</c>，也不断连接：车辆等到
+    /// <c>messageTimeout</c>，结果留在自己的日志里等补发。
+    /// </summary>
+    public int LoadCancellationResultAcksToDrop { get; set; }
+
     public IReadOnlyList<string> ReceivedLoadCancellationAttemptIds =>
         [.. _receivedLoadCancellationAttemptIds];
 
@@ -840,6 +859,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                         }
 
                         break;
+                    case "LoadCancellationResult" when LoadCancellationResultAcksToDrop > 0:
+                        LoadCancellationResultAcksToDrop--;
+                        break;
                     case "SublotSubmitted":
                     case "OperationProgress":
                     case "PreDepartureSafetyCheckResult":
@@ -1300,6 +1322,8 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
 
         bool authorized = LoadCancellationDecision == "AUTHORIZED";
+        // 扫码前取消（attempt 为 null）按 control-server#83 应答：授权的仓位集合为空，attempt 照抄 null。
+        bool beforeSublot = attemptId is null;
         await WriteEnvelopeAsync(
             context,
             CreateEnvelope(
@@ -1311,8 +1335,14 @@ public sealed class FakeControlServer : IAsyncDisposable
                     cancellationId,
                     decision = LoadCancellationDecision,
                     demandId,
-                    slotOperationAttemptId = attemptId,
-                    slots = authorized ? LoadCancellationAuthorizedSlots : [],
+                    slotOperationAttemptId = beforeSublot
+                        ? LoadCancellationBeforeSublotAuthorizedAttemptId
+                        : attemptId,
+                    slots = !authorized
+                        ? []
+                        : beforeSublot
+                            ? LoadCancellationBeforeSublotAuthorizedSlots
+                            : LoadCancellationAuthorizedSlots,
                     problem = authorized
                         ? null
                         : new

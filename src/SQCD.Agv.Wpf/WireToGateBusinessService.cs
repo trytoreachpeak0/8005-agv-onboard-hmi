@@ -605,6 +605,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             Volatile.Write(ref _lastRecoveryState, state);
             if (state.RecoveryVector is { } vector)
             {
+                if (WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector))
+                {
+                    await RestoreLoadCancellationBeforeSublotAsync(vector, cancellationToken)
+                        .ConfigureAwait(false);
+                    return;
+                }
+
                 PublishRecoveryVectorRestored(vector);
                 return;
             }
