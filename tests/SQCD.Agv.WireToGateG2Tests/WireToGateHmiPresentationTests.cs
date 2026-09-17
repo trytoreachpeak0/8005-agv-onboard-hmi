@@ -66,6 +66,27 @@ public sealed class WireToGateHmiPresentationTests
         Assert.True(banner.HasWarning);
     }
 
+    /// <summary>
+    /// 子批被拒收后，提示区状态行说「子批被拒收」，下一步随录入请求是否还在：还在就请操作员重新扫码，
+    /// 不在就等服务端的新请求（onboard-hmi#77）。拒收原因本身在单独一行，见 <c>MainViewModel</c>。
+    /// </summary>
+    [Theory]
+    [InlineData(true, "请核对物料后重新扫码。")]
+    [InlineData(false, "本站录入清单已变化，等待服务端新的录入请求。")]
+    public void ARejectedEntryReplacesTheScanPromptWithTheNextStep(bool canSubmit, string guidance)
+    {
+        WireToGateHmiBanner banner = WireToGateHmiPresentation.Create(
+            Session(WireToGateSessionReadiness.Ready),
+            operation: null,
+            canSubmit: canSubmit,
+            sublotRejected: true);
+
+        Assert.Equal("子批被拒收", banner.StateText);
+        Assert.Equal(guidance, banner.Guidance);
+        Assert.True(banner.HasWarning);
+        Assert.False(banner.HasError);
+    }
+
     [Fact]
     public void OperationProjectionOverridesReadyBannerAndTargetsEveryPhysicalSlot()
     {

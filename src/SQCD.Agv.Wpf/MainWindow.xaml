@@ -123,6 +123,7 @@
                     <RowDefinition />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -209,7 +210,24 @@
                            Text="{Binding AlarmText, StringFormat=告警：{0}}"
                            TextWrapping="Wrap"
                            Visibility="{Binding HasAlarms, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                <WrapPanel Grid.Row="2"
+                <!--
+                    子批拒收原因（ADR-cross-0057，8005-agv-onboard-hmi#77）。服务端录入后重算不符时经 SublotRejected 拒收，
+                    这一行写被拒的子批和真实原因；下一步做什么在状态行。放在提示区、不进仓位区。没有拒收时整行 Collapsed，
+                    Auto 行高为 0，不改变其余布局。UIA 按 AutomationId 找它，ItemStatus 是原始原因码，判据不必比文案全文。
+                -->
+                <TextBlock Grid.Row="2"
+                           Grid.Column="0"
+                           Grid.ColumnSpan="3"
+                           Margin="0,8,0,0"
+                           FontSize="14"
+                           FontWeight="Bold"
+                           Foreground="#8A5A00"
+                           AutomationProperties.AutomationId="SublotRejectionReason"
+                           AutomationProperties.ItemStatus="{Binding SublotRejectionReasonCode}"
+                           Text="{Binding SublotRejectionText}"
+                           TextWrapping="Wrap"
+                           Visibility="{Binding HasSublotRejection, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <WrapPanel Grid.Row="3"
                            Grid.Column="0"
                            Grid.ColumnSpan="3"
                            Margin="0,8,0,0"

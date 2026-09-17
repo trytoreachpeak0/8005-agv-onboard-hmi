@@ -139,8 +139,8 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// <remarks>
     /// The 2.0.0 rejection names the refused sublot itself and allows a <c>null</c> demandId,
     /// because <c>SUBLOT_NOT_IN_DISPATCH_SCOPE</c> is by definition a sublot with no demand to name
-    /// it against. The vehicle-side display of this is <c>8005-agv-onboard-hmi#77</c>; what this
-    /// fake owes is the shape.
+    /// it against. The vehicle-side display of this is <c>8005-agv-onboard-hmi#77</c>
+    /// (<c>SublotRejectedAfterEntryG2Tests</c>); what this fake owes is the shape.
     /// </remarks>
     public string? RejectSublotSubmissionsWith { get; set; }
 
@@ -156,15 +156,43 @@ public sealed class FakeControlServer : IAsyncDisposable
     public string? RejectedSublotOverride { get; set; }
 
     /// <summary>
+    /// The <c>currentWorklistRevision</c> this fake puts on its rejections. The entry request it
+    /// sends is at revision 1, so the default says "the worklist did not move".
+    /// </summary>
+    /// <remarks>
+    /// The vehicle keeps its entry request when the rejection names the revision the request was
+    /// made at and drops it otherwise (<c>8005-agv-onboard-hmi#77</c>), so both sides of that rule
+    /// need a way onto the wire.
+    /// </remarks>
+    public long RejectionWorklistRevision { get; set; } = 1;
+
+    /// <summary>
+    /// The <c>demandId</c> this fake puts on its rejections; <c>null</c>, the out-of-scope shape,
+    /// by default.
+    /// </summary>
+    public string? RejectionDemandId { get; set; }
+
+    /// <summary>
     /// After each <c>SublotRejected</c>, send the same entry request again, the way the real server
     /// keeps an entry open within one worklist revision.
     /// </summary>
     /// <remarks>
-    /// The vehicle clears its outstanding entry request on a rejection, so without this an operator
-    /// could not scan again at all -- and scanning the same sublot again after a rejection is exactly
-    /// the case <c>businessDedupKeys: []</c> exists for.
+    /// The vehicle keeps its entry request when a rejection names the revision it was made at, and
+    /// clears it otherwise (<c>8005-agv-onboard-hmi#77</c>); this is the server's own resend on top of
+    /// that. Scanning the same sublot again after a rejection is exactly the case
+    /// <c>businessDedupKeys: []</c> exists for.
     /// </remarks>
     public bool ResendSublotEntryRequestAfterRejection { get; set; }
+
+    /// <summary>
+    /// After each <c>SublotRejected</c>, send a <c>SlotOperationCommand</c> without waiting for another
+    /// entry: the stop moves on to loading while the vehicle still holds the rejection.
+    /// </summary>
+    /// <remarks>
+    /// A rescan already withdraws the rejection before it is sent, so this is the only way a test
+    /// reaches a load starting with a rejection still on show (<c>8005-agv-onboard-hmi#77</c> review).
+    /// </remarks>
+    public bool SendSlotOperationCommandAfterRejection { get; set; }
 
     /// <summary>
     /// Drop the connection on receiving a <c>SublotSubmitted</c>, before acknowledging it, so the
@@ -840,7 +868,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                             messageId,
                             new
                             {
-                                demandId = (string?)null,
+                                demandId = RejectionDemandId,
                                 operationSessionId = root.GetProperty("payload")
                                     .GetProperty("operationSessionId").GetString(),
                                 problem = new
@@ -849,13 +877,18 @@ public sealed class FakeControlServer : IAsyncDisposable
                                     fieldPath = (string?)null,
                                     displayMessage = (string?)null
                                 },
-                                currentWorklistRevision = 1,
+                                currentWorklistRevision = RejectionWorklistRevision,
                                 rejectedSublot = RejectedSublotOverride
                                     ?? root.GetProperty("payload").GetProperty("sublot").GetString()
                             })).ConfigureAwait(false);
                         if (ResendSublotEntryRequestAfterRejection)
                         {
                             await SendSublotEntryRequestAsync(context).ConfigureAwait(false);
+                        }
+
+                        if (SendSlotOperationCommandAfterRejection)
+                        {
+                            await SendSlotOperationCommandAsync(context).ConfigureAwait(false);
                         }
 
                         break;

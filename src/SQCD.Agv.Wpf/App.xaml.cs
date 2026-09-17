@@ -200,7 +200,8 @@ public partial class App : System.Windows.Application, IDisposable
                     () => _wireToGateBusiness.CanRequestManualChargingReturnToService,
                     cancellationToken => _wireToGateBusiness.RequestManualChargingReturnToServiceAsync(
                         cancellationToken: cancellationToken),
-                    () => _wireToGateBusiness.IsLoadCancellationBeforeSublotOpen);
+                    () => _wireToGateBusiness.IsLoadCancellationBeforeSublotOpen,
+                    () => _wireToGateBusiness.CurrentSublotRejection);
                 _wireToGateBusiness.Start();
             }
 

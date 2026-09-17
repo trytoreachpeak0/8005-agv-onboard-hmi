@@ -47,6 +47,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private readonly SemaphoreSlim _safetySendGate = new(1, 1);
     private readonly SemaphoreSlim _recoveryRequestGate = new(1, 1);
     private WireToGateSublotEntryRequest? _currentEntryRequest;
+    private WireToGateSublotRejection? _currentSublotRejection;
     private WireToGateExceptionRecoverySessionSnapshot? _recoverySessionSnapshot;
     private readonly object _recoverySessionAttemptGate = new();
     private (string ExceptionRecoverySessionId, string? SlotOperationAttemptId)? _recoverySessionAttempt;
@@ -143,6 +144,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// </remarks>
     public IReadOnlyList<string>? ExpectedSublots =>
         Volatile.Read(ref _currentEntryRequest)?.ExpectedSublots;
+
+    /// <summary>
+    /// The server's latest refusal of an entered sublot, or <c>null</c> once the operator has entered
+    /// again, a slot operation has started, or the stop's operation session has moved on.
+    /// </summary>
+    public WireToGateSublotRejection? CurrentSublotRejection =>
+        Volatile.Read(ref _currentSublotRejection);
 
     /// <summary>
     /// Read-only projection of the latest operation progress emitted by the
@@ -474,6 +482,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             throw new InvalidOperationException("WIRE_TO_GATE_OPERATOR_NOT_READY");
         }
 
+        // A new entry withdraws the previous rejection from the prompt area. It is cleared before
+        // sending, not after: the server may refuse this entry too, and that rejection can arrive
+        // before the send returns.
+        Volatile.Write(ref _currentSublotRejection, null);
         string messageId = await _session.SendSublotSubmittedAsync(
             request.OperationSessionId,
             request.StationId,
@@ -1008,6 +1020,18 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             {
                 case WireToGateSublotEntryRequest sublot:
                     Volatile.Write(ref _currentEntryRequest, sublot);
+                    // A request for another operation session means the stop moved on, and the
+                    // last stop's rejection no longer describes anything in front of the operator.
+                    // A resend for the same session keeps it: that is the "scan again" case.
+                    if (Volatile.Read(ref _currentSublotRejection) is { } shown
+                        && !string.Equals(
+                            shown.OperationSessionId,
+                            sublot.OperationSessionId,
+                            StringComparison.Ordinal))
+                    {
+                        Interlocked.CompareExchange(ref _currentSublotRejection, null, shown);
+                    }
+
                     PublishOperatorEvent(
                         $"sublot-requested:{sublot.MessageId}",
                         "SUBLOT_ENTRY_REQUESTED",
@@ -1075,12 +1099,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     await HandleForcedMechanicalRecoveryCommandAsync(forcedRecovery, cancellationToken)
                         .ConfigureAwait(false);
                     break;
+                case WireToGateRecoveryCommand { MessageType: "SublotRejected" } rejection:
+                    HandleSublotRejected(rejection);
+                    break;
                 case WireToGateRecoveryCommand recovery:
-                    if (recovery.MessageType == "SublotRejected")
-                    {
-                        Volatile.Write(ref _currentEntryRequest, null);
-                    }
-                    else if (recovery.MessageType is "LoadCorrectionRejected"
+                    if (recovery.MessageType is "LoadCorrectionRejected"
                         or "LoadCompensationRejected")
                     {
                         await HandleRecoveryVectorRejectedAsync(recovery, cancellationToken)
@@ -1112,6 +1135,52 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 $"处理服务端业务消息失败：{command.MessageType}。已保持物理安全阻塞。",
                 exception);
         }
+    }
+
+    /// <summary>
+    /// The server refused an entered sublot after revalidating it (BR-013). The reason goes to the
+    /// operator as itself; this is a business answer, not a recovery message, so the recovery safety
+    /// policy is never consulted (8005-agv-onboard-hmi#77).
+    /// </summary>
+    private void HandleSublotRejected(WireToGateRecoveryCommand command)
+    {
+        // The session client has already validated the payload against the 2.0.0 shape.
+        SublotRejectedPayload payload =
+            JsonSerializer.Deserialize<SublotRejectedPayload>(command.PayloadJson, JsonOptions)
+            ?? throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+
+        // Same operation session, same worklist revision: the request the operator scanned against
+        // still stands, so they can scan again straight away. Anything else means the worklist moved
+        // and the server owes a new request; the old one must not accept another entry meanwhile.
+        // The compare-exchange keeps a request that arrived after this rejection was sent.
+        WireToGateSublotEntryRequest? request = Volatile.Read(ref _currentEntryRequest);
+        bool keep = request is not null
+            && string.Equals(request.OperationSessionId, payload.OperationSessionId, StringComparison.Ordinal)
+            && request.WorklistRevision == payload.CurrentWorklistRevision;
+        if (!keep && request is not null)
+        {
+            Interlocked.CompareExchange(ref _currentEntryRequest, null, request);
+        }
+
+        WireToGateSublotRejection rejection = new(
+            command.MessageId,
+            payload.DemandId,
+            payload.OperationSessionId,
+            payload.Problem.ReasonCode,
+            payload.CurrentWorklistRevision,
+            payload.RejectedSublot,
+            EntryRequestKept: keep,
+            _clock.Now.ToUniversalTime());
+        Volatile.Write(ref _currentSublotRejection, rejection);
+        _logger.Write(
+            LogSeverity.Warning,
+            nameof(WireToGateBusinessService),
+            $"子批被服务端拒收：sublot={payload.RejectedSublot}，reason={payload.Problem.ReasonCode}，demandId={payload.DemandId ?? "null"}，currentWorklistRevision={payload.CurrentWorklistRevision}。");
+        PublishOperatorEvent(
+            $"sublot-rejected:{command.MessageId}",
+            "SUBLOT_REJECTED",
+            WireToGateSublotRejectionText.Describe(rejection)
+                + WireToGateSublotRejectionText.NextStep(rejection.EntryRequestKept));
     }
 
     private async Task HandleBlockedResumeAsync(
@@ -1384,6 +1453,14 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     $"忽略并发重复SlotOperationCommand：attempt={command.SlotOperationAttemptId}。");
                 return;
             }
+        }
+
+        // The vehicle is taking this stop's load in hand, so a rejection still on show describes an
+        // entry the stop has moved past; left up, it would sit beside a load in progress. Cleared
+        // before the first progress event so the prompt area never shows both.
+        if (Volatile.Read(ref _currentSublotRejection) is { } shownRejection)
+        {
+            Interlocked.CompareExchange(ref _currentSublotRejection, null, shownRejection);
         }
 
         try

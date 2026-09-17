@@ -183,6 +183,8 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// <para>
     /// <c>CV-LOAD-CANCELLATION-BEFORE-LOAD</c> left when #76 landed the cancellation before any
     /// sublot; <c>LoadCancellationBeforeSublotG2Tests</c> binds it.
+    /// <c>CV-SUBLOT-REJECTED-AFTER-ENTRY</c> left when #77 showed a rejection as its real reason;
+    /// <c>SublotRejectedAfterEntryG2Tests</c> binds it. The set is empty again.
     /// </para>
     /// <para>
     /// <b>They are pinned here rather than in <see cref="VectorsAwaitingTheirSlice"/>.</b> The
@@ -195,13 +197,7 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// </para>
     /// </remarks>
     private static readonly IReadOnlyDictionary<string, string> VectorsThisBatchOwesANamedTest =
-        new SortedDictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["CV-SUBLOT-REJECTED-AFTER-ENTRY"] =
-                "FP-IS-02, 批次5-28 (8005-agv-onboard-hmi#77) -- new in the 2.0.0 candidate; this "
-                + "ticket lands only rejectedSublot and the nullable demandId, not the display that "
-                + "stops treating a rejection as a recovery message"
-        };
+        new SortedDictionary<string, string>(StringComparer.Ordinal);
 
     private sealed record VectorBinding(string VectorId, string TestName);
 
