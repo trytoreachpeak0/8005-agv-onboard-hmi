@@ -48,6 +48,7 @@ public sealed class MainViewModel : ViewModelBase
     private bool _stationDepartureCountdownDimmed;
     private Func<StationDepartureCountdownContext, string?>? _stationDepartureCountdownTextOverride;
     private DispatcherTimer? _stationDepartureCountdownTimer;
+    private bool _stationDepartureCountdownStopped;
     private WireToGateSessionSnapshot? _wireToGateSession;
     private WireToGateHmiOperationSnapshot? _wireToGateOperation;
     private OnboardSnapshot? _lastControllerSnapshot;
@@ -215,6 +216,7 @@ public sealed class MainViewModel : ViewModelBase
         _stationDepartureDeadlineAt = snapshot.CurrentStopWorklist?.StationDepartureDeadlineAt;
         HasStationDepartureCountdown = snapshot.CurrentStopWorklist is not null;
         RefreshStationDepartureCountdownCore();
+        SyncStationDepartureCountdownTimerCore();
         if (snapshot.CurrentStopWorklist is { } worklist)
         {
             WireToGateWorklistItem? item = worklist.Items.SingleOrDefault();
@@ -431,6 +433,15 @@ public sealed class MainViewModel : ViewModelBase
     internal IClock Clock { get; init; } = new SystemClock();
 
     /// <summary>
+    /// 倒计时定时器挂在哪个 Dispatcher 上，默认是 WPF 应用的 UI 线程；没有 WPF 应用（单元测试）时为空，不起定时器。
+    /// 测试给它一个自己开的 Dispatcher 线程，才能看到定时器的启停与真实刷新。
+    /// </summary>
+    internal Dispatcher? StationDepartureCountdownDispatcher { get; init; } = System.Windows.Application.Current?.Dispatcher;
+
+    /// <summary>倒计时定时器此刻是否在跑。只在有期限时跑，期限变为空或窗口关闭后停。</summary>
+    internal bool IsStationDepartureCountdownTicking => _stationDepartureCountdownTimer?.IsEnabled == true;
+
+    /// <summary>
     /// 提示区是否显示离站期限倒计时。本站作业清单同步了就显示——没有截止时间也显示，写「无倒计时」；
     /// 整块藏起来会让「服务端没给期限」和「清单还没到」看起来一样。
     /// </summary>
@@ -481,7 +492,6 @@ public sealed class MainViewModel : ViewModelBase
     public async Task InitializeAsync()
     {
         _controller.StateChanged += OnStateChanged;
-        StartStationDepartureCountdownTimer();
         ApplySnapshot(_controller.Current);
         await _controller.StartAsync().ConfigureAwait(true);
     }
@@ -491,22 +501,47 @@ public sealed class MainViewModel : ViewModelBase
     /// </summary>
     internal void RefreshStationDepartureCountdown() => RunOnUiThread(RefreshStationDepartureCountdownCore);
 
-    private void StartStationDepartureCountdownTimer()
+    /// <summary>
+    /// 窗口关闭时停掉倒计时定时器，之后的快照也不再启动它。
+    /// </summary>
+    internal void StopStationDepartureCountdown() => RunOnUiThread(() =>
     {
-        // 没有 WPF 应用（单元测试）时不起定时器，测试直接调 RefreshStationDepartureCountdown。
-        if (_stationDepartureCountdownTimer is not null
-            || System.Windows.Application.Current?.Dispatcher is not { } dispatcher)
+        _stationDepartureCountdownStopped = true;
+        _stationDepartureCountdownTimer?.Stop();
+    });
+
+    /// <summary>
+    /// 有期限才需要按时钟重算：期限为空时显示「无倒计时」，不随时间变化，定时器停掉。到期之后仍然有期限，
+    /// 定时器继续跑——那一档的文字本身不变，但 #78 的覆盖文案要显示已过期多久。
+    /// </summary>
+    private void SyncStationDepartureCountdownTimerCore()
+    {
+        if (_stationDepartureDeadlineAt is null || _stationDepartureCountdownStopped)
         {
+            _stationDepartureCountdownTimer?.Stop();
             return;
         }
 
-        // 250 ms 而不是 1 s：最后 10 秒要逐秒闪烁，相位取自绝对秒数。节拍等于秒长时它与秒边界的相对位置会漂移，
-        // 跨边界那一下会连着两次落在同一相位上，看着像卡住。
-        _stationDepartureCountdownTimer = new DispatcherTimer(
-            TimeSpan.FromMilliseconds(250),
-            DispatcherPriority.Normal,
-            (_, _) => RefreshStationDepartureCountdownCore(),
-            dispatcher);
+        if (_stationDepartureCountdownTimer is null)
+        {
+            if (StationDepartureCountdownDispatcher is not { } dispatcher)
+            {
+                return;
+            }
+
+            // 250 ms 而不是 1 s：最后 10 秒要逐秒闪烁，相位取自绝对秒数。节拍等于秒长时它与秒边界的相对位置会漂移，
+            // 跨边界那一下会连着两次落在同一相位上，看着像卡住。
+            _stationDepartureCountdownTimer = new DispatcherTimer(DispatcherPriority.Normal, dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(250)
+            };
+            _stationDepartureCountdownTimer.Tick += (_, _) => RefreshStationDepartureCountdownCore();
+        }
+
+        if (!_stationDepartureCountdownTimer.IsEnabled)
+        {
+            _stationDepartureCountdownTimer.Start();
+        }
     }
 
     private void RefreshStationDepartureCountdownCore()

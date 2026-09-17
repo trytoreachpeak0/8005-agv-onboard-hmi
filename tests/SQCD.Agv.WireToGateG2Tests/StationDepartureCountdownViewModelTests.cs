@@ -1,3 +1,4 @@
+using System.Windows.Threading;
 using SQCD.Agv.Application;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
@@ -173,6 +174,78 @@ public sealed class StationDepartureCountdownViewModelTests
         AssertCountdown(viewModel, "已到期，等待本站结束", StationDepartureCountdownTier.Expired);
     }
 
+    [Fact]
+    public async Task TheTimerRunsOnlyWhileThereIsADeadline()
+    {
+        using DispatcherThread dispatcher = new();
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, new ManualClock(Now), dispatcher.Dispatcher);
+
+        viewModel.UpdateWireToGateJourney(Journey(null));
+        Assert.False(viewModel.IsStationDepartureCountdownTicking);
+
+        viewModel.UpdateWireToGateJourney(Journey(Now + TimeSpan.FromMinutes(2), revision: 2));
+        Assert.True(viewModel.IsStationDepartureCountdownTicking);
+
+        // 到期之后仍有期限，定时器继续跑（#78 的覆盖文案要显示已过期多久）。
+        viewModel.UpdateWireToGateJourney(Journey(Now - TimeSpan.FromSeconds(5), revision: 3));
+        Assert.True(viewModel.IsStationDepartureCountdownTicking);
+
+        viewModel.UpdateWireToGateJourney(Journey(null, revision: 4));
+        Assert.False(viewModel.IsStationDepartureCountdownTicking);
+
+        viewModel.UpdateWireToGateJourney(WireToGateJourneySnapshot.Empty);
+        Assert.False(viewModel.IsStationDepartureCountdownTicking);
+    }
+
+    [Fact]
+    public async Task TheRunningTimerRefreshesTheCountdownFromTheClock()
+    {
+        using DispatcherThread dispatcher = new();
+        ManualClock clock = new(Now);
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, clock, dispatcher.Dispatcher);
+        viewModel.UpdateWireToGateJourney(Journey(Now + TimeSpan.FromMinutes(2)));
+        Assert.Equal("02:00", viewModel.StationDepartureCountdownText);
+
+        // 不调 RefreshStationDepartureCountdown：只有定时器真的在跑，文字才会变。
+        clock.Advance(TimeSpan.FromSeconds(75));
+
+        Assert.True(
+            SpinWait.SpinUntil(() => viewModel.StationDepartureCountdownText == "00:45", TimeSpan.FromSeconds(5)),
+            $"定时器没有刷新，仍显示 {viewModel.StationDepartureCountdownText}");
+    }
+
+    [Fact]
+    public async Task StoppingForAClosedWindowStopsTheTimerForGood()
+    {
+        using DispatcherThread dispatcher = new();
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, new ManualClock(Now), dispatcher.Dispatcher);
+        viewModel.UpdateWireToGateJourney(Journey(Now + TimeSpan.FromMinutes(2)));
+        Assert.True(viewModel.IsStationDepartureCountdownTicking);
+
+        viewModel.StopStationDepartureCountdown();
+        Assert.False(viewModel.IsStationDepartureCountdownTicking);
+
+        // 窗口关了之后到达的快照不再把它启动起来，但显示照常更新。
+        viewModel.UpdateWireToGateJourney(Journey(Now + TimeSpan.FromMinutes(5), revision: 2));
+        Assert.False(viewModel.IsStationDepartureCountdownTicking);
+        Assert.Equal("05:00", viewModel.StationDepartureCountdownText);
+    }
+
+    [Fact]
+    public async Task WithoutADispatcherNoTimerIsCreated()
+    {
+        // 单元测试与没有 WPF 应用的宿主：不起定时器，靠 RefreshStationDepartureCountdown 手动重算。
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, new ManualClock(Now));
+
+        viewModel.UpdateWireToGateJourney(Journey(Now + TimeSpan.FromMinutes(2)));
+
+        Assert.False(viewModel.IsStationDepartureCountdownTicking);
+    }
+
     private static void AssertCountdown(MainViewModel viewModel, string text, StationDepartureCountdownTier tier)
     {
         Assert.Equal(text, viewModel.StationDepartureCountdownText);
@@ -197,7 +270,10 @@ public sealed class StationDepartureCountdownViewModelTests
         null,
         Now);
 
-    private static async Task<MainViewModel> ViewModel(OnboardController controller, IClock clock)
+    private static async Task<MainViewModel> ViewModel(
+        OnboardController controller,
+        IClock clock,
+        Dispatcher? dispatcher = null)
     {
         MainViewModel viewModel = new(
             controller,
@@ -205,7 +281,8 @@ public sealed class StationDepartureCountdownViewModelTests
             "agv02",
             OnboardActiveSlotConfigurationFactory.Create(new WireToGateSettings(), new IoModuleSettings()))
         {
-            Clock = clock
+            Clock = clock,
+            StationDepartureCountdownDispatcher = dispatcher
         };
         await viewModel.InitializeAsync();
         return viewModel;
@@ -227,9 +304,45 @@ public sealed class StationDepartureCountdownViewModelTests
 
     private sealed class ManualClock(DateTimeOffset now) : IClock
     {
-        public DateTimeOffset Now { get; private set; } = now;
+        private long _ticks = now.UtcTicks;
 
-        public void Advance(TimeSpan by) => Now += by;
+        // 定时器在另一条线程上读，推进与读取都走原子操作。
+        public DateTimeOffset Now => new(Interlocked.Read(ref _ticks), TimeSpan.Zero);
+
+        public void Advance(TimeSpan by) => Interlocked.Add(ref _ticks, by.Ticks);
+    }
+
+    /// <summary>
+    /// 一条跑着消息循环的线程，给定时器一个真的会触发的 Dispatcher。测试进程里没有 WPF 应用，不能借 UI 线程。
+    /// </summary>
+    private sealed class DispatcherThread : IDisposable
+    {
+        private readonly Thread _thread;
+
+        public DispatcherThread()
+        {
+            using ManualResetEventSlim ready = new();
+            Dispatcher? dispatcher = null;
+            _thread = new Thread(() =>
+            {
+                dispatcher = Dispatcher.CurrentDispatcher;
+                ready.Set();
+                Dispatcher.Run();
+            })
+            { IsBackground = true };
+            _thread.SetApartmentState(ApartmentState.STA);
+            _thread.Start();
+            ready.Wait();
+            Dispatcher = dispatcher!;
+        }
+
+        public Dispatcher Dispatcher { get; }
+
+        public void Dispose()
+        {
+            Dispatcher.InvokeShutdown();
+            _thread.Join();
+        }
     }
 
     private sealed class IdleRuleGateway : IRuleGateway

@@ -318,6 +318,7 @@ public partial class MainWindow : Window
         {
             _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
             _viewModel.Logs.CollectionChanged -= OnLogsCollectionChanged;
+            _viewModel.StopStationDepartureCountdown();
         }
 
         DataContextChanged -= OnDataContextChanged;
