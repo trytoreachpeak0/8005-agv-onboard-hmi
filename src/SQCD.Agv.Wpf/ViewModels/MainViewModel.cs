@@ -41,6 +41,14 @@ public sealed class MainViewModel : ViewModelBase
     private bool _canRequestManualChargingReturn;
     private bool _hasWireToGateJourney;
     private bool _wireToGateEnabled;
+    private bool _hasStationDepartureCountdown;
+    private DateTimeOffset? _stationDepartureDeadlineAt;
+    private string _stationDepartureCountdownText = StationDepartureCountdownFormatter.AbsentText;
+    private StationDepartureCountdownTier _stationDepartureCountdownTier = StationDepartureCountdownTier.Absent;
+    private bool _stationDepartureCountdownDimmed;
+    private Func<StationDepartureCountdownContext, string?>? _stationDepartureCountdownTextOverride;
+    private DispatcherTimer? _stationDepartureCountdownTimer;
+    private bool _stationDepartureCountdownStopped;
     private WireToGateSessionSnapshot? _wireToGateSession;
     private WireToGateHmiOperationSnapshot? _wireToGateOperation;
     private OnboardSnapshot? _lastControllerSnapshot;
@@ -204,6 +212,11 @@ public sealed class MainViewModel : ViewModelBase
     internal void UpdateWireToGateJourney(WireToGateJourneySnapshot snapshot) => RunOnUiThread(() =>
     {
         _hasWireToGateJourney = true;
+        // 期限以最新快照为准，整值替换：重新计满、恢复后的新期限、变为空，都照收，车载端不自己推算。
+        _stationDepartureDeadlineAt = snapshot.CurrentStopWorklist?.StationDepartureDeadlineAt;
+        HasStationDepartureCountdown = snapshot.CurrentStopWorklist is not null;
+        RefreshStationDepartureCountdownCore();
+        SyncStationDepartureCountdownTimerCore();
         if (snapshot.CurrentStopWorklist is { } worklist)
         {
             WireToGateWorklistItem? item = worklist.Items.SingleOrDefault();
@@ -414,11 +427,132 @@ public sealed class MainViewModel : ViewModelBase
         private set => SetProperty(ref _recoverySlotName, value);
     }
 
+    /// <summary>
+    /// 离站期限倒计时用的车载端时钟，默认系统时钟。测试靠它控制「现在」。
+    /// </summary>
+    internal IClock Clock { get; init; } = new SystemClock();
+
+    /// <summary>
+    /// 倒计时定时器挂在哪个 Dispatcher 上，默认是 WPF 应用的 UI 线程；没有 WPF 应用（单元测试）时为空，不起定时器。
+    /// 测试给它一个自己开的 Dispatcher 线程，才能看到定时器的启停与真实刷新。
+    /// </summary>
+    internal Dispatcher? StationDepartureCountdownDispatcher { get; init; } = System.Windows.Application.Current?.Dispatcher;
+
+    /// <summary>倒计时定时器此刻是否在跑。只在有期限时跑，期限变为空或窗口关闭后停。</summary>
+    internal bool IsStationDepartureCountdownTicking => _stationDepartureCountdownTimer?.IsEnabled == true;
+
+    /// <summary>
+    /// 提示区是否显示离站期限倒计时。本站作业清单同步了就显示——没有截止时间也显示，写「无倒计时」；
+    /// 整块藏起来会让「服务端没给期限」和「清单还没到」看起来一样。
+    /// </summary>
+    public bool HasStationDepartureCountdown
+    {
+        get => _hasStationDepartureCountdown;
+        private set => SetProperty(ref _hasStationDepartureCountdown, value);
+    }
+
+    /// <summary>倒计时那一行字：覆盖文案有值时用它，否则是格式化类的通用文案。</summary>
+    public string StationDepartureCountdownText
+    {
+        get => _stationDepartureCountdownText;
+        private set => SetProperty(ref _stationDepartureCountdownText, value);
+    }
+
+    /// <summary>配色档位，XAML 的 DataTrigger 按它选颜色，UIA 的 ItemStatus 也读它。</summary>
+    public StationDepartureCountdownTier StationDepartureCountdownTier
+    {
+        get => _stationDepartureCountdownTier;
+        private set => SetProperty(ref _stationDepartureCountdownTier, value);
+    }
+
+    /// <summary>最后 10 秒逐秒闪烁时的「灭」相位。</summary>
+    public bool StationDepartureCountdownDimmed
+    {
+        get => _stationDepartureCountdownDimmed;
+        private set => SetProperty(ref _stationDepartureCountdownDimmed, value);
+    }
+
+    /// <summary>
+    /// 倒计时文案的覆盖入口，留给 <c>8005-agv-onboard-hmi#78</c>（在途装货时期限到期的文案）。
+    /// </summary>
+    /// <remarks>
+    /// 每次重算都调用；返回 <c>null</c> 或不设置时显示通用文案。只换文字，档位与闪烁仍按服务端期限算——
+    /// 覆盖方不能借它延长或作废期限。本票不设置它。
+    /// </remarks>
+    internal Func<StationDepartureCountdownContext, string?>? StationDepartureCountdownTextOverride
+    {
+        get => _stationDepartureCountdownTextOverride;
+        set => RunOnUiThread(() =>
+        {
+            _stationDepartureCountdownTextOverride = value;
+            RefreshStationDepartureCountdownCore();
+        });
+    }
+
     public async Task InitializeAsync()
     {
         _controller.StateChanged += OnStateChanged;
         ApplySnapshot(_controller.Current);
         await _controller.StartAsync().ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// 按当前时钟重算倒计时。定时器调的就是它；截止时刻是绝对值，这里不保留任何递减状态。
+    /// </summary>
+    internal void RefreshStationDepartureCountdown() => RunOnUiThread(RefreshStationDepartureCountdownCore);
+
+    /// <summary>
+    /// 窗口关闭时停掉倒计时定时器，之后的快照也不再启动它。
+    /// </summary>
+    internal void StopStationDepartureCountdown() => RunOnUiThread(() =>
+    {
+        _stationDepartureCountdownStopped = true;
+        _stationDepartureCountdownTimer?.Stop();
+    });
+
+    /// <summary>
+    /// 有期限才需要按时钟重算：期限为空时显示「无倒计时」，不随时间变化，定时器停掉。到期之后仍然有期限，
+    /// 定时器继续跑——那一档的文字本身不变，但 #78 的覆盖文案要显示已过期多久。
+    /// </summary>
+    private void SyncStationDepartureCountdownTimerCore()
+    {
+        if (_stationDepartureDeadlineAt is null || _stationDepartureCountdownStopped)
+        {
+            _stationDepartureCountdownTimer?.Stop();
+            return;
+        }
+
+        if (_stationDepartureCountdownTimer is null)
+        {
+            if (StationDepartureCountdownDispatcher is not { } dispatcher)
+            {
+                return;
+            }
+
+            // 250 ms 而不是 1 s：最后 10 秒要逐秒闪烁，相位取自绝对秒数。节拍等于秒长时它与秒边界的相对位置会漂移，
+            // 跨边界那一下会连着两次落在同一相位上，看着像卡住。
+            _stationDepartureCountdownTimer = new DispatcherTimer(DispatcherPriority.Normal, dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(250)
+            };
+            _stationDepartureCountdownTimer.Tick += (_, _) => RefreshStationDepartureCountdownCore();
+        }
+
+        if (!_stationDepartureCountdownTimer.IsEnabled)
+        {
+            _stationDepartureCountdownTimer.Start();
+        }
+    }
+
+    private void RefreshStationDepartureCountdownCore()
+    {
+        DateTimeOffset now = Clock.Now;
+        StationDepartureCountdownView view = StationDepartureCountdownFormatter.Format(_stationDepartureDeadlineAt, now);
+        string? overrideText = _stationDepartureCountdownTextOverride?.Invoke(
+            new StationDepartureCountdownContext(_stationDepartureDeadlineAt, now, view));
+        StationDepartureCountdownText = overrideText ?? view.Text;
+        StationDepartureCountdownTier = view.Tier;
+        StationDepartureCountdownDimmed = view.Dimmed;
     }
 
     private async Task SubmitAsync(ScanInputMethod inputMethod)

@@ -130,6 +130,64 @@
                     <ColumnDefinition Width="Auto" />
                 </Grid.ColumnDefinitions>
                 <TextBlock Grid.Row="0" VerticalAlignment="Center" FontSize="15" FontWeight="Bold" Text="{Binding StateText}" />
+                <!--
+                    离站期限倒计时（ADR-cross-0055，8005-agv-onboard-hmi#75）。放在提示区状态行的右端：它是操作员在车前
+                    决定该等还是该取消的那个数字。期限只来自服务端快照，车载端只显示。三档配色靠 Tier，最后 10 秒的
+                    逐秒闪烁靠 Dimmed。UIA 按 AutomationId 找它，ItemStatus 给档位，判据不必比文案全文。
+                    容器宽高固定：五个档位字号不同（20／15），文字从「00:45」到「已到期，等待本站结束」长短不一。
+                    Column 2 是 Auto，若随内容伸缩，切档时会挤动左边的提示文案、撑高这一行。180 放得下最长的通用文案；
+                    46 低于提示文案 ScrollViewer 的 MaxHeight 48。更长的覆盖文案（#78）按字符省略。
+                -->
+                <StackPanel Grid.Row="0"
+                            Grid.Column="2"
+                            Width="180"
+                            Height="46"
+                            Margin="12,0,0,0"
+                            VerticalAlignment="Center"
+                            Visibility="{Binding HasStationDepartureCountdown, Converter={StaticResource BooleanToVisibilityConverter}}">
+                    <TextBlock Height="16"
+                               HorizontalAlignment="Right"
+                               FontSize="12"
+                               Foreground="{StaticResource MutedBrush}"
+                               Text="离站剩余" />
+                    <Grid Height="28" Margin="0,2,0,0">
+                        <TextBlock HorizontalAlignment="Right"
+                                   VerticalAlignment="Center"
+                                   AutomationProperties.AutomationId="StationDepartureCountdown"
+                                   AutomationProperties.ItemStatus="{Binding StationDepartureCountdownTier}"
+                                   Text="{Binding StationDepartureCountdownText}"
+                                   TextTrimming="CharacterEllipsis">
+                            <TextBlock.Style>
+                                <!-- 字号与字重放在 Setter 里而不是元素属性上：本地值优先于触发器，写在元素上两个文字档就改不小。 -->
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="FontSize" Value="20" />
+                                    <Setter Property="FontWeight" Value="Bold" />
+                                    <Setter Property="Foreground" Value="#1F2933" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding StationDepartureCountdownTier}" Value="Absent">
+                                            <Setter Property="FontSize" Value="15" />
+                                            <Setter Property="FontWeight" Value="SemiBold" />
+                                            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding StationDepartureCountdownTier}" Value="Warning">
+                                            <Setter Property="Foreground" Value="#C08A00" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding StationDepartureCountdownTier}" Value="Critical">
+                                            <Setter Property="Foreground" Value="#C62828" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding StationDepartureCountdownTier}" Value="Expired">
+                                            <Setter Property="FontSize" Value="15" />
+                                            <Setter Property="Foreground" Value="#C62828" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding StationDepartureCountdownDimmed}" Value="True">
+                                            <Setter Property="Opacity" Value="0.15" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Grid>
+                </StackPanel>
                 <ScrollViewer Grid.Row="0"
                               Grid.Column="1"
                               MaxHeight="48"
