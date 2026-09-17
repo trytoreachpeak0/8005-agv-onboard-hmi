@@ -5,6 +5,10 @@ $ErrorActionPreference = 'Stop'
 $hmiRoot = Split-Path -Parent $PSScriptRoot
 $xamlPath = Join-Path $hmiRoot 'src\SQCD.Agv.Wpf\MainWindow.xaml'
 $xaml = Get-Content -LiteralPath $xamlPath -Raw
+# 倒计时的四个非默认档位（无倒计时、黄、红、到期）各有配色，最后 10 秒的闪烁有灭相位。
+$stationDeadlineTiersStyled = @('Absent', 'Warning', 'Critical', 'Expired' | ForEach-Object {
+        $xaml -match ('Binding StationDepartureCountdownTier\}" Value="' + $_ + '"')
+    }) -notcontains $false -and ($xaml -match 'Binding StationDepartureCountdownDimmed\}" Value="True"')
 $checks = [ordered]@{
     prototypeViewport = ($xaml -match 'Width="1000"[\s\S]*Height="700"[\s\S]*WindowState="Maximized"')
     frontRearSlotGroups = ($xaml -match 'ItemsSource="\{Binding SlotGroups\}"') -and ($xaml -match 'UniformGrid Columns="4"') -and ($xaml -match 'Text="\{Binding OpeningSideText\}"')
@@ -14,6 +18,7 @@ $checks = [ordered]@{
     visibleDepartureFact = ($xaml -match 'Text="\{Binding DepartureText\}"')
     visibleJourneyFact = ($xaml -match 'Text="\{Binding VisitText\}"')
     blockingGuidance = ($xaml -match 'Text="\{Binding Guidance\}"')
+    visibleStationDeadline = ($xaml -match 'AutomationProperties\.AutomationId="StationDepartureCountdown"') -and ($xaml -match 'Text="\{Binding StationDepartureCountdownText\}"') -and $stationDeadlineTiersStyled
     dangerStyle = ($xaml -match 'Background="\{StaticResource DangerBrush\}"')
     boundedLogPanel = ($xaml -match 'Height="110"') -and ($xaml -match '操作记录（最近300条）')
 }
