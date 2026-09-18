@@ -309,89 +309,179 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         }
 
         DateTimeOffset deadline = started + _options.OperationTimeout;
-        foreach (int physicalSlot in context.Slots)
+        WireToGateRecoveryVectorExecutionResult? unfinished = correction
+            ? await CorrectSlotBySlotAsync(
+                context,
+                state,
+                completed,
+                results,
+                deadline,
+                progress,
+                cancellationToken).ConfigureAwait(false)
+            : await ClearInOneBatchAsync(
+                context,
+                state,
+                handedOver,
+                completed,
+                results,
+                deadline,
+                progress,
+                cancellationToken).ConfigureAwait(false);
+        if (unfinished is not null)
         {
-            if (completed.Contains(physicalSlot))
-            {
-                continue;
-            }
+            return unfinished;
+        }
 
-            cancellationToken.ThrowIfCancellationRequested();
-            int slotIndex = physicalSlot - 1;
-            IoSnapshot beforePulse = _ioModule.CurrentSnapshot;
-            // A door the aborted load left open is not pulsed: the operator is already at it. Shut empty
-            // since the vector started, it is cleared as it stands; shut over a basket, it is an ordinary
-            // target again and is unlocked to be emptied.
-            if (handedOver.Contains(physicalSlot)
-                && IsFresh(beforePulse)
-                && IsFinalState(GetLocker(beforePulse, physicalSlot), correction))
-            {
-                UpsertResult(
-                    results,
-                    CreateSlotResult(GetLocker(beforePulse, physicalSlot), "COMPLETED", []));
-                completed.Add(physicalSlot);
-                await WriteVectorStateAsync(
-                    context,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                    [],
-                    completed,
-                    results,
-                    state,
-                    cancellationToken).ConfigureAwait(false);
-                continue;
-            }
+        await WriteVectorStateAsync(
+            context,
+            WireToGateRecoveryCheckpoint.SafeFinishReached,
+            [],
+            completed,
+            results,
+            state,
+            cancellationToken).ConfigureAwait(false);
+        await SendProgressAsync(progress, "SAFE_FINISH", [], completed, cancellationToken)
+            .ConfigureAwait(false);
+        DateTimeOffset finalObservedAt = await EnsureResultObservedAtAsync(
+            context,
+            CancellationToken.None).ConfigureAwait(false);
+        return CreateResult(
+            context,
+            "COMPLETED",
+            results,
+            WireToGateRecoveryCheckpoint.SafeFinishReached,
+            finalObservedAt);
+    }
 
-            bool openHandedOver = handedOver.Contains(physicalSlot)
-                && !IsShut(GetLocker(beforePulse, physicalSlot));
-            string? slotPrecheckFailure = openHandedOver
-                ? null
-                : ValidateInitialSnapshot(beforePulse, [physicalSlot], correction);
-            if (slotPrecheckFailure is not null)
+    /// <summary>
+    /// The clear of a load cancellation or compensation (ADR-cross-0046, ADR-cross-0039): every target
+    /// slot still OCCUPIED is unlocked in one batch (ADR-cross-0035 BatchUnlock), and each slot then
+    /// proves EMPTY, locked and unlock output reset on its own. Returns the result when the vector ends
+    /// short of its safe finish, <see langword="null"/> once every slot is proven.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The batch shares the write, not the proof. The unlock output is reset by the hardware pulse
+    /// timer, exactly as on the per-slot path, and every slot has to read it back reset by itself: a slot
+    /// that does not is UNKNOWN on its own (ADR-cross-0058 decision 2), and one written together with its
+    /// neighbours is never taken as reset because they were.
+    /// </para>
+    /// <para>
+    /// Every slot of the batch is followed to its own end, concurrently: the doors are all open, the
+    /// operator empties them in any order, and a slot that fails does not leave the others unproven.
+    /// Only the slots not proven stay in the active unlock set.
+    /// </para>
+    /// </remarks>
+    private async Task<WireToGateRecoveryVectorExecutionResult?> ClearInOneBatchAsync(
+        WireToGateRecoveryVectorContext context,
+        WireToGateRecoveryState state,
+        int[] handedOver,
+        List<int> completed,
+        List<WireToGateSlotExecutionResult> results,
+        DateTimeOffset deadline,
+        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>? progress,
+        CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        IoSnapshot beforeUnlock = _ioModule.CurrentSnapshot;
+        // A door the aborted load left open is not pulsed: the operator is already at it. Shut empty
+        // since the vector started, it is cleared as it stands; shut over a basket, it is an ordinary
+        // target again and is unlocked with the others to be emptied.
+        foreach (int slot in handedOver.Where(slot => !completed.Contains(slot)))
+        {
+            if (IsFresh(beforeUnlock) && IsFinalState(GetLocker(beforeUnlock, slot), correction: false))
             {
-                AddRejectedResults(beforePulse, context.Slots, completed, results, correction);
-                await WriteVectorStateAsync(
-                    context,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                    [],
-                    completed,
-                    results,
-                    state,
-                    CancellationToken.None).ConfigureAwait(false);
-                DateTimeOffset observedAt = await EnsureResultObservedAtAsync(
-                    context,
-                    CancellationToken.None).ConfigureAwait(false);
-                return CreateResult(
-                    context,
-                    "FAILED",
-                    results,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                    observedAt);
+                UpsertResult(results, CreateSlotResult(GetLocker(beforeUnlock, slot), "COMPLETED", []));
+                completed.Add(slot);
             }
+        }
 
+        int[] remaining = context.Slots.Where(slot => !completed.Contains(slot)).ToArray();
+        if (remaining.Length == 0)
+        {
+            return null;
+        }
+
+        int[] openHandedOver = remaining
+            .Where(slot => handedOver.Contains(slot) && !IsShut(GetLocker(beforeUnlock, slot)))
+            .ToArray();
+        int[] toUnlock = remaining.Except(openHandedOver).ToArray();
+        if (toUnlock.Length > 0
+            && ValidateInitialSnapshot(beforeUnlock, toUnlock, correction: false) is not null)
+        {
+            AddRejectedResults(beforeUnlock, context.Slots, completed, results, correction: false);
             await WriteVectorStateAsync(
                 context,
                 WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                [physicalSlot],
+                [],
                 completed,
                 results,
                 state,
-                cancellationToken).ConfigureAwait(false);
-            if (!openHandedOver)
-            {
-                await SendProgressAsync(
-                    progress,
-                    "UNLOCKING",
-                    [physicalSlot],
-                    completed,
-                    cancellationToken).ConfigureAwait(false);
-            }
+                CancellationToken.None).ConfigureAwait(false);
+            return await CreateRecordedResultAsync(
+                context,
+                "FAILED",
+                results,
+                WireToGateRecoveryCheckpoint.ActiveUnlockSet).ConfigureAwait(false);
+        }
 
+        // ADR-cross-0035: the whole set is journaled before the write. A process that dies at the write
+        // leaves all of it as the active unlock set, and the replay never pulses any of it again.
+        List<int> active = [.. remaining];
+        await WriteVectorStateAsync(
+            context,
+            WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+            active,
+            completed,
+            results,
+            state,
+            cancellationToken).ConfigureAwait(false);
+        if (toUnlock.Length > 0)
+        {
+            await SendProgressAsync(progress, "UNLOCKING", toUnlock, completed, cancellationToken)
+                .ConfigureAwait(false);
             try
             {
                 EnsureRemaining(deadline, cancellationToken);
-                if (!openHandedOver)
+                await _ioModule
+                    .PulseUnlockBatchAsync(toUnlock.Select(slot => slot - 1).ToArray(), cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception) when (
+                exception is IOException or TimeoutException or InvalidDataException)
+            {
+                // Which coils the failed write set is not known, so no slot of the set is proven.
+                IoSnapshot failureSnapshot = _ioModule.CurrentSnapshot;
+                string reason = MapFailureReason(exception);
+                foreach (int slot in active)
                 {
-                    await _ioModule.PulseUnlockAsync(slotIndex, cancellationToken).ConfigureAwait(false);
+                    UpsertResult(
+                        results,
+                        CreateSlotResult(ReadPhysicalSlot(failureSnapshot, slot), "UNKNOWN", [reason]));
+                }
+
+                return await PauseAsync(context, state, active, completed, results, progress)
+                    .ConfigureAwait(false);
+            }
+        }
+
+        await SendProgressAsync(progress, "WAITING_OPERATOR", active.ToArray(), completed, cancellationToken)
+            .ConfigureAwait(false);
+        using SemaphoreSlim resultGate = new(1, 1);
+        bool anyUnproven = false;
+
+        async Task ProveAsync(int physicalSlot, bool pulsed)
+        {
+            int slotIndex = physicalSlot - 1;
+            LockerSnapshot final;
+            try
+            {
+                if (pulsed)
+                {
                     LockerSnapshot unlocked = await _ioModule.WaitForLockerAsync(
                         slotIndex,
                         locker => locker.IsKnown && !locker.IsLocked,
@@ -408,29 +498,206 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                         cancellationToken).ConfigureAwait(false);
                 }
 
+                final = await _ioModule.WaitForLockerAsync(
+                    slotIndex,
+                    locker => locker.IsKnown
+                        && locker.IsLocked
+                        && !locker.HasCargo
+                        && locker.UnlockOutputRaw is false,
+                    MinTimeout(_options.OperationTimeout, GetRemaining(deadline)),
+                    _options.FeedbackStableWindow,
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception exception) when (
+                exception is IOException or TimeoutException or InvalidDataException)
+            {
+                await resultGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+                try
+                {
+                    UpsertResult(
+                        results,
+                        CreateSlotResult(
+                            ReadPhysicalSlot(_ioModule.CurrentSnapshot, physicalSlot),
+                            "UNKNOWN",
+                            [MapFailureReason(exception)]));
+                    anyUnproven = true;
+                }
+                finally
+                {
+                    resultGate.Release();
+                }
+
+                return;
+            }
+
+            await resultGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+            try
+            {
+                UpsertResult(results, CreateSlotResult(final, "COMPLETED", []));
+                completed.Add(physicalSlot);
+                active.Remove(physicalSlot);
+                await WriteVectorStateAsync(
+                    context,
+                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                    active,
+                    completed,
+                    results,
+                    state,
+                    cancellationToken).ConfigureAwait(false);
+                await SendProgressAsync(
+                        progress,
+                        active.Count > 0 ? "WAITING_OPERATOR" : "VERIFYING",
+                        active.ToArray(),
+                        completed.ToArray(),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            finally
+            {
+                resultGate.Release();
+            }
+        }
+
+        await Task.WhenAll(remaining.Select(slot => ProveAsync(slot, toUnlock.Contains(slot))))
+            .ConfigureAwait(false);
+        return anyUnproven
+            ? await PauseAsync(context, state, active, completed, results, progress).ConfigureAwait(false)
+            : null;
+    }
+
+    /// <summary>
+    /// Leaves the vector UNKNOWN with the unproven slots as the active unlock set: nothing pulses them
+    /// again under this identity, and only a snapshot proving their final state closes them.
+    /// </summary>
+    private async Task<WireToGateRecoveryVectorExecutionResult> PauseAsync(
+        WireToGateRecoveryVectorContext context,
+        WireToGateRecoveryState state,
+        IReadOnlyList<int> active,
+        IReadOnlyList<int> completed,
+        List<WireToGateSlotExecutionResult> results,
+        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>? progress)
+    {
+        await WriteVectorStateAsync(
+            context,
+            WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+            active,
+            completed,
+            results,
+            state,
+            CancellationToken.None).ConfigureAwait(false);
+        await SendProgressAsync(progress, "PAUSED", active.ToArray(), completed, CancellationToken.None)
+            .ConfigureAwait(false);
+        return await CreateRecordedResultAsync(
+            context,
+            "UNKNOWN",
+            results,
+            WireToGateRecoveryCheckpoint.ActiveUnlockSet).ConfigureAwait(false);
+    }
+
+    private async Task<WireToGateRecoveryVectorExecutionResult> CreateRecordedResultAsync(
+        WireToGateRecoveryVectorContext context,
+        string outcome,
+        IReadOnlyList<WireToGateSlotExecutionResult> results,
+        WireToGateRecoveryCheckpoint checkpoint)
+    {
+        DateTimeOffset observedAt = await EnsureResultObservedAtAsync(
+            context,
+            CancellationToken.None).ConfigureAwait(false);
+        return CreateResult(context, outcome, results, checkpoint, observedAt);
+    }
+
+    /// <summary>
+    /// A correction empties a slot and loads it again, so it runs one slot at a time with the per-slot
+    /// pulse; it is not a clear and has no batch. Returns the result when the vector ends short of its
+    /// safe finish, <see langword="null"/> once every slot is proven.
+    /// </summary>
+    private async Task<WireToGateRecoveryVectorExecutionResult?> CorrectSlotBySlotAsync(
+        WireToGateRecoveryVectorContext context,
+        WireToGateRecoveryState state,
+        List<int> completed,
+        List<WireToGateSlotExecutionResult> results,
+        DateTimeOffset deadline,
+        Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>? progress,
+        CancellationToken cancellationToken)
+    {
+        foreach (int physicalSlot in context.Slots)
+        {
+            if (completed.Contains(physicalSlot))
+            {
+                continue;
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            int slotIndex = physicalSlot - 1;
+            IoSnapshot beforePulse = _ioModule.CurrentSnapshot;
+            if (ValidateInitialSnapshot(beforePulse, [physicalSlot], correction: true) is not null)
+            {
+                AddRejectedResults(beforePulse, context.Slots, completed, results, correction: true);
+                await WriteVectorStateAsync(
+                    context,
+                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                    [],
+                    completed,
+                    results,
+                    state,
+                    CancellationToken.None).ConfigureAwait(false);
+                return await CreateRecordedResultAsync(
+                    context,
+                    "FAILED",
+                    results,
+                    WireToGateRecoveryCheckpoint.ActiveUnlockSet).ConfigureAwait(false);
+            }
+
+            await WriteVectorStateAsync(
+                context,
+                WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                [physicalSlot],
+                completed,
+                results,
+                state,
+                cancellationToken).ConfigureAwait(false);
+            await SendProgressAsync(
+                progress,
+                "UNLOCKING",
+                [physicalSlot],
+                completed,
+                cancellationToken).ConfigureAwait(false);
+
+            try
+            {
+                EnsureRemaining(deadline, cancellationToken);
+                await _ioModule.PulseUnlockAsync(slotIndex, cancellationToken).ConfigureAwait(false);
+                LockerSnapshot unlocked = await _ioModule.WaitForLockerAsync(
+                    slotIndex,
+                    locker => locker.IsKnown && !locker.IsLocked,
+                    MinTimeout(_options.UnlockFeedbackTimeout, GetRemaining(deadline)),
+                    _options.FeedbackStableWindow,
+                    cancellationToken).ConfigureAwait(false);
+                await _ioModule.WaitForLockerAsync(
+                    slotIndex,
+                    locker => locker.IsKnown
+                        && locker.ObservedAt >= unlocked.ObservedAt
+                        && locker.UnlockOutputRaw is false,
+                    MinTimeout(_options.UnlockOutputResetTimeout, GetRemaining(deadline)),
+                    _options.FeedbackStableWindow,
+                    cancellationToken).ConfigureAwait(false);
+
                 await SendProgressAsync(
                     progress,
                     "WAITING_OPERATOR",
                     [physicalSlot],
                     completed,
                     cancellationToken).ConfigureAwait(false);
-                LockerSnapshot completedLocker = correction
-                    ? await WaitForCorrectionAsync(slotIndex, deadline, cancellationToken)
-                    : await _ioModule.WaitForLockerAsync(
-                        slotIndex,
-                        locker => locker.IsKnown
-                            && locker.IsLocked
-                            && !locker.HasCargo
-                            && locker.UnlockOutputRaw is false,
-                        MinTimeout(_options.OperationTimeout, GetRemaining(deadline)),
-                        _options.FeedbackStableWindow,
-                        cancellationToken).ConfigureAwait(false);
+                LockerSnapshot completedLocker = await WaitForCorrectionAsync(
+                    slotIndex,
+                    deadline,
+                    cancellationToken).ConfigureAwait(false);
 
-                WireToGateSlotExecutionResult result = CreateSlotResult(
-                    completedLocker,
-                    "COMPLETED",
-                    []);
-                UpsertResult(results, result);
+                UpsertResult(results, CreateSlotResult(completedLocker, "COMPLETED", []));
                 completed.Add(physicalSlot);
                 await WriteVectorStateAsync(
                     context,
@@ -466,52 +733,12 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                         CreateSlotResult(ReadPhysicalSlot(failureSnapshot, notStarted), "NOT_STARTED", []));
                 }
 
-                await WriteVectorStateAsync(
-                    context,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                    [physicalSlot],
-                    completed,
-                    results,
-                    state,
-                    CancellationToken.None).ConfigureAwait(false);
-                await SendProgressAsync(
-                        progress,
-                        "PAUSED",
-                        [physicalSlot],
-                        completed,
-                        CancellationToken.None)
+                return await PauseAsync(context, state, [physicalSlot], completed, results, progress)
                     .ConfigureAwait(false);
-                DateTimeOffset observedAt = await EnsureResultObservedAtAsync(
-                    context,
-                    CancellationToken.None).ConfigureAwait(false);
-                return CreateResult(
-                    context,
-                    "UNKNOWN",
-                    results,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                    observedAt);
             }
         }
 
-        await WriteVectorStateAsync(
-            context,
-            WireToGateRecoveryCheckpoint.SafeFinishReached,
-            [],
-            completed,
-            results,
-            state,
-            cancellationToken).ConfigureAwait(false);
-        await SendProgressAsync(progress, "SAFE_FINISH", [], completed, cancellationToken)
-            .ConfigureAwait(false);
-        DateTimeOffset finalObservedAt = await EnsureResultObservedAtAsync(
-            context,
-            CancellationToken.None).ConfigureAwait(false);
-        return CreateResult(
-            context,
-            "COMPLETED",
-            results,
-            WireToGateRecoveryCheckpoint.SafeFinishReached,
-            finalObservedAt);
+        return null;
     }
 
     private async Task<LockerSnapshot> WaitForCorrectionAsync(
