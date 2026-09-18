@@ -577,6 +577,21 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
     }
 
+    private ConnectionContext? _latestSession;
+
+    /// <summary>
+    /// Sends the <c>SlotOperationCommand</c> that <see cref="SendSlotOperationCommandAfterRecovery"/>
+    /// sends -- the same attempt, under a new messageId -- once more on the latest session. The real
+    /// control server's outbox does this about once a second until the <c>OperationResult</c> arrives
+    /// (8005-agv-onboard-hmi#78, the <c>1086c4a</c> case).
+    /// </summary>
+    public Task ResendSlotOperationCommandAsync()
+    {
+        ConnectionContext context = Volatile.Read(ref _latestSession)
+            ?? throw new InvalidOperationException("No session has been accepted yet.");
+        return SendSlotOperationCommandAsync(context);
+    }
+
     public IReadOnlyList<string> IdentityValidationResults
     {
         get
@@ -636,7 +651,7 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
     }
 
-    private sealed class ConnectionContext
+    private sealed class ConnectionContext : IDisposable
     {
         public required int ConnectionIndex;
         public required TcpClient Client;
@@ -649,6 +664,14 @@ public sealed class FakeControlServer : IAsyncDisposable
         public long SafetyStateVersion;
         public long AcceptedCapabilityVersion;
         public long AcceptedSafetyStateVersion;
+
+        /// <summary>
+        /// One line at a time: a test can write on a session (<see cref="ResendSlotOperationCommandAsync"/>)
+        /// while the connection loop is answering on it.
+        /// </summary>
+        public readonly SemaphoreSlim WriteGate = new(1, 1);
+
+        public void Dispose() => WriteGate.Dispose();
     }
 
     private async Task AcceptLoopAsync(CancellationToken stoppingToken)
@@ -944,6 +967,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             context.Writer.Dispose();
             context.Reader.Dispose();
             context.Client.Dispose();
+            context.Dispose();
         }
     }
 
@@ -994,6 +1018,7 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
 
         context.Generation = generation;
+        Volatile.Write(ref _latestSession, context);
         var payload = new
         {
             sessionGeneration = generation,
@@ -1896,7 +1921,7 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
 
         Record(context, envelope, wireLine);
-        await context.Writer.WriteLineAsync(wireLine).ConfigureAwait(false);
+        await WriteLineAsync(context, wireLine).ConfigureAwait(false);
     }
 
     private async Task SendDemandAcceptanceSnapshotsAsync(ConnectionContext context)
@@ -1970,11 +1995,23 @@ public sealed class FakeControlServer : IAsyncDisposable
                 expectedProtocolReleaseManifestSha256 = WireToGateRelease.ManifestSha256
             });
 
+    private static async Task WriteLineAsync(ConnectionContext context, string wireLine)
+    {
+        await context.WriteGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await context.Writer.WriteLineAsync(wireLine).ConfigureAwait(false);
+        }
+        finally
+        {
+            context.WriteGate.Release();
+        }
+    }
     private async Task WriteEnvelopeAsync(ConnectionContext context, WireToGateEnvelope envelope)
     {
         string wireLine = WireToGateProtocolSerializer.Serialize(envelope);
         Record(context, envelope, wireLine);
-        await context.Writer.WriteLineAsync(wireLine).ConfigureAwait(false);
+        await WriteLineAsync(context, wireLine).ConfigureAwait(false);
     }
 
     private void Record(ConnectionContext context, WireToGateEnvelope envelope, string wireLine)

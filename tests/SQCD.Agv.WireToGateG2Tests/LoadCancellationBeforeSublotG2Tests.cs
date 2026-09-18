@@ -390,6 +390,46 @@ public sealed class LoadCancellationBeforeSublotG2Tests
         Assert.Equal(0, afterRestart.Io.UnlockCount);
     }
 
+    /// <summary>
+    /// 扫码前取消挂着时离站期限到了：倒计时那一行说「已到期，正在取消本站装货」，不显示已过期时长；取消被拒、
+    /// 回到可扫码之后再到期，回到通用的「已到期，等待本站结束」（onboard-hmi#78，调度会话 2026-09-18 定）。
+    /// </summary>
+    /// <remarks>
+    /// 依据：服务端在取消记录开着时既不开始装货，也不按期限结束本站，本站改由车报的 <c>ALL_EMPTY</c> 结束，
+    /// 所以此刻「等待本站结束」不准确。配色照 Expired 档不变，那一半由 <c>MainViewModel</c> 按期限算。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task PastTheDeadlineTheCountdownLineSaysTheLoadIsBeingCancelledOnlyWhileTheCancellationIsOpen()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
+            token,
+            server =>
+            {
+                server.LoadCancellationAuthorizationsToDrop = 1;
+                server.LoadCancellationDecision = "REJECTED";
+            });
+        DateTimeOffset deadline = DateTimeOffset.UtcNow - TimeSpan.FromSeconds(20);
+        StationDepartureCountdownContext expired = new(
+            deadline,
+            deadline + TimeSpan.FromSeconds(20),
+            StationDepartureCountdownFormatter.Format(deadline, deadline + TimeSpan.FromSeconds(20)));
+
+        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+            "到站后现场确认本站没有要装的货。", token));
+        Assert.True(harness.Business.IsLoadCancellationBeforeSublotOpen);
+        Assert.Equal("已到期，正在取消本站装货", harness.Business.DescribeExpiredStationDeadline(expired));
+
+        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+            "没等到答复，又按了一次。", token));
+        await harness.WaitForRecoveryBlockedAsync("ACTION_NOT_ALLOWED_IN_STATE", token);
+        Assert.True(harness.Business.CanSubmitSublot);
+        Assert.Null(harness.Business.DescribeExpiredStationDeadline(expired));
+        Assert.Equal("已到期，等待本站结束", expired.Generic.Text);
+    }
+
     private static async Task AssertNothingExecutedAsync(
         BeforeSublotHarness harness,
         CancellationToken cancellationToken)
