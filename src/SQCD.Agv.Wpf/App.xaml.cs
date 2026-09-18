@@ -180,23 +180,28 @@ public partial class App : System.Windows.Application, IDisposable
                         cancellationToken),
                     () => _wireToGateBusiness.CanSubmitSublot,
                     () => _wireToGateBusiness.CanRequestResumeAfterRepair,
-                    cancellationToken => _wireToGateBusiness.RequestResumeAfterRepairAsync(
-                        cancellationToken: cancellationToken),
+                    // 四个会开异常处置会话的入口带上管理员填写的原因；null 时业务服务用该动作的缺省文字。
+                    (reason, cancellationToken) => _wireToGateBusiness.RequestResumeAfterRepairAsync(
+                        reason,
+                        cancellationToken),
                     () => _wireToGateBusiness.CanRequestLoadCancellation,
                     cancellationToken => _wireToGateBusiness.RequestLoadCancellationAsync(
                         cancellationToken: cancellationToken),
                     () => _wireToGateBusiness.CanRequestLoadCompensation,
-                    cancellationToken => _wireToGateBusiness.RequestLoadCompensationAsync(
-                        cancellationToken: cancellationToken),
+                    (reason, cancellationToken) => _wireToGateBusiness.RequestLoadCompensationAsync(
+                        reason,
+                        cancellationToken),
                     () => _wireToGateBusiness.CanRequestLoadCorrection,
                     cancellationToken => _wireToGateBusiness.RequestLoadCorrectionAsync(
                         cancellationToken: cancellationToken),
                     () => _wireToGateBusiness.CanRequestFaultCargoHandoff,
-                    cancellationToken => _wireToGateBusiness.RequestFaultCargoHandoffAsync(
-                        cancellationToken: cancellationToken),
+                    (reason, cancellationToken) => _wireToGateBusiness.RequestFaultCargoHandoffAsync(
+                        reason,
+                        cancellationToken),
                     () => _wireToGateBusiness.CanRequestForcedMechanicalRecovery,
-                    cancellationToken => _wireToGateBusiness.RequestForcedMechanicalRecoveryAsync(
-                        cancellationToken: cancellationToken),
+                    (reason, cancellationToken) => _wireToGateBusiness.RequestForcedMechanicalRecoveryAsync(
+                        reason,
+                        cancellationToken),
                     () => _wireToGateBusiness.CanRequestManualChargingReturnToService,
                     cancellationToken => _wireToGateBusiness.RequestManualChargingReturnToServiceAsync(
                         cancellationToken: cancellationToken),

@@ -30,7 +30,7 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// is authorized, and nothing at all may happen when it is not.
 /// </para>
 /// </remarks>
-public sealed class RecoveryVectorG2Tests
+public sealed partial class RecoveryVectorG2Tests
 {
     private const string CredentialVariable = "W2G_G2_VECTOR_CREDENTIAL";
     private const string OperatorVariable = "W2G_G2_VECTOR_OPERATOR";

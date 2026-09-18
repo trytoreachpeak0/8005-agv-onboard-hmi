@@ -22,6 +22,12 @@ $checks = [ordered]@{
     blockingGuidance = ($xaml -match 'Text="\{Binding Guidance\}"')
     visibleStationDeadline = ($xaml -match 'AutomationProperties\.AutomationId="StationDepartureCountdown"') -and ($xaml -match 'Text="\{Binding StationDepartureCountdownText\}"') -and $stationDeadlineTiersStyled -and $stationDeadlineFixedSize
     visibleSublotRejectionReason = ($xaml -match 'AutomationProperties\.AutomationId="SublotRejectionReason"') -and ($xaml -match 'AutomationProperties\.ItemStatus="\{Binding SublotRejectionReasonCode\}"') -and ($xaml -match 'Text="\{Binding SublotRejectionText\}"') -and ($xaml -match 'Binding HasSublotRejection, Converter')
+    # 期待动作超时（REQ-0358，onboard-hmi#109）：提示区单独一行，UIA 按 AutomationId 找它。
+    visibleExpectedActionOverdue = ($xaml -match 'AutomationProperties\.AutomationId="ExpectedActionOverdue"') -and ($xaml -match 'Text="\{Binding ExpectedActionOverdueText\}"') -and ($xaml -match 'Binding HasExpectedActionOverdue, Converter')
+    # 异常处置会话的原因输入只跟着管理员恢复入口出现（CP-0005 第五节）。
+    recoveryReasonInput = ($xaml -match 'AutomationProperties\.AutomationId="RecoveryReason"') -and ($xaml -match 'Text="\{Binding RecoveryReason, UpdateSourceTrigger=PropertyChanged\}"') -and ($xaml -match 'Binding HasRecoveryReasonInput, Converter')
+    # 判故障只在服务端（REQ-0359）：本机界面不得出现判故障的按钮或绑定。
+    noFaultDeclarationEntry = ($xaml -notmatch 'Content="[^"]*(判故障|判定故障|故障判定|人工判)') -and ($xaml -notmatch 'FaultDeclaration')
     dangerStyle = ($xaml -match 'Background="\{StaticResource DangerBrush\}"')
     boundedLogPanel = ($xaml -match 'Height="110"') -and ($xaml -match '操作记录（最近300条）')
 }

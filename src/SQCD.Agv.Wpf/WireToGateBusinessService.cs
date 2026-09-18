@@ -218,8 +218,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         }
     }
 
+    /// <param name="reason">
+    /// The administrator's reason for the exception recovery session (CP-0005 section 5, onboard-hmi#109).
+    /// Blank keeps the fixed text every request carried before the reason could be entered.
+    /// </param>
     public async Task<bool> RequestResumeAfterRepairAsync(
-        string reason = "现场维修完成，申请恢复原仓位操作。",
+        string? reason = null,
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
@@ -332,7 +336,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 ? state.RecoverySessionRequestId ?? Guid.NewGuid().ToString("D")
                 : Guid.NewGuid().ToString("D");
             string eventId = activeRecovery ? recoverySnapshot!.EventId : requestId;
-            string recoveryReason = (activeRecovery ? state.RecoveryReason : null) ?? reason;
+            string recoveryReason = (activeRecovery ? state.RecoveryReason : null)
+                ?? ReasonOrDefault(reason, "现场维修完成，申请恢复原仓位操作。");
             string recoveryOperatorId = (activeRecovery ? state.RecoveryOperatorId : null) ?? operatorId;
             DateTimeOffset recoveryVerifiedAt = (activeRecovery ? state.RecoveryOperatorVerifiedAt : null)
                 ?? _clock.Now.ToUniversalTime();

@@ -25,6 +25,10 @@ public sealed class MainViewModel : ViewModelBase
     private string _alarmText = string.Empty;
     private string _openingSideText = string.Empty;
     private bool _hasAlarms;
+    private AlarmEntry? _expectedActionOverdue;
+    private bool _hasExpectedActionOverdue;
+    private string _expectedActionOverdueText = string.Empty;
+    private string _recoveryReason = string.Empty;
     private bool _canSubmit;
     private bool _hasError;
     private bool _hasWarning;
@@ -67,17 +71,17 @@ public sealed class MainViewModel : ViewModelBase
     private Func<string, ScanInputMethod, CancellationToken, Task>? _wireToGateSubmitter;
     private Func<bool>? _wireToGateCanSubmit;
     private Func<bool>? _wireToGateCanRequestRecovery;
-    private Func<CancellationToken, Task<bool>>? _wireToGateRecoveryRequester;
+    private Func<string?, CancellationToken, Task<bool>>? _wireToGateRecoveryRequester;
     private Func<bool>? _wireToGateCanRequestLoadCancellation;
     private Func<bool>? _wireToGateCanRequestLoadCompensation;
     private Func<bool>? _wireToGateCanRequestLoadCorrection;
     private Func<bool>? _wireToGateCanRequestFaultCargoHandoff;
     private Func<CancellationToken, Task<bool>>? _wireToGateLoadCancellationRequester;
-    private Func<CancellationToken, Task<bool>>? _wireToGateLoadCompensationRequester;
+    private Func<string?, CancellationToken, Task<bool>>? _wireToGateLoadCompensationRequester;
     private Func<CancellationToken, Task<bool>>? _wireToGateLoadCorrectionRequester;
-    private Func<CancellationToken, Task<bool>>? _wireToGateFaultCargoHandoffRequester;
+    private Func<string?, CancellationToken, Task<bool>>? _wireToGateFaultCargoHandoffRequester;
     private Func<bool>? _wireToGateCanRequestForcedMechanicalRecovery;
-    private Func<CancellationToken, Task<bool>>? _wireToGateForcedMechanicalRecoveryRequester;
+    private Func<string?, CancellationToken, Task<bool>>? _wireToGateForcedMechanicalRecoveryRequester;
     private Func<bool>? _wireToGateCanRequestManualChargingReturn;
     private Func<bool>? _wireToGateLoadCancellationPending;
     private Func<WireToGateSublotRejection?>? _wireToGateSublotRejection;
@@ -203,9 +207,38 @@ public sealed class MainViewModel : ViewModelBase
     internal void UpdateOnboardAlarms(IReadOnlyList<AlarmEntry> alarms) => RunOnUiThread(() =>
     {
         ArgumentNullException.ThrowIfNull(alarms);
-        HasAlarms = alarms.Count > 0;
-        AlarmText = string.Join("；", alarms.Select(alarm => alarm.Message));
+        // 期待动作超时单独一行（REQ-0358）：它的消息只是期待的动作，要套进规定的整句、并随会话在线与否换说法。
+        _expectedActionOverdue = alarms.FirstOrDefault(
+            alarm => alarm.AlarmCode == OnboardAlarmCodes.SlotExpectedActionOverdue);
+        AlarmEntry[] others = [.. alarms.Where(alarm => alarm.AlarmCode != OnboardAlarmCodes.SlotExpectedActionOverdue)];
+        HasAlarms = others.Length > 0;
+        AlarmText = string.Join("；", others.Select(alarm => alarm.Message));
+        RefreshExpectedActionOverdueCore();
     });
+
+    /// <summary>提示区是否显示期待动作超时那一行（REQ-0358）。</summary>
+    public bool HasExpectedActionOverdue
+    {
+        get => _hasExpectedActionOverdue;
+        private set => SetProperty(ref _hasExpectedActionOverdue, value);
+    }
+
+    /// <summary>那一行字，文案集中在 <c>WireToGateExpectedActionOverdueText</c>。只是告知，没有任何按钮跟着它。</summary>
+    public string ExpectedActionOverdueText
+    {
+        get => _expectedActionOverdueText;
+        private set => SetProperty(ref _expectedActionOverdueText, value);
+    }
+
+    private void RefreshExpectedActionOverdueCore()
+    {
+        HasExpectedActionOverdue = _expectedActionOverdue is not null;
+        ExpectedActionOverdueText = _expectedActionOverdue is null
+            ? string.Empty
+            : WireToGateExpectedActionOverdueText.Describe(
+                _expectedActionOverdue.Message,
+                _wireToGateSession?.Connected == true);
+    }
 
     internal void UpdateWireToGateStatus(WireToGateSessionSnapshot snapshot) => RunOnUiThread(() =>
     {
@@ -222,6 +255,7 @@ public sealed class MainViewModel : ViewModelBase
         RuleConnectionText = snapshot.Connected ? "在线" : "离线";
         RefreshWireToGateInputStateCore();
         ApplyWireToGatePresentationCore();
+        RefreshExpectedActionOverdueCore();
     });
 
     internal void UpdateWireToGateJourney(WireToGateJourneySnapshot snapshot) => RunOnUiThread(() =>
@@ -251,17 +285,17 @@ public sealed class MainViewModel : ViewModelBase
         Func<string, ScanInputMethod, CancellationToken, Task> submitter,
         Func<bool> canSubmit,
         Func<bool>? canRequestRecovery = null,
-        Func<CancellationToken, Task<bool>>? recoveryRequester = null,
+        Func<string?, CancellationToken, Task<bool>>? recoveryRequester = null,
         Func<bool>? canRequestLoadCancellation = null,
         Func<CancellationToken, Task<bool>>? loadCancellationRequester = null,
         Func<bool>? canRequestLoadCompensation = null,
-        Func<CancellationToken, Task<bool>>? loadCompensationRequester = null,
+        Func<string?, CancellationToken, Task<bool>>? loadCompensationRequester = null,
         Func<bool>? canRequestLoadCorrection = null,
         Func<CancellationToken, Task<bool>>? loadCorrectionRequester = null,
         Func<bool>? canRequestFaultCargoHandoff = null,
-        Func<CancellationToken, Task<bool>>? faultCargoHandoffRequester = null,
+        Func<string?, CancellationToken, Task<bool>>? faultCargoHandoffRequester = null,
         Func<bool>? canRequestForcedMechanicalRecovery = null,
-        Func<CancellationToken, Task<bool>>? forcedMechanicalRecoveryRequester = null,
+        Func<string?, CancellationToken, Task<bool>>? forcedMechanicalRecoveryRequester = null,
         Func<bool>? canRequestManualChargingReturn = null,
         Func<CancellationToken, Task<bool>>? manualChargingReturnRequester = null,
         Func<bool>? loadCancellationPending = null,
@@ -425,7 +459,7 @@ public sealed class MainViewModel : ViewModelBase
     public bool CanRequestWireToGateRecovery
     {
         get => _canRequestWireToGateRecovery;
-        private set => SetProperty(ref _canRequestWireToGateRecovery, value);
+        private set => SetRecoveryEntry(ref _canRequestWireToGateRecovery, value);
     }
 
     public bool CanRequestLoadCancellation
@@ -437,7 +471,7 @@ public sealed class MainViewModel : ViewModelBase
     public bool CanRequestLoadCompensation
     {
         get => _canRequestLoadCompensation;
-        private set => SetProperty(ref _canRequestLoadCompensation, value);
+        private set => SetRecoveryEntry(ref _canRequestLoadCompensation, value);
     }
 
     public bool CanRequestLoadCorrection
@@ -449,13 +483,41 @@ public sealed class MainViewModel : ViewModelBase
     public bool CanRequestFaultCargoHandoff
     {
         get => _canRequestFaultCargoHandoff;
-        private set => SetProperty(ref _canRequestFaultCargoHandoff, value);
+        private set => SetRecoveryEntry(ref _canRequestFaultCargoHandoff, value);
     }
 
     public bool CanRequestForcedMechanicalRecovery
     {
         get => _canRequestForcedMechanicalRecovery;
-        private set => SetProperty(ref _canRequestForcedMechanicalRecovery, value);
+        private set => SetRecoveryEntry(ref _canRequestForcedMechanicalRecovery, value);
+    }
+
+    /// <summary>
+    /// 异常处置会话的原因（CP-0005 第五节，onboard-hmi#109）：判定人、故障类别、现场说明，写进
+    /// <c>ExceptionRecoverySessionRequested.reason</c>。留空时业务服务用按恢复动作写死的缺省文字。
+    /// </summary>
+    public string RecoveryReason
+    {
+        get => _recoveryReason;
+        set => SetProperty(ref _recoveryReason, value ?? string.Empty);
+    }
+
+    /// <summary>
+    /// 原因输入框只跟着会开异常处置会话的四个入口出现。它们都要求管理员工号与恢复凭据，操作工的界面上没有；
+    /// 取消装货与修正装货不开会话，不算。
+    /// </summary>
+    public bool HasRecoveryReasonInput =>
+        CanRequestWireToGateRecovery
+        || CanRequestLoadCompensation
+        || CanRequestFaultCargoHandoff
+        || CanRequestForcedMechanicalRecovery;
+
+    private void SetRecoveryEntry(ref bool field, bool value)
+    {
+        if (SetProperty(ref field, value))
+        {
+            OnPropertyChanged(nameof(HasRecoveryReasonInput));
+        }
     }
 
     public bool CanConfirmForcedMechanicalRecovery
@@ -677,9 +739,7 @@ public sealed class MainViewModel : ViewModelBase
     public Task<bool> RetryPendingResultAsync() => _controller.RetryPendingResultAsync();
 
     public Task<bool> RequestWireToGateRecoveryAsync(CancellationToken cancellationToken = default) =>
-        _wireToGateRecoveryRequester is null
-            ? Task.FromResult(false)
-            : _wireToGateRecoveryRequester(cancellationToken);
+        RequestWithReasonAsync(_wireToGateRecoveryRequester, cancellationToken);
 
     public Task<bool> RequestLoadCancellationAsync(CancellationToken cancellationToken = default) =>
         _wireToGateLoadCancellationRequester is null
@@ -687,9 +747,7 @@ public sealed class MainViewModel : ViewModelBase
             : _wireToGateLoadCancellationRequester(cancellationToken);
 
     public Task<bool> RequestLoadCompensationAsync(CancellationToken cancellationToken = default) =>
-        _wireToGateLoadCompensationRequester is null
-            ? Task.FromResult(false)
-            : _wireToGateLoadCompensationRequester(cancellationToken);
+        RequestWithReasonAsync(_wireToGateLoadCompensationRequester, cancellationToken);
 
     public Task<bool> RequestLoadCorrectionAsync(CancellationToken cancellationToken = default) =>
         _wireToGateLoadCorrectionRequester is null
@@ -697,14 +755,33 @@ public sealed class MainViewModel : ViewModelBase
             : _wireToGateLoadCorrectionRequester(cancellationToken);
 
     public Task<bool> RequestFaultCargoHandoffAsync(CancellationToken cancellationToken = default) =>
-        _wireToGateFaultCargoHandoffRequester is null
-            ? Task.FromResult(false)
-            : _wireToGateFaultCargoHandoffRequester(cancellationToken);
+        RequestWithReasonAsync(_wireToGateFaultCargoHandoffRequester, cancellationToken);
 
     public Task<bool> RequestForcedMechanicalRecoveryAsync(CancellationToken cancellationToken = default) =>
-        _wireToGateForcedMechanicalRecoveryRequester is null
-            ? Task.FromResult(false)
-            : _wireToGateForcedMechanicalRecoveryRequester(cancellationToken);
+        RequestWithReasonAsync(_wireToGateForcedMechanicalRecoveryRequester, cancellationToken);
+
+    /// <summary>
+    /// Sends the administrator's entered reason, trimmed, or <c>null</c> when nothing was entered, and clears
+    /// the box once the request was taken so the next session does not go out with this one's reason.
+    /// </summary>
+    private async Task<bool> RequestWithReasonAsync(
+        Func<string?, CancellationToken, Task<bool>>? requester,
+        CancellationToken cancellationToken)
+    {
+        if (requester is null)
+        {
+            return false;
+        }
+
+        string? reason = string.IsNullOrWhiteSpace(RecoveryReason) ? null : RecoveryReason.Trim();
+        bool accepted = await requester(reason, cancellationToken).ConfigureAwait(true);
+        if (accepted)
+        {
+            RecoveryReason = string.Empty;
+        }
+
+        return accepted;
+    }
 
     public Task<bool> ConfirmForcedMechanicalRecoveryAsync(CancellationToken cancellationToken = default) =>
         _wireToGateForcedMechanicalRecoveryConfirmer is null

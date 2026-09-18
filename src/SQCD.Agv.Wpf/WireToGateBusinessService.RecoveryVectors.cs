@@ -107,15 +107,19 @@ public sealed partial class WireToGateBusinessService
             () => RequestLoadCancellationCoreAsync(reason, cancellationToken),
             cancellationToken);
 
+    /// <param name="reason">
+    /// The administrator's reason for the exception recovery session -- who judged, the fault category, what
+    /// was seen (CP-0005 section 5, onboard-hmi#109). Blank keeps this action's fixed text.
+    /// </param>
     public Task<bool> RequestLoadCompensationAsync(
-        string reason = "现场确认装货无法继续，申请补偿清空目标仓位。",
+        string? reason = null,
         CancellationToken cancellationToken = default) =>
         RunRecoveryRequestAsync(
             WireToGateRecoveryVectorTypes.LoadCompensation,
             () => RequestRecoveryActionVectorCoreAsync(
                 CompensateLoadAction,
                 WireToGateRecoveryVectorTypes.LoadCompensation,
-                reason,
+                ReasonOrDefault(reason, "现场确认装货无法继续，申请补偿清空目标仓位。"),
                 cancellationToken),
             cancellationToken);
 
@@ -127,27 +131,29 @@ public sealed partial class WireToGateBusinessService
             () => RequestLoadCorrectionCoreAsync(reason, cancellationToken),
             cancellationToken);
 
+    /// <param name="reason">As for <see cref="RequestLoadCompensationAsync"/>.</param>
     public Task<bool> RequestFaultCargoHandoffAsync(
-        string reason = "现场确认故障仓货物需要交接处理。",
+        string? reason = null,
         CancellationToken cancellationToken = default) =>
         RunRecoveryRequestAsync(
             WireToGateRecoveryVectorTypes.FaultCargoHandoff,
             () => RequestRecoveryActionVectorCoreAsync(
                 FaultCargoHandoffAction,
                 WireToGateRecoveryVectorTypes.FaultCargoHandoff,
-                reason,
+                ReasonOrDefault(reason, "现场确认故障仓货物需要交接处理。"),
                 cancellationToken),
             cancellationToken);
 
+    /// <param name="reason">As for <see cref="RequestLoadCompensationAsync"/>.</param>
     public Task<bool> RequestForcedMechanicalRecoveryAsync(
-        string reason = "现场确认仓门无法电动解锁，申请强制机械恢复。",
+        string? reason = null,
         CancellationToken cancellationToken = default) =>
         RunRecoveryRequestAsync(
             WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery,
             () => RequestRecoveryActionVectorCoreAsync(
                 ForcedMechanicalRecoveryAction,
                 WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery,
-                reason,
+                ReasonOrDefault(reason, "现场确认仓门无法电动解锁，申请强制机械恢复。"),
                 cancellationToken),
             cancellationToken);
 
@@ -2327,6 +2333,14 @@ public sealed partial class WireToGateBusinessService
     private static WireToGateOperatorContextPayload OperatorOf(
         WireToGatePendingLoadCancellation pending) =>
         new(pending.OperatorId, pending.OperatorVerificationMethod, pending.OperatorVerifiedAt);
+
+    /// <summary>
+    /// The administrator's reason, trimmed, or the action's fixed text when none was entered. The fixed text
+    /// is what every session request carried before the reason could be entered, so an empty box changes
+    /// nothing on the wire.
+    /// </summary>
+    private static string ReasonOrDefault(string? entered, string fixedText) =>
+        string.IsNullOrWhiteSpace(entered) ? fixedText : entered.Trim();
 
     private static string RequireReason(string reason) =>
         string.IsNullOrWhiteSpace(reason)
