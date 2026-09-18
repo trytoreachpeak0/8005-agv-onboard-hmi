@@ -195,6 +195,55 @@ public sealed class ConfigurationTests
         Assert.Contains("必须启用ControlServer车辆安全投影", exception.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// 期待动作超时门槛（REQ-0358，onboard-hmi#109）：不配时是 3 个 <c>OperationTimeout</c>，跟着它走；投运按现场实测
+    /// 标定时直接写毫秒数。
+    /// </summary>
+    [Fact]
+    public void TheExpectedActionOverdueThresholdDefaultsToThreeOperationTimeoutsAndCanBeConfigured()
+    {
+        Assert.Equal(TimeSpan.FromMinutes(6), new WorkflowSettings().ExpectedActionOverdueThreshold);
+        Assert.Equal(
+            TimeSpan.FromSeconds(90),
+            new WorkflowSettings { OperationTimeoutMs = 30_000 }.ExpectedActionOverdueThreshold);
+        Assert.Equal(
+            TimeSpan.FromMinutes(8),
+            new WorkflowSettings { ExpectedActionOverdueMs = 480_000 }.ExpectedActionOverdueThreshold);
+
+        string path = Path.Combine(Path.GetTempPath(), $"onboard-settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(path, """
+                {
+                  "workflow": {
+                    "expectedActionOverdueMs": 420000
+                  }
+                }
+                """);
+
+            Assert.Equal(
+                TimeSpan.FromMinutes(7),
+                OnboardSettings.Load(path).Workflow.ExpectedActionOverdueThreshold);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void ANonPositiveExpectedActionOverdueThresholdIsRejected(int milliseconds)
+    {
+        OnboardSettings settings = new()
+        {
+            Workflow = new WorkflowSettings { ExpectedActionOverdueMs = milliseconds }
+        };
+
+        Assert.Throws<InvalidDataException>(settings.Validate);
+    }
+
     [Fact]
     public void DuplicateUnlockOutputChannelIsRejected()
     {

@@ -53,6 +53,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private (string ExceptionRecoverySessionId, string? SlotOperationAttemptId)? _recoverySessionAttempt;
     private string? _inconsistentRecoverySessionId;
     private WireToGateHmiOperationSnapshot? _currentOperationSnapshot;
+    private readonly SlotExpectedActionWaitTracker _expectedActionWait = new();
     private LoadAwaitingOperator? _loadAwaitingOperator;
     private SafetyChangeWork? _pendingSafetyChange;
     private string? _lastSafetySignature;
@@ -160,6 +161,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// </summary>
     public WireToGateHmiOperationSnapshot? CurrentOperationSnapshot =>
         Volatile.Read(ref _currentOperationSnapshot);
+
+    /// <summary>
+    /// The slot the running LOAD or UNLOAD has been waiting on the operator for since its first unlock, for
+    /// the expected-action-overdue alarm (REQ-0358, onboard-hmi#109); <c>null</c> when nothing waits.
+    /// </summary>
+    public SlotExpectedActionWait? CurrentExpectedActionWait => _expectedActionWait.Current;
 
     /// <summary>
     /// The countdown line's text once the station departure deadline has passed, or <c>null</c> for the
@@ -1054,6 +1061,82 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Answers the server's mid-session <c>SafetyStateSnapshotRequested</c> with a snapshot of the live IO
+    /// (REQ-0358, onboard-hmi#109, paired with control-server#142). The dashboard asks for one when an
+    /// expected-action-overdue alarm appears, to show the administrator the lock, light curtain and unlock
+    /// output readings.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It is a request for readings, not a recovery message: before this it fell through to the recovery
+    /// branch, which answered nothing and told the operator beside the stuck slot that a recovery was blocked.
+    /// </para>
+    /// <para>
+    /// The version is the next one of the sequence <see cref="QueueSafetyStateChangeAsync"/> uses, taken under
+    /// the same gate: the content differs every time, so reusing the accepted version would be a revision
+    /// conflict, and a change sent concurrently must not overtake it with a lower one. A failed answer is only
+    /// logged -- the server asks again on the next change, and a snapshot is advisory, so it does not cost the
+    /// session the way a lost SafetyStateChanged does.
+    /// </para>
+    /// </remarks>
+    private async Task AnswerSafetyStateSnapshotRequestAsync(CancellationToken cancellationToken)
+    {
+        await _safetySendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            WireToGateSessionSnapshot current = _session.Current;
+            if (_pendingSafetyChange is not null
+                && current.SafetyStateVersion >= _pendingSafetyChange.Version)
+            {
+                _lastSafetySignature = _pendingSafetyChange.Signature;
+                _pendingSafetyChange = null;
+            }
+
+            // A change still unacknowledged is waiting to be resent, under its own version and content, on
+            // the session its failure is tearing down. A snapshot with a higher version now would make that
+            // resend a regression, so the request goes unanswered; the next session starts with a full one.
+            if (_pendingSafetyChange is not null)
+            {
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    "有未确认的SafetyStateChanged等待重发，本次不回应服务端的快照请求。");
+                return;
+            }
+
+            long version = Math.Max(_nextSafetyStateVersion, checked(current.SafetyStateVersion + 1));
+            if (!await _session.PublishSafetyStateSnapshotAsync(version, cancellationToken).ConfigureAwait(false))
+            {
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    "会话此刻不能发送SafetyStateSnapshot，未回应服务端的快照请求。");
+                return;
+            }
+
+            _nextSafetyStateVersion = Math.Max(
+                _nextSafetyStateVersion,
+                checked(_session.Current.SafetyStateVersion + 1));
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (exception is IOException or TimeoutException
+            or InvalidDataException or InvalidOperationException or ArgumentOutOfRangeException)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                "回应服务端的SafetyStateSnapshot请求失败。",
+                exception);
+        }
+        finally
+        {
+            _safetySendGate.Release();
+        }
+    }
+
     private static bool CanPublishSafetyRevision(WireToGateSessionSnapshot session) =>
         session.Connected
         && session.SessionGeneration is not null
@@ -1157,6 +1240,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     break;
                 case WireToGateRecoveryCommand { MessageType: "SublotRejected" } rejection:
                     HandleSublotRejected(rejection);
+                    break;
+                case WireToGateRecoveryCommand { MessageType: "SafetyStateSnapshotRequested" }:
+                    await AnswerSafetyStateSnapshotRequestAsync(cancellationToken).ConfigureAwait(false);
                     break;
                 case WireToGateRecoveryCommand recovery:
                     if (recovery.MessageType is "LoadCorrectionRejected"
@@ -1689,7 +1775,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     {
         WireToGateHmiOperationStage stage = MapOperationStage(progress.Phase);
         string guidance = OperationGuidance(command, progress, StationDeadlinePassed());
-        PublishOperation(command, stage, guidance, detailKey);
+        PublishOperation(command, stage, guidance, detailKey, progress.Active);
         if (command.OperationType == OperationType.Load
             && stage is WireToGateHmiOperationStage.Unlocking or WireToGateHmiOperationStage.WaitingOperator)
         {
@@ -1711,7 +1797,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         WireToGateSlotOperationCommand command,
         WireToGateHmiOperationStage stage,
         string guidance,
-        string detailKey)
+        string detailKey,
+        IReadOnlyList<int>? activeSlots = null)
     {
         if (stage is not (WireToGateHmiOperationStage.Unlocking or WireToGateHmiOperationStage.WaitingOperator))
         {
@@ -1730,7 +1817,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             $"operation-stage:{command.SlotOperationAttemptId}:{stage}:{detailKey}",
             "OPERATION_PROGRESS",
             guidance,
-            operation);
+            operation,
+            activeSlots);
     }
 
     // 操作员事件分两类，走两条路，别混：
@@ -1750,11 +1838,15 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         string deduplicationKey,
         string kind,
         string message,
-        WireToGateHmiOperationSnapshot? operation = null)
+        WireToGateHmiOperationSnapshot? operation = null,
+        IReadOnlyList<int>? activeSlots = null)
     {
         if (operation is not null)
         {
             Volatile.Write(ref _currentOperationSnapshot, operation);
+            // Only an executor progress report names active slots; every other projection -- a result,
+            // UNKNOWN, a cancellation or recovery vector taking over -- stops the wait clock.
+            _expectedActionWait.Observe(operation, activeSlots);
         }
 
         if (!_operatorEventDeduplicator.ShouldPublish(deduplicationKey))

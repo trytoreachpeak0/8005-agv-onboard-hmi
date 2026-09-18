@@ -348,7 +348,12 @@ public partial class App : System.Windows.Application, IDisposable
             TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs),
             TimeSpan.FromMilliseconds(settings.VehicleSafety.ClockSkewToleranceMs),
             _wireToGate?.Current.ReasonCodes ?? [],
-            _wireToGateBusiness?.CurrentOperationSnapshot);
+            _wireToGateBusiness?.CurrentOperationSnapshot)
+        {
+            // 期待动作超时（REQ-0358）只在 WIRE_TO_GATE 模式下有；旧模式没有业务服务，这一项为空，求值器不判。
+            ExpectedActionWait = _wireToGateBusiness?.CurrentExpectedActionWait,
+            ExpectedActionOverdueThreshold = settings.Workflow.ExpectedActionOverdueThreshold
+        };
     }
 
     // 本端的求值器不产出与停靠相关的告警，停靠不参与收敛。
