@@ -156,11 +156,11 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
     [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
-    public async Task AFailedVectorSlotKeepsItsUnknownAndSlotsNeverStartedKeepTheirReadings()
+    public async Task AFailedVectorSlotKeepsItsUnknownAndTheRestOfTheBatchIsStillProvenOneByOne()
     {
-        // The same overwrite the slot operation executor had (ADR-cross-0058 decision 6): the slot
-        // whose feedback failed stays UNKNOWN, and the slot never opened is NOT_STARTED with what the
-        // IO reads and no reason code.
+        // ADR-cross-0058 decision 6, under a batch unlock (onboard-hmi#104): the slot whose feedback
+        // failed stays UNKNOWN with its reason, and the other slots opened by the same write are not
+        // left behind as NOT_STARTED -- they were opened, so each is followed to its own final state.
         await using TestFixture fixture = await TestFixture.CreateAsync(
             [true, true, true],
             failOnWaitCall: 4,
@@ -179,13 +179,38 @@ public sealed class WireToGateRecoveryVectorExecutorTests
         Assert.Equal("COMPLETED", result.SlotResults[0].Outcome);
         Assert.Equal("UNKNOWN", result.SlotResults[1].Outcome);
         Assert.Equal(["SLOT_STATE_UNKNOWN"], result.SlotResults[1].ReasonCodes);
-        WireToGateSlotExecutionResult neverStarted = result.SlotResults[2];
-        Assert.Equal("NOT_STARTED", neverStarted.Outcome);
-        Assert.Empty(neverStarted.ReasonCodes);
-        Assert.Equal("OCCUPIED", neverStarted.FinalPhysicalState);
-        Assert.Equal("LOCKED", neverStarted.LockState);
-        Assert.Equal("RESET", neverStarted.UnlockOutputState);
-        Assert.Equal(2, fixture.Io.UnlockCount);
+        Assert.Equal("COMPLETED", result.SlotResults[2].Outcome);
+        Assert.Equal(3, fixture.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// A batch write that fails leaves it uncertain which coils were set, so every slot of the set is
+    /// UNKNOWN and stays in the active unlock set; a target already EMPTY was never in the set and keeps
+    /// its COMPLETED.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AFailedBatchWriteLeavesEverySlotOfTheSetUnknown()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([true, false, true], cancellationToken: token);
+        fixture.Io.BeforeBatchUnlock = _ => throw new IOException("FC0F响应与请求不一致，开锁结果未知。");
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
+            CreateContext(
+                WireToGateRecoveryVectorTypes.LoadCancellation,
+                "22222222-2222-4222-8222-222222222222",
+                [1, 2, 3]),
+            null,
+            token);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        Assert.Equal(["UNKNOWN", "COMPLETED", "UNKNOWN"], result.SlotResults.Select(item => item.Outcome));
+        Assert.Equal(["SLOT_STATE_UNKNOWN"], result.SlotResults[0].ReasonCodes);
+        Assert.Equal(["SLOT_STATE_UNKNOWN"], result.SlotResults[2].ReasonCodes);
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal([1, 3], state.ActiveUnlockSlots);
     }
 
     [Fact]
@@ -375,6 +400,200 @@ public sealed class WireToGateRecoveryVectorExecutorTests
         Assert.Equal(0, fixture.Io.UnlockCount);
     }
 
+    /// <summary>
+    /// ADR-cross-0046 line 19 with ADR-cross-0035 BatchUnlock (onboard-hmi#104): a load cancellation
+    /// opens every target slot the light curtain confirms OCCUPIED in one batch unlock; a slot already
+    /// EMPTY is not in the set. Each slot still proves EMPTY, locked and output reset on its own.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task ACancellationUnlocksEveryOccupiedTargetInOneBatch()
+    {
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            [true, false, true, true],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
+            CreateContext(
+                WireToGateRecoveryVectorTypes.LoadCancellation,
+                "17171717-1717-4717-8717-171717171717",
+                [1, 2, 3, 4]),
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.Equal([1, 3, 4], Assert.Single(fixture.Io.BatchUnlocks));
+        Assert.Equal(0, fixture.Io.SinglePulseCount);
+        AssertEachSlotCleared(result, [1, 2, 3, 4]);
+    }
+
+    /// <summary>
+    /// A load compensation uses the same onboard clearing capability as a cancellation (ADR-cross-0046
+    /// line 27), so it batch-unlocks the same way.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ACompensationUnlocksEveryOccupiedTargetInOneBatch()
+    {
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            [true, true, false],
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
+            CreateContext(
+                WireToGateRecoveryVectorTypes.LoadCompensation,
+                "18181818-1818-4818-8818-181818181818",
+                [1, 2, 3]),
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.Equal([1, 2], Assert.Single(fixture.Io.BatchUnlocks));
+        Assert.Equal(0, fixture.Io.SinglePulseCount);
+        AssertEachSlotCleared(result, [1, 2, 3]);
+    }
+
+    /// <summary>
+    /// A correction is not a clear: each slot is emptied and then loaded again, one at a time, so it
+    /// keeps the per-slot pulse and never batch-unlocks.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CORRECTION")]
+    public async Task ACorrectionStillUnlocksOneSlotAtATime()
+    {
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            [true, true],
+            correction: true,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteCorrectionAsync(
+            CreateContext(
+                WireToGateRecoveryVectorTypes.LoadCorrection,
+                "19191919-1919-4919-8919-191919191919",
+                [1, 2]),
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.Empty(fixture.Io.BatchUnlocks);
+        Assert.Equal(2, fixture.Io.SinglePulseCount);
+    }
+
+    /// <summary>
+    /// The unlock is one write, the proof is not. A slot whose output does not read back reset, or that
+    /// is shut again with the basket still in, is UNKNOWN on its own (ADR-cross-0058 decision 2) and
+    /// keeps the vector from completing; the slots opened by the same write are proven one by one and
+    /// are not judged by their neighbour. Only the unresolved slot stays in the active unlock set.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ASlotThatIsNotProvenKeepsTheClearFromCompletingWithoutTaintingTheOthers(bool stuckOutput)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([true, true, true], cancellationToken: token);
+        (stuckOutput ? fixture.Io.StuckOutputSlots : fixture.Io.NeverEmptiedSlots).Add(2);
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
+            CreateContext(
+                WireToGateRecoveryVectorTypes.LoadCancellation,
+                "20202020-2020-4020-8020-202020202020",
+                [1, 2, 3]),
+            null,
+            token);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        Assert.Equal([1, 2, 3], Assert.Single(fixture.Io.BatchUnlocks));
+        Assert.Equal([1, 2, 3], result.SlotResults.Select(item => item.SlotNo));
+        WireToGateSlotExecutionResult unresolved = result.SlotResults[1];
+        Assert.Equal("UNKNOWN", unresolved.Outcome);
+        Assert.NotEmpty(unresolved.ReasonCodes);
+        if (stuckOutput)
+        {
+            Assert.Equal("ACTIVE", unresolved.UnlockOutputState);
+        }
+        else
+        {
+            Assert.Equal("OCCUPIED", unresolved.FinalPhysicalState);
+        }
+
+        foreach (WireToGateSlotExecutionResult proven in new[] { result.SlotResults[0], result.SlotResults[2] })
+        {
+            Assert.Equal("COMPLETED", proven.Outcome);
+            Assert.Equal("EMPTY", proven.FinalPhysicalState);
+            Assert.Equal("LOCKED", proven.LockState);
+            Assert.Equal("RESET", proven.UnlockOutputState);
+        }
+
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal(WireToGateRecoveryCheckpoint.ActiveUnlockSet, state.ProvenRecoveryCheckpoint);
+        Assert.Equal([2], state.ActiveUnlockSlots);
+        Assert.Equal([1, 3], state.CompletedSlots);
+    }
+
+    /// <summary>
+    /// ADR-cross-0035: the whole target set is journaled before the batch write. A process that dies at
+    /// the write leaves exactly that set as the active unlock set, and the replay treats all of it as
+    /// possibly pulsed: nothing is pulsed again, and every slot of the set is UNKNOWN until proven.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task TheBatchIsJournaledAsTheActiveUnlockSetBeforeItIsWritten()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([true, false, true], cancellationToken: token);
+        WireToGateRecoveryVectorContext context = CreateContext(
+            WireToGateRecoveryVectorTypes.LoadCancellation,
+            "21212121-2121-4121-8121-212121212121",
+            [1, 2, 3]);
+        WireToGateRecoveryState? atWrite = null;
+        fixture.Io.BeforeBatchUnlock = _ =>
+        {
+            atWrite = fixture.Journal.ReadRecoveryStateAsync(CancellationToken.None).GetAwaiter().GetResult();
+            throw new OperationCanceledException("process gone at the batch write");
+        };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            fixture.Executor.ExecuteClearAsync(context, null, token));
+
+        Assert.NotNull(atWrite);
+        Assert.Equal(WireToGateRecoveryCheckpoint.ActiveUnlockSet, atWrite.ProvenRecoveryCheckpoint);
+        Assert.Equal([1, 3], atWrite.ActiveUnlockSlots);
+        WireToGateRecoveryState afterCrash = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal(atWrite.ActiveUnlockSlots, afterCrash.ActiveUnlockSlots);
+        Assert.Equal(WireToGateRecoveryCheckpoint.ActiveUnlockSet, afterCrash.ProvenRecoveryCheckpoint);
+
+        fixture.Io.BeforeBatchUnlock = null;
+        await using WireToGateRecoveryVectorExecutor restarted = fixture.CreateExecutor();
+        WireToGateRecoveryVectorExecutionResult replay = await restarted.ExecuteClearAsync(context, null, token);
+
+        Assert.Equal("UNKNOWN", replay.OverallOutcome);
+        Assert.Empty(fixture.Io.BatchUnlocks);
+        Assert.Equal(0, fixture.Io.UnlockCount);
+        Assert.Equal("UNKNOWN", replay.SlotResults.Single(item => item.SlotNo == 1).Outcome);
+        Assert.Equal("UNKNOWN", replay.SlotResults.Single(item => item.SlotNo == 3).Outcome);
+    }
+
+    private static void AssertEachSlotCleared(
+        WireToGateRecoveryVectorExecutionResult result,
+        IReadOnlyList<int> slots)
+    {
+        Assert.Equal(slots, result.SlotResults.Select(item => item.SlotNo));
+        Assert.All(result.SlotResults, item =>
+        {
+            Assert.Equal("COMPLETED", item.Outcome);
+            Assert.Equal("EMPTY", item.FinalPhysicalState);
+            Assert.Equal("LOCKED", item.LockState);
+            Assert.Equal("RESET", item.UnlockOutputState);
+        });
+    }
+
     private static WireToGateRecoveryVectorContext CreateContext(
         string vectorType,
         string primaryId,
@@ -398,14 +617,17 @@ public sealed class WireToGateRecoveryVectorExecutorTests
 
     private sealed class TestFixture : IAsyncDisposable
     {
+        private readonly FixedClock _clock;
+
         private TestFixture(
             ScriptedIo io,
             SqliteWireToGateJournal journal,
-            WireToGateRecoveryVectorExecutor executor)
+            FixedClock clock)
         {
             Io = io;
             Journal = journal;
-            Executor = executor;
+            _clock = clock;
+            Executor = CreateExecutor();
         }
 
         public ScriptedIo Io { get; }
@@ -429,18 +651,21 @@ public sealed class WireToGateRecoveryVectorExecutorTests
             await journal.InitializeAsync(cancellationToken);
             FixedClock clock = new(DateTimeOffset.UtcNow);
             ScriptedIo io = new(clock, cargo, correction, failOnWaitCall);
-            WireToGateRecoveryVectorExecutor executor = new(
-                io,
-                journal,
-                clock,
+            return new TestFixture(io, journal, clock);
+        }
+
+        /// <summary>A fresh executor over the same IO and journal: what a restarted process gets.</summary>
+        public WireToGateRecoveryVectorExecutor CreateExecutor() =>
+            new(
+                Io,
+                Journal,
+                _clock,
                 new WireToGateSlotOperationExecutorOptions(
                     TimeSpan.FromSeconds(1),
                     TimeSpan.FromSeconds(1),
                     TimeSpan.FromSeconds(5),
                     TimeSpan.FromMilliseconds(1),
                     TimeSpan.FromSeconds(1)));
-            return new TestFixture(io, journal, executor);
-        }
 
         public async ValueTask DisposeAsync()
         {
@@ -486,7 +711,23 @@ public sealed class WireToGateRecoveryVectorExecutorTests
 
         public int? FailOnWaitCall { get; set; }
 
+        /// <summary>Slots unlocked, by either path: a batch of three counts three.</summary>
         public int UnlockCount { get; private set; }
+
+        /// <summary>Calls to the per-slot FC05 path.</summary>
+        public int SinglePulseCount { get; private set; }
+
+        /// <summary>Each batch unlock, as the physical slot numbers it carried.</summary>
+        public List<int[]> BatchUnlocks { get; } = [];
+
+        /// <summary>Physical slots whose unlock output never falls back after the pulse.</summary>
+        public HashSet<int> StuckOutputSlots { get; } = [];
+
+        /// <summary>Physical slots the operator shuts again without taking the basket out.</summary>
+        public HashSet<int> NeverEmptiedSlots { get; } = [];
+
+        /// <summary>Runs before a batch unlock touches anything; throwing from it models a crash there.</summary>
+        public Action<int[]>? BeforeBatchUnlock { get; set; }
 
         public bool IsConnected => _snapshot.IsConnected;
 
@@ -503,17 +744,34 @@ public sealed class WireToGateRecoveryVectorExecutorTests
         public Task PulseUnlockAsync(int slotIndex, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            SinglePulseCount++;
+            Pulse(slotIndex);
+            return Task.CompletedTask;
+        }
+
+        public Task PulseUnlockBatchAsync(IReadOnlyCollection<int> slotIndexes, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int[] physical = slotIndexes.Select(index => index + 1).Order().ToArray();
+            BeforeBatchUnlock?.Invoke(physical);
+            BatchUnlocks.Add(physical);
+            foreach (int slotIndex in slotIndexes)
+            {
+                Pulse(slotIndex);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        private void Pulse(int slotIndex)
+        {
             UnlockCount++;
             UpdateLocker(slotIndex, locker => locker with
             {
                 LockFeedbackRaw = false,
                 UnlockOutputRaw = true
             });
-            return Task.CompletedTask;
         }
-
-        public Task PulseUnlockBatchAsync(IReadOnlyCollection<int> slotIndexes, CancellationToken cancellationToken) =>
-            throw new NotSupportedException("This path never batch-unlocks.");
 
         public Task<LockerSnapshot> WaitForLockerAsync(
             int slotIndex,
@@ -540,11 +798,18 @@ public sealed class WireToGateRecoveryVectorExecutorTests
 
                 if (locker.IsKnown && !locker.IsLocked && locker.UnlockOutputRaw is true)
                 {
-                    UpdateLocker(slotIndex, current => current with { UnlockOutputRaw = false });
+                    if (!StuckOutputSlots.Contains(slotIndex + 1))
+                    {
+                        UpdateLocker(slotIndex, current => current with { UnlockOutputRaw = false });
+                    }
                 }
                 else if (locker.IsKnown && !locker.IsLocked && locker.UnlockOutputRaw is false)
                 {
-                    if (_correction && locker.HasCargo)
+                    if (NeverEmptiedSlots.Contains(slotIndex + 1))
+                    {
+                        UpdateLocker(slotIndex, current => current with { LockFeedbackRaw = true });
+                    }
+                    else if (_correction && locker.HasCargo)
                     {
                         UpdateLocker(slotIndex, current => current with { LightCurtainRaw = true });
                     }
