@@ -149,6 +149,16 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
     {
         ThrowIfDisposed();
         ValidateRecoveryState(state);
+        // One door at a time (REQ-0357, ADR-cross-0061): the active unlock set is the one door that may
+        // be standing open. Checked on write only. A journal written before this rule may still carry a
+        // wider set, and reading it back must keep working, because recovery treats every slot of that
+        // set as a fence and never pulses it again -- refusing the read would strand the vehicle
+        // instead of making it safer.
+        if (state.ActiveUnlockSlots.Count > 1)
+        {
+            throw new InvalidDataException("ACTIVE_UNLOCK_SET_MORE_THAN_ONE_SLOT");
+        }
+
         string json = SerializeRecoveryState(state);
 
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);

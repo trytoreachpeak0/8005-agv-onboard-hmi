@@ -76,7 +76,6 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>? progress,
         CancellationToken cancellationToken)
     {
-        DateTimeOffset started = _clock.Now;
         WireToGateRecoveryState state = await _journal
             .ReadRecoveryStateAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -308,8 +307,12 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 .ConfigureAwait(false);
         }
 
-        DateTimeOffset deadline = started + _options.OperationTimeout;
-        foreach (int physicalSlot in context.Slots)
+        // One door at a time (REQ-0357, ADR-cross-0061). A door the aborted load left open is the one
+        // open door on the vehicle, so it is brought to its end -- or to UNKNOWN, which stops here --
+        // before any other slot is unlocked, and it stays the active unlock set until then. In
+        // ascending order a loaded slot numbered below it would be opened beside it, and the journal
+        // would lose the open door to that slot's checkpoint.
+        foreach (int physicalSlot in handedOver.Concat(context.Slots.Except(handedOver)))
         {
             if (completed.Contains(physicalSlot))
             {
@@ -318,6 +321,10 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
 
             cancellationToken.ThrowIfCancellationRequested();
             int slotIndex = physicalSlot - 1;
+            // Each slot's own OperationTimeout from its turn: the slots are emptied one after another,
+            // so a deadline shared from the vector's start would leave the later ones only what the
+            // earlier ones did not use.
+            DateTimeOffset deadline = _clock.Now + _options.OperationTimeout;
             IoSnapshot beforePulse = _ioModule.CurrentSnapshot;
             // A door the aborted load left open is not pulsed: the operator is already at it. Shut empty
             // since the vector started, it is cleared as it stands; shut over a basket, it is an ordinary
@@ -386,11 +393,22 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                     cancellationToken).ConfigureAwait(false);
             }
 
+            bool pulseSent = false;
             try
             {
                 EnsureRemaining(deadline, cancellationToken);
                 if (!openHandedOver)
                 {
+                    // The whole vehicle, not only this vector's slots: another door not proven shut
+                    // stops the vector before this one opens beside it (REQ-0357).
+                    IoSnapshot atPulse = _ioModule.CurrentSnapshot;
+                    if (WireToGateSingleDoorRule.OtherDoorNotShut(atPulse, IsFresh(atPulse), physicalSlot)
+                        is { } otherDoor)
+                    {
+                        throw new InvalidDataException(otherDoor);
+                    }
+
+                    pulseSent = true;
                     await _ioModule.PulseUnlockAsync(slotIndex, cancellationToken).ConfigureAwait(false);
                     LockerSnapshot unlocked = await _ioModule.WaitForLockerAsync(
                         slotIndex,
@@ -466,10 +484,13 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                         CreateSlotResult(ReadPhysicalSlot(failureSnapshot, notStarted), "NOT_STARTED", []));
                 }
 
+                // The slot stays the active unlock set only if its door may be open: pulsed (or the
+                // pulse was attempted), or handed over open. Refused before the pulse, it never opened.
+                IReadOnlyList<int> stillActive = pulseSent || openHandedOver ? [physicalSlot] : [];
                 await WriteVectorStateAsync(
                     context,
                     WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                    [physicalSlot],
+                    stillActive,
                     completed,
                     results,
                     state,
@@ -477,7 +498,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 await SendProgressAsync(
                         progress,
                         "PAUSED",
-                        [physicalSlot],
+                        stillActive,
                         completed,
                         CancellationToken.None)
                     .ConfigureAwait(false);
@@ -812,6 +833,9 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
     {
         TimeoutException => "ACTION_NOT_ALLOWED_IN_STATE",
         IOException => "SLOT_STATE_UNKNOWN",
+        // Raised with the reason code itself, by the single-door check before a pulse.
+        InvalidDataException { Message: "UNLOCK_OUTPUT_NOT_RESET" or "LOCK_NOT_CLOSED" } invalid
+            => invalid.Message,
         InvalidDataException invalid when invalid.Message.Contains("LOCK", StringComparison.OrdinalIgnoreCase)
             => "LOCK_NOT_CLOSED",
         _ => "SLOT_STATE_UNKNOWN"

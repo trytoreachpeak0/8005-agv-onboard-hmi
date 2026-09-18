@@ -1827,7 +1827,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     // The text follows the cause the executor states, not a guess from the round number. Past the
     // station departure deadline a load's prompt names the way out as well (program#55,
     // onboard-hmi#78): the executor keeps reopening, and only the operator's cancel ends the load.
-    private static string OperationGuidance(
+    internal static string OperationGuidance(
         WireToGateSlotOperationCommand command,
         WireToGateOperationProgress progress,
         bool deadlinePassed) => progress.Phase switch
@@ -1842,8 +1842,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             "WAITING_OPERATOR" => (command.OperationType == OperationType.Load
                 ? deadlinePassed
                     ? WireToGateStationDeadlineText.LoadPrompt(progress.Active)
-                    : $"请向{FormatSlots(progress.Active)}放入货物并关门。"
-                : $"请从{FormatSlots(progress.Active)}取出货物并关门。")
+                    : $"请在{FormatSlots(progress.Active)}放入货物并关门。"
+                : $"请在{FormatSlots(progress.Active)}取出货物并关门。")
                 + (progress.PromptRound == 0 ? string.Empty : $"（第{progress.PromptRound + 1}次提示）"),
             "VERIFYING" => $"正在核对仓门、货物和输出状态；已完成 {progress.Completed.Count}/{command.Slots.Count}。",
             "SAFE_FINISH" => "全部目标仓已达到安全收尾状态，正在上报结果。",

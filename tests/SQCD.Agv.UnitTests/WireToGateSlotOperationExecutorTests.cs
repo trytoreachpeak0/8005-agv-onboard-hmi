@@ -439,11 +439,15 @@ public sealed class WireToGateSlotOperationExecutorTests
             }
         }
 
+        /// <summary>Every pulse, in order: the physical slot and whether every other door was shut then.</summary>
+        public List<(int Slot, bool OtherDoorsShut)> Pulses { get; } = [];
+
         public Task PulseUnlockAsync(int slotIndex, CancellationToken cancellationToken)
         {
             lock (_sync)
             {
                 _unlockCounts[slotIndex]++;
+                Pulses.Add((slotIndex + 1, OtherDoorsShut(_lockers, slotIndex)));
                 // The pulse is over by the time it returns: the lock has released and the output has
                 // already fallen back, which is what the executor waits for next -- unless the test
                 // jammed the lock or welded the output.
@@ -494,6 +498,23 @@ public sealed class WireToGateSlotOperationExecutorTests
                 {
                     LockFeedbackRaw = true,
                     LightCurtainRaw = !cargo,
+                    UnlockOutputRaw = false,
+                    ObservedAt = DateTimeOffset.UtcNow
+                });
+            }
+        }
+
+        /// <summary>
+        /// A door opened by something other than this executor -- another executor, or a mechanical
+        /// release -- with the unlock output already fallen back.
+        /// </summary>
+        public void OpenDoor(int slotIndex)
+        {
+            lock (_sync)
+            {
+                Update(slotIndex, locker => locker with
+                {
+                    LockFeedbackRaw = false,
                     UnlockOutputRaw = false,
                     ObservedAt = DateTimeOffset.UtcNow
                 });
@@ -791,6 +812,35 @@ public sealed class WireToGateSlotOperationExecutorTests
         Assert.Equal(["SLOT_STATE_UNKNOWN"], slot.ReasonCodes);
         Assert.Equal("UNKNOWN", slot.FinalPhysicalState);
         Assert.Equal("ACTIVE_UNLOCK_SET", result.JournalCheckpoint);
+    }
+
+    /// <summary>
+    /// The settlement of an interrupted operation keeps the active unlock set to the one door the
+    /// journal says was opening (REQ-0357, ADR-cross-0061). With the IO gone, every slot it opened is
+    /// unreadable -- the one already completed as well -- but only the interrupted slot can be standing
+    /// open from this operation; the completed one closed its loop. Both are UNKNOWN in the result.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AnInterruptedSettlementWithoutIoKeepsOnlyTheInterruptedSlotActive()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true);
+        await InterruptAfterFirstSlotAsync(fixture, command);
+        fixture.Io.Disconnect();
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.SettleInterruptedAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        Assert.All(result.SlotResults, slot => Assert.Equal("UNKNOWN", slot.Outcome));
+        Assert.Equal("ACTIVE_UNLOCK_SET", result.JournalCheckpoint);
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
+            TestContext.Current.CancellationToken);
+        Assert.Equal([2], state.ActiveUnlockSlots);
     }
 
     [Fact]
@@ -1652,6 +1702,139 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     /// <summary>
+    /// REQ-0357: one door at a time. Every unlock pulse of a load or an unload finds every other door of
+    /// the vehicle locked with its output reset -- the slot before it has been brought to its end first.
+    /// </summary>
+    [Theory]
+    [InlineData(OperationType.Load)]
+    [InlineData(OperationType.Unload)]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("IntegrationSlice", "FP-IS-04")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    [Trait("ProtocolVector", "CV-DESTINATION-UNLOAD-ALL-EMPTY")]
+    public async Task EveryUnlockOfALoadOrAnUnloadFindsEveryOtherDoorShut(OperationType operationType)
+    {
+        bool load = operationType == OperationType.Load;
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            initialCargo: !load,
+            finalCargo: load,
+            cancellationToken: TestContext.Current.CancellationToken);
+        WireToGateSlotOperationCommand command = CreateCommand(
+            operationType,
+            load ? [1, 2, 3] : [1, 2, 3, 4, 5, 6, 7, 8],
+            expectedOccupied: load);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            command,
+            null,
+            TestContext.Current.CancellationToken);
+
+        AssertCompletedMeetsServerCompletionCondition(command, result);
+        Assert.Equal(command.Slots, fixture.Io.Pulses.Select(pulse => pulse.Slot));
+        Assert.All(fixture.Io.Pulses, pulse => Assert.True(pulse.OtherDoorsShut));
+    }
+
+    public static TheoryData<string, string> OtherDoorConditions => new()
+    {
+        { "open", "LOCK_NOT_CLOSED" },
+        { "output-active", "UNLOCK_OUTPUT_NOT_RESET" },
+        { "unreadable", "SLOT_STATE_UNKNOWN" }
+    };
+
+    /// <summary>
+    /// The check before every pulse looks at the whole vehicle, not only at the target set. A door
+    /// outside the command that is open, whose output reads energised, or that cannot be read, stops
+    /// the operation before its first pulse: the slot about to be opened is UNKNOWN with the reason,
+    /// the rest NOT_STARTED, and nothing is unlocked.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(OtherDoorConditions))]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ADoorOutsideTheCommandThatIsNotShutRefusesTheUnlock(string condition, string reason)
+    {
+        // Bounded, so an unlock that should have been refused fails the test instead of waiting forever
+        // for an operator nobody plays.
+        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
+        bounded.CancelAfter(TimeSpan.FromSeconds(10));
+        CancellationToken token = bounded.Token;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            token);
+        switch (condition)
+        {
+            case "open":
+                fixture.Io.OpenDoor(4);
+                break;
+            case "output-active":
+                fixture.Io.CloseDoorWithUnlockOutputStuckActive(4, cargo: false);
+                break;
+            default:
+                fixture.Io.LoseLockFeedback(4);
+                break;
+        }
+
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            command,
+            null,
+            token);
+
+        Assert.Empty(fixture.Io.Pulses);
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        Assert.Equal("UNKNOWN", result.SlotResults[0].Outcome);
+        Assert.Equal([reason], result.SlotResults[0].ReasonCodes);
+        Assert.Equal("LOCKED", result.SlotResults[0].LockState);
+        Assert.Equal("NOT_STARTED", result.SlotResults[1].Outcome);
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
+            token);
+        Assert.Empty(state.ActiveUnlockSlots);
+    }
+
+    /// <summary>
+    /// A door opened elsewhere while this operation runs -- another executor, as in control-server#128
+    /// -- is seen before the next pulse: the slot in hand still completes, the next one is not opened.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ADoorOpenedElsewhereMidOperationStopsTheNextUnlock()
+    {
+        // Bounded, so an unlock that should have been refused fails the test instead of waiting forever
+        // for an operator nobody plays.
+        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
+        bounded.CancelAfter(TimeSpan.FromSeconds(10));
+        CancellationToken token = bounded.Token;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            command,
+            (progress, _) =>
+            {
+                if (progress.Phase == "WAITING_OPERATOR" && progress.Active.Single() == 1)
+                {
+                    fixture.Io.OpenDoor(4);
+                    fixture.Io.CloseDoor(0, cargo: true);
+                }
+
+                return Task.CompletedTask;
+            },
+            token);
+
+        Assert.Equal([(1, true)], fixture.Io.Pulses);
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        Assert.Equal("COMPLETED", result.SlotResults[0].Outcome);
+        Assert.Equal("UNKNOWN", result.SlotResults[1].Outcome);
+        Assert.Equal(["LOCK_NOT_CLOSED"], result.SlotResults[1].ReasonCodes);
+    }
+
+    /// <summary>
     /// The door is shut at the given occupancy with the unlock output still energised, and the output
     /// falls back 100 ms later -- well inside the fixture's UnlockOutputResetTimeout.
     /// </summary>
@@ -1664,6 +1847,11 @@ public sealed class WireToGateSlotOperationExecutorTests
             io.ReleaseUnlockOutput(slotIndex);
         });
     }
+
+    /// <summary>Every door but <paramref name="slotIndex"/> reads locked with its unlock output reset.</summary>
+    private static bool OtherDoorsShut(IEnumerable<LockerSnapshot> lockers, int slotIndex) =>
+        lockers.Where(locker => locker.SlotIndex != slotIndex)
+            .All(locker => locker.IsKnown && locker.IsLocked && locker.UnlockOutputRaw is false);
 
     private static WireToGateSlotOperationCommand CreateCommand(
         OperationType operationType,
@@ -1771,11 +1959,15 @@ public sealed class WireToGateSlotOperationExecutorTests
 
         public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
+        /// <summary>Every pulse, in order: the physical slot and whether every other door was shut then.</summary>
+        public List<(int Slot, bool OtherDoorsShut)> Pulses { get; } = [];
+
         public Task PulseUnlockAsync(int slotIndex, CancellationToken cancellationToken)
         {
             lock (_sync)
             {
                 UnlockCount++;
+                Pulses.Add((slotIndex + 1, OtherDoorsShut(_lockers, slotIndex)));
                 UpdateLocker(slotIndex, locker => locker with
                 {
                     LockFeedbackRaw = false,

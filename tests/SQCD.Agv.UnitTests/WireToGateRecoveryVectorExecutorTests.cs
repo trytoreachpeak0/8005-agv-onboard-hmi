@@ -375,6 +375,269 @@ public sealed class WireToGateRecoveryVectorExecutorTests
         Assert.Equal(0, fixture.Io.UnlockCount);
     }
 
+    /// <summary>
+    /// REQ-0357 and ADR-cross-0061, the one defect program#111 found: a load of [1,2,3] is cancelled
+    /// with 1 loaded and locked and 2 standing open. The door the aborted load left open is the one
+    /// open door on the vehicle, so it is brought to its end first -- 1 is not pulsed while 2 is open,
+    /// and the journal's active unlock set stays [2] until 2 is done instead of being rewritten to [1],
+    /// which would have lost the open door to a restart.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task ACancelledLoadsOpenDoorIsFinishedBeforeAnyLoadedSlotIsUnlocked()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([true, false, false], cancellationToken: token);
+        fixture.Io.OpenDoor(1);
+        WireToGateRecoveryVectorContext context = await HandOverAsync(
+            fixture,
+            "17171717-1717-4717-8717-171717171717",
+            [1, 2, 3],
+            [2],
+            token);
+        List<(int[] Active, int[] Completed)> journaled = [];
+        async Task SampleAsync()
+        {
+            WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(token);
+            journaled.Add((state.ActiveUnlockSlots.ToArray(), state.CompletedSlots.ToArray()));
+        }
+
+        fixture.Io.BeforePulse = _ => SampleAsync();
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
+            context,
+            (_, _, _, _) => SampleAsync(),
+            token);
+
+        Assert.All(
+            journaled.Where(sample => !sample.Completed.Contains(2)),
+            sample => Assert.Equal([2], sample.Active));
+        Assert.Equal([(1, true)], fixture.Io.Pulses);
+        Assert.Contains(journaled, sample => sample.Completed.Contains(2));
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.All(result.SlotResults, item =>
+        {
+            Assert.Equal("COMPLETED", item.Outcome);
+            Assert.Equal("EMPTY", item.FinalPhysicalState);
+            Assert.Equal("LOCKED", item.LockState);
+            Assert.Equal("RESET", item.UnlockOutputState);
+        });
+    }
+
+    /// <summary>
+    /// The door handed over open cannot be proven closed -- its output never falls back, or the operator
+    /// shuts it over the basket -- so it ends UNKNOWN, and the vector stops there: neither 1 nor 3 is
+    /// opened, both report NOT_STARTED, and 2 stays the active unlock set.
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AHandedOverDoorThatEndsUnknownStopsTheClearBeforeAnyOtherDoorOpens(bool stuckOutput)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([true, true, true], cancellationToken: token);
+        if (stuckOutput)
+        {
+            fixture.Io.OpenDoorWithOutputActive(1);
+            fixture.Io.StuckOutputSlots.Add(2);
+        }
+        else
+        {
+            fixture.Io.OpenDoor(1);
+            fixture.Io.NeverEmptiedSlots.Add(2);
+        }
+
+        WireToGateRecoveryVectorContext context = await HandOverAsync(
+            fixture,
+            "18181818-1818-4818-8818-181818181818",
+            [1, 2, 3],
+            [2],
+            token);
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
+            context,
+            null,
+            token);
+
+        Assert.Empty(fixture.Io.Pulses);
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        Assert.Equal([1, 2, 3], result.SlotResults.Select(item => item.SlotNo));
+        Assert.Equal("NOT_STARTED", result.SlotResults[0].Outcome);
+        Assert.Equal("UNKNOWN", result.SlotResults[1].Outcome);
+        Assert.NotEmpty(result.SlotResults[1].ReasonCodes);
+        Assert.Equal("NOT_STARTED", result.SlotResults[2].Outcome);
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal([2], state.ActiveUnlockSlots);
+        Assert.Empty(state.CompletedSlots);
+    }
+
+    /// <summary>
+    /// With one door at a time the operator empties the slots one after another, so each slot gets the
+    /// whole OperationTimeout from the moment its turn comes. Three slots taking three seconds each
+    /// fit a five-second timeout; one deadline shared from the vector's start would have left the
+    /// third slot nothing.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task EverySlotOfAClearGetsTheWholeOperationTimeoutFromItsOwnTurn()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([true, true, true], cancellationToken: token);
+        fixture.Io.OperatorDelay = TimeSpan.FromSeconds(3);
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
+            CreateContext(
+                WireToGateRecoveryVectorTypes.LoadCompensation,
+                "19191919-1919-4919-8919-191919191919",
+                [1, 2, 3]),
+            null,
+            token);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.Equal([1, 2, 3], fixture.Io.Pulses.Select(pulse => pulse.Slot));
+        Assert.All(result.SlotResults, item => Assert.Equal("COMPLETED", item.Outcome));
+    }
+
+    /// <summary>
+    /// REQ-0357 across the clears: every unlock pulse of a load cancellation, a compensation or a fault
+    /// cargo handoff finds every other door of the vehicle locked with its output reset.
+    /// </summary>
+    [Theory]
+    [InlineData(WireToGateRecoveryVectorTypes.LoadCancellation)]
+    [InlineData(WireToGateRecoveryVectorTypes.LoadCompensation)]
+    [InlineData(WireToGateRecoveryVectorTypes.FaultCargoHandoff)]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task EveryUnlockOfAClearFindsEveryOtherDoorShut(string vectorType)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            [true, false, true, true],
+            cancellationToken: token);
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
+            CreateContext(vectorType, "1a1a1a1a-1a1a-4a1a-8a1a-1a1a1a1a1a1a", [1, 2, 3, 4]),
+            null,
+            token);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.Equal([1, 3, 4], fixture.Io.Pulses.Select(pulse => pulse.Slot));
+        Assert.All(fixture.Io.Pulses, pulse => Assert.True(pulse.OtherDoorsShut));
+    }
+
+    /// <summary>A correction replay is one door at a time too (ADR-cross-0061: correction is no exception).</summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CORRECTION")]
+    public async Task EveryUnlockOfACorrectionFindsEveryOtherDoorShut()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            [true, true, true],
+            correction: true,
+            cancellationToken: token);
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteCorrectionAsync(
+            CreateContext(
+                WireToGateRecoveryVectorTypes.LoadCorrection,
+                "1b1b1b1b-1b1b-4b1b-8b1b-1b1b1b1b1b1b",
+                [1, 2, 3]),
+            null,
+            token);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.Equal([1, 2, 3], fixture.Io.Pulses.Select(pulse => pulse.Slot));
+        Assert.All(fixture.Io.Pulses, pulse => Assert.True(pulse.OtherDoorsShut));
+    }
+
+    public static TheoryData<string, string> OtherDoorConditions => new()
+    {
+        { "open", "LOCK_NOT_CLOSED" },
+        { "output-active", "UNLOCK_OUTPUT_NOT_RESET" },
+        { "unreadable", "SLOT_STATE_UNKNOWN" }
+    };
+
+    /// <summary>
+    /// The check before a clear's pulse looks at the whole vehicle: a door outside the vector that is not
+    /// proven shut stops the vector before its first pulse. The slot about to be opened is UNKNOWN with
+    /// the reason, the rest NOT_STARTED, and since nothing was pulsed nothing stays in the active set.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(OtherDoorConditions))]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ADoorOutsideTheVectorThatIsNotShutRefusesTheUnlock(string condition, string reason)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([true, true], cancellationToken: token);
+        switch (condition)
+        {
+            case "open":
+                fixture.Io.OpenDoor(4);
+                break;
+            case "output-active":
+                fixture.Io.OpenDoorWithOutputActive(4);
+                fixture.Io.CloseDoorKeepingOutput(4);
+                break;
+            default:
+                fixture.Io.LoseLockFeedback(4);
+                break;
+        }
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
+            CreateContext(
+                WireToGateRecoveryVectorTypes.LoadCompensation,
+                "1c1c1c1c-1c1c-4c1c-8c1c-1c1c1c1c1c1c",
+                [1, 2]),
+            null,
+            token);
+
+        Assert.Empty(fixture.Io.Pulses);
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        Assert.Equal("UNKNOWN", result.SlotResults[0].Outcome);
+        Assert.Equal([reason], result.SlotResults[0].ReasonCodes);
+        Assert.Equal("LOCKED", result.SlotResults[0].LockState);
+        Assert.Equal("NOT_STARTED", result.SlotResults[1].Outcome);
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Empty(state.ActiveUnlockSlots);
+    }
+
+    /// <summary>What the business service journals when an authorized cancellation takes a load over.</summary>
+    private static async Task<WireToGateRecoveryVectorContext> HandOverAsync(
+        TestFixture fixture,
+        string cancellationId,
+        IReadOnlyList<int> slots,
+        IReadOnlyList<int> handedOverOpen,
+        CancellationToken token)
+    {
+        WireToGateRecoveryVectorContext context = CreateContext(
+            WireToGateRecoveryVectorTypes.LoadCancellation,
+            cancellationId,
+            slots);
+        await fixture.Journal.WriteRecoveryStateAsync(
+            new WireToGateRecoveryState(
+                context.SlotOperationAttemptId,
+                WireToGateRecoveryCheckpoint.Prepared,
+                handedOverOpen,
+                0,
+                [])
+            {
+                RecoveryVector = context
+            },
+            token);
+        return context;
+    }
+
     private static WireToGateRecoveryVectorContext CreateContext(
         string vectorType,
         string primaryId,
@@ -383,6 +646,7 @@ public sealed class WireToGateRecoveryVectorExecutorTests
             vectorType,
             primaryId,
             vectorType is WireToGateRecoveryVectorTypes.LoadCompensation
+                or WireToGateRecoveryVectorTypes.FaultCargoHandoff
                 ? "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee"
                 : null,
             "ffffffff-ffff-4fff-8fff-ffffffffffff",
@@ -451,19 +715,21 @@ public sealed class WireToGateRecoveryVectorExecutorTests
 
     private sealed class FixedClock(DateTimeOffset now) : IClock
     {
-        public DateTimeOffset Now => now;
+        public DateTimeOffset Now { get; private set; } = now;
+
+        public void Advance(TimeSpan by) => Now += by;
     }
 
     private sealed class ScriptedIo : IIoModuleClient
     {
-        private readonly IClock _clock;
+        private readonly FixedClock _clock;
         private readonly bool _correction;
         private LockerSnapshot[] _lockers;
         private IoSnapshot _snapshot;
         private int _waitCallCount;
 
         public ScriptedIo(
-            IClock clock,
+            FixedClock clock,
             IReadOnlyList<bool> cargo,
             bool correction,
             int? failOnWaitCall)
@@ -500,16 +766,42 @@ public sealed class WireToGateRecoveryVectorExecutorTests
 
         public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-        public Task PulseUnlockAsync(int slotIndex, CancellationToken cancellationToken)
+        /// <summary>Physical slots whose unlock output never falls back after the pulse.</summary>
+        public HashSet<int> StuckOutputSlots { get; } = [];
+
+        /// <summary>Physical slots the operator shuts again without taking the basket out.</summary>
+        public HashSet<int> NeverEmptiedSlots { get; } = [];
+
+        /// <summary>
+        /// How long the operator takes to empty a door and shut it; the clock moves on by this much each
+        /// time, so a deadline the executor keeps is measured against the operator, not the test.
+        /// </summary>
+        public TimeSpan OperatorDelay { get; set; }
+
+        /// <summary>Runs before a pulse touches anything, with the physical slot it is for.</summary>
+        public Func<int, Task>? BeforePulse { get; set; }
+
+        /// <summary>Every pulse, in order: the physical slot and whether every other door was shut then.</summary>
+        public List<(int Slot, bool OtherDoorsShut)> Pulses { get; } = [];
+
+        public async Task PulseUnlockAsync(int slotIndex, CancellationToken cancellationToken)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (BeforePulse is { } beforePulse)
+            {
+                await beforePulse(slotIndex + 1);
+            }
+
             UnlockCount++;
+            Pulses.Add((
+                slotIndex + 1,
+                _lockers.Where(locker => locker.SlotIndex != slotIndex)
+                    .All(locker => locker.IsKnown && locker.IsLocked && locker.UnlockOutputRaw is false)));
             UpdateLocker(slotIndex, locker => locker with
             {
                 LockFeedbackRaw = false,
                 UnlockOutputRaw = true
             });
-            return Task.CompletedTask;
         }
 
         public Task<LockerSnapshot> WaitForLockerAsync(
@@ -537,16 +829,24 @@ public sealed class WireToGateRecoveryVectorExecutorTests
 
                 if (locker.IsKnown && !locker.IsLocked && locker.UnlockOutputRaw is true)
                 {
-                    UpdateLocker(slotIndex, current => current with { UnlockOutputRaw = false });
+                    if (!StuckOutputSlots.Contains(slotIndex + 1))
+                    {
+                        UpdateLocker(slotIndex, current => current with { UnlockOutputRaw = false });
+                    }
                 }
                 else if (locker.IsKnown && !locker.IsLocked && locker.UnlockOutputRaw is false)
                 {
-                    if (_correction && locker.HasCargo)
+                    if (NeverEmptiedSlots.Contains(slotIndex + 1))
+                    {
+                        UpdateLocker(slotIndex, current => current with { LockFeedbackRaw = true });
+                    }
+                    else if (_correction && locker.HasCargo)
                     {
                         UpdateLocker(slotIndex, current => current with { LightCurtainRaw = true });
                     }
                     else
                     {
+                        _clock.Advance(OperatorDelay);
                         UpdateLocker(slotIndex, current => current with
                         {
                             LockFeedbackRaw = true,
@@ -563,6 +863,18 @@ public sealed class WireToGateRecoveryVectorExecutorTests
 
         public void OpenDoor(int slotIndex) =>
             UpdateLocker(slotIndex, current => current with { LockFeedbackRaw = false });
+
+        /// <summary>The door is open and the unlock output still reads energised, as right after a pulse.</summary>
+        public void OpenDoorWithOutputActive(int slotIndex) =>
+            UpdateLocker(slotIndex, current => current with { LockFeedbackRaw = false, UnlockOutputRaw = true });
+
+        /// <summary>The door is shut again and the lock closed, with the unlock output left as it reads.</summary>
+        public void CloseDoorKeepingOutput(int slotIndex) =>
+            UpdateLocker(slotIndex, current => current with { LockFeedbackRaw = true });
+
+        /// <summary>The lock feedback input stops reading while the bus stays up.</summary>
+        public void LoseLockFeedback(int slotIndex) =>
+            UpdateLocker(slotIndex, current => current with { LockFeedbackRaw = null });
 
         public void SetUnknown()
         {
