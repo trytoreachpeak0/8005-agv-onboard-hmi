@@ -149,8 +149,8 @@ public sealed class SlotExpectedActionOverdueTests
         Assert.Equal("关好3号仓门", Single(tracker, load, at, Io(at, slot3Locked: false, slot3HasCargo: true)).Message);
 
         SlotExpectedActionWaitTracker unloading = new();
-        WireToGateHmiOperationSnapshot unload = Operation(WireToGateHmiOperationStage.WaitingOperator, FirstUnlock)
-            with { OperationType = OperationType.Unload };
+        WireToGateHmiOperationSnapshot unload =
+            Operation(WireToGateHmiOperationStage.WaitingOperator, FirstUnlock) with { OperationType = OperationType.Unload };
         unloading.Observe(unload, [3]);
         Assert.Equal("取出货物并关好3号仓门", Single(unloading, unload, at, Io(at, slot3Locked: false, slot3HasCargo: true)).Message);
         Assert.Equal("关好3号仓门", Single(unloading, unload, at, Io(at, slot3Locked: false, slot3HasCargo: false)).Message);

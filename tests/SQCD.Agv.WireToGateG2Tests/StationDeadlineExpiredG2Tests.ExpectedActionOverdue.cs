@@ -87,13 +87,10 @@ public sealed partial class StationDeadlineExpiredG2Tests
         await using Harness harness = await Harness.StartAsync(
             new FakeIoModuleClient { OperatorNeverActs = true },
             token,
-            server =>
-            {
-                server.StationDepartureDeadlineAt = null;
-                server.SendReadinessAfterSafetyStateChangedAck = true;
-            });
+            server => server.StationDepartureDeadlineAt = null);
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
         int handshakeSnapshots = SafetySnapshots(harness.Server).Length;
+        int readinessBefore = ReadinessCount(harness.Server);
 
         await harness.Server.RequestSafetyStateSnapshotAsync();
         await Harness.WaitUntilAsync(
@@ -108,7 +105,17 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.Equal("RESET", slot1.GetProperty("unlockOutputState").GetString());
         Assert.Equal("LOCKED", Slot(open, 2).GetProperty("lockState").GetString());
         long openVersion = open.GetProperty("safetyStateVersion").GetInt64();
+        // 服务端在 ack 后面紧跟一条 SessionReadiness（control-server#142）。它们不是握手里等的那两行，接收循环照常收下：
+        // 会话没有因此断开或被判协议违例，下面的第二次请求照样得到回应。
+        await Harness.WaitUntilAsync(
+            () => ReadinessCount(harness.Server) == readinessBefore + 1,
+            "the SessionReadiness that follows the snapshot's ack",
+            token);
+        // 下一个版本号：同一版本号换了内容（observedAt、读数）就是修订冲突，替身与真服务端都会拒；它被采纳就说明没撞上。
         Assert.Contains(("SafetyStateSnapshot", openVersion), harness.Server.AppliedSnapshots.ToArray());
+        Assert.Contains(harness.Server.SentEnvelopes, item => item.MessageType == "SnapshotAppliedAck"
+            && item.WireLine.Contains("\"SAFETY_STATE\"", StringComparison.Ordinal)
+            && item.WireLine.Contains($"\"appliedRevision\":{openVersion}", StringComparison.Ordinal));
         Assert.True(openVersion > SafetySnapshots(harness.Server)[0].GetProperty("safetyStateVersion").GetInt64());
         await Harness.WaitUntilAsync(
             () => harness.Client.Current.SafetyStateVersion >= openVersion,
@@ -183,6 +190,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 using JsonDocument document = JsonDocument.Parse(item.WireLine);
                 return document.RootElement.GetProperty("payload").Clone();
             })];
+
+    private static int ReadinessCount(FakeControlServer server) =>
+        server.SentEnvelopes.Count(item => item.MessageType == "SessionReadiness");
 
     private static JsonElement Slot(JsonElement snapshotPayload, int slotNo) =>
         snapshotPayload.GetProperty("slotStates").EnumerateArray()
