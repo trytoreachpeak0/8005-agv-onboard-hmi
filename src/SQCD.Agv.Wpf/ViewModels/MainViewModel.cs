@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Threading;
 using SQCD.Agv.Application;
@@ -525,9 +526,11 @@ public sealed class MainViewModel : ViewModelBase
     /// <summary>原因框被锁住时，旁边那句说明（「会话已开，原因沿用开会话时填写的」，写在 XAML 里）是否显示。</summary>
     public bool HasRecoveryReasonCarriedOver => HasRecoveryReasonInput && _recoveryReasonAlreadyGiven;
 
-    private void SetRecoveryEntry(ref bool field, bool value)
+    // The entry's own name has to be passed on: SetProperty's [CallerMemberName] would otherwise name this
+    // helper, and the window's IsEnabled/Visibility bindings would never hear of the entry (onboard-hmi#112).
+    private void SetRecoveryEntry(ref bool field, bool value, [CallerMemberName] string? propertyName = null)
     {
-        if (SetProperty(ref field, value))
+        if (SetProperty(ref field, value, propertyName))
         {
             OnPropertyChanged(nameof(HasRecoveryReasonInput));
             OnPropertyChanged(nameof(HasRecoveryReasonCarriedOver));
