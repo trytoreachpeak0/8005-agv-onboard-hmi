@@ -1,0 +1,112 @@
+name: test
+
+# Runs on the self-hosted runner win11-01-onboard-hmi, a session-0 service on win11-01 (factory server
+# Hyper-V guest). This workspace does not use GitHub-hosted runners; see the workspace root CLAUDE.md.
+#
+# Headless is enough: no test in this repository opens a window, drives UI Automation or captures
+# pixels (measured 2026-09-18). The three station-deadline countdown tests run a Dispatcher on their own
+# STA thread and create no window. If a test ever needs the interactive desktop, it does not belong in
+# this job -- it goes to an interactive runner under the machine-wide Global\W2G-InteractiveDesktop lock.
+#
+# `headless` matters: win11-01 also hosts an interactive runner, and a job that only asked for
+# [self-hosted] could be taken by either.
+on:
+  push:
+    branches: [w2g/fp-v2-impl]
+  # A draft pull request runs nothing; marking it ready runs the one round a ticket is meant to need.
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# Never cancel a running job here. Cancelling one on a self-hosted runner also cancels the runner's
+# broker long-poll; the backoff retries exhaust and the session wedges without self-healing. Measured on
+# 2026-09-03: 4 hours 14 minutes of dead CI. This repository has exactly one runner, so a wedged session
+# is its entire CI. A duplicate five-minute run is the cheaper outcome.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    # Skipped, not cancelled: GitHub decides this before any runner is involved.
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    runs-on: [self-hosted, headless]
+    # A backstop, not how a run ends: a normal run takes a few minutes, and a timeout ends the job by
+    # cancelling it, which can wedge the runner the same way a manual cancel does.
+    timeout-minutes: 30
+    env:
+      # NuGet's vulnerability audit fetches from nuget.org during every restore, and with
+      # TreatWarningsAsErrors a failed fetch (NU1900) is a red run that says nothing about the code.
+      NuGetAudit: 'false'
+      # The guest is zh-CN. English console output lets run-w2g-g2.ps1 summarise the test counts; the
+      # verdict never depends on console text, only on exit codes.
+      DOTNET_CLI_UI_LANGUAGE: en
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+
+    steps:
+      # Both repositories side by side, under the names run-w2g-g2.ps1 expects: it resolves the protocol
+      # as ../8005-agv-protocol from this repository's root.
+      - uses: actions/checkout@v7
+        with:
+          path: 8005-agv-onboard-hmi
+
+      # The protocol release this branch binds, read from the contract rather than written here, so the
+      # same workflow file serves a branch bound to another release without an edit.
+      - name: Protocol tag
+        id: protocol
+        shell: pwsh
+        run: |
+          $source = Get-Content -LiteralPath 8005-agv-onboard-hmi/src/SQCD.Agv.Contracts/WireToGateProtocol.cs -Raw
+          $match = [regex]::Match($source, 'public\s+const\s+string\s+Tag\s*=\s*"([^"]+)"\s*;')
+          if (-not $match.Success) { throw 'WireToGateProtocol.cs declares no Tag constant.' }
+          Write-Output "Protocol tag: $($match.Groups[1].Value)"
+          "tag=$($match.Groups[1].Value)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      # Full history and tags: the gate checks that the tag exists, points at the bound commit, and is an
+      # ancestor of HEAD. The protocol repository is public, so the default token reads it.
+      - uses: actions/checkout@v7
+        with:
+          repository: trytoreachpeak0/8005-agv-protocol
+          ref: ${{ steps.protocol.outputs.tag }}
+          path: 8005-agv-protocol
+          fetch-depth: 0
+
+      - name: dotnet --info
+        shell: pwsh
+        working-directory: 8005-agv-onboard-hmi
+        run: dotnet --info
+
+      # ONBOARD_HMI_G2 over the whole solution: Release build, every test, dotnet format, and the protocol
+      # identity checks. -SkipProtocolG1 because the protocol's own CI ran G1 on this immutable tag; running
+      # it here would add node and pnpm to this runner for no new fact.
+      #
+      # The evidence goes to the runner's temp directory and is uploaded below; it is never committed.
+      - name: ONBOARD_HMI_G2
+        shell: pwsh
+        working-directory: 8005-agv-onboard-hmi
+        run: |
+          $evidenceRoot = Join-Path $env:RUNNER_TEMP "g2-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          "G2_EVIDENCE_ROOT=$evidenceRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          pwsh -NoProfile -File scripts/run-w2g-g2.ps1 -SkipProtocolG1 -EvidenceRoot $evidenceRoot
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: UI layout audit
+        if: always()
+        shell: pwsh
+        working-directory: 8005-agv-onboard-hmi
+        run: |
+          pwsh -NoProfile -File scripts/check-ui-layout.ps1
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # continue-on-error, because this uploads diagnostics, not a deliverable: the verdict is the exit
+      # codes of the steps above, already reached by the time this runs. A transient ECONNRESET from the
+      # artifact service must not turn a green run red.
+      - name: Upload G2 evidence
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: g2-evidence
+          path: |
+            ${{ env.G2_EVIDENCE_ROOT }}
+            8005-agv-onboard-hmi/evidence/audits/
+          if-no-files-found: warn

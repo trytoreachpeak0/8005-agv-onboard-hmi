@@ -421,7 +421,8 @@ foreach ($key in $expected.Keys) {
     Assert-Equal "HMI identity.$key" $hmiIdentity[$key] $expected[$key]
 }
 
-$protocolCommit = (& git -C $ProtocolRoot rev-parse HEAD).Trim()
+# git 查不到时 stdout 为空、PowerShell 拿到 $null；用 ?. 让它落到下面的空值判断记失败，而不是在这里崩掉、连 summary.json 都不写。
+$protocolCommit = (& git -C $ProtocolRoot rev-parse HEAD)?.Trim()
 
 # 绑的是 commit。tag 存在就必须指向同一个 commit：打错地方比没打更危险。ApprovalStatus 声称
 # 已发布时 tag 还必须存在，否则常量被悄悄改成已发布也不会有人发现。协议检出里没有 tag 时，
@@ -519,7 +520,18 @@ $g1Text = if ($g1Result) { $g1Result.Output } else { '' }
 $g1ManifestMatch = [regex]::Match($g1Text, '"candidateManifestSha256"\s*:\s*"([^"]+)"')
 $protocolStatus = if ($g1Result) { $g1Result.Status } else { 'SKIPPED' }
 $hmiStatus = if ($build.ExitCode -eq 0 -and $test.ExitCode -eq 0 -and $format.ExitCode -eq 0) { 'PASS' } else { 'FAIL' }
-$testSummaryMatch = [regex]::Match($test.Output, 'Total tests:\s*(\d+).*?Passed:\s*(\d+).*?Failed:\s*(\d+)', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+# One line per test assembly, e.g. "Passed!  - Failed: 0, Passed: 307, Skipped: 0, Total: 307, Duration: ...".
+# The old pattern looked for "Total tests:", which this SDK never prints, so every summary said 'unparsed'
+# (evidence of 2026-09-14 included). English only: a zh-CN machine prints these lines translated, which is
+# why the CI workflow sets DOTNET_CLI_UI_LANGUAGE=en. The verdict is the exit code either way; this is a
+# summary for the reader.
+$testSummaryLines = @([regex]::Matches($test.Output, 'Failed:\s*(\d+),\s*Passed:\s*(\d+),\s*Skipped:\s*(\d+),\s*Total:\s*(\d+)'))
+$testSummaryText = if ($testSummaryLines.Count -gt 0) {
+    $sum = { param([int]$Group) ($testSummaryLines | ForEach-Object { [int]$_.Groups[$Group].Value } | Measure-Object -Sum).Sum }
+    "Total: $(& $sum 4), Passed: $(& $sum 2), Failed: $(& $sum 1), Skipped: $(& $sum 3), Assemblies: $($testSummaryLines.Count)"
+} else {
+    'unparsed'
+}
 
 Add-Event $transcript 'evidence.journal.bound' @{
     protocolCommit = $protocolCommit
@@ -543,7 +555,7 @@ Add-Event $journal 'hmi.validation.completed' @{
     buildExitCode = $build.ExitCode
     testExitCode = $test.ExitCode
     formatExitCode = $format.ExitCode
-    testSummary = if ($testSummaryMatch.Success) { $testSummaryMatch.Value } else { 'unparsed' }
+    testSummary = $testSummaryText
 }
 
 # One row per slice this run has something to say about. Without -Slice that is still the two the
@@ -602,7 +614,8 @@ $summary = [ordered]@{
     integrationSliceIndexSha256 = $sliceIndexSha256
     hmi = [ordered]@{
         commit = $hmiCommit
-        branch = (& git -C $hmiRoot branch --show-current).Trim()
+        # detached HEAD（CI 检出 PR、红基线用 git worktree add --detach）上 git 什么都不打印，branch 记 null。
+        branch = (& git -C $hmiRoot branch --show-current)?.Trim()
         workingTreeStatus = @(& git -C $hmiRoot status --porcelain)
         protocolIdentity = $hmiIdentity
     }
