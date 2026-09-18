@@ -285,6 +285,96 @@ public sealed class WireToGateRecoveryVectorExecutorTests
         Assert.Equal(0, fixture.Io.UnlockCount);
     }
 
+    /// <summary>
+    /// ADR-cross-0046 for a load cancelled in flight (onboard-hmi#78): a door the aborted load left open
+    /// when the authorization arrived is not pulsed again. The operator takes the basket out -- or never
+    /// put one in -- and shuts it; <c>EMPTY</c>, locked and output reset counts as cleared. Other target
+    /// slots confirmed occupied are unlocked to be emptied as before.
+    /// </summary>
+    /// <remarks>
+    /// The business service hands the open door over in the journal: the prepared vector keeps the
+    /// aborted load's active unlock set. Before this ticket that set read as a crash fence, and the open
+    /// door made the whole cancellation UNKNOWN.
+    /// </remarks>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task ADoorLeftOpenByTheAbortedLoadCountsAsClearedOnceShutEmptyWithoutAnotherPulse(bool basketIn)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([basketIn, true], cancellationToken: token);
+        fixture.Io.OpenDoor(0);
+        WireToGateRecoveryVectorContext context = CreateContext(
+            WireToGateRecoveryVectorTypes.LoadCancellation,
+            "15151515-1515-4515-8515-151515151515",
+            [1, 2]);
+        await fixture.Journal.WriteRecoveryStateAsync(
+            new WireToGateRecoveryState(
+                context.SlotOperationAttemptId,
+                WireToGateRecoveryCheckpoint.Prepared,
+                [1],
+                0,
+                [])
+            {
+                RecoveryVector = context
+            },
+            token);
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
+            context,
+            null,
+            token);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.Equal(1, fixture.Io.UnlockCount);
+        Assert.All(result.SlotResults, item =>
+        {
+            Assert.Equal("COMPLETED", item.Outcome);
+            Assert.Equal("EMPTY", item.FinalPhysicalState);
+            Assert.Equal("LOCKED", item.LockState);
+            Assert.Equal("RESET", item.UnlockOutputState);
+        });
+    }
+
+    /// <summary>
+    /// A handover is only the load cancellation's. The same journal shape under a compensation is still
+    /// a crash fence: the open door is not proven safe, so the vector is UNKNOWN and nothing is pulsed.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task AnOpenDoorInTheActiveSetOfAnotherVectorIsStillAFence()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([true], cancellationToken: token);
+        fixture.Io.OpenDoor(0);
+        WireToGateRecoveryVectorContext context = CreateContext(
+            WireToGateRecoveryVectorTypes.LoadCompensation,
+            "16161616-1616-4616-8616-161616161616",
+            [1]);
+        await fixture.Journal.WriteRecoveryStateAsync(
+            new WireToGateRecoveryState(
+                context.SlotOperationAttemptId,
+                WireToGateRecoveryCheckpoint.Prepared,
+                [1],
+                0,
+                [])
+            {
+                RecoveryVector = context
+            },
+            token);
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
+            context,
+            null,
+            token);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        Assert.Equal(0, fixture.Io.UnlockCount);
+    }
+
     private static WireToGateRecoveryVectorContext CreateContext(
         string vectorType,
         string primaryId,

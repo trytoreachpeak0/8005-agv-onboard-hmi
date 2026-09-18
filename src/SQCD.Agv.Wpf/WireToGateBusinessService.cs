@@ -53,6 +53,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private (string ExceptionRecoverySessionId, string? SlotOperationAttemptId)? _recoverySessionAttempt;
     private string? _inconsistentRecoverySessionId;
     private WireToGateHmiOperationSnapshot? _currentOperationSnapshot;
+    private LoadAwaitingOperator? _loadAwaitingOperator;
     private SafetyChangeWork? _pendingSafetyChange;
     private string? _lastSafetySignature;
     private long? _lastSafetyGeneration;
@@ -159,6 +160,31 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// </summary>
     public WireToGateHmiOperationSnapshot? CurrentOperationSnapshot =>
         Volatile.Read(ref _currentOperationSnapshot);
+
+    /// <summary>
+    /// The countdown line's text once the station departure deadline has passed, or <c>null</c> for the
+    /// generic one (8005-agv-onboard-hmi#78): a load cancellation in progress, or a load whose door is
+    /// open or being reopened. The wording is <see cref="WireToGateStationDeadlineText"/>'s.
+    /// </summary>
+    public string? DescribeExpiredStationDeadline(StationDepartureCountdownContext context) =>
+        WireToGateStationDeadlineText.CountdownOverride(
+            context,
+            IsLoadCancellationOpen,
+            Volatile.Read(ref _loadAwaitingOperator)?.Slots);
+
+    /// <summary>
+    /// A load cancellation of either kind is between the operator's press and its settlement: asked and
+    /// unanswered, or authorized and not yet acknowledged.
+    /// </summary>
+    private bool IsLoadCancellationOpen
+    {
+        get
+        {
+            WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+            return state.PendingLoadCancellation is not null
+                || state.RecoveryVector?.VectorType == WireToGateRecoveryVectorTypes.LoadCancellation;
+        }
+    }
 
     public bool CanRequestResumeAfterRepair
     {
@@ -730,6 +756,23 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     .ConfigureAwait(false) is not null)
             {
                 return false;
+            }
+
+            // An unanswered load cancellation over this attempt: its conclusion is that cancellation's,
+            // not this settlement's (1acb018 redone, onboard-hmi#78) -- the executor was aborted by it or
+            // went with the process, and the server may already have authorized it. Resent with the first
+            // press's content while this claim keeps a re-sent command for the attempt from running. One
+            // left over from anything else only keeps the settlement away, as the executor does.
+            if ((await _session.Journal.ReadRecoveryStateAsync(cancellationToken).ConfigureAwait(false))
+                .PendingLoadCancellation is { } pending)
+            {
+                if (string.Equals(pending.SlotOperationAttemptId, attemptId, StringComparison.Ordinal))
+                {
+                    await ResendUnansweredLoadCancellationAsync(pending, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                return true;
             }
 
             WireToGateOperationExecutionResult execution = await _executor
@@ -1315,10 +1358,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 $"recovery:{command.RecoveryActionId}:start");
             async Task SendProgress(WireToGateOperationProgress progress, CancellationToken progressToken)
             {
-                PublishOperation(
+                PublishOperationProgress(
                     original,
-                    MapOperationStage(progress.Phase),
-                    OperationGuidance(original, progress),
+                    progress,
                     $"recovery:{command.RecoveryActionId}:{OperationDetailKey(progress)}");
                 await SendProgressLoggingFailuresAsync(
                     () => _session.SendRecoveryOperationProgressAsync(
@@ -1465,6 +1507,19 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
         try
         {
+            if (await IsAttemptTakenOverAsync(command, cancellationToken).ConfigureAwait(false))
+            {
+                _logger.Write(
+                    LogSeverity.Information,
+                    nameof(WireToGateBusinessService),
+                    $"忽略重复SlotOperationCommand：attempt={command.SlotOperationAttemptId}已开始且未结算，或已由装货取消接手，未再次执行仓门IO。");
+                PublishOperatorEvent(
+                    $"operation-taken-over-replay:{command.MessageId}",
+                    "OPERATION_REPLAY",
+                    "收到已开始或已取消的仓位命令的重发，未再次执行仓门IO。");
+                return;
+            }
+
             PublishOperation(
                 command,
                 WireToGateHmiOperationStage.Preparing,
@@ -1472,11 +1527,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 "initial");
             async Task SendProgress(WireToGateOperationProgress progress, CancellationToken progressToken)
             {
-                PublishOperation(
-                    command,
-                    MapOperationStage(progress.Phase),
-                    OperationGuidance(command, progress),
-                    OperationDetailKey(progress));
+                if (progress.Phase == "PREPARING")
+                {
+                    // The executor has journaled the operation by now. The entry gates read a cached
+                    // copy, and the in-flight load cancellation has to be offered while the door is
+                    // open (onboard-hmi#78), so the copy is refreshed before the event that makes the
+                    // HMI read the gates again.
+                    await ReadRecoveryStateCachedAsync(progressToken).ConfigureAwait(false);
+                }
+
+                PublishOperationProgress(command, progress, OperationDetailKey(progress));
                 await SendProgressLoggingFailuresAsync(
                     () => _session.SendOperationProgressAsync(
                         command.SlotOperationAttemptId,
@@ -1489,9 +1549,24 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     progressToken).ConfigureAwait(false);
             }
 
-            WireToGateOperationExecutionResult execution = await _executor
-                .ExecuteAsync(command, SendProgress, cancellationToken)
-                .ConfigureAwait(false);
+            WireToGateOperationExecutionResult execution;
+            try
+            {
+                execution = await _executor
+                    .ExecuteAsync(command, SendProgress, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Aborted by an authorized load cancellation (onboard-hmi#78). No result: the attempt's
+                // conclusion is that cancellation's, which takes the slots over from here.
+                _logger.Write(
+                    LogSeverity.Information,
+                    nameof(WireToGateBusinessService),
+                    $"装货已被授权的装货取消中止，不上报OperationResult：attempt={command.SlotOperationAttemptId}。");
+                return;
+            }
+
             WireToGateOperationResultPayload payload = CreateOperationResultPayload(execution);
             bool completedSuccessfully = string.Equals(
                 execution.OverallOutcome,
@@ -1590,12 +1665,46 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Publishes one executor progress report, and records whether it leaves a load's doors open or
+    /// being reopened -- what the countdown line reads once the deadline has passed.
+    /// </summary>
+    private void PublishOperationProgress(
+        WireToGateSlotOperationCommand command,
+        WireToGateOperationProgress progress,
+        string detailKey)
+    {
+        WireToGateHmiOperationStage stage = MapOperationStage(progress.Phase);
+        string guidance = OperationGuidance(command, progress, StationDeadlinePassed());
+        PublishOperation(command, stage, guidance, detailKey);
+        if (command.OperationType == OperationType.Load
+            && stage is WireToGateHmiOperationStage.Unlocking or WireToGateHmiOperationStage.WaitingOperator)
+        {
+            Volatile.Write(
+                ref _loadAwaitingOperator,
+                new LoadAwaitingOperator(command.SlotOperationAttemptId, progress.Active.ToArray()));
+        }
+    }
+
+    /// <summary>
+    /// Whether the server's station departure deadline has passed. Read from the latest worklist every
+    /// time: the server replaces the deadline as a whole, and the vehicle never extends or voids it.
+    /// </summary>
+    private bool StationDeadlinePassed() =>
+        _session.CurrentJourney.CurrentStopWorklist?.StationDepartureDeadlineAt is { } deadline
+        && _clock.Now >= deadline;
+
     private void PublishOperation(
         WireToGateSlotOperationCommand command,
         WireToGateHmiOperationStage stage,
         string guidance,
         string detailKey)
     {
+        if (stage is not (WireToGateHmiOperationStage.Unlocking or WireToGateHmiOperationStage.WaitingOperator))
+        {
+            ForgetLoadAwaitingOperator(command.SlotOperationAttemptId);
+        }
+
         WireToGateHmiOperationSnapshot operation = new(
             command.SlotOperationAttemptId,
             command.OperationType,
@@ -1715,10 +1824,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _vehicleSafetyMaxAge,
             _vehicleSafetyClockSkewTolerance);
 
-    // The text follows the cause the executor states, not a guess from the round number.
+    // The text follows the cause the executor states, not a guess from the round number. Past the
+    // station departure deadline a load's prompt names the way out as well (program#55,
+    // onboard-hmi#78): the executor keeps reopening, and only the operator's cancel ends the load.
     private static string OperationGuidance(
         WireToGateSlotOperationCommand command,
-        WireToGateOperationProgress progress) => progress.Phase switch
+        WireToGateOperationProgress progress,
+        bool deadlinePassed) => progress.Phase switch
         {
             "PREPARING" => $"正在检查{FormatSlots(command.Slots)}的安全条件。",
             "UNLOCKING" => progress.Cause == WireToGatePromptCause.OppositeReopen
@@ -1728,7 +1840,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 $"{FormatSlots(progress.Active)}关门时货物状态与预期不符，但车辆安全状态未确认（急停或未停稳），" +
                 "暂不重新打开；安全状态恢复后自动打开。",
             "WAITING_OPERATOR" => (command.OperationType == OperationType.Load
-                ? $"请向{FormatSlots(progress.Active)}放入货物并关门。"
+                ? deadlinePassed
+                    ? WireToGateStationDeadlineText.LoadPrompt(progress.Active)
+                    : $"请向{FormatSlots(progress.Active)}放入货物并关门。"
                 : $"请从{FormatSlots(progress.Active)}取出货物并关门。")
                 + (progress.PromptRound == 0 ? string.Empty : $"（第{progress.PromptRound + 1}次提示）"),
             "VERIFYING" => $"正在核对仓门、货物和输出状态；已完成 {progress.Completed.Count}/{command.Slots.Count}。",
@@ -1889,6 +2003,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     }
 
     private void ThrowIfDisposed() => ObjectDisposedException.ThrowIf(_disposed, this);
+
+    /// <summary>The slots of a load whose doors are open or being reopened, waiting on the operator.</summary>
+    private sealed record LoadAwaitingOperator(string SlotOperationAttemptId, IReadOnlyList<int> Slots);
 
     private sealed record SafetyEvaluation(
         DateTimeOffset ObservedAt,

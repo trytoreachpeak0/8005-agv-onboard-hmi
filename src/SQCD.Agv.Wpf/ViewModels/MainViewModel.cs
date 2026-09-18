@@ -508,11 +508,12 @@ public sealed class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 倒计时文案的覆盖入口，留给 <c>8005-agv-onboard-hmi#78</c>（在途装货时期限到期的文案）。
+    /// 倒计时文案的覆盖入口：<c>App</c> 把它接到 <c>WireToGateBusinessService.DescribeExpiredStationDeadline</c>
+    /// （<c>8005-agv-onboard-hmi#78</c>，期限过后在途装货与装货取消的文案）。
     /// </summary>
     /// <remarks>
     /// 每次重算都调用；返回 <c>null</c> 或不设置时显示通用文案。只换文字，档位与闪烁仍按服务端期限算——
-    /// 覆盖方不能借它延长或作废期限。本票不设置它。
+    /// 覆盖方不能借它延长或作废期限。
     /// </remarks>
     internal Func<StationDepartureCountdownContext, string?>? StationDepartureCountdownTextOverride
     {

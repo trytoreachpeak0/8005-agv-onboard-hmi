@@ -143,7 +143,8 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 .ToList()
             : [];
 
-        if (resuming && state.ActiveUnlockSlots.Count > 0)
+        int[] handedOver = HandedOverOpenSlots(state, context);
+        if (resuming && state.ActiveUnlockSlots.Count > 0 && handedOver.Length == 0)
         {
             // An active set is a write-ahead fence.  The previous process may
             // have pulsed before it crashed, so an uncertain active slot is
@@ -199,7 +200,12 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         }
 
         IoSnapshot initial = _ioModule.CurrentSnapshot;
-        string? precheckFailure = ValidateInitialSnapshot(initial, context.Slots, correction);
+        // A door handed over open is expected to be open; it only has to be readable.
+        string? precheckFailure = ValidateInitialSnapshot(
+                initial,
+                context.Slots.Where(slot => !handedOver.Contains(slot)).ToArray(),
+                correction)
+            ?? (handedOver.Any(slot => !GetLocker(initial, slot).IsKnown) ? "SLOT_STATE_UNKNOWN" : null);
         if (precheckFailure is not null)
         {
             AddRejectedResults(initial, context.Slots, completed, results, correction);
@@ -227,7 +233,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             foreach (int slot in context.Slots)
             {
                 LockerSnapshot locker = GetLocker(initial, slot);
-                if (!correction && !locker.HasCargo)
+                if (!correction && IsAlreadyEmpty(locker, slot, handedOver))
                 {
                     completed.Add(slot);
                     UpsertResult(results, CreateSlotResult(locker, "COMPLETED", []));
@@ -237,7 +243,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             await WriteVectorStateAsync(
                 context,
                 WireToGateRecoveryCheckpoint.Prepared,
-                [],
+                handedOver.Where(slot => !completed.Contains(slot)).ToArray(),
                 completed,
                 results,
                 state,
@@ -281,7 +287,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 foreach (int slot in context.Slots.Where(slot => !completed.Contains(slot)))
                 {
                     LockerSnapshot locker = GetLocker(initial, slot);
-                    if (!locker.HasCargo)
+                    if (IsAlreadyEmpty(locker, slot, handedOver))
                     {
                         completed.Add(slot);
                         UpsertResult(results, CreateSlotResult(locker, "COMPLETED", []));
@@ -291,7 +297,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 await WriteVectorStateAsync(
                     context,
                     WireToGateRecoveryCheckpoint.Prepared,
-                    [],
+                    handedOver.Where(slot => !completed.Contains(slot)).ToArray(),
                     completed,
                     results,
                     state,
@@ -313,10 +319,33 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             cancellationToken.ThrowIfCancellationRequested();
             int slotIndex = physicalSlot - 1;
             IoSnapshot beforePulse = _ioModule.CurrentSnapshot;
-            string? slotPrecheckFailure = ValidateInitialSnapshot(
-                beforePulse,
-                [physicalSlot],
-                correction);
+            // A door the aborted load left open is not pulsed: the operator is already at it. Shut empty
+            // since the vector started, it is cleared as it stands; shut over a basket, it is an ordinary
+            // target again and is unlocked to be emptied.
+            if (handedOver.Contains(physicalSlot)
+                && IsFresh(beforePulse)
+                && IsFinalState(GetLocker(beforePulse, physicalSlot), correction))
+            {
+                UpsertResult(
+                    results,
+                    CreateSlotResult(GetLocker(beforePulse, physicalSlot), "COMPLETED", []));
+                completed.Add(physicalSlot);
+                await WriteVectorStateAsync(
+                    context,
+                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                    [],
+                    completed,
+                    results,
+                    state,
+                    cancellationToken).ConfigureAwait(false);
+                continue;
+            }
+
+            bool openHandedOver = handedOver.Contains(physicalSlot)
+                && !IsShut(GetLocker(beforePulse, physicalSlot));
+            string? slotPrecheckFailure = openHandedOver
+                ? null
+                : ValidateInitialSnapshot(beforePulse, [physicalSlot], correction);
             if (slotPrecheckFailure is not null)
             {
                 AddRejectedResults(beforePulse, context.Slots, completed, results, correction);
@@ -347,31 +376,37 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 results,
                 state,
                 cancellationToken).ConfigureAwait(false);
-            await SendProgressAsync(
-                progress,
-                "UNLOCKING",
-                [physicalSlot],
-                completed,
-                cancellationToken).ConfigureAwait(false);
+            if (!openHandedOver)
+            {
+                await SendProgressAsync(
+                    progress,
+                    "UNLOCKING",
+                    [physicalSlot],
+                    completed,
+                    cancellationToken).ConfigureAwait(false);
+            }
 
             try
             {
                 EnsureRemaining(deadline, cancellationToken);
-                await _ioModule.PulseUnlockAsync(slotIndex, cancellationToken).ConfigureAwait(false);
-                LockerSnapshot unlocked = await _ioModule.WaitForLockerAsync(
-                    slotIndex,
-                    locker => locker.IsKnown && !locker.IsLocked,
-                    MinTimeout(_options.UnlockFeedbackTimeout, GetRemaining(deadline)),
-                    _options.FeedbackStableWindow,
-                    cancellationToken).ConfigureAwait(false);
-                await _ioModule.WaitForLockerAsync(
-                    slotIndex,
-                    locker => locker.IsKnown
-                        && locker.ObservedAt >= unlocked.ObservedAt
-                        && locker.UnlockOutputRaw is false,
-                    MinTimeout(_options.UnlockOutputResetTimeout, GetRemaining(deadline)),
-                    _options.FeedbackStableWindow,
-                    cancellationToken).ConfigureAwait(false);
+                if (!openHandedOver)
+                {
+                    await _ioModule.PulseUnlockAsync(slotIndex, cancellationToken).ConfigureAwait(false);
+                    LockerSnapshot unlocked = await _ioModule.WaitForLockerAsync(
+                        slotIndex,
+                        locker => locker.IsKnown && !locker.IsLocked,
+                        MinTimeout(_options.UnlockFeedbackTimeout, GetRemaining(deadline)),
+                        _options.FeedbackStableWindow,
+                        cancellationToken).ConfigureAwait(false);
+                    await _ioModule.WaitForLockerAsync(
+                        slotIndex,
+                        locker => locker.IsKnown
+                            && locker.ObservedAt >= unlocked.ObservedAt
+                            && locker.UnlockOutputRaw is false,
+                        MinTimeout(_options.UnlockOutputResetTimeout, GetRemaining(deadline)),
+                        _options.FeedbackStableWindow,
+                        cancellationToken).ConfigureAwait(false);
+                }
 
                 await SendProgressAsync(
                     progress,
@@ -643,6 +678,36 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
 
         return null;
     }
+
+    /// <summary>
+    /// The doors a load cancelled in flight left open, which this vector takes over without pulsing them
+    /// (ADR-cross-0046, onboard-hmi#78).
+    /// </summary>
+    /// <remarks>
+    /// The business service writes them as the prepared vector's active unlock set once it has aborted
+    /// the load: an active set at <see cref="WireToGateRecoveryCheckpoint.Prepared"/> has no other
+    /// source, because this executor only fences a slot at
+    /// <see cref="WireToGateRecoveryCheckpoint.ActiveUnlockSet"/>. Nothing but a load cancellation hands
+    /// doors over, so for any other vector the same shape stays a fence.
+    /// </remarks>
+    private static int[] HandedOverOpenSlots(
+        WireToGateRecoveryState state,
+        WireToGateRecoveryVectorContext context) =>
+        context.VectorType == WireToGateRecoveryVectorTypes.LoadCancellation
+            && state.RecoveryVector is not null
+            && state.ProvenRecoveryCheckpoint == WireToGateRecoveryCheckpoint.Prepared
+                ? state.ActiveUnlockSlots.Where(context.Slots.Contains).ToArray()
+                : [];
+
+    /// <summary>
+    /// A slot a clear has nothing to do for: empty -- and, if it was handed over open, also shut, locked
+    /// and output reset, since an open empty door is not yet cleared.
+    /// </summary>
+    private static bool IsAlreadyEmpty(LockerSnapshot locker, int slot, int[] handedOver) =>
+        !locker.HasCargo && (!handedOver.Contains(slot) || IsFinalState(locker, correction: false));
+
+    private static bool IsShut(LockerSnapshot locker) =>
+        locker.IsKnown && locker.IsLocked && locker.UnlockOutputRaw is false;
 
     private static bool IsFinalState(LockerSnapshot locker, bool correction) =>
         locker.IsKnown

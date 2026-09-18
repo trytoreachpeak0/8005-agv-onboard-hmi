@@ -202,6 +202,8 @@ public partial class App : System.Windows.Application, IDisposable
                         cancellationToken: cancellationToken),
                     () => _wireToGateBusiness.IsLoadCancellationBeforeSublotOpen,
                     () => _wireToGateBusiness.CurrentSublotRejection);
+                viewModel.StationDepartureCountdownTextOverride =
+                    _wireToGateBusiness.DescribeExpiredStationDeadline;
                 _wireToGateBusiness.Start();
             }
 
