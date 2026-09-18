@@ -1,0 +1,39 @@
+{
+  "schemaVersion": "1.2.0",
+  "gate": "ONBOARD_HMI_G2",
+  "integrationSliceId": "FP-IS-00",
+  "status": "PASS",
+  "startedAt": "2026-09-18T17:27:55.1389666Z",
+  "finishedAt": "2026-09-18T17:29:51.3438466Z",
+  "implementationRepository": "8005-agv-onboard-hmi",
+  "implementationCommit": "29fbf65e0b4d58c80849d5e6d0e44f40903c411e",
+  "implementationBranch": null,
+  "protocolReleaseVersion": "2.0.0",
+  "protocolTag": "protocol-v2.0.0",
+  "protocolProfileId": "AGV_FULL_PRODUCT",
+  "protocolVersion": 3,
+  "protocolApprovalStatus": "APPROVED_RELEASE",
+  "protocolRepositoryCommit": "86575456c847041515b7b75e8851a00e0d939804",
+  "protocolManifestSha256": "4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7",
+  "protocolSchemaBundleSha256": "9db0dbdc22fed7e39edf8d01b1fc40a12f5d70a7414f696f909ab2a87eb8c221",
+  "protocolVectorsSha256": "391fa69a7d6e9f86ea139ba4c74eadf4994bf0a87e89d3dc5258dd7968d9182a",
+  "integrationSliceIndexSha256": "268ce62be4e0ec8fe6d26e2048a59cf1732f02713415a0c5f41b6b009951b6fc",
+  "selectedTestCount": 17,
+  "recordedTestCount": 17,
+  "vectorIds": [
+    "CV-SESSION-RECOVERY-HAPPY",
+    "CV-SESSION-RECONNECT-DURING-RECOVERY",
+    "CV-SNAPSHOT-REPLACE-AND-ACK",
+    "CV-SNAPSHOT-SAME-REVISION-CONFLICT"
+  ],
+  "buildExitCode": 0,
+  "testExitCode": 0,
+  "formatExitCode": 0,
+  "schemaConformance": {
+    "linesChecked": 324,
+    "linesInViolation": 0,
+    "linesInKnownViolation": 0,
+    "schemaCompilationMilliseconds": 35675,
+    "coverage": "test-results/schema-coverage.json"
+  }
+}

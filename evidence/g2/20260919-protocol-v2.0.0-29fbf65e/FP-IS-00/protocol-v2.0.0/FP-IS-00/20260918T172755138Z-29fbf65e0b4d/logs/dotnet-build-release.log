@@ -1,0 +1,18 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  SQCD.Agv.Contracts -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Release\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Core -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\src\SQCD.Agv.Core\bin\Release\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Application -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Release\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.RuleMock -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tools\SQCD.Agv.RuleMock\bin\Release\net8.0\win-x64\SQCD.Agv.RuleMock.dll
+  SQCD.Agv.Infrastructure -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Release\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.SchemaConformance -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tools\SQCD.Agv.SchemaConformance\bin\Release\net8.0\win-x64\SQCD.Agv.SchemaConformance.dll
+  SQCD.Agv.AutomationHost -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Release\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.UnitTests -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll
+  SQCD.Agv.Wpf -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\bin\Release\net8.0-windows\win-x64\SQCD.Agv.Wpf.dll
+  SQCD.Agv.WireToGateG2Tests -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll
+
+Build succeeded.
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:04.50

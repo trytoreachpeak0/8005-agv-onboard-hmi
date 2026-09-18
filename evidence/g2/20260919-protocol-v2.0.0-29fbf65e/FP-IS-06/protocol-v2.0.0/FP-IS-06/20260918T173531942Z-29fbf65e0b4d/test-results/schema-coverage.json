@@ -1,0 +1,139 @@
+{
+  "protocol": {
+    "tag": "protocol-v2.0.0",
+    "releaseVersion": "2.0.0",
+    "profileId": "AGV_FULL_PRODUCT",
+    "protocolVersion": 3,
+    "approvalStatus": "APPROVED_RELEASE",
+    "manifestSha256": "4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7",
+    "vendoredSchemaFiles": 69
+  },
+  "validator": "Corvus.Json.Validator 4.6.7",
+  "linesObserved": 88,
+  "testAuthoredLinesSkipped": 0,
+  "linesChecked": 88,
+  "distinctLinesChecked": 86,
+  "linesInViolation": 0,
+  "linesInKnownViolation": 0,
+  "linesInIssueViolation": 0,
+  "linesInDeliberateViolation": 0,
+  "schemaCompilationMilliseconds": 20616,
+  "validationMilliseconds": 767,
+  "byMessageType": {
+    "CapabilitySnapshot": {
+      "product": 7
+    },
+    "DurableAck": {
+      "synthetic-peer": 10
+    },
+    "ManualChargingReturnToServiceRequested": {
+      "product": 1
+    },
+    "OnboardAlarmSnapshot": {
+      "product": 7
+    },
+    "OperationProgress": {
+      "product": 3
+    },
+    "OperationResult": {
+      "product": 2
+    },
+    "RecoveryStateReport": {
+      "product": 7
+    },
+    "SafetyStateChanged": {
+      "product": 2
+    },
+    "SafetyStateSnapshot": {
+      "product": 7
+    },
+    "SessionAccepted": {
+      "synthetic-peer": 7
+    },
+    "SessionHello": {
+      "product": 7
+    },
+    "SessionReadiness": {
+      "synthetic-peer": 7
+    },
+    "SnapshotAppliedAck": {
+      "synthetic-peer": 21
+    }
+  },
+  "origins": {
+    "product": {
+      "directions": [
+        "O_TO_C",
+        "BIDIRECTIONAL"
+      ],
+      "messageTypesObserved": 9,
+      "messageTypesNotObserved": [
+        "DemandSelectionRequested",
+        "DurableAck",
+        "ExceptionRecoverySessionRequested",
+        "FaultCargoRecoveryResult",
+        "ForcedMechanicalRecoveryResult",
+        "HardwareRecoveryRecordSubmitted",
+        "Heartbeat",
+        "LoadCancellationResult",
+        "LoadCancellationStartRequested",
+        "LoadCompensationRequested",
+        "LoadCompensationResult",
+        "LoadCorrectionRequested",
+        "LoadCorrectionResult",
+        "ManualStationClearanceConfirmationRequested",
+        "PreDepartureSafetyCheckResult",
+        "ProtocolProblem",
+        "RecoveryActionSubmitted",
+        "SlotConfigurationActivationResult",
+        "SlotOperationCommandRejected",
+        "SnapshotAppliedAck",
+        "SublotSubmitted",
+        "UnableToChargeFieldConfirmationRequested"
+      ],
+      "messageTypesOutsideDirection": []
+    },
+    "syntheticPeer": {
+      "directions": [
+        "C_TO_O",
+        "BIDIRECTIONAL"
+      ],
+      "messageTypesObserved": 4,
+      "messageTypesNotObserved": [
+        "CapabilitySnapshotRequested",
+        "CurrentStopWorklistSnapshot",
+        "DemandSelectionResult",
+        "ExceptionRecoverySessionOpened",
+        "ExceptionRecoverySessionRejected",
+        "ExceptionRecoverySessionSnapshot",
+        "FaultCargoRecoveryCommand",
+        "ForcedMechanicalRecoveryCommand",
+        "HardwareRecoveryRecordResult",
+        "HeartbeatAck",
+        "LoadCancellationAuthorization",
+        "LoadCompensationCommand",
+        "LoadCompensationRejected",
+        "LoadCorrectionCommand",
+        "LoadCorrectionRejected",
+        "ManualChargingReturnToServiceResult",
+        "ManualStationClearanceConfirmationResult",
+        "PreDepartureSafetyCheck",
+        "ProtocolProblem",
+        "RecoveryActionAccepted",
+        "RecoveryActionRejected",
+        "SafetyStateSnapshotRequested",
+        "SessionRejected",
+        "SlotConfigurationActivationCommand",
+        "SlotOperationCommand",
+        "SlotOperationResumeCommand",
+        "SublotEntryRequested",
+        "SublotRejected",
+        "UnableToChargeFieldConfirmationResult",
+        "UpcomingStopPlanSnapshot",
+        "VehicleBusinessStateSnapshot"
+      ],
+      "messageTypesOutsideDirection": []
+    }
+  },
+  "knownViolationEntriesNotMatched": []
+}

@@ -1,0 +1,157 @@
+{
+  "protocol": {
+    "tag": "protocol-v2.0.0",
+    "releaseVersion": "2.0.0",
+    "profileId": "AGV_FULL_PRODUCT",
+    "protocolVersion": 3,
+    "approvalStatus": "APPROVED_RELEASE",
+    "manifestSha256": "4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7",
+    "vendoredSchemaFiles": 69
+  },
+  "validator": "Corvus.Json.Validator 4.6.7",
+  "linesObserved": 265,
+  "testAuthoredLinesSkipped": 0,
+  "linesChecked": 265,
+  "distinctLinesChecked": 265,
+  "linesInViolation": 0,
+  "linesInKnownViolation": 0,
+  "linesInIssueViolation": 0,
+  "linesInDeliberateViolation": 0,
+  "schemaCompilationMilliseconds": 39179,
+  "validationMilliseconds": 2017,
+  "byMessageType": {
+    "CapabilitySnapshot": {
+      "product": 15
+    },
+    "CurrentStopWorklistSnapshot": {
+      "synthetic-peer": 1
+    },
+    "DurableAck": {
+      "synthetic-peer": 55
+    },
+    "LoadCancellationAuthorization": {
+      "synthetic-peer": 1
+    },
+    "LoadCancellationResult": {
+      "product": 1
+    },
+    "LoadCancellationStartRequested": {
+      "product": 2
+    },
+    "OnboardAlarmSnapshot": {
+      "product": 15
+    },
+    "OperationProgress": {
+      "product": 15
+    },
+    "OperationResult": {
+      "product": 6
+    },
+    "PreDepartureSafetyCheck": {
+      "synthetic-peer": 2
+    },
+    "PreDepartureSafetyCheckResult": {
+      "product": 1
+    },
+    "ProtocolProblem": {
+      "product": 1
+    },
+    "RecoveryStateReport": {
+      "product": 15
+    },
+    "SafetyStateChanged": {
+      "product": 17
+    },
+    "SafetyStateSnapshot": {
+      "product": 15
+    },
+    "SessionAccepted": {
+      "synthetic-peer": 15
+    },
+    "SessionHello": {
+      "product": 15
+    },
+    "SessionReadiness": {
+      "synthetic-peer": 19
+    },
+    "SlotOperationCommand": {
+      "synthetic-peer": 4
+    },
+    "SnapshotAppliedAck": {
+      "product": 3,
+      "synthetic-peer": 45
+    },
+    "UpcomingStopPlanSnapshot": {
+      "synthetic-peer": 1
+    },
+    "VehicleBusinessStateSnapshot": {
+      "synthetic-peer": 1
+    }
+  },
+  "origins": {
+    "product": {
+      "directions": [
+        "O_TO_C",
+        "BIDIRECTIONAL"
+      ],
+      "messageTypesObserved": 13,
+      "messageTypesNotObserved": [
+        "DemandSelectionRequested",
+        "DurableAck",
+        "ExceptionRecoverySessionRequested",
+        "FaultCargoRecoveryResult",
+        "ForcedMechanicalRecoveryResult",
+        "HardwareRecoveryRecordSubmitted",
+        "Heartbeat",
+        "LoadCompensationRequested",
+        "LoadCompensationResult",
+        "LoadCorrectionRequested",
+        "LoadCorrectionResult",
+        "ManualChargingReturnToServiceRequested",
+        "ManualStationClearanceConfirmationRequested",
+        "RecoveryActionSubmitted",
+        "SlotConfigurationActivationResult",
+        "SlotOperationCommandRejected",
+        "SublotSubmitted",
+        "UnableToChargeFieldConfirmationRequested"
+      ],
+      "messageTypesOutsideDirection": []
+    },
+    "syntheticPeer": {
+      "directions": [
+        "C_TO_O",
+        "BIDIRECTIONAL"
+      ],
+      "messageTypesObserved": 10,
+      "messageTypesNotObserved": [
+        "CapabilitySnapshotRequested",
+        "DemandSelectionResult",
+        "ExceptionRecoverySessionOpened",
+        "ExceptionRecoverySessionRejected",
+        "ExceptionRecoverySessionSnapshot",
+        "FaultCargoRecoveryCommand",
+        "ForcedMechanicalRecoveryCommand",
+        "HardwareRecoveryRecordResult",
+        "HeartbeatAck",
+        "LoadCompensationCommand",
+        "LoadCompensationRejected",
+        "LoadCorrectionCommand",
+        "LoadCorrectionRejected",
+        "ManualChargingReturnToServiceResult",
+        "ManualStationClearanceConfirmationResult",
+        "ProtocolProblem",
+        "RecoveryActionAccepted",
+        "RecoveryActionRejected",
+        "SafetyStateSnapshotRequested",
+        "SessionRejected",
+        "SlotConfigurationActivationCommand",
+        "SlotOperationResumeCommand",
+        "SublotEntryRequested",
+        "SublotRejected",
+        "UnableToChargeFieldConfirmationResult"
+      ],
+      "messageTypesOutsideDirection": []
+    }
+  },
+  "knownViolationEntriesNotMatched": []
+}

@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "1.2.0",
+  "gate": "ONBOARD_HMI_G2",
+  "integrationSliceId": "FP-IS-01",
+  "status": "PASS",
+  "startedAt": "2026-09-18T15:31:22.6129830Z",
+  "finishedAt": "2026-09-18T15:33:16.8134560Z",
+  "implementationRepository": "8005-agv-onboard-hmi",
+  "implementationCommit": "9748c4187e74aeb46cf95557e8f2430e8fe2abf3",
+  "implementationBranch": "w2g/b5-36-g2-evidence",
+  "protocolReleaseVersion": "2.0.0",
+  "protocolTag": "protocol-v2.0.0",
+  "protocolProfileId": "AGV_FULL_PRODUCT",
+  "protocolVersion": 3,
+  "protocolApprovalStatus": "APPROVED_RELEASE",
+  "protocolRepositoryCommit": "86575456c847041515b7b75e8851a00e0d939804",
+  "protocolManifestSha256": "4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7",
+  "protocolSchemaBundleSha256": "9db0dbdc22fed7e39edf8d01b1fc40a12f5d70a7414f696f909ab2a87eb8c221",
+  "protocolVectorsSha256": "391fa69a7d6e9f86ea139ba4c74eadf4994bf0a87e89d3dc5258dd7968d9182a",
+  "integrationSliceIndexSha256": "268ce62be4e0ec8fe6d26e2048a59cf1732f02713415a0c5f41b6b009951b6fc",
+  "selectedTestCount": 5,
+  "recordedTestCount": 5,
+  "vectorIds": [
+    "CV-DEMAND-ACCEPT-TO-PICKUP"
+  ],
+  "buildExitCode": 0,
+  "testExitCode": 0,
+  "formatExitCode": 0,
+  "schemaConformance": {
+    "linesChecked": 62,
+    "linesInViolation": 0,
+    "linesInKnownViolation": 0,
+    "schemaCompilationMilliseconds": 35145,
+    "coverage": "test-results/schema-coverage.json"
+  }
+}
