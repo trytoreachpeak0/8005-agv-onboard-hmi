@@ -10,6 +10,7 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
     private const byte ReadCoilsFunction = 0x01;
     private const byte ReadDiscreteInputsFunction = 0x02;
     private const byte WriteSingleCoilFunction = 0x05;
+    private const byte WriteMultipleCoilsFunction = 0x0F;
 
     private readonly IoModuleSettings _settings;
     private readonly IAppLogger _logger;
@@ -100,8 +101,81 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
             $"已向物理{slotIndex + 1}号仓发送开锁脉冲触发，DO地址={address}。硬件负责自动复位。 ");
     }
 
-    public Task PulseUnlockBatchAsync(IReadOnlyCollection<int> slotIndexes, CancellationToken cancellationToken) =>
-        throw new NotImplementedException();
+    /// <summary>
+    /// Unlocks a set of slots on this module with FC0F multiple-coil writes of ones (ADR-cross-0035
+    /// BatchUnlock). One write covers each contiguous run of target DO addresses; with the standard
+    /// mapping (DO channel = slot index) a contiguous slot set is a single write.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A channel between two targets is never written, not even with a zero. Whether writing 0 to an
+    /// idle unlock output is inert depends on the module: the slots simulator's <c>FollowOutput</c>
+    /// lock-feedback model treats a written 0 as the output ending and reports the lock closing, and
+    /// nothing documents the real module either way. So a gap splits the set into another write.
+    /// </para>
+    /// <para>
+    /// Only ones are written, exactly as <see cref="PulseUnlockAsync"/> writes 0xFF00 and nothing else:
+    /// the reset is the hardware pulse timer's (<c>PulseResetMilliseconds</c>, part of the slot
+    /// configuration fingerprint), and the executors prove it slot by slot from the read-back output.
+    /// Do not add a software write of 0 after the pulse width. It would make that read-back prove our
+    /// own write instead of the timer, hiding an output stuck on; it would race the timer and could
+    /// shorten a pulse; and it would give the batch path a reset the per-slot FC05 path does not have.
+    /// </para>
+    /// <para>
+    /// This module is the only one on the vehicle (<see cref="IoModuleSettings"/> binds all eight slots
+    /// to one host), so there is no cross-module grouping to do here; a second module would get its own
+    /// client and its own group, sent in parallel without cross-device atomicity.
+    /// </para>
+    /// </remarks>
+    public async Task PulseUnlockBatchAsync(IReadOnlyCollection<int> slotIndexes, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(slotIndexes);
+        if (slotIndexes.Count == 0 || slotIndexes.Distinct().Count() != slotIndexes.Count)
+        {
+            throw new ArgumentException("批量开锁的仓位集合不能为空或重复。", nameof(slotIndexes));
+        }
+
+        ushort[] addresses = slotIndexes
+            .Select(slotIndex => checked((ushort)(_settings.DoStartAddress + GetMapping(slotIndex).DoChannel)))
+            .Order()
+            .ToArray();
+        foreach ((ushort start, int count) in ContiguousRuns(addresses))
+        {
+            byte byteCount = checked((byte)((count + 7) / 8));
+            byte[] pdu = new byte[6 + byteCount];
+            pdu[0] = WriteMultipleCoilsFunction;
+            BinaryPrimitives.WriteUInt16BigEndian(pdu.AsSpan(1, 2), start);
+            BinaryPrimitives.WriteUInt16BigEndian(pdu.AsSpan(3, 2), checked((ushort)count));
+            pdu[5] = byteCount;
+            for (int index = 0; index < count; index++)
+            {
+                pdu[6 + (index / 8)] |= (byte)(1 << (index % 8));
+            }
+
+            byte[] response = await ExecuteRequestAsync(pdu, WriteMultipleCoilsFunction, cancellationToken)
+                .ConfigureAwait(false);
+            if (!response.AsSpan().SequenceEqual(pdu.AsSpan(0, 5)))
+            {
+                throw new IOException("FC0F响应与请求不一致，开锁结果未知。");
+            }
+
+            _logger.Write(LogSeverity.Information, nameof(ModbusTcpIoModuleClient),
+                $"已批量发送开锁脉冲触发，DO地址={start}..{start + count - 1}。硬件负责自动复位。");
+        }
+    }
+
+    private static IEnumerable<(ushort Start, int Count)> ContiguousRuns(IReadOnlyList<ushort> sortedAddresses)
+    {
+        int runStart = 0;
+        for (int index = 1; index <= sortedAddresses.Count; index++)
+        {
+            if (index == sortedAddresses.Count || sortedAddresses[index] != sortedAddresses[index - 1] + 1)
+            {
+                yield return (sortedAddresses[runStart], index - runStart);
+                runStart = index;
+            }
+        }
+    }
 
     public async Task<LockerSnapshot> WaitForLockerAsync(
         int slotIndex,
