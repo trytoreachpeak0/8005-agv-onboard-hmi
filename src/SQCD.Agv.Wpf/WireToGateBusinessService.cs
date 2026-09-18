@@ -664,6 +664,18 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return;
             }
 
+            // A forced isolation settled the business side when it was acknowledged, so there is no
+            // operation of its own to settle; and while slots are physically unknown nothing is
+            // settled from the live IO either -- the readings are what cannot be trusted (#107).
+            if (state.ForcedIsolation is { } isolation)
+            {
+                PublishOperatorEvent(
+                    $"forced-isolation-restored:{isolation.RecoveryActionId}",
+                    "OPERATION_RECOVERY_REQUIRED",
+                    $"{FormatSlots(isolation.PhysicallyUnknownSlots)}经强制机械取出，物理状态未知，禁止操作；修复后请提交硬件恢复记录。 ");
+                return;
+            }
+
             WireToGateRecoveryOperationContext? context = state.OperationContext;
             if (context is null
                 || !string.Equals(

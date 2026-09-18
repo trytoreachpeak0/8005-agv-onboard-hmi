@@ -288,6 +288,42 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             "RecoveryActionAccepted",
             cancellationToken);
 
+    /// <summary>
+    /// Sends a hardware recovery record and returns the server's answer. <c>REJECTED</c> is an
+    /// answer, not a failure: it comes back as the result, and nothing on this end changes for it.
+    /// </summary>
+    public async Task<HardwareRecoveryRecordResultPayload> SubmitHardwareRecoveryRecordAsync(
+        string messageId,
+        HardwareRecoveryRecordSubmittedPayload payload,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateHardwareRecoveryRecord(payload);
+        HardwareRecoveryRecordResultPayload result = await SendRecoveryRequestAsync<
+            HardwareRecoveryRecordResultPayload>(
+                "HardwareRecoveryRecordSubmitted",
+                messageId,
+                payload,
+                "HardwareRecoveryRecordResult",
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (!string.Equals(result.RecordId, payload.RecordId, StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("CORRELATION_INVALID");
+        }
+
+        if (result.Outcome is not ("RECORDED" or "REJECTED") || result.RecoverySessionRevision < 0)
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        if (result.Problem is not null)
+        {
+            ValidateProblem(result.Problem);
+        }
+
+        return result;
+    }
+
     public async Task<LoadCancellationAuthorizationPayload> RequestLoadCancellationStartAsync(
         string messageId,
         LoadCancellationStartRequestedPayload payload,
@@ -2433,6 +2469,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             case "ManualChargingReturnToServiceRequested":
             case "ManualChargingReturnToServiceResult":
             case "HardwareRecoveryRecordSubmitted":
+            // A result whose request already gave up waiting: logged, not a reason to drop the session.
+            case "HardwareRecoveryRecordResult":
             case "RecoveryActionSubmitted":
             case "LoadCorrectionRequested":
             case "LoadCorrectionRejected":
@@ -2451,6 +2489,30 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             default:
                 return false;
         }
+    }
+
+    private static void ValidateHardwareRecoveryRecord(HardwareRecoveryRecordSubmittedPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        RequireUuid(payload.RecordId, nameof(payload.RecordId));
+        RequireUuid(payload.ExceptionRecoverySessionId, nameof(payload.ExceptionRecoverySessionId));
+        RequireUuid(payload.RecoveryActionId, nameof(payload.RecoveryActionId));
+        ArgumentNullException.ThrowIfNull(payload.Operator);
+        ArgumentException.ThrowIfNullOrWhiteSpace(payload.Operator.OperatorId);
+        ValidateSortedSlots(payload.Slots);
+        if (payload.AdministratorRole is not ("MAINTENANCE_ADMINISTRATOR" or "SYSTEM_ADMINISTRATOR")
+            || !IsNonEmptyDistinct(payload.ChecksPerformed)
+            || !IsNonEmptyDistinct(payload.ActionsPerformed)
+            || payload.Observations is not { Count: > 0 }
+            || payload.Observations.Any(string.IsNullOrEmpty))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        static bool IsNonEmptyDistinct(IReadOnlyList<string>? items) =>
+            items is { Count: > 0 }
+            && items.All(item => !string.IsNullOrEmpty(item))
+            && items.Distinct(StringComparer.Ordinal).Count() == items.Count;
     }
 
     private static void ValidateManualChargingRequest(

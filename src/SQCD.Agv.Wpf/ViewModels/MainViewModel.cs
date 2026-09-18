@@ -38,6 +38,16 @@ public sealed class MainViewModel : ViewModelBase
     private bool _canRequestLoadCorrection;
     private bool _canRequestFaultCargoHandoff;
     private bool _canRequestForcedMechanicalRecovery;
+    private bool _canConfirmForcedMechanicalRecovery;
+    private bool _canSubmitHardwareRecoveryRecord;
+    private bool _hasPhysicallyUnknownSlots;
+    private string _physicallyUnknownSlotsText = string.Empty;
+    private string _hardwareRecoveryObservations = string.Empty;
+    private Func<bool>? _wireToGateCanConfirmForcedMechanicalRecovery;
+    private Func<CancellationToken, Task<bool>>? _wireToGateForcedMechanicalRecoveryConfirmer;
+    private Func<IReadOnlyList<int>>? _wireToGatePhysicallyUnknownSlots;
+    private Func<bool>? _wireToGateCanSubmitHardwareRecoveryRecord;
+    private Func<string, CancellationToken, Task<bool>>? _wireToGateHardwareRecoveryRecordSubmitter;
     private bool _canRequestManualChargingReturn;
     private bool _hasWireToGateJourney;
     private bool _wireToGateEnabled;
@@ -280,6 +290,26 @@ public sealed class MainViewModel : ViewModelBase
         ApplyWireToGatePresentationCore();
     }
 
+    /// <summary>
+    /// The two steps of a forced mechanical recovery that follow its authorization (onboard-hmi#107):
+    /// the operator's confirmation of the isolation and the manual extraction, and the hardware
+    /// recovery record that clears the slots it left physically unknown.
+    /// </summary>
+    internal void ConfigureForcedIsolation(
+        Func<bool> canConfirm,
+        Func<CancellationToken, Task<bool>> confirmer,
+        Func<IReadOnlyList<int>> physicallyUnknownSlots,
+        Func<bool> canSubmitRecord,
+        Func<string, CancellationToken, Task<bool>> recordSubmitter)
+    {
+        _wireToGateCanConfirmForcedMechanicalRecovery = canConfirm;
+        _wireToGateForcedMechanicalRecoveryConfirmer = confirmer;
+        _wireToGatePhysicallyUnknownSlots = physicallyUnknownSlots;
+        _wireToGateCanSubmitHardwareRecoveryRecord = canSubmitRecord;
+        _wireToGateHardwareRecoveryRecordSubmitter = recordSubmitter;
+        RefreshWireToGateInputStateCore();
+    }
+
     internal void ApplyWireToGateOperatorEvent(WireToGateOperatorEvent operatorEvent) =>
         RunOnUiThread(() =>
         {
@@ -316,6 +346,7 @@ public sealed class MainViewModel : ViewModelBase
         CanRequestFaultCargoHandoff = _wireToGateCanRequestFaultCargoHandoff?.Invoke() == true;
         CanRequestForcedMechanicalRecovery = _wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true;
         CanRequestManualChargingReturn = _wireToGateCanRequestManualChargingReturn?.Invoke() == true;
+        RefreshForcedIsolationCore();
     }
 
     public string VisitText
@@ -425,6 +456,37 @@ public sealed class MainViewModel : ViewModelBase
     {
         get => _canRequestForcedMechanicalRecovery;
         private set => SetProperty(ref _canRequestForcedMechanicalRecovery, value);
+    }
+
+    public bool CanConfirmForcedMechanicalRecovery
+    {
+        get => _canConfirmForcedMechanicalRecovery;
+        private set => SetProperty(ref _canConfirmForcedMechanicalRecovery, value);
+    }
+
+    public bool CanSubmitHardwareRecoveryRecord
+    {
+        get => _canSubmitHardwareRecoveryRecord;
+        private set => SetProperty(ref _canSubmitHardwareRecoveryRecord, value);
+    }
+
+    public bool HasPhysicallyUnknownSlots
+    {
+        get => _hasPhysicallyUnknownSlots;
+        private set => SetProperty(ref _hasPhysicallyUnknownSlots, value);
+    }
+
+    public string PhysicallyUnknownSlotsText
+    {
+        get => _physicallyUnknownSlotsText;
+        private set => SetProperty(ref _physicallyUnknownSlotsText, value);
+    }
+
+    /// <summary>The administrator's account of the repair, sent as the record's observations.</summary>
+    public string HardwareRecoveryObservations
+    {
+        get => _hardwareRecoveryObservations;
+        set => SetProperty(ref _hardwareRecoveryObservations, value ?? string.Empty);
     }
 
     public bool CanRequestManualChargingReturn
@@ -644,6 +706,16 @@ public sealed class MainViewModel : ViewModelBase
             ? Task.FromResult(false)
             : _wireToGateForcedMechanicalRecoveryRequester(cancellationToken);
 
+    public Task<bool> ConfirmForcedMechanicalRecoveryAsync(CancellationToken cancellationToken = default) =>
+        _wireToGateForcedMechanicalRecoveryConfirmer is null
+            ? Task.FromResult(false)
+            : _wireToGateForcedMechanicalRecoveryConfirmer(cancellationToken);
+
+    public Task<bool> SubmitHardwareRecoveryRecordAsync(CancellationToken cancellationToken = default) =>
+        _wireToGateHardwareRecoveryRecordSubmitter is null
+            ? Task.FromResult(false)
+            : _wireToGateHardwareRecoveryRecordSubmitter(HardwareRecoveryObservations, cancellationToken);
+
     public Task<bool> RequestManualChargingReturnAsync(CancellationToken cancellationToken = default) =>
         _wireToGateManualChargingReturnRequester is null
             ? Task.FromResult(false)
@@ -738,6 +810,8 @@ public sealed class MainViewModel : ViewModelBase
             CanRequestFaultCargoHandoff = false;
             CanRequestForcedMechanicalRecovery = false;
             CanRequestManualChargingReturn = false;
+            CanConfirmForcedMechanicalRecovery = false;
+            CanSubmitHardwareRecoveryRecord = false;
             return;
         }
 
@@ -769,6 +843,18 @@ public sealed class MainViewModel : ViewModelBase
         CanRequestFaultCargoHandoff = _wireToGateCanRequestFaultCargoHandoff?.Invoke() == true;
         CanRequestForcedMechanicalRecovery = _wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true;
         CanRequestManualChargingReturn = _wireToGateCanRequestManualChargingReturn?.Invoke() == true;
+        RefreshForcedIsolationCore();
+    }
+
+    private void RefreshForcedIsolationCore()
+    {
+        CanConfirmForcedMechanicalRecovery = _wireToGateCanConfirmForcedMechanicalRecovery?.Invoke() == true;
+        CanSubmitHardwareRecoveryRecord = _wireToGateCanSubmitHardwareRecoveryRecord?.Invoke() == true;
+        IReadOnlyList<int> unknown = _wireToGatePhysicallyUnknownSlots?.Invoke() ?? [];
+        HasPhysicallyUnknownSlots = unknown.Count > 0;
+        PhysicallyUnknownSlotsText = unknown.Count > 0
+            ? $"{string.Join("、", unknown)} 号仓经强制机械取出，物理状态未知，禁止操作；修复后提交硬件恢复记录。"
+            : string.Empty;
     }
 
     private void RefreshLockerCardsCore()

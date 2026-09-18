@@ -263,6 +263,15 @@ public sealed record WireToGateRecoveryState(
     /// </summary>
     public WireToGatePendingLoadCancellation? PendingLoadCancellation { get; init; }
 
+    /// <summary>
+    /// The device half of a forced mechanical recovery the server acknowledged as
+    /// <c>MECHANICALLY_ISOLATED</c> (REQ-0241, REQ-0242, onboard-hmi#107). The business half settled at
+    /// that acknowledgement, so this outlives the attempt, the operation context and the recovery
+    /// session fields, and every path that resets those carries it over. Only an acknowledged hardware
+    /// recovery record over live readings clears it.
+    /// </summary>
+    public WireToGateForcedIsolation? ForcedIsolation { get; init; }
+
     public static WireToGateRecoveryState Empty { get; } = new(
         null,
         WireToGateRecoveryCheckpoint.None,
@@ -275,6 +284,36 @@ public sealed record WireToGateRecoveryState(
 /// The load operation being cancelled, or <c>null</c> for a cancellation raised before any load was
 /// commanded -- the cancellation before any sublot is entered, 批次5-27 (onboard-hmi#76).
 /// </param>
+/// <summary>
+/// Slots a qualified person opened by hand after the power was cut (REQ-0241): their physical state is
+/// unknown, so no slot operation may touch them, until a hardware recovery record for the whole set is
+/// recorded by the server and the live readings of every slot in it are valid again.
+/// </summary>
+/// <param name="ExceptionRecoverySessionId">The session the forced recovery ran in.</param>
+/// <param name="RecoveryActionId">The forced recovery action the hardware record answers.</param>
+/// <param name="PhysicallyUnknownSlots">The forced recovery's whole slot set, ascending.</param>
+public sealed record WireToGateForcedIsolation(
+    string ExceptionRecoverySessionId,
+    string RecoveryActionId,
+    IReadOnlyList<int> PhysicallyUnknownSlots)
+{
+    /// <summary>
+    /// A hardware recovery record that went out and has had no answer yet. A retry repeats it
+    /// field for field under a new messageId, for the reason <see cref="WireToGatePendingLoadCancellation"/>
+    /// does: the server keeps the first content under the recordId.
+    /// </summary>
+    public WireToGatePendingHardwareRecoveryRecord? PendingRecord { get; init; }
+}
+
+public sealed record WireToGatePendingHardwareRecoveryRecord(
+    string RecordId,
+    string OperatorId,
+    string OperatorVerificationMethod,
+    DateTimeOffset OperatorVerifiedAt,
+    string AdministratorRole,
+    string Observations,
+    DateTimeOffset ObservedAt);
+
 public sealed record WireToGatePendingLoadCancellation(
     string CancellationId,
     string? SlotOperationAttemptId,

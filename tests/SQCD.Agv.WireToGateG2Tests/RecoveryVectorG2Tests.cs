@@ -281,6 +281,7 @@ public sealed class RecoveryVectorG2Tests
         Assert.True(harness.Business.CanRequestForcedMechanicalRecovery);
         Assert.True(await harness.Business.RequestForcedMechanicalRecoveryAsync(
             "现场确认仓门无法电动解锁，申请强制机械恢复。", token));
+        await harness.ConfirmForcedMechanicalRecoveryAsync(token);
 
         JsonElement result = await harness.WaitForResultAsync(
             "ForcedMechanicalRecoveryResult", token);
@@ -304,6 +305,301 @@ public sealed class RecoveryVectorG2Tests
         // next fence decision meaningful.
         WireToGateRecoveryState state = await harness.ReadRecoveryStateAsync(token);
         Assert.Equal(4, state.ForcedRecoveryGeneration);
+    }
+
+    /// <summary>
+    /// REQ-0241: a forced mechanical recovery sends no unlock DO at any point, and reports
+    /// <c>MECHANICALLY_ISOLATED</c> only once the operator has confirmed the isolation and the
+    /// manual extraction (onboard-hmi#107).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Until #107 the command ran through the ordinary clear executor: it pulsed every occupied
+    /// target slot and waited for <c>EMPTY</c> and a closed lock, then mapped that electronic
+    /// finish onto <c>MECHANICALLY_ISOLATED</c>. That is the opposite of the requirement -- the
+    /// lock is exactly what cannot be trusted here, the people at the vehicle have cut its power,
+    /// and a qualified person opens it by hand. The slots hold cargo in this case, so the old path
+    /// would have pulsed slot 1 before anything else.
+    /// </para>
+    /// <para>
+    /// Once the server acknowledged the result, the business side is settled -- the server has
+    /// cancelled the operation -- so the attempt goes from the journal with no OperationResult,
+    /// and what remains is the device side: the two slots are physically unknown until a hardware
+    /// recovery record clears them.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task ForcedMechanicalRecoverySendsNoUnlockAndReportsOnlyAfterTheOperatorConfirms()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            cargoInTargetSlots: true);
+
+        Assert.True(await harness.Business.RequestForcedMechanicalRecoveryAsync(
+            "现场确认仓门无法电动解锁，申请强制机械恢复。", token));
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Business.CanConfirmForcedMechanicalRecovery,
+            "the authorized forced recovery to wait for the operator's confirmation",
+            token);
+
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.Empty(harness.ResultsOfType("ForcedMechanicalRecoveryResult"));
+        // The seeded load was settled UNKNOWN when the vehicle came up; that one result is the
+        // harness's, and the forced recovery must add none.
+        int operationResultsBefore = harness.ResultsOfType("OperationResult").Count;
+
+        Assert.True(await harness.Business.ConfirmForcedMechanicalRecoveryAsync(token));
+        JsonElement result = await harness.WaitForResultAsync(
+            "ForcedMechanicalRecoveryResult", token);
+
+        Assert.Equal("MECHANICALLY_ISOLATED", result.GetProperty("outcome").GetString());
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.Equal(operationResultsBefore, harness.ResultsOfType("OperationResult").Count);
+        Assert.False(harness.Business.CanConfirmForcedMechanicalRecovery);
+
+        WireToGateRecoveryState state = await harness.ReadRecoveryStateAsync(token);
+        Assert.Null(state.UnsettledSlotOperationAttemptId);
+        Assert.Null(state.OperationContext);
+        Assert.Null(state.RecoveryVector);
+        Assert.Equal([1, 2], state.ForcedIsolation!.PhysicallyUnknownSlots);
+        Assert.Equal(RecoverySessionId, state.ForcedIsolation.ExceptionRecoverySessionId);
+        Assert.Equal(
+            ActionIdFor(ForcedMechanicalRecoveryAction),
+            state.ForcedIsolation.RecoveryActionId);
+        Assert.Equal([1, 2], harness.Business.PhysicallyUnknownSlots);
+    }
+
+    /// <summary>
+    /// The wait for the operator's confirmation is on disk: a restart keeps waiting, and the
+    /// confirmation after it still reports without a single unlock.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task AForcedRecoveryAwaitingConfirmationIsStillAwaitingItAfterARestart()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Path.Combine(
+            Path.GetTempPath(), "w2g-vector", Guid.NewGuid().ToString("N"), "journal.db");
+        await using FakeControlServer server = RecoveryVectorHarness.NewServer();
+
+        await using (RecoveryVectorHarness beforeRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: server,
+            journalPath: journalPath,
+            cargoInTargetSlots: true))
+        {
+            Assert.True(await beforeRestart.Business.RequestForcedMechanicalRecoveryAsync(
+                "现场确认仓门无法电动解锁，申请强制机械恢复。", token));
+            await RecoveryVectorHarness.WaitUntilAsync(
+                () => beforeRestart.Business.CanConfirmForcedMechanicalRecovery,
+                "the authorized forced recovery to wait for the operator's confirmation",
+                token);
+            Assert.Equal(0, beforeRestart.Io.UnlockCount);
+        }
+
+        await using FakeControlServer serverAfterRestart = RecoveryVectorHarness.NewServer();
+        serverAfterRestart.AdoptDurableRecoveryMemoryFrom(server);
+        await using RecoveryVectorHarness afterRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: serverAfterRestart,
+            journalPath: journalPath,
+            baselineRevision: 2,
+            restart: true,
+            cargoInTargetSlots: true);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => afterRestart.Business.CanConfirmForcedMechanicalRecovery,
+            "the forced recovery to still wait for the confirmation after the restart",
+            token);
+
+        Assert.True(await afterRestart.Business.ConfirmForcedMechanicalRecoveryAsync(token));
+        JsonElement result = await afterRestart.WaitForResultAsync(
+            "ForcedMechanicalRecoveryResult", token);
+
+        Assert.Equal("MECHANICALLY_ISOLATED", result.GetProperty("outcome").GetString());
+        Assert.Equal(0, afterRestart.Io.UnlockCount);
+        Assert.DoesNotContain(
+            server.ReceivedEnvelopes,
+            envelope => envelope.MessageType == "ForcedMechanicalRecoveryResult");
+    }
+
+    /// <summary>
+    /// The device half of a forced recovery: a hardware recovery record for the whole isolated set,
+    /// recorded by the server over valid live readings, clears the set -- and resumes nothing
+    /// (ADR-cross-0036, REQ-0242, onboard-hmi#107).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task ARecordedHardwareRecoveryClearsTheWholeIsolatedSet()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            cargoInTargetSlots: true);
+        await harness.IsolateByForcedRecoveryAsync(token);
+        Assert.True(harness.Business.CanSubmitHardwareRecoveryRecord);
+        int operationResultsBefore = harness.ResultsOfType("OperationResult").Count;
+
+        Assert.True(await harness.Business.SubmitHardwareRecoveryRecordAsync(
+            "更换 1、2 号仓锁体，复测锁反馈正常。", token));
+
+        using JsonDocument document = JsonDocument.Parse(
+            Assert.Single(harness.ResultsOfType("HardwareRecoveryRecordSubmitted")));
+        JsonElement record = document.RootElement.GetProperty("payload");
+        Assert.Equal(RecoverySessionId, record.GetProperty("exceptionRecoverySessionId").GetString());
+        Assert.Equal(
+            ActionIdFor(ForcedMechanicalRecoveryAction),
+            record.GetProperty("recoveryActionId").GetString());
+        Assert.Equal(
+            [1, 2],
+            record.GetProperty("slots").EnumerateArray().Select(slot => slot.GetInt32()).ToArray());
+        Assert.Equal(
+            ["LIVE_SLOT_SIGNALS_VALID"],
+            record.GetProperty("checksPerformed").EnumerateArray().Select(item => item.GetString()!).ToArray());
+        Assert.Equal(
+            ["ADMINISTRATOR_CONFIRMED_HARDWARE_REPAIRED"],
+            record.GetProperty("actionsPerformed").EnumerateArray().Select(item => item.GetString()!).ToArray());
+        Assert.Equal(
+            ["更换 1、2 号仓锁体，复测锁反馈正常。"],
+            record.GetProperty("observations").EnumerateArray().Select(item => item.GetString()!).ToArray());
+        Assert.Equal("MAINTENANCE_ADMINISTRATOR", record.GetProperty("administratorRole").GetString());
+
+        WireToGateRecoveryState state = await harness.ReadRecoveryStateAsync(token);
+        Assert.Null(state.ForcedIsolation);
+        Assert.Empty(harness.Business.PhysicallyUnknownSlots);
+        Assert.False(harness.Business.CanSubmitHardwareRecoveryRecord);
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.Equal(operationResultsBefore, harness.ResultsOfType("OperationResult").Count);
+    }
+
+    /// <summary>
+    /// A refused record changes nothing on the vehicle: the set stays physically unknown, and the
+    /// next press is a new record.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task ARejectedHardwareRecoveryRecordLeavesTheSetPhysicallyUnknown()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.HardwareRecoveryRecordOutcome = "REJECTED",
+            cargoInTargetSlots: true);
+        await harness.IsolateByForcedRecoveryAsync(token);
+
+        Assert.False(await harness.Business.SubmitHardwareRecoveryRecordAsync(
+            "复测锁反馈正常。", token));
+
+        Assert.Single(harness.ResultsOfType("HardwareRecoveryRecordSubmitted"));
+        WireToGateRecoveryState state = await harness.ReadRecoveryStateAsync(token);
+        Assert.Equal([1, 2], state.ForcedIsolation!.PhysicallyUnknownSlots);
+        Assert.Null(state.ForcedIsolation.PendingRecord);
+        Assert.Equal([1, 2], harness.Business.PhysicallyUnknownSlots);
+    }
+
+    /// <summary>
+    /// A slot whose live readings are not valid is not cleared, and no record is made for it.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task NoHardwareRecoveryRecordIsSentWhileAnIsolatedSlotCannotBeRead()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            cargoInTargetSlots: true);
+        await harness.IsolateByForcedRecoveryAsync(token);
+        harness.Io.SetUnreadable(1);
+
+        Assert.False(await harness.Business.SubmitHardwareRecoveryRecordAsync(
+            "复测锁反馈正常。", token));
+
+        await harness.WaitForRecoveryBlockedAsync("SLOT_STATE_UNKNOWN", token);
+        Assert.Empty(harness.ResultsOfType("HardwareRecoveryRecordSubmitted"));
+        Assert.Equal(
+            [1, 2],
+            (await harness.ReadRecoveryStateAsync(token)).ForcedIsolation!.PhysicallyUnknownSlots);
+    }
+
+    /// <summary>
+    /// onboard-hmi#107: an unload whose slot operation ended UNKNOWN offers the controlled pickup,
+    /// with the permissions and preconditions a load has, and the handoff is reported against the
+    /// unload's own demand and attempt. Before #107 only "resume after repair" was on offer, which is
+    /// no way out when the lock cannot be repaired.
+    /// </summary>
+    /// <remarks>
+    /// Slot 3 held the basket when the vehicle came back, so the interrupted settlement left the
+    /// unload UNKNOWN; the operator has since taken it out. A settled load is on file too, and the
+    /// compensation entry still stays shut over the unload -- only the two actions that take cargo
+    /// out of an unload are opened.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
+    public async Task AnUnknownUnloadOffersTheFaultCargoHandoffAndReportsItAgainstTheUnload()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.RecoveryVectorSlotOperationAttemptId = UnloadAttemptId,
+            armedUnloadOverSettledLoad: true);
+        harness.Io.SetCargoPresent(2, false);
+
+        Assert.True(harness.Business.CanRequestFaultCargoHandoff);
+        Assert.True(harness.Business.CanRequestForcedMechanicalRecovery);
+        Assert.False(harness.Business.CanRequestLoadCompensation);
+        Assert.True(await harness.Business.RequestFaultCargoHandoffAsync(
+            "卸货仓锁故障，现场受控取货。", token));
+
+        JsonElement result = await harness.WaitForResultAsync("FaultCargoRecoveryResult", token);
+        Assert.Equal("HANDED_OFF", result.GetProperty("overallOutcome").GetString());
+        Assert.Equal(DemandId, result.GetProperty("demandId").GetString());
+        JsonElement slot = Assert.Single(result.GetProperty("slotResults").EnumerateArray());
+        Assert.Equal(3, slot.GetProperty("slotNo").GetInt32());
+        Assert.Equal("EMPTY", slot.GetProperty("finalPhysicalState").GetString());
+
+        using JsonDocument submitted = JsonDocument.Parse(
+            Assert.Single(harness.ResultsOfType("RecoveryActionSubmitted")));
+        Assert.Equal(
+            [3],
+            submitted.RootElement.GetProperty("payload").GetProperty("slots").EnumerateArray()
+                .Select(item => item.GetInt32()).ToArray());
+    }
+
+    /// <summary>
+    /// onboard-hmi#107: the forced mechanical recovery is on offer over an UNKNOWN unload too, and
+    /// sends no unlock there either.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task AnUnknownUnloadOffersTheForcedMechanicalRecoveryWithoutAnyUnlock()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.RecoveryVectorSlotOperationAttemptId = UnloadAttemptId,
+            armedUnloadOverSettledLoad: true);
+
+        Assert.True(harness.Business.CanRequestForcedMechanicalRecovery);
+        Assert.True(await harness.Business.RequestForcedMechanicalRecoveryAsync(
+            "卸货仓锁无法电动解锁，申请强制机械取出。", token));
+        await harness.ConfirmForcedMechanicalRecoveryAsync(token);
+
+        JsonElement result = await harness.WaitForResultAsync(
+            "ForcedMechanicalRecoveryResult", token);
+        Assert.Equal("MECHANICALLY_ISOLATED", result.GetProperty("outcome").GetString());
+        Assert.Equal(
+            [3],
+            result.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()).ToArray());
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.Equal([3], harness.Business.PhysicallyUnknownSlots);
     }
 
     /// <summary>
@@ -1389,6 +1685,35 @@ public sealed class RecoveryVectorG2Tests
         public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(
             CancellationToken cancellationToken) =>
             _journal.ReadRecoveryStateAsync(cancellationToken);
+
+        /// <summary>
+        /// Takes the seeded load through a whole forced mechanical recovery -- request, authorization,
+        /// the operator's confirmation, the server's acknowledgement -- so its slots end up physically
+        /// unknown.
+        /// </summary>
+        public async Task IsolateByForcedRecoveryAsync(CancellationToken cancellationToken)
+        {
+            Assert.True(await Business.RequestForcedMechanicalRecoveryAsync(
+                "现场确认仓门无法电动解锁，申请强制机械恢复。", cancellationToken));
+            await ConfirmForcedMechanicalRecoveryAsync(cancellationToken);
+            await WaitUntilAsync(
+                () => Business.PhysicallyUnknownSlots.Count > 0,
+                "the acknowledged forced recovery to leave its slots physically unknown",
+                cancellationToken);
+        }
+
+        /// <summary>
+        /// Waits for the authorized forced recovery to be waiting on the operator, then confirms
+        /// the isolation and the manual extraction the way the HMI button does.
+        /// </summary>
+        public async Task ConfirmForcedMechanicalRecoveryAsync(CancellationToken cancellationToken)
+        {
+            await WaitUntilAsync(
+                () => Business.CanConfirmForcedMechanicalRecovery,
+                "the authorized forced recovery to wait for the operator's confirmation",
+                cancellationToken);
+            Assert.True(await Business.ConfirmForcedMechanicalRecoveryAsync(cancellationToken));
+        }
 
         public IReadOnlyList<string> ResultsOfType(string messageType) =>
         [

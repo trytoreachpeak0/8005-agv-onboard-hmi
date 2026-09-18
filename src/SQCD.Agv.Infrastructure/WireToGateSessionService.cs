@@ -141,6 +141,12 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         _client.SubmitRecoveryActionAsync(messageId, payload, cancellationToken);
 
+    public Task<HardwareRecoveryRecordResultPayload> SubmitHardwareRecoveryRecordAsync(
+        string messageId,
+        HardwareRecoveryRecordSubmittedPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.SubmitHardwareRecoveryRecordAsync(messageId, payload, cancellationToken);
+
     public Task<LoadCancellationAuthorizationPayload> RequestLoadCancellationStartAsync(
         string messageId,
         LoadCancellationStartRequestedPayload payload,

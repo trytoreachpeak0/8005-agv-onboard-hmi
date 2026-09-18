@@ -73,6 +73,25 @@ public sealed partial class WireToGateBusinessService
             ForcedMechanicalRecoveryAction,
             WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery);
 
+    /// <summary>
+    /// Whether an authorized forced mechanical recovery is waiting for the operator who asked for it
+    /// to confirm the isolation and the manual extraction.
+    /// </summary>
+    public bool CanConfirmForcedMechanicalRecovery =>
+        CanUseRecoveryOperator(requireProof: true)
+        && AwaitingForcedConfirmation(Volatile.Read(ref _lastRecoveryState)) is { } vector
+        && string.Equals(
+            vector.OperatorId,
+            Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable),
+            StringComparison.Ordinal);
+
+    /// <summary>
+    /// The slots left physically unknown by an acknowledged forced mechanical recovery (REQ-0241),
+    /// ascending; empty when there are none.
+    /// </summary>
+    public IReadOnlyList<int> PhysicallyUnknownSlots =>
+        Volatile.Read(ref _lastRecoveryState).ForcedIsolation?.PhysicallyUnknownSlots ?? [];
+
     public Task<bool> RequestLoadCancellationAsync(
         string reason = "现场确认装货取消，申请将目标仓位清空。",
         CancellationToken cancellationToken = default) =>
@@ -123,6 +142,18 @@ public sealed partial class WireToGateBusinessService
                 WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery,
                 reason,
                 cancellationToken),
+            cancellationToken);
+
+    /// <summary>
+    /// The operator's confirmation that the vehicle was isolated -- power cut, brake held -- and a
+    /// qualified person opened the slots by hand (REQ-0241). Only this reports
+    /// <c>MECHANICALLY_ISOLATED</c>; the vehicle itself proves nothing here and sends no unlock.
+    /// </summary>
+    public Task<bool> ConfirmForcedMechanicalRecoveryAsync(
+        CancellationToken cancellationToken = default) =>
+        RunRecoveryRequestAsync(
+            WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery,
+            () => ConfirmForcedMechanicalRecoveryCoreAsync(cancellationToken),
             cancellationToken);
 
     private async Task<bool> RunRecoveryRequestAsync(
@@ -313,7 +344,7 @@ public sealed partial class WireToGateBusinessService
             return vector.VectorType == vectorType;
         }
 
-        if (FindRecoveryLoadOperation(state) is not { } context)
+        if (FindRecoveryOperation(state, action) is not { } context)
         {
             return false;
         }
@@ -896,7 +927,7 @@ public sealed partial class WireToGateBusinessService
     {
         WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
             .ConfigureAwait(false);
-        WireToGateRecoveryOperationContext operation = FindRecoveryLoadOperation(state)
+        WireToGateRecoveryOperationContext operation = FindRecoveryOperation(state, action)
             ?? throw new InvalidOperationException("RECOVERY_OPERATION_CONTEXT_MISSING");
 
         WireToGateRecoveryVectorContext? vector = state.RecoveryVector;
@@ -1267,8 +1298,8 @@ public sealed partial class WireToGateBusinessService
     /// </summary>
     /// <remarks>
     /// The command's <c>demandId</c> is nullable on the wire, but this onboard only ever asks for a
-    /// forced mechanical recovery while an unsettled <see cref="OperationType.Load"/> is bound, so
-    /// a command that carries no demand cannot be the authorization for the vector this end
+    /// forced mechanical recovery over a bound load or unload, both of which carry a demand, so a
+    /// command that carries no demand cannot be the authorization for the vector this end
     /// prepared.  Refusing is the same judgement <c>HANDOFF_ONLY_ON_AUTHORIZED_COMMAND</c> makes
     /// for the sibling vector: an unscoped command is not a narrower authorization, it is a
     /// different one.
@@ -1287,12 +1318,12 @@ public sealed partial class WireToGateBusinessService
             _logger.Write(
                 LogSeverity.Warning,
                 nameof(WireToGateBusinessService),
-                $"强制机械恢复命令未携带 demandId，与本端已绑定的装货作业范围不符："
+                $"强制机械恢复命令未携带 demandId，与本端已绑定的仓位作业范围不符："
                     + $"message={command.MessageId}。未执行仓门IO。");
             PublishOperatorEvent(
                 $"forced-recovery-demand-missing:{command.RecoveryActionId}",
                 "RECOVERY_BLOCKED",
-                "强制机械恢复命令未指明需求单，无法与本端待结算的装货作业对应，已拒绝执行，"
+                "强制机械恢复命令未指明需求单，无法与本端待结算的仓位作业对应，已拒绝执行，"
                     + "未重复执行仓门IO。 ");
             return;
         }
@@ -1317,6 +1348,119 @@ public sealed partial class WireToGateBusinessService
                 resultKey: $"recovery-vector-result:{WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery}:{command.RecoveryActionId}",
                 cancellationToken)
             .ConfigureAwait(false);
+    }
+
+    /// <remarks>
+    /// <para>
+    /// The same operator who asked for the forced recovery confirms it: the action and its outcome
+    /// are one person's account of what was done at the vehicle.
+    /// </para>
+    /// <para>
+    /// The observation time is written before the result goes out, so a press after a lost
+    /// acknowledgement repeats the durable result byte for byte instead of making a second one.
+    /// Once the server acknowledges it the business side is settled -- the server has cancelled the
+    /// operation and needs no OperationResult for it -- and the device side begins:
+    /// <see cref="SettleForcedIsolationAsync"/>.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> ConfirmForcedMechanicalRecoveryCoreAsync(
+        CancellationToken cancellationToken)
+    {
+        WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
+            .ConfigureAwait(false);
+        WireToGateRecoveryVectorContext context = AwaitingForcedConfirmation(state)
+            ?? throw new InvalidOperationException("FORCED_RECOVERY_NOT_AUTHORIZED");
+        if (!string.Equals(
+                ReadOperatorContext().OperatorId,
+                context.OperatorId,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException("RECOVERY_OPERATOR_MISMATCH");
+        }
+
+        DateTimeOffset observedAt = state.RecoveryResultObservedAt ?? _clock.Now.ToUniversalTime();
+        if (state.RecoveryResultObservedAt is null)
+        {
+            await WriteRecoveryStateCachedAsync(
+                    state with { RecoveryResultObservedAt = observedAt },
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        string resultKey =
+            $"recovery-vector-result:{WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery}:{context.PrimaryId}";
+        try
+        {
+            await SendRecoveryVectorResultAsync(
+                    context,
+                    resultKey,
+                    new WireToGateRecoveryVectorExecutionResult(
+                        context.VectorType,
+                        context.PrimaryId,
+                        context.ExceptionRecoverySessionId,
+                        context.DemandId,
+                        context.SlotOperationAttemptId,
+                        null,
+                        "MECHANICALLY_ISOLATED",
+                        [],
+                        observedAt,
+                        "NONE"),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is IOException or TimeoutException or InvalidOperationException)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"强制机械取出结果暂未收到DurableAck：id={context.PrimaryId}。",
+                exception);
+            PublishOperatorEvent(
+                $"recovery-vector-result-pending:{context.VectorType}:{context.PrimaryId}",
+                "RESULT_ACK_PENDING",
+                "强制机械取出结果已持久化，等待服务端确认；可再次按确认重发，不会输出开锁。 ");
+            return false;
+        }
+
+        await SettleForcedIsolationAsync(context, cancellationToken).ConfigureAwait(false);
+        PublishRecoveryVectorOperation(
+            context,
+            WireToGateHmiOperationStage.RecoveryRequired,
+            $"强制机械取出已上报；{FormatSlots(context.Slots)}物理状态未知，禁止操作，等待提交硬件恢复记录。",
+            "isolated");
+        PublishOperatorEvent(
+            $"forced-recovery-isolated:{context.PrimaryId}",
+            "RECOVERY_VECTOR_COMPLETED",
+            $"强制机械取出已由服务端确认；{FormatSlots(context.Slots)}物理状态未知，修复后请提交硬件恢复记录。 ");
+        return true;
+    }
+
+    /// <summary>
+    /// The forced mechanical recovery this vehicle holds an authorization for and has not yet
+    /// reported, or <c>null</c>. Authorized means bound: the command was checked against the
+    /// prepared vector and its hash stamped on it.
+    /// </summary>
+    private static WireToGateRecoveryVectorContext? AwaitingForcedConfirmation(
+        WireToGateRecoveryState state) =>
+        state.RecoveryVector is
+        {
+            VectorType: WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery,
+            CommandContentSha256: not null
+        } vector
+            ? vector
+            : null;
+
+    private void PublishForcedConfirmationAwaited(WireToGateRecoveryVectorContext context)
+    {
+        string guidance =
+            $"强制机械取出已授权：请先断电、抱闸隔离车辆，再由有资质人员以机械方式开锁或拆卸，取出{FormatSlots(context.Slots)}的货物；"
+            + "系统不会输出开锁。完成后由申请人按「已隔离并完成机械取出」确认。";
+        PublishRecoveryVectorOperation(
+            context,
+            WireToGateHmiOperationStage.RecoveryRequired,
+            guidance,
+            "awaiting-confirmation");
     }
 
     private async Task HandleRecoveryVectorRejectedAsync(
@@ -1482,6 +1626,15 @@ public sealed partial class WireToGateBusinessService
                     correction,
                     cancellationToken)
                 .ConfigureAwait(false);
+            if (vectorType == WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery)
+            {
+                // REQ-0241: the vehicle stops sending unlock DOs here and does nothing physical at
+                // all. The bind above put the authorization on disk; what comes next is the people at
+                // the vehicle, and the operator's confirmation is what reports it.
+                PublishForcedConfirmationAwaited(context);
+                return;
+            }
+
             if (!TryClaimOperation(operationKey))
             {
                 return;
@@ -1591,10 +1744,13 @@ public sealed partial class WireToGateBusinessService
             // valid subject here for the same reason it is there -- the server may judge
             // RecoveryRequired the attempt the vehicle just reported COMPLETED -- and reading it any
             // other way is how an entry opens on one subject while the bind refuses a different one.
-            WireToGateRecoveryOperationContext operation = FindRecoveryLoadOperation(state)
+            WireToGateRecoveryOperationContext operation = FindRecoveryOperation(
+                    state,
+                    vectorType == WireToGateRecoveryVectorTypes.LoadCompensation
+                        ? CompensateLoadAction
+                        : null)
                 ?? throw new InvalidDataException("RECOVERY_OPERATION_CONTEXT_MISSING");
-            if (operation.OperationType != OperationType.Load
-                || operation.DemandId != demandId
+            if (operation.DemandId != demandId
                 || operation.SlotOperationAttemptId != boundSlotOperationAttemptId
                 || !operation.Slots.SequenceEqual(slots))
             {
@@ -1823,11 +1979,11 @@ public sealed partial class WireToGateBusinessService
                         RequirePersistedOperator(context),
                         result.ObservedAt),
                     cancellationToken),
-            // REPORT_FORCED_RECOVERY_OUTCOME.  The slot results the executor produced are
-            // deliberately dropped: this message's schema carries only the slot set, because a
-            // forced mechanical recovery is a human opening a locker by hand and the electronic
-            // readings taken afterwards prove nothing about what was done. The two proof flags are
-            // constants for the same reason -- see ForcedMechanicalRecoveryResultPayload.
+            // REPORT_FORCED_RECOVERY_OUTCOME.  No slot results: this message's schema carries only
+            // the slot set, because a forced mechanical recovery is a human opening a locker by hand
+            // and no electronic reading proves anything about what was done. The outcome is the
+            // operator's confirmation, never an executor's finish (onboard-hmi#107). The two proof
+            // flags are constants for the same reason -- see ForcedMechanicalRecoveryResultPayload.
             WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery => _session
                 .SendForcedMechanicalRecoveryResultAsync(
                     resultKey,
@@ -1838,9 +1994,7 @@ public sealed partial class WireToGateBusinessService
                         context.PrimaryId,
                         context.ForcedRecoveryGeneration
                             ?? throw new InvalidDataException("RECOVERY_COMMAND_INVALID"),
-                        result.OverallOutcome == "COMPLETED"
-                            ? "MECHANICALLY_ISOLATED"
-                            : result.OverallOutcome,
+                        result.OverallOutcome,
                         context.Slots,
                         RequirePersistedOperator(context),
                         result.ObservedAt,
@@ -1851,8 +2005,32 @@ public sealed partial class WireToGateBusinessService
         };
     }
 
-    private async Task CompleteRecoveryVectorStateAsync(
+    private Task CompleteRecoveryVectorStateAsync(
         WireToGateRecoveryVectorContext context,
+        CancellationToken cancellationToken) =>
+        SettleRecoveryVectorStateAsync(context, isolation: null, cancellationToken);
+
+    /// <summary>
+    /// Settles the business side of an acknowledged <c>MECHANICALLY_ISOLATED</c> exactly as a
+    /// completed vector does -- no attempt, no operation context, no recovery session fields, and no
+    /// OperationResult, because the server has already cancelled the operation -- and records the
+    /// device side in the same write: the whole slot set is physically unknown (REQ-0241).
+    /// </summary>
+    private Task SettleForcedIsolationAsync(
+        WireToGateRecoveryVectorContext context,
+        CancellationToken cancellationToken) =>
+        SettleRecoveryVectorStateAsync(
+            context,
+            new WireToGateForcedIsolation(
+                context.ExceptionRecoverySessionId
+                    ?? throw new InvalidDataException("RECOVERY_SESSION_SCOPE_MISMATCH"),
+                context.PrimaryId,
+                context.Slots.Order().ToArray()),
+            cancellationToken);
+
+    private async Task SettleRecoveryVectorStateAsync(
+        WireToGateRecoveryVectorContext context,
+        WireToGateForcedIsolation? isolation,
         CancellationToken cancellationToken)
     {
         WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
@@ -1882,7 +2060,8 @@ public sealed partial class WireToGateBusinessService
                     RecoveryOperatorVerifiedAt = null,
                     RecoveryResultObservedAt = null,
                     RecoveryVector = null,
-                    PendingLoadCancellation = null
+                    PendingLoadCancellation = null,
+                    ForcedIsolation = isolation ?? state.ForcedIsolation
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -1943,41 +2122,53 @@ public sealed partial class WireToGateBusinessService
     }
 
     /// <summary>
-    /// The load this recovery is about, or null when there is none.
+    /// The operation this recovery is about, or null when there is none.
     /// </summary>
+    /// <param name="action">
+    /// The recovery action asked for. <c>COMPENSATE_LOAD_ALL_EMPTY</c> is about a load and nothing
+    /// else; a fault cargo handoff and a forced mechanical recovery are about whichever operation
+    /// left cargo behind, a load or an unload (onboard-hmi#107, REQ-0240, REQ-0241). <c>null</c>
+    /// stands for any action but compensation.
+    /// </param>
     /// <remarks>
     /// <para>
-    /// Whatever is armed and unsettled is the subject: a load if that is what it is, and otherwise
-    /// nothing. Only once the vehicle has finished with its armed operation does the settled load
-    /// take over -- an operation whose result the vehicle already recorded is still a valid subject,
-    /// because the server may judge that same attempt <c>RecoveryRequired</c> while the vehicle
-    /// believes it finished, and that is exactly the state a compensation exists for.
+    /// Whatever is armed and unsettled is the subject -- for compensation only if it is a load, and
+    /// otherwise nothing. Only once the vehicle has finished with its armed operation does the
+    /// settled load take over -- an operation whose result the vehicle already recorded is still a
+    /// valid subject, because the server may judge that same attempt <c>RecoveryRequired</c> while
+    /// the vehicle believes it finished, and that is exactly the state a compensation exists for.
     /// <c>MarkResultRecordedAsync</c> keeps the settled identity in
     /// <see cref="WireToGateRecoveryState.LastCompletedLoadOperationContext"/> for this case, so
     /// nothing here is guessed -- the identity is read, never reconstructed.
     /// </para>
     /// <para>
-    /// An armed unload is therefore not a settled load's stand-in, however recent that load is. The
-    /// ordinary sequence at the gate produces exactly that pair -- the load completed, the unload is
-    /// running with a door open -- and falling back there would open the entry on a load nobody is
+    /// An armed unload is therefore never a settled load's stand-in, however recent that load is.
+    /// The ordinary sequence at the gate produces exactly that pair -- the load completed, the unload
+    /// is running with a door open -- and falling back there would open an entry on a load nobody is
     /// asking about, then overwrite the journal when it was taken:
     /// <see cref="WriteRecoveryVectorPreparedAsync"/> rewrites the unsettled attempt to the vector's
-    /// and empties the active unlock set, losing the record of the door standing open right now.
+    /// and empties the active unlock set, losing the record of the door standing open right now. The
+    /// unload is the subject itself for the two actions that take cargo out of it. Until #107 it was
+    /// no subject at all, which left an unload whose lock could not be repaired with only "resume
+    /// after repair" -- no way out.
     /// </para>
     /// <para>
     /// Every caller reads the subject through this one helper -- the entry gates, the request path
     /// and the bind path -- because an entry that opens on a subject the bind path then refuses is
-    /// the failure this fix exists to remove.
+    /// the failure this exists to prevent.
     /// </para>
     /// </remarks>
-    private static WireToGateRecoveryOperationContext? FindRecoveryLoadOperation(
-        WireToGateRecoveryState state) =>
+    private static WireToGateRecoveryOperationContext? FindRecoveryOperation(
+        WireToGateRecoveryState state,
+        string? action) =>
         state.OperationContext is { } armed
             && string.Equals(
                 state.UnsettledSlotOperationAttemptId,
                 armed.SlotOperationAttemptId,
                 StringComparison.Ordinal)
-                ? armed.OperationType == OperationType.Load ? armed : null
+                ? armed.OperationType == OperationType.Load || action != CompensateLoadAction
+                    ? armed
+                    : null
                 : state.LastCompletedLoadOperationContext;
 
     private static WireToGateRecoveryOperationContext RequireUnsettledLoadOperation(
@@ -2307,6 +2498,13 @@ public sealed partial class WireToGateBusinessService
     private void PublishRecoveryVectorRestored(
         WireToGateRecoveryVectorContext context)
     {
+        if (AwaitingForcedConfirmation(Volatile.Read(ref _lastRecoveryState)) is { } awaiting
+            && awaiting.PrimaryId == context.PrimaryId)
+        {
+            PublishForcedConfirmationAwaited(awaiting);
+            return;
+        }
+
         PublishRecoveryVectorOperation(
             context,
             WireToGateHmiOperationStage.RecoveryRequired,

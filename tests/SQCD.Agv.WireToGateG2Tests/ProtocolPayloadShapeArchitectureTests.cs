@@ -79,14 +79,14 @@ public sealed class ProtocolPayloadShapeArchitectureTests
     /// the session this test is still using.
     /// </para>
     /// <para>
-    /// The other three have <b>no send path at all</b>, which is a finding rather than a limit of
+    /// The other two have <b>no send path at all</b>, which is a finding rather than a limit of
     /// this test. <c>DurableAck</c> is <c>BIDIRECTIONAL</c> in the manifest but only ever arrives
     /// here -- the server acknowledges the onboard's durable messages, never the reverse.
-    /// <c>HardwareRecoveryRecordSubmitted</c> and <c>SlotOperationCommandRejected</c> are
-    /// <c>O_TO_C</c> messages this onboard is supposed to originate and only ever parses; both are
-    /// pinned for that reason in
-    /// <c>ProtocolMessageSurfaceArchitectureTests.OnboardToServerTypesDispatchedInbound</c>, and
-    /// both predate v2.
+    /// <c>SlotOperationCommandRejected</c> is an <c>O_TO_C</c> message this onboard is supposed to
+    /// originate and only ever parses; it is pinned for that reason in
+    /// <c>ProtocolMessageSurfaceArchitectureTests.OnboardToServerTypesDispatchedInbound</c>, and it
+    /// predates v2. <c>HardwareRecoveryRecordSubmitted</c> was the second until onboard-hmi#107 gave
+    /// it a send path.
     /// </para>
     /// <para>
     /// The nine <c>O_TO_C</c> types with no mention in <c>src/</c> at all are not listed here: they
@@ -99,8 +99,6 @@ public sealed class ProtocolPayloadShapeArchitectureTests
         {
             ["DurableAck"] =
                 "BIDIRECTIONAL in the manifest, but this end only receives it; the onboard has no send path",
-            ["HardwareRecoveryRecordSubmitted"] =
-                "O_TO_C with no send path; named only as an inbound case label, which predates v2",
             ["LoadCancellationStartRequested"] =
                 "blocks on a LoadCancellationAuthorization the fake server does not synthesise",
             ["ProtocolProblem"] =
@@ -393,6 +391,22 @@ public sealed class ProtocolPayloadShapeArchitectureTests
                     "MAINTENANCE_ADMINISTRATOR",
                     "manual charging completed",
                     86.5),
+                token);
+
+            // onboard-hmi#107: the device half of a forced mechanical recovery, and the server's answer.
+            await client.SubmitHardwareRecoveryRecordAsync(
+                "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+                new HardwareRecoveryRecordSubmittedPayload(
+                    "dddddddd-dddd-4ddd-8ddd-ddddddddddde",
+                    opened.ExceptionRecoverySessionId,
+                    actionId,
+                    operatorContext,
+                    "MAINTENANCE_ADMINISTRATOR",
+                    [1, 2],
+                    ["LIVE_SLOT_SIGNALS_VALID"],
+                    ["ADMINISTRATOR_CONFIRMED_HARDWARE_REPAIRED"],
+                    ["lock replaced"],
+                    DateTimeOffset.UtcNow),
                 token);
 
             await client.RequestLoadCompensationAsync(

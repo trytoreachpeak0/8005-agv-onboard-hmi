@@ -466,12 +466,27 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
         DateTimeOffset started = _clock.Now;
         IoSnapshot initial = _ioModule.CurrentSnapshot;
+        IReadOnlyList<int> physicallyUnknown = journaled.ForcedIsolation?.PhysicallyUnknownSlots ?? [];
+        if (command.Slots.Any(physicallyUnknown.Contains))
+        {
+            // A slot opened by hand after the power was cut (REQ-0241): whatever the IO reads now,
+            // nothing proves what state it was left in, so it is not operated until a hardware
+            // recovery record clears it (onboard-hmi#107).
+            return CreateRejectedResult(command, initial, started, physicallyUnknown);
+        }
+
         string? precheckFailure = ValidateBeforeOperation(initial, command, command.Slots);
         if (precheckFailure is not null)
         {
             return CreateRejectedResult(command, initial, started);
         }
 
+        // A new operation starts from a clean journal, except for the device facts that outlive
+        // every operation.
+        WireToGateRecoveryState fresh = WireToGateRecoveryState.Empty with
+        {
+            ForcedIsolation = journaled.ForcedIsolation
+        };
         WireToGateRecoveryOperationContext context =
             WireToGateRecoveryOperationContext.FromCommand(command);
         List<int> completed = [];
@@ -482,14 +497,14 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             [],
             completed,
             results,
-            WireToGateRecoveryState.Empty,
+            fresh,
             cancellationToken).ConfigureAwait(false);
         await SendProgressAsync(progress, new("PREPARING", [], []), cancellationToken).ConfigureAwait(false);
 
         return await ExecuteRemainingSlotsAsync(
             command,
             context,
-            WireToGateRecoveryState.Empty,
+            fresh,
             completed,
             results,
             progress,
@@ -968,7 +983,8 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 RecoveryVector = existingState.RecoveryVector,
                 RecoveryResultObservedAt = existingState.RecoveryResultObservedAt,
                 LastCompletedLoadOperationContext = existingState.LastCompletedLoadOperationContext,
-                PendingLoadCancellation = pending
+                PendingLoadCancellation = pending,
+                ForcedIsolation = existingState.ForcedIsolation
             },
             cancellationToken).ConfigureAwait(false);
     }
@@ -1024,16 +1040,27 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// Each slot that fails the precheck on its own carries its own refusal reason -- all of them when
     /// the snapshot itself cannot be trusted -- and a slot that was merely next to one carries none.
     /// </remarks>
+    /// <param name="physicallyUnknown">
+    /// Slots under a forced isolation. Each is refused as <c>SLOT_INOPERABLE</c> and reported
+    /// <c>UNKNOWN</c> in every physical field: a reading taken now says nothing about a slot opened
+    /// by hand.
+    /// </param>
     private WireToGateOperationExecutionResult CreateRejectedResult(
         WireToGateSlotOperationCommand command,
         IoSnapshot snapshot,
-        DateTimeOffset observedAt)
+        DateTimeOffset observedAt,
+        IReadOnlyList<int>? physicallyUnknown = null)
     {
         IReadOnlyList<WireToGateSlotExecutionResult> results = command.Slots
-            .Select(slot => CreateSlotResult(
-                ReadLocker(snapshot, slot - 1),
-                "NOT_STARTED",
-                ValidateBeforeOperation(snapshot, command, [slot]) is { } reason ? [reason] : []))
+            .Select(slot => physicallyUnknown?.Contains(slot) == true
+                ? CreateSlotResult(
+                    LockerSnapshot.Unknown(slot - 1, snapshot.ObservedAt),
+                    "NOT_STARTED",
+                    ["SLOT_INOPERABLE"])
+                : CreateSlotResult(
+                    ReadLocker(snapshot, slot - 1),
+                    "NOT_STARTED",
+                    ValidateBeforeOperation(snapshot, command, [slot]) is { } reason ? [reason] : []))
             .ToArray();
         return CreateResult(command, "FAILED", results, WireToGateRecoveryCheckpoint.None, observedAt);
     }
