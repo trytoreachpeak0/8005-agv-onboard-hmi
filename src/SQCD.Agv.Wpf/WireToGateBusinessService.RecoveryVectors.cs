@@ -16,11 +16,18 @@ public sealed partial class WireToGateBusinessService
     private WireToGateRecoveryState _lastRecoveryState = WireToGateRecoveryState.Empty;
 
     /// <summary>
-    /// Whether the load cancellation entry is offered: over a load in flight, which is a recovery
-    /// entry behind <c>recoveryResumeEnabled</c>, or before any sublot was entered, which is not.
+    /// Whether the load cancellation entry is offered: over a load in flight, or before any sublot was
+    /// entered. Neither is behind <c>recoveryResumeEnabled</c>.
     /// </summary>
+    /// <remarks>
+    /// The load in flight was a recovery entry until 8005-agv-onboard-hmi#78. program#55 made the
+    /// operator's cancel the only way to give a load up -- past the deadline an empty door is reopened
+    /// with no limit -- so it has to be there as shipped, and it is the station operator's step, the
+    /// same as the cancellation before any sublot (#76). Compensation, correction, resume and the other
+    /// recovery vectors stay behind the switch.
+    /// </remarks>
     public bool CanRequestLoadCancellation =>
-        (CanUseRecoveryOperator(requireProof: false)
+        (CanUseStationOperator()
             && HasRecoveryVectorOrLoadOperation(WireToGateRecoveryVectorTypes.LoadCancellation))
         || CanRequestLoadCancellationBeforeSublot();
 
@@ -155,13 +162,19 @@ public sealed partial class WireToGateBusinessService
         }
     }
 
-    private bool CanUseRecoveryOperator(bool requireProof)
-    {
-        if (!_recoveryOptions.ResumeAfterRepairEnabled)
-        {
-            return false;
-        }
+    private bool CanUseRecoveryOperator(bool requireProof) =>
+        _recoveryOptions.ResumeAfterRepairEnabled
+        && CanUseStationOperator()
+        && (!requireProof
+            || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
+                _recoveryOptions.AuthenticationProofEnvironmentVariable)));
 
+    /// <summary>
+    /// An operator with an id at a vehicle whose session can carry a request. No maintenance switch and
+    /// no proof: this is what a station operator's step needs.
+    /// </summary>
+    private bool CanUseStationOperator()
+    {
         WireToGateSessionSnapshot session = _session.Current;
         if (!session.Connected
             || session.Readiness is not (WireToGateSessionReadiness.Ready
@@ -170,15 +183,8 @@ public sealed partial class WireToGateBusinessService
             return false;
         }
 
-        string? operatorId = Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable);
-        if (string.IsNullOrWhiteSpace(operatorId))
-        {
-            return false;
-        }
-
-        return !requireProof
-            || !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(
-                _recoveryOptions.AuthenticationProofEnvironmentVariable));
+        return !string.IsNullOrWhiteSpace(
+            Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable));
     }
 
     private bool HasRecoveryVectorOrLoadOperation(string vectorType)

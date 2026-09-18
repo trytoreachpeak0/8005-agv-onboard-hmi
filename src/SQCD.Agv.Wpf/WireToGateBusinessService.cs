@@ -1497,6 +1497,15 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 "initial");
             async Task SendProgress(WireToGateOperationProgress progress, CancellationToken progressToken)
             {
+                if (progress.Phase == "PREPARING")
+                {
+                    // The executor has journaled the operation by now. The entry gates read a cached
+                    // copy, and the in-flight load cancellation has to be offered while the door is
+                    // open (onboard-hmi#78), so the copy is refreshed before the event that makes the
+                    // HMI read the gates again.
+                    await ReadRecoveryStateCachedAsync(progressToken).ConfigureAwait(false);
+                }
+
                 PublishOperationProgress(command, progress, OperationDetailKey(progress));
                 await SendProgressLoggingFailuresAsync(
                     () => _session.SendOperationProgressAsync(

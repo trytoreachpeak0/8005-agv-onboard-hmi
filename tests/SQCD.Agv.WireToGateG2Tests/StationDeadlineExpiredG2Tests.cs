@@ -113,6 +113,53 @@ public sealed class StationDeadlineExpiredG2Tests
         Assert.Null(harness.Business.DescribeExpiredStationDeadline(Context(deadline, now)));
     }
 
+    /// <summary>
+    /// 验收第 3 条：出厂配置（<c>recoveryResumeEnabled=false</c>）下，在途装货的取消入口出现——它是站点操作员的
+    /// 普通一步，与扫码前取消一致；补偿、纠错、恢复与另外两个恢复向量的入口仍不出现。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task WithTheRecoveryEntryOffTheInFlightCancellationIsStillOffered()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token);
+
+        await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
+
+        await Harness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCancellation,
+            "the in-flight load cancellation entry to be offered",
+            token);
+        Assert.False(harness.Business.CanRequestLoadCompensation);
+        Assert.False(harness.Business.CanRequestLoadCorrection);
+        Assert.False(harness.Business.CanRequestResumeAfterRepair);
+        Assert.False(harness.Business.CanRequestFaultCargoHandoff);
+        Assert.False(harness.Business.CanRequestForcedMechanicalRecovery);
+    }
+
+    /// <summary>
+    /// 同一条入口也要求持工号：没有操作员工号时不出现。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task WithoutAnOperatorIdTheInFlightCancellationIsNotOffered()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            operatorVariable: "W2G_G2_DEADLINE_OPERATOR_UNSET");
+
+        // The recovery state the entries read is refreshed when the load starts, before the door opens.
+        await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
+
+        Assert.False(harness.Business.CanRequestLoadCancellation);
+    }
+
     private static StationDepartureCountdownContext Context(DateTimeOffset deadline, DateTimeOffset now) =>
         new(deadline, now, StationDepartureCountdownFormatter.Format(deadline, now));
 
@@ -159,7 +206,8 @@ public sealed class StationDeadlineExpiredG2Tests
             FakeIoModuleClient io,
             CancellationToken cancellationToken,
             Action<FakeControlServer>? configure = null,
-            bool recoveryResumeEnabled = false)
+            bool recoveryResumeEnabled = false,
+            string operatorVariable = OperatorVariable)
         {
             FakeControlServer server = new(IPAddress.Loopback)
             {
@@ -215,7 +263,7 @@ public sealed class StationDeadlineExpiredG2Tests
                     TimeSpan.FromSeconds(2),
                     TimeSpan.FromMilliseconds(10),
                     TimeSpan.FromSeconds(30)),
-                OperatorVariable,
+                operatorVariable,
                 vehicle,
                 TimeSpan.FromSeconds(30),
                 TimeSpan.FromMilliseconds(500),
