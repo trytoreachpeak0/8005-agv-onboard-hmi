@@ -161,11 +161,11 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     resume.RecoveryActionId,
                     StringComparison.Ordinal)
                 || !string.Equals(context.DemandId, resume.DemandId, StringComparison.Ordinal)
+                || !context.Slots.SequenceEqual(resume.Slots)
                 || !string.Equals(
-                    context.CommandContentSha256,
+                    ExpectedResumeCommandSha256(state, context),
                     resume.CommandContentSha256,
-                    StringComparison.OrdinalIgnoreCase)
-                || !context.Slots.SequenceEqual(resume.Slots))
+                    StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
         }
@@ -178,6 +178,22 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             progress,
             cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// 恢复命令携带的是「这一次恢复动作」的内容哈希，不是原仓位操作命令的哈希：服务端按
+    /// 恢复动作号、需求、attempt、仓位集合与强制恢复代际算出它，收到替换结果时再按同一公式
+    /// 复算（控制端 <c>RecoveryCommandHash.ForRecoveryAction</c>）。拿原命令的哈希去比，
+    /// 两者永远不等，维修后继续就永远被拒（onboard-hmi#99）。
+    /// </summary>
+    private static string ExpectedResumeCommandSha256(
+        WireToGateRecoveryState state,
+        WireToGateRecoveryOperationContext context) =>
+        WireToGateRecoveryCommandHash.ForRecoveryAction(
+            state.RecoveryActionId ?? string.Empty,
+            context.DemandId,
+            context.SlotOperationAttemptId,
+            context.Slots,
+            state.ForcedRecoveryGeneration);
 
     public async Task MarkResultRecordedAsync(
         string slotOperationAttemptId,
