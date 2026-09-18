@@ -190,6 +190,7 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task AFailedBatchWriteLeavesEverySlotOfTheSetUnknown()
     {
@@ -491,7 +492,8 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task ASlotThatIsNotProvenKeepsTheClearFromCompletingWithoutTaintingTheOthers(bool stuckOutput)
     {
@@ -542,7 +544,8 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     /// possibly pulsed: nothing is pulsed again, and every slot of the set is UNKNOWN until proven.
     /// </summary>
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task TheBatchIsJournaledAsTheActiveUnlockSetBeforeItIsWritten()
     {
