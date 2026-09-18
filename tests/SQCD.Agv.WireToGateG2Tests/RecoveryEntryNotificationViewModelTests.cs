@@ -49,17 +49,7 @@ public sealed class RecoveryEntryNotificationViewModelTests
         viewModel.PropertyChanged += (_, args) => announced.Add(args.PropertyName);
         // 重启结算完、恢复状态读回之后，业务服务发布的那条「需要管理员恢复」投影。
         offered = true;
-        viewModel.ApplyWireToGateOperatorEvent(new(
-            Now,
-            "OPERATION_RECOVERY_REQUIRED",
-            "上次装货操作未完成：1号仓，需要管理员恢复。",
-            new WireToGateHmiOperationSnapshot(
-                "a5d6ad42-16e6-045c-90ea-2e29b7aaec5d",
-                OperationType.Load,
-                [1],
-                WireToGateHmiOperationStage.RecoveryRequired,
-                "上次装货操作未完成：1号仓，需要管理员恢复。",
-                Now)));
+        viewModel.ApplyWireToGateOperatorEvent(RecoveryRequiredEvent());
 
         Assert.True(viewModel.CanRequestWireToGateRecovery);
         Assert.True(viewModel.CanRequestLoadCompensation);
@@ -70,6 +60,65 @@ public sealed class RecoveryEntryNotificationViewModelTests
         Assert.Contains(nameof(MainViewModel.CanRequestFaultCargoHandoff), announced);
         Assert.Contains(nameof(MainViewModel.CanRequestForcedMechanicalRecovery), announced);
     }
+
+    /// <summary>
+    /// 守卫：视图模型发出的每个变更通知都必须以一个真实存在的公开属性命名。WPF 对不认识的名字不报错、只是不刷新，
+    /// 所以名字错了只会表现为「界面不动」——hmi#112 就是这样在真装置上才被发现的。这里把入口开关、会话、告警、
+    /// 原因锁各走一遍，任何经辅助方法转发时丢了属性名的地方都会在这里变红。
+    /// </summary>
+    [Fact]
+    public async Task EveryChangeNotificationNamesARealPublicProperty()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        List<string?> announced = [];
+        viewModel.PropertyChanged += (_, args) => announced.Add(args.PropertyName);
+        bool offered = false;
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => offered,
+            canRequestRecovery: () => offered,
+            canRequestLoadCancellation: () => offered,
+            canRequestLoadCompensation: () => offered,
+            canRequestLoadCorrection: () => offered,
+            canRequestFaultCargoHandoff: () => offered,
+            canRequestForcedMechanicalRecovery: () => offered,
+            canRequestManualChargingReturn: () => offered,
+            loadCancellationPending: () => offered);
+        viewModel.UpdateWireToGateStatus(RecoveryRequiredSession());
+        viewModel.UpdateOnboardAlarms([
+            new AlarmEntry(
+                OnboardAlarmCodes.IoModuleDisconnected,
+                OnboardAlarmEvaluator.Critical,
+                Now,
+                AlarmScope.CurrentVehicle,
+                "仓门控制模块离线。")
+        ]);
+
+        offered = true;
+        viewModel.ApplyWireToGateOperatorEvent(RecoveryRequiredEvent());
+        viewModel.RecoveryReason = "张三，锁：1号仓锁舌断";
+        offered = false;
+        viewModel.RefreshWireToGateInputState();
+        viewModel.UpdateOnboardAlarms([]);
+        viewModel.UpdateWireToGateStatus(RecoveryRequiredSession() with { Connected = false });
+
+        HashSet<string> publicProperties = [.. typeof(MainViewModel).GetProperties().Select(property => property.Name)];
+        Assert.NotEmpty(announced);
+        Assert.All(announced, name => Assert.Contains(name ?? "(null)", publicProperties));
+    }
+
+    private static WireToGateOperatorEvent RecoveryRequiredEvent() => new(
+        Now,
+        "OPERATION_RECOVERY_REQUIRED",
+        "上次装货操作未完成：1号仓，需要管理员恢复。",
+        new WireToGateHmiOperationSnapshot(
+            "a5d6ad42-16e6-045c-90ea-2e29b7aaec5d",
+            OperationType.Load,
+            [1],
+            WireToGateHmiOperationStage.RecoveryRequired,
+            "上次装货操作未完成：1号仓，需要管理员恢复。",
+            Now));
 
     private static WireToGateSessionSnapshot RecoveryRequiredSession() => new(
         Connected: true,
