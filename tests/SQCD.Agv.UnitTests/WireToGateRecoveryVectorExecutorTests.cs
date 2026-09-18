@@ -482,7 +482,6 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     /// third slot nothing.
     /// </summary>
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
     public async Task EverySlotOfAClearGetsTheWholeOperationTimeoutFromItsOwnTurn()
@@ -513,7 +512,6 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     [InlineData(WireToGateRecoveryVectorTypes.LoadCompensation)]
     [InlineData(WireToGateRecoveryVectorTypes.FaultCargoHandoff)]
     [Trait("IntegrationSlice", "FP-IS-02")]
-    [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
     [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
@@ -573,7 +571,6 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     /// </summary>
     [Theory]
     [MemberData(nameof(OtherDoorConditions))]
-    [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
     public async Task ADoorOutsideTheVectorThatIsNotShutRefusesTheUnlock(string condition, string reason)
