@@ -149,7 +149,12 @@ public sealed class WireToGateSlotOperationExecutorTests
             command.SlotOperationAttemptId,
             WireToGateRecoveryCheckpoint.SafeFinishReached,
             command.Slots,
-            command.CommandContentSha256);
+            WireToGateRecoveryCommandHash.ForRecoveryAction(
+                "55555555-5555-4555-8555-555555555555",
+                command.DemandId,
+                command.SlotOperationAttemptId,
+                command.Slots,
+                0));
 
         WireToGateOperationExecutionResult resumed = await fixture.Executor.ResumeAsync(
             resume,
@@ -236,6 +241,141 @@ public sealed class WireToGateSlotOperationExecutorTests
         Assert.Equal("RECOVERY_STATE_MISMATCH", error.Message);
         Assert.Equal(1, fixture.Io.UnlockCount);
     }
+
+    // agv01 现场 2026-09-16 那一次：闸口卸货途中断电，1 号仓其实已经空了、锁上了，服务端
+    // 授权维修后继续，车却以 RECOVERY_STATE_MISMATCH 拒收。下面的标识与两个哈希都是那条真实
+    // 命令与车上日志里的原值：服务端发的是恢复动作的哈希 38decfb7…，车本地存的是原卸货命令
+    // 的哈希 c82bfafe…。
+    private const string FieldResumeActionId = "2529ab5f-64ac-46b2-87b7-11704403d9e3";
+    private const string FieldRecoverySessionId = "7153e598-3c92-4855-9e81-600a5f7c4435";
+    private const string FieldDemandId = "23a45654-364e-4ea1-afb1-b1fc6fa51641";
+    private const string FieldAttemptId = "8ed0cff4-431b-8456-bcb8-8ef6894b4ef4";
+    private const string FieldResumeCommandSha256 =
+        "38decfb712bb6d92746c53a609ffbb611e46113b19fbca4d77643fa1d84e3a8f";
+    private const string FieldOriginalCommandSha256 =
+        "c82bfafeeb195fcfaa5492cfc770c01324b52e2428b05927bd875440fcbbd04d";
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public void ResumeCommandHashMatchesTheControlServerFormula()
+    {
+        Assert.Equal(
+            FieldResumeCommandSha256,
+            WireToGateRecoveryCommandHash.ForRecoveryAction(
+                FieldResumeActionId,
+                FieldDemandId,
+                FieldAttemptId,
+                [1],
+                0));
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task FieldResumeAfterPowerLossAcceptsTheServerRecoveryActionHash()
+    {
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            initialCargo: false,
+            cancellationToken: TestContext.Current.CancellationToken);
+        await SeedInterruptedFieldUnloadAsync(fixture.Journal);
+
+        WireToGateOperationExecutionResult resumed = await fixture.Executor.ResumeAsync(
+            CreateFieldResume(FieldResumeCommandSha256),
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("COMPLETED", resumed.OverallOutcome);
+        Assert.Equal(0, fixture.Io.UnlockCount);
+        WireToGateSlotExecutionResult slot = Assert.Single(resumed.SlotResults);
+        Assert.Equal(1, slot.SlotNo);
+        Assert.Equal("COMPLETED", slot.Outcome);
+        Assert.Equal("EMPTY", slot.FinalPhysicalState);
+        Assert.Equal("LOCKED", slot.LockState);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task FieldResumeCarryingTheOriginalCommandHashIsRejectedWithoutUnlock()
+    {
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            initialCargo: false,
+            cancellationToken: TestContext.Current.CancellationToken);
+        await SeedInterruptedFieldUnloadAsync(fixture.Journal);
+
+        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Executor.ResumeAsync(
+                CreateFieldResume(FieldOriginalCommandSha256),
+                null,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal("RECOVERY_STATE_MISMATCH", error.Message);
+        Assert.Equal(0, fixture.Io.UnlockCount);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-06")]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task ResumeHashIsBoundToTheForcedRecoveryGeneration()
+    {
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            initialCargo: false,
+            cancellationToken: TestContext.Current.CancellationToken);
+        await SeedInterruptedFieldUnloadAsync(fixture.Journal, forcedRecoveryGeneration: 1);
+
+        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Executor.ResumeAsync(
+                CreateFieldResume(FieldResumeCommandSha256),
+                null,
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal("RECOVERY_STATE_MISMATCH", error.Message);
+        Assert.Equal(0, fixture.Io.UnlockCount);
+    }
+
+    private static async Task SeedInterruptedFieldUnloadAsync(
+        SqliteWireToGateJournal journal,
+        long forcedRecoveryGeneration = 0)
+    {
+        WireToGateRecoveryOperationContext context = new(
+            "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            null,
+            1,
+            DateTimeOffset.UtcNow,
+            FieldDemandId,
+            "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+            FieldAttemptId,
+            OperationType.Unload,
+            [1],
+            1,
+            false,
+            FieldOriginalCommandSha256);
+        await journal.WriteRecoveryStateAsync(
+            new WireToGateRecoveryState(
+                FieldAttemptId,
+                WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                [1],
+                forcedRecoveryGeneration,
+                [])
+            {
+                OperationContext = context,
+                ExceptionRecoverySessionId = FieldRecoverySessionId,
+                RecoveryActionId = FieldResumeActionId
+            },
+            TestContext.Current.CancellationToken);
+    }
+
+    private static WireToGateSlotOperationResumeCommand CreateFieldResume(string commandContentSha256) =>
+        new(
+            "ea1fccd7-1cee-4e5c-9b1f-58df0bb0060d",
+            2,
+            DateTimeOffset.UtcNow,
+            FieldRecoverySessionId,
+            FieldResumeActionId,
+            FieldDemandId,
+            FieldAttemptId,
+            WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+            [1],
+            commandContentSha256);
 
     [Fact]
     [Trait("IntegrationSlice", "W2G-IS-02")]
