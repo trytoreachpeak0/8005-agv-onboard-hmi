@@ -42,6 +42,78 @@ public sealed class ModbusTcpIoModuleClientIntegrationTests
         await client.StopAsync(timeout.Token);
     }
 
+    /// <summary>
+    /// ADR-cross-0035 BatchUnlock on one module: a set of target slots whose DO channels are contiguous is
+    /// unlocked with a single FC0F write of ones, and no FC05 is sent.
+    /// </summary>
+    [Fact]
+    public async Task ABatchUnlockOfContiguousChannelsIsOneMultipleCoilWrite()
+    {
+        await using FakeModbusServer server = new();
+        server.Start();
+        await using ModbusTcpIoModuleClient client = new(CreateSettings(server.Port), new NullLogger());
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+        await client.StartAsync(timeout.Token);
+        await WaitUntilAsync(() => client.IsConnected, timeout.Token);
+
+        await client.PulseUnlockBatchAsync([3, 1, 2], timeout.Token);
+
+        CoilWrite write = Assert.Single(server.CoilWrites);
+        Assert.Equal(0x0F, write.Function);
+        Assert.Equal((ushort)101, write.StartAddress);
+        Assert.Equal([true, true, true], write.Values);
+        Assert.Equal(0, server.WriteCount);
+
+        await client.StopAsync(timeout.Token);
+    }
+
+    /// <summary>
+    /// A channel between two targets is never written, not even with a zero: whether writing 0 to an idle
+    /// unlock output is inert depends on the module (the simulator's FollowOutput model reacts to it), so
+    /// a gap splits the set into one FC0F write per contiguous run of target channels.
+    /// </summary>
+    [Fact]
+    public async Task ABatchUnlockSplitsAtAChannelThatIsNotATarget()
+    {
+        await using FakeModbusServer server = new();
+        server.Start();
+        await using ModbusTcpIoModuleClient client = new(CreateSettings(server.Port), new NullLogger());
+        using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(5));
+        await client.StartAsync(timeout.Token);
+        await WaitUntilAsync(() => client.IsConnected, timeout.Token);
+        server.SetOutput(2, true);
+
+        await client.PulseUnlockBatchAsync([0, 1, 3, 5, 6], timeout.Token);
+
+        Assert.Collection(
+            server.CoilWrites,
+            write => AssertCoilWrite(write, 100, 2),
+            write => AssertCoilWrite(write, 103, 1),
+            write => AssertCoilWrite(write, 105, 2));
+        Assert.DoesNotContain(
+            server.CoilWrites,
+            write => write.StartAddress <= 102 && 102 < write.StartAddress + write.Values.Length);
+        Assert.True(server.GetOutput(2));
+
+        await client.StopAsync(timeout.Token);
+    }
+
+    private static void AssertCoilWrite(CoilWrite write, ushort startAddress, int count)
+    {
+        Assert.Equal(0x0F, write.Function);
+        Assert.Equal(startAddress, write.StartAddress);
+        Assert.Equal(Enumerable.Repeat(true, count), write.Values);
+    }
+
+    private static IoModuleSettings CreateSettings(int port) => new()
+    {
+        Host = "127.0.0.1",
+        Port = port,
+        PollIntervalMs = 20,
+        RequestTimeoutMs = 500,
+        ReconnectDelayMs = 50
+    };
+
     private static async Task WaitUntilAsync(Func<bool> condition, CancellationToken cancellationToken)
     {
         while (!condition())
@@ -60,6 +132,7 @@ public sealed class ModbusTcpIoModuleClientIntegrationTests
         private Task? _serverTask;
         private int _writeCount;
         private int _lastWriteAddress;
+        private readonly List<CoilWrite> _coilWrites = [];
 
         public int Port => ((IPEndPoint)_listener.LocalEndpoint).Port;
 
@@ -71,6 +144,33 @@ public sealed class ModbusTcpIoModuleClientIntegrationTests
         {
             _listener.Start();
             _serverTask = RunAsync(_shutdown.Token);
+        }
+
+        public IReadOnlyList<CoilWrite> CoilWrites
+        {
+            get
+            {
+                lock (_stateGate)
+                {
+                    return _coilWrites.ToArray();
+                }
+            }
+        }
+
+        public void SetOutput(int channel, bool value)
+        {
+            lock (_stateGate)
+            {
+                _outputs[channel] = value;
+            }
+        }
+
+        public bool GetOutput(int channel)
+        {
+            lock (_stateGate)
+            {
+                return _outputs[channel];
+            }
         }
 
         public void SetInput(int channel, bool value)
@@ -144,6 +244,25 @@ public sealed class ModbusTcpIoModuleClientIntegrationTests
                 return request.ToArray();
             }
 
+            if (function == 0x0F)
+            {
+                ushort startAddress = BinaryPrimitives.ReadUInt16BigEndian(request.AsSpan(1, 2));
+                ushort quantity = BinaryPrimitives.ReadUInt16BigEndian(request.AsSpan(3, 2));
+                bool[] values = Enumerable.Range(0, quantity)
+                    .Select(index => (request[6 + (index / 8)] & (1 << (index % 8))) != 0)
+                    .ToArray();
+                lock (_stateGate)
+                {
+                    _coilWrites.Add(new CoilWrite(function, startAddress, values));
+                    for (int index = 0; index < quantity; index++)
+                    {
+                        _outputs[startAddress - 100 + index] = values[index];
+                    }
+                }
+
+                return request.AsSpan(0, 5).ToArray();
+            }
+
             return [unchecked((byte)(function | 0x80)), 0x01];
         }
 
@@ -159,6 +278,8 @@ public sealed class ModbusTcpIoModuleClientIntegrationTests
             _shutdown.Dispose();
         }
     }
+
+    private sealed record CoilWrite(byte Function, ushort StartAddress, bool[] Values);
 
     private sealed class NullLogger : IAppLogger
     {

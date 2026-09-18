@@ -93,6 +93,43 @@ public sealed class FakeIoModuleClient : IIoModuleClient
     {
         lock (_sync)
         {
+            Pulse(slotIndex);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Every batch unlock, as the slot indexes it carried -- one entry per call.</summary>
+    public IReadOnlyList<int[]> BatchUnlocks
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _batchUnlocks.ToArray();
+            }
+        }
+    }
+
+    private readonly List<int[]> _batchUnlocks = [];
+
+    public Task PulseUnlockBatchAsync(IReadOnlyCollection<int> slotIndexes, CancellationToken cancellationToken)
+    {
+        lock (_sync)
+        {
+            _batchUnlocks.Add(slotIndexes.Order().ToArray());
+            foreach (int slotIndex in slotIndexes)
+            {
+                Pulse(slotIndex);
+            }
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private void Pulse(int slotIndex)
+    {
+        {
             UnlockCount++;
             if (OperatorNeverActs)
             {
@@ -114,8 +151,6 @@ public sealed class FakeIoModuleClient : IIoModuleClient
                 });
             }
         }
-
-        return Task.CompletedTask;
     }
 
     public async Task<LockerSnapshot> WaitForLockerAsync(

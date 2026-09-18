@@ -688,6 +688,9 @@ public sealed class OnboardControllerTests
 
         public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
+        public Task PulseUnlockBatchAsync(IReadOnlyCollection<int> slotIndexes, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("This path never batch-unlocks.");
+
         public Task PulseUnlockAsync(int slotIndex, CancellationToken cancellationToken)
         {
             PulseCount++;

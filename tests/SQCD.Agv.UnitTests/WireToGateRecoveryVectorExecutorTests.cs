@@ -512,6 +512,9 @@ public sealed class WireToGateRecoveryVectorExecutorTests
             return Task.CompletedTask;
         }
 
+        public Task PulseUnlockBatchAsync(IReadOnlyCollection<int> slotIndexes, CancellationToken cancellationToken) =>
+            throw new NotSupportedException("This path never batch-unlocks.");
+
         public Task<LockerSnapshot> WaitForLockerAsync(
             int slotIndex,
             Func<LockerSnapshot, bool> predicate,

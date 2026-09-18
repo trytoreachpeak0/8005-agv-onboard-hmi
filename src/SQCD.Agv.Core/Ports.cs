@@ -23,6 +23,10 @@ public interface IIoModuleClient : IAsyncDisposable
     // 脉冲开锁
     public Task PulseUnlockAsync(int slotIndex, CancellationToken cancellationToken);
 
+    // 批量脉冲开锁（ADR-cross-0035 BatchUnlock）：一组仓位在同一 IO 模块上用多线圈写一起打开。
+    // 与 PulseUnlockAsync 一样只写导通，复位由硬件定时器负责，逐仓回读证明。
+    public Task PulseUnlockBatchAsync(IReadOnlyCollection<int> slotIndexes, CancellationToken cancellationToken);
+
     // 等待某个仓位满足条件
     public Task<LockerSnapshot> WaitForLockerAsync(
         int slotIndex,

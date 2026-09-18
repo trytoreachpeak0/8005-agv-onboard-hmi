@@ -100,6 +100,9 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
             $"已向物理{slotIndex + 1}号仓发送开锁脉冲触发，DO地址={address}。硬件负责自动复位。 ");
     }
 
+    public Task PulseUnlockBatchAsync(IReadOnlyCollection<int> slotIndexes, CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+
     public async Task<LockerSnapshot> WaitForLockerAsync(
         int slotIndex,
         Func<LockerSnapshot, bool> predicate,
