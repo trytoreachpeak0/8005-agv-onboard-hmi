@@ -656,6 +656,9 @@ public sealed class RecoveryVectorG2Tests
             cargoInTargetSlots: true,
             seededForcedIsolation: [5]);
 
+        // The settlement publishes its operation before the result goes out, so the harness being
+        // up is not yet the result having arrived.
+        await harness.WaitForInboundAsync("OperationResult", token);
         using JsonDocument settled = JsonDocument.Parse(
             Assert.Single(harness.ResultsOfType("OperationResult")));
         Assert.Equal(
