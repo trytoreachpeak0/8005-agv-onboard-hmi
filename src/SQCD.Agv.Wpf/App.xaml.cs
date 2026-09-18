@@ -180,28 +180,34 @@ public partial class App : System.Windows.Application, IDisposable
                         cancellationToken),
                     () => _wireToGateBusiness.CanSubmitSublot,
                     () => _wireToGateBusiness.CanRequestResumeAfterRepair,
-                    cancellationToken => _wireToGateBusiness.RequestResumeAfterRepairAsync(
-                        cancellationToken: cancellationToken),
+                    // 四个会开异常处置会话的入口带上管理员填写的原因；null 时业务服务用该动作的缺省文字。
+                    (reason, cancellationToken) => _wireToGateBusiness.RequestResumeAfterRepairAsync(
+                        reason,
+                        cancellationToken),
                     () => _wireToGateBusiness.CanRequestLoadCancellation,
                     cancellationToken => _wireToGateBusiness.RequestLoadCancellationAsync(
                         cancellationToken: cancellationToken),
                     () => _wireToGateBusiness.CanRequestLoadCompensation,
-                    cancellationToken => _wireToGateBusiness.RequestLoadCompensationAsync(
-                        cancellationToken: cancellationToken),
+                    (reason, cancellationToken) => _wireToGateBusiness.RequestLoadCompensationAsync(
+                        reason,
+                        cancellationToken),
                     () => _wireToGateBusiness.CanRequestLoadCorrection,
                     cancellationToken => _wireToGateBusiness.RequestLoadCorrectionAsync(
                         cancellationToken: cancellationToken),
                     () => _wireToGateBusiness.CanRequestFaultCargoHandoff,
-                    cancellationToken => _wireToGateBusiness.RequestFaultCargoHandoffAsync(
-                        cancellationToken: cancellationToken),
+                    (reason, cancellationToken) => _wireToGateBusiness.RequestFaultCargoHandoffAsync(
+                        reason,
+                        cancellationToken),
                     () => _wireToGateBusiness.CanRequestForcedMechanicalRecovery,
-                    cancellationToken => _wireToGateBusiness.RequestForcedMechanicalRecoveryAsync(
-                        cancellationToken: cancellationToken),
+                    (reason, cancellationToken) => _wireToGateBusiness.RequestForcedMechanicalRecoveryAsync(
+                        reason,
+                        cancellationToken),
                     () => _wireToGateBusiness.CanRequestManualChargingReturnToService,
                     cancellationToken => _wireToGateBusiness.RequestManualChargingReturnToServiceAsync(
                         cancellationToken: cancellationToken),
                     () => _wireToGateBusiness.IsLoadCancellationBeforeSublotOpen,
-                    () => _wireToGateBusiness.CurrentSublotRejection);
+                    () => _wireToGateBusiness.CurrentSublotRejection,
+                    () => _wireToGateBusiness.RecoveryReasonAlreadyGiven);
                 viewModel.ConfigureForcedIsolation(
                     () => _wireToGateBusiness.CanConfirmForcedMechanicalRecovery,
                     cancellationToken => _wireToGateBusiness.ConfirmForcedMechanicalRecoveryAsync(
@@ -348,7 +354,12 @@ public partial class App : System.Windows.Application, IDisposable
             TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs),
             TimeSpan.FromMilliseconds(settings.VehicleSafety.ClockSkewToleranceMs),
             _wireToGate?.Current.ReasonCodes ?? [],
-            _wireToGateBusiness?.CurrentOperationSnapshot);
+            _wireToGateBusiness?.CurrentOperationSnapshot)
+        {
+            // 期待动作超时（REQ-0358）只在 WIRE_TO_GATE 模式下有；旧模式没有业务服务，这一项为空，求值器不判。
+            ExpectedActionWait = _wireToGateBusiness?.CurrentExpectedActionWait,
+            ExpectedActionOverdueThreshold = settings.Workflow.ExpectedActionOverdueThreshold
+        };
     }
 
     // 本端的求值器不产出与停靠相关的告警，停靠不参与收敛。

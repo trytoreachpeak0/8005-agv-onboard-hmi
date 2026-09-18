@@ -1236,6 +1236,86 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// <returns>服务端 ack 了这一份时为 <c>true</c>；会话此刻不能发时为 <c>false</c>。</returns>
     public async Task<bool> PublishAlarmSnapshotAsync(CancellationToken cancellationToken = default)
     {
+        OnboardAlarmSnapshot? snapshot = null;
+        long? generation = await PublishMidSessionSnapshotAsync(
+            "OnboardAlarmSnapshot",
+            "ONBOARD_ALARM",
+            () =>
+            {
+                snapshot = _alarmBoard.Capture();
+                return (snapshot.SnapshotSequence, CreateOnboardAlarmSnapshotPayload(snapshot));
+            },
+            cancellationToken).ConfigureAwait(false);
+        if (generation is not long applied)
+        {
+            return false;
+        }
+
+        Volatile.Write(ref _acknowledgedAlarms, new OnboardAlarmPublication(applied, snapshot!.Alarms));
+        return true;
+    }
+
+    /// <summary>
+    /// 会话中途回应 <c>SafetyStateSnapshotRequested</c>：报一份此刻的 <c>SafetyStateSnapshot</c>，等服务端 ack
+    /// （REQ-0358，onboard-hmi#109，与 control-server#142 配对）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>读数是此刻的 IO。</b>八个仓的 <c>lockState</c>、<c>physicalState</c>、<c>unlockOutputState</c> 与握手时一样由
+    /// <see cref="CreateSlotStates"/> 从发送这一刻的 <c>CurrentSnapshot</c> 填，<c>safety</c> 摘要也是此刻求值；IO 离线
+    /// 或读不到的仓填 <c>UNKNOWN</c>。服务端看板拿它给管理员看「门早就关了，锁却一直读未锁」这类读数。
+    /// </para>
+    /// <para>
+    /// <b>版本号由调用方给，必须比已被接受的大。</b>快照内容每次都不同（observedAt、读数），同一个版本号换内容就是
+    /// 冲突，服务端会拒。调用方与 <c>SafetyStateChanged</c> 共用同一个版本序列，ack 之后这里把已接受版本推进到它。
+    /// </para>
+    /// <para>
+    /// 与告警快照一样只在接收循环跑着时发、ack 走等待表；服务端在 ack 后面紧跟的 <c>SessionReadiness</c> 由接收循环照常处理。
+    /// </para>
+    /// </remarks>
+    /// <returns>服务端 ack 了这一份时为 <c>true</c>；会话此刻不能发时为 <c>false</c>。</returns>
+    public async Task<bool> PublishSafetyStateSnapshotAsync(
+        long safetyStateVersion,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(
+            safetyStateVersion,
+            Volatile.Read(ref _acceptedSafetyStateVersion));
+        long? generation = await PublishMidSessionSnapshotAsync(
+            "SafetyStateSnapshot",
+            "SAFETY_STATE",
+            () =>
+            {
+                IoSnapshot io = _ioModule.CurrentSnapshot;
+                return (safetyStateVersion, new SafetyStateSnapshotPayload(
+                    safetyStateVersion,
+                    _clock.Now.ToUniversalTime(),
+                    CreateSafetySummary(io),
+                    CreateSlotStates(io)));
+            },
+            cancellationToken).ConfigureAwait(false);
+        if (generation is null)
+        {
+            return false;
+        }
+
+        AdvanceSafetyStateVersion(safetyStateVersion);
+        WireToGateSessionSnapshot current = Current;
+        Publish(current.Connected, current.SessionGeneration, current.Readiness, current.ReasonCodes);
+        return true;
+    }
+
+    /// <summary>
+    /// 会话中途发一份快照并等 <c>SnapshotAppliedAck</c>。规则见 <see cref="PublishAlarmSnapshotAsync"/>。
+    /// </summary>
+    /// <param name="capture">在锁里、确认能发之后才调用，取这一份的修订号与载荷。</param>
+    /// <returns>ack 了时为发出这一份的会话代；会话此刻不能发时为 <c>null</c>。</returns>
+    private async Task<long?> PublishMidSessionSnapshotAsync(
+        string messageType,
+        string snapshotKind,
+        Func<(long Revision, object Payload)> capture,
+        CancellationToken cancellationToken)
+    {
         ThrowIfDisposed();
         await _alarmPublishGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         bool gateHeld = true;
@@ -1251,25 +1331,25 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 || receiveFailure is null
                 || receiveFailure.Task.IsCompleted)
             {
-                return false;
+                return null;
             }
 
-            OnboardAlarmSnapshot snapshot = _alarmBoard.Capture();
+            (long revision, object payload) = capture();
             WireToGateEnvelope envelope = WireToGateProtocolSerializer.Create(
-                "OnboardAlarmSnapshot",
+                messageType,
                 Guid.NewGuid().ToString("D"),
                 null,
                 _options.AgvId,
                 generation,
                 _clock.Now.ToUniversalTime(),
-                CreateOnboardAlarmSnapshotPayload(snapshot));
+                payload);
             messageId = envelope.MessageId;
             string contentSha256 = WireToGateProtocolSerializer.ComputeContentSha256(envelope);
             TaskCompletionSource<WireToGateEnvelope> response = new(
                 TaskCreationOptions.RunContinuationsAsynchronously);
             if (!_responseWaiters.TryAdd(messageId, response))
             {
-                throw new InvalidOperationException("重复的告警快照messageId。");
+                throw new InvalidOperationException($"重复的{messageType} messageId。");
             }
 
             await SendEnvelopeAsync(envelope, cancellationToken).ConfigureAwait(false);
@@ -1279,9 +1359,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             WireToGateEnvelope ackEnvelope = await response.Task
                 .WaitAsync(_options.MessageTimeout, cancellationToken)
                 .ConfigureAwait(false);
-            RequireSnapshotApplied(ackEnvelope, messageId, "ONBOARD_ALARM", snapshot.SnapshotSequence, contentSha256);
-            Volatile.Write(ref _acknowledgedAlarms, new OnboardAlarmPublication(generation, snapshot.Alarms));
-            return true;
+            RequireSnapshotApplied(ackEnvelope, messageId, snapshotKind, revision, contentSha256);
+            return generation;
         }
         finally
         {

@@ -125,6 +125,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -214,11 +215,27 @@
                            TextWrapping="Wrap"
                            Visibility="{Binding HasAlarms, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 <!--
+                    期待动作超时（REQ-0358，8005-agv-onboard-hmi#109）。当前仓自第一次开锁起等太久时出现：会话在线说已上报、
+                    班组长或管理员会到现场查看，断开时只说与服务端断开、请联系管理员。只是告知，这一行旁边没有任何按钮——
+                    判故障在服务端，操作工的界面上不设入口。没有时整行 Collapsed。UIA 按 AutomationId 找它。
+                -->
+                <TextBlock Grid.Row="2"
+                           Grid.Column="0"
+                           Grid.ColumnSpan="3"
+                           Margin="0,8,0,0"
+                           FontSize="14"
+                           FontWeight="Bold"
+                           Foreground="#8A5A00"
+                           AutomationProperties.AutomationId="ExpectedActionOverdue"
+                           Text="{Binding ExpectedActionOverdueText}"
+                           TextWrapping="Wrap"
+                           Visibility="{Binding HasExpectedActionOverdue, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <!--
                     子批拒收原因（ADR-cross-0057，8005-agv-onboard-hmi#77）。服务端录入后重算不符时经 SublotRejected 拒收，
                     这一行写被拒的子批和真实原因；下一步做什么在状态行。放在提示区、不进仓位区。没有拒收时整行 Collapsed，
                     Auto 行高为 0，不改变其余布局。UIA 按 AutomationId 找它，ItemStatus 是原始原因码，判据不必比文案全文。
                 -->
-                <TextBlock Grid.Row="2"
+                <TextBlock Grid.Row="3"
                            Grid.Column="0"
                            Grid.ColumnSpan="3"
                            Margin="0,8,0,0"
@@ -234,7 +251,7 @@
                     强制机械取出之后物理状态未知的仓位（REQ-0241，8005-agv-onboard-hmi#107）。这些仓在提交硬件恢复记录前
                     禁止任何仓位操作；没有时整行 Collapsed。UIA 按 AutomationId 找它。
                 -->
-                <TextBlock Grid.Row="3"
+                <TextBlock Grid.Row="4"
                            Grid.Column="0"
                            Grid.ColumnSpan="3"
                            Margin="0,8,0,0"
@@ -245,11 +262,40 @@
                            Text="{Binding PhysicallyUnknownSlotsText}"
                            TextWrapping="Wrap"
                            Visibility="{Binding HasPhysicallyUnknownSlots, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                <WrapPanel Grid.Row="4"
+                <WrapPanel Grid.Row="5"
                            Grid.Column="0"
                            Grid.ColumnSpan="3"
                            Margin="0,8,0,0"
                            HorizontalAlignment="Right">
+                    <!--
+                        异常处置会话的原因（CP-0005 第五节，8005-agv-onboard-hmi#109）：判定人、故障类别、现场说明，写进
+                        ExceptionRecoverySessionRequested.reason。只跟着会开会话的四个管理员入口出现（申请恢复、补偿清空、
+                        故障交接、强制机械恢复）；留空时按该动作的缺省文字发。
+                    -->
+                    <TextBlock Margin="0,0,4,0"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Text="原因（判定人、故障类别、现场说明）"
+                               Visibility="{Binding HasRecoveryReasonInput, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBox Width="280"
+                             Margin="0,0,8,0"
+                             Padding="4"
+                             FontSize="13"
+                             MaxLength="500"
+                             VerticalContentAlignment="Center"
+                             AutomationProperties.AutomationId="RecoveryReason"
+                             AutomationProperties.Name="异常处置原因"
+                             IsEnabled="{Binding IsRecoveryReasonEditable}"
+                             Text="{Binding RecoveryReason, UpdateSourceTrigger=PropertyChanged}"
+                             Visibility="{Binding HasRecoveryReasonInput, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <!-- 会话已开时发出去的是开会话时那句原因，框锁住并说明，免得白填。 -->
+                    <TextBlock Margin="0,0,8,0"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Foreground="{StaticResource MutedBrush}"
+                               AutomationProperties.AutomationId="RecoveryReasonCarriedOver"
+                               Text="会话已开，原因沿用开会话时填写的"
+                               Visibility="{Binding HasRecoveryReasonCarriedOver, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"

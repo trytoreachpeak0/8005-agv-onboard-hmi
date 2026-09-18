@@ -590,6 +590,7 @@ public sealed class FakeControlServer : IAsyncDisposable
     }
 
     private ConnectionContext? _latestSession;
+    private int _midSessionSafetySnapshotAcksToDrop;
 
     /// <summary>
     /// Sends the <c>SlotOperationCommand</c> that <see cref="SendSlotOperationCommandAfterRecovery"/>
@@ -602,6 +603,35 @@ public sealed class FakeControlServer : IAsyncDisposable
         ConnectionContext context = Volatile.Read(ref _latestSession)
             ?? throw new InvalidOperationException("No session has been accepted yet.");
         return SendSlotOperationCommandAsync(context);
+    }
+
+    /// <summary>
+    /// Sends <c>SafetyStateSnapshotRequested</c> on the latest session, mid-session, the way the control
+    /// server does when an expected-action-overdue alarm first appears (8005-agv-control-server#142,
+    /// REQ-0358): <c>requestedSafetyStateVersion=null</c>, <c>reason=VERSION_GAP</c>. The snapshot that
+    /// answers it is acknowledged and followed by a <c>SessionReadiness</c> line, as the real server does
+    /// for a snapshot after the handshake.
+    /// </summary>
+    /// <summary>
+    /// How many mid-session <c>SafetyStateSnapshot</c>s to apply and then answer nothing: their ack is
+    /// lost after the server took them (onboard-hmi#109 review).
+    /// </summary>
+    public int MidSessionSafetySnapshotAcksToDrop
+    {
+        get => Volatile.Read(ref _midSessionSafetySnapshotAcksToDrop);
+        set => Volatile.Write(ref _midSessionSafetySnapshotAcksToDrop, value);
+    }
+
+    public async Task RequestSafetyStateSnapshotAsync()
+    {
+        ConnectionContext context = Volatile.Read(ref _latestSession)
+            ?? throw new InvalidOperationException("No session has been accepted yet.");
+        context.SafetyStateSnapshotRequested = true;
+        await WriteEnvelopeAsync(context, CreateEnvelope(
+            context,
+            "SafetyStateSnapshotRequested",
+            correlationId: null,
+            new { requestedSafetyStateVersion = (long?)null, reason = "VERSION_GAP" })).ConfigureAwait(false);
     }
 
     public IReadOnlyList<string> IdentityValidationResults
@@ -676,6 +706,9 @@ public sealed class FakeControlServer : IAsyncDisposable
         public long SafetyStateVersion;
         public long AcceptedCapabilityVersion;
         public long AcceptedSafetyStateVersion;
+
+        /// <summary>Set once this session was asked for a safety snapshot mid-session.</summary>
+        public volatile bool SafetyStateSnapshotRequested;
 
         /// <summary>
         /// One line at a time: a test can write on a session (<see cref="ResendSlotOperationCommandAsync"/>)
@@ -1142,6 +1175,13 @@ public sealed class FakeControlServer : IAsyncDisposable
             }
         }
 
+        if (messageType == "SafetyStateSnapshot"
+            && context.SafetyStateSnapshotRequested
+            && Interlocked.Decrement(ref _midSessionSafetySnapshotAcksToDrop) >= 0)
+        {
+            return;
+        }
+
         var ackPayload = new
         {
             snapshotMessageId = snapshot.GetProperty("messageId").GetString()!,
@@ -1159,6 +1199,12 @@ public sealed class FakeControlServer : IAsyncDisposable
             "SnapshotAppliedAck",
             correlationId: snapshot.GetProperty("messageId").GetString()!,
             ackPayload)).ConfigureAwait(false);
+        // A snapshot answering a mid-session request is judged like a SafetyStateChanged: readiness is
+        // decided again and announced right after the ack (8005-agv-control-server#142).
+        if (messageType == "SafetyStateSnapshot" && context.SafetyStateSnapshotRequested)
+        {
+            await WriteEnvelopeAsync(context, CreateSessionReadiness(context)).ConfigureAwait(false);
+        }
     }
 
     private async Task HandleRecoveryStateReportAsync(ConnectionContext context, string line, JsonElement report)

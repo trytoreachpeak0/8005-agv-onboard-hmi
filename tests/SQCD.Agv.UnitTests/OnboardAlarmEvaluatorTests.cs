@@ -227,7 +227,15 @@ public sealed class OnboardAlarmEvaluatorTests
                 CurrentOperation = new WireToGateHmiOperationSnapshot(
                     "ATT-1", OperationType.Load, [1], WireToGateHmiOperationStage.RecoveryRequired, "需要恢复。", Now)
             },
-            WireToGateInputs(unsecured) with { VehicleSafety = Signal(VehicleMotionState.Moving) }
+            WireToGateInputs(unsecured) with { VehicleSafety = Signal(VehicleMotionState.Moving) },
+            WireToGateInputs() with
+            {
+                CurrentOperation = new WireToGateHmiOperationSnapshot(
+                    "ATT-2", OperationType.Unload, [3], WireToGateHmiOperationStage.WaitingOperator, "请取货。", Now),
+                ExpectedActionWait = new SlotExpectedActionWait(
+                    "ATT-2", OperationType.Unload, 3, Now - TimeSpan.FromMinutes(6)),
+                ExpectedActionOverdueThreshold = TimeSpan.FromMinutes(6)
+            }
         ];
 
         string[] raised = [.. worstCases.SelectMany(Codes).Distinct().Order(StringComparer.Ordinal)];

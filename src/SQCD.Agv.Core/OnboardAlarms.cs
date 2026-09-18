@@ -261,6 +261,12 @@ public static class OnboardAlarmCodes
     /// <summary>本车生效的仓位配置指纹与服务端批准的不一致，会话因此不就绪。</summary>
     public const string SlotConfigurationMismatch = "ONBOARD_SLOT_CONFIGURATION_MISMATCH";
 
+    /// <summary>
+    /// 当前仓自本次操作第一次开锁起等操作员太久（REQ-0358）。只让人看到，不改变执行器任何行为；消息是期待的动作。
+    /// 码名由 CP-0005 第 4.1 节定，服务端看板按它认，所以不带 <c>ONBOARD_</c> 前缀。
+    /// </summary>
+    public const string SlotExpectedActionOverdue = "SLOT_EXPECTED_ACTION_OVERDUE";
+
     public static IReadOnlyList<string> All { get; } =
     [
         IoModuleDisconnected,
@@ -273,6 +279,7 @@ public static class OnboardAlarmCodes
         DepartureSafetySignalUnavailable,
         SlotStateStale,
         SlotUnsecuredWhileMoving,
-        SlotConfigurationMismatch
+        SlotConfigurationMismatch,
+        SlotExpectedActionOverdue
     ];
 }

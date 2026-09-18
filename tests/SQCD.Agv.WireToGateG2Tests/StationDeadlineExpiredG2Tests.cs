@@ -18,7 +18,7 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// <see cref="FakeIoModuleClient"/>。服务端下发的装货命令只有 1 号仓（替身的 <c>SingleSlot</c>），attempt 固定为
 /// <see cref="AttemptId"/>。
 /// </remarks>
-public sealed class StationDeadlineExpiredG2Tests
+public sealed partial class StationDeadlineExpiredG2Tests
 {
     private const string CredentialVariable = "W2G_G2_DEADLINE_CREDENTIAL";
     private const string OperatorVariable = "W2G_G2_DEADLINE_OPERATOR";
@@ -363,13 +363,15 @@ public sealed class StationDeadlineExpiredG2Tests
             FakeIoModuleClient io,
             WireToGateSessionService session,
             WireToGateBusinessService business,
-            SqliteWireToGateJournal journal)
+            SqliteWireToGateJournal journal,
+            OnboardAlarmBoard alarmBoard)
         {
             Server = server;
             Io = io;
             _session = session;
             Business = business;
             Journal = journal;
+            AlarmBoard = alarmBoard;
             business.OperatorEventPublished += (_, args) =>
             {
                 lock (_events)
@@ -387,6 +389,11 @@ public sealed class StationDeadlineExpiredG2Tests
 
         public SqliteWireToGateJournal Journal { get; }
 
+        /// <summary>The board the session client publishes <c>OnboardAlarmSnapshot</c> from.</summary>
+        public OnboardAlarmBoard AlarmBoard { get; }
+
+        public WireToGateSessionClient Client => _session.Client;
+
         public static async Task<Harness> StartAsync(
             FakeIoModuleClient io,
             CancellationToken cancellationToken,
@@ -395,7 +402,8 @@ public sealed class StationDeadlineExpiredG2Tests
             string operatorVariable = OperatorVariable,
             string? journalPath = null,
             WireToGateRecoveryState? seed = null,
-            long baselineRevision = 1)
+            long baselineRevision = 1,
+            Action<WireToGateBusinessService>? observe = null)
         {
             FakeControlServer server = NewServer();
             configure?.Invoke(server);
@@ -409,6 +417,7 @@ public sealed class StationDeadlineExpiredG2Tests
 
             RecordingLogger logger = new();
             StoppedVehicle vehicle = new();
+            OnboardAlarmBoard alarmBoard = new("AGV-8005-01", TimeProvider.System);
             WireToGateSessionService session = new(
                 new WireToGateSessionOptions(
                     "127.0.0.1",
@@ -429,7 +438,7 @@ public sealed class StationDeadlineExpiredG2Tests
                 logger,
                 new SystemClock(),
                 vehicle,
-                new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+                alarmBoard,
                 new SlotConfigurationActivationCoordinator(
                     new DocumentActiveSlotConfigurationStore(
                         new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
@@ -459,7 +468,9 @@ public sealed class StationDeadlineExpiredG2Tests
                     "W2G_G2_DEADLINE_PROOF",
                     "MAINTENANCE_ADMINISTRATOR",
                     "CONFIGURED_PROOF"));
-            Harness harness = new(server, io, session, business, journal);
+            Harness harness = new(server, io, session, business, journal, alarmBoard);
+            // Before Start, so an observer sees the command's very first progress report.
+            observe?.Invoke(business);
             business.Start();
             await session.Client.ConnectAndRecoverAsync(cancellationToken);
             return harness;

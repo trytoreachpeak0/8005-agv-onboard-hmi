@@ -639,8 +639,22 @@ public sealed class WorkflowSettings
 
     public int MaxReopenAttempts { get; init; } = 2;
 
+    /// <summary>
+    /// 期待动作超时门槛（REQ-0358）：当前仓自本次操作第一次开锁起累计等待多久就上报服务端。不配时是 3 个
+    /// <see cref="OperationTimeoutMs"/>（默认 6 分钟）；投运按现场实测标定时直接写毫秒数。
+    /// </summary>
+    public int? ExpectedActionOverdueMs { get; init; }
+
+    public TimeSpan ExpectedActionOverdueThreshold =>
+        TimeSpan.FromMilliseconds(ExpectedActionOverdueMs ?? 3L * OperationTimeoutMs);
+
     internal void Validate()
     {
+        if (ExpectedActionOverdueMs is <= 0)
+        {
+            throw new InvalidDataException("期待动作超时门槛必须是正数毫秒。");
+        }
+
         if (UnlockFeedbackTimeoutMs <= 0
             || UnlockOutputResetTimeoutMs <= 0
             || OperationTimeoutMs <= 0
