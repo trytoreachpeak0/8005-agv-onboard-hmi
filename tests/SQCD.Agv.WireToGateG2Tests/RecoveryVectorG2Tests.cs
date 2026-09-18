@@ -603,6 +603,115 @@ public sealed class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// A second forced mechanical recovery is refused while the first one's slots are still
+    /// physically unknown: the vehicle keeps one isolation, and replacing it would make those slots
+    /// operable again with no hardware recovery record (REQ-0242, review of onboard-hmi#110).
+    /// </summary>
+    /// <remarks>
+    /// Slot 5 was isolated earlier and never cleared; the seeded load over slots 1 and 2 is now the
+    /// subject. The server holds the whole vehicle until the record arrives anyway, so refusing here
+    /// costs nothing -- but the onboard does not lean on the server to keep this line.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task ASecondForcedRecoveryIsRefusedWhileAnIsolationIsUncleared()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            cargoInTargetSlots: true,
+            seededForcedIsolation: [5]);
+
+        Assert.False(harness.Business.CanRequestForcedMechanicalRecovery);
+        Assert.False(await harness.Business.RequestForcedMechanicalRecoveryAsync(
+            "现场确认仓门无法电动解锁，申请强制机械恢复。", token));
+
+        await harness.WaitForRecoveryBlockedAsync("HARDWARE_RECOVERY_RECORD_REQUIRED", token);
+        Assert.Empty(harness.ResultsOfType("RecoveryActionSubmitted"));
+        Assert.Empty(harness.ResultsOfType("ExceptionRecoverySessionRequested"));
+        WireToGateRecoveryState state = await harness.ReadRecoveryStateAsync(token);
+        Assert.Equal([5], state.ForcedIsolation!.PhysicallyUnknownSlots);
+        Assert.Equal("abababab-abab-4bab-8bab-abababababab", state.ForcedIsolation.RecoveryActionId);
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// An isolation does not stop a restart from settling an operation on other slots from the live
+    /// IO (8005-agv-program#40), nor from telling the operator it did not finish.
+    /// </summary>
+    /// <remarks>
+    /// Slot 5 is isolated; the seeded load over slots 1 and 2 was cut off mid-run with nothing
+    /// reported. Its slots are not the isolated ones, so reading them is as safe as ever, and the
+    /// executor refuses any command that touches slot 5 anyway.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AnInterruptedOperationOnOtherSlotsIsStillSettledWhileAnIsolationStands()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            cargoInTargetSlots: true,
+            seededForcedIsolation: [5]);
+
+        using JsonDocument settled = JsonDocument.Parse(
+            Assert.Single(harness.ResultsOfType("OperationResult")));
+        Assert.Equal(
+            AttemptId,
+            settled.RootElement.GetProperty("payload").GetProperty("slotOperationAttemptId").GetString());
+        Assert.Equal(AttemptId, harness.Business.CurrentOperationSnapshot!.SlotOperationAttemptId);
+        Assert.Equal([5], harness.Business.PhysicallyUnknownSlots);
+        Assert.Equal(
+            [5],
+            (await harness.ReadRecoveryStateAsync(token)).ForcedIsolation!.PhysicallyUnknownSlots);
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// The server recorded the hardware recovery, but a slot could no longer be read when the vehicle
+    /// checked again: nothing is cleared, and the next press repeats the same record -- same recordId,
+    /// same content, a new messageId -- rather than making a second one.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task ARecordedHardwareRecoveryOverUnreadableSignalsIsRepeatedUnderTheSameRecordId()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            cargoInTargetSlots: true);
+        await harness.IsolateByForcedRecoveryAsync(token);
+        harness.Server.BeforeHardwareRecoveryRecordResult = () => harness.Io.SetUnreadable(1);
+
+        Assert.False(await harness.Business.SubmitHardwareRecoveryRecordAsync(
+            "更换 2 号仓锁体。", token));
+        await harness.WaitForRecoveryBlockedAsync("SLOT_STATE_UNKNOWN", token);
+        WireToGateRecoveryState held = await harness.ReadRecoveryStateAsync(token);
+        Assert.Equal([1, 2], held.ForcedIsolation!.PhysicallyUnknownSlots);
+        Assert.NotNull(held.ForcedIsolation.PendingRecord);
+
+        harness.Server.BeforeHardwareRecoveryRecordResult = null;
+        harness.Io.CloseDoor(1, cargo: false);
+        Assert.True(await harness.Business.SubmitHardwareRecoveryRecordAsync(
+            "第二次按下时换了说明。", token));
+
+        IReadOnlyList<string> records = harness.ResultsOfType("HardwareRecoveryRecordSubmitted");
+        Assert.Equal(2, records.Count);
+        using JsonDocument first = JsonDocument.Parse(records[0]);
+        using JsonDocument second = JsonDocument.Parse(records[1]);
+        Assert.NotEqual(
+            first.RootElement.GetProperty("messageId").GetString(),
+            second.RootElement.GetProperty("messageId").GetString());
+        Assert.Equal(
+            first.RootElement.GetProperty("payload").GetRawText(),
+            second.RootElement.GetProperty("payload").GetRawText());
+        Assert.Null((await harness.ReadRecoveryStateAsync(token)).ForcedIsolation);
+    }
+
+    /// <summary>
     /// REFUSE_STALE_FORCED_RECOVERY_GENERATION.
     /// </summary>
     /// <remarks>
@@ -1403,7 +1512,8 @@ public sealed class RecoveryVectorG2Tests
             string? journalPath = null,
             long baselineRevision = 1,
             bool restart = false,
-            bool nothingOnFile = false)
+            bool nothingOnFile = false,
+            IReadOnlyList<int>? seededForcedIsolation = null)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -1570,7 +1680,15 @@ public sealed class RecoveryVectorG2Tests
                             ? unload
                             : loadAlreadySettled || nothingOnFile ? null : load,
                         LastCompletedLoadOperationContext =
-                            loadAlreadySettled || armedUnloadOverSettledLoad ? load : null
+                            loadAlreadySettled || armedUnloadOverSettledLoad ? load : null,
+                        // An earlier forced recovery, acknowledged and never cleared by a hardware
+                        // recovery record: its session and action are not this test's.
+                        ForcedIsolation = seededForcedIsolation is null
+                            ? null
+                            : new WireToGateForcedIsolation(
+                                "99999999-9999-4999-8999-999999999999",
+                                "abababab-abab-4bab-8bab-abababababab",
+                                seededForcedIsolation)
                     },
                     cancellationToken);
 

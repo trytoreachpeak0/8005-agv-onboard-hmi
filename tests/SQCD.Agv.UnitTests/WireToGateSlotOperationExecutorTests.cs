@@ -1172,6 +1172,52 @@ public sealed class WireToGateSlotOperationExecutorTests
         Assert.Equal([3], (await fixture.Journal.ReadRecoveryStateAsync(token)).ForcedIsolation!.PhysicallyUnknownSlots);
     }
 
+    /// <summary>
+    /// The isolation is on disk: a restart -- a new journal and executor over the same file -- still
+    /// refuses a command that touches an isolated slot.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task APhysicallyUnknownSlotIsStillRefusedAfterARestart()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string directory = Path.Combine(Path.GetTempPath(), "w2g-executor", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string journalPath = Path.Combine(directory, "journal.db");
+        await using (SqliteWireToGateJournal before = new(journalPath))
+        {
+            await before.InitializeAsync(token);
+            await before.WriteRecoveryStateAsync(
+                WireToGateRecoveryState.Empty with { ForcedIsolation = Isolation([1, 2]) },
+                token);
+        }
+
+        SimulationIo io = new();
+        await using SqliteWireToGateJournal journal = new(journalPath);
+        await journal.InitializeAsync(token);
+        await using WireToGateSlotOperationExecutor executor = new(
+            io,
+            journal,
+            new SystemClock(),
+            new WireToGateSlotOperationExecutorOptions(
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(1),
+                TimeSpan.FromSeconds(1)),
+            () => true);
+
+        WireToGateOperationExecutionResult result = await executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [2], expectedOccupied: true),
+            null,
+            token);
+
+        Assert.Equal("FAILED", result.OverallOutcome);
+        Assert.Equal(["SLOT_INOPERABLE"], result.SlotResults.Single().ReasonCodes);
+        Assert.Equal(0, io.UnlockCount);
+    }
+
     private static WireToGateForcedIsolation Isolation(IReadOnlyList<int> slots) =>
         new(
             "77777777-7777-4777-8777-777777777777",

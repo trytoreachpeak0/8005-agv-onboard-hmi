@@ -544,6 +544,12 @@ public sealed class FakeControlServer : IAsyncDisposable
     public string HardwareRecoveryRecordOutcome { get; set; } = "RECORDED";
 
     /// <summary>
+    /// Runs after a hardware recovery record arrives and before it is answered: what changes at the
+    /// vehicle while the server is deciding.
+    /// </summary>
+    public Action? BeforeHardwareRecoveryRecordResult { get; set; }
+
+    /// <summary>
     /// The <c>slotOperationAttemptId</c> the <c>commandContentSha256</c> is computed over.
     /// </summary>
     /// <remarks>
@@ -1427,6 +1433,7 @@ public sealed class FakeControlServer : IAsyncDisposable
         ConnectionContext context,
         JsonElement request)
     {
+        BeforeHardwareRecoveryRecordResult?.Invoke();
         bool recorded = HardwareRecoveryRecordOutcome == "RECORDED";
         await WriteEnvelopeAsync(
             context,

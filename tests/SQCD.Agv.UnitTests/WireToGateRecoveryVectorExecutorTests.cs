@@ -6,6 +6,43 @@ namespace SQCD.Agv.UnitTests;
 
 public sealed class WireToGateRecoveryVectorExecutorTests
 {
+    /// <summary>
+    /// A local line behind the entries (review of onboard-hmi#110): a clear over a slot a forced
+    /// mechanical recovery left physically unknown is refused before anything is journaled or
+    /// pulsed. Nothing proves what state that slot was left in (REQ-0241).
+    /// </summary>
+    [Theory]
+    [InlineData(WireToGateRecoveryVectorTypes.LoadCompensation)]
+    [InlineData(WireToGateRecoveryVectorTypes.FaultCargoHandoff)]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task AClearOverAPhysicallyUnknownSlotIsRefusedBeforeAnyPulse(string vectorType)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([true, true], cancellationToken: token);
+        await fixture.Journal.WriteRecoveryStateAsync(
+            WireToGateRecoveryState.Empty with
+            {
+                ForcedIsolation = new WireToGateForcedIsolation(
+                    "77777777-7777-4777-8777-777777777777",
+                    "88888888-8888-4888-8888-888888888888",
+                    [2])
+            },
+            token);
+
+        InvalidDataException refused = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Executor.ExecuteClearAsync(
+                CreateContext(vectorType, "cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd", [1, 2]),
+                null,
+                token));
+
+        Assert.Equal("SLOT_INOPERABLE", refused.Message);
+        Assert.Equal(0, fixture.Io.UnlockCount);
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Null(state.RecoveryVector);
+        Assert.Equal([2], state.ForcedIsolation!.PhysicallyUnknownSlots);
+    }
+
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
