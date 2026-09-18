@@ -758,6 +758,23 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return false;
             }
 
+            // An unanswered load cancellation over this attempt: its conclusion is that cancellation's,
+            // not this settlement's (1acb018 redone, onboard-hmi#78) -- the executor was aborted by it or
+            // went with the process, and the server may already have authorized it. Resent with the first
+            // press's content while this claim keeps a re-sent command for the attempt from running. One
+            // left over from anything else only keeps the settlement away, as the executor does.
+            if ((await _session.Journal.ReadRecoveryStateAsync(cancellationToken).ConfigureAwait(false))
+                .PendingLoadCancellation is { } pending)
+            {
+                if (string.Equals(pending.SlotOperationAttemptId, attemptId, StringComparison.Ordinal))
+                {
+                    await ResendUnansweredLoadCancellationAsync(pending, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                return true;
+            }
+
             WireToGateOperationExecutionResult execution = await _executor
                 .SettleInterruptedAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -1490,6 +1507,19 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
         try
         {
+            if (await IsAttemptTakenOverAsync(command, cancellationToken).ConfigureAwait(false))
+            {
+                _logger.Write(
+                    LogSeverity.Information,
+                    nameof(WireToGateBusinessService),
+                    $"忽略重复SlotOperationCommand：attempt={command.SlotOperationAttemptId}已开始且未结算，或已由装货取消接手，未再次执行仓门IO。");
+                PublishOperatorEvent(
+                    $"operation-taken-over-replay:{command.MessageId}",
+                    "OPERATION_REPLAY",
+                    "收到已开始或已取消的仓位命令的重发，未再次执行仓门IO。");
+                return;
+            }
+
             PublishOperation(
                 command,
                 WireToGateHmiOperationStage.Preparing,
@@ -1519,9 +1549,24 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     progressToken).ConfigureAwait(false);
             }
 
-            WireToGateOperationExecutionResult execution = await _executor
-                .ExecuteAsync(command, SendProgress, cancellationToken)
-                .ConfigureAwait(false);
+            WireToGateOperationExecutionResult execution;
+            try
+            {
+                execution = await _executor
+                    .ExecuteAsync(command, SendProgress, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Aborted by an authorized load cancellation (onboard-hmi#78). No result: the attempt's
+                // conclusion is that cancellation's, which takes the slots over from here.
+                _logger.Write(
+                    LogSeverity.Information,
+                    nameof(WireToGateBusinessService),
+                    $"装货已被授权的装货取消中止，不上报OperationResult：attempt={command.SlotOperationAttemptId}。");
+                return;
+            }
+
             WireToGateOperationResultPayload payload = CreateOperationResultPayload(execution);
             bool completedSuccessfully = string.Equals(
                 execution.OverallOutcome,
@@ -1655,14 +1700,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         string guidance,
         string detailKey)
     {
-        if (stage is not (WireToGateHmiOperationStage.Unlocking or WireToGateHmiOperationStage.WaitingOperator)
-            && Volatile.Read(ref _loadAwaitingOperator) is { } waiting
-            && string.Equals(
-                waiting.SlotOperationAttemptId,
-                command.SlotOperationAttemptId,
-                StringComparison.Ordinal))
+        if (stage is not (WireToGateHmiOperationStage.Unlocking or WireToGateHmiOperationStage.WaitingOperator))
         {
-            Interlocked.CompareExchange(ref _loadAwaitingOperator, null, waiting);
+            ForgetLoadAwaitingOperator(command.SlotOperationAttemptId);
         }
 
         WireToGateHmiOperationSnapshot operation = new(

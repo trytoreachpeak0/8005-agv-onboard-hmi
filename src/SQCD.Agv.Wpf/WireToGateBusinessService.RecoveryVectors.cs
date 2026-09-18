@@ -374,8 +374,8 @@ public sealed partial class WireToGateBusinessService
         }
 
         WireToGateRecoveryOperationContext operation = RequireUnsettledLoadOperation(state);
-        string cancellationId = StableUuid(
-            $"{operation.DemandId}|{operation.SlotOperationAttemptId}|load-cancellation");
+        string cancellationId = InFlightLoadCancellationId(operation.DemandId, operation.SlotOperationAttemptId);
+
         if (await AskForLoadCancellationAsync(
                 state,
                 cancellationId,
@@ -394,6 +394,23 @@ public sealed partial class WireToGateBusinessService
             throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
         }
 
+        // The abort channel (onboard-hmi#78): the load's closed loop stops before the cancellation
+        // takes its slots over, so no two executors drive one lock. Only after the authorization: a
+        // refused cancellation leaves the load running, and the operator can still finish it.
+        await _executor.AbortOperationAsync(operation.SlotOperationAttemptId, cancellationToken)
+            .ConfigureAwait(false);
+        ForgetLoadAwaitingOperator(operation.SlotOperationAttemptId);
+        WireToGateRecoveryState aborted = await ReadRecoveryStateCachedAsync(cancellationToken)
+            .ConfigureAwait(false);
+        // Whatever the load left in its active unlock set may be standing open; the cancellation
+        // waits for the operator there instead of pulsing it (ADR-cross-0046).
+        IReadOnlyList<int> handedOverOpenSlots = string.Equals(
+                aborted.UnsettledSlotOperationAttemptId,
+                operation.SlotOperationAttemptId,
+                StringComparison.Ordinal)
+            ? aborted.ActiveUnlockSlots
+            : [];
+
         WireToGateRecoveryVectorContext vector = new(
             WireToGateRecoveryVectorTypes.LoadCancellation,
             authorization.CancellationId,
@@ -407,13 +424,14 @@ public sealed partial class WireToGateBusinessService
             operatorContext.VerificationMethod,
             operatorContext.VerifiedAt);
         await WriteRecoveryVectorPreparedAsync(
-                state with { PendingLoadCancellation = null },
+                aborted with { PendingLoadCancellation = null },
                 vector,
-                cancellationToken)
+                cancellationToken,
+                handedOverOpenSlots)
             .ConfigureAwait(false);
         PublishOperatorResponse(
             "RECOVERY_VECTOR_AUTHORIZED",
-            $"装货取消已获服务端授权，开始将{FormatSlots(vector.Slots)}清空。 ");
+            $"装货取消已获服务端授权，装货已停止，开始将{FormatSlots(vector.Slots)}清空。 ");
         return await ExecuteRecoveryVectorAndReportAsync(
                 vector,
                 correction: false,
@@ -707,6 +725,96 @@ public sealed partial class WireToGateBusinessService
 
     private static string LoadCancellationResultKey(WireToGateRecoveryVectorContext vector) =>
         $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCancellation}:{vector.PrimaryId}";
+
+    /// <summary>The cancellationId every press over this load in flight asks about.</summary>
+    private static string InFlightLoadCancellationId(string demandId, string slotOperationAttemptId) =>
+        StableUuid($"{demandId}|{slotOperationAttemptId}|load-cancellation");
+
+    /// <summary>
+    /// Whether a <c>SlotOperationCommand</c> names an attempt that is no longer a new command for this
+    /// vehicle: started and unsettled with nobody running it, or taken over by a load cancellation --
+    /// open, or settled and acknowledged already (1086c4a redone, onboard-hmi#78).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The control server's outbox re-sends the command until it has the result, and an aborted load
+    /// sends none: its conclusion is the cancellation's. Executed again, the command would find the door
+    /// open and make up a refusal, or find it shut and unlock it without authorization.
+    /// </para>
+    /// <para>
+    /// A settled cancellation leaves nothing in the recovery state, so it is recognised by its result in
+    /// the durable outbox: the cancellationId is derived from the demand and the attempt, and so is the
+    /// result's key. The caller has claimed the attempt already, so "nobody running it" is this claim.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> IsAttemptTakenOverAsync(
+        WireToGateSlotOperationCommand command,
+        CancellationToken cancellationToken)
+    {
+        WireToGateRecoveryState state = await _session.Journal.ReadRecoveryStateAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (string.Equals(
+                state.UnsettledSlotOperationAttemptId,
+                command.SlotOperationAttemptId,
+                StringComparison.Ordinal)
+            || string.Equals(
+                state.RecoveryVector?.SlotOperationAttemptId,
+                command.SlotOperationAttemptId,
+                StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        string cancellationResultKey =
+            $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCancellation}:"
+            + InFlightLoadCancellationId(command.DemandId, command.SlotOperationAttemptId);
+        return await _session.Journal
+            .ReadOutgoingByDeduplicationKeyAsync(cancellationResultKey, cancellationToken)
+            .ConfigureAwait(false) is not null;
+    }
+
+    private void ForgetLoadAwaitingOperator(string slotOperationAttemptId)
+    {
+        if (Volatile.Read(ref _loadAwaitingOperator) is { } waiting
+            && string.Equals(waiting.SlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal))
+        {
+            Interlocked.CompareExchange(ref _loadAwaitingOperator, null, waiting);
+        }
+    }
+
+    /// <summary>
+    /// After a restart, sends again the load cancellation the operator pressed over this attempt and
+    /// never had an answer to, instead of settling the attempt as interrupted (1acb018 redone,
+    /// onboard-hmi#78).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The executor was aborted by the cancellation or went with the process; either way the server may
+    /// already have authorized it, and an interrupted settlement would report the attempt UNKNOWN and
+    /// send the stop to recovery (ADR-cross-0046: the original command is neither withdrawn nor
+    /// rewritten). The request repeats the first press's content from the journal, and an
+    /// authorization is carried out as if it had arrived the first time.
+    /// </para>
+    /// <para>
+    /// Called by the interrupted settlement, which has established that nobody is running the attempt
+    /// and that no result was ever sent for it. The request path takes the recovery request gate, so a
+    /// press already in progress finishes first and this one then finds the entry answered.
+    /// </para>
+    /// </remarks>
+    private async Task ResendUnansweredLoadCancellationAsync(
+        WireToGatePendingLoadCancellation pending,
+        CancellationToken cancellationToken)
+    {
+        PublishOperatorEvent(
+            $"load-cancellation-resent:{pending.CancellationId}",
+            "RECOVERY_VECTOR_REQUESTED",
+            "上次按下的装货取消没有收到服务端答复，已按首次内容重新申请；不会再执行原装货。 ");
+        await RunRecoveryRequestAsync(
+                WireToGateRecoveryVectorTypes.LoadCancellation,
+                () => RequestLoadCancellationCoreAsync(pending.Reason, cancellationToken),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
 
     private async Task<bool> RequestLoadCorrectionCoreAsync(
         string reason,
@@ -1780,17 +1888,22 @@ public sealed partial class WireToGateBusinessService
             .ConfigureAwait(false);
     }
 
+    /// <param name="handedOverOpenSlots">
+    /// The doors an aborted load may have left open, handed to a load cancellation as the prepared
+    /// vector's active unlock set (<c>WireToGateRecoveryVectorExecutor.HandedOverOpenSlots</c>).
+    /// </param>
     private async Task WriteRecoveryVectorPreparedAsync(
         WireToGateRecoveryState state,
         WireToGateRecoveryVectorContext context,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        IReadOnlyList<int>? handedOverOpenSlots = null)
     {
         await WriteRecoveryStateCachedAsync(
                 state with
                 {
                     UnsettledSlotOperationAttemptId = context.SlotOperationAttemptId,
                     ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.Prepared,
-                    ActiveUnlockSlots = [],
+                    ActiveUnlockSlots = handedOverOpenSlots?.ToArray() ?? [],
                     CompletedSlots = [],
                     SlotResults = [],
                     RecoveryVector = context,
@@ -1948,8 +2061,12 @@ public sealed partial class WireToGateBusinessService
             operatorContext.VerificationMethod,
             operatorContext.VerifiedAt,
             RequireReason(reason));
+        // Read again right before the write: the load's executor may have written its own checkpoints
+        // since this press read the state, and writing the older copy back would undo them.
+        WireToGateRecoveryState current = await _session.Journal.ReadRecoveryStateAsync(cancellationToken)
+            .ConfigureAwait(false);
         await WriteRecoveryStateCachedAsync(
-                state with { PendingLoadCancellation = pending },
+                current with { PendingLoadCancellation = pending },
                 cancellationToken)
             .ConfigureAwait(false);
         return pending;

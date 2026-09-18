@@ -886,6 +886,192 @@ public sealed class WireToGateSlotOperationExecutorTests
         Assert.All(state.SlotResults, item => Assert.Equal("COMPLETED", item.Outcome));
     }
 
+    /// <summary>
+    /// The abort channel (onboard-hmi#78, <c>75d02de</c> redone): an authorized load cancellation stops
+    /// the executor's closed loop on that attempt before the cancellation executor takes the slots over.
+    /// Nothing is pulsed afterwards, even for a door shut empty that the loop would have reopened, and the
+    /// door left open stays in the journal's active set -- the cancellation reads it from there.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task AnAbortedLoadStopsPulsingAndLeavesItsOpenDoorInTheActiveSet()
+    {
+        // Bounded, so a loop that never stops fails the test instead of hanging the run.
+        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
+        bounded.CancelAfter(TimeSpan.FromSeconds(10));
+        CancellationToken token = bounded.Token;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true);
+        TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<WireToGateOperationExecutionResult> operation = fixture.Executor.ExecuteAsync(
+            command,
+            (progress, _) =>
+            {
+                if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    waiting.TrySetResult();
+                }
+
+                return Task.CompletedTask;
+            },
+            token);
+        await waiting.Task.WaitAsync(token);
+
+        Assert.True(await fixture.Executor.AbortOperationAsync(command.SlotOperationAttemptId, token));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => operation);
+        fixture.Io.CloseDoor(0, cargo: false);
+        await Task.Delay(200, token);
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+        Assert.Equal(0, fixture.Io.UnlockCount(1));
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal(command.SlotOperationAttemptId, state.UnsettledSlotOperationAttemptId);
+        Assert.Equal(WireToGateRecoveryCheckpoint.ActiveUnlockSet, state.ProvenRecoveryCheckpoint);
+        Assert.Equal([1], state.ActiveUnlockSlots);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task AbortingAnotherAttemptLeavesTheRunningOneAlone()
+    {
+        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(
+            TestContext.Current.CancellationToken);
+        bounded.CancelAfter(TimeSpan.FromSeconds(10));
+        CancellationToken token = bounded.Token;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
+        TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task<WireToGateOperationExecutionResult> operation = fixture.Executor.ExecuteAsync(
+            command,
+            (progress, _) =>
+            {
+                if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    waiting.TrySetResult();
+                }
+
+                return Task.CompletedTask;
+            },
+            token);
+        await waiting.Task.WaitAsync(token);
+
+        Assert.False(await fixture.Executor.AbortOperationAsync(Guid.NewGuid().ToString("D"), token));
+        fixture.Io.CloseDoor(0, cargo: true);
+
+        Assert.Equal("COMPLETED", (await operation).OverallOutcome);
+    }
+
+    /// <summary>
+    /// <c>1086c4a</c> redone: the control server re-sends the same <c>SlotOperationCommand</c> until it has
+    /// the result, and after an abort that command would find the door open and make up a refusal -- or,
+    /// with the door shut, unlock it again. An attempt the journal says was started and is unsettled is
+    /// not a new command (ADR-cross-0016, ADR-cross-0017).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task ACommandForAnAttemptAlreadyStartedAndUnsettledIsNotExecutedAgain()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
+        await InterruptWhileWaitingAsync(fixture, command);
+        fixture.Io.CloseDoor(0, cargo: false);
+
+        // Without the guard the command runs again: the door is shut empty, so it is unlocked and then
+        // waits for an operator forever. Bounded so that shows up as a failure, not a hang.
+        using CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token);
+        bounded.CancelAfter(TimeSpan.FromSeconds(3));
+        InvalidDataException refused = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Executor.ExecuteAsync(command, null, bounded.Token));
+
+        Assert.Equal("SLOT_OPERATION_ALREADY_STARTED", refused.Message);
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal(command.SlotOperationAttemptId, state.UnsettledSlotOperationAttemptId);
+        Assert.Equal([1], state.ActiveUnlockSlots);
+    }
+
+    /// <summary>
+    /// <c>1acb018</c> redone: an attempt with an unanswered load cancellation on file belongs to that
+    /// cancellation -- the server may already have authorized it -- not to the interrupted settlement,
+    /// which would report it UNKNOWN.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AnAttemptWithAPendingLoadCancellationIsNotSettledAsInterrupted()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
+        await InterruptWhileWaitingAsync(fixture, command);
+        WireToGateRecoveryState interrupted = await fixture.Journal.ReadRecoveryStateAsync(token);
+        await fixture.Journal.WriteRecoveryStateAsync(
+            interrupted with { PendingLoadCancellation = PendingCancellation(command) },
+            token);
+
+        InvalidDataException refused = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Executor.SettleInterruptedAsync(token));
+
+        Assert.Equal("RECOVERY_STATE_MISMATCH", refused.Message);
+    }
+
+    /// <summary>
+    /// The operator presses cancel while a two-slot load runs: the pending cancellation is journaled by
+    /// the business service, and the executor goes on writing its own checkpoints. Those writes must not
+    /// drop the pending entry -- a restart would then find nothing to resend and settle the attempt
+    /// UNKNOWN.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task TheExecutorsOwnCheckpointsKeepThePendingCancellationOfItsAttempt()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true);
+        bool pressed = false;
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            command,
+            async (progress, progressToken) =>
+            {
+                if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    if (!pressed)
+                    {
+                        pressed = true;
+                        WireToGateRecoveryState current =
+                            await fixture.Journal.ReadRecoveryStateAsync(progressToken);
+                        await fixture.Journal.WriteRecoveryStateAsync(
+                            current with { PendingLoadCancellation = PendingCancellation(command) },
+                            progressToken);
+                    }
+
+                    fixture.Io.CloseDoor(progress.Active.Single() - 1, cargo: true);
+                }
+            },
+            token);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal(PendingCancellation(command), state.PendingLoadCancellation);
+    }
+
+    private static WireToGatePendingLoadCancellation PendingCancellation(WireToGateSlotOperationCommand command) =>
+        new(
+            "c7b1f2a4-9d3e-4c8a-8f52-0a1b2c3d4e5f",
+            command.SlotOperationAttemptId,
+            "operator-078",
+            "SESSION",
+            new DateTimeOffset(2026, 9, 18, 10, 0, 0, TimeSpan.Zero),
+            "现场不装了。");
+
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-04")]
     [Trait("ProtocolVector", "CV-DESTINATION-UNLOAD-ALL-EMPTY")]

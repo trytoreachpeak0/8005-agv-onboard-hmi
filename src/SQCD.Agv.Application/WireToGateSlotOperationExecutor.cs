@@ -60,6 +60,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     private readonly WireToGateSlotOperationExecutorOptions _options;
     private readonly Func<bool> _reopenPermitted;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
+    private ActiveOperation? _activeOperation;
 
     /// <param name="reopenPermitted">
     /// Asked before every automatic reopen pulse. Nothing on this vehicle reads the emergency stop
@@ -84,6 +85,50 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         ValidateOptions(options);
     }
 
+    /// <summary>
+    /// Stops the closed loop on <paramref name="slotOperationAttemptId"/> if that attempt is the one
+    /// running, and returns once it has stopped (8005-agv-onboard-hmi#78, <c>75d02de</c> redone).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// An authorized load cancellation takes the attempt's slots over with a different executor. Left
+    /// running, this one would keep pulsing a door shut empty while the other waits for the same slot to
+    /// be emptied -- two executors on one lock. The aborted run ends in
+    /// <see cref="OperationCanceledException"/> on its caller's side, writes no result and nothing more to
+    /// the journal: the attempt stays unsettled with its last active unlock set, which is how the
+    /// cancellation learns which door may be standing open.
+    /// </para>
+    /// <para>
+    /// Returns once the operation gate is free again, so no pulse of the aborted run can follow. Returns
+    /// false, and touches nothing, when no run or another attempt's run is in progress.
+    /// </para>
+    /// </remarks>
+    public async Task<bool> AbortOperationAsync(
+        string slotOperationAttemptId,
+        CancellationToken cancellationToken = default)
+    {
+        RequireUuid(slotOperationAttemptId, nameof(slotOperationAttemptId));
+        ActiveOperation? active = Volatile.Read(ref _activeOperation);
+        if (active is null
+            || !string.Equals(active.SlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        try
+        {
+            await active.Abort.CancelAsync().ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
+            // It ended on its own between the read and the cancel, which is what was asked for.
+        }
+
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        _operationGate.Release();
+        return true;
+    }
+
     public async Task<WireToGateOperationExecutionResult> ExecuteAsync(
         WireToGateSlotOperationCommand command,
         Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
@@ -92,15 +137,21 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(command);
         ValidateCommand(command);
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        using CancellationTokenSource abort = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Volatile.Write(ref _activeOperation, new ActiveOperation(command.SlotOperationAttemptId, abort));
         try
         {
-            return await ExecuteExclusiveAsync(command, progress, cancellationToken).ConfigureAwait(false);
+            return await ExecuteExclusiveAsync(command, progress, abort.Token).ConfigureAwait(false);
         }
         finally
         {
+            Volatile.Write(ref _activeOperation, null);
             _operationGate.Release();
         }
     }
+
+    /// <summary>The run <see cref="AbortOperationAsync"/> can stop.</summary>
+    private sealed record ActiveOperation(string SlotOperationAttemptId, CancellationTokenSource Abort);
 
     /// <summary>
     /// Resumes the persisted operation context after an authenticated
@@ -117,6 +168,9 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(resume);
         ValidateResumeCommand(resume);
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        using CancellationTokenSource abort = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Volatile.Write(ref _activeOperation, new ActiveOperation(resume.SlotOperationAttemptId, abort));
+        cancellationToken = abort.Token;
         try
         {
             WireToGateRecoveryState state = await _journal
@@ -156,6 +210,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         }
         finally
         {
+            Volatile.Write(ref _activeOperation, null);
             _operationGate.Release();
         }
     }
@@ -299,11 +354,14 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         WireToGateRecoveryOperationContext context = state.OperationContext
             ?? throw new InvalidDataException("RECOVERY_OPERATION_CONTEXT_MISSING");
         // A recovery vector has its own journal entry and its own resume rules; not this path's job.
+        // Nor is an attempt with an unanswered load cancellation on file (1acb018, onboard-hmi#78): the
+        // server may already have authorized it, and the conclusion is that cancellation's.
         if (!string.Equals(
                 state.UnsettledSlotOperationAttemptId,
                 context.SlotOperationAttemptId,
                 StringComparison.Ordinal)
-            || state.RecoveryVector is not null)
+            || state.RecoveryVector is not null
+            || state.PendingLoadCancellation is not null)
         {
             throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
         }
@@ -384,6 +442,20 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
         CancellationToken cancellationToken)
     {
+        // An attempt the journal says was started and is unsettled is not a new command, whoever sends
+        // it again (1086c4a, onboard-hmi#78). Its conclusion is a cancellation's, a recovery action's or
+        // the interrupted settlement's. Run again it would find the door open and make up a refusal, or
+        // find it shut and unlock it without authorization (ADR-cross-0016, ADR-cross-0017).
+        WireToGateRecoveryState journaled = await _journal.ReadRecoveryStateAsync(cancellationToken)
+            .ConfigureAwait(false);
+        if (string.Equals(
+                journaled.UnsettledSlotOperationAttemptId,
+                command.SlotOperationAttemptId,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("SLOT_OPERATION_ALREADY_STARTED");
+        }
+
         DateTimeOffset started = _clock.Now;
         IoSnapshot initial = _ioModule.CurrentSnapshot;
         string? precheckFailure = ValidateBeforeOperation(initial, command, command.Slots);
@@ -836,6 +908,22 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         WireToGateRecoveryState existingState,
         CancellationToken cancellationToken)
     {
+        // The one field of this record another writer owns while the operation runs: the operator's
+        // unanswered load cancellation for this attempt, journaled by the business service after this
+        // run read its existingState. It is read afresh so a checkpoint does not drop it; one left over
+        // from another attempt goes, as it always did (onboard-hmi#78).
+        WireToGatePendingLoadCancellation? pending = (await _journal
+                .ReadRecoveryStateAsync(cancellationToken)
+                .ConfigureAwait(false))
+            .PendingLoadCancellation;
+        if (!string.Equals(
+                pending?.SlotOperationAttemptId,
+                context.SlotOperationAttemptId,
+                StringComparison.Ordinal))
+        {
+            pending = existingState.PendingLoadCancellation;
+        }
+
         await _journal.WriteRecoveryStateAsync(
             new WireToGateRecoveryState(
                 context.SlotOperationAttemptId,
@@ -861,7 +949,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 RecoveryVector = existingState.RecoveryVector,
                 RecoveryResultObservedAt = existingState.RecoveryResultObservedAt,
                 LastCompletedLoadOperationContext = existingState.LastCompletedLoadOperationContext,
-                PendingLoadCancellation = existingState.PendingLoadCancellation
+                PendingLoadCancellation = pending
             },
             cancellationToken).ConfigureAwait(false);
     }
