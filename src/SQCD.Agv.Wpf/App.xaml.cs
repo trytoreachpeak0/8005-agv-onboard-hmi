@@ -206,7 +206,8 @@ public partial class App : System.Windows.Application, IDisposable
                     cancellationToken => _wireToGateBusiness.RequestManualChargingReturnToServiceAsync(
                         cancellationToken: cancellationToken),
                     () => _wireToGateBusiness.IsLoadCancellationBeforeSublotOpen,
-                    () => _wireToGateBusiness.CurrentSublotRejection);
+                    () => _wireToGateBusiness.CurrentSublotRejection,
+                    () => _wireToGateBusiness.RecoveryReasonAlreadyGiven);
                 viewModel.ConfigureForcedIsolation(
                     () => _wireToGateBusiness.CanConfirmForcedMechanicalRecovery,
                     cancellationToken => _wireToGateBusiness.ConfirmForcedMechanicalRecoveryAsync(

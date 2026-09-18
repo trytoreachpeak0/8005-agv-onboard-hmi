@@ -169,6 +169,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     public SlotExpectedActionWait? CurrentExpectedActionWait => _expectedActionWait.Current;
 
     /// <summary>
+    /// Whether an exception recovery session is already open or being acted on, so the reason it was opened
+    /// with is the one that stands: a resume in an open session carries the persisted reason, and a retried
+    /// recovery vector must repeat its first content exactly. The HMI locks the reason box while this holds,
+    /// instead of taking a reason it would silently drop (onboard-hmi#109 review).
+    /// </summary>
+    public bool RecoveryReasonAlreadyGiven =>
+        Volatile.Read(ref _recoverySessionSnapshot) is { State: not "CLOSED" }
+        || Volatile.Read(ref _lastRecoveryState).RecoveryVector is not null;
+
+    /// <summary>
     /// The countdown line's text once the station departure deadline has passed, or <c>null</c> for the
     /// generic one (8005-agv-onboard-hmi#78): a load cancellation in progress, or a load whose door is
     /// open or being reopened. The wording is <see cref="WireToGateStationDeadlineText"/>'s.
@@ -1111,6 +1121,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             }
 
             long version = Math.Max(_nextSafetyStateVersion, checked(current.SafetyStateVersion + 1));
+            // Spent before sending, whatever happens next: an ack that times out may be for a snapshot the
+            // server did apply, and the next safety state under this same version with other content would be
+            // a revision conflict. A skipped version is not a regression.
+            _nextSafetyStateVersion = checked(version + 1);
             if (!await _session.PublishSafetyStateSnapshotAsync(version, cancellationToken).ConfigureAwait(false))
             {
                 _logger.Write(

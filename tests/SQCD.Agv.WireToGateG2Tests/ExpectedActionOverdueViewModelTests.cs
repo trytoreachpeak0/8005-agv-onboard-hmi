@@ -138,6 +138,37 @@ public sealed class ExpectedActionOverdueViewModelTests
         Assert.Equal([Reason, Reason, Reason, Reason, null], sent);
     }
 
+    /// <summary>
+    /// 会话已开时，发出去的是开会话时那句原因，这次填的会被丢掉。所以框不可编辑、给出提示，按下入口也不清空它。
+    /// </summary>
+    [Fact]
+    public async Task WhileASessionIsOpenTheReasonBoxIsLockedAndSaysTheFirstReasonStands()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        bool sessionOpen = false;
+        List<string?> sent = [];
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => false,
+            canRequestLoadCompensation: () => true,
+            loadCompensationRequester: (reason, _) => Record(sent, reason),
+            recoveryReasonAlreadyGiven: () => sessionOpen);
+        viewModel.UpdateWireToGateStatus(Session(connected: true));
+        Assert.True(viewModel.IsRecoveryReasonEditable);
+        Assert.False(viewModel.HasRecoveryReasonCarriedOver);
+
+        viewModel.RecoveryReason = "李四，光幕：3号仓已取空仍读有货";
+        sessionOpen = true;
+        viewModel.RefreshWireToGateInputState();
+
+        Assert.False(viewModel.IsRecoveryReasonEditable);
+        Assert.True(viewModel.HasRecoveryReasonCarriedOver);
+        Assert.True(await viewModel.RequestLoadCompensationAsync(TestContext.Current.CancellationToken));
+        Assert.Equal([null], sent);
+        Assert.Equal("李四，光幕：3号仓已取空仍读有货", viewModel.RecoveryReason);
+    }
+
     private static Task<bool> Record(List<string?> sent, string? reason)
     {
         sent.Add(reason);

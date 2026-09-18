@@ -62,6 +62,32 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal("现场确认装货无法继续，申请补偿清空目标仓位。", SessionRequestReason(harness));
     }
 
+    /// <summary>
+    /// 会话一开，业务服务就说原因已经给过了：之后的请求沿用开会话时那句（续作走 <c>state.RecoveryReason</c>），界面据此锁住原因框。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task OnceASessionIsOpenTheReasonIsReportedAsAlreadyGiven()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server =>
+            {
+                server.RecoverySlotOperationAttemptId = AttemptId;
+                server.RecoverySessionSnapshotStatesAfterOpened = ["OPEN"];
+            },
+            cargoInTargetSlots: true);
+        Assert.False(harness.Business.RecoveryReasonAlreadyGiven);
+
+        await harness.Business.RequestResumeAfterRepairAsync("张三，锁：1号仓锁舌断", token);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Business.RecoveryReasonAlreadyGiven,
+            "the open session to fix the reason",
+            token);
+    }
+
     private static string? SessionRequestReason(RecoveryVectorHarness harness)
     {
         string line = Assert.Single(harness.ResultsOfType("ExceptionRecoverySessionRequested"));

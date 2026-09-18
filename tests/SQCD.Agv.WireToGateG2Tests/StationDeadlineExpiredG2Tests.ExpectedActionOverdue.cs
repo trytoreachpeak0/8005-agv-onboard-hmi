@@ -75,6 +75,48 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// 经过真实执行器：操作员三次空关门，执行器读到相反的占用态就重开（ADR-cross-0040），每一轮开锁与等待都还是同一次等待，
+    /// 计时起点一直是这个仓第一次开锁的时刻；装货闭环后撤下。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task ReopeningOverTheOppositeOccupancyDoesNotRestartTheWaitClock()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        List<(WireToGateHmiOperationStage Stage, SlotExpectedActionWait? Wait)> seen = [];
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { SimulateOperatorLoad = true, EmptyClosesBeforeLoad = 3 },
+            token,
+            server => server.StationDepartureDeadlineAt = null,
+            observe: business => business.OperatorEventPublished += (_, args) =>
+            {
+                if (args.Value.Operation is { } operation)
+                {
+                    lock (seen)
+                    {
+                        seen.Add((operation.Stage, business.CurrentExpectedActionWait));
+                    }
+                }
+            });
+
+        await harness.WaitForEventAsync("OPERATION_COMPLETED", token);
+
+        Assert.Equal(4, harness.Io.UnlockCount);
+        (WireToGateHmiOperationStage Stage, SlotExpectedActionWait? Wait)[] waiting;
+        lock (seen)
+        {
+            waiting = [.. seen.Where(item => item.Stage is WireToGateHmiOperationStage.Unlocking
+                or WireToGateHmiOperationStage.WaitingOperator)];
+        }
+
+        Assert.Equal(8, waiting.Length);
+        SlotExpectedActionWait first = Assert.IsType<SlotExpectedActionWait>(waiting[0].Wait);
+        Assert.All(waiting, item => Assert.Equal(first, item.Wait));
+        Assert.Null(harness.Business.CurrentExpectedActionWait);
+    }
+
+    /// <summary>
     /// 会话中途收到 <c>SafetyStateSnapshotRequested</c>：回一份 <c>SafetyStateSnapshot</c>，三项读数是此刻的 IO，版本号接着
     /// 往上走；不当恢复消息处理，不弹「恢复被阻断」。门关上之后再要一次，读数跟着变——证明不是握手时的那份。
     /// </summary>
@@ -138,6 +180,53 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.False(harness.HasEvent("RECOVERY_BLOCKED"), harness.DescribeEvents());
         Assert.True(harness.Client.Current.Connected);
         Assert.Equal(WireToGateSessionReadiness.Ready, harness.Client.Current.Readiness);
+    }
+
+    /// <summary>
+    /// 中途快照的 ack 丢了（服务端其实已采纳）：之后发的安全态必须用比那份快照更大的版本号。同一个版本号换了内容，
+    /// 服务端会判修订冲突；跳一个号不算倒退。这里用第二次快照请求来发下一份——这个夹具的假 IO 不触发 IO 变化事件，
+    /// 不会有 <c>SafetyStateChanged</c>；两者用的是同一个版本序列。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("ProtocolVector", "CV-SNAPSHOT-REPLACE-AND-ACK")]
+    public async Task AfterAMidSessionSnapshotAckIsLostTheNextSafetyStateTakesAHigherVersion()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.MidSessionSafetySnapshotAcksToDrop = 1;
+            });
+        await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
+        int handshakeSnapshots = SafetySnapshots(harness.Server).Length;
+
+        await harness.Server.RequestSafetyStateSnapshotAsync();
+        await Harness.WaitUntilAsync(
+            () => SafetySnapshots(harness.Server).Length == handshakeSnapshots + 1,
+            "the requested SafetyStateSnapshot",
+            token);
+        long lostAckVersion = SafetySnapshots(harness.Server)[^1].GetProperty("safetyStateVersion").GetInt64();
+        Assert.Contains(("SafetyStateSnapshot", lostAckVersion), harness.Server.AppliedSnapshots.ToArray());
+        // The answer waits for its ack for the session's message timeout (2 s here) and gives up.
+        await Task.Delay(TimeSpan.FromSeconds(3), token);
+
+        await harness.Server.RequestSafetyStateSnapshotAsync();
+        await Harness.WaitUntilAsync(
+            () => SafetySnapshots(harness.Server).Length == handshakeSnapshots + 2,
+            "the second requested SafetyStateSnapshot",
+            token);
+
+        long nextVersion = SafetySnapshots(harness.Server)[^1].GetProperty("safetyStateVersion").GetInt64();
+        Assert.True(nextVersion > lostAckVersion, $"{nextVersion} must be above {lostAckVersion}");
+        await Harness.WaitUntilAsync(
+            () => harness.Server.AppliedSnapshots.Contains(("SafetyStateSnapshot", nextVersion)),
+            "the second snapshot to be applied rather than refused as a revision conflict",
+            token);
+        Assert.True(harness.Client.Current.Connected);
     }
 
     private static OnboardAlarmMonitor OverdueMonitor(Harness harness) => new(

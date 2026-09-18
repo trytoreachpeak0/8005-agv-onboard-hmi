@@ -281,11 +281,21 @@
                              Margin="0,0,8,0"
                              Padding="4"
                              FontSize="13"
+                             MaxLength="500"
                              VerticalContentAlignment="Center"
                              AutomationProperties.AutomationId="RecoveryReason"
                              AutomationProperties.Name="异常处置原因"
+                             IsEnabled="{Binding IsRecoveryReasonEditable}"
                              Text="{Binding RecoveryReason, UpdateSourceTrigger=PropertyChanged}"
                              Visibility="{Binding HasRecoveryReasonInput, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <!-- 会话已开时发出去的是开会话时那句原因，框锁住并说明，免得白填。 -->
+                    <TextBlock Margin="0,0,8,0"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Foreground="{StaticResource MutedBrush}"
+                               AutomationProperties.AutomationId="RecoveryReasonCarriedOver"
+                               Text="会话已开，原因沿用开会话时填写的"
+                               Visibility="{Binding HasRecoveryReasonCarriedOver, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"

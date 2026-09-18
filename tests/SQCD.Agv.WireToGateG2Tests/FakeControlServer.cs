@@ -590,6 +590,7 @@ public sealed class FakeControlServer : IAsyncDisposable
     }
 
     private ConnectionContext? _latestSession;
+    private int _midSessionSafetySnapshotAcksToDrop;
 
     /// <summary>
     /// Sends the <c>SlotOperationCommand</c> that <see cref="SendSlotOperationCommandAfterRecovery"/>
@@ -611,6 +612,16 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// answers it is acknowledged and followed by a <c>SessionReadiness</c> line, as the real server does
     /// for a snapshot after the handshake.
     /// </summary>
+    /// <summary>
+    /// How many mid-session <c>SafetyStateSnapshot</c>s to apply and then answer nothing: their ack is
+    /// lost after the server took them (onboard-hmi#109 review).
+    /// </summary>
+    public int MidSessionSafetySnapshotAcksToDrop
+    {
+        get => Volatile.Read(ref _midSessionSafetySnapshotAcksToDrop);
+        set => Volatile.Write(ref _midSessionSafetySnapshotAcksToDrop, value);
+    }
+
     public async Task RequestSafetyStateSnapshotAsync()
     {
         ConnectionContext context = Volatile.Read(ref _latestSession)
@@ -1162,6 +1173,13 @@ public sealed class FakeControlServer : IAsyncDisposable
             {
                 _latestSafetyDepartureSafe = departureSafe;
             }
+        }
+
+        if (messageType == "SafetyStateSnapshot"
+            && context.SafetyStateSnapshotRequested
+            && Interlocked.Decrement(ref _midSessionSafetySnapshotAcksToDrop) >= 0)
+        {
+            return;
         }
 
         var ackPayload = new

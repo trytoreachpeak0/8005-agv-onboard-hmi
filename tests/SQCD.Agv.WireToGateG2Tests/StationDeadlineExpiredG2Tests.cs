@@ -402,7 +402,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
             string operatorVariable = OperatorVariable,
             string? journalPath = null,
             WireToGateRecoveryState? seed = null,
-            long baselineRevision = 1)
+            long baselineRevision = 1,
+            Action<WireToGateBusinessService>? observe = null)
         {
             FakeControlServer server = NewServer();
             configure?.Invoke(server);
@@ -468,6 +469,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
                     "MAINTENANCE_ADMINISTRATOR",
                     "CONFIGURED_PROOF"));
             Harness harness = new(server, io, session, business, journal, alarmBoard);
+            // Before Start, so an observer sees the command's very first progress report.
+            observe?.Invoke(business);
             business.Start();
             await session.Client.ConnectAndRecoverAsync(cancellationToken);
             return harness;

@@ -29,6 +29,8 @@ public sealed class MainViewModel : ViewModelBase
     private bool _hasExpectedActionOverdue;
     private string _expectedActionOverdueText = string.Empty;
     private string _recoveryReason = string.Empty;
+    private bool _recoveryReasonAlreadyGiven;
+    private Func<bool>? _wireToGateRecoveryReasonAlreadyGiven;
     private bool _canSubmit;
     private bool _hasError;
     private bool _hasWarning;
@@ -299,8 +301,10 @@ public sealed class MainViewModel : ViewModelBase
         Func<bool>? canRequestManualChargingReturn = null,
         Func<CancellationToken, Task<bool>>? manualChargingReturnRequester = null,
         Func<bool>? loadCancellationPending = null,
-        Func<WireToGateSublotRejection?>? sublotRejection = null)
+        Func<WireToGateSublotRejection?>? sublotRejection = null,
+        Func<bool>? recoveryReasonAlreadyGiven = null)
     {
+        _wireToGateRecoveryReasonAlreadyGiven = recoveryReasonAlreadyGiven;
         _wireToGateSubmitter = submitter ?? throw new ArgumentNullException(nameof(submitter));
         _wireToGateCanSubmit = canSubmit ?? throw new ArgumentNullException(nameof(canSubmit));
         _wireToGateCanRequestRecovery = canRequestRecovery;
@@ -381,6 +385,7 @@ public sealed class MainViewModel : ViewModelBase
         CanRequestForcedMechanicalRecovery = _wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true;
         CanRequestManualChargingReturn = _wireToGateCanRequestManualChargingReturn?.Invoke() == true;
         RefreshForcedIsolationCore();
+        RefreshRecoveryReasonLockCore();
     }
 
     public string VisitText
@@ -512,12 +517,34 @@ public sealed class MainViewModel : ViewModelBase
         || CanRequestFaultCargoHandoff
         || CanRequestForcedMechanicalRecovery;
 
+    /// <summary>
+    /// 原因框能不能填。会话已开时发出去的是开会话时那句原因，这次填的会被丢掉，所以锁住，不让人白填。
+    /// </summary>
+    public bool IsRecoveryReasonEditable => !_recoveryReasonAlreadyGiven;
+
+    /// <summary>原因框被锁住时，旁边那句说明（「会话已开，原因沿用开会话时填写的」，写在 XAML 里）是否显示。</summary>
+    public bool HasRecoveryReasonCarriedOver => HasRecoveryReasonInput && _recoveryReasonAlreadyGiven;
+
     private void SetRecoveryEntry(ref bool field, bool value)
     {
         if (SetProperty(ref field, value))
         {
             OnPropertyChanged(nameof(HasRecoveryReasonInput));
+            OnPropertyChanged(nameof(HasRecoveryReasonCarriedOver));
         }
+    }
+
+    private void RefreshRecoveryReasonLockCore()
+    {
+        bool alreadyGiven = _wireToGateRecoveryReasonAlreadyGiven?.Invoke() == true;
+        if (alreadyGiven == _recoveryReasonAlreadyGiven)
+        {
+            return;
+        }
+
+        _recoveryReasonAlreadyGiven = alreadyGiven;
+        OnPropertyChanged(nameof(IsRecoveryReasonEditable));
+        OnPropertyChanged(nameof(HasRecoveryReasonCarriedOver));
     }
 
     public bool CanConfirmForcedMechanicalRecovery
@@ -773,9 +800,13 @@ public sealed class MainViewModel : ViewModelBase
             return false;
         }
 
-        string? reason = string.IsNullOrWhiteSpace(RecoveryReason) ? null : RecoveryReason.Trim();
+        // A session already open keeps the reason it was opened with: nothing entered now is sent, and the
+        // box keeps its text rather than looking as if it had been.
+        RefreshRecoveryReasonLockCore();
+        bool locked = _recoveryReasonAlreadyGiven;
+        string? reason = locked || string.IsNullOrWhiteSpace(RecoveryReason) ? null : RecoveryReason.Trim();
         bool accepted = await requester(reason, cancellationToken).ConfigureAwait(true);
-        if (accepted)
+        if (accepted && !locked)
         {
             RecoveryReason = string.Empty;
         }
@@ -921,6 +952,7 @@ public sealed class MainViewModel : ViewModelBase
         CanRequestForcedMechanicalRecovery = _wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true;
         CanRequestManualChargingReturn = _wireToGateCanRequestManualChargingReturn?.Invoke() == true;
         RefreshForcedIsolationCore();
+        RefreshRecoveryReasonLockCore();
     }
 
     private void RefreshForcedIsolationCore()
