@@ -1,0 +1,70 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="e0678c17-a90e-4c5e-874a-059df5c2d4d3" name="szy@LAB-WIN-01 2026-09-19 01:34:02" runUser="LAB-WIN-01\szy" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-09-19T01:34:02.1386343+08:00" queuing="2026-09-19T01:34:02.1386348+08:00" start="2026-09-19T01:34:00.2777917+08:00" finish="2026-09-19T01:34:03.3557516+08:00" />
+  <TestSettings name="default" id="3d82e530-9745-4cd5-acbe-06af9e6c384d">
+    <Deployment runDeploymentRoot="szy_LAB-WIN-01_2026-09-19_01_34_02" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="69dc1981-a760-44bd-b63a-68500c081b70" testId="0af918cd-bc97-6b27-068e-29e29c93cda7" testName="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.EveryUnlockOfALoadOrAnUnloadFindsEveryOtherDoorShut(operationType: Load)" computerName="LAB-WIN-01" duration="00:00:00.1092966" startTime="2026-09-19T01:34:01.9324977+08:00" endTime="2026-09-19T01:34:02.0418838+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="69dc1981-a760-44bd-b63a-68500c081b70" />
+    <UnitTestResult executionId="f769847f-024c-4bba-958e-ac16c446f611" testId="2195a27f-ed1c-487b-e698-4c100c17d11c" testName="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.UnloadAllTargetSlotsRequiresEverySlotToReachEmpty" computerName="LAB-WIN-01" duration="00:00:00.3124294" startTime="2026-09-19T01:34:02.0877885+08:00" endTime="2026-09-19T01:34:02.4002856+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="f769847f-024c-4bba-958e-ac16c446f611" />
+    <UnitTestResult executionId="ab40325c-3049-45ad-9c71-bb28772b47ec" testId="827a0024-4656-7b7c-0cbc-e3d0700e1080" testName="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.EveryCompletedMainPathResultMeetsTheServerCompletionCondition(operationType: Load)" computerName="LAB-WIN-01" duration="00:00:00.4366089" startTime="2026-09-19T01:34:02.8550634+08:00" endTime="2026-09-19T01:34:03.2917442+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="ab40325c-3049-45ad-9c71-bb28772b47ec" />
+    <UnitTestResult executionId="8d95e54d-461e-41db-b538-148fe1849255" testId="530154f4-c58e-1102-5be6-25e7a5415281" testName="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.EveryCompletedMainPathResultMeetsTheServerCompletionCondition(operationType: Unload)" computerName="LAB-WIN-01" duration="00:00:00.4527862" startTime="2026-09-19T01:34:02.4015554+08:00" endTime="2026-09-19T01:34:02.8544173+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="8d95e54d-461e-41db-b538-148fe1849255" />
+    <UnitTestResult executionId="86abf2a8-229f-4e7e-8055-de5932bb75d6" testId="5f0b3999-c87f-932f-a88e-b10e66484e3e" testName="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AnUnloadDoorShutOverTheBasketIsReopenedUntilTheSlotIsEmpty" computerName="LAB-WIN-01" duration="00:00:00.0436074" startTime="2026-09-19T01:34:02.0434292+08:00" endTime="2026-09-19T01:34:02.0870872+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="86abf2a8-229f-4e7e-8055-de5932bb75d6" />
+    <UnitTestResult executionId="140ae677-9a03-4977-a2db-53c3d1a43118" testId="ecdb4d23-4600-e662-1960-7ebc2f221939" testName="SQCD.Agv.UnitTests.OnboardControllerTests.UnloadFlowRequiresCargoAndReportsEmptySlot" computerName="LAB-WIN-01" duration="00:00:00.0368015" startTime="2026-09-19T01:34:01.4681613+08:00" endTime="2026-09-19T01:34:01.5123192+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="140ae677-9a03-4977-a2db-53c3d1a43118" />
+    <UnitTestResult executionId="a3374fda-cfd4-4e4c-8bb4-2a1cf280c9be" testId="e9e8dc39-5c69-d3de-d206-ea9499e1a051" testName="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.EveryUnlockOfALoadOrAnUnloadFindsEveryOtherDoorShut(operationType: Unload)" computerName="LAB-WIN-01" duration="00:00:00.4561380" startTime="2026-09-19T01:34:01.4681616+08:00" endTime="2026-09-19T01:34:01.9303591+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a3374fda-cfd4-4e4c-8bb4-2a1cf280c9be" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AnUnloadDoorShutOverTheBasketIsReopenedUntilTheSlotIsEmpty" storage="c:\users\szy\desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="5f0b3999-c87f-932f-a88e-b10e66484e3e">
+      <Execution id="86abf2a8-229f-4e7e-8055-de5932bb75d6" />
+      <TestMethod codeBase="C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests" name="AnUnloadDoorShutOverTheBasketIsReopenedUntilTheSlotIsEmpty" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.EveryUnlockOfALoadOrAnUnloadFindsEveryOtherDoorShut(operationType: Load)" storage="c:\users\szy\desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="0af918cd-bc97-6b27-068e-29e29c93cda7">
+      <Execution id="69dc1981-a760-44bd-b63a-68500c081b70" />
+      <TestMethod codeBase="C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests" name="EveryUnlockOfALoadOrAnUnloadFindsEveryOtherDoorShut" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.EveryCompletedMainPathResultMeetsTheServerCompletionCondition(operationType: Unload)" storage="c:\users\szy\desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="530154f4-c58e-1102-5be6-25e7a5415281">
+      <Execution id="8d95e54d-461e-41db-b538-148fe1849255" />
+      <TestMethod codeBase="C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests" name="EveryCompletedMainPathResultMeetsTheServerCompletionCondition" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.UnitTests.OnboardControllerTests.UnloadFlowRequiresCargoAndReportsEmptySlot" storage="c:\users\szy\desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="ecdb4d23-4600-e662-1960-7ebc2f221939">
+      <Execution id="140ae677-9a03-4977-a2db-53c3d1a43118" />
+      <TestMethod codeBase="C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.OnboardControllerTests" name="UnloadFlowRequiresCargoAndReportsEmptySlot" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.UnloadAllTargetSlotsRequiresEverySlotToReachEmpty" storage="c:\users\szy\desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="2195a27f-ed1c-487b-e698-4c100c17d11c">
+      <Execution id="f769847f-024c-4bba-958e-ac16c446f611" />
+      <TestMethod codeBase="C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests" name="UnloadAllTargetSlotsRequiresEverySlotToReachEmpty" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.EveryUnlockOfALoadOrAnUnloadFindsEveryOtherDoorShut(operationType: Unload)" storage="c:\users\szy\desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="e9e8dc39-5c69-d3de-d206-ea9499e1a051">
+      <Execution id="a3374fda-cfd4-4e4c-8bb4-2a1cf280c9be" />
+      <TestMethod codeBase="C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests" name="EveryUnlockOfALoadOrAnUnloadFindsEveryOtherDoorShut" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.EveryCompletedMainPathResultMeetsTheServerCompletionCondition(operationType: Load)" storage="c:\users\szy\desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="827a0024-4656-7b7c-0cbc-e3d0700e1080">
+      <Execution id="ab40325c-3049-45ad-9c71-bb28772b47ec" />
+      <TestMethod codeBase="C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests" name="EveryCompletedMainPathResultMeetsTheServerCompletionCondition" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="0af918cd-bc97-6b27-068e-29e29c93cda7" executionId="69dc1981-a760-44bd-b63a-68500c081b70" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="2195a27f-ed1c-487b-e698-4c100c17d11c" executionId="f769847f-024c-4bba-958e-ac16c446f611" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="827a0024-4656-7b7c-0cbc-e3d0700e1080" executionId="ab40325c-3049-45ad-9c71-bb28772b47ec" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="530154f4-c58e-1102-5be6-25e7a5415281" executionId="8d95e54d-461e-41db-b538-148fe1849255" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="5f0b3999-c87f-932f-a88e-b10e66484e3e" executionId="86abf2a8-229f-4e7e-8055-de5932bb75d6" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="ecdb4d23-4600-e662-1960-7ebc2f221939" executionId="140ae677-9a03-4977-a2db-53c3d1a43118" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="e9e8dc39-5c69-d3de-d206-ea9499e1a051" executionId="a3374fda-cfd4-4e4c-8bb4-2a1cf280c9be" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="7" executed="7" passed="7" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 8.0.31)&#xD;
+[xUnit.net 00:00:00.21]   Discovering: SQCD.Agv.UnitTests&#xD;
+[xUnit.net 00:00:00.61]   Discovered:  SQCD.Agv.UnitTests&#xD;
+[xUnit.net 00:00:00.79]   Starting:    SQCD.Agv.UnitTests&#xD;
+[xUnit.net 00:00:02.67]   Finished:    SQCD.Agv.UnitTests (ID = '8724dec3e387d55562c060f5d299c86fc65051e0ff49a79ad19eb7415ce7ebe4')&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>

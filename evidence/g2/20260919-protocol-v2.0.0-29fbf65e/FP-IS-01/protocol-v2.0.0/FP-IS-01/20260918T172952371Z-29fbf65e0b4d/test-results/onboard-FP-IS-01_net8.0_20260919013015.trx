@@ -1,0 +1,40 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TestRun id="a251f9a2-6afb-4e81-895e-f8ab9e660702" name="szy@LAB-WIN-01 2026-09-19 01:30:14" runUser="LAB-WIN-01\szy" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
+  <Times creation="2026-09-19T01:30:14.9851577+08:00" queuing="2026-09-19T01:30:14.9851581+08:00" start="2026-09-19T01:30:13.2436131+08:00" finish="2026-09-19T01:30:14.9900470+08:00" />
+  <TestSettings name="default" id="47d28f2e-4123-46d2-ac2c-82be662f8384">
+    <Deployment runDeploymentRoot="szy_LAB-WIN-01_2026-09-19_01_30_14" />
+  </TestSettings>
+  <Results>
+    <UnitTestResult executionId="6a3f23d0-58c2-4743-972a-ae0a739b3471" testId="09ef04f7-9de1-962f-ff2f-e985b9b3804c" testName="SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.APlanWhoseLegsAllNameTheWorklistDemandIsConsistent" computerName="LAB-WIN-01" duration="00:00:00.0147005" startTime="2026-09-19T01:30:14.8224525+08:00" endTime="2026-09-19T01:30:14.8372893+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="6a3f23d0-58c2-4743-972a-ae0a739b3471" />
+    <UnitTestResult executionId="a0b1656e-50d8-4452-9d3e-91db6270a87d" testId="c8275245-0a21-f392-381b-0ff3381c55d8" testName="SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.APlanNamingADifferentDemandThanTheWorklistIsNotConsistent" computerName="LAB-WIN-01" duration="00:00:00.1689488" startTime="2026-09-19T01:30:14.6396753+08:00" endTime="2026-09-19T01:30:14.8165103+08:00" testType="13cdc9d9-ddb5-4fa4-a97d-d965ccfc6d4b" outcome="Passed" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" relativeResultsDirectory="a0b1656e-50d8-4452-9d3e-91db6270a87d" />
+  </Results>
+  <TestDefinitions>
+    <UnitTest name="SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.APlanWhoseLegsAllNameTheWorklistDemandIsConsistent" storage="c:\users\szy\desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="09ef04f7-9de1-962f-ff2f-e985b9b3804c">
+      <Execution id="6a3f23d0-58c2-4743-972a-ae0a739b3471" />
+      <TestMethod codeBase="C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests" name="APlanWhoseLegsAllNameTheWorklistDemandIsConsistent" />
+    </UnitTest>
+    <UnitTest name="SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.APlanNamingADifferentDemandThanTheWorklistIsNotConsistent" storage="c:\users\szy\desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\sqcd.agv.unittests\bin\release\net8.0\win-x64\sqcd.agv.unittests.dll" id="c8275245-0a21-f392-381b-0ff3381c55d8">
+      <Execution id="a0b1656e-50d8-4452-9d3e-91db6270a87d" />
+      <TestMethod codeBase="C:\Users\szy\Desktop\8005-workspace-v2\worktrees\tmp-g2-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll" adapterTypeName="executor://xunit/VsTestRunner3/netcore/" className="SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests" name="APlanNamingADifferentDemandThanTheWorklistIsNotConsistent" />
+    </UnitTest>
+  </TestDefinitions>
+  <TestEntries>
+    <TestEntry testId="09ef04f7-9de1-962f-ff2f-e985b9b3804c" executionId="6a3f23d0-58c2-4743-972a-ae0a739b3471" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestEntry testId="c8275245-0a21-f392-381b-0ff3381c55d8" executionId="a0b1656e-50d8-4452-9d3e-91db6270a87d" testListId="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+  </TestEntries>
+  <TestLists>
+    <TestList name="Results Not in a List" id="8c84fa94-04c1-424b-9868-57a2d4851a1d" />
+    <TestList name="All Loaded Results" id="19431567-8539-422a-85d7-44ee4e166bda" />
+  </TestLists>
+  <ResultSummary outcome="Completed">
+    <Counters total="2" executed="2" passed="2" failed="0" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Output>
+      <StdOut>[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 8.0.31)&#xD;
+[xUnit.net 00:00:00.24]   Discovering: SQCD.Agv.UnitTests&#xD;
+[xUnit.net 00:00:00.71]   Discovered:  SQCD.Agv.UnitTests&#xD;
+[xUnit.net 00:00:00.93]   Starting:    SQCD.Agv.UnitTests&#xD;
+[xUnit.net 00:00:01.20]   Finished:    SQCD.Agv.UnitTests (ID = '8724dec3e387d55562c060f5d299c86fc65051e0ff49a79ad19eb7415ce7ebe4')&#xD;
+</StdOut>
+    </Output>
+  </ResultSummary>
+</TestRun>
