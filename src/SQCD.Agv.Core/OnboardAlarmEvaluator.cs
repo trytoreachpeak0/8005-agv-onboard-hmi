@@ -31,7 +31,19 @@ public sealed record OnboardAlarmInputs(
     TimeSpan VehicleSafetyMaxAge,
     TimeSpan VehicleSafetyClockSkewTolerance,
     IReadOnlyList<string> SessionReasonCodes,
-    WireToGateHmiOperationSnapshot? CurrentOperation);
+    WireToGateHmiOperationSnapshot? CurrentOperation)
+{
+    /// <summary>
+    /// 当前仓从第一次开锁起在等什么（REQ-0358）；没有在等的仓时为 <c>null</c>。由业务服务的
+    /// <see cref="SlotExpectedActionWaitTracker"/> 提供。
+    /// </summary>
+    public SlotExpectedActionWait? ExpectedActionWait { get; init; }
+
+    /// <summary>
+    /// 期待动作超时门槛，车载端配置，默认 3 个 <c>OperationTimeout</c>。不是正数时不判（旧模式没有这一项）。
+    /// </summary>
+    public TimeSpan ExpectedActionOverdueThreshold { get; init; }
+}
 
 /// <summary>
 /// 车载端告警的判定规则：从一份当下的事实算出当下的全部告警。
@@ -111,6 +123,7 @@ public static class OnboardAlarmEvaluator
         }
 
         AddOperationAlarm(alarms, inputs);
+        AddExpectedActionOverdue(alarms, inputs, ioTrusted);
 
         if (inputs.Controller.State == OnboardState.Faulted)
         {
@@ -199,6 +212,61 @@ public static class OnboardAlarmEvaluator
                 $"{active.SlotIndex + 1}号仓作业超时（{errorCode}）。",
                 SlotOperationAttemptId: active.OperationId,
                 PhysicalSlotNumber: active.SlotIndex + 1));
+    }
+
+    /// <summary>
+    /// 期待动作超时（REQ-0358）：同一次尝试、仍在开锁或等操作员、自第一次开锁起已到门槛。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>抬起时刻是越过门槛的那一刻，不是求值时刻。</b>服务端按 alarmId 认「新出现的超时」，而 alarmId 由内容派生；
+    /// 用求值时刻会让同一次超时每一份快照都像刚刚发生。
+    /// </para>
+    /// <para>
+    /// <b>撤下不靠计时器被告知。</b>闭环、<c>UNKNOWN</c>、结果上报、取消或恢复向量接管，当前操作投影都会换成别的阶段或
+    /// 别的尝试，这里只要看到的不是「同一次尝试仍在等」就不报。
+    /// </para>
+    /// <para>
+    /// 消息是期待的动作，按实时读数选：门开着、仓里已经是目标占用态，就只差关门；否则装货说放入、卸货说取出。
+    /// 读数不可信时不猜门的状态，只按操作类型说。
+    /// </para>
+    /// </remarks>
+    private static void AddExpectedActionOverdue(List<AlarmEntry> alarms, OnboardAlarmInputs inputs, bool ioTrusted)
+    {
+        if (inputs.ExpectedActionWait is not { } wait
+            || inputs.ExpectedActionOverdueThreshold <= TimeSpan.Zero
+            || inputs.CurrentOperation is not { } operation
+            || !SlotExpectedActionWaitTracker.IsWaitingStage(operation.Stage)
+            || !string.Equals(operation.SlotOperationAttemptId, wait.SlotOperationAttemptId, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        DateTimeOffset crossedAt = wait.FirstUnlockAt + inputs.ExpectedActionOverdueThreshold;
+        if (inputs.Now < crossedAt)
+        {
+            return;
+        }
+
+        bool expectOccupied = wait.OperationType == OperationType.Load;
+        LockerSnapshot? locker = ioTrusted
+            ? inputs.Io.Lockers.FirstOrDefault(item => item.PhysicalNumber == wait.PhysicalSlotNumber)
+            : null;
+        string slot = $"{wait.PhysicalSlotNumber}号仓门";
+        string expectedAction = locker is { IsKnown: true, IsLocked: false } && locker.HasCargo == expectOccupied
+            ? $"关好{slot}"
+            : expectOccupied
+                ? $"放入货物并关好{slot}"
+                : $"取出货物并关好{slot}";
+        // 整车范围、指明一个仓：线上是 subjectType=SLOT、subjectId=仓位号（CP-0005 第 4.1 节）。
+        alarms.Add(new AlarmEntry(
+            OnboardAlarmCodes.SlotExpectedActionOverdue,
+            Warning,
+            crossedAt,
+            AlarmScope.CurrentVehicle,
+            expectedAction,
+            SlotOperationAttemptId: wait.SlotOperationAttemptId,
+            PhysicalSlotNumber: wait.PhysicalSlotNumber));
     }
 
     private static AlarmEntry Vehicle(string code, string severity, DateTimeOffset now, string message) =>
