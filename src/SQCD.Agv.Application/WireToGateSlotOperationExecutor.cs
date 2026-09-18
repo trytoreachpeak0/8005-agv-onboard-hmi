@@ -372,6 +372,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge);
         List<int> completed = [];
         List<int> stillActive = [];
+        bool unsafeSlot = false;
         List<WireToGateSlotExecutionResult> results = [];
         foreach (int physicalSlot in command.Slots)
         {
@@ -407,13 +408,20 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                         [fresh ? "RECOVERY_CHECKPOINT_NOT_UNIQUE" : "SLOT_STATE_UNKNOWN"]));
                 if (!fresh || !IsSafeFinish(snapshot, physicalSlot - 1))
                 {
-                    stillActive.Add(physicalSlot);
+                    unsafeSlot = true;
+                    // Only the door that was opening can be standing open from this operation: a
+                    // completed slot closed its loop, and without IO it is unreadable, not open. So
+                    // the active set stays the journal's one slot (REQ-0357, ADR-cross-0061).
+                    if (state.ActiveUnlockSlots.Contains(physicalSlot))
+                    {
+                        stillActive.Add(physicalSlot);
+                    }
                 }
             }
         }
 
         bool allCompleted = completed.Count == command.Slots.Count;
-        WireToGateRecoveryCheckpoint checkpoint = stillActive.Count == 0
+        WireToGateRecoveryCheckpoint checkpoint = !unsafeSlot
             ? WireToGateRecoveryCheckpoint.SafeFinishReached
             : WireToGateRecoveryCheckpoint.ActiveUnlockSet;
         // Written in the same shape as an UNKNOWN decided mid-execution: the journal keeps the
@@ -718,6 +726,17 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
             if (unlockNeeded)
             {
+                // Every pulse, the first and each reopen, asks the whole vehicle first: another door not
+                // proven shut stops the operation here, before this one opens beside it (REQ-0357).
+                IoSnapshot beforePulse = _ioModule.CurrentSnapshot;
+                if (WireToGateSingleDoorRule.OtherDoorNotShut(
+                        beforePulse,
+                        IsFresh(beforePulse),
+                        physicalSlot) is { } otherDoor)
+                {
+                    throw new InvalidDataException(otherDoor);
+                }
+
                 await SendProgressAsync(
                     progress,
                     new("UNLOCKING", [physicalSlot], completed, promptRound, cause),
@@ -1093,6 +1112,9 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     {
         TimeoutException => "ACTION_NOT_ALLOWED_IN_STATE",
         IOException => "SLOT_STATE_UNKNOWN",
+        // Raised with the reason code itself, by the single-door check before a pulse.
+        InvalidDataException { Message: "UNLOCK_OUTPUT_NOT_RESET" or "LOCK_NOT_CLOSED" } invalid
+            => invalid.Message,
         InvalidDataException invalid when invalid.Message.Contains("LOCK", StringComparison.OrdinalIgnoreCase)
             => "LOCK_NOT_CLOSED",
         _ => "SLOT_STATE_UNKNOWN"
@@ -1127,6 +1149,9 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             // Deliberately swallowed; see the summary.
         }
     }
+
+    private bool IsFresh(IoSnapshot snapshot) =>
+        snapshot.IsConnected && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge);
 
     private bool IsSafeFinish(IoSnapshot snapshot, int slotIndex)
     {

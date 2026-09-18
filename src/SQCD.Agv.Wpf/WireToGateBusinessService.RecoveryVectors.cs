@@ -2314,7 +2314,7 @@ public sealed partial class WireToGateBusinessService
             "restored");
     }
 
-    private static string RecoveryVectorGuidance(
+    internal static string RecoveryVectorGuidance(
         WireToGateRecoveryVectorContext context,
         string phase,
         IReadOnlyList<int> active,
@@ -2324,7 +2324,7 @@ public sealed partial class WireToGateBusinessService
             "UNLOCKING" => $"正在打开{FormatSlots(active)}。",
             "WAITING_OPERATOR" when context.VectorType == WireToGateRecoveryVectorTypes.LoadCorrection =>
                 $"请先从{FormatSlots(active)}取出原货物，再按提示重新放入并关门。",
-            "WAITING_OPERATOR" => $"请清空{FormatSlots(active)}并关门。",
+            "WAITING_OPERATOR" => $"请在{FormatSlots(active)}取出货物并关门。",
             "VERIFYING" => $"正在核对仓门、货物和输出状态；已完成 {completed.Count}/{context.Slots.Count}。",
             "SAFE_FINISH" => "全部目标仓已达到安全收尾状态，正在上报恢复结果。",
             "PAUSED" => "恢复向量已暂停，物理状态未知，禁止重复操作仓门。",
