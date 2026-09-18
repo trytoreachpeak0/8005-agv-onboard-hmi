@@ -67,8 +67,15 @@ public sealed partial class WireToGateBusinessService
             FaultCargoHandoffAction,
             WireToGateRecoveryVectorTypes.FaultCargoHandoff);
 
+    /// <remarks>
+    /// Shut while an earlier forced recovery's slots are still physically unknown: the vehicle keeps
+    /// one isolation, and a second forced recovery would replace it -- making those slots operable
+    /// again with no hardware recovery record (REQ-0242). The server holds the whole vehicle until
+    /// that record arrives anyway, so this closes nothing the server leaves open.
+    /// </remarks>
     public bool CanRequestForcedMechanicalRecovery =>
         CanUseRecoveryOperator(requireProof: true)
+        && Volatile.Read(ref _lastRecoveryState).ForcedIsolation is null
         && CanRequestRecoveryAction(
             ForcedMechanicalRecoveryAction,
             WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery);
@@ -927,6 +934,11 @@ public sealed partial class WireToGateBusinessService
     {
         WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
             .ConfigureAwait(false);
+        if (action == ForcedMechanicalRecoveryAction && state.ForcedIsolation is not null)
+        {
+            throw new InvalidOperationException("HARDWARE_RECOVERY_RECORD_REQUIRED");
+        }
+
         WireToGateRecoveryOperationContext operation = FindRecoveryOperation(state, action)
             ?? throw new InvalidOperationException("RECOVERY_OPERATION_CONTEXT_MISSING");
 
@@ -2040,6 +2052,16 @@ public sealed partial class WireToGateBusinessService
             || current.PrimaryId != context.PrimaryId)
         {
             throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
+        }
+
+        // Never replace an isolation that is still standing: its slots would become operable with no
+        // hardware recovery record. The request path already refuses a second forced recovery; this
+        // is the write that must not happen whatever led here.
+        if (isolation is not null
+            && state.ForcedIsolation is { } standing
+            && standing.RecoveryActionId != isolation.RecoveryActionId)
+        {
+            throw new InvalidDataException("HARDWARE_RECOVERY_RECORD_REQUIRED");
         }
 
         await WriteRecoveryStateCachedAsync(

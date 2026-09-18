@@ -651,6 +651,19 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 .ReadRecoveryStateAsync(cancellationToken)
                 .ConfigureAwait(false);
             Volatile.Write(ref _lastRecoveryState, state);
+
+            // A forced isolation is a device fact beside whatever else is on file, not instead of it:
+            // it settled its own business side when it was acknowledged, and an operation or vector on
+            // other slots is restored and settled below exactly as it would be without it. The
+            // executors refuse anything that touches an isolated slot (#107).
+            if (state.ForcedIsolation is { } isolation)
+            {
+                PublishOperatorEvent(
+                    $"forced-isolation-restored:{isolation.RecoveryActionId}",
+                    "OPERATION_RECOVERY_REQUIRED",
+                    $"{FormatSlots(isolation.PhysicallyUnknownSlots)}经强制机械取出，物理状态未知，禁止操作；修复后请提交硬件恢复记录。 ");
+            }
+
             if (state.RecoveryVector is { } vector)
             {
                 if (WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector))
@@ -661,18 +674,6 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 }
 
                 PublishRecoveryVectorRestored(vector);
-                return;
-            }
-
-            // A forced isolation settled the business side when it was acknowledged, so there is no
-            // operation of its own to settle; and while slots are physically unknown nothing is
-            // settled from the live IO either -- the readings are what cannot be trusted (#107).
-            if (state.ForcedIsolation is { } isolation)
-            {
-                PublishOperatorEvent(
-                    $"forced-isolation-restored:{isolation.RecoveryActionId}",
-                    "OPERATION_RECOVERY_REQUIRED",
-                    $"{FormatSlots(isolation.PhysicallyUnknownSlots)}经强制机械取出，物理状态未知，禁止操作；修复后请提交硬件恢复记录。 ");
                 return;
             }
 
