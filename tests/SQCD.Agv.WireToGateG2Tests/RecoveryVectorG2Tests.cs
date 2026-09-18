@@ -646,6 +646,7 @@ public sealed class RecoveryVectorG2Tests
     /// executor refuses any command that touches slot 5 anyway.
     /// </remarks>
     [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task AnInterruptedOperationOnOtherSlotsIsStillSettledWhileAnIsolationStands()
