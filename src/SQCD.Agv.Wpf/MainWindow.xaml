@@ -124,6 +124,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -229,7 +230,22 @@
                            Text="{Binding SublotRejectionText}"
                            TextWrapping="Wrap"
                            Visibility="{Binding HasSublotRejection, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                <WrapPanel Grid.Row="3"
+                <!--
+                    强制机械取出之后物理状态未知的仓位（REQ-0241，8005-agv-onboard-hmi#107）。这些仓在提交硬件恢复记录前
+                    禁止任何仓位操作；没有时整行 Collapsed。UIA 按 AutomationId 找它。
+                -->
+                <TextBlock Grid.Row="3"
+                           Grid.Column="0"
+                           Grid.ColumnSpan="3"
+                           Margin="0,8,0,0"
+                           FontSize="14"
+                           FontWeight="Bold"
+                           Foreground="{StaticResource DangerBrush}"
+                           AutomationProperties.AutomationId="PhysicallyUnknownSlots"
+                           Text="{Binding PhysicallyUnknownSlotsText}"
+                           TextWrapping="Wrap"
+                           Visibility="{Binding HasPhysicallyUnknownSlots, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <WrapPanel Grid.Row="4"
                            Grid.Column="0"
                            Grid.ColumnSpan="3"
                            Margin="0,8,0,0"
@@ -282,6 +298,31 @@
                             Visibility="{Binding CanRequestForcedMechanicalRecovery, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnForcedMechanicalRecoveryClick"
                             Content="强制机械恢复" />
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            Background="#D6A32A"
+                            IsEnabled="{Binding CanConfirmForcedMechanicalRecovery}"
+                            Visibility="{Binding CanConfirmForcedMechanicalRecovery, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnConfirmForcedMechanicalRecoveryClick"
+                            Content="已隔离并完成机械取出" />
+                    <TextBox Width="240"
+                             Margin="0,0,8,0"
+                             Padding="4"
+                             FontSize="13"
+                             VerticalContentAlignment="Center"
+                             AutomationProperties.AutomationId="HardwareRecoveryObservations"
+                             AutomationProperties.Name="硬件恢复说明"
+                             Text="{Binding HardwareRecoveryObservations, UpdateSourceTrigger=PropertyChanged}"
+                             Visibility="{Binding CanSubmitHardwareRecoveryRecord, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            Background="#D6A32A"
+                            IsEnabled="{Binding CanSubmitHardwareRecoveryRecord}"
+                            Visibility="{Binding CanSubmitHardwareRecoveryRecord, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnSubmitHardwareRecoveryRecordClick"
+                            Content="提交硬件恢复记录" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"

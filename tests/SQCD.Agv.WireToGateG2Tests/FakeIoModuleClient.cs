@@ -68,6 +68,22 @@ public sealed class FakeIoModuleClient : IIoModuleClient
     }
 
     /// <summary>
+    /// The slot's lock feedback can no longer be read -- a wire cut, a failed input -- so the slot
+    /// reads as unknown until <see cref="CloseDoor"/> gives it readings again.
+    /// </summary>
+    public void SetUnreadable(int slotIndex)
+    {
+        lock (_sync)
+        {
+            Update(slotIndex, locker => locker with
+            {
+                LockFeedbackRaw = null,
+                ObservedAt = DateTimeOffset.UtcNow
+            });
+        }
+    }
+
+    /// <summary>
     /// What the vehicle finds when it comes back: the operator shut the door at some point while
     /// nothing was running, and whether a basket went in is visible only from the light curtain.
     /// </summary>

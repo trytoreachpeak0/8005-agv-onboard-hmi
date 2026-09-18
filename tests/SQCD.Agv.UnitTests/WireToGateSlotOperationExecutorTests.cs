@@ -1113,6 +1113,117 @@ public sealed class WireToGateSlotOperationExecutorTests
         Assert.Equal(PendingCancellation(command), state.PendingLoadCancellation);
     }
 
+    /// <summary>
+    /// REQ-0241: a slot opened by hand under a forced isolation is not operated again until a hardware
+    /// recovery record clears it (onboard-hmi#107). The IO reads it as an ordinary locked, empty slot
+    /// here, which is exactly why the reading is not trusted: nothing proves what it was left in.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task ACommandTouchingAPhysicallyUnknownSlotIsRefusedWithoutAPulse()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync(cancellationToken: token);
+        await fixture.Journal.WriteRecoveryStateAsync(
+            WireToGateRecoveryState.Empty with { ForcedIsolation = Isolation([2]) },
+            token);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true),
+            null,
+            token);
+
+        Assert.Equal("FAILED", result.OverallOutcome);
+        Assert.Equal(0, fixture.Io.UnlockCount);
+        WireToGateSlotExecutionResult untouched = result.SlotResults.Single(slot => slot.SlotNo == 1);
+        Assert.Equal("NOT_STARTED", untouched.Outcome);
+        Assert.Empty(untouched.ReasonCodes);
+        WireToGateSlotExecutionResult unknown = result.SlotResults.Single(slot => slot.SlotNo == 2);
+        Assert.Equal("NOT_STARTED", unknown.Outcome);
+        Assert.Equal(["SLOT_INOPERABLE"], unknown.ReasonCodes);
+        Assert.Equal("UNKNOWN", unknown.FinalPhysicalState);
+        Assert.Equal("UNKNOWN", unknown.LockState);
+        Assert.Equal("UNKNOWN", unknown.UnlockOutputState);
+        Assert.Equal([2], (await fixture.Journal.ReadRecoveryStateAsync(token)).ForcedIsolation!.PhysicallyUnknownSlots);
+    }
+
+    /// <summary>
+    /// The isolation is a device fact, not part of any operation: an operation on other slots starts
+    /// from a clean journal and settles, and the isolation is still there afterwards.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task AForcedIsolationOutlivesAnOperationOnOtherSlots()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync(cancellationToken: token);
+        await fixture.Journal.WriteRecoveryStateAsync(
+            WireToGateRecoveryState.Empty with { ForcedIsolation = Isolation([3]) },
+            token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(command, null, token);
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.Equal([3], (await fixture.Journal.ReadRecoveryStateAsync(token)).ForcedIsolation!.PhysicallyUnknownSlots);
+
+        await fixture.Executor.MarkResultRecordedAsync(command.SlotOperationAttemptId, token);
+        Assert.Equal([3], (await fixture.Journal.ReadRecoveryStateAsync(token)).ForcedIsolation!.PhysicallyUnknownSlots);
+    }
+
+    /// <summary>
+    /// The isolation is on disk: a restart -- a new journal and executor over the same file -- still
+    /// refuses a command that touches an isolated slot.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task APhysicallyUnknownSlotIsStillRefusedAfterARestart()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string directory = Path.Combine(Path.GetTempPath(), "w2g-executor", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        string journalPath = Path.Combine(directory, "journal.db");
+        await using (SqliteWireToGateJournal before = new(journalPath))
+        {
+            await before.InitializeAsync(token);
+            await before.WriteRecoveryStateAsync(
+                WireToGateRecoveryState.Empty with { ForcedIsolation = Isolation([1, 2]) },
+                token);
+        }
+
+        SimulationIo io = new();
+        await using SqliteWireToGateJournal journal = new(journalPath);
+        await journal.InitializeAsync(token);
+        await using WireToGateSlotOperationExecutor executor = new(
+            io,
+            journal,
+            new SystemClock(),
+            new WireToGateSlotOperationExecutorOptions(
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(1),
+                TimeSpan.FromSeconds(1)),
+            () => true);
+
+        WireToGateOperationExecutionResult result = await executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [2], expectedOccupied: true),
+            null,
+            token);
+
+        Assert.Equal("FAILED", result.OverallOutcome);
+        Assert.Equal(["SLOT_INOPERABLE"], result.SlotResults.Single().ReasonCodes);
+        Assert.Equal(0, io.UnlockCount);
+    }
+
+    private static WireToGateForcedIsolation Isolation(IReadOnlyList<int> slots) =>
+        new(
+            "77777777-7777-4777-8777-777777777777",
+            "88888888-8888-4888-8888-888888888888",
+            slots);
+
     private static WireToGatePendingLoadCancellation PendingCancellation(WireToGateSlotOperationCommand command) =>
         new(
             "c7b1f2a4-9d3e-4c8a-8f52-0a1b2c3d4e5f",

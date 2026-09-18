@@ -202,6 +202,15 @@ public partial class App : System.Windows.Application, IDisposable
                         cancellationToken: cancellationToken),
                     () => _wireToGateBusiness.IsLoadCancellationBeforeSublotOpen,
                     () => _wireToGateBusiness.CurrentSublotRejection);
+                viewModel.ConfigureForcedIsolation(
+                    () => _wireToGateBusiness.CanConfirmForcedMechanicalRecovery,
+                    cancellationToken => _wireToGateBusiness.ConfirmForcedMechanicalRecoveryAsync(
+                        cancellationToken),
+                    () => _wireToGateBusiness.PhysicallyUnknownSlots,
+                    () => _wireToGateBusiness.CanSubmitHardwareRecoveryRecord,
+                    (observations, cancellationToken) => _wireToGateBusiness.SubmitHardwareRecoveryRecordAsync(
+                        observations,
+                        cancellationToken));
                 viewModel.StationDepartureCountdownTextOverride =
                     _wireToGateBusiness.DescribeExpiredStationDeadline;
                 _wireToGateBusiness.Start();

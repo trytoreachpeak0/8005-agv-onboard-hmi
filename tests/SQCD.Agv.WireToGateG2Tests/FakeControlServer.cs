@@ -538,6 +538,18 @@ public sealed class FakeControlServer : IAsyncDisposable
     public long ForcedRecoveryGeneration { get; set; } = 1;
 
     /// <summary>
+    /// The outcome <c>HardwareRecoveryRecordResult</c> answers every record with, the way the real
+    /// server does after comparing the record's slots with the forced workflow's (control-server#137).
+    /// </summary>
+    public string HardwareRecoveryRecordOutcome { get; set; } = "RECORDED";
+
+    /// <summary>
+    /// Runs after a hardware recovery record arrives and before it is answered: what changes at the
+    /// vehicle while the server is deciding.
+    /// </summary>
+    public Action? BeforeHardwareRecoveryRecordResult { get; set; }
+
+    /// <summary>
     /// The <c>slotOperationAttemptId</c> the <c>commandContentSha256</c> is computed over.
     /// </summary>
     /// <remarks>
@@ -937,6 +949,10 @@ public sealed class FakeControlServer : IAsyncDisposable
                         break;
                     case "RecoveryActionSubmitted" when RespondToRecoveryRequests:
                         await HandleRecoveryActionSubmittedAsync(context, root).ConfigureAwait(false);
+                        break;
+                    case "HardwareRecoveryRecordSubmitted" when RespondToRecoveryRequests:
+                        await HandleHardwareRecoveryRecordSubmittedAsync(context, root)
+                            .ConfigureAwait(false);
                         break;
                     case "LoadCancellationStartRequested" when RespondToLoadCancellationRequests:
                         await HandleLoadCancellationStartRequestedAsync(context, root)
@@ -1409,6 +1425,35 @@ public sealed class FakeControlServer : IAsyncDisposable
                             fieldPath = "payload.demandId",
                             displayMessage = "当前状态不允许取消装货。"
                         }
+                }))
+            .ConfigureAwait(false);
+    }
+
+    private async Task HandleHardwareRecoveryRecordSubmittedAsync(
+        ConnectionContext context,
+        JsonElement request)
+    {
+        BeforeHardwareRecoveryRecordResult?.Invoke();
+        bool recorded = HardwareRecoveryRecordOutcome == "RECORDED";
+        await WriteEnvelopeAsync(
+            context,
+            CreateEnvelope(
+                context,
+                "HardwareRecoveryRecordResult",
+                request.GetProperty("messageId").GetString(),
+                new
+                {
+                    recordId = request.GetProperty("payload").GetProperty("recordId").GetString(),
+                    outcome = HardwareRecoveryRecordOutcome,
+                    problem = recorded
+                        ? null
+                        : new
+                        {
+                            reasonCode = "RECOVERY_SCOPE_MISMATCH",
+                            fieldPath = "payload.slots",
+                            displayMessage = "硬件恢复记录的仓位与强制恢复不一致。"
+                        },
+                    recoverySessionRevision = 5
                 }))
             .ConfigureAwait(false);
     }

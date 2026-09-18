@@ -210,6 +210,34 @@ public sealed record ManualChargingReturnToServiceRequestedPayload(
     string Reason,
     double? ObservedBatteryPercent);
 
+/// <summary>
+/// The O_TO_C hardware recovery record, shaped by 2.0.0's
+/// <c>HardwareRecoveryRecordSubmitted.schema.json</c>: the device half of a forced mechanical recovery
+/// (ADR-cross-0036, REQ-0242). The slot set is the forced recovery's whole set; the server records it
+/// only when it equals the session's.
+/// </summary>
+public sealed record HardwareRecoveryRecordSubmittedPayload(
+    string RecordId,
+    string ExceptionRecoverySessionId,
+    string RecoveryActionId,
+    WireToGateOperatorContextPayload Operator,
+    string AdministratorRole,
+    IReadOnlyList<int> Slots,
+    IReadOnlyList<string> ChecksPerformed,
+    IReadOnlyList<string> ActionsPerformed,
+    IReadOnlyList<string> Observations,
+    DateTimeOffset ObservedAt);
+
+/// <summary>
+/// The C_TO_O answer to <see cref="HardwareRecoveryRecordSubmittedPayload"/>, a RESPONSE correlated to
+/// the request's messageId.
+/// </summary>
+public sealed record HardwareRecoveryRecordResultPayload(
+    string RecordId,
+    string Outcome,
+    WireToGateProblemPayload? Problem,
+    long RecoverySessionRevision);
+
 public sealed record ManualChargingReturnToServiceResultPayload(
     string RequestId,
     string Outcome,

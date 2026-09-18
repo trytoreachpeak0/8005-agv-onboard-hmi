@@ -79,6 +79,15 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         WireToGateRecoveryState state = await _journal
             .ReadRecoveryStateAsync(cancellationToken)
             .ConfigureAwait(false);
+        // A slot a forced mechanical recovery left physically unknown is not opened for any vector
+        // (REQ-0241, onboard-hmi#107): nothing proves the state it was left in. Refused before
+        // anything is journaled, so the attempt leaves no trace to settle.
+        if (state.ForcedIsolation is { } isolation
+            && context.Slots.Any(isolation.PhysicallyUnknownSlots.Contains))
+        {
+            throw new InvalidDataException("SLOT_INOPERABLE");
+        }
+
         WireToGateRecoveryVectorContext? persistedVector = state.RecoveryVector;
         bool resuming = persistedVector is not null;
         if (persistedVector is not null && !SameContext(persistedVector, context))

@@ -797,6 +797,27 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             ArgumentException.ThrowIfNullOrWhiteSpace(cancellation.Reason);
         }
 
+        if (state.ForcedIsolation is { } isolation)
+        {
+            RequireUuid(isolation.ExceptionRecoverySessionId, nameof(isolation.ExceptionRecoverySessionId));
+            RequireUuid(isolation.RecoveryActionId, nameof(isolation.RecoveryActionId));
+            if (isolation.PhysicallyUnknownSlots is not { Count: > 0 } slots
+                || slots.Any(slot => slot is < 1 or > 8)
+                || !slots.SequenceEqual(slots.Distinct().Order()))
+            {
+                throw new InvalidDataException("WIRE_TO_GATE forced isolation slots无效。");
+            }
+
+            if (isolation.PendingRecord is { } record)
+            {
+                RequireUuid(record.RecordId, nameof(record.RecordId));
+                ArgumentException.ThrowIfNullOrWhiteSpace(record.OperatorId);
+                ArgumentException.ThrowIfNullOrWhiteSpace(record.OperatorVerificationMethod);
+                ArgumentException.ThrowIfNullOrWhiteSpace(record.AdministratorRole);
+                ArgumentException.ThrowIfNullOrWhiteSpace(record.Observations);
+            }
+        }
+
         foreach (WireToGatePendingResult pending in state.PendingResults)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(pending.MessageType);

@@ -48,17 +48,18 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
     /// <para>
     /// <b>Two kinds of entry, and they are not the same kind of debt.</b> Nine are messages v2
     /// added, and each belongs to a slice section 7.2 of the full-product scope specification
-    /// schedules into a later batch; those empty as their batches land. One predates v2 and is
-    /// pinned to what the onboard does instead -- it is a finding, not a schedule, and the note on
-    /// it is the thing to argue with.
+    /// schedules into a later batch; those empty as their batches land. Until onboard-hmi#107 one
+    /// more predated v2 and was pinned as a finding rather than a schedule.
     /// </para>
     /// <para>
-    /// That one was checked rather than assumed on 2026-09-09, and it is the result half of a pair
-    /// whose request half <i>is</i> named. <c>HardwareRecoveryRecordSubmitted</c> appears only as a
-    /// <c>case</c> label in the receive loop even though it is an <c>O_TO_C</c> message, so the
-    /// onboard never submits a record and has no result to read. That is exactly the hole
+    /// That one was checked rather than assumed on 2026-09-09, and it was the result half of a pair
+    /// whose request half <i>was</i> named: <c>HardwareRecoveryRecordResult</c>.
+    /// <c>HardwareRecoveryRecordSubmitted</c> appeared only as a <c>case</c> label in the receive
+    /// loop even though it is an <c>O_TO_C</c> message, so the onboard never submitted a record and
+    /// had no result to read. That is exactly the hole
     /// <see cref="NoOnboardToServerMessageTypeIsDispatchedByTheReceiveLoopUnlessPinned"/> exists to
-    /// keep visible: "named in src/" cannot tell which side of the wire the name is on.
+    /// keep visible: "named in src/" cannot tell which side of the wire the name is on. #107 gave the
+    /// record a send path -- the device half of a forced mechanical recovery -- and the result a reader.
     /// </para>
     /// <para>
     /// <c>ForcedMechanicalRecoveryResult</c> was the second such finding until ticket 21 closed it
@@ -87,9 +88,6 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
         {
             ["DemandSelectionRequested"] = "FP-IS-09, batch 7",
             ["DemandSelectionResult"] = "FP-IS-09, batch 7",
-            ["HardwareRecoveryRecordResult"] =
-                "predates v2; HardwareRecoveryRecordSubmitted is O_TO_C but appears only as an inbound "
-                + "case label, so the onboard never submits a record and has no result to read",
             ["ManualStationClearanceConfirmationRequested"] = "FP-IS-13, batch 8",
             ["ManualStationClearanceConfirmationResult"] = "FP-IS-13, batch 8",
             ["UnableToChargeFieldConfirmationRequested"] = "FP-IS-13, batch 8",

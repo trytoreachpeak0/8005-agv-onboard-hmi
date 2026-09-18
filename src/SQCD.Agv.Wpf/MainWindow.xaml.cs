@@ -286,6 +286,44 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnConfirmForcedMechanicalRecoveryClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null
+            || MessageBox.Show(
+                "请确认：车辆已断电、抱闸隔离，并已由具备现场作业资质的人员以机械方式开锁或拆卸、取出货物。\n\n系统不会输出开锁。确认后上报「已机械隔离」，这些仓位随后标为物理状态未知，禁止操作，直到提交硬件恢复记录。是否确认？",
+                "确认强制机械取出",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.ConfirmForcedMechanicalRecoveryAsync())
+        {
+            ShowRecoveryFailure("强制机械取出结果未被服务端确认。请检查连接后再次确认，系统不会输出开锁。", "确认失败");
+        }
+    }
+
+    private async void OnSubmitHardwareRecoveryRecordClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null
+            || MessageBox.Show(
+                "请确认强制机械取出涉及的全部仓位已修复，锁反馈、光幕和开锁输出信号正常。\n\n提交后服务端记录硬件恢复；车载端复核实时信号有效后解除这些仓位的「物理状态未知」，不会自动续作任何操作。是否提交？",
+                "提交硬件恢复记录",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.SubmitHardwareRecoveryRecordAsync())
+        {
+            ShowRecoveryFailure("硬件恢复记录未生效。请填写说明、确认仓位信号有效后再提交。", "硬件恢复记录失败");
+        }
+    }
+
     private async void OnManualChargingReturnClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel is null
