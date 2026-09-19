@@ -1671,18 +1671,23 @@ public sealed partial class WireToGateBusinessService
 
             try
             {
+                // Both motion checks answer a refusal the same way: the vehicle may start moving
+                // between this one and the one the execution makes before it starts, and a refusal
+                // there with no result would leave the server's session EXECUTING (onboard-hmi#129 C-2).
+                Func<Task>? reportRefused =
+                    vectorType is WireToGateRecoveryVectorTypes.LoadCompensation
+                        or WireToGateRecoveryVectorTypes.FaultCargoHandoff
+                        ? () => ReportRefusedBeforeUnlockAsync(context, resultKey, cancellationToken)
+                        : null;
                 try
                 {
                     EnsureVehicleStoppedAndFresh();
                 }
-                catch (InvalidOperationException) when (
-                    vectorType is WireToGateRecoveryVectorTypes.LoadCompensation
-                        or WireToGateRecoveryVectorTypes.FaultCargoHandoff)
+                catch (InvalidOperationException) when (reportRefused is not null)
                 {
                     // Reported, then rethrown: the log line and the RECOVERY_BLOCKED event below
                     // are the operator's account of the refusal and stay exactly as they were.
-                    await ReportRefusedBeforeUnlockAsync(context, resultKey, cancellationToken)
-                        .ConfigureAwait(false);
+                    await reportRefused().ConfigureAwait(false);
                     throw;
                 }
 
@@ -1694,7 +1699,8 @@ public sealed partial class WireToGateBusinessService
                             context,
                             resultKey,
                             result,
-                            cancellationToken))
+                            cancellationToken),
+                        reportRefused)
                     .ConfigureAwait(false);
                 _ = completed;
             }
@@ -2009,9 +2015,19 @@ public sealed partial class WireToGateBusinessService
         WireToGateRecoveryVectorContext context,
         bool correction,
         CancellationToken cancellationToken,
-        Func<WireToGateRecoveryVectorExecutionResult, Task>? sendResult = null)
+        Func<WireToGateRecoveryVectorExecutionResult, Task>? sendResult = null,
+        Func<Task>? reportRefusedBeforeUnlock = null)
     {
-        EnsureVehicleStoppedAndFresh();
+        try
+        {
+            EnsureVehicleStoppedAndFresh();
+        }
+        catch (InvalidOperationException) when (reportRefusedBeforeUnlock is not null)
+        {
+            await reportRefusedBeforeUnlock().ConfigureAwait(false);
+            throw;
+        }
+
         PublishRecoveryVectorOperation(
             context,
             WireToGateHmiOperationStage.Preparing,
