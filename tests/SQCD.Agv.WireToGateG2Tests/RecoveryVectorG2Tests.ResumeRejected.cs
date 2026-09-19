@@ -80,6 +80,39 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// The safety gate lets the resume through and the executor's own check stops it, still before
+    /// the first journal write and the first pulse. The executor's local code is not in the
+    /// protocol's registry; the rejection carries the registered one for a resume scope that does
+    /// not match what the vehicle has on file.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task AResumeTheExecutorRefusesBeforeItsFirstPulseIsRejected()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            cargoInTargetSlots: true);
+        WireToGateRecoveryState state = await OpenResumeActionAsync(harness, token);
+
+        await harness.Server.SendCommandAsync(
+            "SlotOperationResumeCommand",
+            ResumeMessageId,
+            ResumePayload(state, commandContentSha256: new string('f', 64)));
+
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_STATE_MISMATCH", token);
+        JsonElement rejection = await WaitForSingleRejectionAsync(harness, token);
+        Assert.Equal(ResumeMessageId, rejection.GetProperty("correlationId").GetString());
+        JsonElement payload = rejection.GetProperty("payload");
+        Assert.Equal(AttemptId, payload.GetProperty("slotOperationAttemptId").GetString());
+        Assert.Equal(
+            "RECOVERY_SCOPE_MISMATCH",
+            payload.GetProperty("problem").GetProperty("reasonCode").GetString());
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
     /// Presses the resume entry and waits for the accepted action to be on disk, which is what the
     /// vehicle checks a <c>SlotOperationResumeCommand</c> against.
     /// </summary>
