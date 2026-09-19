@@ -1826,6 +1826,9 @@ public sealed partial class RecoveryVectorG2Tests
 
         public void VehicleStopped() => _safety.SetStopped();
 
+        /// <inheritdoc cref="MutableSafetySignalProvider.StopsForOnlyTheFirstCommandCheck"/>
+        public void VehicleStartsMovingAfterTheFirstCommandCheck() => _safety.StopsForOnlyTheFirstCommandCheck();
+
         public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(
             CancellationToken cancellationToken) =>
             _journal.ReadRecoveryStateAsync(cancellationToken);
@@ -2020,17 +2023,42 @@ public sealed partial class RecoveryVectorG2Tests
     private sealed class MutableSafetySignalProvider : IVehicleSafetySignalProvider
     {
         private int _stopped;
+        private int _commandChecksLeft = -1;
 
-        public void SetStopped() => Interlocked.Exchange(ref _stopped, 1);
+        public void SetStopped()
+        {
+            Interlocked.Exchange(ref _commandChecksLeft, -1);
+            Interlocked.Exchange(ref _stopped, 1);
+        }
 
-        public void SetUnknown() => Interlocked.Exchange(ref _stopped, 0);
+        public void SetUnknown()
+        {
+            Interlocked.Exchange(ref _commandChecksLeft, -1);
+            Interlocked.Exchange(ref _stopped, 0);
+        }
+
+        /// <summary>
+        /// Stopped for the first motion check a recovery command's handling makes, unknown from its
+        /// second on: the vehicle starts moving between the two (onboard-hmi#129 C-2). Reads made
+        /// anywhere else -- the safety pump, the request paths -- see it stopped throughout.
+        /// </summary>
+        public void StopsForOnlyTheFirstCommandCheck()
+        {
+            Interlocked.Exchange(ref _stopped, 1);
+            Interlocked.Exchange(ref _commandChecksLeft, 1);
+        }
 
         public VehicleSafetySignal Read() => new(
-            Volatile.Read(ref _stopped) == 1
+            Volatile.Read(ref _stopped) == 1 && !IsACommandCheckPastTheFirst()
                 ? VehicleMotionState.Stopped
                 : VehicleMotionState.Unknown,
             DateTimeOffset.UtcNow,
             "RECOVERY_VECTOR_G2_TEST");
+
+        private bool IsACommandCheckPastTheFirst() =>
+            Volatile.Read(ref _commandChecksLeft) >= 0
+            && Environment.StackTrace.Contains("HandleRecoveryVectorCommandAsync", StringComparison.Ordinal)
+            && Interlocked.Decrement(ref _commandChecksLeft) < 0;
     }
 
 }
