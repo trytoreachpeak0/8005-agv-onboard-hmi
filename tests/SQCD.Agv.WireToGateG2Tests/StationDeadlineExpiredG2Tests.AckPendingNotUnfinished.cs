@@ -95,15 +95,20 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
-    /// 「只差确认」只看发件箱里有没有这次的结果行，不看发送时进没进 catch：装货在会话断开时结束，
-    /// <c>SendDurableCoreAsync</c> 在写发件箱之前就以 <c>WIRE_TO_GATE_NOT_READY</c> 拒绝，结果从未落盘、没有东西可补发。
-    /// 重连后这次 attempt 不能被当成「只差确认」压掉：它仍是遗留，照旧按实时 IO 中断结算，服务端收到它的结果。
+    /// 装货在会话断开时结束：<c>OperationResult</c> 先落盘再看能不能发（manifest 的 <c>durableBeforeSend</c>），重连握手按
+    /// 同一 <c>messageId</c> 补发（ADR-cross-0029 第 4 步），服务端确认后这次装货照常结算——发出去的是执行器自己那份结果，
+    /// 不是事后按实时 IO 重算的一份，所以不走中断结算。
     /// </summary>
+    /// <remarks>
+    /// 这条是 onboard-hmi#124 守护测试 <c>ALoadThatEndedWhileNotReadyHasNoResultToWaitForAndIsStillSettled</c> 的改写，预期是
+    /// 有意改变的（onboard-hmi#127）：那时发送口在写发件箱之前就以 <c>WIRE_TO_GATE_NOT_READY</c> 拒绝，结果从未落盘，重连后
+    /// 只能按实时 IO 中断结算。它守的那条判断没变——「只差确认」只看发件箱里真有没有这次的结果行——只是现在那一行在了。
+    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
-    public async Task ALoadThatEndedWhileNotReadyHasNoResultToWaitForAndIsStillSettled()
+    public async Task ALoadThatEndedWhileDisconnectedPutsItsResultOnFileAndTheHandshakeReplaysIt()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using Harness harness = await Harness.StartAsync(
@@ -115,21 +120,28 @@ public sealed partial class StationDeadlineExpiredG2Tests
         await harness.Client.DisconnectAsync();
         harness.Io.CloseDoor(0, cargo: true);
         await harness.WaitForEventAsync("RESULT_ACK_PENDING", token);
-        Assert.Null(await harness.Journal.ReadOutgoingByDeduplicationKeyAsync($"operation-result:{AttemptId}", token));
+        WireToGateDurableMessage? onFile =
+            await harness.Journal.ReadOutgoingByDeduplicationKeyAsync($"operation-result:{AttemptId}", token);
+        Assert.NotNull(onFile);
+        Assert.Equal(AttemptId, onFile.MessageId);
+        Assert.False(onFile.Acknowledged);
         Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "OperationResult");
 
         harness.Server.SendSlotOperationCommandAfterRecovery = false;
         harness.Server.SendJourneySnapshotsAfterRecovery = false;
         await harness.Client.ConnectAndRecoverAsync(token);
 
-        await harness.WaitForInboundAsync("OperationResult", token);
         await Harness.WaitUntilAsync(
             () => harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId is null,
-            "the leftover attempt to be settled from the live IO",
+            "the replayed result to settle the load",
             token,
             harness.DescribeEvents);
+        Assert.Equal(
+            AttemptId,
+            Assert.Single(harness.Server.ReceivedEnvelopes, item => item.MessageType == "OperationResult").MessageId);
         Assert.Equal("COMPLETED", harness.SingleResult("OperationResult").GetProperty("overallOutcome").GetString());
-        Assert.Contains("上次装货在执行中中断", harness.DescribeEvents(), StringComparison.Ordinal);
+        Assert.Equal(WireToGateRecoveryCheckpoint.ResultRecorded, harness.ReadRecoveryState(token).ProvenRecoveryCheckpoint);
+        Assert.DoesNotContain("上次装货在执行中中断", harness.DescribeEvents(), StringComparison.Ordinal);
         Assert.Equal(1, harness.Io.UnlockCount);
     }
 }
