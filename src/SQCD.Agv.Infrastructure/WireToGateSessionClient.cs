@@ -3251,7 +3251,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// narrowing is not reachable. These two counts are the only narrowings left on the inbound
     /// journey snapshots.
     /// </remarks>
-    private static void ValidateUpcomingStopPlan(UpcomingStopPlanSnapshotPayload payload)
+    internal static void ValidateUpcomingStopPlan(UpcomingStopPlanSnapshotPayload payload)
     {
         if (payload.PlanRevision < 0
             || payload.Legs is null
