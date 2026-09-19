@@ -1356,6 +1356,27 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         {
             throw;
         }
+        catch (WireToGateResumeNotStartedException exception)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"恢复命令未执行：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。",
+                exception);
+            PublishOperatorEvent(
+                $"resume-command-failed:{command.MessageId}",
+                "RECOVERY_BLOCKED",
+                $"恢复命令被阻断：{exception.Message}。未执行仓门IO。 ");
+            await SendResumeRejectedAsync(
+                    command,
+                    ResumeNotStartedReasonCode(exception.Message),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        // Everything else stays local, as before onboard-hmi#119: an IOException or TimeoutException
+        // may come from after the first pulse, and so may an InvalidDataException the executor did not
+        // classify as "not started". Where the refusal cannot be placed before the door IO, the server
+        // hears about the operation through the existing interrupted-settlement result instead.
         catch (Exception exception) when (
             exception is IOException
                 or TimeoutException
@@ -2085,6 +2106,25 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 exception);
         }
     }
+
+    /// <summary>
+    /// The registered protocol code for an executor refusal before any door IO. The slot codes are
+    /// in the registry as they are; the executor's own recovery codes are not, and go to the
+    /// registered code that says the same thing.
+    /// </summary>
+    private static string ResumeNotStartedReasonCode(string localCode) => localCode switch
+    {
+        "SLOT_STATE_UNKNOWN"
+            or "LOCK_NOT_CLOSED"
+            or "UNLOCK_OUTPUT_NOT_RESET"
+            or "SLOT_OPERATION_CONFLICT"
+            or "SLOT_SET_INVALID" => localCode,
+        // Nothing on file to resume: the same answer the safety gate gives an unpersisted state.
+        "RECOVERY_OPERATION_CONTEXT_MISSING" => "RECOVERY_SESSION_NOT_OPEN",
+        // RECOVERY_STATE_MISMATCH, RECOVERY_COMMAND_INVALID and the field-shape refusals: the
+        // command does not describe the scope the vehicle has on file.
+        _ => "RECOVERY_SCOPE_MISMATCH"
+    };
 
     private static WireToGateOperationResultPayload CreateOperationResultPayload(
         WireToGateOperationExecutionResult result)
