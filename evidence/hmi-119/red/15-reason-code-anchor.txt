@@ -1,0 +1,22 @@
+commit: 429ac5c24f8a5e1a271e11a7f236a9e5617c095e
+dirty: 0 files
+command: dotnet test tests/SQCD.Agv.UnitTests/SQCD.Agv.UnitTests.csproj --filter "FullyQualifiedName~ReasonCodeRegistryArchitectureTests"
+note: none
+at: 2026-09-19T17:25:51+08:00
+
+  All projects are up-to-date for restore.
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:02.73]     SQCD.Agv.UnitTests.ReasonCodeRegistryArchitectureTests.AnchoredScanRulesStillMatchTheirTargets [FAIL]
+  Failed SQCD.Agv.UnitTests.ReasonCodeRegistryArchitectureTests.AnchoredScanRulesStillMatchTheirTargets [11 ms]
+  Error Message:
+   'ResumeNotStartedReasonCode' in WireToGateBusinessService.cs no longer returns its codes as 'return "CODE";' statements. This gate anchors on them; keep that shape or update the anchor.
+  Stack Trace:
+     at SQCD.Agv.UnitTests.ReasonCodeRegistryArchitectureTests.AnchoredScanRulesStillMatchTheirTargets() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\ReasonCodeRegistryArchitectureTests.cs:line 254
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+
+Failed!  - Failed:     1, Passed:     5, Skipped:     0, Total:     6, Duration: 497 ms - SQCD.Agv.UnitTests.dll (net8.0)

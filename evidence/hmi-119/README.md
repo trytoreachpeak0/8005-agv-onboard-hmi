@@ -21,12 +21,17 @@
 | `10-new-session-after-close.txt` | `AfterARejectedResumeClosesItsSessionTheVehicleCanOpenAnother`（第 9 条，真装置配对验证 P-07 发现后补） | 测试提交（清会话记录之前） | 按「补偿清空」本地报 `RECOVERY_SESSION_STATE_PENDING` |
 | `11-restart-test-ack-race.txt` | 三个 G2 类一起跑时第 8 条偶发红 | 清会话记录的实现提交 | 测试自身的时序：重启赶在车记下 DurableAck 之前，握手补发了同一 messageId 的拒绝；最终改为重启前等车把 ack 记进日志、原断言不变 |
 | `08-restart-no-extra-baseline-final.txt` | 第 8 条最终版 | `3547a97` | 服务端收不到拒绝 |
+| `13-replay-forgets-session.txt`、`13-replay-forgets-session-final.txt` | `AReplayedRejectionForgetsTheRefusedSessionLeftBehindByARestart`（审查必补） | 重放路径清理之前 | 首版：按「补偿清空」本地报 `RECOVERY_SESSION_STATE_PENDING`；最终版（等日志不再记着会话再按）：等不到会话被清 |
+| `14-mismatch-keeps-session-mutant-no-guard.txt` | `ARefusedResumeForAnotherActionLeavesTheSessionOnFile`（审查顺手项，id 匹配守卫的反例） | 去掉守卫的变体 | 指向别的动作的拒绝也把日志里的会话清掉了 |
+| `15-reason-code-anchor.txt` | `ReasonCodeRegistryArchitectureTests`（审查顺手项，UnitTests） | 映射方法改写之前 | 锚点找不到 `ResumeNotStartedReasonCode` 的 `return "CODE";` |
 
 ## green/
 
 与上表同名的文件是同一条测试在对应实现提交上的通过记录；`00-all-new-tests.txt` 是最初 8 条一起跑；`09-after-merge-7ded1b7-g2-classes.txt` 是合并 hmi#120 之后；`11-g2-classes-after-release-fix.txt` 是补第 9 条修复后 `RecoveryVectorG2Tests`、`StationDeadlineExpiredG2Tests`、`WireToGateG2Tests` 三类 106 条（第 8 条中间版断言）；`12-g2-classes-final.txt` 是第 8 条恢复原断言后的同三类 106 条。
 
-`rig-4e5cfcd/`：`4e5cfcd` 上的真装置时段证据，见该目录 `README.md`。
+`rig-4e5cfcd/`、`rig-c97d51b/`：两次真装置时段的证据，见各目录 `README.md`。
+
+`onboard-hmi-g2-2d5a082/`：审查修改后本机全量 `ONBOARD_HMI_G2`（经 `Invoke-HeavyLocal.ps1`），PASS：UnitTests 388、G2Tests 203、`dotnet format`、出站 schema 3367 行 0 违规。
 
 `07-after-pulse-settled-baseline.txt` 与 `07-after-pulse-settled.txt`：第 7 条
 `AResumeThatFailsAfterItsFirstPulseIsSettledNotRejected` 是回归护栏，防的是今后把开锁之后的失败也当成拒绝。
