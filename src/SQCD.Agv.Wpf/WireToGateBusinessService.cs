@@ -1441,6 +1441,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 $"resume-command:{command.MessageId}",
                 "RECOVERY_BLOCKED",
                 $"恢复命令被安全门禁阻断：{decision.ReasonCode}。");
+            await SendResumeRejectedAsync(command, decision.ReasonCode, cancellationToken)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -2040,6 +2042,48 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             command.MessageId,
             payload,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Answers a <c>SlotOperationResumeCommand</c> refused before any door IO, so the control server's
+    /// resume workflow gets an answer instead of waiting on one forever (8005-agv-onboard-hmi#119).
+    /// </summary>
+    /// <remarks>
+    /// Correlated to the refused command's messageId, as the protocol's
+    /// <c>REQUIRED_ORIGINAL_MESSAGE_ID</c> asks, and keyed by it too: the rejection of the original
+    /// <c>SlotOperationCommand</c> for the same attempt is keyed by attempt and reason only, and the
+    /// two must never meet on one key.
+    /// </remarks>
+    private async Task SendResumeRejectedAsync(
+        WireToGateSlotOperationResumeCommand command,
+        string reasonCode,
+        CancellationToken cancellationToken)
+    {
+        string deduplicationKey =
+            $"slot-operation-resume-rejected:{command.SlotOperationAttemptId}:{command.MessageId}";
+        var payload = new SlotOperationCommandRejectedPayload(
+            command.SlotOperationAttemptId,
+            new WireToGateProblemPayload(reasonCode, null, null),
+            _session.Current.CapabilityVersion,
+            null);
+        try
+        {
+            await _session.SendSlotOperationResumeRejectedAsync(
+                deduplicationKey,
+                StableUuid(deduplicationKey),
+                command.MessageId,
+                payload,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"续行命令的拒绝暂未送达服务端：attempt={command.SlotOperationAttemptId}，reason={reasonCode}。",
+                exception);
+        }
     }
 
     private static WireToGateOperationResultPayload CreateOperationResultPayload(

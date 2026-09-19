@@ -129,6 +129,19 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         _client.SendRecoveryOperationResultAsync(deduplicationKey, messageId, payload, cancellationToken);
 
+    public Task<string> SendSlotOperationResumeRejectedAsync(
+        string deduplicationKey,
+        string messageId,
+        string resumeCommandMessageId,
+        SlotOperationCommandRejectedPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.SendSlotOperationResumeRejectedAsync(
+            deduplicationKey,
+            messageId,
+            resumeCommandMessageId,
+            payload,
+            cancellationToken);
+
     public Task<ExceptionRecoverySessionOpenedPayload> RequestExceptionRecoverySessionAsync(
         string messageId,
         ExceptionRecoverySessionRequestedPayload payload,
