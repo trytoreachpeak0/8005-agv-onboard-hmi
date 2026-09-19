@@ -136,6 +136,44 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// 重发一条未确认的失败结果时服务端回 <c>ProtocolProblem</c>（或发件箱行在重绑时对不上）：重发以
+    /// <c>InvalidDataException</c> 失败，恢复入口的投影照样出现——「上次装货操作未完成……需要管理员恢复」。
+    /// 改动前这条路径不重发、入口每次都出现；异常穿出去会让它消失，与 hmi#109「恢复入口消失」同类（PR #131 调度审查）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AResendRefusedWithAProtocolProblemStillRestoresTheRecoveryEntry()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { LockerWaitTimesOut = true },
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.OperationResultAcksToDrop = 1;
+                server.AnswerOperationResultsWithProtocolProblem = true;
+            });
+        await harness.WaitForEventAsync("RESULT_ACK_PENDING", token);
+
+        await Harness.WaitUntilAsync(
+            () => harness.Server.ReceivedEnvelopes.Count(item => item.MessageType == "OperationResult") >= 2,
+            "the unfinished result sent once more",
+            token,
+            harness.DescribeEvents);
+        await Harness.WaitUntilAsync(
+            () => harness.DescribeEvents().Contains("上次装货操作未完成", StringComparison.Ordinal),
+            "the recovery entry's projection after the refused resend",
+            token,
+            harness.DescribeEvents);
+
+        Assert.Equal(WireToGateHmiOperationStage.RecoveryRequired, harness.Business.CurrentOperationSnapshot?.Stage);
+        Assert.Equal(AttemptId, harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId);
+    }
+
+    /// <summary>
     /// 确认到达之后照常结算：断线重连，握手按同一 <c>messageId</c> 补发结果、服务端这次回了确认；之后的就绪让 journal
     /// 转为已结算（<c>ResultRecorded</c>，这次装货成为可更正的最近一次装货），全程不报未完成、不再开锁。
     /// </summary>

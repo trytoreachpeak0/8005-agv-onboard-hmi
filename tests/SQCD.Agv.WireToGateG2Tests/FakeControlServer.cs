@@ -66,6 +66,13 @@ public sealed class FakeControlServer : IAsyncDisposable
     public int OperationResultAcksToDrop { get; set; }
 
     /// <summary>
+    /// Answers every <c>OperationResult</c> that is not dropped by <see cref="OperationResultAcksToDrop"/> with a
+    /// <c>ProtocolProblem</c>, the connection left open: the vehicle's resend of an unacknowledged result then fails
+    /// with <c>InvalidDataException</c> rather than a timeout (onboard-hmi#127 review).
+    /// </summary>
+    public bool AnswerOperationResultsWithProtocolProblem { get; set; }
+
+    /// <summary>
     /// Whether a mid-session <c>SafetyStateChanged</c> is answered at all. Off, it is taken and left unanswered with
     /// the connection open: the vehicle republishes its session state only once such a change is acknowledged, so
     /// this keeps every session state change after the handshake's readiness out of a test that must not lean on
@@ -1015,6 +1022,13 @@ public sealed class FakeControlServer : IAsyncDisposable
                         break;
                     case "OperationResult" when OperationResultAcksToDrop > 0:
                         OperationResultAcksToDrop--;
+                        break;
+                    case "OperationResult" when AnswerOperationResultsWithProtocolProblem:
+                        await WriteEnvelopeAsync(context, CreateProtocolProblem(
+                            context,
+                            messageId,
+                            messageType,
+                            "MESSAGE_ID_CONTENT_CONFLICT")).ConfigureAwait(false);
                         break;
                     case "OperationResult":
                         if (DropBeforeOperationResultAck)
