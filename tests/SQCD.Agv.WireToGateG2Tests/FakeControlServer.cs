@@ -23,15 +23,19 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// <item>A RecoveryStateReport naming an unsettled attempt this server has not settled, or any pending result, is
 /// answered RECOVERY_REQUIRED with <c>SESSION_RECOVERY_REQUIRED</c> (<c>WireToGateStore.DecideReadinessAsync</c>,
 /// <c>noPendingFacts</c>). A COMPLETED <c>OperationResult</c>, or a reconciled cancellation, compensation or fault
-/// cargo handoff, settles the attempt; the arrival of a pending result reconciles it; readiness is then announced
-/// after the ack only when it changed.</item>
+/// cargo handoff, settles the attempt; the arrival of a pending result reconciles it. Any other result puts its
+/// operation into recovery, which keeps the whole vehicle RECOVERY_REQUIRED -- across handshakes, clean reports
+/// included -- until a recovery settles it (<c>operationNeedsRecovery</c>). Readiness is announced after the ack only
+/// when it changed.</item>
 /// <item>While the last readiness announced is not READY, the journey snapshots, the sublot entry request,
 /// <c>SlotOperationCommand</c> and <c>PreDepartureSafetyCheck</c> are held and sent once READY is announced, not
 /// dropped. Recovery messages and <c>SlotConfigurationActivationCommand</c> are not behind that gate, on the real
 /// server or here.</item>
 /// <item>Sending gated messages to a session that is not ready is a deviation only
-/// <see cref="ViolateReadinessGateForTest"/> makes, and answering READY over pending facts one only
-/// <see cref="AnswerReadyOverPendingFactsForTest"/> makes.</item>
+/// <see cref="ViolateReadinessGateForTest"/> makes, answering READY over pending facts one only
+/// <see cref="AnswerReadyOverPendingFactsForTest"/> makes, staying READY over a refused result one only
+/// <see cref="IgnoreRefusedResultsForReadinessForTest"/> makes, and sending the activation after the journey one only
+/// <see cref="SendActivationAfterJourneyForTest"/> makes.</item>
 /// </list>
 /// </remarks>
 public sealed class FakeControlServer : IAsyncDisposable
@@ -117,10 +121,10 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool SendReadinessAfterSafetyStateChangedAck { get; set; }
 
     /// <summary>
-    /// Appends one RECOVERY_REQUIRED SessionReadiness line to the OperationResult ack, the way the
-    /// real ControlServer does when applying a refused result moves the session into recovery.
-    /// Every other mid-session readiness here rides a SafetyStateChanged ack, so this shape --
-    /// readiness announced on a business ack the vehicle is already awaiting -- had no coverage.
+    /// Refuses every <c>OperationResult</c>, COMPLETED ones included: the server judges the operation
+    /// <c>RecoveryRequired</c>, as it does for a COMPLETED result whose slot evidence it cannot accept
+    /// (<c>ApplyOperationResultAsync</c>'s <c>completedSafely</c>). A result that is not COMPLETED is refused without
+    /// this, by default; either way readiness is judged again and RECOVERY_REQUIRED is appended to the ack on a change.
     /// </summary>
     public bool SendRecoveryRequiredReadinessAfterOperationResultAck { get; set; }
 
@@ -148,11 +152,37 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool AnswerReadyOverPendingFactsForTest { get; set; }
 
     /// <summary>
+    /// <b>A deviation from the real server.</b> Leaves refused results out of the readiness decision: an operation
+    /// whose result was not COMPLETED does not hold the vehicle RECOVERY_REQUIRED, and nothing is appended to that
+    /// result's ack. The real server has done both since 2026-09-04 (<c>DecideReadinessAsync</c>'s
+    /// <c>operationNeedsRecovery</c>). What this double did before onboard-hmi#128's review; a test that sets it names
+    /// the reason in a comment.
+    /// </summary>
+    public bool IgnoreRefusedResultsForReadinessForTest { get; set; }
+
+    /// <summary>
+    /// <b>A deviation from the real server's order.</b> Sends the handshake's
+    /// <c>SlotConfigurationActivationCommand</c> after the journey push instead of before it. The real server replays
+    /// a pending activation as the handshake completes and pushes the journey on the runtime's next pass; with that
+    /// order the vehicle reads a journey snapshot where it expects its activation result's DurableAck
+    /// (onboard-hmi#140). What this double did before onboard-hmi#128's review.
+    /// </summary>
+    public bool SendActivationAfterJourneyForTest { get; set; }
+
+    /// <summary>
     /// Attempts this server has settled, across connections and, through
     /// <see cref="AdoptDurableRecoveryMemoryFrom"/>, across a vehicle restart: the <c>StationOperations</c> rows
     /// <c>WireToGateStore.TryTakeOffSettledReportedAttemptsAsync</c> reads as Committed or Cancelled.
     /// </summary>
     private readonly HashSet<string> _settledAttempts = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Attempts whose result this server refused and that nothing has settled since: the <c>StationOperations</c> rows
+    /// in <c>RecoveryRequired</c> that <c>DecideReadinessAsync</c>'s <c>operationNeedsRecovery</c> finds. Judged for the
+    /// whole vehicle, not for one session, so a clean report does not lift it; kept across a restart like
+    /// <see cref="_settledAttempts"/>.
+    /// </summary>
+    private readonly HashSet<string> _operationsNeedingRecovery = new(StringComparer.Ordinal);
 
     public bool RequireSafeSafetyForReadiness { get; set; }
 
@@ -542,6 +572,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                 }
 
                 _settledAttempts.UnionWith(previous._settledAttempts);
+                _operationsNeedingRecovery.UnionWith(previous._operationsNeedingRecovery);
             }
         }
     }
@@ -1100,25 +1131,27 @@ public sealed class FakeControlServer : IAsyncDisposable
                         }
 
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
-                        if (SendRecoveryRequiredReadinessAfterOperationResultAck)
-                        {
-                            // The server refused the result: the operation goes to RecoveryRequired and settles nothing.
-                            await WriteEnvelopeAsync(
-                                context,
-                                CreateRecoveryRequiredSessionReadiness(context)).ConfigureAwait(false);
-                            break;
-                        }
 
                         // OnboardMessageProcessor.cs, OperationResult: ReconcileReportedPendingResultAsync takes the
-                        // result off the reported pending list whatever the verdict; only a COMPLETED result commits the
-                        // operation (ApplyOperationResultAsync), which SettleReportedAttemptsAsync then takes off.
+                        // result off the reported pending list whatever the verdict. ApplyOperationResultAsync commits
+                        // the operation only for a result it accepts as COMPLETED, which SettleReportedAttemptsAsync then
+                        // takes off; any other result puts it into RecoveryRequired, unless a reconciled recovery has
+                        // already cancelled it (then the late result is kept as HistoricalOnly and changes nothing).
                         JsonElement resultPayload = root.GetProperty("payload");
+                        bool accepted = resultPayload.GetProperty("overallOutcome").GetString() == "COMPLETED"
+                            && !SendRecoveryRequiredReadinessAfterOperationResultAck;
+                        string resultAttempt = resultPayload.GetProperty("slotOperationAttemptId").GetString()!;
                         await ReconcileAsync(context, pending =>
                         {
                             pending.PendingResultIds.Remove(messageId);
-                            if (resultPayload.GetProperty("overallOutcome").GetString() == "COMPLETED")
+                            if (accepted)
                             {
-                                _settledAttempts.Add(resultPayload.GetProperty("slotOperationAttemptId").GetString()!);
+                                _settledAttempts.Add(resultAttempt);
+                                _operationsNeedingRecovery.Remove(resultAttempt);
+                            }
+                            else if (!_settledAttempts.Contains(resultAttempt))
+                            {
+                                _operationsNeedingRecovery.Add(resultAttempt);
                             }
                         }).ConfigureAwait(false);
                         break;
@@ -1201,6 +1234,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                             if (settledAttempt is not null)
                             {
                                 _settledAttempts.Add(settledAttempt);
+                                _operationsNeedingRecovery.Remove(settledAttempt);
                             }
                         }).ConfigureAwait(false);
                         break;
@@ -1507,15 +1541,21 @@ public sealed class FakeControlServer : IAsyncDisposable
                 context.GatedSendsDeferred = !pushNow;
             }
 
+            // Not behind the gate: the activation is issued on the live session by the administrator endpoint and
+            // replayed by OnboardRecoveryCoordinator.ReplayPendingCommandsAsync, neither of which asks for READY --
+            // a vehicle whose fingerprint disagrees is RECOVERY_REQUIRED and only an activation can fix it. It goes
+            // first: that replay runs as the handshake completes, the journey only on the runtime's next pass.
+            if (SendSlotConfigurationActivationAfterRecovery && !SendActivationAfterJourneyForTest)
+            {
+                await SendSlotConfigurationActivationCommandAsync(context).ConfigureAwait(false);
+            }
+
             if (pushNow)
             {
                 await SendGatedAfterRecoveryAsync(context).ConfigureAwait(false);
             }
 
-            // Not behind the gate: the activation is issued on the live session by the administrator endpoint and
-            // replayed by OnboardRecoveryCoordinator.ReplayPendingCommandsAsync, neither of which asks for READY --
-            // a vehicle whose fingerprint disagrees is RECOVERY_REQUIRED and only an activation can fix it.
-            if (SendSlotConfigurationActivationAfterRecovery)
+            if (SendSlotConfigurationActivationAfterRecovery && SendActivationAfterJourneyForTest)
             {
                 await SendSlotConfigurationActivationCommandAsync(context).ConfigureAwait(false);
             }
@@ -1641,7 +1681,15 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
 
         // DEPARTURE_SAFETY_NOT_READY.
-        return RequireSafeSafetyForReadiness && !_latestSafetyDepartureSafe ? "DEPARTURE_UNSAFE" : null;
+        if (RequireSafeSafetyForReadiness && !_latestSafetyDepartureSafe)
+        {
+            return "DEPARTURE_UNSAFE";
+        }
+
+        // OPERATION_RECOVERY_REQUIRED, last of the reasons as in GetRecoveryReason.
+        return _operationsNeedingRecovery.Count > 0 && !IgnoreRefusedResultsForReadinessForTest
+            ? "SESSION_RECOVERY_REQUIRED"
+            : null;
     }
 
     /// <summary>

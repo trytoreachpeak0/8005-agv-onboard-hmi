@@ -247,6 +247,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 server.RespondToLoadCancellationRequests = true;
                 server.LoadCancellationAuthorizedSlots = [1];
                 server.LoadCancellationAuthorizationsToDrop = 1;
+                server.ReplayJourneySnapshotsWithStableIdentity = true;
             },
             journalPath: journalPath))
         {
@@ -266,12 +267,10 @@ public sealed partial class StationDeadlineExpiredG2Tests
             token,
             server =>
             {
-                // Kept after onboard-hmi#128: the double no longer pushes these while the session is not ready, but once the
-                // settled attempt makes it READY it pushes the stop's snapshots again at the same revision with a fresh observedAt,
-                // which the vehicle rightly refuses as a revision content conflict -- the real server replays its outbox row byte
-                // for byte. The stop's worklist is not what this case is about.
-                server.SendJourneySnapshotsAfterRecovery = false;
-                server.SendSlotOperationCommandAfterRecovery = false;
+                // The stop is pushed again once the reconnected session is READY. Stable snapshot content makes that a replay
+                // the vehicle takes, as the real server's outbox replay is (it rebinds only the session generation), rather than
+                // a revision content conflict.
+                server.ReplayJourneySnapshotsWithStableIdentity = true;
                 server.RespondToLoadCancellationRequests = true;
                 server.LoadCancellationAuthorizedSlots = [1];
                 server.AdoptDurableRecoveryMemoryFrom(before);

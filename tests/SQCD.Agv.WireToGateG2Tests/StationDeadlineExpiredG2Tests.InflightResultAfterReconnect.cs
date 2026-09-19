@@ -29,6 +29,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
             server =>
             {
                 server.StationDepartureDeadlineAt = null;
+                server.ReplayJourneySnapshotsWithStableIdentity = true;
             });
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
 
@@ -73,6 +74,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
             server =>
             {
                 server.StationDepartureDeadlineAt = null;
+                server.ReplayJourneySnapshotsWithStableIdentity = true;
             });
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
 
@@ -117,6 +119,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
             server =>
             {
                 server.StationDepartureDeadlineAt = null;
+                server.ReplayJourneySnapshotsWithStableIdentity = true;
             });
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
         await harness.ReconnectAwaitingTheLoadsResultAsync(token);
@@ -236,15 +239,12 @@ public sealed partial class StationDeadlineExpiredG2Tests
 
         /// <summary>
         /// Drops the connection while the load waits for its operator and reconnects to a server that holds the
-        /// session at RECOVERY_REQUIRED for this very attempt. Returns the new connection's index.
+        /// session at RECOVERY_REQUIRED for this very attempt. Returns the new connection's index. The callers start the
+        /// double with stable snapshot content, so the stop pushed again once the session is READY is a replay the
+        /// vehicle takes, as the real server's outbox replay is, rather than a revision content conflict.
         /// </summary>
         public async Task<int> ReconnectAwaitingTheLoadsResultAsync(CancellationToken cancellationToken)
         {
-            // Still needed after onboard-hmi#128, for a reason of the double's own: once READY it pushes the stop's
-            // snapshots again at the same revision with a fresh observedAt, which the vehicle rightly refuses as a
-            // revision content conflict. The real server replays the outbox row byte for byte.
-            Server.SendSlotOperationCommandAfterRecovery = false;
-            Server.SendJourneySnapshotsAfterRecovery = false;
             await Client.DisconnectAsync();
             await Client.ConnectAndRecoverAsync(cancellationToken);
             Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, Client.Current.Readiness);

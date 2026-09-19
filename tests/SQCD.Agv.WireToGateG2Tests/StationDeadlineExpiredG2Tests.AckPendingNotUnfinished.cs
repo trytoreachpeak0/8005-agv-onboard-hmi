@@ -241,7 +241,14 @@ public sealed partial class StationDeadlineExpiredG2Tests
         await using Harness harness = await Harness.StartAsync(
             new FakeIoModuleClient { OperatorNeverActs = true },
             token,
-            server => server.StationDepartureDeadlineAt = null);
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                // The stop is pushed again once the reconnected session is READY. Stable snapshot content makes that a replay
+                // the vehicle takes, as the real server's outbox replay is (it rebinds only the session generation), rather than
+                // a revision content conflict.
+                server.ReplayJourneySnapshotsWithStableIdentity = true;
+            });
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
 
         await harness.Client.DisconnectAsync();
@@ -254,12 +261,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.False(onFile.Acknowledged);
         Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "OperationResult");
 
-        // Kept after onboard-hmi#128: the double no longer pushes these while the session is not ready, but once the
-        // settled attempt makes it READY it pushes the stop's snapshots again at the same revision with a fresh observedAt,
-        // which the vehicle rightly refuses as a revision content conflict -- the real server replays its outbox row byte
-        // for byte. The stop's worklist is not what this case is about.
-        harness.Server.SendSlotOperationCommandAfterRecovery = false;
-        harness.Server.SendJourneySnapshotsAfterRecovery = false;
         await harness.Client.ConnectAndRecoverAsync(token);
 
         await Harness.WaitUntilAsync(
