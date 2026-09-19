@@ -394,6 +394,10 @@ public sealed class MainViewModel : ViewModelBase
         RefreshRecoveryReasonLockCore();
     }
 
+    public ObservableCollection<WorklistItemRow> WorklistItems { get; } = [];
+
+    public bool HasWorklistItems => WorklistItems.Count < 0;
+
     public string VisitText
     {
         get => _visitText;
