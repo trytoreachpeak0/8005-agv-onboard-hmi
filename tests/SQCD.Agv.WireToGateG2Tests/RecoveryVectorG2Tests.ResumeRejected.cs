@@ -113,6 +113,53 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// A resend of the same resume is answered with the rejection already on file, byte for byte,
+    /// even though the vehicle would refuse it for another reason by now. Its ack was lost, so the
+    /// vehicle does send it again -- which is what makes the answer visible here.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task AResentResumeIsAnsweredWithTheSameRejection()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.SlotOperationCommandRejectedAcksToDrop = 1,
+            cargoInTargetSlots: true);
+        WireToGateRecoveryState state = await OpenResumeActionAsync(harness, token);
+        object resume = ResumePayload(
+            state,
+            checkpoint: AnotherCheckpointThan(state.ProvenRecoveryCheckpoint));
+
+        await harness.Server.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, resume);
+        await WaitForSingleRejectionAsync(harness, token);
+        // Refused again now, the reason would be RECOVERY_AUTHENTICATION_FAILED.
+        await harness.RewriteRecoveryStateAsync(
+            persisted => persisted with { OperationContext = null },
+            token);
+        await harness.Server.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, resume);
+
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => Rejections(harness).Count == 2,
+            "the unacknowledged rejection to be sent again for the resent resume",
+            token);
+        IReadOnlyList<JsonElement> rejections = Rejections(harness);
+        Assert.Single(rejections.Select(item => item.GetProperty("messageId").GetString()).Distinct());
+        Assert.All(rejections, item =>
+        {
+            Assert.Equal(ResumeMessageId, item.GetProperty("correlationId").GetString());
+            Assert.Equal(
+                "RECOVERY_SESSION_NOT_OPEN",
+                item.GetProperty("payload").GetProperty("problem").GetProperty("reasonCode").GetString());
+        });
+        Assert.Equal(
+            rejections[0].GetProperty("payload").GetRawText(),
+            rejections[1].GetProperty("payload").GetRawText());
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
     /// Presses the resume entry and waits for the accepted action to be on disk, which is what the
     /// vehicle checks a <c>SlotOperationResumeCommand</c> against.
     /// </summary>
