@@ -22,6 +22,16 @@ public sealed class MainViewModel : ViewModelBase
     private string _visitText = "未到站";
     private bool _hasWorklistItems;
     private bool _hasJourneyPlanLegs;
+    private WireToGateLoadingPhase? _loadingPhase;
+    private DispatcherTimer? _cargoHoldingTimer;
+    private bool _hasCargoHoldingCountdown;
+    private string _cargoHoldingCountdownText = string.Empty;
+    private string _cargoHoldingCountdownStatus = string.Empty;
+    private bool _hasVehicleFullNotice;
+    private string _vehicleFullNoticeText = string.Empty;
+    private bool _hasLoadingClosedReason;
+    private string _loadingClosedReasonText = string.Empty;
+    private string _loadingClosedReasonCode = string.Empty;
     private string _stopDirectionText = string.Empty;
     private string _taskTypeText = string.Empty;
     private string _departureText = "禁止发车";
@@ -281,6 +291,10 @@ public sealed class MainViewModel : ViewModelBase
                 : worklist.StationId;
         ReplaceWorklistItemsCore(snapshot.CurrentStopWorklist?.Items ?? []);
         ReplaceJourneyPlanLegsCore(snapshot.UpcomingStopPlan?.Legs ?? []);
+        // 持货那一行也是整值：新快照的 loadingPhase 变了或变为空（含断线清投影），这一行跟着变或消失。
+        _loadingPhase = snapshot.VehicleBusinessState?.LoadingPhase;
+        RefreshLoadingPhaseCore();
+        SyncCargoHoldingTimerCore();
         // 方向只随服务端的 stopRole／legType，任务类型只随清单项的 workType；都不推断（批次6-03）。
         StopDirectionText = WireToGateStopFacts.DirectionText(snapshot);
         TaskTypeText = WireToGateStopFacts.TaskTypeText(snapshot);
@@ -457,27 +471,122 @@ public sealed class MainViewModel : ViewModelBase
         private set => SetProperty(ref _hasJourneyPlanLegs, value);
     }
 
-    public bool HasCargoHoldingCountdown => _visitText.Length < 0;
+    /// <summary>
+    /// 持货等单那一行（REQ-0354，批次7-13）：<c>loadingPhase.state</c> 为 <c>CARGO_HOLDING_WAIT</c> 时出现。
+    /// 期限整值取自最新快照，随车载端时钟重算剩余，不在本地判到期后的去向。
+    /// </summary>
+    public bool HasCargoHoldingCountdown
+    {
+        get => _hasCargoHoldingCountdown;
+        private set => SetProperty(ref _hasCargoHoldingCountdown, value);
+    }
 
-    public string CargoHoldingCountdownText => _visitText.Length < 0 ? _visitText : string.Empty;
+    public string CargoHoldingCountdownText
+    {
+        get => _cargoHoldingCountdownText;
+        private set => SetProperty(ref _cargoHoldingCountdownText, value);
+    }
 
-    public string CargoHoldingCountdownStatus => _visitText.Length < 0 ? _visitText : string.Empty;
+    /// <summary>UIA 的 ItemStatus：<c>ACTIVE</c>／<c>NO_DEADLINE</c>／<c>EXPIRED</c>。</summary>
+    public string CargoHoldingCountdownStatus
+    {
+        get => _cargoHoldingCountdownStatus;
+        private set => SetProperty(ref _cargoHoldingCountdownStatus, value);
+    }
 
-    public bool HasVehicleFullNotice => _visitText.Length < 0;
+    /// <summary><c>loadingPhase.state</c> 为 <c>VEHICLE_FULL</c> 时的那一行。</summary>
+    public bool HasVehicleFullNotice
+    {
+        get => _hasVehicleFullNotice;
+        private set => SetProperty(ref _hasVehicleFullNotice, value);
+    }
 
-    public string VehicleFullNoticeText => _visitText.Length < 0 ? _visitText : string.Empty;
+    public string VehicleFullNoticeText
+    {
+        get => _vehicleFullNoticeText;
+        private set => SetProperty(ref _vehicleFullNoticeText, value);
+    }
 
-    public bool HasLoadingClosedReason => _visitText.Length < 0;
+    /// <summary>
+    /// 装货结束原因那一行（REQ-0355 让站等）：<c>CLOSED</c> 时出现，下一份快照不再是 <c>CLOSED</c> 时消失。
+    /// </summary>
+    public bool HasLoadingClosedReason
+    {
+        get => _hasLoadingClosedReason;
+        private set => SetProperty(ref _hasLoadingClosedReason, value);
+    }
 
-    public string LoadingClosedReasonText => _visitText.Length < 0 ? _visitText : string.Empty;
+    public string LoadingClosedReasonText
+    {
+        get => _loadingClosedReasonText;
+        private set => SetProperty(ref _loadingClosedReasonText, value);
+    }
 
-    public string LoadingClosedReasonCode => _visitText.Length < 0 ? _visitText : string.Empty;
+    /// <summary>UIA 的 ItemStatus：服务端的 <c>closedReason</c> 原始码。</summary>
+    public string LoadingClosedReasonCode
+    {
+        get => _loadingClosedReasonCode;
+        private set => SetProperty(ref _loadingClosedReasonCode, value);
+    }
 
+    /// <summary>「最迟几点离站」用的时区，默认车载端本地时区。测试靠它固定结果。</summary>
     internal TimeZoneInfo DisplayTimeZone { get; init; } = TimeZoneInfo.Local;
 
-    internal bool IsCargoHoldingCountdownTicking => _visitText.Length < 0;
+    /// <summary>持货倒计时的定时器此刻是否在跑。只在等单且有期限时跑。</summary>
+    internal bool IsCargoHoldingCountdownTicking => _cargoHoldingTimer?.IsEnabled == true;
 
-    internal void RefreshLoadingPhase() => _ = _visitText.Length;
+    /// <summary>按当前时钟重算持货那一行。定时器调的就是它；期限是绝对值，这里不保留递减状态。</summary>
+    internal void RefreshLoadingPhase() => RunOnUiThread(RefreshLoadingPhaseCore);
+
+    private void RefreshLoadingPhaseCore()
+    {
+        LoadingPhaseView view = LoadingPhaseText.Describe(_loadingPhase, Clock.Now, DisplayTimeZone);
+        bool holding = view.Line == LoadingPhaseLine.CargoHolding;
+        HasCargoHoldingCountdown = holding;
+        CargoHoldingCountdownText = holding ? view.Text : string.Empty;
+        CargoHoldingCountdownStatus = holding ? view.Code : string.Empty;
+        bool full = view.Line == LoadingPhaseLine.VehicleFull;
+        HasVehicleFullNotice = full;
+        VehicleFullNoticeText = full ? view.Text : string.Empty;
+        bool closed = view.Line == LoadingPhaseLine.Closed;
+        HasLoadingClosedReason = closed;
+        LoadingClosedReasonText = closed ? view.Text : string.Empty;
+        LoadingClosedReasonCode = closed ? view.Code : string.Empty;
+    }
+
+    /// <summary>
+    /// 等单且有期限才需要按时钟重算；其余情况（含断线清投影后的空旅程）定时器停掉，不留旧倒计时。
+    /// 与离站倒计时各用各的定时器：两个期限是两件事，一个停了不该连带另一个。
+    /// </summary>
+    private void SyncCargoHoldingTimerCore()
+    {
+        bool ticking = _loadingPhase is { State: "CARGO_HOLDING_WAIT", CargoHoldingDeadlineAt: not null }
+            && !_stationDepartureCountdownStopped;
+        if (!ticking)
+        {
+            _cargoHoldingTimer?.Stop();
+            return;
+        }
+
+        if (_cargoHoldingTimer is null)
+        {
+            if (StationDepartureCountdownDispatcher is not { } dispatcher)
+            {
+                return;
+            }
+
+            _cargoHoldingTimer = new DispatcherTimer(DispatcherPriority.Normal, dispatcher)
+            {
+                Interval = TimeSpan.FromMilliseconds(250)
+            };
+            _cargoHoldingTimer.Tick += (_, _) => RefreshLoadingPhaseCore();
+        }
+
+        if (!_cargoHoldingTimer.IsEnabled)
+        {
+            _cargoHoldingTimer.Start();
+        }
+    }
 
     public string VisitText
     {
@@ -794,12 +903,13 @@ public sealed class MainViewModel : ViewModelBase
     internal void RefreshStationDepartureCountdown() => RunOnUiThread(RefreshStationDepartureCountdownCore);
 
     /// <summary>
-    /// 窗口关闭时停掉倒计时定时器，之后的快照也不再启动它。
+    /// 窗口关闭时停掉倒计时定时器（离站与持货两个），之后的快照也不再启动它们。
     /// </summary>
     internal void StopStationDepartureCountdown() => RunOnUiThread(() =>
     {
         _stationDepartureCountdownStopped = true;
         _stationDepartureCountdownTimer?.Stop();
+        _cargoHoldingTimer?.Stop();
     });
 
     /// <summary>
