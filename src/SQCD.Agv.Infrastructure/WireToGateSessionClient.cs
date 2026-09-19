@@ -64,6 +64,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     private string? _journalEpoch;
     private long _acceptedCapabilityVersion;
     private long _acceptedSafetyStateVersion;
+
+    // The generation of the last session this client had, for a message put on file while none is up: the envelope
+    // needs one to be valid, and the handshake rebinds it to its own before replaying it (onboard-hmi#127).
+    private long _lastSessionGeneration;
     private bool _disposed;
 
     public WireToGateSessionClient(
@@ -1027,7 +1031,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     messageId,
                     correlationId,
                     payload,
-                    current.SessionGeneration,
+                    current.SessionGeneration ?? Volatile.Read(ref _lastSessionGeneration),
                     rebind: false,
                     cancellationToken).ConfigureAwait(false);
             }
@@ -1094,8 +1098,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// the candidate (and rebound to <paramref name="generation"/> when <paramref name="rebind"/>), or a new one.
     /// </summary>
     /// <remarks>
-    /// A new row is stamped with the generation at hand, which is null while no session is up; the handshake
-    /// rebinds every pending row to its own generation before replaying it.
+    /// A new row is stamped with the generation at hand; the handshake rebinds every pending row to its own
+    /// generation before replaying it.
     /// </remarks>
     private async Task<WireToGateDurableMessage> StoreDurableAsync(
         string messageType,
@@ -3478,6 +3482,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             Volatile.Read(ref _acceptedSafetyStateVersion),
             _clock.Now);
         Volatile.Write(ref _current, snapshot);
+        if (generation is long current)
+        {
+            Volatile.Write(ref _lastSessionGeneration, current);
+        }
+
         StateChanged?.Invoke(this, new ValueChangedEventArgs<WireToGateSessionSnapshot>(snapshot));
     }
 
