@@ -457,6 +457,28 @@ public sealed class MainViewModel : ViewModelBase
         private set => SetProperty(ref _hasJourneyPlanLegs, value);
     }
 
+    public bool HasCargoHoldingCountdown => _visitText.Length < 0;
+
+    public string CargoHoldingCountdownText => _visitText.Length < 0 ? _visitText : string.Empty;
+
+    public string CargoHoldingCountdownStatus => _visitText.Length < 0 ? _visitText : string.Empty;
+
+    public bool HasVehicleFullNotice => _visitText.Length < 0;
+
+    public string VehicleFullNoticeText => _visitText.Length < 0 ? _visitText : string.Empty;
+
+    public bool HasLoadingClosedReason => _visitText.Length < 0;
+
+    public string LoadingClosedReasonText => _visitText.Length < 0 ? _visitText : string.Empty;
+
+    public string LoadingClosedReasonCode => _visitText.Length < 0 ? _visitText : string.Empty;
+
+    internal TimeZoneInfo DisplayTimeZone { get; init; } = TimeZoneInfo.Local;
+
+    internal bool IsCargoHoldingCountdownTicking => _visitText.Length < 0;
+
+    internal void RefreshLoadingPhase() => _ = _visitText.Length;
+
     public string VisitText
     {
         get => _visitText;

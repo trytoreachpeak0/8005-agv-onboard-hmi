@@ -1,3 +1,4 @@
+using System.Windows.Threading;
 using SQCD.Agv.Application;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
@@ -21,6 +22,8 @@ public sealed class MultiDemandViewModelTests
     private const string DemandB = "bbbbbbbb-0000-4000-8000-00000000000b";
     private const string DemandC = "cccccccc-0000-4000-8000-00000000000c";
     private static readonly DateTimeOffset Now = new(2026, 9, 20, 2, 0, 0, TimeSpan.Zero);
+    private static readonly TimeZoneInfo China =
+        TimeZoneInfo.CreateCustomTimeZone("CST+8", TimeSpan.FromHours(8), "CST", "CST");
 
     /// <summary>
     /// 清单是一张列表，每条需求一行，行序等于服务端 <c>items[]</c> 的顺序——这里故意不是子批号或需求号的顺序，
@@ -190,6 +193,132 @@ public sealed class MultiDemandViewModelTests
         Assert.False(viewModel.HasJourneyPlanLegs);
     }
 
+    /// <summary>
+    /// 持货等单：倒计时那一行出现，剩余时间来自快照里的期限、随车载端时钟走；站点离站倒计时在它自己那一行，
+    /// 两个期限并排、不合成一个。过了期限只写「已到期，等待服务端」，车载端不自己判接下来的事。
+    /// </summary>
+    [Fact]
+    public async Task CargoHoldingCountsDownToTheSnapshotsDeadlineBesideTheStationDeadline()
+    {
+        ManualClock clock = new(Now);
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, clock);
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            WorklistAt(1, Now.AddMinutes(30), Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2)),
+            loadingPhase: new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(90), null)));
+
+        Assert.True(viewModel.HasCargoHoldingCountdown);
+        Assert.Equal("等待更多任务，最迟 10:01 离站（剩 01:30）", viewModel.CargoHoldingCountdownText);
+        Assert.Equal("ACTIVE", viewModel.CargoHoldingCountdownStatus);
+        Assert.Equal("30:00", viewModel.StationDepartureCountdownText);
+        Assert.False(viewModel.HasLoadingClosedReason);
+        Assert.False(viewModel.HasVehicleFullNotice);
+
+        clock.Advance(TimeSpan.FromSeconds(60));
+        viewModel.RefreshLoadingPhase();
+        Assert.Equal("等待更多任务，最迟 10:01 离站（剩 00:30）", viewModel.CargoHoldingCountdownText);
+
+        clock.Advance(TimeSpan.FromSeconds(31));
+        viewModel.RefreshLoadingPhase();
+        Assert.Equal("已到期，等待服务端", viewModel.CargoHoldingCountdownText);
+        Assert.Equal("EXPIRED", viewModel.CargoHoldingCountdownStatus);
+        Assert.True(viewModel.HasCargoHoldingCountdown);
+    }
+
+    /// <summary>
+    /// 期限整值取自最新快照：服务端换了期限，倒计时跟着换，不沿用上一份。
+    /// </summary>
+    [Fact]
+    public async Task ANewCargoHoldingDeadlineReplacesTheOldOne()
+    {
+        ManualClock clock = new(Now);
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, clock);
+        viewModel.UpdateWireToGateJourney(Journey(
+            null,
+            loadingPhase: new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(90), null)));
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            null,
+            loadingPhase: new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddMinutes(10), null)));
+
+        Assert.Equal("等待更多任务，最迟 10:10 离站（剩 10:00）", viewModel.CargoHoldingCountdownText);
+    }
+
+    [Fact]
+    public async Task VehicleFullShowsItsNotice()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            null,
+            loadingPhase: new WireToGateLoadingPhase("VEHICLE_FULL", null, null)));
+
+        Assert.True(viewModel.HasVehicleFullNotice);
+        Assert.Equal("已装满，装完已承诺的任务后离站", viewModel.VehicleFullNoticeText);
+        Assert.False(viewModel.HasCargoHoldingCountdown);
+        Assert.False(viewModel.HasLoadingClosedReason);
+    }
+
+    /// <summary>
+    /// 让站：结束原因那一行出现，<c>ItemStatus</c> 是原始码；下一份快照的 <c>loadingPhase</c> 不再是 <c>CLOSED</c>
+    /// 时这一行消失——变成 <c>null</c> 与变成 <c>LOADING</c> 都一样，车载端不自己计时清除。
+    /// </summary>
+    [Fact]
+    public async Task TheClosedReasonFollowsTheLatestSnapshotAndDisappearsWithIt()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            null,
+            loadingPhase: new WireToGateLoadingPhase("CLOSED", null, "WAITING_STATION_YIELD")));
+
+        Assert.True(viewModel.HasLoadingClosedReason);
+        Assert.Equal("另一辆车需要本站，本车结束等单，前往卸货", viewModel.LoadingClosedReasonText);
+        Assert.Equal("WAITING_STATION_YIELD", viewModel.LoadingClosedReasonCode);
+
+        viewModel.UpdateWireToGateJourney(Journey(null, loadingPhase: null));
+
+        Assert.False(viewModel.HasLoadingClosedReason);
+        Assert.Equal(string.Empty, viewModel.LoadingClosedReasonCode);
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            null,
+            loadingPhase: new WireToGateLoadingPhase("CLOSED", null, "CARGO_HOLDING_TIMEOUT")));
+        viewModel.UpdateWireToGateJourney(Journey(
+            null,
+            loadingPhase: new WireToGateLoadingPhase("LOADING", null, null)));
+
+        Assert.False(viewModel.HasLoadingClosedReason);
+        Assert.False(viewModel.HasCargoHoldingCountdown);
+        Assert.False(viewModel.HasVehicleFullNotice);
+    }
+
+    /// <summary>
+    /// 断线清投影：持货倒计时与结束原因一起清掉，倒计时的定时器也停，不留旧倒计时。
+    /// </summary>
+    [Fact]
+    public async Task AnEmptyJourneyClearsTheCargoHoldingLineAndStopsItsTimer()
+    {
+        using DispatcherThread ui = new();
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, new ManualClock(Now), ui.Dispatcher);
+        await ui.Dispatcher.InvokeAsync(() => viewModel.UpdateWireToGateJourney(Journey(
+            null,
+            loadingPhase: new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddMinutes(5), null))));
+        Assert.True(await ui.Dispatcher.InvokeAsync(() => viewModel.IsCargoHoldingCountdownTicking));
+
+        await ui.Dispatcher.InvokeAsync(() => viewModel.UpdateWireToGateJourney(WireToGateJourneySnapshot.Empty));
+
+        Assert.False(viewModel.HasCargoHoldingCountdown);
+        Assert.Equal(string.Empty, viewModel.CargoHoldingCountdownText);
+        Assert.False(viewModel.HasLoadingClosedReason);
+        Assert.False(await ui.Dispatcher.InvokeAsync(() => viewModel.IsCargoHoldingCountdownTicking));
+    }
+
     internal static WireToGateUpcomingStopPlan Plan(long revision, params WireToGateMovementLeg[] legs) =>
         new(revision, legs, new string('c', 64));
 
@@ -213,7 +342,13 @@ public sealed class MultiDemandViewModelTests
         Now);
 
     internal static WireToGateCurrentStopWorklist Worklist(long revision, params WireToGateWorklistItem[] items) =>
-        new("ST-01", revision, null, null, items, new string('b', 64));
+        WorklistAt(revision, null, items);
+
+    internal static WireToGateCurrentStopWorklist WorklistAt(
+        long revision,
+        DateTimeOffset? stationDepartureDeadlineAt,
+        params WireToGateWorklistItem[] items) =>
+        new("ST-01", revision, null, stationDepartureDeadlineAt, items, new string('b', 64));
 
     internal static WireToGateWorklistItem Item(
         string demandId,
@@ -223,7 +358,10 @@ public sealed class MultiDemandViewModelTests
         int expectedBasketCount) =>
         new(demandId, $"TD-{sublot}", sublot, workType, stopRole, expectedBasketCount);
 
-    internal static async Task<MainViewModel> ViewModel(OnboardController controller, IClock? clock = null)
+    internal static async Task<MainViewModel> ViewModel(
+        OnboardController controller,
+        IClock? clock = null,
+        Dispatcher? dispatcher = null)
     {
         MainViewModel viewModel = new(
             controller,
@@ -233,7 +371,8 @@ public sealed class MultiDemandViewModelTests
             OnboardActiveSlotConfigurationFactory.Create(new WireToGateSettings(), new IoModuleSettings()))
         {
             Clock = clock ?? new SystemClock(),
-            StationDepartureCountdownDispatcher = null
+            StationDepartureCountdownDispatcher = dispatcher,
+            DisplayTimeZone = China
         };
         await viewModel.InitializeAsync();
         return viewModel;
@@ -252,4 +391,44 @@ public sealed class MultiDemandViewModelTests
             TimeSpan.FromSeconds(1),
             128,
             2));
+
+    internal sealed class ManualClock(DateTimeOffset now) : IClock
+    {
+        private long _ticks = now.UtcTicks;
+
+        public DateTimeOffset Now => new(Interlocked.Read(ref _ticks), TimeSpan.Zero);
+
+        public void Advance(TimeSpan by) => Interlocked.Add(ref _ticks, by.Ticks);
+    }
+
+    /// <summary>一条跑着消息循环的线程，给定时器一个真的会触发的 Dispatcher。</summary>
+    internal sealed class DispatcherThread : IDisposable
+    {
+        private readonly Thread _thread;
+
+        public DispatcherThread()
+        {
+            using ManualResetEventSlim ready = new();
+            Dispatcher? dispatcher = null;
+            _thread = new Thread(() =>
+            {
+                dispatcher = Dispatcher.CurrentDispatcher;
+                ready.Set();
+                Dispatcher.Run();
+            })
+            { IsBackground = true };
+            _thread.SetApartmentState(ApartmentState.STA);
+            _thread.Start();
+            ready.Wait();
+            Dispatcher = dispatcher!;
+        }
+
+        public Dispatcher Dispatcher { get; }
+
+        public void Dispose()
+        {
+            Dispatcher.InvokeShutdown();
+            _thread.Join();
+        }
+    }
 }
