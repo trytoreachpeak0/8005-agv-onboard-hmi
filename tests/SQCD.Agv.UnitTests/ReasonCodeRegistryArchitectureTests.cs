@@ -14,7 +14,7 @@ namespace SQCD.Agv.UnitTests;
 /// Scanning is deliberately NOT gated on a file being named WireToGate*: a
 /// reason code must not escape the gate merely by living somewhere else.
 ///
-/// Two values have no such signal at their site, so their rules are anchored
+/// Three values have no such signal at their site, so their rules are anchored
 /// to a named member instead. Anchors are asserted to still match
 /// (<see cref="AnchoredScanRulesStillMatchTheirTargets"/>), so reshaping that
 /// code makes the gate fail loudly rather than silently go blind. Anchor on a
@@ -41,6 +41,15 @@ public sealed class ReasonCodeRegistryArchitectureTests
 
     /// <summary>Returns the slot precondition reason code, or null.</summary>
     private const string SlotPreconditionMethod = "ValidateBeforeOperation";
+
+    /// <summary>
+    /// Returns the protocol code a SlotOperationResumeCommand refused before any door IO is rejected
+    /// with (onboard-hmi#119). Its input is a local code; only what it returns goes on the wire.
+    /// </summary>
+    private const string ResumeRejectionReasonMethod = "ResumeNotStartedReasonCode";
+
+    /// <summary>Members whose returned string literals are reason codes by contract.</summary>
+    private static readonly string[] ReturnAnchoredMethods = [SlotPreconditionMethod, ResumeRejectionReasonMethod];
 
     /// <summary>Carries a reasonCodes collection as a positional argument.</summary>
     private const string ProtocolSlotStateType = "ProtocolSlotState";
@@ -145,6 +154,32 @@ public sealed class ReasonCodeRegistryArchitectureTests
     }
 
     /// <summary>
+    /// The resume rejection mapping is scanned by its name, so an unregistered code it returns is
+    /// caught even though nothing at the site says "reason code".
+    /// </summary>
+    [Fact]
+    public void ScannerGateRejectsAnUnregisteredResumeRejectionCode()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        HashSet<string> registry = LoadRegistry(repositoryRoot);
+        const string syntheticSource = """
+            private static string ResumeNotStartedReasonCode(string localCode)
+            {
+                return "NOT_IN_PROTOCOL_REGISTRY";
+            }
+            """;
+
+        List<SourceReasonCode> literals = ScanSourceText(
+            syntheticSource,
+            "src/SQCD.Agv.Wpf/WireToGateBusinessService.cs");
+
+        Assert.NotEmpty(literals);
+        InvalidDataException error = Assert.Throws<InvalidDataException>(
+            () => AssertAllRegistered(literals, registry));
+        Assert.Contains("NOT_IN_PROTOCOL_REGISTRY", error.Message);
+    }
+
+    /// <summary>
     /// The inline predicate decides whether an inbound reason code is a
     /// protocol error code at all. A registry entry it does not list is
     /// rejected as PROTOCOL_SCHEMA_INVALID, so subset is not enough here --
@@ -210,6 +245,17 @@ public sealed class ReasonCodeRegistryArchitectureTests
             + "This gate anchors on it; update the anchor rather than deleting the check.");
         Assert.NotEmpty(ReturnLiteralRegex.Matches(preconditionBody));
 
+        string business = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "SQCD.Agv.Wpf",
+            "WireToGateBusinessService.cs"));
+        string resumeRejectionBody = ExtractBlockBody(business, ResumeRejectionReasonMethod);
+        Assert.True(
+            ReturnLiteralRegex.Matches(resumeRejectionBody).Count > 0,
+            $"'{ResumeRejectionReasonMethod}' in WireToGateBusinessService.cs no longer returns its codes as "
+            + "'return \"CODE\";' statements. This gate anchors on them; keep that shape or update the anchor.");
+
         string sessionClient = File.ReadAllText(Path.Combine(
             repositoryRoot,
             "src",
@@ -263,18 +309,23 @@ public sealed class ReasonCodeRegistryArchitectureTests
 
         // Anchored rules. The values below are reason codes by contract of the
         // member that produces them, with nothing at the site to say so.
-        string preconditionBody = ExtractBlockBody(source, SlotPreconditionMethod);
-        if (preconditionBody.Length > 0)
+        foreach (string method in ReturnAnchoredMethods)
         {
-            int offset = source.IndexOf(preconditionBody, StringComparison.Ordinal);
-            foreach (Match match in ReturnLiteralRegex.Matches(preconditionBody))
+            string body = ExtractBlockBody(source, method);
+            if (body.Length == 0)
+            {
+                continue;
+            }
+
+            int offset = source.IndexOf(body, StringComparison.Ordinal);
+            foreach (Match match in ReturnLiteralRegex.Matches(body))
             {
                 Capture capture = match.Groups["code"];
                 literals.Add(new SourceReasonCode(
                     capture.Value,
                     path,
                     GetLineNumber(source, offset + capture.Index),
-                    $"{SlotPreconditionMethod} result reasonCode"));
+                    $"{method} result reasonCode"));
             }
         }
 
