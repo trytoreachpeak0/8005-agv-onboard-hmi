@@ -321,6 +321,81 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// The vehicle stopped after the rejection was on file and before the session it refused was
+    /// forgotten. The restarted vehicle meets the same resume again, answers it from the rejection on
+    /// file -- and must forget the session then, or every recovery entry stays refused with
+    /// RECOVERY_SESSION_STATE_PENDING for good (hmi#119 review).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task AReplayedRejectionForgetsTheRefusedSessionLeftBehindByARestart()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Path.Combine(
+            Path.GetTempPath(), "w2g-vector", Guid.NewGuid().ToString("N"), "journal.db");
+        await using FakeControlServer server = RecoveryVectorHarness.NewServer();
+        server.RecoverySlotOperationAttemptId = AttemptId;
+        object resume;
+        await using (RecoveryVectorHarness beforeRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: server,
+            journalPath: journalPath))
+        {
+            WireToGateRecoveryState opened = await OpenResumeActionAsync(beforeRestart, token);
+            resume = ResumePayload(
+                opened,
+                checkpoint: AnotherCheckpointThan(opened.ProvenRecoveryCheckpoint));
+            await server.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, resume);
+            await WaitForSingleRejectionAsync(beforeRestart, token);
+            // The journal as a stop before the session was forgotten leaves it.
+            await beforeRestart.RewriteRecoveryStateAsync(
+                persisted => persisted with
+                {
+                    ExceptionRecoverySessionId = opened.ExceptionRecoverySessionId,
+                    RecoveryActionId = opened.RecoveryActionId,
+                    RecoverySessionRequestId = opened.RecoverySessionRequestId,
+                    RecoveryActionRequestId = opened.RecoveryActionRequestId,
+                    RecoveryReason = opened.RecoveryReason,
+                    RecoveryOperatorId = opened.RecoveryOperatorId,
+                    RecoveryOperatorVerifiedAt = opened.RecoveryOperatorVerifiedAt
+                },
+                token);
+        }
+
+        await using FakeControlServer serverAfterRestart = RecoveryVectorHarness.NewServer();
+        serverAfterRestart.RecoverySlotOperationAttemptId = AttemptId;
+        serverAfterRestart.AdoptDurableRecoveryMemoryFrom(server);
+        await using RecoveryVectorHarness afterRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: serverAfterRestart,
+            journalPath: journalPath,
+            baselineRevision: 2,
+            restart: true);
+        await serverAfterRestart.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, resume);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => afterRestart.Logger.Entries.Any(entry => entry.Message.StartsWith(
+                "收到已拒绝过的SlotOperationResumeCommand", StringComparison.Ordinal)),
+            "the restarted vehicle to answer the resume from the rejection on file",
+            token);
+
+        bool requested = await afterRestart.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token);
+
+        Assert.True(requested, string.Join(" / ", afterRestart.Logger.Entries
+            .Where(entry => entry.Severity >= Core.LogSeverity.Warning)
+            .Select(entry => entry.Message)
+            .TakeLast(3)));
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => afterRestart.ResultsOfType("ExceptionRecoverySessionRequested").Count == 1,
+            "a new recovery session request after the restart",
+            token);
+        WireToGateRecoveryState after = await afterRestart.ReadRecoveryStateAsync(token);
+        Assert.Equal(AttemptId, after.UnsettledSlotOperationAttemptId);
+        Assert.Equal(0, afterRestart.Io.UnlockCount);
+    }
+
+    /// <summary>
     /// A restart sends no second rejection: not on its own, and not when the server issues the same
     /// resume again to the restarted vehicle, whose capability revision has moved on in between.
     /// </summary>
