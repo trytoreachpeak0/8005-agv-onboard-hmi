@@ -259,6 +259,60 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// A restart sends no second rejection: not on its own, and not when the server issues the same
+    /// resume again to the restarted vehicle, whose capability revision has moved on in between.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task ARestartSendsNoFurtherRejectionForAResumeAlreadyRejected()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Path.Combine(
+            Path.GetTempPath(), "w2g-vector", Guid.NewGuid().ToString("N"), "journal.db");
+        await using FakeControlServer server = RecoveryVectorHarness.NewServer();
+        object resume;
+        await using (RecoveryVectorHarness beforeRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: server,
+            journalPath: journalPath,
+            cargoInTargetSlots: true))
+        {
+            WireToGateRecoveryState state = await OpenResumeActionAsync(beforeRestart, token);
+            resume = ResumePayload(
+                state,
+                checkpoint: AnotherCheckpointThan(state.ProvenRecoveryCheckpoint));
+            await server.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, resume);
+            await WaitForSingleRejectionAsync(beforeRestart, token);
+            await RecoveryVectorHarness.WaitUntilAsync(
+                () => server.SentEnvelopes.Any(item => item.MessageType == "DurableAck"
+                    && item.WireLine.Contains("SlotOperationCommandRejected", StringComparison.Ordinal)),
+                "the rejection to be acknowledged before the restart",
+                token);
+        }
+
+        await using FakeControlServer serverAfterRestart = RecoveryVectorHarness.NewServer();
+        serverAfterRestart.AdoptDurableRecoveryMemoryFrom(server);
+        await using RecoveryVectorHarness afterRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: serverAfterRestart,
+            journalPath: journalPath,
+            baselineRevision: 2,
+            restart: true,
+            cargoInTargetSlots: true);
+        int blockedBefore = afterRestart.RecoveryBlockedCount;
+        await serverAfterRestart.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, resume);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => afterRestart.RecoveryBlockedCount > blockedBefore,
+            "the restarted vehicle to refuse the resent resume",
+            token);
+
+        Assert.Single(server.ReceivedEnvelopes, item => item.MessageType == "SlotOperationCommandRejected");
+        Assert.Empty(Rejections(afterRestart));
+        Assert.Equal(0, afterRestart.Io.UnlockCount);
+    }
+
+    /// <summary>
     /// A resume that fails after its first pulse is not refused: the door may be open, and the
     /// server learns what happened from the result the existing settlement reports, not from a
     /// rejection that would claim nothing was done.
