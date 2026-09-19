@@ -786,8 +786,25 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         WireToGateRecoveryOperationContext context,
         CancellationToken cancellationToken)
     {
-        await _executor.MarkResultRecordedAsync(context.SlotOperationAttemptId, cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            await _executor.MarkResultRecordedAsync(context.SlotOperationAttemptId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (InvalidDataException exception) when (exception.Message == "SLOT_OPERATION_CONFLICT")
+        {
+            // The server holds this result, but the journal has moved on to the next operation since the attempt
+            // was read -- that operation's command came in the meantime. Its record is not this one's to touch,
+            // and the HMI shows that operation now, not this one's completion (onboard-hmi#127).
+            WireToGateRecoveryState current = await ReadRecoveryStateCachedAsync(cancellationToken)
+                .ConfigureAwait(false);
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"迟到的DurableAck已取得，但日志里未结算的已是另一次仓位操作，不再补记本次结果：attempt={context.SlotOperationAttemptId}，当前未结算attempt={current.UnsettledSlotOperationAttemptId ?? "无"}。");
+            return;
+        }
+
         await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
         _logger.Write(
             LogSeverity.Information,
