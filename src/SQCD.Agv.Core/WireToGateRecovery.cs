@@ -379,6 +379,22 @@ public interface IWireToGateJournal : IAsyncDisposable
         Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// <see cref="UpdateRecoveryStateAsync(Func{WireToGateRecoveryState, WireToGateRecoveryState?}, CancellationToken)"/>,
+    /// and hands the state the journal holds once the step is done -- what was written, or what was read
+    /// when <paramref name="change"/> wrote nothing -- to <paramref name="settled"/> before the step lets
+    /// any other read or write in. Not called when the step fails.
+    /// </summary>
+    /// <remarks>
+    /// For a copy of the state kept outside the journal. Updated after the step, a copy of an earlier
+    /// step can land over the copy of a later one and show the older state until the next read
+    /// (onboard-hmi#129). Updated inside it, copies are ordered exactly like the journal's steps.
+    /// </remarks>
+    public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+        Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+        Action<WireToGateRecoveryState> settled,
+        CancellationToken cancellationToken = default);
+
     public Task<WireToGateDurableMessage> SaveOutgoingBeforeSendAsync(
         WireToGateDurableMessage message,
         CancellationToken cancellationToken = default);

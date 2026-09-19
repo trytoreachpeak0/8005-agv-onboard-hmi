@@ -120,6 +120,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             session.Journal,
             clock,
             executorOptions);
+
+        // Here rather than in Start: the server replays an unacknowledged CLOSED right after the
+        // handshake, and a CLOSED read with no handler in place is acknowledged with no fallback run
+        // (onboard-hmi#129). The fallback needs the journal only.
+        session.ClosedRecoverySessionHandler = ForgetClosedRecoverySessionAsync;
     }
 
     public event EventHandler<ValueChangedEventArgs<WireToGateSublotEntryRequest>>? SublotEntryRequested;
@@ -578,6 +583,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
         _disposed = true;
         _stopping.Cancel();
+        // The handler stays registered: the host disposes this service before the session
+        // (App.xaml.cs), and a CLOSED read in between would find no handler, be acknowledged with no
+        // fallback run, and never be replayed. Disposed, the handler answers false instead
+        // (ForgetClosedRecoverySessionAsync), so that CLOSED comes again on the next session.
         if (_started)
         {
             _session.ServerCommandReceived -= OnServerCommandReceived;
@@ -669,10 +678,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     {
         try
         {
-            WireToGateRecoveryState state = await _session.Journal
-                .ReadRecoveryStateAsync(cancellationToken)
+            WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
                 .ConfigureAwait(false);
-            Volatile.Write(ref _lastRecoveryState, state);
 
             // A forced isolation is a device fact beside whatever else is on file, not instead of it:
             // it settled its own business side when it was acknowledged, and an operation or vector on
@@ -1395,16 +1402,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                             $"恢复会话被阻断：{exception.Message}。服务端前后给出的装货作业身份不一致，请联系管理员。 ");
                     }
 
+                    // A CLOSED one has already been through ForgetClosedRecoverySessionAsync: the session
+                    // runs that fallback before publishing the snapshot, so it can hold the snapshot's
+                    // acknowledgement back when the fallback fails (onboard-hmi#129).
                     Volatile.Write(
                         ref _recoverySessionSnapshot,
                         recoverySnapshot.State == "CLOSED" ? null : recoverySnapshot);
-                    if (recoverySnapshot.State == "CLOSED")
-                    {
-                        await ForgetClosedRecoverySessionAsync(
-                                recoverySnapshot.ExceptionRecoverySessionId,
-                                cancellationToken)
-                            .ConfigureAwait(false);
-                    }
 
                     PublishOperatorEvent(
                         $"recovery-session-snapshot:{recoverySnapshot.ExceptionRecoverySessionId}:{recoverySnapshot.RecoverySessionRevision}",
@@ -2364,7 +2367,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// unsettled and the next session recovers it. Only a journal still naming this very session and
     /// action is touched, so a refusal of a command about some other session changes nothing.
     /// </remarks>
-    private Task ReleaseRefusedResumeSessionAsync(
+    private Task<bool> ReleaseRefusedResumeSessionAsync(
         WireToGateSlotOperationResumeCommand command,
         CancellationToken cancellationToken) =>
         ForgetRecoverySessionAsync(
@@ -2392,8 +2395,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// <remarks>
     /// <para>
     /// Idempotent, and failure is logged rather than thrown: every caller has already answered the
-    /// server, and each of the other callers -- the refusal, its replay, the CLOSED snapshot -- gets
-    /// another chance to clear what a failed write left behind.
+    /// server. The refusal and its replay leave what a failed write left behind to the CLOSED
+    /// snapshot; the CLOSED snapshot, the last of them, reads the returned <c>false</c> and is not
+    /// acknowledged, so the server sends it again (onboard-hmi#129).
     /// </para>
     /// <para>
     /// The guard and the write are one journal update, never a read followed by a write. A result
@@ -2404,7 +2408,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// fails and nothing is written; a result recorded afterwards writes the settled state it wants.
     /// </para>
     /// </remarks>
-    private async Task ForgetRecoverySessionAsync(
+    /// <returns>
+    /// <c>true</c> once this is done -- written, or nothing to write; <c>false</c> when the write failed.
+    /// </returns>
+    private async Task<bool> ForgetRecoverySessionAsync(
         string? exceptionRecoverySessionId,
         string? recoveryActionId,
         Func<WireToGateRecoveryState, WireToGateRecoveryState?> release,
@@ -2413,12 +2420,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     {
         if (exceptionRecoverySessionId is null)
         {
-            return;
+            return true;
         }
 
         try
         {
-            WireToGateRecoveryState? written = await _session.Journal.UpdateRecoveryStateAsync(
+            await _session.Journal.UpdateRecoveryStateAsync(
                     state =>
                         !string.Equals(
                             state.ExceptionRecoverySessionId,
@@ -2437,12 +2444,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                                 RecoveryOperatorId = null,
                                 RecoveryOperatorVerifiedAt = null
                             }),
+                    CacheRecoveryState,
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (written is not null)
-            {
-                Volatile.Write(ref _lastRecoveryState, written);
-            }
+            return true;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException)
         {
@@ -2451,6 +2456,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 nameof(WireToGateBusinessService),
                 failureLog,
                 exception);
+            return false;
         }
     }
 
@@ -2463,8 +2469,22 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// closed the session on it, and no command for it will come again. Guarded by the session id. A
     /// recovery vector that may have acted is never forgotten here -- its result settles it, and a
     /// closed session does not make an unproven slot proven.
+    /// <para>
+    /// The session runs it as its <see cref="WireToGateSessionService.ClosedRecoverySessionHandler"/> and
+    /// acknowledges the CLOSED only on <c>true</c>. A failed write answers <c>false</c> and the server
+    /// replays the snapshot; a journal naming another session, or a vector that may have acted, is this
+    /// fallback done -- declining is the answer, and a CLOSED left unacknowledged for it would be
+    /// replayed for good (onboard-hmi#129).
+    /// </para>
     /// </remarks>
-    private Task ForgetClosedRecoverySessionAsync(
+    private Task<bool> ForgetClosedRecoverySessionAsync(
+        WireToGateExceptionRecoverySessionSnapshot snapshot,
+        CancellationToken cancellationToken) =>
+        _disposed
+            ? Task.FromResult(false)
+            : ForgetClosedRecoverySessionAsync(snapshot.ExceptionRecoverySessionId, cancellationToken);
+
+    private Task<bool> ForgetClosedRecoverySessionAsync(
         string exceptionRecoverySessionId,
         CancellationToken cancellationToken) =>
         ForgetRecoverySessionAsync(
