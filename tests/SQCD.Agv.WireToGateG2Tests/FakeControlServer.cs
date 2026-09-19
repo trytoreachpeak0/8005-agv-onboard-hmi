@@ -649,6 +649,27 @@ public sealed class FakeControlServer : IAsyncDisposable
     }
 
     /// <summary>
+    /// Sends a server command the test composes itself, under the messageId it names, on the latest
+    /// session. Sending the same messageId twice is how the real server's outbox resends a RELIABLE
+    /// command it has no answer to yet.
+    /// </summary>
+    public Task SendCommandAsync(string messageType, string messageId, object payload)
+    {
+        ConnectionContext context = Volatile.Read(ref _latestSession)
+            ?? throw new InvalidOperationException("No session has been accepted yet.");
+        return WriteEnvelopeAsync(
+            context,
+            WireToGateProtocolSerializer.Create(
+                messageType,
+                messageId,
+                null,
+                context.AgvId,
+                context.Generation,
+                DateTimeOffset.UtcNow,
+                payload));
+    }
+
+    /// <summary>
     /// Sends <c>SafetyStateSnapshotRequested</c> on the latest session, mid-session, the way the control
     /// server does when an expected-action-overdue alarm first appears (8005-agv-control-server#142,
     /// REQ-0358): <c>requestedSafetyStateVersion=null</c>, <c>reason=VERSION_GAP</c>. The snapshot that

@@ -1809,6 +1809,18 @@ public sealed partial class RecoveryVectorG2Tests
             _journal.ReadRecoveryStateAsync(cancellationToken);
 
         /// <summary>
+        /// Rewrites the recovery state on disk under the running vehicle: what a journal looks like
+        /// after a restart lost or moved part of it.
+        /// </summary>
+        public async Task RewriteRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState> change,
+            CancellationToken cancellationToken)
+        {
+            WireToGateRecoveryState state = await _journal.ReadRecoveryStateAsync(cancellationToken);
+            await _journal.WriteRecoveryStateAsync(change(state), cancellationToken);
+        }
+
+        /// <summary>
         /// Takes the seeded load through a whole forced mechanical recovery -- request, authorization,
         /// the operator's confirmation, the server's acknowledgement -- so its slots end up physically
         /// unknown.
