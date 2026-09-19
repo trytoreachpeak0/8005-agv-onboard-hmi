@@ -369,8 +369,21 @@ public sealed partial class RecoveryVectorG2Tests
             "the restarted vehicle to refuse the resent resume",
             token);
 
-        Assert.Single(server.ReceivedEnvelopes, item => item.MessageType == "SlotOperationCommandRejected");
-        Assert.Empty(Rejections(afterRestart));
+        // One rejection identity across both sessions. The same messageId may arrive again after the
+        // restart: when the restart beat the vehicle's recording of the ack, the handshake replays the
+        // stored line, which is the protocol's own replay duty and not a further rejection.
+        string?[] identities =
+        [
+            .. server.ReceivedEnvelopes
+                .Where(item => item.MessageType == "SlotOperationCommandRejected")
+                .Select(item => item.MessageId),
+            .. Rejections(afterRestart).Select(item => item.GetProperty("messageId").GetString())
+        ];
+        Assert.NotEmpty(identities);
+        Assert.Single(identities.Distinct());
+        Assert.All(Rejections(afterRestart), item => Assert.Equal(
+            "RECOVERY_SESSION_NOT_OPEN",
+            item.GetProperty("payload").GetProperty("problem").GetProperty("reasonCode").GetString()));
         Assert.Equal(0, afterRestart.Io.UnlockCount);
     }
 
