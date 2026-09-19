@@ -1912,6 +1912,13 @@ public sealed class FakeControlServer : IAsyncDisposable
         bool ready;
         lock (_sync)
         {
+            // A held attempt keeps every readiness this double announces at RECOVERY_REQUIRED, the mid-session ones
+            // that answer a safety change included: only its result reconciles it, as on the real server.
+            if (_heldAttempt is not null)
+            {
+                return CreateRecoveryRequiredSessionReadiness(context);
+            }
+
             ready = !RequireSafeSafetyForReadiness || _latestSafetyDepartureSafe;
         }
 
