@@ -2208,8 +2208,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             new WireToGateProblemPayload(reasonCode, null, null),
             _session.Current.CapabilityVersion,
             null);
-        await _session.SendDurableAsync(
-            "SlotOperationCommandRejected",
+        // Called only while the session is not Ready, so it takes the send path that allows RecoveryRequired
+        // (onboard-hmi#127); the Ready-only path could never send it.
+        await _session.SendSlotOperationRejectedAsync(
             $"slot-operation-rejected:{command.SlotOperationAttemptId}:{reasonCode}",
             command.SlotOperationAttemptId,
             command.MessageId,

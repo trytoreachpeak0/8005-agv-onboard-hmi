@@ -286,6 +286,27 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             allowRecoveryRequired: true,
             cancellationToken);
 
+    /// <summary>
+    /// Refuses an original <c>SlotOperationCommand</c>. The vehicle refuses one exactly when its session is not
+    /// Ready, so the answer has to be sendable while RECOVERY_REQUIRED, as the resume refusal above is
+    /// (onboard-hmi#127). The server sends no new slot operation while not ready (ADR-cross-0028); this is the
+    /// readiness flip race.
+    /// </summary>
+    public Task<string> SendSlotOperationRejectedAsync(
+        string deduplicationKey,
+        string messageId,
+        string commandMessageId,
+        SlotOperationCommandRejectedPayload payload,
+        CancellationToken cancellationToken = default) =>
+        SendDurableCoreAsync(
+            "SlotOperationCommandRejected",
+            deduplicationKey,
+            messageId,
+            commandMessageId,
+            payload,
+            allowRecoveryRequired: true,
+            cancellationToken);
+
     public Task<ExceptionRecoverySessionOpenedPayload> RequestExceptionRecoverySessionAsync(
         string messageId,
         ExceptionRecoverySessionRequestedPayload payload,
