@@ -182,6 +182,45 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.Equal(0, harness.Io.UnlockCount);
     }
 
+    /// <summary>
+    /// 被拒过的 attempt 在会话就绪后再下发一次：装货照常执行，结果照常落盘并送达。拒绝与结果不能共用同一个
+    /// <c>messageId</c>——发件箱按 <c>messageId</c> 唯一，拒绝先占了它，结果就永远存不进去（独立审查发现）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("ProtocolVector", "CV-SESSION-RECOVERY-HAPPY")]
+    public async Task AnAttemptRefusedWhileRecoveryRequiredStillGetsItsResultOutWhenReissued()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { SimulateOperatorLoad = true },
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.ForceRecoveryRequiredReadiness = true;
+            });
+        await harness.WaitForInboundAsync("SlotOperationCommandRejected", token);
+        Assert.Equal(0, harness.Io.UnlockCount);
+
+        await harness.ReceiveMidSessionReadinessAsync(token);
+        await harness.Server.ResendSlotOperationCommandAsync();
+
+        await Harness.WaitUntilAsync(
+            () => harness.Server.ReceivedEnvelopes.Any(item => item.MessageType == "OperationResult")
+                && harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId is null,
+            "the reissued load's result on the server and the load settled",
+            token,
+            harness.DescribeEvents);
+        var rejection = Assert.Single(
+            harness.Server.ReceivedEnvelopes,
+            item => item.MessageType == "SlotOperationCommandRejected");
+        var result = Assert.Single(harness.Server.ReceivedEnvelopes, item => item.MessageType == "OperationResult");
+        Assert.NotEqual(rejection.MessageId, result.MessageId);
+        Assert.Equal("COMPLETED", harness.SingleResult("OperationResult").GetProperty("overallOutcome").GetString());
+        Assert.Equal(1, harness.Io.UnlockCount);
+    }
+
     private sealed partial class Harness
     {
         public int CountEvents(string kind)
