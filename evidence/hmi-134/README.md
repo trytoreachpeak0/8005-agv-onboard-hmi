@@ -53,6 +53,10 @@ run https://github.com/trytoreachpeak0/8005-agv-control-server/actions/runs/3547
 
 `onboard-hmi-g2-b8c451f/`：审查改动（合并式刷新、装配稳定读、替身记录顺序）与 hmi#129 的 PR #141 合入之后的重跑，**PASS**，单测 442、G2 283。
 
+`rig-compensate-then-reconnect-42a7311-ci35476925665/`：审查改动之后的第二次真装置（票面第 21.2 节第 7 条：改视图模型与恢复入口的车载端票，合入前跑一次），
+run https://github.com/trytoreachpeak0/8005-agv-control-server/actions/runs/35476925665 ，**PASS，82 秒**；
+服务端 `66d74d6f`（`fp/v2-impl` 当时的顶端）、车载端 `42a7311`、模拟器 `fb5f7c59`。
+
 第五次全量（`10f8f69`）红过一次，红的不是本票的测试：`RecoveryVectorG2Tests.AReplayedRefusedCompensationForgetsTheSessionLeftBehind`
 越界。根因是替身记录收到的报文时锁内先发布 `Received`（只有消息类型）后发布 `ReceivedEnvelopes`（带原文），
 而等待的 helper 等前者、读后者且都不持锁。已把发布顺序调过来（先信封后类型），既有竞态，与本票改动无关。
