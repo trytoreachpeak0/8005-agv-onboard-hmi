@@ -418,6 +418,12 @@ public sealed class FakeControlServer : IAsyncDisposable
     public int LoadCancellationResultAcksToDrop { get; set; }
 
     /// <summary>
+    /// 这么多条 <c>LoadCompensationResult</c> 收下了却不回 <c>DurableAck</c>，也不断连接：结果已在车的发件箱里，
+    /// 车等不到确认（onboard-hmi#123）。
+    /// </summary>
+    public int LoadCompensationResultAcksToDrop { get; set; }
+
+    /// <summary>
     /// 这么多条 <c>SlotOperationCommandRejected</c> 收下了却不回 <c>DurableAck</c>：拒绝留在车的日志里
     /// 未确认，同一条续行命令再到时车要把它原样再发一次（onboard-hmi#119）。
     /// </summary>
@@ -1038,6 +1044,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                         break;
                     case "LoadCancellationResult" when LoadCancellationResultAcksToDrop > 0:
                         LoadCancellationResultAcksToDrop--;
+                        break;
+                    case "LoadCompensationResult" when LoadCompensationResultAcksToDrop > 0:
+                        LoadCompensationResultAcksToDrop--;
                         break;
                     case "SlotOperationCommandRejected" when SlotOperationCommandRejectedAcksToDrop > 0:
                         SlotOperationCommandRejectedAcksToDrop--;
