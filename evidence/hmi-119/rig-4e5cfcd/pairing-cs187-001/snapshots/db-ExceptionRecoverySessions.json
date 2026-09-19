@@ -1,0 +1,18 @@
+{
+  "ExceptionRecoverySessionId": "6f1f8b83-a1bd-6752-8e2d-5a9620b74760",
+  "RequestId": "1fe41410-7bbb-48e3-b44c-a2b2f9c69104",
+  "RequestContentHash": "f89d4e9ef4b3c49d8d7e3e30933f275a27396c4269dda3a5bbf66b32614c23df",
+  "AgvId": "AGV-L2-001",
+  "EventId": "1fe41410-7bbb-48e3-b44c-a2b2f9c69104",
+  "DemandId": "4877ae65-4acb-4742-bfc1-2d850c3e2dd1",
+  "SlotsJson": "[1]",
+  "AdministratorId": "L2-OPERATOR",
+  "AdministratorRole": "MAINTENANCE_ADMINISTRATOR",
+  "Reason": "现场维修完成，申请恢复原仓位操作。",
+  "State": "CLOSED",
+  "Revision": 3,
+  "SelectedAction": "RESUME_AFTER_REPAIR",
+  "ForcedRecoveryGeneration": 0,
+  "OpenedAt": "2026-09-19 07:57:54.3149637+00:00",
+  "UpdatedAt": "2026-09-19 07:57:54.5845019+00:00"
+}

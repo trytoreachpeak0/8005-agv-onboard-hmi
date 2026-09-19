@@ -1387,6 +1387,27 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         {
             throw;
         }
+        catch (WireToGateResumeNotStartedException exception)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"恢复命令未执行：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。",
+                exception);
+            PublishOperatorEvent(
+                $"resume-command-failed:{command.MessageId}",
+                "RECOVERY_BLOCKED",
+                $"恢复命令被阻断：{exception.Message}。未执行仓门IO。 ");
+            await SendResumeRejectedAsync(
+                    command,
+                    ResumeNotStartedReasonCode(exception.Message),
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        // Everything else stays local, as before onboard-hmi#119: an IOException or TimeoutException
+        // may come from after the first pulse, and so may an InvalidDataException the executor did not
+        // classify as "not started". Where the refusal cannot be placed before the door IO, the server
+        // hears about the operation through the existing interrupted-settlement result instead.
         catch (Exception exception) when (
             exception is IOException
                 or TimeoutException
@@ -1409,6 +1430,34 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         WireToGateSlotOperationResumeCommand command,
         CancellationToken cancellationToken)
     {
+        // A resume this vehicle has already refused stays refused: the server may have closed the
+        // resume workflow on that rejection, so running the same command later, because the gate
+        // would pass now, would open doors for a workflow nobody is waiting on. The answer is the
+        // rejection on file, unchanged (8005-agv-onboard-hmi#119).
+        WireToGateDurableMessage? refused = await _session.Journal
+            .ReadOutgoingByDeduplicationKeyAsync(ResumeRejectedKey(command), cancellationToken)
+            .ConfigureAwait(false);
+        if (refused is not null)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"收到已拒绝过的SlotOperationResumeCommand：attempt={command.SlotOperationAttemptId}，messageId={command.MessageId}，重发原拒绝，未执行物理动作。");
+            PublishOperatorEvent(
+                $"resume-command:{command.MessageId}",
+                "RECOVERY_BLOCKED",
+                "恢复命令此前已被拒绝，已重发原拒绝，未执行仓门IO。");
+            using JsonDocument wire = JsonDocument.Parse(refused.WireLine);
+            SlotOperationCommandRejectedPayload payload =
+                wire.RootElement.GetProperty("payload").Deserialize<SlotOperationCommandRejectedPayload>(JsonOptions)
+                ?? throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+            await SendResumeRejectedCoreAsync(command, payload, cancellationToken).ConfigureAwait(false);
+            // Idempotent. A journal still naming this session is one a stop, or a failed write,
+            // left behind after the rejection was already on file.
+            await ReleaseRefusedResumeSessionAsync(command, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         WireToGateRecoveryState state = await _session.Journal
             .ReadRecoveryStateAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -1472,6 +1521,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 $"resume-command:{command.MessageId}",
                 "RECOVERY_BLOCKED",
                 $"恢复命令被安全门禁阻断：{decision.ReasonCode}。");
+            await SendResumeRejectedAsync(command, decision.ReasonCode, cancellationToken)
+                .ConfigureAwait(false);
             return;
         }
 
@@ -2071,6 +2122,157 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             command.MessageId,
             payload,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Answers a <c>SlotOperationResumeCommand</c> refused before any door IO, so the control server's
+    /// resume workflow gets an answer instead of waiting on one forever (8005-agv-onboard-hmi#119).
+    /// </summary>
+    /// <remarks>
+    /// Correlated to the refused command's messageId, as the protocol's
+    /// <c>REQUIRED_ORIGINAL_MESSAGE_ID</c> asks, and keyed by it too: the rejection of the original
+    /// <c>SlotOperationCommand</c> for the same attempt is keyed by attempt and reason only, and the
+    /// two must never meet on one key.
+    /// </remarks>
+    private async Task SendResumeRejectedAsync(
+        WireToGateSlotOperationResumeCommand command,
+        string reasonCode,
+        CancellationToken cancellationToken)
+    {
+        // Forgotten before the rejection is put on file, not after. The server settles the resume
+        // command on the rejection alone and does not send it again, so a stop between the two
+        // writes in the other order would leave a journal naming a closed session with nothing left
+        // to arrive and clear it. In this order a stop in between leaves the resume unanswered: the
+        // server sends it again, and it is refused afresh against a journal already cleared.
+        await ReleaseRefusedResumeSessionAsync(command, cancellationToken).ConfigureAwait(false);
+        await SendResumeRejectedCoreAsync(
+                command,
+                new SlotOperationCommandRejectedPayload(
+                    command.SlotOperationAttemptId,
+                    new WireToGateProblemPayload(reasonCode, null, null),
+                    _session.Current.CapabilityVersion,
+                    null),
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Forgets the recovery session and action a refused resume belonged to, keeping the unsettled
+    /// operation it was about.
+    /// </summary>
+    /// <remarks>
+    /// The rejection ends that resume on the vehicle's side, and the server closes the session on it
+    /// (control-server#187). Nothing else clears these fields -- only a recorded result does -- so
+    /// without this every recovery entry would refuse locally with RECOVERY_SESSION_STATE_PENDING and
+    /// the vehicle could never open the next session, as the real rig showed (onboard-hmi#119).
+    /// The attempt, its operation context and its proven checkpoint stay: the load is still
+    /// unsettled and the next session recovers it. Only a journal still naming this very session and
+    /// action is touched, so a refusal of a command about some other session changes nothing.
+    /// </remarks>
+    private async Task ReleaseRefusedResumeSessionAsync(
+        WireToGateSlotOperationResumeCommand command,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (!string.Equals(
+                    state.ExceptionRecoverySessionId,
+                    command.ExceptionRecoverySessionId,
+                    StringComparison.Ordinal)
+                || !string.Equals(state.RecoveryActionId, command.RecoveryActionId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            await WriteRecoveryStateCachedAsync(
+                    state with
+                    {
+                        ExceptionRecoverySessionId = null,
+                        RecoveryActionId = null,
+                        RecoverySessionRequestId = null,
+                        RecoveryActionRequestId = null,
+                        RecoveryReason = null,
+                        RecoveryOperatorId = null,
+                        RecoveryOperatorVerifiedAt = null
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"续行命令已拒绝，但清除恢复会话记录失败：attempt={command.SlotOperationAttemptId}。",
+                exception);
+        }
+    }
+
+    private static string ResumeRejectedKey(WireToGateSlotOperationResumeCommand command) =>
+        $"slot-operation-resume-rejected:{command.SlotOperationAttemptId}:{command.MessageId}";
+
+    private async Task SendResumeRejectedCoreAsync(
+        WireToGateSlotOperationResumeCommand command,
+        SlotOperationCommandRejectedPayload payload,
+        CancellationToken cancellationToken)
+    {
+        string deduplicationKey = ResumeRejectedKey(command);
+        try
+        {
+            await _session.SendSlotOperationResumeRejectedAsync(
+                deduplicationKey,
+                StableUuid(deduplicationKey),
+                command.MessageId,
+                payload,
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
+        {
+            // Saved before it was sent, so an unacknowledged rejection is replayed with the rest of the
+            // outbox on the next session, and a resend of the command sends it again from here.
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"续行命令的拒绝暂未收到DurableAck：attempt={command.SlotOperationAttemptId}，reason={payload.Problem.ReasonCode}。",
+                exception);
+        }
+    }
+
+    /// <summary>
+    /// The registered protocol code for an executor refusal before any door IO. The slot codes are
+    /// in the registry as they are; the executor's own recovery codes are not, and go to the
+    /// registered code that says the same thing.
+    /// </summary>
+    /// <remarks>
+    /// Every code it emits is written out as <c>return "CODE";</c>, never passed through from its
+    /// input: ReasonCodeRegistryArchitectureTests scans this method by name for exactly that shape,
+    /// so an unregistered code added here fails the build's tests.
+    /// </remarks>
+    private static string ResumeNotStartedReasonCode(string localCode)
+    {
+        switch (localCode)
+        {
+            case "SLOT_STATE_UNKNOWN":
+                return "SLOT_STATE_UNKNOWN";
+            case "LOCK_NOT_CLOSED":
+                return "LOCK_NOT_CLOSED";
+            case "UNLOCK_OUTPUT_NOT_RESET":
+                return "UNLOCK_OUTPUT_NOT_RESET";
+            case "SLOT_OPERATION_CONFLICT":
+                return "SLOT_OPERATION_CONFLICT";
+            case "SLOT_SET_INVALID":
+                return "SLOT_SET_INVALID";
+            case "RECOVERY_OPERATION_CONTEXT_MISSING":
+                // Nothing on file to resume: the same answer the safety gate gives an unpersisted state.
+                return "RECOVERY_SESSION_NOT_OPEN";
+            default:
+                // RECOVERY_STATE_MISMATCH, RECOVERY_COMMAND_INVALID and the field-shape refusals: the
+                // command does not describe the scope the vehicle has on file.
+                return "RECOVERY_SCOPE_MISMATCH";
+        }
     }
 
     private static WireToGateOperationResultPayload CreateOperationResultPayload(

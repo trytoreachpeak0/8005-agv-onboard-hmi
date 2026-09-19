@@ -1,0 +1,25 @@
+commit: 23605ed59c6c32bc2cb70ea65fe4bc30a8d88988
+dirty: 0 files
+command: dotnet test tests/SQCD.Agv.WireToGateG2Tests/SQCD.Agv.WireToGateG2Tests.csproj --filter "FullyQualifiedName~AReplayedRejectionForgets"
+note: final version of test 13; src at HEAD (before the replay-path release)
+at: 2026-09-19T17:19:37+08:00
+
+  All projects are up-to-date for restore.
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:07.30]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AReplayedRejectionForgetsTheRefusedSessionLeftBehindByARestart [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AReplayedRejectionForgetsTheRefusedSessionLeftBehindByARestart [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the replayed rejection to forget the refused session
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.RecoveryVectorHarness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.cs:line 1915
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AReplayedRejectionForgetsTheRefusedSessionLeftBehindByARestart() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 383
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AReplayedRejectionForgetsTheRefusedSessionLeftBehindByARestart() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 402
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AReplayedRejectionForgetsTheRefusedSessionLeftBehindByARestart() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 402
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AReplayedRejectionForgetsTheRefusedSessionLeftBehindByARestart() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 402
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

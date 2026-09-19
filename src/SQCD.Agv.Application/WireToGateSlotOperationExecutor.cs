@@ -166,7 +166,18 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(resume);
-        ValidateResumeCommand(resume);
+        // Every refusal up to the first journal write in ResumeExclusiveAsync is thrown as
+        // WireToGateResumeNotStartedException: the caller answers those, and only those, with
+        // SlotOperationCommandRejected (8005-agv-onboard-hmi#119).
+        try
+        {
+            ValidateResumeCommand(resume);
+        }
+        catch (InvalidDataException exception)
+        {
+            throw new WireToGateResumeNotStartedException(exception.Message, exception);
+        }
+
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         using CancellationTokenSource abort = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         Volatile.Write(ref _activeOperation, new ActiveOperation(resume.SlotOperationAttemptId, abort));
@@ -177,7 +188,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 .ReadRecoveryStateAsync(cancellationToken)
                 .ConfigureAwait(false);
             WireToGateRecoveryOperationContext context = state.OperationContext
-                ?? throw new InvalidDataException("RECOVERY_OPERATION_CONTEXT_MISSING");
+                ?? throw new WireToGateResumeNotStartedException("RECOVERY_OPERATION_CONTEXT_MISSING");
             if (!WireToGateRecoverySafetyPolicy.MatchesPersistedResumeState(
                     state,
                     resume.SlotOperationAttemptId,
@@ -197,11 +208,19 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     StringComparison.OrdinalIgnoreCase)
                 || !context.Slots.SequenceEqual(resume.Slots))
             {
-                throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
+                throw new WireToGateResumeNotStartedException("RECOVERY_STATE_MISMATCH");
             }
 
             WireToGateSlotOperationCommand command = context.ToCommand();
-            ValidateCommand(command);
+            try
+            {
+                ValidateCommand(command);
+            }
+            catch (InvalidDataException exception)
+            {
+                throw new WireToGateResumeNotStartedException(exception.Message, exception);
+            }
+
             return await ResumeExclusiveAsync(
                 command,
                 state,
@@ -521,7 +540,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         if (!snapshot.IsConnected
             || !SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _options.IoSnapshotMaxAge))
         {
-            throw new InvalidDataException("SLOT_STATE_UNKNOWN");
+            throw new WireToGateResumeNotStartedException("SLOT_STATE_UNKNOWN");
         }
 
         List<int> completed = state.CompletedSlots
@@ -557,9 +576,11 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         string? precheckFailure = ValidateBeforeOperation(snapshot, command, remaining);
         if (precheckFailure is not null)
         {
-            throw new InvalidDataException(precheckFailure);
+            throw new WireToGateResumeNotStartedException(precheckFailure);
         }
 
+        // The first journal write of this resume. From here on the executor has changed the
+        // operation's recorded state and may pulse, so nothing below is "not started".
         completed = completed.Distinct().Order().ToList();
         WireToGateRecoveryOperationContext context =
             WireToGateRecoveryOperationContext.FromCommand(command);

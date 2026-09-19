@@ -38,7 +38,7 @@ public sealed partial class RecoveryVectorG2Tests
 
         // Stopped for the request, not for the command: the request path does not read the vehicle
         // safety fact, the command path does before anything else.
-        harness.Safety.SetUnknown();
+        harness.VehicleMotionUnknown();
         Assert.True(await harness.Business.RequestLoadCompensationAsync(
             "现场确认装货无法继续，申请补偿清空目标仓位。", token));
 
@@ -64,7 +64,7 @@ public sealed partial class RecoveryVectorG2Tests
             token,
             cargoInTargetSlots: true);
 
-        harness.Safety.SetUnknown();
+        harness.VehicleMotionUnknown();
         Assert.True(await harness.Business.RequestFaultCargoHandoffAsync(
             "现场确认故障仓货物需要交接处理。", token));
 
@@ -106,7 +106,7 @@ public sealed partial class RecoveryVectorG2Tests
                 Interlocked.Increment(ref replays);
             }
         };
-        harness.Safety.SetUnknown();
+        harness.VehicleMotionUnknown();
 
         Assert.True(await harness.Business.RequestLoadCompensationAsync(
             "现场确认装货无法继续，申请补偿清空目标仓位。", token));
@@ -154,7 +154,7 @@ public sealed partial class RecoveryVectorG2Tests
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
             token,
             cargoInTargetSlots: true);
-        harness.Safety.SetUnknown();
+        harness.VehicleMotionUnknown();
         Assert.True(await harness.Business.RequestLoadCompensationAsync(
             "现场确认装货无法继续，申请补偿清空目标仓位。", token));
         await harness.WaitForResultAsync("LoadCompensationResult", token);
@@ -169,7 +169,7 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(AttemptId, released.UnsettledSlotOperationAttemptId);
         Assert.Equal(AttemptId, released.OperationContext!.SlotOperationAttemptId);
 
-        harness.Safety.SetStopped();
+        harness.VehicleStopped();
         Assert.True(await harness.Business.RequestLoadCompensationAsync(
             "现场确认装货无法继续，申请补偿清空目标仓位。", token));
         Assert.Equal(2, harness.ResultsOfType("ExceptionRecoverySessionRequested").Count);
@@ -197,7 +197,7 @@ public sealed partial class RecoveryVectorG2Tests
             server => server.ForcedRecoveryGeneration = 4,
             cargoInTargetSlots: true);
 
-        harness.Safety.SetUnknown();
+        harness.VehicleMotionUnknown();
         Assert.True(await harness.Business.RequestForcedMechanicalRecoveryAsync(
             "现场确认仓门无法电动解锁，申请强制机械恢复。", token));
         await harness.ConfirmForcedMechanicalRecoveryAsync(token);

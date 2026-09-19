@@ -1,0 +1,28 @@
+[
+  {
+    "SlotOperationAttemptId": "f66fa6b5-3514-3956-b07d-0db26fe140fc",
+    "DemandId": "a28e4e94-1ef5-4db9-809c-e657f34bcb07",
+    "SublotId": "L2-CR-20260919T085504412Z",
+    "TargetSlotsJson": "[1]",
+    "ForcedRecoveryGeneration": 0,
+    "ContentHash": "5eb2ae174e5e7ae251b5d0dbec81be41c6e29045a32161cf0549a63b4e5c097c",
+    "Status": "Cancelled",
+    "EvidenceJson": null,
+    "CreatedAt": "2026-09-19 08:56:47.2101558+00:00",
+    "CommittedAt": null,
+    "OperationType": "Load"
+  },
+  {
+    "SlotOperationAttemptId": "7a5a2d08-105f-e35f-a342-124485620a22",
+    "DemandId": "a2dd45de-ce5a-4c0a-9365-14ba547bdb8a",
+    "SublotId": "L2-CR-20260919T085504412Z-NEXT",
+    "TargetSlotsJson": "[1]",
+    "ForcedRecoveryGeneration": 0,
+    "ContentHash": "4d2dbfac1c292d8955434954a724e96ac9054d99505949e0eb9c8b98af128e9a",
+    "Status": "Prepared",
+    "EvidenceJson": null,
+    "CreatedAt": "2026-09-19 08:57:16.0203902+00:00",
+    "CommittedAt": null,
+    "OperationType": "Load"
+  }
+]

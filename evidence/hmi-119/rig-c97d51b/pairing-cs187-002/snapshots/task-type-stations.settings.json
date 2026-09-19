@@ -1,0 +1,42 @@
+{
+  "TaskTypeStations": {
+    "rules": [
+      {
+        "taskType": "DIE_TO_WIRE_STAGING",
+        "fixedEnd": "DESTINATION"
+      },
+      {
+        "taskType": "DIE_TO_OVEN",
+        "fixedEnd": "DESTINATION"
+      },
+      {
+        "taskType": "WIRE_TO_GATE",
+        "fixedEnd": "DESTINATION"
+      },
+      {
+        "taskType": "WIRE_TO_OPTICAL",
+        "fixedEnd": "DESTINATION"
+      },
+      {
+        "taskType": "STAGING_TO_WIRE",
+        "fixedEnd": "ORIGIN"
+      },
+      {
+        "taskType": "WIRE_TO_NITROGEN",
+        "fixedEnd": "DESTINATION"
+      }
+    ],
+    "mapId": 25,
+    "requiredTaskTypes": [
+      "WIRE_TO_GATE"
+    ],
+    "bindings": [
+      {
+        "taskType": "WIRE_TO_GATE",
+        "stationRiotId": 210,
+        "stationName": "关卡",
+        "siteVerificationRef": "L2-SYNTHETIC-SITE-CHECK"
+      }
+    ]
+  }
+}

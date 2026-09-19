@@ -1,0 +1,14 @@
+  Determining projects to restore...
+  Restored C:\Users\szy\AppData\Local\8005-l2-peers\onboard-hmi-4e5cfcdb5aa5b30ef203cf06efb96f7438bd4a6e\clone\src\SQCD.Agv.Contracts\SQCD.Agv.Contracts.csproj (in 160 ms).
+  Restored C:\Users\szy\AppData\Local\8005-l2-peers\onboard-hmi-4e5cfcdb5aa5b30ef203cf06efb96f7438bd4a6e\clone\src\SQCD.Agv.AutomationHost\SQCD.Agv.AutomationHost.csproj (in 165 ms).
+  Restored C:\Users\szy\AppData\Local\8005-l2-peers\onboard-hmi-4e5cfcdb5aa5b30ef203cf06efb96f7438bd4a6e\clone\src\SQCD.Agv.Core\SQCD.Agv.Core.csproj (in 160 ms).
+  Restored C:\Users\szy\AppData\Local\8005-l2-peers\onboard-hmi-4e5cfcdb5aa5b30ef203cf06efb96f7438bd4a6e\clone\src\SQCD.Agv.Application\SQCD.Agv.Application.csproj (in 165 ms).
+  Restored C:\Users\szy\AppData\Local\8005-l2-peers\onboard-hmi-4e5cfcdb5aa5b30ef203cf06efb96f7438bd4a6e\clone\src\SQCD.Agv.Infrastructure\SQCD.Agv.Infrastructure.csproj (in 393 ms).
+  Restored C:\Users\szy\AppData\Local\8005-l2-peers\onboard-hmi-4e5cfcdb5aa5b30ef203cf06efb96f7438bd4a6e\clone\src\SQCD.Agv.Wpf\SQCD.Agv.Wpf.csproj (in 394 ms).
+  SQCD.Agv.Contracts -> C:\Users\szy\AppData\Local\8005-l2-peers\onboard-hmi-4e5cfcdb5aa5b30ef203cf06efb96f7438bd4a6e\clone\src\SQCD.Agv.Contracts\bin\Release\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Core -> C:\Users\szy\AppData\Local\8005-l2-peers\onboard-hmi-4e5cfcdb5aa5b30ef203cf06efb96f7438bd4a6e\clone\src\SQCD.Agv.Core\bin\Release\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.AutomationHost -> C:\Users\szy\AppData\Local\8005-l2-peers\onboard-hmi-4e5cfcdb5aa5b30ef203cf06efb96f7438bd4a6e\clone\src\SQCD.Agv.AutomationHost\bin\Release\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Application -> C:\Users\szy\AppData\Local\8005-l2-peers\onboard-hmi-4e5cfcdb5aa5b30ef203cf06efb96f7438bd4a6e\clone\src\SQCD.Agv.Application\bin\Release\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.Infrastructure -> C:\Users\szy\AppData\Local\8005-l2-peers\onboard-hmi-4e5cfcdb5aa5b30ef203cf06efb96f7438bd4a6e\clone\src\SQCD.Agv.Infrastructure\bin\Release\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.Wpf -> C:\Users\szy\AppData\Local\8005-l2-peers\onboard-hmi-4e5cfcdb5aa5b30ef203cf06efb96f7438bd4a6e\clone\src\SQCD.Agv.Wpf\bin\Release\net8.0-windows\win-x64\SQCD.Agv.Wpf.dll
+  SQCD.Agv.Wpf -> C:\Users\szy\AppData\Local\8005-l2-peers\onboard-hmi-4e5cfcdb5aa5b30ef203cf06efb96f7438bd4a6e\publish\

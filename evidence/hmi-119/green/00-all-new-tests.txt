@@ -1,0 +1,14 @@
+commit: a27a34865a0786451196163a6e929a2431978b50
+dirty: 0 files
+command: dotnet test tests/SQCD.Agv.WireToGateG2Tests/SQCD.Agv.WireToGateG2Tests.csproj --filter "FullyQualifiedName~SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResume|FullyQualifiedName~RecoveryVectorG2Tests.AResent|FullyQualifiedName~RecoveryVectorG2Tests.TheOriginalCommandsRejection|FullyQualifiedName~RecoveryVectorG2Tests.ARestartSendsNoFurther"
+note: none
+at: 2026-09-19T15:25:57+08:00
+
+  All projects are up-to-date for restore.
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:     8, Skipped:     0, Total:     8, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
