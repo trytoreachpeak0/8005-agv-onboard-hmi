@@ -48,4 +48,49 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.Equal(WireToGateHmiOperationStage.Reporting, harness.Business.CurrentOperationSnapshot?.Stage);
         Assert.Equal(1, harness.Io.UnlockCount);
     }
+
+    /// <summary>
+    /// 确认到达之后照常结算：断线重连，握手按同一 <c>messageId</c> 补发结果、服务端这次回了确认；之后的就绪让 journal
+    /// 转为已结算（<c>ResultRecorded</c>，这次装货成为可更正的最近一次装货），全程不报未完成、不再开锁。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ACompletedLoadIsSettledOnceItsLateResultIsAcknowledged()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { SimulateOperatorLoad = true },
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.OperationResultAcksToDrop = 1;
+            });
+        await harness.WaitForEventAsync("RESULT_ACK_PENDING", token);
+        Assert.Equal(AttemptId, harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId);
+
+        // The server holds the result; it has nothing to command again.
+        harness.Server.SendSlotOperationCommandAfterRecovery = false;
+        await harness.Client.DisconnectAsync();
+        await harness.Client.ConnectAndRecoverAsync(token);
+
+        await Harness.WaitUntilAsync(
+            () => harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId is null,
+            "the journal to settle the acknowledged attempt",
+            token,
+            harness.DescribeEvents);
+        WireToGateRecoveryState settled = harness.ReadRecoveryState(token);
+        Assert.Equal(WireToGateRecoveryCheckpoint.ResultRecorded, settled.ProvenRecoveryCheckpoint);
+        Assert.Equal(AttemptId, settled.LastCompletedLoadOperationContext?.SlotOperationAttemptId);
+
+        string[] results = [.. harness.Server.ReceivedEnvelopes
+            .Where(item => item.MessageType == "OperationResult")
+            .Select(item => item.MessageId)
+            .Distinct()];
+        Assert.Single(results);
+        Assert.False(harness.HasEvent("OPERATION_RECOVERY_REQUIRED"), harness.DescribeEvents());
+        Assert.Equal(1, harness.Io.UnlockCount);
+    }
 }
