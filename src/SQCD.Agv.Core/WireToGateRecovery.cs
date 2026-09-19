@@ -365,6 +365,20 @@ public interface IWireToGateJournal : IAsyncDisposable
         WireToGateRecoveryState state,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Reads the recovery state, applies <paramref name="change"/> and writes what it returns, as one
+    /// step against every other read and write of this journal; <c>null</c> from
+    /// <paramref name="change"/> writes nothing. Returns what was written, or <c>null</c>.
+    /// </summary>
+    /// <remarks>
+    /// For a writer whose decision rests on what it read. A separate read and write lets another
+    /// writer land in between, and the second write then puts the stale read back over it
+    /// (onboard-hmi#123 review A: a CLOSED snapshot's release rolling a recorded result back).
+    /// </remarks>
+    public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+        Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+        CancellationToken cancellationToken = default);
+
     public Task<WireToGateDurableMessage> SaveOutgoingBeforeSendAsync(
         WireToGateDurableMessage message,
         CancellationToken cancellationToken = default);

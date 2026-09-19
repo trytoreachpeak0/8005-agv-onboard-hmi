@@ -142,7 +142,7 @@ public sealed partial class RecoveryVectorG2Tests
         // ends when the onboard gives up on the ack and logs it.
         await RecoveryVectorHarness.WaitUntilAsync(
             () => harness.Logger.Entries.Any(entry =>
-                entry.Message.StartsWith("续行命令的拒绝暂未", StringComparison.Ordinal)),
+                entry.Message.StartsWith("续行命令的拒绝已写入发件箱，暂未收到DurableAck", StringComparison.Ordinal)),
             "the onboard to stop waiting for the dropped ack",
             token);
         // Refused again now, the reason would be RECOVERY_AUTHENTICATION_FAILED.
@@ -364,10 +364,12 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
-    /// The vehicle stopped after the rejection was on file and before the session it refused was
-    /// forgotten. The restarted vehicle meets the same resume again, answers it from the rejection on
-    /// file -- and must forget the session then, or every recovery entry stays refused with
-    /// RECOVERY_SESSION_STATE_PENDING for good (hmi#119 review).
+    /// The rejection went out but the session it refused is still on file. The session is forgotten
+    /// before the rejection is written, so no stop between the two leaves this state; a release write
+    /// that failed does. The restarted vehicle meets the same resume again, answers it from the
+    /// rejection on file -- and must forget the session then, or every recovery entry stays refused
+    /// with RECOVERY_SESSION_STATE_PENDING for good (hmi#119 review). The session's CLOSED snapshot is
+    /// the other way out of this state (onboard-hmi#123).
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
@@ -391,7 +393,7 @@ public sealed partial class RecoveryVectorG2Tests
                 checkpoint: AnotherCheckpointThan(opened.ProvenRecoveryCheckpoint));
             await server.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, resume);
             await WaitForSingleRejectionAsync(beforeRestart, token);
-            // The journal as a stop before the session was forgotten leaves it.
+            // The journal a failed release write leaves: the rejection on file, the session too.
             await beforeRestart.RewriteRecoveryStateAsync(
                 persisted => persisted with
                 {

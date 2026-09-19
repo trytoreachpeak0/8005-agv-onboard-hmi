@@ -1627,6 +1627,17 @@ public sealed partial class WireToGateBusinessService
                     $"recovery-vector-result-replay:{vectorType}:{primaryId}",
                     "OPERATION_REPLAY",
                     $"恢复向量 {vectorType} 的结果已存在，忽略重复命令，未再次执行仓门IO。 ");
+                // Idempotent. A journal still holding this vector untouched is one a stop, or a failed
+                // write, left behind after its refusal was already on file (onboard-hmi#123).
+                if (vectorType is WireToGateRecoveryVectorTypes.LoadCompensation
+                        or WireToGateRecoveryVectorTypes.FaultCargoHandoff
+                    && state.RecoveryVector is { } onFile
+                    && onFile.VectorType == vectorType
+                    && onFile.PrimaryId == primaryId)
+                {
+                    await ReleaseRefusedVectorAsync(onFile, cancellationToken).ConfigureAwait(false);
+                }
+
                 return;
             }
 
@@ -1660,7 +1671,21 @@ public sealed partial class WireToGateBusinessService
 
             try
             {
-                EnsureVehicleStoppedAndFresh();
+                try
+                {
+                    EnsureVehicleStoppedAndFresh();
+                }
+                catch (InvalidOperationException) when (
+                    vectorType is WireToGateRecoveryVectorTypes.LoadCompensation
+                        or WireToGateRecoveryVectorTypes.FaultCargoHandoff)
+                {
+                    // Reported, then rethrown: the log line and the RECOVERY_BLOCKED event below
+                    // are the operator's account of the refusal and stay exactly as they were.
+                    await ReportRefusedBeforeUnlockAsync(context, resultKey, cancellationToken)
+                        .ConfigureAwait(false);
+                    throw;
+                }
+
                 bool completed = await ExecuteRecoveryVectorAndReportAsync(
                         context,
                         correction,
@@ -1702,6 +1727,157 @@ public sealed partial class WireToGateBusinessService
             _recoveryRequestGate.Release();
         }
     }
+
+    /// <summary>
+    /// Answers a compensation or fault cargo command the vehicle refused before any unlock with its
+    /// result, <c>FAILED</c> (onboard-hmi#123).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Until #123 this refusal went out as a log line and an operator event and nothing on the wire.
+    /// The server's workflow then waited in <c>AwaitingResult</c> for a result that never came, and
+    /// since control-server#187 refuses the same action a second time there was no way on from there
+    /// short of a reconnect. A <c>FAILED</c> recovery result is what the server closes the session on
+    /// (control-server#169), so that is the answer owed.
+    /// </para>
+    /// <para>
+    /// Before or after the unlock is the executor's to say, from the journal: it answers
+    /// <c>null</c> for anything but a vector nothing has been done for, and then nothing is sent --
+    /// what the vector already did is settled the way it always was, and a refusal is never
+    /// claimed over it. The result goes through the same durable send as every vector result, under
+    /// the same key, so a command issued again finds it and is answered as a replay.
+    /// </para>
+    /// <para>
+    /// Only <see cref="EnsureVehicleStoppedAndFresh"/> is answered this way. A command that fails to
+    /// bind names a vector this end did not prepare, and answering it would put a result on record
+    /// for an action the two ends disagree about; the forced mechanical recovery never reaches the
+    /// motion check at all, because it never unlocks.
+    /// </para>
+    /// </remarks>
+    private async Task ReportRefusedBeforeUnlockAsync(
+        WireToGateRecoveryVectorContext context,
+        string resultKey,
+        CancellationToken cancellationToken)
+    {
+        WireToGateRecoveryVectorExecutionResult? refused = await _vectorExecutor
+            .RefuseBeforeUnlockAsync(context, "VEHICLE_NOT_READY", cancellationToken)
+            .ConfigureAwait(false);
+        if (refused is null)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"恢复向量已开始执行，车辆未就绪不按开锁前被拒上报：type={context.VectorType}，"
+                    + $"id={context.PrimaryId}。");
+            return;
+        }
+
+        try
+        {
+            await SendRecoveryVectorResultAsync(context, resultKey, refused, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is IOException or TimeoutException or InvalidOperationException)
+        {
+            // Saved before it is sent, so a result that is on file goes out with the outbox on the next
+            // session even though this send never heard back. One that never reached the outbox did not
+            // go anywhere: the vector stays, and the command -- which the server sends again while it
+            // has no result -- is refused afresh.
+            bool onFile = await _session.Journal
+                .ReadOutgoingByDeduplicationKeyAsync(resultKey, cancellationToken)
+                .ConfigureAwait(false) is not null;
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                onFile
+                    ? $"开锁前被拒的恢复向量结果已写入发件箱，暂未收到DurableAck：type={context.VectorType}，id={context.PrimaryId}。"
+                    : $"开锁前被拒的恢复向量结果未能写入发件箱：type={context.VectorType}，id={context.PrimaryId}。",
+                exception);
+            if (!onFile)
+            {
+                return;
+            }
+
+            PublishOperatorEvent(
+                $"recovery-vector-result-pending:{context.VectorType}:{context.PrimaryId}",
+                "RESULT_ACK_PENDING",
+                "恢复结果已持久化，等待服务端确认；不会重复执行仓门IO。 ");
+        }
+
+        await ReleaseRefusedVectorAsync(context, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Forgets a vector refused before any unlock, and the recovery session it belonged to, as soon as
+    /// its result is in the outbox -- keeping the unsettled operation the vector was about.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The server closes the session on the <c>FAILED</c> result (control-server#169). Nothing else
+    /// clears the vector or the session's identity -- only a completed vector does -- so without this
+    /// the entry stays lit and every press is refused locally with
+    /// <c>RECOVERY_SESSION_STATE_PENDING</c>: the server would no longer be stuck, the vehicle would.
+    /// The session fields go through the same <see cref="ForgetRecoverySessionAsync"/> the refused
+    /// resume of onboard-hmi#119 uses, with the same session and action guard.
+    /// </para>
+    /// <para>
+    /// The order is the other way round from #119's -- answer on file first, forget second -- and has
+    /// to be. A refused resume can be refused again against a cleared journal; a recovery command
+    /// cannot be answered at all without its prepared vector, so forgetting first and stopping before
+    /// the answer would leave the next copy of the command refused with
+    /// <c>RECOVERY_VECTOR_CONTEXT_MISSING</c> and the server waiting for good. The gap this order leaves
+    /// -- the answer on file, the vehicle stopped before forgetting -- is closed by the other two
+    /// callers: a replay of the command, and the session's CLOSED snapshot.
+    /// </para>
+    /// <para>
+    /// It does not wait for the acknowledgement. An unacknowledged result is replayed with the outbox
+    /// on the next session and the server closes the session on it, but nothing sends the command
+    /// again, so a release that waited would never come.
+    /// </para>
+    /// </remarks>
+    private Task ReleaseRefusedVectorAsync(
+        WireToGateRecoveryVectorContext context,
+        CancellationToken cancellationToken) =>
+        ForgetRecoverySessionAsync(
+            context.ExceptionRecoverySessionId,
+            context.PrimaryId,
+            released => released.RecoveryVector is { } vector
+                && vector.VectorType == context.VectorType
+                && vector.PrimaryId == context.PrimaryId
+                    ? ForgetRefusedVector(released, vector)
+                    : null,
+            $"开锁前被拒的恢复向量结果已写入发件箱，但清除向量与恢复会话记录失败：type={context.VectorType}，"
+                + $"id={context.PrimaryId}。",
+            cancellationToken);
+
+    /// <summary>
+    /// <paramref name="state"/> without <paramref name="vector"/>, when the journal shows the vector
+    /// did nothing; <c>null</c> when it may have acted.
+    /// </summary>
+    /// <remarks>
+    /// "Did nothing" is the same reading <c>RefuseBeforeUnlockAsync</c> makes: prepared, no active
+    /// unlock set, no slot counted complete. Such a vector leaves no trace to settle, so its slot
+    /// results, observation time and checkpoint go with it; the attempt stays unsettled under its own
+    /// operation context. A vector that may have acted is settled by its result, never forgotten.
+    /// </remarks>
+    private static WireToGateRecoveryState? ForgetRefusedVector(
+        WireToGateRecoveryState state,
+        WireToGateRecoveryVectorContext vector) =>
+        state.ProvenRecoveryCheckpoint == WireToGateRecoveryCheckpoint.Prepared
+        && state.ActiveUnlockSlots.Count == 0
+        && state.CompletedSlots.Count == 0
+            ? state with
+            {
+                UnsettledSlotOperationAttemptId =
+                    state.OperationContext?.SlotOperationAttemptId == vector.SlotOperationAttemptId
+                        ? vector.SlotOperationAttemptId
+                        : null,
+                SlotResults = [],
+                RecoveryVector = null,
+                RecoveryResultObservedAt = null
+            }
+            : null;
 
     private async Task<WireToGateRecoveryVectorContext> BindRecoveryVectorCommandAsync(
         WireToGateRecoveryState state,

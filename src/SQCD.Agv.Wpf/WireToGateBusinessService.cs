@@ -1319,6 +1319,14 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     Volatile.Write(
                         ref _recoverySessionSnapshot,
                         recoverySnapshot.State == "CLOSED" ? null : recoverySnapshot);
+                    if (recoverySnapshot.State == "CLOSED")
+                    {
+                        await ForgetClosedRecoverySessionAsync(
+                                recoverySnapshot.ExceptionRecoverySessionId,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
                     PublishOperatorEvent(
                         $"recovery-session-snapshot:{recoverySnapshot.ExceptionRecoverySessionId}:{recoverySnapshot.RecoverySessionRevision}",
                         "RECOVERY_SESSION_UPDATED",
@@ -2257,46 +2265,119 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// unsettled and the next session recovers it. Only a journal still naming this very session and
     /// action is touched, so a refusal of a command about some other session changes nothing.
     /// </remarks>
-    private async Task ReleaseRefusedResumeSessionAsync(
+    private Task ReleaseRefusedResumeSessionAsync(
         WireToGateSlotOperationResumeCommand command,
+        CancellationToken cancellationToken) =>
+        ForgetRecoverySessionAsync(
+            command.ExceptionRecoverySessionId,
+            command.RecoveryActionId,
+            released => released,
+            $"续行命令已拒绝，但清除恢复会话记录失败：attempt={command.SlotOperationAttemptId}。",
+            cancellationToken);
+
+    /// <summary>
+    /// Forgets one recovery session -- its identity, action, request ids, reason and operator -- and
+    /// whatever <paramref name="release"/> adds to the same write, keeping the unsettled operation
+    /// (onboard-hmi#119, #123).
+    /// </summary>
+    /// <param name="exceptionRecoverySessionId">The session to forget; a journal naming any other is left alone.</param>
+    /// <param name="recoveryActionId">
+    /// The action inside it, when the caller knows which; a journal naming another action is left
+    /// alone. <c>null</c> for a caller that speaks for the whole session, such as its CLOSED snapshot.
+    /// </param>
+    /// <param name="release">
+    /// Given the state with the session fields already cleared, returns what to write -- or
+    /// <c>null</c> to write nothing, when the rest of the journal shows this session is not one that
+    /// may be forgotten yet.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// Idempotent, and failure is logged rather than thrown: every caller has already answered the
+    /// server, and each of the other callers -- the refusal, its replay, the CLOSED snapshot -- gets
+    /// another chance to clear what a failed write left behind.
+    /// </para>
+    /// <para>
+    /// The guard and the write are one journal update, never a read followed by a write. A result
+    /// recorded in between -- the resume's own, or the late one of onboard-hmi#124's
+    /// acknowledged-completed path -- would otherwise be written over with the state read before it,
+    /// putting a settled attempt back as unsettled (onboard-hmi#123 review A). Inside the update the
+    /// journal read is the latest: a result already recorded has cleared the session, so the guard
+    /// fails and nothing is written; a result recorded afterwards writes the settled state it wants.
+    /// </para>
+    /// </remarks>
+    private async Task ForgetRecoverySessionAsync(
+        string? exceptionRecoverySessionId,
+        string? recoveryActionId,
+        Func<WireToGateRecoveryState, WireToGateRecoveryState?> release,
+        string failureLog,
         CancellationToken cancellationToken)
     {
+        if (exceptionRecoverySessionId is null)
+        {
+            return;
+        }
+
         try
         {
-            WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
-                .ConfigureAwait(false);
-            if (!string.Equals(
-                    state.ExceptionRecoverySessionId,
-                    command.ExceptionRecoverySessionId,
-                    StringComparison.Ordinal)
-                || !string.Equals(state.RecoveryActionId, command.RecoveryActionId, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            await WriteRecoveryStateCachedAsync(
-                    state with
-                    {
-                        ExceptionRecoverySessionId = null,
-                        RecoveryActionId = null,
-                        RecoverySessionRequestId = null,
-                        RecoveryActionRequestId = null,
-                        RecoveryReason = null,
-                        RecoveryOperatorId = null,
-                        RecoveryOperatorVerifiedAt = null
-                    },
+            WireToGateRecoveryState? written = await _session.Journal.UpdateRecoveryStateAsync(
+                    state =>
+                        !string.Equals(
+                            state.ExceptionRecoverySessionId,
+                            exceptionRecoverySessionId,
+                            StringComparison.Ordinal)
+                        || recoveryActionId is not null
+                            && !string.Equals(state.RecoveryActionId, recoveryActionId, StringComparison.Ordinal)
+                            ? null
+                            : release(state with
+                            {
+                                ExceptionRecoverySessionId = null,
+                                RecoveryActionId = null,
+                                RecoverySessionRequestId = null,
+                                RecoveryActionRequestId = null,
+                                RecoveryReason = null,
+                                RecoveryOperatorId = null,
+                                RecoveryOperatorVerifiedAt = null
+                            }),
                     cancellationToken)
                 .ConfigureAwait(false);
+            if (written is not null)
+            {
+                Volatile.Write(ref _lastRecoveryState, written);
+            }
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException)
         {
             _logger.Write(
                 LogSeverity.Warning,
                 nameof(WireToGateBusinessService),
-                $"续行命令已拒绝，但清除恢复会话记录失败：attempt={command.SlotOperationAttemptId}。",
+                failureLog,
                 exception);
         }
     }
+
+    /// <summary>
+    /// The fallback for a session forgotten nowhere else: the server closed it, so it is over whatever
+    /// the vehicle still has on file (coordinator review of onboard-hmi#119).
+    /// </summary>
+    /// <remarks>
+    /// Covers the refusal whose release write failed: the answer still reached the server, the server
+    /// closed the session on it, and no command for it will come again. Guarded by the session id. A
+    /// recovery vector that may have acted is never forgotten here -- its result settles it, and a
+    /// closed session does not make an unproven slot proven.
+    /// </remarks>
+    private Task ForgetClosedRecoverySessionAsync(
+        string exceptionRecoverySessionId,
+        CancellationToken cancellationToken) =>
+        ForgetRecoverySessionAsync(
+            exceptionRecoverySessionId,
+            recoveryActionId: null,
+            released => released.RecoveryVector is not { } vector
+                ? released
+                : vector.ExceptionRecoverySessionId == exceptionRecoverySessionId
+                    ? ForgetRefusedVector(released, vector)
+                    : null,
+            $"恢复会话已关闭，但清除本地恢复会话记录失败：session={exceptionRecoverySessionId}。",
+            cancellationToken);
 
     private static string ResumeRejectedKey(WireToGateSlotOperationResumeCommand command) =>
         $"slot-operation-resume-rejected:{command.SlotOperationAttemptId}:{command.MessageId}";
@@ -2320,11 +2401,18 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
         {
             // Saved before it was sent, so an unacknowledged rejection is replayed with the rest of the
-            // outbox on the next session, and a resend of the command sends it again from here.
+            // outbox on the next session, and a resend of the command sends it again from here. One that
+            // never reached the outbox is not waiting for an acknowledgement; it is refused afresh when
+            // the server sends the resume again.
+            bool onFile = await _session.Journal
+                .ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken)
+                .ConfigureAwait(false) is not null;
             _logger.Write(
                 LogSeverity.Warning,
                 nameof(WireToGateBusinessService),
-                $"续行命令的拒绝暂未收到DurableAck：attempt={command.SlotOperationAttemptId}，reason={payload.Problem.ReasonCode}。",
+                onFile
+                    ? $"续行命令的拒绝已写入发件箱，暂未收到DurableAck：attempt={command.SlotOperationAttemptId}，reason={payload.Problem.ReasonCode}。"
+                    : $"续行命令的拒绝未能写入发件箱：attempt={command.SlotOperationAttemptId}，reason={payload.Problem.ReasonCode}。",
                 exception);
         }
     }
