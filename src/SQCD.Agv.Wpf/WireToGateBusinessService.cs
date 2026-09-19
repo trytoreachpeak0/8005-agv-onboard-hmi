@@ -2246,19 +2246,34 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// in the registry as they are; the executor's own recovery codes are not, and go to the
     /// registered code that says the same thing.
     /// </summary>
-    private static string ResumeNotStartedReasonCode(string localCode) => localCode switch
+    /// <remarks>
+    /// Every code it emits is written out as <c>return "CODE";</c>, never passed through from its
+    /// input: ReasonCodeRegistryArchitectureTests scans this method by name for exactly that shape,
+    /// so an unregistered code added here fails the build's tests.
+    /// </remarks>
+    private static string ResumeNotStartedReasonCode(string localCode)
     {
-        "SLOT_STATE_UNKNOWN"
-            or "LOCK_NOT_CLOSED"
-            or "UNLOCK_OUTPUT_NOT_RESET"
-            or "SLOT_OPERATION_CONFLICT"
-            or "SLOT_SET_INVALID" => localCode,
-        // Nothing on file to resume: the same answer the safety gate gives an unpersisted state.
-        "RECOVERY_OPERATION_CONTEXT_MISSING" => "RECOVERY_SESSION_NOT_OPEN",
-        // RECOVERY_STATE_MISMATCH, RECOVERY_COMMAND_INVALID and the field-shape refusals: the
-        // command does not describe the scope the vehicle has on file.
-        _ => "RECOVERY_SCOPE_MISMATCH"
-    };
+        switch (localCode)
+        {
+            case "SLOT_STATE_UNKNOWN":
+                return "SLOT_STATE_UNKNOWN";
+            case "LOCK_NOT_CLOSED":
+                return "LOCK_NOT_CLOSED";
+            case "UNLOCK_OUTPUT_NOT_RESET":
+                return "UNLOCK_OUTPUT_NOT_RESET";
+            case "SLOT_OPERATION_CONFLICT":
+                return "SLOT_OPERATION_CONFLICT";
+            case "SLOT_SET_INVALID":
+                return "SLOT_SET_INVALID";
+            case "RECOVERY_OPERATION_CONTEXT_MISSING":
+                // Nothing on file to resume: the same answer the safety gate gives an unpersisted state.
+                return "RECOVERY_SESSION_NOT_OPEN";
+            default:
+                // RECOVERY_STATE_MISMATCH, RECOVERY_COMMAND_INVALID and the field-shape refusals: the
+                // command does not describe the scope the vehicle has on file.
+                return "RECOVERY_SCOPE_MISMATCH";
+        }
+    }
 
     private static WireToGateOperationResultPayload CreateOperationResultPayload(
         WireToGateOperationExecutionResult result)
