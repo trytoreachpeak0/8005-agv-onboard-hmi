@@ -49,6 +49,36 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(resultsBefore, harness.ResultsOfType("OperationResult").Count);
     }
 
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task AResumeWhoseOperationContextIsGoneIsRejectedBeforeAnyDoorIo()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            cargoInTargetSlots: true);
+        WireToGateRecoveryState state = await OpenResumeActionAsync(harness, token);
+        await harness.RewriteRecoveryStateAsync(
+            persisted => persisted with { OperationContext = null },
+            token);
+
+        await harness.Server.SendCommandAsync(
+            "SlotOperationResumeCommand",
+            ResumeMessageId,
+            ResumePayload(state));
+
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_AUTHENTICATION_FAILED", token);
+        JsonElement rejection = await WaitForSingleRejectionAsync(harness, token);
+        Assert.Equal(ResumeMessageId, rejection.GetProperty("correlationId").GetString());
+        JsonElement payload = rejection.GetProperty("payload");
+        Assert.Equal(AttemptId, payload.GetProperty("slotOperationAttemptId").GetString());
+        Assert.Equal(
+            "RECOVERY_AUTHENTICATION_FAILED",
+            payload.GetProperty("problem").GetProperty("reasonCode").GetString());
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
     /// <summary>
     /// Presses the resume entry and waits for the accepted action to be on disk, which is what the
     /// vehicle checks a <c>SlotOperationResumeCommand</c> against.
