@@ -867,14 +867,15 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     .ReadOutgoingByDeduplicationKeyAsync(resultKey, cancellationToken)
                     .ConfigureAwait(false) is { } sent)
             {
-                // A COMPLETED result whose DurableAck has not come back is finished work, not an unfinished
-                // operation: the handshake replays it under the same messageId, and until then the HMI keeps
-                // the RESULT_ACK_PENDING prompt its sender published (onboard-hmi#124).
+                // FAILED and UNKNOWN stay unfinished until an administrator recovers them.
                 if (!IsCompletedOperationResult(sent))
                 {
                     return InterruptedOperationSettlement.NotSettled;
                 }
 
+                // A COMPLETED result whose DurableAck has not come back is finished work, not an unfinished
+                // operation: the handshake replays it under the same messageId, and until then the HMI keeps
+                // the RESULT_ACK_PENDING prompt its sender published (onboard-hmi#124).
                 if (!sent.Acknowledged)
                 {
                     return InterruptedOperationSettlement.ResultAwaitingAck;
