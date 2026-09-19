@@ -2294,10 +2294,14 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _session.Current.CapabilityVersion,
             null);
         // Called only while the session is not Ready, so it takes the send path that allows RecoveryRequired
-        // (onboard-hmi#127); the Ready-only path could never send it.
+        // (onboard-hmi#127); the Ready-only path could never send it. Now that it is actually written, its messageId
+        // is derived from its own key, as the resume rejection's is: the attempt id is the OperationResult's
+        // messageId, the outbox holds one row per messageId, and a rejection holding it would keep the result of
+        // the same attempt, issued again once the session is ready, out of the outbox for good.
+        string deduplicationKey = $"slot-operation-rejected:{command.SlotOperationAttemptId}:{reasonCode}";
         await _session.SendSlotOperationRejectedAsync(
-            $"slot-operation-rejected:{command.SlotOperationAttemptId}:{reasonCode}",
-            command.SlotOperationAttemptId,
+            deduplicationKey,
+            StableUuid(deduplicationKey),
             command.MessageId,
             payload,
             cancellationToken).ConfigureAwait(false);
