@@ -134,6 +134,13 @@ public sealed partial class RecoveryVectorG2Tests
 
         await harness.Server.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, resume);
         await WaitForSingleRejectionAsync(harness, token);
+        // The server resends later, not while the first copy is still waiting for its ack: that wait
+        // ends when the onboard gives up on the ack and logs it.
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Logger.Entries.Any(entry =>
+                entry.Message.StartsWith("续行命令的拒绝暂未", StringComparison.Ordinal)),
+            "the onboard to stop waiting for the dropped ack",
+            token);
         // Refused again now, the reason would be RECOVERY_AUTHENTICATION_FAILED.
         await harness.RewriteRecoveryStateAsync(
             persisted => persisted with { OperationContext = null },

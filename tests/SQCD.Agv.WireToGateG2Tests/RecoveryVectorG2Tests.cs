@@ -1442,9 +1442,11 @@ public sealed partial class RecoveryVectorG2Tests
             WireToGateSessionService session,
             WireToGateBusinessService business,
             SqliteWireToGateJournal journal,
-            List<WireToGateOperatorEvent> recoveryBlockedEvents)
+            List<WireToGateOperatorEvent> recoveryBlockedEvents,
+            RecordingLogger logger)
         {
             Server = server;
+            Logger = logger;
             _ownsServer = ownsServer;
             Io = io;
             _session = session;
@@ -1458,6 +1460,9 @@ public sealed partial class RecoveryVectorG2Tests
         public FakeIoModuleClient Io { get; }
 
         public WireToGateBusinessService Business { get; }
+
+        /// <summary>What the onboard logged, for a test that has to wait on a step nothing else shows.</summary>
+        public RecordingLogger Logger { get; }
 
         /// <summary>
         /// The double every harness stands up on its own. A test that has to keep the double across
@@ -1659,6 +1664,7 @@ public sealed partial class RecoveryVectorG2Tests
                         session,
                         business,
                         safety,
+                        logger,
                         loadAlreadySettled,
                         armedUnloadOverSettledLoad,
                         nothingOnFile,
@@ -1704,6 +1710,7 @@ public sealed partial class RecoveryVectorG2Tests
                     session,
                     business,
                     safety,
+                    logger,
                     loadAlreadySettled,
                     armedUnloadOverSettledLoad,
                     nothingOnFile,
@@ -1728,6 +1735,7 @@ public sealed partial class RecoveryVectorG2Tests
             WireToGateSessionService session,
             WireToGateBusinessService business,
             MutableSafetySignalProvider safety,
+            RecordingLogger logger,
             bool loadAlreadySettled,
             bool armedUnloadOverSettledLoad,
             bool nothingOnFile,
@@ -1801,7 +1809,7 @@ public sealed partial class RecoveryVectorG2Tests
             }
 
             return new RecoveryVectorHarness(
-                server, ownsServer, io, session, business, journal, blocked);
+                server, ownsServer, io, session, business, journal, blocked, logger);
         }
 
         public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(
