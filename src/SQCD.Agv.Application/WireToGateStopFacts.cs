@@ -83,6 +83,12 @@ public static class WireToGateStopFacts
         };
     }
 
+    /// <summary>清单一行的方向。</summary>
+    public static string ItemDirectionText(WireToGateWorklistItem item) => string.Empty;
+
+    /// <summary>清单一行的任务类型。</summary>
+    public static string ItemTaskTypeText(WireToGateWorklistItem item) => string.Empty;
+
     private const string PickupText = "取货";
 
     private const string DropoffText = "卸货";
