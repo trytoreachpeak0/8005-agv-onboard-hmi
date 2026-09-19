@@ -80,6 +80,87 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.Single(sent, item => item.MessageType == "SlotOperationCommand");
     }
 
+    /// <summary>
+    /// 一条未完成的结果已经送达、被确认，操作仍未结算：重连的恢复报告里 <c>pendingResults</c> 非空。替身答
+    /// <c>RECOVERY_REQUIRED</c>；车按同一 <c>messageId</c> 补报这条结果后，待补报项消了，但结果不是 <c>COMPLETED</c>，
+    /// attempt 仍未结算（真服务端判 <c>RecoveryRequired</c>），所以不追加 <c>READY</c>，行程与命令继续挡在门后。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task APendingResultKeepsTheDoubleAtRecoveryRequiredAndItsReplayDoesNotSettleAnUnfinishedAttempt()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { LockerWaitTimesOut = true },
+            token,
+            server => server.StationDepartureDeadlineAt = null);
+        await Harness.WaitUntilAsync(
+            () => harness.Journal.ReadOutgoingByDeduplicationKeyAsync($"operation-result:{AttemptId}", token)
+                .GetAwaiter().GetResult() is { Acknowledged: true },
+            "the unfinished result acknowledged on the first connection",
+            token,
+            harness.DescribeEvents);
+
+        await harness.Client.DisconnectAsync();
+        await harness.Client.ConnectAndRecoverAsync(token);
+        int reconnect = harness.Server.Received.Max(item => item.Connection);
+        await Harness.WaitUntilAsync(
+            () => harness.Server.ReceivedEnvelopes.Any(
+                item => item.Connection == reconnect && item.MessageType == "OperationResult"),
+            "the pending result replayed on the reconnected session",
+            token,
+            harness.DescribeEvents);
+        await Task.Delay(TimeSpan.FromMilliseconds(500), token);
+
+        var report = Assert.Single(
+            harness.Server.ReceivedEnvelopes,
+            item => item.Connection == reconnect && item.MessageType == "RecoveryStateReport");
+        using (JsonDocument document = JsonDocument.Parse(report.WireLine))
+        {
+            Assert.Equal(
+                AttemptId,
+                Assert.Single(document.RootElement.GetProperty("payload").GetProperty("pendingResults").EnumerateArray())
+                    .GetProperty("messageId").GetString());
+        }
+
+        var sent = harness.Server.SentEnvelopes.Where(item => item.Connection == reconnect).ToArray();
+        var readiness = Assert.Single(sent, item => item.MessageType == "SessionReadiness");
+        Assert.Equal("RECOVERY_REQUIRED", ReadinessOf(readiness.WireLine));
+        Assert.Equal(["SESSION_RECOVERY_REQUIRED"], ReasonCodesOf(readiness.WireLine));
+        Assert.Contains(sent, item => item.MessageType == "DurableAck" && CorrelationOf(item.WireLine) == AttemptId);
+        Assert.DoesNotContain(sent, item => GatedMessageTypes.Contains(item.MessageType));
+        Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, harness.Client.Current.Readiness);
+    }
+
+    /// <summary>
+    /// 报告干净时（新 journal，没有未结算 attempt、没有待补报结果）行为与改动前一致：握手答 <c>READY</c>，行程快照与仓位命令
+    /// 紧跟其后发出，各一次。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-05")]
+    [Trait("ProtocolVector", "CV-CONNECTION-LOSS-SAFE-FINISH")]
+    public async Task ACleanReportIsAnsweredReadyAndTheJourneyFollowsAtOnce()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server => server.StationDepartureDeadlineAt = null);
+        await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
+
+        var sent = harness.Server.SentEnvelopes.Where(item => item.Connection == 1).ToList();
+        int readiness = sent.FindIndex(item => item.MessageType == "SessionReadiness");
+        Assert.Equal("READY", ReadinessOf(sent[readiness].WireLine));
+        Assert.Empty(ReasonCodesOf(sent[readiness].WireLine));
+        Assert.Equal(
+            ["VehicleBusinessStateSnapshot", "CurrentStopWorklistSnapshot", "UpcomingStopPlanSnapshot", "SlotOperationCommand"],
+            sent.Skip(readiness + 1).Where(item => GatedMessageTypes.Contains(item.MessageType))
+                .Select(item => item.MessageType).ToArray());
+        Assert.Single(sent, item => item.MessageType == "SessionReadiness");
+    }
+
     private static string? ReadinessOf(string wireLine)
     {
         using JsonDocument document = JsonDocument.Parse(wireLine);
