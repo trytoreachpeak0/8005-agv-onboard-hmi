@@ -1,0 +1,496 @@
+using System.Net;
+using System.Text.Json;
+using SQCD.Agv.Application;
+using SQCD.Agv.Core;
+using SQCD.Agv.Infrastructure;
+using SQCD.Agv.Wpf;
+using SQCD.Agv.Wpf.ViewModels;
+using Xunit;
+
+namespace SQCD.Agv.WireToGateG2Tests;
+
+/// <summary>
+/// A stop that carries more than one demand, and a plan of more than two legs, driven from the fake
+/// control server through the real session client and business service into
+/// <see cref="MainViewModel"/> (batch 7-13, <c>trytoreachpeak0/8005-agv-onboard-hmi#134</c>).
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Why the whole stack.</b> Widening the inbound check alone let two items through to five places
+/// that assumed a single demand, and the one that crashes is on the UI thread: the view model's
+/// <c>SingleOrDefault()</c> throws inside <c>RunOnUiThread</c>, and <c>App.OnDispatcherUnhandledException</c>
+/// turns that into the fatal fault <c>UNHANDLED_UI_ERROR</c>, which stops the whole vehicle. The
+/// harness wires the view model the way <c>App.xaml.cs</c> does, including that last step, so a
+/// crash shows up here as the fault the operator would see.
+/// </para>
+/// </remarks>
+public sealed partial class MultiDemandJourneyG2Tests
+{
+    private const string OperatorVariable = "W2G_G2_MULTI_DEMAND_OPERATOR";
+    private const string CredentialVariable = "W2G_G2_MULTI_DEMAND_CREDENTIAL";
+    private const string OperationSessionId = "77777777-7777-4777-8777-777777777777";
+    private const string DemandA = "aaaaaaaa-0000-4000-8000-00000000000a";
+    private const string DemandB = "bbbbbbbb-0000-4000-8000-00000000000b";
+
+    static MultiDemandJourneyG2Tests()
+    {
+        Environment.SetEnvironmentVariable(CredentialVariable, "g2-multi-demand-credential");
+        Environment.SetEnvironmentVariable(OperatorVariable, "operator-134");
+    }
+
+    /// <summary>
+    /// The crash point: a worklist of two items reaches the view model, the journey gate and sublot
+    /// entry, and none of the three throws or puts the vehicle into <c>UNHANDLED_UI_ERROR</c>.
+    /// </summary>
+    /// <remarks>
+    /// Both items are pickups at <c>ST-01</c>; the plan names both demands, one per drop-off, so the
+    /// worklist's demands are a subset of the plan's. The entry goes in for the second item, which a
+    /// single-demand check would read as "not the expected sublot".
+    /// </remarks>
+    [Fact]
+    public async Task TwoWorklistItemsPassTheViewModelTheJourneyGateAndEntryWithoutAnUnhandledUiError()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            server =>
+            {
+                server.SendJourneySnapshotsAfterRecovery = true;
+                server.SublotEntryExpectedSublots = ["SUBLOT-A", "SUBLOT-B"];
+                server.JourneySnapshotPayloads = new Dictionary<string, object>
+                {
+                    ["VehicleBusinessStateSnapshot"] = Payloads.BusinessState(1, loadingPhase: null),
+                    ["CurrentStopWorklistSnapshot"] = Payloads.Worklist(1, Payloads.ItemA, Payloads.ItemB),
+                    ["UpcomingStopPlanSnapshot"] = Payloads.Plan(1, Payloads.TwoDemandLegs)
+                };
+            },
+            token);
+
+        await harness.WaitUntilAsync(
+            () => harness.UiErrors.Count > 0
+                || harness.Business.CanSubmitSublot
+                    && harness.Session.CurrentJourney.CurrentStopWorklist is not null
+                    && harness.Session.CurrentJourney.UpcomingStopPlan is not null,
+            "the two-item worklist, the plan and the entry request to arrive",
+            token);
+
+        Assert.Empty(harness.UiErrors);
+        Assert.NotEqual("UNHANDLED_UI_ERROR", harness.Controller.Current.ErrorCode);
+        Assert.Equal(2, harness.Session.CurrentJourney.CurrentStopWorklist!.Items.Count);
+        // The journey gate App.xaml.cs hands the controller.
+        Assert.True(harness.Session.CurrentJourney.CanAcceptSublotAt(
+            DateTimeOffset.Now,
+            TimeSpan.FromSeconds(30)));
+
+        await harness.Business.SubmitSublotAsync("SUBLOT-B", "SCANNER", token);
+        JsonElement submitted = await harness.WaitForSubmissionAsync(token);
+
+        Assert.Equal("SUBLOT-B", submitted.GetProperty("sublot").GetString());
+        Assert.Empty(harness.UiErrors);
+        Assert.NotEqual("UNHANDLED_UI_ERROR", harness.Controller.Current.ErrorCode);
+    }
+
+    /// <summary>
+    /// Snapshot payloads in the shape protocol v2 froze, for the stops these tests drive.
+    /// </summary>
+    internal static class Payloads
+    {
+        public static readonly object ItemA = Item(DemandA, "TD-A", "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2);
+
+        public static readonly object ItemB = Item(DemandB, "TD-B", "SUBLOT-B", "WIRE_TO_OPTICAL", "PICKUP", 1);
+
+        /// <summary>Pick both up at ST-01, then drop A at the gate and B at the optical station.</summary>
+        public static readonly object[] TwoDemandLegs =
+        [
+            Leg(1, "TO_PICKUP", "BUSINESS", DemandA, "ST-01", "ARRIVED"),
+            Leg(2, "TO_DROPOFF", "BUSINESS", DemandA, "ST-GATE", "PLANNED"),
+            Leg(3, "TO_DROPOFF", "BUSINESS", DemandB, "ST-OPT", "PLANNED")
+        ];
+
+        public static object Item(
+            string demandId,
+            string transportDemandKey,
+            string sublot,
+            string workType,
+            string stopRole,
+            int expectedBasketCount) =>
+            new
+            {
+                demandId,
+                transportDemandKey,
+                sublot,
+                workType,
+                stopRole,
+                expectedBasketCount
+            };
+
+        public static object Leg(
+            int sequence,
+            string? legType,
+            string stopPurposeCategory,
+            string? demandId,
+            string stationId,
+            string state) =>
+            new
+            {
+                movementLegId = $"22222222-2222-4222-8222-{sequence:D12}",
+                legType,
+                stopPurposeCategory,
+                demandId,
+                publicStationFunction = (string?)null,
+                sequence,
+                stationId,
+                mapId = "MAP-26",
+                state
+            };
+
+        public static object Worklist(
+            long revision,
+            params object[] items) =>
+            WorklistAt(revision, null, items);
+
+        public static object WorklistAt(
+            long revision,
+            DateTimeOffset? stationDepartureDeadlineAt,
+            params object[] items) =>
+            new
+            {
+                stationId = "ST-01",
+                worklistRevision = revision,
+                operationSessionId = OperationSessionId,
+                stationDepartureDeadlineAt,
+                items
+            };
+
+        public static object Plan(long revision, IEnumerable<object> legs) =>
+            new
+            {
+                planRevision = revision,
+                legs = legs.ToArray()
+            };
+
+        public static object BusinessState(long revision, object? loadingPhase) =>
+            new
+            {
+                vehicleBusinessStateRevision = revision,
+                readiness = "READY",
+                activePurpose = "TRANSPORT",
+                manualChargingHold = false,
+                batteryState = "SUFFICIENT",
+                chargingCycleState = "NOT_CHARGING",
+                loadingPhase,
+                blockingFacts = Array.Empty<object>(),
+                observedAt = DateTimeOffset.UtcNow
+            };
+
+        public static object LoadingPhase(
+            string state,
+            DateTimeOffset? cargoHoldingDeadlineAt = null,
+            string? closedReason = null) =>
+            new
+            {
+                state,
+                cargoHoldingDeadlineAt,
+                closedReason
+            };
+    }
+
+    /// <summary>
+    /// A real session service, business service, controller and view model against the fake server,
+    /// wired the way <c>App.xaml.cs</c> wires them.
+    /// </summary>
+    internal sealed class Harness : IAsyncDisposable
+    {
+        private readonly object _sync = new();
+        private readonly List<Exception> _uiErrors = [];
+
+        private Harness(
+            FakeControlServer server,
+            FakeIoModuleClient io,
+            string journalPath,
+            WireToGateSessionService session,
+            WireToGateBusinessService business,
+            OnboardController controller,
+            MainViewModel viewModel)
+        {
+            Server = server;
+            Io = io;
+            JournalPath = journalPath;
+            Session = session;
+            Business = business;
+            Controller = controller;
+            ViewModel = viewModel;
+        }
+
+        public FakeControlServer Server { get; }
+
+        public FakeIoModuleClient Io { get; }
+
+        public string JournalPath { get; }
+
+        public WireToGateSessionService Session { get; }
+
+        public WireToGateBusinessService Business { get; }
+
+        public OnboardController Controller { get; }
+
+        public MainViewModel ViewModel { get; }
+
+        /// <summary>What <c>App.OnDispatcherUnhandledException</c> would have caught on the UI thread.</summary>
+        public IReadOnlyList<Exception> UiErrors
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return [.. _uiErrors];
+                }
+            }
+        }
+
+        public IReadOnlyList<string> Submissions =>
+        [
+            .. Server.ReceivedEnvelopes
+                .Where(envelope => envelope.MessageType == "SublotSubmitted")
+                .Select(envelope => envelope.WireLine)
+        ];
+
+        public static async Task<Harness> StartAsync(
+            Action<FakeControlServer> configure,
+            CancellationToken cancellationToken,
+            string? journalPath = null)
+        {
+            FakeControlServer server = new(IPAddress.Loopback)
+            {
+                SendReadinessAfterRecoveryAck = true,
+                OperationSessionId = OperationSessionId
+            };
+            configure(server);
+            try
+            {
+                return await StartAgainstAsync(server, cancellationToken, journalPath);
+            }
+            catch
+            {
+                await server.DisposeAsync();
+                throw;
+            }
+        }
+
+        /// <summary>A new vehicle process against a server that already exists: a restart.</summary>
+        public static async Task<Harness> StartAgainstAsync(
+            FakeControlServer server,
+            CancellationToken cancellationToken,
+            string? journalPath = null)
+        {
+            FakeIoModuleClient io = new();
+            RecordingLogger logger = new();
+            StoppedVehicle safety = new();
+            journalPath ??= NewJournalPath();
+
+            WireToGateSessionService session = new(
+                new WireToGateSessionOptions(
+                    "127.0.0.1",
+                    server.Port,
+                    "AGV-8005-01",
+                    Guid.NewGuid().ToString("D"),
+                    new string('a', 40),
+                    CredentialVariable,
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromSeconds(2),
+                    1,
+                    1,
+                    "eight-slot-v1",
+                    "eight-slot-modbus-v1",
+                    SupportsBatchUnlock: false),
+                io,
+                new SqliteWireToGateJournal(journalPath),
+                logger,
+                new SystemClock(),
+                safety,
+                new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
+                new SlotConfigurationActivationCoordinator(
+                    new DocumentActiveSlotConfigurationStore(
+                        new G2SlotConfigurationFixtures.InMemoryAtomicDocument(),
+                        G2SlotConfigurationFixtures.Approved()),
+                    TimeProvider.System),
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(500));
+            OnboardController controller = new(
+                io,
+                new DisabledRuleGateway(),
+                logger,
+                new SystemClock(),
+                new OnboardWorkflowOptions(
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromMilliseconds(10),
+                    TimeSpan.FromSeconds(30),
+                    128,
+                    2),
+                () => session.Current.Readiness == WireToGateSessionReadiness.Ready,
+                () =>
+                {
+                    WireToGateJourneySnapshot journey = session.CurrentJourney;
+                    return journey.CanAcceptSublotAt(DateTimeOffset.Now, TimeSpan.FromSeconds(30))
+                        ? journey
+                        : null;
+                });
+            MainViewModel viewModel = new(
+                controller,
+                logger,
+                "agv02",
+                // Slots 1-4 front, 5-8 rear: the layout the side of a worklist item is read from.
+                OnboardActiveSlotConfigurationFactory.Create(new WireToGateSettings(), new IoModuleSettings()));
+            WireToGateBusinessService business = new(
+                session,
+                io,
+                logger,
+                new SystemClock(),
+                () => safety.Read().MotionState == VehicleMotionState.Stopped,
+                new WireToGateSlotOperationExecutorOptions(
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(1),
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromMilliseconds(10),
+                    TimeSpan.FromSeconds(30)),
+                OperatorVariable,
+                safety,
+                TimeSpan.FromSeconds(30),
+                TimeSpan.FromMilliseconds(500));
+            Harness harness = new(server, io, journalPath, session, business, controller, viewModel);
+
+            session.StateChanged += (_, args) => harness.OnUiThread(() =>
+            {
+                viewModel.UpdateWireToGateStatus(args.Value);
+                controller.RefreshExternalSafetyState();
+            });
+            session.JourneyChanged += (_, args) => harness.OnUiThread(() =>
+            {
+                viewModel.UpdateWireToGateJourney(args.Value);
+                controller.RefreshExternalSafetyState();
+            });
+            business.SublotEntryRequested += (_, _) => harness.OnUiThread(viewModel.RefreshWireToGateInputState);
+            business.OperatorEventPublished += (_, args) =>
+                harness.OnUiThread(() => viewModel.ApplyWireToGateOperatorEvent(args.Value));
+            viewModel.ConfigureWireToGate(
+                (sublot, inputMethod, token) => business.SubmitSublotAsync(
+                    sublot,
+                    inputMethod == ScanInputMethod.Scanner ? "SCANNER" : "KEYBOARD",
+                    token),
+                () => business.CanSubmitSublot,
+                () => business.CanRequestResumeAfterRepair,
+                business.RequestResumeAfterRepairAsync,
+                () => business.CanRequestLoadCancellation,
+                token => business.RequestLoadCancellationAsync(cancellationToken: token),
+                () => business.CanRequestLoadCompensation,
+                business.RequestLoadCompensationAsync,
+                () => business.CanRequestLoadCorrection,
+                token => business.RequestLoadCorrectionAsync(cancellationToken: token),
+                () => business.CanRequestFaultCargoHandoff,
+                business.RequestFaultCargoHandoffAsync,
+                () => business.CanRequestForcedMechanicalRecovery,
+                business.RequestForcedMechanicalRecoveryAsync,
+                () => business.CanRequestManualChargingReturnToService,
+                token => business.RequestManualChargingReturnToServiceAsync(cancellationToken: token),
+                () => business.IsLoadCancellationBeforeSublotOpen,
+                () => business.CurrentSublotRejection,
+                () => business.RecoveryReasonAlreadyGiven);
+            await viewModel.InitializeAsync();
+
+            try
+            {
+                await session.Client.ConnectAndRecoverAsync(cancellationToken);
+                business.Start();
+                return harness;
+            }
+            catch
+            {
+                await business.DisposeAsync();
+                await session.DisposeAsync();
+                await controller.DisposeAsync();
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Runs a view-model update the way the WPF dispatcher would, and treats what escapes it the way
+        /// <c>App.OnDispatcherUnhandledException</c> does.
+        /// </summary>
+        private void OnUiThread(Action action)
+        {
+            try
+            {
+                action();
+            }
+            catch (Exception exception)
+            {
+                lock (_sync)
+                {
+                    _uiErrors.Add(exception);
+                }
+
+                Controller.EnterFatalFault(
+                    "UNHANDLED_UI_ERROR",
+                    "软件运行异常，已禁止继续操作。请确认仓门状态并联系维护人员。");
+            }
+        }
+
+        public async Task<JsonElement> WaitForSubmissionAsync(CancellationToken cancellationToken)
+        {
+            await WaitUntilAsync(
+                () => Submissions.Count > 0,
+                "the control server to receive SublotSubmitted",
+                cancellationToken);
+
+            using JsonDocument document = JsonDocument.Parse(Submissions[0]);
+            return document.RootElement.GetProperty("payload").Clone();
+        }
+
+        public async Task WaitUntilAsync(
+            Func<bool> predicate,
+            string expectation,
+            CancellationToken cancellationToken)
+        {
+            DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+            while (!predicate())
+            {
+                if (DateTimeOffset.UtcNow > deadline)
+                {
+                    string errors = string.Join(" | ", UiErrors.Select(error => error.Message));
+                    Assert.Fail($"Timed out after 5s waiting for: {expectation}. UI errors: [{errors}]");
+                }
+
+                await Task.Delay(5, cancellationToken);
+            }
+        }
+
+        /// <summary>Stops this vehicle process, leaving the server and the journal in place.</summary>
+        public async ValueTask StopVehicleAsync()
+        {
+            await Business.DisposeAsync();
+            await Session.DisposeAsync();
+            await Controller.DisposeAsync();
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            await StopVehicleAsync();
+            await Server.DisposeAsync();
+        }
+
+        private static string NewJournalPath()
+        {
+            string directory = Path.Combine(Path.GetTempPath(), "w2g-multi-demand", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(directory);
+            return Path.Combine(directory, "journal.db");
+        }
+
+        private sealed class StoppedVehicle : IVehicleSafetySignalProvider
+        {
+            public VehicleSafetySignal Read() =>
+                new(VehicleMotionState.Stopped, DateTimeOffset.UtcNow, "MULTI_DEMAND_TEST");
+        }
+    }
+}

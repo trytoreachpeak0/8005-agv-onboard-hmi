@@ -185,6 +185,30 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool ReplayJourneySnapshotsWithStableIdentity { get; set; }
 
     /// <summary>
+    /// Journey snapshot payloads the test composes itself, by message type (onboard-hmi#134). A type named here
+    /// is sent with this payload in place of the one the <c>Journey*</c> and <c>Vector*</c> settings build, in
+    /// both handshake pushes. That is how a worklist of several items, a plan of up to nine legs in any order and
+    /// a <c>loadingPhase</c> reach the vehicle; the entry request that follows still names station
+    /// <c>ST-01</c>, worklist revision 1 and <see cref="OperationSessionId"/>.
+    /// </summary>
+    public IReadOnlyDictionary<string, object>? JourneySnapshotPayloads { get; set; }
+
+    private object JourneyPayload(string messageType, object built) =>
+        JourneySnapshotPayloads?.GetValueOrDefault(messageType) ?? built;
+
+    /// <summary>
+    /// Sends one journey snapshot the test composes, on the latest session and under a new messageId: a
+    /// revision advancing mid-session, the way the real server replaces a worklist or a plan (onboard-hmi#134).
+    /// Not held behind the readiness gate; call it on a session that has been announced READY.
+    /// </summary>
+    public Task SendJourneySnapshotAsync(string messageType, object payload)
+    {
+        ConnectionContext context = Volatile.Read(ref _latestSession)
+            ?? throw new InvalidOperationException("No session has been accepted yet.");
+        return WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(context, messageType, payload));
+    }
+
+    /// <summary>
     /// The <c>stationDepartureDeadlineAt</c> this fake puts on every worklist snapshot.
     /// </summary>
     /// <remarks>
@@ -2045,7 +2069,7 @@ public sealed class FakeControlServer : IAsyncDisposable
         await WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(
             context,
             "VehicleBusinessStateSnapshot",
-            new
+            JourneyPayload("VehicleBusinessStateSnapshot", new
             {
                 vehicleBusinessStateRevision = 1,
                 readiness = "READY",
@@ -2056,11 +2080,11 @@ public sealed class FakeControlServer : IAsyncDisposable
                 loadingPhase = (object?)null,
                 blockingFacts = Array.Empty<object>(),
                 observedAt
-            })).ConfigureAwait(false);
+            }))).ConfigureAwait(false);
         await WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(
             context,
             "CurrentStopWorklistSnapshot",
-            new
+            JourneyPayload("CurrentStopWorklistSnapshot", new
             {
                 stationId = "ST-01",
                 worklistRevision = 1,
@@ -2078,15 +2102,15 @@ public sealed class FakeControlServer : IAsyncDisposable
                         expectedBasketCount = 2
                     }
                 }
-            })).ConfigureAwait(false);
+            }))).ConfigureAwait(false);
         await WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(
             context,
             "UpcomingStopPlanSnapshot",
-            new
+            JourneyPayload("UpcomingStopPlanSnapshot", new
             {
                 planRevision = 1,
                 legs = new[] { Leg(movementLegId, legType, demandId, "ACTIVE") }
-            })).ConfigureAwait(false);
+            }))).ConfigureAwait(false);
 
         await SendSublotEntryRequestAsync(context).ConfigureAwait(false);
 
@@ -2179,7 +2203,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                 },
                 _ => throw new InvalidDataException($"Unsupported vector snapshot type {messageType}.")
             };
-            await WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(context, messageType, payload))
+            await WriteJourneyEnvelopeAsync(
+                    context,
+                    CreateJourneyEnvelope(context, messageType, JourneyPayload(messageType, payload)))
                 .ConfigureAwait(false);
         }
     }
