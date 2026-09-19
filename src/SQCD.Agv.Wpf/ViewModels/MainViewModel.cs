@@ -282,6 +282,9 @@ public sealed class MainViewModel : ViewModelBase
         {
             VisitText = "旅程未同步";
         }
+        // 方向只随服务端的 stopRole／legType，任务类型只随清单项的 workType；都不推断（批次6-03）。
+        StopDirectionText = WireToGateStopFacts.DirectionText(snapshot);
+        TaskTypeText = WireToGateStopFacts.TaskTypeText(snapshot);
         RefreshWireToGateInputStateCore();
         ApplyWireToGatePresentationCore();
     });
