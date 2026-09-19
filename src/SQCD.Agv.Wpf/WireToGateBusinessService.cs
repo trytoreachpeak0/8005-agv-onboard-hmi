@@ -120,6 +120,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             session.Journal,
             clock,
             executorOptions);
+
+        // Here rather than in Start: the server replays an unacknowledged CLOSED right after the
+        // handshake, and a CLOSED read with no handler in place is acknowledged with no fallback run
+        // (onboard-hmi#129). The fallback needs the journal only.
+        session.ClosedRecoverySessionHandler = ForgetClosedRecoverySessionAsync;
     }
 
     public event EventHandler<ValueChangedEventArgs<WireToGateSublotEntryRequest>>? SublotEntryRequested;
@@ -560,7 +565,6 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
         _started = true;
         _session.ServerCommandReceived += OnServerCommandReceived;
-        _session.ClosedRecoverySessionHandler = ForgetClosedRecoverySessionAsync;
         _session.StateChanged += OnSessionStateChanged;
         _ioModule.SnapshotChanged += OnIoSnapshotChanged;
         if (_observableVehicleSafetySignalProvider is not null)
@@ -579,10 +583,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
         _disposed = true;
         _stopping.Cancel();
+        _session.ClosedRecoverySessionHandler = null;
         if (_started)
         {
             _session.ServerCommandReceived -= OnServerCommandReceived;
-            _session.ClosedRecoverySessionHandler = null;
             _session.StateChanged -= OnSessionStateChanged;
             _ioModule.SnapshotChanged -= OnIoSnapshotChanged;
             if (_observableVehicleSafetySignalProvider is not null)
@@ -671,10 +675,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     {
         try
         {
-            WireToGateRecoveryState state = await _session.Journal
-                .ReadRecoveryStateAsync(cancellationToken)
+            WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
                 .ConfigureAwait(false);
-            Volatile.Write(ref _lastRecoveryState, state);
 
             // A forced isolation is a device fact beside whatever else is on file, not instead of it:
             // it settled its own business side when it was acknowledged, and an operation or vector on
@@ -2420,7 +2422,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
         try
         {
-            WireToGateRecoveryState? written = await _session.Journal.UpdateRecoveryStateAsync(
+            await _session.Journal.UpdateRecoveryStateAsync(
                     state =>
                         !string.Equals(
                             state.ExceptionRecoverySessionId,
@@ -2439,13 +2441,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                                 RecoveryOperatorId = null,
                                 RecoveryOperatorVerifiedAt = null
                             }),
+                    CacheRecoveryState,
                     cancellationToken)
                 .ConfigureAwait(false);
-            if (written is not null)
-            {
-                Volatile.Write(ref _lastRecoveryState, written);
-            }
-
             return true;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException)

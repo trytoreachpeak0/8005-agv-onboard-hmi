@@ -2337,23 +2337,48 @@ public sealed partial class WireToGateBusinessService
         CancellationToken cancellationToken) =>
         WriteRecoveryStateCachedAsync(state, cancellationToken);
 
+    /// <summary>
+    /// Reads the journal's recovery state and caches it, inside the journal step (onboard-hmi#129): see
+    /// <see cref="CacheRecoveryState"/>.
+    /// </summary>
     private async Task<WireToGateRecoveryState> ReadRecoveryStateCachedAsync(
         CancellationToken cancellationToken)
     {
-        WireToGateRecoveryState state = await _session.Journal
-            .ReadRecoveryStateAsync(cancellationToken)
+        WireToGateRecoveryState read = WireToGateRecoveryState.Empty;
+        await _session.Journal
+            .UpdateRecoveryStateAsync(
+                static _ => null,
+                state =>
+                {
+                    read = state;
+                    CacheRecoveryState(state);
+                },
+                cancellationToken)
             .ConfigureAwait(false);
-        Volatile.Write(ref _lastRecoveryState, state);
-        return state;
+        return read;
     }
 
+    /// <summary>Writes the recovery state and caches it, inside the journal step (onboard-hmi#129).</summary>
     private async Task WriteRecoveryStateCachedAsync(
         WireToGateRecoveryState state,
         CancellationToken cancellationToken)
     {
-        await _session.Journal.WriteRecoveryStateAsync(state, cancellationToken).ConfigureAwait(false);
-        Volatile.Write(ref _lastRecoveryState, state);
+        await _session.Journal
+            .UpdateRecoveryStateAsync(_ => state, CacheRecoveryState, cancellationToken)
+            .ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// The one writer of the cached recovery state the entry gates read, handed to the journal as the
+    /// settled callback of <see cref="IWireToGateJournal.UpdateRecoveryStateAsync(Func{WireToGateRecoveryState, WireToGateRecoveryState?}, Action{WireToGateRecoveryState}, CancellationToken)"/>.
+    /// </summary>
+    /// <remarks>
+    /// Called inside the journal's step, so the cache takes the journal's states in the journal's
+    /// order. Written after the step, a read or write that finished first could still cache last and
+    /// put an older state over a newer one until the next read (onboard-hmi#123 review follow-up).
+    /// </remarks>
+    private void CacheRecoveryState(WireToGateRecoveryState state) =>
+        Volatile.Write(ref _lastRecoveryState, state);
 
     /// <summary>
     /// The operation this recovery is about, or null when there is none.

@@ -75,6 +75,14 @@ public sealed partial class StationDeadlineExpiredG2Tests
             return await inner.UpdateRecoveryStateAsync(change, cancellationToken);
         }
 
+        // Business-side reads and writes that cache what they settle on. Only the executor's own
+        // result record goes through the overload above, and that is the write this double races.
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            Action<WireToGateRecoveryState> settled,
+            CancellationToken cancellationToken = default) =>
+            inner.UpdateRecoveryStateAsync(change, settled, cancellationToken);
+
         public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(CancellationToken cancellationToken = default) =>
             inner.ReadRecoveryStateAsync(cancellationToken);
 

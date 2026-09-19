@@ -131,14 +131,17 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
-    /// Holds one <see cref="IWireToGateJournal.ReadRecoveryStateAsync"/> call -- the next one made on the thread
-    /// that armed it -- until <see cref="Release"/>, and answers it with the state read at arming time.
+    /// Holds one read of the recovery state -- the next one made on the thread that armed it -- until
+    /// <see cref="Release"/>, and answers it with the state read at arming time.
     /// </summary>
     /// <remarks>
     /// Armed from a <c>Ready</c> handler that runs ahead of the business service's, the held call is the restore
     /// that readiness starts: an async method runs synchronously up to its first await, on the thread that raised
     /// the event. The completion source runs its continuations inline, so the restore goes on inside
     /// <see cref="Release"/> -- on the replaying command's thread, while that command still holds the claim.
+    /// The restore reads through the business service's cached read, which is an
+    /// <see cref="IWireToGateJournal.UpdateRecoveryStateAsync(Func{WireToGateRecoveryState, WireToGateRecoveryState?}, Action{WireToGateRecoveryState}, CancellationToken)"/>
+    /// that writes nothing since onboard-hmi#129, so that call is held the same way as a plain read.
     /// </remarks>
     private sealed class HoldingJournal(IWireToGateJournal inner) : IWireToGateJournal
     {
@@ -173,8 +176,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
 
         public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(CancellationToken cancellationToken = default)
         {
-            if (Interlocked.CompareExchange(ref _armedThread, -2, Environment.CurrentManagedThreadId)
-                != Environment.CurrentManagedThreadId)
+            if (!TakeTheHeldRead())
             {
                 return inner.ReadRecoveryStateAsync(cancellationToken);
             }
@@ -182,6 +184,36 @@ public sealed partial class StationDeadlineExpiredG2Tests
             ReadHeld = true;
             return _hold.Task;
         }
+
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            Action<WireToGateRecoveryState> settled,
+            CancellationToken cancellationToken = default)
+        {
+            if (!TakeTheHeldRead())
+            {
+                return inner.UpdateRecoveryStateAsync(change, settled, cancellationToken);
+            }
+
+            ReadHeld = true;
+            return AnswerTheHeldReadAsync();
+
+            async Task<WireToGateRecoveryState?> AnswerTheHeldReadAsync()
+            {
+                WireToGateRecoveryState state = await _hold.Task;
+                if (change(state) is not null)
+                {
+                    throw new InvalidOperationException("The held call was expected to be a read.");
+                }
+
+                settled(state);
+                return null;
+            }
+        }
+
+        private bool TakeTheHeldRead() =>
+            Interlocked.CompareExchange(ref _armedThread, -2, Environment.CurrentManagedThreadId)
+            == Environment.CurrentManagedThreadId;
 
         public Task InitializeAsync(CancellationToken cancellationToken = default) =>
             inner.InitializeAsync(cancellationToken);

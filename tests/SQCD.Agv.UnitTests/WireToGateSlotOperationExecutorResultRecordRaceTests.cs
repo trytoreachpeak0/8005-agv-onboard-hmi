@@ -140,6 +140,12 @@ public sealed class WireToGateSlotOperationExecutorResultRecordRaceTests
             return await inner.UpdateRecoveryStateAsync(change, cancellationToken);
         }
 
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            Action<WireToGateRecoveryState> settled,
+            CancellationToken cancellationToken = default) =>
+            inner.UpdateRecoveryStateAsync(change, settled, cancellationToken);
+
         public Task InitializeAsync(CancellationToken cancellationToken = default) =>
             inner.InitializeAsync(cancellationToken);
 

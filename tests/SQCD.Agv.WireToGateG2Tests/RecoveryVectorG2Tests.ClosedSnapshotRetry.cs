@@ -228,10 +228,16 @@ public sealed partial class RecoveryVectorG2Tests
 
         public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
             Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            CancellationToken cancellationToken = default) =>
+            UpdateRecoveryStateAsync(change, static _ => { }, cancellationToken);
+
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            Action<WireToGateRecoveryState> settled,
             CancellationToken cancellationToken = default)
         {
             ThrowIfThisReleaseFails();
-            return inner.UpdateRecoveryStateAsync(change, cancellationToken);
+            return inner.UpdateRecoveryStateAsync(change, settled, cancellationToken);
         }
 
         private void ThrowIfThisReleaseFails()

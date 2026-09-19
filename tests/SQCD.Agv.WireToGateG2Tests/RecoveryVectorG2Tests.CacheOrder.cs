@@ -138,12 +138,21 @@ public sealed partial class RecoveryVectorG2Tests
             Volatile.Write(ref _caller, caller);
         }
 
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            CancellationToken cancellationToken = default) =>
+            UpdateRecoveryStateAsync(change, static _ => { }, cancellationToken);
+
         public async Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
             Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            Action<WireToGateRecoveryState> settled,
             CancellationToken cancellationToken = default)
         {
             Func<IWireToGateJournal, Task>? action = TakeTheAction();
-            WireToGateRecoveryState? written = await inner.UpdateRecoveryStateAsync(change, cancellationToken);
+            WireToGateRecoveryState? written = await inner.UpdateRecoveryStateAsync(
+                change,
+                settled,
+                cancellationToken);
             await RunAsync(action);
             return written;
         }
