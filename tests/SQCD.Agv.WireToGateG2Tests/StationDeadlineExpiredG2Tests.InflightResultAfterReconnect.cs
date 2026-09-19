@@ -18,8 +18,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// <c>messageId</c>（即 attempt 本身），服务端收下后给 <c>READY</c>，装货结算，只开过一次锁，也不走中断结算。
     /// </summary>
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-03")]
-    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("IntegrationSlice", "FP-IS-05")]
     [Trait("ProtocolVector", "CV-CONNECTION-LOSS-SAFE-FINISH")]
     public async Task ALoadThatEndsWhileTheSessionAwaitsItsResultSendsTheResultAndTheSessionComesBackReady()
     {
@@ -64,8 +63,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// 照旧「未能发送，不影响仓位判定」，新连接上没有这两个阶段的 <c>OperationProgress</c>——ADR 只放行结果补报，进度是遥测。
     /// </summary>
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-03")]
-    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("IntegrationSlice", "FP-IS-05")]
     [Trait("ProtocolVector", "CV-CONNECTION-LOSS-SAFE-FINISH")]
     public async Task ProgressIsStillNotSentWhileTheSessionIsRecoveryRequired()
     {
