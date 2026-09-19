@@ -856,6 +856,164 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     /// <summary>
+    /// 8005-agv-onboard-hmi#116。装货命令到达时 3 号仓已经锁着、里面有别的单的货：车不开门、
+    /// 不记完成，照实报 FAILED，冲突的那一仓读数是 OCCUPIED 并挂 SLOT_OPERATION_CONFLICT。
+    /// 日志留下这次 attempt 的上下文，补偿清空才有东西可认。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public async Task ALoadIntoASlotAlreadyHoldingCargoIsRefusedWithoutUnlockAndWithRealReadings()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        fixture.Io.CloseDoor(2, cargo: true);
+        WireToGateSlotOperationCommand command = CreateCommand(
+            OperationType.Load,
+            [3, 4],
+            expectedOccupied: true);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            command,
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("FAILED", result.OverallOutcome);
+        Assert.Equal("SAFE_FINISH_REACHED", result.JournalCheckpoint);
+        Assert.Equal(0, fixture.Io.UnlockCount(2));
+        Assert.Equal(0, fixture.Io.UnlockCount(3));
+        Assert.Collection(
+            result.SlotResults,
+            occupied =>
+            {
+                Assert.Equal(3, occupied.SlotNo);
+                Assert.Equal("NOT_STARTED", occupied.Outcome);
+                Assert.Equal("OCCUPIED", occupied.FinalPhysicalState);
+                Assert.Equal("LOCKED", occupied.LockState);
+                Assert.Equal("RESET", occupied.UnlockOutputState);
+                Assert.Equal(["SLOT_OPERATION_CONFLICT"], occupied.ReasonCodes);
+            },
+            empty =>
+            {
+                Assert.Equal(4, empty.SlotNo);
+                Assert.Equal("NOT_STARTED", empty.Outcome);
+                Assert.Equal("EMPTY", empty.FinalPhysicalState);
+                Assert.Empty(empty.ReasonCodes);
+            });
+
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
+            TestContext.Current.CancellationToken);
+        Assert.Equal(command.SlotOperationAttemptId, state.UnsettledSlotOperationAttemptId);
+        Assert.Equal(WireToGateRecoveryCheckpoint.SafeFinishReached, state.ProvenRecoveryCheckpoint);
+        Assert.Equal(command.SlotOperationAttemptId, state.OperationContext?.SlotOperationAttemptId);
+        Assert.Empty(state.CompletedSlots);
+        Assert.Empty(state.ActiveUnlockSlots);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-04")]
+    public async Task AnUnloadFromASlotAlreadyEmptyIsRefusedWithoutUnlock()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        fixture.Io.CloseDoor(0, cargo: true);
+        WireToGateSlotOperationCommand command = CreateCommand(
+            OperationType.Unload,
+            [1, 2],
+            expectedOccupied: false);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            command,
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("FAILED", result.OverallOutcome);
+        Assert.Equal(0, fixture.Io.UnlockCount(0));
+        Assert.Equal(0, fixture.Io.UnlockCount(1));
+        Assert.All(result.SlotResults, slot => Assert.Equal("NOT_STARTED", slot.Outcome));
+        Assert.Empty(result.SlotResults.Single(slot => slot.SlotNo == 1).ReasonCodes);
+        WireToGateSlotExecutionResult conflict = result.SlotResults.Single(slot => slot.SlotNo == 2);
+        Assert.Equal("EMPTY", conflict.FinalPhysicalState);
+        Assert.Equal(["SLOT_OPERATION_CONFLICT"], conflict.ReasonCodes);
+    }
+
+    /// <summary>
+    /// 冲突只在所有目标仓都安全闭合时才照实上报。有一仓读不到，就仍是读不到——
+    /// 那时不知道的不只是占用。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-02")]
+    public async Task AnOccupancyConflictBehindAnUnsafeSlotStillFailsClosedAsUnsafe()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        fixture.Io.CloseDoor(0, cargo: true);
+        fixture.Io.OpenDoor(1);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true),
+            null,
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("FAILED", result.OverallOutcome);
+        Assert.Equal("NONE", result.JournalCheckpoint);
+        Assert.All(result.SlotResults, slot => Assert.Equal(["LOCK_NOT_CLOSED"], slot.ReasonCodes));
+    }
+
+    /// <summary>
+    /// 恢复只能把本 attempt 碰过的仓位凭终态记成完成。命令到达时就有货的仓位从没开过，
+    /// 恢复也不能把它变成「这一单装好了」。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "W2G-IS-07")]
+    public async Task ResumeNeverCountsASlotThisAttemptNeverOpenedAsLoaded()
+    {
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            TestContext.Current.CancellationToken);
+        fixture.Io.CloseDoor(2, cargo: true);
+        WireToGateSlotOperationCommand command = CreateCommand(
+            OperationType.Load,
+            [3],
+            expectedOccupied: true);
+        WireToGateOperationExecutionResult refused = await fixture.Executor.ExecuteAsync(
+            command,
+            null,
+            TestContext.Current.CancellationToken);
+        Assert.Equal("FAILED", refused.OverallOutcome);
+
+        const string sessionId = "44444444-4444-4444-8444-444444444444";
+        const string actionId = "55555555-5555-4555-8555-555555555555";
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
+            TestContext.Current.CancellationToken);
+        await fixture.Journal.WriteRecoveryStateAsync(state with
+        {
+            ExceptionRecoverySessionId = sessionId,
+            RecoveryActionId = actionId
+        }, TestContext.Current.CancellationToken);
+        WireToGateSlotOperationResumeCommand resume = new(
+            "66666666-6666-4666-8666-666666666666",
+            2,
+            DateTimeOffset.UtcNow,
+            sessionId,
+            actionId,
+            command.DemandId,
+            command.SlotOperationAttemptId,
+            WireToGateRecoveryCheckpoint.SafeFinishReached,
+            command.Slots,
+            WireToGateRecoveryCommandHash.ForRecoveryAction(
+                actionId,
+                command.DemandId,
+                command.SlotOperationAttemptId,
+                command.Slots,
+                0));
+
+        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(
+            () => fixture.Executor.ResumeAsync(resume, null, TestContext.Current.CancellationToken));
+
+        Assert.Equal("SLOT_OPERATION_CONFLICT", error.Message);
+        Assert.Equal(0, fixture.Io.UnlockCount(2));
+    }
+
+    /// <summary>
     /// 让一次操作停在「开了锁、在等操作员」，然后像进程消失那样把它掐断：不写结果，日志里只留下
     /// 未结算的 attempt 与开锁集合。
     /// </summary>
@@ -1187,6 +1345,18 @@ public sealed class WireToGateSlotOperationExecutorTests
                     LockFeedbackRaw = true,
                     UnlockOutputRaw = false,
                     LightCurtainRaw = !cargo,
+                    ObservedAt = DateTimeOffset.UtcNow
+                });
+            }
+        }
+
+        public void OpenDoor(int slotIndex)
+        {
+            lock (_sync)
+            {
+                Update(slotIndex, locker => locker with
+                {
+                    LockFeedbackRaw = false,
                     ObservedAt = DateTimeOffset.UtcNow
                 });
             }

@@ -1429,15 +1429,31 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             // （8005-agv-program#39）；出厂配置下这一刻也根本没有取消按钮——恢复入口关着，
             // 而这次 attempt 没有结算（8005-agv-onboard-hmi#39）。把它和 UNKNOWN 混在一起
             // 显示，操作员会去找一个根本不必来的人。
-            bool determinateFailure = string.Equals(
-                execution.OverallOutcome,
-                "FAILED",
-                StringComparison.Ordinal);
+            //
+            // 但 FAILED 不全是「没人交货」。服务端只把**装货、而且没有一个仓位读到有货**的 FAILED
+            // 当作确定失败（8005-agv-control-server#170）：部分仓已经装上，或者命令到达时目标仓
+            // 就与命令不符（8005-agv-onboard-hmi#116），都有货要人去处理，服务端会停下旅程等恢复。
+            // 这里与服务端同一个口径，免得 HMI 告诉操作员「不需要操作」而旅程其实停着。
+            bool determinateFailure = IsDeterminateFailure(execution);
+            IReadOnlyList<int> conflictSlots = ConflictSlots(execution);
+            IReadOnlyList<int> handedOverSlots = execution.OperationType == OperationType.Load
+                ? execution.SlotResults
+                    .Where(slot => slot.Outcome == "COMPLETED" && slot.FinalPhysicalState == "OCCUPIED")
+                    .Select(slot => slot.SlotNo)
+                    .ToArray()
+                : [];
             WireToGateHmiOperationStage finalStage = completedSuccessfully
                 ? WireToGateHmiOperationStage.Completed
                 : determinateFailure
                     ? WireToGateHmiOperationStage.StationDeadlineExpired
                     : WireToGateHmiOperationStage.RecoveryRequired;
+            string recoveryGuidance = conflictSlots.Count > 0
+                ? command.OperationType == OperationType.Load
+                    ? $"{FormatSlots(conflictSlots)}在装货前已经有货，不是本单的货，车没有开门。旅程会停下，需要管理员用「补偿清空」把这些货取出。"
+                    : $"{FormatSlots(conflictSlots)}在卸货前已经是空的，与本单记录不符，车没有开门。旅程会停下，需要管理员恢复处理。"
+                : handedOverSlots.Count > 0
+                    ? $"{FormatSlots(handedOverSlots)}已经装上货，其余仓未交接。已装的货不能留在车上不管，旅程会停下，需要管理员用「补偿清空」把这些货取出。"
+                    : $"{FormatSlots(command.Slots)}操作未完成，需要恢复处理。";
             PublishOperation(
                 command,
                 finalStage,
@@ -1445,7 +1461,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     ? $"{FormatSlots(command.Slots)}操作完成，正在上报结果。"
                     : determinateFailure
                         ? $"{FormatSlots(command.Slots)}本站期限已过，货物未交接，服务端会结束本站，不需要操作。"
-                        : $"{FormatSlots(command.Slots)}操作未完成，需要恢复处理。",
+                        : recoveryGuidance,
                 "final");
             try
             {
@@ -1472,7 +1488,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         ? $"{FormatSlots(command.Slots)}操作结果已被服务端确认。"
                         : determinateFailure
                             ? $"{FormatSlots(command.Slots)}本站期限已过、货物未交接，服务端已收到结果并会结束本站。不需要管理员恢复，也不需要取消装货。"
-                            : $"{FormatSlots(command.Slots)}操作失败或状态未知，服务端已收到结果，等待管理员恢复。",
+                            : conflictSlots.Count > 0 || handedOverSlots.Count > 0
+                                ? $"服务端已收到结果。{recoveryGuidance}"
+                                : $"{FormatSlots(command.Slots)}操作失败或状态未知，服务端已收到结果，等待管理员恢复。",
                     new WireToGateHmiOperationSnapshot(
                         command.SlotOperationAttemptId,
                         command.OperationType,
@@ -1626,6 +1644,27 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             "SAFE_FINISH" => "全部目标仓已达到安全收尾状态，正在上报结果。",
             _ => $"正在处理{FormatSlots(command.Slots)}。"
         };
+
+    /// <summary>
+    /// 服务端会把这份结果当成「没人交货」的确定失败吗（ADR-cross-0058 决策 5，
+    /// 8005-agv-control-server#170）：装货、FAILED、每个仓位都读得到而且是空的、锁着、开锁输出已复位。
+    /// 有一个仓位读到有货，货就已经在车上了，那不是没人交货。
+    /// </summary>
+    internal static bool IsDeterminateFailure(WireToGateOperationExecutionResult execution) =>
+        string.Equals(execution.OverallOutcome, "FAILED", StringComparison.Ordinal)
+        && execution.OperationType == OperationType.Load
+        && execution.SlotResults.All(slot =>
+            slot.FinalPhysicalState == "EMPTY"
+            && slot.LockState == "LOCKED"
+            && slot.UnlockOutputState == "RESET");
+
+    /// <summary>命令到达时就与命令不符、车没有开门的那几个仓位（8005-agv-onboard-hmi#116）。</summary>
+    internal static IReadOnlyList<int> ConflictSlots(WireToGateOperationExecutionResult execution) =>
+        execution.SlotResults
+            .Where(slot => slot.Outcome == "NOT_STARTED"
+                && slot.ReasonCodes.Contains("SLOT_OPERATION_CONFLICT", StringComparer.Ordinal))
+            .Select(slot => slot.SlotNo)
+            .ToArray();
 
     private static string FormatSlots(IReadOnlyList<int> slots) =>
         string.Join("、", slots.Order()) + "号仓";

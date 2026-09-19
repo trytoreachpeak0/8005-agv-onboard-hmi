@@ -354,6 +354,11 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         DateTimeOffset started = _clock.Now;
         IoSnapshot initial = _ioModule.CurrentSnapshot;
         string? precheckFailure = ValidateBeforeOperation(initial, command, command.Slots);
+        if (precheckFailure == OccupancyConflict)
+        {
+            return await RejectOccupancyConflictAsync(command, initial).ConfigureAwait(false);
+        }
+
         if (precheckFailure is not null)
         {
             return CreateRejectedResult(command, precheckFailure, started);
@@ -411,10 +416,19 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         // Re-read every target before deciding whether a recorded slot can be
         // reused. A physical state change since the checkpoint makes it
         // unresolved and therefore requires a fresh safe operation.
+        //
+        // 只有本 attempt 碰过的仓位——开过锁、记过完成、有过非 NOT_STARTED 的结论——才能凭
+        // 「已达终态」算作完成。一个从没开过的仓位已经是终态，说明那箱货（或那个空位）不是
+        // 这一单造成的：装货仓里本来就有别的单的货，照旧记成完成就是把它错记成这一单的货
+        // （8005-agv-onboard-hmi#116）。那种仓位交给下面的预检，按占用冲突拒绝。
+        HashSet<int> touched = [.. state.CompletedSlots, .. state.ActiveUnlockSlots];
+        touched.UnionWith(state.SlotResults
+            .Where(result => result.Outcome != "NOT_STARTED")
+            .Select(result => result.SlotNo));
         foreach (int physicalSlot in command.Slots)
         {
             LockerSnapshot locker = snapshot.GetLocker(physicalSlot - 1);
-            if (IsFinalState(locker, command.ExpectedOccupied))
+            if (touched.Contains(physicalSlot) && IsFinalState(locker, command.ExpectedOccupied))
             {
                 completed.Add(physicalSlot);
                 UpsertResult(results, CreateSlotResult(locker, "COMPLETED", []));
@@ -849,6 +863,8 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             return "SLOT_STATE_UNKNOWN";
         }
 
+        // 先把每个目标仓的安全条件查完，再看占用。这样一旦返回占用冲突，调用方就知道
+        // 所有目标仓都读得到、锁着、开锁输出已复位，可以照实上报三个物理字段。
         foreach (int physicalSlot in physicalSlots)
         {
             LockerSnapshot locker = snapshot.GetLocker(physicalSlot - 1);
@@ -866,8 +882,11 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             {
                 return "LOCK_NOT_CLOSED";
             }
+        }
 
-            if (locker.HasCargo == command.ExpectedOccupied)
+        foreach (int physicalSlot in physicalSlots)
+        {
+            if (snapshot.GetLocker(physicalSlot - 1).HasCargo == command.ExpectedOccupied)
             {
                 // Both occupancy mismatches are one protocol-level conflict:
                 // the physical slot state disagrees with the requested
@@ -878,6 +897,53 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         }
 
         return null;
+    }
+
+    private const string OccupancyConflict = "SLOT_OPERATION_CONFLICT";
+
+    /// <summary>
+    /// 命令到达时目标仓就已经是它要达到的样子：装货仓里有货，卸货仓已经空了。这不是本单
+    /// 造成的，车不开门、不记完成，把它照实报给服务端（8005-agv-onboard-hmi#116）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 结果是 FAILED，每个仓位都是 NOT_STARTED，三个物理字段填真实读数（ADR-cross-0058 决策 6），
+    /// 只在冲突的那几个仓位上挂 <c>SLOT_OPERATION_CONFLICT</c>，服务端据此知道是哪一仓。装货
+    /// 冲突的仓位读数是 OCCUPIED，服务端不会把这份结果当成「没人交货」的确定失败，而是判
+    /// RecoveryRequired、停下旅程。
+    /// </para>
+    /// <para>
+    /// 与期限失败同一个日志形状：OperationContext 与未结算的 attempt 都留着，检查点是
+    /// SafeFinishReached（一扇门都没开）。补偿清空与装货取消认的正是它们，没有这份上下文，
+    /// 车上的恢复入口就无从针对这一单开起来，那箱货也就没有产品路径能取出来。
+    /// </para>
+    /// </remarks>
+    private async Task<WireToGateOperationExecutionResult> RejectOccupancyConflictAsync(
+        WireToGateSlotOperationCommand command,
+        IoSnapshot snapshot)
+    {
+        List<WireToGateSlotExecutionResult> results = command.Slots
+            .Select(physicalSlot =>
+            {
+                LockerSnapshot locker = snapshot.GetLocker(physicalSlot - 1);
+                IReadOnlyList<string> reasons = locker.HasCargo == command.ExpectedOccupied
+                    ? [OccupancyConflict]
+                    : [];
+                return CreateSlotResult(locker, "NOT_STARTED", reasons);
+            })
+            .ToList();
+        WireToGateRecoveryOperationContext context =
+            WireToGateRecoveryOperationContext.FromCommand(command);
+        // 结论已经定了，就要落盘；与其他收尾写入一样不受取消影响。
+        await WriteRecoveryStateAsync(
+            context,
+            WireToGateRecoveryCheckpoint.SafeFinishReached,
+            [],
+            [],
+            results,
+            WireToGateRecoveryState.Empty,
+            CancellationToken.None).ConfigureAwait(false);
+        return CreateResult(command, "FAILED", results, WireToGateRecoveryCheckpoint.SafeFinishReached);
     }
 
     private WireToGateOperationExecutionResult CreateRejectedResult(
