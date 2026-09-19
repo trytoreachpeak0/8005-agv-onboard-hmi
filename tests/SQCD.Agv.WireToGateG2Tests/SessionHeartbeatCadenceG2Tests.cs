@@ -83,6 +83,47 @@ public sealed class SessionHeartbeatCadenceG2Tests
     }
 
     /// <summary>
+    /// 服务端的 <c>HeartbeatAck</c> 慢 1 秒回，节拍不跟着往后挪：心跳循环要等 ack 才算这一拍走完，
+    /// 那段往返若算进下一次等待，2 秒就成了 3 秒。
+    /// </summary>
+    /// <remarks>
+    /// 这是票面第 2 点要核实的那件事的实测面。写锁（<c>_sendGate</c>）只罩着一次写行，不会长时间占住；
+    /// 真正会把心跳往后拖的是等 <c>HeartbeatAck</c>，最长可以拖到 <c>MessageTimeout</c>。
+    /// </remarks>
+    [Fact]
+    public async Task ASlowHeartbeatAckDoesNotPushTheNextHeartbeatLate()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            HeartbeatAckDelay = TimeSpan.FromSeconds(1)
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionService session = CreateSession(server, io);
+
+        session.Start();
+        await WaitUntilAsync(
+            () => session.Current.Readiness == WireToGateSessionReadiness.Ready,
+            TimeSpan.FromSeconds(10),
+            token);
+        long readyAt = Stopwatch.GetTimestamp();
+
+        await WaitUntilAsync(() => server.HeartbeatArrivals.Count >= 3, Window, token);
+
+        IReadOnlyList<long> arrivals = server.HeartbeatArrivals;
+        Assert.True(
+            arrivals.Count >= 3,
+            $"ack 慢 1 秒时 7 秒窗口里只收到 {arrivals.Count} 条 Heartbeat，{Describe(readyAt, arrivals)}。");
+        for (int index = 1; index < arrivals.Count; index++)
+        {
+            Assert.True(
+                Stopwatch.GetElapsedTime(arrivals[index - 1], arrivals[index]) <= MaximumGap,
+                $"ack 的往返被算进了下一次等待，{Describe(readyAt, arrivals)}；节拍应当按发出时刻推进。");
+        }
+    }
+
+    /// <summary>
     /// 失败消息里把「会话就绪到首条心跳」和随后每一段间隔都写成秒，红的时候一眼看得出节拍是几秒。
     /// </summary>
     private static string Describe(long readyAt, IReadOnlyList<long> arrivals)

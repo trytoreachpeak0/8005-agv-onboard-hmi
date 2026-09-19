@@ -559,6 +559,15 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </remarks>
     public IReadOnlyList<long> HeartbeatArrivals => [.. _heartbeatArrivals];
 
+    /// <summary>
+    /// 回 <c>HeartbeatAck</c> 之前先等这么久，模拟一个应答慢的服务端。
+    /// </summary>
+    /// <remarks>
+    /// 车载端的心跳循环要等 ack 回来才算这一拍走完。ack 的往返若被算进下一次等待，2 秒的节拍就会
+    /// 变成 2 秒加往返，而 ADR-cross-0027 的静默阈值只有 6 秒——这个开关就是把那段往返做出来。
+    /// </remarks>
+    public TimeSpan HeartbeatAckDelay { get; set; }
+
     private int _judgedRecoveryRequests;
 
     /// <summary>
@@ -1180,6 +1189,11 @@ public sealed class FakeControlServer : IAsyncDisposable
                         break;
                     case "Heartbeat":
                         _heartbeatArrivals.Enqueue(Stopwatch.GetTimestamp());
+                        if (HeartbeatAckDelay > TimeSpan.Zero)
+                        {
+                            await Task.Delay(HeartbeatAckDelay, stoppingToken).ConfigureAwait(false);
+                        }
+
                         await WriteEnvelopeAsync(context, CreateHeartbeatAck(context, root)).ConfigureAwait(false);
                         break;
                     // 协议 v2 消息 8。RELIABLE，所以要 DurableAck——用 RESPONSE 就没有补报语义，断线

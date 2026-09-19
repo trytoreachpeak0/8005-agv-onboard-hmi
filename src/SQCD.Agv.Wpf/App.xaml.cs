@@ -129,7 +129,8 @@ public partial class App : System.Windows.Application, IDisposable
                     new SlotConfigurationActivationCoordinator(slotConfigurationStore!, TimeProvider.System),
                     TimeSpan.FromMilliseconds(settings.Workflow.IoSnapshotMaxAgeMs),
                     TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs),
-                    TimeSpan.FromMilliseconds(settings.VehicleSafety.ClockSkewToleranceMs));
+                    TimeSpan.FromMilliseconds(settings.VehicleSafety.ClockSkewToleranceMs),
+                    TimeSpan.FromMilliseconds(settings.WireToGate.SessionHeartbeatIntervalMs));
                 _wireToGate.StateChanged += (_, args) =>
                 {
                     viewModel.UpdateWireToGateStatus(args.Value);

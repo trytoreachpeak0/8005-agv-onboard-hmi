@@ -5,11 +5,39 @@ namespace SQCD.Agv.Infrastructure;
 
 public sealed class WireToGateSessionService : IAsyncDisposable
 {
+    /// <summary>
+    /// ADR-cross-0027 的心跳节拍：车载上位机每 2 秒发一次 <c>Heartbeat</c>。
+    /// </summary>
+    /// <remarks>
+    /// 默认值写在这里，出厂 <c>appsettings.json</c> 里再写一遍同一个数——现场不配也符合 ADR，
+    /// 而配置文件里看得见它是多少。两处由 <c>ConfigurationTests</c> 钉在一起。
+    /// </remarks>
+    public static readonly TimeSpan DefaultHeartbeatInterval = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// ADR-cross-0027 的静默失联阈值：连续这么久没有收到属于当前会话的合法消息即判失联。
+    /// </summary>
+    /// <remarks>
+    /// 判定本身在服务端（control-server#234），车载端不拿它做判断，只拿它算出心跳间隔的上限。
+    /// 阈值与心跳一样是项目级统一配置，不按车设置，所以这里是常量而不是配置项。
+    /// </remarks>
+    public static readonly TimeSpan LivenessTimeout = TimeSpan.FromSeconds(6);
+
+    /// <summary>
+    /// 心跳间隔的上限，不含。
+    /// </summary>
+    /// <remarks>
+    /// ADR 要求单次心跳丢失不构成失联：丢掉一条之后，下一条要在阈值用完之前到，
+    /// 所以间隔必须严格小于阈值的一半。写成除法而不是 3 秒的字面量，是为了让这条推理留在代码里。
+    /// </remarks>
+    public static readonly TimeSpan MaximumHeartbeatInterval = LivenessTimeout / 2;
+
     private readonly WireToGateSessionClient _client;
     private readonly IWireToGateJournal _journal;
     private readonly IAppLogger _logger;
-    private readonly TimeSpan _heartbeatInterval = TimeSpan.FromSeconds(5);
+    private readonly TimeSpan _heartbeatInterval;
     private readonly TimeSpan _reconnectDelay = TimeSpan.FromSeconds(2);
+    private readonly TimeProvider _timeProvider;
     private readonly CancellationTokenSource _stopping = new();
     private Task? _runLoop;
     private bool _disposed;
@@ -25,13 +53,25 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         SlotConfigurationActivationCoordinator activationCoordinator,
         TimeSpan ioSnapshotMaxAge,
         TimeSpan vehicleSafetyMaxAge,
-        TimeSpan vehicleSafetyClockSkewTolerance)
+        TimeSpan vehicleSafetyClockSkewTolerance,
+        TimeSpan? heartbeatInterval = null,
+        TimeProvider? timeProvider = null)
     {
         ArgumentNullException.ThrowIfNull(ioModule);
         ArgumentNullException.ThrowIfNull(journal);
         ArgumentNullException.ThrowIfNull(logger);
         ArgumentNullException.ThrowIfNull(clock);
         ArgumentNullException.ThrowIfNull(vehicleSafetySignalProvider);
+        _heartbeatInterval = heartbeatInterval ?? DefaultHeartbeatInterval;
+        if (_heartbeatInterval <= TimeSpan.Zero || _heartbeatInterval >= MaximumHeartbeatInterval)
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(heartbeatInterval),
+                _heartbeatInterval,
+                "会话心跳间隔必须为正，且严格小于ADR-cross-0027静默失联阈值的一半。");
+        }
+
+        _timeProvider = timeProvider ?? TimeProvider.System;
         _journal = journal;
         _logger = logger;
         _client = new WireToGateSessionClient(
@@ -377,9 +417,19 @@ public sealed class WireToGateSessionService : IAsyncDisposable
                     LogSeverity.Information,
                     nameof(WireToGateSessionService),
                     $"上层会话已建立：generation={_client.Current.SessionGeneration}，readiness={_client.Current.Readiness}。");
+                // 节拍按「上一条心跳发出的时刻」推进，不是「上一条心跳处理完的时刻」。
+                // SendHeartbeatAsync 要等 HeartbeatAck 回来，等完再定时，往返时间就会累加到下一次
+                // 间隔上——服务端应答慢一点，2 秒的节拍就漂到 2 秒加往返，而阈值只有 6 秒。
+                long lastHeartbeatSentAt = _timeProvider.GetTimestamp();
                 while (!stoppingToken.IsCancellationRequested)
                 {
-                    await Task.Delay(_heartbeatInterval, stoppingToken).ConfigureAwait(false);
+                    TimeSpan due = _heartbeatInterval - _timeProvider.GetElapsedTime(lastHeartbeatSentAt);
+                    if (due > TimeSpan.Zero)
+                    {
+                        await Task.Delay(due, _timeProvider, stoppingToken).ConfigureAwait(false);
+                    }
+
+                    lastHeartbeatSentAt = _timeProvider.GetTimestamp();
                     await _client.SendHeartbeatAsync(stoppingToken).ConfigureAwait(false);
                 }
             }
@@ -410,7 +460,7 @@ public sealed class WireToGateSessionService : IAsyncDisposable
 
             try
             {
-                await Task.Delay(_reconnectDelay, stoppingToken).ConfigureAwait(false);
+                await Task.Delay(_reconnectDelay, _timeProvider, stoppingToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException)
             {

@@ -70,6 +70,47 @@ public sealed class ConfigurationTests
             document.RootElement.GetProperty("ruleGateway").GetProperty("heartbeatIntervalMs").GetInt32());
     }
 
+    /// <summary>
+    /// 代码里的默认值就是 ADR-cross-0027 的三个数：2 秒心跳、6 秒静默失联、间隔上限取阈值的一半。
+    /// </summary>
+    /// <remarks>
+    /// 上限是推出来的，不是拍的：丢一条心跳之后下一条要在阈值用完之前到，所以间隔必须严格小于
+    /// 阈值的一半。把这三个数钉在一起，将来谁改了其中一个，改得对不对当场看得见。
+    /// </remarks>
+    [Fact]
+    public void TheSessionHeartbeatDefaultsAreTheAdrNumbers()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(2), WireToGateSessionService.DefaultHeartbeatInterval);
+        Assert.Equal(TimeSpan.FromSeconds(6), WireToGateSessionService.LivenessTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(3), WireToGateSessionService.MaximumHeartbeatInterval);
+        Assert.Equal(2_000, new WireToGateSettings().SessionHeartbeatIntervalMs);
+    }
+
+    /// <summary>
+    /// 0、负数、以及大到会撞上失联阈值的间隔，启动校验就拒掉，不带着走到现场。
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(3_000)]
+    [InlineData(int.MaxValue)]
+    public void ASessionHeartbeatIntervalOutsideTheAdrBoundsIsRejected(int milliseconds)
+    {
+        OnboardSettings settings = CreateValidProductionSettings(
+            wireToGate: new WireToGateSettings
+            {
+                Enabled = true,
+                Host = "control.internal",
+                OnboardInstanceId = "77a9a4b8-7b1c-4f2b-92bd-3872f5871158",
+                OnboardBuildCommit = "a6f05fbced15316a2cc20cd327f80c5c5ee1821e",
+                SessionHeartbeatIntervalMs = milliseconds
+            });
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(settings.Validate);
+
+        Assert.Contains("会话心跳间隔", exception.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void ProductionWithoutWireToGateIsRejected()
     {

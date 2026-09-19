@@ -265,6 +265,22 @@ public sealed class WireToGateSettings
 
     public int MessageTimeoutMs { get; init; } = 3_000;
 
+    /// <summary>
+    /// WIRE_TO_GATE 会话心跳的间隔，毫秒。ADR-cross-0027 定的是 2 秒。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 与同一份文件里 <c>ruleGateway.heartbeatIntervalMs</c> 不是一回事：那一个是旧规则网关的心跳
+    /// （<c>TcpJsonRuleGateway</c>），与 WIRE_TO_GATE 会话无关，仍是 5 秒。
+    /// </para>
+    /// <para>
+    /// 心跳与失联阈值是项目级统一配置、不按车设置，所以这里能配的只是「现场真要调」的那一格，
+    /// 上下限由 <see cref="Validate"/> 按阈值卡死，而不是听任现场填。
+    /// </para>
+    /// </remarks>
+    public int SessionHeartbeatIntervalMs { get; init; } =
+        (int)WireToGateSessionService.DefaultHeartbeatInterval.TotalMilliseconds;
+
     public long CapabilityVersion { get; init; } = 1;
 
     public long SafetyStateVersion { get; init; } = 1;
@@ -352,6 +368,14 @@ public sealed class WireToGateSettings
             || string.IsNullOrWhiteSpace(JournalPath))
         {
             throw new InvalidDataException("WIRE_TO_GATE配置无效。");
+        }
+
+        if (SessionHeartbeatIntervalMs <= 0
+            || SessionHeartbeatIntervalMs >= WireToGateSessionService.MaximumHeartbeatInterval.TotalMilliseconds)
+        {
+            throw new InvalidDataException(
+                "WIRE_TO_GATE会话心跳间隔必须为正，且严格小于ADR-cross-0027静默失联阈值的一半"
+                + $"（{WireToGateSessionService.MaximumHeartbeatInterval.TotalMilliseconds:0}毫秒）。 ");
         }
 
         if (production
