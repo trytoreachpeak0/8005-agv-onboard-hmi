@@ -353,7 +353,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// session is ready. The recovery entry is off, as it ships (<c>recoveryResumeEnabled=false</c>),
     /// unless a test turns it on; the vehicle is stopped throughout.
     /// </summary>
-    private sealed class Harness : IAsyncDisposable
+    private sealed partial class Harness : IAsyncDisposable
     {
         private readonly WireToGateSessionService _session;
         private readonly List<WireToGateOperatorEvent> _events = [];
