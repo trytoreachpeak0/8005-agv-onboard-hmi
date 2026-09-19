@@ -99,6 +99,43 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// The fallback never forgets a vector that may have acted: a closed session does not make an
+    /// unproven slot proven. The vector and its session stay on file for its result to settle.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task TheClosedSnapshotLeavesAVectorThatMayHaveActedOnFile()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server =>
+            {
+                server.SendRecoveryVectorCommandAfterRecoveryAction = false;
+                server.RecoverySlotOperationAttemptId = AttemptId;
+            },
+            cargoInTargetSlots: true);
+        WireToGateRecoveryState prepared = await PrepareCompensationAsync(harness, token);
+
+        // Slot 1 is the active unlock set: the vector may have pulsed it.
+        WireToGateRecoveryState acting = prepared with
+        {
+            ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+            ActiveUnlockSlots = [1]
+        };
+        await harness.RewriteRecoveryStateAsync(_ => acting, token);
+        await SendClosedSnapshotAsync(harness, prepared, "COMPENSATE_LOAD_ALL_EMPTY", CompensationSlots);
+        await harness.WaitForInboundAsync("SnapshotAppliedAck", token);
+
+        WireToGateRecoveryState after = await harness.ReadRecoveryStateAsync(token);
+        Assert.NotNull(after.RecoveryVector);
+        Assert.Equal(prepared.ExceptionRecoverySessionId, after.ExceptionRecoverySessionId);
+        Assert.Equal(prepared.RecoveryActionId, after.RecoveryActionId);
+        Assert.Equal([1], after.ActiveUnlockSlots);
+    }
+
+    /// <summary>
     /// The same fallback for the refused resume of onboard-hmi#119: its release write lost, the
     /// CLOSED snapshot for its session clears the journal.
     /// </summary>
