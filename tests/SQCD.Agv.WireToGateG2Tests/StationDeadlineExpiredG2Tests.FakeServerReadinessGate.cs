@@ -187,6 +187,92 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// 会话已 <c>READY</c>、报告里没点名这次操作，装货以未完成结果（<c>UNKNOWN</c>）收尾：真服务端判这次操作
+    /// <c>RecoveryRequired</c>（<c>ApplyOperationResultAsync</c>），就绪随之变化，在那条 <c>DurableAck</c> 后追加
+    /// <c>RECOVERY_REQUIRED</c>（<c>OnboardMessageProcessor</c> 的 <c>OperationResult</c> 分支，<c>DecideReadinessAsync</c>
+    /// 的 <c>operationNeedsRecovery</c>）。替身默认就这样做，不必再打开任何开关。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AnUnfinishedResultOnAReadySessionTurnsTheDoubleRecoveryRequired()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { LockerWaitTimesOut = true },
+            token,
+            server => server.StationDepartureDeadlineAt = null);
+        await Harness.WaitUntilAsync(
+            () => harness.Journal.ReadOutgoingByDeduplicationKeyAsync($"operation-result:{AttemptId}", token)
+                .GetAwaiter().GetResult() is { Acknowledged: true },
+            "the unfinished result acknowledged",
+            token,
+            harness.DescribeEvents);
+        await Harness.WaitUntilAsync(
+            () => harness.Client.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired,
+            "the session announced RECOVERY_REQUIRED after the unfinished result",
+            token,
+            harness.DescribeEvents);
+
+        var sent = harness.Server.SentEnvelopes.Where(item => item.Connection == 1).ToList();
+        int resultAck = sent.FindIndex(
+            item => item.MessageType == "DurableAck" && CorrelationOf(item.WireLine) == AttemptId);
+        Assert.True(resultAck >= 0, "the result was never acknowledged");
+        Assert.Equal("SessionReadiness", sent[resultAck + 1].MessageType);
+        Assert.Equal("RECOVERY_REQUIRED", ReadinessOf(sent[resultAck + 1].WireLine));
+        Assert.Equal(["SESSION_RECOVERY_REQUIRED"], ReasonCodesOf(sent[resultAck + 1].WireLine));
+    }
+
+    /// <summary>
+    /// 同一个服务端，车换了一份空 journal 重新上线：报告干净，但服务端记着那次操作仍是 <c>RecoveryRequired</c>，
+    /// <c>operationNeedsRecovery</c> 按整车查，握手仍答 <c>RECOVERY_REQUIRED</c>，行程与命令不推。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AnOperationTheDoubleHoldsForRecoveryKeepsACleanReportRecoveryRequired()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeControlServer first;
+        await using (Harness failed = await Harness.StartAsync(
+            new FakeIoModuleClient { LockerWaitTimesOut = true },
+            token,
+            server => server.StationDepartureDeadlineAt = null))
+        {
+            first = failed.Server;
+            await Harness.WaitUntilAsync(
+                () => failed.Journal.ReadOutgoingByDeduplicationKeyAsync($"operation-result:{AttemptId}", token)
+                    .GetAwaiter().GetResult() is { Acknowledged: true },
+                "the unfinished result acknowledged",
+                token,
+                failed.DescribeEvents);
+        }
+
+        await using Harness fresh = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.AdoptDurableRecoveryMemoryFrom(first);
+            });
+        await Task.Delay(TimeSpan.FromMilliseconds(300), token);
+
+        var report = Assert.Single(fresh.Server.ReceivedEnvelopes, item => item.MessageType == "RecoveryStateReport");
+        using (JsonDocument document = JsonDocument.Parse(report.WireLine))
+        {
+            Assert.Equal(
+                JsonValueKind.Null,
+                document.RootElement.GetProperty("payload").GetProperty("unsettledSlotOperationAttemptId").ValueKind);
+        }
+
+        Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, fresh.Client.Current.Readiness);
+        Assert.DoesNotContain(fresh.Server.SentEnvelopes, item => GatedMessageTypes.Contains(item.MessageType));
+    }
+
+    /// <summary>
     /// 报告干净时（新 journal，没有未结算 attempt、没有待补报结果）行为与改动前一致：握手答 <c>READY</c>，行程快照与仓位命令
     /// 紧跟其后发出，各一次。
     /// </summary>
