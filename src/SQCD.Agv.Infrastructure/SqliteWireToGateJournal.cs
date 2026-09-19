@@ -143,6 +143,11 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
         }
     }
 
+    public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+        Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+        CancellationToken cancellationToken = default) =>
+        throw new NotImplementedException();
+
     public async Task WriteRecoveryStateAsync(
         WireToGateRecoveryState state,
         CancellationToken cancellationToken = default)

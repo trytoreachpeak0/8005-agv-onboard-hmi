@@ -1530,7 +1530,8 @@ public sealed partial class RecoveryVectorG2Tests
             bool restart = false,
             bool nothingOnFile = false,
             IReadOnlyList<int>? seededForcedIsolation = null,
-            bool lockerWaitTimesOut = false)
+            bool lockerWaitTimesOut = false,
+            Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -1577,7 +1578,7 @@ public sealed partial class RecoveryVectorG2Tests
                         "eight-slot-modbus-v1",
                         SupportsBatchUnlock: false),
                     io,
-                    journal,
+                    wrapJournal?.Invoke(journal) ?? journal,
                     logger,
                     new SystemClock(),
                     safety,

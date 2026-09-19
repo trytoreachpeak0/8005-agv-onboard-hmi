@@ -194,6 +194,11 @@ public sealed partial class StationDeadlineExpiredG2Tests
             CancellationToken cancellationToken = default) =>
             inner.WriteRecoveryStateAsync(state, cancellationToken);
 
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            CancellationToken cancellationToken = default) =>
+            inner.UpdateRecoveryStateAsync(change, cancellationToken);
+
         public Task<WireToGateDurableMessage> SaveOutgoingBeforeSendAsync(
             WireToGateDurableMessage message,
             CancellationToken cancellationToken = default) =>
