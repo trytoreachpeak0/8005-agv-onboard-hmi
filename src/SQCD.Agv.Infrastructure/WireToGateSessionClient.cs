@@ -3088,7 +3088,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// most one item and only <c>WIRE_TO_GATE</c> today, so neither narrowing is reachable; both
     /// are recorded as findings for the ticket that owns multi-demand worklists.
     /// </remarks>
-    private static void ValidateCurrentStopWorklist(CurrentStopWorklistSnapshotPayload payload)
+    internal static void ValidateCurrentStopWorklist(CurrentStopWorklistSnapshotPayload payload)
     {
         if (string.IsNullOrWhiteSpace(payload.StationId)
             || payload.WorklistRevision < 0

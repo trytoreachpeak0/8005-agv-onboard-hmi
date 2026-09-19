@@ -100,6 +100,42 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </remarks>
     public bool SendDropoffStopSnapshots { get; set; }
 
+    /// <summary>
+    /// The <c>workType</c> every worklist item this double sends carries.
+    /// </summary>
+    /// <remarks>
+    /// It was <c>WIRE_TO_GATE</c> in three literals until batch 6 widened the onboard's inbound
+    /// check to all six MES task types (<c>8005-agv-onboard-hmi#115</c>); a constant in a double is
+    /// exactly what hides the other five.
+    /// </remarks>
+    public string JourneyWorkType { get; set; } = "WIRE_TO_GATE";
+
+    /// <summary>
+    /// The <c>stopRole</c> of the worklist item, when set; otherwise it follows
+    /// <see cref="SendDropoffStopSnapshots"/>.
+    /// </summary>
+    public string? JourneyStopRole { get; set; }
+
+    /// <summary>
+    /// When set, the journey snapshots sent after recovery are exactly these message types, in this
+    /// order, instead of the default three -- so a vector's own message order can be replayed.
+    /// </summary>
+    public IReadOnlyList<string>? VectorJourneySnapshotsAfterRecovery { get; set; }
+
+    /// <summary>
+    /// The legs of the plan snapshot <see cref="VectorJourneySnapshotsAfterRecovery"/> sends, in
+    /// sequence order: <c>legType</c>, <c>state</c> and <c>stationId</c>.
+    /// </summary>
+    public IReadOnlyList<(string? LegType, string State, string StationId)> VectorPlanLegs { get; set; } =
+        [("TO_PICKUP", "ACTIVE", "ST-01")];
+
+    /// <summary>
+    /// The <c>blockingFacts</c> of the business-state snapshot
+    /// <see cref="VectorJourneySnapshotsAfterRecovery"/> sends.
+    /// </summary>
+    public IReadOnlyList<(string ReasonCode, string SubjectType, string? SubjectId)> VectorBlockingFacts { get; set; } =
+        [];
+
     public bool ReplayJourneySnapshotsWithStableIdentity { get; set; }
 
     /// <summary>
@@ -1248,7 +1284,11 @@ public sealed class FakeControlServer : IAsyncDisposable
                 sendDemandSnapshots = Interlocked.Increment(ref _demandSnapshotSendCount) == 1;
             }
 
-            if (sendDemandSnapshots)
+            if (VectorJourneySnapshotsAfterRecovery is { } vectorSnapshots)
+            {
+                await SendVectorJourneySnapshotsAsync(context, vectorSnapshots).ConfigureAwait(false);
+            }
+            else if (sendDemandSnapshots)
             {
                 await SendDemandAcceptanceSnapshotsAsync(context).ConfigureAwait(false);
             }
@@ -1851,7 +1891,7 @@ public sealed class FakeControlServer : IAsyncDisposable
     {
         string demandId = "11111111-1111-1111-1111-111111111111";
         string movementLegId = "22222222-2222-2222-2222-222222222222";
-        string stopRole = SendDropoffStopSnapshots ? "DROPOFF" : "PICKUP";
+        string stopRole = JourneyStopRole ?? (SendDropoffStopSnapshots ? "DROPOFF" : "PICKUP");
         string legType = SendDropoffStopSnapshots ? "TO_DROPOFF" : "TO_PICKUP";
         DateTimeOffset observedAt = ReplayJourneySnapshotsWithStableIdentity
             ? StableJourneyObservedAt
@@ -1887,7 +1927,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                         demandId,
                         transportDemandKey = "TD-001",
                         sublot = "SUBLOT-001",
-                        workType = "WIRE_TO_GATE",
+                        workType = JourneyWorkType,
                         stopRole,
                         expectedBasketCount = 2
                     }
@@ -1922,12 +1962,78 @@ public sealed class FakeControlServer : IAsyncDisposable
                             demandId,
                             transportDemandKey = "TD-001",
                             sublot = "CONFLICTING-SUBLOT",
-                            workType = "WIRE_TO_GATE",
+                            workType = JourneyWorkType,
                             stopRole = "PICKUP",
                             expectedBasketCount = 2
                         }
                     }
                 })).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Replays a vector's snapshot order: each named snapshot once, in the order given, built from
+    /// the <c>Journey*</c> and <c>Vector*</c> settings.
+    /// </summary>
+    private async Task SendVectorJourneySnapshotsAsync(
+        ConnectionContext context,
+        IReadOnlyList<string> messageTypes)
+    {
+        const string demandId = "11111111-1111-4111-8111-111111111111";
+        foreach (string messageType in messageTypes)
+        {
+            object payload = messageType switch
+            {
+                "VehicleBusinessStateSnapshot" => new
+                {
+                    vehicleBusinessStateRevision = 1,
+                    readiness = "READY",
+                    activePurpose = "TRANSPORT",
+                    manualChargingHold = false,
+                    batteryState = "SUFFICIENT",
+                    chargingCycleState = "NOT_CHARGING",
+                    loadingPhase = (object?)null,
+                    blockingFacts = VectorBlockingFacts
+                        .Select(fact => new { reasonCode = fact.ReasonCode, subjectType = fact.SubjectType, subjectId = fact.SubjectId })
+                        .ToArray(),
+                    observedAt = DateTimeOffset.UtcNow
+                },
+                "CurrentStopWorklistSnapshot" => new
+                {
+                    stationId = VectorPlanLegs.FirstOrDefault(leg => leg.State != "COMPLETED").StationId ?? "ST-01",
+                    worklistRevision = 1,
+                    operationSessionId = OperationSessionId,
+                    stationDepartureDeadlineAt = StationDepartureDeadlineAt,
+                    items = new[]
+                    {
+                        new
+                        {
+                            demandId,
+                            transportDemandKey = "TD-001",
+                            sublot = "SUBLOT-001",
+                            workType = JourneyWorkType,
+                            stopRole = JourneyStopRole ?? "PICKUP",
+                            expectedBasketCount = 2
+                        }
+                    }
+                },
+                "UpcomingStopPlanSnapshot" => new
+                {
+                    planRevision = 1,
+                    legs = VectorPlanLegs
+                        .Select((leg, index) => Leg(
+                            $"22222222-2222-4222-8222-2222222222{index + 1:D2}",
+                            leg.LegType,
+                            demandId,
+                            leg.State,
+                            sequence: index + 1,
+                            stationId: leg.StationId))
+                        .ToArray()
+                },
+                _ => throw new InvalidDataException($"Unsupported vector snapshot type {messageType}.")
+            };
+            await WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(context, messageType, payload))
+                .ConfigureAwait(false);
         }
     }
 
@@ -1961,7 +2067,13 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// new required properties had to be added in three places and the shape could drift between
     /// them. One builder makes the next protocol change one edit.
     /// </remarks>
-    private static object Leg(string movementLegId, string legType, string demandId, string state) =>
+    private static object Leg(
+        string movementLegId,
+        string? legType,
+        string demandId,
+        string state,
+        int sequence = 1,
+        string stationId = "ST-01") =>
         new
         {
             movementLegId,
@@ -1969,8 +2081,8 @@ public sealed class FakeControlServer : IAsyncDisposable
             stopPurposeCategory = "BUSINESS",
             demandId,
             publicStationFunction = (string?)null,
-            sequence = 1,
-            stationId = "ST-01",
+            sequence,
+            stationId,
             mapId = "MAP-01",
             state
         };
@@ -2045,8 +2157,8 @@ public sealed class FakeControlServer : IAsyncDisposable
                         demandId,
                         transportDemandKey = "TD-001",
                         sublot = "SUBLOT-001",
-                        workType = "WIRE_TO_GATE",
-                        stopRole = "PICKUP",
+                        workType = JourneyWorkType,
+                        stopRole = JourneyStopRole ?? "PICKUP",
                         expectedBasketCount = 2
                     }
                 }

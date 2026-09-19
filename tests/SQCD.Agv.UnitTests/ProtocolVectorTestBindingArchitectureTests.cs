@@ -98,6 +98,10 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     internal static readonly string[] SlicesThisLineImplements =
     [
         .. Enumerable.Range(0, 8).Select(sequence => FormattableString.Invariant($"FP-IS-{sequence:D2}")),
+        // Batch 6 (8005-agv-onboard-hmi#115): the onboard half of task-type admission and the
+        // reversed-direction journey.
+        "FP-IS-10",
+        "FP-IS-11",
         "FP-IS-14",
         "FP-IS-15"
     ];
@@ -109,7 +113,7 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Eleven entries, and each was checked here rather than transferred from the control server.
+    /// Seven entries, and each was checked here rather than transferred from the control server.
     /// The wire messages these slices are defined in terms of -- <c>DemandSelectionRequested</c>,
     /// <c>SlotConfigurationActivationCommand</c>, <c>OnboardAlarmSnapshot</c>,
     /// <c>UnableToChargeFieldConfirmationRequested</c> and
@@ -136,8 +140,6 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
             ["CV-AUTOMATIC-CHARGING-CYCLE"] = "FP-IS-13, batch 9",
             ["CV-MANUAL-STATION-CLEARANCE"] = "FP-IS-13, batch 9",
             ["CV-MULTI-STOP-PLAN-NINE-LEGS"] = "FP-IS-08, batch 7",
-            ["CV-REVERSED-DIRECTION-JOURNEY"] = "FP-IS-11, batch 6",
-            ["CV-TASK-TYPE-ADMISSION-FAIL-CLOSED"] = "FP-IS-10, batch 6",
             ["CV-UNABLE-TO-CHARGE-FIELD-CONFIRMATION"] = "FP-IS-13, batch 9",
             ["CV-WAITING-POINT-IDLE-RETURN"] = "FP-IS-12, batch 8",
             ["CV-WORKLIST-SELECTION-ACCEPTED"] = "FP-IS-09, batch 11",

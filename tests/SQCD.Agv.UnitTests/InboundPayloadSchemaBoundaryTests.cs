@@ -1,5 +1,6 @@
 using System.Text.Json;
 using SQCD.Agv.Contracts;
+using SQCD.Agv.Infrastructure;
 
 namespace SQCD.Agv.UnitTests;
 
@@ -54,13 +55,62 @@ public sealed class InboundPayloadSchemaBoundaryTests
         Assert.Single(withoutDeadline.Items);
     }
 
-    private static string WorklistPayload(string deadline) =>
+    /// <summary>
+    /// <c>workType</c> is <c>TransportTaskType</c>, the six MES literals; every one of them passes
+    /// the session client's own inbound check, not only the deserialiser.
+    /// </summary>
+    /// <remarks>
+    /// Until batch 6 the inbound check accepted <c>WIRE_TO_GATE</c> alone, so the first
+    /// <c>STAGING_TO_WIRE</c> journey the control server sends
+    /// (<c>trytoreachpeak0/8005-agv-control-server#163</c>) would have been answered
+    /// <c>PROTOCOL_SCHEMA_INVALID</c> -- the <c>8005-agv-onboard-hmi#38</c> lockup again. The
+    /// deserialiser alone never refused them: the narrowing lived in
+    /// <c>WireToGateSessionClient.ValidateCurrentStopWorklist</c>, which is why this goes through it.
+    /// </remarks>
+    [Theory]
+    [InlineData("DIE_TO_WIRE_STAGING")]
+    [InlineData("DIE_TO_OVEN")]
+    [InlineData("WIRE_TO_GATE")]
+    [InlineData("WIRE_TO_OPTICAL")]
+    [InlineData("STAGING_TO_WIRE")]
+    [InlineData("WIRE_TO_NITROGEN")]
+    public void EveryWorkTypeTheSchemaDeclaresIsAccepted(string workType)
+    {
+        CurrentStopWorklistSnapshotPayload payload = Inbound<CurrentStopWorklistSnapshotPayload>(
+            "CurrentStopWorklistSnapshot",
+            WorklistPayload("null", workType));
+
+        WireToGateSessionClient.ValidateCurrentStopWorklist(payload);
+
+        Assert.Equal(workType, Assert.Single(payload.Items).WorkType);
+    }
+
+    /// <summary>
+    /// A value outside the six is still <c>PROTOCOL_SCHEMA_INVALID</c>: that is the schema's own
+    /// enum, not a business narrowing, and widening the check stops at it.
+    /// </summary>
+    [Theory]
+    [InlineData("WIRE_TO_OVEN")]
+    [InlineData("wire_to_gate")]
+    [InlineData("")]
+    public void AWorkTypeOutsideTheSchemaIsRefused(string workType)
+    {
+        CurrentStopWorklistSnapshotPayload payload = Inbound<CurrentStopWorklistSnapshotPayload>(
+            "CurrentStopWorklistSnapshot",
+            WorklistPayload("null", workType));
+
+        InvalidDataException refused = Assert.Throws<InvalidDataException>(
+            () => WireToGateSessionClient.ValidateCurrentStopWorklist(payload));
+        Assert.Equal("PROTOCOL_SCHEMA_INVALID", refused.Message);
+    }
+
+    private static string WorklistPayload(string deadline, string workType = "WIRE_TO_GATE") =>
         $$"""
         {"stationId":"STATION-01","worklistRevision":7,
         "operationSessionId":"00000000-0000-4000-8000-0000000000aa",
         "stationDepartureDeadlineAt":{{deadline}},
         "items":[{"demandId":"00000000-0000-4000-8000-0000000000bb",
-        "transportDemandKey":"TDK-1","sublot":"SL-1","workType":"WIRE_TO_GATE",
+        "transportDemandKey":"TDK-1","sublot":"SL-1","workType":"{{workType}}",
         "stopRole":"PICKUP","expectedBasketCount":2}]}
         """;
 
