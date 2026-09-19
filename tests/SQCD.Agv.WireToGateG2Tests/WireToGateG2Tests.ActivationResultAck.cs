@@ -186,6 +186,10 @@ public sealed partial class WireToGateG2Tests
             () => client.Current.Readiness == WireToGateSessionReadiness.Disconnected,
             TimeSpan.FromSeconds(10),
             testToken);
+        // The vehicle wrote every ack before its session failed; give the server time to read the last of them.
+        await WaitBrieflyUntilAsync(
+            () => server.Received.Count(item => item is { Connection: 1, MessageType: "SnapshotAppliedAck" }) == 3,
+            testToken);
 
         Assert.Equal(
             (3, 1, WireToGateSessionReadiness.Disconnected),
@@ -258,6 +262,10 @@ public sealed partial class WireToGateG2Tests
         await WaitAtMostUntilAsync(
             () => client.Current.Readiness == WireToGateSessionReadiness.Disconnected,
             TimeSpan.FromSeconds(10),
+            testToken);
+        // The vehicle wrote every ack before its session failed; give the server time to read the last of them.
+        await WaitBrieflyUntilAsync(
+            () => server.Received.Count(item => item is { Connection: 1, MessageType: "SnapshotAppliedAck" }) == 3,
             testToken);
 
         Assert.Equal(
