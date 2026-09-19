@@ -136,6 +136,13 @@ public sealed class FakeControlServer : IAsyncDisposable
     public IReadOnlyList<(string ReasonCode, string SubjectType, string? SubjectId)> VectorBlockingFacts { get; set; } =
         [];
 
+    /// <summary>
+    /// The <c>publicStationFunction</c> every leg of the plan snapshot
+    /// <see cref="VectorJourneySnapshotsAfterRecovery"/> sends carries. The v2 control server keeps
+    /// it null; a value here is how a test proves the onboard does not read a task type out of it.
+    /// </summary>
+    public string? VectorPublicStationFunction { get; set; }
+
     public bool ReplayJourneySnapshotsWithStableIdentity { get; set; }
 
     /// <summary>
@@ -2027,7 +2034,8 @@ public sealed class FakeControlServer : IAsyncDisposable
                             demandId,
                             leg.State,
                             sequence: index + 1,
-                            stationId: leg.StationId))
+                            stationId: leg.StationId,
+                            publicStationFunction: VectorPublicStationFunction))
                         .ToArray()
                 },
                 _ => throw new InvalidDataException($"Unsupported vector snapshot type {messageType}.")
@@ -2073,14 +2081,15 @@ public sealed class FakeControlServer : IAsyncDisposable
         string demandId,
         string state,
         int sequence = 1,
-        string stationId = "ST-01") =>
+        string stationId = "ST-01",
+        string? publicStationFunction = null) =>
         new
         {
             movementLegId,
             legType,
             stopPurposeCategory = "BUSINESS",
             demandId,
-            publicStationFunction = (string?)null,
+            publicStationFunction,
             sequence,
             stationId,
             mapId = "MAP-01",

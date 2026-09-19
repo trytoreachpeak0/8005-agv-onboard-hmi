@@ -79,8 +79,8 @@ public sealed class TaskTypeAndDirectionVectorG2Tests
     /// <summary>
     /// <c>CV-TASK-TYPE-ADMISSION-FAIL-CLOSED</c>, onboard half: a plan and a business state are
     /// received in the vector's order and both acknowledged, and with no worklist item no task type
-    /// is shown -- not from the plan, and not from a <c>blockingFacts</c> entry that names one
-    /// (<c>NEVER_INFER_UNBOUND_TASK_TYPE</c>).
+    /// is shown -- not from the plan or its station function, and not from a <c>blockingFacts</c>
+    /// entry that names one (<c>NEVER_INFER_UNBOUND_TASK_TYPE</c>).
     /// </summary>
     /// <remarks>
     /// The vector's other onboard assertion, <c>DISPLAY_ADMISSION_BLOCK_REASON</c>, is deliberately
@@ -100,6 +100,8 @@ public sealed class TaskTypeAndDirectionVectorG2Tests
             SendReadinessAfterRecoveryAck = true,
             VectorJourneySnapshotsAfterRecovery = ["UpcomingStopPlanSnapshot", "VehicleBusinessStateSnapshot"],
             VectorPlanLegs = [("TO_PICKUP", "PLANNED", "ST-STAGING")],
+            // The v2 server keeps it null; a value here proves the station function is not read either.
+            VectorPublicStationFunction = "WIRE_STAGING",
             VectorBlockingFacts = [("ACTION_NOT_ALLOWED_IN_STATE", "TASK_TYPE", "STAGING_TO_WIRE")]
         };
         await using Harness harness = await Harness.StartAsync(server, token);
@@ -114,6 +116,7 @@ public sealed class TaskTypeAndDirectionVectorG2Tests
         Assert.Null(journey.CurrentStopWorklist);
         WireToGateBlockingFact fact = Assert.Single(journey.VehicleBusinessState!.BlockingFacts);
         Assert.Equal("STAGING_TO_WIRE", fact.SubjectId);
+        Assert.Equal("WIRE_STAGING", Assert.Single(journey.UpcomingStopPlan!.Legs).PublicStationFunction);
 
         Assert.NotEmpty(harness.Seen);
         Assert.All(harness.Seen, item => Assert.Equal(string.Empty, item.TaskType));

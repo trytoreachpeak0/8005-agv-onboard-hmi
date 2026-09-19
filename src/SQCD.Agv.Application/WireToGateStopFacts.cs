@@ -55,15 +55,16 @@ public static class WireToGateStopFacts
     /// 两者都说不出方向时是空串。
     /// </summary>
     /// <remarks>
-    /// 到站后清单项是本站的权威，所以它优先；还在路上、清单没下发时，按序号第一条未完成的腿就是正在去的那一站。
+    /// 到站后清单是本站的权威，所以它优先；还在路上、清单没下发时，按序号第一条未完成的腿就是正在去的那一站。
+    /// 清单已下发但没有清单项（同一行显示「无待处理任务」）时方向为空，不退回去读计划腿，否则会自相矛盾。
     /// <c>legType</c> 为 <c>null</c> 的腿（等待点、充电桩）不带方向。
     /// </remarks>
     public static string DirectionText(WireToGateJourneySnapshot journey)
     {
         ArgumentNullException.ThrowIfNull(journey);
-        if (CurrentItem(journey) is { } item)
+        if (journey.CurrentStopWorklist is not null)
         {
-            return item.StopRole switch
+            return CurrentItem(journey)?.StopRole switch
             {
                 "PICKUP" => PickupText,
                 "DROPOFF" => DropoffText,
