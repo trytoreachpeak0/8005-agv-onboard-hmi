@@ -267,6 +267,40 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Sends the <c>OperationResult</c> already on file under <paramref name="deduplicationKey"/> once more, exactly
+    /// as stored -- same messageId, correlation and payload -- and waits for its <c>DurableAck</c>. For a result whose
+    /// ack was lost while the link stayed up: nothing else would send it before the next handshake
+    /// (onboard-hmi#127). Allowed while RECOVERY_REQUIRED, like every other way this result is sent.
+    /// </summary>
+    public async Task<string> ResendOperationResultAsync(
+        string deduplicationKey,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        WireToGateDurableMessage stored = await _journal
+            .ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidDataException("DURABLE_OUTBOX_ROW_MISSING");
+        WireToGateEnvelope envelope = WireToGateProtocolSerializer.DeserializeAndValidate(
+            stored.WireLine.TrimEnd('\r', '\n'),
+            _options.AgvId);
+        if (!string.Equals(stored.MessageType, "OperationResult", StringComparison.Ordinal)
+            || !string.Equals(envelope.MessageType, "OperationResult", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("DURABLE_OUTBOX_CONTENT_MISMATCH");
+        }
+
+        return await SendDurableCoreAsync(
+            "OperationResult",
+            deduplicationKey,
+            stored.MessageId,
+            envelope.CorrelationId,
+            envelope.Payload,
+            allowRecoveryRequired: true,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Refuses a <c>SlotOperationResumeCommand</c> the vehicle stopped before any door IO. A resume
     /// only ever arrives while the session is RECOVERY_REQUIRED, so the answer has to be sendable
     /// there too (8005-agv-onboard-hmi#119).

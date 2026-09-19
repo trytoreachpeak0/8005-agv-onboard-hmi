@@ -764,8 +764,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         TakenOver,
 
         /// <summary>
-        /// Finished: a COMPLETED result is in the durable outbox and only its DurableAck is outstanding. Not
-        /// restored as unfinished -- the handshake replays the result (onboard-hmi#124).
+        /// Finished: a COMPLETED result is in the durable outbox and only its DurableAck is outstanding, and sending
+        /// it once more did not get one either (or no session could take it). Not restored as unfinished -- the
+        /// handshake replays the result (onboard-hmi#124, onboard-hmi#127).
         /// </summary>
         ResultAwaitingAck,
 
@@ -791,7 +792,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         _logger.Write(
             LogSeverity.Information,
             nameof(WireToGateBusinessService),
-            $"迟到的DurableAck已由重连补发取得，补记已完成的仓位操作结果：attempt={context.SlotOperationAttemptId}。");
+            $"迟到的DurableAck已取得（重连补发或重发），补记已完成的仓位操作结果：attempt={context.SlotOperationAttemptId}。");
         PublishOperatorEvent(
             $"operation-result:{context.SlotOperationAttemptId}:COMPLETED",
             "OPERATION_COMPLETED",
@@ -803,6 +804,46 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 WireToGateHmiOperationStage.Completed,
                 "操作完成。",
                 _clock.Now.ToUniversalTime()));
+    }
+
+    /// <summary>
+    /// Sends a COMPLETED result that is on file but unacknowledged once more, when the session can take it. True
+    /// once its row is acknowledged -- by this send, or meanwhile by a handshake replay.
+    /// </summary>
+    private async Task<bool> TryResendCompletedResultAsync(
+        WireToGateRecoveryOperationContext context,
+        string resultKey,
+        CancellationToken cancellationToken)
+    {
+        if (_session.Current.Readiness is not (WireToGateSessionReadiness.Ready
+            or WireToGateSessionReadiness.RecoveryRequired))
+        {
+            return false;
+        }
+
+        try
+        {
+            await _session.ResendOperationResultAsync(resultKey, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
+        {
+            // A reconnect during the wait may have replayed and acknowledged the row already; its readiness found
+            // this attempt claimed, so the recording falls to this call.
+            if (await _session.Journal
+                    .ReadOutgoingByDeduplicationKeyAsync(resultKey, cancellationToken)
+                    .ConfigureAwait(false) is { Acknowledged: true })
+            {
+                return true;
+            }
+
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"OperationResult重发一次后仍未收到DurableAck，等待下一次握手补发：attempt={context.SlotOperationAttemptId}。",
+                exception);
+            return false;
+        }
     }
 
     /// <summary>Whether a durable <c>OperationResult</c> reports the operation <c>COMPLETED</c>.</summary>
@@ -874,11 +915,20 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 }
 
                 // A COMPLETED result whose DurableAck has not come back is finished work, not an unfinished
-                // operation: the handshake replays it under the same messageId, and until then the HMI keeps
-                // the RESULT_ACK_PENDING prompt its sender published (onboard-hmi#124).
+                // operation (onboard-hmi#124). While a session can take it, it is sent once more under the same
+                // key and messageId: an ack lost with the link still up has nothing else to send it before the next
+                // handshake, and a result put on file mid-handshake missed that handshake's replay (onboard-hmi#127).
+                // Otherwise the handshake replays it, and until then the HMI keeps the RESULT_ACK_PENDING prompt.
                 if (!sent.Acknowledged)
                 {
-                    return InterruptedOperationSettlement.ResultAwaitingAck;
+                    if (!await TryResendCompletedResultAsync(context, resultKey, cancellationToken)
+                            .ConfigureAwait(false))
+                    {
+                        return InterruptedOperationSettlement.ResultAwaitingAck;
+                    }
+
+                    await RecordAcknowledgedCompletedResultAsync(context, cancellationToken).ConfigureAwait(false);
+                    return InterruptedOperationSettlement.TakenOver;
                 }
 
                 // Acknowledged since -- by the handshake's replay, which runs before the readiness that brought
@@ -1770,6 +1820,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         }
 
         bool restoreAfterRelease = false;
+        bool completedResultUnacknowledged = false;
         try
         {
             if (await IsAttemptTakenOverAsync(command, cancellationToken).ConfigureAwait(false))
@@ -1929,6 +1980,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     nameof(WireToGateBusinessService),
                     $"OperationResult暂未收到DurableAck：attempt={command.SlotOperationAttemptId}。",
                     exception);
+                completedResultUnacknowledged = completedSuccessfully;
                 PublishOperatorEvent(
                     $"operation-result-pending:{command.SlotOperationAttemptId}",
                     "RESULT_ACK_PENDING",
@@ -1951,7 +2003,15 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 _operationAttempts.Remove(command.SlotOperationAttemptId);
             }
 
-            if (restoreAfterRelease)
+            // A COMPLETED result left unacknowledged while a session is up -- its ack lost with the link intact, or
+            // the handshake that brought the session up already past its replay -- would otherwise wait for the next
+            // session state change to be sent again. The restore sends it once more under the same messageId, after
+            // this claim is released so that it is not InFlight to itself (onboard-hmi#127). A session that is down
+            // gets it from the next handshake, whose readiness runs the restore anyway.
+            if (restoreAfterRelease
+                || completedResultUnacknowledged
+                    && _session.Current.Readiness is WireToGateSessionReadiness.Ready
+                        or WireToGateSessionReadiness.RecoveryRequired)
             {
                 TrackTask(RestorePendingRecoveryOperationProjectionAsync(_stopping.Token));
             }
