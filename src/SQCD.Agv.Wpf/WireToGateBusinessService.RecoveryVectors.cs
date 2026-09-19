@@ -1660,7 +1660,21 @@ public sealed partial class WireToGateBusinessService
 
             try
             {
-                EnsureVehicleStoppedAndFresh();
+                try
+                {
+                    EnsureVehicleStoppedAndFresh();
+                }
+                catch (InvalidOperationException) when (
+                    vectorType is WireToGateRecoveryVectorTypes.LoadCompensation
+                        or WireToGateRecoveryVectorTypes.FaultCargoHandoff)
+                {
+                    // Reported, then rethrown: the log line and the RECOVERY_BLOCKED event below
+                    // are the operator's account of the refusal and stay exactly as they were.
+                    await ReportRefusedBeforeUnlockAsync(context, resultKey, cancellationToken)
+                        .ConfigureAwait(false);
+                    throw;
+                }
+
                 bool completed = await ExecuteRecoveryVectorAndReportAsync(
                         context,
                         correction,
@@ -1700,6 +1714,70 @@ public sealed partial class WireToGateBusinessService
         finally
         {
             _recoveryRequestGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Answers a compensation or fault cargo command the vehicle refused before any unlock with its
+    /// result, <c>FAILED</c> (onboard-hmi#123).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Until #123 this refusal went out as a log line and an operator event and nothing on the wire.
+    /// The server's workflow then waited in <c>AwaitingResult</c> for a result that never came, and
+    /// since control-server#187 refuses the same action a second time there was no way on from there
+    /// short of a reconnect. A <c>FAILED</c> recovery result is what the server closes the session on
+    /// (control-server#169), so that is the answer owed.
+    /// </para>
+    /// <para>
+    /// Before or after the unlock is the executor's to say, from the journal: it answers
+    /// <c>null</c> for anything but a vector nothing has been done for, and then nothing is sent --
+    /// what the vector already did is settled the way it always was, and a refusal is never
+    /// claimed over it. The result goes through the same durable send as every vector result, under
+    /// the same key, so a command issued again finds it and is answered as a replay.
+    /// </para>
+    /// <para>
+    /// Only <see cref="EnsureVehicleStoppedAndFresh"/> is answered this way. A command that fails to
+    /// bind names a vector this end did not prepare, and answering it would put a result on record
+    /// for an action the two ends disagree about; the forced mechanical recovery never reaches the
+    /// motion check at all, because it never unlocks.
+    /// </para>
+    /// </remarks>
+    private async Task ReportRefusedBeforeUnlockAsync(
+        WireToGateRecoveryVectorContext context,
+        string resultKey,
+        CancellationToken cancellationToken)
+    {
+        WireToGateRecoveryVectorExecutionResult? refused = await _vectorExecutor
+            .RefuseBeforeUnlockAsync(context, "VEHICLE_NOT_READY", cancellationToken)
+            .ConfigureAwait(false);
+        if (refused is null)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"恢复向量已开始执行，车辆未就绪不按开锁前被拒上报：type={context.VectorType}，"
+                    + $"id={context.PrimaryId}。");
+            return;
+        }
+
+        try
+        {
+            await SendRecoveryVectorResultAsync(context, resultKey, refused, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is IOException or TimeoutException or InvalidOperationException)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"开锁前被拒的恢复向量结果暂未收到DurableAck：type={context.VectorType}，id={context.PrimaryId}。",
+                exception);
+            PublishOperatorEvent(
+                $"recovery-vector-result-pending:{context.VectorType}:{context.PrimaryId}",
+                "RESULT_ACK_PENDING",
+                "恢复结果已持久化，等待服务端确认；不会重复执行仓门IO。 ");
         }
     }
 
