@@ -60,6 +60,51 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// 进度消息仍只在 <c>Ready</c> 时发（守护）：重连后会话 <c>RecoveryRequired</c> 期间装货走完核对与收尾，这两条进度
+    /// 照旧「未能发送，不影响仓位判定」，新连接上没有这两个阶段的 <c>OperationProgress</c>——ADR 只放行结果补报，进度是遥测。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-CONNECTION-LOSS-SAFE-FINISH")]
+    public async Task ProgressIsStillNotSentWhileTheSessionIsRecoveryRequired()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.HoldReadinessForUnreconciledAttempt = true;
+            });
+        await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
+
+        int reconnect = await harness.ReconnectAwaitingTheLoadsResultAsync(token);
+        harness.Io.CloseDoor(0, cargo: true);
+        await Harness.WaitUntilAsync(
+            () => harness.HasEvent("OPERATION_COMPLETED") || harness.HasEvent("RESULT_ACK_PENDING"),
+            "the load to finish on the vehicle",
+            token,
+            harness.DescribeEvents);
+
+        // Phases reached only after the reconnect. The handshake may replay a progress the first connection left
+        // unacknowledged; that is the outbox, not a send while RecoveryRequired.
+        Assert.NotEmpty(harness.ProgressMessages(WireToGateHmiOperationStage.Verifying));
+        Assert.DoesNotContain(
+            harness.Server.ReceivedEnvelopes,
+            item => item.Connection == reconnect
+                && item.MessageType == "OperationProgress"
+                && ProgressPhase(item.WireLine) is "VERIFYING" or "SAFE_FINISH");
+    }
+
+    private static string? ProgressPhase(string wireLine)
+    {
+        using JsonDocument document = JsonDocument.Parse(wireLine);
+        return document.RootElement.GetProperty("payload").GetProperty("phase").GetString();
+    }
+
+    /// <summary>
     /// 已送达、已对账的结果不再发、也不再结算：上一条的场景走完之后再断一次、再连一次，新连接上没有
     /// <c>OperationResult</c>，「操作完成」只出一次，journal 仍是已结算，锁只开过一次。
     /// </summary>
