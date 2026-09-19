@@ -156,8 +156,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// once acknowledged. A handler that is not done must not be acknowledged over. Its failure holds
     /// back this one acknowledgement and nothing else: the session stays up and the next message is read.
     /// </remarks>
-    public Func<WireToGateExceptionRecoverySessionSnapshot, CancellationToken, Task<bool>>?
-        ClosedRecoverySessionHandler { get; set; }
+    public Func<WireToGateExceptionRecoverySessionSnapshot, CancellationToken, Task<bool>>? ClosedRecoverySessionHandler { get; set; }
 
     /// <summary>
     /// Sends one operator entry. Every call is a new entry and gets a messageId of its own.
@@ -1900,12 +1899,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 {
                     // The CLOSED fallback runs before the snapshot is published or acknowledged: its
                     // acknowledgement has to wait for it (onboard-hmi#129).
-                    bool closedHandled = command is not WireToGateExceptionRecoverySessionSnapshot
-                        {
-                            State: "CLOSED"
-                        } closing
-                        || await HandleClosedRecoverySessionAsync(closing, stopping.Token)
+                    bool closedHandled = true;
+                    if (command is WireToGateExceptionRecoverySessionSnapshot { State: "CLOSED" } closing)
+                    {
+                        closedHandled = await HandleClosedRecoverySessionAsync(closing, stopping.Token)
                             .ConfigureAwait(false);
+                    }
+
                     ServerCommandReceived?.Invoke(
                         this,
                         new ValueChangedEventArgs<WireToGateServerCommand>(command!));
