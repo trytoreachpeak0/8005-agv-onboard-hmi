@@ -163,6 +163,68 @@ public sealed partial class RecoveryVectorG2Tests
             token);
     }
 
+    /// <summary>
+    /// A CLOSED read while the vehicle is shutting down -- the host disposes the business service
+    /// before the session (<c>App.xaml.cs</c>) -- is not acknowledged, and the next session's replay
+    /// forgets the session (onboard-hmi#129 review S1).
+    /// </summary>
+    /// <remarks>
+    /// Acknowledged in that window it would never come again, which is the very state this ticket is
+    /// about: the journal keeps naming the session and every recovery entry refuses locally with
+    /// <c>RECOVERY_SESSION_STATE_PENDING</c>.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task AClosedSnapshotReadWhileTheBusinessServiceIsDisposedIsNotAcknowledged()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Path.Combine(
+            Path.GetTempPath(), "w2g-vector", Guid.NewGuid().ToString("N"), "journal.db");
+        await using FakeControlServer server = RecoveryVectorHarness.NewServer();
+        server.SendRecoveryVectorCommandAfterRecoveryAction = false;
+        server.RecoverySlotOperationAttemptId = AttemptId;
+        server.ReplayUnacknowledgedClosedRecoverySnapshots = true;
+
+        await using (RecoveryVectorHarness stopping = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: server,
+            journalPath: journalPath,
+            cargoInTargetSlots: true))
+        {
+            WireToGateRecoveryState prepared = await PrepareCompensationAsync(stopping, token);
+
+            // The shutdown order of the real host: the business service goes first, the session stays
+            // up until its own dispose, and the receive loop keeps reading in between.
+            await stopping.Business.DisposeAsync();
+            await SendClosedSnapshotAsync(stopping, prepared, "COMPENSATE_LOAD_ALL_EMPTY", CompensationSlots);
+            await Task.Delay(300, token);
+
+            Assert.DoesNotContain(ClosedSnapshotMessageId, AcknowledgedRecoverySnapshots(stopping));
+            Assert.Contains(ClosedSnapshotMessageId, server.UnacknowledgedClosedRecoverySnapshots);
+            Assert.Equal(
+                prepared.ExceptionRecoverySessionId,
+                (await stopping.ReadRecoveryStateAsync(token)).ExceptionRecoverySessionId);
+        }
+
+        // Unacknowledged, so the next session gets it again -- and this time forgets the session.
+        await using FakeControlServer serverAfterRestart = RecoveryVectorHarness.NewServer();
+        serverAfterRestart.SendRecoveryVectorCommandAfterRecoveryAction = false;
+        serverAfterRestart.RecoverySlotOperationAttemptId = AttemptId;
+        serverAfterRestart.ReplayUnacknowledgedClosedRecoverySnapshots = true;
+        serverAfterRestart.AdoptDurableRecoveryMemoryFrom(server);
+
+        await using RecoveryVectorHarness afterRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: serverAfterRestart,
+            journalPath: journalPath,
+            baselineRevision: 2,
+            restart: true,
+            cargoInTargetSlots: true);
+        await AssertTheReplayedClosedSnapshotForgetsTheSessionAsync(afterRestart, token);
+        Assert.Null((await afterRestart.ReadRecoveryStateAsync(token)).RecoveryVector);
+    }
+
     private static async Task WaitForFailedReleasesAsync(
         FailingReleaseJournal failing,
         int count,
