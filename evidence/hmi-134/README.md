@@ -43,6 +43,12 @@
 - `ui-layout-<提交>.json`：布局检查 PASS。
 - `ui-render-1280x800.png`、`ui-render-1024x768.png`：主窗口带示例数据（3 条清单项、9 条腿、持货等单、多条时的取消提示）渲染的截图，由一次性测试生成，未提交该测试。
 
+`onboard-hmi-g2-c44b6a2/`：merge 集成分支（`ae45627`，含 hmi#128 的 PR #137、hmi#130 的 PR #138）之后在新替身上的重跑，PASS，单测 441、G2 270。
+
+`rig-compensate-then-reconnect-c44b6a2-ci35470868194/`：真装置 `real-onboard-compensate-then-reconnect` × 1，走 CI（vm01 `cs-desktop` runner，`l2.yml -f rig=real`），
+run https://github.com/trytoreachpeak0/8005-agv-control-server/actions/runs/35470868194 ，**PASS，66 秒**；服务端 `47ae7376`、车载端 `c44b6a27`、模拟器 `fb5f7c59`。
+场景本身驱动「补偿清空」这个管理员恢复入口（`Wait-L2RealButtonOffered … 补偿清空`），入口没出现即判不达；这正是本票改视图模型与 XAML 后要证的那件事。
+
 第一次全量（`c4d377e`）测试全部通过，但出站 schema 一致性检查报了 1 条违约：替身在
 `AClosedLoadingPhaseWithoutAReasonIsStillRefusedAndLeavesNoHalfState` 里有意发的 `CLOSED` 不带原因。已按既有机制登记为
 `deliberate`（`a9d2788`，只豁免 synthetic-peer 来源），第二次全量见 `green/`。

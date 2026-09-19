@@ -1,0 +1,774 @@
+real-rig	Set up job	﻿2026-09-19T21:35:38.8131090Z Current runner version: '2.337.0'
+real-rig	Set up job	2026-09-19T21:35:38.8146194Z Runner name: 'win11-01-control-server-desktop'
+real-rig	Set up job	2026-09-19T21:35:38.8147199Z Runner group name: 'Default'
+real-rig	Set up job	2026-09-19T21:35:38.8148109Z Machine name: 'DESKTOP-F9HC40O'
+real-rig	Set up job	2026-09-19T21:35:38.8152198Z ##[group]GITHUB_TOKEN Permissions
+real-rig	Set up job	2026-09-19T21:35:38.8155001Z Contents: read
+real-rig	Set up job	2026-09-19T21:35:38.8155676Z Metadata: read
+real-rig	Set up job	2026-09-19T21:35:38.8156247Z Packages: read
+real-rig	Set up job	2026-09-19T21:35:38.8156889Z ##[endgroup]
+real-rig	Set up job	2026-09-19T21:35:38.8159198Z Secret source: Actions
+real-rig	Set up job	2026-09-19T21:35:38.8160266Z Cache mode: write
+real-rig	Set up job	2026-09-19T21:35:38.8161380Z Runner is running behind proxy server 'http://172.19.162.241:7890' for all HTTP requests.
+real-rig	Set up job	2026-09-19T21:35:38.8162940Z Runner is running behind proxy server 'http://172.19.162.241:7890' for all HTTPS requests.
+real-rig	Set up job	2026-09-19T21:35:38.8164173Z Prepare workflow directory
+real-rig	Set up job	2026-09-19T21:35:38.9661553Z Prepare all required actions
+real-rig	Set up job	2026-09-19T21:35:38.9748501Z Getting action download info
+real-rig	Set up job	2026-09-19T21:35:40.1273872Z Download action repository 'actions/checkout@v7' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+real-rig	Set up job	2026-09-19T21:35:41.9983095Z Download action repository 'actions/upload-artifact@v7' (SHA:043fb46d1a93c77aae656e7c1c64a875d1fc6a0a)
+real-rig	Set up job	2026-09-19T21:35:44.7234865Z Complete job name: real-rig
+real-rig	Run actions/checkout@v7	﻿2026-09-19T21:35:44.9111943Z ##[group]Run actions/checkout@v7
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9112928Z with:
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9113242Z   path: control-server
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9113705Z   repository: trytoreachpeak0/8005-agv-control-server
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9117369Z   token: ***
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9117649Z   ssh-strict: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9117934Z   ssh-user: git
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9118222Z   persist-credentials: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9118536Z   clean: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9118830Z   sparse-checkout-cone-mode: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9119177Z   fetch-depth: 1
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9119459Z   fetch-tags: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9119937Z   show-progress: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9120277Z   lfs: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9120572Z   submodules: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9120886Z   set-safe-directory: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9121229Z   allow-unsafe-pr-checkout: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9121962Z env:
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9122227Z   NuGetAudit: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9122509Z   RIG_MODE: consecutive
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9122914Z   RIG_ONLY: real-onboard-compensate-then-reconnect
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9123324Z   RIG_BATCH_ID: 
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9123611Z   RIG_COMMIT_START_CEILING_GIB: 12
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9123954Z   RIG_COMMIT_WAIT_MINUTES: 30
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9124285Z   RIG_START_DEADLINE_MINUTES: 270
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9124634Z   MSBUILDDISABLENODEREUSE: 1
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9124992Z   DOTNET_CLI_USE_MSBUILD_SERVER: 0
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9125372Z   UseSharedCompilation: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:44.9125691Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:45.8991441Z Syncing repository: trytoreachpeak0/8005-agv-control-server
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:45.8993445Z ##[group]Getting Git version info
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:45.8994544Z Working directory is 'C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server'
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:45.9126990Z [command]"C:\Program Files\Git\cmd\git.exe" version
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:45.9878998Z git version 2.55.0.windows.5
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:45.9934336Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:45.9969197Z Temporarily overriding HOME='C:\actions-runner\win11-01-control-server-desktop\_work\_temp\e5eef09f-6b8d-4249-b81e-6a6ef9faa1d3' before making global git config changes
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:45.9973228Z Adding repository directory to the temporary git global config as a safe directory
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:45.9977697Z [command]"C:\Program Files\Git\cmd\git.exe" config --global --add safe.directory C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:46.0718651Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get remote.origin.url
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:46.1502235Z https://github.com/trytoreachpeak0/8005-agv-control-server
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:46.1610915Z ##[group]Removing previously created refs, to avoid conflicts
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:46.1634787Z [command]"C:\Program Files\Git\cmd\git.exe" rev-parse --symbolic-full-name --verify --quiet HEAD
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:46.2319520Z refs/heads/test/cs222-restart-open-recovery
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:46.2420841Z [command]"C:\Program Files\Git\cmd\git.exe" checkout --detach
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:48.6628234Z HEAD is now at 341d40a0 Merge remote-tracking branch 'origin/fp/v2-impl' into test/cs222-restart-open-recovery
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:48.8336895Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:48.8360466Z [command]"C:\Program Files\Git\cmd\git.exe" submodule status
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.1299909Z ##[group]Cleaning the repository
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.1323731Z [command]"C:\Program Files\Git\cmd\git.exe" clean -ffdx
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9835327Z Removing src/ControlServer.Application/bin/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9837110Z Removing src/ControlServer.Application/obj/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9838966Z Removing src/ControlServer.Dashboard/bin/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9840439Z Removing src/ControlServer.Dashboard/obj/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9841989Z Removing src/ControlServer.Domain/bin/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9843302Z Removing src/ControlServer.Domain/obj/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9844594Z Removing src/ControlServer.Host/bin/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9851275Z Removing src/ControlServer.Host/obj/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9852907Z Removing src/ControlServer.Infrastructure/bin/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9854476Z Removing src/ControlServer.Infrastructure/obj/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9855998Z Removing tests/ControlServer.Tests/bin/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9857296Z Removing tests/ControlServer.Tests/obj/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9858927Z Removing tools/ControlServer.ClockSkewProxy/bin/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9860505Z Removing tools/ControlServer.ClockSkewProxy/obj/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9862255Z Removing tools/ControlServer.Conformance/bin/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9863764Z Removing tools/ControlServer.Conformance/obj/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9865338Z Removing tools/ControlServer.FakeMesIngest/bin/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9866892Z Removing tools/ControlServer.FakeMesIngest/obj/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9868401Z Removing tools/ControlServer.FakeOnboard/bin/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9871223Z Removing tools/ControlServer.FakeOnboard/obj/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9873430Z Removing tools/ControlServer.FakeRiot/bin/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9874894Z Removing tools/ControlServer.FakeRiot/obj/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9876300Z Removing tools/ControlServer.FieldOps/bin/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9877747Z Removing tools/ControlServer.FieldOps/obj/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9879472Z Removing tools/ControlServer.ProtocolFaultProxy/bin/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9881365Z Removing tools/ControlServer.ProtocolFaultProxy/obj/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9883761Z Removing tools/ControlServer.SchemaConformance/bin/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9885521Z Removing tools/ControlServer.SchemaConformance/obj/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9887151Z Removing tools/ControlServer.TestDoubles/bin/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9888682Z Removing tools/ControlServer.TestDoubles/obj/
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:50.9939896Z [command]"C:\Program Files\Git\cmd\git.exe" reset --hard HEAD
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:54.4842396Z HEAD is now at 341d40a0 Merge remote-tracking branch 'origin/fp/v2-impl' into test/cs222-restart-open-recovery
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:54.4942994Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:54.4947900Z ##[group]Disabling automatic garbage collection
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:54.4956765Z [command]"C:\Program Files\Git\cmd\git.exe" config --local gc.auto 0
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:54.5726014Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:54.5727589Z ##[group]Setting up auth
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:54.5728772Z Removing SSH command configuration
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:54.5735949Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp core\.sshCommand
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:54.6395710Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:55.9041584Z Removing HTTP extra header
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:55.9067274Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:55.9848737Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:57.1849606Z Removing includeIf entries pointing to credentials config files
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:57.1877412Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:57.2651646Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:58.5331760Z [command]"C:\Program Files\Git\cmd\git.exe" config --file C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-8c3eda28-3c06-4e91-9bfc-6182a73f5185.config http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:58.6328560Z [command]"C:\Program Files\Git\cmd\git.exe" config --local includeIf.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/control-server/.git.path C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-8c3eda28-3c06-4e91-9bfc-6182a73f5185.config
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:58.7034419Z [command]"C:\Program Files\Git\cmd\git.exe" config --local includeIf.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/control-server/.git/worktrees/*.path C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-8c3eda28-3c06-4e91-9bfc-6182a73f5185.config
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:58.7853170Z [command]"C:\Program Files\Git\cmd\git.exe" config --local includeIf.gitdir:/github/workspace/control-server/.git.path /github/runner_temp/git-credentials-8c3eda28-3c06-4e91-9bfc-6182a73f5185.config
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:58.8598559Z [command]"C:\Program Files\Git\cmd\git.exe" config --local includeIf.gitdir:/github/workspace/control-server/.git/worktrees/*.path /github/runner_temp/git-credentials-8c3eda28-3c06-4e91-9bfc-6182a73f5185.config
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:58.9321027Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:58.9322437Z ##[group]Fetching the repository
+real-rig	Run actions/checkout@v7	2026-09-19T21:35:58.9354274Z [command]"C:\Program Files\Git\cmd\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +47ae7376e7a15a3268da509cc968d837000e044b:refs/remotes/origin/fp/v2-impl
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:01.5762668Z From https://github.com/trytoreachpeak0/8005-agv-control-server
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:01.5763773Z  * [new ref]           47ae7376e7a15a3268da509cc968d837000e044b -> origin/fp/v2-impl
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:01.5861188Z [command]"C:\Program Files\Git\cmd\git.exe" branch --list --remote origin/fp/v2-impl
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:01.6451971Z   origin/fp/v2-impl
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:01.6519028Z [command]"C:\Program Files\Git\cmd\git.exe" rev-parse refs/remotes/origin/fp/v2-impl
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:01.6987809Z 47ae7376e7a15a3268da509cc968d837000e044b
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:01.7035773Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:01.7037370Z ##[group]Determining the checkout info
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:01.7039595Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:01.7063485Z [command]"C:\Program Files\Git\cmd\git.exe" sparse-checkout disable
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:01.8248413Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset-all extensions.worktreeConfig
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:01.8822541Z ##[group]Checking out the ref
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:01.8847418Z [command]"C:\Program Files\Git\cmd\git.exe" checkout --progress --force -B fp/v2-impl refs/remotes/origin/fp/v2-impl
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.4555457Z Previous HEAD position was 341d40a0 Merge remote-tracking branch 'origin/fp/v2-impl' into test/cs222-restart-open-recovery
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.4776202Z Switched to a new branch 'fp/v2-impl'
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.4827175Z branch 'fp/v2-impl' set up to track 'origin/fp/v2-impl'.
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.4963093Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.5650652Z [command]"C:\Program Files\Git\cmd\git.exe" log -1 --format=%H
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.6163738Z 47ae7376e7a15a3268da509cc968d837000e044b
+real-rig	Run actions/checkout@v7	﻿2026-09-19T21:36:02.7135009Z ##[group]Run actions/checkout@v7
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7135428Z with:
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7135704Z   repository: trytoreachpeak0/8005-agv-onboard-hmi
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7136108Z   ref: c44b6a2708aa9af13966450c273d96a3d1bcabf7
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7136455Z   path: peers/8005-agv-onboard-hmi
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7140100Z   token: ***
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7140342Z   ssh-strict: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7140572Z   ssh-user: git
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7140807Z   persist-credentials: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7141073Z   clean: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7141312Z   sparse-checkout-cone-mode: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7141599Z   fetch-depth: 1
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7141820Z   fetch-tags: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7142076Z   show-progress: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7142307Z   lfs: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7142517Z   submodules: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7142753Z   set-safe-directory: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7143038Z   allow-unsafe-pr-checkout: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7143323Z env:
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7143558Z   NuGetAudit: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7143787Z   RIG_MODE: consecutive
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7144100Z   RIG_ONLY: real-onboard-compensate-then-reconnect
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7144461Z   RIG_BATCH_ID: 
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7144693Z   RIG_COMMIT_START_CEILING_GIB: 12
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7144984Z   RIG_COMMIT_WAIT_MINUTES: 30
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7145262Z   RIG_START_DEADLINE_MINUTES: 270
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7145564Z   MSBUILDDISABLENODEREUSE: 1
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7145860Z   DOTNET_CLI_USE_MSBUILD_SERVER: 0
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7146163Z   UseSharedCompilation: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.7146432Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.8784830Z Syncing repository: trytoreachpeak0/8005-agv-onboard-hmi
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.8786184Z ##[group]Getting Git version info
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.8787968Z Working directory is 'C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\peers\8005-agv-onboard-hmi'
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.8998199Z [command]"C:\Program Files\Git\cmd\git.exe" version
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.9582758Z git version 2.55.0.windows.5
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.9676104Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.9725099Z Temporarily overriding HOME='C:\actions-runner\win11-01-control-server-desktop\_work\_temp\bbb6d21f-90bd-4158-a1ca-187112522897' before making global git config changes
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.9728975Z Adding repository directory to the temporary git global config as a safe directory
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:02.9737923Z [command]"C:\Program Files\Git\cmd\git.exe" config --global --add safe.directory C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\peers\8005-agv-onboard-hmi
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:03.0530492Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get remote.origin.url
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:03.1244044Z https://github.com/trytoreachpeak0/8005-agv-onboard-hmi
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:03.1342039Z ##[group]Removing previously created refs, to avoid conflicts
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:03.1364431Z [command]"C:\Program Files\Git\cmd\git.exe" rev-parse --symbolic-full-name --verify --quiet HEAD
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:03.2026321Z HEAD
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:03.2814649Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:03.2837811Z [command]"C:\Program Files\Git\cmd\git.exe" submodule status
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:04.4937892Z ##[group]Cleaning the repository
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:04.4958551Z [command]"C:\Program Files\Git\cmd\git.exe" clean -ffdx
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:04.8360998Z [command]"C:\Program Files\Git\cmd\git.exe" reset --hard HEAD
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:05.1182909Z HEAD is now at 4d71634 Merge pull request #133 from trytoreachpeak0/w2g/b6-09-g2-evidence
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:05.1264212Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:05.1277926Z ##[group]Disabling automatic garbage collection
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:05.1302234Z [command]"C:\Program Files\Git\cmd\git.exe" config --local gc.auto 0
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:05.1966779Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:05.1968281Z ##[group]Setting up auth
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:05.1969452Z Removing SSH command configuration
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:05.1997711Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp core\.sshCommand
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:05.2746503Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:06.4897173Z Removing HTTP extra header
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:06.4921520Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:06.5815562Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:07.8875719Z Removing includeIf entries pointing to credentials config files
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:07.8904956Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:07.9724334Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:09.2281408Z [command]"C:\Program Files\Git\cmd\git.exe" config --file C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-2c6ade9b-0543-49cd-9745-dbc417103cb8.config http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:09.3206456Z [command]"C:\Program Files\Git\cmd\git.exe" config --local includeIf.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/peers/8005-agv-onboard-hmi/.git.path C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-2c6ade9b-0543-49cd-9745-dbc417103cb8.config
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:09.3973651Z [command]"C:\Program Files\Git\cmd\git.exe" config --local includeIf.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/peers/8005-agv-onboard-hmi/.git/worktrees/*.path C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-2c6ade9b-0543-49cd-9745-dbc417103cb8.config
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:09.4740251Z [command]"C:\Program Files\Git\cmd\git.exe" config --local includeIf.gitdir:/github/workspace/peers/8005-agv-onboard-hmi/.git.path /github/runner_temp/git-credentials-2c6ade9b-0543-49cd-9745-dbc417103cb8.config
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:09.5434659Z [command]"C:\Program Files\Git\cmd\git.exe" config --local includeIf.gitdir:/github/workspace/peers/8005-agv-onboard-hmi/.git/worktrees/*.path /github/runner_temp/git-credentials-2c6ade9b-0543-49cd-9745-dbc417103cb8.config
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:09.6148409Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:09.6150547Z ##[group]Fetching the repository
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:09.6184127Z [command]"C:\Program Files\Git\cmd\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin c44b6a2708aa9af13966450c273d96a3d1bcabf7
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.4736124Z From https://github.com/trytoreachpeak0/8005-agv-onboard-hmi
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.4738387Z  * branch            c44b6a2708aa9af13966450c273d96a3d1bcabf7 -> FETCH_HEAD
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.4862312Z [command]"C:\Program Files\Git\cmd\git.exe" rev-parse --verify --quiet c44b6a2708aa9af13966450c273d96a3d1bcabf7^{object}
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.5457807Z c44b6a2708aa9af13966450c273d96a3d1bcabf7
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.5527156Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.5528727Z ##[group]Determining the checkout info
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.5530746Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.5554648Z [command]"C:\Program Files\Git\cmd\git.exe" sparse-checkout disable
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.6576511Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset-all extensions.worktreeConfig
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.7170330Z ##[group]Checking out the ref
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.7192744Z [command]"C:\Program Files\Git\cmd\git.exe" checkout --progress --force c44b6a2708aa9af13966450c273d96a3d1bcabf7
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.8821831Z Warning: you are leaving 1 commit behind, not connected to
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.8826298Z any of your branches:
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.8826881Z 
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.8828047Z   4d71634 Merge pull request #133 from trytoreachpeak0/w2g/b6-09-g2-evidence
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.8829254Z 
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.8830271Z If you want to keep it by creating a new branch, this may be a good time
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.8831733Z to do so with:
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.8832152Z 
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.8832736Z  git branch <new-branch-name> 4d71634
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.8833770Z 
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.8972830Z HEAD is now at c44b6a2 Merge remote-tracking branch 'origin/w2g/fp-v2-impl' into w2g/b7-134-multi-demand-plan
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.9096246Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:12.9867807Z [command]"C:\Program Files\Git\cmd\git.exe" log -1 --format=%H
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.0661178Z c44b6a2708aa9af13966450c273d96a3d1bcabf7
+real-rig	Run actions/checkout@v7	﻿2026-09-19T21:36:13.1596389Z ##[group]Run actions/checkout@v7
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1597332Z with:
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1597974Z   repository: trytoreachpeak0/slots-simulator
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1598934Z   ref: fb5f7c593742bf98bc3957b8729a38aad5321f28
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1599806Z   path: peers/slots-simulator
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1608999Z   token: ***
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1609572Z   ssh-strict: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1610119Z   ssh-user: git
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1610708Z   persist-credentials: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1611348Z   clean: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1611926Z   sparse-checkout-cone-mode: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1612650Z   fetch-depth: 1
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1613197Z   fetch-tags: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1614084Z   show-progress: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1614659Z   lfs: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1615170Z   submodules: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1615788Z   set-safe-directory: true
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1616487Z   allow-unsafe-pr-checkout: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1617181Z env:
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1617661Z   NuGetAudit: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1618296Z   RIG_MODE: consecutive
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1619056Z   RIG_ONLY: real-onboard-compensate-then-reconnect
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1619958Z   RIG_BATCH_ID: 
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1620533Z   RIG_COMMIT_START_CEILING_GIB: 12
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1621294Z   RIG_COMMIT_WAIT_MINUTES: 30
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1621979Z   RIG_START_DEADLINE_MINUTES: 270
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1622724Z   MSBUILDDISABLENODEREUSE: 1
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1623780Z   DOTNET_CLI_USE_MSBUILD_SERVER: 0
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1624597Z   UseSharedCompilation: false
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.1625303Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.3367777Z Syncing repository: trytoreachpeak0/slots-simulator
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.3370131Z ##[group]Getting Git version info
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.3373935Z Working directory is 'C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\peers\slots-simulator'
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.3557117Z [command]"C:\Program Files\Git\cmd\git.exe" version
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.4315193Z git version 2.55.0.windows.5
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.4410187Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.4462571Z Temporarily overriding HOME='C:\actions-runner\win11-01-control-server-desktop\_work\_temp\10e59d92-8605-4cc9-82a6-4dd06aa46b9a' before making global git config changes
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.4467155Z Adding repository directory to the temporary git global config as a safe directory
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.4475513Z [command]"C:\Program Files\Git\cmd\git.exe" config --global --add safe.directory C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\peers\slots-simulator
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.5258650Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get remote.origin.url
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.5850938Z https://github.com/trytoreachpeak0/slots-simulator
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.5947857Z ##[group]Removing previously created refs, to avoid conflicts
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.5969023Z [command]"C:\Program Files\Git\cmd\git.exe" rev-parse --symbolic-full-name --verify --quiet HEAD
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.6452662Z HEAD
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.7310547Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:13.7332732Z [command]"C:\Program Files\Git\cmd\git.exe" submodule status
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:14.8847691Z ##[group]Cleaning the repository
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:14.8855291Z [command]"C:\Program Files\Git\cmd\git.exe" clean -ffdx
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:14.9850507Z [command]"C:\Program Files\Git\cmd\git.exe" reset --hard HEAD
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:15.0940166Z HEAD is now at fb5f7c5 feat: embed automation HTTP API in WPF simulator
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:15.1015097Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:15.1029298Z ##[group]Disabling automatic garbage collection
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:15.1055498Z [command]"C:\Program Files\Git\cmd\git.exe" config --local gc.auto 0
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:15.1715748Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:15.1716584Z ##[group]Setting up auth
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:15.1717197Z Removing SSH command configuration
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:15.1725680Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp core\.sshCommand
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:15.2448403Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:16.5878323Z Removing HTTP extra header
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:16.5906925Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:16.6774272Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:17.9476012Z Removing includeIf entries pointing to credentials config files
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:17.9489430Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:18.0150981Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:19.1353614Z [command]"C:\Program Files\Git\cmd\git.exe" config --file C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-a8a42479-907a-499a-a9a2-1018da7b41f4.config http.https://github.com/.extraheader "AUTHORIZATION: basic ***"
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:19.2135368Z [command]"C:\Program Files\Git\cmd\git.exe" config --local includeIf.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/peers/slots-simulator/.git.path C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-a8a42479-907a-499a-a9a2-1018da7b41f4.config
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:19.3030385Z [command]"C:\Program Files\Git\cmd\git.exe" config --local includeIf.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/peers/slots-simulator/.git/worktrees/*.path C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-a8a42479-907a-499a-a9a2-1018da7b41f4.config
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:19.3622203Z [command]"C:\Program Files\Git\cmd\git.exe" config --local includeIf.gitdir:/github/workspace/peers/slots-simulator/.git.path /github/runner_temp/git-credentials-a8a42479-907a-499a-a9a2-1018da7b41f4.config
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:19.4451672Z [command]"C:\Program Files\Git\cmd\git.exe" config --local includeIf.gitdir:/github/workspace/peers/slots-simulator/.git/worktrees/*.path /github/runner_temp/git-credentials-a8a42479-907a-499a-a9a2-1018da7b41f4.config
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:19.5188898Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:19.5190040Z ##[group]Fetching the repository
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:19.5223881Z [command]"C:\Program Files\Git\cmd\git.exe" -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin fb5f7c593742bf98bc3957b8729a38aad5321f28
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:21.3091816Z From https://github.com/trytoreachpeak0/slots-simulator
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:21.3094226Z  * branch            fb5f7c593742bf98bc3957b8729a38aad5321f28 -> FETCH_HEAD
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:21.3244338Z [command]"C:\Program Files\Git\cmd\git.exe" rev-parse --verify --quiet fb5f7c593742bf98bc3957b8729a38aad5321f28^{object}
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:21.4017068Z fb5f7c593742bf98bc3957b8729a38aad5321f28
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:21.4077200Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:21.4078925Z ##[group]Determining the checkout info
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:21.4080660Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:21.4095055Z [command]"C:\Program Files\Git\cmd\git.exe" sparse-checkout disable
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:21.5047994Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset-all extensions.worktreeConfig
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:21.5798663Z ##[group]Checking out the ref
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:21.5825235Z [command]"C:\Program Files\Git\cmd\git.exe" checkout --progress --force fb5f7c593742bf98bc3957b8729a38aad5321f28
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:21.6536269Z HEAD is now at fb5f7c5 feat: embed automation HTTP API in WPF simulator
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:21.6641600Z ##[endgroup]
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:21.7499647Z [command]"C:\Program Files\Git\cmd\git.exe" log -1 --format=%H
+real-rig	Run actions/checkout@v7	2026-09-19T21:36:21.8323430Z fb5f7c593742bf98bc3957b8729a38aad5321f28
+real-rig	Run real-onboard L2 scenarios	﻿2026-09-19T21:36:21.9244070Z ##[group]Run # Runs is each scenario's consecutive count, as in the scenarios job. Batch 6's exit (control-server#165)
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9245945Z ^[[36;1m# Runs is each scenario's consecutive count, as in the scenarios job. Batch 6's exit (control-server#165)^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9246997Z ^[[36;1m# ran real-onboard-expected-action-overdue and real-onboard-durable-ack-lost three times and the^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9247991Z ^[[36;1m# rest once; that is what `consecutive` reproduces. Adding a real-onboard scenario: one line.^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9248622Z ^[[36;1m#^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9249205Z ^[[36;1m# real-onboard-recovery-entry-missing is absent on purpose: it is red by design until the^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9250128Z ^[[36;1m# recovery entry it asserts exists (scripts/l2/README.md), and a round that is always red^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9250804Z ^[[36;1m# reads as noise and trains nobody to look.^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9251406Z ^[[36;1m$scenarios = @(^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9251905Z ^[[36;1m    @{ Name = 'real-onboard-normal-load';                           Runs = 1 }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9252687Z ^[[36;1m    @{ Name = 'real-onboard-clock-skew';                            Runs = 1 }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9253450Z ^[[36;1m    @{ Name = 'real-onboard-load-door-closed-empty-reopens';        Runs = 1 }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9254229Z ^[[36;1m    @{ Name = 'real-onboard-station-timeout-door-open';             Runs = 1 }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9254978Z ^[[36;1m    @{ Name = 'real-onboard-unload-not-emptied';                    Runs = 1 }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9255728Z ^[[36;1m    @{ Name = 'real-onboard-compensate-then-reconnect';             Runs = 1 }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9256510Z ^[[36;1m    @{ Name = 'real-onboard-restart-while-waiting-operator';        Runs = 1 }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9257296Z ^[[36;1m    @{ Name = 'real-onboard-cancellation-authorization-lost';       Runs = 1 }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9258049Z ^[[36;1m    @{ Name = 'real-onboard-durable-ack-lost';                      Runs = 3 }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9258799Z ^[[36;1m    @{ Name = 'real-onboard-expected-action-overdue';               Runs = 3 }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9259578Z ^[[36;1m    @{ Name = 'real-onboard-restart-with-open-recovery-session';    Runs = 1 }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9260149Z ^[[36;1m)^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9260397Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9260859Z ^[[36;1m# Registered before anything can fail, so the upload step always has a path.^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9261873Z ^[[36;1m$evidenceRoot = Join-Path $env:RUNNER_TEMP "real-rig-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9263021Z ^[[36;1m$null = New-Item -ItemType Directory -Path $evidenceRoot -Force^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9263893Z ^[[36;1m"RIG_EVIDENCE_ROOT=$evidenceRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9264531Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9264852Z ^[[36;1mfunction Stop-RigSetup([string]$Message) {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9265368Z ^[[36;1m    Write-Host "::error title=Real-rig setup::$Message"^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9265852Z ^[[36;1m    throw $Message^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9266154Z ^[[36;1m}^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9266394Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9266833Z ^[[36;1m$only = @($env:RIG_ONLY -split ',' | ForEach-Object Trim | Where-Object { $_ })^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9267648Z ^[[36;1m$unknown = @($only | Where-Object { $_ -notin $scenarios.Name })^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9268511Z ^[[36;1mif ($unknown.Count -gt 0) { Stop-RigSetup "Not in this workflow's scenario list: $($unknown -join ', ')" }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9269196Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9269536Z ^[[36;1m$runList = @(foreach ($scenario in $scenarios) {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9270125Z ^[[36;1m    if ($only.Count -gt 0 -and $scenario.Name -notin $only) { continue }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9270684Z ^[[36;1m    $runs = switch ($env:RIG_MODE) {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9271579Z ^[[36;1m        'consecutive'     { $scenario.Runs }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9272143Z ^[[36;1m        'consecutive-all' { [Math]::Max(3, $scenario.Runs) }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9274251Z ^[[36;1m        default           { 1 }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9274594Z ^[[36;1m    }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9274980Z ^[[36;1m    [pscustomobject]@{ Name = $scenario.Name; Runs = $runs }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9275459Z ^[[36;1m})^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9275700Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9276142Z ^[[36;1m$onboardRepository = (Resolve-Path ../peers/8005-agv-onboard-hmi).Path^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9276881Z ^[[36;1m$simulatorRepository = (Resolve-Path ../peers/slots-simulator).Path^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9277464Z ^[[36;1m$commits = [ordered]@{^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9277899Z ^[[36;1m    'control-server'       = (git rev-parse HEAD).Trim()^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9278573Z ^[[36;1m    '8005-agv-onboard-hmi' = (git -C $onboardRepository rev-parse HEAD).Trim()^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9279341Z ^[[36;1m    'slots-simulator'      = (git -C $simulatorRepository rev-parse HEAD).Trim()^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9279911Z ^[[36;1m}^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9280571Z ^[[36;1m$commits | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $evidenceRoot 'commits.json') -Encoding utf8NoBOM^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9281955Z ^[[36;1mWrite-Host "Mode $env:RIG_MODE; $(($runList | ForEach-Object { if ($_.Runs -eq 1) { $_.Name } else { "$($_.Name) x$($_.Runs)" } }) -join ', ')"^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9283026Z ^[[36;1m$commits.GetEnumerator() | ForEach-Object { Write-Host "  $($_.Key) @ $($_.Value)" }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9283697Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9284190Z ^[[36;1m# Whole-machine committed memory, sampled every 2 seconds for the whole step into^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9285084Z ^[[36;1m# commit-samples.csv. Committed bytes, not the process tree: what fails an allocation on this^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9285920Z ^[[36;1m# guest is the machine reaching its commit limit, whoever holds the rest.^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9286480Z ^[[36;1mfunction Get-CommitGiB {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9286963Z ^[[36;1m    $m = Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9287865Z ^[[36;1m    [pscustomobject]@{ Committed = [Math]::Round($m.CommittedBytes / 1GB, 2); Limit = [Math]::Round($m.CommitLimit / 1GB, 2) }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9288614Z ^[[36;1m}^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9289016Z ^[[36;1m$samplesPath = Join-Path $evidenceRoot 'commit-samples.csv'^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9289711Z ^[[36;1m$sampler = Start-ThreadJob -ArgumentList $samplesPath -ScriptBlock {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9290263Z ^[[36;1m    param($path)^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9290812Z ^[[36;1m    'utc,committedGiB,limitGiB' | Set-Content -LiteralPath $path -Encoding utf8NoBOM^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9292488Z ^[[36;1m    while ($true) {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9292948Z ^[[36;1m        $m = Get-CimInstance Win32_PerfFormattedData_PerfOS_Memory^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9294001Z ^[[36;1m        [string]::Format([Globalization.CultureInfo]::InvariantCulture, '{0:o},{1:F2},{2:F2}', [DateTime]::UtcNow, ($m.CommittedBytes / 1GB), ($m.CommitLimit / 1GB)) |^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9295032Z ^[[36;1m            Add-Content -LiteralPath $path -Encoding utf8NoBOM^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9295517Z ^[[36;1m        Start-Sleep -Seconds 2^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9295856Z ^[[36;1m    }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9296093Z ^[[36;1m}^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9296324Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9296803Z ^[[36;1m# Crash dialogs present before the round, so the check at the end only blames this one.^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9297659Z ^[[36;1m$werBefore = @(Get-Process WerFault -ErrorAction SilentlyContinue | ForEach-Object Id)^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9298247Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9298766Z ^[[36;1m# Build once for every run: -SkipBuild then, as in the scenarios job. From the repository root so^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9299424Z ^[[36;1m# global.json picks the SDK.^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9313482Z ^[[36;1mWrite-Host '::group::Build'^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9314058Z ^[[36;1m& dotnet build ./ControlServer.sln -c Release --nologo^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9314506Z ^[[36;1m$buildCode = $LASTEXITCODE^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9315535Z ^[[36;1mWrite-Host '::endgroup::'^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9316170Z ^[[36;1mif ($buildCode -ne 0) { Stop-RigSetup "dotnet build ControlServer.sln -c Release exited with $buildCode" }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9317034Z ^[[36;1m# Belt and braces for the environment above: anything a build still left running goes now.^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9317629Z ^[[36;1m& dotnet build-server shutdown *> $null^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9317975Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9318386Z ^[[36;1m# Each run's stage root goes inside the evidence root, as in the scenarios job.^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9318980Z ^[[36;1m$stageTemp = Join-Path $evidenceRoot '_stage'^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9319481Z ^[[36;1m$null = New-Item -ItemType Directory -Path $stageTemp -Force^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9319941Z ^[[36;1m$env:TEMP = $stageTemp^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9320254Z ^[[36;1m$env:TMP = $stageTemp^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9320536Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9320838Z ^[[36;1m$ceiling = [double]$env:RIG_COMMIT_START_CEILING_GIB^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9321516Z ^[[36;1m$deadlineMinutes = [double]$env:RIG_START_DEADLINE_MINUTES^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9322090Z ^[[36;1m$records = [Collections.Generic.List[object]]::new()^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9322725Z ^[[36;1m# Why the round stopped early, if it did: NOT_STARTED_COMMIT_GUARD or NOT_STARTED_DEADLINE.^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9323277Z ^[[36;1m$stoppedBy = $null^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9323566Z ^[[36;1m$leftovers = @()^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9323978Z ^[[36;1m$jobClock = [Diagnostics.Stopwatch]::StartNew()^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9324361Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9324809Z ^[[36;1m# Everything after this runs under try/finally, so the leftover check, the summary and the^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9325623Z ^[[36;1m# verdict happen even when something throws mid-round (a CIM query, a child that cannot start).^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9326186Z ^[[36;1mtry {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9326451Z ^[[36;1m    foreach ($item in $runList) {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9326809Z ^[[36;1m        if ($stoppedBy) { break }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9327200Z ^[[36;1m        for ($run = 1; $run -le $item.Runs; $run++) {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9327638Z ^[[36;1m            $label = '{0}-{1:D2}' -f $item.Name, $run^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9327991Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9328425Z ^[[36;1m            # The round's own deadline. Each run can wait up to 30 minutes for memory and 30 for^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9329180Z ^[[36;1m            # the desktop lock, with no bound on the sum; a batch exit is some 45 runs. So no new^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9329931Z ^[[36;1m            # run starts after RIG_START_DEADLINE_MINUTES, which leaves one worst-case run (both^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9331058Z ^[[36;1m            # waits plus a slow scenario, about 70 minutes) inside timeout-minutes. The job then^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9332175Z ^[[36;1m            # fails with its own verdict instead of being cancelled by the timeout.^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9332826Z ^[[36;1m            if ($jobClock.Elapsed.TotalMinutes -gt $deadlineMinutes) {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9333936Z ^[[36;1m                Write-Host "::error title=Round deadline::$label not started: $([Math]::Round($jobClock.Elapsed.TotalMinutes)) minutes into the job, past the $deadlineMinutes-minute start deadline"^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9334964Z ^[[36;1m                $records.Add([pscustomobject]@{^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9335497Z ^[[36;1m                    Label = $label; Scenario = $item.Name; Run = $run; Runs = $item.Runs^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9336307Z ^[[36;1m                    ExitCode = 'NOT_STARTED_DEADLINE'; Result = 'NOT_STARTED_DEADLINE'; Seconds = 0; CommittedAtStartGiB = $null^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9336970Z ^[[36;1m                })^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9337310Z ^[[36;1m                $stoppedBy = 'NOT_STARTED_DEADLINE'^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9337687Z ^[[36;1m                break^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9337974Z ^[[36;1m            }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9338225Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9338648Z ^[[36;1m            # The commit guard. Waits first: whatever holds the memory (the synthetic job's^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9339480Z ^[[36;1m            # four lanes, test.yml, the onboard HMI's CI) finishes in minutes.^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9340045Z ^[[36;1m            $waitClock = [Diagnostics.Stopwatch]::StartNew()^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9340483Z ^[[36;1m            $commit = Get-CommitGiB^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9341324Z ^[[36;1m            while ($commit.Committed -gt $ceiling -and $waitClock.Elapsed.TotalMinutes -lt [double]$env:RIG_COMMIT_WAIT_MINUTES) {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9342426Z ^[[36;1m                Write-Host "RIG_COMMIT_WAITING: $($commit.Committed)/$($commit.Limit) GiB committed, starting at or below $ceiling"^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9343135Z ^[[36;1m                Start-Sleep -Seconds 30^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9343505Z ^[[36;1m                $commit = Get-CommitGiB^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9343891Z ^[[36;1m            }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9344368Z ^[[36;1m            # Still above after the whole wait: stop the round with a verdict of its own. Starting^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9345141Z ^[[36;1m            # anyway risks an allocation failure that reads as a product defect, and letting the^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9345833Z ^[[36;1m            # job timeout end it would cancel the job, which can wedge the runner.^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9346378Z ^[[36;1m            if ($commit.Committed -gt $ceiling) {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9347350Z ^[[36;1m                Write-Host "::error title=Commit guard::$label not started: $($commit.Committed)/$($commit.Limit) GiB committed after waiting $env:RIG_COMMIT_WAIT_MINUTES minutes (ceiling $ceiling)"^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9348325Z ^[[36;1m                $records.Add([pscustomobject]@{^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9348843Z ^[[36;1m                    Label = $label; Scenario = $item.Name; Run = $run; Runs = $item.Runs^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9349718Z ^[[36;1m                    ExitCode = 'NOT_STARTED_COMMIT_GUARD'; Result = 'NOT_STARTED_COMMIT_GUARD'; Seconds = 0; CommittedAtStartGiB = $commit.Committed^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9350436Z ^[[36;1m                })^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9350776Z ^[[36;1m                $stoppedBy = 'NOT_STARTED_COMMIT_GUARD'^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9351266Z ^[[36;1m                break^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9351549Z ^[[36;1m            }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9351782Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9352061Z ^[[36;1m            $runRoot = Join-Path $evidenceRoot $label^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9352456Z ^[[36;1m            $log = "$runRoot.log"^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9352908Z ^[[36;1m            $arguments = @('-Scenario', $item.Name, '-EvidenceRoot', $runRoot,^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9353877Z ^[[36;1m                '-OnboardRepository', $onboardRepository, '-SimulatorRepository', $simulatorRepository, '-SkipBuild')^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9354680Z ^[[36;1m            if ($env:RIG_BATCH_ID) { $arguments += '-BatchId', $env:RIG_BATCH_ID }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9355127Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9355495Z ^[[36;1m            Write-Host "$label starting at $($commit.Committed) GiB committed"^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9356044Z ^[[36;1m            $clock = [Diagnostics.Stopwatch]::StartNew()^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9356644Z ^[[36;1m            # A child pwsh per run, so one scenario's modules and state never leak into the next.^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9357381Z ^[[36;1m            & pwsh -NoProfile -File ./scripts/l2/Invoke-L2Scenario.ps1 @arguments *>&1 |^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9357952Z ^[[36;1m                Tee-Object -FilePath $log | Out-Null^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9358354Z ^[[36;1m            $exitCode = $LASTEXITCODE^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9358793Z ^[[36;1m            $seconds = [Math]::Round($clock.Elapsed.TotalSeconds)^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9359406Z ^[[36;1m            # A run that waited out the desktop lock never started its scenario: that is the^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9360152Z ^[[36;1m            # schedule colliding with 8005-mes-ingest's desktop jobs, not a product red, and the^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9360822Z ^[[36;1m            # summary says so.^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9361342Z ^[[36;1m            $result = if ($exitCode -eq 0) { 'PASS' }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9362091Z ^[[36;1m                elseif (Select-String -LiteralPath $log -SimpleMatch 'DESKTOP_LOCK_BUSY' -Quiet) { 'NOT_STARTED_DESKTOP_LOCK' }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9362815Z ^[[36;1m                else { "FAIL ($exitCode)" }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9363213Z ^[[36;1m            $records.Add([pscustomobject]@{^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9363721Z ^[[36;1m                Label = $label; Scenario = $item.Name; Run = $run; Runs = $item.Runs^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9364567Z ^[[36;1m                ExitCode = $exitCode; Result = $result; Seconds = $seconds; CommittedAtStartGiB = $commit.Committed^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9365177Z ^[[36;1m            })^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9365667Z ^[[36;1m            # This run's own log now, not only at the end: a long round is readable while it runs.^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9366303Z ^[[36;1m            Write-Host "::group::$label -- $result, ${seconds}s"^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9367038Z ^[[36;1m            if (Test-Path -LiteralPath $log) { Get-Content -LiteralPath $log | ForEach-Object { Write-Host $_ } }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9367686Z ^[[36;1m            Write-Host '::endgroup::'^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9368015Z ^[[36;1m        }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9368248Z ^[[36;1m    }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9368470Z ^[[36;1m} finally {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9369057Z ^[[36;1m    Stop-Job $sampler -ErrorAction SilentlyContinue; Remove-Job $sampler -Force -ErrorAction SilentlyContinue^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9369700Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9370175Z ^[[36;1m    # What the round left behind. This desktop renders golden baselines, so a leftover onboard or^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9370988Z ^[[36;1m    # simulator window, an orphaned server or double, or a crash dialog of ours is a defect here:^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9371901Z ^[[36;1m    # listed, closed, and the round fails. Only processes started from this round's own^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9372687Z ^[[36;1m    # directories (the checkouts, the evidence and stage roots, the peer publish cache), and crash^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9373508Z ^[[36;1m    # dialogs raised for such a process -- 8005-mes-ingest's desktop jobs may be running windows,^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9374230Z ^[[36;1m    # and crashing, between our scenarios, and those are not ours to close.^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9374987Z ^[[36;1m    $ownRoots = @(@((Resolve-Path ..).Path, $evidenceRoot, (Join-Path $env:LOCALAPPDATA '8005-l2-peers')) |^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9375694Z ^[[36;1m        ForEach-Object { $_.TrimEnd([char]'\') + [char]'\' })^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9376722Z ^[[36;1m    $isOurs = { param($path) $path -and @($ownRoots | Where-Object { $path.StartsWith($_, [StringComparison]::OrdinalIgnoreCase) }).Count -gt 0 }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9377601Z ^[[36;1m    $leftovers = @(Get-Process | Where-Object { & $isOurs $_.Path })^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9378299Z ^[[36;1m    # WerFault is started as `WerFault.exe -u -p <pid> ...`; the crashed process stays alive while^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9378964Z ^[[36;1m    # its dialog is up, so its path tells whose crash it is.^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9379721Z ^[[36;1m    foreach ($wer in @(Get-CimInstance Win32_Process -Filter "Name = 'WerFault.exe'" -ErrorAction SilentlyContinue)) {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9380470Z ^[[36;1m        if ($wer.ProcessId -in $werBefore) { continue }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9381210Z ^[[36;1m        $crashedPid = if ($wer.CommandLine -match '-p\s+(\d+)') { [int]$Matches[1] } else { $null }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9382092Z ^[[36;1m        $crashed = if ($crashedPid) { Get-Process -Id $crashedPid -ErrorAction SilentlyContinue } else { $null }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9382797Z ^[[36;1m        if ($crashed -and (& $isOurs $crashed.Path)) {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9383387Z ^[[36;1m            $leftovers += @(Get-Process -Id $wer.ProcessId -ErrorAction SilentlyContinue)^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9383973Z ^[[36;1m        } else {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9385221Z ^[[36;1m            Write-Host "::warning title=Crash dialog not ours::WerFault pid $($wer.ProcessId) for pid $crashedPid; left alone"^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9385888Z ^[[36;1m        }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9386119Z ^[[36;1m    }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9386380Z ^[[36;1m    foreach ($process in $leftovers) {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9387185Z ^[[36;1m        Write-Host "::error title=Leftover process::$($process.ProcessName) (pid $($process.Id)) $($process.Path) window '$($process.MainWindowTitle)'"^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9388112Z ^[[36;1m        Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9388581Z ^[[36;1m    }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9388791Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9389213Z ^[[36;1m    $values = @(Import-Csv -LiteralPath $samplesPath -ErrorAction SilentlyContinue |^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9390050Z ^[[36;1m        ForEach-Object { [double]::Parse($_.committedGiB, [Globalization.CultureInfo]::InvariantCulture) })^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9390751Z ^[[36;1m    $peak = ($values | Measure-Object -Maximum).Maximum^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9391377Z ^[[36;1m    $floor = ($values | Measure-Object -Minimum).Minimum^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9391770Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9391982Z ^[[36;1m    $summary = @(^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9392556Z ^[[36;1m        "### Real-onboard L2 ($env:RIG_MODE, $($records.Count) runs$(if ($stoppedBy) { ", stopped: $stoppedBy" }))", '',^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9393606Z ^[[36;1m        "control-server $($commits['control-server']), onboard $($commits['8005-agv-onboard-hmi']), simulator $($commits['slots-simulator'])", '',^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9394839Z ^[[36;1m        "Whole-machine committed memory during the step: min $floor GiB, peak $peak GiB ($($values.Count) samples, commit-samples.csv in the evidence).", '',^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9395840Z ^[[36;1m        '| Run | Result | Seconds | Committed at start (GiB) |', '| --- | --- | --- | --- |'^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9396345Z ^[[36;1m    )^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9396600Z ^[[36;1m    foreach ($record in $records) {^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9397223Z ^[[36;1m        $summary += "| $($record.Label) | $($record.Result) | $($record.Seconds) | $($record.CommittedAtStartGiB) |"^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9397809Z ^[[36;1m    }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9398419Z ^[[36;1m    if ($leftovers.Count -gt 0) { $summary += '', "Leftover processes closed: $(($leftovers | ForEach-Object ProcessName) -join ', ')" }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9399306Z ^[[36;1m    $summary | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9400087Z ^[[36;1m    $summary | Set-Content -LiteralPath (Join-Path $evidenceRoot 'SUMMARY.md') -Encoding utf8NoBOM^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9401029Z ^[[36;1m    $summary | ForEach-Object { Write-Host $_ }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9401485Z ^[[36;1m}^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9401690Z ^[[36;1m^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9402333Z ^[[36;1mif ($stoppedBy) { throw "RIG_$($stoppedBy -replace '^NOT_STARTED_', ''): the round stopped before $(($records | Select-Object -Last 1).Label)." }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9403264Z ^[[36;1m$lockTimeouts = @($records | Where-Object Result -eq 'NOT_STARTED_DESKTOP_LOCK')^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9403937Z ^[[36;1m$failed = @($records | Where-Object { $_.Result -like 'FAIL*' })^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9404687Z ^[[36;1mif ($failed.Count -gt 0) { throw "Real-onboard scenarios failed: $(($failed | ForEach-Object Label) -join ', ')" }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9405837Z ^[[36;1mif ($lockTimeouts.Count -gt 0) { throw "RIG_DESKTOP_LOCK: $(($lockTimeouts | ForEach-Object Label) -join ', ') waited out the desktop lock; not a product result." }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9406904Z ^[[36;1mif ($leftovers.Count -gt 0) { throw "The round left $($leftovers.Count) process(es) behind." }^[[0m
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9444535Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9444974Z env:
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9445182Z   NuGetAudit: false
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9445420Z   RIG_MODE: consecutive
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9445736Z   RIG_ONLY: real-onboard-compensate-then-reconnect
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9446322Z   RIG_BATCH_ID: 
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9446557Z   RIG_COMMIT_START_CEILING_GIB: 12
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9446852Z   RIG_COMMIT_WAIT_MINUTES: 30
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9447135Z   RIG_START_DEADLINE_MINUTES: 270
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9447441Z   MSBUILDDISABLENODEREUSE: 1
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9447729Z   DOTNET_CLI_USE_MSBUILD_SERVER: 0
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9448029Z   UseSharedCompilation: false
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:21.9448301Z ##[endgroup]
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:23.0191445Z Mode consecutive; real-onboard-compensate-then-reconnect
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:23.0534527Z   control-server @ 47ae7376e7a15a3268da509cc968d837000e044b
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:23.0545207Z   8005-agv-onboard-hmi @ c44b6a2708aa9af13966450c273d96a3d1bcabf7
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:23.0555084Z   slots-simulator @ fb5f7c593742bf98bc3957b8729a38aad5321f28
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:23.1626129Z ##[group]Build
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:24.6447385Z   正在确定要还原的项目…
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:25.5222909Z   已还原 C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.Conformance\ControlServer.Conformance.csproj (用时 127 毫秒)。
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:25.5232723Z   已还原 C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.TestDoubles\ControlServer.TestDoubles.csproj (用时 124 毫秒)。
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:25.5240335Z   已还原 C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.ProtocolFaultProxy\ControlServer.ProtocolFaultProxy.csproj (用时 126 毫秒)。
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:25.5248732Z   已还原 C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\src\ControlServer.Dashboard\ControlServer.Dashboard.csproj (用时 124 毫秒)。
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:25.5256901Z   已还原 C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.ClockSkewProxy\ControlServer.ClockSkewProxy.csproj (用时 126 毫秒)。
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:25.5264094Z   已还原 C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\src\ControlServer.Application\ControlServer.Application.csproj (用时 126 毫秒)。
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:25.5270837Z   已还原 C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.FakeOnboard\ControlServer.FakeOnboard.csproj (用时 127 毫秒)。
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:25.5278572Z   已还原 C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\src\ControlServer.Domain\ControlServer.Domain.csproj (用时 124 毫秒)。
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:25.5285237Z   已还原 C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.FakeRiot\ControlServer.FakeRiot.csproj (用时 126 毫秒)。
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:26.0455736Z   已还原 C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.FakeMesIngest\ControlServer.FakeMesIngest.csproj (用时 782 毫秒)。
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:26.0486774Z   已还原 C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.SchemaConformance\ControlServer.SchemaConformance.csproj (用时 781 毫秒)。
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:26.0554817Z   已还原 C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.FieldOps\ControlServer.FieldOps.csproj (用时 783 毫秒)。
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:26.0625129Z   已还原 C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\src\ControlServer.Infrastructure\ControlServer.Infrastructure.csproj (用时 792 毫秒)。
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:26.0894255Z   已还原 C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tests\ControlServer.Tests\ControlServer.Tests.csproj (用时 822 毫秒)。
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:26.0930093Z   已还原 C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\src\ControlServer.Host\ControlServer.Host.csproj (用时 806 毫秒)。
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:29.6796149Z   ControlServer.TestDoubles -> C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.TestDoubles\bin\Release\net8.0\win-x64\ControlServer.TestDoubles.dll
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:29.8751865Z   ControlServer.Domain -> C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\src\ControlServer.Domain\bin\Release\net8.0\win-x64\ControlServer.Domain.dll
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:30.6437440Z   ControlServer.Dashboard -> C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\src\ControlServer.Dashboard\bin\Release\net8.0\win-x64\ControlServer.Dashboard.dll
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:33.5147780Z   ControlServer.Conformance -> C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.Conformance\bin\Release\net8.0\win-x64\ControlServer.Conformance.dll
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:33.9371792Z   ControlServer.Application -> C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\src\ControlServer.Application\bin\Release\net8.0\win-x64\ControlServer.Application.dll
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:34.3405805Z   ControlServer.ClockSkewProxy -> C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.ClockSkewProxy\bin\Release\net8.0\win-x64\ControlServer.ClockSkewProxy.dll
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:34.4322815Z   ControlServer.ProtocolFaultProxy -> C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.ProtocolFaultProxy\bin\Release\net8.0\win-x64\ControlServer.ProtocolFaultProxy.dll
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:34.5033480Z   ControlServer.SchemaConformance -> C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.SchemaConformance\bin\Release\net8.0\win-x64\ControlServer.SchemaConformance.dll
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:34.5053319Z   ControlServer.FakeRiot -> C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.FakeRiot\bin\Release\net8.0\win-x64\ControlServer.FakeRiot.dll
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:34.6056111Z   ControlServer.FakeOnboard -> C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.FakeOnboard\bin\Release\net8.0\win-x64\ControlServer.FakeOnboard.dll
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:39.6171764Z   ControlServer.Infrastructure -> C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\src\ControlServer.Infrastructure\bin\Release\net8.0\win-x64\ControlServer.Infrastructure.dll
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:43.7262324Z   ControlServer.FieldOps -> C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.FieldOps\bin\Release\net8.0\win-x64\ControlServer.FieldOps.dll
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:44.6194204Z   ControlServer.FakeMesIngest -> C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tools\ControlServer.FakeMesIngest\bin\Release\net8.0\win-x64\ControlServer.FakeMesIngest.dll
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:45.5365164Z   ControlServer.Host -> C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\src\ControlServer.Host\bin\Release\net8.0\win-x64\ControlServer.Host.dll
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:56.4154806Z   ControlServer.Tests -> C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server\tests\ControlServer.Tests\bin\Release\net8.0\win-x64\ControlServer.Tests.dll
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:56.4484507Z 
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:56.4501519Z 已成功生成。
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:56.4502501Z     0 个警告
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:56.4503194Z     0 个错误
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:56.4505298Z 
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:56.4506604Z 已用时间 00:00:32.97
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:56.7597540Z ##[endgroup]
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:57.5284136Z real-onboard-compensate-then-reconnect-01 starting at 3.55 GiB committed
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.0903593Z ##[group]real-onboard-compensate-then-reconnect-01 -- PASS, 66s
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.1079701Z L2 real-onboard-compensate-then-reconnect -> PASS (evidence: C:\actions-runner\win11-01-control-server-desktop\_work\_temp\real-rig-35470868194-1\real-onboard-compensate-then-reconnect-01)
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.1085929Z ##[endgroup]
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5806269Z ### Real-onboard L2 (consecutive, 1 runs)
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5810868Z 
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5820772Z control-server 47ae7376e7a15a3268da509cc968d837000e044b, onboard c44b6a2708aa9af13966450c273d96a3d1bcabf7, simulator fb5f7c593742bf98bc3957b8729a38aad5321f28
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5824642Z 
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5833996Z Whole-machine committed memory during the step: min 3.6 GiB, peak 6.18 GiB (41 samples, commit-samples.csv in the evidence).
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5838193Z 
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5846089Z | Run | Result | Seconds | Committed at start (GiB) |
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5852798Z | --- | --- | --- | --- |
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5859906Z | real-onboard-compensate-then-reconnect-01 | PASS | 66 | 3.55 |
+real-rig	Upload real-rig evidence	﻿2026-09-19T21:38:03.7106498Z ##[group]Run actions/upload-artifact@v7
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7107237Z with:
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7107732Z   name: real-rig-evidence
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7108623Z   path: C:\actions-runner\win11-01-control-server-desktop\_work\_temp\real-rig-35470868194-1
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7109591Z   if-no-files-found: warn
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7110066Z   compression-level: 6
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7110498Z   overwrite: false
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7110935Z   include-hidden-files: false
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7111418Z   archive: true
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7111795Z env:
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7112165Z   NuGetAudit: false
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7112583Z   RIG_MODE: consecutive
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7113134Z   RIG_ONLY: real-onboard-compensate-then-reconnect
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7113777Z   RIG_BATCH_ID: 
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7114194Z   RIG_COMMIT_START_CEILING_GIB: 12
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7115320Z   RIG_COMMIT_WAIT_MINUTES: 30
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7115783Z   RIG_START_DEADLINE_MINUTES: 270
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7116110Z   MSBUILDDISABLENODEREUSE: 1
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7116469Z   DOTNET_CLI_USE_MSBUILD_SERVER: 0
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7116787Z   UseSharedCompilation: false
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7117370Z   RIG_EVIDENCE_ROOT: C:\actions-runner\win11-01-control-server-desktop\_work\_temp\real-rig-35470868194-1
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7117971Z ##[endgroup]
+real-rig	Upload real-rig evidence	2026-09-19T21:38:04.4148433Z With the provided path, there will be 61 files uploaded
+real-rig	Upload real-rig evidence	2026-09-19T21:38:04.4157253Z Artifact name is valid!
+real-rig	Upload real-rig evidence	2026-09-19T21:38:04.4159129Z Root directory input is valid!
+real-rig	Upload real-rig evidence	2026-09-19T21:38:05.3333587Z Uploading artifact: real-rig-evidence.zip
+real-rig	Upload real-rig evidence	2026-09-19T21:38:05.3418391Z Beginning upload of artifact content to blob storage
+real-rig	Upload real-rig evidence	2026-09-19T21:38:07.3211630Z Uploaded bytes 101895
+real-rig	Upload real-rig evidence	2026-09-19T21:38:08.5600119Z Finished uploading artifact content to blob storage!
+real-rig	Upload real-rig evidence	2026-09-19T21:38:08.5609163Z SHA256 digest of uploaded artifact is 6f62eb25f1e8e8670709d186521f8931385655d3e37f97d2093b8e58c105f03b
+real-rig	Upload real-rig evidence	2026-09-19T21:38:08.5611876Z Finalizing artifact upload
+real-rig	Upload real-rig evidence	2026-09-19T21:38:09.5089410Z Artifact real-rig-evidence successfully finalized. Artifact ID 10591809764
+real-rig	Upload real-rig evidence	2026-09-19T21:38:09.5093113Z Artifact real-rig-evidence has been successfully uploaded! Final size is 101895 bytes. Artifact ID is 10591809764
+real-rig	Upload real-rig evidence	2026-09-19T21:38:09.5128414Z Artifact download URL: https://github.com/trytoreachpeak0/8005-agv-control-server/actions/runs/35470868194/artifacts/10591809764
+real-rig	Remove real-rig evidence and stage roots	﻿2026-09-19T21:38:09.5926683Z ##[group]Run Remove-Item -LiteralPath $env:RIG_EVIDENCE_ROOT -Recurse -Force -ErrorAction SilentlyContinue
+real-rig	Remove real-rig evidence and stage roots	2026-09-19T21:38:09.5929379Z ^[[36;1mRemove-Item -LiteralPath $env:RIG_EVIDENCE_ROOT -Recurse -Force -ErrorAction SilentlyContinue^[[0m
+real-rig	Remove real-rig evidence and stage roots	2026-09-19T21:38:09.5982465Z shell: C:\Program Files\PowerShell\7\pwsh.EXE -command ". '{0}'"
+real-rig	Remove real-rig evidence and stage roots	2026-09-19T21:38:09.5983234Z env:
+real-rig	Remove real-rig evidence and stage roots	2026-09-19T21:38:09.5983468Z   NuGetAudit: false
+real-rig	Remove real-rig evidence and stage roots	2026-09-19T21:38:09.5983727Z   RIG_MODE: consecutive
+real-rig	Remove real-rig evidence and stage roots	2026-09-19T21:38:09.5984075Z   RIG_ONLY: real-onboard-compensate-then-reconnect
+real-rig	Remove real-rig evidence and stage roots	2026-09-19T21:38:09.5984458Z   RIG_BATCH_ID: 
+real-rig	Remove real-rig evidence and stage roots	2026-09-19T21:38:09.5984715Z   RIG_COMMIT_START_CEILING_GIB: 12
+real-rig	Remove real-rig evidence and stage roots	2026-09-19T21:38:09.5985028Z   RIG_COMMIT_WAIT_MINUTES: 30
+real-rig	Remove real-rig evidence and stage roots	2026-09-19T21:38:09.5985329Z   RIG_START_DEADLINE_MINUTES: 270
+real-rig	Remove real-rig evidence and stage roots	2026-09-19T21:38:09.5985646Z   MSBUILDDISABLENODEREUSE: 1
+real-rig	Remove real-rig evidence and stage roots	2026-09-19T21:38:09.5985955Z   DOTNET_CLI_USE_MSBUILD_SERVER: 0
+real-rig	Remove real-rig evidence and stage roots	2026-09-19T21:38:09.5986270Z   UseSharedCompilation: false
+real-rig	Remove real-rig evidence and stage roots	2026-09-19T21:38:09.5986859Z   RIG_EVIDENCE_ROOT: C:\actions-runner\win11-01-control-server-desktop\_work\_temp\real-rig-35470868194-1
+real-rig	Remove real-rig evidence and stage roots	2026-09-19T21:38:09.5987502Z ##[endgroup]
+real-rig	Post Run actions/checkout@v7	﻿2026-09-19T21:38:10.4148509Z Post job cleanup.
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:10.5972657Z [command]"C:\Program Files\Git\cmd\git.exe" version
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:10.6597885Z git version 2.55.0.windows.5
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:10.6741078Z Temporarily overriding HOME='C:\actions-runner\win11-01-control-server-desktop\_work\_temp\62636bbd-7581-4fed-8ae2-c85c94a0d36f' before making global git config changes
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:10.6745553Z Adding repository directory to the temporary git global config as a safe directory
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:10.6758241Z [command]"C:\Program Files\Git\cmd\git.exe" config --global --add safe.directory C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\peers\slots-simulator
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:10.7491529Z Removing SSH command configuration
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:10.7524994Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp core\.sshCommand
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:10.8303404Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:12.1093123Z Removing HTTP extra header
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:12.1117800Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:12.1907904Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:13.4607446Z Removing includeIf entries pointing to credentials config files
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:13.4646605Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:13.5365076Z includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/peers/slots-simulator/.git.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:13.5370808Z includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/peers/slots-simulator/.git/worktrees/*.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:13.5374670Z includeif.gitdir:/github/workspace/peers/slots-simulator/.git.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:13.5377112Z includeif.gitdir:/github/workspace/peers/slots-simulator/.git/worktrees/*.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:13.5471880Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get-all includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/peers/slots-simulator/.git.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:13.6296243Z C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-a8a42479-907a-499a-a9a2-1018da7b41f4.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:13.6405406Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/peers/slots-simulator/.git.path C\:\\actions\-runner\\win11\-01\-control\-server\-desktop\\_work\\_temp\\git\-credentials\-a8a42479\-907a\-499a\-a9a2\-1018da7b41f4\.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:13.7343315Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get-all includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/peers/slots-simulator/.git/worktrees/*.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:13.7947762Z C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-a8a42479-907a-499a-a9a2-1018da7b41f4.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:13.8057181Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/peers/slots-simulator/.git/worktrees/*.path C\:\\actions\-runner\\win11\-01\-control\-server\-desktop\\_work\\_temp\\git\-credentials\-a8a42479\-907a\-499a\-a9a2\-1018da7b41f4\.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:13.8782978Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get-all includeif.gitdir:/github/workspace/peers/slots-simulator/.git.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:13.9483089Z /github/runner_temp/git-credentials-a8a42479-907a-499a-a9a2-1018da7b41f4.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:13.9582233Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset includeif.gitdir:/github/workspace/peers/slots-simulator/.git.path \/github\/runner_temp\/git\-credentials\-a8a42479\-907a\-499a\-a9a2\-1018da7b41f4\.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:14.0387999Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get-all includeif.gitdir:/github/workspace/peers/slots-simulator/.git/worktrees/*.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:14.1005978Z /github/runner_temp/git-credentials-a8a42479-907a-499a-a9a2-1018da7b41f4.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:14.1105750Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset includeif.gitdir:/github/workspace/peers/slots-simulator/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-a8a42479\-907a\-499a\-a9a2\-1018da7b41f4\.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:14.1869754Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:15.4502047Z Removing credentials config 'C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-a8a42479-907a-499a-a9a2-1018da7b41f4.config'
+real-rig	Post Run actions/checkout@v7	﻿2026-09-19T21:38:15.5379502Z Post job cleanup.
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:15.7366898Z [command]"C:\Program Files\Git\cmd\git.exe" version
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:15.7872495Z git version 2.55.0.windows.5
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:15.8016997Z Temporarily overriding HOME='C:\actions-runner\win11-01-control-server-desktop\_work\_temp\e7f218c4-9d2a-4648-8957-a8df0cea517b' before making global git config changes
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:15.8020968Z Adding repository directory to the temporary git global config as a safe directory
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:15.8031205Z [command]"C:\Program Files\Git\cmd\git.exe" config --global --add safe.directory C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\peers\8005-agv-onboard-hmi
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:15.8813857Z Removing SSH command configuration
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:15.8843644Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp core\.sshCommand
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:15.9708379Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:17.2362142Z Removing HTTP extra header
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:17.2385869Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:17.3107590Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:18.5311486Z Removing includeIf entries pointing to credentials config files
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:18.5338914Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:18.6117966Z includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/peers/8005-agv-onboard-hmi/.git.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:18.6123610Z includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/peers/8005-agv-onboard-hmi/.git/worktrees/*.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:18.6127703Z includeif.gitdir:/github/workspace/peers/8005-agv-onboard-hmi/.git.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:18.6130431Z includeif.gitdir:/github/workspace/peers/8005-agv-onboard-hmi/.git/worktrees/*.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:18.6219625Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get-all includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/peers/8005-agv-onboard-hmi/.git.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:18.7051333Z C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-2c6ade9b-0543-49cd-9745-dbc417103cb8.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:18.7175461Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/peers/8005-agv-onboard-hmi/.git.path C\:\\actions\-runner\\win11\-01\-control\-server\-desktop\\_work\\_temp\\git\-credentials\-2c6ade9b\-0543\-49cd\-9745\-dbc417103cb8\.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:18.7911694Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get-all includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/peers/8005-agv-onboard-hmi/.git/worktrees/*.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:18.8623602Z C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-2c6ade9b-0543-49cd-9745-dbc417103cb8.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:18.8706898Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/peers/8005-agv-onboard-hmi/.git/worktrees/*.path C\:\\actions\-runner\\win11\-01\-control\-server\-desktop\\_work\\_temp\\git\-credentials\-2c6ade9b\-0543\-49cd\-9745\-dbc417103cb8\.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:18.9596613Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get-all includeif.gitdir:/github/workspace/peers/8005-agv-onboard-hmi/.git.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:19.0279583Z /github/runner_temp/git-credentials-2c6ade9b-0543-49cd-9745-dbc417103cb8.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:19.0378342Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset includeif.gitdir:/github/workspace/peers/8005-agv-onboard-hmi/.git.path \/github\/runner_temp\/git\-credentials\-2c6ade9b\-0543\-49cd\-9745\-dbc417103cb8\.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:19.1165132Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get-all includeif.gitdir:/github/workspace/peers/8005-agv-onboard-hmi/.git/worktrees/*.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:19.1826078Z /github/runner_temp/git-credentials-2c6ade9b-0543-49cd-9745-dbc417103cb8.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:19.1916677Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset includeif.gitdir:/github/workspace/peers/8005-agv-onboard-hmi/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-2c6ade9b\-0543\-49cd\-9745\-dbc417103cb8\.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:19.2660180Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:20.5307232Z Removing credentials config 'C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-2c6ade9b-0543-49cd-9745-dbc417103cb8.config'
+real-rig	Post Run actions/checkout@v7	﻿2026-09-19T21:38:20.6184159Z Post job cleanup.
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:20.8238024Z [command]"C:\Program Files\Git\cmd\git.exe" version
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:20.8956808Z git version 2.55.0.windows.5
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:20.9117610Z Temporarily overriding HOME='C:\actions-runner\win11-01-control-server-desktop\_work\_temp\11e40308-8218-4c86-882f-912f303f4350' before making global git config changes
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:20.9121797Z Adding repository directory to the temporary git global config as a safe directory
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:20.9141258Z [command]"C:\Program Files\Git\cmd\git.exe" config --global --add safe.directory C:\actions-runner\win11-01-control-server-desktop\_work\8005-agv-control-server\8005-agv-control-server\control-server
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:21.0078952Z Removing SSH command configuration
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:21.0111321Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp core\.sshCommand
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:21.0932402Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :\""
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:22.3791899Z Removing HTTP extra header
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:22.3816975Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:22.4707207Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "sh -c \"git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :\""
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:23.6977795Z Removing includeIf entries pointing to credentials config files
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:23.7006220Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --name-only --get-regexp ^includeIf\.gitdir:
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:23.7506155Z includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/control-server/.git.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:23.7511584Z includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/control-server/.git/worktrees/*.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:23.7515326Z includeif.gitdir:/github/workspace/control-server/.git.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:23.7517631Z includeif.gitdir:/github/workspace/control-server/.git/worktrees/*.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:23.7567688Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get-all includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/control-server/.git.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:23.8127900Z C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-8c3eda28-3c06-4e91-9bfc-6182a73f5185.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:23.8224115Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/control-server/.git.path C\:\\actions\-runner\\win11\-01\-control\-server\-desktop\\_work\\_temp\\git\-credentials\-8c3eda28\-3c06\-4e91\-9bfc\-6182a73f5185\.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:23.8986156Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get-all includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/control-server/.git/worktrees/*.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:23.9598006Z C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-8c3eda28-3c06-4e91-9bfc-6182a73f5185.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:23.9692166Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset includeif.gitdir:C:/actions-runner/win11-01-control-server-desktop/_work/8005-agv-control-server/8005-agv-control-server/control-server/.git/worktrees/*.path C\:\\actions\-runner\\win11\-01\-control\-server\-desktop\\_work\\_temp\\git\-credentials\-8c3eda28\-3c06\-4e91\-9bfc\-6182a73f5185\.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:24.0452280Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get-all includeif.gitdir:/github/workspace/control-server/.git.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:24.1072671Z /github/runner_temp/git-credentials-8c3eda28-3c06-4e91-9bfc-6182a73f5185.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:24.1166576Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset includeif.gitdir:/github/workspace/control-server/.git.path \/github\/runner_temp\/git\-credentials\-8c3eda28\-3c06\-4e91\-9bfc\-6182a73f5185\.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:24.1825044Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --get-all includeif.gitdir:/github/workspace/control-server/.git/worktrees/*.path
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:24.2432503Z /github/runner_temp/git-credentials-8c3eda28-3c06-4e91-9bfc-6182a73f5185.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:24.2530645Z [command]"C:\Program Files\Git\cmd\git.exe" config --local --unset includeif.gitdir:/github/workspace/control-server/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-8c3eda28\-3c06\-4e91\-9bfc\-6182a73f5185\.config
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:24.3327157Z [command]"C:\Program Files\Git\cmd\git.exe" submodule foreach --recursive "git config --local --show-origin --name-only --get-regexp remote.origin.url"
+real-rig	Post Run actions/checkout@v7	2026-09-19T21:38:25.5285443Z Removing credentials config 'C:\actions-runner\win11-01-control-server-desktop\_work\_temp\git-credentials-8c3eda28-3c06-4e91-9bfc-6182a73f5185.config'
+real-rig	Complete job	﻿2026-09-19T21:38:25.5705698Z Cleaning up orphan processes
