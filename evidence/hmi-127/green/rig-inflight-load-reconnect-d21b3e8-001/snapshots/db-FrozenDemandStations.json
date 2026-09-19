@@ -1,0 +1,22 @@
+[
+  {
+    "DemandId": "f34de5f5-b33c-4269-91aa-3be545f55ecf",
+    "Role": "Pickup",
+    "TransportDemandKey": "L2-CS189-20260919T115258443Z|WIRE_TO_GATE",
+    "MapId": 25,
+    "StationId": 12,
+    "StationName": "N1-3_N1-7",
+    "CatalogRevision": 1017238931678627222,
+    "FrozenAt": "2026-09-19 11:53:34.2786497+00:00"
+  },
+  {
+    "DemandId": "f34de5f5-b33c-4269-91aa-3be545f55ecf",
+    "Role": "Dropoff",
+    "TransportDemandKey": "L2-CS189-20260919T115258443Z|WIRE_TO_GATE",
+    "MapId": 25,
+    "StationId": 210,
+    "StationName": "关卡",
+    "CatalogRevision": 1017238931678627222,
+    "FrozenAt": "2026-09-19 11:53:34.2786497+00:00"
+  }
+]

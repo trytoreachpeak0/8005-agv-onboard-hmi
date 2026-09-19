@@ -383,6 +383,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
 
         public FakeControlServer Server { get; }
 
+        /// <summary>What the vehicle logged, for a test whose assertion is about a warning.</summary>
+        public RecordingLogger Logger { get; private init; } = null!;
+
         public FakeIoModuleClient Io { get; }
 
         public WireToGateBusinessService Business { get; }
@@ -470,7 +473,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
                     "W2G_G2_DEADLINE_PROOF",
                     "MAINTENANCE_ADMINISTRATOR",
                     "CONFIGURED_PROOF"));
-            Harness harness = new(server, io, session, business, journal, alarmBoard);
+            Harness harness = new(server, io, session, business, journal, alarmBoard) { Logger = logger };
             // Before Start, so an observer sees the command's very first progress report.
             observe?.Invoke(business);
             // Also before Start: a handler on the session runs ahead of the business service's own.
@@ -566,6 +569,14 @@ public sealed partial class StationDeadlineExpiredG2Tests
             string line = Assert.Single(
                 Server.ReceivedEnvelopes,
                 envelope => envelope.MessageType == messageType).WireLine;
+            using JsonDocument document = JsonDocument.Parse(line);
+            return document.RootElement.GetProperty("payload").Clone();
+        }
+
+        /// <summary>The payload of the first <paramref name="messageType"/> received, for one that may be resent.</summary>
+        public JsonElement FirstResult(string messageType)
+        {
+            string line = Server.ReceivedEnvelopes.First(envelope => envelope.MessageType == messageType).WireLine;
             using JsonDocument document = JsonDocument.Parse(line);
             return document.RootElement.GetProperty("payload").Clone();
         }

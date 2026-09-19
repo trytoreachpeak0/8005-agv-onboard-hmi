@@ -1,0 +1,29 @@
+  Determining projects to restore...
+  Restored C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red-hmi127-8005-agv-onboard-hmi\tools\SQCD.Agv.RuleMock\SQCD.Agv.RuleMock.csproj (in 114 ms).
+  Restored C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red-hmi127-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\SQCD.Agv.UnitTests.csproj (in 353 ms).
+  5 of 7 projects are up-to-date for restore.
+  SQCD.Agv.Core -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red-hmi127-8005-agv-onboard-hmi\src\SQCD.Agv.Core\bin\Debug\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Contracts -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red-hmi127-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Debug\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Application -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red-hmi127-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Debug\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.Infrastructure -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red-hmi127-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Debug\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.AutomationHost -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red-hmi127-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Debug\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.RuleMock -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red-hmi127-8005-agv-onboard-hmi\tools\SQCD.Agv.RuleMock\bin\Debug\net8.0\win-x64\SQCD.Agv.RuleMock.dll
+  SQCD.Agv.UnitTests -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red-hmi127-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red-hmi127-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:01.64]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorResultRecordRaceTests.RecordingALateResultNeverClearsTheNextOperationThatStartedInBetween [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorResultRecordRaceTests.RecordingALateResultNeverClearsTheNextOperationThatStartedInBetween [186 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+Expected: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+Actual:   null
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorResultRecordRaceTests.RecordingALateResultNeverClearsTheNextOperationThatStartedInBetween() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red-hmi127-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorResultRecordRaceTests.cs:line 63
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorResultRecordRaceTests.RecordingALateResultNeverClearsTheNextOperationThatStartedInBetween() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red-hmi127-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorResultRecordRaceTests.cs:line 65
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorResultRecordRaceTests.RecordingALateResultNeverClearsTheNextOperationThatStartedInBetween() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red-hmi127-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorResultRecordRaceTests.cs:line 65
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 215 ms - SQCD.Agv.UnitTests.dll (net8.0)

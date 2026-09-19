@@ -1,0 +1,6 @@
+Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAttemptRefusedWhileRecoveryRequiredStillGetsItsResultOutWhenReissued [10 s]
+  Error Message:
+   Timed out after 10s waiting for: the reissued load's result on the server and the load settled
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。
+OPERATION_PROGRESS: 1号仓操作完成，正在上报结果。
+（测试提交时产品代码 = 1c883a7：拒绝与结果共用 messageId=attempt，发件箱 MessageId UNIQUE，结果存不进去；门已开过一次）

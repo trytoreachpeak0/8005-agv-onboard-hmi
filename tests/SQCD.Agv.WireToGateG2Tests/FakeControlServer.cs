@@ -66,6 +66,13 @@ public sealed class FakeControlServer : IAsyncDisposable
     public int OperationResultAcksToDrop { get; set; }
 
     /// <summary>
+    /// Answers every <c>OperationResult</c> that is not dropped by <see cref="OperationResultAcksToDrop"/> with a
+    /// <c>ProtocolProblem</c>, the connection left open: the vehicle's resend of an unacknowledged result then fails
+    /// with <c>InvalidDataException</c> rather than a timeout (onboard-hmi#127 review).
+    /// </summary>
+    public bool AnswerOperationResultsWithProtocolProblem { get; set; }
+
+    /// <summary>
     /// Whether a mid-session <c>SafetyStateChanged</c> is answered at all. Off, it is taken and left unanswered with
     /// the connection open: the vehicle republishes its session state only once such a change is acknowledged, so
     /// this keeps every session state change after the handshake's readiness out of a test that must not lean on
@@ -91,6 +98,23 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// readiness announced on a business ack the vehicle is already awaiting -- had no coverage.
     /// </summary>
     public bool SendRecoveryRequiredReadinessAfterOperationResultAck { get; set; }
+
+    /// <summary>
+    /// Holds the handshake's readiness at RECOVERY_REQUIRED while the RecoveryStateReport names an unsettled
+    /// attempt this double has never acknowledged a result for, and announces READY on the ack of that result --
+    /// what the real ControlServer does with PENDING_FACT_RECONCILIATION_REQUIRED (control-server#189). Nothing
+    /// else is sent after a held readiness: the real server pushes no journey while the session is not ready.
+    /// </summary>
+    public bool HoldReadinessForUnreconciledAttempt { get; set; }
+
+    /// <summary>
+    /// Answers the handshake with RECOVERY_REQUIRED and still sends whatever follows it, such as a
+    /// <c>SlotOperationCommand</c>: the readiness flip race in which a command meets a session that is not ready.
+    /// </summary>
+    public bool ForceRecoveryRequiredReadiness { get; set; }
+
+    private readonly HashSet<string> _acknowledgedResultAttempts = new(StringComparer.Ordinal);
+    private string? _heldAttempt;
 
     public bool RequireSafeSafetyForReadiness { get; set; }
 
@@ -999,6 +1023,13 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "OperationResult" when OperationResultAcksToDrop > 0:
                         OperationResultAcksToDrop--;
                         break;
+                    case "OperationResult" when AnswerOperationResultsWithProtocolProblem:
+                        await WriteEnvelopeAsync(context, CreateProtocolProblem(
+                            context,
+                            messageId,
+                            messageType,
+                            "MESSAGE_ID_CONTENT_CONFLICT")).ConfigureAwait(false);
+                        break;
                     case "OperationResult":
                         if (DropBeforeOperationResultAck)
                         {
@@ -1012,6 +1043,24 @@ public sealed class FakeControlServer : IAsyncDisposable
                             await WriteEnvelopeAsync(
                                 context,
                                 CreateRecoveryRequiredSessionReadiness(context)).ConfigureAwait(false);
+                        }
+
+                        string resultAttempt = root.GetProperty("payload")
+                            .GetProperty("slotOperationAttemptId").GetString()!;
+                        bool reconciled;
+                        lock (_sync)
+                        {
+                            _acknowledgedResultAttempts.Add(resultAttempt);
+                            reconciled = string.Equals(_heldAttempt, resultAttempt, StringComparison.Ordinal);
+                            if (reconciled)
+                            {
+                                _heldAttempt = null;
+                            }
+                        }
+
+                        if (reconciled)
+                        {
+                            await WriteEnvelopeAsync(context, CreateSessionReadiness(context)).ConfigureAwait(false);
                         }
 
                         break;
@@ -1338,16 +1387,33 @@ public sealed class FakeControlServer : IAsyncDisposable
 
         bool drop;
         bool sendReadiness;
+        bool hold = false;
+        JsonElement reported = report.GetProperty("payload").GetProperty("unsettledSlotOperationAttemptId");
         lock (_sync)
         {
             _recoveryAckCount++;
             sendReadiness = SendReadinessAfterRecoveryAck && _recoveryAckCount == 1;
             drop = DropAfterRecoveryAck;
+            if (HoldReadinessForUnreconciledAttempt
+                && reported.ValueKind == JsonValueKind.String
+                && !_acknowledgedResultAttempts.Contains(reported.GetString()!))
+            {
+                _heldAttempt = reported.GetString();
+                hold = true;
+            }
         }
 
-        if (sendReadiness)
+        if (sendReadiness && hold)
         {
-            await WriteEnvelopeAsync(context, CreateSessionReadiness(context)).ConfigureAwait(false);
+            await WriteEnvelopeAsync(context, CreateRecoveryRequiredSessionReadiness(context)).ConfigureAwait(false);
+        }
+        else if (sendReadiness)
+        {
+            await WriteEnvelopeAsync(
+                context,
+                ForceRecoveryRequiredReadiness
+                    ? CreateRecoveryRequiredSessionReadiness(context)
+                    : CreateSessionReadiness(context)).ConfigureAwait(false);
             bool sendDemandSnapshots = SendDemandAcceptanceSnapshotsAfterRecovery;
             if (sendDemandSnapshots && SendDemandAcceptanceSnapshotsOnlyFirstConnection)
             {
@@ -1860,6 +1926,13 @@ public sealed class FakeControlServer : IAsyncDisposable
         bool ready;
         lock (_sync)
         {
+            // A held attempt keeps every readiness this double announces at RECOVERY_REQUIRED, the mid-session ones
+            // that answer a safety change included: only its result reconciles it, as on the real server.
+            if (_heldAttempt is not null)
+            {
+                return CreateRecoveryRequiredSessionReadiness(context);
+            }
+
             ready = !RequireSafeSafetyForReadiness || _latestSafetyDepartureSafe;
         }
 

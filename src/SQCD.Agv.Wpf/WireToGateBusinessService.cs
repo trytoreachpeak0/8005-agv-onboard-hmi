@@ -764,8 +764,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         TakenOver,
 
         /// <summary>
-        /// Finished: a COMPLETED result is in the durable outbox and only its DurableAck is outstanding. Not
-        /// restored as unfinished -- the handshake replays the result (onboard-hmi#124).
+        /// Finished: a COMPLETED result is in the durable outbox and only its DurableAck is outstanding, and sending
+        /// it once more did not get one either (or no session could take it). Not restored as unfinished -- the
+        /// handshake replays the result (onboard-hmi#124, onboard-hmi#127).
         /// </summary>
         ResultAwaitingAck,
 
@@ -785,13 +786,30 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         WireToGateRecoveryOperationContext context,
         CancellationToken cancellationToken)
     {
-        await _executor.MarkResultRecordedAsync(context.SlotOperationAttemptId, cancellationToken)
-            .ConfigureAwait(false);
+        try
+        {
+            await _executor.MarkResultRecordedAsync(context.SlotOperationAttemptId, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (InvalidDataException exception) when (exception.Message == "SLOT_OPERATION_CONFLICT")
+        {
+            // The server holds this result, but the journal has moved on to the next operation since the attempt
+            // was read -- that operation's command came in the meantime. Its record is not this one's to touch,
+            // and the HMI shows that operation now, not this one's completion (onboard-hmi#127).
+            WireToGateRecoveryState current = await ReadRecoveryStateCachedAsync(cancellationToken)
+                .ConfigureAwait(false);
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"迟到的DurableAck已取得，但日志里未结算的已是另一次仓位操作，不再补记本次结果：attempt={context.SlotOperationAttemptId}，当前未结算attempt={current.UnsettledSlotOperationAttemptId ?? "无"}。");
+            return;
+        }
+
         await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
         _logger.Write(
             LogSeverity.Information,
             nameof(WireToGateBusinessService),
-            $"迟到的DurableAck已由重连补发取得，补记已完成的仓位操作结果：attempt={context.SlotOperationAttemptId}。");
+            $"迟到的DurableAck已取得（重连补发或重发），补记已完成的仓位操作结果：attempt={context.SlotOperationAttemptId}。");
         PublishOperatorEvent(
             $"operation-result:{context.SlotOperationAttemptId}:COMPLETED",
             "OPERATION_COMPLETED",
@@ -803,6 +821,50 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 WireToGateHmiOperationStage.Completed,
                 "操作完成。",
                 _clock.Now.ToUniversalTime()));
+    }
+
+    /// <summary>
+    /// Sends a result that is on file but unacknowledged once more, exactly as stored, when the session can take it.
+    /// True once its row is acknowledged -- by this send, or meanwhile by a handshake replay.
+    /// </summary>
+    private async Task<bool> TryResendUnacknowledgedResultAsync(
+        WireToGateRecoveryOperationContext context,
+        string resultKey,
+        CancellationToken cancellationToken)
+    {
+        if (_session.Current.Readiness is not (WireToGateSessionReadiness.Ready
+            or WireToGateSessionReadiness.RecoveryRequired))
+        {
+            return false;
+        }
+
+        try
+        {
+            await _session.ResendOperationResultAsync(resultKey, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        // InvalidDataException too: a ProtocolProblem answer, or an outbox row a concurrent handshake rebound. Let
+        // through, it would skip the restore's recovery projection -- the recovery entry vanishing, as in
+        // onboard-hmi#109 -- where before this resend existed the entry always appeared (PR #131 review).
+        catch (Exception exception) when (
+            exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
+        {
+            // A reconnect during the wait may have replayed and acknowledged the row already; its readiness found
+            // this attempt claimed, so the recording falls to this call.
+            if (await _session.Journal
+                    .ReadOutgoingByDeduplicationKeyAsync(resultKey, cancellationToken)
+                    .ConfigureAwait(false) is { Acknowledged: true })
+            {
+                return true;
+            }
+
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"OperationResult重发一次后仍未收到DurableAck，等待下一次握手补发：attempt={context.SlotOperationAttemptId}。",
+                exception);
+            return false;
+        }
     }
 
     /// <summary>Whether a durable <c>OperationResult</c> reports the operation <c>COMPLETED</c>.</summary>
@@ -867,18 +929,35 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     .ReadOutgoingByDeduplicationKeyAsync(resultKey, cancellationToken)
                     .ConfigureAwait(false) is { } sent)
             {
-                // FAILED and UNKNOWN stay unfinished until an administrator recovers them.
+                // FAILED and UNKNOWN stay unfinished until an administrator recovers them. One the server has not
+                // acknowledged yet is still sent once more, as below: it is what the server waits for to reconcile
+                // the session, and one put on file mid-handshake missed that handshake's replay (onboard-hmi#127).
                 if (!IsCompletedOperationResult(sent))
                 {
+                    if (!sent.Acknowledged)
+                    {
+                        _ = await TryResendUnacknowledgedResultAsync(context, resultKey, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
                     return InterruptedOperationSettlement.NotSettled;
                 }
 
                 // A COMPLETED result whose DurableAck has not come back is finished work, not an unfinished
-                // operation: the handshake replays it under the same messageId, and until then the HMI keeps
-                // the RESULT_ACK_PENDING prompt its sender published (onboard-hmi#124).
+                // operation (onboard-hmi#124). While a session can take it, it is sent once more under the same
+                // key and messageId: an ack lost with the link still up has nothing else to send it before the next
+                // handshake, and a result put on file mid-handshake missed that handshake's replay (onboard-hmi#127).
+                // Otherwise the handshake replays it, and until then the HMI keeps the RESULT_ACK_PENDING prompt.
                 if (!sent.Acknowledged)
                 {
-                    return InterruptedOperationSettlement.ResultAwaitingAck;
+                    if (!await TryResendUnacknowledgedResultAsync(context, resultKey, cancellationToken)
+                            .ConfigureAwait(false))
+                    {
+                        return InterruptedOperationSettlement.ResultAwaitingAck;
+                    }
+
+                    await RecordAcknowledgedCompletedResultAsync(context, cancellationToken).ConfigureAwait(false);
+                    return InterruptedOperationSettlement.TakenOver;
                 }
 
                 // Acknowledged since -- by the handshake's replay, which runs before the readiness that brought
@@ -1778,6 +1857,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         }
 
         bool restoreAfterRelease = false;
+        bool resultUnacknowledged = false;
         try
         {
             if (await IsAttemptTakenOverAsync(command, cancellationToken).ConfigureAwait(false))
@@ -1885,7 +1965,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         cancellationToken).ConfigureAwait(false);
                 }
 
-                await _session.SendOperationResultAsync(
+                // The send path that allows RecoveryRequired, as the interrupted settlement uses: after a reconnect
+                // mid-load the new session is RecoveryRequired precisely because this attempt is unsettled, and the
+                // server grants READY only once this result arrives (ADR-cross-0028 "result replay", ADR-cross-0029
+                // step 4; onboard-hmi#127). Same key and messageId as that path, so it is the same message.
+                await _session.SendRecoveryOperationResultAsync(
                     operationDeduplicationKey,
                     command.SlotOperationAttemptId,
                     payload,
@@ -1921,17 +2005,19 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             }
             catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
             {
-                // On a timeout or an IO failure the result is already in the durable outbox and a reconnect
-                // replays the same messageId/content. On WIRE_TO_GATE_NOT_READY (InvalidOperationException) the
-                // session was not Ready and nothing was written: there is no result to replay, and the attempt stays
-                // the journal's unsettled one for the next restore to settle from the live IO. Whether a result
-                // only waits for its ack is read from the outbox, never from having landed here (onboard-hmi#124).
+                // The result is in the durable outbox whichever way this failed: a timeout or an IO failure came after
+                // it was written, and WIRE_TO_GATE_NOT_READY (InvalidOperationException) -- the session down or still
+                // in its handshake -- writes it before refusing (durableBeforeSend, onboard-hmi#127). The next
+                // handshake replays the same messageId/content. Whether a result only waits for its ack is still read
+                // from the outbox, never from having landed here (onboard-hmi#124): an IO failure of the journal
+                // itself leaves no row, and then the next restore settles the attempt from the live IO.
                 // Either way, never execute the physical operation again.
                 _logger.Write(
                     LogSeverity.Warning,
                     nameof(WireToGateBusinessService),
                     $"OperationResult暂未收到DurableAck：attempt={command.SlotOperationAttemptId}。",
                     exception);
+                resultUnacknowledged = true;
                 PublishOperatorEvent(
                     $"operation-result-pending:{command.SlotOperationAttemptId}",
                     "RESULT_ACK_PENDING",
@@ -1954,7 +2040,15 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 _operationAttempts.Remove(command.SlotOperationAttemptId);
             }
 
-            if (restoreAfterRelease)
+            // A result left unacknowledged while a session is up -- its ack lost with the link intact, or
+            // the handshake that brought the session up already past its replay -- would otherwise wait for the next
+            // session state change to be sent again. The restore sends it once more under the same messageId, after
+            // this claim is released so that it is not InFlight to itself (onboard-hmi#127). A session that is down
+            // gets it from the next handshake, whose readiness runs the restore anyway.
+            if (restoreAfterRelease
+                || resultUnacknowledged
+                    && _session.Current.Readiness is WireToGateSessionReadiness.Ready
+                        or WireToGateSessionReadiness.RecoveryRequired)
             {
                 TrackTask(RestorePendingRecoveryOperationProjectionAsync(_stopping.Token));
             }
@@ -2211,10 +2305,15 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             new WireToGateProblemPayload(reasonCode, null, null),
             _session.Current.CapabilityVersion,
             null);
-        await _session.SendDurableAsync(
-            "SlotOperationCommandRejected",
-            $"slot-operation-rejected:{command.SlotOperationAttemptId}:{reasonCode}",
-            command.SlotOperationAttemptId,
+        // Called only while the session is not Ready, so it takes the send path that allows RecoveryRequired
+        // (onboard-hmi#127); the Ready-only path could never send it. Now that it is actually written, its messageId
+        // is derived from its own key, as the resume rejection's is: the attempt id is the OperationResult's
+        // messageId, the outbox holds one row per messageId, and a rejection holding it would keep the result of
+        // the same attempt, issued again once the session is ready, out of the outbox for good.
+        string deduplicationKey = $"slot-operation-rejected:{command.SlotOperationAttemptId}:{reasonCode}";
+        await _session.SendSlotOperationRejectedAsync(
+            deduplicationKey,
+            StableUuid(deduplicationKey),
             command.MessageId,
             payload,
             cancellationToken).ConfigureAwait(false);

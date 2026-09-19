@@ -1,0 +1,10 @@
+{"timestampUtc":"2026-09-19T11:49:42.0724537Z","kind":"run.started","data":{"runId":"20260919T114942007Z","hmiRoot":"C:\\Users\\szy\\Desktop\\8005-workspace-v2\\worktrees\\hmi127-8005-agv-onboard-hmi","evidenceType":"ONBOARD_HMI_LOCAL_G2","selectedTestCount":null,"integrationSliceId":"","protocolRoot":"C:/Users/szy/Desktop/8005-workspace-v2/repos/8005-agv-protocol"}}
+{"timestampUtc":"2026-09-19T11:49:42.3354065Z","kind":"protocol.g1.skipped","data":{"reason":"SkipProtocolG1"}}
+{"timestampUtc":"2026-09-19T11:49:42.3556754Z","kind":"command.started","data":{"arguments":["build",".\\SQCD_8005AGV.sln","-c","Release"],"name":"dotnet-build-release"}}
+{"timestampUtc":"2026-09-19T11:49:51.8428773Z","kind":"command.completed","data":{"exitCode":0,"name":"dotnet-build-release","log":"dotnet-build-release.log"}}
+{"timestampUtc":"2026-09-19T11:49:51.8484379Z","kind":"command.started","data":{"arguments":["test",".\\SQCD_8005AGV.sln","-c","Release","--no-build","--results-directory","C:\\Users\\szy\\AppData\\Local\\Temp\\claude\\hmi127\\g2-local\\protocol-v2.0.0\\20260919T114942007Z-d21b3e80df90\\test-results"],"name":"dotnet-test-release"}}
+{"timestampUtc":"2026-09-19T11:51:34.2720770Z","kind":"command.completed","data":{"exitCode":0,"name":"dotnet-test-release","log":"dotnet-test-release.log"}}
+{"timestampUtc":"2026-09-19T11:51:34.2857023Z","kind":"command.started","data":{"arguments":["format",".\\SQCD_8005AGV.sln","--verify-no-changes","--no-restore"],"name":"dotnet-format-verify"}}
+{"timestampUtc":"2026-09-19T11:52:05.0267575Z","kind":"command.completed","data":{"exitCode":0,"name":"dotnet-format-verify","log":"dotnet-format-verify.log"}}
+{"timestampUtc":"2026-09-19T11:52:05.0579144Z","kind":"evidence.journal.bound","data":{"hmiStatus":"PASS","protocolCommit":"86575456c847041515b7b75e8851a00e0d939804","hmiCommit":"d21b3e80df903bee47fbb3243081350a17f8dd7d","g1Status":"SKIPPED"}}
+{"timestampUtc":"2026-09-19T11:52:05.2096344Z","kind":"run.completed","data":{"failures":0,"status":"PASS"}}

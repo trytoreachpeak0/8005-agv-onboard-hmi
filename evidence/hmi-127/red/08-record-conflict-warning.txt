@@ -1,0 +1,5 @@
+Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALateAckForAnAttemptTheJournalHasMovedPastIsLoggedForWhatItIs [12 s]
+  Error Message:
+   Timed out after 10s waiting for: a warning naming both the late attempt and the one the journal moved on to
+OperationResult暂未收到DurableAck：attempt=44444444-4444-4444-4444-444444444444。
+恢复未完成仓位操作的界面投影失败，保持恢复入口关闭。

@@ -64,6 +64,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     private string? _journalEpoch;
     private long _acceptedCapabilityVersion;
     private long _acceptedSafetyStateVersion;
+
+    // The generation of the last session this client had, for a message put on file while none is up: the envelope
+    // needs one to be valid, and the handshake rebinds it to its own before replaying it (onboard-hmi#127).
+    private long _lastSessionGeneration;
     private bool _disposed;
 
     public WireToGateSessionClient(
@@ -267,6 +271,40 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             cancellationToken);
 
     /// <summary>
+    /// Sends the <c>OperationResult</c> already on file under <paramref name="deduplicationKey"/> once more, exactly
+    /// as stored -- same messageId, correlation and payload -- and waits for its <c>DurableAck</c>. For a result whose
+    /// ack was lost while the link stayed up: nothing else would send it before the next handshake
+    /// (onboard-hmi#127). Allowed while RECOVERY_REQUIRED, like every other way this result is sent.
+    /// </summary>
+    public async Task<string> ResendOperationResultAsync(
+        string deduplicationKey,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        WireToGateDurableMessage stored = await _journal
+            .ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidDataException("DURABLE_OUTBOX_ROW_MISSING");
+        WireToGateEnvelope envelope = WireToGateProtocolSerializer.DeserializeAndValidate(
+            stored.WireLine.TrimEnd('\r', '\n'),
+            _options.AgvId);
+        if (!string.Equals(stored.MessageType, "OperationResult", StringComparison.Ordinal)
+            || !string.Equals(envelope.MessageType, "OperationResult", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("DURABLE_OUTBOX_CONTENT_MISMATCH");
+        }
+
+        return await SendDurableCoreAsync(
+            "OperationResult",
+            deduplicationKey,
+            stored.MessageId,
+            envelope.CorrelationId,
+            envelope.Payload,
+            allowRecoveryRequired: true,
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Refuses a <c>SlotOperationResumeCommand</c> the vehicle stopped before any door IO. A resume
     /// only ever arrives while the session is RECOVERY_REQUIRED, so the answer has to be sendable
     /// there too (8005-agv-onboard-hmi#119).
@@ -282,6 +320,27 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             deduplicationKey,
             messageId,
             resumeCommandMessageId,
+            payload,
+            allowRecoveryRequired: true,
+            cancellationToken);
+
+    /// <summary>
+    /// Refuses an original <c>SlotOperationCommand</c>. The vehicle refuses one exactly when its session is not
+    /// Ready, so the answer has to be sendable while RECOVERY_REQUIRED, as the resume refusal above is
+    /// (onboard-hmi#127). The server sends no new slot operation while not ready (ADR-cross-0028); this is the
+    /// readiness flip race.
+    /// </summary>
+    public Task<string> SendSlotOperationRejectedAsync(
+        string deduplicationKey,
+        string messageId,
+        string commandMessageId,
+        SlotOperationCommandRejectedPayload payload,
+        CancellationToken cancellationToken = default) =>
+        SendDurableCoreAsync(
+            "SlotOperationCommandRejected",
+            deduplicationKey,
+            messageId,
+            commandMessageId,
             payload,
             allowRecoveryRequired: true,
             cancellationToken);
@@ -959,66 +1018,36 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             || current.SessionGeneration is null
             || !readinessAllowed)
         {
+            // An OperationResult is put on file even when it cannot go out now (durableBeforeSend): a load that
+            // ends while the session is down or mid-handshake is replayed by the next handshake under the same
+            // messageId (ADR-cross-0029 step 4), instead of being lost and settled again from the live IO
+            // (onboard-hmi#127). Only OperationResult: SafetyStateChanged and the other durable messages keep
+            // their own replay behaviour.
+            if (string.Equals(messageType, "OperationResult", StringComparison.Ordinal))
+            {
+                await StoreDurableAsync(
+                    messageType,
+                    deduplicationKey,
+                    messageId,
+                    correlationId,
+                    payload,
+                    current.SessionGeneration ?? Volatile.Read(ref _lastSessionGeneration),
+                    rebind: false,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
             throw new InvalidOperationException("WIRE_TO_GATE_NOT_READY");
         }
 
-        WireToGateDurableMessage? existing = await _journal
-            .ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken)
-            .ConfigureAwait(false);
-        WireToGateDurableMessage stored;
-        if (existing is not null)
-        {
-            WireToGateEnvelope existingEnvelope = WireToGateProtocolSerializer.DeserializeAndValidate(
-                existing.WireLine.TrimEnd('\r', '\n'),
-                _options.AgvId);
-            WireToGateEnvelope candidateEnvelope = WireToGateProtocolSerializer.Create(
-                messageType,
-                messageId,
-                correlationId,
-                _options.AgvId,
-                current.SessionGeneration,
-                existingEnvelope.SentAt,
-                payload);
-            if (existing.MessageType != messageType
-                || existing.MessageId != messageId
-                || existingEnvelope.MessageType != messageType
-                || existingEnvelope.MessageId != messageId
-                || existingEnvelope.CorrelationId != correlationId
-                || !JsonNode.DeepEquals(
-                    JsonNode.Parse(existingEnvelope.Payload.GetRawText()),
-                    JsonNode.Parse(candidateEnvelope.Payload.GetRawText())))
-            {
-                throw new InvalidDataException("BUSINESS_ID_CONTENT_CONFLICT");
-            }
-
-            stored = await RebindDurableMessageForSessionAsync(
-                existing,
-                current.SessionGeneration.Value,
-                cancellationToken).ConfigureAwait(false);
-        }
-        else
-        {
-            WireToGateEnvelope envelope = WireToGateProtocolSerializer.Create(
-                messageType,
-                messageId,
-                correlationId,
-                _options.AgvId,
-                current.SessionGeneration,
-                _clock.Now.ToUniversalTime(),
-                payload);
-            string contentSha256 = WireToGateProtocolSerializer.ComputeContentSha256(envelope);
-            WireToGateDurableMessage durable = new(
-                deduplicationKey,
-                messageType,
-                messageId,
-                contentSha256,
-                WireToGateProtocolSerializer.SerializeLine(envelope),
-                _clock.Now.ToUniversalTime(),
-                false);
-            stored = await _journal
-                .SaveOutgoingBeforeSendAsync(durable, cancellationToken)
-                .ConfigureAwait(false);
-        }
+        WireToGateDurableMessage stored = await StoreDurableAsync(
+            messageType,
+            deduplicationKey,
+            messageId,
+            correlationId,
+            payload,
+            current.SessionGeneration,
+            rebind: true,
+            cancellationToken).ConfigureAwait(false);
 
         // A previously acknowledged business key is already complete.  Returning
         // here is important for UI retries: a retry must not create another side
@@ -1062,6 +1091,80 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         {
             _responseWaiters.TryRemove(stored.MessageId, out _);
         }
+    }
+
+    /// <summary>
+    /// The outbox row for a durable message: the one already on file under this key, content-checked against
+    /// the candidate (and rebound to <paramref name="generation"/> when <paramref name="rebind"/>), or a new one.
+    /// </summary>
+    /// <remarks>
+    /// A new row is stamped with the generation at hand; the handshake rebinds every pending row to its own
+    /// generation before replaying it.
+    /// </remarks>
+    private async Task<WireToGateDurableMessage> StoreDurableAsync(
+        string messageType,
+        string deduplicationKey,
+        string messageId,
+        string? correlationId,
+        object payload,
+        long? generation,
+        bool rebind,
+        CancellationToken cancellationToken)
+    {
+        WireToGateDurableMessage? existing = await _journal
+            .ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken)
+            .ConfigureAwait(false);
+        if (existing is not null)
+        {
+            WireToGateEnvelope existingEnvelope = WireToGateProtocolSerializer.DeserializeAndValidate(
+                existing.WireLine.TrimEnd('\r', '\n'),
+                _options.AgvId);
+            WireToGateEnvelope candidateEnvelope = WireToGateProtocolSerializer.Create(
+                messageType,
+                messageId,
+                correlationId,
+                _options.AgvId,
+                generation,
+                existingEnvelope.SentAt,
+                payload);
+            if (existing.MessageType != messageType
+                || existing.MessageId != messageId
+                || existingEnvelope.MessageType != messageType
+                || existingEnvelope.MessageId != messageId
+                || existingEnvelope.CorrelationId != correlationId
+                || !JsonNode.DeepEquals(
+                    JsonNode.Parse(existingEnvelope.Payload.GetRawText()),
+                    JsonNode.Parse(candidateEnvelope.Payload.GetRawText())))
+            {
+                throw new InvalidDataException("BUSINESS_ID_CONTENT_CONFLICT");
+            }
+
+            return rebind && generation is long current
+                ? await RebindDurableMessageForSessionAsync(existing, current, cancellationToken)
+                    .ConfigureAwait(false)
+                : existing;
+        }
+
+        WireToGateEnvelope envelope = WireToGateProtocolSerializer.Create(
+            messageType,
+            messageId,
+            correlationId,
+            _options.AgvId,
+            generation,
+            _clock.Now.ToUniversalTime(),
+            payload);
+        string contentSha256 = WireToGateProtocolSerializer.ComputeContentSha256(envelope);
+        WireToGateDurableMessage durable = new(
+            deduplicationKey,
+            messageType,
+            messageId,
+            contentSha256,
+            WireToGateProtocolSerializer.SerializeLine(envelope),
+            _clock.Now.ToUniversalTime(),
+            false);
+        return await _journal
+            .SaveOutgoingBeforeSendAsync(durable, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async Task DisconnectAsync()
@@ -3379,6 +3482,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             Volatile.Read(ref _acceptedSafetyStateVersion),
             _clock.Now);
         Volatile.Write(ref _current, snapshot);
+        if (generation is long current)
+        {
+            Volatile.Write(ref _lastSessionGeneration, current);
+        }
+
         StateChanged?.Invoke(this, new ValueChangedEventArgs<WireToGateSessionSnapshot>(snapshot));
     }
 

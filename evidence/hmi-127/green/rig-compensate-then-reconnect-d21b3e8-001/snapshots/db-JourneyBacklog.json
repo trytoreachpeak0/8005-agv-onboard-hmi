@@ -1,0 +1,22 @@
+[
+  {
+    "DemandId": "385d40bf-91cb-4d47-ace6-afa61ea5ab52",
+    "TransportDemandKey": "L2-CR-20260919T115356280Z|WIRE_TO_GATE",
+    "FirstSeenAt": "2026-09-19 11:54:18.7594913+00:00",
+    "DemandCreatedAt": "2026-09-19 11:44:18.2269136+00:00",
+    "DecisionFingerprint": "6d93968bcad46ed5466d486fa851f6a89687fb2c2762a0634eb10355affdfbbc",
+    "ReasonCode": "DEMAND_ALREADY_ACCEPTED",
+    "LastSeenAt": "2026-09-19 11:54:36.757124+00:00",
+    "AcceptedAt": "2026-09-19 11:54:19.0379319+00:00"
+  },
+  {
+    "DemandId": "5233a527-472e-4587-bb01-dfa362da409d",
+    "TransportDemandKey": "L2-CR-20260919T115356280Z-NEXT|WIRE_TO_GATE",
+    "FirstSeenAt": "2026-09-19 11:54:36.757124+00:00",
+    "DemandCreatedAt": "2026-09-19 11:44:35.8118377+00:00",
+    "DecisionFingerprint": "3466deeeca1042bab7c344e9ec2e58ebd6491175301ab8d0254b362ca2e004af",
+    "ReasonCode": "ACCEPTED",
+    "LastSeenAt": "2026-09-19 11:54:36.8199072+00:00",
+    "AcceptedAt": "2026-09-19 11:54:36.8199072+00:00"
+  }
+]

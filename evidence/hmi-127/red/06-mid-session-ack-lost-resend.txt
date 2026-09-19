@@ -1,0 +1,5 @@
+Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultWhoseAckIsLostMidSessionIsSentOnceMoreAndSettles [12 s]
+  Error Message:
+   Timed out after 10s waiting for: the result sent once more and the load settled
+OPERATION_PROGRESS: 1号仓操作完成，正在上报结果。
+RESULT_ACK_PENDING: 操作已安全结束，但结果确认暂未收到；系统将保持同一结果重放，不会重复执行IO。

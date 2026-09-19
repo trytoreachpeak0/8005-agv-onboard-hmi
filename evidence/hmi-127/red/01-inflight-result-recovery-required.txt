@@ -1,0 +1,6 @@
+Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALoadThatEndsWhileTheSessionAwaitsItsResultSendsTheResultAndTheSessionComesBackReady [10 s]
+  Error Message:
+   Timed out after 10s waiting for: the load's OperationResult on the reconnected session
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。
+OPERATION_PROGRESS: 1号仓操作完成，正在上报结果。
+RESULT_ACK_PENDING: 操作已安全结束，但结果确认暂未收到；系统将保持同一结果重放，不会重复执行IO。

@@ -16,6 +16,11 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// 结果的确认超时之后连续收到几条 <c>SessionReadiness</c>：不发布 <c>RecoveryRequired</c> 投影，不出
     /// <c>ONBOARD_SLOT_OPERATION_UNFINISHED</c>，HMI 停在「结果等待确认」。
     /// </summary>
+    /// <remarks>
+    /// 服务端这里一条确认都不回：onboard-hmi#127 起车载端会用同一 <c>messageId</c> 重发只差确认的结果，只丢一次确认的话
+    /// 重发就结算了，那是 <see cref="AResultWhoseAckIsLostMidSessionIsSentOnceMoreAndSettles"/> 的事。这条守的仍是
+    /// 「确认一直不来也不报未完成」。
+    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("IntegrationSlice", "FP-IS-07")]
@@ -29,11 +34,14 @@ public sealed partial class StationDeadlineExpiredG2Tests
             server =>
             {
                 server.StationDepartureDeadlineAt = null;
-                server.OperationResultAcksToDrop = 1;
+                server.OperationResultAcksToDrop = int.MaxValue;
             });
         await using OnboardAlarmMonitor monitor = OverdueMonitor(harness);
         await harness.WaitForEventAsync("RESULT_ACK_PENDING", token);
-        Assert.Equal("COMPLETED", harness.SingleResult("OperationResult").GetProperty("overallOutcome").GetString());
+        Assert.All(
+            harness.Server.ReceivedEnvelopes.Where(item => item.MessageType == "OperationResult"),
+            item => Assert.Equal(AttemptId, item.MessageId));
+        Assert.Equal("COMPLETED", harness.FirstResult("OperationResult").GetProperty("overallOutcome").GetString());
 
         for (int i = 0; i < 3; i++)
         {
@@ -47,6 +55,122 @@ public sealed partial class StationDeadlineExpiredG2Tests
             item => item.GetProperty("code").GetString() == OnboardAlarmCodes.SlotOperationUnfinished);
         Assert.Equal(WireToGateHmiOperationStage.Reporting, harness.Business.CurrentOperationSnapshot?.Stage);
         Assert.Equal(1, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// 会话中途结果的 <c>DurableAck</c> 丢了、链路没断，之后也没有任何会话事件：车载端用同一去重键与 <c>messageId</c>
+    /// 自己重发一次，确认到了就照常结算（onboard-hmi#124 审查转来的第 1 条）。在此之前它停在「结果等待确认」，
+    /// 直到下一次重连或下一单才可能解开。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AResultWhoseAckIsLostMidSessionIsSentOnceMoreAndSettles()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { SimulateOperatorLoad = true },
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.OperationResultAcksToDrop = 1;
+            });
+        await harness.WaitForEventAsync("RESULT_ACK_PENDING", token);
+
+        await Harness.WaitUntilAsync(
+            () => harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId is null,
+            "the result sent once more and the load settled",
+            token,
+            harness.DescribeEvents);
+
+        (int Connection, string MessageType, string MessageId, string WireLine)[] results =
+            [.. harness.Server.ReceivedEnvelopes.Where(item => item.MessageType == "OperationResult")];
+        Assert.Equal(2, results.Length);
+        Assert.All(results, item => Assert.Equal(AttemptId, item.MessageId));
+        Assert.All(results, item => Assert.Equal(1, item.Connection));
+        Assert.DoesNotContain(harness.Server.Received, item => item.Connection > 1);
+        Assert.Equal(WireToGateRecoveryCheckpoint.ResultRecorded, harness.ReadRecoveryState(token).ProvenRecoveryCheckpoint);
+        Assert.Equal(WireToGateHmiOperationStage.Completed, harness.Business.CurrentOperationSnapshot?.Stage);
+        Assert.Equal(1, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// 不只 <c>COMPLETED</c>：一条失败或未知的结果确认丢了、链路没断，同样用同一 <c>messageId</c> 原样重发一次，直到发件箱里
+    /// 这一行被确认。它不结算这次操作（仍等管理员恢复），只保证服务端拿到了结果（独立审查发现：握手中途落盘、错过本次补发的
+    /// 失败结果，原先会一直等到下一次重连）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AnUnfinishedResultWhoseAckIsLostIsSentOnceMore()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { LockerWaitTimesOut = true },
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.OperationResultAcksToDrop = 1;
+            });
+        await harness.WaitForEventAsync("RESULT_ACK_PENDING", token);
+
+        await Harness.WaitUntilAsync(
+            () => harness.Journal.ReadOutgoingByDeduplicationKeyAsync($"operation-result:{AttemptId}", token)
+                .GetAwaiter().GetResult() is { Acknowledged: true },
+            "the unfinished result sent once more and acknowledged",
+            token,
+            harness.DescribeEvents);
+
+        (int Connection, string MessageType, string MessageId, string WireLine)[] results =
+            [.. harness.Server.ReceivedEnvelopes.Where(item => item.MessageType == "OperationResult")];
+        Assert.Equal(2, results.Length);
+        Assert.All(results, item => Assert.Equal(AttemptId, item.MessageId));
+        Assert.Equal(results[0].WireLine.Length, results[1].WireLine.Length);
+        Assert.NotEqual("COMPLETED", harness.FirstResult("OperationResult").GetProperty("overallOutcome").GetString());
+        Assert.Equal(AttemptId, harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId);
+        Assert.DoesNotContain(harness.Server.Received, item => item.Connection > 1);
+    }
+
+    /// <summary>
+    /// 重发一条未确认的失败结果时服务端回 <c>ProtocolProblem</c>（或发件箱行在重绑时对不上）：重发以
+    /// <c>InvalidDataException</c> 失败，恢复入口的投影照样出现——「上次装货操作未完成……需要管理员恢复」。
+    /// 改动前这条路径不重发、入口每次都出现；异常穿出去会让它消失，与 hmi#109「恢复入口消失」同类（PR #131 调度审查）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AResendRefusedWithAProtocolProblemStillRestoresTheRecoveryEntry()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { LockerWaitTimesOut = true },
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.OperationResultAcksToDrop = 1;
+                server.AnswerOperationResultsWithProtocolProblem = true;
+            });
+        await harness.WaitForEventAsync("RESULT_ACK_PENDING", token);
+
+        await Harness.WaitUntilAsync(
+            () => harness.Server.ReceivedEnvelopes.Count(item => item.MessageType == "OperationResult") >= 2,
+            "the unfinished result sent once more",
+            token,
+            harness.DescribeEvents);
+        await Harness.WaitUntilAsync(
+            () => harness.DescribeEvents().Contains("上次装货操作未完成", StringComparison.Ordinal),
+            "the recovery entry's projection after the refused resend",
+            token,
+            harness.DescribeEvents);
+
+        Assert.Equal(WireToGateHmiOperationStage.RecoveryRequired, harness.Business.CurrentOperationSnapshot?.Stage);
+        Assert.Equal(AttemptId, harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId);
     }
 
     /// <summary>
@@ -66,12 +190,15 @@ public sealed partial class StationDeadlineExpiredG2Tests
             server =>
             {
                 server.StationDepartureDeadlineAt = null;
-                server.OperationResultAcksToDrop = 1;
+                // No ack at all on this connection, so the vehicle's own resend (onboard-hmi#127) cannot settle it
+                // first: what settles it here is the handshake's replay.
+                server.OperationResultAcksToDrop = int.MaxValue;
             });
         await harness.WaitForEventAsync("RESULT_ACK_PENDING", token);
         Assert.Equal(AttemptId, harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId);
 
         // The server holds the result; it has nothing to command again.
+        harness.Server.OperationResultAcksToDrop = 0;
         harness.Server.SendSlotOperationCommandAfterRecovery = false;
         await harness.Client.DisconnectAsync();
         await harness.Client.ConnectAndRecoverAsync(token);
@@ -95,15 +222,20 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
-    /// 「只差确认」只看发件箱里有没有这次的结果行，不看发送时进没进 catch：装货在会话断开时结束，
-    /// <c>SendDurableCoreAsync</c> 在写发件箱之前就以 <c>WIRE_TO_GATE_NOT_READY</c> 拒绝，结果从未落盘、没有东西可补发。
-    /// 重连后这次 attempt 不能被当成「只差确认」压掉：它仍是遗留，照旧按实时 IO 中断结算，服务端收到它的结果。
+    /// 装货在会话断开时结束：<c>OperationResult</c> 先落盘再看能不能发（manifest 的 <c>durableBeforeSend</c>），重连握手按
+    /// 同一 <c>messageId</c> 补发（ADR-cross-0029 第 4 步），服务端确认后这次装货照常结算——发出去的是执行器自己那份结果，
+    /// 不是事后按实时 IO 重算的一份，所以不走中断结算。
     /// </summary>
+    /// <remarks>
+    /// 这条是 onboard-hmi#124 守护测试 <c>ALoadThatEndedWhileNotReadyHasNoResultToWaitForAndIsStillSettled</c> 的改写，预期是
+    /// 有意改变的（onboard-hmi#127）：那时发送口在写发件箱之前就以 <c>WIRE_TO_GATE_NOT_READY</c> 拒绝，结果从未落盘，重连后
+    /// 只能按实时 IO 中断结算。它守的那条判断没变——「只差确认」只看发件箱里真有没有这次的结果行——只是现在那一行在了。
+    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
-    public async Task ALoadThatEndedWhileNotReadyHasNoResultToWaitForAndIsStillSettled()
+    public async Task ALoadThatEndedWhileDisconnectedPutsItsResultOnFileAndTheHandshakeReplaysIt()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using Harness harness = await Harness.StartAsync(
@@ -115,21 +247,28 @@ public sealed partial class StationDeadlineExpiredG2Tests
         await harness.Client.DisconnectAsync();
         harness.Io.CloseDoor(0, cargo: true);
         await harness.WaitForEventAsync("RESULT_ACK_PENDING", token);
-        Assert.Null(await harness.Journal.ReadOutgoingByDeduplicationKeyAsync($"operation-result:{AttemptId}", token));
+        WireToGateDurableMessage? onFile =
+            await harness.Journal.ReadOutgoingByDeduplicationKeyAsync($"operation-result:{AttemptId}", token);
+        Assert.NotNull(onFile);
+        Assert.Equal(AttemptId, onFile.MessageId);
+        Assert.False(onFile.Acknowledged);
         Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "OperationResult");
 
         harness.Server.SendSlotOperationCommandAfterRecovery = false;
         harness.Server.SendJourneySnapshotsAfterRecovery = false;
         await harness.Client.ConnectAndRecoverAsync(token);
 
-        await harness.WaitForInboundAsync("OperationResult", token);
         await Harness.WaitUntilAsync(
             () => harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId is null,
-            "the leftover attempt to be settled from the live IO",
+            "the replayed result to settle the load",
             token,
             harness.DescribeEvents);
+        Assert.Equal(
+            AttemptId,
+            Assert.Single(harness.Server.ReceivedEnvelopes, item => item.MessageType == "OperationResult").MessageId);
         Assert.Equal("COMPLETED", harness.SingleResult("OperationResult").GetProperty("overallOutcome").GetString());
-        Assert.Contains("上次装货在执行中中断", harness.DescribeEvents(), StringComparison.Ordinal);
+        Assert.Equal(WireToGateRecoveryCheckpoint.ResultRecorded, harness.ReadRecoveryState(token).ProvenRecoveryCheckpoint);
+        Assert.DoesNotContain("上次装货在执行中中断", harness.DescribeEvents(), StringComparison.Ordinal);
         Assert.Equal(1, harness.Io.UnlockCount);
     }
 }

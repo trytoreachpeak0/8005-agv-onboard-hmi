@@ -1,0 +1,10 @@
+{
+  "DemandId": "f34de5f5-b33c-4269-91aa-3be545f55ecf",
+  "TransportDemandKey": "L2-CS189-20260919T115258443Z|WIRE_TO_GATE",
+  "FirstSeenAt": "2026-09-19 11:53:34.0242277+00:00",
+  "DemandCreatedAt": "2026-09-19 11:43:33.6248589+00:00",
+  "DecisionFingerprint": "01a496a60cefa9f8dba023e20009d9fbff6685b00aba0bade3e6eb3f44636df1",
+  "ReasonCode": "ACCEPTED",
+  "LastSeenAt": "2026-09-19 11:53:34.2786497+00:00",
+  "AcceptedAt": "2026-09-19 11:53:34.2786497+00:00"
+}

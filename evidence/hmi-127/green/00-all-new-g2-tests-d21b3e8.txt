@@ -1,0 +1,36 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  SQCD.Agv.Contracts -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi127-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Debug\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Core -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi127-8005-agv-onboard-hmi\src\SQCD.Agv.Core\bin\Debug\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Application -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi127-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Debug\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.AutomationHost -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi127-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Debug\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Infrastructure -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi127-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Debug\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.Wpf -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi127-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.Wpf.dll
+  SQCD.Agv.SchemaConformance -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi127-8005-agv-onboard-hmi\tools\SQCD.Agv.SchemaConformance\bin\Debug\net8.0\win-x64\SQCD.Agv.SchemaConformance.dll
+  SQCD.Agv.WireToGateG2Tests -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi127-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi127-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 8.0.31)
+[xUnit.net 00:00:00.36]   Discovering: SQCD.Agv.WireToGateG2Tests
+[xUnit.net 00:00:00.91]   Discovered:  SQCD.Agv.WireToGateG2Tests
+[xUnit.net 00:00:01.20]   Starting:    SQCD.Agv.WireToGateG2Tests
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAttemptRefusedWhileRecoveryRequiredStillGetsItsResultOutWhenReissued [773 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReconciledResultIsNeitherSentNorSettledAgainOnTheNextReconnect [899 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALoadThatEndedWhileDisconnectedPutsItsResultOnFileAndTheHandshakeReplaysIt [338 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultWhoseAckIsLostMidSessionIsSentOnceMoreAndSettles [2 s]
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALoadThatEndsWhileTheSessionAwaitsItsResultSendsTheResultAndTheSessionComesBackReady [325 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnUnfinishedResultWhoseAckIsLostIsSentOnceMore [2 s]
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ACompletedLoadIsSettledOnceItsLateResultIsAcknowledged [2 s]
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALateAckForAnAttemptTheJournalHasMovedPastIsLoggedForWhatItIs [2 s]
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ASlotOperationCommandRefusedWhileRecoveryRequiredStillGetsItsRejectionOut [88 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ACompletedLoadWhoseResultAckIsLateIsNotRestoredAsUnfinished [3 s]
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ProgressIsStillNotSentWhileTheSessionIsRecoveryRequired [299 ms]
+[xUnit.net 00:00:53.69]   Finished:    SQCD.Agv.WireToGateG2Tests (ID = 'e1bf8121cc5f54f6733b99723c484fa071a4d29010b4de774fa97be4006a59ca')
+
+Test Run Successful.
+Total tests: 11
+     Passed: 11
+ Total time: 54.2326 Seconds
