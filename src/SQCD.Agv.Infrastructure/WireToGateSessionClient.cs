@@ -266,6 +266,26 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             allowRecoveryRequired: true,
             cancellationToken);
 
+    /// <summary>
+    /// Refuses a <c>SlotOperationResumeCommand</c> the vehicle stopped before any door IO. A resume
+    /// only ever arrives while the session is RECOVERY_REQUIRED, so the answer has to be sendable
+    /// there too (8005-agv-onboard-hmi#119).
+    /// </summary>
+    public Task<string> SendSlotOperationResumeRejectedAsync(
+        string deduplicationKey,
+        string messageId,
+        string resumeCommandMessageId,
+        SlotOperationCommandRejectedPayload payload,
+        CancellationToken cancellationToken = default) =>
+        SendDurableCoreAsync(
+            "SlotOperationCommandRejected",
+            deduplicationKey,
+            messageId,
+            resumeCommandMessageId,
+            payload,
+            allowRecoveryRequired: true,
+            cancellationToken);
+
     public Task<ExceptionRecoverySessionOpenedPayload> RequestExceptionRecoverySessionAsync(
         string messageId,
         ExceptionRecoverySessionRequestedPayload payload,

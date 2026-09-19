@@ -1434,6 +1434,7 @@ public sealed partial class RecoveryVectorG2Tests
         private readonly SqliteWireToGateJournal _journal;
         private readonly List<WireToGateOperatorEvent> _recoveryBlockedEvents;
         private readonly bool _ownsServer;
+        private readonly MutableSafetySignalProvider _safety;
 
         private RecoveryVectorHarness(
             FakeControlServer server,
@@ -1442,9 +1443,13 @@ public sealed partial class RecoveryVectorG2Tests
             WireToGateSessionService session,
             WireToGateBusinessService business,
             SqliteWireToGateJournal journal,
-            List<WireToGateOperatorEvent> recoveryBlockedEvents)
+            List<WireToGateOperatorEvent> recoveryBlockedEvents,
+            RecordingLogger logger,
+            MutableSafetySignalProvider safety)
         {
             Server = server;
+            Logger = logger;
+            _safety = safety;
             _ownsServer = ownsServer;
             Io = io;
             _session = session;
@@ -1458,6 +1463,9 @@ public sealed partial class RecoveryVectorG2Tests
         public FakeIoModuleClient Io { get; }
 
         public WireToGateBusinessService Business { get; }
+
+        /// <summary>What the onboard logged, for a test that has to wait on a step nothing else shows.</summary>
+        public RecordingLogger Logger { get; }
 
         /// <summary>
         /// The double every harness stands up on its own. A test that has to keep the double across
@@ -1499,6 +1507,10 @@ public sealed partial class RecoveryVectorG2Tests
         /// behind, so the seeded state is not written again -- seeding it would erase exactly what
         /// the restart is meant to carry over.
         /// </param>
+        /// <param name="lockerWaitTimesOut">
+        /// Every wait on a locker's feedback times out: a pulse goes out and the executor then
+        /// cannot confirm the lock released, the ADR-cross-0058 decision 2 failure after door IO.
+        /// </param>
         /// <param name="nothingOnFile">
         /// Seeds neither an armed operation nor a settled load: a vehicle with no record at all of
         /// the attempt a server might name. The case the batch 5-15 rule and the attempt check both
@@ -1517,7 +1529,8 @@ public sealed partial class RecoveryVectorG2Tests
             long baselineRevision = 1,
             bool restart = false,
             bool nothingOnFile = false,
-            IReadOnlyList<int>? seededForcedIsolation = null)
+            IReadOnlyList<int>? seededForcedIsolation = null,
+            bool lockerWaitTimesOut = false)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -1525,7 +1538,7 @@ public sealed partial class RecoveryVectorG2Tests
 
             try
             {
-                FakeIoModuleClient io = new();
+                FakeIoModuleClient io = new() { LockerWaitTimesOut = lockerWaitTimesOut };
                 if (cargoInTargetSlots)
                 {
                     io.SetCargoPresent(0, true);
@@ -1659,6 +1672,7 @@ public sealed partial class RecoveryVectorG2Tests
                         session,
                         business,
                         safety,
+                        logger,
                         loadAlreadySettled,
                         armedUnloadOverSettledLoad,
                         nothingOnFile,
@@ -1704,6 +1718,7 @@ public sealed partial class RecoveryVectorG2Tests
                     session,
                     business,
                     safety,
+                    logger,
                     loadAlreadySettled,
                     armedUnloadOverSettledLoad,
                     nothingOnFile,
@@ -1728,6 +1743,7 @@ public sealed partial class RecoveryVectorG2Tests
             WireToGateSessionService session,
             WireToGateBusinessService business,
             MutableSafetySignalProvider safety,
+            RecordingLogger logger,
             bool loadAlreadySettled,
             bool armedUnloadOverSettledLoad,
             bool nothingOnFile,
@@ -1801,12 +1817,36 @@ public sealed partial class RecoveryVectorG2Tests
             }
 
             return new RecoveryVectorHarness(
-                server, ownsServer, io, session, business, journal, blocked);
+                server, ownsServer, io, session, business, journal, blocked, logger, safety);
         }
+
+        /// <summary>The vehicle's motion is unknown again, the way it was across the handshake.</summary>
+        public void VehicleMotionUnknown() => _safety.SetUnknown();
+
+        public void VehicleStopped() => _safety.SetStopped();
 
         public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(
             CancellationToken cancellationToken) =>
             _journal.ReadRecoveryStateAsync(cancellationToken);
+
+        /// <summary>
+        /// Whether the vehicle has recorded the server's DurableAck for one of its own messages: the
+        /// point after which a restart must not send it again.
+        /// </summary>
+        public async Task<bool> IsOutgoingAcknowledgedAsync(string messageId, CancellationToken cancellationToken) =>
+            (await _journal.ReadOutgoingByMessageIdAsync(messageId, cancellationToken))?.Acknowledged == true;
+
+        /// <summary>
+        /// Rewrites the recovery state on disk under the running vehicle: what a journal looks like
+        /// after a restart lost or moved part of it.
+        /// </summary>
+        public async Task RewriteRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState> change,
+            CancellationToken cancellationToken)
+        {
+            WireToGateRecoveryState state = await _journal.ReadRecoveryStateAsync(cancellationToken);
+            await _journal.WriteRecoveryStateAsync(change(state), cancellationToken);
+        }
 
         /// <summary>
         /// Takes the seeded load through a whole forced mechanical recovery -- request, authorization,
@@ -1967,13 +2007,16 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
-    /// Unknown until <see cref="SetStopped"/>, then stopped, and always freshly observed.
+    /// Unknown until <see cref="SetStopped"/>, then stopped until <see cref="SetUnknown"/>, and always
+    /// freshly observed.
     /// </summary>
     private sealed class MutableSafetySignalProvider : IVehicleSafetySignalProvider
     {
         private int _stopped;
 
         public void SetStopped() => Interlocked.Exchange(ref _stopped, 1);
+
+        public void SetUnknown() => Interlocked.Exchange(ref _stopped, 0);
 
         public VehicleSafetySignal Read() => new(
             Volatile.Read(ref _stopped) == 1

@@ -188,7 +188,7 @@ public sealed class WireToGateSlotOperationExecutorTests
             [1],
             new string('0', 64));
 
-        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(
+        WireToGateResumeNotStartedException error = await Assert.ThrowsAsync<WireToGateResumeNotStartedException>(
             () => fixture.Executor.ResumeAsync(
                 resume,
                 null,
@@ -236,7 +236,7 @@ public sealed class WireToGateSlotOperationExecutorTests
             command.Slots,
             new string('1', 64));
 
-        InvalidDataException error = await Assert.ThrowsAsync<InvalidDataException>(
+        WireToGateResumeNotStartedException error = await Assert.ThrowsAsync<WireToGateResumeNotStartedException>(
             () => fixture.Executor.ResumeAsync(
                 resume,
                 null,

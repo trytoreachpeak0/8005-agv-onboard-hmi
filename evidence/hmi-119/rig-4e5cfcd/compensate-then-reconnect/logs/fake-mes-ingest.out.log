@@ -1,0 +1,608 @@
+info: Microsoft.Hosting.Lifetime[14]
+      Now listening on: http://127.0.0.1:48409
+info: Microsoft.Hosting.Lifetime[0]
+      Application started. Press Ctrl+C to shut down.
+info: Microsoft.Hosting.Lifetime[0]
+      Hosting environment: Production
+info: Microsoft.Hosting.Lifetime[0]
+      Content root path: C:\Users\szy\Desktop\8005-workspace-v2\repos\8005-agv-control-server\tools\ControlServer.FakeMesIngest\bin\Release\net8.0\win-x64
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/control/v1/health - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /control/v1/health'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType0`6' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /control/v1/health'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/control/v1/health - 200 - application/json;+charset=utf-8 135.6131ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 21.9750ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 10.8262ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.5936ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.5936ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.3188ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.3453ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.5542ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.3138ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.4656ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.3177ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.4624ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.4058ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.2763ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.2733ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.3298ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.2533ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.2977ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.1971ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.3667ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.4492ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.3012ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.2571ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.2693ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.2253ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/control/v1/snapshot - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /control/v1/snapshot'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType0`6' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /control/v1/snapshot'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/control/v1/snapshot - 200 - application/json;+charset=utf-8 11.7787ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 PUT http://127.0.0.1:48409/control/v1/demands/e9069150c6bf4544b7aa10dda2923d48 - application/json 216
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: PUT /control/v1/demands/{demandId}'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType0`6' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: PUT /control/v1/demands/{demandId}'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 PUT http://127.0.0.1:48409/control/v1/demands/e9069150c6bf4544b7aa10dda2923d48 - 200 - application/json;+charset=utf-8 26.1092ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.2915ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 3.7680ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/sublot-box-count?sublot=L2-CR-20260919T075509383Z - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/sublot-box-count'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType8`4' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/sublot-box-count'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/sublot-box-count?sublot=L2-CR-20260919T075509383Z - 200 - application/json;+charset=utf-8 7.4439ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.3275ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.2560ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/sublot-box-count?sublot=L2-CR-20260919T075509383Z - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/sublot-box-count'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType8`4' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/sublot-box-count'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/sublot-box-count?sublot=L2-CR-20260919T075509383Z - 200 - application/json;+charset=utf-8 0.6062ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.3005ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.2736ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.2180ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.1846ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.1568ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.2071ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.1878ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.2101ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.1703ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.2246ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.1633ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.1989ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.1791ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.2898ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.1818ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.2282ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.2242ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.1961ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/control/v1/snapshot - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /control/v1/snapshot'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType0`6' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /control/v1/snapshot'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/control/v1/snapshot - 200 - application/json;+charset=utf-8 2.5119ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 PUT http://127.0.0.1:48409/control/v1/demands/5feff0978122415fab1c76edfc7caaee - application/json 221
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: PUT /control/v1/demands/{demandId}'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType0`6' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: PUT /control/v1/demands/{demandId}'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 PUT http://127.0.0.1:48409/control/v1/demands/5feff0978122415fab1c76edfc7caaee - 200 - application/json;+charset=utf-8 1.0108ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.1700ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.2478ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/sublot-box-count?sublot=L2-CR-20260919T075509383Z-NEXT - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/sublot-box-count'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType8`4' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/sublot-box-count'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/sublot-box-count?sublot=L2-CR-20260919T075509383Z-NEXT - 200 - application/json;+charset=utf-8 0.2025ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType2`3' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/contract'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/contract - 200 - application/json;+charset=utf-8 0.1688ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType4`5' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/externally-readable-demand-catalog'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/externally-readable-demand-catalog - 200 - application/json;+charset=utf-8 0.2439ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/control/v1/snapshot - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /control/v1/snapshot'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType0`6' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /control/v1/snapshot'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/control/v1/snapshot - 200 - application/json;+charset=utf-8 0.2276ms
+info: Microsoft.AspNetCore.Hosting.Diagnostics[1]
+      Request starting HTTP/1.1 GET http://127.0.0.1:48409/api/v2/sublot-box-count?sublot=L2-CR-20260919T075509383Z-NEXT - - -
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[0]
+      Executing endpoint 'HTTP: GET /api/v2/sublot-box-count'
+info: Microsoft.AspNetCore.Http.Result.JsonResult[3]
+      Writing value of type '<>f__AnonymousType8`4' as Json.
+info: Microsoft.AspNetCore.Routing.EndpointMiddleware[1]
+      Executed endpoint 'HTTP: GET /api/v2/sublot-box-count'
+info: Microsoft.AspNetCore.Hosting.Diagnostics[2]
+      Request finished HTTP/1.1 GET http://127.0.0.1:48409/api/v2/sublot-box-count?sublot=L2-CR-20260919T075509383Z-NEXT - 200 - application/json;+charset=utf-8 0.4135ms

@@ -1,0 +1,10 @@
+{
+  "SlotModelVersionId": "eab1330c8cb347e0a4b22b7b1f5d7ea6",
+  "ModelKey": "8005-eight-slot",
+  "Version": 1,
+  "Status": "PUBLISHED",
+  "SlotCount": 8,
+  "CreatedAt": "2026-09-19 15:55:49.9693091+08:00",
+  "PublishedAt": "2026-09-19 15:55:49.9693091+08:00",
+  "SnapshotId": "35092c8df20c46379527e14e6f798c98"
+}

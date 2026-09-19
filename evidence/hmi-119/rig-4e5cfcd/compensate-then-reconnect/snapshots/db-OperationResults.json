@@ -1,0 +1,14 @@
+{
+  "ResultId": "88b51c6f-cf42-a85b-ae6e-4f0caaf5ad50",
+  "SlotOperationAttemptId": "88b51c6f-cf42-a85b-ae6e-4f0caaf5ad50",
+  "AgvId": "AGV-L2-001",
+  "ForcedRecoveryGeneration": 0,
+  "ContentHash": "f19d0e4d252ca9751190f888b9a36921ecb9c90579f71a9ac284d8e9af2ea3b3",
+  "HistoricalOnly": 0,
+  "ReceivedAt": "2026-09-19 15:56:02.5570493+08:00",
+  "EvidenceJson": "[{\"SlotNumber\":1,\"State\":0,\"DoorLocked\":true,\"UnlockOutputReset\":true}]",
+  "ObservedAt": "2026-09-19 15:56:02.5570493+08:00",
+  "OverallOutcome": "UNKNOWN",
+  "ResultContentSha256": "44cf713b2406c05a0e4f8726c02770702eeab02f00dd5e30e9c04d1d81f852a4",
+  "SupersededByResultId": null
+}

@@ -1,0 +1,10 @@
+{
+  "DemandId": "4877ae65-4acb-4742-bfc1-2d850c3e2dd1",
+  "TransportDemandKey": "H119-20260919T075705543Z|WIRE_TO_GATE",
+  "FirstSeenAt": "2026-09-19 07:57:36.4180066+00:00",
+  "DemandCreatedAt": "2026-09-19 07:47:36.2014755+00:00",
+  "DecisionFingerprint": "8d11111b863b42b3a4fb3e79f9c1350fefd1a721b4e867e179f0cdcb03825527",
+  "ReasonCode": "ACCEPTED",
+  "LastSeenAt": "2026-09-19 07:57:36.8289753+00:00",
+  "AcceptedAt": "2026-09-19 07:57:36.8289753+00:00"
+}

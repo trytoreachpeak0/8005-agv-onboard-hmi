@@ -417,6 +417,12 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </summary>
     public int LoadCancellationResultAcksToDrop { get; set; }
 
+    /// <summary>
+    /// 这么多条 <c>SlotOperationCommandRejected</c> 收下了却不回 <c>DurableAck</c>：拒绝留在车的日志里
+    /// 未确认，同一条续行命令再到时车要把它原样再发一次（onboard-hmi#119）。
+    /// </summary>
+    public int SlotOperationCommandRejectedAcksToDrop { get; set; }
+
     public IReadOnlyList<string> ReceivedLoadCancellationAttemptIds =>
         [.. _receivedLoadCancellationAttemptIds];
 
@@ -646,6 +652,27 @@ public sealed class FakeControlServer : IAsyncDisposable
         ConnectionContext context = Volatile.Read(ref _latestSession)
             ?? throw new InvalidOperationException("No session has been accepted yet.");
         return SendSlotOperationCommandAsync(context);
+    }
+
+    /// <summary>
+    /// Sends a server command the test composes itself, under the messageId it names, on the latest
+    /// session. Sending the same messageId twice is how the real server's outbox resends a RELIABLE
+    /// command it has no answer to yet.
+    /// </summary>
+    public Task SendCommandAsync(string messageType, string messageId, object payload)
+    {
+        ConnectionContext context = Volatile.Read(ref _latestSession)
+            ?? throw new InvalidOperationException("No session has been accepted yet.");
+        return WriteEnvelopeAsync(
+            context,
+            WireToGateProtocolSerializer.Create(
+                messageType,
+                messageId,
+                null,
+                context.AgvId,
+                context.Generation,
+                DateTimeOffset.UtcNow,
+                payload));
     }
 
     /// <summary>
@@ -1005,6 +1032,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                         break;
                     case "LoadCancellationResult" when LoadCancellationResultAcksToDrop > 0:
                         LoadCancellationResultAcksToDrop--;
+                        break;
+                    case "SlotOperationCommandRejected" when SlotOperationCommandRejectedAcksToDrop > 0:
+                        SlotOperationCommandRejectedAcksToDrop--;
                         break;
                     case "SublotSubmitted":
                     case "OperationProgress":

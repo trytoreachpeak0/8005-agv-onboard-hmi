@@ -1,0 +1,26 @@
+2026-09-19T16:56:11.2524712+08:00	Information	App	车载端启动：agvId=AGV-L2-001，environment=Development，version=0.2.0-safety-mock-travel+c97d51b50d1a1f2ee6b6c0a2304fff899cfa5b56。
+2026-09-19T16:56:14.3723961+08:00	Information	ModbusTcpIoModuleClient	已连接IO模块 127.0.0.1:48412，UnitId=255。
+2026-09-19T16:56:14.5962857+08:00	Information	OnboardController	IO模块在线。
+2026-09-19T16:56:14.6010585+08:00	Information	OnboardController	启动IO安全快照验证通过。
+2026-09-19T16:56:15.9199182+08:00	Information	WireToGateSessionService	上层会话已建立：generation=1，readiness=Ready。
+2026-09-19T16:56:46.2947491+08:00	Information	App	服务端请求录入Sublot：station=N1-3_N1-7，revision=1，expectedSublots=L2-CR-20260919T085504412Z。 
+2026-09-19T16:56:47.0903308+08:00	Information	App	服务端请求录入Sublot：station=N1-3_N1-7，revision=1，expectedSublots=L2-CR-20260919T085504412Z。 
+2026-09-19T16:56:47.6651900+08:00	Information	ModbusTcpIoModuleClient	已向物理1号仓发送开锁脉冲触发，DO地址=100。硬件负责自动复位。 
+2026-09-19T16:56:47.7173782+08:00	Information	ModbusTcpIoModuleClient	1号仓IO变化：DO 0->1，锁DI 1->1，光幕DI 1->1。
+2026-09-19T16:56:47.9091669+08:00	Information	ModbusTcpIoModuleClient	1号仓IO变化：DO 1->1，锁DI 1->0，光幕DI 1->1。
+2026-09-19T16:56:48.0274909+08:00	Information	WireToGateBusinessService	忽略并发重复SlotOperationCommand：attempt=f66fa6b5-3514-3956-b07d-0db26fe140fc。
+2026-09-19T16:56:48.2960721+08:00	Information	ModbusTcpIoModuleClient	1号仓IO变化：DO 1->0，锁DI 0->0，光幕DI 1->1。
+2026-09-19T16:56:49.0205651+08:00	Information	WireToGateBusinessService	忽略并发重复SlotOperationCommand：attempt=f66fa6b5-3514-3956-b07d-0db26fe140fc。
+2026-09-19T16:56:52.2874044+08:00	Information	App	车载端启动：agvId=AGV-L2-001，environment=Development，version=0.2.0-safety-mock-travel+c97d51b50d1a1f2ee6b6c0a2304fff899cfa5b56。
+2026-09-19T16:56:55.0827902+08:00	Information	ModbusTcpIoModuleClient	已连接IO模块 127.0.0.1:48412，UnitId=255。
+2026-09-19T16:56:55.1752445+08:00	Information	OnboardController	IO模块在线。
+2026-09-19T16:56:55.1775511+08:00	Information	OnboardController	启动IO安全快照验证通过。
+2026-09-19T16:56:55.7919023+08:00	Warning	WireToGateBusinessService	上次仓位操作在执行中中断，未再输出开锁，按实时IO结算：attempt=f66fa6b5-3514-3956-b07d-0db26fe140fc，outcome=UNKNOWN，checkpoint=SAFE_FINISH_REACHED。
+2026-09-19T16:56:55.8094674+08:00	Information	WireToGateSessionService	上层会话已建立：generation=2，readiness=RecoveryRequired。
+2026-09-19T16:57:05.9014919+08:00	Warning	WireToGateSessionService	上层会话不可用：WIRE_TO_GATE会话尚未建立。。将在2秒后重连。
+2026-09-19T16:57:08.1605479+08:00	Information	WireToGateSessionService	上层会话已建立：generation=3，readiness=Ready。
+2026-09-19T16:57:15.3504043+08:00	Information	App	服务端请求录入Sublot：station=N1-3_N1-7，revision=3，expectedSublots=L2-CR-20260919T085504412Z-NEXT。 
+2026-09-19T16:57:15.9969682+08:00	Information	App	服务端请求录入Sublot：station=N1-3_N1-7，revision=3，expectedSublots=L2-CR-20260919T085504412Z-NEXT。 
+2026-09-19T16:57:16.2112938+08:00	Information	ModbusTcpIoModuleClient	已向物理1号仓发送开锁脉冲触发，DO地址=100。硬件负责自动复位。 
+2026-09-19T16:57:16.2685966+08:00	Information	ModbusTcpIoModuleClient	1号仓IO变化：DO 0->1，锁DI 1->1，光幕DI 1->1。
+2026-09-19T16:57:16.4017394+08:00	Information	ModbusTcpIoModuleClient	1号仓IO变化：DO 1->1，锁DI 1->0，光幕DI 1->1。
