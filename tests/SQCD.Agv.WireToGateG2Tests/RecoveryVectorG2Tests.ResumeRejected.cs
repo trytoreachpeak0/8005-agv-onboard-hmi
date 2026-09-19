@@ -259,6 +259,40 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// A resume that fails after its first pulse is not refused: the door may be open, and the
+    /// server learns what happened from the result the existing settlement reports, not from a
+    /// rejection that would claim nothing was done.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task AResumeThatFailsAfterItsFirstPulseIsSettledNotRejected()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            lockerWaitTimesOut: true);
+        WireToGateRecoveryState state = await OpenResumeActionAsync(harness, token);
+        int resultsBefore = harness.ResultsOfType("OperationResult").Count;
+
+        await harness.Server.SendCommandAsync(
+            "SlotOperationResumeCommand",
+            ResumeMessageId,
+            ResumePayload(state));
+
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.ResultsOfType("OperationResult").Count > resultsBefore,
+            "the interrupted resume to be settled and reported",
+            token);
+        using JsonDocument result = JsonDocument.Parse(harness.ResultsOfType("OperationResult")[^1]);
+        Assert.Equal(
+            "UNKNOWN",
+            result.RootElement.GetProperty("payload").GetProperty("overallOutcome").GetString());
+        Assert.Equal(1, harness.Io.UnlockCount);
+        Assert.Empty(Rejections(harness));
+    }
+
+    /// <summary>
     /// Writes the row <c>SendOperationRejectedAsync</c> saves before sending: key
     /// <c>slot-operation-rejected:{attempt}:{reason}</c>, messageId the attempt id, correlated to the
     /// original command.

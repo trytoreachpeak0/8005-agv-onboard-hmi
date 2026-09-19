@@ -1507,6 +1507,10 @@ public sealed partial class RecoveryVectorG2Tests
         /// behind, so the seeded state is not written again -- seeding it would erase exactly what
         /// the restart is meant to carry over.
         /// </param>
+        /// <param name="lockerWaitTimesOut">
+        /// Every wait on a locker's feedback times out: a pulse goes out and the executor then
+        /// cannot confirm the lock released, the ADR-cross-0058 decision 2 failure after door IO.
+        /// </param>
         /// <param name="nothingOnFile">
         /// Seeds neither an armed operation nor a settled load: a vehicle with no record at all of
         /// the attempt a server might name. The case the batch 5-15 rule and the attempt check both
@@ -1525,7 +1529,8 @@ public sealed partial class RecoveryVectorG2Tests
             long baselineRevision = 1,
             bool restart = false,
             bool nothingOnFile = false,
-            IReadOnlyList<int>? seededForcedIsolation = null)
+            IReadOnlyList<int>? seededForcedIsolation = null,
+            bool lockerWaitTimesOut = false)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -1533,7 +1538,7 @@ public sealed partial class RecoveryVectorG2Tests
 
             try
             {
-                FakeIoModuleClient io = new();
+                FakeIoModuleClient io = new() { LockerWaitTimesOut = lockerWaitTimesOut };
                 if (cargoInTargetSlots)
                 {
                     io.SetCargoPresent(0, true);
