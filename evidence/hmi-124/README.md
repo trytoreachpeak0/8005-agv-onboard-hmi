@@ -1,0 +1,27 @@
+# hmi#124 证据
+
+票：https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/issues/124
+PR：https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/pull/126
+
+三条新 G2 测试（`tests/SQCD.Agv.WireToGateG2Tests/StationDeadlineExpiredG2Tests.*`），各自先提交测试、在该提交上跑红，
+再提交实现、跑绿。命令（VSTest 用 `--filter`）：
+
+```
+dotnet test tests/SQCD.Agv.WireToGateG2Tests -c Release --filter "FullyQualifiedName~<测试名>"
+```
+
+| 文件 | 提交 | 测试 | 结论 |
+| --- | --- | --- | --- |
+| `red/01-ack-late-not-unfinished.txt` | `a3970b4`（测试提交，产品代码 = `7ded1b7`） | `ACompletedLoadWhoseResultAckIsLateIsNotRestoredAsUnfinished` | 红：第一条 `SessionReadiness` 就发布「上次装货操作未完成：1号仓，需要管理员恢复。」 |
+| `green/01-ack-late-not-unfinished.txt` | `5df631e` | 同上 | 绿 |
+| `red/02-settled-once-acknowledged.txt` | `7a1fec8`（测试提交，产品代码 = `5df631e`） | `ACompletedLoadIsSettledOnceItsLateResultIsAcknowledged` | 红：重连补发被确认后 10 s 内 journal 仍未结算，并发布「上次装货操作未完成」 |
+| `green/02-settled-once-acknowledged.txt` | `105aef3` | 同上 | 绿 |
+| `red/03-restore-after-claim-release.txt` | `9062c57`（测试提交，产品代码 = `105aef3`） | `ALeftoverWhoseRestoreRanIntoTheReplayedCommandsClaimIsStillRestoredOnce` | 红：占位释放后 10 s 内服务端收不到 `OperationResult`，只有一条 `OPERATION_REPLAY` |
+| `green/03-restore-after-claim-release.txt` | `15810bf` | 同上 | 绿 |
+| `red/00-all-new-tests-on-7ded1b7.txt` | 测试取 `15810bf`，`src/` 取 `7ded1b7` | 三条新测试一起 | 3 红（票面要求的「在 `7ded1b7` 上跑」） |
+
+第 3 条测试的接缝说明：握手后 `Ready` 触发的恢复判断被测试 journal 包装扣在读恢复状态那一步，服务端重发的同一命令
+走到「已开始未结算」分支、持有占位时才放行，所以它确定地得到 `InFlight`，不靠时序碰运气。假服务端
+`AnswerSafetyStateChanged=false` 挡掉车载端首条安全态变化的确认：那条确认会让客户端重新发布一次 `Ready`，也就是票里
+说的「下一次会话状态变化」，它会替缺陷版本把遗留操作结算掉（第一次写这条测试时就在缺陷版本上假绿过一次，因此加了
+这个开关和「读取确实被扣住」的断言）。
