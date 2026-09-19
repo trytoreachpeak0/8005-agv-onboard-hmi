@@ -560,6 +560,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
         _started = true;
         _session.ServerCommandReceived += OnServerCommandReceived;
+        _session.ClosedRecoverySessionHandler = ForgetClosedRecoverySessionAsync;
         _session.StateChanged += OnSessionStateChanged;
         _ioModule.SnapshotChanged += OnIoSnapshotChanged;
         if (_observableVehicleSafetySignalProvider is not null)
@@ -581,6 +582,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         if (_started)
         {
             _session.ServerCommandReceived -= OnServerCommandReceived;
+            _session.ClosedRecoverySessionHandler = null;
             _session.StateChanged -= OnSessionStateChanged;
             _ioModule.SnapshotChanged -= OnIoSnapshotChanged;
             if (_observableVehicleSafetySignalProvider is not null)
@@ -1395,16 +1397,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                             $"恢复会话被阻断：{exception.Message}。服务端前后给出的装货作业身份不一致，请联系管理员。 ");
                     }
 
+                    // A CLOSED one has already been through ForgetClosedRecoverySessionAsync: the session
+                    // runs that fallback before publishing the snapshot, so it can hold the snapshot's
+                    // acknowledgement back when the fallback fails (onboard-hmi#129).
                     Volatile.Write(
                         ref _recoverySessionSnapshot,
                         recoverySnapshot.State == "CLOSED" ? null : recoverySnapshot);
-                    if (recoverySnapshot.State == "CLOSED")
-                    {
-                        await ForgetClosedRecoverySessionAsync(
-                                recoverySnapshot.ExceptionRecoverySessionId,
-                                cancellationToken)
-                            .ConfigureAwait(false);
-                    }
 
                     PublishOperatorEvent(
                         $"recovery-session-snapshot:{recoverySnapshot.ExceptionRecoverySessionId}:{recoverySnapshot.RecoverySessionRevision}",
@@ -2364,7 +2362,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// unsettled and the next session recovers it. Only a journal still naming this very session and
     /// action is touched, so a refusal of a command about some other session changes nothing.
     /// </remarks>
-    private Task ReleaseRefusedResumeSessionAsync(
+    private Task<bool> ReleaseRefusedResumeSessionAsync(
         WireToGateSlotOperationResumeCommand command,
         CancellationToken cancellationToken) =>
         ForgetRecoverySessionAsync(
@@ -2392,8 +2390,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// <remarks>
     /// <para>
     /// Idempotent, and failure is logged rather than thrown: every caller has already answered the
-    /// server, and each of the other callers -- the refusal, its replay, the CLOSED snapshot -- gets
-    /// another chance to clear what a failed write left behind.
+    /// server. The refusal and its replay leave what a failed write left behind to the CLOSED
+    /// snapshot; the CLOSED snapshot, the last of them, reads the returned <c>false</c> and is not
+    /// acknowledged, so the server sends it again (onboard-hmi#129).
     /// </para>
     /// <para>
     /// The guard and the write are one journal update, never a read followed by a write. A result
@@ -2404,7 +2403,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// fails and nothing is written; a result recorded afterwards writes the settled state it wants.
     /// </para>
     /// </remarks>
-    private async Task ForgetRecoverySessionAsync(
+    /// <returns>
+    /// <c>true</c> once this is done -- written, or nothing to write; <c>false</c> when the write failed.
+    /// </returns>
+    private async Task<bool> ForgetRecoverySessionAsync(
         string? exceptionRecoverySessionId,
         string? recoveryActionId,
         Func<WireToGateRecoveryState, WireToGateRecoveryState?> release,
@@ -2413,7 +2415,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     {
         if (exceptionRecoverySessionId is null)
         {
-            return;
+            return true;
         }
 
         try
@@ -2443,6 +2445,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             {
                 Volatile.Write(ref _lastRecoveryState, written);
             }
+
+            return true;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException)
         {
@@ -2451,6 +2455,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 nameof(WireToGateBusinessService),
                 failureLog,
                 exception);
+            return false;
         }
     }
 
@@ -2463,8 +2468,22 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// closed the session on it, and no command for it will come again. Guarded by the session id. A
     /// recovery vector that may have acted is never forgotten here -- its result settles it, and a
     /// closed session does not make an unproven slot proven.
+    /// <para>
+    /// The session runs it as its <see cref="WireToGateSessionService.ClosedRecoverySessionHandler"/> and
+    /// acknowledges the CLOSED only on <c>true</c>. A failed write answers <c>false</c> and the server
+    /// replays the snapshot; a journal naming another session, or a vector that may have acted, is this
+    /// fallback done -- declining is the answer, and a CLOSED left unacknowledged for it would be
+    /// replayed for good (onboard-hmi#129).
+    /// </para>
     /// </remarks>
-    private Task ForgetClosedRecoverySessionAsync(
+    private Task<bool> ForgetClosedRecoverySessionAsync(
+        WireToGateExceptionRecoverySessionSnapshot snapshot,
+        CancellationToken cancellationToken) =>
+        _disposed
+            ? Task.FromResult(false)
+            : ForgetClosedRecoverySessionAsync(snapshot.ExceptionRecoverySessionId, cancellationToken);
+
+    private Task<bool> ForgetClosedRecoverySessionAsync(
         string exceptionRecoverySessionId,
         CancellationToken cancellationToken) =>
         ForgetRecoverySessionAsync(

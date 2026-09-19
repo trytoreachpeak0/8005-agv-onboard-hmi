@@ -1842,7 +1842,7 @@ public sealed partial class WireToGateBusinessService
     /// again, so a release that waited would never come.
     /// </para>
     /// </remarks>
-    private Task ReleaseRefusedVectorAsync(
+    private Task<bool> ReleaseRefusedVectorAsync(
         WireToGateRecoveryVectorContext context,
         CancellationToken cancellationToken) =>
         ForgetRecoverySessionAsync(

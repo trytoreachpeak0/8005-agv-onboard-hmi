@@ -146,6 +146,20 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     public event EventHandler<ValueChangedEventArgs<WireToGateServerCommand>>? ServerCommandReceived;
 
     /// <summary>
+    /// Runs the vehicle's own fallback for a recovery session the server closed, before that CLOSED
+    /// snapshot is published or acknowledged. <c>true</c> once the fallback is done -- its journal write
+    /// made, or not needed; <c>false</c>, or an exception, when it could not be done, and then the
+    /// snapshot is not acknowledged and the server replays it (onboard-hmi#129).
+    /// </summary>
+    /// <remarks>
+    /// The server replays only unacknowledged snapshots, so this CLOSED is the fallback's last chance
+    /// once acknowledged. A handler that is not done must not be acknowledged over. Its failure holds
+    /// back this one acknowledgement and nothing else: the session stays up and the next message is read.
+    /// </remarks>
+    public Func<WireToGateExceptionRecoverySessionSnapshot, CancellationToken, Task<bool>>?
+        ClosedRecoverySessionHandler { get; set; }
+
+    /// <summary>
     /// Sends one operator entry. Every call is a new entry and gets a messageId of its own.
     /// </summary>
     /// <remarks>
@@ -1884,10 +1898,19 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
                 if (TryCreateServerCommand(envelope, out WireToGateServerCommand? command))
                 {
+                    // The CLOSED fallback runs before the snapshot is published or acknowledged: its
+                    // acknowledgement has to wait for it (onboard-hmi#129).
+                    bool closedHandled = command is not WireToGateExceptionRecoverySessionSnapshot
+                        {
+                            State: "CLOSED"
+                        } closing
+                        || await HandleClosedRecoverySessionAsync(closing, stopping.Token)
+                            .ConfigureAwait(false);
                     ServerCommandReceived?.Invoke(
                         this,
                         new ValueChangedEventArgs<WireToGateServerCommand>(command!));
-                    if (command is WireToGateExceptionRecoverySessionSnapshot { State: "CLOSED" } closedRecovery)
+                    if (command is WireToGateExceptionRecoverySessionSnapshot { State: "CLOSED" } closedRecovery
+                        && closedHandled)
                     {
                         // Only the CLOSED revision is acknowledged (8005-agv-control-server#31). After
                         // every RecoveryStateReport the server replays each recovery session snapshot
@@ -1897,6 +1920,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         // snapshot left a restarted HMI holding an id and no session. Nothing
                         // supersedes CLOSED, so unacknowledged it was replayed into every later
                         // session -- and a client that has it needs nothing more.
+                        //
+                        // A CLOSED whose fallback did not get done is left unacknowledged for the same
+                        // replay to bring back: acknowledged, it would never come again, and the journal
+                        // would name a closed session nothing else clears (onboard-hmi#129).
                         await SendSnapshotAppliedAckAsync(
                             envelope,
                             "EXCEPTION_RECOVERY_SESSION",
@@ -2109,6 +2136,30 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 }
             default:
                 throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+    }
+
+    private async Task<bool> HandleClosedRecoverySessionAsync(
+        WireToGateExceptionRecoverySessionSnapshot snapshot,
+        CancellationToken cancellationToken)
+    {
+        if (ClosedRecoverySessionHandler is not { } handler)
+        {
+            return true;
+        }
+
+        try
+        {
+            return await handler(snapshot, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            // Not done: left unacknowledged for the replay, like a handler answering false.
+            return false;
         }
     }
 

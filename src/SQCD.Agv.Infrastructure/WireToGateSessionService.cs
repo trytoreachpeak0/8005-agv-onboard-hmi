@@ -64,6 +64,14 @@ public sealed class WireToGateSessionService : IAsyncDisposable
 
     public event EventHandler<ValueChangedEventArgs<WireToGateServerCommand>>? ServerCommandReceived;
 
+    /// <inheritdoc cref="WireToGateSessionClient.ClosedRecoverySessionHandler"/>
+    public Func<WireToGateExceptionRecoverySessionSnapshot, CancellationToken, Task<bool>>?
+        ClosedRecoverySessionHandler
+    {
+        get => _client.ClosedRecoverySessionHandler;
+        set => _client.ClosedRecoverySessionHandler = value;
+    }
+
     public Task<string> SendSublotSubmittedAsync(
         string operationSessionId,
         string stationId,
