@@ -450,6 +450,29 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// <summary>车报上来的那些激活结果，按到达顺序。</summary>
     public IReadOnlyList<JsonElement> ReceivedActivationResults => _activationResults;
 
+    /// <summary>
+    /// Messages written between taking a <c>SlotConfigurationActivationResult</c> and writing its <c>DurableAck</c>,
+    /// in this order: <c>"SessionReadiness"</c> (the readiness this server would announce now) and
+    /// <c>"SlotOperationCommand"</c>. The real server does not promise the ack is the next line the vehicle reads
+    /// (onboard-hmi#140).
+    /// </summary>
+    public IReadOnlyList<string> WriteBeforeActivationResultAck { get; set; } = [];
+
+    /// <summary>
+    /// How many <c>SlotConfigurationActivationResult</c>s to take and then answer nothing, the connection left open:
+    /// the vehicle's wait for the <c>DurableAck</c> times out (onboard-hmi#140).
+    /// </summary>
+    public int ActivationResultAcksToDrop { get; set; }
+
+    /// <summary>
+    /// Takes a <c>SlotConfigurationActivationResult</c> and closes the connection before its <c>DurableAck</c>
+    /// (onboard-hmi#140).
+    /// </summary>
+    public bool DropBeforeActivationResultAck { get; set; }
+
+    /// <summary>Writes each activation result's <c>DurableAck</c> twice (onboard-hmi#140).</summary>
+    public bool DuplicateActivationResultAck { get; set; }
+
     private readonly List<JsonElement> _activationResults = [];
 
     public bool RespondToRecoveryRequests { get; set; }
@@ -1111,7 +1134,35 @@ public sealed class FakeControlServer : IAsyncDisposable
                         {
                             _activationResults.Add(root.Clone());
                         }
+
+                        if (ActivationResultAcksToDrop > 0)
+                        {
+                            ActivationResultAcksToDrop--;
+                            break;
+                        }
+
+                        if (DropBeforeActivationResultAck)
+                        {
+                            context.Client.Close();
+                            return;
+                        }
+
+                        foreach (string before in WriteBeforeActivationResultAck)
+                        {
+                            await (before switch
+                            {
+                                "SessionReadiness" => WriteEnvelopeAsync(context, CreateSessionReadiness(context)),
+                                "SlotOperationCommand" => SendSlotOperationCommandAsync(context),
+                                _ => throw new InvalidOperationException($"Unknown message to write: {before}.")
+                            }).ConfigureAwait(false);
+                        }
+
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        if (DuplicateActivationResultAck)
+                        {
+                            await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        }
+
                         break;
                     case "OperationResult" when OperationResultAcksToDrop > 0:
                         OperationResultAcksToDrop--;
