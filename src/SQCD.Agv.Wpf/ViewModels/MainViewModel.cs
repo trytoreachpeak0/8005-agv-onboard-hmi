@@ -21,6 +21,7 @@ public sealed class MainViewModel : ViewModelBase
     private string _wireToGateText = "未启用";
     private string _visitText = "未到站";
     private bool _hasWorklistItems;
+    private bool _hasJourneyPlanLegs;
     private string _stopDirectionText = string.Empty;
     private string _taskTypeText = string.Empty;
     private string _departureText = "禁止发车";
@@ -279,6 +280,7 @@ public sealed class MainViewModel : ViewModelBase
                 ? $"{worklist.StationId} / 无待处理任务"
                 : worklist.StationId;
         ReplaceWorklistItemsCore(snapshot.CurrentStopWorklist?.Items ?? []);
+        ReplaceJourneyPlanLegsCore(snapshot.UpcomingStopPlan?.Legs ?? []);
         // 方向只随服务端的 stopRole／legType，任务类型只随清单项的 workType；都不推断（批次6-03）。
         StopDirectionText = WireToGateStopFacts.DirectionText(snapshot);
         TaskTypeText = WireToGateStopFacts.TaskTypeText(snapshot);
@@ -303,6 +305,28 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         HasWorklistItems = WorklistItems.Count > 0;
+    }
+
+    /// <summary>
+    /// 计划腿列表整张替换。排序只按服务端给的 <c>sequence</c>：入站校验已保证它从 1 起连续、不重复，
+    /// 所以这里的排序就是服务端的顺序，不是本地的决定。
+    /// </summary>
+    private void ReplaceJourneyPlanLegsCore(IReadOnlyList<WireToGateMovementLeg> legs)
+    {
+        JourneyPlanLegs.Clear();
+        foreach (WireToGateMovementLeg leg in legs.OrderBy(leg => leg.Sequence))
+        {
+            JourneyPlanLegs.Add(new JourneyPlanLegRow(
+                leg.Sequence,
+                leg.StationId,
+                leg.StopPurposeCategory,
+                JourneyPlanLegText.StopPurpose(leg.StopPurposeCategory),
+                JourneyPlanLegText.LegType(leg.LegType),
+                leg.State,
+                JourneyPlanLegText.State(leg.State)));
+        }
+
+        HasJourneyPlanLegs = JourneyPlanLegs.Count > 0;
     }
 
     internal void ConfigureWireToGate(
@@ -421,9 +445,17 @@ public sealed class MainViewModel : ViewModelBase
         private set => SetProperty(ref _hasWorklistItems, value);
     }
 
+    /// <summary>
+    /// 完整计划，按 <c>sequence</c> 排，本地不重排、不合并（批次7-13，<c>DISPLAY_FULL_JOURNEY_PLAN</c>、
+    /// <c>NEVER_REORDER_LEGS_LOCALLY</c>）。已完成的腿与当前所在的腿照服务端下发的列着。
+    /// </summary>
     public ObservableCollection<JourneyPlanLegRow> JourneyPlanLegs { get; } = [];
 
-    public bool HasJourneyPlanLegs => JourneyPlanLegs.Count < 0;
+    public bool HasJourneyPlanLegs
+    {
+        get => _hasJourneyPlanLegs;
+        private set => SetProperty(ref _hasJourneyPlanLegs, value);
+    }
 
     public string VisitText
     {
