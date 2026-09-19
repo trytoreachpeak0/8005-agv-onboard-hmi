@@ -126,7 +126,13 @@ public sealed partial class RecoveryVectorG2Tests
         };
         await harness.RewriteRecoveryStateAsync(_ => acting, token);
         await SendClosedSnapshotAsync(harness, prepared, "COMPENSATE_LOAD_ALL_EMPTY", CompensationSlots);
-        await harness.WaitForInboundAsync("SnapshotAppliedAck", token);
+
+        // Deciding not to forget is the fallback done, not failed: the CLOSED is acknowledged, or the
+        // server would replay it for good (onboard-hmi#129).
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => AcknowledgedRecoverySnapshots(harness).Contains(ClosedSnapshotMessageId),
+            "the CLOSED snapshot the fallback declined to act on to be acknowledged",
+            token);
 
         WireToGateRecoveryState after = await harness.ReadRecoveryStateAsync(token);
         Assert.NotNull(after.RecoveryVector);
