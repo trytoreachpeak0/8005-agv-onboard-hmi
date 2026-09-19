@@ -1,0 +1,20 @@
+[
+  {
+    "Version": 1,
+    "Area": "C15-13",
+    "DispatchZone": "MAP-25-WIRE_TO_GATE",
+    "SlotPosition": "FRONT"
+  },
+  {
+    "Version": 1,
+    "Area": "N1-3",
+    "DispatchZone": "MAP-25-WIRE_TO_GATE",
+    "SlotPosition": "FRONT"
+  },
+  {
+    "Version": 1,
+    "Area": "N1-7",
+    "DispatchZone": "MAP-25-WIRE_TO_GATE",
+    "SlotPosition": "FRONT"
+  }
+]

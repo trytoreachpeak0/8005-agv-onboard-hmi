@@ -1,0 +1,25 @@
+commit: 9cbae2931f00d569a03bbed04777f9f7f7cb14f6
+dirty: 0 files
+command: dotnet test tests/SQCD.Agv.WireToGateG2Tests/SQCD.Agv.WireToGateG2Tests.csproj --filter "FullyQualifiedName~SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests|FullyQualifiedName~SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests|FullyQualifiedName~SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests"
+note: none
+at: 2026-09-19T16:14:20+08:00
+
+  All projects are up-to-date for restore.
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:08.37]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ARestartSendsNoFurtherRejectionForAResumeAlreadyRejected [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ARestartSendsNoFurtherRejectionForAResumeAlreadyRejected [518 ms]
+  Error Message:
+   Assert.Empty() Failure: Collection was not empty
+Collection: [{"protocolVersion":3,"profileId":"AGV_FULL_PRODUCT","protocolReleaseVersion":"2.0.0","protocolReleaseManifestSha256":"4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7","messageType":"SlotOperationCommandRejected","messageId":"bf55b399-ea32-be5b-a1b3-e45a95acd57d","correlationId":"abcdabcd-0000-4000-8000-000000000119","agvId":"AGV-8005-01","sessionGeneration":1,"sentAt":"2026-09-19T08:14:43.004761+00:00","payload":{"slotOperationAttemptId":"33333333-3333-4333-8333-333333333333","problem":{"reasonCode":"RECOVERY_SESSION_NOT_OPEN","fieldPath":null,"displayMessage":null},"observedCapabilityVersion":1,"conflictingContentSha256":null}}]
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ARestartSendsNoFurtherRejectionForAResumeAlreadyRejected() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 373
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ARestartSendsNoFurtherRejectionForAResumeAlreadyRejected() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 374
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ARestartSendsNoFurtherRejectionForAResumeAlreadyRejected() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 374
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ARestartSendsNoFurtherRejectionForAResumeAlreadyRejected() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 374
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:   105, Skipped:     0, Total:   106, Duration: 23 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

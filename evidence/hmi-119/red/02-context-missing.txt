@@ -1,0 +1,25 @@
+commit: 0d0a3de38e20bc5198c35060153f79ea2bb57f14
+dirty: 3 files
+command: dotnet test tests/SQCD.Agv.WireToGateG2Tests/SQCD.Agv.WireToGateG2Tests.csproj --filter "FullyQualifiedName~AResumeWhoseOperationContextIsGone"
+note: src checked out from 3547a97 (w2g/fp-v2-impl tip), tests from HEAD
+at: 2026-09-19T14:18:45+08:00
+
+  All projects are up-to-date for restore.
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:10.14]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeWhoseOperationContextIsGoneIsRejectedBeforeAnyDoorIo [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeWhoseOperationContextIsGoneIsRejectedBeforeAnyDoorIo [6 s]
+  Error Message:
+   Timed out after 5s waiting for: the control server to receive SlotOperationCommandRejected
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.RecoveryVectorHarness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.cs:line 1887
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.RecoveryVectorHarness.WaitForInboundAsync(String messageType, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.cs:line 1898
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.WaitForSingleRejectionAsync(RecoveryVectorHarness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 146
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeWhoseOperationContextIsGoneIsRejectedBeforeAnyDoorIo() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 72
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeWhoseOperationContextIsGoneIsRejectedBeforeAnyDoorIo() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 79
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

@@ -1,0 +1,22 @@
+commit: 78e79c62bf8aa62a40cb2045f40edfc616c6f31d
+dirty: 0 files
+command: dotnet test tests/SQCD.Agv.WireToGateG2Tests/SQCD.Agv.WireToGateG2Tests.csproj --filter "FullyQualifiedName~AfterARejectedResumeClosesItsSession"
+note: none
+at: 2026-09-19T16:07:22+08:00
+
+  All projects are up-to-date for restore.
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:03.84]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AfterARejectedResumeClosesItsSessionTheVehicleCanOpenAnother [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AfterARejectedResumeClosesItsSessionTheVehicleCanOpenAnother [1 s]
+  Error Message:
+   上次仓位操作在执行中中断，未再输出开锁，按实时IO结算：attempt=33333333-3333-4333-8333-333333333333，outcome=UNKNOWN，checkpoint=SAFE_FINISH_REACHED。 / 收到SlotOperationResumeCommand但未执行物理动作：attempt=33333333-3333-4333-8333-333333333333，reason=RECOVERY_SESSION_NOT_OPEN。 / 恢复向量LOAD_COMPENSATION未执行：reason=RECOVERY_SESSION_STATE_PENDING。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AfterARejectedResumeClosesItsSessionTheVehicleCanOpenAnother() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 312
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AfterARejectedResumeClosesItsSessionTheVehicleCanOpenAnother() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 320
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
