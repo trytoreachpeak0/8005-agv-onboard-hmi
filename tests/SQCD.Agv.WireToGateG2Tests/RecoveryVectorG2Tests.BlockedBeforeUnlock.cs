@@ -128,6 +128,54 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// Once the server has the refusal, the vehicle can ask for recovery again: the next press opens
+    /// a new session over the same unsettled load instead of refusing locally.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The server closes the session on the <c>FAILED</c> result (control-server#169), and a closed
+    /// session reaches this end as no session at all -- which is what this harness's double, sending
+    /// no session snapshots, already shows it. Before the release the prepared vector and the old
+    /// session's identity stayed in the journal, so the entry stayed lit and every press was refused
+    /// with <c>RECOVERY_SESSION_STATE_PENDING</c>: the server was no longer stuck, the vehicle was.
+    /// onboard-hmi#119 met the same wall after a refused resume on the real rig (P-07).
+    /// </para>
+    /// <para>
+    /// The load itself is kept: the attempt is still unsettled, and the next session is what recovers
+    /// it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task AfterARefusedCompensationIsAcknowledgedTheVehicleCanOpenAnotherSession()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            cargoInTargetSlots: true);
+        harness.Safety.SetUnknown();
+        Assert.True(await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token));
+        await harness.WaitForResultAsync("LoadCompensationResult", token);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.ReadRecoveryStateAsync(token).GetAwaiter().GetResult().RecoveryVector is null,
+            "the acknowledged refusal to release its vector and session",
+            token);
+
+        WireToGateRecoveryState released = await harness.ReadRecoveryStateAsync(token);
+        Assert.Null(released.ExceptionRecoverySessionId);
+        Assert.Null(released.RecoveryActionId);
+        Assert.Equal(AttemptId, released.UnsettledSlotOperationAttemptId);
+        Assert.Equal(AttemptId, released.OperationContext!.SlotOperationAttemptId);
+
+        harness.Safety.SetStopped();
+        Assert.True(await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token));
+        Assert.Equal(2, harness.ResultsOfType("ExceptionRecoverySessionRequested").Count);
+    }
+
+    /// <summary>
     /// The third command of #123 has no refusal before an unlock to answer: a forced mechanical
     /// recovery never unlocks, so its command path does not read vehicle motion at all.
     /// </summary>
