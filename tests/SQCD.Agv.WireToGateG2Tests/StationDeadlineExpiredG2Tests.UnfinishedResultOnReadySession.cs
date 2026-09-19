@@ -158,6 +158,55 @@ public sealed partial class StationDeadlineExpiredG2Tests
         await harness.AssertRecoveryRequiredStaysAtAsync(1, token);
     }
 
+    /// <summary>
+    /// 结果的 <c>DurableAck</c> 没回来时，执行路径发的是 <c>RESULT_ACK_PENDING</c>、没有宣告过恢复，于是恢复判断
+    /// 里那条投影是操作员通往恢复入口的唯一一条（onboard-hmi#131、hmi#109），照旧发——但只发一次：重发被确认后
+    /// 服务端追加 <c>RECOVERY_REQUIRED</c>，那一轮以及之后的每一轮都不再重复。措辞也不叫「上次」，这次装卸是本
+    /// 进程执行、本进程给的结论。
+    /// </summary>
+    /// <remarks>
+    /// 守护用例。「只出现一次」这一格在这条路径上本就由操作员事件的世代内去重键兜住（两轮恢复判断用同一个
+    /// <c>recovery-operation-restored</c> 键），它真正钉住的是另外两格：去重不许把这条唯一的投影一并挡掉，
+    /// 措辞不许叫「上次」。反向验证：把 ack 丢失分支的 <c>MarkConcludedHere</c> 改成 <c>announced: true</c>
+    /// （本票第一版的写法），它与 <c>AResendRefusedWithAProtocolProblemStillRestoresTheRecoveryEntry</c> 一起红，
+    /// 都停在等不到投影。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AnUnfinishedResultWhoseAckWasLostIsStillAnnouncedOnceByTheRestore()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        SettlementProbeJournal? probe = null;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { LockerWaitTimesOut = true },
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.OperationResultAcksToDrop = 1;
+                server.SendReadinessAfterSafetyStateChangedAck = true;
+            },
+            wrapJournal: inner => probe = new SettlementProbeJournal(inner, $"operation-result:{AttemptId}"));
+
+        await harness.WaitForEventAsync("RESULT_ACK_PENDING", token);
+        await harness.WaitForEventAsync("OPERATION_RECOVERY_REQUIRED", token);
+        await Harness.WaitUntilAsync(
+            () => harness.Client.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired,
+            "the RECOVERY_REQUIRED the server appended once the resent result was acknowledged",
+            token,
+            harness.DescribeEvents);
+        await harness.LetTwoMoreRecoveryDecisionsRunAsync(() => probe!.SettlementReads, token);
+
+        string events = harness.DescribeEvents();
+        Assert.Equal(1, CountRecoveryRequired(events));
+        Assert.Contains("装货操作未完成：1号仓，需要管理员恢复。", events, StringComparison.Ordinal);
+        Assert.DoesNotContain("上次", events, StringComparison.Ordinal);
+        Assert.Equal(WireToGateHmiOperationStage.RecoveryRequired, harness.Business.CurrentOperationSnapshot?.Stage);
+        await harness.AssertRecoveryRequiredStaysAtAsync(1, token);
+    }
+
     private static int CountRecoveryRequired(string events) =>
         events.Split(Environment.NewLine).Count(
             line => line.StartsWith("OPERATION_RECOVERY_REQUIRED:", StringComparison.Ordinal));

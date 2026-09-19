@@ -137,9 +137,14 @@ public sealed partial class StationDeadlineExpiredG2Tests
 
     /// <summary>
     /// 重发一条未确认的失败结果时服务端回 <c>ProtocolProblem</c>（或发件箱行在重绑时对不上）：重发以
-    /// <c>InvalidDataException</c> 失败，恢复入口的投影照样出现——「上次装货操作未完成……需要管理员恢复」。
+    /// <c>InvalidDataException</c> 失败，恢复入口的投影照样出现——「装货操作未完成……需要管理员恢复」。
     /// 改动前这条路径不重发、入口每次都出现；异常穿出去会让它消失，与 hmi#109「恢复入口消失」同类（PR #131 调度审查）。
     /// </summary>
+    /// <remarks>
+    /// 措辞在 onboard-hmi#139 改过一次：结果的 <c>DurableAck</c> 没回来时什么都没宣告过，这条投影是操作员通往
+    /// 恢复入口的唯一一条，照旧发；但这次装卸是本进程执行、本进程给的结论，不是上个进程留下的，所以不再叫
+    /// 「上次」。本用例要的「入口照样出现」一格没变，只是按新措辞等。
+    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("IntegrationSlice", "FP-IS-07")]
@@ -164,11 +169,12 @@ public sealed partial class StationDeadlineExpiredG2Tests
             token,
             harness.DescribeEvents);
         await Harness.WaitUntilAsync(
-            () => harness.DescribeEvents().Contains("上次装货操作未完成", StringComparison.Ordinal),
+            () => harness.DescribeEvents().Contains("装货操作未完成：1号仓，需要管理员恢复。", StringComparison.Ordinal),
             "the recovery entry's projection after the refused resend",
             token,
             harness.DescribeEvents);
 
+        Assert.DoesNotContain("上次", harness.DescribeEvents(), StringComparison.Ordinal);
         Assert.Equal(WireToGateHmiOperationStage.RecoveryRequired, harness.Business.CurrentOperationSnapshot?.Stage);
         Assert.Equal(AttemptId, harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId);
     }
