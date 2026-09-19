@@ -20,6 +20,7 @@ public sealed class MainViewModel : ViewModelBase
     private string _ioConnectionText = "离线";
     private string _wireToGateText = "未启用";
     private string _visitText = "未到站";
+    private bool _hasWorklistItems;
     private string _stopDirectionText = string.Empty;
     private string _taskTypeText = string.Empty;
     private string _departureText = "禁止发车";
@@ -271,23 +272,38 @@ public sealed class MainViewModel : ViewModelBase
         HasStationDepartureCountdown = snapshot.CurrentStopWorklist is not null;
         RefreshStationDepartureCountdownCore();
         SyncStationDepartureCountdownTimerCore();
-        if (snapshot.CurrentStopWorklist is { } worklist)
-        {
-            WireToGateWorklistItem? item = worklist.Items.SingleOrDefault();
-            VisitText = item is null
+        // 到站那一格只留站名，子批号在清单列表里：一站最多 8 条需求，挑哪一条放这里都不对（批次7-13）。
+        VisitText = snapshot.CurrentStopWorklist is not { } worklist
+            ? "旅程未同步"
+            : worklist.Items.Count == 0
                 ? $"{worklist.StationId} / 无待处理任务"
-                : $"{worklist.StationId} / {item.Sublot}";
-        }
-        else
-        {
-            VisitText = "旅程未同步";
-        }
+                : worklist.StationId;
+        ReplaceWorklistItemsCore(snapshot.CurrentStopWorklist?.Items ?? []);
         // 方向只随服务端的 stopRole／legType，任务类型只随清单项的 workType；都不推断（批次6-03）。
         StopDirectionText = WireToGateStopFacts.DirectionText(snapshot);
         TaskTypeText = WireToGateStopFacts.TaskTypeText(snapshot);
         RefreshWireToGateInputStateCore();
         ApplyWireToGatePresentationCore();
     });
+
+    /// <summary>
+    /// 清单列表整张替换：新修订号的清单、断线后的空旅程都是整值，旧行不留。
+    /// </summary>
+    private void ReplaceWorklistItemsCore(IReadOnlyList<WireToGateWorklistItem> items)
+    {
+        WorklistItems.Clear();
+        foreach (WireToGateWorklistItem item in items)
+        {
+            WorklistItems.Add(new WorklistItemRow(
+                item.DemandId,
+                item.Sublot,
+                WireToGateStopFacts.ItemDirectionText(item),
+                WireToGateStopFacts.ItemTaskTypeText(item),
+                item.ExpectedBasketCount));
+        }
+
+        HasWorklistItems = WorklistItems.Count > 0;
+    }
 
     internal void ConfigureWireToGate(
         Func<string, ScanInputMethod, CancellationToken, Task> submitter,
@@ -394,9 +410,16 @@ public sealed class MainViewModel : ViewModelBase
         RefreshRecoveryReasonLockCore();
     }
 
+    /// <summary>
+    /// 本站清单，每条需求一行，行序等于服务端 <c>items[]</c> 的顺序，本地不排序（批次7-13）。
+    /// </summary>
     public ObservableCollection<WorklistItemRow> WorklistItems { get; } = [];
 
-    public bool HasWorklistItems => WorklistItems.Count < 0;
+    public bool HasWorklistItems
+    {
+        get => _hasWorklistItems;
+        private set => SetProperty(ref _hasWorklistItems, value);
+    }
 
     public string VisitText
     {
