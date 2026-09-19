@@ -1452,6 +1452,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 wire.RootElement.GetProperty("payload").Deserialize<SlotOperationCommandRejectedPayload>(JsonOptions)
                 ?? throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
             await SendResumeRejectedCoreAsync(command, payload, cancellationToken).ConfigureAwait(false);
+            // Idempotent. A journal still naming this session is one a stop, or a failed write,
+            // left behind after the rejection was already on file.
+            await ReleaseRefusedResumeSessionAsync(command, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -2136,6 +2139,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         string reasonCode,
         CancellationToken cancellationToken)
     {
+        // Forgotten before the rejection is put on file, not after. The server settles the resume
+        // command on the rejection alone and does not send it again, so a stop between the two
+        // writes in the other order would leave a journal naming a closed session with nothing left
+        // to arrive and clear it. In this order a stop in between leaves the resume unanswered: the
+        // server sends it again, and it is refused afresh against a journal already cleared.
+        await ReleaseRefusedResumeSessionAsync(command, cancellationToken).ConfigureAwait(false);
         await SendResumeRejectedCoreAsync(
                 command,
                 new SlotOperationCommandRejectedPayload(
@@ -2145,7 +2154,6 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     null),
                 cancellationToken)
             .ConfigureAwait(false);
-        await ReleaseRefusedResumeSessionAsync(command, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>
