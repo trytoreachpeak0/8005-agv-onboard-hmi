@@ -27,7 +27,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// <summary>
     /// 装货等操作员时断线重连：报告里带着这次没结算的 attempt，替身答 <c>RECOVERY_REQUIRED</c>（<c>SESSION_RECOVERY_REQUIRED</c>），
     /// 其后什么行程报文都不推；操作员放货关门、结果到达并被确认之后，替身在那条 <c>DurableAck</c> 后面追加 <c>READY</c>，
-    /// 门后的快照与命令这才发出，而且只发一次。
+    /// 门后的快照这才发出，而且只发一次。这条装货命令已经被结果应答，门后不再重发（真服务端 <c>SettleAnsweredCommandAsync</c>）。
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-05")]
@@ -62,8 +62,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
         harness.Io.CloseDoor(0, cargo: true);
         await Harness.WaitUntilAsync(
             () => harness.Server.SentEnvelopes.Any(
-                item => item.Connection == reconnect && item.MessageType == "SlotOperationCommand"),
-            "the deferred command on the reconnected session",
+                item => item.Connection == reconnect && item.MessageType == "UpcomingStopPlanSnapshot"),
+            "the deferred journey on the reconnected session",
             token,
             harness.DescribeEvents);
         await Task.Delay(TimeSpan.FromMilliseconds(300), token);
@@ -77,7 +77,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.True(resultAck >= 0, "the result was never acknowledged");
         Assert.True(ready > resultAck, "READY did not follow the result's DurableAck");
         Assert.True(firstGated > ready, "a gated message went out before READY");
-        Assert.Single(sent, item => item.MessageType == "SlotOperationCommand");
+        Assert.Single(sent, item => item.MessageType == "UpcomingStopPlanSnapshot");
+        Assert.DoesNotContain(sent, item => item.MessageType == "SlotOperationCommand");
     }
 
     /// <summary>

@@ -254,8 +254,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.False(onFile.Acknowledged);
         Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "OperationResult");
 
-        harness.Server.SendSlotOperationCommandAfterRecovery = false;
-        harness.Server.SendJourneySnapshotsAfterRecovery = false;
         await harness.Client.ConnectAndRecoverAsync(token);
 
         await Harness.WaitUntilAsync(

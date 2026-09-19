@@ -9,6 +9,31 @@ using SQCD.Agv.Contracts;
 
 namespace SQCD.Agv.WireToGateG2Tests;
 
+/// <summary>
+/// The control server's half of the wire, for G2.
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Readiness follows the real server by default</b> (onboard-hmi#128). Compare with the control server's
+/// <c>OnboardMessageProcessor.cs</c> -- its <c>RecoveryStateReport</c> branch, and the <c>OperationResult</c> and
+/// recovery result branches that decide readiness again -- and with <c>JourneyRuntimeEngine.AdvanceAsync</c>'s
+/// readiness gate; when either changes, this is the place to change with it:
+/// </para>
+/// <list type="bullet">
+/// <item>A RecoveryStateReport naming an unsettled attempt this server has not settled, or any pending result, is
+/// answered RECOVERY_REQUIRED with <c>SESSION_RECOVERY_REQUIRED</c> (<c>WireToGateStore.DecideReadinessAsync</c>,
+/// <c>noPendingFacts</c>). A COMPLETED <c>OperationResult</c>, or a reconciled cancellation, compensation or fault
+/// cargo handoff, settles the attempt; the arrival of a pending result reconciles it; readiness is then announced
+/// after the ack only when it changed.</item>
+/// <item>While the last readiness announced is not READY, the journey snapshots, the sublot entry request,
+/// <c>SlotOperationCommand</c> and <c>PreDepartureSafetyCheck</c> are held and sent once READY is announced, not
+/// dropped. Recovery messages and <c>SlotConfigurationActivationCommand</c> are not behind that gate, on the real
+/// server or here.</item>
+/// <item>Sending gated messages to a session that is not ready is a deviation only
+/// <see cref="ViolateReadinessGateForTest"/> makes, and answering READY over pending facts one only
+/// <see cref="AnswerReadyOverPendingFactsForTest"/> makes.</item>
+/// </list>
+/// </remarks>
 public sealed class FakeControlServer : IAsyncDisposable
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
@@ -100,21 +125,34 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool SendRecoveryRequiredReadinessAfterOperationResultAck { get; set; }
 
     /// <summary>
-    /// Holds the handshake's readiness at RECOVERY_REQUIRED while the RecoveryStateReport names an unsettled
-    /// attempt this double has never acknowledged a result for, and announces READY on the ack of that result --
-    /// what the real ControlServer does with PENDING_FACT_RECONCILIATION_REQUIRED (control-server#189). Nothing
-    /// else is sent after a held readiness: the real server pushes no journey while the session is not ready.
-    /// </summary>
-    public bool HoldReadinessForUnreconciledAttempt { get; set; }
-
-    /// <summary>
-    /// Answers the handshake with RECOVERY_REQUIRED and still sends whatever follows it, such as a
-    /// <c>SlotOperationCommand</c>: the readiness flip race in which a command meets a session that is not ready.
+    /// Answers the handshake with RECOVERY_REQUIRED whatever the report says. What follows it is still held behind
+    /// the readiness gate unless <see cref="ViolateReadinessGateForTest"/> is also set.
     /// </summary>
     public bool ForceRecoveryRequiredReadiness { get; set; }
 
-    private readonly HashSet<string> _acknowledgedResultAttempts = new(StringComparer.Ordinal);
-    private string? _heldAttempt;
+    /// <summary>
+    /// <b>A deviation from the real server, for tests of the vehicle's own defence only.</b> Sends the journey
+    /// snapshots, <c>SlotOperationCommand</c> and <c>PreDepartureSafetyCheck</c> that follow the handshake even
+    /// when the readiness just announced is not READY. The real server never does: every one of them is behind
+    /// <c>JourneyRuntimeEngine.AdvanceAsync</c>'s <c>CurrentReadySessionAsync</c> gate (onboard-hmi#128). A test
+    /// that sets this says in a comment which vehicle-side defence it needs the violation for.
+    /// </summary>
+    public bool ViolateReadinessGateForTest { get; set; }
+
+    /// <summary>
+    /// <b>A deviation from the real server, for tests of the vehicle's own defence only.</b> Leaves the
+    /// RecoveryStateReport's unsettled attempt and pending results out of the readiness decision, so a vehicle with an
+    /// unsettled operation is answered READY. The real server answers it RECOVERY_REQUIRED
+    /// (<c>WireToGateStore.DecideReadinessAsync</c>, <c>noPendingFacts</c>; onboard-hmi#128).
+    /// </summary>
+    public bool AnswerReadyOverPendingFactsForTest { get; set; }
+
+    /// <summary>
+    /// Attempts this server has settled, across connections and, through
+    /// <see cref="AdoptDurableRecoveryMemoryFrom"/>, across a vehicle restart: the <c>StationOperations</c> rows
+    /// <c>WireToGateStore.TryTakeOffSettledReportedAttemptsAsync</c> reads as Committed or Cancelled.
+    /// </summary>
+    private readonly HashSet<string> _settledAttempts = new(StringComparer.Ordinal);
 
     public bool RequireSafeSafetyForReadiness { get; set; }
 
@@ -351,6 +389,9 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool SendSlotOperationCommandAfterRecovery { get; set; }
 
+    /// <summary>The attempt of the one <c>SlotOperationCommand</c> this double issues.</summary>
+    private const string CommandSlotOperationAttemptId = "44444444-4444-4444-4444-444444444444";
+
     /// <summary>
     /// When set, a PreDepartureSafetyCheck asking about this safety state version is sent after the
     /// recovery handshake. A version below the one the vehicle has had accepted is a check that has
@@ -499,6 +540,8 @@ public sealed class FakeControlServer : IAsyncDisposable
                 {
                     _recoveryWorkflowContents[workflowId] = content;
                 }
+
+                _settledAttempts.UnionWith(previous._settledAttempts);
             }
         }
     }
@@ -696,7 +739,8 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// Sends the <c>SlotOperationCommand</c> that <see cref="SendSlotOperationCommandAfterRecovery"/>
     /// sends -- the same attempt, under a new messageId -- once more on the latest session. The real
     /// control server's outbox does this about once a second until the <c>OperationResult</c> arrives
-    /// (8005-agv-onboard-hmi#78, the <c>1086c4a</c> case).
+    /// (8005-agv-onboard-hmi#78, the <c>1086c4a</c> case). The test decides when, so this is not held behind the
+    /// readiness gate: call it on a session that has been announced READY unless the test is about the violation.
     /// </summary>
     public Task ResendSlotOperationCommandAsync()
     {
@@ -830,6 +874,24 @@ public sealed class FakeControlServer : IAsyncDisposable
 
         /// <summary>Set once this session was asked for a safety snapshot mid-session.</summary>
         public volatile bool SafetyStateSnapshotRequested;
+
+        /// <summary>
+        /// The unsettled attempt and the pending result messageIds this session's RecoveryStateReport named and
+        /// the server has not reconciled yet: <c>SessionRecoveryRow.PendingAttemptIdsJson</c> and
+        /// <c>PendingResultIdsJson</c>. Guarded by the server's lock.
+        /// </summary>
+        public readonly HashSet<string> PendingAttempts = new(StringComparer.Ordinal);
+
+        public readonly HashSet<string> PendingResultIds = new(StringComparer.Ordinal);
+
+        /// <summary>The readiness of the last SessionReadiness written on this session; null before the first.</summary>
+        public string? AnnouncedReadiness;
+
+        /// <summary>
+        /// The handshake's journey pushes are waiting for this session to be announced READY. Guarded by the
+        /// server's lock.
+        /// </summary>
+        public bool GatedSendsDeferred;
 
         /// <summary>
         /// One line at a time: a test can write on a session (<see cref="ResendSlotOperationCommandAsync"/>)
@@ -1040,29 +1102,25 @@ public sealed class FakeControlServer : IAsyncDisposable
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
                         if (SendRecoveryRequiredReadinessAfterOperationResultAck)
                         {
+                            // The server refused the result: the operation goes to RecoveryRequired and settles nothing.
                             await WriteEnvelopeAsync(
                                 context,
                                 CreateRecoveryRequiredSessionReadiness(context)).ConfigureAwait(false);
+                            break;
                         }
 
-                        string resultAttempt = root.GetProperty("payload")
-                            .GetProperty("slotOperationAttemptId").GetString()!;
-                        bool reconciled;
-                        lock (_sync)
+                        // OnboardMessageProcessor.cs, OperationResult: ReconcileReportedPendingResultAsync takes the
+                        // result off the reported pending list whatever the verdict; only a COMPLETED result commits the
+                        // operation (ApplyOperationResultAsync), which SettleReportedAttemptsAsync then takes off.
+                        JsonElement resultPayload = root.GetProperty("payload");
+                        await ReconcileAsync(context, pending =>
                         {
-                            _acknowledgedResultAttempts.Add(resultAttempt);
-                            reconciled = string.Equals(_heldAttempt, resultAttempt, StringComparison.Ordinal);
-                            if (reconciled)
+                            pending.PendingResultIds.Remove(messageId);
+                            if (resultPayload.GetProperty("overallOutcome").GetString() == "COMPLETED")
                             {
-                                _heldAttempt = null;
+                                _settledAttempts.Add(resultPayload.GetProperty("slotOperationAttemptId").GetString()!);
                             }
-                        }
-
-                        if (reconciled)
-                        {
-                            await WriteEnvelopeAsync(context, CreateSessionReadiness(context)).ConfigureAwait(false);
-                        }
-
+                        }).ConfigureAwait(false);
                         break;
                     case "SublotSubmitted" when DropBeforeSublotSubmittedAck:
                         BindSublotSubmission(messageId, root);
@@ -1118,17 +1176,42 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "SlotOperationCommandRejected" when SlotOperationCommandRejectedAcksToDrop > 0:
                         SlotOperationCommandRejectedAcksToDrop--;
                         break;
+                    // A reconciled recovery settles the attempt it was about, and readiness is judged again and
+                    // announced on a change (OnboardMessageProcessor.cs, the recovery results: SettleReportedAttemptsAsync,
+                    // then DecideReadinessAsync). OnboardRecoveryCoordinator reconciles a cancellation or compensation on
+                    // ALL_EMPTY and a fault cargo handoff on HANDED_OFF, and cancels the operation. A correction reconciles
+                    // without touching the operation; a forced mechanical recovery settles it too but holds readiness
+                    // until its HardwareRecoveryRecord, which this double does not model, so neither settles anything here.
+                    case "LoadCancellationResult":
+                    case "LoadCompensationResult":
+                    case "FaultCargoRecoveryResult":
+                        await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        JsonElement recoveryPayload = root.GetProperty("payload");
+                        string? settledAttempt = messageType switch
+                        {
+                            "FaultCargoRecoveryResult" when recoveryPayload.GetProperty("overallOutcome").GetString()
+                                == "HANDED_OFF" => RecoveryVectorSlotOperationAttemptId,
+                            "FaultCargoRecoveryResult" => null,
+                            _ when recoveryPayload.GetProperty("overallOutcome").GetString() == "ALL_EMPTY" =>
+                                recoveryPayload.GetProperty("slotOperationAttemptId").GetString(),
+                            _ => null
+                        };
+                        await ReconcileAsync(context, _ =>
+                        {
+                            if (settledAttempt is not null)
+                            {
+                                _settledAttempts.Add(settledAttempt);
+                            }
+                        }).ConfigureAwait(false);
+                        break;
                     case "SublotSubmitted":
                     case "OperationProgress":
                     case "PreDepartureSafetyCheckResult":
                     case "SlotOperationCommandRejected":
-                    // The five recovery results below are durable in exactly the same way as the
+                    // The two recovery results below are durable in exactly the same way as the
                     // four above; they are listed so a test can drive the whole O_TO_C surface
                     // rather than only the part an earlier test happened to need.
-                    case "LoadCancellationResult":
-                    case "LoadCompensationResult":
                     case "LoadCorrectionResult":
-                    case "FaultCargoRecoveryResult":
                     case "ForcedMechanicalRecoveryResult":
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
                         break;
@@ -1359,6 +1442,7 @@ public sealed class FakeControlServer : IAsyncDisposable
         if (messageType == "SafetyStateSnapshot" && context.SafetyStateSnapshotRequested)
         {
             await WriteEnvelopeAsync(context, CreateSessionReadiness(context)).ConfigureAwait(false);
+            await ReleaseGatedSendsIfReadyAsync(context).ConfigureAwait(false);
         }
     }
 
@@ -1387,73 +1471,50 @@ public sealed class FakeControlServer : IAsyncDisposable
 
         bool drop;
         bool sendReadiness;
-        bool hold = false;
-        JsonElement reported = report.GetProperty("payload").GetProperty("unsettledSlotOperationAttemptId");
+        JsonElement reportPayload = report.GetProperty("payload");
+        JsonElement reported = reportPayload.GetProperty("unsettledSlotOperationAttemptId");
         lock (_sync)
         {
             _recoveryAckCount++;
             sendReadiness = SendReadinessAfterRecoveryAck && _recoveryAckCount == 1;
             drop = DropAfterRecoveryAck;
-            if (HoldReadinessForUnreconciledAttempt
-                && reported.ValueKind == JsonValueKind.String
-                && !_acknowledgedResultAttempts.Contains(reported.GetString()!))
+            // WireToGateStore.ApplyRecoveryReportAsync: the report replaces the session's pending facts, and an
+            // attempt the server settled long ago comes straight off again (TryTakeOffSettledReportedAttemptsAsync).
+            context.PendingAttempts.Clear();
+            context.PendingResultIds.Clear();
+            if (reported.ValueKind == JsonValueKind.String && !_settledAttempts.Contains(reported.GetString()!))
             {
-                _heldAttempt = reported.GetString();
-                hold = true;
+                context.PendingAttempts.Add(reported.GetString()!);
+            }
+
+            foreach (JsonElement pending in reportPayload.GetProperty("pendingResults").EnumerateArray())
+            {
+                context.PendingResultIds.Add(pending.GetProperty("messageId").GetString()!);
             }
         }
 
-        if (sendReadiness && hold)
-        {
-            await WriteEnvelopeAsync(context, CreateRecoveryRequiredSessionReadiness(context)).ConfigureAwait(false);
-        }
-        else if (sendReadiness)
+        if (sendReadiness)
         {
             await WriteEnvelopeAsync(
                 context,
                 ForceRecoveryRequiredReadiness
                     ? CreateRecoveryRequiredSessionReadiness(context)
                     : CreateSessionReadiness(context)).ConfigureAwait(false);
-            bool sendDemandSnapshots = SendDemandAcceptanceSnapshotsAfterRecovery;
-            if (sendDemandSnapshots && SendDemandAcceptanceSnapshotsOnlyFirstConnection)
+            bool pushNow;
+            lock (_sync)
             {
-                sendDemandSnapshots = Interlocked.Increment(ref _demandSnapshotSendCount) == 1;
+                pushNow = context.AnnouncedReadiness == "READY" || ViolateReadinessGateForTest;
+                context.GatedSendsDeferred = !pushNow;
             }
 
-            if (VectorJourneySnapshotsAfterRecovery is { } vectorSnapshots)
+            if (pushNow)
             {
-                await SendVectorJourneySnapshotsAsync(context, vectorSnapshots).ConfigureAwait(false);
-            }
-            else if (sendDemandSnapshots)
-            {
-                await SendDemandAcceptanceSnapshotsAsync(context).ConfigureAwait(false);
-            }
-            else if (SendJourneySnapshotsAfterRecovery)
-            {
-                await SendJourneySnapshotsAsync(context).ConfigureAwait(false);
+                await SendGatedAfterRecoveryAsync(context).ConfigureAwait(false);
             }
 
-            if (SendSlotOperationCommandAfterRecovery)
-            {
-                await SendSlotOperationCommandAsync(context).ConfigureAwait(false);
-            }
-
-            if (PreDepartureSafetyCheckExpectedVersionAfterRecovery is long expectedSafetyStateVersion)
-            {
-                await WriteEnvelopeAsync(context, CreateEnvelope(
-                    context,
-                    "PreDepartureSafetyCheck",
-                    correlationId: null,
-                    new
-                    {
-                        preDepartureSafetyCheckId = PreDepartureSafetyCheckIdAfterRecovery,
-                        demandId = "11111111-1111-4111-8111-111111111111",
-                        movementLegId = "22222222-2222-4222-8222-222222222222",
-                        expectedSafetyStateVersion,
-                        targetStationId = "ST-GATE"
-                    })).ConfigureAwait(false);
-            }
-
+            // Not behind the gate: the activation is issued on the live session by the administrator endpoint and
+            // replayed by OnboardRecoveryCoordinator.ReplayPendingCommandsAsync, neither of which asks for READY --
+            // a vehicle whose fingerprint disagrees is RECOVERY_REQUIRED and only an activation can fix it.
             if (SendSlotConfigurationActivationAfterRecovery)
             {
                 await SendSlotConfigurationActivationCommandAsync(context).ConfigureAwait(false);
@@ -1464,6 +1525,123 @@ public sealed class FakeControlServer : IAsyncDisposable
         {
             context.Client.Close();
         }
+    }
+
+    /// <summary>
+    /// What the real server sends only to a session that is READY: the journey snapshots, the sublot entry
+    /// request, the outbox's resend of the slot command and the pre-departure check. All of them sit behind
+    /// <c>JourneyRuntimeEngine.AdvanceAsync</c>'s <c>CurrentReadySessionAsync</c>, and the resend behind the same
+    /// gate as <c>ReplayPendingForSessionAsync</c>.
+    /// </summary>
+    private async Task SendGatedAfterRecoveryAsync(ConnectionContext context)
+    {
+        bool sendDemandSnapshots = SendDemandAcceptanceSnapshotsAfterRecovery;
+        if (sendDemandSnapshots && SendDemandAcceptanceSnapshotsOnlyFirstConnection)
+        {
+            sendDemandSnapshots = Interlocked.Increment(ref _demandSnapshotSendCount) == 1;
+        }
+
+        if (VectorJourneySnapshotsAfterRecovery is { } vectorSnapshots)
+        {
+            await SendVectorJourneySnapshotsAsync(context, vectorSnapshots).ConfigureAwait(false);
+        }
+        else if (sendDemandSnapshots)
+        {
+            await SendDemandAcceptanceSnapshotsAsync(context).ConfigureAwait(false);
+        }
+        else if (SendJourneySnapshotsAfterRecovery)
+        {
+            await SendJourneySnapshotsAsync(context).ConfigureAwait(false);
+        }
+
+        // The outbox replays the command until it is answered: JourneyRuntimeEngine settles the load command's outbox
+        // row once the operation is Committed (SettleAnsweredCommandAsync), and GetPendingOutboundEnvelopesAsync never
+        // returns it again. So an attempt this server has settled gets no command on a later session.
+        bool commandAnswered;
+        lock (_sync)
+        {
+            commandAnswered = _settledAttempts.Contains(CommandSlotOperationAttemptId);
+        }
+
+        if (SendSlotOperationCommandAfterRecovery && !commandAnswered)
+        {
+            await SendSlotOperationCommandAsync(context).ConfigureAwait(false);
+        }
+
+        if (PreDepartureSafetyCheckExpectedVersionAfterRecovery is long expectedSafetyStateVersion)
+        {
+            await WriteEnvelopeAsync(context, CreateEnvelope(
+                context,
+                "PreDepartureSafetyCheck",
+                correlationId: null,
+                new
+                {
+                    preDepartureSafetyCheckId = PreDepartureSafetyCheckIdAfterRecovery,
+                    demandId = "11111111-1111-4111-8111-111111111111",
+                    movementLegId = "22222222-2222-4222-8222-222222222222",
+                    expectedSafetyStateVersion,
+                    targetStationId = "ST-GATE"
+                })).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Sends the handshake's held journey pushes once this session has been announced READY, and only once.
+    /// </summary>
+    private async Task ReleaseGatedSendsIfReadyAsync(ConnectionContext context)
+    {
+        lock (_sync)
+        {
+            if (!context.GatedSendsDeferred || context.AnnouncedReadiness != "READY")
+            {
+                return;
+            }
+
+            context.GatedSendsDeferred = false;
+        }
+
+        await SendGatedAfterRecoveryAsync(context).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Applies what a result settled, judges readiness again and, only when it changed from what this session was
+    /// last told, announces it right after the ack -- OnboardMessageProcessor.cs's OperationResult and recovery
+    /// result branches. Nothing is announced on a session that has not had its handshake readiness.
+    /// </summary>
+    private async Task ReconcileAsync(ConnectionContext context, Action<ConnectionContext> apply)
+    {
+        bool announce;
+        lock (_sync)
+        {
+            apply(context);
+            announce = context.AnnouncedReadiness is { } announced
+                && announced != (DecideReadinessReason(context) is null ? "READY" : "RECOVERY_REQUIRED");
+        }
+
+        if (announce)
+        {
+            await WriteEnvelopeAsync(context, CreateSessionReadiness(context)).ConfigureAwait(false);
+            await ReleaseGatedSendsIfReadyAsync(context).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// The readiness <c>WireToGateStore.DecideReadinessAsync</c> would reach from what this double models, and the
+    /// wire reason code <c>ProtocolErrorCodes.ToSessionReadinessReasonCode</c> maps it to; null means READY. Pending
+    /// facts are judged before departure safety, as in <c>GetRecoveryReason</c>. Call under the lock.
+    /// </summary>
+    private string? DecideReadinessReason(ConnectionContext context)
+    {
+        context.PendingAttempts.ExceptWith(_settledAttempts);
+        if (!AnswerReadyOverPendingFactsForTest
+            && (context.PendingAttempts.Count > 0 || context.PendingResultIds.Count > 0))
+        {
+            // PENDING_FACT_RECONCILIATION_REQUIRED.
+            return "SESSION_RECOVERY_REQUIRED";
+        }
+
+        // DEPARTURE_SAFETY_NOT_READY.
+        return RequireSafeSafetyForReadiness && !_latestSafetyDepartureSafe ? "DEPARTURE_UNSAFE" : null;
     }
 
     /// <summary>
@@ -1904,6 +2082,7 @@ public sealed class FakeControlServer : IAsyncDisposable
         if (SendReadinessAfterSafetyStateChangedAck && !replayedIntoLaterSession)
         {
             await WriteEnvelopeAsync(context, CreateSessionReadiness(context)).ConfigureAwait(false);
+            await ReleaseGatedSendsIfReadyAsync(context).ConfigureAwait(false);
         }
     }
 
@@ -1921,19 +2100,28 @@ public sealed class FakeControlServer : IAsyncDisposable
             DateTimeOffset.UtcNow,
             payload);
 
+    /// <summary>
+    /// A SessionReadiness decided the way <c>WireToGateStore.DecideReadinessAsync</c> decides it from the inputs this
+    /// double models -- the session's pending facts and, under <see cref="RequireSafeSafetyForReadiness"/>, departure
+    /// safety -- and remembered as this session's announced readiness.
+    /// </summary>
     private WireToGateEnvelope CreateSessionReadiness(ConnectionContext context)
     {
-        bool ready;
+        string? reasonCode;
         lock (_sync)
         {
-            // A held attempt keeps every readiness this double announces at RECOVERY_REQUIRED, the mid-session ones
-            // that answer a safety change included: only its result reconciles it, as on the real server.
-            if (_heldAttempt is not null)
-            {
-                return CreateRecoveryRequiredSessionReadiness(context);
-            }
+            reasonCode = DecideReadinessReason(context);
+        }
 
-            ready = !RequireSafeSafetyForReadiness || _latestSafetyDepartureSafe;
+        return CreateSessionReadiness(context, reasonCode);
+    }
+
+    private WireToGateEnvelope CreateSessionReadiness(ConnectionContext context, string? reasonCode)
+    {
+        string readiness = reasonCode is null ? "READY" : "RECOVERY_REQUIRED";
+        lock (_sync)
+        {
+            context.AnnouncedReadiness = readiness;
         }
 
         return CreateEnvelope(
@@ -1942,12 +2130,11 @@ public sealed class FakeControlServer : IAsyncDisposable
             correlationId: null,
             new
             {
-                readiness = ready ? "READY" : "RECOVERY_REQUIRED",
+                readiness,
                 decidedAt = DateTimeOffset.UtcNow,
-                // The wire value, not the control server's internal DEPARTURE_SAFETY_NOT_READY: the real
-                // server maps it through ProtocolErrorCodes.ToSessionReadinessReasonCode, and only
-                // DEPARTURE_UNSAFE is in the protocol's error registry.
-                reasonCodes = ready ? Array.Empty<string>() : ["DEPARTURE_UNSAFE"],
+                // Wire values, not the control server's internal codes: the real server maps them through
+                // ProtocolErrorCodes.ToSessionReadinessReasonCode, and only these are in the protocol's error registry.
+                reasonCodes = reasonCode is null ? Array.Empty<string>() : [reasonCode],
                 acceptedCapabilityVersion = Math.Max(context.CapabilityVersion, context.AcceptedCapabilityVersion),
                 acceptedSafetyStateVersion = Math.Max(context.SafetyStateVersion, context.AcceptedSafetyStateVersion),
                 vehicleBusinessStateRevision = 0
@@ -1959,26 +2146,12 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </summary>
     private static readonly string[] FrozenEntryMethods = ["SCANNER", "KEYBOARD"];
 
-    private static readonly string[] RecoveryRequiredReasonCodes = ["SESSION_RECOVERY_REQUIRED"];
-
     /// <summary>
     /// Shaped after OnboardMessageProcessor.SessionReadinessLine: no correlationId even though it
     /// trails an ack, and the protocol reason code the server maps OPERATION_RECOVERY_REQUIRED onto.
     /// </summary>
-    private static WireToGateEnvelope CreateRecoveryRequiredSessionReadiness(ConnectionContext context) =>
-        CreateEnvelope(
-            context,
-            "SessionReadiness",
-            correlationId: null,
-            new
-            {
-                readiness = "RECOVERY_REQUIRED",
-                decidedAt = DateTimeOffset.UtcNow,
-                reasonCodes = RecoveryRequiredReasonCodes,
-                acceptedCapabilityVersion = Math.Max(context.CapabilityVersion, context.AcceptedCapabilityVersion),
-                acceptedSafetyStateVersion = Math.Max(context.SafetyStateVersion, context.AcceptedSafetyStateVersion),
-                vehicleBusinessStateRevision = 0
-            });
+    private WireToGateEnvelope CreateRecoveryRequiredSessionReadiness(ConnectionContext context) =>
+        CreateSessionReadiness(context, "SESSION_RECOVERY_REQUIRED");
 
     private static WireToGateEnvelope CreateHeartbeatAck(ConnectionContext context, JsonElement heartbeat)
     {
@@ -2023,7 +2196,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                 {
                     demandId = "11111111-1111-1111-1111-111111111111",
                     operationSessionId = "33333333-3333-3333-3333-333333333333",
-                    slotOperationAttemptId = "44444444-4444-4444-4444-444444444444",
+                    slotOperationAttemptId = CommandSlotOperationAttemptId,
                     operationType = "LOAD",
                     slots = SingleSlot,
                     expectedBasketCount = 1,

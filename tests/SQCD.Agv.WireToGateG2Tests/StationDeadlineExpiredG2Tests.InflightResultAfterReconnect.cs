@@ -29,7 +29,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
             server =>
             {
                 server.StationDepartureDeadlineAt = null;
-                server.HoldReadinessForUnreconciledAttempt = true;
             });
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
 
@@ -74,7 +73,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
             server =>
             {
                 server.StationDepartureDeadlineAt = null;
-                server.HoldReadinessForUnreconciledAttempt = true;
             });
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
 
@@ -119,7 +117,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
             server =>
             {
                 server.StationDepartureDeadlineAt = null;
-                server.HoldReadinessForUnreconciledAttempt = true;
             });
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
         await harness.ReconnectAwaitingTheLoadsResultAsync(token);
@@ -165,6 +162,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
             {
                 server.StationDepartureDeadlineAt = null;
                 server.ForceRecoveryRequiredReadiness = true;
+                // The race needs a command meeting a session that is not ready, which the real server never sends
+                // (onboard-hmi#128): this tests the vehicle's refusal of such a command, not a reachable server path.
+                server.ViolateReadinessGateForTest = true;
             });
 
         await harness.WaitForInboundAsync("SlotOperationCommandRejected", token);
@@ -199,6 +199,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
             {
                 server.StationDepartureDeadlineAt = null;
                 server.ForceRecoveryRequiredReadiness = true;
+                // The race needs a command meeting a session that is not ready, which the real server never sends
+                // (onboard-hmi#128): this tests the vehicle's refusal of such a command, not a reachable server path.
+                server.ViolateReadinessGateForTest = true;
             });
         await harness.WaitForInboundAsync("SlotOperationCommandRejected", token);
         Assert.Equal(0, harness.Io.UnlockCount);

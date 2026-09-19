@@ -266,10 +266,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
             token,
             server =>
             {
-                // Same revision, new content would be a conflict the vehicle rightly refuses; the stop's
-                // worklist is not what this case is about.
-                server.SendJourneySnapshotsAfterRecovery = false;
-                server.SendSlotOperationCommandAfterRecovery = false;
                 server.RespondToLoadCancellationRequests = true;
                 server.LoadCancellationAuthorizedSlots = [1];
                 server.AdoptDurableRecoveryMemoryFrom(before);
