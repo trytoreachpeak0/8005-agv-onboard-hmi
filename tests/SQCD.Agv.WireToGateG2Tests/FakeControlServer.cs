@@ -33,9 +33,8 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// server or here.</item>
 /// <item>Sending gated messages to a session that is not ready is a deviation only
 /// <see cref="ViolateReadinessGateForTest"/> makes, answering READY over pending facts one only
-/// <see cref="AnswerReadyOverPendingFactsForTest"/> makes, staying READY over a refused result one only
-/// <see cref="IgnoreRefusedResultsForReadinessForTest"/> makes, and sending the activation after the journey one only
-/// <see cref="SendActivationAfterJourneyForTest"/> makes.</item>
+/// <see cref="AnswerReadyOverPendingFactsForTest"/> makes, and staying READY over a refused result one only
+/// <see cref="IgnoreRefusedResultsForReadinessForTest"/> makes.</item>
 /// </list>
 /// </remarks>
 public sealed class FakeControlServer : IAsyncDisposable
@@ -159,15 +158,6 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// the reason in a comment.
     /// </summary>
     public bool IgnoreRefusedResultsForReadinessForTest { get; set; }
-
-    /// <summary>
-    /// <b>A deviation from the real server's order.</b> Sends the handshake's
-    /// <c>SlotConfigurationActivationCommand</c> after the journey push instead of before it. The real server replays
-    /// a pending activation as the handshake completes and pushes the journey on the runtime's next pass; with that
-    /// order the vehicle reads a journey snapshot where it expects its activation result's DurableAck
-    /// (onboard-hmi#140). What this double did before onboard-hmi#128's review.
-    /// </summary>
-    public bool SendActivationAfterJourneyForTest { get; set; }
 
     /// <summary>
     /// Attempts this server has settled, across connections and, through
@@ -1596,7 +1586,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             // replayed by OnboardRecoveryCoordinator.ReplayPendingCommandsAsync, neither of which asks for READY --
             // a vehicle whose fingerprint disagrees is RECOVERY_REQUIRED and only an activation can fix it. It goes
             // first: that replay runs as the handshake completes, the journey only on the runtime's next pass.
-            if (SendSlotConfigurationActivationAfterRecovery && !SendActivationAfterJourneyForTest)
+            if (SendSlotConfigurationActivationAfterRecovery)
             {
                 await SendSlotConfigurationActivationCommandAsync(context).ConfigureAwait(false);
             }
@@ -1604,11 +1594,6 @@ public sealed class FakeControlServer : IAsyncDisposable
             if (pushNow)
             {
                 await SendGatedAfterRecoveryAsync(context).ConfigureAwait(false);
-            }
-
-            if (SendSlotConfigurationActivationAfterRecovery && SendActivationAfterJourneyForTest)
-            {
-                await SendSlotConfigurationActivationCommandAsync(context).ConfigureAwait(false);
             }
         }
 

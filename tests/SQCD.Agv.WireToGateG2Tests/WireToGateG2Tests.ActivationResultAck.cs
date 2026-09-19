@@ -170,7 +170,9 @@ public sealed partial class WireToGateG2Tests
             SendReadinessAfterRecoveryAck = true,
             SendSlotConfigurationActivationAfterRecovery = true,
             SendJourneySnapshotsAfterRecovery = true,
-            ActivationResultAcksToDrop = 1
+            ActivationResultAcksToDrop = 1,
+            // The real server replays the journey on the next session with the same identity (onboard-hmi#128).
+            ReplayJourneySnapshotsWithStableIdentity = true
         };
         FakeIoModuleClient io = new();
         await using WireToGateSessionClient client = CreateClient(
@@ -245,7 +247,9 @@ public sealed partial class WireToGateG2Tests
             SendReadinessAfterRecoveryAck = true,
             SendSlotConfigurationActivationAfterRecovery = true,
             SendJourneySnapshotsAfterRecovery = true,
-            DuplicateActivationResultAck = true
+            DuplicateActivationResultAck = true,
+            // The real server replays the journey on the next session with the same identity (onboard-hmi#128).
+            ReplayJourneySnapshotsWithStableIdentity = true
         };
         FakeIoModuleClient io = new();
         await using WireToGateSessionClient client = CreateClient(server, io, NewJournalPath());

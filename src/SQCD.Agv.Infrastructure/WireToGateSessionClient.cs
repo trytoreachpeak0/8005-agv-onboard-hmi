@@ -1254,7 +1254,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// 有结果，原样返回，不产生第二次激活。所以这里对补报与首次是同一段代码。
     /// </para>
     /// </remarks>
-    private async Task HandleSlotConfigurationActivationAsync(
+    /// <returns>发出结果之后，等它 <c>DurableAck</c> 的那个任务；调用方不得在接收循环里 await 它。</returns>
+    private async Task<Task> HandleSlotConfigurationActivationAsync(
         WireToGateEnvelope envelope,
         long generation,
         CancellationToken cancellationToken)
@@ -1299,16 +1300,95 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 _activationCoordinator.ActiveConfiguration.ConfigurationVersion,
                 result.ResultingFingerprint,
                 result.SettledAt));
-        await SendEnvelopeAsync(report, cancellationToken).ConfigureAwait(false);
+        string contentSha256 = WireToGateProtocolSerializer.ComputeContentSha256(report);
 
-        // 直接读下一行，不走 _responseWaiters：这段代码跑在接收循环**里**，注册等待表然后 await 会
-        // 让循环停在这里等一条只有循环自己才读得到的消息——死锁。握手期的
-        // SendSnapshotAndRequireAckAsync 用的是同一种直接读，前提也一样：这条 RELIABLE 消息的下一行
-        // 就是它的 DurableAck。
-        WireToGateEnvelope ackEnvelope = await ReadEnvelopeAsync(generation, cancellationToken)
-            .ConfigureAwait(false);
-        ThrowIfProtocolProblem(ackEnvelope);
-        WireToGateProtocolSerializer.RequireMessage(ackEnvelope, "DurableAck", messageId);
+        // 确认经 _responseWaiters 取，不在这里读下一行（onboard-hmi#140）：服务端不保证结果之后的下一行就是
+        // 它的 DurableAck——握手补发激活之后，运行时循环随即推行程快照，管理员在车运行中激活也一样。
+        // 登记必须先于发送，确认紧跟结果到达时才有人接。这段跑在接收循环里，所以只登记、发送，
+        // 等待交给调用方放到循环外：在这里 await 会让循环等一条只有它自己才读得到的消息。
+        TaskCompletionSource<WireToGateEnvelope> response = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_responseWaiters.TryAdd(messageId, response))
+        {
+            throw new InvalidOperationException("重复的WIRE_TO_GATE业务messageId。");
+        }
+
+        try
+        {
+            await SendEnvelopeAsync(report, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            _responseWaiters.TryRemove(messageId, out _);
+            throw;
+        }
+
+        return AwaitActivationResultAckAsync(
+            response,
+            "SlotConfigurationActivationResult",
+            messageId,
+            contentSha256,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// 等一条激活结果的 <c>DurableAck</c>，与 <see cref="SendDurableCoreAsync"/> 同一套判据：
+    /// <c>MessageTimeout</c> 内到达，id、类型、内容哈希对得上。
+    /// </summary>
+    /// <remarks>
+    /// 等不到或对不上就抛，由 <see cref="SettleActivationResultAckAsync"/> 让会话失败——与改动前读不到确认时
+    /// 一样。激活结果不写发件箱，补发的源头是服务端：重连握手后它按 <c>SLOT_CONFIGURATION</c> 恢复角色重发
+    /// 同一条命令，<see cref="SlotConfigurationActivationCoordinator.Activate"/> 原样返回已有结果。
+    /// </remarks>
+    private async Task AwaitActivationResultAckAsync(
+        TaskCompletionSource<WireToGateEnvelope> response,
+        string messageType,
+        string messageId,
+        string contentSha256,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            WireToGateEnvelope ackEnvelope = await response.Task
+                .WaitAsync(_options.MessageTimeout, cancellationToken)
+                .ConfigureAwait(false);
+            ThrowIfProtocolProblem(ackEnvelope);
+            WireToGateProtocolSerializer.RequireMessage(ackEnvelope, "DurableAck", messageId);
+            DurableAckPayload ack = WireToGateProtocolSerializer.DeserializePayload<DurableAckPayload>(ackEnvelope);
+            if (ack.AcceptedMessageId != messageId
+                || ack.AcceptedMessageType != messageType
+                || ack.AcceptedContentSha256 != contentSha256)
+            {
+                throw new InvalidDataException("CONTENT_HASH_MISMATCH");
+            }
+        }
+        finally
+        {
+            _responseWaiters.TryRemove(messageId, out _);
+        }
+    }
+
+    /// <summary>
+    /// 在接收循环之外等激活结果的确认；等不到就让这一代会话失败，与循环自己失败同一条收尾。
+    /// </summary>
+    private async Task SettleActivationResultAckAsync(
+        Task acknowledged,
+        long generation,
+        CancellationTokenSource stopping,
+        TaskCompletionSource<Exception> failure)
+    {
+        try
+        {
+            await acknowledged.ConfigureAwait(false);
+        }
+        catch (Exception) when (stopping.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception)
+        {
+            FailReceiveLoop(exception, generation, failure);
+            stopping.Cancel();
+        }
     }
 
     /// <summary>
@@ -1877,8 +1957,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 if (string.Equals(
                     envelope.MessageType, "SlotConfigurationActivationCommand", StringComparison.Ordinal))
                 {
-                    await HandleSlotConfigurationActivationAsync(envelope, generation, stopping.Token)
-                        .ConfigureAwait(false);
+                    Task acknowledged = await HandleSlotConfigurationActivationAsync(
+                        envelope,
+                        generation,
+                        stopping.Token).ConfigureAwait(false);
+                    _ = SettleActivationResultAckAsync(acknowledged, generation, stopping, failure);
                     continue;
                 }
 
@@ -1921,16 +2004,29 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         }
         catch (Exception exception)
         {
-            failure.TrySetResult(exception);
-            Interlocked.CompareExchange(ref _receiveLoopGeneration, 0, generation);
-            foreach (KeyValuePair<string, TaskCompletionSource<WireToGateEnvelope>> waiter in _responseWaiters)
-            {
-                waiter.Value.TrySetException(exception);
-            }
-
-            ResetJourneyProjection();
-            Publish(false, null, WireToGateSessionReadiness.Disconnected, ["SESSION_RECOVERY_REQUIRED"]);
+            FailReceiveLoop(exception, generation, failure);
         }
+    }
+
+    /// <summary>
+    /// 这一代会话失败的收尾，只做一次：接收循环自己出错，或它放出去的激活结果等不到确认
+    /// （<see cref="SettleActivationResultAckAsync"/>），谁先到谁做。
+    /// </summary>
+    private void FailReceiveLoop(Exception exception, long generation, TaskCompletionSource<Exception> failure)
+    {
+        if (!failure.TrySetResult(exception))
+        {
+            return;
+        }
+
+        Interlocked.CompareExchange(ref _receiveLoopGeneration, 0, generation);
+        foreach (KeyValuePair<string, TaskCompletionSource<WireToGateEnvelope>> waiter in _responseWaiters)
+        {
+            waiter.Value.TrySetException(exception);
+        }
+
+        ResetJourneyProjection();
+        Publish(false, null, WireToGateSessionReadiness.Disconnected, ["SESSION_RECOVERY_REQUIRED"]);
     }
 
     private async Task ApplyJourneySnapshotAsync(
