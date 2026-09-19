@@ -1,0 +1,42 @@
+[
+  {
+    "DemandId": "a28e4e94-1ef5-4db9-809c-e657f34bcb07",
+    "Role": "Pickup",
+    "TransportDemandKey": "L2-CR-20260919T085504412Z|WIRE_TO_GATE",
+    "MapId": 25,
+    "StationId": 12,
+    "StationName": "N1-3_N1-7",
+    "CatalogRevision": 1017238931678627222,
+    "FrozenAt": "2026-09-19 08:56:40.6406793+00:00"
+  },
+  {
+    "DemandId": "a28e4e94-1ef5-4db9-809c-e657f34bcb07",
+    "Role": "Dropoff",
+    "TransportDemandKey": "L2-CR-20260919T085504412Z|WIRE_TO_GATE",
+    "MapId": 25,
+    "StationId": 210,
+    "StationName": "关卡",
+    "CatalogRevision": 1017238931678627222,
+    "FrozenAt": "2026-09-19 08:56:40.6406793+00:00"
+  },
+  {
+    "DemandId": "a2dd45de-ce5a-4c0a-9365-14ba547bdb8a",
+    "Role": "Pickup",
+    "TransportDemandKey": "L2-CR-20260919T085504412Z-NEXT|WIRE_TO_GATE",
+    "MapId": 25,
+    "StationId": 12,
+    "StationName": "N1-3_N1-7",
+    "CatalogRevision": 1017238931678627222,
+    "FrozenAt": "2026-09-19 08:57:13.0404106+00:00"
+  },
+  {
+    "DemandId": "a2dd45de-ce5a-4c0a-9365-14ba547bdb8a",
+    "Role": "Dropoff",
+    "TransportDemandKey": "L2-CR-20260919T085504412Z-NEXT|WIRE_TO_GATE",
+    "MapId": 25,
+    "StationId": 210,
+    "StationName": "关卡",
+    "CatalogRevision": 1017238931678627222,
+    "FrozenAt": "2026-09-19 08:57:13.0404106+00:00"
+  }
+]
