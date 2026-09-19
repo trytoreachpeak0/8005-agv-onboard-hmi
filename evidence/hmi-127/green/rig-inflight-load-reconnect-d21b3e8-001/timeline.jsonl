@@ -1,0 +1,148 @@
+{"at":"2026-09-19T11:52:58.4963917+00:00","note":"L2 run 20260919T115258443Z starting for scenario 'real-onboard-inflight-load-reconnect'."}
+{"at":"2026-09-19T11:52:58.5487765+00:00","note":"L2 port block lock acquired (slot 0, Global\\W2G-L2PortBlock)."}
+{"at":"2026-09-19T11:52:58.5519837+00:00","note":"Building ControlServer and the test doubles."}
+{"at":"2026-09-19T11:53:14.4310761+00:00","note":"Reusing cached onboard-hmi publish for d21b3e80df903bee47fbb3243081350a17f8dd7d."}
+{"at":"2026-09-19T11:53:14.5375222+00:00","note":"Reusing cached slots-simulator publish for fb5f7c593742bf98bc3957b8729a38aad5321f28."}
+{"at":"2026-09-19T11:53:14.5422991+00:00","note":"Peers: onboard-hmi@d21b3e80df903bee47fbb3243081350a17f8dd7d, slots-simulator@fb5f7c593742bf98bc3957b8729a38aad5321f28."}
+{"at":"2026-09-19T11:53:14.5517566+00:00","note":"Interactive desktop lock acquired."}
+{"at":"2026-09-19T11:53:15.5897372+00:00","criterion":"fake-riot-live","value":"live"}
+{"at":"2026-09-19T11:53:15.8359554+00:00","criterion":"fake-mes-live","value":"live"}
+{"at":"2026-09-19T11:53:18.1666132+00:00","criterion":"simulator-ready","value":"READY/True"}
+{"at":"2026-09-19T11:53:18.3656182+00:00","note":"Task type station preset: default (map 25, WIRE_TO_GATE -> 关卡/210)"}
+{"at":"2026-09-19T11:53:21.1814599+00:00","note":"Package capacity rules imported."}
+{"at":"2026-09-19T11:53:23.3653938+00:00","criterion":"control-server-live","value":"live"}
+{"at":"2026-09-19T11:53:23.5276082+00:00","note":"Protocol release identity: protocol-v2.0.0 (profileId AGV_FULL_PRODUCT, protocolVersion 3, APPROVED_RELEASE)."}
+{"at":"2026-09-19T11:53:24.2030541+00:00","criterion":"protocol-proxy-live","value":"live"}
+{"at":"2026-09-19T11:53:24.3216175+00:00","note":"Protocol fault proxy relaying 127.0.0.1:48416 -> 127.0.0.1:48405."}
+{"at":"2026-09-19T11:53:27.6138267+00:00","note":"Onboard window: 8005 多仓位AGV车载端"}
+{"at":"2026-09-19T11:53:27.6496715+00:00","criterion":"onboard-modbus","value":"1"}
+{"at":"2026-09-19T11:53:27.7445594+00:00","criterion":"control-server-ready","value":"(null)"}
+{"at":"2026-09-19T11:53:28.0348920+00:00","criterion":"control-server-ready","value":"ready"}
+{"at":"2026-09-19T11:53:28.1920117+00:00","note":"FieldOps: seed-approved-facts --database C:\\Users\\szy\\AppData\\Local\\Temp\\l2-20260919T115258443Z\\controlserver.db"}
+{"at":"2026-09-19T11:53:29.8969296+00:00","criterion":"slot-model-preseed:seed-approved-facts","value":"OK","detail":{"output":{"command":"seed-approved-facts","outcome":"OK","modelKey":"8005-eight-slot","slotModelVersionId":"22907e099c7a490dbd3fde31953c8b3a","version":1,"slotCount":8}}}
+{"at":"2026-09-19T11:53:29.9054030+00:00","note":"FieldOps: bind-io --database C:\\Users\\szy\\AppData\\Local\\Temp\\l2-20260919T115258443Z\\controlserver.db --agv AGV-L2-001"}
+{"at":"2026-09-19T11:53:31.3612595+00:00","criterion":"slot-model-preseed:bind-io:AGV-L2-001","value":"OK","detail":{"output":{"command":"bind-io","outcome":"OK","agvId":"AGV-L2-001","slotModelVersionId":"22907e099c7a490dbd3fde31953c8b3a","boundSlots":8,"version":1}}}
+{"at":"2026-09-19T11:53:31.6267014+00:00","criterion":"slot-model-preseed:dispatch-zones","value":"0"}
+{"at":"2026-09-19T11:53:31.6312168+00:00","note":"FieldOps: import-area-assignments --database C:\\Users\\szy\\AppData\\Local\\Temp\\l2-20260919T115258443Z\\controlserver.db --input C:\\Users\\szy\\Desktop\\8005-workspace-v2\\worktrees\\hmi127-8005-agv-onboard-hmi\\evidence\\hmi-127\\green\\rig-inflight-load-reconnect-d21b3e8-001\\snapshots\\preseed-area-assignments.csv"}
+{"at":"2026-09-19T11:53:33.2632415+00:00","criterion":"slot-model-preseed:import-area-assignments","value":"OK","detail":{"output":{"command":"import-area-assignments","outcome":"OK","dryRun":false,"input":"C:\\Users\\szy\\Desktop\\8005-workspace-v2\\worktrees\\hmi127-8005-agv-onboard-hmi\\evidence\\hmi-127\\green\\rig-inflight-load-reconnect-d21b3e8-001\\snapshots\\preseed-area-assignments.csv","entryCount":3,"version":1,"contentSha256":"4291a509c2c0b75ea4bde0ac4dcde04b6e8632b54a21a67eee2772a6f8d0ff8e","snapshotId":"8bdb0ca9add4442cacce4bcfdd95d233","importedAt":"2026-09-19T19:53:31.8382209+08:00","errorCount":0,"errors":[],"preview":[]}}}
+{"at":"2026-09-19T11:53:33.2893041+00:00","note":"Environment is up; entering scenario 'real-onboard-inflight-load-reconnect'."}
+{"at":"2026-09-19T11:53:33.5416311+00:00","criterion":"proxy-session","value":"1"}
+{"at":"2026-09-19T11:53:33.5635713+00:00","note":"Publishing demand f34de5f5b33c426991aa3be545f55ecf (sublot L2-CS189-20260919T115258443Z, 4 boxes)."}
+{"at":"2026-09-19T11:53:33.6467581+00:00","criterion":"journey-stage","value":"(null)"}
+{"at":"2026-09-19T11:53:34.9705164+00:00","criterion":"journey-stage","value":"AwaitingPickupArrival"}
+{"at":"2026-09-19T11:53:35.0098320+00:00","criterion":"to_pickup-intent","value":"@{UpperId=W2G-f34de5f5-b33c-4269-91aa-3be545f55ecf-PICKUP-1; OrderId=ORDER-000001; Status=CONFIRMED}"}
+{"at":"2026-09-19T11:53:35.0217369+00:00","note":"Vehicle departs for the pickup station."}
+{"at":"2026-09-19T11:53:35.0716128+00:00","note":"Vehicle arrives at the pickup station and comes to rest."}
+{"at":"2026-09-19T11:53:35.1528661+00:00","criterion":"onboard-can-submit","value":"False"}
+{"at":"2026-09-19T11:53:35.4407799+00:00","criterion":"onboard-can-submit","value":"True"}
+{"at":"2026-09-19T11:53:35.4423974+00:00","note":"Typing sublot L2-CS189-20260919T115258443Z into ScanTextBox through UI Automation."}
+{"at":"2026-09-19T11:53:35.5314487+00:00","criterion":"onboard-submit-ready","value":"True"}
+{"at":"2026-09-19T11:53:35.5897933+00:00","note":"Manual submit invoked."}
+{"at":"2026-09-19T11:53:35.6096880+00:00","criterion":"load-attempt","value":"(null)"}
+{"at":"2026-09-19T11:53:36.3895058+00:00","criterion":"load-attempt","value":"ee8bb4a6-7aec-fc5c-a477-3847ba3a85b3"}
+{"at":"2026-09-19T11:53:36.5683064+00:00","criterion":"load-waiting-operator","value":"(null)"}
+{"at":"2026-09-19T11:53:37.3554633+00:00","criterion":"load-waiting-operator","value":"@{At=09/19/2026 11:53:37 +00:00; Phase=WAITING_OPERATOR; Active=System.Object[]}"}
+{"at":"2026-09-19T11:53:37.3604849+00:00","note":"Load ee8bb4a6-7aec-fc5c-a477-3847ba3a85b3 targets slots 1; slot 1 is open and the onboard waits for the operator."}
+{"at":"2026-09-19T11:53:37.3820092+00:00","note":"Before the drop: gen 1 / Ready / READY / pendingAttempts [] / pendingResults [] / unsettled  / checkpoint NONE / activeUnlock []."}
+{"at":"2026-09-19T11:53:37.3841939+00:00","note":"Dropping the onboard link through the protocol fault proxy: load in flight, onboard waiting for the operator"}
+{"at":"2026-09-19T11:53:37.4235337+00:00","criterion":"reconnected","value":"@{SessionGeneration=1; Readiness=Ready; ReasonCode=READY; PendingAttemptIdsJson=[]; PendingResultIdsJson=[]; UnsettledSlotOperationAttemptId=; ProvenRecoveryCheckpoint=NONE; ActiveUnlockSlotsJson=[]}"}
+{"at":"2026-09-19T11:53:40.3432393+00:00","criterion":"reconnected","value":"@{SessionGeneration=2; Readiness=RecoveryRequired; ReasonCode=HANDSHAKE_INCOMPLETE; PendingAttemptIdsJson=[]; PendingResultIdsJson=[]; UnsettledSlotOperationAttemptId=; ProvenRecoveryCheckpoint=NONE; ActiveUnlockSlotsJson=[]}"}
+{"at":"2026-09-19T11:53:43.3584238+00:00","note":"After the first reconnect: gen 2 / RecoveryRequired / PENDING_FACT_RECONCILIATION_REQUIRED / pendingAttempts [\"ee8bb4a6-7aec-fc5c-a477-3847ba3a85b3\"] / pendingResults [] / unsettled ee8bb4a6-7aec-fc5c-a477-3847ba3a85b3 / checkpoint ACTIVE_UNLOCK_SET / activeUnlock [1]."}
+{"at":"2026-09-19T11:53:43.3646271+00:00","note":"Operator loads slot 1 and closes the door (simulator)."}
+{"at":"2026-09-19T11:53:43.4615373+00:00","criterion":"load-slot-physical","value":"CLOSED/OCCUPIED/0/0"}
+{"at":"2026-09-19T11:53:43.7457366+00:00","criterion":"load-slot-physical","value":"CLOSED/OCCUPIED/1/0"}
+{"at":"2026-09-19T11:53:43.7651479+00:00","criterion":"result-after-reconnect","value":"0"}
+{"at":"2026-09-19T11:53:44.3089115+00:00","criterion":"result-after-reconnect","value":"1"}
+{"at":"2026-09-19T11:53:44.3128796+00:00","criterion":"ready-after-result","value":"@{SessionGeneration=2; Readiness=Ready; ReasonCode=READY; PendingAttemptIdsJson=[]; PendingResultIdsJson=[]; UnsettledSlotOperationAttemptId=; ProvenRecoveryCheckpoint=ACTIVE_UNLOCK_SET; ActiveUnlockSlotsJson=[1]}"}
+{"at":"2026-09-19T11:53:44.3806643+00:00","note":"After the load finished (waited for 1 result(s)): gen 2 / Ready / READY / pendingAttempts [] / pendingResults [] / unsettled  / checkpoint ACTIVE_UNLOCK_SET / activeUnlock [1]; operation Committed; results 1, in gen 2 1; verifying/safe-finish progress after the drop 0"}
+{"at":"2026-09-19T11:53:44.3857715+00:00","note":"Dropping the onboard link through the protocol fault proxy: probe: does a second handshake settle the finished load?"}
+{"at":"2026-09-19T11:53:44.3991497+00:00","criterion":"reconnected-2","value":"@{SessionGeneration=2; Readiness=Ready; ReasonCode=READY; PendingAttemptIdsJson=[]; PendingResultIdsJson=[]; UnsettledSlotOperationAttemptId=; ProvenRecoveryCheckpoint=ACTIVE_UNLOCK_SET; ActiveUnlockSlotsJson=[1]}"}
+{"at":"2026-09-19T11:53:47.5379809+00:00","criterion":"reconnected-2","value":"@{SessionGeneration=3; Readiness=Ready; ReasonCode=READY; PendingAttemptIdsJson=[]; PendingResultIdsJson=[]; UnsettledSlotOperationAttemptId=; ProvenRecoveryCheckpoint=RESULT_RECORDED; ActiveUnlockSlotsJson=[]}"}
+{"at":"2026-09-19T11:53:47.5421028+00:00","criterion":"result-after-reconnect-2","value":"1"}
+{"at":"2026-09-19T11:53:47.5467556+00:00","criterion":"ready-after-reconnect-2","value":"@{SessionGeneration=3; Readiness=Ready; ReasonCode=READY; PendingAttemptIdsJson=[]; PendingResultIdsJson=[]; UnsettledSlotOperationAttemptId=; ProvenRecoveryCheckpoint=RESULT_RECORDED; ActiveUnlockSlotsJson=[]}"}
+{"at":"2026-09-19T11:53:47.5816589+00:00","criterion":"stage-after-reconnect-2","value":"AwaitingStationDeparture"}
+{"at":"2026-09-19T11:53:47.5947264+00:00","note":"After the second reconnect: gen 3 / Ready / READY / pendingAttempts [] / pendingResults [] / unsettled  / checkpoint RESULT_RECORDED / activeUnlock []; operation Committed; stage AwaitingStationDeparture; results 1."}
+{"at":"2026-09-19T11:53:47.6556980+00:00","note":"Connections: #1: relay disconnected on request; #2: relay disconnected on request; #3: open"}
+{"at":"2026-09-19T11:53:47.6888980+00:00","note":"wire #1 09/19/2026 19:53:27 onboard->server SessionHello"}
+{"at":"2026-09-19T11:53:47.6900717+00:00","note":"wire #1 09/19/2026 19:53:27 server->onboard SessionAccepted"}
+{"at":"2026-09-19T11:53:47.6910409+00:00","note":"wire #1 09/19/2026 19:53:27 onboard->server CapabilitySnapshot"}
+{"at":"2026-09-19T11:53:47.6918835+00:00","note":"wire #1 09/19/2026 19:53:27 server->onboard SnapshotAppliedAck"}
+{"at":"2026-09-19T11:53:47.6925239+00:00","note":"wire #1 09/19/2026 19:53:27 onboard->server SafetyStateSnapshot"}
+{"at":"2026-09-19T11:53:47.6932928+00:00","note":"wire #1 09/19/2026 19:53:27 server->onboard SnapshotAppliedAck"}
+{"at":"2026-09-19T11:53:47.6943543+00:00","note":"wire #1 09/19/2026 19:53:27 onboard->server OnboardAlarmSnapshot"}
+{"at":"2026-09-19T11:53:47.6954741+00:00","note":"wire #1 09/19/2026 19:53:27 server->onboard SnapshotAppliedAck"}
+{"at":"2026-09-19T11:53:47.6965782+00:00","note":"wire #1 09/19/2026 19:53:27 onboard->server RecoveryStateReport"}
+{"at":"2026-09-19T11:53:47.6974641+00:00","note":"wire #1 09/19/2026 19:53:28 server->onboard DurableAck ack=RecoveryStateReport"}
+{"at":"2026-09-19T11:53:47.6983695+00:00","note":"wire #1 09/19/2026 19:53:28 server->onboard SessionReadiness"}
+{"at":"2026-09-19T11:53:47.6992791+00:00","note":"wire #1 09/19/2026 19:53:28 onboard->server SafetyStateChanged"}
+{"at":"2026-09-19T11:53:47.7001738+00:00","note":"wire #1 09/19/2026 19:53:28 server->onboard DurableAck ack=SafetyStateChanged"}
+{"at":"2026-09-19T11:53:47.7008526+00:00","note":"wire #1 09/19/2026 19:53:28 server->onboard SessionReadiness"}
+{"at":"2026-09-19T11:53:47.7014250+00:00","note":"wire #1 09/19/2026 19:53:35 server->onboard UpcomingStopPlanSnapshot"}
+{"at":"2026-09-19T11:53:47.7021186+00:00","note":"wire #1 09/19/2026 19:53:35 onboard->server SnapshotAppliedAck"}
+{"at":"2026-09-19T11:53:47.7028647+00:00","note":"wire #1 09/19/2026 19:53:35 server->onboard VehicleBusinessStateSnapshot"}
+{"at":"2026-09-19T11:53:47.7039916+00:00","note":"wire #1 09/19/2026 19:53:35 server->onboard CurrentStopWorklistSnapshot"}
+{"at":"2026-09-19T11:53:47.7051372+00:00","note":"wire #1 09/19/2026 19:53:35 onboard->server SnapshotAppliedAck"}
+{"at":"2026-09-19T11:53:47.7061703+00:00","note":"wire #1 09/19/2026 19:53:35 server->onboard UpcomingStopPlanSnapshot"}
+{"at":"2026-09-19T11:53:47.7074269+00:00","note":"wire #1 09/19/2026 19:53:35 onboard->server SnapshotAppliedAck"}
+{"at":"2026-09-19T11:53:47.7083021+00:00","note":"wire #1 09/19/2026 19:53:35 onboard->server SnapshotAppliedAck"}
+{"at":"2026-09-19T11:53:47.7122741+00:00","note":"wire #1 09/19/2026 19:53:35 server->onboard SublotEntryRequested"}
+{"at":"2026-09-19T11:53:47.7133088+00:00","note":"wire #1 09/19/2026 19:53:35 onboard->server SublotSubmitted"}
+{"at":"2026-09-19T11:53:47.7144759+00:00","note":"wire #1 09/19/2026 19:53:35 server->onboard DurableAck ack=SublotSubmitted"}
+{"at":"2026-09-19T11:53:47.7153124+00:00","note":"wire #1 09/19/2026 19:53:36 server->onboard SublotEntryRequested"}
+{"at":"2026-09-19T11:53:47.7159192+00:00","note":"wire #1 09/19/2026 19:53:36 server->onboard SlotOperationCommand"}
+{"at":"2026-09-19T11:53:47.7163935+00:00","note":"wire #1 09/19/2026 19:53:36 onboard->server OperationProgress"}
+{"at":"2026-09-19T11:53:47.7169184+00:00","note":"wire #1 09/19/2026 19:53:36 server->onboard DurableAck ack=OperationProgress"}
+{"at":"2026-09-19T11:53:47.7174530+00:00","note":"wire #1 09/19/2026 19:53:36 onboard->server OperationProgress"}
+{"at":"2026-09-19T11:53:47.7181684+00:00","note":"wire #1 09/19/2026 19:53:36 server->onboard DurableAck ack=OperationProgress"}
+{"at":"2026-09-19T11:53:47.7189313+00:00","note":"wire #1 09/19/2026 19:53:36 onboard->server SafetyStateChanged"}
+{"at":"2026-09-19T11:53:47.7197017+00:00","note":"wire #1 09/19/2026 19:53:36 server->onboard DurableAck ack=SafetyStateChanged"}
+{"at":"2026-09-19T11:53:47.7205085+00:00","note":"wire #1 09/19/2026 19:53:36 server->onboard SessionReadiness"}
+{"at":"2026-09-19T11:53:47.7213006+00:00","note":"wire #1 09/19/2026 19:53:36 onboard->server SafetyStateChanged"}
+{"at":"2026-09-19T11:53:47.7222317+00:00","note":"wire #1 09/19/2026 19:53:36 server->onboard DurableAck ack=SafetyStateChanged"}
+{"at":"2026-09-19T11:53:47.7228414+00:00","note":"wire #1 09/19/2026 19:53:36 server->onboard SessionReadiness"}
+{"at":"2026-09-19T11:53:47.7233480+00:00","note":"wire #1 09/19/2026 19:53:36 onboard->server SafetyStateChanged"}
+{"at":"2026-09-19T11:53:47.7238498+00:00","note":"wire #1 09/19/2026 19:53:36 server->onboard DurableAck ack=SafetyStateChanged"}
+{"at":"2026-09-19T11:53:47.7243361+00:00","note":"wire #1 09/19/2026 19:53:36 server->onboard SessionReadiness"}
+{"at":"2026-09-19T11:53:47.7248486+00:00","note":"wire #1 09/19/2026 19:53:37 server->onboard SlotOperationCommand"}
+{"at":"2026-09-19T11:53:47.7253083+00:00","note":"wire #1 09/19/2026 19:53:37 onboard->server OperationProgress"}
+{"at":"2026-09-19T11:53:47.7259662+00:00","note":"wire #1 09/19/2026 19:53:37 server->onboard DurableAck ack=OperationProgress"}
+{"at":"2026-09-19T11:53:47.7309508+00:00","note":"wire #2 09/19/2026 19:53:40 onboard->server SessionHello"}
+{"at":"2026-09-19T11:53:47.7319926+00:00","note":"wire #2 09/19/2026 19:53:40 server->onboard SessionAccepted"}
+{"at":"2026-09-19T11:53:47.7330372+00:00","note":"wire #2 09/19/2026 19:53:40 onboard->server CapabilitySnapshot"}
+{"at":"2026-09-19T11:53:47.7339579+00:00","note":"wire #2 09/19/2026 19:53:40 server->onboard SnapshotAppliedAck"}
+{"at":"2026-09-19T11:53:47.7348930+00:00","note":"wire #2 09/19/2026 19:53:40 onboard->server SafetyStateSnapshot"}
+{"at":"2026-09-19T11:53:47.7357677+00:00","note":"wire #2 09/19/2026 19:53:40 server->onboard SnapshotAppliedAck"}
+{"at":"2026-09-19T11:53:47.7365789+00:00","note":"wire #2 09/19/2026 19:53:40 onboard->server OnboardAlarmSnapshot"}
+{"at":"2026-09-19T11:53:47.7373428+00:00","note":"wire #2 09/19/2026 19:53:40 server->onboard SnapshotAppliedAck"}
+{"at":"2026-09-19T11:53:47.7378891+00:00","note":"wire #2 09/19/2026 19:53:40 onboard->server RecoveryStateReport"}
+{"at":"2026-09-19T11:53:47.7387346+00:00","note":"wire #2 09/19/2026 19:53:40 server->onboard DurableAck ack=RecoveryStateReport"}
+{"at":"2026-09-19T11:53:47.7396343+00:00","note":"wire #2 09/19/2026 19:53:40 server->onboard SessionReadiness"}
+{"at":"2026-09-19T11:53:47.7404113+00:00","note":"wire #2 09/19/2026 19:53:40 onboard->server SafetyStateChanged"}
+{"at":"2026-09-19T11:53:47.7412622+00:00","note":"wire #2 09/19/2026 19:53:40 server->onboard DurableAck ack=SafetyStateChanged"}
+{"at":"2026-09-19T11:53:47.7420300+00:00","note":"wire #2 09/19/2026 19:53:40 server->onboard SessionReadiness"}
+{"at":"2026-09-19T11:53:47.7429442+00:00","note":"wire #2 09/19/2026 19:53:43 onboard->server SafetyStateChanged"}
+{"at":"2026-09-19T11:53:47.7439458+00:00","note":"wire #2 09/19/2026 19:53:43 server->onboard DurableAck ack=SafetyStateChanged"}
+{"at":"2026-09-19T11:53:47.7450524+00:00","note":"wire #2 09/19/2026 19:53:43 server->onboard SessionReadiness"}
+{"at":"2026-09-19T11:53:47.7463189+00:00","note":"wire #2 09/19/2026 19:53:43 onboard->server SafetyStateChanged"}
+{"at":"2026-09-19T11:53:47.7475632+00:00","note":"wire #2 09/19/2026 19:53:43 server->onboard DurableAck ack=SafetyStateChanged"}
+{"at":"2026-09-19T11:53:47.7488494+00:00","note":"wire #2 09/19/2026 19:53:43 server->onboard SessionReadiness"}
+{"at":"2026-09-19T11:53:47.7501521+00:00","note":"wire #2 09/19/2026 19:53:43 onboard->server OperationResult"}
+{"at":"2026-09-19T11:53:47.7511990+00:00","note":"wire #2 09/19/2026 19:53:44 server->onboard DurableAck ack=OperationResult"}
+{"at":"2026-09-19T11:53:47.7590933+00:00","note":"wire #2 09/19/2026 19:53:44 server->onboard SessionReadiness"}
+{"at":"2026-09-19T11:53:47.7603565+00:00","note":"wire #2 09/19/2026 19:53:44 server->onboard SlotOperationCommand"}
+{"at":"2026-09-19T11:53:47.7668521+00:00","note":"wire #3 09/19/2026 19:53:47 onboard->server SessionHello"}
+{"at":"2026-09-19T11:53:47.7685700+00:00","note":"wire #3 09/19/2026 19:53:47 server->onboard SessionAccepted"}
+{"at":"2026-09-19T11:53:47.7698150+00:00","note":"wire #3 09/19/2026 19:53:47 onboard->server CapabilitySnapshot"}
+{"at":"2026-09-19T11:53:47.7710070+00:00","note":"wire #3 09/19/2026 19:53:47 server->onboard SnapshotAppliedAck"}
+{"at":"2026-09-19T11:53:47.7721333+00:00","note":"wire #3 09/19/2026 19:53:47 onboard->server SafetyStateSnapshot"}
+{"at":"2026-09-19T11:53:47.7733104+00:00","note":"wire #3 09/19/2026 19:53:47 server->onboard SnapshotAppliedAck"}
+{"at":"2026-09-19T11:53:47.7744423+00:00","note":"wire #3 09/19/2026 19:53:47 onboard->server OnboardAlarmSnapshot"}
+{"at":"2026-09-19T11:53:47.7756027+00:00","note":"wire #3 09/19/2026 19:53:47 server->onboard SnapshotAppliedAck"}
+{"at":"2026-09-19T11:53:47.7767249+00:00","note":"wire #3 09/19/2026 19:53:47 onboard->server RecoveryStateReport"}
+{"at":"2026-09-19T11:53:47.7778553+00:00","note":"wire #3 09/19/2026 19:53:47 server->onboard DurableAck ack=RecoveryStateReport"}
+{"at":"2026-09-19T11:53:47.7791377+00:00","note":"wire #3 09/19/2026 19:53:47 server->onboard SessionReadiness"}
+{"at":"2026-09-19T11:53:47.7802386+00:00","note":"wire #3 09/19/2026 19:53:47 onboard->server SafetyStateChanged"}
+{"at":"2026-09-19T11:53:47.7814095+00:00","note":"wire #3 09/19/2026 19:53:47 server->onboard DurableAck ack=SafetyStateChanged"}
+{"at":"2026-09-19T11:53:47.7826994+00:00","note":"wire #3 09/19/2026 19:53:47 server->onboard SessionReadiness"}
+{"at":"2026-09-19T11:53:47.7839581+00:00","note":"Scenario finished."}
+{"at":"2026-09-19T11:53:48.6582241+00:00","note":"L2 port block lock released."}

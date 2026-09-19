@@ -1,0 +1,3 @@
+Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ASlotOperationCommandRefusedWhileRecoveryRequiredStillGetsItsRejectionOut [10 s]
+  Error Message:
+   Timed out after 10s waiting for: the control server to receive SlotOperationCommandRejected

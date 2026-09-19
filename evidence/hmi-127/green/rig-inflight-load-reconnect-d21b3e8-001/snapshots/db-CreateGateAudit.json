@@ -1,0 +1,14 @@
+{
+  "GateAuditId": "dccf296c-e3c5-4522-a5c6-97a748d36451",
+  "DemandId": "f34de5f5-b33c-4269-91aa-3be545f55ecf",
+  "TransportDemandKey": "L2-CS189-20260919T115258443Z|WIRE_TO_GATE",
+  "AgvId": "AGV-L2-001",
+  "MapId": 25,
+  "TargetStationId": 12,
+  "Verdict": "Allowed",
+  "RiotRouteCostMm": 20000,
+  "GraphTraversalCostMm": null,
+  "GraphReachable": 0,
+  "ConflictDetail": null,
+  "EvaluatedAt": "2026-09-19 11:53:34.1704909+00:00"
+}

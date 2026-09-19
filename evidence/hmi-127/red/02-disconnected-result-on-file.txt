@@ -1,0 +1,4 @@
+Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALoadThatEndedWhileDisconnectedPutsItsResultOnFileAndTheHandshakeReplaysIt [753 ms]
+  Error Message:
+   Assert.NotNull() Failure: Value is null
+  (StationDeadlineExpiredG2Tests.AckPendingNotUnfinished.cs:line 125 — Assert.NotNull(onFile): 断开时结束的装货，发件箱里没有 operation-result:{attempt} 这一行)

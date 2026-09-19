@@ -1,0 +1,1 @@
+L2 real-onboard-compensate-then-reconnect -> PASS (evidence: C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi127-8005-agv-onboard-hmi\evidence\hmi-127\green\rig-compensate-then-reconnect-d21b3e8-001)

@@ -1,0 +1,6 @@
+Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnUnfinishedResultWhoseAckIsLostIsSentOnceMore [12 s]
+  Error Message:
+   Timed out after 10s waiting for: the unfinished result sent once more and acknowledged
+OPERATION_PROGRESS: 1号仓操作未完成，需要恢复处理。
+RESULT_ACK_PENDING: 操作已安全结束，但结果确认暂未收到；系统将保持同一结果重放，不会重复执行IO。
+（测试提交时产品代码 = 918e914：只有 COMPLETED 会重发）

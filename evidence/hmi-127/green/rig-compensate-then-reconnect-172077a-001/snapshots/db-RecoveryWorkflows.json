@@ -1,0 +1,22 @@
+{
+  "WorkflowId": "35716b42-4bad-1e5c-ba38-2cb965aa4a0a",
+  "WorkflowType": "COMPENSATE_LOAD_ALL_EMPTY",
+  "ExceptionRecoverySessionId": "3cb8f1cc-8c37-b654-821c-e9fe01ba2f40",
+  "AgvId": "AGV-L2-001",
+  "DemandId": "c8864a71-ef31-4cd7-b7f0-b4ff07bc8f46",
+  "SlotOperationAttemptId": "fa765c09-f10f-db55-8c99-090c9bd6d6e0",
+  "SlotsJson": "[1]",
+  "ForcedRecoveryGeneration": 0,
+  "State": "Reconciled",
+  "RequestMessageId": "697f79a6-d71d-4878-ad97-2f5887f6ff02",
+  "RequestContentHash": "456c06b4f36f49bcdad4915fc9288c206745f94bf2ed723b7844d894cb2ea822",
+  "CommandMessageId": "ae79fb96-1cbe-4855-95ab-9077841f5e96",
+  "CommandMessageType": "LoadCompensationCommand",
+  "CommandContentHash": "c4c3bfe75727faeabf33f04b839f2f943f74d4cb77fa07949b099c3c615b3e30",
+  "HandoffId": null,
+  "ResultMessageId": "4a46c801-1f4c-4e54-8297-821b1847b9bd",
+  "ResultContentHash": "4612c1f3f9881709f71f8397c4497b624c67b8ccbe1a811ecadee9927a277ec5",
+  "Outcome": "ALL_EMPTY",
+  "CreatedAt": "2026-09-19 11:55:09.2348008+00:00",
+  "UpdatedAt": "2026-09-19 11:55:09.481915+00:00"
+}

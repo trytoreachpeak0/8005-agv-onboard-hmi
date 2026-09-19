@@ -1,0 +1,30 @@
+[
+  {
+    "GateAuditId": "488637ec-3dea-47d0-8ef8-48a0b859fd39",
+    "DemandId": "c8864a71-ef31-4cd7-b7f0-b4ff07bc8f46",
+    "TransportDemandKey": "L2-CR-20260919T115440295Z|WIRE_TO_GATE",
+    "AgvId": "AGV-L2-001",
+    "MapId": 25,
+    "TargetStationId": 12,
+    "Verdict": "Allowed",
+    "RiotRouteCostMm": 20000,
+    "GraphTraversalCostMm": null,
+    "GraphReachable": 0,
+    "ConflictDetail": null,
+    "EvaluatedAt": "2026-09-19 11:55:01.5148956+00:00"
+  },
+  {
+    "GateAuditId": "262821b4-7bea-46d8-b144-98f7e667f508",
+    "DemandId": "8dd98d6d-37ef-433a-9e24-d90d204a4c09",
+    "TransportDemandKey": "L2-CR-20260919T115440295Z-NEXT|WIRE_TO_GATE",
+    "AgvId": "AGV-L2-001",
+    "MapId": 25,
+    "TargetStationId": 12,
+    "Verdict": "Allowed",
+    "RiotRouteCostMm": 20000,
+    "GraphTraversalCostMm": null,
+    "GraphReachable": 0,
+    "ConflictDetail": null,
+    "EvaluatedAt": "2026-09-19 11:55:18.3775581+00:00"
+  }
+]

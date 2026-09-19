@@ -1,0 +1,13 @@
+{
+  "SlotOperationAttemptId": "fa765c09-f10f-db55-8c99-090c9bd6d6e0",
+  "DemandId": "c8864a71-ef31-4cd7-b7f0-b4ff07bc8f46",
+  "SublotId": "L2-CR-20260919T115440295Z",
+  "TargetSlotsJson": "[1]",
+  "ForcedRecoveryGeneration": 0,
+  "ContentHash": "6e6657bd8a8d6a16bcec5ea714873e0796902f2ec814e339258e02805b0069e8",
+  "Status": "Cancelled",
+  "EvidenceJson": null,
+  "CreatedAt": "2026-09-19 11:55:03.4185672+00:00",
+  "CommittedAt": null,
+  "OperationType": "Load"
+}

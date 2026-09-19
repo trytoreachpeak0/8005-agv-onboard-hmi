@@ -1,0 +1,13 @@
+{
+  "SlotOperationAttemptId": "ee8bb4a6-7aec-fc5c-a477-3847ba3a85b3",
+  "DemandId": "f34de5f5-b33c-4269-91aa-3be545f55ecf",
+  "SublotId": "L2-CS189-20260919T115258443Z",
+  "TargetSlotsJson": "[1]",
+  "ForcedRecoveryGeneration": 0,
+  "ContentHash": "9aff1dc3a319e985755824e001ef8f21c3694fe8fc9f54b230742802887c13d0",
+  "Status": "Committed",
+  "EvidenceJson": "[{\"SlotNumber\":1,\"State\":1,\"DoorLocked\":true,\"UnlockOutputReset\":true}]",
+  "CreatedAt": "2026-09-19 11:53:36.0985663+00:00",
+  "CommittedAt": "2026-09-19 19:53:43.9547334+08:00",
+  "OperationType": "Load"
+}

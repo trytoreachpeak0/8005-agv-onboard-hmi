@@ -1,0 +1,5 @@
+Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorResultRecordRaceTests.RecordingALateResultNeverClearsTheNextOperationThatStartedInBetween [225 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+Expected: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+Actual:   null
