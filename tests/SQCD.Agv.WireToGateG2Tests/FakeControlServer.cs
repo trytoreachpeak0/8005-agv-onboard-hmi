@@ -66,6 +66,14 @@ public sealed class FakeControlServer : IAsyncDisposable
     public int OperationResultAcksToDrop { get; set; }
 
     /// <summary>
+    /// Whether a mid-session <c>SafetyStateChanged</c> is answered at all. Off, it is taken and left unanswered with
+    /// the connection open: the vehicle republishes its session state only once such a change is acknowledged, so
+    /// this keeps every session state change after the handshake's readiness out of a test that must not lean on
+    /// one (onboard-hmi#124).
+    /// </summary>
+    public bool AnswerSafetyStateChanged { get; set; } = true;
+
+    /// <summary>
     /// 跨同一车载实例的多个会话保留已采纳的快照修订号，于是重连时同修订号不同内容的快照会被判
     /// SNAPSHOT_REVISION_CONTENT_CONFLICT。真服务端不这样做——它只在一个会话之内比对修订号——所以
     /// 除非这条测试要证的就是「车载端收到这个 ProtocolProblem 之后 fail-closed」，否则别打开。
@@ -1049,7 +1057,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                         await HandleManualChargingReturnToServiceRequestedAsync(context, root)
                             .ConfigureAwait(false);
                         break;
-                    case "SafetyStateChanged":
+                    case "SafetyStateChanged" when AnswerSafetyStateChanged:
                         await HandleSafetyStateChangedAsync(context, root).ConfigureAwait(false);
                         break;
                 }

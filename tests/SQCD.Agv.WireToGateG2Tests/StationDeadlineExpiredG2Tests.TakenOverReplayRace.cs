@@ -1,0 +1,196 @@
+using SQCD.Agv.Core;
+using SQCD.Agv.Infrastructure;
+using Xunit;
+
+namespace SQCD.Agv.WireToGateG2Tests;
+
+/// <summary>
+/// 重启后遗留 attempt 与服务端重发同一命令的占位竞态（<c>trytoreachpeak0/8005-agv-onboard-hmi#124</c> 第 2 条，
+/// onboard-hmi#120 审查后续）：重发的 <c>SlotOperationCommand</c> 占住 attempt、判定「已开始未结算」后只发
+/// <c>OPERATION_REPLAY</c> 就释放占位。由 <c>Ready</c> 触发的恢复判断若正好撞上这段占位，得到 <c>InFlight</c> 静默退出，
+/// 既不结算也不发布恢复投影，要等下一次会话状态变化才补上。
+/// </summary>
+public sealed partial class StationDeadlineExpiredG2Tests
+{
+    /// <summary>
+    /// 握手后的 <c>Ready</c> 触发的恢复判断被扣在读恢复状态那一步，重发的命令走到「已开始未结算」分支、持有占位时才放行，
+    /// 于是它确定地撞上占位。占位释放后，遗留操作在没有任何新会话状态变化的情况下被中断结算（不开锁、报
+    /// <c>UNKNOWN</c>）并发布 <c>RecoveryRequired</c> 投影，结果与投影都只出现一次。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ALeftoverWhoseRestoreRanIntoTheReplayedCommandsClaimIsStillRestoredOnce()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Harness.NewJournalPath();
+        FakeControlServer first;
+        await using (Harness beforeRestart = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server => server.StationDepartureDeadlineAt = null,
+            journalPath: journalPath))
+        {
+            first = beforeRestart.Server;
+            await beforeRestart.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
+        }
+
+        HoldingJournal? holding = null;
+        await using Harness afterRestart = await Harness.StartAsync(
+            new FakeIoModuleClient(),
+            token,
+            server =>
+            {
+                server.SendJourneySnapshotsAfterRecovery = false;
+                // The server's outbox resends the attempt's command after the readiness line.
+                server.SendSlotOperationCommandAfterRecovery = true;
+                server.AdoptDurableRecoveryMemoryFrom(first);
+                // Acknowledging the vehicle's first safety change would republish Ready -- the "next session
+                // state change" the restore must not have to wait for.
+                server.AnswerSafetyStateChanged = false;
+            },
+            journalPath: journalPath,
+            baselineRevision: 2,
+            observe: business => business.OperatorEventPublished += (_, args) =>
+            {
+                // Raised by the replayed command while it still holds the attempt's claim.
+                if (args.Value.Kind == "OPERATION_REPLAY")
+                {
+                    holding!.Release();
+                }
+            },
+            wrapJournal: inner => holding = new HoldingJournal(inner),
+            observeSession: session => session.StateChanged += (_, args) =>
+            {
+                if (args.Value.Readiness == WireToGateSessionReadiness.Ready)
+                {
+                    holding!.HoldNextRecoveryStateReadOnThisThread();
+                }
+            });
+
+        await afterRestart.WaitForInboundAsync("OperationResult", token);
+        await afterRestart.WaitForEventAsync("OPERATION_RECOVERY_REQUIRED", token);
+        await Task.Delay(TimeSpan.FromMilliseconds(500), token);
+
+        Assert.True(holding!.ReadHeld, "the restore that readiness started was never held");
+        Assert.True(holding.ReleasedWhileClaimHeld, "the restore never ran into the replayed command's claim");
+        Assert.Single(afterRestart.Server.ReceivedEnvelopes, item => item.MessageType == "OperationResult");
+        Assert.Equal("UNKNOWN", afterRestart.SingleResult("OperationResult").GetProperty("overallOutcome").GetString());
+        Assert.Equal(1, afterRestart.DescribeEvents().Split(Environment.NewLine).Count(
+            line => line.StartsWith("OPERATION_RECOVERY_REQUIRED:", StringComparison.Ordinal)));
+        Assert.Equal(WireToGateHmiOperationStage.RecoveryRequired, afterRestart.Business.CurrentOperationSnapshot?.Stage);
+        Assert.Equal(AttemptId, afterRestart.Business.CurrentOperationSnapshot?.SlotOperationAttemptId);
+        Assert.Equal(0, afterRestart.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// Holds one <see cref="IWireToGateJournal.ReadRecoveryStateAsync"/> call -- the next one made on the thread
+    /// that armed it -- until <see cref="Release"/>, and answers it with the state read at arming time.
+    /// </summary>
+    /// <remarks>
+    /// Armed from a <c>Ready</c> handler that runs ahead of the business service's, the held call is the restore
+    /// that readiness starts: an async method runs synchronously up to its first await, on the thread that raised
+    /// the event. The completion source runs its continuations inline, so the restore goes on inside
+    /// <see cref="Release"/> -- on the replaying command's thread, while that command still holds the claim.
+    /// </remarks>
+    private sealed class HoldingJournal(IWireToGateJournal inner) : IWireToGateJournal
+    {
+        private readonly TaskCompletionSource<WireToGateRecoveryState> _hold = new();
+        private WireToGateRecoveryState? _heldState;
+        private int _armedThread = -1;
+        private int _armed;
+
+        public bool ReleasedWhileClaimHeld { get; private set; }
+
+        /// <summary>Whether the armed read was made and held, rather than answered straight away.</summary>
+        public bool ReadHeld { get; private set; }
+
+        public void HoldNextRecoveryStateReadOnThisThread()
+        {
+            if (Interlocked.Exchange(ref _armed, 1) != 0)
+            {
+                return;
+            }
+
+            _heldState = inner.ReadRecoveryStateAsync().GetAwaiter().GetResult();
+            Volatile.Write(ref _armedThread, Environment.CurrentManagedThreadId);
+        }
+
+        public void Release()
+        {
+            if (_heldState is { } state && _hold.TrySetResult(state))
+            {
+                ReleasedWhileClaimHeld = true;
+            }
+        }
+
+        public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.CompareExchange(ref _armedThread, -2, Environment.CurrentManagedThreadId)
+                != Environment.CurrentManagedThreadId)
+            {
+                return inner.ReadRecoveryStateAsync(cancellationToken);
+            }
+
+            ReadHeld = true;
+            return _hold.Task;
+        }
+
+        public Task InitializeAsync(CancellationToken cancellationToken = default) =>
+            inner.InitializeAsync(cancellationToken);
+
+        public Task<string> ReadJournalEpochAsync(CancellationToken cancellationToken = default) =>
+            inner.ReadJournalEpochAsync(cancellationToken);
+
+        public Task WriteRecoveryStateAsync(
+            WireToGateRecoveryState state,
+            CancellationToken cancellationToken = default) =>
+            inner.WriteRecoveryStateAsync(state, cancellationToken);
+
+        public Task<WireToGateDurableMessage> SaveOutgoingBeforeSendAsync(
+            WireToGateDurableMessage message,
+            CancellationToken cancellationToken = default) =>
+            inner.SaveOutgoingBeforeSendAsync(message, cancellationToken);
+
+        public Task<WireToGateDurableMessage> ReplaceOutgoingForReplayAsync(
+            WireToGateDurableMessage expected,
+            WireToGateDurableMessage replacement,
+            CancellationToken cancellationToken = default) =>
+            inner.ReplaceOutgoingForReplayAsync(expected, replacement, cancellationToken);
+
+        public Task<WireToGateDurableMessage?> ReadOutgoingByDeduplicationKeyAsync(
+            string deduplicationKey,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken);
+
+        public Task<WireToGateDurableMessage?> ReadOutgoingByMessageIdAsync(
+            string messageId,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadOutgoingByMessageIdAsync(messageId, cancellationToken);
+
+        public Task MarkOutgoingAcknowledgedAsync(
+            string messageId,
+            string acceptedContentSha256,
+            CancellationToken cancellationToken = default) =>
+            inner.MarkOutgoingAcknowledgedAsync(messageId, acceptedContentSha256, cancellationToken);
+
+        public Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ReadUnacknowledgedOutgoingAsync(cancellationToken);
+
+        public Task<IReadOnlyList<WireToGateAppliedJourneySnapshot>> ReadAppliedJourneySnapshotsAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ReadAppliedJourneySnapshotsAsync(cancellationToken);
+
+        public Task<WireToGateAppliedJourneySnapshot> SaveAppliedJourneySnapshotAsync(
+            WireToGateAppliedJourneySnapshot snapshot,
+            CancellationToken cancellationToken = default) =>
+            inner.SaveAppliedJourneySnapshotAsync(snapshot, cancellationToken);
+
+        public Task<string> ComputeContentSha256Async(CancellationToken cancellationToken = default) =>
+            inner.ComputeContentSha256Async(cancellationToken);
+
+        public ValueTask DisposeAsync() => inner.DisposeAsync();
+    }
+}
