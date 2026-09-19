@@ -43,6 +43,14 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private readonly object _operationAttemptGate = new();
     private readonly HashSet<Task> _tasks = [];
     private readonly HashSet<string> _operationAttempts = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The attempt this process concluded itself and already told the operator about, under
+    /// <see cref="_operationAttemptGate"/> alongside the in-flight claim it takes over from
+    /// (onboard-hmi#139). One field is enough: the journal holds one unsettled attempt, a new operation
+    /// starts from a clean journal, and the restore only ever judges that one.
+    /// </summary>
+    private string? _recoveryAnnouncedAttemptId;
     private readonly OperatorEventDeduplicator _operatorEventDeduplicator = new();
     private readonly SemaphoreSlim _safetySendGate = new(1, 1);
     private readonly SemaphoreSlim _recoveryRequestGate = new(1, 1);
@@ -728,6 +736,17 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return;
             }
 
+            // Not a leftover either when this process concluded it and said so: the server appends a
+            // RECOVERY_REQUIRED to the ack of every result it refuses (2026-09-04), and every later readiness
+            // lands here again. Restored, the operator would get the same fact a second time, worded as if it
+            // came from a previous process -- and the recovery decision they make from it is about the wrong
+            // run (onboard-hmi#139). The settlement above still runs: an unacknowledged result is resent from
+            // there whoever concluded it (onboard-hmi#127).
+            if (RecoveryAlreadyAnnouncedByThisProcess(context.SlotOperationAttemptId))
+            {
+                return;
+            }
+
             WireToGateHmiOperationSnapshot operation = new(
                 context.SlotOperationAttemptId,
                 context.OperationType,
@@ -751,6 +770,33 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 nameof(WireToGateBusinessService),
                 "恢复未完成仓位操作的界面投影失败，保持恢复入口关闭。",
                 exception);
+        }
+    }
+
+    /// <summary>
+    /// Records that this process gave <paramref name="attemptId"/> its conclusion and published the
+    /// RecoveryRequired projection for it (onboard-hmi#139). Called while this process still holds the
+    /// attempt's claim, so a restore either finds the claim and stops at <see cref="InterruptedOperationSettlement.InFlight"/>
+    /// or finds this mark -- never neither, however closely the server's appended RECOVERY_REQUIRED
+    /// follows the result's ack.
+    /// </summary>
+    private void MarkRecoveryAnnouncedByThisProcess(string attemptId)
+    {
+        lock (_operationAttemptGate)
+        {
+            _recoveryAnnouncedAttemptId = attemptId;
+        }
+    }
+
+    /// <summary>
+    /// Whether <paramref name="attemptId"/> is the one this process concluded and announced. Read under the
+    /// same lock the mark is written under, and under which the claim is taken and released.
+    /// </summary>
+    private bool RecoveryAlreadyAnnouncedByThisProcess(string attemptId)
+    {
+        lock (_operationAttemptGate)
+        {
+            return string.Equals(_recoveryAnnouncedAttemptId, attemptId, StringComparison.Ordinal);
         }
     }
 
@@ -1011,6 +1057,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 ? $"上次{FormatOperationType(command.OperationType)}在执行中中断，{FormatSlots(command.Slots)}已按实时状态确认完成，正在上报结果。"
                 : $"上次{FormatOperationType(command.OperationType)}在执行中中断：{FormatSlots(command.Slots)}，未再开锁，需要管理员恢复。";
             PublishOperation(command, finalStage, guidance, "interrupted-final");
+            if (!completedSuccessfully)
+            {
+                // Before the claim is released below, so no restore can slip between the two (onboard-hmi#139).
+                MarkRecoveryAnnouncedByThisProcess(attemptId);
+            }
+
             try
             {
                 if (!completedSuccessfully
@@ -1951,6 +2003,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     ? $"{FormatSlots(command.Slots)}操作完成，正在上报结果。"
                     : $"{FormatSlots(command.Slots)}操作未完成，需要恢复处理。",
                 "final");
+            if (!completedSuccessfully)
+            {
+                // Before the result goes out, and so before the RECOVERY_REQUIRED the server appends to its ack
+                // can come back and start a restore. The claim is still held here either way (onboard-hmi#139).
+                MarkRecoveryAnnouncedByThisProcess(command.SlotOperationAttemptId);
+            }
+
             try
             {
                 if (!completedSuccessfully
