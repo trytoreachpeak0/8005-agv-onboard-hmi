@@ -843,7 +843,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             await _session.ResendOperationResultAsync(resultKey, cancellationToken).ConfigureAwait(false);
             return true;
         }
-        catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
+        // InvalidDataException too: a ProtocolProblem answer, or an outbox row a concurrent handshake rebound. Let
+        // through, it would skip the restore's recovery projection -- the recovery entry vanishing, as in
+        // onboard-hmi#109 -- where before this resend existed the entry always appeared (PR #131 review).
+        catch (Exception exception) when (
+            exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
         {
             // A reconnect during the wait may have replayed and acknowledged the row already; its readiness found
             // this attempt claimed, so the recording falls to this call.
