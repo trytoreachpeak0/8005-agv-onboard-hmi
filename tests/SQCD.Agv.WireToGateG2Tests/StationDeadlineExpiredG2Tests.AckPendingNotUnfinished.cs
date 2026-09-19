@@ -97,6 +97,45 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// 不只 <c>COMPLETED</c>：一条失败或未知的结果确认丢了、链路没断，同样用同一 <c>messageId</c> 原样重发一次，直到发件箱里
+    /// 这一行被确认。它不结算这次操作（仍等管理员恢复），只保证服务端拿到了结果（独立审查发现：握手中途落盘、错过本次补发的
+    /// 失败结果，原先会一直等到下一次重连）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AnUnfinishedResultWhoseAckIsLostIsSentOnceMore()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { LockerWaitTimesOut = true },
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.OperationResultAcksToDrop = 1;
+            });
+        await harness.WaitForEventAsync("RESULT_ACK_PENDING", token);
+
+        await Harness.WaitUntilAsync(
+            () => harness.Journal.ReadOutgoingByDeduplicationKeyAsync($"operation-result:{AttemptId}", token)
+                .GetAwaiter().GetResult() is { Acknowledged: true },
+            "the unfinished result sent once more and acknowledged",
+            token,
+            harness.DescribeEvents);
+
+        (int Connection, string MessageType, string MessageId, string WireLine)[] results =
+            [.. harness.Server.ReceivedEnvelopes.Where(item => item.MessageType == "OperationResult")];
+        Assert.Equal(2, results.Length);
+        Assert.All(results, item => Assert.Equal(AttemptId, item.MessageId));
+        Assert.Equal(results[0].WireLine.Length, results[1].WireLine.Length);
+        Assert.NotEqual("COMPLETED", harness.FirstResult("OperationResult").GetProperty("overallOutcome").GetString());
+        Assert.Equal(AttemptId, harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId);
+        Assert.DoesNotContain(harness.Server.Received, item => item.Connection > 1);
+    }
+
+    /// <summary>
     /// 确认到达之后照常结算：断线重连，握手按同一 <c>messageId</c> 补发结果、服务端这次回了确认；之后的就绪让 journal
     /// 转为已结算（<c>ResultRecorded</c>，这次装货成为可更正的最近一次装货），全程不报未完成、不再开锁。
     /// </summary>
