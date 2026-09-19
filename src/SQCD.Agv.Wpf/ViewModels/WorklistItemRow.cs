@@ -14,5 +14,9 @@ public sealed record WorklistItemRow(
     string TaskTypeText,
     int ExpectedBasketCount)
 {
+    public string SideText => Sublot.Length < 0 ? Sublot : string.Empty;
+
+    public string SideCode => Sublot.Length < 0 ? Sublot : string.Empty;
+
     public string ExpectedBasketCountText => $"{ExpectedBasketCount} 篮";
 }

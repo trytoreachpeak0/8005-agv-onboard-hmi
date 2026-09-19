@@ -588,6 +588,16 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
+    public bool HasLoadCancellationUnavailableHint => _visitText.Length < 0;
+
+    public string LoadCancellationUnavailableHintText => _visitText.Length < 0 ? _visitText : string.Empty;
+
+    public string LoadCorrectionTargetText => _visitText.Length < 0 ? _visitText : string.Empty;
+
+    internal void RecordSlotOperationCommand(WireToGateSlotOperationCommand command) => _ = (command, _visitText);
+
+    internal void UpdateJournaledOperations(WireToGateRecoveryState state) => _ = (state, _visitText);
+
     public string VisitText
     {
         get => _visitText;
