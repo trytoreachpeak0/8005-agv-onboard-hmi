@@ -257,7 +257,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         public static async Task<Harness> StartAsync(
             Action<FakeControlServer> configure,
             CancellationToken cancellationToken,
-            string? journalPath = null)
+            string? journalPath = null,
+            FakeIoModuleClient? io = null)
         {
             FakeControlServer server = new(IPAddress.Loopback)
             {
@@ -267,7 +268,9 @@ public sealed partial class MultiDemandJourneyG2Tests
             configure(server);
             try
             {
-                return await StartAgainstAsync(server, cancellationToken, journalPath);
+                Harness started = await StartAgainstAsync(server, cancellationToken, journalPath, io);
+                started._ownsServer = true;
+                return started;
             }
             catch
             {
@@ -276,13 +279,17 @@ public sealed partial class MultiDemandJourneyG2Tests
             }
         }
 
-        /// <summary>A new vehicle process against a server that already exists: a restart.</summary>
+        /// <summary>
+        /// A new vehicle process against a server that already exists: a restart. The harness that created
+        /// the server keeps owning it.
+        /// </summary>
         public static async Task<Harness> StartAgainstAsync(
             FakeControlServer server,
             CancellationToken cancellationToken,
-            string? journalPath = null)
+            string? journalPath = null,
+            FakeIoModuleClient? io = null)
         {
-            FakeIoModuleClient io = new();
+            io ??= new FakeIoModuleClient();
             RecordingLogger logger = new();
             StoppedVehicle safety = new();
             journalPath ??= NewJournalPath();
@@ -481,18 +488,38 @@ public sealed partial class MultiDemandJourneyG2Tests
             }
         }
 
+        private bool _vehicleStopped;
+        private bool _serverStopped;
+        private bool _ownsServer;
+
         /// <summary>Stops this vehicle process, leaving the server and the journal in place.</summary>
         public async ValueTask StopVehicleAsync()
         {
+            if (_vehicleStopped)
+            {
+                return;
+            }
+
+            _vehicleStopped = true;
             await Business.DisposeAsync();
             await Session.DisposeAsync();
             await Controller.DisposeAsync();
         }
 
+        /// <summary>The control server goes away: its connections close under the running vehicle.</summary>
+        public async ValueTask StopServerAsync()
+        {
+            if (_ownsServer && !_serverStopped)
+            {
+                _serverStopped = true;
+                await Server.DisposeAsync();
+            }
+        }
+
         public async ValueTask DisposeAsync()
         {
             await StopVehicleAsync();
-            await Server.DisposeAsync();
+            await StopServerAsync();
         }
 
         private static string NewJournalPath()

@@ -734,7 +734,11 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// session. Sending the same messageId twice is how the real server's outbox resends a RELIABLE
     /// command it has no answer to yet.
     /// </summary>
-    public Task SendCommandAsync(string messageType, string messageId, object payload)
+    /// <param name="correlationId">
+    /// What the command answers, when it answers something: a LOAD <c>SlotOperationCommand</c> carries the messageId
+    /// of the <c>SublotSubmitted</c> it follows (onboard-hmi#134).
+    /// </param>
+    public Task SendCommandAsync(string messageType, string messageId, object payload, string? correlationId = null)
     {
         ConnectionContext context = Volatile.Read(ref _latestSession)
             ?? throw new InvalidOperationException("No session has been accepted yet.");
@@ -743,7 +747,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             WireToGateProtocolSerializer.Create(
                 messageType,
                 messageId,
-                null,
+                correlationId,
                 context.AgvId,
                 context.Generation,
                 DateTimeOffset.UtcNow,
