@@ -68,11 +68,11 @@ public sealed partial class MultiDemandJourneyG2Tests
                 "8|WAITING_POINT|PLANNED",
                 "9|BUSINESS|PLANNED"
             ],
-            harness.ViewModel.JourneyPlanLegs.Select(row => row.ItemStatus));
+            harness.PlanLegStatuses());
         Assert.Equal(
             ["ST-01", "ST-01", "WP-03", "ST-GATE", "CH-05", "ST-OPT", "ST-N2", "WP-08", "ST-GATE"],
-            harness.ViewModel.JourneyPlanLegs.Select(row => row.StationId));
-        Assert.Equal(["SUBLOT-A", "SUBLOT-B"], harness.ViewModel.WorklistItems.Select(row => row.Sublot));
+            harness.ViewModel.JourneyPlanLegs.Select(row => row.StationId).ToArray());
+        Assert.Equal(["SUBLOT-A", "SUBLOT-B"], harness.WorklistRows().Select(row => row.Sublot));
     }
 
     /// <summary>
@@ -124,10 +124,10 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Empty(harness.UiErrors);
         Assert.Equal(
             ["ST-01", "ST-02", "ST-OPT", "ST-GATE", "ST-N2"],
-            harness.ViewModel.JourneyPlanLegs.Select(row => row.StationId));
+            harness.ViewModel.JourneyPlanLegs.Select(row => row.StationId).ToArray());
         Assert.Equal(
             ["1|BUSINESS|ARRIVED", "2|BUSINESS|PLANNED", "3|BUSINESS|PLANNED", "4|BUSINESS|PLANNED", "5|BUSINESS|PLANNED"],
-            harness.ViewModel.JourneyPlanLegs.Select(row => row.ItemStatus));
+            harness.PlanLegStatuses());
         Assert.Equal(2, harness.Session.CurrentJourney.UpcomingStopPlan!.Revision);
     }
 

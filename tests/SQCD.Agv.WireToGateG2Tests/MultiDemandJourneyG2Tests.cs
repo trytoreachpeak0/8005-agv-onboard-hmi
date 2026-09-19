@@ -459,6 +459,37 @@ public sealed partial class MultiDemandJourneyG2Tests
             }
         }
 
+        /// <summary>
+        /// The worklist rows as (sublot, side code), read without tripping over a rebuild.
+        /// </summary>
+        /// <remarks>
+        /// In the product every view-model update runs on the WPF dispatcher, so nothing reads a
+        /// collection while it is being rebuilt. There is no dispatcher here: the journal read that
+        /// gives a row its side publishes on whatever thread it finished on, and a test enumerating at
+        /// that instant sees "Collection was modified". That is this harness's race, not the product's,
+        /// so it is read again rather than asserted on.
+        /// </remarks>
+        public (string Sublot, string SideCode)[] WorklistRows() =>
+            ReadStable(() => ViewModel.WorklistItems.Select(row => (row.Sublot, row.SideCode)).ToArray());
+
+        public string[] PlanLegStatuses() =>
+            ReadStable(() => ViewModel.JourneyPlanLegs.Select(row => row.ItemStatus).ToArray());
+
+        private static T[] ReadStable<T>(Func<T[]> read)
+        {
+            for (int attempt = 0; ; attempt++)
+            {
+                try
+                {
+                    return read();
+                }
+                catch (InvalidOperationException) when (attempt < 50)
+                {
+                    Thread.Sleep(5);
+                }
+            }
+        }
+
         public async Task<JsonElement> WaitForSubmissionAsync(CancellationToken cancellationToken)
         {
             await WaitUntilAsync(

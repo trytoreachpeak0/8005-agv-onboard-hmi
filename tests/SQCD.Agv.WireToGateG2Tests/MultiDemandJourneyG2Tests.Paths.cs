@@ -111,16 +111,16 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
         await harness.WaitUntilAsync(
             () => harness.ViewModel.HasCargoHoldingCountdown
-                && harness.ViewModel.WorklistItems.Count == 2
-                && harness.ViewModel.JourneyPlanLegs.Count == 9,
+                && harness.WorklistRows().Length == 2
+                && harness.PlanLegStatuses().Length == 9,
             "the stop to be shown",
             token);
 
         await harness.StopServerAsync();
         await harness.WaitUntilAsync(() => !harness.Session.Current.Connected, "the session to drop", token);
 
-        Assert.Empty(harness.ViewModel.JourneyPlanLegs);
-        Assert.Empty(harness.ViewModel.WorklistItems);
+        Assert.Empty(harness.PlanLegStatuses());
+        Assert.Empty(harness.WorklistRows());
         Assert.False(harness.ViewModel.HasCargoHoldingCountdown);
         Assert.Equal(string.Empty, harness.ViewModel.CargoHoldingCountdownText);
         Assert.False(harness.ViewModel.HasLoadingClosedReason);
@@ -155,23 +155,23 @@ public sealed partial class MultiDemandJourneyG2Tests
             token,
             io: io);
         await first.WaitUntilAsync(
-            () => first.ViewModel.JourneyPlanLegs.Count == 9 && first.ViewModel.WorklistItems.Count == 2,
+            () => first.PlanLegStatuses().Length == 9 && first.WorklistRows().Length == 2,
             "the stop to be shown",
             token);
         await first.Server.SendCommandAsync("SlotOperationCommand", Guid.NewGuid().ToString("D"), SlotCommand(DemandA, AttemptA, [2]), Guid.NewGuid().ToString("D"));
         await first.WaitUntilAsync(
             () => first.Business.CurrentOperationSnapshot?.Stage == WireToGateHmiOperationStage.WaitingOperator
-                && first.ViewModel.WorklistItems[0].SideCode == "FRONT",
+                && first.WorklistRows() is [(_, "FRONT"), ..],
             "the load for A to wait on the operator",
             token);
-        string[] legsBefore = [.. first.ViewModel.JourneyPlanLegs.Select(row => row.ItemStatus)];
+        string[] legsBefore = first.PlanLegStatuses();
 
         await first.StopVehicleAsync();
         first.Server.SimulateOnboardProcessRestart();
         await using Harness second = await Harness.StartAgainstAsync(first.Server, token, first.JournalPath, io);
         await second.WaitUntilAsync(
-            () => second.ViewModel.JourneyPlanLegs.Count == 9 && second.ViewModel.WorklistItems.Count == 2
-                && second.ViewModel.WorklistItems[0].SideCode == "FRONT",
+            () => second.PlanLegStatuses().Length == 9
+                && second.WorklistRows() is [(_, "FRONT"), (_, _)],
             "the restored stop and A's side",
             token);
 
@@ -179,10 +179,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(5, restored.CurrentStopWorklist!.Revision);
         Assert.Equal(7, restored.UpcomingStopPlan!.Revision);
         Assert.Equal(3, restored.VehicleBusinessState!.Revision);
-        Assert.Equal(legsBefore, second.ViewModel.JourneyPlanLegs.Select(row => row.ItemStatus));
-        Assert.Equal(
-            [("SUBLOT-A", "FRONT"), ("SUBLOT-B", "UNASSIGNED")],
-            second.ViewModel.WorklistItems.Select(row => (row.Sublot, row.SideCode)));
+        Assert.Equal(legsBefore, second.PlanLegStatuses());
+        Assert.Equal([("SUBLOT-A", "FRONT"), ("SUBLOT-B", "UNASSIGNED")], second.WorklistRows());
         Assert.True(second.ViewModel.HasLoadingClosedReason);
         Assert.Equal("PLANNED_LOADING_COMPLETE", second.ViewModel.LoadingClosedReasonCode);
         Assert.Empty(second.UiErrors);
@@ -230,7 +228,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal("SUBLOT_NOT_IN_WORKLIST", refused.Message);
         await Task.Delay(200, token);
         Assert.Empty(harness.Submissions);
-        Assert.Equal(["SUBLOT-B"], harness.ViewModel.WorklistItems.Select(row => row.Sublot));
+        Assert.Equal(["SUBLOT-B"], harness.WorklistRows().Select(row => row.Sublot));
         Assert.Empty(harness.UiErrors);
     }
 
@@ -297,9 +295,10 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Null(OverdueFor(harness, 5, threshold));
         Assert.Equal(2, io.UnlockCount);
         Assert.DoesNotContain(harness.Server.ReceivedEnvelopes, item => item.MessageType == "SlotOperationCommandRejected");
-        Assert.Equal(
-            [("SUBLOT-A", "FRONT"), ("SUBLOT-B", "REAR")],
-            harness.ViewModel.WorklistItems.Select(row => (row.Sublot, row.SideCode)));
+        await harness.WaitUntilAsync(
+            () => harness.WorklistRows() is [("SUBLOT-A", "FRONT"), ("SUBLOT-B", "REAR")],
+            "both rows to take their side from their own command",
+            token);
         Assert.Empty(harness.UiErrors);
     }
 
@@ -382,7 +381,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         }
 
         Assert.True(harness.Session.Current.Connected);
-        Assert.Equal(2, harness.ViewModel.WorklistItems.Count);
+        Assert.Equal(2, harness.WorklistRows().Length);
         Assert.Empty(harness.UiErrors);
     }
 
@@ -428,9 +427,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(AttemptA, result.GetProperty("slotOperationAttemptId").GetString());
         Assert.Equal(outcome, result.GetProperty("overallOutcome").GetString());
         await Task.Delay(200, token);
-        Assert.Equal(
-            [("SUBLOT-A", "REAR"), ("SUBLOT-B", "UNASSIGNED")],
-            harness.ViewModel.WorklistItems.Select(row => (row.Sublot, row.SideCode)));
+        Assert.Equal([("SUBLOT-A", "REAR"), ("SUBLOT-B", "UNASSIGNED")], harness.WorklistRows());
         Assert.Empty(harness.UiErrors);
         Assert.NotEqual("UNHANDLED_UI_ERROR", harness.Controller.Current.ErrorCode);
     }
@@ -458,7 +455,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             },
             token);
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.WorklistItems.Count == 2 && harness.Session.CurrentJourney.UpcomingStopPlan is not null,
+            () => harness.WorklistRows().Length == 2 && harness.Session.CurrentJourney.UpcomingStopPlan is not null,
             "the stop to be shown",
             token);
 
@@ -472,8 +469,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         await harness.WaitUntilAsync(() => !harness.Session.Current.Connected, "the session to drop", token);
         Assert.False(harness.ViewModel.HasLoadingClosedReason);
         Assert.Equal(string.Empty, harness.ViewModel.LoadingClosedReasonCode);
-        Assert.Empty(harness.ViewModel.WorklistItems);
-        Assert.Empty(harness.ViewModel.JourneyPlanLegs);
+        Assert.Empty(harness.WorklistRows());
+        Assert.Empty(harness.PlanLegStatuses());
         Assert.Empty(harness.UiErrors);
     }
 
@@ -504,7 +501,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             },
             token);
         await harness.WaitUntilAsync(
-            () => harness.Business.CanSubmitSublot && harness.ViewModel.WorklistItems.Count == items,
+            () => harness.Business.CanSubmitSublot && harness.WorklistRows().Length == items,
             "the entry request and the worklist",
             token);
         harness.ViewModel.RefreshWireToGateInputState();
