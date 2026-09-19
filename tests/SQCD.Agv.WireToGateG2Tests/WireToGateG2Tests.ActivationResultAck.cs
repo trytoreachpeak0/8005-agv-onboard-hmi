@@ -280,6 +280,54 @@ public sealed partial class WireToGateG2Tests
     }
 
     /// <summary>
+    /// The ack times out while the connection is still live and the server keeps announcing readiness. Whatever the
+    /// receive loop was holding when the wait gave up, the session must end up disconnected: nothing reads that socket
+    /// any more (onboard-hmi#140 review S1).
+    /// </summary>
+    /// <remarks>
+    /// The flood is what makes this reproducible. The window is the receive loop's own dispatch of one line, so the
+    /// timeout has to land while the loop is applying lines rather than parked on an empty socket.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-14")]
+    [Trait("ProtocolVector", "CV-SLOT-CONFIGURATION-ACTIVATION")]
+    public async Task AnActivationResultAckTimeoutUnderAReadinessFloodLeavesTheSessionDisconnected()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            SendSlotConfigurationActivationAfterRecovery = true,
+            SendJourneySnapshotsAfterRecovery = true,
+            ActivationResultAcksToDrop = 1,
+            FloodSessionReadinessAfterDroppedActivationResultAck = true,
+            SessionReadinessFloodDuration = TimeSpan.FromSeconds(2)
+        };
+        FakeIoModuleClient io = new();
+        await using WireToGateSessionClient client = CreateClient(
+            server,
+            io,
+            NewJournalPath(),
+            messageTimeout: TimeSpan.FromMilliseconds(500));
+
+        await client.ConnectAndRecoverAsync(testToken);
+        await WaitAtMostUntilAsync(
+            () => client.Current.Readiness == WireToGateSessionReadiness.Disconnected,
+            TimeSpan.FromSeconds(10),
+            testToken);
+        // Disconnected has to stay: the flood is still writing, and a receive loop still applying those lines would
+        // publish Ready over it.
+        await Task.Delay(TimeSpan.FromSeconds(1), testToken);
+
+        Assert.Equal(
+            (false, WireToGateSessionReadiness.Disconnected),
+            (client.Current.Connected, client.Current.Readiness));
+        Assert.Contains("SESSION_RECOVERY_REQUIRED", client.Current.ReasonCodes);
+        // The projection the three journey snapshots filled is cleared, and no in-flight line refilled it (S2).
+        Assert.Null(client.CurrentJourney.CurrentStopWorklist);
+    }
+
+    /// <summary>
     /// Reconnects <paramref name="client"/> -- the same client, so the same activation store -- and checks the server
     /// replays the activation, the vehicle answers with the result it already settled (not a second activation), that
     /// result is acknowledged, and the session is up.

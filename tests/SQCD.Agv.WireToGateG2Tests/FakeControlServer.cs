@@ -463,6 +463,19 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// <summary>Writes each activation result's <c>DurableAck</c> twice (onboard-hmi#140).</summary>
     public bool DuplicateActivationResultAck { get; set; }
 
+    /// <summary>
+    /// After taking an activation result whose ack <see cref="ActivationResultAcksToDrop"/> withholds, keeps writing
+    /// <c>SessionReadiness</c> for <see cref="SessionReadinessFloodDuration"/> with the connection left open: the
+    /// vehicle's wait for the ack times out while its receive loop is busy applying those lines (onboard-hmi#140
+    /// review S1). <see cref="SessionReadinessFloodFinished"/> turns true when the flood is over.
+    /// </summary>
+    public bool FloodSessionReadinessAfterDroppedActivationResultAck { get; set; }
+
+    /// <summary>How long <see cref="FloodSessionReadinessAfterDroppedActivationResultAck"/> keeps writing.</summary>
+    public TimeSpan SessionReadinessFloodDuration { get; set; } = TimeSpan.FromSeconds(3);
+
+    public bool SessionReadinessFloodFinished { get; private set; }
+
     private readonly List<JsonElement> _activationResults = [];
 
     public bool RespondToRecoveryRequests { get; set; }
@@ -1128,6 +1141,11 @@ public sealed class FakeControlServer : IAsyncDisposable
                         if (ActivationResultAcksToDrop > 0)
                         {
                             ActivationResultAcksToDrop--;
+                            if (FloodSessionReadinessAfterDroppedActivationResultAck)
+                            {
+                                await FloodSessionReadinessAsync(context).ConfigureAwait(false);
+                            }
+
                             break;
                         }
 
@@ -2266,6 +2284,39 @@ public sealed class FakeControlServer : IAsyncDisposable
                     Encoding.UTF8.GetBytes(wireLine)),
                 durablyAcceptedAt = DateTimeOffset.UtcNow
             });
+    }
+
+    /// <summary>
+    /// Writes <c>SessionReadiness</c> as fast as the socket takes it until <see cref="SessionReadinessFloodDuration"/>
+    /// is up or the vehicle stops reading: the point is to keep the vehicle's receive loop applying lines across its
+    /// ack timeout rather than parked on an empty socket.
+    /// </summary>
+    private async Task FloodSessionReadinessAsync(ConnectionContext context)
+    {
+        DateTimeOffset until = DateTimeOffset.UtcNow + SessionReadinessFloodDuration;
+        try
+        {
+            while (DateTimeOffset.UtcNow < until)
+            {
+                for (int i = 0; i < 200; i++)
+                {
+                    await WriteEnvelopeAsync(context, CreateSessionReadiness(context)).ConfigureAwait(false);
+                }
+
+                // Yield, not Delay: a 1 ms delay is 15 ms on this machine, and the vehicle's receive loop would be
+                // parked on an empty socket for almost all of the flood -- which is exactly the state this test
+                // must not leave it in when the ack times out.
+                await Task.Yield();
+            }
+        }
+        catch (Exception)
+        {
+            // The vehicle closed the connection; that is one of the two ways this flood ends.
+        }
+        finally
+        {
+            SessionReadinessFloodFinished = true;
+        }
     }
 
     private async Task SendSlotOperationCommandAsync(ConnectionContext context)

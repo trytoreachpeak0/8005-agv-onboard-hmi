@@ -1323,12 +1323,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             throw;
         }
 
-        return AwaitActivationResultAckAsync(
-            response,
-            "SlotConfigurationActivationResult",
-            messageId,
-            contentSha256,
-            cancellationToken);
+        return AwaitActivationResultAckAsync(response, report, contentSha256, cancellationToken);
     }
 
     /// <summary>
@@ -1342,11 +1337,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// </remarks>
     private async Task AwaitActivationResultAckAsync(
         TaskCompletionSource<WireToGateEnvelope> response,
-        string messageType,
-        string messageId,
+        WireToGateEnvelope report,
         string contentSha256,
         CancellationToken cancellationToken)
     {
+        string messageId = report.MessageId;
         try
         {
             WireToGateEnvelope ackEnvelope = await response.Task
@@ -1356,7 +1351,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             WireToGateProtocolSerializer.RequireMessage(ackEnvelope, "DurableAck", messageId);
             DurableAckPayload ack = WireToGateProtocolSerializer.DeserializePayload<DurableAckPayload>(ackEnvelope);
             if (ack.AcceptedMessageId != messageId
-                || ack.AcceptedMessageType != messageType
+                || ack.AcceptedMessageType != report.MessageType
                 || ack.AcceptedContentSha256 != contentSha256)
             {
                 throw new InvalidDataException("CONTENT_HASH_MISMATCH");
@@ -1371,9 +1366,14 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// <summary>
     /// 在接收循环之外等激活结果的确认；等不到就让这一代会话失败，与循环自己失败同一条收尾。
     /// </summary>
-    private async Task SettleActivationResultAckAsync(
+    /// <remarks>
+    /// 这里**只记异常并取消循环**，收尾（清投影、失败等待者、发布 <c>Disconnected</c>）留给循环自己做。
+    /// 在这里收尾会与还活着的循环并发：确认超时而连接仍在时，循环手上可能正握着一条 <c>SessionReadiness</c>，
+    /// 它随后发布的 <c>Ready</c> 会把 <c>Disconnected</c> 盖回去，而这一代的 socket 已经没人读了
+    /// （onboard-hmi#140 审查 S1、S2）。
+    /// </remarks>
+    private static async Task SettleActivationResultAckAsync(
         Task acknowledged,
-        long generation,
         CancellationTokenSource stopping,
         TaskCompletionSource<Exception> failure)
     {
@@ -1386,8 +1386,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         }
         catch (Exception exception)
         {
-            FailReceiveLoop(exception, generation, failure);
-            stopping.Cancel();
+            if (failure.TrySetResult(exception))
+            {
+                stopping.Cancel();
+            }
         }
     }
 
@@ -1961,7 +1963,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         envelope,
                         generation,
                         stopping.Token).ConfigureAwait(false);
-                    _ = SettleActivationResultAckAsync(acknowledged, generation, stopping, failure);
+                    _ = SettleActivationResultAckAsync(acknowledged, stopping, failure);
                     continue;
                 }
 
@@ -1996,30 +1998,42 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 throw new InvalidDataException($"收到未处理的WIRE_TO_GATE消息：{envelope.MessageType}。");
             }
         }
-        catch (OperationCanceledException) when (stopping.IsCancellationRequested)
-        {
-        }
         catch (Exception) when (stopping.IsCancellationRequested)
         {
         }
         catch (Exception exception)
         {
-            FailReceiveLoop(exception, generation, failure);
+            failure.TrySetResult(exception);
+        }
+
+        // 收尾在这里，不在 catch 里：循环停下来有三条路——自己抛异常、取消把它从 ReadLineAsync 上打下来、
+        // 以及处理完手上那一条之后 while 条件看见取消而**正常跳出**。最后一条不经过任何 catch，收尾放在
+        // catch 里就会被整个跳过，会话停在这条报文发布的 Ready 上，而这一代已经没人读 socket 了
+        // （onboard-hmi#140 审查 S1）。
+        //
+        // failure 未置时什么都不做：那是 CloseConnectionAsync 的正常关闭，它自己收过尾。置了则可能是循环
+        // 自己的异常，也可能是循环外 SettleActivationResultAckAsync 记下的等确认失败——两种都在这里收，
+        // 此刻循环已经不再处理任何行，Disconnected 不会被一条在途 SessionReadiness 盖回去。
+        if (failure.Task.IsCompletedSuccessfully)
+        {
+            FinishFailedSession(failure.Task.Result, generation);
         }
     }
 
     /// <summary>
-    /// 这一代会话失败的收尾，只做一次：接收循环自己出错，或它放出去的激活结果等不到确认
-    /// （<see cref="SettleActivationResultAckAsync"/>），谁先到谁做。
+    /// 这一代会话失败的收尾，只在接收循环自己的线程上、循环已经停止处理之后做。
     /// </summary>
-    private void FailReceiveLoop(Exception exception, long generation, TaskCompletionSource<Exception> failure)
+    /// <remarks>
+    /// 这一代已经不是活着的那一代时什么都不做：重连或 <see cref="CloseConnectionAsync"/> 已经收过尾，
+    /// 再发一次 <c>Disconnected</c> 会盖掉新会话刚发布的状态。
+    /// </remarks>
+    private void FinishFailedSession(Exception exception, long generation)
     {
-        if (!failure.TrySetResult(exception))
+        if (Interlocked.CompareExchange(ref _receiveLoopGeneration, 0, generation) != generation)
         {
             return;
         }
 
-        Interlocked.CompareExchange(ref _receiveLoopGeneration, 0, generation);
         foreach (KeyValuePair<string, TaskCompletionSource<WireToGateEnvelope>> waiter in _responseWaiters)
         {
             waiter.Value.TrySetException(exception);
