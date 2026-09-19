@@ -763,10 +763,26 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         TakenOver,
 
         /// <summary>
+        /// Finished: a COMPLETED result is in the durable outbox and only its DurableAck is outstanding. Not
+        /// restored as unfinished -- the handshake replays the result (onboard-hmi#124).
+        /// </summary>
+        ResultAwaitingAck,
+
+        /// <summary>
         /// A leftover this call cannot settle, because a result has already been given for it. It stays unfinished
         /// until an administrator recovers it.
         /// </summary>
         NotSettled
+    }
+
+    /// <summary>Whether a durable <c>OperationResult</c> reports the operation <c>COMPLETED</c>.</summary>
+    private static bool IsCompletedOperationResult(WireToGateDurableMessage result)
+    {
+        using JsonDocument document = JsonDocument.Parse(result.WireLine);
+        return document.RootElement.TryGetProperty("payload", out JsonElement payload)
+            && payload.TryGetProperty("overallOutcome", out JsonElement outcome)
+            && outcome.ValueKind == JsonValueKind.String
+            && outcome.GetString() == "COMPLETED";
     }
 
     /// <summary>
@@ -819,8 +835,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             string resultKey = $"operation-result:{attemptId}";
             if (await _session.Journal
                     .ReadOutgoingByDeduplicationKeyAsync(resultKey, cancellationToken)
-                    .ConfigureAwait(false) is not null)
+                    .ConfigureAwait(false) is { } sent)
             {
+                // A COMPLETED result whose DurableAck has not come back is finished work, not an unfinished
+                // operation: the handshake replays it under the same messageId, and until then the HMI keeps
+                // the RESULT_ACK_PENDING prompt its sender published (onboard-hmi#124).
+                if (IsCompletedOperationResult(sent) && !sent.Acknowledged)
+                {
+                    return InterruptedOperationSettlement.ResultAwaitingAck;
+                }
+
                 return InterruptedOperationSettlement.NotSettled;
             }
 
