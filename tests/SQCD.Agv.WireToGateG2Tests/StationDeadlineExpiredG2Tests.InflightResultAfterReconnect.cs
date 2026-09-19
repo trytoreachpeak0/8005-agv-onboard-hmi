@@ -240,6 +240,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
         /// </summary>
         public async Task<int> ReconnectAwaitingTheLoadsResultAsync(CancellationToken cancellationToken)
         {
+            // Still needed after onboard-hmi#128, for a reason of the double's own: once READY it pushes the stop's
+            // snapshots again at the same revision with a fresh observedAt, which the vehicle rightly refuses as a
+            // revision content conflict. The real server replays the outbox row byte for byte.
             Server.SendSlotOperationCommandAfterRecovery = false;
             Server.SendJourneySnapshotsAfterRecovery = false;
             await Client.DisconnectAsync();
