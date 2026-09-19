@@ -20,6 +20,8 @@ public sealed partial class RecoveryVectorG2Tests
 {
     private const string ResumeMessageId = "abcdabcd-0000-4000-8000-000000000119";
 
+    private static readonly int[] ResumeSlots = [1, 2];
+
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
@@ -255,6 +257,66 @@ public sealed partial class RecoveryVectorG2Tests
             Assert.Equal(AttemptId, payload.GetProperty("slotOperationAttemptId").GetString());
             Assert.Equal(reasonCode, payload.GetProperty("problem").GetProperty("reasonCode").GetString());
         });
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// The rejection ends the resume on the vehicle's side, and the server closes the session on it
+    /// (control-server#187). The vehicle must then be able to open another session for the same
+    /// unsettled load: found on the real rig, where the closed session's id stayed in the journal
+    /// and every recovery entry refused locally with RECOVERY_SESSION_STATE_PENDING.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task AfterARejectedResumeClosesItsSessionTheVehicleCanOpenAnother()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        // The real server names the session's attempt in every recovery response and snapshot alike.
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.RecoverySlotOperationAttemptId = AttemptId);
+        WireToGateRecoveryState state = await OpenResumeActionAsync(harness, token);
+
+        await harness.Server.SendCommandAsync(
+            "SlotOperationResumeCommand",
+            ResumeMessageId,
+            ResumePayload(state, checkpoint: AnotherCheckpointThan(state.ProvenRecoveryCheckpoint)));
+        await WaitForSingleRejectionAsync(harness, token);
+        await harness.Server.SendCommandAsync(
+            "ExceptionRecoverySessionSnapshot",
+            "abcdabcd-0000-4000-8000-000000000120",
+            new
+            {
+                exceptionRecoverySessionId = state.ExceptionRecoverySessionId,
+                recoverySessionRevision = 3,
+                state = "CLOSED",
+                administratorId = "maintenance-001",
+                administratorRole = "MAINTENANCE_ADMINISTRATOR",
+                eventId = state.RecoverySessionRequestId,
+                demandId = DemandId,
+                slotOperationAttemptId = AttemptId,
+                slots = ResumeSlots,
+                selectedAction = "RESUME_AFTER_REPAIR",
+                allowedActions = Array.Empty<string>(),
+                blockingFacts = Array.Empty<object>()
+            });
+        await harness.WaitForInboundAsync("SnapshotAppliedAck", token);
+        WireToGateRecoveryState afterClose = await harness.ReadRecoveryStateAsync(token);
+        Assert.Equal(AttemptId, afterClose.UnsettledSlotOperationAttemptId);
+        Assert.NotNull(afterClose.OperationContext);
+
+        bool requested = await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token);
+
+        Assert.True(requested, string.Join(" / ", harness.Logger.Entries
+            .Where(entry => entry.Severity >= Core.LogSeverity.Warning)
+            .Select(entry => entry.Message)
+            .TakeLast(3)));
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.ResultsOfType("ExceptionRecoverySessionRequested").Count == 2,
+            "a second recovery session request for the same vehicle",
+            token);
         Assert.Equal(0, harness.Io.UnlockCount);
     }
 
