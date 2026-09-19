@@ -143,11 +143,18 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
         }
     }
 
+    public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+        Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+        CancellationToken cancellationToken = default) =>
+        UpdateRecoveryStateAsync(change, static _ => { }, cancellationToken);
+
     public async Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
         Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+        Action<WireToGateRecoveryState> settled,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(change);
+        ArgumentNullException.ThrowIfNull(settled);
         ThrowIfDisposed();
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -157,11 +164,13 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
                 .ConfigureAwait(false);
             if (change(current) is not { } changed)
             {
+                settled(current);
                 return null;
             }
 
             await WriteRecoveryStateCoreAsync(connection, SerializeForWrite(changed), cancellationToken)
                 .ConfigureAwait(false);
+            settled(changed);
             return changed;
         }
         finally

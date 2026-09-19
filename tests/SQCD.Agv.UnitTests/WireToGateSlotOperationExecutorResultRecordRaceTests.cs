@@ -140,6 +140,23 @@ public sealed class WireToGateSlotOperationExecutorResultRecordRaceTests
             return await inner.UpdateRecoveryStateAsync(change, cancellationToken);
         }
 
+        /// <summary>
+        /// The settled overload interleaves the same way: a path that moves to it must not leave this
+        /// race untested (onboard-hmi#129 review S3).
+        /// </summary>
+        public async Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            Action<WireToGateRecoveryState> settled,
+            CancellationToken cancellationToken = default)
+        {
+            if (Interlocked.Exchange(ref _onNext, null) is { } interleave)
+            {
+                await interleave();
+            }
+
+            return await inner.UpdateRecoveryStateAsync(change, settled, cancellationToken);
+        }
+
         public Task InitializeAsync(CancellationToken cancellationToken = default) =>
             inner.InitializeAsync(cancellationToken);
 
