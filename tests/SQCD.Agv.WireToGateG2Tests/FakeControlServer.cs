@@ -1031,12 +1031,17 @@ public sealed class FakeControlServer : IAsyncDisposable
         order.Enqueue(messageType);
         lock (_sync)
         {
-            var list = Received.ToList();
-            list.Add((connectionIndex, messageType));
-            Received = list;
+            // Envelopes first, message types second: a test waits on Received and then reads the
+            // envelope's wire line, both without this lock. Published the other way round, a reader
+            // between the two assignments sees the message in Received and an envelope list that does
+            // not have it yet -- an index-out-of-range in the waiting helper, once every few hundred
+            // full runs (onboard-hmi#134, seen in a full G2 on RecoveryVectorG2Tests).
             var envelopes = ReceivedEnvelopes.ToList();
             envelopes.Add((connectionIndex, messageType, messageId, wireLine));
             ReceivedEnvelopes = envelopes;
+            var list = Received.ToList();
+            list.Add((connectionIndex, messageType));
+            Received = list;
         }
     }
 
