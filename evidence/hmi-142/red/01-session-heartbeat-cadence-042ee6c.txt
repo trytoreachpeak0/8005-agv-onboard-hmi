@@ -1,0 +1,16 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:09.82]     SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer [7 s]
+  Error Message:
+   7 秒窗口里只收到 1 条 Heartbeat，就绪后各段间隔为 5.01 秒；ADR-cross-0027 要求 2 秒一条。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 69
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 76
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 76
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 7 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

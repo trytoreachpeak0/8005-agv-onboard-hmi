@@ -1,0 +1,22 @@
+  Stack Trace:
+     at SQCD.Agv.UnitTests.ConfigurationTests.ASessionHeartbeatIntervalOutsideTheAdrBoundsIsRejected(Int32 milliseconds) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\ConfigurationTests.cs:line 109
+   at InvokeStub_ConfigurationTests.ASessionHeartbeatIntervalOutsideTheAdrBoundsIsRejected(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithOneArg(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Failed SQCD.Agv.UnitTests.ConfigurationTests.ASessionHeartbeatIntervalOutsideTheAdrBoundsIsRejected(milliseconds: 0) [< 1 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.IO.InvalidDataException)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.ConfigurationTests.ASessionHeartbeatIntervalOutsideTheAdrBoundsIsRejected(Int32 milliseconds) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\ConfigurationTests.cs:line 109
+   at InvokeStub_ConfigurationTests.ASessionHeartbeatIntervalOutsideTheAdrBoundsIsRejected(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithOneArg(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Failed SQCD.Agv.UnitTests.ConfigurationTests.ASessionHeartbeatIntervalOutsideTheAdrBoundsIsRejected(milliseconds: 3000) [< 1 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.IO.InvalidDataException)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.ConfigurationTests.ASessionHeartbeatIntervalOutsideTheAdrBoundsIsRejected(Int32 milliseconds) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\ConfigurationTests.cs:line 109
+   at InvokeStub_ConfigurationTests.ASessionHeartbeatIntervalOutsideTheAdrBoundsIsRejected(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithOneArg(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+
+Failed!  - Failed:     4, Passed:     0, Skipped:     0, Total:     4, Duration: 103 ms - SQCD.Agv.UnitTests.dll (net8.0)
