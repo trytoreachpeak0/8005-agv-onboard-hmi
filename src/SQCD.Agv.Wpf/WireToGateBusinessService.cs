@@ -709,7 +709,14 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return;
             }
 
-            if (await TrySettleInterruptedOperationAsync(context, cancellationToken).ConfigureAwait(false))
+            // Only a leftover that could not be settled here is restored as unfinished. The attempt this process is
+            // executing reads exactly like one in the journal, and the server answers every safety change and every
+            // mid-session snapshot with a SessionReadiness that lands here (onboard-hmi#120): restoring it would stop
+            // its expected-action clock and flash ONBOARD_SLOT_OPERATION_UNFINISHED on every door change.
+            InterruptedOperationSettlement settlement = await TrySettleInterruptedOperationAsync(
+                context,
+                cancellationToken).ConfigureAwait(false);
+            if (settlement is not InterruptedOperationSettlement.NotSettled)
             {
                 return;
             }
@@ -740,9 +747,33 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         }
     }
 
+    /// <summary>What <see cref="TrySettleInterruptedOperationAsync"/> made of the journal's unsettled attempt.</summary>
+    private enum InterruptedOperationSettlement
+    {
+        /// <summary>
+        /// This process is executing it (or already settling it): not a leftover. Nothing is settled and nothing is
+        /// restored -- whoever holds it publishes its projections (onboard-hmi#120).
+        /// </summary>
+        InFlight,
+
+        /// <summary>
+        /// A leftover this call dealt with: settled from the live IO, or held off by an unanswered load cancellation
+        /// (resent when it is this attempt's own).
+        /// </summary>
+        TakenOver,
+
+        /// <summary>
+        /// A leftover this call cannot settle, because a result has already been given for it. It stays unfinished
+        /// until an administrator recovers it.
+        /// </summary>
+        NotSettled
+    }
+
     /// <summary>
     /// Settles the journal's unsettled attempt from the live IO when nobody is executing it and no
-    /// result has ever been sent for it (8005-agv-program#40). Returns true when it took it over.
+    /// result has ever been sent for it (8005-agv-program#40). The three outcomes are kept apart so that
+    /// no caller can mistake the attempt this process is running for one a previous process left behind
+    /// (onboard-hmi#120).
     /// </summary>
     /// <remarks>
     /// <para>
@@ -766,7 +797,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// something settles the operation (CV-OPERATION-RESULT-UNKNOWN-RECONCILE).
     /// </para>
     /// </remarks>
-    private async Task<bool> TrySettleInterruptedOperationAsync(
+    private async Task<InterruptedOperationSettlement> TrySettleInterruptedOperationAsync(
         WireToGateRecoveryOperationContext context,
         CancellationToken cancellationToken)
     {
@@ -775,7 +806,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         {
             if (!_operationAttempts.Add(attemptId))
             {
-                return false;
+                return InterruptedOperationSettlement.InFlight;
             }
         }
 
@@ -790,7 +821,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     .ReadOutgoingByDeduplicationKeyAsync(resultKey, cancellationToken)
                     .ConfigureAwait(false) is not null)
             {
-                return false;
+                return InterruptedOperationSettlement.NotSettled;
             }
 
             // An unanswered load cancellation over this attempt: its conclusion is that cancellation's,
@@ -807,7 +838,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         .ConfigureAwait(false);
                 }
 
-                return true;
+                return InterruptedOperationSettlement.TakenOver;
             }
 
             WireToGateOperationExecutionResult execution = await _executor
@@ -887,7 +918,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     "中断操作的结算结果已持久化，等待服务端确认；不会再次执行仓门IO。");
             }
 
-            return true;
+            return InterruptedOperationSettlement.TakenOver;
         }
         finally
         {
