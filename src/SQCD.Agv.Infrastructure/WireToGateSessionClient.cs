@@ -155,6 +155,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// The server replays only unacknowledged snapshots, so this CLOSED is the fallback's last chance
     /// once acknowledged. A handler that is not done must not be acknowledged over. Its failure holds
     /// back this one acknowledgement and nothing else: the session stays up and the next message is read.
+    /// <para>
+    /// It is awaited inside the receive loop, so it must never wait for anything only the receive loop
+    /// can deliver -- sending a message and awaiting its DurableAck, response or snapshot deadlocks the
+    /// session until the read times out. Local work only: the journal is safe, the wire is not.
+    /// </para>
     /// </remarks>
     public Func<WireToGateExceptionRecoverySessionSnapshot, CancellationToken, Task<bool>>? ClosedRecoverySessionHandler { get; set; }
 

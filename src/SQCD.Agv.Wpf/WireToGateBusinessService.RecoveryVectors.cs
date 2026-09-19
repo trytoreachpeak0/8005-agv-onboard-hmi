@@ -2344,7 +2344,7 @@ public sealed partial class WireToGateBusinessService
     private async Task<WireToGateRecoveryState> ReadRecoveryStateCachedAsync(
         CancellationToken cancellationToken)
     {
-        WireToGateRecoveryState read = WireToGateRecoveryState.Empty;
+        WireToGateRecoveryState? read = null;
         await _session.Journal
             .UpdateRecoveryStateAsync(
                 static _ => null,
@@ -2355,7 +2355,9 @@ public sealed partial class WireToGateBusinessService
                 },
                 cancellationToken)
             .ConfigureAwait(false);
-        return read;
+        // Never an empty state on a journal that answered: empty reads as "nothing to recover", which
+        // is what the restored projection and every entry gate would then show.
+        return read ?? throw new InvalidDataException("RECOVERY_STATE_NOT_READ");
     }
 
     /// <summary>Writes the recovery state and caches it, inside the journal step (onboard-hmi#129).</summary>

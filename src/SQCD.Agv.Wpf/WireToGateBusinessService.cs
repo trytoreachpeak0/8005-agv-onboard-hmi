@@ -583,7 +583,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
         _disposed = true;
         _stopping.Cancel();
-        _session.ClosedRecoverySessionHandler = null;
+        // The handler stays registered: the host disposes this service before the session
+        // (App.xaml.cs), and a CLOSED read in between would find no handler, be acknowledged with no
+        // fallback run, and never be replayed. Disposed, the handler answers false instead
+        // (ForgetClosedRecoverySessionAsync), so that CLOSED comes again on the next session.
         if (_started)
         {
             _session.ServerCommandReceived -= OnServerCommandReceived;
