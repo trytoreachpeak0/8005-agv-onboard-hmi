@@ -1,0 +1,14 @@
+commit: 5d7d978014bf99ca6b89fa1d8ef5d18c94495781
+dirty: 0 files
+command: dotnet test tests/SQCD.Agv.WireToGateG2Tests/SQCD.Agv.WireToGateG2Tests.csproj --filter "FullyQualifiedName~SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests|FullyQualifiedName~SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests"
+note: none
+at: 2026-09-19T15:45:09+08:00
+
+  All projects are up-to-date for restore.
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-119-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:    57, Skipped:     0, Total:    57, Duration: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
