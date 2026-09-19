@@ -85,6 +85,52 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// 补跑只为「上个进程留下的 attempt」。授权的装货取消正在本进程执行、原装货命令被服务端重发时，接手分支同样成立，但那个
+    /// attempt 归取消管：重发只出一条 <c>OPERATION_REPLAY</c>，界面快照与等待计时都不变，不补跑恢复判断把它投影成
+    /// 「恢复向量尚未完成」（hmi#124 独立审查）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task AResendDuringAnInFlightCancellationLeavesTheOperationProjectionAlone()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server =>
+            {
+                server.RespondToLoadCancellationRequests = true;
+                server.LoadCancellationAuthorizedSlots = [1];
+            });
+        await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
+        await Harness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCancellation,
+            "the in-flight load cancellation entry to be offered",
+            token);
+
+        Task<bool> cancellation = harness.Business.RequestLoadCancellationAsync("现场不装了。", token);
+        await Harness.WaitUntilAsync(
+            () => harness.ReadRecoveryState(token).RecoveryVector is not null,
+            "the authorized cancellation to be journaled as a vector",
+            token);
+        await Task.Delay(TimeSpan.FromMilliseconds(300), token);
+        WireToGateHmiOperationSnapshot? before = harness.Business.CurrentOperationSnapshot;
+        object? waitBefore = harness.Business.CurrentExpectedActionWait;
+
+        await harness.Server.ResendSlotOperationCommandAsync();
+        await harness.WaitForEventCountAsync("OPERATION_REPLAY", 1, token);
+        await Task.Delay(TimeSpan.FromMilliseconds(500), token);
+
+        Assert.Same(before, harness.Business.CurrentOperationSnapshot);
+        Assert.Equal(waitBefore, harness.Business.CurrentExpectedActionWait);
+
+        harness.Io.CloseDoor(0, cargo: false);
+        Assert.True(await cancellation, harness.DescribeEvents());
+        Assert.Equal(1, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
     /// Holds one <see cref="IWireToGateJournal.ReadRecoveryStateAsync"/> call -- the next one made on the thread
     /// that armed it -- until <see cref="Release"/>, and answers it with the state read at arming time.
     /// </summary>
