@@ -2131,18 +2131,76 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// <c>SlotOperationCommand</c> for the same attempt is keyed by attempt and reason only, and the
     /// two must never meet on one key.
     /// </remarks>
-    private Task SendResumeRejectedAsync(
+    private async Task SendResumeRejectedAsync(
         WireToGateSlotOperationResumeCommand command,
         string reasonCode,
-        CancellationToken cancellationToken) =>
-        SendResumeRejectedCoreAsync(
-            command,
-            new SlotOperationCommandRejectedPayload(
-                command.SlotOperationAttemptId,
-                new WireToGateProblemPayload(reasonCode, null, null),
-                _session.Current.CapabilityVersion,
-                null),
-            cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        await SendResumeRejectedCoreAsync(
+                command,
+                new SlotOperationCommandRejectedPayload(
+                    command.SlotOperationAttemptId,
+                    new WireToGateProblemPayload(reasonCode, null, null),
+                    _session.Current.CapabilityVersion,
+                    null),
+                cancellationToken)
+            .ConfigureAwait(false);
+        await ReleaseRefusedResumeSessionAsync(command, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Forgets the recovery session and action a refused resume belonged to, keeping the unsettled
+    /// operation it was about.
+    /// </summary>
+    /// <remarks>
+    /// The rejection ends that resume on the vehicle's side, and the server closes the session on it
+    /// (control-server#187). Nothing else clears these fields -- only a recorded result does -- so
+    /// without this every recovery entry would refuse locally with RECOVERY_SESSION_STATE_PENDING and
+    /// the vehicle could never open the next session, as the real rig showed (onboard-hmi#119).
+    /// The attempt, its operation context and its proven checkpoint stay: the load is still
+    /// unsettled and the next session recovers it. Only a journal still naming this very session and
+    /// action is touched, so a refusal of a command about some other session changes nothing.
+    /// </remarks>
+    private async Task ReleaseRefusedResumeSessionAsync(
+        WireToGateSlotOperationResumeCommand command,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (!string.Equals(
+                    state.ExceptionRecoverySessionId,
+                    command.ExceptionRecoverySessionId,
+                    StringComparison.Ordinal)
+                || !string.Equals(state.RecoveryActionId, command.RecoveryActionId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            await WriteRecoveryStateCachedAsync(
+                    state with
+                    {
+                        ExceptionRecoverySessionId = null,
+                        RecoveryActionId = null,
+                        RecoverySessionRequestId = null,
+                        RecoveryActionRequestId = null,
+                        RecoveryReason = null,
+                        RecoveryOperatorId = null,
+                        RecoveryOperatorVerifiedAt = null
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"续行命令已拒绝，但清除恢复会话记录失败：attempt={command.SlotOperationAttemptId}。",
+                exception);
+        }
+    }
 
     private static string ResumeRejectedKey(WireToGateSlotOperationResumeCommand command) =>
         $"slot-operation-resume-rejected:{command.SlotOperationAttemptId}:{command.MessageId}";
