@@ -1,0 +1,9 @@
+# commit 105aef3 2026-09-19T17:15:26+08:00
+# dotnet test -c Release --filter FullyQualifiedName~ACompletedLoadIsSettledOnceItsLateResultIsAcknowledged
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi124-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

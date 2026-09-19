@@ -403,7 +403,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
             string? journalPath = null,
             WireToGateRecoveryState? seed = null,
             long baselineRevision = 1,
-            Action<WireToGateBusinessService>? observe = null)
+            Action<WireToGateBusinessService>? observe = null,
+            Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
+            Action<WireToGateSessionService>? observeSession = null)
         {
             FakeControlServer server = NewServer();
             configure?.Invoke(server);
@@ -434,7 +436,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
                     "eight-slot-modbus-v1",
                     SupportsBatchUnlock: false),
                 io,
-                journal,
+                wrapJournal?.Invoke(journal) ?? journal,
                 logger,
                 new SystemClock(),
                 vehicle,
@@ -471,6 +473,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
             Harness harness = new(server, io, session, business, journal, alarmBoard);
             // Before Start, so an observer sees the command's very first progress report.
             observe?.Invoke(business);
+            // Also before Start: a handler on the session runs ahead of the business service's own.
+            observeSession?.Invoke(session);
             business.Start();
             await session.Client.ConnectAndRecoverAsync(cancellationToken);
             return harness;
