@@ -540,8 +540,8 @@ public sealed partial class RecoveryVectorG2Tests
 
     /// <summary>
     /// Writes the row <c>SendOperationRejectedAsync</c> saves before sending: key
-    /// <c>slot-operation-rejected:{attempt}:{reason}</c>, messageId the attempt id, correlated to the
-    /// original command.
+    /// <c>slot-operation-rejected:{attempt}:{reason}</c>, messageId derived from that key (the attempt id is the
+    /// OperationResult's, onboard-hmi#127), correlated to the original command.
     /// </summary>
     private static async Task SeedOriginalCommandRejectionAsync(
         string journalPath,
@@ -550,9 +550,11 @@ public sealed partial class RecoveryVectorG2Tests
     {
         SqliteWireToGateJournal journal = new(journalPath);
         await journal.InitializeAsync(token);
+        string key = $"slot-operation-rejected:{AttemptId}:{reasonCode}";
+        string messageId = FakeControlServerIdentifiers.StableUuid(key);
         WireToGateEnvelope envelope = WireToGateProtocolSerializer.Create(
             "SlotOperationCommandRejected",
-            AttemptId,
+            messageId,
             CommandMessageId,
             "AGV-8005-01",
             1,
@@ -564,9 +566,9 @@ public sealed partial class RecoveryVectorG2Tests
                 null));
         await journal.SaveOutgoingBeforeSendAsync(
             new WireToGateDurableMessage(
-                $"slot-operation-rejected:{AttemptId}:{reasonCode}",
+                key,
                 "SlotOperationCommandRejected",
-                AttemptId,
+                messageId,
                 WireToGateProtocolSerializer.ComputeContentSha256(envelope),
                 WireToGateProtocolSerializer.SerializeLine(envelope),
                 DateTimeOffset.UtcNow,
