@@ -1530,7 +1530,8 @@ public sealed partial class RecoveryVectorG2Tests
             bool restart = false,
             bool nothingOnFile = false,
             IReadOnlyList<int>? seededForcedIsolation = null,
-            bool lockerWaitTimesOut = false)
+            bool lockerWaitTimesOut = false,
+            Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -1577,7 +1578,7 @@ public sealed partial class RecoveryVectorG2Tests
                         "eight-slot-modbus-v1",
                         SupportsBatchUnlock: false),
                     io,
-                    journal,
+                    wrapJournal?.Invoke(journal) ?? journal,
                     logger,
                     new SystemClock(),
                     safety,
@@ -1828,6 +1829,12 @@ public sealed partial class RecoveryVectorG2Tests
         public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(
             CancellationToken cancellationToken) =>
             _journal.ReadRecoveryStateAsync(cancellationToken);
+
+        /// <summary>The outgoing message the journal holds under <paramref name="deduplicationKey"/>.</summary>
+        public Task<WireToGateDurableMessage?> ReadOutgoingAsync(
+            string deduplicationKey,
+            CancellationToken cancellationToken) =>
+            _journal.ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken);
 
         /// <summary>
         /// Whether the vehicle has recorded the server's DurableAck for one of its own messages: the

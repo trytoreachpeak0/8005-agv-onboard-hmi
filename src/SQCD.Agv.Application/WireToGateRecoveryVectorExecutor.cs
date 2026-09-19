@@ -41,6 +41,99 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         ExecuteAsync(context, correction: true, progress, cancellationToken);
 
+    /// <summary>
+    /// Records and returns the <c>FAILED</c> result of a vector the vehicle refused before any
+    /// unlock, or <c>null</c> when the journal cannot show that nothing was done (onboard-hmi#123).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// "Nothing was done" is read from the journal alone, never from the caller's word: the vector is
+    /// at <see cref="WireToGateRecoveryCheckpoint.Prepared"/> with no active unlock set and no slot
+    /// counted complete -- the state the business service writes when it prepares a vector, and the
+    /// state this executor's own precheck refusal leaves. Every pulse is preceded by a write of the
+    /// active unlock set, and every slot the executor finishes or finds already empty is written as
+    /// completed, so a journal in that state proves no slot of this vector was touched. Anything
+    /// else may have acted, and the answer is <c>null</c>: the caller must not claim a refusal, and
+    /// keeps whatever settlement it already had.
+    /// </para>
+    /// <para>
+    /// The result is the one the precheck refusal in <see cref="ExecuteExclusiveAsync"/> gives --
+    /// <c>FAILED</c>, every slot <c>NOT_STARTED</c> with what the IO reads -- here carrying
+    /// <paramref name="reasonCode"/> on every slot, because the refusal is about the vehicle and not
+    /// any one slot. It is written before it is returned, and asked again it is returned as written:
+    /// a retry repeats the first answer byte for byte instead of reading the slots a second time.
+    /// </para>
+    /// </remarks>
+    public async Task<WireToGateRecoveryVectorExecutionResult?> RefuseBeforeUnlockAsync(
+        WireToGateRecoveryVectorContext context,
+        string reasonCode,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reasonCode);
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            WireToGateRecoveryState state = await _journal
+                .ReadRecoveryStateAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (state.RecoveryVector is not { } persisted || !SameContext(persisted, context))
+            {
+                throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
+            }
+
+            if (state.ProvenRecoveryCheckpoint != WireToGateRecoveryCheckpoint.Prepared
+                || state.ActiveUnlockSlots.Count > 0
+                || state.CompletedSlots.Count > 0
+                || context.Slots.Count == 0)
+            {
+                return null;
+            }
+
+            if (state.RecoveryResultObservedAt is { } recordedAt)
+            {
+                WireToGateSlotExecutionResult[] recorded = state.SlotResults
+                    .Where(result => context.Slots.Contains(result.SlotNo))
+                    .ToArray();
+                return recorded.Length == context.Slots.Count
+                    && recorded.All(result => result.Outcome == "NOT_STARTED")
+                        ? CreateResult(
+                            context,
+                            "FAILED",
+                            recorded,
+                            WireToGateRecoveryCheckpoint.Prepared,
+                            recordedAt)
+                        : null;
+            }
+
+            IoSnapshot snapshot = _ioModule.CurrentSnapshot;
+            WireToGateSlotExecutionResult[] results = context.Slots
+                .Select(slot => CreateSlotResult(ReadPhysicalSlot(snapshot, slot), "NOT_STARTED", [reasonCode]))
+                .ToArray();
+            await WriteVectorStateAsync(
+                context,
+                WireToGateRecoveryCheckpoint.Prepared,
+                [],
+                [],
+                results,
+                state,
+                CancellationToken.None).ConfigureAwait(false);
+            DateTimeOffset observedAt = await EnsureResultObservedAtAsync(
+                context,
+                CancellationToken.None).ConfigureAwait(false);
+            return CreateResult(
+                context,
+                "FAILED",
+                results,
+                WireToGateRecoveryCheckpoint.Prepared,
+                observedAt);
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
     public ValueTask DisposeAsync()
     {
         _operationGate.Dispose();

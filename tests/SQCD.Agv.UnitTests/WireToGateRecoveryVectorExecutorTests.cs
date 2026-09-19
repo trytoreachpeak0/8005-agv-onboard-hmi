@@ -646,6 +646,188 @@ public sealed class WireToGateRecoveryVectorExecutorTests
         Assert.Empty(state.ActiveUnlockSlots);
     }
 
+    /// <summary>
+    /// onboard-hmi#123: a vector the vehicle refuses before touching anything -- the prepared state
+    /// the business service wrote and nothing since -- is recorded as FAILED, every slot NOT_STARTED
+    /// with what the IO reads and the reason it was refused, and nothing is pulsed.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task AVectorRefusedBeforeAnyUnlockIsRecordedFailedWithEverySlotNotStartedAsRead()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([true, false], cancellationToken: token);
+        WireToGateRecoveryVectorContext context = await PrepareAsync(
+            fixture,
+            WireToGateRecoveryVectorTypes.LoadCompensation,
+            "a1a1a1a1-a1a1-4a1a-8a1a-a1a1a1a1a1a1",
+            [1, 2],
+            token);
+
+        WireToGateRecoveryVectorExecutionResult? refused = await fixture.Executor.RefuseBeforeUnlockAsync(
+            context,
+            "VEHICLE_NOT_READY",
+            token);
+
+        Assert.NotNull(refused);
+        Assert.Equal("FAILED", refused.OverallOutcome);
+        Assert.Equal("PREPARED", refused.JournalCheckpoint);
+        Assert.Equal([1, 2], refused.SlotResults.Select(item => item.SlotNo));
+        Assert.All(refused.SlotResults, item =>
+        {
+            Assert.Equal("NOT_STARTED", item.Outcome);
+            Assert.Equal(["VEHICLE_NOT_READY"], item.ReasonCodes);
+            Assert.Equal("LOCKED", item.LockState);
+            Assert.Equal("RESET", item.UnlockOutputState);
+        });
+        Assert.Equal("OCCUPIED", refused.SlotResults[0].FinalPhysicalState);
+        Assert.Equal("EMPTY", refused.SlotResults[1].FinalPhysicalState);
+        Assert.Equal(0, fixture.Io.UnlockCount);
+
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal(WireToGateRecoveryCheckpoint.Prepared, state.ProvenRecoveryCheckpoint);
+        Assert.Empty(state.ActiveUnlockSlots);
+        Assert.Empty(state.CompletedSlots);
+        Assert.Equal(refused.ObservedAt, state.RecoveryResultObservedAt);
+    }
+
+    /// <summary>
+    /// A refusal is answered once: asked again, the executor returns what it recorded -- the same
+    /// observedAt and the same readings -- not a second refusal built from what the IO reads now.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ARefusalAskedForAgainReturnsTheRecordedResultNotANewReading()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([true, true], cancellationToken: token);
+        WireToGateRecoveryVectorContext context = await PrepareAsync(
+            fixture,
+            WireToGateRecoveryVectorTypes.FaultCargoHandoff,
+            "a2a2a2a2-a2a2-4a2a-8a2a-a2a2a2a2a2a2",
+            [1, 2],
+            token);
+
+        WireToGateRecoveryVectorExecutionResult first = (await fixture.Executor.RefuseBeforeUnlockAsync(
+            context,
+            "VEHICLE_NOT_READY",
+            token))!;
+        fixture.Clock.Advance(TimeSpan.FromSeconds(5));
+        fixture.Io.OpenDoor(1);
+        WireToGateRecoveryVectorExecutionResult again = (await fixture.Executor.RefuseBeforeUnlockAsync(
+            context,
+            "VEHICLE_NOT_READY",
+            token))!;
+
+        Assert.Equal("FAILED", again.OverallOutcome);
+        Assert.Equal(first.ObservedAt, again.ObservedAt);
+        Assert.Equal(first.SlotResults, again.SlotResults, SlotResultComparer.Instance);
+        Assert.Equal(0, fixture.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// Anything past the prepared state means the vector may have acted, so the executor will not
+    /// call it refused before an unlock: an active unlock set, a slot already counted complete, a
+    /// later checkpoint. It answers <c>null</c> and writes nothing, and the caller keeps the
+    /// settlement it already had (onboard-hmi#123, point 2).
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(StatesThatMayHaveActed))]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task AVectorThatMayHaveActedIsNeverReportedAsRefusedBeforeAnUnlock(
+        WireToGateRecoveryCheckpoint checkpoint,
+        int[] active,
+        int[] completed)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([true, true], cancellationToken: token);
+        WireToGateRecoveryVectorContext context = CreateContext(
+            WireToGateRecoveryVectorTypes.LoadCompensation,
+            "a3a3a3a3-a3a3-4a3a-8a3a-a3a3a3a3a3a3",
+            [1, 2]);
+        WireToGateRecoveryState started = new(
+            context.SlotOperationAttemptId,
+            checkpoint,
+            active,
+            0,
+            [])
+        {
+            RecoveryVector = context,
+            CompletedSlots = completed,
+            SlotResults =
+            [
+                .. completed.Select(slot => new WireToGateSlotExecutionResult(
+                    slot, "COMPLETED", "EMPTY", "LOCKED", "RESET", []))
+            ]
+        };
+        await fixture.Journal.WriteRecoveryStateAsync(started, token);
+
+        WireToGateRecoveryVectorExecutionResult? refused = await fixture.Executor.RefuseBeforeUnlockAsync(
+            context,
+            "VEHICLE_NOT_READY",
+            token);
+
+        Assert.Null(refused);
+        WireToGateRecoveryState after = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal(checkpoint, after.ProvenRecoveryCheckpoint);
+        Assert.Equal(active, after.ActiveUnlockSlots);
+        Assert.Equal(completed, after.CompletedSlots);
+        Assert.Null(after.RecoveryResultObservedAt);
+        Assert.Equal(0, fixture.Io.UnlockCount);
+    }
+
+    /// <summary>Checkpoint, active unlock set, completed slots.</summary>
+    public static TheoryData<WireToGateRecoveryCheckpoint, int[], int[]> StatesThatMayHaveActed => new()
+    {
+        { WireToGateRecoveryCheckpoint.ActiveUnlockSet, [1], [] },
+        { WireToGateRecoveryCheckpoint.ActiveUnlockSet, [], [1] },
+        { WireToGateRecoveryCheckpoint.Prepared, [], [2] },
+        { WireToGateRecoveryCheckpoint.SafeFinishReached, [], [1, 2] }
+    };
+
+    private sealed class SlotResultComparer : IEqualityComparer<WireToGateSlotExecutionResult>
+    {
+        public static readonly SlotResultComparer Instance = new();
+
+        public bool Equals(WireToGateSlotExecutionResult? x, WireToGateSlotExecutionResult? y) =>
+            x is not null
+            && y is not null
+            && x.SlotNo == y.SlotNo
+            && x.Outcome == y.Outcome
+            && x.FinalPhysicalState == y.FinalPhysicalState
+            && x.LockState == y.LockState
+            && x.UnlockOutputState == y.UnlockOutputState
+            && x.ReasonCodes.SequenceEqual(y.ReasonCodes);
+
+        public int GetHashCode(WireToGateSlotExecutionResult obj) => obj.SlotNo;
+    }
+
+    /// <summary>What <c>WriteRecoveryVectorPreparedAsync</c> leaves behind: the vector, and nothing done.</summary>
+    private static async Task<WireToGateRecoveryVectorContext> PrepareAsync(
+        TestFixture fixture,
+        string vectorType,
+        string primaryId,
+        IReadOnlyList<int> slots,
+        CancellationToken token)
+    {
+        WireToGateRecoveryVectorContext context = CreateContext(vectorType, primaryId, slots);
+        await fixture.Journal.WriteRecoveryStateAsync(
+            new WireToGateRecoveryState(
+                context.SlotOperationAttemptId,
+                WireToGateRecoveryCheckpoint.Prepared,
+                [],
+                0,
+                [])
+            {
+                RecoveryVector = context
+            },
+            token);
+        return context;
+    }
+
     /// <summary>What the business service journals when an authorized cancellation takes a load over.</summary>
     private static async Task<WireToGateRecoveryVectorContext> HandOverAsync(
         TestFixture fixture,
@@ -697,14 +879,18 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     private sealed class TestFixture : IAsyncDisposable
     {
         private TestFixture(
+            FixedClock clock,
             ScriptedIo io,
             SqliteWireToGateJournal journal,
             WireToGateRecoveryVectorExecutor executor)
         {
+            Clock = clock;
             Io = io;
             Journal = journal;
             Executor = executor;
         }
+
+        public FixedClock Clock { get; }
 
         public ScriptedIo Io { get; }
 
@@ -737,7 +923,7 @@ public sealed class WireToGateRecoveryVectorExecutorTests
                     TimeSpan.FromSeconds(5),
                     TimeSpan.FromMilliseconds(1),
                     TimeSpan.FromSeconds(1)));
-            return new TestFixture(io, journal, executor);
+            return new TestFixture(clock, io, journal, executor);
         }
 
         public async ValueTask DisposeAsync()

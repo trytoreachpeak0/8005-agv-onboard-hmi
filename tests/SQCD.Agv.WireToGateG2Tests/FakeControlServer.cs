@@ -450,6 +450,12 @@ public sealed class FakeControlServer : IAsyncDisposable
     public int LoadCancellationResultAcksToDrop { get; set; }
 
     /// <summary>
+    /// 这么多条 <c>LoadCompensationResult</c> 收下了却不回 <c>DurableAck</c>，也不断连接：结果已在车的发件箱里，
+    /// 车等不到确认（onboard-hmi#123）。
+    /// </summary>
+    public int LoadCompensationResultAcksToDrop { get; set; }
+
+    /// <summary>
     /// 这么多条 <c>SlotOperationCommandRejected</c> 收下了却不回 <c>DurableAck</c>：拒绝留在车的日志里
     /// 未确认，同一条续行命令再到时车要把它原样再发一次（onboard-hmi#119）。
     /// </summary>
@@ -606,6 +612,12 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// <c>RecoveryActionAccepted</c>, the way the real server does once it has authorized one.
     /// </summary>
     public bool SendRecoveryVectorCommandAfterRecoveryAction { get; set; }
+
+    /// <summary>
+    /// How many times that command is written. More than one is the server issuing the same command
+    /// again -- same payload, same recovery action, a fresh envelope messageId each time.
+    /// </summary>
+    public int RecoveryVectorCommandCopies { get; set; } = 1;
 
     /// <summary>
     /// The <c>forcedRecoveryGeneration</c> a <c>ForcedMechanicalRecoveryCommand</c> carries.
@@ -1085,6 +1097,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                         break;
                     case "LoadCancellationResult" when LoadCancellationResultAcksToDrop > 0:
                         LoadCancellationResultAcksToDrop--;
+                        break;
+                    case "LoadCompensationResult" when LoadCompensationResultAcksToDrop > 0:
+                        LoadCompensationResultAcksToDrop--;
                         break;
                     case "SlotOperationCommandRejected" when SlotOperationCommandRejectedAcksToDrop > 0:
                         SlotOperationCommandRejectedAcksToDrop--;
@@ -1677,8 +1692,11 @@ public sealed class FakeControlServer : IAsyncDisposable
 
         if (SendRecoveryVectorCommandAfterRecoveryAction)
         {
-            await SendRecoveryVectorCommandAsync(context, payload, sessionId, actionId)
-                .ConfigureAwait(false);
+            for (int copy = 0; copy < Math.Max(1, RecoveryVectorCommandCopies); copy++)
+            {
+                await SendRecoveryVectorCommandAsync(context, payload, sessionId, actionId)
+                    .ConfigureAwait(false);
+            }
         }
     }
 
