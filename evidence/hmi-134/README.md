@@ -35,6 +35,8 @@
 | `19-*` | `CLOSED` 不带原因也收下 | `AClosedLoadingPhaseWithoutAReasonIsStillRefusedAndLeavesNoHalfState` |
 | `20-*` | 不给扫码前取消的不可用提示 | `TheCancellationBeforeSublotIsShownDisabledWithAHintOnlyWhenTheStopHasSeveralItems(items: 2)` |
 
+`21-feed-coalesce.txt`：PR #143 独立审查【应修】那条——日志刷新改合并式之前，4 次并发请求排成 5 次读（期望 2 次）。
+
 `13-list-fp-is-08.txt`：`dotnet test --list-tests --filter "IntegrationSlice=FP-IS-08"` 选中 2 条。
 
 ## 绿（`green/`）
@@ -48,6 +50,12 @@
 `rig-compensate-then-reconnect-c44b6a2-ci35470868194/`：真装置 `real-onboard-compensate-then-reconnect` × 1，走 CI（vm01 `cs-desktop` runner，`l2.yml -f rig=real`），
 run https://github.com/trytoreachpeak0/8005-agv-control-server/actions/runs/35470868194 ，**PASS，66 秒**；服务端 `47ae7376`、车载端 `c44b6a27`、模拟器 `fb5f7c59`。
 场景本身驱动「补偿清空」这个管理员恢复入口（`Wait-L2RealButtonOffered … 补偿清空`），入口没出现即判不达；这正是本票改视图模型与 XAML 后要证的那件事。
+
+`onboard-hmi-g2-b8c451f/`：审查改动（合并式刷新、装配稳定读、替身记录顺序）与 hmi#129 的 PR #141 合入之后的重跑，**PASS**，单测 442、G2 283。
+
+第五次全量（`10f8f69`）红过一次，红的不是本票的测试：`RecoveryVectorG2Tests.AReplayedRefusedCompensationForgetsTheSessionLeftBehind`
+越界。根因是替身记录收到的报文时锁内先发布 `Received`（只有消息类型）后发布 `ReceivedEnvelopes`（带原文），
+而等待的 helper 等前者、读后者且都不持锁。已把发布顺序调过来（先信封后类型），既有竞态，与本票改动无关。
 
 第一次全量（`c4d377e`）测试全部通过，但出站 schema 一致性检查报了 1 条违约：替身在
 `AClosedLoadingPhaseWithoutAReasonIsStillRefusedAndLeavesNoHalfState` 里有意发的 `CLOSED` 不带原因。已按既有机制登记为

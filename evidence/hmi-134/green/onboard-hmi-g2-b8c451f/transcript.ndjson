@@ -1,0 +1,10 @@
+{"timestampUtc":"2026-09-19T22:36:57.0711080Z","kind":"run.started","data":{"hmiRoot":"C:\\Users\\szy\\Desktop\\8005-workspace-v2\\worktrees\\b7-134-8005-agv-onboard-hmi","selectedTestCount":null,"integrationSliceId":"","protocolRoot":"C:/Users/szy/Desktop/8005-workspace-v2/repos/8005-agv-protocol","evidenceType":"ONBOARD_HMI_LOCAL_G2","runId":"20260919T223656963Z"}}
+{"timestampUtc":"2026-09-19T22:36:57.3975071Z","kind":"protocol.g1.skipped","data":{"reason":"SkipProtocolG1"}}
+{"timestampUtc":"2026-09-19T22:36:57.4035591Z","kind":"command.started","data":{"arguments":["build",".\\SQCD_8005AGV.sln","-c","Release"],"name":"dotnet-build-release"}}
+{"timestampUtc":"2026-09-19T22:37:05.5661905Z","kind":"command.completed","data":{"name":"dotnet-build-release","exitCode":0,"log":"dotnet-build-release.log"}}
+{"timestampUtc":"2026-09-19T22:37:05.5717644Z","kind":"command.started","data":{"arguments":["test",".\\SQCD_8005AGV.sln","-c","Release","--no-build","--results-directory","C:\\Users\\szy\\AppData\\Local\\Temp\\claude\\C--Users-szy-Desktop-8005-workspace-v2\\b87d832d-ab95-47ab-b55f-a29704bfeda1\\scratchpad\\g2-run6\\protocol-v2.0.0\\20260919T223656963Z-b8c451ff446b\\test-results"],"name":"dotnet-test-release"}}
+{"timestampUtc":"2026-09-19T22:39:11.7906623Z","kind":"command.completed","data":{"name":"dotnet-test-release","exitCode":0,"log":"dotnet-test-release.log"}}
+{"timestampUtc":"2026-09-19T22:39:11.8056475Z","kind":"command.started","data":{"arguments":["format",".\\SQCD_8005AGV.sln","--verify-no-changes","--no-restore"],"name":"dotnet-format-verify"}}
+{"timestampUtc":"2026-09-19T22:39:52.1027665Z","kind":"command.completed","data":{"name":"dotnet-format-verify","exitCode":0,"log":"dotnet-format-verify.log"}}
+{"timestampUtc":"2026-09-19T22:39:52.1327803Z","kind":"evidence.journal.bound","data":{"g1Status":"SKIPPED","protocolCommit":"86575456c847041515b7b75e8851a00e0d939804","hmiCommit":"b8c451ff446b8d7a1e91ee348d752d5cb8c66293","hmiStatus":"PASS"}}
+{"timestampUtc":"2026-09-19T22:39:52.3015199Z","kind":"run.completed","data":{"status":"PASS","failures":0}}
