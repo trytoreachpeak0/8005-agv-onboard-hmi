@@ -109,6 +109,52 @@ public sealed class OnboardControllerTests
         Assert.Equal("SUBLOT_NOT_IN_WORKLIST", controller.Current.ErrorCode);
     }
 
+    /// <summary>
+    /// With two worklist items the entry check is membership of the items' sublot set: the second
+    /// item's sublot goes on to verification, one outside the set is <c>SUBLOT_NOT_IN_WORKLIST</c>,
+    /// and neither throws (batch 7-13, <c>8005-agv-onboard-hmi#134</c>).
+    /// </summary>
+    /// <remarks>
+    /// Before batch 7 the check read <c>Items.SingleOrDefault()</c>, which throws on two items; the
+    /// exception text would have been taken as the refusal reason.
+    /// </remarks>
+    [Fact]
+    public async Task AJourneyOfTwoItemsAcceptsEitherSublotAndRefusesOneOutsideTheSet()
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        WireToGateJourneySnapshot journey = new(
+            new WireToGateVehicleBusinessState(
+                1, "READY", "TRANSPORT", false, "SUFFICIENT", "NOT_CHARGING", null, [], now, new string('a', 64)),
+            new WireToGateCurrentStopWorklist(
+                "ST-01",
+                1,
+                null,
+                null,
+                [
+                    new WireToGateWorklistItem(
+                        "11111111-1111-1111-1111-111111111111", "TD-001", "SUBLOT-001", "WIRE_TO_GATE", "PICKUP", 1),
+                    new WireToGateWorklistItem(
+                        "22222222-2222-2222-2222-222222222222", "TD-002", "SUBLOT-002", "WIRE_TO_GATE", "PICKUP", 1)
+                ],
+                new string('b', 64)),
+            null,
+            now);
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-TWO-ITEMS");
+        await using OnboardController controller = CreateController(io, rule, () => true, () => journey);
+        await controller.StartAsync(TestContext.Current.CancellationToken);
+
+        await controller.SubmitScanAsync("WRONG-SUBLOT", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, io.PulseCount);
+        Assert.Equal("SUBLOT_NOT_IN_WORKLIST", controller.Current.ErrorCode);
+
+        await controller.SubmitScanAsync("SUBLOT-002", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
+
+        Assert.Equal(1, io.PulseCount);
+        Assert.True(Assert.Single(rule.Results).Success);
+    }
+
     [Fact]
     public async Task LoadFlowUnlocksOnceAndReportsSuccess()
     {
