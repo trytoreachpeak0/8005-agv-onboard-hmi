@@ -53,7 +53,27 @@
                     <TextBlock Margin="0,2,0,0" FontSize="15" FontWeight="SemiBold" Text="{Binding WireToGateText}" />
                 </StackPanel>
                 <StackPanel Grid.Column="4">
-                    <TextBlock FontSize="12" Foreground="{StaticResource MutedBrush}" Text="到站" />
+                    <!--
+                    旅程事实（批次6-03）：本站取货还是卸货、清单项的任务类型，与「到站」同一行，不撑高顶栏。
+                    方向只随服务端的 stopRole／legType，任务类型只随清单项的 workType，都不推断；无清单项时任务类型为空。
+                    站点功能名与服务端的投运阻断原因都不上界面（规格第 5.3 节）。UIA 按 AutomationId 找这两个元素。
+                    -->
+                    <DockPanel LastChildFill="True">
+                        <TextBlock DockPanel.Dock="Left" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="到站" />
+                        <TextBlock DockPanel.Dock="Left"
+                                   Margin="8,0,0,0"
+                                   AutomationProperties.AutomationId="StopDirection"
+                                   FontSize="12"
+                                   FontWeight="Bold"
+                                   Text="{Binding StopDirectionText}" />
+                        <TextBlock Margin="8,0,0,0"
+                                   AutomationProperties.AutomationId="TaskType"
+                                   FontSize="12"
+                                   Foreground="{StaticResource MutedBrush}"
+                                   Text="{Binding TaskTypeText}"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding TaskTypeText}" />
+                    </DockPanel>
                     <TextBlock Margin="0,2,0,0"
                                FontSize="15"
                                FontWeight="SemiBold"

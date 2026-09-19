@@ -20,6 +20,8 @@ public sealed class MainViewModel : ViewModelBase
     private string _ioConnectionText = "离线";
     private string _wireToGateText = "未启用";
     private string _visitText = "未到站";
+    private string _stopDirectionText = string.Empty;
+    private string _taskTypeText = string.Empty;
     private string _departureText = "禁止发车";
     private string _stateText = "启动中";
     private string _guidance = "系统正在启动…";
@@ -280,6 +282,9 @@ public sealed class MainViewModel : ViewModelBase
         {
             VisitText = "旅程未同步";
         }
+        // 方向只随服务端的 stopRole／legType，任务类型只随清单项的 workType；都不推断（批次6-03）。
+        StopDirectionText = WireToGateStopFacts.DirectionText(snapshot);
+        TaskTypeText = WireToGateStopFacts.TaskTypeText(snapshot);
         RefreshWireToGateInputStateCore();
         ApplyWireToGatePresentationCore();
     });
@@ -393,6 +398,18 @@ public sealed class MainViewModel : ViewModelBase
     {
         get => _visitText;
         private set => SetProperty(ref _visitText, value);
+    }
+
+    public string StopDirectionText
+    {
+        get => _stopDirectionText;
+        private set => SetProperty(ref _stopDirectionText, value);
+    }
+
+    public string TaskTypeText
+    {
+        get => _taskTypeText;
+        private set => SetProperty(ref _taskTypeText, value);
     }
 
     public string DepartureText

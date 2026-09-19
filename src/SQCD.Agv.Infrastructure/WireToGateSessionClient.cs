@@ -3074,21 +3074,28 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         or "OPERATOR_TIMEOUT";
 
     /// <summary>
-    /// Checks an inbound worklist snapshot, and is <b>stricter than the frozen v2 schema on two
-    /// counts</b>.
+    /// Checks an inbound worklist snapshot, and is <b>stricter than the frozen v2 schema on one
+    /// count</b>: <c>items.maxItems</c> went to 8 and this still refuses more than one item.
     /// </summary>
     /// <remarks>
-    /// v2 raised <c>items.maxItems</c> to 8 and widened <c>workType</c> to the six MES literals;
-    /// this still refuses more than one item and anything but <c>WIRE_TO_GATE</c>. Both are
-    /// business narrowings, not schema conformance -- a legal v2 payload carrying two items would
-    /// be answered with <c>PROTOCOL_SCHEMA_INVALID</c>, which is the wrong verdict for it. They are
-    /// left in place rather than widened because the projection above them assumes a single demand
-    /// (<c>WireToGateJourneySnapshot.CanAcceptSublot</c> requires exactly one item), so widening
-    /// the check without widening that is how a crash gets introduced. The control server emits at
-    /// most one item and only <c>WIRE_TO_GATE</c> today, so neither narrowing is reachable; both
-    /// are recorded as findings for the ticket that owns multi-demand worklists.
+    /// <para>
+    /// The item count is a business narrowing, not schema conformance -- a legal v2 payload
+    /// carrying two items would be answered with <c>PROTOCOL_SCHEMA_INVALID</c>, which is the wrong
+    /// verdict for it. It is left in place because the projection above it assumes a single demand
+    /// (<c>WireToGateJourneySnapshot.CanAcceptSublot</c> requires exactly one item), so widening the
+    /// check without widening that is how a crash gets introduced. It belongs to batch 7
+    /// (multi-demand worklists, <c>8005-agv-onboard-hmi#61</c>); the control server emits at most
+    /// one item until then, so it is not reachable.
+    /// </para>
+    /// <para>
+    /// <c>workType</c> is checked against the schema's own enum -- the six MES literals -- and
+    /// nothing narrower. Batch 6 (<c>8005-agv-onboard-hmi#115</c>) widened it from
+    /// <c>WIRE_TO_GATE</c> alone: nothing above this reads <c>workType</c> to decide anything, so
+    /// the widening opens no crash path, and a <c>STAGING_TO_WIRE</c> journey must not lock the
+    /// session the way <c>8005-agv-onboard-hmi#38</c> did.
+    /// </para>
     /// </remarks>
-    private static void ValidateCurrentStopWorklist(CurrentStopWorklistSnapshotPayload payload)
+    internal static void ValidateCurrentStopWorklist(CurrentStopWorklistSnapshotPayload payload)
     {
         if (string.IsNullOrWhiteSpace(payload.StationId)
             || payload.WorklistRevision < 0
@@ -3100,7 +3107,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 || !IsUuid(item.DemandId)
                 || string.IsNullOrWhiteSpace(item.TransportDemandKey)
                 || string.IsNullOrWhiteSpace(item.Sublot)
-                || item.WorkType != "WIRE_TO_GATE"
+                || item.WorkType is not ("DIE_TO_WIRE_STAGING" or "DIE_TO_OVEN" or "WIRE_TO_GATE"
+                    or "WIRE_TO_OPTICAL" or "STAGING_TO_WIRE" or "WIRE_TO_NITROGEN")
                 || item.StopRole is not ("PICKUP" or "DROPOFF")
                 || item.ExpectedBasketCount is < 1 or > 8))
         {
@@ -3113,11 +3121,12 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// count</b>: <c>legs.maxItems</c> went from 2 to 9 and this still refuses more than two.
     /// </summary>
     /// <remarks>
-    /// Same shape of narrowing as <see cref="ValidateCurrentStopWorklist"/> and the same treatment:
-    /// a three-leg plan is legal v2 and would be answered <c>PROTOCOL_SCHEMA_INVALID</c>. Legs
-    /// beyond two arrive with waiting points (<c>FP-C4</c>, batch 5) and chargers (<c>FP-C1</c>,
-    /// batch 8); the control server emits at most two today, so the narrowing is not reachable, and
-    /// it is recorded as a finding rather than widened here.
+    /// Same shape of narrowing as the item count in <see cref="ValidateCurrentStopWorklist"/> and
+    /// the same treatment: a three-leg plan is legal v2 and would be answered
+    /// <c>PROTOCOL_SCHEMA_INVALID</c>. It belongs to batch 7 (multi-leg plans,
+    /// <c>8005-agv-onboard-hmi#61</c>); the control server emits at most two legs until then, so the
+    /// narrowing is not reachable. These two counts are the only narrowings left on the inbound
+    /// journey snapshots.
     /// </remarks>
     private static void ValidateUpcomingStopPlan(UpcomingStopPlanSnapshotPayload payload)
     {

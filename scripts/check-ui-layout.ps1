@@ -19,6 +19,10 @@ $checks = [ordered]@{
     recoveryActions = ($xaml -match 'Content="重新上报结果"') -and ($xaml -match 'Content="重新打开仓门"') -and ($xaml -match 'Content="取消本次操作"')
     visibleDepartureFact = ($xaml -match 'Text="\{Binding DepartureText\}"')
     visibleJourneyFact = ($xaml -match 'Text="\{Binding VisitText\}"')
+    # 旅程事实一行的方向与任务类型（批次6-03，onboard-hmi#115）：UIA 按 AutomationId 找它们。
+    visibleStopDirectionAndTaskType = ($xaml -match 'AutomationProperties\.AutomationId="StopDirection"') -and ($xaml -match 'Text="\{Binding StopDirectionText\}"') -and ($xaml -match 'AutomationProperties\.AutomationId="TaskType"') -and ($xaml -match 'Text="\{Binding TaskTypeText\}"')
+    # 站点功能名不上界面（v2 服务端保持为空），准入阻断原因也不上界面（只在服务端与看板，规格第 5.3 节）。
+    noStationFunctionOrAdmissionReason = ($xaml -notmatch 'PublicStationFunction|StationFunction') -and ($xaml -notmatch 'Admission|准入')
     blockingGuidance = ($xaml -match 'Text="\{Binding Guidance\}"')
     visibleStationDeadline = ($xaml -match 'AutomationProperties\.AutomationId="StationDepartureCountdown"') -and ($xaml -match 'Text="\{Binding StationDepartureCountdownText\}"') -and $stationDeadlineTiersStyled -and $stationDeadlineFixedSize
     visibleSublotRejectionReason = ($xaml -match 'AutomationProperties\.AutomationId="SublotRejectionReason"') -and ($xaml -match 'AutomationProperties\.ItemStatus="\{Binding SublotRejectionReasonCode\}"') -and ($xaml -match 'Text="\{Binding SublotRejectionText\}"') -and ($xaml -match 'Binding HasSublotRejection, Converter')
