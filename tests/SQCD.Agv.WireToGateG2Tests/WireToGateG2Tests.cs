@@ -124,7 +124,9 @@ public sealed class WireToGateG2Tests
         server.SendReadinessAfterRecoveryAck = true;
         WireToGateSessionSnapshot resumed = await client.ConnectAndRecoverAsync(testToken);
 
-        Assert.Equal(WireToGateSessionReadiness.Ready, resumed.Readiness);
+        // The fresh report names the unsettled attempt, so the server answers RECOVERY_REQUIRED, as the real one does
+        // (onboard-hmi#128); until then this double answered READY over it. What is under test is the handshake.
+        Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, resumed.Readiness);
         Assert.Equal(
             [
                 "CONNECTED", "SessionHello", "CapabilitySnapshot", "SafetyStateSnapshot", "OnboardAlarmSnapshot",

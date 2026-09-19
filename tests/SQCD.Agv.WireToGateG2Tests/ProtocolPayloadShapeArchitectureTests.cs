@@ -284,6 +284,10 @@ public sealed class ProtocolPayloadShapeArchitectureTests
             ManualChargingReturnToServiceVehicleBusinessStateRevision = 4,
             // 协议 v2 消息 7 的下发，把消息 8 的 payload 形状也拉进这次会话里检查。
             SendSlotConfigurationActivationAfterRecovery = true,
+            // The real server sends the activation first and the journey after it; in that order the vehicle takes a
+            // journey snapshot for its activation result's DurableAck and its receive loop stops (onboard-hmi#140).
+            // This test is about payload shapes, so it keeps the old order until #140 is fixed.
+            SendActivationAfterJourneyForTest = true,
             // 恢复会话快照也要进这次检查：替身的快照漏过 2.0.0 新增的必填字段，而车载端反序列化时
             // 缺字段只会得到 null、不会报错，别的测试都发现不了。OPEN 与 CLOSED 两种形状都发一份。
             RecoverySessionSnapshotStatesAfterOpened = ["OPEN", "CLOSED"]

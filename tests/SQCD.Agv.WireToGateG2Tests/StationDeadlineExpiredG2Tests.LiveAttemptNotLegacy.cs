@@ -115,12 +115,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
         await using (Harness afterRestart = await Harness.StartAsync(
             new FakeIoModuleClient(),
             token,
-            server =>
-            {
-                server.SendJourneySnapshotsAfterRecovery = false;
-                server.SendSlotOperationCommandAfterRecovery = false;
-                server.AdoptDurableRecoveryMemoryFrom(first);
-            },
+            server => server.AdoptDurableRecoveryMemoryFrom(first),
             journalPath: journalPath,
             baselineRevision: 2))
         {
@@ -137,12 +132,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
         await using Harness again = await Harness.StartAsync(
             new FakeIoModuleClient(),
             token,
-            server =>
-            {
-                server.SendJourneySnapshotsAfterRecovery = false;
-                server.SendSlotOperationCommandAfterRecovery = false;
-                server.AdoptDurableRecoveryMemoryFrom(second);
-            },
+            server => server.AdoptDurableRecoveryMemoryFrom(second),
             journalPath: journalPath,
             baselineRevision: 3);
         await again.WaitForEventAsync("OPERATION_RECOVERY_REQUIRED", token);
