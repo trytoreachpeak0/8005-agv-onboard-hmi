@@ -90,6 +90,10 @@ public sealed class ReasonCodeRegistryArchitectureTests
         @"\bSendOperationRejectedAsync\s*\(\s*[^,]+,\s*""(?<code>[A-Za-z][A-Za-z0-9_]*)""",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
 
+    private static readonly Regex RefusedBeforeUnlockRegex = new(
+        $@"\b{RefusedBeforeUnlockMethod}\s*\(\s*[^,]+,\s*""(?<code>[A-Za-z][A-Za-z0-9_]*)""",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+
     private static readonly Regex SafetyReasonAdditionRegex = new(
         @"\b(?:reasons|reasonCodes|ReasonCodes)\.Add\s*\(\s*""(?<code>[A-Za-z][A-Za-z0-9_]*)""",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
@@ -349,6 +353,7 @@ public sealed class ReasonCodeRegistryArchitectureTests
         AddMatches(source, path, literals, WireBlockingFactPayloadRegex, "blockingFact.reasonCode");
         AddMatches(source, path, literals, RecoveryDecisionRegex, "recovery decision reasonCode");
         AddMatches(source, path, literals, OperationRejectedRegex, "operationRejected.reasonCode");
+        AddMatches(source, path, literals, RefusedBeforeUnlockRegex, RefusedBeforeUnlockContext);
         AddMatches(source, path, literals, ReasonCodeAssignmentRegex, "reasonCode assignment");
         AddMatches(source, path, literals, SafetyReasonAdditionRegex, "reasonCodes addition");
         AddListMatches(source, path, literals, ReasonCodesListAssignmentRegex, "reasonCodes list");
