@@ -1717,10 +1717,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             Interlocked.CompareExchange(ref _currentSublotRejection, null, shownRejection);
         }
 
+        bool restoreAfterRelease = false;
         try
         {
             if (await IsAttemptTakenOverAsync(command, cancellationToken).ConfigureAwait(false))
             {
+                // A restore that ran into this claim got InFlight and left the attempt alone, and this branch
+                // does not settle it either; nothing else would look again before the next session state change
+                // (onboard-hmi#124). Run once more after the claim is released -- the settlement is claimed again
+                // and the projection is published under its own key, so a second run cannot repeat either.
+                restoreAfterRelease = true;
                 _logger.Write(
                     LogSeverity.Information,
                     nameof(WireToGateBusinessService),
@@ -1873,6 +1879,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             lock (_operationAttemptGate)
             {
                 _operationAttempts.Remove(command.SlotOperationAttemptId);
+            }
+
+            if (restoreAfterRelease)
+            {
+                TrackTask(RestorePendingRecoveryOperationProjectionAsync(_stopping.Token));
             }
         }
     }
