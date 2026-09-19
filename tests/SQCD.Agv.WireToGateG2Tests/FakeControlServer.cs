@@ -557,7 +557,12 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// diagnostics only, so a cadence assertion that read <c>sentAt</c> would be proving the vehicle
     /// agrees with itself. Pair with <see cref="Stopwatch.GetElapsedTime(long, long)"/>.
     /// </remarks>
-    public IReadOnlyList<long> HeartbeatArrivals => [.. _heartbeatArrivals];
+    /// <remarks>
+    /// <c>ToArray</c> 而不是 <c>[.. _heartbeatArrivals]</c>：后者先读 <c>Count</c> 再 <c>CopyTo</c>，
+    /// 而这个队列正被替身的连接线程写着，两步之间多进来一条就是 <c>IndexOutOfRangeException</c>。
+    /// <see cref="System.Collections.Concurrent.ConcurrentQueue{T}.ToArray"/> 拿的是一致的快照。
+    /// </remarks>
+    public IReadOnlyList<long> HeartbeatArrivals => _heartbeatArrivals.ToArray();
 
     /// <summary>
     /// 回 <c>HeartbeatAck</c> 之前先等这么久，模拟一个应答慢的服务端。
