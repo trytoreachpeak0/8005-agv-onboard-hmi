@@ -332,6 +332,23 @@
                             Visibility="{Binding CanRequestLoadCancellation, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnLoadCancellationClick"
                             Content="取消装货" />
+                    <!--
+                        多条清单项时扫码前取消不可用（批次7-13，8005-agv-onboard-hmi#134）：原位置一个禁用的「取消装货」加一句
+                        提示，不让操作员以为这项能力不存在。取消入口开着时它不出现。完整语义归 8005-agv-onboard-hmi#135。
+                    -->
+                    <Button Margin="0,0,4,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            IsEnabled="False"
+                            Visibility="{Binding HasLoadCancellationUnavailableHint, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Content="取消装货" />
+                    <TextBlock Margin="0,0,8,0"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Foreground="{StaticResource MutedBrush}"
+                               AutomationProperties.AutomationId="LoadCancellationUnavailable"
+                               Text="{Binding LoadCancellationUnavailableHintText}"
+                               Visibility="{Binding HasLoadCancellationUnavailableHint, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"
@@ -348,6 +365,14 @@
                             Visibility="{Binding CanRequestLoadCorrection, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnLoadCorrectionClick"
                             Content="修正装货" />
+                    <!-- 修正装货针对本站最后一次装货；多条清单项时标出是哪一个子批（批次7-13）。 -->
+                    <TextBlock Margin="0,0,8,0"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Foreground="{StaticResource MutedBrush}"
+                               AutomationProperties.AutomationId="LoadCorrectionTarget"
+                               Text="{Binding LoadCorrectionTargetText}"
+                               Visibility="{Binding CanRequestLoadCorrection, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"
@@ -428,92 +453,202 @@
             </Grid>
         </Border>
 
-        <ScrollViewer Grid.Row="3"
-                      Margin="0,6"
-                      HorizontalScrollBarVisibility="Disabled"
-                      VerticalScrollBarVisibility="Auto">
-            <ScrollViewer.Resources>
-                <DataTemplate DataType="{x:Type vm:LockerCardViewModel}">
-                    <Border MinHeight="92" Margin="4" Padding="8" Background="White" CornerRadius="8" BorderThickness="2">
-                        <Border.Style>
-                            <Style TargetType="Border">
-                                <Setter Property="BorderBrush" Value="#D9E1EA" />
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsTarget}" Value="True">
-                                        <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}" />
-                                        <Setter Property="Background" Value="#F0F6FF" />
-                                    </DataTrigger>
-                                    <DataTrigger Binding="{Binding IsKnown}" Value="False">
-                                        <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}" />
-                                        <Setter Property="Background" Value="#FFF5F5" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Border.Style>
-                        <StackPanel>
-                            <TextBlock FontSize="16" FontWeight="Bold" Text="{Binding Title}" />
-                            <TextBlock Margin="0,4,0,0" FontSize="14" Text="{Binding DoorText}" />
-                            <TextBlock Margin="0,1,0,0" FontSize="14" FontWeight="SemiBold" Text="{Binding CargoText}" />
-                            <TextBlock Margin="0,2,0,0"
-                                       FontSize="12"
-                                       FontWeight="SemiBold"
-                                       Foreground="{StaticResource PrimaryBrush}"
-                                       Text="{Binding TargetText}" />
-                        </StackPanel>
-                    </Border>
-                </DataTemplate>
-            </ScrollViewer.Resources>
-            <StackPanel MinHeight="200">
-                <TextBlock Margin="4,0,4,2"
-                           FontSize="15"
-                           FontWeight="Bold"
-                           Foreground="{StaticResource PrimaryBrush}"
-                           Text="{Binding OpeningSideText}"
-                           Visibility="{Binding HasOpeningSide, Converter={StaticResource BooleanToVisibilityConverter}}" />
-                <ItemsControl ItemsSource="{Binding SlotGroups}">
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate DataType="{x:Type vm:SlotGroupViewModel}">
-                            <StackPanel Margin="0,2,0,2">
-                                <Border Margin="4,2,4,0" Padding="8,2" HorizontalAlignment="Left" CornerRadius="4">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Setter Property="Background" Value="Transparent" />
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsTarget}" Value="True">
-                                                    <Setter Property="Background" Value="{StaticResource PrimaryBrush}" />
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
-                                    <TextBlock FontSize="14" FontWeight="Bold" Text="{Binding Title}">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Foreground" Value="#334155" />
+        <Grid Grid.Row="3" Margin="0,6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <!--
+                本站清单与行程计划（批次7-13，8005-agv-onboard-hmi#134）。一站最多 8 条需求、计划最多 9 条腿，所以都是列表：
+                清单行序等于服务端 items[] 的顺序，本地不排序；计划按 sequence 排，本地不重排，修订号前进时整表替换。
+                清单项的侧只来自带该需求的仓位命令，命令到之前写「待分配」。持货等单、装满与装货结束原因各一行，只显示
+                服务端 loadingPhase 的整值：期限不推算，过期只写「已到期，等待服务端」，下一份快照不再是那个状态就消失。
+                持货期限与提示区的离站期限是两个期限，各在各的那一行，不合成一个（REQ-0355）。
+                UIA 按 AutomationId 找它们，ItemStatus 给原始值，判据不必比中文全文。
+            -->
+            <Border Grid.Column="0" Margin="0,0,8,0" Padding="8" Background="White" CornerRadius="8">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <TextBlock Margin="0,0,0,6"
+                                   FontSize="14"
+                                   FontWeight="Bold"
+                                   Foreground="#8A5A00"
+                                   AutomationProperties.AutomationId="CargoHoldingCountdown"
+                                   AutomationProperties.ItemStatus="{Binding CargoHoldingCountdownStatus}"
+                                   Text="{Binding CargoHoldingCountdownText}"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding HasCargoHoldingCountdown, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <TextBlock Margin="0,0,0,6"
+                                   FontSize="14"
+                                   FontWeight="Bold"
+                                   Foreground="{StaticResource PrimaryBrush}"
+                                   AutomationProperties.AutomationId="VehicleFullNotice"
+                                   Text="{Binding VehicleFullNoticeText}"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding HasVehicleFullNotice, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <TextBlock Margin="0,0,0,6"
+                                   FontSize="14"
+                                   FontWeight="Bold"
+                                   Foreground="#8A5A00"
+                                   AutomationProperties.AutomationId="LoadingClosedReason"
+                                   AutomationProperties.ItemStatus="{Binding LoadingClosedReasonCode}"
+                                   Text="{Binding LoadingClosedReasonText}"
+                                   TextWrapping="Wrap"
+                                   Visibility="{Binding HasLoadingClosedReason, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                        <TextBlock FontSize="13" FontWeight="Bold" Foreground="#334155" Text="本站清单" />
+                        <ItemsControl Margin="0,2,0,8"
+                                      AutomationProperties.AutomationId="WorklistItems"
+                                      ItemsSource="{Binding WorklistItems}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:WorklistItemRow}">
+                                    <Border Margin="0,2" Padding="6,4" Background="#F4F7FB" CornerRadius="4">
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock FontSize="14"
+                                                           FontWeight="Bold"
+                                                           Text="{Binding Sublot}"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           ToolTip="{Binding Sublot}" />
+                                                <TextBlock FontSize="12" Foreground="{StaticResource MutedBrush}" TextTrimming="CharacterEllipsis">
+                                                    <Run Text="{Binding DirectionText, Mode=OneWay}" />
+                                                    <Run Text="  " />
+                                                    <Run Text="{Binding TaskTypeText, Mode=OneWay}" />
+                                                    <Run Text="  " />
+                                                    <Run Text="{Binding ExpectedBasketCountText, Mode=OneWay}" />
+                                                </TextBlock>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1"
+                                                       Margin="6,0,0,0"
+                                                       VerticalAlignment="Center"
+                                                       FontSize="13"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="{StaticResource PrimaryBrush}"
+                                                       AutomationProperties.AutomationId="WorklistItemSide"
+                                                       AutomationProperties.ItemStatus="{Binding SideCode}"
+                                                       Text="{Binding SideText}" />
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <TextBlock FontSize="13" FontWeight="Bold" Foreground="#334155" Text="行程计划" />
+                        <ItemsControl Margin="0,2,0,0"
+                                      AutomationProperties.AutomationId="JourneyPlanLegs"
+                                      ItemsSource="{Binding JourneyPlanLegs}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:JourneyPlanLegRow}">
+                                    <Grid Margin="0,1" AutomationProperties.ItemStatus="{Binding ItemStatus}">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="22" />
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Grid.Column="0" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="{Binding SequenceText}" />
+                                        <TextBlock Grid.Column="1" FontSize="12" TextTrimming="CharacterEllipsis">
+                                            <Run FontWeight="SemiBold" Text="{Binding StationId, Mode=OneWay}" />
+                                            <Run Text=" " />
+                                            <Run Text="{Binding StopPurposeText, Mode=OneWay}" />
+                                            <Run Text=" " />
+                                            <Run Text="{Binding LegTypeText, Mode=OneWay}" />
+                                        </TextBlock>
+                                        <TextBlock Grid.Column="2" Margin="6,0,0,0" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="{Binding StateText}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+            <ScrollViewer Grid.Column="1"
+                          HorizontalScrollBarVisibility="Disabled"
+                          VerticalScrollBarVisibility="Auto">
+                <ScrollViewer.Resources>
+                    <DataTemplate DataType="{x:Type vm:LockerCardViewModel}">
+                        <Border MinHeight="92" Margin="4" Padding="8" Background="White" CornerRadius="8" BorderThickness="2">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="BorderBrush" Value="#D9E1EA" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsTarget}" Value="True">
+                                            <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}" />
+                                            <Setter Property="Background" Value="#F0F6FF" />
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsKnown}" Value="False">
+                                            <Setter Property="BorderBrush" Value="{StaticResource DangerBrush}" />
+                                            <Setter Property="Background" Value="#FFF5F5" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel>
+                                <TextBlock FontSize="16" FontWeight="Bold" Text="{Binding Title}" />
+                                <TextBlock Margin="0,4,0,0" FontSize="14" Text="{Binding DoorText}" />
+                                <TextBlock Margin="0,1,0,0" FontSize="14" FontWeight="SemiBold" Text="{Binding CargoText}" />
+                                <TextBlock Margin="0,2,0,0"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource PrimaryBrush}"
+                                           Text="{Binding TargetText}" />
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ScrollViewer.Resources>
+                <StackPanel MinHeight="200">
+                    <TextBlock Margin="4,0,4,2"
+                               FontSize="15"
+                               FontWeight="Bold"
+                               Foreground="{StaticResource PrimaryBrush}"
+                               Text="{Binding OpeningSideText}"
+                               Visibility="{Binding HasOpeningSide, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <ItemsControl ItemsSource="{Binding SlotGroups}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="{x:Type vm:SlotGroupViewModel}">
+                                <StackPanel Margin="0,2,0,2">
+                                    <Border Margin="4,2,4,0" Padding="8,2" HorizontalAlignment="Left" CornerRadius="4">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Background" Value="Transparent" />
                                                 <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsUnknownSide}" Value="True">
-                                                        <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
-                                                    </DataTrigger>
                                                     <DataTrigger Binding="{Binding IsTarget}" Value="True">
-                                                        <Setter Property="Foreground" Value="White" />
+                                                        <Setter Property="Background" Value="{StaticResource PrimaryBrush}" />
                                                     </DataTrigger>
                                                 </Style.Triggers>
                                             </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </Border>
-                                <ItemsControl ItemsSource="{Binding Lockers}">
-                                    <ItemsControl.ItemsPanel>
-                                        <ItemsPanelTemplate>
-                                            <UniformGrid Columns="4" />
-                                        </ItemsPanelTemplate>
-                                    </ItemsControl.ItemsPanel>
-                                </ItemsControl>
-                            </StackPanel>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
-            </StackPanel>
-        </ScrollViewer>
+                                        </Border.Style>
+                                        <TextBlock FontSize="14" FontWeight="Bold" Text="{Binding Title}">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#334155" />
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsUnknownSide}" Value="True">
+                                                            <Setter Property="Foreground" Value="{StaticResource DangerBrush}" />
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsTarget}" Value="True">
+                                                            <Setter Property="Foreground" Value="White" />
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </Border>
+                                    <ItemsControl ItemsSource="{Binding Lockers}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <UniformGrid Columns="4" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
 
         <Border Grid.Row="4" Padding="8" Background="#17212E" CornerRadius="8">
             <Grid>
