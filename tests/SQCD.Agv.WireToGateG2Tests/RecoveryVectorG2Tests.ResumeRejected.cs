@@ -345,11 +345,14 @@ public sealed partial class RecoveryVectorG2Tests
                 state,
                 checkpoint: AnotherCheckpointThan(state.ProvenRecoveryCheckpoint));
             await server.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, resume);
-            await WaitForSingleRejectionAsync(beforeRestart, token);
+            string rejectionId = (await WaitForSingleRejectionAsync(beforeRestart, token))
+                .GetProperty("messageId").GetString()!;
+            // The vehicle's record of the ack, not the server having sent one: a restart that beats
+            // that write replays the rejection in the handshake, as the protocol requires of any
+            // unacknowledged message, and this test is about acknowledged ones.
             await RecoveryVectorHarness.WaitUntilAsync(
-                () => server.SentEnvelopes.Any(item => item.MessageType == "DurableAck"
-                    && item.WireLine.Contains("SlotOperationCommandRejected", StringComparison.Ordinal)),
-                "the rejection to be acknowledged before the restart",
+                () => beforeRestart.IsOutgoingAcknowledgedAsync(rejectionId, token).GetAwaiter().GetResult(),
+                "the vehicle to record the rejection's DurableAck before the restart",
                 token);
         }
 
@@ -369,21 +372,8 @@ public sealed partial class RecoveryVectorG2Tests
             "the restarted vehicle to refuse the resent resume",
             token);
 
-        // One rejection identity across both sessions. The same messageId may arrive again after the
-        // restart: when the restart beat the vehicle's recording of the ack, the handshake replays the
-        // stored line, which is the protocol's own replay duty and not a further rejection.
-        string?[] identities =
-        [
-            .. server.ReceivedEnvelopes
-                .Where(item => item.MessageType == "SlotOperationCommandRejected")
-                .Select(item => item.MessageId),
-            .. Rejections(afterRestart).Select(item => item.GetProperty("messageId").GetString())
-        ];
-        Assert.NotEmpty(identities);
-        Assert.Single(identities.Distinct());
-        Assert.All(Rejections(afterRestart), item => Assert.Equal(
-            "RECOVERY_SESSION_NOT_OPEN",
-            item.GetProperty("payload").GetProperty("problem").GetProperty("reasonCode").GetString()));
+        Assert.Single(server.ReceivedEnvelopes, item => item.MessageType == "SlotOperationCommandRejected");
+        Assert.Empty(Rejections(afterRestart));
         Assert.Equal(0, afterRestart.Io.UnlockCount);
     }
 

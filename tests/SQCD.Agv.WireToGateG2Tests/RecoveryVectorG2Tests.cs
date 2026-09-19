@@ -1830,6 +1830,13 @@ public sealed partial class RecoveryVectorG2Tests
             _journal.ReadRecoveryStateAsync(cancellationToken);
 
         /// <summary>
+        /// Whether the vehicle has recorded the server's DurableAck for one of its own messages: the
+        /// point after which a restart must not send it again.
+        /// </summary>
+        public async Task<bool> IsOutgoingAcknowledgedAsync(string messageId, CancellationToken cancellationToken) =>
+            (await _journal.ReadOutgoingByMessageIdAsync(messageId, cancellationToken))?.Acknowledged == true;
+
+        /// <summary>
         /// Rewrites the recovery state on disk under the running vehicle: what a journal looks like
         /// after a restart lost or moved part of it.
         /// </summary>
