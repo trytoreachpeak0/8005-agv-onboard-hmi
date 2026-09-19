@@ -1778,6 +1778,79 @@ public sealed partial class WireToGateBusinessService
                 $"recovery-vector-result-pending:{context.VectorType}:{context.PrimaryId}",
                 "RESULT_ACK_PENDING",
                 "恢复结果已持久化，等待服务端确认；不会重复执行仓门IO。 ");
+            return;
+        }
+
+        await ReleaseRefusedVectorAsync(context, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Forgets a vector refused before any unlock, and the recovery session it belonged to, once the
+    /// server holds its result -- keeping the unsettled operation the vector was about.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The server closes the session on the <c>FAILED</c> result (control-server#169). Nothing else
+    /// clears the vector or the session's identity -- only a completed vector does -- so without this
+    /// the entry stays lit and every press is refused locally with
+    /// <c>RECOVERY_SESSION_STATE_PENDING</c>: the server would no longer be stuck, the vehicle would.
+    /// onboard-hmi#119 met the same wall after a refused resume and releases the same session fields.
+    /// </para>
+    /// <para>
+    /// A refusal before any unlock changed nothing physical, so the vector leaves no trace to settle:
+    /// its slot results, observation time and checkpoint go with it. The attempt stays unsettled
+    /// under its own operation context, and the next session recovers it. Only a journal still
+    /// holding this very vector at its refused state is touched. The outgoing result stays in the
+    /// journal under its key, so a copy of the command arriving later is still answered as a replay.
+    /// </para>
+    /// </remarks>
+    private async Task ReleaseRefusedVectorAsync(
+        WireToGateRecoveryVectorContext context,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (state.RecoveryVector is not { } vector
+                || vector.VectorType != context.VectorType
+                || vector.PrimaryId != context.PrimaryId
+                || state.ProvenRecoveryCheckpoint != WireToGateRecoveryCheckpoint.Prepared
+                || state.ActiveUnlockSlots.Count > 0
+                || state.CompletedSlots.Count > 0)
+            {
+                return;
+            }
+
+            await WriteRecoveryStateCachedAsync(
+                    state with
+                    {
+                        UnsettledSlotOperationAttemptId =
+                            state.OperationContext?.SlotOperationAttemptId == vector.SlotOperationAttemptId
+                                ? vector.SlotOperationAttemptId
+                                : null,
+                        SlotResults = [],
+                        RecoveryVector = null,
+                        RecoveryResultObservedAt = null,
+                        ExceptionRecoverySessionId = null,
+                        RecoveryActionId = null,
+                        RecoverySessionRequestId = null,
+                        RecoveryActionRequestId = null,
+                        RecoveryReason = null,
+                        RecoveryOperatorId = null,
+                        RecoveryOperatorVerifiedAt = null
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"开锁前被拒的恢复向量结果已确认，但清除向量与恢复会话记录失败：type={context.VectorType}，"
+                    + $"id={context.PrimaryId}。",
+                exception);
         }
     }
 
