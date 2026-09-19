@@ -1,0 +1,16 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\rig-cs165-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\rig-cs165-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+No test matches the given testcase filter `IntegrationSlice=FP-IS-10` in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\rig-cs165-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll
+Results File: C:\Users\szy\AppData\Local\Temp\claude\C--Users-szy-Desktop-8005-workspace-v2\3abd4d5e-4652-4b65-b13e-f7739aece2ad\scratchpad\hmi-g2\20260919-protocol-v2.0.0-44b3aa6e\protocol-v2.0.0\FP-IS-10\20260919T123457197Z-44b3aa6e255f\test-results\onboard-FP-IS-10_net8.0_20260919203529.trx
+
+Results File: C:\Users\szy\AppData\Local\Temp\claude\C--Users-szy-Desktop-8005-workspace-v2\3abd4d5e-4652-4b65-b13e-f7739aece2ad\scratchpad\hmi-g2\20260919-protocol-v2.0.0-44b3aa6e\protocol-v2.0.0\FP-IS-10\20260919T123457197Z-44b3aa6e255f\test-results\onboard-FP-IS-10_net8.0_20260919203556.trx
+
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 439 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
