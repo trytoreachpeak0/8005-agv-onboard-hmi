@@ -143,16 +143,54 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
         }
     }
 
-    public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+    public async Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
         Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
-        CancellationToken cancellationToken = default) =>
-        throw new NotImplementedException();
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(change);
+        ThrowIfDisposed();
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            WireToGateRecoveryState current = await ReadRecoveryStateCoreAsync(connection, cancellationToken)
+                .ConfigureAwait(false);
+            if (change(current) is not { } changed)
+            {
+                return null;
+            }
+
+            await WriteRecoveryStateCoreAsync(connection, SerializeForWrite(changed), cancellationToken)
+                .ConfigureAwait(false);
+            return changed;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 
     public async Task WriteRecoveryStateAsync(
         WireToGateRecoveryState state,
         CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        string json = SerializeForWrite(state);
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            await WriteRecoveryStateCoreAsync(connection, json, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private static string SerializeForWrite(WireToGateRecoveryState state)
+    {
         ValidateRecoveryState(state);
         // One door at a time (REQ-0357, ADR-cross-0061): the active unlock set is the one door that may
         // be standing open. Checked on write only. A journal written before this rule may still carry a
@@ -164,34 +202,31 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             throw new InvalidDataException("ACTIVE_UNLOCK_SET_MORE_THAN_ONE_SLOT");
         }
 
-        string json = SerializeRecoveryState(state);
+        return SerializeRecoveryState(state);
+    }
 
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
+    private static async Task WriteRecoveryStateCoreAsync(
+        SqliteConnection connection,
+        string json,
+        CancellationToken cancellationToken)
+    {
+        await using SqliteTransaction transaction = (SqliteTransaction)await connection
+            .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+        await using SqliteCommand command = connection.CreateCommand();
+        command.Transaction = transaction;
+        command.CommandText = """
+            UPDATE WireToGateRecoveryState
+            SET ContentJson = $content, UpdatedAt = $updatedAt
+            WHERE Id = 1
+            """;
+        command.Parameters.AddWithValue("$content", json);
+        command.Parameters.AddWithValue("$updatedAt", DateTimeOffset.UtcNow.ToString("O"));
+        if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
         {
-            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
-            await using SqliteTransaction transaction = (SqliteTransaction)await connection
-                .BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-            await using SqliteCommand command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = """
-                UPDATE WireToGateRecoveryState
-                SET ContentJson = $content, UpdatedAt = $updatedAt
-                WHERE Id = 1
-                """;
-            command.Parameters.AddWithValue("$content", json);
-            command.Parameters.AddWithValue("$updatedAt", DateTimeOffset.UtcNow.ToString("O"));
-            if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
-            {
-                throw new InvalidDataException("WIRE_TO_GATE journal尚未初始化。");
-            }
+            throw new InvalidDataException("WIRE_TO_GATE journal尚未初始化。");
+        }
 
-            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            _gate.Release();
-        }
+        await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     public async Task<WireToGateDurableMessage> SaveOutgoingBeforeSendAsync(

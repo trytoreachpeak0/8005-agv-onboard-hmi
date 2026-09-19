@@ -2291,9 +2291,19 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// may be forgotten yet.
     /// </param>
     /// <remarks>
+    /// <para>
     /// Idempotent, and failure is logged rather than thrown: every caller has already answered the
     /// server, and each of the other callers -- the refusal, its replay, the CLOSED snapshot -- gets
     /// another chance to clear what a failed write left behind.
+    /// </para>
+    /// <para>
+    /// The guard and the write are one journal update, never a read followed by a write. A result
+    /// recorded in between -- the resume's own, or the late one of onboard-hmi#124's
+    /// acknowledged-completed path -- would otherwise be written over with the state read before it,
+    /// putting a settled attempt back as unsettled (onboard-hmi#123 review A). Inside the update the
+    /// journal read is the latest: a result already recorded has cleared the session, so the guard
+    /// fails and nothing is written; a result recorded afterwards writes the settled state it wants.
+    /// </para>
     /// </remarks>
     private async Task ForgetRecoverySessionAsync(
         string? exceptionRecoverySessionId,
@@ -2302,37 +2312,38 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         string failureLog,
         CancellationToken cancellationToken)
     {
+        if (exceptionRecoverySessionId is null)
+        {
+            return;
+        }
+
         try
         {
-            WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
+            WireToGateRecoveryState? written = await _session.Journal.UpdateRecoveryStateAsync(
+                    state =>
+                        !string.Equals(
+                            state.ExceptionRecoverySessionId,
+                            exceptionRecoverySessionId,
+                            StringComparison.Ordinal)
+                        || recoveryActionId is not null
+                            && !string.Equals(state.RecoveryActionId, recoveryActionId, StringComparison.Ordinal)
+                            ? null
+                            : release(state with
+                            {
+                                ExceptionRecoverySessionId = null,
+                                RecoveryActionId = null,
+                                RecoverySessionRequestId = null,
+                                RecoveryActionRequestId = null,
+                                RecoveryReason = null,
+                                RecoveryOperatorId = null,
+                                RecoveryOperatorVerifiedAt = null
+                            }),
+                    cancellationToken)
                 .ConfigureAwait(false);
-            if (exceptionRecoverySessionId is null
-                || !string.Equals(
-                    state.ExceptionRecoverySessionId,
-                    exceptionRecoverySessionId,
-                    StringComparison.Ordinal)
-                || recoveryActionId is not null
-                    && !string.Equals(state.RecoveryActionId, recoveryActionId, StringComparison.Ordinal))
+            if (written is not null)
             {
-                return;
+                Volatile.Write(ref _lastRecoveryState, written);
             }
-
-            WireToGateRecoveryState? released = release(state with
-            {
-                ExceptionRecoverySessionId = null,
-                RecoveryActionId = null,
-                RecoverySessionRequestId = null,
-                RecoveryActionRequestId = null,
-                RecoveryReason = null,
-                RecoveryOperatorId = null,
-                RecoveryOperatorVerifiedAt = null
-            });
-            if (released is null)
-            {
-                return;
-            }
-
-            await WriteRecoveryStateCachedAsync(released, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException)
         {
