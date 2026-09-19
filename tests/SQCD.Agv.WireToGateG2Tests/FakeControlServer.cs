@@ -92,6 +92,23 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </summary>
     public bool SendRecoveryRequiredReadinessAfterOperationResultAck { get; set; }
 
+    /// <summary>
+    /// Holds the handshake's readiness at RECOVERY_REQUIRED while the RecoveryStateReport names an unsettled
+    /// attempt this double has never acknowledged a result for, and announces READY on the ack of that result --
+    /// what the real ControlServer does with PENDING_FACT_RECONCILIATION_REQUIRED (control-server#189). Nothing
+    /// else is sent after a held readiness: the real server pushes no journey while the session is not ready.
+    /// </summary>
+    public bool HoldReadinessForUnreconciledAttempt { get; set; }
+
+    /// <summary>
+    /// Answers the handshake with RECOVERY_REQUIRED and still sends whatever follows it, such as a
+    /// <c>SlotOperationCommand</c>: the readiness flip race in which a command meets a session that is not ready.
+    /// </summary>
+    public bool ForceRecoveryRequiredReadiness { get; set; }
+
+    private readonly HashSet<string> _acknowledgedResultAttempts = new(StringComparer.Ordinal);
+    private string? _heldAttempt;
+
     public bool RequireSafeSafetyForReadiness { get; set; }
 
     public bool SendJourneySnapshotsAfterRecovery { get; set; }
@@ -1002,6 +1019,24 @@ public sealed class FakeControlServer : IAsyncDisposable
                                 CreateRecoveryRequiredSessionReadiness(context)).ConfigureAwait(false);
                         }
 
+                        string resultAttempt = root.GetProperty("payload")
+                            .GetProperty("slotOperationAttemptId").GetString()!;
+                        bool reconciled;
+                        lock (_sync)
+                        {
+                            _acknowledgedResultAttempts.Add(resultAttempt);
+                            reconciled = string.Equals(_heldAttempt, resultAttempt, StringComparison.Ordinal);
+                            if (reconciled)
+                            {
+                                _heldAttempt = null;
+                            }
+                        }
+
+                        if (reconciled)
+                        {
+                            await WriteEnvelopeAsync(context, CreateSessionReadiness(context)).ConfigureAwait(false);
+                        }
+
                         break;
                     case "SublotSubmitted" when DropBeforeSublotSubmittedAck:
                         BindSublotSubmission(messageId, root);
@@ -1323,16 +1358,33 @@ public sealed class FakeControlServer : IAsyncDisposable
 
         bool drop;
         bool sendReadiness;
+        bool hold = false;
+        JsonElement reported = report.GetProperty("payload").GetProperty("unsettledSlotOperationAttemptId");
         lock (_sync)
         {
             _recoveryAckCount++;
             sendReadiness = SendReadinessAfterRecoveryAck && _recoveryAckCount == 1;
             drop = DropAfterRecoveryAck;
+            if (HoldReadinessForUnreconciledAttempt
+                && reported.ValueKind == JsonValueKind.String
+                && !_acknowledgedResultAttempts.Contains(reported.GetString()!))
+            {
+                _heldAttempt = reported.GetString();
+                hold = true;
+            }
         }
 
-        if (sendReadiness)
+        if (sendReadiness && hold)
         {
-            await WriteEnvelopeAsync(context, CreateSessionReadiness(context)).ConfigureAwait(false);
+            await WriteEnvelopeAsync(context, CreateRecoveryRequiredSessionReadiness(context)).ConfigureAwait(false);
+        }
+        else if (sendReadiness)
+        {
+            await WriteEnvelopeAsync(
+                context,
+                ForceRecoveryRequiredReadiness
+                    ? CreateRecoveryRequiredSessionReadiness(context)
+                    : CreateSessionReadiness(context)).ConfigureAwait(false);
             bool sendDemandSnapshots = SendDemandAcceptanceSnapshotsAfterRecovery;
             if (sendDemandSnapshots && SendDemandAcceptanceSnapshotsOnlyFirstConnection)
             {
