@@ -36,6 +36,40 @@ public sealed class ConfigurationTests
         Assert.Equal(Uri.UriSchemeHttp, vehicleSafetyEndpoint.Scheme);
     }
 
+    /// <summary>
+    /// 两份出厂配置都把会话心跳写成 ADR-cross-0027 的 2 秒（onboard-hmi#142）。
+    /// </summary>
+    /// <remarks>
+    /// 现场不改配置就该符合 ADR，所以默认值在代码与出厂文件里各写一遍，这条把两边钉在一起：
+    /// 服务端按 6 秒静默判失联，出厂文件里留着 5 秒就是每次心跳都擦着阈值走。
+    /// 顺带盯住 <c>ruleGateway.heartbeatIntervalMs</c>——那是旧规则网关的心跳，与 WIRE_TO_GATE
+    /// 会话无关，本票不动它，两者写在同一份文件里，容易被一起改错。
+    /// </remarks>
+    [Theory]
+    [InlineData("src/SQCD.Agv.Wpf/appsettings.json")]
+    [InlineData("src/SQCD.Agv.Wpf/appsettings.Production.example.json")]
+    public void WireToGateExamplesConfigureTheAdrSessionHeartbeatInterval(string relativePath)
+    {
+        string path = FindRepositoryFile(relativePath);
+        using JsonDocument document = JsonDocument.Parse(
+            File.ReadAllText(path),
+            new JsonDocumentOptions
+            {
+                CommentHandling = JsonCommentHandling.Skip,
+                AllowTrailingCommas = true
+            });
+
+        JsonElement wireToGate = document.RootElement.GetProperty("wireToGate");
+
+        Assert.True(
+            wireToGate.TryGetProperty("sessionHeartbeatIntervalMs", out JsonElement configured),
+            $"{relativePath} 的 wireToGate 节没有 sessionHeartbeatIntervalMs。");
+        Assert.Equal(2_000, configured.GetInt32());
+        Assert.Equal(
+            5_000,
+            document.RootElement.GetProperty("ruleGateway").GetProperty("heartbeatIntervalMs").GetInt32());
+    }
+
     [Fact]
     public void ProductionWithoutWireToGateIsRejected()
     {

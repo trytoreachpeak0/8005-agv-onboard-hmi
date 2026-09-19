@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
@@ -543,6 +544,20 @@ public sealed class FakeControlServer : IAsyncDisposable
         [.. _receivedLoadCancellationAttemptIds];
 
     private readonly ConcurrentQueue<string> _receivedLoadCancellationAttemptIds = new();
+
+    private readonly ConcurrentQueue<long> _heartbeatArrivals = new();
+
+    /// <summary>
+    /// The monotonic <see cref="Stopwatch"/> timestamp of every <c>Heartbeat</c> this server read off
+    /// the wire, in arrival order.
+    /// </summary>
+    /// <remarks>
+    /// Taken here rather than derived from the envelope's <c>sentAt</c>: ADR-cross-0027 measures
+    /// liveness on the receiving side's own monotonic clock and treats the peer's timestamps as
+    /// diagnostics only, so a cadence assertion that read <c>sentAt</c> would be proving the vehicle
+    /// agrees with itself. Pair with <see cref="Stopwatch.GetElapsedTime(long, long)"/>.
+    /// </remarks>
+    public IReadOnlyList<long> HeartbeatArrivals => [.. _heartbeatArrivals];
 
     private int _judgedRecoveryRequests;
 
@@ -1164,6 +1179,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                             out _);
                         break;
                     case "Heartbeat":
+                        _heartbeatArrivals.Enqueue(Stopwatch.GetTimestamp());
                         await WriteEnvelopeAsync(context, CreateHeartbeatAck(context, root)).ConfigureAwait(false);
                         break;
                     // 协议 v2 消息 8。RELIABLE，所以要 DurableAck——用 RESPONSE 就没有补报语义，断线
