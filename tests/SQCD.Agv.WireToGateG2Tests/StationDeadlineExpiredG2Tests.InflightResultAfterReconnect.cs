@@ -1,3 +1,4 @@
+using System.Text.Json;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
 using Xunit;
@@ -102,6 +103,40 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.Null(state.UnsettledSlotOperationAttemptId);
         Assert.Equal(WireToGateRecoveryCheckpoint.ResultRecorded, state.ProvenRecoveryCheckpoint);
         Assert.Equal(1, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// 就绪翻转的竞态里，原始 <c>SlotOperationCommand</c> 撞上 <c>RecoveryRequired</c> 的会话：车载端拒绝它，而且这条拒绝
+    /// 发得出去（照 onboard-hmi#119 给续行拒绝开的口子），关联到那条命令的 <c>messageId</c>；仓门一次也没动。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("ProtocolVector", "CV-SESSION-RECOVERY-HAPPY")]
+    public async Task ASlotOperationCommandRefusedWhileRecoveryRequiredStillGetsItsRejectionOut()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.ForceRecoveryRequiredReadiness = true;
+            });
+
+        await harness.WaitForInboundAsync("SlotOperationCommandRejected", token);
+
+        var command = Assert.Single(harness.Server.SentEnvelopes, item => item.MessageType == "SlotOperationCommand");
+        var rejection = Assert.Single(
+            harness.Server.ReceivedEnvelopes,
+            item => item.MessageType == "SlotOperationCommandRejected");
+        using JsonDocument document = JsonDocument.Parse(rejection.WireLine);
+        Assert.Equal(command.MessageId, document.RootElement.GetProperty("correlationId").GetString());
+        Assert.Equal(
+            "ACTION_NOT_ALLOWED_IN_STATE",
+            document.RootElement.GetProperty("payload").GetProperty("problem").GetProperty("reasonCode").GetString());
+        Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, harness.Client.Current.Readiness);
+        Assert.Equal(0, harness.Io.UnlockCount);
     }
 
     private sealed partial class Harness
