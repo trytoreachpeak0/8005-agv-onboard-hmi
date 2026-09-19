@@ -599,6 +599,11 @@ public sealed class FakeControlServer : IAsyncDisposable
 
                 _settledAttempts.UnionWith(previous._settledAttempts);
                 _operationsNeedingRecovery.UnionWith(previous._operationsNeedingRecovery);
+
+                foreach ((string messageId, object payload) in previous._unacknowledgedClosedRecoverySnapshots)
+                {
+                    _unacknowledgedClosedRecoverySnapshots[messageId] = payload;
+                }
             }
         }
     }
@@ -815,6 +820,13 @@ public sealed class FakeControlServer : IAsyncDisposable
     {
         ConnectionContext context = Volatile.Read(ref _latestSession)
             ?? throw new InvalidOperationException("No session has been accepted yet.");
+        if (ReplayUnacknowledgedClosedRecoverySnapshots
+            && messageType == "ExceptionRecoverySessionSnapshot"
+            && JsonSerializer.SerializeToElement(payload).GetProperty("state").GetString() == "CLOSED")
+        {
+            _unacknowledgedClosedRecoverySnapshots[messageId] = payload;
+        }
+
         return WriteEnvelopeAsync(
             context,
             WireToGateProtocolSerializer.Create(
@@ -825,6 +837,51 @@ public sealed class FakeControlServer : IAsyncDisposable
                 context.Generation,
                 DateTimeOffset.UtcNow,
                 payload));
+    }
+
+    private readonly ConcurrentDictionary<string, object> _unacknowledgedClosedRecoverySnapshots =
+        new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Keeps each CLOSED <c>ExceptionRecoverySessionSnapshot</c> sent through <see cref="SendCommandAsync"/>
+    /// until the vehicle's <c>SnapshotAppliedAck</c> names it, and sends the ones still unacknowledged
+    /// again after every <c>RecoveryStateReport</c> and on <see cref="ReplayUnacknowledgedRecoverySnapshotsAsync"/>
+    /// -- the real server's outbox replay (<c>OnboardRecoveryCoordinator.PendingSessionSnapshotIdsAsync</c>,
+    /// control-server#31), which is what makes an unacknowledged CLOSED come back (onboard-hmi#129).
+    /// </summary>
+    public bool ReplayUnacknowledgedClosedRecoverySnapshots { get; set; }
+
+    /// <summary>The CLOSED snapshots sent and not yet acknowledged, by messageId.</summary>
+    public IReadOnlyCollection<string> UnacknowledgedClosedRecoverySnapshots =>
+        [.. _unacknowledgedClosedRecoverySnapshots.Keys];
+
+    /// <summary>
+    /// Sends every unacknowledged CLOSED snapshot again, under its own messageId, on the latest session:
+    /// what the real server does mid-session after the next recovery request, recovery result,
+    /// <c>OperationResult</c> or <c>SlotOperationCommandRejected</c> it takes (<c>SendTriggeredCommandAsync</c>).
+    /// </summary>
+    public Task ReplayUnacknowledgedRecoverySnapshotsAsync()
+    {
+        ConnectionContext context = Volatile.Read(ref _latestSession)
+            ?? throw new InvalidOperationException("No session has been accepted yet.");
+        return ReplayUnacknowledgedRecoverySnapshotsAsync(context);
+    }
+
+    private async Task ReplayUnacknowledgedRecoverySnapshotsAsync(ConnectionContext context)
+    {
+        foreach ((string messageId, object payload) in _unacknowledgedClosedRecoverySnapshots.ToArray())
+        {
+            await WriteEnvelopeAsync(
+                context,
+                WireToGateProtocolSerializer.Create(
+                    "ExceptionRecoverySessionSnapshot",
+                    messageId,
+                    null,
+                    context.AgvId,
+                    context.Generation,
+                    DateTimeOffset.UtcNow,
+                    payload)).ConfigureAwait(false);
+        }
     }
 
     /// <summary>
@@ -1126,6 +1183,11 @@ public sealed class FakeControlServer : IAsyncDisposable
                         break;
                     case "RecoveryStateReport":
                         await HandleRecoveryStateReportAsync(context, line, root).ConfigureAwait(false);
+                        break;
+                    case "SnapshotAppliedAck":
+                        _unacknowledgedClosedRecoverySnapshots.TryRemove(
+                            root.GetProperty("payload").GetProperty("snapshotMessageId").GetString()!,
+                            out _);
                         break;
                     case "Heartbeat":
                         await WriteEnvelopeAsync(context, CreateHeartbeatAck(context, root)).ConfigureAwait(false);
@@ -1613,6 +1675,13 @@ public sealed class FakeControlServer : IAsyncDisposable
             {
                 await SendGatedAfterRecoveryAsync(context).ConfigureAwait(false);
             }
+        }
+
+        // Not behind the readiness gate: ReplayPendingCommandsAsync replays recovery session snapshots after every
+        // RecoveryStateReport whatever the readiness, and a RECOVERY_REQUIRED vehicle is the one that needs them.
+        if (ReplayUnacknowledgedClosedRecoverySnapshots && !drop)
+        {
+            await ReplayUnacknowledgedRecoverySnapshotsAsync(context).ConfigureAwait(false);
         }
 
         if (drop)

@@ -51,6 +51,14 @@ public sealed class ReasonCodeRegistryArchitectureTests
     /// <summary>Members whose returned string literals are reason codes by contract.</summary>
     private static readonly string[] ReturnAnchoredMethods = [SlotPreconditionMethod, ResumeRejectionReasonMethod];
 
+    /// <summary>
+    /// Records a recovery vector refused before any unlock as <c>FAILED</c> (onboard-hmi#123); its second
+    /// argument is the reason code the result carries.
+    /// </summary>
+    private const string RefusedBeforeUnlockMethod = "RefuseBeforeUnlockAsync";
+
+    private const string RefusedBeforeUnlockContext = "refusedBeforeUnlock.reasonCode";
+
     /// <summary>Carries a reasonCodes collection as a positional argument.</summary>
     private const string ProtocolSlotStateType = "ProtocolSlotState";
 
@@ -80,6 +88,10 @@ public sealed class ReasonCodeRegistryArchitectureTests
 
     private static readonly Regex OperationRejectedRegex = new(
         @"\bSendOperationRejectedAsync\s*\(\s*[^,]+,\s*""(?<code>[A-Za-z][A-Za-z0-9_]*)""",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
+
+    private static readonly Regex RefusedBeforeUnlockRegex = new(
+        $@"\b{RefusedBeforeUnlockMethod}\s*\(\s*[^,]+,\s*""(?<code>[A-Za-z][A-Za-z0-9_]*)""",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
 
     private static readonly Regex SafetyReasonAdditionRegex = new(
@@ -180,6 +192,32 @@ public sealed class ReasonCodeRegistryArchitectureTests
     }
 
     /// <summary>
+    /// The code a recovery vector refused before any unlock is reported <c>FAILED</c> with
+    /// (onboard-hmi#123) is passed as a bare argument, so it is scanned by the refusal's name
+    /// (onboard-hmi#129 C-1).
+    /// </summary>
+    [Fact]
+    public void ScannerGateRejectsAnUnregisteredRefusedBeforeUnlockCode()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        HashSet<string> registry = LoadRegistry(repositoryRoot);
+        const string syntheticSource = """
+            WireToGateRecoveryVectorExecutionResult? refused = await _vectorExecutor
+                .RefuseBeforeUnlockAsync(context, "NOT_IN_PROTOCOL_REGISTRY", cancellationToken)
+                .ConfigureAwait(false);
+            """;
+
+        List<SourceReasonCode> literals = ScanSourceText(
+            syntheticSource,
+            "src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs");
+
+        Assert.NotEmpty(literals);
+        InvalidDataException error = Assert.Throws<InvalidDataException>(
+            () => AssertAllRegistered(literals, registry));
+        Assert.Contains("NOT_IN_PROTOCOL_REGISTRY", error.Message);
+    }
+
+    /// <summary>
     /// The inline predicate decides whether an inbound reason code is a
     /// protocol error code at all. A registry entry it does not list is
     /// rejected as PROTOCOL_SCHEMA_INVALID, so subset is not enough here --
@@ -262,6 +300,18 @@ public sealed class ReasonCodeRegistryArchitectureTests
             "SQCD.Agv.Infrastructure",
             "WireToGateSessionClient.cs"));
         Assert.NotEmpty(ScanProtocolSlotStateReasonCodes(sessionClient, "anchor-probe.cs"));
+
+        string recoveryVectors = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "SQCD.Agv.Wpf",
+            "WireToGateBusinessService.RecoveryVectors.cs"));
+        Assert.True(
+            ScanSourceText(recoveryVectors, "anchor-probe.cs")
+                .Any(code => code.Context == RefusedBeforeUnlockContext),
+            $"No '{RefusedBeforeUnlockMethod}(context, \"CODE\", ...)' call is left in "
+            + "WireToGateBusinessService.RecoveryVectors.cs. This gate anchors on it; keep the code a literal "
+            + "second argument or update the anchor.");
     }
 
     private static SourceReasonCode[] ScanSource(string repositoryRoot)
@@ -303,6 +353,7 @@ public sealed class ReasonCodeRegistryArchitectureTests
         AddMatches(source, path, literals, WireBlockingFactPayloadRegex, "blockingFact.reasonCode");
         AddMatches(source, path, literals, RecoveryDecisionRegex, "recovery decision reasonCode");
         AddMatches(source, path, literals, OperationRejectedRegex, "operationRejected.reasonCode");
+        AddMatches(source, path, literals, RefusedBeforeUnlockRegex, RefusedBeforeUnlockContext);
         AddMatches(source, path, literals, ReasonCodeAssignmentRegex, "reasonCode assignment");
         AddMatches(source, path, literals, SafetyReasonAdditionRegex, "reasonCodes addition");
         AddListMatches(source, path, literals, ReasonCodesListAssignmentRegex, "reasonCodes list");

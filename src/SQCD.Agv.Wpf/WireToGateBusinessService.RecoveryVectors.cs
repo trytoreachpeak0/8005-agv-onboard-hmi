@@ -1671,18 +1671,23 @@ public sealed partial class WireToGateBusinessService
 
             try
             {
+                // Both motion checks answer a refusal the same way: the vehicle may start moving
+                // between this one and the one the execution makes before it starts, and a refusal
+                // there with no result would leave the server's session EXECUTING (onboard-hmi#129 C-2).
+                Func<Task>? reportRefused =
+                    vectorType is WireToGateRecoveryVectorTypes.LoadCompensation
+                        or WireToGateRecoveryVectorTypes.FaultCargoHandoff
+                        ? () => ReportRefusedBeforeUnlockAsync(context, resultKey, cancellationToken)
+                        : null;
                 try
                 {
                     EnsureVehicleStoppedAndFresh();
                 }
-                catch (InvalidOperationException) when (
-                    vectorType is WireToGateRecoveryVectorTypes.LoadCompensation
-                        or WireToGateRecoveryVectorTypes.FaultCargoHandoff)
+                catch (InvalidOperationException) when (reportRefused is not null)
                 {
                     // Reported, then rethrown: the log line and the RECOVERY_BLOCKED event below
                     // are the operator's account of the refusal and stay exactly as they were.
-                    await ReportRefusedBeforeUnlockAsync(context, resultKey, cancellationToken)
-                        .ConfigureAwait(false);
+                    await reportRefused().ConfigureAwait(false);
                     throw;
                 }
 
@@ -1694,7 +1699,8 @@ public sealed partial class WireToGateBusinessService
                             context,
                             resultKey,
                             result,
-                            cancellationToken))
+                            cancellationToken),
+                        reportRefused)
                     .ConfigureAwait(false);
                 _ = completed;
             }
@@ -1836,7 +1842,7 @@ public sealed partial class WireToGateBusinessService
     /// again, so a release that waited would never come.
     /// </para>
     /// </remarks>
-    private Task ReleaseRefusedVectorAsync(
+    private Task<bool> ReleaseRefusedVectorAsync(
         WireToGateRecoveryVectorContext context,
         CancellationToken cancellationToken) =>
         ForgetRecoverySessionAsync(
@@ -2009,9 +2015,19 @@ public sealed partial class WireToGateBusinessService
         WireToGateRecoveryVectorContext context,
         bool correction,
         CancellationToken cancellationToken,
-        Func<WireToGateRecoveryVectorExecutionResult, Task>? sendResult = null)
+        Func<WireToGateRecoveryVectorExecutionResult, Task>? sendResult = null,
+        Func<Task>? reportRefusedBeforeUnlock = null)
     {
-        EnsureVehicleStoppedAndFresh();
+        try
+        {
+            EnsureVehicleStoppedAndFresh();
+        }
+        catch (InvalidOperationException) when (reportRefusedBeforeUnlock is not null)
+        {
+            await reportRefusedBeforeUnlock().ConfigureAwait(false);
+            throw;
+        }
+
         PublishRecoveryVectorOperation(
             context,
             WireToGateHmiOperationStage.Preparing,
@@ -2307,23 +2323,64 @@ public sealed partial class WireToGateBusinessService
             .ConfigureAwait(false);
     }
 
+    /// <summary>Test seam: the cached recovery state every entry gate reads (onboard-hmi#129).</summary>
+    internal WireToGateRecoveryState CachedRecoveryStateForTest => Volatile.Read(ref _lastRecoveryState);
+
+    /// <summary>Test seam: one <see cref="ReadRecoveryStateCachedAsync"/>, the refresh after a result is recorded.</summary>
+    internal Task<WireToGateRecoveryState> RefreshCachedRecoveryStateForTestAsync(
+        CancellationToken cancellationToken) =>
+        ReadRecoveryStateCachedAsync(cancellationToken);
+
+    /// <summary>Test seam: one <see cref="WriteRecoveryStateCachedAsync"/>.</summary>
+    internal Task WriteCachedRecoveryStateForTestAsync(
+        WireToGateRecoveryState state,
+        CancellationToken cancellationToken) =>
+        WriteRecoveryStateCachedAsync(state, cancellationToken);
+
+    /// <summary>
+    /// Reads the journal's recovery state and caches it, inside the journal step (onboard-hmi#129): see
+    /// <see cref="CacheRecoveryState"/>.
+    /// </summary>
     private async Task<WireToGateRecoveryState> ReadRecoveryStateCachedAsync(
         CancellationToken cancellationToken)
     {
-        WireToGateRecoveryState state = await _session.Journal
-            .ReadRecoveryStateAsync(cancellationToken)
+        WireToGateRecoveryState? read = null;
+        await _session.Journal
+            .UpdateRecoveryStateAsync(
+                static _ => null,
+                state =>
+                {
+                    read = state;
+                    CacheRecoveryState(state);
+                },
+                cancellationToken)
             .ConfigureAwait(false);
-        Volatile.Write(ref _lastRecoveryState, state);
-        return state;
+        // Never an empty state on a journal that answered: empty reads as "nothing to recover", which
+        // is what the restored projection and every entry gate would then show.
+        return read ?? throw new InvalidDataException("RECOVERY_STATE_NOT_READ");
     }
 
+    /// <summary>Writes the recovery state and caches it, inside the journal step (onboard-hmi#129).</summary>
     private async Task WriteRecoveryStateCachedAsync(
         WireToGateRecoveryState state,
         CancellationToken cancellationToken)
     {
-        await _session.Journal.WriteRecoveryStateAsync(state, cancellationToken).ConfigureAwait(false);
-        Volatile.Write(ref _lastRecoveryState, state);
+        await _session.Journal
+            .UpdateRecoveryStateAsync(_ => state, CacheRecoveryState, cancellationToken)
+            .ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// The one writer of the cached recovery state the entry gates read, handed to the journal as the
+    /// settled callback of <see cref="IWireToGateJournal.UpdateRecoveryStateAsync(Func{WireToGateRecoveryState, WireToGateRecoveryState?}, Action{WireToGateRecoveryState}, CancellationToken)"/>.
+    /// </summary>
+    /// <remarks>
+    /// Called inside the journal's step, so the cache takes the journal's states in the journal's
+    /// order. Written after the step, a read or write that finished first could still cache last and
+    /// put an older state over a newer one until the next read (onboard-hmi#123 review follow-up).
+    /// </remarks>
+    private void CacheRecoveryState(WireToGateRecoveryState state) =>
+        Volatile.Write(ref _lastRecoveryState, state);
 
     /// <summary>
     /// The operation this recovery is about, or null when there is none.

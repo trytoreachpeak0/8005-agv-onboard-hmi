@@ -54,6 +54,69 @@ public sealed partial class RecoveryVectorG2Tests
         await harness.WaitForRecoveryBlockedAsync("VEHICLE_NOT_READY", token);
     }
 
+    /// <summary>
+    /// The vehicle passes the command's first motion check and is moving by the second, the one
+    /// the execution makes before it starts (onboard-hmi#129 C-2). Nothing has been unlocked, so it
+    /// is the same refusal before any unlock and gets the same FAILED, and the vehicle can then open
+    /// the next session.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ACompensationThatStartsMovingBetweenItsTwoMotionChecksIsStillReportedFailed()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            cargoInTargetSlots: true);
+
+        harness.VehicleStartsMovingAfterTheFirstCommandCheck();
+        Assert.True(await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token));
+
+        JsonElement result = await harness.WaitForResultAsync("LoadCompensationResult", token);
+        Assert.Equal("FAILED", result.GetProperty("overallOutcome").GetString());
+        Assert.Equal(ActionIdFor(CompensateLoadAction), result.GetProperty("recoveryActionId").GetString());
+        AssertNotStartedAsRead(result.GetProperty("slotResults"));
+        Assert.Equal(0, harness.Io.UnlockCount);
+        await harness.WaitForRecoveryBlockedAsync("VEHICLE_NOT_READY", token);
+
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.ReadRecoveryStateAsync(token).GetAwaiter().GetResult().RecoveryVector is null,
+            "the refusal on the second check to release its vector and session",
+            token);
+        WireToGateRecoveryState released = await harness.ReadRecoveryStateAsync(token);
+        Assert.Null(released.ExceptionRecoverySessionId);
+        Assert.Equal(AttemptId, released.UnsettledSlotOperationAttemptId);
+
+        harness.VehicleStopped();
+        Assert.True(await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token));
+        Assert.Equal(2, harness.ResultsOfType("ExceptionRecoverySessionRequested").Count);
+    }
+
+    /// <summary>The same second-check refusal for a fault cargo handoff (onboard-hmi#129 C-2).</summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
+    public async Task AFaultCargoHandoffThatStartsMovingBetweenItsTwoMotionChecksIsStillReportedFailed()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            cargoInTargetSlots: true);
+
+        harness.VehicleStartsMovingAfterTheFirstCommandCheck();
+        Assert.True(await harness.Business.RequestFaultCargoHandoffAsync(
+            "现场确认故障仓货物需要交接处理。", token));
+
+        JsonElement result = await harness.WaitForResultAsync("FaultCargoRecoveryResult", token);
+        Assert.Equal("FAILED", result.GetProperty("overallOutcome").GetString());
+        AssertNotStartedAsRead(result.GetProperty("slotResults"));
+        Assert.Equal(0, harness.Io.UnlockCount);
+        await harness.WaitForRecoveryBlockedAsync("VEHICLE_NOT_READY", token);
+    }
+
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
