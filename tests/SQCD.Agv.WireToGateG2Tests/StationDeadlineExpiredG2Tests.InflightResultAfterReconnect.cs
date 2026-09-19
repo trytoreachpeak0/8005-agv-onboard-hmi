@@ -29,7 +29,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
             server =>
             {
                 server.StationDepartureDeadlineAt = null;
-                server.HoldReadinessForUnreconciledAttempt = true;
+                server.ReplayJourneySnapshotsWithStableIdentity = true;
             });
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
 
@@ -74,7 +74,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
             server =>
             {
                 server.StationDepartureDeadlineAt = null;
-                server.HoldReadinessForUnreconciledAttempt = true;
+                server.ReplayJourneySnapshotsWithStableIdentity = true;
             });
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
 
@@ -119,7 +119,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
             server =>
             {
                 server.StationDepartureDeadlineAt = null;
-                server.HoldReadinessForUnreconciledAttempt = true;
+                server.ReplayJourneySnapshotsWithStableIdentity = true;
             });
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
         await harness.ReconnectAwaitingTheLoadsResultAsync(token);
@@ -165,6 +165,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
             {
                 server.StationDepartureDeadlineAt = null;
                 server.ForceRecoveryRequiredReadiness = true;
+                // The race needs a command meeting a session that is not ready, which the real server never sends
+                // (onboard-hmi#128): this tests the vehicle's refusal of such a command, not a reachable server path.
+                server.ViolateReadinessGateForTest = true;
             });
 
         await harness.WaitForInboundAsync("SlotOperationCommandRejected", token);
@@ -199,6 +202,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
             {
                 server.StationDepartureDeadlineAt = null;
                 server.ForceRecoveryRequiredReadiness = true;
+                // The race needs a command meeting a session that is not ready, which the real server never sends
+                // (onboard-hmi#128): this tests the vehicle's refusal of such a command, not a reachable server path.
+                server.ViolateReadinessGateForTest = true;
             });
         await harness.WaitForInboundAsync("SlotOperationCommandRejected", token);
         Assert.Equal(0, harness.Io.UnlockCount);
@@ -233,12 +239,12 @@ public sealed partial class StationDeadlineExpiredG2Tests
 
         /// <summary>
         /// Drops the connection while the load waits for its operator and reconnects to a server that holds the
-        /// session at RECOVERY_REQUIRED for this very attempt. Returns the new connection's index.
+        /// session at RECOVERY_REQUIRED for this very attempt. Returns the new connection's index. The callers start the
+        /// double with stable snapshot content, so the stop pushed again once the session is READY is a replay the
+        /// vehicle takes, as the real server's outbox replay is, rather than a revision content conflict.
         /// </summary>
         public async Task<int> ReconnectAwaitingTheLoadsResultAsync(CancellationToken cancellationToken)
         {
-            Server.SendSlotOperationCommandAfterRecovery = false;
-            Server.SendJourneySnapshotsAfterRecovery = false;
             await Client.DisconnectAsync();
             await Client.ConnectAndRecoverAsync(cancellationToken);
             Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, Client.Current.Readiness);

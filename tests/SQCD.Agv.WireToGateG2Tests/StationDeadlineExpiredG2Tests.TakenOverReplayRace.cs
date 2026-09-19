@@ -10,6 +10,15 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// <c>OPERATION_REPLAY</c> 就释放占位。由 <c>Ready</c> 触发的恢复判断若正好撞上这段占位，得到 <c>InFlight</c> 静默退出，
 /// 既不结算也不发布恢复投影，要等下一次会话状态变化才补上。
 /// </summary>
+/// <remarks>
+/// <b>这条竞态在真服务端上到不了</b>（onboard-hmi#128）。它要的是「会话 <c>Ready</c>、而上个进程留下的 attempt 还没结算」：
+/// 重启后的恢复状态报告带着这个遗留 attempt，真服务端据此答 <c>RECOVERY_REQUIRED</c>（<c>WireToGateStore.DecideReadinessAsync</c>
+/// 的 <c>noPendingFacts</c>），遗留 attempt 的中断结算报 <c>UNKNOWN</c>，服务端判 <c>RecoveryRequired</c>、不结算，会话在管理员
+/// 恢复之前一直不 <c>Ready</c>；重发命令又在 <c>JourneyRuntimeEngine.AdvanceAsync</c> 的就绪门之后，一直不发。即便服务端违约在
+/// <c>RecoveryRequired</c> 下重发命令，车载端也按 onboard-hmi#127 直接以 <c>ACTION_NOT_ALLOWED_IN_STATE</c> 拒绝，走不到占位接手。
+/// 所以这里用 <see cref="FakeControlServer.AnswerReadyOverPendingFactsForTest"/> 显式造出「带着遗留 attempt 仍答 <c>READY</c>」这一
+/// 违约，测的是车载端占位逻辑在这种违约下仍只恢复一次，不是一条真服务端会走的路径。
+/// </remarks>
 public sealed partial class StationDeadlineExpiredG2Tests
 {
     /// <summary>
@@ -42,11 +51,19 @@ public sealed partial class StationDeadlineExpiredG2Tests
             token,
             server =>
             {
+                // The stop's journey is not what this race is about, and pushed to a session over an unsettled leftover
+                // it would be one more thing the real server never sends.
                 server.SendJourneySnapshotsAfterRecovery = false;
-                // The server's outbox resends the attempt's command after the readiness line.
+                // The race needs the handshake to say READY over the leftover the report names, which the real server
+                // never does (onboard-hmi#128); the outbox then resends the attempt's command after that readiness line.
+                server.AnswerReadyOverPendingFactsForTest = true;
+                // The leftover's UNKNOWN settlement makes the real server announce RECOVERY_REQUIRED on its ack, and the
+                // vehicle then restores the same operation a second time (onboard-hmi#139). Kept off until #139 is
+                // fixed: the restore this test counts is the one the replayed command's claim ran into.
+                server.IgnoreRefusedResultsForReadinessForTest = true;
                 server.SendSlotOperationCommandAfterRecovery = true;
                 server.AdoptDurableRecoveryMemoryFrom(first);
-                // Acknowledging the vehicle's first safety change would republish Ready -- the "next session
+                // Acknowledging the vehicle's first safety change would republish readiness -- the "next session
                 // state change" the restore must not have to wait for.
                 server.AnswerSafetyStateChanged = false;
             },

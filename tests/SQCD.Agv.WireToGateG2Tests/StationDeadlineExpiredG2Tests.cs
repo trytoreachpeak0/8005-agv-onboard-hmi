@@ -247,6 +247,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 server.RespondToLoadCancellationRequests = true;
                 server.LoadCancellationAuthorizedSlots = [1];
                 server.LoadCancellationAuthorizationsToDrop = 1;
+                server.ReplayJourneySnapshotsWithStableIdentity = true;
             },
             journalPath: journalPath))
         {
@@ -266,10 +267,10 @@ public sealed partial class StationDeadlineExpiredG2Tests
             token,
             server =>
             {
-                // Same revision, new content would be a conflict the vehicle rightly refuses; the stop's
-                // worklist is not what this case is about.
-                server.SendJourneySnapshotsAfterRecovery = false;
-                server.SendSlotOperationCommandAfterRecovery = false;
+                // The stop is pushed again once the reconnected session is READY. Stable snapshot content makes that a replay
+                // the vehicle takes, as the real server's outbox replay is (it rebinds only the session generation), rather than
+                // a revision content conflict.
+                server.ReplayJourneySnapshotsWithStableIdentity = true;
                 server.RespondToLoadCancellationRequests = true;
                 server.LoadCancellationAuthorizedSlots = [1];
                 server.AdoptDurableRecoveryMemoryFrom(before);
