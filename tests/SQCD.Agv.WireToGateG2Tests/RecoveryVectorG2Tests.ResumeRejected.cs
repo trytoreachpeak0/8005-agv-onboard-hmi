@@ -1,5 +1,7 @@
 using System.Text.Json;
+using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
+using SQCD.Agv.Infrastructure;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
@@ -199,6 +201,97 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Single(Rejections(harness)
             .Select(item => item.GetProperty("messageId").GetString())
             .Distinct());
+    }
+
+    /// <summary>
+    /// The original <c>SlotOperationCommand</c> and a later resume of the same attempt are refused
+    /// with the same reason. The original's rejection is keyed by attempt and reason alone, so a
+    /// resume rejection keyed the same way would find it, and never be sent.
+    /// </summary>
+    /// <remarks>
+    /// The original rejection is seeded, unacknowledged, into the journal the vehicle starts from:
+    /// exactly the row <c>SendOperationRejectedAsync</c> writes. Letting the vehicle write it itself
+    /// is not possible here -- that path only runs while the session is not READY, and its send
+    /// refuses anything but READY, so it saves nothing.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task TheOriginalCommandsRejectionAndTheResumesRejectionDoNotShareAKey()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        const string reasonCode = "ACTION_NOT_ALLOWED_IN_STATE";
+        string journalPath = Path.Combine(
+            Path.GetTempPath(), "w2g-vector", Guid.NewGuid().ToString("N"), "journal.db");
+        Directory.CreateDirectory(Path.GetDirectoryName(journalPath)!);
+        await SeedOriginalCommandRejectionAsync(journalPath, reasonCode, token);
+
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            journalPath: journalPath);
+        // The handshake replays the seeded rejection.
+        await WaitForSingleRejectionAsync(harness, token);
+        WireToGateRecoveryState state = await OpenResumeActionAsync(harness, token);
+
+        harness.VehicleMotionUnknown();
+        await harness.Server.SendCommandAsync(
+            "SlotOperationResumeCommand",
+            ResumeMessageId,
+            ResumePayload(state));
+        await harness.WaitForRecoveryBlockedAsync(reasonCode, token);
+
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => Rejections(harness).Count == 2,
+            "the resume's rejection to be sent beside the original command's",
+            token);
+        IReadOnlyList<JsonElement> rejections = Rejections(harness);
+        Assert.Equal(
+            new[] { CommandMessageId, ResumeMessageId },
+            rejections.Select(item => item.GetProperty("correlationId").GetString()!).ToArray());
+        Assert.Equal(2, rejections.Select(item => item.GetProperty("messageId").GetString()).Distinct().Count());
+        Assert.All(rejections, item =>
+        {
+            JsonElement payload = item.GetProperty("payload");
+            Assert.Equal(AttemptId, payload.GetProperty("slotOperationAttemptId").GetString());
+            Assert.Equal(reasonCode, payload.GetProperty("problem").GetProperty("reasonCode").GetString());
+        });
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// Writes the row <c>SendOperationRejectedAsync</c> saves before sending: key
+    /// <c>slot-operation-rejected:{attempt}:{reason}</c>, messageId the attempt id, correlated to the
+    /// original command.
+    /// </summary>
+    private static async Task SeedOriginalCommandRejectionAsync(
+        string journalPath,
+        string reasonCode,
+        CancellationToken token)
+    {
+        SqliteWireToGateJournal journal = new(journalPath);
+        await journal.InitializeAsync(token);
+        WireToGateEnvelope envelope = WireToGateProtocolSerializer.Create(
+            "SlotOperationCommandRejected",
+            AttemptId,
+            CommandMessageId,
+            "AGV-8005-01",
+            1,
+            DateTimeOffset.UtcNow,
+            new SlotOperationCommandRejectedPayload(
+                AttemptId,
+                new WireToGateProblemPayload(reasonCode, null, null),
+                1,
+                null));
+        await journal.SaveOutgoingBeforeSendAsync(
+            new WireToGateDurableMessage(
+                $"slot-operation-rejected:{AttemptId}:{reasonCode}",
+                "SlotOperationCommandRejected",
+                AttemptId,
+                WireToGateProtocolSerializer.ComputeContentSha256(envelope),
+                WireToGateProtocolSerializer.SerializeLine(envelope),
+                DateTimeOffset.UtcNow,
+                false),
+            token);
     }
 
     /// <summary>
