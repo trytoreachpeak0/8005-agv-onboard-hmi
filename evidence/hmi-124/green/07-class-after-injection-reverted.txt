@@ -1,0 +1,2 @@
+# commit 7c0b01a, whole StationDeadlineExpiredG2Tests class after the injected fault was reverted
+Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 29 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

@@ -22,6 +22,9 @@ dotnet test tests/SQCD.Agv.WireToGateG2Tests -c Release --filter "FullyQualified
 | `red/05-resend-during-cancellation.txt` | `6a1afd2`（测试提交）（产品代码 = `55c0e9e`） | `AResendDuringAnInFlightCancellationLeavesTheOperationProjectionAlone` | 红：取消执行中重发原命令，补跑的恢复判断把快照改成「恢复向量 LOAD_CANCELLATION 尚未完成」（独立审查发现的新暴露面） |
 | `green/05-resend-during-cancellation-and-class.txt` | `0f522ba` | 整个 `StationDeadlineExpiredG2Tests` 类 | 18/18 绿 |
 | `green/04-new-tests-10x-15810bf.txt` | `15810bf` | 名字以 A 开头的 9 条（含三条新测试） | 连跑 10 遍全绿 |
+| `green/06-not-ready-no-result-row.txt` | `7c0b01a` | `ALoadThatEndedWhileNotReadyHasNoResultToWaitForAndIsStillSettled`（守护测试，调度核对要求） | 绿：非 Ready 时结束的装货发件箱没有结果行，重连后照旧中断结算 |
+| `red/06-not-ready-no-result-row-injected.txt` | `7c0b01a` 加注入故障（「没有结果行也判只差确认」，未提交，跑完已还原；文件里有注入的 diff） | 同上 | 红：`Timed out after 10s waiting for: the control server to receive OperationResult` |
+| `green/07-class-after-injection-reverted.txt` | `7c0b01a` | 整个 `StationDeadlineExpiredG2Tests` 类 | 还原后全绿 |
 
 第 3 条测试的接缝说明：握手后 `Ready` 触发的恢复判断被测试 journal 包装扣在读恢复状态那一步，服务端重发的同一命令
 走到「已开始未结算」分支、持有占位时才放行，所以它确定地得到 `InFlight`，不靠时序碰运气。假服务端
