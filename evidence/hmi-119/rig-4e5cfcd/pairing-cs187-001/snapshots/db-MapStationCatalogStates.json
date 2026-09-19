@@ -1,0 +1,11 @@
+{
+  "MapId": 25,
+  "State": "Fresh",
+  "LastCompleteConfirmationAt": "2026-09-19 07:59:30.402268+00:00",
+  "LastAttemptAt": "2026-09-19 07:59:30.402268+00:00",
+  "LastFailureReason": null,
+  "CatalogRevision": 1017238931678627222,
+  "ApprovedSyncPeriodSeconds": 30,
+  "ApprovedMaxUnconfirmedSeconds": 300,
+  "UpdatedAt": "2026-09-19 07:59:30.402268+00:00"
+}

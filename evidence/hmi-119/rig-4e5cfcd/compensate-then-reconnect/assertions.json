@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "scenario": "real-onboard-compensate-then-reconnect",
+  "runId": "20260919T075509383Z",
+  "outcome": "PASS",
+  "failureReason": "",
+  "identity": {
+    "protocolReleaseIdentity": {
+      "repository": "8005-agv-protocol",
+      "releaseVersion": "2.0.0",
+      "tag": "protocol-v2.0.0",
+      "commit": "86575456c847041515b7b75e8851a00e0d939804",
+      "protocolVersion": 3,
+      "profileId": "AGV_FULL_PRODUCT",
+      "manifestSha256": "4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7",
+      "schemaBundleSha256": "9db0dbdc22fed7e39edf8d01b1fc40a12f5d70a7414f696f909ab2a87eb8c221",
+      "vectorsSha256": "391fa69a7d6e9f86ea139ba4c74eadf4994bf0a87e89d3dc5258dd7968d9182a",
+      "approvalStatus": "APPROVED_RELEASE"
+    },
+    "slotsSimulatorCommit": "fb5f7c593742bf98bc3957b8729a38aad5321f28",
+    "onboardHmiCommit": "4e5cfcdb5aa5b30ef203cf06efb96f7438bd4a6e",
+    "vehicleKey": "BROKERX-L2-0001",
+    "controlServerCommit": "aa17b05938213626d6a0634abb57fb904287ad85",
+    "rig": "RealOnboard",
+    "protocolFaultProxy": true,
+    "agvId": "AGV-L2-001",
+    "batchId": "batch-6",
+    "stageRoot": "C:\\Users\\szy\\AppData\\Local\\Temp\\l2-20260919T075509383Z"
+  },
+  "assertions": [
+    {
+      "id": "L2-CR-00",
+      "description": "车载端的会话经协议故障代理建立（否则断开注入不到这条链路上）",
+      "outcome": "PASS",
+      "expected": ">= 1 SessionHello through the proxy",
+      "actual": 1
+    },
+    {
+      "id": "L2-CR-01",
+      "description": "前半段到位：重启后中断结算把空着关上的装货报 UNKNOWN，服务端判 RecoveryRequired，旅程停摆",
+      "outcome": "PASS",
+      "expected": "UNKNOWN / RecoveryRequired / Blocked",
+      "actual": "UNKNOWN / RecoveryRequired / Blocked"
+    },
+    {
+      "id": "L2-CR-02",
+      "description": "补偿清空走到对账：工作流 Reconciled、ALL_EMPTY，需求 Cancelled，旅程以 CANCELLED_BY_LOAD_COMPENSATION 收尾",
+      "outcome": "PASS",
+      "expected": "Reconciled / ALL_EMPTY / Cancelled / Completed/CANCELLED_BY_LOAD_COMPENSATION",
+      "actual": "Reconciled / ALL_EMPTY / Cancelled / Completed/CANCELLED_BY_LOAD_COMPENSATION"
+    },
+    {
+      "id": "L2-CR-03",
+      "description": "补偿对账之后会话回到 Ready（断开之前的前提）",
+      "outcome": "PASS",
+      "expected": "Ready / READY",
+      "actual": "gen 2 / Ready / READY"
+    },
+    {
+      "id": "L2-CR-04",
+      "description": "补偿对账之后，恢复会话快照与补偿命令都已结清：CLOSED 那份快照被车确认，旧 revision 被取代，补偿命令被补偿结果结算",
+      "outcome": "PASS",
+      "expected": ">= 2 recovery rows, 0 live, CLOSED snapshot acknowledged",
+      "actual": "5 rows, 0 live (ExceptionRecoverySessionSnapshot[d646fae6] state=OPEN ack=False fenced=True; ExceptionRecoverySessionSnapshot[a360f101] state=ACTION_SELECTED ack=False fenced=True; LoadCompensationCommand[a89ba828] state= ack=True fenced=False; ExceptionRecoverySessionSnapshot[3fcdef4a] state=EXECUTING ack=False fenced=True; ExceptionRecoverySessionSnapshot[a5f34da5] state=CLOSED ack=True fenced=False)"
+    },
+    {
+      "id": "L2-CR-05",
+      "description": "重连之后会话在新世代回到 Ready",
+      "outcome": "PASS",
+      "expected": "gen > 2 / Ready / READY",
+      "actual": "gen 3 / Ready / READY"
+    },
+    {
+      "id": "L2-CR-06",
+      "description": "补偿会话留下的恢复会话快照与补偿命令，一条都没有被重放进新会话",
+      "outcome": "PASS",
+      "expected": "0 of 5 replayed",
+      "actual": "0 of 5 replayed"
+    },
+    {
+      "id": "L2-CR-07",
+      "description": "重连之后车还接得了单：下一条需求被受理并派车，车在取货点收下扫码并交给服务端",
+      "outcome": "PASS",
+      "expected": "SublotSubmitted 1 条",
+      "actual": "SublotSubmitted 1 条"
+    },
+    {
+      "id": "L2-CR-08",
+      "description": "断开一次只换来一次重连：之后只有一条连接，而且到收尾还开着（没有哪一端撕会话）",
+      "outcome": "PASS",
+      "expected": "3 connections, 1 open",
+      "actual": "3 connections, 1 open (#1: onboard->server ended: IOException; #2: relay disconnected on request; #3: open)"
+    }
+  ]
+}

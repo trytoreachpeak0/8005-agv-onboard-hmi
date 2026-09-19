@@ -1,0 +1,22 @@
+{
+  "WorkflowId": "4e41edee-f9ed-4a57-b69d-f933a0e0b16c",
+  "WorkflowType": "RESUME_AFTER_REPAIR",
+  "ExceptionRecoverySessionId": "6f1f8b83-a1bd-6752-8e2d-5a9620b74760",
+  "AgvId": "AGV-L2-001",
+  "DemandId": "4877ae65-4acb-4742-bfc1-2d850c3e2dd1",
+  "SlotOperationAttemptId": "c2d3965a-b061-465a-9f46-a2edeeed637c",
+  "SlotsJson": "[1]",
+  "ForcedRecoveryGeneration": 0,
+  "State": "RecoveryRequired",
+  "RequestMessageId": "2c8bf158-6570-4e00-b384-fe4309f38a61",
+  "RequestContentHash": "1ed1d1ef5b806e2613ed2969945333efd714348a7fb35e71d2d551d8c1093e07",
+  "CommandMessageId": "3ddbcb61-736f-ec53-b1b5-f42c85980d7d",
+  "CommandMessageType": "SlotOperationResumeCommand",
+  "CommandContentHash": "9c0fcca5e9a48b4cc307e56cd38782a2f897001ba2f5aab904b83141e6ca7d61",
+  "HandoffId": null,
+  "ResultMessageId": "5257546a-da1c-c25b-8341-53c4269ba22d",
+  "ResultContentHash": null,
+  "Outcome": "COMMAND_REJECTED",
+  "CreatedAt": "2026-09-19 07:57:54.4403585+00:00",
+  "UpdatedAt": "2026-09-19 07:57:54.5757577+00:00"
+}
