@@ -959,66 +959,36 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             || current.SessionGeneration is null
             || !readinessAllowed)
         {
+            // An OperationResult is put on file even when it cannot go out now (durableBeforeSend): a load that
+            // ends while the session is down or mid-handshake is replayed by the next handshake under the same
+            // messageId (ADR-cross-0029 step 4), instead of being lost and settled again from the live IO
+            // (onboard-hmi#127). Only OperationResult: SafetyStateChanged and the other durable messages keep
+            // their own replay behaviour.
+            if (string.Equals(messageType, "OperationResult", StringComparison.Ordinal))
+            {
+                await StoreDurableAsync(
+                    messageType,
+                    deduplicationKey,
+                    messageId,
+                    correlationId,
+                    payload,
+                    current.SessionGeneration,
+                    rebind: false,
+                    cancellationToken).ConfigureAwait(false);
+            }
+
             throw new InvalidOperationException("WIRE_TO_GATE_NOT_READY");
         }
 
-        WireToGateDurableMessage? existing = await _journal
-            .ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken)
-            .ConfigureAwait(false);
-        WireToGateDurableMessage stored;
-        if (existing is not null)
-        {
-            WireToGateEnvelope existingEnvelope = WireToGateProtocolSerializer.DeserializeAndValidate(
-                existing.WireLine.TrimEnd('\r', '\n'),
-                _options.AgvId);
-            WireToGateEnvelope candidateEnvelope = WireToGateProtocolSerializer.Create(
-                messageType,
-                messageId,
-                correlationId,
-                _options.AgvId,
-                current.SessionGeneration,
-                existingEnvelope.SentAt,
-                payload);
-            if (existing.MessageType != messageType
-                || existing.MessageId != messageId
-                || existingEnvelope.MessageType != messageType
-                || existingEnvelope.MessageId != messageId
-                || existingEnvelope.CorrelationId != correlationId
-                || !JsonNode.DeepEquals(
-                    JsonNode.Parse(existingEnvelope.Payload.GetRawText()),
-                    JsonNode.Parse(candidateEnvelope.Payload.GetRawText())))
-            {
-                throw new InvalidDataException("BUSINESS_ID_CONTENT_CONFLICT");
-            }
-
-            stored = await RebindDurableMessageForSessionAsync(
-                existing,
-                current.SessionGeneration.Value,
-                cancellationToken).ConfigureAwait(false);
-        }
-        else
-        {
-            WireToGateEnvelope envelope = WireToGateProtocolSerializer.Create(
-                messageType,
-                messageId,
-                correlationId,
-                _options.AgvId,
-                current.SessionGeneration,
-                _clock.Now.ToUniversalTime(),
-                payload);
-            string contentSha256 = WireToGateProtocolSerializer.ComputeContentSha256(envelope);
-            WireToGateDurableMessage durable = new(
-                deduplicationKey,
-                messageType,
-                messageId,
-                contentSha256,
-                WireToGateProtocolSerializer.SerializeLine(envelope),
-                _clock.Now.ToUniversalTime(),
-                false);
-            stored = await _journal
-                .SaveOutgoingBeforeSendAsync(durable, cancellationToken)
-                .ConfigureAwait(false);
-        }
+        WireToGateDurableMessage stored = await StoreDurableAsync(
+            messageType,
+            deduplicationKey,
+            messageId,
+            correlationId,
+            payload,
+            current.SessionGeneration,
+            rebind: true,
+            cancellationToken).ConfigureAwait(false);
 
         // A previously acknowledged business key is already complete.  Returning
         // here is important for UI retries: a retry must not create another side
@@ -1062,6 +1032,80 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         {
             _responseWaiters.TryRemove(stored.MessageId, out _);
         }
+    }
+
+    /// <summary>
+    /// The outbox row for a durable message: the one already on file under this key, content-checked against
+    /// the candidate (and rebound to <paramref name="generation"/> when <paramref name="rebind"/>), or a new one.
+    /// </summary>
+    /// <remarks>
+    /// A new row is stamped with the generation at hand, which is null while no session is up; the handshake
+    /// rebinds every pending row to its own generation before replaying it.
+    /// </remarks>
+    private async Task<WireToGateDurableMessage> StoreDurableAsync(
+        string messageType,
+        string deduplicationKey,
+        string messageId,
+        string? correlationId,
+        object payload,
+        long? generation,
+        bool rebind,
+        CancellationToken cancellationToken)
+    {
+        WireToGateDurableMessage? existing = await _journal
+            .ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken)
+            .ConfigureAwait(false);
+        if (existing is not null)
+        {
+            WireToGateEnvelope existingEnvelope = WireToGateProtocolSerializer.DeserializeAndValidate(
+                existing.WireLine.TrimEnd('\r', '\n'),
+                _options.AgvId);
+            WireToGateEnvelope candidateEnvelope = WireToGateProtocolSerializer.Create(
+                messageType,
+                messageId,
+                correlationId,
+                _options.AgvId,
+                generation,
+                existingEnvelope.SentAt,
+                payload);
+            if (existing.MessageType != messageType
+                || existing.MessageId != messageId
+                || existingEnvelope.MessageType != messageType
+                || existingEnvelope.MessageId != messageId
+                || existingEnvelope.CorrelationId != correlationId
+                || !JsonNode.DeepEquals(
+                    JsonNode.Parse(existingEnvelope.Payload.GetRawText()),
+                    JsonNode.Parse(candidateEnvelope.Payload.GetRawText())))
+            {
+                throw new InvalidDataException("BUSINESS_ID_CONTENT_CONFLICT");
+            }
+
+            return rebind && generation is long current
+                ? await RebindDurableMessageForSessionAsync(existing, current, cancellationToken)
+                    .ConfigureAwait(false)
+                : existing;
+        }
+
+        WireToGateEnvelope envelope = WireToGateProtocolSerializer.Create(
+            messageType,
+            messageId,
+            correlationId,
+            _options.AgvId,
+            generation,
+            _clock.Now.ToUniversalTime(),
+            payload);
+        string contentSha256 = WireToGateProtocolSerializer.ComputeContentSha256(envelope);
+        WireToGateDurableMessage durable = new(
+            deduplicationKey,
+            messageType,
+            messageId,
+            contentSha256,
+            WireToGateProtocolSerializer.SerializeLine(envelope),
+            _clock.Now.ToUniversalTime(),
+            false);
+        return await _journal
+            .SaveOutgoingBeforeSendAsync(durable, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async Task DisconnectAsync()

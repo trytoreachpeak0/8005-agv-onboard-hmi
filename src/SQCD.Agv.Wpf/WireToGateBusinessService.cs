@@ -1917,11 +1917,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             }
             catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
             {
-                // On a timeout or an IO failure the result is already in the durable outbox and a reconnect
-                // replays the same messageId/content. On WIRE_TO_GATE_NOT_READY (InvalidOperationException) the
-                // session was not Ready and nothing was written: there is no result to replay, and the attempt stays
-                // the journal's unsettled one for the next restore to settle from the live IO. Whether a result
-                // only waits for its ack is read from the outbox, never from having landed here (onboard-hmi#124).
+                // The result is in the durable outbox whichever way this failed: a timeout or an IO failure came after
+                // it was written, and WIRE_TO_GATE_NOT_READY (InvalidOperationException) -- the session down or still
+                // in its handshake -- writes it before refusing (durableBeforeSend, onboard-hmi#127). The next
+                // handshake replays the same messageId/content. Whether a result only waits for its ack is still read
+                // from the outbox, never from having landed here (onboard-hmi#124): an IO failure of the journal
+                // itself leaves no row, and then the next restore settles the attempt from the live IO.
                 // Either way, never execute the physical operation again.
                 _logger.Write(
                     LogSeverity.Warning,
