@@ -22,6 +22,13 @@ public sealed class MainViewModel : ViewModelBase
     private string _visitText = "未到站";
     private bool _hasWorklistItems;
     private bool _hasJourneyPlanLegs;
+    private const string LoadCancellationUnavailableHint = "本站有多条任务，扫码前取消暂不可用";
+    private readonly Dictionary<string, IReadOnlyList<int>> _commandSlotsByDemand = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _sublotsByDemand = new(StringComparer.Ordinal);
+    private IReadOnlyList<WireToGateWorklistItem> _worklistItems = [];
+    private WireToGateRecoveryState? _journaledOperations;
+    private bool _hasLoadCancellationUnavailableHint;
+    private string _loadCorrectionTargetText = "修正对象：本站最后一次装货";
     private WireToGateLoadingPhase? _loadingPhase;
     private DispatcherTimer? _cargoHoldingTimer;
     private bool _hasCargoHoldingCountdown;
@@ -307,18 +314,38 @@ public sealed class MainViewModel : ViewModelBase
     /// </summary>
     private void ReplaceWorklistItemsCore(IReadOnlyList<WireToGateWorklistItem> items)
     {
-        WorklistItems.Clear();
+        _worklistItems = items;
         foreach (WireToGateWorklistItem item in items)
         {
+            _sublotsByDemand[item.DemandId] = item.Sublot;
+        }
+
+        RebuildWorklistItemsCore();
+        RefreshLoadCorrectionTargetCore();
+    }
+
+    private void RebuildWorklistItemsCore()
+    {
+        WorklistItems.Clear();
+        foreach (WireToGateWorklistItem item in _worklistItems)
+        {
+            WorklistItemSide side = WorklistItemSides.Resolve(
+                item.DemandId,
+                _commandSlotsByDemand,
+                _journaledOperations,
+                _slotGroupLayout);
             WorklistItems.Add(new WorklistItemRow(
                 item.DemandId,
                 item.Sublot,
                 WireToGateStopFacts.ItemDirectionText(item),
                 WireToGateStopFacts.ItemTaskTypeText(item),
-                item.ExpectedBasketCount));
+                item.ExpectedBasketCount,
+                side.Text,
+                side.Code));
         }
 
         HasWorklistItems = WorklistItems.Count > 0;
+        RefreshLoadCancellationHintCore();
     }
 
     /// <summary>
@@ -588,15 +615,74 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
-    public bool HasLoadCancellationUnavailableHint => _visitText.Length < 0;
+    /// <summary>
+    /// 清单多于一条、扫码录入开着而扫码前取消不可用时，取消入口的位置显示一个禁用的按钮与一句提示（批次7-13）。
+    /// </summary>
+    /// <remarks>
+    /// 扫码前取消只在清单恰好一条时能定下取消哪条需求（选需求不归车载端），多条时业务层不提供它。这里只把
+    /// 「这项能力暂时不可用」说出来，不让操作员以为它不存在；完整语义归批次7-14（<c>8005-agv-onboard-hmi#135</c>）。
+    /// 取消入口开着（例如在途装货的取消）时没有这句提示。
+    /// </remarks>
+    public bool HasLoadCancellationUnavailableHint
+    {
+        get => _hasLoadCancellationUnavailableHint;
+        private set
+        {
+            if (SetProperty(ref _hasLoadCancellationUnavailableHint, value))
+            {
+                OnPropertyChanged(nameof(LoadCancellationUnavailableHintText));
+            }
+        }
+    }
 
-    public string LoadCancellationUnavailableHintText => _visitText.Length < 0 ? _visitText : string.Empty;
+    public string LoadCancellationUnavailableHintText =>
+        HasLoadCancellationUnavailableHint ? LoadCancellationUnavailableHint : string.Empty;
 
-    public string LoadCorrectionTargetText => _visitText.Length < 0 ? _visitText : string.Empty;
+    /// <summary>
+    /// 「修正装货」入口旁标出它针对的子批（批次7-13）。修正照旧针对本站最后一次装货；那一次的需求来自日志里的
+    /// <c>LastCompletedLoadOperationContext</c>（或进行中的修正向量），子批号取自本次运行见过的清单，说不出时如实写
+    /// 「本站最后一次装货」。
+    /// </summary>
+    public string LoadCorrectionTargetText
+    {
+        get => _loadCorrectionTargetText;
+        private set => SetProperty(ref _loadCorrectionTargetText, value);
+    }
 
-    internal void RecordSlotOperationCommand(WireToGateSlotOperationCommand command) => _ = (command, _visitText);
+    /// <summary>
+    /// 本次运行收到的一条 <c>SlotOperationCommand</c>：记下它的需求与仓位，清单那一行据此标侧。
+    /// </summary>
+    internal void RecordSlotOperationCommand(WireToGateSlotOperationCommand command) => RunOnUiThread(() =>
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        _commandSlotsByDemand[command.DemandId] = [.. command.Slots];
+        RebuildWorklistItemsCore();
+    });
 
-    internal void UpdateJournaledOperations(WireToGateRecoveryState state) => _ = (state, _visitText);
+    /// <summary>
+    /// 日志里的恢复状态，只读：在途与上次完成装货的操作上下文给出侧与修正对象。重启后清单项的侧从这里恢复。
+    /// </summary>
+    internal void UpdateJournaledOperations(WireToGateRecoveryState state) => RunOnUiThread(() =>
+    {
+        ArgumentNullException.ThrowIfNull(state);
+        _journaledOperations = state;
+        RebuildWorklistItemsCore();
+        RefreshLoadCorrectionTargetCore();
+    });
+
+    private void RefreshLoadCancellationHintCore() =>
+        HasLoadCancellationUnavailableHint = WorklistItems.Count > 1 && CanSubmit && !CanRequestLoadCancellation;
+
+    private void RefreshLoadCorrectionTargetCore()
+    {
+        WireToGateRecoveryState? state = _journaledOperations;
+        string? demandId = state?.RecoveryVector is { VectorType: WireToGateRecoveryVectorTypes.LoadCorrection } vector
+            ? vector.DemandId
+            : state?.LastCompletedLoadOperationContext?.DemandId;
+        LoadCorrectionTargetText = demandId is not null && _sublotsByDemand.TryGetValue(demandId, out string? sublot)
+            ? $"修正对象：子批 {sublot}"
+            : "修正对象：本站最后一次装货";
+    }
 
     public string VisitText
     {
@@ -643,6 +729,7 @@ public sealed class MainViewModel : ViewModelBase
             {
                 ScannerSubmitCommand.RaiseCanExecuteChanged();
                 ManualSubmitCommand.RaiseCanExecuteChanged();
+                RefreshLoadCancellationHintCore();
             }
         }
     }
@@ -692,7 +779,13 @@ public sealed class MainViewModel : ViewModelBase
     public bool CanRequestLoadCancellation
     {
         get => _canRequestLoadCancellation;
-        private set => SetProperty(ref _canRequestLoadCancellation, value);
+        private set
+        {
+            if (SetProperty(ref _canRequestLoadCancellation, value))
+            {
+                RefreshLoadCancellationHintCore();
+            }
+        }
     }
 
     public bool CanRequestLoadCompensation
