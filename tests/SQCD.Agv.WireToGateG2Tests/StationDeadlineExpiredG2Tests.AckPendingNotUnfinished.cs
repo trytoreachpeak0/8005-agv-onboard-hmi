@@ -93,4 +93,43 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.False(harness.HasEvent("OPERATION_RECOVERY_REQUIRED"), harness.DescribeEvents());
         Assert.Equal(1, harness.Io.UnlockCount);
     }
+
+    /// <summary>
+    /// 「只差确认」只看发件箱里有没有这次的结果行，不看发送时进没进 catch：装货在会话断开时结束，
+    /// <c>SendDurableCoreAsync</c> 在写发件箱之前就以 <c>WIRE_TO_GATE_NOT_READY</c> 拒绝，结果从未落盘、没有东西可补发。
+    /// 重连后这次 attempt 不能被当成「只差确认」压掉：它仍是遗留，照旧按实时 IO 中断结算，服务端收到它的结果。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ALoadThatEndedWhileNotReadyHasNoResultToWaitForAndIsStillSettled()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server => server.StationDepartureDeadlineAt = null);
+        await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
+
+        await harness.Client.DisconnectAsync();
+        harness.Io.CloseDoor(0, cargo: true);
+        await harness.WaitForEventAsync("RESULT_ACK_PENDING", token);
+        Assert.Null(await harness.Journal.ReadOutgoingByDeduplicationKeyAsync($"operation-result:{AttemptId}", token));
+        Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "OperationResult");
+
+        harness.Server.SendSlotOperationCommandAfterRecovery = false;
+        harness.Server.SendJourneySnapshotsAfterRecovery = false;
+        await harness.Client.ConnectAndRecoverAsync(token);
+
+        await harness.WaitForInboundAsync("OperationResult", token);
+        await Harness.WaitUntilAsync(
+            () => harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId is null,
+            "the leftover attempt to be settled from the live IO",
+            token,
+            harness.DescribeEvents);
+        Assert.Equal("COMPLETED", harness.SingleResult("OperationResult").GetProperty("overallOutcome").GetString());
+        Assert.Contains("上次装货在执行中中断", harness.DescribeEvents(), StringComparison.Ordinal);
+        Assert.Equal(1, harness.Io.UnlockCount);
+    }
 }
