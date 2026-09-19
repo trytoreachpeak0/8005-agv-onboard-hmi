@@ -570,6 +570,12 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool SendRecoveryVectorCommandAfterRecoveryAction { get; set; }
 
     /// <summary>
+    /// How many times that command is written. More than one is the server issuing the same command
+    /// again -- same payload, same recovery action, a fresh envelope messageId each time.
+    /// </summary>
+    public int RecoveryVectorCommandCopies { get; set; } = 1;
+
+    /// <summary>
     /// The <c>forcedRecoveryGeneration</c> a <c>ForcedMechanicalRecoveryCommand</c> carries.
     /// </summary>
     /// <remarks>
@@ -1577,8 +1583,11 @@ public sealed class FakeControlServer : IAsyncDisposable
 
         if (SendRecoveryVectorCommandAfterRecoveryAction)
         {
-            await SendRecoveryVectorCommandAsync(context, payload, sessionId, actionId)
-                .ConfigureAwait(false);
+            for (int copy = 0; copy < Math.Max(1, RecoveryVectorCommandCopies); copy++)
+            {
+                await SendRecoveryVectorCommandAsync(context, payload, sessionId, actionId)
+                    .ConfigureAwait(false);
+            }
         }
     }
 

@@ -41,6 +41,16 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         ExecuteAsync(context, correction: true, progress, cancellationToken);
 
+    /// <summary>
+    /// Records and returns the <c>FAILED</c> result of a vector the vehicle refused before any
+    /// unlock, or <c>null</c> when the journal cannot show that nothing was done (onboard-hmi#123).
+    /// </summary>
+    public Task<WireToGateRecoveryVectorExecutionResult?> RefuseBeforeUnlockAsync(
+        WireToGateRecoveryVectorContext context,
+        string reasonCode,
+        CancellationToken cancellationToken) =>
+        throw new NotImplementedException();
+
     public ValueTask DisposeAsync()
     {
         _operationGate.Dispose();

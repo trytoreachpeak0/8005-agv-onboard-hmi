@@ -1439,6 +1439,7 @@ public sealed partial class RecoveryVectorG2Tests
             FakeControlServer server,
             bool ownsServer,
             FakeIoModuleClient io,
+            MutableSafetySignalProvider safety,
             WireToGateSessionService session,
             WireToGateBusinessService business,
             SqliteWireToGateJournal journal,
@@ -1447,6 +1448,7 @@ public sealed partial class RecoveryVectorG2Tests
             Server = server;
             _ownsServer = ownsServer;
             Io = io;
+            Safety = safety;
             _session = session;
             Business = business;
             _journal = journal;
@@ -1456,6 +1458,12 @@ public sealed partial class RecoveryVectorG2Tests
         public FakeControlServer Server { get; }
 
         public FakeIoModuleClient Io { get; }
+
+        /// <summary>
+        /// The vehicle safety fact <c>EnsureVehicleStoppedAndFresh</c> reads. Stopped once the
+        /// harness has started; a test that wants a command refused before any unlock sets it back.
+        /// </summary>
+        public MutableSafetySignalProvider Safety { get; }
 
         public WireToGateBusinessService Business { get; }
 
@@ -1801,12 +1809,18 @@ public sealed partial class RecoveryVectorG2Tests
             }
 
             return new RecoveryVectorHarness(
-                server, ownsServer, io, session, business, journal, blocked);
+                server, ownsServer, io, safety, session, business, journal, blocked);
         }
 
         public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(
             CancellationToken cancellationToken) =>
             _journal.ReadRecoveryStateAsync(cancellationToken);
+
+        /// <summary>The outgoing message the journal holds under <paramref name="deduplicationKey"/>.</summary>
+        public Task<WireToGateDurableMessage?> ReadOutgoingAsync(
+            string deduplicationKey,
+            CancellationToken cancellationToken) =>
+            _journal.ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken);
 
         /// <summary>
         /// Takes the seeded load through a whole forced mechanical recovery -- request, authorization,
@@ -1967,13 +1981,17 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
-    /// Unknown until <see cref="SetStopped"/>, then stopped, and always freshly observed.
+    /// Unknown until <see cref="SetStopped"/>, then stopped until <see cref="SetUnknown"/>, and
+    /// always freshly observed.
     /// </summary>
     private sealed class MutableSafetySignalProvider : IVehicleSafetySignalProvider
     {
         private int _stopped;
 
         public void SetStopped() => Interlocked.Exchange(ref _stopped, 1);
+
+        /// <summary>Back to unknown motion, which <c>IsStoppedAndFresh</c> refuses.</summary>
+        public void SetUnknown() => Interlocked.Exchange(ref _stopped, 0);
 
         public VehicleSafetySignal Read() => new(
             Volatile.Read(ref _stopped) == 1
