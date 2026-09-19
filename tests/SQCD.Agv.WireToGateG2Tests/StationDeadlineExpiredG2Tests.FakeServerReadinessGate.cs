@@ -136,6 +136,57 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// 服务端收下并结算了结果、<c>DurableAck</c> 在路上丢了（连接在确认前断开）：车不知道，重连时报告仍带着这个 attempt。
+    /// 真服务端在报告到达时就把自己早已结算的 attempt 消掉（<c>TryTakeOffSettledReportedAttemptsAsync</c>），握手直接答
+    /// <c>READY</c>，行程随即推送；车随后按同一 <c>messageId</c> 补发的结果只是重放，不改变就绪、不再追加 <c>SessionReadiness</c>。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-05")]
+    [Trait("ProtocolVector", "CV-CONNECTION-LOSS-SAFE-FINISH")]
+    public async Task AnAttemptTheDoubleSettledBeforeItsAckWasLostIsAnsweredReadyOnTheNextHandshake()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.ReplayJourneySnapshotsWithStableIdentity = true;
+            });
+        await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
+
+        harness.Server.DropBeforeOperationResultAck = true;
+        harness.Io.CloseDoor(0, cargo: true);
+        await Harness.WaitUntilAsync(
+            () => harness.Server.ReceivedEnvelopes.Any(item => item.MessageType == "OperationResult")
+                && harness.Client.Current.Readiness == WireToGateSessionReadiness.Disconnected,
+            "the result taken and the connection dropped before its ack",
+            token,
+            harness.DescribeEvents);
+        Assert.Equal(AttemptId, harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId);
+
+        harness.Server.DropBeforeOperationResultAck = false;
+        await harness.Client.ConnectAndRecoverAsync(token);
+        int reconnect = harness.Server.Received.Max(item => item.Connection);
+        Assert.Equal(WireToGateSessionReadiness.Ready, harness.Client.Current.Readiness);
+        await Harness.WaitUntilAsync(
+            () => harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId is null,
+            "the replayed result acknowledged and the load settled",
+            token,
+            harness.DescribeEvents);
+        await Task.Delay(TimeSpan.FromMilliseconds(300), token);
+
+        var sent = harness.Server.SentEnvelopes.Where(item => item.Connection == reconnect).ToList();
+        var readiness = Assert.Single(sent, item => item.MessageType == "SessionReadiness");
+        Assert.Equal("READY", ReadinessOf(readiness.WireLine));
+        Assert.True(
+            sent.FindIndex(item => item.MessageType == "UpcomingStopPlanSnapshot") > sent.IndexOf(readiness),
+            "the journey did not follow the handshake's READY");
+        Assert.DoesNotContain(sent, item => item.MessageType == "SlotOperationCommand");
+    }
+
+    /// <summary>
     /// 报告干净时（新 journal，没有未结算 attempt、没有待补报结果）行为与改动前一致：握手答 <c>READY</c>，行程快照与仓位命令
     /// 紧跟其后发出，各一次。
     /// </summary>
