@@ -19,8 +19,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// <c>WaitingOperator</c>，等待计时的起点不变。
     /// </summary>
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-15")]
-    [Trait("ProtocolVector", "CV-SNAPSHOT-REPLACE-AND-ACK")]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task SessionReadinessDuringALiveLoadDoesNotRestoreItAsAnUnfinishedOperation()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
