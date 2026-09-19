@@ -1877,7 +1877,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         cancellationToken).ConfigureAwait(false);
                 }
 
-                await _session.SendOperationResultAsync(
+                // The send path that allows RecoveryRequired, as the interrupted settlement uses: after a reconnect
+                // mid-load the new session is RecoveryRequired precisely because this attempt is unsettled, and the
+                // server grants READY only once this result arrives (ADR-cross-0028 "result replay", ADR-cross-0029
+                // step 4; onboard-hmi#127). Same key and messageId as that path, so it is the same message.
+                await _session.SendRecoveryOperationResultAsync(
                     operationDeduplicationKey,
                     command.SlotOperationAttemptId,
                     payload,
