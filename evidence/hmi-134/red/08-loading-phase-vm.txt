@@ -1,0 +1,58 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:01.93]     SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.AnEmptyJourneyClearsTheCargoHoldingLineAndStopsItsTimer [FAIL]
+[xUnit.net 00:00:01.97]     SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.ANewCargoHoldingDeadlineReplacesTheOldOne [FAIL]
+[xUnit.net 00:00:01.99]     SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.VehicleFullShowsItsNotice [FAIL]
+[xUnit.net 00:00:02.00]     SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.TheClosedReasonFollowsTheLatestSnapshotAndDisappearsWithIt [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.AnEmptyJourneyClearsTheCargoHoldingLineAndStopsItsTimer [251 ms]
+  Error Message:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.AnEmptyJourneyClearsTheCargoHoldingLineAndStopsItsTimer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 312
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.AnEmptyJourneyClearsTheCargoHoldingLineAndStopsItsTimer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 319
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.ANewCargoHoldingDeadlineReplacesTheOldOne [4 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "等待更多任务，最迟 10:10 离站（剩 10:00）"
+Actual:   ""
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.ANewCargoHoldingDeadlineReplacesTheOldOne() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 246
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.ANewCargoHoldingDeadlineReplacesTheOldOne() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 246
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.VehicleFullShowsItsNotice [1 ms]
+  Error Message:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.VehicleFullShowsItsNotice() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 259
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.VehicleFullShowsItsNotice() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 262
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.TheClosedReasonFollowsTheLatestSnapshotAndDisappearsWithIt [2 ms]
+  Error Message:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.TheClosedReasonFollowsTheLatestSnapshotAndDisappearsWithIt() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 279
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.TheClosedReasonFollowsTheLatestSnapshotAndDisappearsWithIt() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 297
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:02.03]     SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.CargoHoldingCountsDownToTheSnapshotsDeadlineBesideTheStationDeadline [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.CargoHoldingCountsDownToTheSnapshotsDeadlineBesideTheStationDeadline [4 ms]
+  Error Message:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.CargoHoldingCountsDownToTheSnapshotsDeadlineBesideTheStationDeadline() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 211
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.CargoHoldingCountsDownToTheSnapshotsDeadlineBesideTheStationDeadline() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 226
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     5, Passed:     7, Skipped:     0, Total:    12, Duration: 453 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

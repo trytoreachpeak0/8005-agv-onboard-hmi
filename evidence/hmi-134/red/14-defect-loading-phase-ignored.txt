@@ -1,0 +1,31 @@
+## defect diff
+diff --git a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+index 8995071..81d0901 100644
+--- a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
++++ b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+@@ -299,7 +299,7 @@ public sealed class MainViewModel : ViewModelBase
+         ReplaceWorklistItemsCore(snapshot.CurrentStopWorklist?.Items ?? []);
+         ReplaceJourneyPlanLegsCore(snapshot.UpcomingStopPlan?.Legs ?? []);
+         // 持货那一行也是整值：新快照的 loadingPhase 变了或变为空（含断线清投影），这一行跟着变或消失。
+-        _loadingPhase = snapshot.VehicleBusinessState?.LoadingPhase;
++        _loadingPhase = null;
+         RefreshLoadingPhaseCore();
+         SyncCargoHoldingTimerCore();
+         // 方向只随服务端的 stopRole／legType，任务类型只随清单项的 workType；都不推断（批次6-03）。
+
+## test output
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheLoadingPhaseLinesFollowTheServersBusinessStateSnapshots [6 s]
+  Error Message:
+   Timed out after 5s waiting for: the cargo holding line and the station countdown. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 484
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheLoadingPhaseLinesFollowTheServersBusinessStateSnapshots() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.Paths.cs:line 41
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheLoadingPhaseLinesFollowTheServersBusinessStateSnapshots() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.Paths.cs:line 86
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

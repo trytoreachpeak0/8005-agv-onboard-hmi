@@ -1,0 +1,10 @@
+{"timestampUtc":"2026-09-19T19:49:03.7978138Z","kind":"run.started","data":{"protocolRoot":"C:/Users/szy/Desktop/8005-workspace-v2/repos/8005-agv-protocol","selectedTestCount":null,"evidenceType":"ONBOARD_HMI_LOCAL_G2","hmiRoot":"C:\\Users\\szy\\Desktop\\8005-workspace-v2\\worktrees\\b7-134-8005-agv-onboard-hmi","integrationSliceId":"","runId":"20260919T194850293Z"}}
+{"timestampUtc":"2026-09-19T19:49:23.8960242Z","kind":"protocol.g1.skipped","data":{"reason":"SkipProtocolG1"}}
+{"timestampUtc":"2026-09-19T19:49:23.9074502Z","kind":"command.started","data":{"name":"dotnet-build-release","arguments":["build",".\\SQCD_8005AGV.sln","-c","Release"]}}
+{"timestampUtc":"2026-09-19T19:49:40.6401967Z","kind":"command.completed","data":{"name":"dotnet-build-release","exitCode":0,"log":"dotnet-build-release.log"}}
+{"timestampUtc":"2026-09-19T19:49:40.6546159Z","kind":"command.started","data":{"name":"dotnet-test-release","arguments":["test",".\\SQCD_8005AGV.sln","-c","Release","--no-build","--results-directory","C:\\Users\\szy\\AppData\\Local\\Temp\\claude\\C--Users-szy-Desktop-8005-workspace-v2\\b87d832d-ab95-47ab-b55f-a29704bfeda1\\scratchpad\\g2-run2\\protocol-v2.0.0\\20260919T194850293Z-a9d2788c6ff7\\test-results"]}}
+{"timestampUtc":"2026-09-19T19:53:56.2197331Z","kind":"command.completed","data":{"name":"dotnet-test-release","exitCode":0,"log":"dotnet-test-release.log"}}
+{"timestampUtc":"2026-09-19T19:53:56.2536708Z","kind":"command.started","data":{"name":"dotnet-format-verify","arguments":["format",".\\SQCD_8005AGV.sln","--verify-no-changes","--no-restore"]}}
+{"timestampUtc":"2026-09-19T19:56:36.7537724Z","kind":"command.completed","data":{"name":"dotnet-format-verify","exitCode":0,"log":"dotnet-format-verify.log"}}
+{"timestampUtc":"2026-09-19T19:56:36.8452575Z","kind":"evidence.journal.bound","data":{"protocolCommit":"86575456c847041515b7b75e8851a00e0d939804","g1Status":"SKIPPED","hmiCommit":"a9d2788c6ff7f4e8fed95db72fff5b00faea0ce0","hmiStatus":"PASS"}}
+{"timestampUtc":"2026-09-19T19:56:39.7986919Z","kind":"run.completed","data":{"status":"PASS","failures":0}}

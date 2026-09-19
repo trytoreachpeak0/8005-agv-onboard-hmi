@@ -1,0 +1,41 @@
+{
+  "audit": "LOCAL_UI_LAYOUT",
+  "generatedAtUtc": "2026-09-19T19:56:57.3358019Z",
+  "hmiCommit": "a9d2788c6ff7f4e8fed95db72fff5b00faea0ce0",
+  "viewport": "1024x768-class / maximized",
+  "checks": {
+    "prototypeViewport": true,
+    "frontRearSlotGroups": true,
+    "singlePrimaryScanAction": true,
+    "safetyReviewAction": true,
+    "recoveryActions": true,
+    "visibleDepartureFact": true,
+    "visibleJourneyFact": true,
+    "visibleStopDirectionAndTaskType": true,
+    "noStationFunctionOrAdmissionReason": true,
+    "blockingGuidance": true,
+    "visibleStationDeadline": true,
+    "visibleSublotRejectionReason": true,
+    "visibleExpectedActionOverdue": true,
+    "recoveryReasonInput": true,
+    "visibleWorklistItems": true,
+    "visibleJourneyPlanLegs": true,
+    "visibleCargoHoldingCountdown": true,
+    "visibleVehicleFullNotice": true,
+    "visibleLoadingClosedReason": true,
+    "loadCancellationUnavailableHint": true,
+    "loadCorrectionTarget": true,
+    "noFaultDeclarationEntry": true,
+    "dangerStyle": true,
+    "boundedLogPanel": true
+  },
+  "status": "PASS",
+  "failures": [
+    null
+  ],
+  "manualChecksRequired": [
+    "触摸屏最小点击目标、DPI 缩放和键盘焦点需在目标工控机确认。",
+    "阻断事实、仓位未知、恢复状态和安全复核流程需按真实操作员流程走查。",
+    "本机脚本不能替代现场显示器、触摸屏或真实硬件动作验收。"
+  ]
+}
