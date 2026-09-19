@@ -4,7 +4,8 @@ namespace SQCD.Agv.Application;
 
 /// <summary>
 /// 旅程事实一行里的两段文字：本站取货还是卸货，以及本站清单项的任务类型（批次6-03，
-/// <c>8005-agv-onboard-hmi#115</c>）。
+/// <c>8005-agv-onboard-hmi#115</c>）；以及清单列表里每一行自己的这两段（批次7-13，
+/// <c>8005-agv-onboard-hmi#134</c>）。
 /// </summary>
 /// <remarks>
 /// <para>
@@ -18,6 +19,12 @@ namespace SQCD.Agv.Application;
 /// <para>
 /// <c>PublicStationFunction</c> 不上界面：产品不维护它，v2 服务端下发时保持为空（规格第 5.3 节）。
 /// 准入阻断原因也不上界面：它只在服务端与看板，不经 <c>blockingFacts</c> 下发（同一节）。
+/// </para>
+/// <para>
+/// <b>一站多条清单项时，顶栏只显示全部清单项一致的那一段</b>，不一致时是空串，不挑一条来代表本站。
+/// 方向与任务类型各自判断：同是取货、任务类型不同时，顶栏仍显示「取货」。每条清单项自己的方向与任务类型
+/// 在清单列表的那一行上。只有一条清单项时，两段与批次 6 逐字相同（G3 场景按 <c>StopDirection</c>、
+/// <c>TaskType</c> 两个 AutomationId 读它们）。
 /// </para>
 /// </remarks>
 public static class WireToGateStopFacts
@@ -40,19 +47,17 @@ public static class WireToGateStopFacts
         };
 
     /// <summary>
-    /// 本站清单项的任务类型文案；没有清单项时是空串。
+    /// 本站清单项的任务类型文案：全部清单项的任务类型相同时是它，没有清单项或各项不同时是空串。
     /// </summary>
     public static string TaskTypeText(WireToGateJourneySnapshot journey)
     {
         ArgumentNullException.ThrowIfNull(journey);
-        return CurrentItem(journey) is { } item
-            ? TaskTypeTexts.GetValueOrDefault(item.WorkType, UnknownTaskTypeText)
-            : string.Empty;
+        return Shared(journey.CurrentStopWorklist?.Items ?? [], ItemTaskTypeText);
     }
 
     /// <summary>
-    /// 本站取货还是卸货：有清单项时取它的 <c>stopRole</c>，否则取计划里当前那条腿的 <c>legType</c>；
-    /// 两者都说不出方向时是空串。
+    /// 本站取货还是卸货：清单已下发时取全部清单项共同的 <c>stopRole</c>，否则取计划里当前那条腿的
+    /// <c>legType</c>；说不出一个方向（含清单项之间不一致）时是空串。
     /// </summary>
     /// <remarks>
     /// 到站后清单是本站的权威，所以它优先；还在路上、清单没下发时，按序号第一条未完成的腿就是正在去的那一站。
@@ -64,12 +69,7 @@ public static class WireToGateStopFacts
         ArgumentNullException.ThrowIfNull(journey);
         if (journey.CurrentStopWorklist is not null)
         {
-            return CurrentItem(journey)?.StopRole switch
-            {
-                "PICKUP" => PickupText,
-                "DROPOFF" => DropoffText,
-                _ => string.Empty
-            };
+            return Shared(journey.CurrentStopWorklist.Items, ItemDirectionText);
         }
 
         WireToGateMovementLeg? currentLeg = journey.UpcomingStopPlan?.Legs
@@ -83,19 +83,37 @@ public static class WireToGateStopFacts
         };
     }
 
-    /// <summary>清单一行的方向。</summary>
-    public static string ItemDirectionText(WireToGateWorklistItem item) => string.Empty;
+    /// <summary>清单一行的方向：只看这一条的 <c>stopRole</c>。</summary>
+    public static string ItemDirectionText(WireToGateWorklistItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        return item.StopRole switch
+        {
+            "PICKUP" => PickupText,
+            "DROPOFF" => DropoffText,
+            _ => string.Empty
+        };
+    }
 
-    /// <summary>清单一行的任务类型。</summary>
-    public static string ItemTaskTypeText(WireToGateWorklistItem item) => string.Empty;
+    /// <summary>清单一行的任务类型：只看这一条的 <c>workType</c>，文案表里没有的显示「未知」。</summary>
+    public static string ItemTaskTypeText(WireToGateWorklistItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        return TaskTypeTexts.GetValueOrDefault(item.WorkType, UnknownTaskTypeText);
+    }
 
     private const string PickupText = "取货";
 
     private const string DropoffText = "卸货";
 
     /// <summary>
-    /// 本站唯一的清单项。多条清单项是批次 7 的事，入站校验今天只收一条；这里遇到多条也不挑一条来显示。
+    /// 全部清单项在这一段上的共同文字；没有清单项或有任何一条不同时是空串。
     /// </summary>
-    private static WireToGateWorklistItem? CurrentItem(WireToGateJourneySnapshot journey) =>
-        journey.CurrentStopWorklist?.Items is [var only] ? only : null;
+    private static string Shared(
+        IReadOnlyList<WireToGateWorklistItem> items,
+        Func<WireToGateWorklistItem, string> text)
+    {
+        string[] distinct = [.. items.Select(text).Distinct(StringComparer.Ordinal)];
+        return distinct is [var only] ? only : string.Empty;
+    }
 }
