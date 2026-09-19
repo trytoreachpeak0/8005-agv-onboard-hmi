@@ -114,6 +114,94 @@ public sealed class MultiDemandViewModelTests
         Assert.Equal("旅程未同步", viewModel.VisitText);
     }
 
+    /// <summary>
+    /// 计划腿列表按 <c>sequence</c> 显示完整计划，与服务端下发的顺序无关，本地不重排；每条腿显示站点、停靠目的、
+    /// 取／卸与状态。等待点与充电桩腿不带方向。<c>ItemStatus</c> 给 UIA 读的原始值 <c>sequence|category|state</c>。
+    /// </summary>
+    [Fact]
+    public async Task ThePlanIsShownInSequenceOrderWithEveryLeg()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            null,
+            Plan(
+                1,
+                Leg(3, "TO_DROPOFF", "BUSINESS", DemandA, "ST-GATE", "PLANNED"),
+                Leg(1, "TO_PICKUP", "BUSINESS", DemandA, "ST-01", "COMPLETED"),
+                Leg(2, null, "WAITING_POINT", null, "WP-07", "ACTIVE"),
+                Leg(4, null, "CHARGER", null, "CH-02", "PLANNED"))));
+
+        Assert.Equal(
+            [
+                ("1|BUSINESS|COMPLETED", "ST-01", "业务站", "取货", "已完成"),
+                ("2|WAITING_POINT|ACTIVE", "WP-07", "等待点", string.Empty, "前往中"),
+                ("3|BUSINESS|PLANNED", "ST-GATE", "业务站", "卸货", "待前往"),
+                ("4|CHARGER|PLANNED", "CH-02", "充电桩", string.Empty, "待前往")
+            ],
+            viewModel.JourneyPlanLegs.Select(row =>
+                (row.ItemStatus, row.StationId, row.StopPurposeText, row.LegTypeText, row.StateText)));
+        Assert.True(viewModel.HasJourneyPlanLegs);
+    }
+
+    /// <summary>
+    /// 修订号前进的新计划整张替换旧计划：旧表里有、新表里没有的腿不留，顺序只随新表的 <c>sequence</c>。
+    /// </summary>
+    [Fact]
+    public async Task ANewPlanRevisionReplacesTheWholePlan()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        viewModel.UpdateWireToGateJourney(Journey(
+            null,
+            Plan(
+                1,
+                Leg(1, "TO_PICKUP", "BUSINESS", DemandA, "ST-01", "ARRIVED"),
+                Leg(2, "TO_DROPOFF", "BUSINESS", DemandA, "ST-GATE", "PLANNED"),
+                Leg(3, "TO_DROPOFF", "BUSINESS", DemandB, "ST-OPT", "PLANNED"))));
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            null,
+            Plan(
+                2,
+                Leg(2, "TO_DROPOFF", "BUSINESS", DemandB, "ST-OPT", "PLANNED"),
+                Leg(1, "TO_PICKUP", "BUSINESS", DemandA, "ST-01", "ARRIVED"))));
+
+        Assert.Equal(["ST-01", "ST-OPT"], viewModel.JourneyPlanLegs.Select(row => row.StationId));
+        Assert.Equal(["1|BUSINESS|ARRIVED", "2|BUSINESS|PLANNED"], viewModel.JourneyPlanLegs.Select(row => row.ItemStatus));
+    }
+
+    /// <summary>
+    /// 断线清投影时计划腿列表一起清掉。
+    /// </summary>
+    [Fact]
+    public async Task AnEmptyJourneyClearsThePlan()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        viewModel.UpdateWireToGateJourney(Journey(
+            null,
+            Plan(1, Leg(1, "TO_PICKUP", "BUSINESS", DemandA, "ST-01", "ARRIVED"))));
+
+        viewModel.UpdateWireToGateJourney(WireToGateJourneySnapshot.Empty);
+
+        Assert.Empty(viewModel.JourneyPlanLegs);
+        Assert.False(viewModel.HasJourneyPlanLegs);
+    }
+
+    internal static WireToGateUpcomingStopPlan Plan(long revision, params WireToGateMovementLeg[] legs) =>
+        new(revision, legs, new string('c', 64));
+
+    internal static WireToGateMovementLeg Leg(
+        int sequence,
+        string? legType,
+        string stopPurposeCategory,
+        string? demandId,
+        string stationId,
+        string state) =>
+        new($"22222222-2222-4222-8222-{sequence:D12}", legType, stopPurposeCategory, demandId, null, sequence, stationId, "MAP-26", state);
+
     internal static WireToGateJourneySnapshot Journey(
         WireToGateCurrentStopWorklist? worklist,
         WireToGateUpcomingStopPlan? plan = null,

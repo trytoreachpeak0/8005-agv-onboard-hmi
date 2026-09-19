@@ -421,6 +421,10 @@ public sealed class MainViewModel : ViewModelBase
         private set => SetProperty(ref _hasWorklistItems, value);
     }
 
+    public ObservableCollection<JourneyPlanLegRow> JourneyPlanLegs { get; } = [];
+
+    public bool HasJourneyPlanLegs => JourneyPlanLegs.Count < 0;
+
     public string VisitText
     {
         get => _visitText;
