@@ -1,0 +1,13 @@
+# 15810bf: dotnet test --no-build --filter "FullyQualifiedName~StationDeadlineExpiredG2Tests.A", ten runs (9 tests match: the three new ones and six older ones whose names start with A)
+Passed!  - Failed:     0, Passed:     9, Skipped:     0, Tot
+Passed!  - Failed:     0, Passed:     9, Skipped:     0, Tot
+Passed!  - Failed:     0, Passed:     9, Skipped:     0, Tot
+Passed!  - Failed:     0, Passed:     9, Skipped:     0, Tot
+Passed!  - Failed:     0, Passed:     9, Skipped:     0, Tot
+Passed!  - Failed:     0, Passed:     9, Skipped:     0, Tot
+Passed!  - Failed:     0, Passed:     9, Skipped:     0, Tot
+Passed!  - Failed:     0, Passed:     9, Skipped:     0, Tot
+Passed!  - Failed:     0, Passed:     9, Skipped:     0, Tot
+Passed!  - Failed:     0, Passed:     9, Skipped:     0, Tot
+
+[exited with code 0]

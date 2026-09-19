@@ -757,16 +757,62 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         InFlight,
 
         /// <summary>
-        /// A leftover this call dealt with: settled from the live IO, or held off by an unanswered load cancellation
-        /// (resent when it is this attempt's own).
+        /// A leftover this call dealt with: settled from the live IO, recorded as the COMPLETED result the server has
+        /// since acknowledged (onboard-hmi#124), or held off by an unanswered load cancellation (resent when it is
+        /// this attempt's own).
         /// </summary>
         TakenOver,
+
+        /// <summary>
+        /// Finished: a COMPLETED result is in the durable outbox and only its DurableAck is outstanding. Not
+        /// restored as unfinished -- the handshake replays the result (onboard-hmi#124).
+        /// </summary>
+        ResultAwaitingAck,
 
         /// <summary>
         /// A leftover this call cannot settle, because a result has already been given for it. It stays unfinished
         /// until an administrator recovers it.
         /// </summary>
         NotSettled
+    }
+
+    /// <summary>
+    /// Settles a completed attempt whose result the server has acknowledged, for the sender that gave up waiting
+    /// for that acknowledgement (onboard-hmi#124): the same journal write and gate refresh as the formal load path,
+    /// and the same confirmation for the HMI.
+    /// </summary>
+    private async Task RecordAcknowledgedCompletedResultAsync(
+        WireToGateRecoveryOperationContext context,
+        CancellationToken cancellationToken)
+    {
+        await _executor.MarkResultRecordedAsync(context.SlotOperationAttemptId, cancellationToken)
+            .ConfigureAwait(false);
+        await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
+        _logger.Write(
+            LogSeverity.Information,
+            nameof(WireToGateBusinessService),
+            $"迟到的DurableAck已由重连补发取得，补记已完成的仓位操作结果：attempt={context.SlotOperationAttemptId}。");
+        PublishOperatorEvent(
+            $"operation-result:{context.SlotOperationAttemptId}:COMPLETED",
+            "OPERATION_COMPLETED",
+            $"{FormatSlots(context.Slots)}操作结果已被服务端确认。",
+            new WireToGateHmiOperationSnapshot(
+                context.SlotOperationAttemptId,
+                context.OperationType,
+                context.Slots,
+                WireToGateHmiOperationStage.Completed,
+                "操作完成。",
+                _clock.Now.ToUniversalTime()));
+    }
+
+    /// <summary>Whether a durable <c>OperationResult</c> reports the operation <c>COMPLETED</c>.</summary>
+    private static bool IsCompletedOperationResult(WireToGateDurableMessage result)
+    {
+        using JsonDocument document = JsonDocument.Parse(result.WireLine);
+        return document.RootElement.TryGetProperty("payload", out JsonElement payload)
+            && payload.TryGetProperty("overallOutcome", out JsonElement outcome)
+            && outcome.ValueKind == JsonValueKind.String
+            && outcome.GetString() == "COMPLETED";
     }
 
     /// <summary>
@@ -819,9 +865,27 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             string resultKey = $"operation-result:{attemptId}";
             if (await _session.Journal
                     .ReadOutgoingByDeduplicationKeyAsync(resultKey, cancellationToken)
-                    .ConfigureAwait(false) is not null)
+                    .ConfigureAwait(false) is { } sent)
             {
-                return InterruptedOperationSettlement.NotSettled;
+                // FAILED and UNKNOWN stay unfinished until an administrator recovers them.
+                if (!IsCompletedOperationResult(sent))
+                {
+                    return InterruptedOperationSettlement.NotSettled;
+                }
+
+                // A COMPLETED result whose DurableAck has not come back is finished work, not an unfinished
+                // operation: the handshake replays it under the same messageId, and until then the HMI keeps
+                // the RESULT_ACK_PENDING prompt its sender published (onboard-hmi#124).
+                if (!sent.Acknowledged)
+                {
+                    return InterruptedOperationSettlement.ResultAwaitingAck;
+                }
+
+                // Acknowledged since -- by the handshake's replay, which runs before the readiness that brought
+                // this call here -- but never recorded, because its sender's wait for the ack ran out first.
+                // Recorded now, exactly as the sender would have.
+                await RecordAcknowledgedCompletedResultAsync(context, cancellationToken).ConfigureAwait(false);
+                return InterruptedOperationSettlement.TakenOver;
             }
 
             // An unanswered load cancellation over this attempt: its conclusion is that cancellation's,
@@ -1713,10 +1777,25 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             Interlocked.CompareExchange(ref _currentSublotRejection, null, shownRejection);
         }
 
+        bool restoreAfterRelease = false;
         try
         {
             if (await IsAttemptTakenOverAsync(command, cancellationToken).ConfigureAwait(false))
             {
+                // A restore that ran into this claim got InFlight and left a leftover attempt alone, and this
+                // branch does not settle it either; nothing else would look again before the next session state
+                // change (onboard-hmi#124). Run once more after the claim is released -- the settlement is claimed
+                // again and the projection is published under its own key, so a second run cannot repeat either.
+                // Only for a leftover: an attempt a recovery vector owns (an in-flight load cancellation) is that
+                // vector's to project, and a restore would show it as an unfinished vector mid-execution.
+                WireToGateRecoveryState takenOver = await _session.Journal
+                    .ReadRecoveryStateAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                restoreAfterRelease = takenOver.RecoveryVector is null
+                    && string.Equals(
+                        takenOver.UnsettledSlotOperationAttemptId,
+                        command.SlotOperationAttemptId,
+                        StringComparison.Ordinal);
                 _logger.Write(
                     LogSeverity.Information,
                     nameof(WireToGateBusinessService),
@@ -1842,8 +1921,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             }
             catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
             {
-                // The result is already in the durable outbox.  A reconnect will replay
-                // the same messageId/content; never execute the physical operation again.
+                // On a timeout or an IO failure the result is already in the durable outbox and a reconnect
+                // replays the same messageId/content. On WIRE_TO_GATE_NOT_READY (InvalidOperationException) the
+                // session was not Ready and nothing was written: there is no result to replay, and the attempt stays
+                // the journal's unsettled one for the next restore to settle from the live IO. Whether a result
+                // only waits for its ack is read from the outbox, never from having landed here (onboard-hmi#124).
+                // Either way, never execute the physical operation again.
                 _logger.Write(
                     LogSeverity.Warning,
                     nameof(WireToGateBusinessService),
@@ -1869,6 +1952,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             lock (_operationAttemptGate)
             {
                 _operationAttempts.Remove(command.SlotOperationAttemptId);
+            }
+
+            if (restoreAfterRelease)
+            {
+                TrackTask(RestorePendingRecoveryOperationProjectionAsync(_stopping.Token));
             }
         }
     }
