@@ -58,8 +58,62 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.Equal(1, harness.Io.UnlockCount);
     }
 
+    /// <summary>
+    /// 已送达、已对账的结果不再发、也不再结算：上一条的场景走完之后再断一次、再连一次，新连接上没有
+    /// <c>OperationResult</c>，「操作完成」只出一次，journal 仍是已结算，锁只开过一次。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AReconciledResultIsNeitherSentNorSettledAgainOnTheNextReconnect()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.HoldReadinessForUnreconciledAttempt = true;
+            });
+        await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
+        await harness.ReconnectAwaitingTheLoadsResultAsync(token);
+        harness.Io.CloseDoor(0, cargo: true);
+        await Harness.WaitUntilAsync(
+            () => harness.Client.Current.Readiness == WireToGateSessionReadiness.Ready
+                && harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId is null,
+            "the session back to Ready and the load settled",
+            token,
+            harness.DescribeEvents);
+
+        await harness.Client.DisconnectAsync();
+        await harness.Client.ConnectAndRecoverAsync(token);
+        int third = harness.Server.Received.Max(item => item.Connection);
+        Assert.Equal(WireToGateSessionReadiness.Ready, harness.Client.Current.Readiness);
+        await Task.Delay(TimeSpan.FromMilliseconds(500), token);
+
+        Assert.DoesNotContain(
+            harness.Server.ReceivedEnvelopes,
+            item => item.Connection == third && item.MessageType == "OperationResult");
+        Assert.Single(harness.Server.ReceivedEnvelopes, item => item.MessageType == "OperationResult");
+        Assert.Equal(1, harness.CountEvents("OPERATION_COMPLETED"));
+        WireToGateRecoveryState state = harness.ReadRecoveryState(token);
+        Assert.Null(state.UnsettledSlotOperationAttemptId);
+        Assert.Equal(WireToGateRecoveryCheckpoint.ResultRecorded, state.ProvenRecoveryCheckpoint);
+        Assert.Equal(1, harness.Io.UnlockCount);
+    }
+
     private sealed partial class Harness
     {
+        public int CountEvents(string kind)
+        {
+            lock (_events)
+            {
+                return _events.Count(item => item.Kind == kind);
+            }
+        }
+
         /// <summary>
         /// Drops the connection while the load waits for its operator and reconnects to a server that holds the
         /// session at RECOVERY_REQUIRED for this very attempt. Returns the new connection's index.
