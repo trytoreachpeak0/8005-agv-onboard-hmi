@@ -59,6 +59,13 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool DropBeforeOperationResultAck { get; set; }
 
     /// <summary>
+    /// How many <c>OperationResult</c>s to take and then answer nothing, the connection left open: the vehicle's
+    /// wait for the <c>DurableAck</c> times out mid-session and the result stays unacknowledged in its outbox
+    /// until the next handshake replays it (onboard-hmi#124).
+    /// </summary>
+    public int OperationResultAcksToDrop { get; set; }
+
+    /// <summary>
     /// 跨同一车载实例的多个会话保留已采纳的快照修订号，于是重连时同修订号不同内容的快照会被判
     /// SNAPSHOT_REVISION_CONTENT_CONFLICT。真服务端不这样做——它只在一个会话之内比对修订号——所以
     /// 除非这条测试要证的就是「车载端收到这个 ProtocolProblem 之后 fail-closed」，否则别打开。
@@ -941,6 +948,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                             _activationResults.Add(root.Clone());
                         }
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        break;
+                    case "OperationResult" when OperationResultAcksToDrop > 0:
+                        OperationResultAcksToDrop--;
                         break;
                     case "OperationResult":
                         if (DropBeforeOperationResultAck)
