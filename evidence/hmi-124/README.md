@@ -19,6 +19,9 @@ dotnet test tests/SQCD.Agv.WireToGateG2Tests -c Release --filter "FullyQualified
 | `red/03-restore-after-claim-release.txt` | `9062c57`（测试提交，产品代码 = `105aef3`） | `ALeftoverWhoseRestoreRanIntoTheReplayedCommandsClaimIsStillRestoredOnce` | 红：占位释放后 10 s 内服务端收不到 `OperationResult`，只有一条 `OPERATION_REPLAY` |
 | `green/03-restore-after-claim-release.txt` | `15810bf` | 同上 | 绿 |
 | `red/00-all-new-tests-on-7ded1b7.txt` | 测试取 `15810bf`，`src/` 取 `7ded1b7` | 三条新测试一起 | 3 红（票面要求的「在 `7ded1b7` 上跑」） |
+| `red/05-resend-during-cancellation.txt` | `6a1afd2`（测试提交）（产品代码 = `55c0e9e`） | `AResendDuringAnInFlightCancellationLeavesTheOperationProjectionAlone` | 红：取消执行中重发原命令，补跑的恢复判断把快照改成「恢复向量 LOAD_CANCELLATION 尚未完成」（独立审查发现的新暴露面） |
+| `green/05-resend-during-cancellation-and-class.txt` | `0f522ba` | 整个 `StationDeadlineExpiredG2Tests` 类 | 18/18 绿 |
+| `green/04-new-tests-10x-15810bf.txt` | `15810bf` | 名字以 A 开头的 9 条（含三条新测试） | 连跑 10 遍全绿 |
 
 第 3 条测试的接缝说明：握手后 `Ready` 触发的恢复判断被测试 journal 包装扣在读恢复状态那一步，服务端重发的同一命令
 走到「已开始未结算」分支、持有占位时才放行，所以它确定地得到 `InFlight`，不靠时序碰运气。假服务端
