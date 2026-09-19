@@ -824,10 +824,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     }
 
     /// <summary>
-    /// Sends a COMPLETED result that is on file but unacknowledged once more, when the session can take it. True
-    /// once its row is acknowledged -- by this send, or meanwhile by a handshake replay.
+    /// Sends a result that is on file but unacknowledged once more, exactly as stored, when the session can take it.
+    /// True once its row is acknowledged -- by this send, or meanwhile by a handshake replay.
     /// </summary>
-    private async Task<bool> TryResendCompletedResultAsync(
+    private async Task<bool> TryResendUnacknowledgedResultAsync(
         WireToGateRecoveryOperationContext context,
         string resultKey,
         CancellationToken cancellationToken)
@@ -925,9 +925,17 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     .ReadOutgoingByDeduplicationKeyAsync(resultKey, cancellationToken)
                     .ConfigureAwait(false) is { } sent)
             {
-                // FAILED and UNKNOWN stay unfinished until an administrator recovers them.
+                // FAILED and UNKNOWN stay unfinished until an administrator recovers them. One the server has not
+                // acknowledged yet is still sent once more, as below: it is what the server waits for to reconcile
+                // the session, and one put on file mid-handshake missed that handshake's replay (onboard-hmi#127).
                 if (!IsCompletedOperationResult(sent))
                 {
+                    if (!sent.Acknowledged)
+                    {
+                        _ = await TryResendUnacknowledgedResultAsync(context, resultKey, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
                     return InterruptedOperationSettlement.NotSettled;
                 }
 
@@ -938,7 +946,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 // Otherwise the handshake replays it, and until then the HMI keeps the RESULT_ACK_PENDING prompt.
                 if (!sent.Acknowledged)
                 {
-                    if (!await TryResendCompletedResultAsync(context, resultKey, cancellationToken)
+                    if (!await TryResendUnacknowledgedResultAsync(context, resultKey, cancellationToken)
                             .ConfigureAwait(false))
                     {
                         return InterruptedOperationSettlement.ResultAwaitingAck;
@@ -1845,7 +1853,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         }
 
         bool restoreAfterRelease = false;
-        bool completedResultUnacknowledged = false;
+        bool resultUnacknowledged = false;
         try
         {
             if (await IsAttemptTakenOverAsync(command, cancellationToken).ConfigureAwait(false))
@@ -2005,7 +2013,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     nameof(WireToGateBusinessService),
                     $"OperationResult暂未收到DurableAck：attempt={command.SlotOperationAttemptId}。",
                     exception);
-                completedResultUnacknowledged = completedSuccessfully;
+                resultUnacknowledged = true;
                 PublishOperatorEvent(
                     $"operation-result-pending:{command.SlotOperationAttemptId}",
                     "RESULT_ACK_PENDING",
@@ -2028,13 +2036,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 _operationAttempts.Remove(command.SlotOperationAttemptId);
             }
 
-            // A COMPLETED result left unacknowledged while a session is up -- its ack lost with the link intact, or
+            // A result left unacknowledged while a session is up -- its ack lost with the link intact, or
             // the handshake that brought the session up already past its replay -- would otherwise wait for the next
             // session state change to be sent again. The restore sends it once more under the same messageId, after
             // this claim is released so that it is not InFlight to itself (onboard-hmi#127). A session that is down
             // gets it from the next handshake, whose readiness runs the restore anyway.
             if (restoreAfterRelease
-                || completedResultUnacknowledged
+                || resultUnacknowledged
                     && _session.Current.Readiness is WireToGateSessionReadiness.Ready
                         or WireToGateSessionReadiness.RecoveryRequired)
             {
