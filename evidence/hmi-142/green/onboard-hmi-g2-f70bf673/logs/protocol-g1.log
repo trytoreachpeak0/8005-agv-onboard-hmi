@@ -1,0 +1,32 @@
+✓ Lockfile passes supply-chain policies (verified 10d ago)
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +6
+++++++
+Packages are hard linked from the content-addressable store to the virtual store.
+  Content-addressable store is at: C:\Users\szy\AppData\Local\pnpm\store\v11
+  Virtual store is at:             node_modules/.pnpm
+Progress: resolved 6, reused 6, downloaded 0, added 6, done
+
+devDependencies:
++ ajv 8.20.0
++ ajv-formats 3.0.1
+
+Done in 1.4s using pnpm v11.25.0
+$ node tools/g1-validate.mjs
+{
+  "gate": "G1",
+  "status": "PASS",
+  "candidateManifestSha256": "4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7",
+  "approvalAttestationStatus": "PENDING",
+  "approvalAttestationSha256": "cf3cc4aa538b86e41fc3e0e9f41eaffdbd3c92c37762437dfb67c61330a8a67d",
+  "approvalAttestationSource": "TRACKED_TEMPLATE",
+  "schemaCount": 69,
+  "messageTypeCount": 63,
+  "validExampleCount": 63,
+  "invalidExampleCount": 1571,
+  "trajectoryCount": 33,
+  "integrationSliceCount": 16,
+  "checkedAt": "2026-09-15T00:00:00Z",
+  "failures": []
+}

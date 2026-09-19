@@ -42,7 +42,11 @@ trytoreachpeak0/8005-agv-control-server#234（连续 6 秒无合法消息即判�
 
 ## 全量 ONBOARD_HMI_G2 与布局检查
 
-见 `green/` 下对应目录，命令经 `Invoke-HeavyLocal.ps1 -Ticket hmi#142` 执行。
+`green/onboard-hmi-g2-f70bf673/`：`run-w2g-g2.ps1`（协议克隆在 `scratch/hmi142-protocol`，
+命令经 `Invoke-HeavyLocal.ps1 -Ticket hmi#142`），车载端 `f70bf673`，工作树干净，**PASS**。
+build、test、format 三步全过，出站 schema 校验 4951 行 0 违规，`failures` 为空。
+
+`green/04-ui-layout-f70bf673.json`：`check-ui-layout.ps1`，**PASS**。
 
 ## 真装置 L2
 
