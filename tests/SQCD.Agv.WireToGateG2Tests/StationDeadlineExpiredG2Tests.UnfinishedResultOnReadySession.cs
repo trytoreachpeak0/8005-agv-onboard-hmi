@@ -1,0 +1,305 @@
+using SQCD.Agv.Core;
+using SQCD.Agv.Infrastructure;
+using Xunit;
+
+namespace SQCD.Agv.WireToGateG2Tests;
+
+/// <summary>
+/// 会话 <c>READY</c> 时一次装货以未完成结果收尾，服务端在那条 <c>DurableAck</c> 后追加
+/// <c>SessionReadiness: RECOVERY_REQUIRED</c>（<c>OnboardMessageProcessor.cs</c> 的 <c>OperationResult</c> 分支，
+/// 2026-09-04 起如此）之后的恢复投影（<c>trytoreachpeak0/8005-agv-onboard-hmi#139</c>）：本进程刚给出结论、已经
+/// 告诉过操作员的这次操作，不是「上个进程留下的操作」，不再投影第二遍，也不称它为「上次」。
+/// </summary>
+/// <remarks>
+/// 这条路在真服务端上不需要任何违约：只要会话 <c>READY</c> 时有一次装卸以 <c>UNKNOWN</c> 收尾。
+/// <c>trytoreachpeak0/8005-agv-onboard-hmi#128</c> 把替身对齐到这个行为之后才暴露出来——对齐之前，替身在这种情况下
+/// 一直答 <c>READY</c>，追加的那条 <c>RECOVERY_REQUIRED</c> 根本不存在。
+/// </remarks>
+public sealed partial class StationDeadlineExpiredG2Tests
+{
+    /// <summary>
+    /// 验收第 1 条：装货以 <c>UNKNOWN</c> 收尾、服务端追加 <c>RECOVERY_REQUIRED</c> 之后，
+    /// <c>OPERATION_RECOVERY_REQUIRED</c> 只出现一次，措辞是本次操作的「操作失败或状态未知，服务端已收到结果」，
+    /// 不含「上次」。
+    /// </summary>
+    /// <remarks>
+    /// 不按固定延时断言：先等那条 <c>RECOVERY_REQUIRED</c> 被车载端应用，再等
+    /// <see cref="SettlementProbeJournal"/> 看到「由它触发的恢复判断已经读到这次 attempt 的发件箱行」——那是投影前的
+    /// 最后一次 I/O，于是「本该出第二条的时点」是结构上确定的，不是等出来的；随后再走一个完整的安全态往返，让第二轮
+    /// 恢复判断也跑完。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AnUnfinishedResultOnAReadySessionIsAnnouncedOnceAndNotAsLastTimesOperation()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        SettlementProbeJournal? probe = null;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { LockerWaitTimesOut = true },
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                // 真服务端对每条安全态变化回一条 SessionReadiness（control-server#142）。这里用它把「又跑了一轮
+                // 恢复判断」变成可等待的事实，不是违约。
+                server.SendReadinessAfterSafetyStateChangedAck = true;
+            },
+            wrapJournal: inner => probe = new SettlementProbeJournal(inner, $"operation-result:{AttemptId}"));
+
+        await harness.WaitForInboundAsync("OperationResult", token);
+        Assert.Equal("UNKNOWN", harness.FirstResult("OperationResult").GetProperty("overallOutcome").GetString());
+        await harness.WaitForEventAsync("OPERATION_RECOVERY_REQUIRED", token);
+
+        await Harness.WaitUntilAsync(
+            () => harness.Client.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired,
+            "the RECOVERY_REQUIRED the server appended after the result's ack",
+            token,
+            harness.DescribeEvents);
+        await harness.LetTwoMoreRecoveryDecisionsRunAsync(() => probe!.SettlementReads, token);
+
+        string events = harness.DescribeEvents();
+        Assert.Equal(1, CountRecoveryRequired(events));
+        Assert.Contains("1号仓操作失败或状态未知，服务端已收到结果，等待管理员恢复。", events, StringComparison.Ordinal);
+        Assert.DoesNotContain("上次", events, StringComparison.Ordinal);
+        await harness.AssertRecoveryRequiredStaysAtAsync(1, token);
+        Assert.Equal(WireToGateHmiOperationStage.RecoveryRequired, harness.Business.CurrentOperationSnapshot?.Stage);
+        Assert.Equal(AttemptId, harness.Business.CurrentOperationSnapshot?.SlotOperationAttemptId);
+    }
+
+    /// <summary>
+    /// 验收第 2 条的后一半：断线重连（进程不重启）之后，同一次操作不再被投影第二次。重连后的握手照旧重放那条
+    /// 未结算的结果、服务端照旧答 <c>RECOVERY_REQUIRED</c>，去重的依据是「本进程已经为这次操作发布过投影」，
+    /// 与连接和会话世代无关——操作员事件的去重键按世代重置，靠它挡不住。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AReconnectAfterAnUnfinishedResultDoesNotAnnounceItAgain()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        SettlementProbeJournal? probe = null;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { LockerWaitTimesOut = true },
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.SendReadinessAfterSafetyStateChangedAck = true;
+            },
+            wrapJournal: inner => probe = new SettlementProbeJournal(inner, $"operation-result:{AttemptId}"));
+
+        await harness.WaitForInboundAsync("OperationResult", token);
+        await harness.WaitForEventAsync("OPERATION_RECOVERY_REQUIRED", token);
+        await Harness.WaitUntilAsync(
+            () => harness.Client.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired,
+            "the RECOVERY_REQUIRED the server appended after the result's ack",
+            token,
+            harness.DescribeEvents);
+
+        await harness.Client.DisconnectAsync();
+        await harness.Client.ConnectAndRecoverAsync(token);
+        Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, harness.Client.Current.Readiness);
+        await harness.LetTwoMoreRecoveryDecisionsRunAsync(() => probe!.SettlementReads, token);
+
+        string events = harness.DescribeEvents();
+        Assert.Equal(1, CountRecoveryRequired(events));
+        Assert.DoesNotContain("上次", events, StringComparison.Ordinal);
+        await harness.AssertRecoveryRequiredStaysAtAsync(1, token);
+    }
+
+    /// <summary>
+    /// 验收第 2 条的前一半：结果为 <c>FAILED</c> 时同样只有一条提示。<c>FAILED</c> 是开锁前的预检拒绝
+    /// （<c>WireToGateSlotOperationExecutor.CreateRejectedResult</c>），它在任何日志写入之前就返回，于是日志里没有
+    /// 未结算的 attempt，恢复判断读不到上下文、本就不投影——服务端照旧把这次操作记进恢复、追加
+    /// <c>RECOVERY_REQUIRED</c>，车上仍只有执行路径发的那一条。
+    /// </summary>
+    /// <remarks>
+    /// 守护用例，基线即绿：钉住的是「去重不能靠删掉恢复判断来做」和「FAILED 这条路不许长出第二条提示」。
+    /// 反向验证见 PR 正文：把去重判断改成无条件投影后它变红。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AFailedResultOnAReadySessionIsAnnouncedOnceToo()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        // 1 号仓的锁反馈读不出来：预检判 SLOT_STATE_UNKNOWN，整条命令在开锁前被拒，结果 FAILED。
+        FakeIoModuleClient io = new();
+        io.SetUnreadable(0);
+        SettlementProbeJournal? probe = null;
+        await using Harness harness = await Harness.StartAsync(
+            io,
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.SendReadinessAfterSafetyStateChangedAck = true;
+            },
+            wrapJournal: inner => probe = new SettlementProbeJournal(inner, $"operation-result:{AttemptId}"));
+
+        await harness.WaitForInboundAsync("OperationResult", token);
+        Assert.Equal("FAILED", harness.FirstResult("OperationResult").GetProperty("overallOutcome").GetString());
+        await harness.WaitForEventAsync("OPERATION_RECOVERY_REQUIRED", token);
+        await Harness.WaitUntilAsync(
+            () => harness.Client.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired,
+            "the RECOVERY_REQUIRED the server appended after the result's ack",
+            token,
+            harness.DescribeEvents);
+        await harness.LetTwoMoreRecoveryDecisionsRunAsync(() => probe!.RecoveryStateSteps, token);
+
+        string events = harness.DescribeEvents();
+        Assert.Equal(1, CountRecoveryRequired(events));
+        Assert.DoesNotContain("上次", events, StringComparison.Ordinal);
+        Assert.Equal(0, harness.Io.UnlockCount);
+        await harness.AssertRecoveryRequiredStaysAtAsync(1, token);
+    }
+
+    private static int CountRecoveryRequired(string events) =>
+        events.Split(Environment.NewLine).Count(
+            line => line.StartsWith("OPERATION_RECOVERY_REQUIRED:", StringComparison.Ordinal));
+
+    private sealed partial class Harness
+    {
+        /// <summary>
+        /// Runs two more recovery decisions to completion, each brought on by a <c>SessionReadiness</c> of its own:
+        /// the real server answers every safety state change with one (control-server#142), and the vehicle's receive
+        /// loop is serial, so the decision the server's appended <c>RECOVERY_REQUIRED</c> started is over by the time
+        /// the second one reads this attempt's outbox row. A projection, when it comes, comes right after that read:
+        /// measured at 23 ms on this harness, with nothing else between the two.
+        /// </summary>
+        public async Task LetTwoMoreRecoveryDecisionsRunAsync(
+            Func<int> progressed,
+            CancellationToken cancellationToken)
+        {
+            for (int round = 0; round < 2; round++)
+            {
+                int before = progressed();
+                await Server.RequestSafetyStateSnapshotAsync();
+                await WaitUntilAsync(
+                    () => progressed() > before,
+                    $"recovery decision {round + 1} of 2 to get past the step a projection follows",
+                    cancellationToken,
+                    DescribeEvents);
+            }
+        }
+
+        /// <summary>
+        /// Holds the count for half a second, asserting throughout rather than reading once at the end: the last
+        /// decision's own projection would land within tens of milliseconds of the read that anchored it.
+        /// </summary>
+        public async Task AssertRecoveryRequiredStaysAtAsync(int expected, CancellationToken cancellationToken)
+        {
+            DateTimeOffset until = DateTimeOffset.UtcNow.AddMilliseconds(500);
+            while (DateTimeOffset.UtcNow < until)
+            {
+                string events = DescribeEvents();
+                Assert.Equal(expected, CountRecoveryRequired(events));
+                await Task.Delay(10, cancellationToken);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 透传日志，只数「这次 attempt 的 <c>OperationResult</c> 发件箱行被按去重键读了几次」。那一步只出现在
+    /// <c>TrySettleInterruptedOperationAsync</c> 里，是恢复投影发布之前的最后一次 I/O，所以它的次数就是
+    /// 「恢复判断跑到了要不要投影这一步」的次数。
+    /// </summary>
+    private sealed class SettlementProbeJournal(IWireToGateJournal inner, string resultKey) : IWireToGateJournal
+    {
+        private int _settlementReads;
+        private int _recoveryStateSteps;
+
+        public int SettlementReads => Volatile.Read(ref _settlementReads);
+
+        /// <summary>
+        /// 恢复状态的「读缓存」步跑了几次。<c>ReadRecoveryStateCachedAsync</c> 走的就是这个重载
+        /// （onboard-hmi#129），而它是恢复判断的第一步——结果为 <c>FAILED</c> 时日志里没有未结算 attempt，
+        /// 判断读完状态就返回，走不到发件箱那一步，于是只有这个计数能看见它跑过。
+        /// </summary>
+        public int RecoveryStateSteps => Volatile.Read(ref _recoveryStateSteps);
+
+        public Task<WireToGateDurableMessage?> ReadOutgoingByDeduplicationKeyAsync(
+            string deduplicationKey,
+            CancellationToken cancellationToken = default)
+        {
+            if (string.Equals(deduplicationKey, resultKey, StringComparison.Ordinal))
+            {
+                Interlocked.Increment(ref _settlementReads);
+            }
+
+            return inner.ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken);
+        }
+
+        public Task InitializeAsync(CancellationToken cancellationToken = default) =>
+            inner.InitializeAsync(cancellationToken);
+
+        public Task<string> ReadJournalEpochAsync(CancellationToken cancellationToken = default) =>
+            inner.ReadJournalEpochAsync(cancellationToken);
+
+        public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(CancellationToken cancellationToken = default) =>
+            inner.ReadRecoveryStateAsync(cancellationToken);
+
+        public Task WriteRecoveryStateAsync(
+            WireToGateRecoveryState state,
+            CancellationToken cancellationToken = default) =>
+            inner.WriteRecoveryStateAsync(state, cancellationToken);
+
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            CancellationToken cancellationToken = default) =>
+            inner.UpdateRecoveryStateAsync(change, cancellationToken);
+
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            Action<WireToGateRecoveryState> settled,
+            CancellationToken cancellationToken = default)
+        {
+            Interlocked.Increment(ref _recoveryStateSteps);
+            return inner.UpdateRecoveryStateAsync(change, settled, cancellationToken);
+        }
+
+        public Task<WireToGateDurableMessage> SaveOutgoingBeforeSendAsync(
+            WireToGateDurableMessage message,
+            CancellationToken cancellationToken = default) =>
+            inner.SaveOutgoingBeforeSendAsync(message, cancellationToken);
+
+        public Task<WireToGateDurableMessage> ReplaceOutgoingForReplayAsync(
+            WireToGateDurableMessage expected,
+            WireToGateDurableMessage replacement,
+            CancellationToken cancellationToken = default) =>
+            inner.ReplaceOutgoingForReplayAsync(expected, replacement, cancellationToken);
+
+        public Task<WireToGateDurableMessage?> ReadOutgoingByMessageIdAsync(
+            string messageId,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadOutgoingByMessageIdAsync(messageId, cancellationToken);
+
+        public Task MarkOutgoingAcknowledgedAsync(
+            string messageId,
+            string acceptedContentSha256,
+            CancellationToken cancellationToken = default) =>
+            inner.MarkOutgoingAcknowledgedAsync(messageId, acceptedContentSha256, cancellationToken);
+
+        public Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ReadUnacknowledgedOutgoingAsync(cancellationToken);
+
+        public Task<IReadOnlyList<WireToGateAppliedJourneySnapshot>> ReadAppliedJourneySnapshotsAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ReadAppliedJourneySnapshotsAsync(cancellationToken);
+
+        public Task<WireToGateAppliedJourneySnapshot> SaveAppliedJourneySnapshotAsync(
+            WireToGateAppliedJourneySnapshot snapshot,
+            CancellationToken cancellationToken = default) =>
+            inner.SaveAppliedJourneySnapshotAsync(snapshot, cancellationToken);
+
+        public Task<string> ComputeContentSha256Async(CancellationToken cancellationToken = default) =>
+            inner.ComputeContentSha256Async(cancellationToken);
+
+        public ValueTask DisposeAsync() => inner.DisposeAsync();
+    }
+}
