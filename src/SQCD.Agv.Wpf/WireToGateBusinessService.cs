@@ -1399,6 +1399,31 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         WireToGateSlotOperationResumeCommand command,
         CancellationToken cancellationToken)
     {
+        // A resume this vehicle has already refused stays refused: the server may have closed the
+        // resume workflow on that rejection, so running the same command later, because the gate
+        // would pass now, would open doors for a workflow nobody is waiting on. The answer is the
+        // rejection on file, unchanged (8005-agv-onboard-hmi#119).
+        WireToGateDurableMessage? refused = await _session.Journal
+            .ReadOutgoingByDeduplicationKeyAsync(ResumeRejectedKey(command), cancellationToken)
+            .ConfigureAwait(false);
+        if (refused is not null)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"收到已拒绝过的SlotOperationResumeCommand：attempt={command.SlotOperationAttemptId}，messageId={command.MessageId}，重发原拒绝，未执行物理动作。");
+            PublishOperatorEvent(
+                $"resume-command:{command.MessageId}",
+                "RECOVERY_BLOCKED",
+                "恢复命令此前已被拒绝，已重发原拒绝，未执行仓门IO。");
+            using JsonDocument wire = JsonDocument.Parse(refused.WireLine);
+            SlotOperationCommandRejectedPayload payload =
+                wire.RootElement.GetProperty("payload").Deserialize<SlotOperationCommandRejectedPayload>(JsonOptions)
+                ?? throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+            await SendResumeRejectedCoreAsync(command, payload, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
         WireToGateRecoveryState state = await _session.Journal
             .ReadRecoveryStateAsync(cancellationToken)
             .ConfigureAwait(false);
@@ -2075,18 +2100,28 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// <c>SlotOperationCommand</c> for the same attempt is keyed by attempt and reason only, and the
     /// two must never meet on one key.
     /// </remarks>
-    private async Task SendResumeRejectedAsync(
+    private Task SendResumeRejectedAsync(
         WireToGateSlotOperationResumeCommand command,
         string reasonCode,
+        CancellationToken cancellationToken) =>
+        SendResumeRejectedCoreAsync(
+            command,
+            new SlotOperationCommandRejectedPayload(
+                command.SlotOperationAttemptId,
+                new WireToGateProblemPayload(reasonCode, null, null),
+                _session.Current.CapabilityVersion,
+                null),
+            cancellationToken);
+
+    private static string ResumeRejectedKey(WireToGateSlotOperationResumeCommand command) =>
+        $"slot-operation-resume-rejected:{command.SlotOperationAttemptId}:{command.MessageId}";
+
+    private async Task SendResumeRejectedCoreAsync(
+        WireToGateSlotOperationResumeCommand command,
+        SlotOperationCommandRejectedPayload payload,
         CancellationToken cancellationToken)
     {
-        string deduplicationKey =
-            $"slot-operation-resume-rejected:{command.SlotOperationAttemptId}:{command.MessageId}";
-        var payload = new SlotOperationCommandRejectedPayload(
-            command.SlotOperationAttemptId,
-            new WireToGateProblemPayload(reasonCode, null, null),
-            _session.Current.CapabilityVersion,
-            null);
+        string deduplicationKey = ResumeRejectedKey(command);
         try
         {
             await _session.SendSlotOperationResumeRejectedAsync(
@@ -2099,10 +2134,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         catch (Exception exception) when (
             exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
         {
+            // Saved before it was sent, so an unacknowledged rejection is replayed with the rest of the
+            // outbox on the next session, and a resend of the command sends it again from here.
             _logger.Write(
                 LogSeverity.Warning,
                 nameof(WireToGateBusinessService),
-                $"续行命令的拒绝暂未送达服务端：attempt={command.SlotOperationAttemptId}，reason={reasonCode}。",
+                $"续行命令的拒绝暂未收到DurableAck：attempt={command.SlotOperationAttemptId}，reason={payload.Problem.ReasonCode}。",
                 exception);
         }
     }
