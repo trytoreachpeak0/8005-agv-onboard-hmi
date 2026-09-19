@@ -167,6 +167,41 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// A resume refused once stays refused. The server may have closed its resume workflow on that
+    /// rejection, so a resend that the safety gate would now let through must not open a door.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task AResumeRefusedOnceIsNotRunOnAResendTheGateWouldNowAllow()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(token);
+        WireToGateRecoveryState state = await OpenResumeActionAsync(harness, token);
+        object resume = ResumePayload(state);
+
+        harness.VehicleMotionUnknown();
+        await harness.Server.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, resume);
+        await harness.WaitForRecoveryBlockedAsync("ACTION_NOT_ALLOWED_IN_STATE", token);
+        await WaitForSingleRejectionAsync(harness, token);
+
+        harness.VehicleStopped();
+        await harness.Server.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, resume);
+
+        // Were the resend run, the slots are empty and locked, so the load would pulse slot 1 at once.
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Io.UnlockCount > 0
+                || harness.Logger.Entries.Any(entry => entry.Message.StartsWith(
+                    "收到已拒绝过的SlotOperationResumeCommand", StringComparison.Ordinal)),
+            "the resent resume to be either run or refused on the rejection on file",
+            token);
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.Single(Rejections(harness)
+            .Select(item => item.GetProperty("messageId").GetString())
+            .Distinct());
+    }
+
+    /// <summary>
     /// Presses the resume entry and waits for the accepted action to be on disk, which is what the
     /// vehicle checks a <c>SlotOperationResumeCommand</c> against.
     /// </summary>

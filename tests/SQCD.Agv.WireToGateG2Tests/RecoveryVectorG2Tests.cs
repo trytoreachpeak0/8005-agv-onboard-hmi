@@ -1434,6 +1434,7 @@ public sealed partial class RecoveryVectorG2Tests
         private readonly SqliteWireToGateJournal _journal;
         private readonly List<WireToGateOperatorEvent> _recoveryBlockedEvents;
         private readonly bool _ownsServer;
+        private readonly MutableSafetySignalProvider _safety;
 
         private RecoveryVectorHarness(
             FakeControlServer server,
@@ -1443,10 +1444,12 @@ public sealed partial class RecoveryVectorG2Tests
             WireToGateBusinessService business,
             SqliteWireToGateJournal journal,
             List<WireToGateOperatorEvent> recoveryBlockedEvents,
-            RecordingLogger logger)
+            RecordingLogger logger,
+            MutableSafetySignalProvider safety)
         {
             Server = server;
             Logger = logger;
+            _safety = safety;
             _ownsServer = ownsServer;
             Io = io;
             _session = session;
@@ -1809,8 +1812,13 @@ public sealed partial class RecoveryVectorG2Tests
             }
 
             return new RecoveryVectorHarness(
-                server, ownsServer, io, session, business, journal, blocked, logger);
+                server, ownsServer, io, session, business, journal, blocked, logger, safety);
         }
+
+        /// <summary>The vehicle's motion is unknown again, the way it was across the handshake.</summary>
+        public void VehicleMotionUnknown() => _safety.SetUnknown();
+
+        public void VehicleStopped() => _safety.SetStopped();
 
         public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(
             CancellationToken cancellationToken) =>
@@ -1987,13 +1995,16 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
-    /// Unknown until <see cref="SetStopped"/>, then stopped, and always freshly observed.
+    /// Unknown until <see cref="SetStopped"/>, then stopped until <see cref="SetUnknown"/>, and always
+    /// freshly observed.
     /// </summary>
     private sealed class MutableSafetySignalProvider : IVehicleSafetySignalProvider
     {
         private int _stopped;
 
         public void SetStopped() => Interlocked.Exchange(ref _stopped, 1);
+
+        public void SetUnknown() => Interlocked.Exchange(ref _stopped, 0);
 
         public VehicleSafetySignal Read() => new(
             Volatile.Read(ref _stopped) == 1
