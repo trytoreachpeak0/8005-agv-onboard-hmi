@@ -378,6 +378,13 @@ public sealed partial class RecoveryVectorG2Tests
                 "收到已拒绝过的SlotOperationResumeCommand", StringComparison.Ordinal)),
             "the restarted vehicle to answer the resume from the rejection on file",
             token);
+        // The replay is answered first and the session forgotten after it, so the entry is pressed
+        // once the journal no longer names the refused session -- or it never will.
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => afterRestart.ReadRecoveryStateAsync(token).GetAwaiter().GetResult()
+                .ExceptionRecoverySessionId is null,
+            "the replayed rejection to forget the refused session",
+            token);
 
         bool requested = await afterRestart.Business.RequestLoadCompensationAsync(
             "现场确认装货无法继续，申请补偿清空目标仓位。", token);
