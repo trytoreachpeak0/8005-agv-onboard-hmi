@@ -757,8 +757,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         InFlight,
 
         /// <summary>
-        /// A leftover this call dealt with: settled from the live IO, or held off by an unanswered load cancellation
-        /// (resent when it is this attempt's own).
+        /// A leftover this call dealt with: settled from the live IO, recorded as the COMPLETED result the server has
+        /// since acknowledged (onboard-hmi#124), or held off by an unanswered load cancellation (resent when it is
+        /// this attempt's own).
         /// </summary>
         TakenOver,
 
@@ -773,6 +774,35 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         /// until an administrator recovers it.
         /// </summary>
         NotSettled
+    }
+
+    /// <summary>
+    /// Settles a completed attempt whose result the server has acknowledged, for the sender that gave up waiting
+    /// for that acknowledgement (onboard-hmi#124): the same journal write and gate refresh as the formal load path,
+    /// and the same confirmation for the HMI.
+    /// </summary>
+    private async Task RecordAcknowledgedCompletedResultAsync(
+        WireToGateRecoveryOperationContext context,
+        CancellationToken cancellationToken)
+    {
+        await _executor.MarkResultRecordedAsync(context.SlotOperationAttemptId, cancellationToken)
+            .ConfigureAwait(false);
+        await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
+        _logger.Write(
+            LogSeverity.Information,
+            nameof(WireToGateBusinessService),
+            $"迟到的DurableAck已由重连补发取得，补记已完成的仓位操作结果：attempt={context.SlotOperationAttemptId}。");
+        PublishOperatorEvent(
+            $"operation-result:{context.SlotOperationAttemptId}:COMPLETED",
+            "OPERATION_COMPLETED",
+            $"{FormatSlots(context.Slots)}操作结果已被服务端确认。",
+            new WireToGateHmiOperationSnapshot(
+                context.SlotOperationAttemptId,
+                context.OperationType,
+                context.Slots,
+                WireToGateHmiOperationStage.Completed,
+                "操作完成。",
+                _clock.Now.ToUniversalTime()));
     }
 
     /// <summary>Whether a durable <c>OperationResult</c> reports the operation <c>COMPLETED</c>.</summary>
@@ -840,12 +870,21 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 // A COMPLETED result whose DurableAck has not come back is finished work, not an unfinished
                 // operation: the handshake replays it under the same messageId, and until then the HMI keeps
                 // the RESULT_ACK_PENDING prompt its sender published (onboard-hmi#124).
-                if (IsCompletedOperationResult(sent) && !sent.Acknowledged)
+                if (!IsCompletedOperationResult(sent))
+                {
+                    return InterruptedOperationSettlement.NotSettled;
+                }
+
+                if (!sent.Acknowledged)
                 {
                     return InterruptedOperationSettlement.ResultAwaitingAck;
                 }
 
-                return InterruptedOperationSettlement.NotSettled;
+                // Acknowledged since -- by the handshake's replay, which runs before the readiness that brought
+                // this call here -- but never recorded, because its sender's wait for the ack ran out first.
+                // Recorded now, exactly as the sender would have.
+                await RecordAcknowledgedCompletedResultAsync(context, cancellationToken).ConfigureAwait(false);
+                return InterruptedOperationSettlement.TakenOver;
             }
 
             // An unanswered load cancellation over this attempt: its conclusion is that cancellation's,
