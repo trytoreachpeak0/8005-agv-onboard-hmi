@@ -2323,6 +2323,20 @@ public sealed partial class WireToGateBusinessService
             .ConfigureAwait(false);
     }
 
+    /// <summary>Test seam: the cached recovery state every entry gate reads (onboard-hmi#129).</summary>
+    internal WireToGateRecoveryState CachedRecoveryStateForTest => Volatile.Read(ref _lastRecoveryState);
+
+    /// <summary>Test seam: one <see cref="ReadRecoveryStateCachedAsync"/>, the refresh after a result is recorded.</summary>
+    internal Task<WireToGateRecoveryState> RefreshCachedRecoveryStateForTestAsync(
+        CancellationToken cancellationToken) =>
+        ReadRecoveryStateCachedAsync(cancellationToken);
+
+    /// <summary>Test seam: one <see cref="WriteRecoveryStateCachedAsync"/>.</summary>
+    internal Task WriteCachedRecoveryStateForTestAsync(
+        WireToGateRecoveryState state,
+        CancellationToken cancellationToken) =>
+        WriteRecoveryStateCachedAsync(state, cancellationToken);
+
     private async Task<WireToGateRecoveryState> ReadRecoveryStateCachedAsync(
         CancellationToken cancellationToken)
     {
