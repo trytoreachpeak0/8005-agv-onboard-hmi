@@ -145,6 +145,12 @@ public sealed class JournaledOperationsFeedTests
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            Action<WireToGateRecoveryState> afterWrite,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<WireToGateDurableMessage> SaveOutgoingBeforeSendAsync(
             WireToGateDurableMessage message,
             CancellationToken cancellationToken = default) =>
