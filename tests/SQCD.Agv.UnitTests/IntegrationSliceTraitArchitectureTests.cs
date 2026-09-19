@@ -127,9 +127,9 @@ public sealed class IntegrationSliceTraitArchitectureTests
     {
         HashSet<string> implemented = new(SlicesThisBatchImplements(), StringComparer.Ordinal);
         // 八条重证的（FP-IS-00～07）加上批次 3 新落的两条（FP-IS-14、FP-IS-15）、批次 6 的两条
-        // （FP-IS-10、FP-IS-11）。数字写在这里而不是算出来，是为了让「这条线到底建了几个切片」在改的时候
-        // 必须被看见一次。
-        Assert.Equal(12, implemented.Count);
+        // （FP-IS-10、FP-IS-11）、批次 7 的一条（FP-IS-08，onboard-hmi#134）。数字写在这里而不是算出来，
+        // 是为了让「这条线到底建了几个切片」在改的时候必须被看见一次。
+        Assert.Equal(13, implemented.Count);
 
         string[] offences =
         [

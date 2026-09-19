@@ -1378,12 +1378,12 @@ public sealed class WireToGateG2Tests
         Assert.Equal("BUSINESS", leg.StopPurposeCategory);
         Assert.Null(leg.PublicStationFunction);
 
-        // v2 moved demandId into the leg; the projection's single-demand answer now comes from
-        // there rather than from a top-level field the payload no longer carries.
-        Assert.Equal(leg.DemandId, journey.UpcomingStopPlan.DemandId);
+        // v2 moved demandId into the leg; the plan's demands now come from there rather than from a
+        // top-level field the payload no longer carries.
+        Assert.Equal([leg.DemandId!], journey.UpcomingStopPlan.DemandIds);
         Assert.Equal(
             journey.CurrentStopWorklist.Items.Single().DemandId,
-            journey.UpcomingStopPlan.DemandId);
+            Assert.Single(journey.UpcomingStopPlan.DemandIds));
         Assert.DoesNotContain(server.Received, item => item.MessageType == "ProtocolProblem");
         Assert.Equal(0, io.UnlockCount);
     }

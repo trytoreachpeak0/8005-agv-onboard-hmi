@@ -41,8 +41,8 @@ scripts/run-w2g-g2.ps1 为每次本机验证创建一个不可复用的证据目
 `[Trait("ProtocolVector", ...)]` 按协议切片索引的投影——`IntegrationSliceTraitArchitectureTests`
 钉住这条等式，投影只到本条线已实现的切片。哪些切片算已实现，以
 `ProtocolVectorTestBindingArchitectureTests.SlicesThisLineImplements` 为准（`IntegrationSliceTraitArchitectureTests`
-经 `ImplementedSlices()` 读它，并断言片数），当前是 `FP-IS-00`～`07`、`FP-IS-10`、`FP-IS-11`、`FP-IS-14`、
-`FP-IS-15`，共 12 片。
+经 `ImplementedSlices()` 读它，并断言片数），当前是 `FP-IS-00`～`08`、`FP-IS-10`、`FP-IS-11`、`FP-IS-14`、
+`FP-IS-15`，共 13 片（`FP-IS-08` 于批次 7 由 onboard-hmi#134 加入）。
 
 ## 出站报文 schema 校验（`schemaConformance`）
 

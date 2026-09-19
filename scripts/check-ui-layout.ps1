@@ -30,6 +30,16 @@ $checks = [ordered]@{
     visibleExpectedActionOverdue = ($xaml -match 'AutomationProperties\.AutomationId="ExpectedActionOverdue"') -and ($xaml -match 'Text="\{Binding ExpectedActionOverdueText\}"') -and ($xaml -match 'Binding HasExpectedActionOverdue, Converter')
     # 异常处置会话的原因输入只跟着管理员恢复入口出现（CP-0005 第五节）。
     recoveryReasonInput = ($xaml -match 'AutomationProperties\.AutomationId="RecoveryReason"') -and ($xaml -match 'Text="\{Binding RecoveryReason, UpdateSourceTrigger=PropertyChanged\}"') -and ($xaml -match 'Binding HasRecoveryReasonInput, Converter') -and ($xaml -match 'MaxLength="500"') -and ($xaml -match 'IsEnabled="\{Binding IsRecoveryReasonEditable\}"') -and ($xaml -match 'Binding HasRecoveryReasonCarriedOver, Converter') -and ($xaml -match 'Text="会话已开，原因沿用开会话时填写的"')
+    # 一站多条需求与多停靠计划（批次7-13，onboard-hmi#134）：清单列表与计划腿列表，UIA 按 AutomationId 找它们，ItemStatus 给原始值。
+    visibleWorklistItems = ($xaml -match 'AutomationProperties\.AutomationId="WorklistItems"') -and ($xaml -match 'ItemsSource="\{Binding WorklistItems\}"') -and ($xaml -match 'AutomationProperties\.AutomationId="WorklistItemSide"') -and ($xaml -match 'AutomationProperties\.ItemStatus="\{Binding SideCode\}"')
+    visibleJourneyPlanLegs = ($xaml -match 'AutomationProperties\.AutomationId="JourneyPlanLegs"') -and ($xaml -match 'ItemsSource="\{Binding JourneyPlanLegs\}"') -and ($xaml -match 'AutomationProperties\.ItemStatus="\{Binding ItemStatus\}"')
+    # 持货等单、装满与装货结束原因（REQ-0354、REQ-0355）：各自一行，与离站倒计时分开，不合成一个期限。
+    visibleCargoHoldingCountdown = ($xaml -match 'AutomationProperties\.AutomationId="CargoHoldingCountdown"') -and ($xaml -match 'Text="\{Binding CargoHoldingCountdownText\}"') -and ($xaml -match 'AutomationProperties\.ItemStatus="\{Binding CargoHoldingCountdownStatus\}"') -and ($xaml -match 'Binding HasCargoHoldingCountdown, Converter')
+    visibleVehicleFullNotice = ($xaml -match 'AutomationProperties\.AutomationId="VehicleFullNotice"') -and ($xaml -match 'Text="\{Binding VehicleFullNoticeText\}"') -and ($xaml -match 'Binding HasVehicleFullNotice, Converter')
+    visibleLoadingClosedReason = ($xaml -match 'AutomationProperties\.AutomationId="LoadingClosedReason"') -and ($xaml -match 'Text="\{Binding LoadingClosedReasonText\}"') -and ($xaml -match 'AutomationProperties\.ItemStatus="\{Binding LoadingClosedReasonCode\}"') -and ($xaml -match 'Binding HasLoadingClosedReason, Converter')
+    # 多条清单项时扫码前取消不静默消失：原位置一个禁用的按钮加一句提示；修正装货标出它针对的子批。
+    loadCancellationUnavailableHint = ($xaml -match 'AutomationProperties\.AutomationId="LoadCancellationUnavailable"') -and ($xaml -match 'Text="\{Binding LoadCancellationUnavailableHintText\}"') -and ($xaml -match 'Binding HasLoadCancellationUnavailableHint, Converter') -and ($xaml -match 'IsEnabled="False"[^>]*Content="取消装货"')
+    loadCorrectionTarget = ($xaml -match 'AutomationProperties\.AutomationId="LoadCorrectionTarget"') -and ($xaml -match 'Text="\{Binding LoadCorrectionTargetText\}"')
     # 判故障只在服务端（REQ-0359）：本机界面不得出现判故障的按钮或绑定。
     noFaultDeclarationEntry = ($xaml -notmatch 'Content="[^"]*(判故障|判定故障|故障判定|人工判)') -and ($xaml -notmatch 'FaultDeclaration')
     dangerStyle = ($xaml -match 'Background="\{StaticResource DangerBrush\}"')

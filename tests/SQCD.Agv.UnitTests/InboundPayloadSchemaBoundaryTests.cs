@@ -104,6 +104,110 @@ public sealed class InboundPayloadSchemaBoundaryTests
         Assert.Equal("PROTOCOL_SCHEMA_INVALID", refused.Message);
     }
 
+    /// <summary>
+    /// <c>items.maxItems</c> is 8: a worklist carrying eight items passes the session client's own
+    /// inbound check, in the order the server sent them (batch 7-13, <c>8005-agv-onboard-hmi#134</c>).
+    /// </summary>
+    /// <remarks>
+    /// Until batch 7 the check refused anything above one item, so the first multi-demand stop the
+    /// control server sent (<c>8005-agv-control-server#211</c>) would have been answered
+    /// <c>PROTOCOL_SCHEMA_INVALID</c> and the session locked -- the <c>8005-agv-onboard-hmi#38</c>
+    /// lockup on a schema-legal payload.
+    /// </remarks>
+    [Fact]
+    public void AWorklistOfEightItemsIsAccepted()
+    {
+        CurrentStopWorklistSnapshotPayload payload = Inbound<CurrentStopWorklistSnapshotPayload>(
+            "CurrentStopWorklistSnapshot",
+            WorklistPayloadWithItems(8));
+
+        WireToGateSessionClient.ValidateCurrentStopWorklist(payload);
+
+        Assert.Equal(
+            [.. Enumerable.Range(1, 8).Select(n => $"SL-{n}")],
+            payload.Items.Select(item => item.Sublot));
+    }
+
+    /// <summary>
+    /// Nine items is above the schema's own <c>maxItems</c>, and stays <c>PROTOCOL_SCHEMA_INVALID</c>.
+    /// </summary>
+    [Fact]
+    public void AWorklistOfNineItemsIsRefused()
+    {
+        CurrentStopWorklistSnapshotPayload payload = Inbound<CurrentStopWorklistSnapshotPayload>(
+            "CurrentStopWorklistSnapshot",
+            WorklistPayloadWithItems(9));
+
+        InvalidDataException refused = Assert.Throws<InvalidDataException>(
+            () => WireToGateSessionClient.ValidateCurrentStopWorklist(payload));
+        Assert.Equal("PROTOCOL_SCHEMA_INVALID", refused.Message);
+    }
+
+    /// <summary>
+    /// <c>legs.maxItems</c> is 9: a nine-leg plan mixing business legs, a waiting point and a charger
+    /// passes the inbound check.
+    /// </summary>
+    [Fact]
+    public void APlanOfNineLegsIsAccepted()
+    {
+        UpcomingStopPlanSnapshotPayload payload = Inbound<UpcomingStopPlanSnapshotPayload>(
+            "UpcomingStopPlanSnapshot",
+            PlanPayloadWithLegs(9));
+
+        WireToGateSessionClient.ValidateUpcomingStopPlan(payload);
+
+        Assert.Equal(9, payload.Legs.Count);
+    }
+
+    /// <summary>
+    /// Ten legs is above the schema's own <c>maxItems</c>, and stays <c>PROTOCOL_SCHEMA_INVALID</c>.
+    /// </summary>
+    [Fact]
+    public void APlanOfTenLegsIsRefused()
+    {
+        UpcomingStopPlanSnapshotPayload payload = Inbound<UpcomingStopPlanSnapshotPayload>(
+            "UpcomingStopPlanSnapshot",
+            PlanPayloadWithLegs(10));
+
+        InvalidDataException refused = Assert.Throws<InvalidDataException>(
+            () => WireToGateSessionClient.ValidateUpcomingStopPlan(payload));
+        Assert.Equal("PROTOCOL_SCHEMA_INVALID", refused.Message);
+    }
+
+    private static string WorklistPayloadWithItems(int count) =>
+        $$"""
+        {"stationId":"STATION-01","worklistRevision":7,
+        "operationSessionId":"00000000-0000-4000-8000-0000000000aa",
+        "stationDepartureDeadlineAt":null,
+        "items":[{{string.Join(",", Enumerable.Range(1, count).Select(n =>
+            $$"""
+            {"demandId":"00000000-0000-4000-8000-0000000001{{n:D2}}",
+            "transportDemandKey":"TDK-{{n}}","sublot":"SL-{{n}}","workType":"WIRE_TO_GATE",
+            "stopRole":"PICKUP","expectedBasketCount":1}
+            """))}}]}
+        """;
+
+    /// <summary>
+    /// A plan of <paramref name="count"/> legs, sent in reverse <c>sequence</c> order: every third leg
+    /// is a waiting point and every fifth a charger, both with no leg type and no demand.
+    /// </summary>
+    private static string PlanPayloadWithLegs(int count) =>
+        $$"""
+        {"planRevision":4,
+        "legs":[{{string.Join(",", Enumerable.Range(1, count).Reverse().Select(n =>
+            {
+                string category = n % 5 == 0 ? "CHARGER" : n % 3 == 0 ? "WAITING_POINT" : "BUSINESS";
+                string legType = category == "BUSINESS" ? (n % 2 == 0 ? "\"TO_DROPOFF\"" : "\"TO_PICKUP\"") : "null";
+                string demandId = category == "BUSINESS" ? $"\"00000000-0000-4000-8000-0000000002{n:D2}\"" : "null";
+                return $$"""
+                    {"movementLegId":"00000000-0000-4000-8000-0000000003{{n:D2}}",
+                    "legType":{{legType}},"stopPurposeCategory":"{{category}}","demandId":{{demandId}},
+                    "publicStationFunction":null,"sequence":{{n}},"stationId":"ST-{{n}}",
+                    "mapId":"MAP-26","state":"PLANNED"}
+                    """;
+            }))}}]}
+        """;
+
     private static string WorklistPayload(string deadline, string workType = "WIRE_TO_GATE") =>
         $$"""
         {"stationId":"STATION-01","worklistRevision":7,

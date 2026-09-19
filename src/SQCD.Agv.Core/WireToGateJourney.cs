@@ -4,9 +4,11 @@ namespace SQCD.Agv.Core;
 /// The business projection of the server-owned vehicle business state.
 /// </summary>
 /// <remarks>
-/// <see cref="ChargingCycleState"/> and <see cref="LoadingPhase"/> arrived with protocol 2.0.0 and
-/// are carried, not consumed: cargo holding is batch 7 and the charging cycle is batch 9. Carrying
-/// them is what lets those batches read a value instead of re-shaping the projection.
+/// <see cref="ChargingCycleState"/> and <see cref="LoadingPhase"/> arrived with protocol 2.0.0.
+/// <see cref="LoadingPhase"/> is read by the vehicle's display since batch 7-13
+/// (<c>8005-agv-onboard-hmi#134</c>: cargo holding, the vehicle full, why loading closed) and never
+/// decides anything here -- those judgements are the control server's. The charging cycle is
+/// carried, not consumed, until batch 9.
 /// </remarks>
 public sealed record WireToGateVehicleBusinessState(
     long Revision,
@@ -80,26 +82,14 @@ public sealed record WireToGateUpcomingStopPlan(
     /// <remarks>
     /// Protocol v2 moved <c>demandId</c> out of the snapshot's top level and into the leg, because
     /// <c>legs.maxItems</c> went from 2 to 9 and one demand id for a nine-leg plan has no defined
-    /// meaning. Exposing the set rather than a single value is what keeps "the legs disagree"
-    /// distinguishable from "the legs carry no demand": collapsing both to null is how
-    /// <see cref="WireToGateJourneySnapshot.HasConsistentDemand"/> would read a self-contradictory
-    /// plan as consistent.
+    /// meaning. There is deliberately no single-value convenience: one read "none" and "more than
+    /// one" alike as null, and batch 7-13 (<c>8005-agv-onboard-hmi#134</c>) removed it once it had
+    /// no production caller left.
     /// </remarks>
     public IReadOnlyList<string> DemandIds =>
     [
         .. Legs.Select(leg => leg.DemandId).OfType<string>().Distinct(StringComparer.Ordinal)
     ];
-
-    /// <summary>
-    /// The one demand this plan is for, or null when the legs carry none or disagree.
-    /// </summary>
-    /// <remarks>
-    /// Convenience over <see cref="DemandIds"/> for the callers that only ever see single-demand
-    /// plans. <b>Null is ambiguous here</b> -- it means "none" and "more than one" alike -- so a
-    /// caller deciding whether to allow an operator action must read <see cref="DemandIds"/>
-    /// instead.
-    /// </remarks>
-    public string? DemandId => DemandIds.Count == 1 ? DemandIds[0] : null;
 }
 
 public sealed record WireToGateJourneySnapshot(
@@ -117,32 +107,31 @@ public sealed record WireToGateJourneySnapshot(
     public bool HasAuthoritativeWorklist => CurrentStopWorklist is not null;
 
     /// <summary>
-    /// Whether the worklist and the plan name the same demand.
+    /// Whether every demand the worklist names is one the plan names.
     /// </summary>
     /// <remarks>
-    /// <b>A plan whose legs name more than one demand is never consistent</b>, whatever the
-    /// worklist says. Before protocol v2 that case could not arise -- the snapshot carried one
-    /// top-level <c>demandId</c> -- and reading the derived
-    /// <see cref="WireToGateUpcomingStopPlan.DemandId"/> as "no demand" when the legs disagree
-    /// would let a self-contradictory plan through the guard that
-    /// <see cref="CanAcceptSublot"/> stands behind. Unreachable while the control server emits at
-    /// most two legs of one demand; reachable once waiting points (<c>FP-C4</c>) and chargers
-    /// (<c>FP-C1</c>) put more legs in the plan.
+    /// <para>
+    /// A set relation since batch 7-13 (<c>8005-agv-onboard-hmi#134</c>). A stop may carry up to
+    /// eight demands and a plan up to nine legs, so "the worklist's demand equals the plan's" no
+    /// longer has a meaning; what still does is that nothing on this stop's worklist is absent from
+    /// the journey the server planned. The plan keeps its completed legs and the one the vehicle is at
+    /// (control server <c>JourneyPlanBuilder</c>), so a demand being worked here is always on it.
+    /// </para>
+    /// <para>
+    /// A plan whose legs carry no demand -- waiting points and chargers only -- lets the worklist
+    /// through, as before; a worklist with no item is trivially consistent and is refused by
+    /// <see cref="CanAcceptSublot"/> instead. Nothing here reads a single item or a single demand,
+    /// so no size of either can throw.
+    /// </para>
     /// </remarks>
     public bool HasConsistentDemand
     {
         get
         {
             IReadOnlyList<string> planDemands = UpcomingStopPlan?.DemandIds ?? [];
-            if (planDemands.Count > 1)
-            {
-                return false;
-            }
-
-            string? worklistDemand = CurrentStopWorklist?.Items.SingleOrDefault()?.DemandId;
-            return worklistDemand is null
-                || planDemands.Count == 0
-                || string.Equals(worklistDemand, planDemands[0], StringComparison.Ordinal);
+            IReadOnlyList<WireToGateWorklistItem> items = CurrentStopWorklist?.Items ?? [];
+            return planDemands.Count == 0
+                || items.All(item => planDemands.Contains(item.DemandId, StringComparer.Ordinal));
         }
     }
 
@@ -150,7 +139,7 @@ public sealed record WireToGateJourneySnapshot(
         VehicleBusinessState?.Readiness == "READY"
         && VehicleBusinessState.ManualChargingHold is false
         && VehicleBusinessState.BatteryState == "SUFFICIENT"
-        && CurrentStopWorklist?.Items.Count == 1
+        && CurrentStopWorklist?.Items.Count >= 1
         && HasConsistentDemand;
 
     public bool CanAcceptSublotAt(DateTimeOffset now, TimeSpan maxAge)
