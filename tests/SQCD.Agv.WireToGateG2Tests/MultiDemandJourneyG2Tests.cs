@@ -366,14 +366,29 @@ public sealed partial class MultiDemandJourneyG2Tests
                 viewModel.UpdateWireToGateStatus(args.Value);
                 controller.RefreshExternalSafetyState();
             });
+            JournaledOperationsFeed journaledOperations = new(
+                session.Journal,
+                state => harness.OnUiThread(() => viewModel.UpdateJournaledOperations(state)),
+                logger);
+            session.ServerCommandReceived += (_, args) =>
+            {
+                if (args.Value is WireToGateSlotOperationCommand command)
+                {
+                    harness.OnUiThread(() => viewModel.RecordSlotOperationCommand(command));
+                }
+            };
             session.JourneyChanged += (_, args) => harness.OnUiThread(() =>
             {
                 viewModel.UpdateWireToGateJourney(args.Value);
                 controller.RefreshExternalSafetyState();
+                _ = journaledOperations.RefreshAsync();
             });
             business.SublotEntryRequested += (_, _) => harness.OnUiThread(viewModel.RefreshWireToGateInputState);
-            business.OperatorEventPublished += (_, args) =>
-                harness.OnUiThread(() => viewModel.ApplyWireToGateOperatorEvent(args.Value));
+            business.OperatorEventPublished += (_, args) => harness.OnUiThread(() =>
+            {
+                viewModel.ApplyWireToGateOperatorEvent(args.Value);
+                _ = journaledOperations.RefreshAsync();
+            });
             viewModel.ConfigureWireToGate(
                 (sublot, inputMethod, token) => business.SubmitSublotAsync(
                     sublot,
