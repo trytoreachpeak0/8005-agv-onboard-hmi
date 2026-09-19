@@ -280,39 +280,45 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         CancellationToken cancellationToken = default)
     {
         RequireUuid(slotOperationAttemptId, nameof(slotOperationAttemptId));
-        WireToGateRecoveryState state = await _journal.ReadRecoveryStateAsync(cancellationToken)
-            .ConfigureAwait(false);
-        if (!string.Equals(state.UnsettledSlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal))
+        // Read, checked and written as one step under the journal's lock, as the CLOSED release does
+        // (onboard-hmi#123). A late acknowledgement records its attempt while the next operation may already be
+        // journaling its Prepared; with a separate read and write, that write could land in between and this one
+        // would put the old state back over it, wiping the operation now at the doors (onboard-hmi#127).
+        WireToGateRecoveryState? written = await _journal.UpdateRecoveryStateAsync(
+            state => string.Equals(state.UnsettledSlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal)
+                ? Recorded(state)
+                : null,
+            cancellationToken).ConfigureAwait(false);
+        if (written is null)
         {
             throw new InvalidDataException("SLOT_OPERATION_CONFLICT");
         }
-
-        await _journal.WriteRecoveryStateAsync(
-            state with
-            {
-                UnsettledSlotOperationAttemptId = null,
-                ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ResultRecorded,
-                ActiveUnlockSlots = [],
-                PendingResults = [],
-                OperationContext = null,
-                CompletedSlots = [],
-                SlotResults = [],
-                ExceptionRecoverySessionId = null,
-                RecoveryActionId = null,
-                RecoverySessionRequestId = null,
-                RecoveryActionRequestId = null,
-                RecoveryReason = null,
-                RecoveryOperatorId = null,
-                RecoveryOperatorVerifiedAt = null,
-                RecoveryVector = null,
-                RecoveryResultObservedAt = null,
-                PendingLoadCancellation = null,
-                LastCompletedLoadOperationContext = state.OperationContext?.OperationType == OperationType.Load
-                    ? state.OperationContext
-                    : state.LastCompletedLoadOperationContext
-            },
-            cancellationToken).ConfigureAwait(false);
     }
+
+    private static WireToGateRecoveryState Recorded(WireToGateRecoveryState state) =>
+        state with
+        {
+            UnsettledSlotOperationAttemptId = null,
+            ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ResultRecorded,
+            ActiveUnlockSlots = [],
+            PendingResults = [],
+            OperationContext = null,
+            CompletedSlots = [],
+            SlotResults = [],
+            ExceptionRecoverySessionId = null,
+            RecoveryActionId = null,
+            RecoverySessionRequestId = null,
+            RecoveryActionRequestId = null,
+            RecoveryReason = null,
+            RecoveryOperatorId = null,
+            RecoveryOperatorVerifiedAt = null,
+            RecoveryVector = null,
+            RecoveryResultObservedAt = null,
+            PendingLoadCancellation = null,
+            LastCompletedLoadOperationContext = state.OperationContext?.OperationType == OperationType.Load
+                ? state.OperationContext
+                : state.LastCompletedLoadOperationContext
+        };
 
     /// <summary>
     /// Settles a slot operation whose executing process is gone (8005-agv-program#40). It reads the
