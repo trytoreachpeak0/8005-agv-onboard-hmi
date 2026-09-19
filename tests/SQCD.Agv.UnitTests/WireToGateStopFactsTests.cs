@@ -119,6 +119,20 @@ public sealed class WireToGateStopFactsTests
     }
 
     [Fact]
+    public void AnEmptyWorklistShowsNoDirectionEvenWhenThePlanHasALeg()
+    {
+        // 清单已下发但本站没有任务（界面同一行显示「无待处理任务」）：方向为空，不退回去读计划腿，
+        // 否则会和「无待处理任务」自相矛盾。
+        WireToGateJourneySnapshot journey = new(
+            null,
+            new WireToGateCurrentStopWorklist("ST-01", 1, null, null, [], new string('a', 64)),
+            Plan(Leg("TO_PICKUP", "ARRIVED")),
+            DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(string.Empty, WireToGateStopFacts.DirectionText(journey));
+    }
+
+    [Fact]
     public void NoDirectionIsShownWhenNeitherTheWorklistNorThePlanSaysOne()
     {
         // legType 为 null 的腿（等待点、充电桩）不带方向；什么都没下发时也不显示。
