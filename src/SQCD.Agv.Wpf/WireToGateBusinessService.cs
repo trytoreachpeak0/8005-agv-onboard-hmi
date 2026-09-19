@@ -1774,11 +1774,20 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         {
             if (await IsAttemptTakenOverAsync(command, cancellationToken).ConfigureAwait(false))
             {
-                // A restore that ran into this claim got InFlight and left the attempt alone, and this branch
-                // does not settle it either; nothing else would look again before the next session state change
-                // (onboard-hmi#124). Run once more after the claim is released -- the settlement is claimed again
-                // and the projection is published under its own key, so a second run cannot repeat either.
-                restoreAfterRelease = true;
+                // A restore that ran into this claim got InFlight and left a leftover attempt alone, and this
+                // branch does not settle it either; nothing else would look again before the next session state
+                // change (onboard-hmi#124). Run once more after the claim is released -- the settlement is claimed
+                // again and the projection is published under its own key, so a second run cannot repeat either.
+                // Only for a leftover: an attempt a recovery vector owns (an in-flight load cancellation) is that
+                // vector's to project, and a restore would show it as an unfinished vector mid-execution.
+                WireToGateRecoveryState takenOver = await _session.Journal
+                    .ReadRecoveryStateAsync(cancellationToken)
+                    .ConfigureAwait(false);
+                restoreAfterRelease = takenOver.RecoveryVector is null
+                    && string.Equals(
+                        takenOver.UnsettledSlotOperationAttemptId,
+                        command.SlotOperationAttemptId,
+                        StringComparison.Ordinal);
                 _logger.Write(
                     LogSeverity.Information,
                     nameof(WireToGateBusinessService),
