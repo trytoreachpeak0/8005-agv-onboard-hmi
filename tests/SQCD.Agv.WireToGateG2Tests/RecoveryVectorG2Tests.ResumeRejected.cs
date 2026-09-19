@@ -28,6 +28,7 @@ public sealed partial class RecoveryVectorG2Tests
             token,
             cargoInTargetSlots: true);
         WireToGateRecoveryState state = await OpenResumeActionAsync(harness, token);
+        int resultsBefore = harness.ResultsOfType("OperationResult").Count;
 
         await harness.Server.SendCommandAsync(
             "SlotOperationResumeCommand",
@@ -45,7 +46,7 @@ public sealed partial class RecoveryVectorG2Tests
             "RECOVERY_SESSION_NOT_OPEN",
             payload.GetProperty("problem").GetProperty("reasonCode").GetString());
         Assert.Equal(0, harness.Io.UnlockCount);
-        Assert.Empty(harness.ResultsOfType("OperationResult"));
+        Assert.Equal(resultsBefore, harness.ResultsOfType("OperationResult").Count);
     }
 
     /// <summary>
