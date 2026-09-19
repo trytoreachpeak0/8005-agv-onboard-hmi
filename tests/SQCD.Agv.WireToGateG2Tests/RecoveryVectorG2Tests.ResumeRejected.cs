@@ -321,6 +321,49 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// A refused resume that names some other recovery action says nothing about the session the
+    /// vehicle has on file, so that session is not forgotten: only the refusal of its own resume ends
+    /// it.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task ARefusedResumeForAnotherActionLeavesTheSessionOnFile()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            cargoInTargetSlots: true);
+        WireToGateRecoveryState state = await OpenResumeActionAsync(harness, token);
+
+        await harness.Server.SendCommandAsync(
+            "SlotOperationResumeCommand",
+            ResumeMessageId,
+            new
+            {
+                exceptionRecoverySessionId = state.ExceptionRecoverySessionId,
+                recoveryActionId = "abcdabcd-0000-4000-8000-00000000ac71",
+                demandId = DemandId,
+                slotOperationAttemptId = AttemptId,
+                provenRecoveryCheckpoint = WireCheckpoint(state.ProvenRecoveryCheckpoint),
+                slots = ResumeSlots,
+                commandContentSha256 = new string('0', 64)
+            });
+
+        JsonElement rejection = await WaitForSingleRejectionAsync(harness, token);
+        Assert.Equal(
+            "RECOVERY_AUTHENTICATION_FAILED",
+            rejection.GetProperty("payload").GetProperty("problem").GetProperty("reasonCode").GetString());
+        // The rejection is on file only after the release decided, so this read sees its outcome.
+        WireToGateRecoveryState after = await harness.ReadRecoveryStateAsync(token);
+        Assert.Equal(state.ExceptionRecoverySessionId, after.ExceptionRecoverySessionId);
+        Assert.Equal(state.RecoveryActionId, after.RecoveryActionId);
+        Assert.Equal(state.RecoverySessionRequestId, after.RecoverySessionRequestId);
+        Assert.Equal(state.RecoveryOperatorId, after.RecoveryOperatorId);
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
     /// The vehicle stopped after the rejection was on file and before the session it refused was
     /// forgotten. The restarted vehicle meets the same resume again, answers it from the rejection on
     /// file -- and must forget the session then, or every recovery entry stays refused with
