@@ -1,1 +1,9 @@
-[]
+[
+  {
+    "messageType": "VehicleBusinessStateSnapshot",
+    "pointer": "#/payload/loadingPhase",
+    "keyword": "anyOf",
+    "actual": "{\"state\":\"CLOSED\",\"cargoHoldingDeadlineAt\":null,\"closedReason\":null}",
+    "deliberate": "MultiDemandJourneyG2Tests.AClosedLoadingPhaseWithoutAReasonIsStillRefusedAndLeavesNoHalfState"
+  }
+]

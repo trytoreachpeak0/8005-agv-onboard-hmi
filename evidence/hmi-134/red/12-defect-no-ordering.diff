@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+index 8995071..4b6e692 100644
+--- a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
++++ b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+@@ -355,7 +355,7 @@ public sealed class MainViewModel : ViewModelBase
+     private void ReplaceJourneyPlanLegsCore(IReadOnlyList<WireToGateMovementLeg> legs)
+     {
+         JourneyPlanLegs.Clear();
+-        foreach (WireToGateMovementLeg leg in legs.OrderBy(leg => leg.Sequence))
++        foreach (WireToGateMovementLeg leg in legs)
+         {
+             JourneyPlanLegs.Add(new JourneyPlanLegRow(
+                 leg.Sequence,

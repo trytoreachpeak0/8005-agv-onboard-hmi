@@ -146,6 +146,75 @@ public sealed class WireToGateStopFactsTests
         Assert.Equal(string.Empty, WireToGateStopFacts.DirectionText(WireToGateJourneySnapshot.Empty));
     }
 
+    /// <summary>
+    /// Two items that agree on both fields show them in the top bar, exactly as one item would
+    /// (batch 7-13, <c>8005-agv-onboard-hmi#134</c>).
+    /// </summary>
+    [Fact]
+    public void TwoItemsThatAgreeShowTheirDirectionAndTaskType()
+    {
+        WireToGateJourneySnapshot journey = Journey(
+            [Item("WIRE_TO_GATE", "PICKUP"), Item("WIRE_TO_GATE", "PICKUP", "SUBLOT-002")]);
+
+        Assert.Equal("取货", WireToGateStopFacts.DirectionText(journey));
+        Assert.Equal("焊线→质检关卡", WireToGateStopFacts.TaskTypeText(journey));
+    }
+
+    /// <summary>
+    /// Items that disagree on the task type leave the top bar's task type empty -- no item is picked
+    /// to stand for the stop -- while the direction they share is still shown.
+    /// </summary>
+    [Fact]
+    public void ItemsThatDisagreeOnTheTaskTypeShowNoTaskTypeButTheSharedDirection()
+    {
+        WireToGateJourneySnapshot journey = Journey(
+            [Item("WIRE_TO_GATE", "PICKUP"), Item("WIRE_TO_OPTICAL", "PICKUP", "SUBLOT-002")]);
+
+        Assert.Equal(string.Empty, WireToGateStopFacts.TaskTypeText(journey));
+        Assert.Equal("取货", WireToGateStopFacts.DirectionText(journey));
+    }
+
+    /// <summary>
+    /// Items that disagree on the direction leave it empty, and do not fall back to the plan: the
+    /// worklist has arrived and is the authority at the stop.
+    /// </summary>
+    [Fact]
+    public void ItemsThatDisagreeOnTheDirectionShowNoDirectionAndDoNotReadThePlan()
+    {
+        WireToGateJourneySnapshot journey = Journey(
+            [Item("WIRE_TO_GATE", "PICKUP"), Item("WIRE_TO_GATE", "DROPOFF", "SUBLOT-002")],
+            Plan(Leg("TO_PICKUP", "ARRIVED")));
+
+        Assert.Equal(string.Empty, WireToGateStopFacts.DirectionText(journey));
+        Assert.Equal("焊线→质检关卡", WireToGateStopFacts.TaskTypeText(journey));
+    }
+
+    /// <summary>
+    /// Each row of the worklist carries its own item's direction and task type, from its own fields.
+    /// </summary>
+    [Fact]
+    public void EachWorklistRowCarriesItsOwnDirectionAndTaskType()
+    {
+        WireToGateWorklistItem pickup = Item("WIRE_TO_GATE", "PICKUP");
+        WireToGateWorklistItem dropoff = Item("STAGING_TO_WIRE", "DROPOFF", "SUBLOT-002");
+        WireToGateWorklistItem unknown = Item("WIRE_TO_OVEN", "PICKUP", "SUBLOT-003");
+
+        Assert.Equal("取货", WireToGateStopFacts.ItemDirectionText(pickup));
+        Assert.Equal("焊线→质检关卡", WireToGateStopFacts.ItemTaskTypeText(pickup));
+        Assert.Equal("卸货", WireToGateStopFacts.ItemDirectionText(dropoff));
+        Assert.Equal("待送→焊线机台", WireToGateStopFacts.ItemTaskTypeText(dropoff));
+        Assert.Equal(WireToGateStopFacts.UnknownTaskTypeText, WireToGateStopFacts.ItemTaskTypeText(unknown));
+    }
+
+    private static WireToGateJourneySnapshot Journey(
+        IReadOnlyList<WireToGateWorklistItem> items,
+        WireToGateUpcomingStopPlan? plan = null) =>
+        new(
+            null,
+            new WireToGateCurrentStopWorklist("ST-01", 1, null, null, items, new string('a', 64)),
+            plan,
+            DateTimeOffset.UnixEpoch);
+
     private static WireToGateJourneySnapshot Journey(WireToGateWorklistItem item, WireToGateUpcomingStopPlan? plan = null) =>
         new(
             null,
@@ -153,10 +222,10 @@ public sealed class WireToGateStopFactsTests
             plan,
             DateTimeOffset.UnixEpoch);
 
-    private static WireToGateWorklistItem Item(string workType, string stopRole) => new(
+    private static WireToGateWorklistItem Item(string workType, string stopRole, string sublot = "SUBLOT-001") => new(
         "11111111-1111-4111-8111-111111111111",
         "TD-001",
-        "SUBLOT-001",
+        sublot,
         workType,
         stopRole,
         2);

@@ -1,0 +1,97 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:01.71]     SQCD.Agv.UnitTests.LoadingPhaseTextTests.EachClosedReasonHasItsOwnSentence(closedReason: "PLANNED_LOADING_COMPLETE", expected: "本站计划装货已完成") [FAIL]
+[xUnit.net 00:00:01.73]     SQCD.Agv.UnitTests.LoadingPhaseTextTests.EachClosedReasonHasItsOwnSentence(closedReason: "WAITING_STATION_YIELD", expected: "另一辆车需要本站，本车结束等单，前往卸货") [FAIL]
+[xUnit.net 00:00:01.73]     SQCD.Agv.UnitTests.LoadingPhaseTextTests.EachClosedReasonHasItsOwnSentence(closedReason: "VEHICLE_FULL", expected: "已装满，本站装货结束") [FAIL]
+[xUnit.net 00:00:01.73]     SQCD.Agv.UnitTests.LoadingPhaseTextTests.EachClosedReasonHasItsOwnSentence(closedReason: "CARGO_HOLDING_TIMEOUT", expected: "等单已到期，本车结束等单，前往卸货") [FAIL]
+[xUnit.net 00:00:01.74]     SQCD.Agv.UnitTests.LoadingPhaseTextTests.VehicleFullSaysItLeavesOnceThePromisedWorkIsLoaded [FAIL]
+[xUnit.net 00:00:01.74]     SQCD.Agv.UnitTests.LoadingPhaseTextTests.CargoHoldingWithoutADeadlineShowsNoCountdown [FAIL]
+[xUnit.net 00:00:01.75]     SQCD.Agv.UnitTests.LoadingPhaseTextTests.CargoHoldingWithADeadlineShowsTheLatestDepartureAndTheTimeLeft [FAIL]
+  Failed SQCD.Agv.UnitTests.LoadingPhaseTextTests.EachClosedReasonHasItsOwnSentence(closedReason: "PLANNED_LOADING_COMPLETE", expected: "本站计划装货已完成") [30 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: Closed
+Actual:   None
+  Stack Trace:
+     at SQCD.Agv.UnitTests.LoadingPhaseTextTests.EachClosedReasonHasItsOwnSentence(String closedReason, String expected) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\LoadingPhaseTextTests.cs:line 105
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+  Failed SQCD.Agv.UnitTests.LoadingPhaseTextTests.EachClosedReasonHasItsOwnSentence(closedReason: "WAITING_STATION_YIELD", expected: "另一辆车需要本站，本车结束等单，前往卸货") [1 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: Closed
+Actual:   None
+  Stack Trace:
+     at SQCD.Agv.UnitTests.LoadingPhaseTextTests.EachClosedReasonHasItsOwnSentence(String closedReason, String expected) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\LoadingPhaseTextTests.cs:line 105
+   at InvokeStub_LoadingPhaseTextTests.EachClosedReasonHasItsOwnSentence(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Failed SQCD.Agv.UnitTests.LoadingPhaseTextTests.EachClosedReasonHasItsOwnSentence(closedReason: "VEHICLE_FULL", expected: "已装满，本站装货结束") [< 1 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: Closed
+Actual:   None
+  Stack Trace:
+     at SQCD.Agv.UnitTests.LoadingPhaseTextTests.EachClosedReasonHasItsOwnSentence(String closedReason, String expected) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\LoadingPhaseTextTests.cs:line 105
+   at InvokeStub_LoadingPhaseTextTests.EachClosedReasonHasItsOwnSentence(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Failed SQCD.Agv.UnitTests.LoadingPhaseTextTests.EachClosedReasonHasItsOwnSentence(closedReason: "CARGO_HOLDING_TIMEOUT", expected: "等单已到期，本车结束等单，前往卸货") [< 1 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: Closed
+Actual:   None
+  Stack Trace:
+     at SQCD.Agv.UnitTests.LoadingPhaseTextTests.EachClosedReasonHasItsOwnSentence(String closedReason, String expected) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\LoadingPhaseTextTests.cs:line 105
+   at InvokeStub_LoadingPhaseTextTests.EachClosedReasonHasItsOwnSentence(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithFewArgs(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+  Failed SQCD.Agv.UnitTests.LoadingPhaseTextTests.VehicleFullSaysItLeavesOnceThePromisedWorkIsLoaded [< 1 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: VehicleFull
+Actual:   None
+  Stack Trace:
+     at SQCD.Agv.UnitTests.LoadingPhaseTextTests.VehicleFullSaysItLeavesOnceThePromisedWorkIsLoaded() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\LoadingPhaseTextTests.cs:line 88
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Failed SQCD.Agv.UnitTests.LoadingPhaseTextTests.CargoHoldingWithoutADeadlineShowsNoCountdown [< 1 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: CargoHolding
+Actual:   None
+  Stack Trace:
+     at SQCD.Agv.UnitTests.LoadingPhaseTextTests.CargoHoldingWithoutADeadlineShowsNoCountdown() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\LoadingPhaseTextTests.cs:line 59
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Failed SQCD.Agv.UnitTests.LoadingPhaseTextTests.CargoHoldingWithADeadlineShowsTheLatestDepartureAndTheTimeLeft [< 1 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: CargoHolding
+Actual:   None
+  Stack Trace:
+     at SQCD.Agv.UnitTests.LoadingPhaseTextTests.CargoHoldingWithADeadlineShowsTheLatestDepartureAndTheTimeLeft() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\LoadingPhaseTextTests.cs:line 46
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+[xUnit.net 00:00:01.78]     SQCD.Agv.UnitTests.LoadingPhaseTextTests.CargoHoldingPastItsDeadlineOnlySaysItIsWaitingForTheServer [FAIL]
+[xUnit.net 00:00:01.78]     SQCD.Agv.UnitTests.LoadingPhaseTextTests.AnUnknownClosedReasonIsShownAsItsRawCode [FAIL]
+  Failed SQCD.Agv.UnitTests.LoadingPhaseTextTests.CargoHoldingPastItsDeadlineOnlySaysItIsWaitingForTheServer [< 1 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: CargoHolding
+Actual:   None
+  Stack Trace:
+     at SQCD.Agv.UnitTests.LoadingPhaseTextTests.CargoHoldingPastItsDeadlineOnlySaysItIsWaitingForTheServer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\LoadingPhaseTextTests.cs:line 75
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Failed SQCD.Agv.UnitTests.LoadingPhaseTextTests.AnUnknownClosedReasonIsShownAsItsRawCode [< 1 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: Closed
+Actual:   None
+  Stack Trace:
+     at SQCD.Agv.UnitTests.LoadingPhaseTextTests.AnUnknownClosedReasonIsShownAsItsRawCode() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\LoadingPhaseTextTests.cs:line 121
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+
+Failed!  - Failed:     9, Passed:     2, Skipped:     0, Total:    11, Duration: 107 ms - SQCD.Agv.UnitTests.dll (net8.0)

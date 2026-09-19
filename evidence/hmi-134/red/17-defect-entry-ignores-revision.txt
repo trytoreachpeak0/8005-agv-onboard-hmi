@@ -1,0 +1,30 @@
+## defect diff
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index 3d34e23..8c6ce49 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -516,7 +516,6 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+                 worklist.OperationSessionId,
+                 request.OperationSessionId,
+                 StringComparison.Ordinal)
+-            || worklist.Revision != request.WorklistRevision
+             || !string.Equals(worklist.StationId, request.StationId, StringComparison.Ordinal)
+             || !request.ExpectedSublots.Contains(sublot.Trim(), StringComparer.Ordinal))
+         {
+
+## test output
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWorklistRevisionArrivingBeforeTheEntryIsSubmittedRefusesItLocally [665 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.InvalidOperationException)
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWorklistRevisionArrivingBeforeTheEntryIsSubmittedRefusesItLocally() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.Paths.cs:line 227
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWorklistRevisionArrivingBeforeTheEntryIsSubmittedRefusesItLocally() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.Paths.cs:line 234
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 709 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
