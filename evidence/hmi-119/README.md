@@ -19,11 +19,14 @@
 | `06-keys-apart-mutant-shared-key.txt` | 同上 | 当前实现，但续行拒绝的键改成原始拒绝的格式 `slot-operation-rejected:{attempt}:{reason}` | 撞键：续行被当成「已拒绝过」，自己的拒绝没发出 |
 | `08-restart-no-extra-baseline.txt` | `ARestartSendsNoFurtherRejectionForAResumeAlreadyRejected` | `3547a97` | 服务端收不到拒绝 |
 | `10-new-session-after-close.txt` | `AfterARejectedResumeClosesItsSessionTheVehicleCanOpenAnother`（第 9 条，真装置配对验证 P-07 发现后补） | 测试提交（清会话记录之前） | 按「补偿清空」本地报 `RECOVERY_SESSION_STATE_PENDING` |
-| `11-restart-test-ack-race.txt` | 三个 G2 类一起跑时第 8 条偶发红 | 清会话记录的实现提交 | 测试自身的时序：重启赶在车记下 DurableAck 之前，握手补发了同一 messageId 的拒绝；断言随后改为「只有一个拒绝身份」 |
+| `11-restart-test-ack-race.txt` | 三个 G2 类一起跑时第 8 条偶发红 | 清会话记录的实现提交 | 测试自身的时序：重启赶在车记下 DurableAck 之前，握手补发了同一 messageId 的拒绝；最终改为重启前等车把 ack 记进日志、原断言不变 |
+| `08-restart-no-extra-baseline-final.txt` | 第 8 条最终版 | `3547a97` | 服务端收不到拒绝 |
 
 ## green/
 
-与上表同名的文件是同一条测试在对应实现提交上的通过记录；`00-all-new-tests.txt` 是最初 8 条一起跑；`09-after-merge-7ded1b7-g2-classes.txt` 是合并 hmi#120 之后；`11-g2-classes-after-release-fix.txt` 是补第 9 条修复后 `RecoveryVectorG2Tests`、`StationDeadlineExpiredG2Tests`、`WireToGateG2Tests` 三类 106 条。
+与上表同名的文件是同一条测试在对应实现提交上的通过记录；`00-all-new-tests.txt` 是最初 8 条一起跑；`09-after-merge-7ded1b7-g2-classes.txt` 是合并 hmi#120 之后；`11-g2-classes-after-release-fix.txt` 是补第 9 条修复后 `RecoveryVectorG2Tests`、`StationDeadlineExpiredG2Tests`、`WireToGateG2Tests` 三类 106 条（第 8 条中间版断言）；`12-g2-classes-final.txt` 是第 8 条恢复原断言后的同三类 106 条。
+
+`rig-4e5cfcd/`：`4e5cfcd` 上的真装置时段证据，见该目录 `README.md`。
 
 `07-after-pulse-settled-baseline.txt` 与 `07-after-pulse-settled.txt`：第 7 条
 `AResumeThatFailsAfterItsFirstPulseIsSettledNotRejected` 是回归护栏，防的是今后把开锁之后的失败也当成拒绝。
