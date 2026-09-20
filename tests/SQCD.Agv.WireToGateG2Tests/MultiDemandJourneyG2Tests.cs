@@ -258,7 +258,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             Action<FakeControlServer> configure,
             CancellationToken cancellationToken,
             string? journalPath = null,
-            FakeIoModuleClient? io = null)
+            FakeIoModuleClient? io = null,
+            Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null)
         {
             FakeControlServer server = new(IPAddress.Loopback)
             {
@@ -268,7 +269,12 @@ public sealed partial class MultiDemandJourneyG2Tests
             configure(server);
             try
             {
-                Harness started = await StartAgainstAsync(server, cancellationToken, journalPath, io);
+                Harness started = await StartAgainstAsync(
+                    server,
+                    cancellationToken,
+                    journalPath,
+                    io,
+                    wrapJournal);
                 started._ownsServer = true;
                 return started;
             }
@@ -283,16 +289,22 @@ public sealed partial class MultiDemandJourneyG2Tests
         /// A new vehicle process against a server that already exists: a restart. The harness that created
         /// the server keeps owning it.
         /// </summary>
+        /// <param name="wrapJournal">
+        /// A decorator over the journal the session, the business service and the operations feed all
+        /// share, for a test that has to fix an interleaving rather than wait for one.
+        /// </param>
         public static async Task<Harness> StartAgainstAsync(
             FakeControlServer server,
             CancellationToken cancellationToken,
             string? journalPath = null,
-            FakeIoModuleClient? io = null)
+            FakeIoModuleClient? io = null,
+            Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null)
         {
             io ??= new FakeIoModuleClient();
             RecordingLogger logger = new();
             StoppedVehicle safety = new();
             journalPath ??= NewJournalPath();
+            SqliteWireToGateJournal journal = new(journalPath);
 
             WireToGateSessionService session = new(
                 new WireToGateSessionOptions(
@@ -310,7 +322,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                     "eight-slot-modbus-v1",
                     SupportsBatchUnlock: false),
                 io,
-                new SqliteWireToGateJournal(journalPath),
+                wrapJournal?.Invoke(journal) ?? journal,
                 logger,
                 new SystemClock(),
                 safety,
@@ -553,7 +565,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             await StopServerAsync();
         }
 
-        private static string NewJournalPath()
+        internal static string NewJournalPath()
         {
             string directory = Path.Combine(Path.GetTempPath(), "w2g-multi-demand", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);
