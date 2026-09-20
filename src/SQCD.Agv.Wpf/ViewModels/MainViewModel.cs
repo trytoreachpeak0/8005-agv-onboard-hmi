@@ -32,6 +32,7 @@ public sealed class MainViewModel : ViewModelBase
     private const string LoadCorrectionScopeText = "只能修正本站最后一次装货";
     private string _loadCorrectionTargetText = LoadCorrectionScopeText;
     private string? _announcedCorrectionDemandId;
+    private string? _worklistOperationSessionId;
     private WireToGateLoadingPhase? _loadingPhase;
     private DispatcherTimer? _cargoHoldingTimer;
     private bool _hasCargoHoldingCountdown;
@@ -302,6 +303,7 @@ public sealed class MainViewModel : ViewModelBase
             : worklist.Items.Count == 0
                 ? $"{worklist.StationId} / 无待处理任务"
                 : worklist.StationId;
+        _worklistOperationSessionId = snapshot.CurrentStopWorklist?.OperationSessionId;
         ReplaceWorklistItemsCore(snapshot.CurrentStopWorklist?.Items ?? []);
         ReplaceJourneyPlanLegsCore(snapshot.UpcomingStopPlan?.Legs ?? []);
         // 持货那一行也是整值：新快照的 loadingPhase 变了或变为空（含断线清投影），这一行跟着变或消失。
@@ -697,7 +699,19 @@ public sealed class MainViewModel : ViewModelBase
         }
     }
 
-    public bool HasRecoveryFallbackTarget => RecoveryFallbackTargetText.Length > 0;
+    /// <summary>
+    /// 只在那三个入口至少有一个真的在屏幕上时才显示这一行。
+    /// </summary>
+    /// <remarks>
+    /// 文本非空不等于该显示：三个入口都要恢复管理员凭据，没有凭据的车上一个按钮都不出现，而
+    /// <c>LastCompletedLoadOperationContext</c> 照样在日志里——那时孤零零挂一句「目标：子批 X」，说的是
+    /// 一个操作员看不到也按不了的东西。
+    /// </remarks>
+    public bool HasRecoveryFallbackTarget =>
+        RecoveryFallbackTargetText.Length > 0
+        && (CanRequestLoadCompensation
+            || CanRequestFaultCargoHandoff
+            || CanRequestForcedMechanicalRecovery);
 
     /// <summary>
     /// 确认框里复述所选需求：子批号、任务类型与花篮数（批次7-14）。没有选中行时为空，确认框照旧只说通用那段。
@@ -757,7 +771,17 @@ public sealed class MainViewModel : ViewModelBase
         LoadCorrectionTargetText = SublotOf(demandId) is { } sublot
             ? $"{LoadCorrectionScopeText}：子批 {sublot}"
             : LoadCorrectionScopeText;
-        AnnounceClosedCorrectionWindowCore(demandId);
+        // 只有属于本停靠的那次装货参与「窗口关闭」的播报（票面：「本站又完成一次装货时」）。那次装货自己
+        // 记着它属于哪个 operationSessionId，所以这里不靠「上一次看到的是哪一站」去推——新站刚到时日志里
+        // 还是上一站那次装货，按「上一次看到的」推会把它当成本站的，下一次装完就冒出一句跨站的话。
+        AnnounceClosedCorrectionWindowCore(
+            state?.LastCompletedLoadOperationContext is { } settled
+                && string.Equals(
+                    settled.OperationSessionId,
+                    _worklistOperationSessionId,
+                    StringComparison.Ordinal)
+                ? settled.DemandId
+                : null);
         RecoveryFallbackTargetText = SublotOf(_wireToGateRecoveryFallbackDemandId?.Invoke()) is { } target
             ? $"目标：子批 {target}"
             : string.Empty;
@@ -774,8 +798,15 @@ public sealed class MainViewModel : ViewModelBase
     /// </remarks>
     private void AnnounceClosedCorrectionWindowCore(string? demandId)
     {
-        if (demandId is not null
-            && _announcedCorrectionDemandId is { } previous
+        if (demandId is null)
+        {
+            // 本停靠还没有完成的装货，也就没有窗口可关。清掉上一站记下的那条：留着它，下一站第一次装完
+            // 就会拿它去比，冒出一句跨站的话。
+            _announcedCorrectionDemandId = null;
+            return;
+        }
+
+        if (_announcedCorrectionDemandId is { } previous
             && !string.Equals(previous, demandId, StringComparison.Ordinal))
         {
             Logs.Add(new LogLineViewModel(
@@ -786,10 +817,7 @@ public sealed class MainViewModel : ViewModelBase
             TrimLogs();
         }
 
-        if (demandId is not null)
-        {
-            _announcedCorrectionDemandId = demandId;
-        }
+        _announcedCorrectionDemandId = demandId;
 
         string Describe(string id) => SublotOf(id) is { } sublot ? $"子批 {sublot}" : "上一次装货";
     }
@@ -960,12 +988,17 @@ public sealed class MainViewModel : ViewModelBase
 
     // The entry's own name has to be passed on: SetProperty's [CallerMemberName] would otherwise name this
     // helper, and the window's IsEnabled/Visibility bindings would never hear of the entry (onboard-hmi#112).
+    /// <remarks>
+    /// 三个回落入口的显隐变化要连带通知 <see cref="HasRecoveryFallbackTarget"/>：那一行的可见性取决于
+    /// 它们，而它自己没有独立的变更源。
+    /// </remarks>
     private void SetRecoveryEntry(ref bool field, bool value, [CallerMemberName] string? propertyName = null)
     {
         if (SetProperty(ref field, value, propertyName))
         {
             OnPropertyChanged(nameof(HasRecoveryReasonInput));
             OnPropertyChanged(nameof(HasRecoveryReasonCarriedOver));
+            OnPropertyChanged(nameof(HasRecoveryFallbackTarget));
         }
     }
 

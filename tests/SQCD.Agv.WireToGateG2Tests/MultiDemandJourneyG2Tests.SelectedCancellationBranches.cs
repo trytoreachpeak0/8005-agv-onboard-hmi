@@ -92,7 +92,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         await using Harness harness = await StartTwoItemStopAsync(
             journalPath,
             server => server.LoadCancellationDecision = "REJECTED",
-            token);
+            cancellationToken: token);
 
         // B is excluded locally -- the vehicle knows it loaded it.
         SelectWorklistItem(harness, DemandB);
@@ -141,10 +141,10 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(0, harness.Io.UnlockCount);
         Assert.Empty(harness.UiErrors);
         Assert.True(harness.Business.CanSubmitSublot);
+        // 断在操作记录上，不是业务层的事件流：这是给操作员看的正话，而屏幕才是他看的地方。
         Assert.Contains(
-            harness.Events,
-            item => item.Kind == "RECOVERY_BLOCKED"
-                && item.Message.Contains("请重新选择", StringComparison.Ordinal));
+            harness.ViewModel.Logs,
+            line => line.Message.Contains("请重新选择", StringComparison.Ordinal));
         // And the stop is still fully cancellable once a real row is named.
         Assert.True(await harness.Business.RequestLoadCancellationAsync(
             "重新选了一条。",
@@ -358,9 +358,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(0, harness.Io.UnlockCount);
         Assert.Empty(harness.UiErrors);
         Assert.Contains(
-            harness.Events,
-            item => item.Kind == "RECOVERY_BLOCKED"
-                && item.Message.Contains("取消结果以服务端为准", StringComparison.Ordinal));
+            harness.ViewModel.Logs,
+            line => line.Message.Contains("取消结果以服务端为准", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -403,21 +402,169 @@ public sealed partial class MultiDemandJourneyG2Tests
             token,
             journalPath,
             new FakeIoModuleClient { OperatorNeverActs = true });
-        // Both cases wait on the same fact -- the seeded state having reached the cache the entries
-        // read -- reported by whichever of the two the seed makes observable.
+        // Waited on the seeded state being in the cache the entries read, which is the precondition,
+        // and asserted on what the entries make of it. One wait for both cases: deriving the wait from
+        // `armed` would make each case wait on something the other does not, and a change to the
+        // startup order could then leave one of them asserting against an empty cache without failing.
         await harness.WaitUntilAsync(
-            () => armed
-                ? harness.Business.CurrentOperationSnapshot is not null
-                : harness.Business.RecoveryFallbackDemandId is not null,
+            () => harness.Business.CachedRecoveryStateForTest.LastCompletedLoadOperationContext is not null,
             "the seeded recovery state to reach the entry gates' cache",
             token);
 
         Assert.Equal(armed ? null : DemandB, harness.Business.RecoveryFallbackDemandId);
         harness.ViewModel.RefreshWireToGateInputState();
-        Assert.Equal(!armed, harness.ViewModel.HasRecoveryFallbackTarget);
         Assert.Equal(
             armed ? string.Empty : "目标：子批 SUBLOT-B",
             harness.ViewModel.RecoveryFallbackTargetText);
+        // 这台车是出厂配置（recoveryResumeEnabled=false），三个回落入口一个都不出现，所以这一行也不显示
+        // ——文案说得出来不等于该显示。这一点由 MultiDemandViewModelTests 的
+        // WithNoFallbackEntryOnScreenTheTargetLineIsNotShownEither 单独钉住。
+        Assert.False(harness.ViewModel.HasRecoveryFallbackTarget);
+    }
+
+    /// <summary>
+    /// The stop has shrunk to one item and it is <b>not</b> the one picked: the press is refused, not
+    /// quietly redirected to the only row left.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why "one item" is not a shortcut.</b> The window is real and this ticket widened it: the
+    /// session layer replaces <c>CurrentStopWorklist</c> the moment the snapshot lands, while the view
+    /// clears a selection that is gone only when the dispatcher gets to
+    /// <c>RebuildWorklistItemsCore</c> -- wider still on a machine under memory pressure. A press in
+    /// that window carries a demand the worklist no longer names, and reading "exactly one item" as
+    /// "then that is the subject" cancels a task the operator never chose.
+    /// </para>
+    /// <para>
+    /// <c>WithOneItemNoPickIsNeededAndPassingOneChangesNothingOnTheWire</c> cannot see this: the pick
+    /// it passes <i>is</i> that one item, so it is green whether or not the implementation reads the
+    /// pick at all.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task APickThatIsNoLongerTheOnlyRemainingItemIsRefusedRatherThanRedirected()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartTwoItemStopAsync(cancellationToken: token);
+        await ShrinkStopToAAsync(harness, token);
+
+        // Pressed with B still picked, the way the view would while its rebuild is still queued.
+        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+            "选中 B 之后清单只剩 A 了，还是按了一次。",
+            DemandB,
+            token));
+
+        Assert.Empty(Received(harness, "LoadCancellationStartRequested"));
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.Empty(harness.UiErrors);
+        Assert.Contains(
+            harness.ViewModel.Logs,
+            line => line.Message.Contains("请重新选择", StringComparison.Ordinal));
+        // And not a word about a resend: nothing has been sent for this stop.
+        Assert.DoesNotContain(
+            harness.ViewModel.Logs,
+            line => line.Message.Contains("这一次按下是它的重发", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// An unanswered cancellation from an earlier stop does not lock this vehicle out of both the
+    /// cancellation entry and sublot entry for the rest of its journey.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What this ticket nearly broke.</b> <c>PendingLoadCancellation</c> is cleared on a refusal,
+    /// on <c>WIRE_TO_GATE_NOT_READY</c> and on an acknowledged result -- but not when the request
+    /// throws <c>IOException</c> or times out. Before this ticket a stale one was harmless: the next
+    /// stop derived its own cancellationId, overwrote the entry and the server's answer cleared it.
+    /// Reading the journal first turns that into a dead end -- the stale id matches nothing here, so
+    /// nothing is sent and nothing clears it -- and <c>CanSubmitSublot</c> is <c>&amp;&amp;
+    /// !IsLoadCancellationBeforeSublotOpen</c>, so sublot entry is shut too. Every stop after it.
+    /// </para>
+    /// <para>
+    /// The way out keeps this ticket's rule ("never redirect to another demand") and drops only the
+    /// local wait: nothing is sent, the operator is told the answer is the server's, and the entry is
+    /// released so the next press is a new first press. It is safe because a demand that left this
+    /// stop's worklist does not come back under the same operation session.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task AStaleCancellationFromAnEarlierStopDoesNotShutThisStopDown()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        // A cancellation recorded under another operation session, never answered.
+        string journalPath = await NewJournalSeededAsync(
+            WireToGateRecoveryState.Empty with
+            {
+                PendingLoadCancellation = new WireToGatePendingLoadCancellation(
+                    "11111111-2222-4333-8444-555555555555",
+                    null,
+                    "operator-000",
+                    "SESSION",
+                    DateTimeOffset.UtcNow.AddHours(-1),
+                    "上一站按的取消，没等到答复。")
+            },
+            token);
+        await using Harness harness = await StartTwoItemStopAsync(
+            journalPath,
+            awaitSublotEntry: false,
+            cancellationToken: token);
+        await harness.WaitUntilAsync(
+            () => harness.Business.IsLoadCancellationBeforeSublotOpen,
+            "the stale pending cancellation to reach the entry gates' cache",
+            token);
+        // This is the lockout: with it on file the vehicle can neither cancel nor scan.
+        Assert.False(harness.Business.CanSubmitSublot);
+
+        Assert.False(await harness.Business.RequestLoadCancellationAsync(
+            "本站按一次取消。",
+            DemandB,
+            token));
+
+        // Nothing went out for the stale one, and the local wait is over.
+        Assert.Empty(Received(harness, "LoadCancellationStartRequested"));
+        Assert.False(harness.Business.IsLoadCancellationBeforeSublotOpen);
+        Assert.Null((await ReadRecoveryStateAsync(journalPath, token)).PendingLoadCancellation);
+        Assert.True(harness.Business.CanSubmitSublot);
+
+        // The next press is a new first press, about the demand the operator picked.
+        Assert.True(await harness.Business.RequestLoadCancellationAsync(
+            "再按一次。",
+            DemandB,
+            token));
+        Assert.Equal(
+            DemandB,
+            Assert.Single(Received(harness, "LoadCancellationStartRequested"))
+                .GetProperty("demandId").GetString());
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>Replaces the stop with A alone, entry request included, and waits for both.</summary>
+    private static async Task ShrinkStopToAAsync(Harness harness, CancellationToken cancellationToken)
+    {
+        await harness.Server.SendJourneySnapshotAsync(
+            "CurrentStopWorklistSnapshot",
+            Payloads.Worklist(2, Payloads.ItemA));
+        await harness.Server.SendCommandAsync(
+            "SublotEntryRequested",
+            Guid.NewGuid().ToString("D"),
+            new
+            {
+                operationSessionId = OperationSessionId,
+                stationId = "ST-01",
+                worklistRevision = 2,
+                expectedSublots = SublotAOnly,
+                entryMethods = FrozenEntryMethods,
+                expiresOnRevisionChange = true
+            });
+        await harness.WaitUntilAsync(
+            () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2
+                && harness.Business.ExpectedSublots is ["SUBLOT-A"],
+            "the stop to become A alone, entry request included",
+            cancellationToken);
     }
 
     /// <summary><c>SublotEntryRequested</c> freezes these as a <c>const</c> array in its schema.</summary>

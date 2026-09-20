@@ -40,7 +40,10 @@ $checks = [ordered]@{
     # 多条清单项时扫码前取消由操作员在清单里选需求（批次7-14，onboard-hmi#135）：清单可选中，取消入口照常
     # 出现、没选中时按不动，旁边一句提示说要先选。取代批次7-13 那个「暂不可用」的占位按钮。
     selectableWorklistItems = ($xaml -match 'SelectedItem="\{Binding SelectedWorklistItem, Mode=TwoWay\}"') -and ($xaml -match '<ListBox[^>]*AutomationProperties\.AutomationId="WorklistItems"')
-    loadCancellationSelectionHint = ($xaml -match 'AutomationProperties\.AutomationId="LoadCancellationSelection"') -and ($xaml -match 'Text="\{Binding LoadCancellationSelectionHintText\}"') -and ($xaml -match 'Binding HasLoadCancellationSelectionHint, Converter') -and ($xaml -match 'IsEnabled="\{Binding CanPressLoadCancellation\}"[^>]*Content="取消装货"')
+    # 显隐绑「入口在不在」、可按与否绑「按得动吗」，两个必须是不同的绑定：把 Visibility 也绑成
+    # CanPressLoadCancellation，按钮在没选中时就整个消失了——那正是批次7-13 立这条检查要防的退化，
+    # 而视图模型的判据看不见 XAML 绑定，这里是它唯一的守卫。
+    loadCancellationSelectionHint = ($xaml -match 'AutomationProperties\.AutomationId="LoadCancellationSelection"') -and ($xaml -match 'Text="\{Binding LoadCancellationSelectionHintText\}"') -and ($xaml -match 'Binding HasLoadCancellationSelectionHint, Converter') -and ($xaml -match 'IsEnabled="\{Binding CanPressLoadCancellation\}"[^>]*Visibility="\{Binding CanRequestLoadCancellation, Converter[^>]*Content="取消装货"')
     # 「暂不可用」那句已被替换，不该再留在界面上：留着会和新提示同时出现，说两件互相矛盾的事。
     noLoadCancellationUnavailableHint = ($xaml -notmatch 'LoadCancellationUnavailable') -and ($xaml -notmatch '扫码前取消暂不可用')
     loadCorrectionTarget = ($xaml -match 'AutomationProperties\.AutomationId="LoadCorrectionTarget"') -and ($xaml -match 'Text="\{Binding LoadCorrectionTargetText\}"')

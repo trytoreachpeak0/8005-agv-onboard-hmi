@@ -363,9 +363,17 @@ public sealed partial class WireToGateBusinessService
         SentSelectionMissing
     }
 
+    /// <param name="SubjectFromJournal">
+    /// Whether <paramref name="Target"/> was recovered from the journaled <c>PendingLoadCancellation</c>
+    /// rather than chosen now. Carried out of the search rather than inferred afterwards from
+    /// "the pick and the target differ": they also differ when the pick names a demand this stop no
+    /// longer has, and telling the operator "this press is a resend" there would name a request that
+    /// was never sent.
+    /// </param>
     private sealed record LoadCancellationBeforeSublotOutcome(
         LoadCancellationBeforeSublotAvailability Availability,
-        LoadCancellationBeforeSublotTarget? Target);
+        LoadCancellationBeforeSublotTarget? Target,
+        bool SubjectFromJournal = false);
 
     /// <summary>
     /// The demand a cancellation before any sublot would cancel, or why there is none.
@@ -442,24 +450,34 @@ public sealed partial class WireToGateBusinessService
                     StringComparison.Ordinal));
             return sentItem is null
                 ? new(LoadCancellationBeforeSublotAvailability.SentSelectionMissing, null)
-                : JudgeLoadCancellationBeforeSublot(state, sentItem, request);
+                : JudgeLoadCancellationBeforeSublot(state, sentItem, request) with
+                {
+                    SubjectFromJournal = true
+                };
         }
 
-        if (worklist.Items.Count == 1)
+        // The pick is checked against this worklist BEFORE the "exactly one item" case, not after.
+        // Reading one item as "then that is the subject" would cancel it while the operator has a
+        // demand picked that this stop no longer carries -- the window between the session layer
+        // taking a new snapshot and the view clearing a selection that is gone (onboard-hmi#135
+        // review). One item is a case of "nobody had to pick", never a reason to ignore a pick.
+        Core.WireToGateWorklistItem? picked = selectedDemandId is null
+            ? null
+            : worklist.Items.FirstOrDefault(
+                item => string.Equals(item.DemandId, selectedDemandId, StringComparison.Ordinal));
+        if (selectedDemandId is not null && picked is null)
         {
-            return JudgeLoadCancellationBeforeSublot(state, worklist.Items[0], request);
+            return new(LoadCancellationBeforeSublotAvailability.SelectionMissing, null);
         }
 
-        if (selectedDemandId is null)
+        if (picked is not null)
         {
-            return new(LoadCancellationBeforeSublotAvailability.SelectionRequired, null);
+            return JudgeLoadCancellationBeforeSublot(state, picked, request);
         }
 
-        Core.WireToGateWorklistItem? picked = worklist.Items.FirstOrDefault(
-            item => string.Equals(item.DemandId, selectedDemandId, StringComparison.Ordinal));
-        return picked is null
-            ? new(LoadCancellationBeforeSublotAvailability.SelectionMissing, null)
-            : JudgeLoadCancellationBeforeSublot(state, picked, request);
+        return worklist.Items.Count == 1
+            ? JudgeLoadCancellationBeforeSublot(state, worklist.Items[0], request)
+            : new(LoadCancellationBeforeSublotAvailability.SelectionRequired, null);
     }
 
     private static readonly LoadCancellationBeforeSublotOutcome NoLoadCancellationBeforeSublot =
@@ -775,18 +793,37 @@ public sealed partial class WireToGateBusinessService
                         "所选任务已不在本站清单，请重新选择要取消的任务。 ");
                     return false;
                 case LoadCancellationBeforeSublotAvailability.SentSelectionMissing:
-                    // Deliberately not retried against another demand: the one asked about is the
-                    // one the server answers for, and its next snapshot or refusal closes this.
+                    // Deliberately not retried against another demand: the one asked about is the one
+                    // the server answers for. What IS dropped is this end's wait for it.
+                    //
+                    // Without that, an unanswered cancellation whose demand has left the worklist --
+                    // including one left behind by an earlier stop, since a request that throws or
+                    // times out clears nothing -- would match no item here for the rest of the
+                    // journey, so nothing would ever be sent and nothing would ever clear it. And
+                    // CanSubmitSublot is `&& !IsLoadCancellationBeforeSublotOpen`, so that would shut
+                    // sublot entry at every later stop too. Before this ticket the next stop derived
+                    // its own cancellationId and the server's answer cleared the entry; reading the
+                    // journal first took that way out away, so it is given back here (review of
+                    // onboard-hmi#135). Safe because a demand that left this stop's worklist does not
+                    // come back under the same operation session -- the id a later press derives is a
+                    // new one, not a second version of this one.
+                    if (state.PendingLoadCancellation is { CancellationId: { } staleId })
+                    {
+                        await ForgetLoadCancellationRequestAsync(staleId, cancellationToken)
+                            .ConfigureAwait(false);
+                    }
+
                     PublishOperatorResponse(
                         "RECOVERY_BLOCKED",
-                        "原选择的任务已不在本站清单，取消结果以服务端为准。 ");
+                        "原选择的任务已不在本站清单，取消结果以服务端为准；本机不再等待它，可以继续扫码或重新选择。 ");
                     return false;
                 default:
                     throw new InvalidOperationException("RECOVERY_OPERATION_CONTEXT_MISSING");
             }
         }
 
-        if (selectedDemandId is not null
+        if (outcome.SubjectFromJournal
+            && selectedDemandId is not null
             && !string.Equals(selectedDemandId, target.DemandId, StringComparison.Ordinal))
         {
             // The subject came from the journal, so this press is the resend of a cancellation that

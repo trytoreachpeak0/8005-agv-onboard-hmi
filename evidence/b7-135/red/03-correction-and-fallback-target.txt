@@ -1,0 +1,50 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:01.32]     SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.TheLoadCorrectionEntryNamesTheSublotOfTheLastCompletedLoad [FAIL]
+[xUnit.net 00:00:01.33]     SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.TheFallbackRecoveryEntriesNameTheTargetSublotOnlyWhenTheyFallBack [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.TheLoadCorrectionEntryNamesTheSublotOfTheLastCompletedLoad [6 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "只能修正本站最后一次装货：子批 SUBLOT-B"
+Actual:   "修正对象：子批 SUBLOT-B"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.TheLoadCorrectionEntryNamesTheSublotOfTheLastCompletedLoad() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 471
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.TheLoadCorrectionEntryNamesTheSublotOfTheLastCompletedLoad() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 477
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.TheFallbackRecoveryEntriesNameTheTargetSublotOnlyWhenTheyFallBack [2 ms]
+  Error Message:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.TheFallbackRecoveryEntriesNameTheTargetSublotOnlyWhenTheyFallBack() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 573
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.TheFallbackRecoveryEntriesNameTheTargetSublotOnlyWhenTheyFallBack() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 580
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:01.40]     SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.AnUnknownCorrectionTargetIsNamedAsTheLastLoadAtThisStop [FAIL]
+[xUnit.net 00:00:01.41]     SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.ASecondLoadAtTheSameStopClosesTheFirstCorrectionWindowAndSaysSo [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.AnUnknownCorrectionTargetIsNamedAsTheLastLoadAtThisStop [1 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "只能修正本站最后一次装货"
+Actual:   "修正对象：本站最后一次装货"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.AnUnknownCorrectionTargetIsNamedAsTheLastLoadAtThisStop() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 503
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.AnUnknownCorrectionTargetIsNamedAsTheLastLoadAtThisStop() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 503
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.ASecondLoadAtTheSameStopClosesTheFirstCorrectionWindowAndSaysSo [1 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "只能修正本站最后一次装货：子批 SUBLOT-A"
+Actual:   "修正对象：子批 SUBLOT-A"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.ASecondLoadAtTheSameStopClosesTheFirstCorrectionWindowAndSaysSo() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 536
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.ASecondLoadAtTheSameStopClosesTheFirstCorrectionWindowAndSaysSo() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 546
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     4, Passed:    16, Skipped:     0, Total:    20, Duration: 267 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

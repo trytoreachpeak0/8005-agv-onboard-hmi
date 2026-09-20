@@ -1,0 +1,44 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  SQCD.Agv.Core -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\src\SQCD.Agv.Core\bin\Debug\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Contracts -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Debug\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Infrastructure -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Debug\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.Application -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Debug\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.AutomationHost -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Debug\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Wpf -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.Wpf.dll
+  SQCD.Agv.SchemaConformance -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tools\SQCD.Agv.SchemaConformance\bin\Debug\net8.0\win-x64\SQCD.Agv.SchemaConformance.dll
+  SQCD.Agv.WireToGateG2Tests -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:07.00]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AcrossARestartTheRetryStillNamesThePickedDemandWithNothingPicked [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AcrossARestartTheRetryStillNamesThePickedDemandWithNothingPicked [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the cancellation-before-sublot entry to be offered. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 565
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.StartStopAsync(String[] expectedSublots, Object[] items, String journalPath, Action`1 configure, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.OperatorSelectedCancellation.cs:line 260
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.StartStopAsync(String[] expectedSublots, Object[] items, String journalPath, Action`1 configure, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.OperatorSelectedCancellation.cs:line 269
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AcrossARestartTheRetryStillNamesThePickedDemandWithNothingPicked() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.OperatorSelectedCancellation.cs:line 155
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:14.32]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ThePickedDemandIsTheOneCancelledAndTheOtherIsNotNamedAtAll [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ThePickedDemandIsTheOneCancelledAndTheOtherIsNotNamedAtAll [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the cancellation-before-sublot entry to be offered. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 565
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.StartStopAsync(String[] expectedSublots, Object[] items, String journalPath, Action`1 configure, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.OperatorSelectedCancellation.cs:line 260
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.StartStopAsync(String[] expectedSublots, Object[] items, String journalPath, Action`1 configure, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.OperatorSelectedCancellation.cs:line 269
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ThePickedDemandIsTheOneCancelledAndTheOtherIsNotNamedAtAll() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.OperatorSelectedCancellation.cs:line 44
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:19.41]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.WithTwoItemsAndNothingPickedTheEntryIsDisabledAndNothingIsSent [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.WithTwoItemsAndNothingPickedTheEntryIsDisabledAndNothingIsSent [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the cancellation-before-sublot entry to be offered. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 565
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.StartStopAsync(String[] expectedSublots, Object[] items, String journalPath, Action`1 configure, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.OperatorSelectedCancellation.cs:line 260
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.StartStopAsync(String[] expectedSublots, Object[] items, String journalPath, Action`1 configure, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.OperatorSelectedCancellation.cs:line 269
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.WithTwoItemsAndNothingPickedTheEntryIsDisabledAndNothingIsSent() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-135-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.OperatorSelectedCancellation.cs:line 77
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     3, Passed:     1, Skipped:     0, Total:     4, Duration: 18 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

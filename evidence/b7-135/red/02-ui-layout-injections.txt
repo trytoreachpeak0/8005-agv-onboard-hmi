@@ -1,0 +1,46 @@
+=== 注入 01 删掉「请先选择」那句提示 ===
+Status: FAIL
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mloadCancellationSelectionHint[0m
+
+=== 注入 02 把清单的 SelectedItem 绑定去掉 ===
+Status: FAIL
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mselectableWorklistItems[0m
+
+=== 注入 03 按钮 IsEnabled 改回旧的入口开关 ===
+Status: FAIL
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mloadCancellationSelectionHint[0m
+
+=== 注入 04 把批次7-13 那句「暂不可用」塞回去 ===
+Status: FAIL
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mloadCancellationSelectionHint noLoadCancellationUnavailableHint[0m
+
+
+=== 注入 05 Visibility 也绑成 CanPressLoadCancellation（按钮会整个消失） ===
+预期红：loadCancellationSelectionHint
+Status: FAIL
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mloadCancellationSelectionHint[0m
+
+=== 注入 06 清单 ListBox 的 AutomationId 去掉 ===
+预期红：selectableWorklistItems, visibleWorklistItems
+Status: FAIL
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mvisibleWorklistItems selectableWorklistItems[0m
+
+=== 注入 07 回落目标那一行的 AutomationId 去掉 ===
+预期红：recoveryFallbackTarget
+Status: FAIL
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mrecoveryFallbackTarget[0m
+
+=== 注入 08 回落目标那一行的 Text 绑定改错 ===
+预期红：recoveryFallbackTarget
+Status: FAIL
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mrecoveryFallbackTarget[0m
+
+=== 注入 09 回落目标那一行的显隐绑定去掉 ===
+预期红：recoveryFallbackTarget
+Status: FAIL
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mrecoveryFallbackTarget[0m
+
+=== 注入 10 只把旧的「暂不可用」提示额外加回来，不动新提示 ===
+预期红：noLoadCancellationUnavailableHint
+Status: FAIL
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mnoLoadCancellationUnavailableHint[0m

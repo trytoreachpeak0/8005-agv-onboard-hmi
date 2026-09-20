@@ -155,7 +155,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         await using Harness first = await StartTwoItemStopAsync(
             journalPath,
             server => server.LoadCancellationAuthorizationsToDrop = 1,
-            token);
+            cancellationToken: token);
         SelectWorklistItem(first, DemandB);
         Assert.False(await first.ViewModel.RequestLoadCancellationAsync(token));
         await first.StopVehicleAsync();
@@ -204,10 +204,12 @@ public sealed partial class MultiDemandJourneyG2Tests
             retried.RootElement.GetProperty("payload").GetProperty("demandId").GetString());
         Assert.Empty(first.Server.RecoveryRequestConflicts);
         Assert.Equal(0, afterRestart.Io.UnlockCount);
-        // And the operator is told, rather than left to infer it from a screen that still highlights A.
+        // On the screen, not merely in the event stream: the whole point of this line is that the
+        // operator has A highlighted while B is what goes out, and a message he never sees fixes
+        // nothing.
         Assert.Contains(
-            afterRestart.Events,
-            item => item.Message.Contains("这一次按下是它的重发", StringComparison.Ordinal));
+            afterRestart.ViewModel.Logs,
+            line => line.Message.Contains("这一次按下是它的重发", StringComparison.Ordinal));
     }
 
     /// <summary>A stop of these items, with the fake answering cancellation requests.</summary>
@@ -244,24 +246,33 @@ public sealed partial class MultiDemandJourneyG2Tests
     private static Task<Harness> StartTwoItemStopAsync(
         string? journalPath = null,
         Action<FakeControlServer>? configure = null,
+        bool awaitSublotEntry = true,
         CancellationToken cancellationToken = default) =>
         StartStopAsync(
             ["SUBLOT-A", "SUBLOT-B"],
             [Payloads.ItemA, Payloads.ItemB],
             journalPath,
             configure,
+            awaitSublotEntry,
             cancellationToken);
 
     private static Task<Harness> StartOneItemStopAsync(
         Action<FakeControlServer>? configure = null,
         CancellationToken cancellationToken = default) =>
-        StartStopAsync(["SUBLOT-A"], [Payloads.ItemA], journalPath: null, configure, cancellationToken);
+        StartStopAsync(
+            ["SUBLOT-A"],
+            [Payloads.ItemA],
+            journalPath: null,
+            configure,
+            awaitSublotEntry: true,
+            cancellationToken);
 
     private static async Task<Harness> StartStopAsync(
         string[] expectedSublots,
         object[] items,
         string? journalPath,
         Action<FakeControlServer>? configure,
+        bool awaitSublotEntry,
         CancellationToken cancellationToken)
     {
         Harness harness = await Harness.StartAsync(
@@ -274,8 +285,10 @@ public sealed partial class MultiDemandJourneyG2Tests
             // Two waits, not one: a single condition over both would report "the worklist never
             // arrived" for an entry that is simply not offered, which is the defect these tests are
             // about.
+            // A seeded pending cancellation shuts sublot entry, so a test that starts from one waits
+            // on the worklist alone and on its own signal for the seed having landed.
             await harness.WaitUntilAsync(
-                () => harness.Business.CanSubmitSublot
+                () => (harness.Business.ExpectedSublots is not null || !awaitSublotEntry)
                     && harness.ViewModel.WorklistItems.Count == items.Length,
                 $"the {items.Length}-item worklist and the entry request to arrive",
                 cancellationToken);

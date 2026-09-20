@@ -523,8 +523,9 @@ public sealed class MultiDemandViewModelTests
             canRequestLoadCorrection: () => true,
             loadCorrectionRequester: _ => Task.FromResult(true));
         viewModel.UpdateWireToGateStatus(Session());
-        viewModel.UpdateWireToGateJourney(Journey(Worklist(
+        viewModel.UpdateWireToGateJourney(Journey(WorklistInSession(
             1,
+            StopSessionId,
             Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2),
             Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
 
@@ -581,6 +582,77 @@ public sealed class MultiDemandViewModelTests
     }
 
     /// <summary>
+    /// 三个入口一个都没出现时（没有恢复管理员凭据，或者还没到能恢复的状态）不显示这一行——哪怕日志里
+    /// 确实有一次已结算的装货，能说出目标子批（批次7-14 审查）。
+    /// </summary>
+    /// <remarks>
+    /// 否则界面上会孤零零挂一句「目标：子批 X」，指着一个操作员既看不到也按不了的东西。
+    /// </remarks>
+    [Fact]
+    public async Task WithNoFallbackEntryOnScreenTheTargetLineIsNotShownEither()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => false,
+            canRequestLoadCompensation: () => false,
+            canRequestFaultCargoHandoff: () => false,
+            canRequestForcedMechanicalRecovery: () => false,
+            recoveryFallbackDemandId: () => DemandB);
+        viewModel.UpdateWireToGateStatus(Session());
+        viewModel.UpdateWireToGateJourney(Journey(Worklist(
+            1,
+            Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2),
+            Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
+
+        // 文案说得出来——目标就是 B——但一个入口都没出现，所以这一行不该在。
+        Assert.Equal("目标：子批 SUBLOT-B", viewModel.RecoveryFallbackTargetText);
+        Assert.False(viewModel.HasRecoveryFallbackTarget);
+    }
+
+    /// <summary>
+    /// 「修正窗口已关闭」只说本站的事：换了一次停靠（新的 <c>operationSessionId</c>）之后第一次装完货，
+    /// 不会冒出一句「上一站那条的窗口关了」（批次7-14 审查）。
+    /// </summary>
+    [Fact]
+    public async Task TheCorrectionWindowLineDoesNotCarryAcrossStops()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => false,
+            canRequestLoadCorrection: () => true,
+            loadCorrectionRequester: _ => Task.FromResult(true));
+        viewModel.UpdateWireToGateStatus(Session());
+        const string nextStopSessionId = "99999999-9999-4999-8999-999999999999";
+        viewModel.UpdateWireToGateJourney(Journey(WorklistInSession(
+            1,
+            StopSessionId,
+            Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2))));
+        viewModel.UpdateJournaledOperations(WireToGateRecoveryState.Empty with
+        {
+            LastCompletedLoadOperationContext = WireToGateRecoveryOperationContext.FromCommand(Command(DemandA, [1]))
+        });
+        Assert.Equal("只能修正本站最后一次装货：子批 SUBLOT-A", viewModel.LoadCorrectionTargetText);
+
+        // 下一站：新的 operationSessionId，清单换成 B，那里又装完一次。
+        viewModel.UpdateWireToGateJourney(Journey(WorklistInSession(
+            2,
+            nextStopSessionId,
+            Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
+        viewModel.UpdateJournaledOperations(WireToGateRecoveryState.Empty with
+        {
+            LastCompletedLoadOperationContext =
+                WireToGateRecoveryOperationContext.FromCommand(Command(DemandB, [2], nextStopSessionId))
+        });
+
+        Assert.Equal("只能修正本站最后一次装货：子批 SUBLOT-B", viewModel.LoadCorrectionTargetText);
+        Assert.DoesNotContain(viewModel.Logs, line => line.Message.Contains("修正窗口", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// 新一版清单里没有选中那条需求时选择清空，提示回到「请先在清单中选择」；还在的话选择保住，哪怕整行是
     /// 重建出来的新对象（批次7-14）。
     /// </summary>
@@ -625,13 +697,18 @@ public sealed class MultiDemandViewModelTests
         Assert.Equal(string.Empty, viewModel.LoadCancellationConfirmationDetailText);
     }
 
-    internal static WireToGateSlotOperationCommand Command(string demandId, IReadOnlyList<int> slots) => new(
+    internal const string StopSessionId = "77777777-7777-4777-8777-777777777777";
+
+    internal static WireToGateSlotOperationCommand Command(
+        string demandId,
+        IReadOnlyList<int> slots,
+        string operationSessionId = StopSessionId) => new(
         Guid.NewGuid().ToString("D"),
         null,
         1,
         Now,
         demandId,
-        "77777777-7777-4777-8777-777777777777",
+        operationSessionId,
         Guid.NewGuid().ToString("D"),
         OperationType.Load,
         slots,
@@ -672,6 +749,13 @@ public sealed class MultiDemandViewModelTests
 
     internal static WireToGateCurrentStopWorklist Worklist(long revision, params WireToGateWorklistItem[] items) =>
         WorklistAt(revision, null, items);
+
+    /// <summary>同一个站名下换一次停靠：新的 <c>operationSessionId</c>。</summary>
+    internal static WireToGateCurrentStopWorklist WorklistInSession(
+        long revision,
+        string? operationSessionId,
+        params WireToGateWorklistItem[] items) =>
+        new("ST-01", revision, operationSessionId, null, items, new string('b', 64));
 
     internal static WireToGateCurrentStopWorklist WorklistAt(
         long revision,
