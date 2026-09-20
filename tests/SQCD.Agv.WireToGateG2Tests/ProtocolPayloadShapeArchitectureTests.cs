@@ -302,8 +302,8 @@ public sealed class ProtocolPayloadShapeArchitectureTests
                     Guid.NewGuid().ToString("D"),
                     new string('a', 40),
                     CredentialVariable,
-                    TimeSpan.FromSeconds(2),
-                    TimeSpan.FromSeconds(5),
+                    G2SessionTimeouts.Connect,
+                    G2SessionTimeouts.Message,
                     1,
                     1,
                     "eight-slot-v1",
@@ -496,11 +496,22 @@ public sealed class ProtocolPayloadShapeArchitectureTests
     private static string Sha256Of(string value) =>
         WireToGateProtocolSerializer.ComputeSha256(Encoding.UTF8.GetBytes(value));
 
+    /// <summary>
+    /// Bounded on purpose. This wait used to have no limit of its own: a fact that never arrived
+    /// hung the test process until the CI job timed out and was cancelled -- and cancelling a job
+    /// on a self-hosted runner wedges the runner session, which this repository has exactly one of.
+    /// </summary>
     private static async Task WaitUntilAsync(Func<bool> predicate, CancellationToken cancellationToken)
     {
+        StallAwareDeadline deadline = new(TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(25));
         while (!predicate())
         {
-            await Task.Delay(25, cancellationToken).ConfigureAwait(false);
+            if (deadline.HasExpired)
+            {
+                Assert.Fail($"Timed out after {deadline.Describe()} waiting for a protocol shape probe.");
+            }
+
+            await deadline.PollAsync(cancellationToken);
         }
     }
 

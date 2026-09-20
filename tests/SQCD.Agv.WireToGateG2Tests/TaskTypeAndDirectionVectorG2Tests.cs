@@ -182,11 +182,16 @@ public sealed class TaskTypeAndDirectionVectorG2Tests
 
     private static async Task WaitUntilAsync(Func<bool> predicate, CancellationToken cancellationToken)
     {
-        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(5));
+        StallAwareDeadline deadline = new(TimeSpan.FromSeconds(5));
         while (!predicate())
         {
-            await Task.Delay(5, timeout.Token);
+            if (deadline.HasExpired)
+            {
+                throw new OperationCanceledException(
+                    $"Timed out after {deadline.Describe()} waiting for a G2 condition.");
+            }
+
+            await deadline.PollAsync(cancellationToken);
         }
     }
 
@@ -261,8 +266,8 @@ public sealed class TaskTypeAndDirectionVectorG2Tests
                 Guid.NewGuid().ToString("D"),
                 new string('a', 40),
                 CredentialVariable,
-                TimeSpan.FromSeconds(2),
-                TimeSpan.FromSeconds(2),
+                G2SessionTimeouts.Connect,
+                G2SessionTimeouts.Message,
                 1,
                 1,
                 "eight-slot-v1",

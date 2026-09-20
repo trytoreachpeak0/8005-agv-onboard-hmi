@@ -1698,8 +1698,13 @@ public sealed partial class WireToGateG2Tests
         await using WireToGateSessionClient client = CreateClient(server, io, journalPath);
 
         await client.ConnectAndRecoverAsync(testToken);
+        // Both facts, because the assertions below read both. Waiting on the vehicle's readiness
+        // alone left the ProtocolProblem assertion racing the double's reader: the vehicle writes
+        // that line and drops the session, so Disconnected arrives while the double may not yet
+        // have read it.
         await WaitUntilAsync(
-            () => client.Current.Readiness == WireToGateSessionReadiness.Disconnected,
+            () => client.Current.Readiness == WireToGateSessionReadiness.Disconnected
+                && server.Received.Any(item => item.MessageType == "ProtocolProblem"),
             testToken);
 
         Assert.Equal(WireToGateJourneySnapshot.Empty, client.CurrentJourney);
@@ -2594,9 +2599,17 @@ public sealed partial class WireToGateG2Tests
         Assert.Equal(2L, recovered.SessionGeneration!.Value);
 
         // 修复前这里会永远停在 2（第一条加它的重放），第三条永远不来：重放被认下之后签名又变回原值，
-        // 而车静止、签名不变，去重把重发挡住了。等的和断的是同一个对象——收到的 SafetyStateChanged
-        // 条数，不是服务端的受理计数——否则安全评估周期（500 ms）再转一轮多出一条就会把断言弄红。
-        await WaitUntilAsync(() => ReceivedCount(server, "SafetyStateChanged") == 3, testToken);
+        // 而车静止、签名不变，去重把重发挡住了。
+        //
+        // 等到「受理数到 2」，不是「收到 3 条」。替身在分发之前就把消息记进 ReceivedEnvelopes
+        // （FakeControlServer 的 RecordMessage），受理发生在其后的 switch 分支里，中间隔着 await：
+        // 等「收到 3 条」会在第三条还没受理时就放行，而恰恰是第三条把受理数从 1 推到 2
+        // （前两条 messageId 相同，只记一次）。实测红过一次，Expected 2 / Actual 1。
+        //
+        // 反过来等受理数是安全的：受理严格晚于记录，所以受理数到 2 时三条一定都已记下。原注释
+        // 担心的是「等受理数会让安全评估周期（500 ms）多转出一条把断言弄红」——那一条若真会来，
+        // 下面 changed.Length == 3 本来就会红，与等的是哪个量无关。
+        await WaitUntilAsync(() => server.AcceptedSafetyStateChangedCount == 2, testToken);
 
         var changed = server.ReceivedEnvelopes
             .Where(item => item.MessageType == "SafetyStateChanged")
@@ -3095,8 +3108,8 @@ public sealed partial class WireToGateG2Tests
             onboardInstanceId ?? Guid.NewGuid().ToString("D"),
             new string('a', 40),
             CredentialVariable,
-            TimeSpan.FromSeconds(2),
-            messageTimeout ?? TimeSpan.FromSeconds(2),
+            G2SessionTimeouts.Connect,
+            messageTimeout ?? G2SessionTimeouts.Message,
             capability,
             safety,
             "eight-slot-v1",
@@ -3112,11 +3125,19 @@ public sealed partial class WireToGateG2Tests
 
     private static async Task WaitUntilAsync(Func<bool> predicate, CancellationToken cancellationToken)
     {
-        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(2));
+        // Still an OperationCanceledException on timeout, and still 2s of it: WaitBrieflyUntilAsync
+        // and WaitAtMostUntilAsync read that exception as "it did not happen", and the callers of
+        // those read silence as the answer.
+        StallAwareDeadline deadline = new(TimeSpan.FromSeconds(2));
         while (!predicate())
         {
-            await Task.Delay(5, timeout.Token);
+            if (deadline.HasExpired)
+            {
+                throw new OperationCanceledException(
+                    $"Timed out after {deadline.Describe()} waiting for a G2 condition.");
+            }
+
+            await deadline.PollAsync(cancellationToken);
         }
     }
 

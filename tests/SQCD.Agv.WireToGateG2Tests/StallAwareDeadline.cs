@@ -92,11 +92,14 @@ internal sealed class StallAwareDeadline
     /// </summary>
     internal void ObservePoll(TimeSpan actual)
     {
-        // Nothing is given back yet, so this deadline is still the plain wall clock it replaces:
-        // _stalled is held at zero and HasExpired reduces to "elapsed > base". The tests that
-        // follow fail here, which is the point -- they are what says the wall clock was the defect.
-        _ = actual;
-        _stalled = TimeSpan.Zero;
+        if (actual <= StallThreshold || _stalled >= StallBudget)
+        {
+            return;
+        }
+
+        TimeSpan remaining = StallBudget - _stalled;
+        TimeSpan excess = actual - StallThreshold;
+        _stalled += excess < remaining ? excess : remaining;
     }
 
     /// <summary>
