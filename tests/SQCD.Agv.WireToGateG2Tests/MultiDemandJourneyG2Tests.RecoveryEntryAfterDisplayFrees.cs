@@ -7,8 +7,8 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// <summary>
 /// What happens to the recovery entry that onboard-hmi#152 withheld: the attempt whose result was
 /// never acknowledged still has to reach the operator once the command that had the doors is done
-/// with them -- and only then, and only once (batch 7-156,
-/// <c>trytoreachpeak0/8005-agv-onboard-hmi#156</c>).
+/// with them -- and only then, only once, and only if it is still the recovery the operator has to
+/// make (batch 7-156, <c>trytoreachpeak0/8005-agv-onboard-hmi#156</c>).
 /// </summary>
 /// <remarks>
 /// <para>
@@ -26,7 +26,8 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// Once B has taken the display, <c>NoOtherAttemptOwnsOperationDisplay(A)</c> is false for the rest
 /// of the process: not null, and not A. So withholding the claim until a snapshot is carried would
 /// leave the entry just as invisible; the moment the doors actually come free is a separate fact,
-/// and these tests are about the entry arriving at it and not arriving twice.
+/// and these tests are about the entry arriving at it, not arriving twice, and not arriving at all
+/// when the doors come free on a recovery of somebody else's.
 /// </para>
 /// <para>
 /// <b>The interleaving is made, not raced for</b>, the same way and for the same reason as in
@@ -39,6 +40,10 @@ public sealed partial class MultiDemandJourneyG2Tests
 {
     /// <summary>The line B publishes once its own result has been acknowledged.</summary>
     private const string BResultAcceptedLine = "5号仓操作结果已被服务端确认。";
+
+    /// <summary>The line B publishes when its own result is the one that needs recovery.</summary>
+    private const string BResultNeedsRecoveryLine =
+        "5号仓操作失败或状态未知，服务端已收到结果，等待管理员恢复。";
 
     /// <summary>A third command at the same stop, for the run where the doors come free twice.</summary>
     private const string AttemptC = "44444444-0000-4444-8444-00000000000c";
@@ -66,7 +71,9 @@ public sealed partial class MultiDemandJourneyG2Tests
             wrapJournal: inner => window = new RestoreWindowJournal(inner, AttemptA, AttemptB));
         using ReleaseOnExit releaseHeldWrite = new(() => window!.Release());
 
-        await DriveWithheldRecoveryEntryToTheScreenAsync(harness, io, window!, token);
+        await DriveAOwedWhileBHoldsTheDoorsAsync(harness, io, window!, token);
+        await FinishBSuccessfullyAsync(harness, io, token);
+        await WaitForAsRecoveryEntryAsync(harness, token);
 
         WireToGateHmiOperationSnapshot carried = harness.Business.CurrentOperationSnapshot!;
         Assert.Equal([1], carried.Slots);
@@ -86,7 +93,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
 
         // Twice, and both are wanted: once when the fact was learned, once when it became something
-        // the operator can act on. Only the second carries the entry.
+        // the operator can act on. Only one of the two carries the entry.
         await AssertWhileAsync(
             DisplaySettleWindow,
             () => AssertRecoveryEntryAnnouncedExactlyTwice(harness),
@@ -121,7 +128,9 @@ public sealed partial class MultiDemandJourneyG2Tests
             wrapJournal: inner => window = new RestoreWindowJournal(inner, AttemptA, AttemptB));
         using ReleaseOnExit releaseHeldWrite = new(() => window!.Release());
 
-        await DriveWithheldRecoveryEntryToTheScreenAsync(harness, io, window!, token);
+        await DriveAOwedWhileBHoldsTheDoorsAsync(harness, io, window!, token);
+        await FinishBSuccessfullyAsync(harness, io, token);
+        await WaitForAsRecoveryEntryAsync(harness, token);
 
         // A third command at the same stop: it takes the doors, runs, is acknowledged and releases
         // them, which is the second time in this process that nothing is executing.
@@ -155,10 +164,78 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
-    /// A ends <c>UNKNOWN</c> with its acknowledgement lost while B is at the doors, B finishes, and
-    /// A's recovery entry reaches the screen. Returns once the business service holds it.
+    /// B does not finish cleanly: its own result is the one that needs recovery. Its recovery is what
+    /// the operator has to act on, and A's withheld entry must not take the screen off it.
     /// </summary>
-    private static async Task DriveWithheldRecoveryEntryToTheScreenAsync(
+    /// <remarks>
+    /// <para>
+    /// <b>The fault this guards is onboard-hmi#152's, displaced by a few seconds.</b> B announces its
+    /// own recovery and then, in the same <c>finally</c>, gives its claim up -- and a debt paid
+    /// unconditionally there puts A's slots on screen over B's. <c>MainViewModel</c> takes any
+    /// non-null operation on an event, so the screen then reads "1号仓需要恢复" while the attempt the
+    /// server is waiting on is B.
+    /// </para>
+    /// <para>
+    /// <b>And it does not come back.</b> B's own restore round returns at the announcement claim,
+    /// which B has already taken; A's debt is not cleared either, because by then the journal's
+    /// unsettled attempt is B and the round returns before it gets that far. The operator is left
+    /// pointed at the wrong slot for the rest of the process.
+    /// </para>
+    /// <para>
+    /// <b>Why onboard-hmi#152's own tests cannot see this.</b> Their B never finishes -- the operator
+    /// never acts on its door -- so nothing there ever reaches a release with a debt outstanding.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AWithheldRecoveryEntryDoesNotTakeTheScreenOffTheCommandThatNeedsRecoveryItself()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true, KeepSnapshotFresh = true };
+        RestoreWindowJournal? window = null;
+        await using Harness harness = await StartTwoDemandStopAsync(
+            io,
+            token,
+            // Two dropped acks are A's own and its resend's; B's result is acknowledged, so B
+            // concludes and announces its own recovery rather than waiting on an acknowledgement.
+            server => server.OperationResultAcksToDrop = 2,
+            wrapJournal: inner => window = new RestoreWindowJournal(inner, AttemptA, AttemptB));
+        using ReleaseOnExit releaseHeldWrite = new(() => window!.Release());
+
+        await DriveAOwedWhileBHoldsTheDoorsAsync(harness, io, window!, token);
+
+        // B's own lock feedback goes unreadable, the same way A's did: B ends UNKNOWN and needs an
+        // administrator itself.
+        io.SetUnreadable(4);
+        await harness.WaitUntilAsync(
+            () => OperatorLog(harness).Contains(BResultNeedsRecoveryLine),
+            "B's own result to need recovery",
+            token);
+
+        // B is the recovery the operator has to make, and the screen has to go on saying so.
+        await AssertWhileAsync(
+            DisplaySettleWindow,
+            () =>
+            {
+                WireToGateHmiOperationSnapshot? current = harness.Business.CurrentOperationSnapshot;
+                Assert.NotNull(current);
+                Assert.Equal(AttemptB, current.SlotOperationAttemptId);
+                Assert.Equal([5], current.Slots);
+                Assert.Equal(WireToGateHmiOperationStage.RecoveryRequired, current.Stage);
+            },
+            token);
+
+        // A's line went out once, when it was withheld, and A's entry never followed: B's recovery
+        // supersedes it.
+        Assert.Single(harness.Events, item => item.Message == RecoveryRestoredLine);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// A ends <c>UNKNOWN</c> with its acknowledgement lost while B is at the doors: A's recovery line
+    /// goes to the operator without a snapshot (onboard-hmi#152), which is the debt the rest of these
+    /// tests are about.
+    /// </summary>
+    private static async Task DriveAOwedWhileBHoldsTheDoorsAsync(
         Harness harness,
         FakeIoModuleClient io,
         RestoreWindowJournal window,
@@ -206,38 +283,48 @@ public sealed partial class MultiDemandJourneyG2Tests
             "A's restored recovery line to reach the operator",
             token);
         Assert.Null(harness.Events.Single(item => item.Message == RecoveryRestoredLine).Operation);
+    }
 
-        // The operator loads B's basket and shuts its door: B reports, is acknowledged, and is done
-        // with the display.
+    /// <summary>The operator loads B's basket and shuts its door; B reports and is acknowledged.</summary>
+    private static async Task FinishBSuccessfullyAsync(
+        Harness harness,
+        FakeIoModuleClient io,
+        CancellationToken token)
+    {
         io.CloseDoor(4, cargo: true);
         await harness.WaitUntilAsync(
             () => OperatorLog(harness).Contains(BResultAcceptedLine),
             "B's result to be acknowledged",
             token);
+    }
 
-        // The thing this ticket is about. A is still the unsettled attempt as far as the server is
-        // concerned, and nothing is at the doors any more, so the entry the operator acts from has to
-        // be on screen.
-        await harness.WaitUntilAsync(
+    /// <summary>
+    /// A is still the attempt the server is waiting on, and nothing is at the doors any more, so the
+    /// entry the operator acts from has to be on screen.
+    /// </summary>
+    private static Task WaitForAsRecoveryEntryAsync(Harness harness, CancellationToken token) =>
+        harness.WaitUntilAsync(
             () => harness.Business.CurrentOperationSnapshot?.SlotOperationAttemptId == AttemptA
                 && harness.Business.CurrentOperationSnapshot?.Stage
                     == WireToGateHmiOperationStage.RecoveryRequired,
             "A's recovery entry to reach the screen once B has finished with the display",
             token);
-    }
 
     /// <summary>
     /// A's recovery line has gone to the operator exactly twice: once withheld, once carrying the
     /// entry. Asserted on the events rather than on the log, because only the events say what each
-    /// one carried.
+    /// one carried, and without pinning which of the two is which: the claim being taken once is what
+    /// bounds the count, not any order between them.
     /// </summary>
     private static void AssertRecoveryEntryAnnouncedExactlyTwice(Harness harness)
     {
         WireToGateOperatorEvent[] announced =
             [.. harness.Events.Where(item => item.Message == RecoveryRestoredLine)];
         Assert.Equal(2, announced.Length);
-        Assert.Null(announced[0].Operation);
-        Assert.Equal(WireToGateHmiOperationStage.RecoveryRequired, announced[1].Operation?.Stage);
-        Assert.Equal(AttemptA, announced[1].Operation?.SlotOperationAttemptId);
+        WireToGateOperatorEvent carrying = Assert.Single(
+            announced,
+            item => item.Operation is not null);
+        Assert.Equal(WireToGateHmiOperationStage.RecoveryRequired, carrying.Operation!.Stage);
+        Assert.Equal(AttemptA, carrying.Operation.SlotOperationAttemptId);
     }
 }
