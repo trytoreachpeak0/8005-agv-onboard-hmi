@@ -498,11 +498,21 @@ public sealed partial class MultiDemandJourneyG2Tests
         /// The worklist rows as (sublot, side code), read without tripping over a rebuild.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// In the product every view-model update runs on the WPF dispatcher, so nothing reads a
         /// collection while it is being rebuilt. There is no dispatcher here: the journal read that
         /// gives a row its side publishes on whatever thread it finished on, and a test enumerating at
         /// that instant sees "Collection was modified". That is this harness's race, not the product's,
         /// so it is read again rather than asserted on.
+        /// </para>
+        /// <para>
+        /// <b>The race has two exceptions, not one.</b> Enumerating across a change throws
+        /// <c>InvalidOperationException</c>; an indexed read past a collection that has shrunk in the
+        /// meantime throws <c>ArgumentOutOfRangeException</c>, which <c>Select</c> reaches through its
+        /// <c>IList</c> fast path. Measured here on 2026-09-20: a rebuild of the worklist rows during
+        /// a read produced the second one and failed a test for a reason that had nothing to do with
+        /// what it was asserting.
+        /// </para>
         /// </remarks>
         public (string Sublot, string SideCode)[] WorklistRows() =>
             ReadStable(() => ViewModel.WorklistItems.Select(row => (row.Sublot, row.SideCode)).ToArray());
@@ -518,7 +528,9 @@ public sealed partial class MultiDemandJourneyG2Tests
                 {
                     return read();
                 }
-                catch (InvalidOperationException) when (attempt < 50)
+                catch (Exception exception)
+                    when (exception is InvalidOperationException or ArgumentOutOfRangeException
+                        && attempt < 50)
                 {
                     Thread.Sleep(5);
                 }
