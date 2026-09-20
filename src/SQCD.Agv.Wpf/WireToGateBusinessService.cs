@@ -45,8 +45,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private readonly HashSet<string> _operationAttempts = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// The attempt this process executed and gave a conclusion to -- its result is on file, acknowledged or
-    /// not. It decides the wording: such an attempt is this run's, never a previous process's.
+    /// The attempt this process <b>executed</b> and gave a conclusion to -- its result is on file, acknowledged or
+    /// not. It decides the wording: such an attempt is this run's, never a previous process's. Settling a leftover
+    /// does not count as executing it and never writes this (onboard-hmi#139 review F-1): the interrupted
+    /// settlement only closes out what a previous process opened, and that stays "上次" however its result fared.
     /// </summary>
     /// <remarks>
     /// Both marks here live under <see cref="_operationAttemptGate"/>, alongside the in-flight claim they take
@@ -789,25 +791,33 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     }
 
     /// <summary>
-    /// Records that this process executed <paramref name="attemptId"/> and gave it a conclusion, and -- when
-    /// <paramref name="announced"/> -- that the OPERATION_RECOVERY_REQUIRED for it has gone out
-    /// (onboard-hmi#139). Called while this process still holds the attempt's claim, so a restore either finds
-    /// the claim and stops at <see cref="InterruptedOperationSettlement.InFlight"/> or finds these marks --
-    /// never neither, however closely the server's appended RECOVERY_REQUIRED follows the result's ack.
+    /// Records that this process executed <paramref name="attemptId"/> and gave it a conclusion. Only the two
+    /// paths that <i>run</i> an operation call it; settling a leftover does not (review F-1).
     /// </summary>
-    /// <param name="announced">
-    /// False when the result's DurableAck never came: nothing was announced, so the restore that resends it is
-    /// the operator's only way to the recovery entry and must still publish (onboard-hmi#131, onboard-hmi#109).
-    /// </param>
-    private void MarkConcludedHere(string attemptId, bool announced)
+    private void MarkConcludedHere(string attemptId)
     {
         lock (_operationAttemptGate)
         {
             _attemptConcludedHereId = attemptId;
-            if (announced)
-            {
-                _recoveryAnnouncedAttemptId = attemptId;
-            }
+        }
+    }
+
+    /// <summary>
+    /// Records that the OPERATION_RECOVERY_REQUIRED for <paramref name="attemptId"/> has gone out
+    /// (onboard-hmi#139). Called while this process still holds the attempt's claim, so a restore either finds
+    /// the claim and stops at <see cref="InterruptedOperationSettlement.InFlight"/> or finds this mark -- never
+    /// neither, however closely the server's appended RECOVERY_REQUIRED follows the result's ack.
+    /// </summary>
+    /// <remarks>
+    /// Not called when the result's DurableAck never came: nothing was announced then, so the restore that
+    /// resends it is the operator's only way to the recovery entry and must still publish (onboard-hmi#131,
+    /// onboard-hmi#109).
+    /// </remarks>
+    private void MarkRecoveryAnnounced(string attemptId)
+    {
+        lock (_operationAttemptGate)
+        {
+            _recoveryAnnouncedAttemptId = attemptId;
         }
     }
 
@@ -1131,8 +1141,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 if (!completedSuccessfully)
                 {
                     // The announcement is about to go out, recorded before the claim is released below so that
-                    // no restore can slip between the two (onboard-hmi#139).
-                    MarkConcludedHere(attemptId, announced: true);
+                    // no restore can slip between the two (onboard-hmi#139). The wording mark is deliberately not
+                    // written: this attempt is a previous process's, and closing it out here does not make it
+                    // this run's (review F-1).
+                    MarkRecoveryAnnounced(attemptId);
                 }
 
                 PublishOperatorEvent(
@@ -1154,13 +1166,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     nameof(WireToGateBusinessService),
                     $"中断操作的结算结果暂未收到DurableAck：attempt={attemptId}。",
                     exception);
-                if (!completedSuccessfully)
-                {
-                    // Concluded here, nothing announced: the restore that resends the result publishes the
-                    // recovery entry, and words it as this run's (onboard-hmi#139).
-                    MarkConcludedHere(attemptId, announced: false);
-                }
-
+                // Nothing is marked: nothing was announced, and a leftover stays a leftover. The next recovery
+                // decision resends the result and publishes the entry as "上次…" (review F-1).
                 PublishOperatorEvent(
                     $"interrupted-operation-result-pending:{attemptId}",
                     "RESULT_ACK_PENDING",
@@ -2091,10 +2098,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 }
                 if (!completedSuccessfully)
                 {
-                    // The announcement is about to go out. Recorded while the attempt's claim is still held, so
-                    // the restore the server's appended RECOVERY_REQUIRED starts finds either the claim or this
-                    // mark -- never neither, however closely the two arrive (onboard-hmi#139).
-                    MarkConcludedHere(command.SlotOperationAttemptId, announced: true);
+                    // This process ran it, and the announcement is about to go out. Both are recorded while the
+                    // attempt's claim is still held, so the restore the server's appended RECOVERY_REQUIRED
+                    // starts finds either the claim or these marks -- never neither, however closely the two
+                    // arrive (onboard-hmi#139).
+                    MarkConcludedHere(command.SlotOperationAttemptId);
+                    MarkRecoveryAnnounced(command.SlotOperationAttemptId);
                 }
 
                 PublishOperatorEvent(
@@ -2130,10 +2139,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 resultUnacknowledged = true;
                 if (!completedSuccessfully)
                 {
-                    // Concluded here, nothing announced: the restore below resends the result and publishes the
-                    // recovery entry -- the operator's only way to it (onboard-hmi#131, onboard-hmi#109) -- and
-                    // words it as this run's rather than as a previous process's (onboard-hmi#139).
-                    MarkConcludedHere(command.SlotOperationAttemptId, announced: false);
+                    // This process ran it, but nothing was announced: the restore below resends the result and
+                    // publishes the recovery entry -- the operator's only way to it (onboard-hmi#131,
+                    // onboard-hmi#109) -- and words it as this run's rather than as a previous process's
+                    // (onboard-hmi#139).
+                    MarkConcludedHere(command.SlotOperationAttemptId);
                 }
 
                 PublishOperatorEvent(

@@ -117,8 +117,10 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// <c>RECOVERY_REQUIRED</c>，车上仍只有执行路径发的那一条。
     /// </summary>
     /// <remarks>
-    /// 守护用例，基线即绿：钉住的是「去重不能靠删掉恢复判断来做」和「FAILED 这条路不许长出第二条提示」。
-    /// 反向验证见 PR 正文：把去重判断改成无条件投影后它变红。
+    /// 半条守护用例，说清楚哪一格在基线上就绿：「只出现一次」那一格是——<c>FAILED</c> 根本不进日志，恢复判断
+    /// 读不到上下文；而 <c>DoesNotContain("上次")</c> 那一格在 <c>ae45627</c> 基线上必红，那里这条投影一律叫
+    /// 「上次…」。它钉住的是「去重不能靠删掉恢复判断来做」和「FAILED 这条路不许长出第二条提示」。反向验证见
+    /// PR 正文：要让「只出现一次」那一格红，得同时注入「预检拒绝也写日志」与「去重判断恒 false」两处。
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-03")]
@@ -205,6 +207,66 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.DoesNotContain("上次", events, StringComparison.Ordinal);
         Assert.Equal(WireToGateHmiOperationStage.RecoveryRequired, harness.Business.CurrentOperationSnapshot?.Stage);
         await harness.AssertRecoveryRequiredStaysAtAsync(1, token);
+    }
+
+    /// <summary>
+    /// 上个进程留下的 attempt 在「中断结算的结果发不出去」这一支上，措辞照旧是「上次…」。中断结算只处理遗留，
+    /// 本进程从来没有执行过它——只是替它收了尾——所以无论结算的结果有没有送到，它都不是本进程的操作
+    /// （onboard-hmi#139 独立审查 F-1）。
+    /// </summary>
+    /// <remarks>
+    /// 组合是三样凑一起：重启后有遗留 → 中断结算报 <c>UNKNOWN</c> 而结果的 <c>DurableAck</c> 没回来（只发
+    /// <c>RESULT_ACK_PENDING</c>）→ 下一轮恢复判断重发成功、走到投影。`AckPendingNotUnfinished.cs` 那几条都
+    /// 不是这个组合：它们的 attempt 是本进程执行的。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ALeftoverWhoseSettlementResultCouldNotBeSentIsStillRestoredAsLastTimes()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Harness.NewJournalPath();
+        FakeControlServer first;
+        await using (Harness beforeRestart = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true },
+            token,
+            server => server.StationDepartureDeadlineAt = null,
+            journalPath: journalPath))
+        {
+            first = beforeRestart.Server;
+            await beforeRestart.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
+        }
+
+        SettlementProbeJournal? probe = null;
+        await using Harness afterRestart = await Harness.StartAsync(
+            new FakeIoModuleClient(),
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.AdoptDurableRecoveryMemoryFrom(first);
+                // The interrupted settlement's result gets no ack, so it ends in RESULT_ACK_PENDING with nothing
+                // announced; the restore resends it and publishes the recovery entry.
+                server.OperationResultAcksToDrop = 1;
+                server.SendReadinessAfterSafetyStateChangedAck = true;
+            },
+            journalPath: journalPath,
+            baselineRevision: 2,
+            wrapJournal: inner => probe = new SettlementProbeJournal(inner, $"operation-result:{AttemptId}"));
+
+        // The settlement runs inside the handshake readiness's own recovery decision and returns TakenOver, so it
+        // publishes nothing; the entry comes from the next decision, which resends the result and gets its ack.
+        await afterRestart.WaitForEventAsync("RESULT_ACK_PENDING", token);
+        await afterRestart.LetTwoMoreRecoveryDecisionsRunAsync(() => probe!.SettlementReads, token);
+        await afterRestart.WaitForEventAsync("OPERATION_RECOVERY_REQUIRED", token);
+
+        string events = afterRestart.DescribeEvents();
+        Assert.Contains("上次装货操作未完成：1号仓，需要管理员恢复。", events, StringComparison.Ordinal);
+        Assert.Equal(0, afterRestart.Io.UnlockCount);
+        Assert.Equal(
+            WireToGateHmiOperationStage.RecoveryRequired,
+            afterRestart.Business.CurrentOperationSnapshot?.Stage);
     }
 
     private static int CountRecoveryRequired(string events) =>

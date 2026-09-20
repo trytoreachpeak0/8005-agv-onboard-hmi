@@ -168,9 +168,15 @@ public sealed partial class StationDeadlineExpiredG2Tests
             "the unfinished result sent once more",
             token,
             harness.DescribeEvents);
+        // 等的是「这一条事件本身是新措辞」，不是「事件表里出现过这个子串」：新措辞是旧措辞的子串，只等子串的话
+        // 等待就不再区分新旧，区分全压在下面那句对整张表的 DoesNotContain 上——将来任何一条带「上次」的事件
+        // （例如恢复向量那条「上次按下的装货取消…」）走进这条路径都会把它误判成红。
         await Harness.WaitUntilAsync(
-            () => harness.DescribeEvents().Contains("装货操作未完成：1号仓，需要管理员恢复。", StringComparison.Ordinal),
-            "the recovery entry's projection after the refused resend",
+            () => harness.DescribeEvents().Split(Environment.NewLine).Any(line =>
+                line.StartsWith("OPERATION_RECOVERY_REQUIRED:", StringComparison.Ordinal)
+                && line.Contains("装货操作未完成：1号仓，需要管理员恢复。", StringComparison.Ordinal)
+                && !line.Contains("上次", StringComparison.Ordinal)),
+            "the recovery entry's projection after the refused resend, worded as this run's",
             token,
             harness.DescribeEvents);
 
