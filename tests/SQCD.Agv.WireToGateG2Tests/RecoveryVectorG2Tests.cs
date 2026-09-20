@@ -243,24 +243,42 @@ public sealed partial class RecoveryVectorG2Tests
     /// <c>BindRecoveryVectorCommandAsync</c> can catch it. The slots hold cargo here, which is what
     /// makes <c>UnlockCount</c> worth asserting: had the command been accepted, the executor would
     /// have pulsed the first slot before anything else could fail.
+    /// <para>
+    /// The refusal is answered on the wire since onboard-hmi#145 (b): the server's workflow is
+    /// waiting in <c>AwaitingResult</c> for this command, and nothing else would ever end that wait.
+    /// The result echoes the <b>command's</b> handoff, not the one this end prepared, because the
+    /// workflow it has to land on is the one the command came from. Why that is the right answer
+    /// rather than a claim about slots nobody touched is argued in
+    /// <c>RecoveryVectorG2Tests.BindRefusalResult.cs</c>.
+    /// </para>
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
-    public async Task FaultCargoCommandNamingADifferentHandoffIsRefusedWithoutSlotIo()
+    public async Task FaultCargoCommandNamingADifferentHandoffIsRefusedWithAFailedResult()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
+        const string CommandHandoffId = "5a5a5a5a-5a5a-4a5a-8a5a-5a5a5a5a5a5a";
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
             token,
-            server => server.FaultCargoRecoveryHandoffIdOverride =
-                "5a5a5a5a-5a5a-4a5a-8a5a-5a5a5a5a5a5a",
+            server => server.FaultCargoRecoveryHandoffIdOverride = CommandHandoffId,
             cargoInTargetSlots: true);
 
         Assert.True(await harness.Business.RequestFaultCargoHandoffAsync(
             "现场确认故障仓货物需要交接处理。", token));
-        await harness.WaitForRecoveryBlockedAsync(token);
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_SCOPE_MISMATCH", token);
 
-        Assert.Empty(harness.ResultsOfType("FaultCargoRecoveryResult"));
+        JsonElement result = await harness.WaitForResultAsync("FaultCargoRecoveryResult", token);
+        // One, not "at least one": the old assertion was Assert.Empty, so without this the change from
+        // silence to an answer would also stop noticing a vehicle that answers twice.
+        Assert.Single(harness.ResultsOfType("FaultCargoRecoveryResult"));
+        Assert.Equal("FAILED", result.GetProperty("overallOutcome").GetString());
+        Assert.Equal(CommandHandoffId, result.GetProperty("handoffId").GetString());
+        Assert.Equal(
+            ["NOT_STARTED", "NOT_STARTED"],
+            result.GetProperty("slotResults").EnumerateArray()
+                .Select(slot => slot.GetProperty("outcome").GetString()!)
+                .ToArray());
         Assert.Equal(0, harness.Io.UnlockCount);
     }
 
@@ -767,6 +785,12 @@ public sealed partial class RecoveryVectorG2Tests
     /// Here the command carries generation 9 over slot 1 while the vector is bound to slots 1 and
     /// 2. The scope comparison rejects it; the fence must still read 0.
     /// </para>
+    /// <para>
+    /// Since onboard-hmi#145 (b) the refusal is answered with a <c>FAILED</c> result, and that answer
+    /// reports generation 9 -- the one the command it answers was issued under, which is how the server
+    /// files it against the right workflow. Reporting a generation is not adopting it: what the fence
+    /// reads is the journal, and the journal still says 0.
+    /// </para>
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
@@ -785,9 +809,18 @@ public sealed partial class RecoveryVectorG2Tests
 
         Assert.True(await harness.Business.RequestForcedMechanicalRecoveryAsync(
             "现场确认仓门无法电动解锁，申请强制机械恢复。", token));
-        await harness.WaitForRecoveryBlockedAsync(token);
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_SCOPE_MISMATCH", token);
 
-        Assert.Empty(harness.ResultsOfType("ForcedMechanicalRecoveryResult"));
+        JsonElement result = await harness.WaitForResultAsync(
+            "ForcedMechanicalRecoveryResult", token);
+        // See the fault cargo case: the old Assert.Empty covered "not twice" for free, and the new
+        // shape does not.
+        Assert.Single(harness.ResultsOfType("ForcedMechanicalRecoveryResult"));
+        Assert.Equal("FAILED", result.GetProperty("outcome").GetString());
+        Assert.Equal(9, result.GetProperty("forcedRecoveryGeneration").GetInt64());
+        Assert.Equal(
+            [1],
+            result.GetProperty("slots").EnumerateArray().Select(slot => slot.GetInt32()).ToArray());
         Assert.Equal(0, harness.Io.UnlockCount);
 
         WireToGateRecoveryState state = await harness.ReadRecoveryStateAsync(token);
