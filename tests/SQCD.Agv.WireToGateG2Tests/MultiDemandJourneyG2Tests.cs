@@ -493,9 +493,25 @@ public sealed partial class MultiDemandJourneyG2Tests
                     _uiErrors.Add(exception);
                 }
 
-                Controller.EnterFatalFault(
-                    "UNHANDLED_UI_ERROR",
-                    "软件运行异常，已禁止继续操作。请确认仓门状态并联系维护人员。");
+                // The routing decision is the product's, read from the same registry
+                // App.OnDispatcherUnhandledException reads (8005-agv-onboard-hmi#171). A copy of the
+                // rule here would let this harness keep proving the old behaviour after the product
+                // changed -- which is exactly what it did while "latch everything" was the rule.
+                switch (OnboardFailureClassification.Classify(exception))
+                {
+                    case OnboardCommandFailureKind.ControlledCancellation:
+                        break;
+
+                    case OnboardCommandFailureKind.OperatorRejection:
+                        ViewModel.ReportOperatorRejection(exception.Message);
+                        break;
+
+                    default:
+                        Controller.EnterFatalFault(
+                            "UNHANDLED_UI_ERROR",
+                            OnboardFatalFaultBanner.UnhandledUiError);
+                        break;
+                }
             }
         }
 

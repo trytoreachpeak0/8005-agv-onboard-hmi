@@ -21,6 +21,7 @@ public partial class App : System.Windows.Application, IDisposable
     private OnboardAutomationHttpServer? _automationServer;
     private ControlServerVehicleSafetySignalProvider? _vehicleSafetySignalProvider;
     private OnboardAlarmMonitor? _alarmMonitor;
+    private MainViewModel? _viewModel;
     private bool _disposed;
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -104,11 +105,16 @@ public partial class App : System.Windows.Application, IDisposable
                     new AtomicJsonFile(settings.WireToGate.ActiveSlotConfigurationPath),
                     localSlotConfiguration)
                 : null;
+            // 操作员工号两种模式下都由同一个环境变量配置，所以复位入口在旧模式下也拿得到身份
+            // （8005-agv-onboard-hmi#171）。读取放在每次用的时候，不在启动时定格。
+            string operatorIdVariable = settings.WireToGate.OperatorIdEnvironmentVariable;
             MainViewModel viewModel = new(
                 _controller,
                 _logger,
                 settings.AgvId,
-                slotConfigurationStore?.Current ?? localSlotConfiguration);
+                slotConfigurationStore?.Current ?? localSlotConfiguration,
+                () => Environment.GetEnvironmentVariable(operatorIdVariable));
+            _viewModel = viewModel;
             MainWindow window = new() { DataContext = viewModel };
             MainWindow = window;
             // 告警板两种模式下都有：旧模式没有会话可以报，本机界面照样要显示。
@@ -393,17 +399,49 @@ public partial class App : System.Windows.Application, IDisposable
         _wireToGateBusiness?.CurrentOperationSnapshot?.SlotOperationAttemptId
             ?? _controller?.Current.ActiveOperation?.OperationId);
 
+    /// <summary>
+    /// 界面里没人接住的异常最后到这里。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 这条路不只兜底：<c>MainWindow.xaml.cs</c> 的恢复类按钮全是 <c>async void</c> 的
+    /// handler，自己不 catch，所以它们从业务服务里带出来的业务拒绝——「恢复会话还没开」
+    /// 「原因还没填」——正是从这里出去的。原来它们一律 <c>EnterFatalFault</c>，于是按错一个
+    /// 恢复按钮同样会把整车锁死（8005-agv-onboard-hmi#171）。
+    /// </para>
+    /// <para>
+    /// 判据与 <c>MainViewModel.HandleCommandError</c> 共用同一张登记表，两条路不会各分各的。
+    /// <see cref="OperationCanceledException"/> 排在前面：锁存之后控制器主动取消在途流程，
+    /// 那是受控停止，不该被当成新的界面异常再报一次。
+    /// </para>
+    /// </remarks>
     private void OnDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
     {
-        _logger?.Write(LogSeverity.Error, nameof(App), "界面发生未处理异常。", e.Exception);
-        _controller?.EnterFatalFault(
-            "UNHANDLED_UI_ERROR",
-            "软件运行异常，已禁止继续操作。请确认仓门状态并联系维护人员。");
-        MessageBox.Show(
-            "软件运行异常，已禁止继续操作。\n请确认仓门状态并联系维护人员。",
-            "软件运行异常",
-            MessageBoxButton.OK,
-            MessageBoxImage.Error);
+        switch (OnboardFailureClassification.Classify(e.Exception))
+        {
+            case OnboardCommandFailureKind.ControlledCancellation:
+                _logger?.Write(LogSeverity.Information, nameof(App), "界面命令已被取消。", e.Exception);
+                break;
+
+            case OnboardCommandFailureKind.OperatorRejection:
+                _logger?.Write(
+                    LogSeverity.Warning,
+                    nameof(App),
+                    $"界面命令被业务规则拒绝：{e.Exception.Message}。 ");
+                _viewModel?.ReportOperatorRejection(e.Exception.Message);
+                break;
+
+            default:
+                _logger?.Write(LogSeverity.Error, nameof(App), "界面发生未处理异常。", e.Exception);
+                _controller?.EnterFatalFault("UNHANDLED_UI_ERROR", OnboardFatalFaultBanner.UnhandledUiError);
+                MessageBox.Show(
+                    OnboardFatalFaultBanner.UnhandledUiErrorDialog,
+                    "软件运行异常",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                break;
+        }
+
         e.Handled = true;
     }
 }

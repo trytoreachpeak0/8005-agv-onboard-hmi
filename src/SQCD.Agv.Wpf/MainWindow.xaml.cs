@@ -86,6 +86,31 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// 复位当前锁存的严重安全故障（onboard-hmi#171）。确认框问的是维护人员用眼睛能判断的三件事，
+    /// 不是系统状态：门、开锁指示、货物。系统那一半由 <c>OnboardController.ClearFatalFaultAsync</c>
+    /// 自己复核，不成立时横幅上会写清是哪一条没过。
+    /// </summary>
+    private async void OnClearFatalFaultClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null)
+        {
+            return;
+        }
+
+        MessageBoxResult confirmation = MessageBox.Show(
+            "请先现场确认：所有仓门均已可靠锁闭，没有仓门正在开启，界面显示的货物状态与实际一致。\n\n"
+            + "复位之后本界面会重新允许扫码开门，复位人会记入日志。是否继续？",
+            "复位严重安全故障",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning,
+            MessageBoxResult.No);
+        if (confirmation == MessageBoxResult.Yes)
+        {
+            _ = await _viewModel.ClearFatalFaultAsync();
+        }
+    }
+
     private async void OnReopenOperationClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel is null)

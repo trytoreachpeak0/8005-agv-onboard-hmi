@@ -15,6 +15,7 @@ public sealed class MainViewModel : ViewModelBase
     private readonly IAppLogger _logger;
     private readonly OperatorRecordFormatter _operatorRecordFormatter = new();
     private readonly SlotGroupLayout _slotGroupLayout;
+    private readonly Func<string?>? _operatorIdProvider;
     private string _scanText = string.Empty;
     private string _ruleConnectionText = "离线";
     private string _ioConnectionText = "离线";
@@ -61,6 +62,7 @@ public sealed class MainViewModel : ViewModelBase
     private bool _hasError;
     private bool _hasWarning;
     private bool _canSafetyReview;
+    private bool _canClearFatalFault;
     private bool _canReopenOperation;
     private bool _canCancelOperation;
     private bool _canRetryPendingResult;
@@ -125,14 +127,22 @@ public sealed class MainViewModel : ViewModelBase
     /// 本机生效仓位配置，仓位区按它的 <c>SlotPosition</c> 分前后两组。启动时读一次就够：激活只改版本名，
     /// 位置名不在指纹里、激活也不动它。
     /// </param>
+    /// <param name="operatorIdProvider">
+    /// Who is at the vehicle, read fresh on each use. Only the fatal-fault clearance entry needs it
+    /// (8005-agv-onboard-hmi#171): that entry records who lifted the latch, and an entry whose record
+    /// would say nobody is not one to offer. Null or blank therefore closes it -- including in the
+    /// pre-WIRE_TO_GATE mode, where the same operator-id environment variable still configures it.
+    /// </param>
     public MainViewModel(
         OnboardController controller,
         IAppLogger logger,
         string agvId,
-        ActiveSlotConfiguration slotConfiguration)
+        ActiveSlotConfiguration slotConfiguration,
+        Func<string?>? operatorIdProvider = null)
     {
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _operatorIdProvider = operatorIdProvider;
         AgvId = agvId;
         Lockers = new ObservableCollection<LockerCardViewModel>(
             Enumerable.Range(0, 8).Select(index => new LockerCardViewModel(index)));
@@ -894,6 +904,20 @@ public sealed class MainViewModel : ViewModelBase
         private set => SetProperty(ref _canSafetyReview, value);
     }
 
+    /// <summary>
+    /// 「复位严重安全故障」这个入口现在在不在（8005-agv-onboard-hmi#171）。
+    /// </summary>
+    /// <remarks>
+    /// 三个条件同时成立才出现：车确实锁存着一个严重安全故障；那个故障码登记为可在本机复位
+    /// （<c>UNHANDLED_UI_ERROR</c> 不是，它意味着本进程自己的状态已经不可信，只能重启）；
+    /// 本机能说出是谁在复位。**一次完全正常的运行里第一条就不成立，所以这个入口不会出现。**
+    /// </remarks>
+    public bool CanClearFatalFault
+    {
+        get => _canClearFatalFault;
+        private set => SetProperty(ref _canClearFatalFault, value);
+    }
+
     public bool CanReopenOperation
     {
         get => _canReopenOperation;
@@ -1226,6 +1250,19 @@ public sealed class MainViewModel : ViewModelBase
 
     public Task<bool> ConfirmSafeStartupStateAsync() => _controller.ConfirmSafeStartupStateAsync();
 
+    /// <summary>
+    /// 复位当前锁存的严重安全故障，并把是谁复位的记进日志。判据在
+    /// <see cref="OnboardController.ClearFatalFaultAsync"/>：仓门全锁、开锁输出全 0、快照有效、
+    /// 没有在途装卸操作。不成立时返回 false，锁存保留，横幅上多一句不成立的原因。
+    /// </summary>
+    public Task<bool> ClearFatalFaultAsync(CancellationToken cancellationToken = default)
+    {
+        string? operatorId = _operatorIdProvider?.Invoke();
+        return string.IsNullOrWhiteSpace(operatorId)
+            ? Task.FromResult(false)
+            : _controller.ClearFatalFaultAsync(operatorId, cancellationToken);
+    }
+
     public Task<bool> RequestReopenCurrentOperationAsync() =>
         Task.FromResult(_controller.RequestReopenCurrentOperation());
 
@@ -1333,6 +1370,12 @@ public sealed class MainViewModel : ViewModelBase
         CanSafetyReview = snapshot.State == OnboardState.Faulted
             && snapshot.ErrorCode == "STARTUP_STATE_UNSAFE"
             && snapshot.ActiveOperation is null;
+        // 与上面那一条是两个入口，判据也不共用：启动安全复核受理的是启动期那一个码，复位受理的是
+        // 锁存的严重安全故障。把后者并进前者，等于让一个启动期的确认动作在运行期具有清除安全锁存的
+        // 能力，而操作员分辨不出他按的是哪一件事（8005-agv-onboard-hmi#171）。
+        CanClearFatalFault = _controller.CanClearFatalFault
+            && snapshot.ActiveOperation is null
+            && !string.IsNullOrWhiteSpace(_operatorIdProvider?.Invoke());
         CanReopenOperation = _controller.CanReopenCurrentOperation;
         CanCancelOperation = _controller.CanCancelCurrentOperation;
         CanRetryPendingResult = _controller.CanRetryPendingResult;
@@ -1352,15 +1395,62 @@ public sealed class MainViewModel : ViewModelBase
         ApplyWireToGatePresentationCore();
     }
 
+    /// <summary>
+    /// 一次界面命令失败了，车要不要停下。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 原来一律 <c>EnterFatalFault</c>，于是「扫的这个子批不在当前作业清单里」——一次普通的操作员
+    /// 失误——被升级成整车停摆，而 v2 上没有任何代码能把它解开（8005-agv-onboard-hmi#171）。
+    /// </para>
+    /// <para>
+    /// 分类由 <see cref="OnboardFailureClassification"/> 按错误码给出，**不看异常类型**。
+    /// 用类型分不开：<c>RECOVERY_OPERATION_CONTEXT_MISSING</c> 在 8 个抛出点上有 4 种异常类型，
+    /// 而 <c>SUBLOT_NOT_IN_WORKLIST</c> 与 <c>RECOVERY_SCOPE_MISMATCH</c> 共用
+    /// <see cref="InvalidOperationException"/>。更要紧的是，按类型分的判据在下一个新增的业务拒绝
+    /// 出现时不会有任何东西变红。
+    /// </para>
+    /// </remarks>
     private void HandleCommandError(Exception exception)
     {
-        _logger.Write(LogSeverity.Error, nameof(MainViewModel), "界面命令执行失败。", exception);
-        _controller.EnterFatalFault(
-            "UI_COMMAND_FAILED",
-            "操作界面出现异常，已停止开门。请确认仓门状态并联系维护人员。");
-        Guidance = "操作界面出现异常，已停止开门。请确认仓门状态并联系维护人员。";
-        HasError = true;
+        switch (OnboardFailureClassification.Classify(exception))
+        {
+            case OnboardCommandFailureKind.ControlledCancellation:
+                // AsyncCommand 已经先接住了取消，这里只是不让分类判据在两处各说一套。
+                _logger.Write(LogSeverity.Information, nameof(MainViewModel), "界面命令已被取消。", exception);
+                return;
+
+            case OnboardCommandFailureKind.OperatorRejection:
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(MainViewModel),
+                    $"界面命令被业务规则拒绝：{exception.Message}。 ");
+                ReportOperatorRejection(exception.Message);
+                return;
+
+            default:
+                _logger.Write(LogSeverity.Error, nameof(MainViewModel), "界面命令执行失败。", exception);
+                _controller.EnterFatalFault("UI_COMMAND_FAILED", OnboardFatalFaultBanner.UiCommandFailed);
+                Guidance = OnboardFatalFaultBanner.UiCommandFailed;
+                HasError = true;
+                return;
+        }
     }
+
+    /// <summary>
+    /// 把一条业务拒绝照实摆在操作员面前：进操作记录（留得住），并顶到提示行（立刻看得见）。
+    /// 车不进故障态，扫码入口不关。
+    /// </summary>
+    internal void ReportOperatorRejection(string reasonCode) =>
+        RunOnUiThread(() =>
+        {
+            string message = OnboardCommandRejectionText.Describe(reasonCode);
+            Logs.Add(new LogLineViewModel(Clock.Now, OperatorRecordKind.Warning, message));
+            ClearLogsCommand.RaiseCanExecuteChanged();
+            TrimLogs();
+            Guidance = message;
+            HasWarning = true;
+        });
 
     private void AppendOperatorRecord(OnboardSnapshot snapshot)
     {

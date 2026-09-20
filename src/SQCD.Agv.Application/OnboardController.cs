@@ -608,7 +608,118 @@ public sealed class OnboardController : IAsyncDisposable
             LogSeverity.Error,
             nameof(OnboardController),
             $"严重安全故障已锁存，code={effective.ErrorCode}；当前活动流程已请求停止。");
-        Publish(OnboardState.Faulted, effective.Guidance, effective.ErrorCode);
+        Publish(OnboardState.Faulted, effective.Banner, effective.ErrorCode);
+    }
+
+    /// <summary>
+    /// True when a fatal fault is latched and its code is one maintenance may lift on this machine
+    /// (8005-agv-onboard-hmi#171). False whenever nothing is latched, so a normal run never offers
+    /// this entry.
+    /// </summary>
+    public bool CanClearFatalFault =>
+        Volatile.Read(ref _fatalFault) is { } latched
+        && OnboardFailureClassification.Clearance(latched.ErrorCode)
+            == FatalFaultClearance.ClearableBySafetyReview;
+
+    /// <summary>
+    /// Lifts a latched fatal safety fault after maintenance has reviewed the doors, and records who
+    /// did it. Returns false and leaves the latch standing when the review does not hold.
+    /// </summary>
+    /// <param name="operatorId">
+    /// Who is lifting it. Required: the point of this entry is that afterwards somebody can ask who
+    /// opened the vehicle back up and when, so a clearance nobody can be tied to is not one worth
+    /// having.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// <b>Four conditions, and each one refuses out loud.</b> There is a latch; its code is
+    /// clearable; no slot operation is running; and the IO snapshot says what
+    /// <see cref="ValidateRecoverableStartupSnapshot"/> requires -- module connected, snapshot fresh,
+    /// all eight slots readable, every unlock output reset, every door locked. The last is the same
+    /// physical review <see cref="ConfirmSafeStartupStateAsync"/> runs, because it is the same
+    /// question: are the doors where this process believes they are.
+    /// </para>
+    /// <para>
+    /// <b>This is deliberately not folded into <see cref="ConfirmSafeStartupStateAsync"/>.</b> That
+    /// method admits one code, <c>STARTUP_STATE_UNSAFE</c>, and it runs before the vehicle has ever
+    /// been allowed to operate -- it sets <c>_startupValidated</c>. Giving it a second job would give
+    /// a startup-time confirmation the power to clear a safety latch during a run, on a press whose
+    /// operator cannot tell the two situations apart. Clearing the latch here leaves
+    /// <c>_startupValidated</c> alone.
+    /// </para>
+    /// </remarks>
+    public async Task<bool> ClearFatalFaultAsync(
+        string operatorId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(operatorId);
+
+        FatalFault? latched = Volatile.Read(ref _fatalFault);
+        if (latched is null)
+        {
+            return false;
+        }
+
+        if (OnboardFailureClassification.Clearance(latched.ErrorCode)
+            != FatalFaultClearance.ClearableBySafetyReview)
+        {
+            RefuseClearance(latched, "该故障不能在车上复位，请重启车载端程序。", operatorId);
+            return false;
+        }
+
+        if (!await _operationLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            RefuseClearance(latched, "当前装卸操作尚未结束，请等待其结束后再复位。", operatorId);
+            return false;
+        }
+
+        try
+        {
+            string? unsafeReason = ValidateRecoverableStartupSnapshot(_ioModule.CurrentSnapshot);
+            if (unsafeReason is not null)
+            {
+                RefuseClearance(latched, unsafeReason, operatorId);
+                return false;
+            }
+
+            // Clear the exact latch that was reviewed. A different one arriving meanwhile was never
+            // reviewed, and EnterFatalFault would not have overwritten this one, so it would be lost.
+            if (Interlocked.CompareExchange(ref _fatalFault, null, latched) != latched)
+            {
+                return false;
+            }
+
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(OnboardController),
+                $"严重安全故障已复位：code={latched.ErrorCode}，operator={operatorId}，"
+                + $"at={_clock.Now.ToUniversalTime():O}；仓门全锁、开锁输出全0、快照有效已复核。 ");
+            // Faulted has to be left before ReevaluateIdleState, which republishes the current state
+            // unchanged while it is still Faulted.
+            Publish(OnboardState.Connecting, "严重安全故障已复位，正在重新评估通信和到站状态。");
+            ReevaluateIdleState("严重安全故障已复位，请确认仓位状态后继续作业。");
+            return true;
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Keeps the latch and tells the operator why this attempt was refused. The reason goes into the
+    /// latch first: <see cref="PublishCore"/> rewrites any publish back to the latch's banner while
+    /// it stands, so a reason published beside it would never be seen.
+    /// </summary>
+    private void RefuseClearance(FatalFault latched, string reason, string operatorId)
+    {
+        FatalFault explained = latched with { ClearanceRefusal = reason };
+        Interlocked.CompareExchange(ref _fatalFault, explained, latched);
+        _logger.Write(
+            LogSeverity.Warning,
+            nameof(OnboardController),
+            $"严重安全故障复位被拒：code={latched.ErrorCode}，operator={operatorId}，reason={reason}");
+        Publish(OnboardState.Faulted, explained.Banner, latched.ErrorCode);
     }
 
     // 规则模块回复成功后、本地写 DO 前的最后检查
@@ -1419,7 +1530,7 @@ public sealed class OnboardController : IAsyncDisposable
         if (fatalFault is not null)
         {
             state = OnboardState.Faulted;
-            guidance = fatalFault.Guidance;
+            guidance = fatalFault.Banner;
             errorCode = fatalFault.ErrorCode;
             departureOverride = false;
         }
@@ -1863,7 +1974,25 @@ public sealed class OnboardController : IAsyncDisposable
         LockerSnapshot Locker,
         bool Cancelled);
 
-    private sealed record FatalFault(string ErrorCode, string Guidance);
+    /// <param name="Guidance">
+    /// The banner the latch itself carries. It never changes once latched, so a refused clearance
+    /// attempt cannot erase it (8005-agv-onboard-hmi#171).
+    /// </param>
+    private sealed record FatalFault(string ErrorCode, string Guidance)
+    {
+        /// <summary>Why the most recent clearance attempt was refused, or null when none was.</summary>
+        public string? ClearanceRefusal { get; init; }
+
+        /// <summary>
+        /// What the operator reads. <see cref="PublishCore"/> rewrites every publish back to this
+        /// while the latch stands, so a refusal has to be inside the latch to survive -- publishing
+        /// it as an ordinary guidance string would be overwritten by the very next line of that
+        /// method.
+        /// </summary>
+        public string Banner => ClearanceRefusal is null
+            ? Guidance
+            : $"{Guidance} 复位未通过：{ClearanceRefusal}";
+    }
 
     private enum PendingReportKind
     {

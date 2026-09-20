@@ -233,6 +233,73 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
+    /// The same refusal, reached the way the operator actually reaches it: the scanner command on the
+    /// window. It is a message and the vehicle keeps running (8005-agv-onboard-hmi#171).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The test above calls the business service directly, so it says nothing about what the HMI does
+    /// with the refusal — and what the HMI did with it was <c>EnterFatalFault</c>, latched forever,
+    /// with no entry on the screen to lift it. On 2026-09-16 that is how one mis-scan stopped
+    /// <c>agv01</c> from 10:03 until the shift ended (onboard-hmi#82).
+    /// </para>
+    /// <para>
+    /// This also pins the leftover half of field-line <c>243aa66</c>, which the ticket folded in here
+    /// rather than opening its own: after the server has moved this stop's worklist on, the entry box
+    /// is still up, and what a scan into it raises is exactly this code. So it has to be a message.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AnEntryRefusedLocallyIsAMessageToTheOperatorAndNotALatchedVehicle()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            server =>
+            {
+                server.SendJourneySnapshotsAfterRecovery = true;
+                server.SublotEntryExpectedSublots = ["SUBLOT-A", "SUBLOT-B"];
+                server.JourneySnapshotPayloads = new Dictionary<string, object>
+                {
+                    ["VehicleBusinessStateSnapshot"] = Payloads.BusinessState(1, loadingPhase: null),
+                    ["CurrentStopWorklistSnapshot"] = Payloads.Worklist(1, Payloads.ItemA, Payloads.ItemB),
+                    ["UpcomingStopPlanSnapshot"] = Payloads.Plan(1, Payloads.TwoDemandLegs)
+                };
+            },
+            token);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanSubmitSublot && harness.Session.CurrentJourney.CurrentStopWorklist is not null,
+            "the entry request and its worklist",
+            token);
+        await harness.Server.SendJourneySnapshotAsync("CurrentStopWorklistSnapshot", Payloads.Worklist(2, Payloads.ItemB));
+        await harness.WaitUntilAsync(
+            () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2,
+            "worklist revision 2",
+            token);
+        // 录入框还在（CanSubmitSublot 不查清单版本），操作员照样扫得下去 -- 这正是 243aa66 的残留。
+        Assert.True(harness.ViewModel.CanSubmit);
+
+        harness.ViewModel.ScanText = "SUBLOT-B";
+        harness.ViewModel.ScannerSubmitCommand.Execute(null);
+
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.Logs.Any(line =>
+                line.Kind == OperatorRecordKind.Warning
+                && line.Message.Contains("不属于服务端下发的站点任务", StringComparison.Ordinal)),
+            "the operator to be told why the scan was refused",
+            token);
+
+        // 车没停：没有锁存，故障态没进，扫码入口还在。
+        Assert.NotEqual(OnboardState.Faulted, harness.Controller.Current.State);
+        Assert.False(harness.Controller.CanClearFatalFault);
+        Assert.False(harness.ViewModel.HasError);
+        Assert.True(harness.ViewModel.CanSubmit);
+        Assert.Contains("不属于服务端下发的站点任务", harness.ViewModel.Guidance);
+        // 拒绝仍然是拒绝：一个字节都没有发出去。
+        Assert.Empty(harness.Submissions);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
     /// Two demands at one stop, two slot commands back to back: the second waits behind the first on
     /// the single executor and is not refused, and its expected-action clock starts at its own first
     /// unlock -- the time it spent queued is not counted, so with a small threshold no
