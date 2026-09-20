@@ -30,6 +30,11 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// </remarks>
 public sealed partial class RecoveryVectorG2Tests
 {
+    /// <summary>The session the operator's second press opens while the first one is being settled.</summary>
+    private const string RivalSessionId = "7b7b7b7b-7b7b-4b7b-8b7b-7b7b7b7b7b7b";
+
+    private const string RivalActionId = "7c7c7c7c-7c7c-4c7c-8c7c-7c7c7c7c7c7c";
+
     private static string CompensationResultKey(string recoveryActionId) =>
         $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCompensation}:{recoveryActionId}";
 
@@ -148,6 +153,61 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(prepared.RecoveryActionId, after.RecoveryActionId);
     }
 
+    /// <summary>
+    /// A second recovery session is opened in the moment between the settlement's guard reading the
+    /// journal and its write. Nothing of that session is cleared, and nothing is cleared twice.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The state injected here is what the journal holds once this very settlement has already run
+    /// once and the operator has pressed again: the first vector gone, a second session open with a
+    /// second vector prepared under it. A settlement that read the journal and then wrote what it read
+    /// would forget that session -- the operator's second attempt would die the way the first one did,
+    /// and for a reason nothing on either end records.
+    /// </para>
+    /// <para>
+    /// It cannot happen, because guard and write are one journal update: the guard runs on the state
+    /// the update itself reads, sees a vector that is not the one being settled, and answers "write
+    /// nothing". The same shape answers the other two racers -- a second result for this vector, and
+    /// the session's CLOSED fallback -- so one assertion covers all three.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ASettlementRacingASecondSessionForgetsNothingOfIt()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        RivalSessionJournal? rival = null;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server =>
+            {
+                server.SendRecoveryVectorCommandAfterRecoveryAction = false;
+                server.RecoverySlotOperationAttemptId = AttemptId;
+            },
+            cargoInTargetSlots: true,
+            lockerWaitTimesOut: true,
+            wrapJournal: inner => rival = new RivalSessionJournal(inner));
+
+        WireToGateRecoveryState prepared = await PrepareCompensationAsync(harness, token);
+        rival!.OpenASecondSessionWhenTheSettlementRuns(prepared.RecoveryVector!);
+        await harness.Server.SendCommandAsync(
+            "LoadCompensationCommand", CompensationCommandMessageId, CompensationCommand(prepared));
+
+        await harness.WaitForResultAsync("LoadCompensationResult", token);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => rival.SettlementFinished,
+            "the settlement to run across the second session",
+            token);
+        Assert.True(rival.SecondSessionOpened, "the second session was never opened inside the settlement");
+
+        WireToGateRecoveryState after = await harness.ReadRecoveryStateAsync(token);
+        Assert.Equal(RivalSessionId, after.ExceptionRecoverySessionId);
+        Assert.Equal(RivalActionId, after.RecoveryActionId);
+        Assert.Equal(RivalActionId, after.RecoveryVector?.PrimaryId);
+    }
+
     /// <summary>Waits for the vehicle to have recorded the server's DurableAck for the result.</summary>
     private static async Task WaitForCompensationResultAcknowledgedAsync(
         RecoveryVectorHarness harness,
@@ -188,5 +248,170 @@ public sealed partial class RecoveryVectorG2Tests
             () => harness.ResultsOfType("ExceptionRecoverySessionRequested").Count == 2,
             "a second recovery session request for the same vehicle",
             token);
+    }
+
+    /// <summary>
+    /// Opens a second recovery session, with its own vector prepared, inside the next settlement of a
+    /// non-<c>COMPLETED</c> recovery vector result -- before the atomic update reads.
+    /// </summary>
+    /// <remarks>
+    /// Armed by stack frame rather than by timing, the way <c>InterleavingJournal</c> is: the race this
+    /// stands for is real but far too narrow to hit by sleeping, and a test that hit it by luck would
+    /// stop covering anything the first time the code around it changed.
+    /// </remarks>
+    private sealed class RivalSessionJournal(IWireToGateJournal inner) : IWireToGateJournal
+    {
+        private WireToGateRecoveryVectorContext? _settling;
+        private int _armed;
+        private int _fired;
+        private int _finished;
+
+        public bool SecondSessionOpened => Volatile.Read(ref _fired) == 1;
+
+        public bool SettlementFinished => Volatile.Read(ref _finished) == 1;
+
+        public void OpenASecondSessionWhenTheSettlementRuns(WireToGateRecoveryVectorContext settling)
+        {
+            _settling = settling;
+            Volatile.Write(ref _armed, 1);
+        }
+
+        /// <summary>
+        /// Armed on the read as well as on the atomic update, so that a settlement written as a read
+        /// followed by a write -- the shape this test exists to forbid -- is raced too, and fails here
+        /// rather than quietly never triggering.
+        /// </summary>
+        public async Task<WireToGateRecoveryState> ReadRecoveryStateAsync(
+            CancellationToken cancellationToken = default)
+        {
+            if (!TakeTheSettlement())
+            {
+                return await inner.ReadRecoveryStateAsync(cancellationToken);
+            }
+
+            WireToGateRecoveryState read = await inner.ReadRecoveryStateAsync(cancellationToken);
+            await OpenASecondSessionAsync(cancellationToken);
+            return read;
+        }
+
+        public async Task WriteRecoveryStateAsync(
+            WireToGateRecoveryState state,
+            CancellationToken cancellationToken = default)
+        {
+            await inner.WriteRecoveryStateAsync(state, cancellationToken);
+            if (SecondSessionOpened)
+            {
+                Volatile.Write(ref _finished, 1);
+            }
+        }
+
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            CancellationToken cancellationToken = default) =>
+            UpdateRecoveryStateAsync(change, static _ => { }, cancellationToken);
+
+        public async Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            Action<WireToGateRecoveryState> settled,
+            CancellationToken cancellationToken = default)
+        {
+            bool settlement = TakeTheSettlement();
+            if (settlement)
+            {
+                await OpenASecondSessionAsync(cancellationToken);
+            }
+
+            WireToGateRecoveryState? written = await inner.UpdateRecoveryStateAsync(
+                change,
+                settled,
+                cancellationToken);
+            if (settlement)
+            {
+                Volatile.Write(ref _finished, 1);
+            }
+
+            return written;
+        }
+
+        private bool TakeTheSettlement() =>
+            Volatile.Read(ref _armed) == 1
+            && Environment.StackTrace.Contains(
+                "ForgetSettledRecoveryVectorAsync", StringComparison.Ordinal)
+            && Interlocked.Exchange(ref _armed, 0) == 1;
+
+        /// <summary>
+        /// What the journal holds once this settlement has already run and the operator has pressed
+        /// again: the settled vector gone, a second session open with its own vector prepared.
+        /// </summary>
+        private async Task OpenASecondSessionAsync(CancellationToken cancellationToken)
+        {
+            WireToGateRecoveryState state = await inner.ReadRecoveryStateAsync(cancellationToken);
+            await inner.WriteRecoveryStateAsync(
+                state with
+                {
+                    ExceptionRecoverySessionId = RivalSessionId,
+                    RecoveryActionId = RivalActionId,
+                    RecoverySessionRequestId = RivalSessionId,
+                    RecoveryVector = _settling! with
+                    {
+                        PrimaryId = RivalActionId,
+                        ExceptionRecoverySessionId = RivalSessionId
+                    },
+                    RecoveryResultObservedAt = null
+                },
+                cancellationToken);
+            Volatile.Write(ref _fired, 1);
+        }
+
+        public Task InitializeAsync(CancellationToken cancellationToken = default) =>
+            inner.InitializeAsync(cancellationToken);
+
+        public Task<string> ReadJournalEpochAsync(CancellationToken cancellationToken = default) =>
+            inner.ReadJournalEpochAsync(cancellationToken);
+
+        public Task<WireToGateDurableMessage> SaveOutgoingBeforeSendAsync(
+            WireToGateDurableMessage message,
+            CancellationToken cancellationToken = default) =>
+            inner.SaveOutgoingBeforeSendAsync(message, cancellationToken);
+
+        public Task<WireToGateDurableMessage> ReplaceOutgoingForReplayAsync(
+            WireToGateDurableMessage expected,
+            WireToGateDurableMessage replacement,
+            CancellationToken cancellationToken = default) =>
+            inner.ReplaceOutgoingForReplayAsync(expected, replacement, cancellationToken);
+
+        public Task<WireToGateDurableMessage?> ReadOutgoingByDeduplicationKeyAsync(
+            string deduplicationKey,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken);
+
+        public Task<WireToGateDurableMessage?> ReadOutgoingByMessageIdAsync(
+            string messageId,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadOutgoingByMessageIdAsync(messageId, cancellationToken);
+
+        public Task MarkOutgoingAcknowledgedAsync(
+            string messageId,
+            string acceptedContentSha256,
+            CancellationToken cancellationToken = default) =>
+            inner.MarkOutgoingAcknowledgedAsync(messageId, acceptedContentSha256, cancellationToken);
+
+        public Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ReadUnacknowledgedOutgoingAsync(cancellationToken);
+
+        public Task<IReadOnlyList<WireToGateAppliedJourneySnapshot>> ReadAppliedJourneySnapshotsAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ReadAppliedJourneySnapshotsAsync(cancellationToken);
+
+        public Task<WireToGateAppliedJourneySnapshot> SaveAppliedJourneySnapshotAsync(
+            WireToGateAppliedJourneySnapshot snapshot,
+            CancellationToken cancellationToken = default) =>
+            inner.SaveAppliedJourneySnapshotAsync(snapshot, cancellationToken);
+
+        public Task<string> ComputeContentSha256Async(CancellationToken cancellationToken = default) =>
+            inner.ComputeContentSha256Async(cancellationToken);
+
+        public ValueTask DisposeAsync() => inner.DisposeAsync();
     }
 }
