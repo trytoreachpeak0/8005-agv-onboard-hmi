@@ -475,14 +475,22 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
-    /// With two items and the entry request open, the cancellation before any sublot is not offered by
-    /// the business service -- choosing a demand is not the vehicle's -- and the view model says so in
-    /// its place instead of letting the button vanish. With one item the button is offered as before.
+    /// With two items and the entry request open, the cancellation before any sublot <i>is</i> offered
+    /// and waits for the operator to pick a demand: the button stays in place, disabled, with the hint
+    /// beside it, and picking a row enables it. With one item it is pressable straight away, as before.
     /// </summary>
+    /// <remarks>
+    /// Batch 7-13 (<c>onboard-hmi#134</c>) had the business service withhold the entry entirely here,
+    /// and this test asserted the placeholder that stood in for it. Batch 7-14
+    /// (<c>onboard-hmi#135</c>) gives the pick to the operator, so what the two-item case must now
+    /// show is a real entry that is one click away -- and the assertions moved with it rather than
+    /// being dropped: the two-item case still pins that the button cannot be pressed on its own, and
+    /// now also pins what makes it pressable.
+    /// </remarks>
     [Theory]
     [InlineData(2)]
     [InlineData(1)]
-    public async Task TheCancellationBeforeSublotIsShownDisabledWithAHintOnlyWhenTheStopHasSeveralItems(int items)
+    public async Task TheCancellationBeforeSublotWaitsForAPickOnlyWhenTheStopHasSeveralItems(int items)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using Harness harness = await Harness.StartAsync(
@@ -506,16 +514,23 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
         harness.ViewModel.RefreshWireToGateInputState();
 
+        Assert.True(harness.ViewModel.CanRequestLoadCancellation);
         if (items == 2)
         {
-            Assert.False(harness.ViewModel.CanRequestLoadCancellation);
-            Assert.True(harness.ViewModel.HasLoadCancellationUnavailableHint);
-            Assert.Equal("本站有多条任务，扫码前取消暂不可用", harness.ViewModel.LoadCancellationUnavailableHintText);
+            Assert.False(harness.ViewModel.CanPressLoadCancellation);
+            Assert.True(harness.ViewModel.HasLoadCancellationSelectionHint);
+            Assert.Equal("请先在清单中选择要取消的任务", harness.ViewModel.LoadCancellationSelectionHintText);
+
+            SelectWorklistItem(harness, DemandB);
+
+            Assert.True(harness.ViewModel.CanPressLoadCancellation);
+            Assert.False(harness.ViewModel.HasLoadCancellationSelectionHint);
+            Assert.Equal(string.Empty, harness.ViewModel.LoadCancellationSelectionHintText);
         }
         else
         {
-            Assert.True(harness.ViewModel.CanRequestLoadCancellation);
-            Assert.False(harness.ViewModel.HasLoadCancellationUnavailableHint);
+            Assert.True(harness.ViewModel.CanPressLoadCancellation);
+            Assert.False(harness.ViewModel.HasLoadCancellationSelectionHint);
         }
     }
 

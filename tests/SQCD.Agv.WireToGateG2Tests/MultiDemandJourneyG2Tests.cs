@@ -440,7 +440,11 @@ public sealed partial class MultiDemandJourneyG2Tests
                 () => business.CanRequestResumeAfterRepair,
                 business.RequestResumeAfterRepairAsync,
                 () => business.CanRequestLoadCancellation,
-                token => business.RequestLoadCancellationAsync(cancellationToken: token),
+                (selectedDemandId, token) => business.RequestLoadCancellationAsync(
+                    WireToGateBusinessService.LoadCancellationDefaultReason,
+                    selectedDemandId,
+                    token),
+                () => business.IsLoadCancellationDemandSelectionRequired,
                 () => business.CanRequestLoadCompensation,
                 business.RequestLoadCompensationAsync,
                 () => business.CanRequestLoadCorrection,
@@ -453,7 +457,8 @@ public sealed partial class MultiDemandJourneyG2Tests
                 token => business.RequestManualChargingReturnToServiceAsync(cancellationToken: token),
                 () => business.IsLoadCancellationBeforeSublotOpen,
                 () => business.CurrentSublotRejection,
-                () => business.RecoveryReasonAlreadyGiven);
+                () => business.RecoveryReasonAlreadyGiven,
+                () => business.RecoveryFallbackDemandId);
             await viewModel.InitializeAsync();
 
             try

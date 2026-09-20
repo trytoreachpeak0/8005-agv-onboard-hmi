@@ -22,13 +22,17 @@ public sealed class MainViewModel : ViewModelBase
     private string _visitText = "未到站";
     private bool _hasWorklistItems;
     private bool _hasJourneyPlanLegs;
-    private const string LoadCancellationUnavailableHint = "本站有多条任务，扫码前取消暂不可用";
+    private const string LoadCancellationSelectionHint = "请先在清单中选择要取消的任务";
+    private bool _hasLoadCancellationSelectionHint;
     private readonly Dictionary<string, IReadOnlyList<int>> _commandSlotsByDemand = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _sublotsByDemand = new(StringComparer.Ordinal);
     private IReadOnlyList<WireToGateWorklistItem> _worklistItems = [];
+    private WorklistItemRow? _selectedWorklistItem;
     private WireToGateRecoveryState? _journaledOperations;
-    private bool _hasLoadCancellationUnavailableHint;
-    private string _loadCorrectionTargetText = "修正对象：本站最后一次装货";
+    private const string LoadCorrectionScopeText = "只能修正本站最后一次装货";
+    private string _loadCorrectionTargetText = LoadCorrectionScopeText;
+    private string? _announcedCorrectionDemandId;
+    private string? _worklistOperationSessionId;
     private WireToGateLoadingPhase? _loadingPhase;
     private DispatcherTimer? _cargoHoldingTimer;
     private bool _hasCargoHoldingCountdown;
@@ -100,7 +104,10 @@ public sealed class MainViewModel : ViewModelBase
     private Func<bool>? _wireToGateCanRequestLoadCompensation;
     private Func<bool>? _wireToGateCanRequestLoadCorrection;
     private Func<bool>? _wireToGateCanRequestFaultCargoHandoff;
-    private Func<CancellationToken, Task<bool>>? _wireToGateLoadCancellationRequester;
+    private Func<string?, CancellationToken, Task<bool>>? _wireToGateLoadCancellationRequester;
+    private Func<bool>? _wireToGateLoadCancellationSelectionRequired;
+    private Func<string?>? _wireToGateRecoveryFallbackDemandId;
+    private string _recoveryFallbackTargetText = string.Empty;
     private Func<string?, CancellationToken, Task<bool>>? _wireToGateLoadCompensationRequester;
     private Func<CancellationToken, Task<bool>>? _wireToGateLoadCorrectionRequester;
     private Func<string?, CancellationToken, Task<bool>>? _wireToGateFaultCargoHandoffRequester;
@@ -296,6 +303,7 @@ public sealed class MainViewModel : ViewModelBase
             : worklist.Items.Count == 0
                 ? $"{worklist.StationId} / 无待处理任务"
                 : worklist.StationId;
+        _worklistOperationSessionId = snapshot.CurrentStopWorklist?.OperationSessionId;
         ReplaceWorklistItemsCore(snapshot.CurrentStopWorklist?.Items ?? []);
         ReplaceJourneyPlanLegsCore(snapshot.UpcomingStopPlan?.Legs ?? []);
         // 持货那一行也是整值：新快照的 loadingPhase 变了或变为空（含断线清投影），这一行跟着变或消失。
@@ -326,6 +334,9 @@ public sealed class MainViewModel : ViewModelBase
 
     private void RebuildWorklistItemsCore()
     {
+        // 行对象每次重建，按引用或按值都会把选择丢掉，而换一次修订号不该抹掉操作员刚做的选择。
+        // 需求真的不在新清单里时选择清空，按下会得到「请重新选择」而不是悄悄换一条。
+        string? selectedDemandId = SelectedWorklistItem?.DemandId;
         WorklistItems.Clear();
         foreach (WireToGateWorklistItem item in _worklistItems)
         {
@@ -345,6 +356,9 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         HasWorklistItems = WorklistItems.Count > 0;
+        SelectedWorklistItem = selectedDemandId is null
+            ? null
+            : WorklistItems.FirstOrDefault(row => row.DemandId == selectedDemandId);
         RefreshLoadCancellationHintCore();
     }
 
@@ -376,7 +390,8 @@ public sealed class MainViewModel : ViewModelBase
         Func<bool>? canRequestRecovery = null,
         Func<string?, CancellationToken, Task<bool>>? recoveryRequester = null,
         Func<bool>? canRequestLoadCancellation = null,
-        Func<CancellationToken, Task<bool>>? loadCancellationRequester = null,
+        Func<string?, CancellationToken, Task<bool>>? loadCancellationRequester = null,
+        Func<bool>? loadCancellationSelectionRequired = null,
         Func<bool>? canRequestLoadCompensation = null,
         Func<string?, CancellationToken, Task<bool>>? loadCompensationRequester = null,
         Func<bool>? canRequestLoadCorrection = null,
@@ -389,7 +404,8 @@ public sealed class MainViewModel : ViewModelBase
         Func<CancellationToken, Task<bool>>? manualChargingReturnRequester = null,
         Func<bool>? loadCancellationPending = null,
         Func<WireToGateSublotRejection?>? sublotRejection = null,
-        Func<bool>? recoveryReasonAlreadyGiven = null)
+        Func<bool>? recoveryReasonAlreadyGiven = null,
+        Func<string?>? recoveryFallbackDemandId = null)
     {
         _wireToGateRecoveryReasonAlreadyGiven = recoveryReasonAlreadyGiven;
         _wireToGateSubmitter = submitter ?? throw new ArgumentNullException(nameof(submitter));
@@ -398,6 +414,7 @@ public sealed class MainViewModel : ViewModelBase
         _wireToGateRecoveryRequester = recoveryRequester;
         _wireToGateCanRequestLoadCancellation = canRequestLoadCancellation;
         _wireToGateLoadCancellationRequester = loadCancellationRequester;
+        _wireToGateLoadCancellationSelectionRequired = loadCancellationSelectionRequired;
         _wireToGateCanRequestLoadCompensation = canRequestLoadCompensation;
         _wireToGateLoadCompensationRequester = loadCompensationRequester;
         _wireToGateCanRequestLoadCorrection = canRequestLoadCorrection;
@@ -410,6 +427,7 @@ public sealed class MainViewModel : ViewModelBase
         _wireToGateManualChargingReturnRequester = manualChargingReturnRequester;
         _wireToGateLoadCancellationPending = loadCancellationPending;
         _wireToGateSublotRejection = sublotRejection;
+        _wireToGateRecoveryFallbackDemandId = recoveryFallbackDemandId;
         _wireToGateEnabled = true;
         RefreshWireToGateInputStateCore();
         ApplyWireToGatePresentationCore();
@@ -473,6 +491,8 @@ public sealed class MainViewModel : ViewModelBase
         CanRequestManualChargingReturn = _wireToGateCanRequestManualChargingReturn?.Invoke() == true;
         RefreshForcedIsolationCore();
         RefreshRecoveryReasonLockCore();
+        // 回落目标随入口一起重算：主体是否已经回落，与入口开关来自同一份恢复状态。
+        RefreshLoadCorrectionTargetCore();
     }
 
     /// <summary>
@@ -484,6 +504,28 @@ public sealed class MainViewModel : ViewModelBase
     {
         get => _hasWorklistItems;
         private set => SetProperty(ref _hasWorklistItems, value);
+    }
+
+    /// <summary>
+    /// 操作员在清单里选中的那一行，扫码前取消要取消的需求（批次7-14，<c>REQ-0211</c>）。选择只用于取消：
+    /// 本票不提供从清单挑待装任务的入口（<c>WORKLIST_SELECTION</c>，<c>REQ-0212</c>）。
+    /// </summary>
+    /// <remarks>
+    /// 清单整张替换时按 <c>DemandId</c> 找回同一条（<see cref="RebuildWorklistItemsCore"/>）：行对象每次重建，
+    /// 按引用或按值都会丢，而服务端换一次修订号不该把操作员刚做的选择抹掉。那条需求真的不在新清单里时选择清空，
+    /// 按下会得到「请重新选择」而不是悄悄换一条。
+    /// </remarks>
+    public WorklistItemRow? SelectedWorklistItem
+    {
+        get => _selectedWorklistItem;
+        set
+        {
+            if (SetProperty(ref _selectedWorklistItem, value))
+            {
+                OnPropertyChanged(nameof(LoadCancellationConfirmationDetailText));
+                RefreshLoadCancellationHintCore();
+            }
+        }
     }
 
     /// <summary>
@@ -616,27 +658,68 @@ public sealed class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 清单多于一条、扫码录入开着而扫码前取消不可用时，取消入口的位置显示一个禁用的按钮与一句提示（批次7-13）。
+    /// 「取消装货」这一下按不按得动。入口出现（<see cref="CanRequestLoadCancellation"/>）是一回事，按得动是
+    /// 另一回事：本站多条需求、业务层要一个所选需求而操作员还没选时，按钮留在原位但禁用（批次7-14）。
     /// </summary>
-    /// <remarks>
-    /// 扫码前取消只在清单恰好一条时能定下取消哪条需求（选需求不归车载端），多条时业务层不提供它。这里只把
-    /// 「这项能力暂时不可用」说出来，不让操作员以为它不存在；完整语义归批次7-14（<c>8005-agv-onboard-hmi#135</c>）。
-    /// 取消入口开着（例如在途装货的取消）时没有这句提示。
-    /// </remarks>
-    public bool HasLoadCancellationUnavailableHint
+    public bool CanPressLoadCancellation =>
+        CanRequestLoadCancellation && !HasLoadCancellationSelectionHint;
+
+    /// <summary>
+    /// 是否显示「请先在清单中选择要取消的任务」。业务层说要选，而清单里还没有选中行时出现。
+    /// </summary>
+    public bool HasLoadCancellationSelectionHint
     {
-        get => _hasLoadCancellationUnavailableHint;
+        get => _hasLoadCancellationSelectionHint;
         private set
         {
-            if (SetProperty(ref _hasLoadCancellationUnavailableHint, value))
+            if (SetProperty(ref _hasLoadCancellationSelectionHint, value))
             {
-                OnPropertyChanged(nameof(LoadCancellationUnavailableHintText));
+                OnPropertyChanged(nameof(LoadCancellationSelectionHintText));
+                OnPropertyChanged(nameof(CanPressLoadCancellation));
             }
         }
     }
 
-    public string LoadCancellationUnavailableHintText =>
-        HasLoadCancellationUnavailableHint ? LoadCancellationUnavailableHint : string.Empty;
+    public string LoadCancellationSelectionHintText =>
+        HasLoadCancellationSelectionHint ? LoadCancellationSelectionHint : string.Empty;
+
+    /// <summary>
+    /// 补偿清空、故障交接、强制机械恢复这三个入口此刻指向哪一条需求的子批（批次7-14）。只在它们回落到
+    /// 「上次完成的装货」时有值：有在途操作时主体就是那次操作，业务服务给出 <c>null</c>，这里也不标。
+    /// </summary>
+    public string RecoveryFallbackTargetText
+    {
+        get => _recoveryFallbackTargetText;
+        private set
+        {
+            if (SetProperty(ref _recoveryFallbackTargetText, value))
+            {
+                OnPropertyChanged(nameof(HasRecoveryFallbackTarget));
+            }
+        }
+    }
+
+    /// <summary>
+    /// 只在那三个入口至少有一个真的在屏幕上时才显示这一行。
+    /// </summary>
+    /// <remarks>
+    /// 文本非空不等于该显示：三个入口都要恢复管理员凭据，没有凭据的车上一个按钮都不出现，而
+    /// <c>LastCompletedLoadOperationContext</c> 照样在日志里——那时孤零零挂一句「目标：子批 X」，说的是
+    /// 一个操作员看不到也按不了的东西。
+    /// </remarks>
+    public bool HasRecoveryFallbackTarget =>
+        RecoveryFallbackTargetText.Length > 0
+        && (CanRequestLoadCompensation
+            || CanRequestFaultCargoHandoff
+            || CanRequestForcedMechanicalRecovery);
+
+    /// <summary>
+    /// 确认框里复述所选需求：子批号、任务类型与花篮数（批次7-14）。没有选中行时为空，确认框照旧只说通用那段。
+    /// </summary>
+    public string LoadCancellationConfirmationDetailText =>
+        SelectedWorklistItem is { } row
+            ? $"将要取消的任务：子批 {row.Sublot}，{row.TaskTypeText}，{row.ExpectedBasketCountText}。"
+            : string.Empty;
 
     /// <summary>
     /// 「修正装货」入口旁标出它针对的子批（批次7-13）。修正照旧针对本站最后一次装货；那一次的需求来自日志里的
@@ -670,8 +753,14 @@ public sealed class MainViewModel : ViewModelBase
         RefreshLoadCorrectionTargetCore();
     });
 
+    /// <summary>
+    /// 要不要提示先选一条。<b>「要不要选」由业务层说，不在这里按清单条数推</b>（批次7-14）：在途装货的取消、
+    /// 重启后重发已经发出的那次取消，都用不着选，而它们在界面上看起来与「多条清单项」一模一样。
+    /// </summary>
     private void RefreshLoadCancellationHintCore() =>
-        HasLoadCancellationUnavailableHint = WorklistItems.Count > 1 && CanSubmit && !CanRequestLoadCancellation;
+        HasLoadCancellationSelectionHint =
+            _wireToGateLoadCancellationSelectionRequired?.Invoke() == true
+            && SelectedWorklistItem is null;
 
     private void RefreshLoadCorrectionTargetCore()
     {
@@ -679,10 +768,63 @@ public sealed class MainViewModel : ViewModelBase
         string? demandId = state?.RecoveryVector is { VectorType: WireToGateRecoveryVectorTypes.LoadCorrection } vector
             ? vector.DemandId
             : state?.LastCompletedLoadOperationContext?.DemandId;
-        LoadCorrectionTargetText = demandId is not null && _sublotsByDemand.TryGetValue(demandId, out string? sublot)
-            ? $"修正对象：子批 {sublot}"
-            : "修正对象：本站最后一次装货";
+        LoadCorrectionTargetText = SublotOf(demandId) is { } sublot
+            ? $"{LoadCorrectionScopeText}：子批 {sublot}"
+            : LoadCorrectionScopeText;
+        // 只有属于本停靠的那次装货参与「窗口关闭」的播报（票面：「本站又完成一次装货时」）。那次装货自己
+        // 记着它属于哪个 operationSessionId，所以这里不靠「上一次看到的是哪一站」去推——新站刚到时日志里
+        // 还是上一站那次装货，按「上一次看到的」推会把它当成本站的，下一次装完就冒出一句跨站的话。
+        AnnounceClosedCorrectionWindowCore(
+            state?.LastCompletedLoadOperationContext is { } settled
+                && string.Equals(
+                    settled.OperationSessionId,
+                    _worklistOperationSessionId,
+                    StringComparison.Ordinal)
+                ? settled.DemandId
+                : null);
+        RecoveryFallbackTargetText = SublotOf(_wireToGateRecoveryFallbackDemandId?.Invoke()) is { } target
+            ? $"目标：子批 {target}"
+            : string.Empty;
     }
+
+    /// <summary>
+    /// 本站又完成一次装货时，说出先装那一条的修正窗口已经关了（批次7-14，<c>REQ-0211</c> 之外的操作员提示）。
+    /// </summary>
+    /// <remarks>
+    /// <b>这是一条正话，不是靠「修正对象」那一行换内容来暗示的。</b><c>LastCompletedLoadOperationContext</c>
+    /// 只留最后一次装货，所以第二次装完的那一刻，第一条的纠错窗口就没有了——而那一行只是悄悄换了子批号，
+    /// 没盯着它看的操作员什么都不会察觉。本次运行的第一次装货不提醒：在它之前没有窗口可关。重启后也不提醒，
+    /// 因为这一端不知道重启前是哪一条，编一条出来比不说更糟。
+    /// </remarks>
+    private void AnnounceClosedCorrectionWindowCore(string? demandId)
+    {
+        if (demandId is null)
+        {
+            // 本停靠还没有完成的装货，也就没有窗口可关。清掉上一站记下的那条：留着它，下一站第一次装完
+            // 就会拿它去比，冒出一句跨站的话。
+            _announcedCorrectionDemandId = null;
+            return;
+        }
+
+        if (_announcedCorrectionDemandId is { } previous
+            && !string.Equals(previous, demandId, StringComparison.Ordinal))
+        {
+            Logs.Add(new LogLineViewModel(
+                DateTimeOffset.Now,
+                OperatorRecordKind.Warning,
+                $"{Describe(previous)} 的修正窗口已随{Describe(demandId)} 装货关闭。"));
+            ClearLogsCommand.RaiseCanExecuteChanged();
+            TrimLogs();
+        }
+
+        _announcedCorrectionDemandId = demandId;
+
+        string Describe(string id) => SublotOf(id) is { } sublot ? $"子批 {sublot}" : "上一次装货";
+    }
+
+    /// <summary>本次运行见过的清单里这条需求的子批号，说不出时 <c>null</c>——不挑一条来冒充。</summary>
+    private string? SublotOf(string? demandId) =>
+        demandId is not null && _sublotsByDemand.TryGetValue(demandId, out string? sublot) ? sublot : null;
 
     public string VisitText
     {
@@ -783,8 +925,12 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (SetProperty(ref _canRequestLoadCancellation, value))
             {
-                RefreshLoadCancellationHintCore();
+                OnPropertyChanged(nameof(CanPressLoadCancellation));
             }
+
+            // 无条件重算：入口开着不变、而「要不要先选」变了，是常有的事——在途装货的取消结清之后，
+            // 同一个 true 底下要选的答案就换了。只在值变化时重算会把那一刻漏掉。
+            RefreshLoadCancellationHintCore();
         }
     }
 
@@ -842,12 +988,17 @@ public sealed class MainViewModel : ViewModelBase
 
     // The entry's own name has to be passed on: SetProperty's [CallerMemberName] would otherwise name this
     // helper, and the window's IsEnabled/Visibility bindings would never hear of the entry (onboard-hmi#112).
+    /// <remarks>
+    /// 三个回落入口的显隐变化要连带通知 <see cref="HasRecoveryFallbackTarget"/>：那一行的可见性取决于
+    /// 它们，而它自己没有独立的变更源。
+    /// </remarks>
     private void SetRecoveryEntry(ref bool field, bool value, [CallerMemberName] string? propertyName = null)
     {
         if (SetProperty(ref field, value, propertyName))
         {
             OnPropertyChanged(nameof(HasRecoveryReasonInput));
             OnPropertyChanged(nameof(HasRecoveryReasonCarriedOver));
+            OnPropertyChanged(nameof(HasRecoveryFallbackTarget));
         }
     }
 
@@ -1086,10 +1237,14 @@ public sealed class MainViewModel : ViewModelBase
     public Task<bool> RequestWireToGateRecoveryAsync(CancellationToken cancellationToken = default) =>
         RequestWithReasonAsync(_wireToGateRecoveryRequester, cancellationToken);
 
+    /// <summary>
+    /// 按下「取消装货」。所选清单行的需求一并交给业务服务，它只在扫码前取消、且本站有多条需求时用得上；
+    /// 在途装货的取消、只有一条清单项、以及重发已发出的那次取消，主体都不由这里决定（批次7-14）。
+    /// </summary>
     public Task<bool> RequestLoadCancellationAsync(CancellationToken cancellationToken = default) =>
         _wireToGateLoadCancellationRequester is null
             ? Task.FromResult(false)
-            : _wireToGateLoadCancellationRequester(cancellationToken);
+            : _wireToGateLoadCancellationRequester(SelectedWorklistItem?.DemandId, cancellationToken);
 
     public Task<bool> RequestLoadCompensationAsync(CancellationToken cancellationToken = default) =>
         RequestWithReasonAsync(_wireToGateLoadCompensationRequester, cancellationToken);
@@ -1271,6 +1426,8 @@ public sealed class MainViewModel : ViewModelBase
         CanRequestManualChargingReturn = _wireToGateCanRequestManualChargingReturn?.Invoke() == true;
         RefreshForcedIsolationCore();
         RefreshRecoveryReasonLockCore();
+        // 回落目标随入口一起重算：主体是否已经回落，与入口开关来自同一份恢复状态。
+        RefreshLoadCorrectionTargetCore();
     }
 
     private void RefreshForcedIsolationCore()

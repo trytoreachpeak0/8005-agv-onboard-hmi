@@ -351,17 +351,25 @@ public sealed class MultiDemandViewModelTests
     }
 
     /// <summary>
-    /// 清单多于一条、扫码录入开着而扫码前取消不可用时，入口位置显示禁用状态与一句提示，不让操作员以为这项能力不存在。
+    /// 业务层说要先选需求、而清单里还没有选中行时：入口出现但按不动，旁边一句提示；选中一行之后按得动、提示消失。
+    /// 确认框复述所选那一条（批次7-14）。
     /// </summary>
+    /// <remarks>
+    /// 批次7-13 时这里断言的是「暂不可用」那个占位提示，因为当时业务层根本不提供多需求下的扫码前取消。
+    /// 本票把选需求交给操作员，所以同一处要断言的换成了「等一次选择」——断言没有变少：按不动仍然被钉住，
+    /// 而「什么能让它按得动」是新加的。
+    /// </remarks>
     [Fact]
-    public async Task WithTwoItemsTheUnavailableCancellationBeforeSublotIsShownDisabledWithAHint()
+    public async Task WithASelectionRequiredTheCancellationBeforeSublotWaitsForAPick()
     {
         await using OnboardController controller = Controller();
         MainViewModel viewModel = await ViewModel(controller);
         viewModel.ConfigureWireToGate(
             (_, _, _) => Task.CompletedTask,
             () => true,
-            canRequestLoadCancellation: () => false);
+            canRequestLoadCancellation: () => true,
+            loadCancellationRequester: (_, _) => Task.FromResult(true),
+            loadCancellationSelectionRequired: () => true);
         viewModel.UpdateWireToGateStatus(Session());
 
         viewModel.UpdateWireToGateJourney(Journey(Worklist(
@@ -369,13 +377,23 @@ public sealed class MultiDemandViewModelTests
             Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2),
             Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
 
-        Assert.False(viewModel.CanRequestLoadCancellation);
-        Assert.True(viewModel.HasLoadCancellationUnavailableHint);
-        Assert.Equal("本站有多条任务，扫码前取消暂不可用", viewModel.LoadCancellationUnavailableHintText);
+        Assert.True(viewModel.CanRequestLoadCancellation);
+        Assert.False(viewModel.CanPressLoadCancellation);
+        Assert.True(viewModel.HasLoadCancellationSelectionHint);
+        Assert.Equal("请先在清单中选择要取消的任务", viewModel.LoadCancellationSelectionHintText);
+        Assert.Equal(string.Empty, viewModel.LoadCancellationConfirmationDetailText);
+
+        viewModel.SelectedWorklistItem = viewModel.WorklistItems.Single(row => row.DemandId == DemandB);
+
+        Assert.True(viewModel.CanPressLoadCancellation);
+        Assert.False(viewModel.HasLoadCancellationSelectionHint);
+        Assert.Equal(
+            "将要取消的任务：子批 SUBLOT-B，焊线→质检关卡，1 篮。",
+            viewModel.LoadCancellationConfirmationDetailText);
     }
 
     /// <summary>
-    /// 只有一条清单项时与今天相同：取消按钮照常出现，没有提示。
+    /// 只有一条清单项时与今天相同：取消按钮照常出现、按得动，没有提示——业务层不要求选择。
     /// </summary>
     [Fact]
     public async Task WithOneItemTheCancellationBeforeSublotIsOfferedAsBefore()
@@ -386,7 +404,7 @@ public sealed class MultiDemandViewModelTests
             (_, _, _) => Task.CompletedTask,
             () => true,
             canRequestLoadCancellation: () => true,
-            loadCancellationRequester: _ => Task.FromResult(true));
+            loadCancellationRequester: (_, _) => Task.FromResult(true));
         viewModel.UpdateWireToGateStatus(Session());
 
         viewModel.UpdateWireToGateJourney(Journey(Worklist(
@@ -394,14 +412,16 @@ public sealed class MultiDemandViewModelTests
             Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2))));
 
         Assert.True(viewModel.CanRequestLoadCancellation);
-        Assert.False(viewModel.HasLoadCancellationUnavailableHint);
+        Assert.True(viewModel.CanPressLoadCancellation);
+        Assert.False(viewModel.HasLoadCancellationSelectionHint);
     }
 
     /// <summary>
-    /// 多条清单项时取消入口是开着的（例如在途装货的取消），就没有「不可用」的提示。
+    /// 多条清单项、但业务层不要求选择时（例如在途装货的取消，主体是那次装货）没有提示，按钮照常按得动。
+    /// 「要不要选」不是按清单条数推出来的，这一条钉的就是这件事。
     /// </summary>
     [Fact]
-    public async Task WithTwoItemsAnOfferedCancellationShowsNoHint()
+    public async Task WithTwoItemsAnOfferedCancellationNeedingNoPickShowsNoHint()
     {
         await using OnboardController controller = Controller();
         MainViewModel viewModel = await ViewModel(controller);
@@ -409,7 +429,7 @@ public sealed class MultiDemandViewModelTests
             (_, _, _) => Task.CompletedTask,
             () => true,
             canRequestLoadCancellation: () => true,
-            loadCancellationRequester: _ => Task.FromResult(true));
+            loadCancellationRequester: (_, _) => Task.FromResult(true));
         viewModel.UpdateWireToGateStatus(Session());
 
         viewModel.UpdateWireToGateJourney(Journey(Worklist(
@@ -418,7 +438,8 @@ public sealed class MultiDemandViewModelTests
             Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
 
         Assert.True(viewModel.CanRequestLoadCancellation);
-        Assert.False(viewModel.HasLoadCancellationUnavailableHint);
+        Assert.True(viewModel.CanPressLoadCancellation);
+        Assert.False(viewModel.HasLoadCancellationSelectionHint);
     }
 
     /// <summary>
@@ -447,13 +468,13 @@ public sealed class MultiDemandViewModelTests
         });
 
         Assert.True(viewModel.CanRequestLoadCorrection);
-        Assert.Equal("修正对象：子批 SUBLOT-B", viewModel.LoadCorrectionTargetText);
+        Assert.Equal("只能修正本站最后一次装货：子批 SUBLOT-B", viewModel.LoadCorrectionTargetText);
 
         viewModel.UpdateWireToGateJourney(Journey(Worklist(
             2,
             Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2))));
 
-        Assert.Equal("修正对象：子批 SUBLOT-B", viewModel.LoadCorrectionTargetText);
+        Assert.Equal("只能修正本站最后一次装货：子批 SUBLOT-B", viewModel.LoadCorrectionTargetText);
     }
 
     /// <summary>
@@ -479,16 +500,215 @@ public sealed class MultiDemandViewModelTests
             LastCompletedLoadOperationContext = WireToGateRecoveryOperationContext.FromCommand(Command(DemandC, [2]))
         });
 
-        Assert.Equal("修正对象：本站最后一次装货", viewModel.LoadCorrectionTargetText);
+        Assert.Equal("只能修正本站最后一次装货", viewModel.LoadCorrectionTargetText);
     }
 
-    internal static WireToGateSlotOperationCommand Command(string demandId, IReadOnlyList<int> slots) => new(
+    /// <summary>
+    /// 同一站先后装完两条需求：修正对象跟着换成后装的那一条，并且在操作员事件区留下一条正话——先装那一条的
+    /// 修正窗口已经关了（批次7-14，验收第 3 条）。
+    /// </summary>
+    /// <remarks>
+    /// 断言的是「出现了这句话」，不是「没显示错的子批」：窗口关闭这件事不会在别处留下痕迹，操作员按下
+    /// 「修正装货」之前唯一的提醒就是这一条，所以它必须是正事实。日志里没有它、只有「修正对象」那一行悄悄
+    /// 换了内容，就等于没有提醒。
+    /// </remarks>
+    [Fact]
+    public async Task ASecondLoadAtTheSameStopClosesTheFirstCorrectionWindowAndSaysSo()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => false,
+            canRequestLoadCorrection: () => true,
+            loadCorrectionRequester: _ => Task.FromResult(true));
+        viewModel.UpdateWireToGateStatus(Session());
+        viewModel.UpdateWireToGateJourney(Journey(WorklistInSession(
+            1,
+            StopSessionId,
+            Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2),
+            Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
+
+        viewModel.UpdateJournaledOperations(WireToGateRecoveryState.Empty with
+        {
+            LastCompletedLoadOperationContext = WireToGateRecoveryOperationContext.FromCommand(Command(DemandA, [1]))
+        });
+
+        Assert.Equal("只能修正本站最后一次装货：子批 SUBLOT-A", viewModel.LoadCorrectionTargetText);
+        // 第一次装完不提醒任何窗口关闭：在它之前没有窗口。
+        Assert.DoesNotContain(viewModel.Logs, line => line.Message.Contains("修正窗口", StringComparison.Ordinal));
+
+        viewModel.UpdateJournaledOperations(WireToGateRecoveryState.Empty with
+        {
+            LastCompletedLoadOperationContext = WireToGateRecoveryOperationContext.FromCommand(Command(DemandB, [2]))
+        });
+
+        Assert.Equal("只能修正本站最后一次装货：子批 SUBLOT-B", viewModel.LoadCorrectionTargetText);
+        Assert.Contains(
+            viewModel.Logs,
+            line => line.Message == "子批 SUBLOT-A 的修正窗口已随子批 SUBLOT-B 装货关闭。");
+    }
+
+    /// <summary>
+    /// 回落到「上次完成的装货」的三个入口（补偿清空、故障交接、强制机械恢复）同样标出目标子批；有在途操作时
+    /// 不标——那时主体就是那次操作，不是「上一次」，业务服务据此给出 <c>null</c>（批次7-14，验收第 3 条）。
+    /// </summary>
+    [Fact]
+    public async Task TheFallbackRecoveryEntriesNameTheTargetSublotOnlyWhenTheyFallBack()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        string? fallbackDemandId = DemandB;
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => false,
+            canRequestLoadCompensation: () => true,
+            loadCompensationRequester: (_, _) => Task.FromResult(true),
+            recoveryFallbackDemandId: () => fallbackDemandId);
+        viewModel.UpdateWireToGateStatus(Session());
+        viewModel.UpdateWireToGateJourney(Journey(Worklist(
+            1,
+            Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2),
+            Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
+
+        Assert.True(viewModel.HasRecoveryFallbackTarget);
+        Assert.Equal("目标：子批 SUBLOT-B", viewModel.RecoveryFallbackTargetText);
+
+        fallbackDemandId = null;
+        viewModel.RefreshWireToGateInputState();
+
+        Assert.False(viewModel.HasRecoveryFallbackTarget);
+        Assert.Equal(string.Empty, viewModel.RecoveryFallbackTargetText);
+    }
+
+    /// <summary>
+    /// 三个入口一个都没出现时（没有恢复管理员凭据，或者还没到能恢复的状态）不显示这一行——哪怕日志里
+    /// 确实有一次已结算的装货，能说出目标子批（批次7-14 审查）。
+    /// </summary>
+    /// <remarks>
+    /// 否则界面上会孤零零挂一句「目标：子批 X」，指着一个操作员既看不到也按不了的东西。
+    /// </remarks>
+    [Fact]
+    public async Task WithNoFallbackEntryOnScreenTheTargetLineIsNotShownEither()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => false,
+            canRequestLoadCompensation: () => false,
+            canRequestFaultCargoHandoff: () => false,
+            canRequestForcedMechanicalRecovery: () => false,
+            recoveryFallbackDemandId: () => DemandB);
+        viewModel.UpdateWireToGateStatus(Session());
+        viewModel.UpdateWireToGateJourney(Journey(Worklist(
+            1,
+            Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2),
+            Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
+
+        // 文案说得出来——目标就是 B——但一个入口都没出现，所以这一行不该在。
+        Assert.Equal("目标：子批 SUBLOT-B", viewModel.RecoveryFallbackTargetText);
+        Assert.False(viewModel.HasRecoveryFallbackTarget);
+    }
+
+    /// <summary>
+    /// 「修正窗口已关闭」只说本站的事：换了一次停靠（新的 <c>operationSessionId</c>）之后第一次装完货，
+    /// 不会冒出一句「上一站那条的窗口关了」（批次7-14 审查）。
+    /// </summary>
+    [Fact]
+    public async Task TheCorrectionWindowLineDoesNotCarryAcrossStops()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => false,
+            canRequestLoadCorrection: () => true,
+            loadCorrectionRequester: _ => Task.FromResult(true));
+        viewModel.UpdateWireToGateStatus(Session());
+        const string nextStopSessionId = "99999999-9999-4999-8999-999999999999";
+        viewModel.UpdateWireToGateJourney(Journey(WorklistInSession(
+            1,
+            StopSessionId,
+            Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2))));
+        viewModel.UpdateJournaledOperations(WireToGateRecoveryState.Empty with
+        {
+            LastCompletedLoadOperationContext = WireToGateRecoveryOperationContext.FromCommand(Command(DemandA, [1]))
+        });
+        Assert.Equal("只能修正本站最后一次装货：子批 SUBLOT-A", viewModel.LoadCorrectionTargetText);
+
+        // 下一站：新的 operationSessionId，清单换成 B，那里又装完一次。
+        viewModel.UpdateWireToGateJourney(Journey(WorklistInSession(
+            2,
+            nextStopSessionId,
+            Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
+        viewModel.UpdateJournaledOperations(WireToGateRecoveryState.Empty with
+        {
+            LastCompletedLoadOperationContext =
+                WireToGateRecoveryOperationContext.FromCommand(Command(DemandB, [2], nextStopSessionId))
+        });
+
+        Assert.Equal("只能修正本站最后一次装货：子批 SUBLOT-B", viewModel.LoadCorrectionTargetText);
+        Assert.DoesNotContain(viewModel.Logs, line => line.Message.Contains("修正窗口", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 新一版清单里没有选中那条需求时选择清空，提示回到「请先在清单中选择」；还在的话选择保住，哪怕整行是
+    /// 重建出来的新对象（批次7-14）。
+    /// </summary>
+    /// <remarks>
+    /// 确认框开着的时候服务端换了清单，就是这个情形。清空而不是顺移到另一行：操作员点的是一条具体的任务，
+    /// 换一条给他按等于替他做了决定。
+    /// </remarks>
+    [Fact]
+    public async Task AWorklistThatDropsThePickedRowClearsTheSelection()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => true,
+            canRequestLoadCancellation: () => true,
+            loadCancellationRequester: (_, _) => Task.FromResult(true),
+            loadCancellationSelectionRequired: () => true);
+        viewModel.UpdateWireToGateStatus(Session());
+        viewModel.UpdateWireToGateJourney(Journey(Worklist(
+            1,
+            Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2),
+            Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
+        viewModel.SelectedWorklistItem = viewModel.WorklistItems.Single(row => row.DemandId == DemandB);
+
+        // 同一条需求还在，但整行换了对象（侧别从日志补上了）：选择要认需求，不认行对象。
+        viewModel.UpdateJournaledOperations(WireToGateRecoveryState.Empty with
+        {
+            LastCompletedLoadOperationContext = WireToGateRecoveryOperationContext.FromCommand(Command(DemandB, [2]))
+        });
+
+        Assert.Equal(DemandB, viewModel.SelectedWorklistItem?.DemandId);
+        Assert.False(viewModel.HasLoadCancellationSelectionHint);
+
+        viewModel.UpdateWireToGateJourney(Journey(Worklist(
+            2,
+            Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2))));
+
+        Assert.Null(viewModel.SelectedWorklistItem);
+        Assert.True(viewModel.HasLoadCancellationSelectionHint);
+        Assert.False(viewModel.CanPressLoadCancellation);
+        Assert.Equal(string.Empty, viewModel.LoadCancellationConfirmationDetailText);
+    }
+
+    internal const string StopSessionId = "77777777-7777-4777-8777-777777777777";
+
+    internal static WireToGateSlotOperationCommand Command(
+        string demandId,
+        IReadOnlyList<int> slots,
+        string operationSessionId = StopSessionId) => new(
         Guid.NewGuid().ToString("D"),
         null,
         1,
         Now,
         demandId,
-        "77777777-7777-4777-8777-777777777777",
+        operationSessionId,
         Guid.NewGuid().ToString("D"),
         OperationType.Load,
         slots,
@@ -529,6 +749,13 @@ public sealed class MultiDemandViewModelTests
 
     internal static WireToGateCurrentStopWorklist Worklist(long revision, params WireToGateWorklistItem[] items) =>
         WorklistAt(revision, null, items);
+
+    /// <summary>同一个站名下换一次停靠：新的 <c>operationSessionId</c>。</summary>
+    internal static WireToGateCurrentStopWorklist WorklistInSession(
+        long revision,
+        string? operationSessionId,
+        params WireToGateWorklistItem[] items) =>
+        new("ST-01", revision, operationSessionId, null, items, new string('b', 64));
 
     internal static WireToGateCurrentStopWorklist WorklistAt(
         long revision,
