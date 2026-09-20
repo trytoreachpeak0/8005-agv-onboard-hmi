@@ -1641,20 +1641,45 @@ public sealed partial class WireToGateBusinessService
                 return;
             }
 
-            WireToGateRecoveryVectorContext context = await BindRecoveryVectorCommandAsync(
-                    state,
-                    vectorType,
-                    primaryId,
-                    exceptionRecoverySessionId,
-                    demandId,
-                    slotOperationAttemptId,
-                    handoffId,
-                    slots,
-                    forcedRecoveryGeneration,
-                    expectedHash,
-                    correction,
-                    cancellationToken)
-                .ConfigureAwait(false);
+            WireToGateRecoveryVectorContext context;
+            try
+            {
+                context = await BindRecoveryVectorCommandAsync(
+                        state,
+                        vectorType,
+                        primaryId,
+                        exceptionRecoverySessionId,
+                        demandId,
+                        slotOperationAttemptId,
+                        handoffId,
+                        slots,
+                        forcedRecoveryGeneration,
+                        expectedHash,
+                        correction,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (InvalidDataException exception) when (IsBindScopeRefusal(exception.Message))
+            {
+                // Answered, then rethrown: the log line and the RECOVERY_BLOCKED event below are the
+                // operator's account of the refusal and stay exactly as they were, with the specific
+                // reason the wire cannot carry (onboard-hmi#145 (b)).
+                await AnswerUnbindableCommandAsync(
+                        state,
+                        vectorType,
+                        primaryId,
+                        exceptionRecoverySessionId,
+                        demandId,
+                        slotOperationAttemptId,
+                        handoffId,
+                        slots,
+                        forcedRecoveryGeneration,
+                        resultKey,
+                        exception.Message,
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                throw;
+            }
             if (vectorType == WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery)
             {
                 // REQ-0241: the vehicle stops sending unlock DOs here and does nothing physical at
@@ -1884,6 +1909,179 @@ public sealed partial class WireToGateBusinessService
                 RecoveryVector = null,
                 RecoveryResultObservedAt = null
             }
+            : null;
+
+    /// <summary>
+    /// The three bind refusals that are answered on the wire (onboard-hmi#145 (b)).
+    /// </summary>
+    /// <remarks>
+    /// Each of them says the same thing about the command -- it names a recovery this end did not
+    /// prepare, or did not prepare this way -- and that is a thing the server's workflow is entitled to
+    /// hear. The others <c>BindRecoveryVectorCommandAsync</c> can raise are not on this list:
+    /// <c>RECOVERY_COMMAND_INVALID</c>, <c>RECOVERY_OPERATION_CONTEXT_MISSING</c> and
+    /// <c>LOAD_CORRECTION_OPERATION_NOT_AVAILABLE</c> are about a command or a journal too malformed to
+    /// answer from, and answering them would mean inventing the identity the answer is addressed by.
+    /// </remarks>
+    private static bool IsBindScopeRefusal(string message) => message is
+        "RECOVERY_VECTOR_CONTEXT_MISSING"
+        or "RECOVERY_SCOPE_MISMATCH"
+        or "RECOVERY_COMMAND_HASH_MISMATCH";
+
+    /// <summary>
+    /// The one protocol reason code the three bind refusals go out under.
+    /// </summary>
+    /// <remarks>
+    /// <c>SlotResult.reasonCodes</c> is an array of <c>ErrorCode</c>, a closed enum, and
+    /// <c>RECOVERY_SCOPE_MISMATCH</c> is the only one of the three local exception messages that is in
+    /// it -- <c>RECOVERY_VECTOR_CONTEXT_MISSING</c> and <c>RECOVERY_COMMAND_HASH_MISMATCH</c> have never
+    /// been protocol codes. It is the right one to collapse them onto rather than a stand-in: all three
+    /// say the command's recovery scope and this end's do not agree. The distinction between them is
+    /// kept where it can be carried -- the log line and the <c>RECOVERY_BLOCKED</c> event.
+    /// </remarks>
+    private const string BindRefusedReasonCode = "RECOVERY_SCOPE_MISMATCH";
+
+    /// <summary>
+    /// Answers a recovery command that did not bind with a <c>FAILED</c> result built from the command
+    /// itself, so the server's workflow stops waiting (onboard-hmi#145 (b)).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Until #145 this went out as a log line and an operator event and nothing on the wire. #123 chose
+    /// that deliberately: answering a command this end never prepared would put a result on record for
+    /// an action the two ends disagree about. What that reading missed is that the server is not asking
+    /// what happened to the slots -- it is asking whether this vehicle carried out its command -- and
+    /// <c>FAILED</c> with every slot <c>NOT_STARTED</c> answers exactly that, claiming nothing else.
+    /// The server closes the session on it and leaves the demand blocked for recovery
+    /// (control-server#169), which is what the disagreement deserved; without it the workflow sits in
+    /// <c>AwaitingResult</c> and the session in <c>EXECUTING</c> until a reconnect or a person.
+    /// </para>
+    /// <para>
+    /// <b>Every identity comes from the command, not from this end.</b> The server matches a result to
+    /// its workflow by those very fields, and a bind refusal is by definition a case where this end's
+    /// differ -- so echoing the command's is what makes the answer land on the workflow that is waiting
+    /// for it, and answering with this end's would be answering nothing.
+    /// </para>
+    /// <para>
+    /// Two commands are left unanswered rather than answered wrongly. A command naming no slots has no
+    /// slot results to carry, and the schema requires at least one. And the fault cargo handoff and the
+    /// forced mechanical recovery must name the operator who authorized them, which exists on this end
+    /// only on a prepared vector: for the one refusal that has no vector, the only operator available
+    /// would be whoever happens to be at the vehicle now, and signing a refusal with them is a worse
+    /// record than none. Those stay as they were -- log line, operator event, silence.
+    /// </para>
+    /// <para>
+    /// The answer goes through the same durable send under the same key as a real result for this
+    /// vector, so a command sent again finds it and is answered as a replay: one result per recovery
+    /// action, with the <c>messageId</c> derived from that key, however many copies of the command
+    /// arrive.
+    /// </para>
+    /// </remarks>
+    private async Task AnswerUnbindableCommandAsync(
+        WireToGateRecoveryState state,
+        string vectorType,
+        string primaryId,
+        string? exceptionRecoverySessionId,
+        string demandId,
+        string? slotOperationAttemptId,
+        string? handoffId,
+        IReadOnlyList<int> slots,
+        long? forcedRecoveryGeneration,
+        string resultKey,
+        string refusal,
+        CancellationToken cancellationToken)
+    {
+        WireToGateOperatorContextPayload? operatorContext = PersistedOperatorOrNull(state);
+        bool operatorRequired = vectorType is WireToGateRecoveryVectorTypes.FaultCargoHandoff
+            or WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery;
+        if (slots.Count == 0 || (operatorRequired && operatorContext is null))
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"未绑定的恢复命令无法回结果，只记录拒绝：type={vectorType}，id={primaryId}，"
+                    + $"reason={refusal}，"
+                    + (slots.Count == 0 ? "命令未指明仓位。" : "本端没有该恢复动作的操作员签名。"),
+                null);
+            return;
+        }
+
+        WireToGateRecoveryVectorContext answering = new(
+            vectorType,
+            primaryId,
+            exceptionRecoverySessionId,
+            demandId,
+            slotOperationAttemptId,
+            handoffId,
+            slots.Order().ToArray(),
+            CommandContentSha256: null,
+            operatorContext?.OperatorId,
+            operatorContext?.VerificationMethod,
+            operatorContext?.VerifiedAt)
+        {
+            ForcedRecoveryGeneration = forcedRecoveryGeneration
+        };
+
+        // NOT_STARTED with every reading UNKNOWN, because that is what this end knows: it refused
+        // before reading a single locker, let alone driving one.
+        WireToGateRecoveryVectorExecutionResult refused = new(
+            vectorType,
+            primaryId,
+            exceptionRecoverySessionId,
+            demandId,
+            slotOperationAttemptId,
+            handoffId,
+            "FAILED",
+            [.. answering.Slots.Select(slot => new WireToGateSlotExecutionResult(
+                slot,
+                "NOT_STARTED",
+                "UNKNOWN",
+                "UNKNOWN",
+                "UNKNOWN",
+                [BindRefusedReasonCode]))],
+            _clock.Now.ToUniversalTime(),
+            "PREPARED");
+
+        try
+        {
+            await SendRecoveryVectorResultAsync(answering, resultKey, refused, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (
+            exception is IOException
+                or TimeoutException
+                or InvalidOperationException
+                or InvalidDataException)
+        {
+            // Saved before it is sent, so an answer on file goes out with the outbox on the next
+            // session even though this send never heard back. One that never reached the outbox did
+            // not go anywhere, and the command -- which the server sends again while it has no result
+            // -- is refused, and answered, afresh.
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"未绑定的恢复命令已回 FAILED，但暂未收到DurableAck：type={vectorType}，id={primaryId}，"
+                    + $"reason={refusal}。",
+                exception);
+        }
+    }
+
+    /// <summary>
+    /// The operator recorded on the prepared vector, or <c>null</c> when there is none to speak for.
+    /// </summary>
+    /// <remarks>
+    /// Unlike <see cref="RequirePersistedOperator"/> this never throws: its caller answers a command
+    /// that may name no vector at all, and "there is nobody on file" is one of the answers it has to
+    /// act on rather than an error.
+    /// </remarks>
+    private static WireToGateOperatorContextPayload? PersistedOperatorOrNull(
+        WireToGateRecoveryState state) =>
+        state.RecoveryVector is
+        {
+            OperatorId: { } operatorId,
+            OperatorVerificationMethod: { } method,
+            OperatorVerifiedAt: { } verifiedAt
+        }
+            ? new(operatorId, method, verifiedAt)
             : null;
 
     /// <summary>

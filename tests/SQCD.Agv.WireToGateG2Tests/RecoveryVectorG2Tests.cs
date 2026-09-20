@@ -782,6 +782,12 @@ public sealed partial class RecoveryVectorG2Tests
     /// Here the command carries generation 9 over slot 1 while the vector is bound to slots 1 and
     /// 2. The scope comparison rejects it; the fence must still read 0.
     /// </para>
+    /// <para>
+    /// Since onboard-hmi#145 (b) the refusal is answered with a <c>FAILED</c> result, and that answer
+    /// reports generation 9 -- the one the command it answers was issued under, which is how the server
+    /// files it against the right workflow. Reporting a generation is not adopting it: what the fence
+    /// reads is the journal, and the journal still says 0.
+    /// </para>
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
@@ -800,9 +806,15 @@ public sealed partial class RecoveryVectorG2Tests
 
         Assert.True(await harness.Business.RequestForcedMechanicalRecoveryAsync(
             "现场确认仓门无法电动解锁，申请强制机械恢复。", token));
-        await harness.WaitForRecoveryBlockedAsync(token);
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_SCOPE_MISMATCH", token);
 
-        Assert.Empty(harness.ResultsOfType("ForcedMechanicalRecoveryResult"));
+        JsonElement result = await harness.WaitForResultAsync(
+            "ForcedMechanicalRecoveryResult", token);
+        Assert.Equal("FAILED", result.GetProperty("outcome").GetString());
+        Assert.Equal(9, result.GetProperty("forcedRecoveryGeneration").GetInt64());
+        Assert.Equal(
+            [1],
+            result.GetProperty("slots").EnumerateArray().Select(slot => slot.GetInt32()).ToArray());
         Assert.Equal(0, harness.Io.UnlockCount);
 
         WireToGateRecoveryState state = await harness.ReadRecoveryStateAsync(token);
