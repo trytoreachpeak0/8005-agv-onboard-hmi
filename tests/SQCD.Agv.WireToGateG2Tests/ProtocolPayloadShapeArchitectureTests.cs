@@ -303,7 +303,7 @@ public sealed class ProtocolPayloadShapeArchitectureTests
                     new string('a', 40),
                     CredentialVariable,
                     G2SessionTimeouts.Connect,
-                    G2SessionTimeouts.Message,
+                    TimeSpan.FromSeconds(5),
                     1,
                     1,
                     "eight-slot-v1",

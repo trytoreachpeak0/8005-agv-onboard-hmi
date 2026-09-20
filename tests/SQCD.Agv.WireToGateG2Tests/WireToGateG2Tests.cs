@@ -3109,7 +3109,7 @@ public sealed partial class WireToGateG2Tests
             new string('a', 40),
             CredentialVariable,
             G2SessionTimeouts.Connect,
-            messageTimeout ?? G2SessionTimeouts.Message,
+            messageTimeout ?? TimeSpan.FromSeconds(2),
             capability,
             safety,
             "eight-slot-v1",

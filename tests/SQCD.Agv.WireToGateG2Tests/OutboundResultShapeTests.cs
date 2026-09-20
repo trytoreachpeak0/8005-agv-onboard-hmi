@@ -119,7 +119,7 @@ public sealed class OutboundResultShapeTests
                 new string('a', 40),
                 "W2G_RESULT_SHAPE_CREDENTIAL",
                 G2SessionTimeouts.Connect,
-                G2SessionTimeouts.Message,
+                TimeSpan.FromSeconds(5),
                 1,
                 1,
                 "eight-slot-v1",

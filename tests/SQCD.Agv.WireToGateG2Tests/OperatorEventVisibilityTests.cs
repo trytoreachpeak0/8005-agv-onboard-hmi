@@ -136,7 +136,7 @@ public sealed class OperatorEventVisibilityTests
                 new string('a', 40),
                 "W2G_OPERATOR_EVENT_VISIBILITY_CREDENTIAL",
                 G2SessionTimeouts.Connect,
-                G2SessionTimeouts.Message,
+                TimeSpan.FromSeconds(2),
                 1,
                 1,
                 "eight-slot-v1",

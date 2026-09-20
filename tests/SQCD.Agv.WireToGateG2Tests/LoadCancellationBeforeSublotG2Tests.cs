@@ -614,7 +614,7 @@ public sealed class LoadCancellationBeforeSublotG2Tests
                         new string('a', 40),
                         CredentialVariable,
                         G2SessionTimeouts.Connect,
-                        G2SessionTimeouts.Message,
+                        TimeSpan.FromSeconds(2),
                         baselineRevision,
                         baselineRevision,
                         "eight-slot-v1",

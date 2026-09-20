@@ -1,38 +1,44 @@
 namespace SQCD.Agv.WireToGateG2Tests;
 
 /// <summary>
-/// The connect and message timeouts every G2 harness hands the session client.
+/// The connect timeout every G2 harness hands the session client.
 /// </summary>
 /// <remarks>
 /// <para>
-/// These are a backstop, not a criterion. No test in this assembly asserts how quickly a connection
-/// is made or an acknowledgement comes back; the three that do own timeout behaviour pass their own
-/// short value (100 ms, 500 ms and 1 s) and are unaffected by what is here. All either value does
-/// is stop a test hanging if the double never answers -- and the double's "drop" switches close the
-/// socket rather than going quiet, so the vehicle learns immediately and never waits out
-/// <see cref="Message"/>. Raising these therefore costs no run time.
+/// Only the connect timeout lives here, and that asymmetry is the point. The two timeouts sit side
+/// by side in <c>WireToGateSessionOptions</c> and were both written as 2 seconds in eleven places,
+/// which makes them look like one setting. They are not.
 /// </para>
 /// <para>
-/// Both were 2 seconds, written out in eleven places. Two seconds was stricter than the vehicle
-/// ships with -- <c>ConnectTimeoutMs</c> and <c>MessageTimeoutMs</c> both default to 3000 in
-/// <c>Configuration.cs</c> -- so the tests failed in conditions the product tolerates, which is
-/// backwards for a backstop and was never argued for anywhere.
+/// <b>Connect is a backstop.</b> Nothing in this assembly asserts how quickly a connection is made;
+/// the double is always listening, so a connect either succeeds in about a millisecond or the
+/// socket is refused outright. All this value does is stop a test hanging.
 /// </para>
 /// <para>
-/// 15 seconds comes from measurement, not from taste. onboard-hmi#149 timed loopback connects from
+/// <b>Message is a criterion, and must not be touched.</b> The vehicle turns "no acknowledgement
+/// by now" into operator-visible events -- <c>RESULT_ACK_PENDING</c>, releasing an unacknowledged
+/// refusal, giving up on a dropped ack -- and eleven tests wait for exactly those. Raising it from
+/// 2 seconds to 15 was tried under onboard-hmi#149 and failed all eleven, every round, with
+/// messages like <c>Timed out after 10s waiting for: an operator event RESULT_ACK_PENDING</c>:
+/// the vehicle was still waiting out its own timeout when the test gave up on it. So each call
+/// site keeps the message timeout it had (2 seconds, or 5 in the two shape tests), and this class
+/// deliberately offers no constant for it.
+/// </para>
+/// <para>
+/// 15 seconds for connect comes from measurement. onboard-hmi#149 timed loopback connects from
 /// inside a loaded test process: idle, 6034 connects had a median of 1.40 ms and a worst case of
 /// 123 ms; with a second full solution test run alongside, 5427 connects had a median of 1.81 ms
-/// and a worst case of 3694 ms. The tail is a process-wide pause, not a slow network -- the same
-/// run measured a single 5171 ms stall in a 5 ms <c>Task.Delay</c>. 15 s clears the worst measured
-/// connect four times over and the worst measured stall nearly three times, while staying far
-/// inside a CI job that times out at 30 minutes and normally finishes in 3 to 4.
+/// and a worst case of 3694 ms, two of them past the old 2 second limit. That tail is not a slow
+/// network -- at the same instant a 5 ms <c>Task.Delay</c> was late by 3694 ms as well, with the
+/// thread pool idle at 8 threads, so the whole process was stopped. 2 seconds was also stricter
+/// than the vehicle ships with (<c>ConnectTimeoutMs</c> defaults to 3000 in
+/// <c>Configuration.cs</c>), which is backwards for a backstop. 15 s clears the worst measured
+/// connect four times over while staying far inside a CI job that times out at 30 minutes and
+/// normally finishes in 3 to 4.
 /// </para>
 /// </remarks>
 internal static class G2SessionTimeouts
 {
     /// <summary>How long the client may take to open the loopback connection.</summary>
     internal static readonly TimeSpan Connect = TimeSpan.FromSeconds(15);
-
-    /// <summary>How long the client waits for the double to answer one message.</summary>
-    internal static readonly TimeSpan Message = TimeSpan.FromSeconds(15);
 }
