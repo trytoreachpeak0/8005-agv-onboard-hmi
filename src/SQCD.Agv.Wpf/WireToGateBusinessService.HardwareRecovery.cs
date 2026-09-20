@@ -76,6 +76,15 @@ public sealed partial class WireToGateBusinessService
             // This write owns ForcedIsolation and nothing else, so every other field is what the
             // journal holds when the step runs -- an executor checkpoint or a released session that
             // landed since this press read is not undone (onboard-hmi#136 point 7).
+            //
+            // The isolation itself is still the one read at the top of this press, and is not
+            // re-checked inside the step the way SettleRecoveryVectorStateAsync re-checks its own.
+            // That is the behaviour this path has today and onboard-hmi#136 did not change it. The two
+            // are not the same claim: there, the write must not replace a standing isolation, which is
+            // a statement about the journal at the moment of the write; here, the write records a
+            // pending record inside the isolation this press is about, and a press about an isolation
+            // that has since been replaced is refused upstream -- a second forced recovery cannot be
+            // requested while one is uncleared.
             await UpdateRecoveryStateCachedAsync(
                     current => current with
                     {

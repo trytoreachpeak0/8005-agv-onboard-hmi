@@ -1114,6 +1114,58 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     /// <summary>
+    /// The other half of the same rule: a pending cancellation left over from <b>another</b> attempt is
+    /// dropped by the checkpoint, as it always was (onboard-hmi#78).
+    /// </summary>
+    /// <remarks>
+    /// The checkpoint keeps the newest pending cancellation only when it belongs to the attempt being
+    /// executed; anything else falls back to the copy this run started with. That fallback is the one
+    /// place in the executor where onboard-hmi#136 deliberately left a value read outside the journal's
+    /// lock, so it is the one that most needs saying out loud. Without this case, the sibling above
+    /// would pass just as well against an implementation that kept every pending cancellation it found
+    /// -- including one belonging to an attempt this operation knows nothing about, which would then
+    /// travel on the next restart as if it were this attempt's.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task TheExecutorsOwnCheckpointsDropAPendingCancellationOfAnotherAttempt()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true);
+        WireToGatePendingLoadCancellation otherAttempts = PendingCancellation(command) with
+        {
+            SlotOperationAttemptId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        };
+        bool pressed = false;
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            command,
+            async (progress, progressToken) =>
+            {
+                if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    if (!pressed)
+                    {
+                        pressed = true;
+                        await fixture.Journal.UpdateRecoveryStateAsync(
+                            state => state with { PendingLoadCancellation = otherAttempts },
+                            progressToken);
+                    }
+
+                    fixture.Io.CloseDoor(progress.Active.Single() - 1, cargo: true);
+                }
+            },
+            token);
+
+        Assert.True(pressed, "the pending cancellation was never journaled mid-operation");
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Null(state.PendingLoadCancellation);
+    }
+
+    /// <summary>
     /// REQ-0241: a slot opened by hand under a forced isolation is not operated again until a hardware
     /// recovery record clears it (onboard-hmi#107). The IO reads it as an ordinary locked, empty slot
     /// here, which is exactly why the reading is not trusted: nothing proves what it was left in.

@@ -444,10 +444,23 @@ public sealed partial class MultiDemandJourneyG2Tests
         /// matters -- but since onboard-hmi#136 the recovery state is only ever written by a change
         /// function under the journal's lock, so there is no whole record to look at on the way in.
         /// The content is therefore predicted: a state is read outside the lock and
-        /// <paramref name="change"/> is run against it. That run writes nothing (only the journal
-        /// writes), and the real step below runs it again, so the prediction costs one extra
-        /// evaluation and changes nothing. Holding still happens outside the lock, which is what lets
-        /// the restore's own read get in while B's write waits.
+        /// <paramref name="change"/> is run against it, and the real step below runs it again. Holding
+        /// still happens outside the lock, which is what lets the restore's own read get in while B's
+        /// write waits.
+        /// <para>
+        /// <b>This rests on a property of the change functions, and that property is not free.</b> A
+        /// change function writes nothing itself -- only the journal writes -- but several of the ones
+        /// onboard-hmi#136 introduced report <i>why they wrote nothing</i> through a captured flag, and
+        /// their callers throw on it: <c>WireToGateRecoveryVectorExecutor.EnsureResultObservedAtAsync</c>
+        /// (<c>mismatch</c>, <c>alreadyObserved</c>), <c>WireToGateBusinessService</c>'s resume action
+        /// write (<c>sessionGone</c>), <c>SettleRecoveryVectorStateAsync</c> (<c>vectorChanged</c>,
+        /// <c>isolationStands</c>) and the forced-recovery stamp (<c>alreadyStamped</c>). A prediction
+        /// that set such a flag and a real evaluation that then wrote successfully would leave the
+        /// caller throwing over a write that happened. Each of those functions therefore resets its
+        /// flags on entry, and says so; <b>a new one that does not is not safe to predict</b>. Adding
+        /// one means either giving it the same reset or replacing this prediction with an
+        /// identification that does not re-run the change function.
+        /// </para>
         /// </remarks>
         public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
             Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,

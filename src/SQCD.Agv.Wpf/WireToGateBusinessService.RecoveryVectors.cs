@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using SQCD.Agv.Application;
@@ -865,8 +866,10 @@ public sealed partial class WireToGateBusinessService
             operatorContext.OperatorId,
             operatorContext.VerificationMethod,
             operatorContext.VerifiedAt);
-        WireToGateRecoveryState authorized = await ReadRecoveryStateCachedAsync(cancellationToken)
-            .ConfigureAwait(false);
+        // Read for its side effect alone: it refreshes the cached recovery state every entry gate
+        // reads. The write below takes its own base from inside the journal step, so no copy of the
+        // state is needed here any more (onboard-hmi#136).
+        await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
         await WriteRecoveryVectorPreparedAsync(vector, cancellationToken)
             .ConfigureAwait(false);
         PublishOperatorResponse(
@@ -1334,17 +1337,15 @@ public sealed partial class WireToGateBusinessService
                 operatorContext.OperatorId,
                 operatorContext.VerificationMethod,
                 operatorContext.VerifiedAt);
-            state = state with
-            {
-                RecoverySessionRequestId = requestId,
-                ExceptionRecoverySessionId = opened.ExceptionRecoverySessionId,
-                RecoveryActionId = actionId,
-                RecoveryActionRequestId = actionMessageId,
-                RecoveryReason = actionReason,
-                RecoveryOperatorId = operatorContext.OperatorId,
-                RecoveryOperatorVerifiedAt = operatorContext.VerifiedAt
-            };
-            await WriteRecoveryVectorPreparedAsync(vector, cancellationToken)
+            // The four fields the vector's context carries -- the session, the action, the operator
+            // and the verification time -- are taken from it inside the write. These three it does not
+            // carry, and on this branch nothing else writes them, so they are passed.
+            await WriteRecoveryVectorPreparedAsync(
+                    vector,
+                    cancellationToken,
+                    recoveryReason: actionReason,
+                    recoverySessionRequestId: requestId,
+                    recoveryActionRequestId: actionMessageId)
                 .ConfigureAwait(false);
         }
 
@@ -1648,6 +1649,8 @@ public sealed partial class WireToGateBusinessService
             await UpdateRecoveryStateCachedAsync(
                     current =>
                     {
+                        // Assigned unconditionally on entry, so an earlier evaluation of this same
+                        // change function cannot leave a stale stamp behind (see point 6).
                         alreadyStamped = current.RecoveryResultObservedAt;
                         return alreadyStamped is null
                             ? current with { RecoveryResultObservedAt = observedAt }
@@ -1777,6 +1780,12 @@ public sealed partial class WireToGateBusinessService
             // that was on file when it was read, and clearing whatever replaced it since would strand
             // that one (onboard-hmi#136 point 7). The fields kept on the compensation path are taken
             // from the state the journal holds then, not from the copy read above.
+            //
+            // Scope: when the rejection names no primaryId there is nothing to compare, so a vector
+            // that replaced the rejected one in the meantime would still be cleared. That window is
+            // whatever elapses between this read and this write, and closing it would need the
+            // rejection to identify its vector -- a protocol matter, not this one. The re-check above
+            // protects the case where the rejection does name one.
             await UpdateRecoveryStateCachedAsync(
                     current => current.RecoveryVector is not { } onFile
                         || (primaryId is not null && onFile.PrimaryId != primaryId)
@@ -2879,6 +2888,11 @@ public sealed partial class WireToGateBusinessService
         WireToGateRecoveryState? settled = await UpdateRecoveryStateCachedAsync(
                 journalled =>
                 {
+                    // Reset on entry, for the reason given in WireToGateBusinessService's point 6: a
+                    // change function may be evaluated more than once for the same step, and a flag
+                    // left set by an earlier evaluation would throw over a successful write.
+                    vectorChanged = false;
+                    isolationStands = false;
                     if (journalled.RecoveryVector is not { } onFile
                         || onFile.VectorType != context.VectorType
                         || onFile.PrimaryId != context.PrimaryId)
@@ -2920,10 +2934,11 @@ public sealed partial class WireToGateBusinessService
             .ConfigureAwait(false);
         if (settled is null)
         {
-            throw new InvalidDataException(
-                isolationStands ? "HARDWARE_RECOVERY_RECORD_REQUIRED"
-                : vectorChanged ? "RECOVERY_STATE_MISMATCH"
-                : "RECOVERY_STATE_NOT_WRITTEN");
+            // Those two flags are the only ways the change function returns null; a third reason code
+            // here could never be emitted, and an unemittable code gets investigated as a real fault.
+            throw isolationStands ? new InvalidDataException("HARDWARE_RECOVERY_RECORD_REQUIRED")
+                : vectorChanged ? new InvalidDataException("RECOVERY_STATE_MISMATCH")
+                : new UnreachableException();
         }
     }
 
@@ -2940,12 +2955,29 @@ public sealed partial class WireToGateBusinessService
     /// The reason to record with the vector, where this vector brings its own; <c>null</c> keeps the
     /// one the journal holds. Also a copy-modifying caller before onboard-hmi#136.
     /// </param>
+    /// <param name="recoverySessionRequestId">
+    /// The id of the session request this vector was authorized under, and
+    /// <paramref name="recoveryActionRequestId"/> the message id of the action that asked for it.
+    /// Both <c>null</c> keep what the journal holds.
+    /// </param>
+    /// <remarks>
+    /// The three ids and the reason are parameters rather than fields taken from
+    /// <paramref name="context"/> because the vector's context does not carry them, and on the
+    /// active-session branch of a recovery action request nothing else writes them: the press reuses
+    /// the session the server already opened, so the write that would have recorded them
+    /// (<c>RequestRecoveryActionVectorCoreAsync</c>'s no-session branch) never runs. They used to
+    /// arrive as part of a modified copy of the state the caller handed in; that copy is gone with
+    /// onboard-hmi#136, and leaving them out cost the operator the retry --
+    /// <c>RECOVERY_SESSION_REQUEST_MISSING</c> on the second press, with no way back.
+    /// </remarks>
     private async Task WriteRecoveryVectorPreparedAsync(
         WireToGateRecoveryVectorContext context,
         CancellationToken cancellationToken,
         IReadOnlyList<int>? handedOverOpenSlots = null,
         bool clearPendingLoadCancellation = false,
-        string? recoveryReason = null)
+        string? recoveryReason = null,
+        string? recoverySessionRequestId = null,
+        string? recoveryActionRequestId = null)
     {
         // Merged against what the journal holds when the step runs. The caller used to hand in the
         // state it had read and this write put that copy back whole, undoing whatever landed in
@@ -2974,6 +3006,10 @@ public sealed partial class WireToGateBusinessService
                         ?? current.RecoveryOperatorVerifiedAt,
                     RecoveryResultObservedAt = null,
                     RecoveryReason = recoveryReason ?? current.RecoveryReason,
+                    RecoverySessionRequestId = recoverySessionRequestId
+                        ?? current.RecoverySessionRequestId,
+                    RecoveryActionRequestId = recoveryActionRequestId
+                        ?? current.RecoveryActionRequestId,
                     PendingLoadCancellation = clearPendingLoadCancellation
                         ? null
                         : current.PendingLoadCancellation

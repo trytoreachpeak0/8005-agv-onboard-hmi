@@ -27,8 +27,12 @@ public sealed class WireToGateSlotOperationExecutorPendingResultRaceTests
     /// <summary>
     /// 结果内容摘要。这一层的 <see cref="WireToGatePendingResult"/> 不带 outcome，FAILED 与 UNKNOWN
     /// 的差别只在报文身份上——所以这两个用例在**本层是同构的**，它们钉住的是「无论记下的是哪一份
-    /// 待发结果都不复活」。让 outcome 参与判定的是业务服务的 <c>completedSuccessfully</c> 分支，
-    /// 那条判据在 G2。此处不假装区分。
+    /// 待发结果都不复活」。此处不假装区分。
+    /// <para>
+    /// 真正按 outcome 分岔的是业务服务里的 <c>completedSuccessfully</c>：只有非 COMPLETED 才会走到
+    /// 这个方法。**那条分岔本身在本票里没有新增判据**，本票也没有改它——写在这里是为了说明这两个
+    /// 用例覆盖到哪儿为止，不是在声称别处有一条对应的用例。
+    /// </para>
     /// </summary>
     private const string FailedResultSha = "1111111111111111111111111111111111111111111111111111111111111111";
 
@@ -149,6 +153,68 @@ public sealed class WireToGateSlotOperationExecutorPendingResultRaceTests
     }
 
     /// <summary>
+    /// 第 2 处写入点（执行器的检查点，<c>WriteCheckpointAsync</c>）：一次强制恢复在检查点的读与写
+    /// 之间把安全栅栏的代次推高，检查点不能把它按操作开始时那份副本写回低值。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 这个写入点是 18 处里**唯一会被真实装卸操作高频触发**的一个，而它今天从「操作开始时读到的那份
+    /// 副本」抄走十来个字段。代次尤其要紧：它是一道只升不降的栅栏，被写回低值之后，本该被它挡住的
+    /// 旧强制恢复命令又能通过——不报错、不写日志。
+    /// </para>
+    /// <para>
+    /// 用 <c>SettleInterruptedAsync</c> 驱动，因为它走的就是同一个检查点写入，而且只读一次 IO 快照、
+    /// 不开锁，所以不需要一整套 IO 脚本。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ACheckpointNeverLowersAForcedRecoveryGenerationRaisedWhileItWrites()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        const long raisedGeneration = 7;
+        await using RaceFixture fixture = await RaceFixture.CreateAsync(token);
+        await fixture.SeedInterruptedOperationAsync(token);
+        fixture.Journal.OnNextRecoveryStateAccess = () => fixture.RaiseForcedRecoveryGenerationAsync(
+            raisedGeneration,
+            token);
+
+        await fixture.Executor.SettleInterruptedAsync(token);
+
+        WireToGateRecoveryState persisted = await fixture.Sqlite.ReadRecoveryStateAsync(token);
+        Assert.Equal(raisedGeneration, persisted.ForcedRecoveryGeneration);
+        // 检查点自己那几个字段照样写下去了——不是靠「什么都没写」换来的绿。
+        Assert.Equal(AttemptId, persisted.UnsettledSlotOperationAttemptId);
+        Assert.NotEqual(WireToGateRecoveryCheckpoint.Prepared, persisted.ProvenRecoveryCheckpoint);
+    }
+
+    /// <summary>
+    /// 同一个写入点，竞争者换成一份迟到的待发结果：它也不属于检查点，也不能被写回空。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ACheckpointNeverDropsAPendingResultRecordedWhileItWrites()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RaceFixture fixture = await RaceFixture.CreateAsync(token);
+        await fixture.SeedInterruptedOperationAsync(token);
+        fixture.Journal.OnNextRecoveryStateAccess = () => fixture.RecordALateResultAsync(token);
+
+        await fixture.Executor.SettleInterruptedAsync(token);
+
+        WireToGateRecoveryState persisted = await fixture.Sqlite.ReadRecoveryStateAsync(token);
+        WireToGatePendingResult kept = Assert.Single(persisted.PendingResults);
+        Assert.Equal(LateResultMessageId, kept.MessageId);
+        Assert.Equal(AttemptId, persisted.UnsettledSlotOperationAttemptId);
+    }
+
+    private const string LateResultMessageId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+
+    /// <summary>
     /// 一个 sqlite journal、一层可注入竞争写入的包装、一个不碰 IO 的执行器。
     /// </summary>
     private sealed class RaceFixture : IAsyncDisposable
@@ -208,6 +274,54 @@ public sealed class WireToGateSlotOperationExecutorPendingResultRaceTests
                 },
                 cancellationToken);
 
+        /// <summary>一个被打断、等着结算的装货操作：未结算 attempt 与它的操作上下文都在。</summary>
+        public async Task SeedInterruptedOperationAsync(CancellationToken cancellationToken) =>
+            await Sqlite.UpdateRecoveryStateAsync(
+                _ => WireToGateRecoveryState.Empty with
+                {
+                    UnsettledSlotOperationAttemptId = AttemptId,
+                    ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                    ActiveUnlockSlots = [1],
+                    OperationContext = new WireToGateRecoveryOperationContext(
+                        "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+                        null,
+                        1,
+                        DateTimeOffset.UnixEpoch,
+                        "ffffffff-ffff-4fff-8fff-ffffffffffff",
+                        "99999999-9999-4999-8999-999999999999",
+                        AttemptId,
+                        OperationType.Load,
+                        [1],
+                        1,
+                        true,
+                        new string('a', 64))
+                },
+                cancellationToken);
+
+        /// <summary>一次强制恢复把安全栅栏的代次推高。走内层 journal，不会再触发注入。</summary>
+        public async Task RaiseForcedRecoveryGenerationAsync(
+            long generation,
+            CancellationToken cancellationToken) =>
+            await Sqlite.UpdateRecoveryStateAsync(
+                state => state with { ForcedRecoveryGeneration = generation },
+                cancellationToken);
+
+        /// <summary>一份迟到的待发结果被记进 journal。走内层 journal，不会再触发注入。</summary>
+        public async Task RecordALateResultAsync(CancellationToken cancellationToken) =>
+            await Sqlite.UpdateRecoveryStateAsync(
+                state => state with
+                {
+                    PendingResults =
+                    [
+                        new WireToGatePendingResult(
+                            "OperationResult",
+                            LateResultMessageId,
+                            AttemptId,
+                            FailedResultSha)
+                    ]
+                },
+                cancellationToken);
+
         /// <summary>
         /// 迟到的确认把这个 attempt 记成已结算，写的就是 <c>MarkResultRecordedAsync</c> 写的那些字段。
         /// 走内层 journal，不经包装，所以它自己不会再触发注入。
@@ -238,7 +352,20 @@ public sealed class WireToGateSlotOperationExecutorPendingResultRaceTests
     {
         public bool IsConnected => true;
 
-        public IoSnapshot CurrentSnapshot => throw new NotSupportedException();
+        /// <summary>
+        /// 结算一次被打断的操作只读快照、不开锁，所以这里给一份：1 号仓已锁、有货、开锁输出已复位，
+        /// 也就是操作员把门关上了。时间取 <see cref="DateTimeOffset.UtcNow"/> 好让新鲜度检查过关。
+        /// </summary>
+        public IoSnapshot CurrentSnapshot => new(
+            true,
+            [.. Enumerable.Range(0, 8).Select(index => new LockerSnapshot(
+                index,
+                index + 1,
+                false,
+                true,
+                false,
+                DateTimeOffset.UtcNow))],
+            DateTimeOffset.UtcNow);
 
         public event EventHandler<ValueChangedEventArgs<bool>>? ConnectionChanged
         {

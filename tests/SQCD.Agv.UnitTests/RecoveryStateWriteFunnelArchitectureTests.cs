@@ -28,14 +28,22 @@ namespace SQCD.Agv.UnitTests;
 /// checks <i>which method is called</i> would have passed every one of them.
 /// </para>
 /// <para>
-/// <b>What it cannot see, by construction.</b> Two shapes:
-/// a lambda that names its parameter and then ignores it in favour of an outer variable of another
-/// name (<c>current =&gt; somethingElse</c>) reads as compliant, because the check is that the
-/// parameter is mentioned, not that the result is built from it; and a change function that is not
-/// written out at the call site (a method group, or a variable holding one) is skipped, because there
-/// is nothing at that line to read. The interleaving G2 tests are what catch a stale write
-/// behaviourally. It also strips line comments only, so a <c>/* */</c> block holding call-shaped
-/// text would be read as code.
+/// <b>What it cannot see, by construction.</b> The check is "the parameter is mentioned somewhere in
+/// the body", so three shapes get through:
+/// a lambda that names its parameter and ignores it in favour of an outer variable
+/// (<c>current =&gt; somethingElse</c>); <b>a lambda that reads the parameter in a predicate but
+/// builds its result from an outer copy</b> (<c>current =&gt; current.X == y ? state : null</c>) --
+/// worth naming on its own, because "predicate on the parameter, result from somewhere" is the exact
+/// shape this ticket left all over the repository, so it is what a next change is most likely to be
+/// copied into; and a parameter assigned to an unused local. A change function not written out at the
+/// call site (a method group, or a variable holding one) is skipped as well, because there is nothing
+/// at that line to read. The interleaving G2 tests are what catch a stale write behaviourally. It also
+/// strips line comments only, so a <c>/* */</c> block holding call-shaped text would be read as code.
+/// <para>
+/// Requiring the parameter in the <i>returned expression</i> rather than anywhere in the body would
+/// close the second shape. That is a worthwhile tightening and deliberately not done here: it needs
+/// the body parsed into its return paths, and this guard is a textual scan.
+/// </para>
 /// </para>
 /// </remarks>
 public sealed class RecoveryStateWriteFunnelArchitectureTests

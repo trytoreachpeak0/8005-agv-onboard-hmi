@@ -198,6 +198,130 @@ public sealed partial class RecoveryVectorG2Tests
             persisted.PendingResults.Select(result => result.MessageId).ToArray());
     }
 
+    /// <summary>
+    /// 第 6 处（`RequestResumeAfterRepairAsync` 在网络往返之后的那次写入）：往返期间这个恢复会话被
+    /// 释放，本票为此新加的前提检查让那次写入**不发生**，按这条路径既有的作用域不一致方式失败。
+    /// </summary>
+    /// <remarks>
+    /// 这是本票唯一新增前提检查与新增失败路径的地方，所以它的两边都要有判据：这一条是判据**触发**，
+    /// 下一条是判据**不该触发**时不要误伤。只有前者会让人以为「加严了就是对的」——而一个过度触发的
+    /// 判据会把正常的按压也挡掉。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task TheResumeActionIsNotRecordedAgainstASessionReleasedWhileItsRequestWasOut()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        WriteFunnelRaceJournal? race = null;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.RecoverySlotOperationAttemptId = AttemptId,
+            wrapJournal: inner => race = new WriteFunnelRaceJournal(inner));
+
+        // 申请 id 已落盘、会话 id 还没写：这正是网络往返之后那一次写入，不是它前面那一次。
+        race!.BeforeTheNextWriteFrom(
+            "RequestResumeAfterRepairAsync",
+            static state => state.RecoverySessionRequestId is not null
+                && state.ExceptionRecoverySessionId is null,
+            async (inner, cancellationToken) => await inner.UpdateRecoveryStateAsync(
+                state => state with
+                {
+                    ExceptionRecoverySessionId = null,
+                    RecoveryActionId = null,
+                    RecoverySessionRequestId = null,
+                    RecoveryActionRequestId = null,
+                    RecoveryReason = null,
+                    RecoveryOperatorId = null,
+                    RecoveryOperatorVerifiedAt = null
+                },
+                cancellationToken));
+        Assert.False(await harness.Business.RequestResumeAfterRepairAsync(null, token));
+
+        Assert.True(race.Fired, "竞争写入没有落在目标路径的读与写之间");
+        WireToGateRecoveryState persisted = await harness.ReadRecoveryStateAsync(token);
+        // 释放留下的空值还在：那次授权没有被记到一个已经不存在的会话上。
+        Assert.Null(persisted.ExceptionRecoverySessionId);
+        Assert.Null(persisted.RecoveryActionId);
+        Assert.Null(persisted.RecoveryActionRequestId);
+        Assert.Null(persisted.RecoverySessionRequestId);
+    }
+
+    /// <summary>
+    /// 同一个窗口，但释放只清了会话 id、本次申请的记录还在：判据要求两者同时不成立，所以这一次
+    /// **照常写下去**。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task TheResumeActionIsStillRecordedWhenOnlyTheSessionIdWasCleared()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        WriteFunnelRaceJournal? race = null;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.RecoverySlotOperationAttemptId = AttemptId,
+            wrapJournal: inner => race = new WriteFunnelRaceJournal(inner));
+
+        race!.BeforeTheNextWriteFrom(
+            "RequestResumeAfterRepairAsync",
+            static state => state.RecoverySessionRequestId is not null
+                && state.ExceptionRecoverySessionId is null,
+            async (inner, cancellationToken) => await inner.UpdateRecoveryStateAsync(
+                state => state with { RecoveryReason = "另一条路径改过的理由" },
+                cancellationToken));
+        await harness.Business.RequestResumeAfterRepairAsync(null, token);
+
+        Assert.True(race.Fired, "竞争写入没有落在目标路径的读与写之间");
+        WireToGateRecoveryState persisted = await harness.ReadRecoveryStateAsync(token);
+        Assert.NotNull(persisted.ExceptionRecoverySessionId);
+        Assert.NotNull(persisted.RecoveryActionId);
+        Assert.NotNull(persisted.RecoveryActionRequestId);
+        // 竞争写入的改动也还在：这一次是锁内合并，不是整条盖回去。
+        Assert.Equal("另一条路径改过的理由", persisted.RecoveryReason);
+    }
+
+    /// <summary>
+    /// 向量准备写下的那条记录带着恢复会话申请的三个身份字段：申请 id、动作报文 id、理由。
+    /// 这是单线程判据，不是竞态判据。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>为什么单独钉住它。</b>向量的上下文不带这三个值，而在「服务端已经开着会话」这条分支上
+    /// 没有别的写入点写它们——那次会写的写入（`RequestRecoveryActionVectorCoreAsync` 的无会话分支）
+    /// 在这条分支上根本不执行。收口之前它们是靠调用方传一份改过的状态副本带进写入的；那份副本随
+    /// onboard-hmi#136 消失，一起漏掉的话没有任何东西会红，**代价落在操作员身上**：
+    /// `RecoverySessionRequestId` 一丢，同一个恢复动作的第二次按压就走到
+    /// `RECOVERY_SESSION_REQUEST_MISSING` 那一条抛出，而那条路没有自愈，恢复入口从此按不动。
+    /// </para>
+    /// <para>
+    /// `RecoveryReason` 丢了则让「重试必须用持久化的理由、逐字匹配服务端已接受的内容」这条规则失效。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task PreparingAVectorKeepsTheSessionRequestIdentityTheRetryNeeds()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        const string reason = "现场确认装货无法继续，申请补偿清空目标仓位。";
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(token);
+
+        Assert.True(harness.Business.CanRequestLoadCompensation);
+        Assert.True(await harness.Business.RequestLoadCompensationAsync(reason, token));
+        await harness.WaitForInboundAsync("LoadCompensationRequested", token);
+        // 缓存由向量准备那一步在锁内写，所以它出现向量就说明那次写入已经落盘。
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Business.CachedRecoveryStateForTest.RecoveryVector is not null,
+            "the prepared vector to be journaled",
+            token);
+
+        WireToGateRecoveryState persisted = await harness.ReadRecoveryStateAsync(token);
+        Assert.NotNull(persisted.RecoverySessionRequestId);
+        Assert.NotNull(persisted.RecoveryActionRequestId);
+        Assert.Equal(reason, persisted.RecoveryReason);
+    }
+
     /// <summary>这些用例共用的竞争写入：一份迟到的待发结果被记进 journal。</summary>
     /// <remarks>
     /// 它落在目标路径的读与写之间。基线上目标路径把锁外读到的整条记录写回去，<c>PendingResults</c>

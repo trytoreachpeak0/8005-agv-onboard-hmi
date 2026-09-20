@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using SQCD.Agv.Core;
 
 namespace SQCD.Agv.Application;
@@ -288,12 +289,6 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 completed,
                 results,
                 cancellationToken).ConfigureAwait(false);
-            state = state with
-            {
-                ActiveUnlockSlots = [],
-                CompletedSlots = completed.Distinct().Order().ToArray(),
-                SlotResults = results.OrderBy(result => result.SlotNo).ToArray()
-            };
         }
 
         IoSnapshot initial = _ioModule.CurrentSnapshot;
@@ -660,6 +655,13 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         WireToGateRecoveryState? written = await _journal.UpdateRecoveryStateAsync(
                 current =>
                 {
+                    // Reset on entry: a change function may be evaluated more than once for the same
+                    // step (a test double predicts what a step will write by running it against a state
+                    // read outside the lock -- MultiDemandJourneyG2Tests.RestoreWindowJournal). Left set
+                    // by an earlier evaluation, these would make this method throw, or report an older
+                    // stamp, over a write that actually succeeded.
+                    mismatch = false;
+                    alreadyObserved = null;
                     if (current.RecoveryVector is not { } persisted || !SameContext(persisted, context))
                     {
                         mismatch = true;
@@ -681,9 +683,11 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
         }
 
+        // One of the two is always set by now: the change function either wrote a stamp or reported
+        // one already on file. A reason code here could never be emitted.
         return alreadyObserved
             ?? written?.RecoveryResultObservedAt
-            ?? throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
+            ?? throw new UnreachableException();
     }
 
     private async Task WriteVectorStateAsync(

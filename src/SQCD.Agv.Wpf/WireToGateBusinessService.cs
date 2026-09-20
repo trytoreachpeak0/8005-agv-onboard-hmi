@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -413,7 +414,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         RecoveryOperatorVerifiedAt = recoveryVerifiedAt
                     },
                     cancellationToken).ConfigureAwait(false)
-                ?? throw new InvalidDataException("RECOVERY_STATE_NOT_WRITTEN");
+                // The change function above never returns null, so the journal never returns null
+                // either. Not an InvalidDataException with a reason code: a code that cannot be
+                // emitted would be searched for as a real fault the first time somebody sees it.
+                ?? throw new UnreachableException();
             DateTimeOffset now = recoveryVerifiedAt;
             WireToGateOperatorContextPayload administrator = new(
                 recoveryOperatorId,
@@ -490,6 +494,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             state = await _session.Journal.UpdateRecoveryStateAsync(
                     current =>
                     {
+                        // Reset on entry: a change function may be evaluated more than once
+                        // for the same step (a test double predicts what a step will write by
+                        // running it against a state read outside the lock -- 
+                        // MultiDemandJourneyG2Tests.RestoreWindowJournal). Left set by an
+                        // earlier evaluation, this flag would make the caller throw over a
+                        // write that actually succeeded.
+                        sessionGone = false;
                         if (current.ExceptionRecoverySessionId is null
                             && !string.Equals(
                                 current.RecoverySessionRequestId,
@@ -508,8 +519,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         };
                     },
                     cancellationToken).ConfigureAwait(false)
-                ?? throw new InvalidDataException(
-                    sessionGone ? "RECOVERY_SESSION_SCOPE_MISMATCH" : "RECOVERY_STATE_NOT_WRITTEN");
+                ?? (sessionGone
+                    ? throw new InvalidDataException("RECOVERY_SESSION_SCOPE_MISMATCH")
+                    // sessionGone is the only way the change function returns null.
+                    : throw new UnreachableException());
 
             RecoveryActionAcceptedPayload accepted = await _session
                 .SubmitRecoveryActionAsync(
