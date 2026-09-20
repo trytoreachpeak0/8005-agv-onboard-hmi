@@ -98,6 +98,36 @@ public sealed class LocalFailureCodeRegistryArchitectureTests
             + $"OnboardCommandRejectionText has no sentence for them: {string.Join(", ", withoutWording)}");
     }
 
+    /// <summary>
+    /// 操作员读到的那句话既要看得懂，又要带着能报给维护人员的码；未识别的码不重复带两次。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 两个需求原来是冲突的：第一版把恢复路径的消息换成纯中文，于是 5 条
+    /// <c>RecoveryVectorG2Tests</c> 红了——它们等的是事件消息里含那个码，为的是「不让一条测试
+    /// 在另一条守卫的拒绝上通过」。**削弱那条断言是当时最省事的做法，而它会把一条有判别力的
+    /// 判据换成一条没有的。** 所以改的是消息形状，不是断言。
+    /// </para>
+    /// <para>
+    /// 这里把 <see cref="OnboardCommandRejectionText.DescribeWithCode"/> 的两个分支都钉住：
+    /// 已登记的码句末带括号，未登记的不带——因为 <see cref="OnboardCommandRejectionText.Describe"/>
+    /// 的兜底句里已经有它了，再加一次就是 `（CODE）（CODE）`。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void OperatorWordingCarriesTheCodeOnceAndOnlyOnce()
+    {
+        string known = OnboardCommandRejectionText.DescribeWithCode("SUBLOT_NOT_IN_WORKLIST");
+        Assert.Contains("当前条码不属于服务端下发的站点任务", known, StringComparison.Ordinal);
+        Assert.EndsWith("（SUBLOT_NOT_IN_WORKLIST）", known, StringComparison.Ordinal);
+
+        string unknown = OnboardCommandRejectionText.DescribeWithCode("NOT_IN_LOCAL_REGISTRY");
+        Assert.Equal(
+            1,
+            unknown.Split("NOT_IN_LOCAL_REGISTRY", StringSplitOptions.None).Length - 1);
+        Assert.Contains("请核对后重试", unknown, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("throw new InvalidOperationException(\"NOT_IN_LOCAL_REGISTRY\");")]
     [InlineData("_ => throw new InvalidDataException(\"NOT_IN_LOCAL_REGISTRY\")")]

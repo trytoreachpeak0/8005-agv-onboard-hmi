@@ -43,6 +43,54 @@ public sealed class WireToGateRecoveryVectorExecutorTests
         Assert.Equal([2], state.ForcedIsolation!.PhysicallyUnknownSlots);
     }
 
+    /// <summary>
+    /// <c>HasOperationInFlight</c> 在恢复向量执行期间也跟着门走（8005-agv-onboard-hmi#171）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 恢复向量是全仓**第四个开门点**（见 <c>FatalFaultScopeArchitectureTests</c> 那张表）：补偿
+    /// 清空、修正装货、强制机械取出都在这里真的开门，而严重安全故障锁存拦不住它。所以复位复核的
+    /// 「现在有没有在开门」必须也问这一侧——只问仓位命令那一侧，操作员按出来的开门就漏了。
+    /// </para>
+    /// <para>
+    /// 第一版只测了 <c>WireToGateSlotOperationExecutor</c> 那一侧，这一条是补上的对称覆盖：
+    /// 两个执行器各有自己的门，**聚合读的是它们的并**，少测一侧就等于那一侧没有判据。
+    /// </para>
+    /// <para>
+    /// <b>没有覆盖到的一处，写在这里而不是假装覆盖了</b>：聚合本身
+    /// （<c>WireToGateBusinessService.HasSlotWorkInFlight</c> 那个 <c>||</c>）没有直接的测试。
+    /// 两侧各自的判据都在，但把 <c>||</c> 写成 <c>&amp;&amp;</c> 的话两条都不会红——要造一条真正
+    /// 分辨它的用例，得让一侧忙、另一侧闲，而那需要在 G2 夹具里挂住一个执行器。留给下一个人，
+    /// 或者留给第一次真出事的时候。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task HasOperationInFlightFollowsTheGateWhileARecoveryVectorRuns()
+    {
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            [true, true],
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.False(fixture.Executor.HasOperationInFlight);
+
+        List<bool> observedDuringRun = [];
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
+            CreateContext(
+                WireToGateRecoveryVectorTypes.LoadCancellation,
+                "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                [1, 2]),
+            (_, _, _, _) =>
+            {
+                observedDuringRun.Add(fixture.Executor.HasOperationInFlight);
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.NotEmpty(observedDuringRun);
+        Assert.All(observedDuringRun, Assert.True);
+        Assert.False(fixture.Executor.HasOperationInFlight);
+    }
+
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
