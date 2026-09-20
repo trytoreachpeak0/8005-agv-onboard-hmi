@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Windows;
@@ -12,7 +13,16 @@ namespace SQCD.Agv.Wpf;
 
 public partial class App : System.Windows.Application, IDisposable
 {
+    /// <summary>
+    /// 已有实例在运行时，本进程的退出码。
+    ///
+    /// 取 3 而不是 1 或 2：那两个在脚本里是「泛指出错」的常用值，而这一次退出并不是出错——
+    /// 是守卫按设计挡下了一次重复启动。启动失败走的仍然是原来的 <c>Shutdown(-1)</c>。
+    /// </summary>
+    internal const int ExitCodeAlreadyRunning = 3;
+
     private FileAppLogger? _logger;
+    private SingleInstanceGuard? _singleInstance;
     private ModbusTcpIoModuleClient? _ioModule;
     private IRuleGateway? _ruleGateway;
     private OnboardController? _controller;
@@ -38,6 +48,29 @@ public partial class App : System.Windows.Application, IDisposable
         {
             string settingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
             OnboardSettings settings = OnboardSettings.Load(settingsPath);
+
+            // 配置一读出来就换成配置里的那个日志器。下面单例守卫写的那一行必须落在部署实际在用
+            // 的日志文件里，否则事后追「第二个进程是什么时候被挡下来的」要去翻另一个目录。
+            _logger = new FileAppLogger(settings.Logging);
+
+            // 单例检查排在所有副作用之前。车辆安全投影一构造就开始轮询服务端，IO 客户端一构造
+            // 就握着 Modbus 目标，会话服务更是直接建连接——而第二个实例的要求恰恰是不连服务端、
+            // 不碰 IO、不建会话（onboard-hmi#157）。
+            _singleInstance = SingleInstanceGuard.Acquire(settings.AgvId, _logger);
+            if (!_singleInstance.ShouldStart)
+            {
+                int? runningPid = RunningInstanceWindow.BringToFront(_logger);
+                string pidText = runningPid is int pid
+                    ? pid.ToString(CultureInfo.InvariantCulture)
+                    : "未知";
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(App),
+                    $"已有实例在运行，pid={pidText}，本次不启动。互斥体名字={_singleInstance.Name}。");
+                Shutdown(ExitCodeAlreadyRunning);
+                return;
+            }
+
             _vehicleSafetySignalProvider = new ControlServerVehicleSafetySignalProvider(
                 settings.VehicleSafety,
                 startPolling: settings.WireToGate.Enabled);
@@ -47,7 +80,6 @@ public partial class App : System.Windows.Application, IDisposable
                     DateTimeOffset.UtcNow,
                     TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs),
                     TimeSpan.FromMilliseconds(settings.VehicleSafety.ClockSkewToleranceMs));
-            _logger = new FileAppLogger(settings.Logging);
             _ioModule = new ModbusTcpIoModuleClient(settings.IoModule, _logger);
             _ruleGateway = settings.WireToGate.Enabled
                 ? new DisabledRuleGateway()
@@ -263,6 +295,9 @@ public partial class App : System.Windows.Application, IDisposable
             _ruleGateway?.DisposeAsync().AsTask().GetAwaiter().GetResult();
             _ioModule?.DisposeAsync().AsTask().GetAwaiter().GetResult();
             _vehicleSafetySignalProvider?.Dispose();
+            // 名字最后放开。先放开它，下一个进程就可能在本进程还握着 Modbus 连接和会话时抢到，
+            // 那正是这张票要消灭的那种重叠。
+            _singleInstance?.Dispose();
         }
         catch (Exception exception) when (exception is IOException or OperationCanceledException)
         {
