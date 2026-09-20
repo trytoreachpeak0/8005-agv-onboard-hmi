@@ -19,10 +19,10 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// ADR 要的 2 秒」——默认值被写成 5 秒这种事，只有它看得见。
 /// </para>
 /// <para>
-/// <b>为什么带 1 秒的 ack 延迟，而不是分成两条用例。</b> 心跳循环要等 <c>HeartbeatAck</c> 回来才算
-/// 这一拍走完。那段往返若被算进下一次等待，2 秒的节拍就变成 2 秒加往返。一条带延迟的用例同时钉住
-/// 两件事：默认值是 2 秒，且 ack 的往返不累加。判别力比拆成两条更强，墙钟占用只有一半——在 CI 上
-/// 这台机器还要同时跑服务端的 test 与 l2，xunit 又让各测试类并行，省下的每一秒都在给别人让路。
+/// <b>为什么带 ack 延迟，而不是分成两条用例。</b> 心跳循环要等 <c>HeartbeatAck</c> 回来才算这一拍
+/// 走完。那段往返若被算进下一次等待，2 秒的节拍就变成 2 秒加往返。一条带延迟的用例同时钉住两件事：
+/// 默认值是 2 秒，且 ack 的往返不累加。判别力比拆成两条更强，墙钟占用只有一半——在 CI 上这台机器
+/// 还要同时跑服务端的 test 与 l2，xunit 又让各测试类并行，省下的每一秒都在给别人让路。
 /// </para>
 /// <para>
 /// 没有 <c>IntegrationSlice</c> 与 <c>ProtocolVector</c> 标记：心跳不属于任何一条冻结向量，
@@ -35,22 +35,28 @@ public sealed class SessionHeartbeatCadenceG2Tests
     private const string CredentialVariable = "W2G_G2_HEARTBEAT_CREDENTIAL";
 
     /// <summary>
-    /// ADR-cross-0027 的 2 秒节拍加上一点余量。相邻两条心跳之间超过这个数，一次丢失就会撞上服务端
-    /// 6 秒的静默阈值。
+    /// 相邻两条心跳之间的上界，取 ADR-cross-0027 里那个唯一有意义的界：静默阈值的一半。超过它，
+    /// 一次心跳丢失就会撞上服务端 6 秒的静默阈值。
     /// </summary>
-    private static readonly TimeSpan MaximumGap = TimeSpan.FromSeconds(2.5);
+    /// <remarks>
+    /// 原本是手挑的 2.5 秒，2026-09-20 审查（S1）指出那样绿路径只剩 0.5 秒抗抖余量、判别也只剩
+    /// 0.5 秒，两个余量反向共用一个门槛，收紧则易偶发红、放宽则丢判别力。改为把 <see cref="AckDelay"/>
+    /// 拉大，门槛随之可以落在 ADR 的界上：绿路径实测 2.0 秒对 3.0 秒，余量 1.0；缺陷路径 4.5 秒对
+    /// 3.0 秒，判别余量 1.5。
+    /// </remarks>
+    private static readonly TimeSpan MaximumGap = WireToGateSessionService.MaximumHeartbeatInterval;
 
     /// <summary>
-    /// 服务端应答的往返。比 <see cref="MaximumGap"/> 减去节拍所剩的余量大得多，所以只要它被算进
-    /// 下一次等待，间隔断言必红。
+    /// 服务端应答的往返。取 2.5 秒是为了让「把 ack 往返算进下一拍」的实现落在 2 + 2.5 = 4.5 秒，
+    /// 离 <see cref="MaximumGap"/> 有 1.5 秒，CI 上并行几百条用例也不会把绿的抖成红的。
     /// </summary>
-    private static readonly TimeSpan AckDelay = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan AckDelay = TimeSpan.FromSeconds(2.5);
 
     /// <summary>
     /// 观察窗口的上限。2 秒节拍下第 2 条心跳在第 4 秒就到，用例等到它便收工，窗口只在红的时候用满：
-    /// 写死 5 秒的实现在窗口里凑不齐两条，把 ack 往返算进下一拍的实现两条之间隔 3 秒。
+    /// 写死 5 秒的实现在窗口里凑不齐两条，把 ack 往返算进下一拍的实现第 2 条要到 6.5 秒。
     /// </summary>
-    private static readonly TimeSpan Window = TimeSpan.FromSeconds(6);
+    private static readonly TimeSpan Window = TimeSpan.FromSeconds(8);
 
     static SessionHeartbeatCadenceG2Tests()
     {
@@ -58,8 +64,8 @@ public sealed class SessionHeartbeatCadenceG2Tests
     }
 
     /// <summary>
-    /// 出厂默认下会话建立后心跳就按 2 秒的节拍来，而且服务端 ack 慢 1 秒也不把节拍往后挪：
-    /// 首条不晚于 2.5 秒，相邻两条不超过 2.5 秒。
+    /// 出厂默认下会话建立后心跳就按 2 秒的节拍来，而且服务端 ack 慢 2.5 秒也不把节拍往后挪：
+    /// 首条与相邻两条都不超过 ADR-cross-0027 的那个界（静默阈值的一半，3 秒）。
     /// </summary>
     [Fact]
     public async Task TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer()
@@ -78,6 +84,10 @@ public sealed class SessionHeartbeatCadenceG2Tests
             () => session.Current.Readiness == WireToGateSessionReadiness.Ready,
             TimeSpan.FromSeconds(10),
             token);
+        // 握手没完成就往下走，用例会红成「一条 Heartbeat 都没收到」，把诊断指向心跳，而真因在握手。
+        Assert.True(
+            session.Current.Readiness == WireToGateSessionReadiness.Ready,
+            $"会话 10 秒内没有就绪（readiness={session.Current.Readiness}），红的不是心跳节拍。");
         long readyAt = Stopwatch.GetTimestamp();
 
         await WaitUntilAsync(() => server.HeartbeatArrivals.Count >= 2, Window, token);
@@ -131,8 +141,10 @@ public sealed class SessionHeartbeatCadenceG2Tests
                 new string('a', 40),
                 CredentialVariable,
                 TimeSpan.FromSeconds(2),
-                // ack 要等 AckDelay 才回来，消息超时必须比它宽裕，否则红的是超时而不是节拍。
-                TimeSpan.FromSeconds(3),
+                // ack 要等 AckDelay（2.5 秒）才回来，消息超时必须比它宽裕，否则红的是超时而不是节拍。
+                // 这是用例本地的 WireToGateSessionOptions，不受 WireToGateSettings 那道「消息超时必须
+                // 小于 3 秒」的约束——那道界管的是出厂配置，这里要的是把缺陷放大到看得见。
+                TimeSpan.FromSeconds(5),
                 1,
                 1,
                 "eight-slot-v1",

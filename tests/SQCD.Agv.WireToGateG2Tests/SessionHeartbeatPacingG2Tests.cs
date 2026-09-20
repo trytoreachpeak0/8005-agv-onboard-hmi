@@ -29,6 +29,12 @@ public sealed class SessionHeartbeatPacingG2Tests
     private const string CredentialVariable = "W2G_G2_HEARTBEAT_PACING_CREDENTIAL";
     private const string OperatorVariable = "W2G_G2_HEARTBEAT_PACING_OPERATOR";
 
+    /// <summary>
+    /// 等一条心跳到达最多等这么久。推完时钟之后心跳是毫秒级到的，这个界存在只是为了让用例守的界
+    /// 与它名字里说的界一致：ADR-cross-0027 的 2 秒节拍加半秒余量。
+    /// </summary>
+    private static readonly TimeSpan HeartbeatArrival = TimeSpan.FromSeconds(2.5);
+
     static SessionHeartbeatPacingG2Tests()
     {
         Environment.SetEnvironmentVariable(CredentialVariable, "g2-heartbeat-pacing-credential");
@@ -53,10 +59,10 @@ public sealed class SessionHeartbeatPacingG2Tests
         Assert.Empty(server.HeartbeatArrivals);
 
         time.Advance(TimeSpan.FromSeconds(0.1));
-        await WaitForAsync(() => server.HeartbeatArrivals.Count == 1, "第一条心跳", token);
+        await WaitForAsync(() => server.HeartbeatArrivals.Count == 1, "第一条心跳", token, HeartbeatArrival);
 
         await AdvanceAsync(time, TimeSpan.FromSeconds(2), token);
-        await WaitForAsync(() => server.HeartbeatArrivals.Count == 2, "第二条心跳", token);
+        await WaitForAsync(() => server.HeartbeatArrivals.Count == 2, "第二条心跳", token, HeartbeatArrival);
     }
 
     /// <summary>
@@ -77,7 +83,7 @@ public sealed class SessionHeartbeatPacingG2Tests
         for (int beat = 1; beat <= 3; beat++)
         {
             await AdvanceAsync(time, interval, token);
-            await WaitForAsync(() => server.HeartbeatArrivals.Count == beat, $"第 {beat} 条心跳", token);
+            await WaitForAsync(() => server.HeartbeatArrivals.Count == beat, $"第 {beat} 条心跳", token, HeartbeatArrival);
         }
     }
 
@@ -113,7 +119,8 @@ public sealed class SessionHeartbeatPacingG2Tests
             await WaitForAsync(
                 () => server.HeartbeatArrivals.Count == before + beat,
                 $"装货进行中的第 {beat} 条心跳",
-                token);
+                token,
+                HeartbeatArrival);
         }
 
         // 操作真的还开着：谁都没关门，也没有结果发出去。
@@ -135,7 +142,7 @@ public sealed class SessionHeartbeatPacingG2Tests
 
         await StartAndWaitForReadyAsync(session, token);
         await AdvanceAsync(time, TimeSpan.FromSeconds(2), token);
-        await WaitForAsync(() => server.HeartbeatArrivals.Count == 1, "第一代会话上的心跳", token);
+        await WaitForAsync(() => server.HeartbeatArrivals.Count == 1, "第一代会话上的心跳", token, HeartbeatArrival);
 
         await session.Client.DisconnectAsync();
 
@@ -149,7 +156,7 @@ public sealed class SessionHeartbeatPacingG2Tests
             token);
 
         await AdvanceAsync(time, TimeSpan.FromSeconds(2), token);
-        await WaitForAsync(() => server.HeartbeatArrivals.Count >= 2, "第二代会话上的心跳", token);
+        await WaitForAsync(() => server.HeartbeatArrivals.Count >= 2, "第二代会话上的心跳", token, HeartbeatArrival);
 
         long generation = session.Current.SessionGeneration!.Value;
         var latest = server.ReceivedEnvelopes.Last(envelope => envelope.MessageType == "Heartbeat");
@@ -207,14 +214,27 @@ public sealed class SessionHeartbeatPacingG2Tests
         time.Advance(delta);
     }
 
-    private static async Task WaitForAsync(Func<bool> predicate, string what, CancellationToken cancellationToken)
+    /// <summary>
+    /// 轮询到条件成立为止，超时即红并说清等的是什么。
+    /// </summary>
+    /// <remarks>
+    /// 默认 10 秒给的是握手、IO 这类真实往返。**等心跳到达要用 <see cref="HeartbeatArrival"/>**：
+    /// 时钟一推，心跳是毫秒级到的，等它 10 秒等于把「节拍不超过 2.5 秒」这句话的实际上界放成 10 秒
+    /// ——用例名说的界与它真正守的界对不上（2026-09-20 审查 S3）。
+    /// </remarks>
+    private static async Task WaitForAsync(
+        Func<bool> predicate,
+        string what,
+        CancellationToken cancellationToken,
+        TimeSpan? timeout = null)
     {
+        TimeSpan limit = timeout ?? TimeSpan.FromSeconds(10);
         long start = Stopwatch.GetTimestamp();
         while (!predicate())
         {
-            if (Stopwatch.GetElapsedTime(start) > TimeSpan.FromSeconds(10))
+            if (Stopwatch.GetElapsedTime(start) > limit)
             {
-                Assert.Fail($"等不到{what}。");
+                Assert.Fail($"等不到{what}（{limit.TotalSeconds:0.#} 秒内）。");
             }
 
             await Task.Delay(10, cancellationToken);

@@ -65,6 +65,13 @@ public sealed class ConfigurationTests
             wireToGate.TryGetProperty("sessionHeartbeatIntervalMs", out JsonElement configured),
             $"{relativePath} 的 wireToGate 节没有 sessionHeartbeatIntervalMs。");
         Assert.Equal(2_000, configured.GetInt32());
+        // 消息超时是两条心跳到达间距的上界，与心跳间隔受同一道界约束（审查 S2）：出厂值必须严格
+        // 小于它，3000 那个旧值恰好等于界、余量为零。
+        Assert.Equal(2_500, wireToGate.GetProperty("messageTimeoutMs").GetInt32());
+        Assert.True(
+            wireToGate.GetProperty("messageTimeoutMs").GetInt32()
+                < WireToGateSessionService.MaximumHeartbeatInterval.TotalMilliseconds,
+            "出厂 messageTimeoutMs 必须严格小于 ADR-cross-0027 静默失联阈值的一半。");
         Assert.Equal(
             5_000,
             document.RootElement.GetProperty("ruleGateway").GetProperty("heartbeatIntervalMs").GetInt32());
@@ -109,6 +116,36 @@ public sealed class ConfigurationTests
         InvalidDataException exception = Assert.Throws<InvalidDataException>(settings.Validate);
 
         Assert.Contains("会话心跳间隔", exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 消息超时也受心跳那道界约束：它就是两条心跳到达间距的上界（onboard-hmi#142 审查 S2）。
+    /// </summary>
+    /// <remarks>
+    /// 心跳循环串行地等 <c>HeartbeatAck</c>，服务端看到的到达间距是 max(心跳间隔, ack 往返)，
+    /// 而 ack 往返的上界就是这个超时。只卡心跳间隔不卡它，那道界就能从另一扇门绕开：间隔配 2 秒、
+    /// 超时配 10 秒，服务端慢应答时两条心跳隔 10 秒才到，ADR-cross-0027 的「单次丢失不构成失联」
+    /// 当场失效。出厂值同日由 3000 下调到 2500——3000 恰好等于那道界，保证在但余量为零。
+    /// </remarks>
+    [Theory]
+    [InlineData(3_000)]
+    [InlineData(10_000)]
+    [InlineData(int.MaxValue)]
+    public void AMessageTimeoutThatWouldStretchTheHeartbeatGapIsRejected(int milliseconds)
+    {
+        OnboardSettings settings = CreateValidProductionSettings(
+            wireToGate: new WireToGateSettings
+            {
+                Enabled = true,
+                Host = "control.internal",
+                OnboardInstanceId = "77a9a4b8-7b1c-4f2b-92bd-3872f5871158",
+                OnboardBuildCommit = "a6f05fbced15316a2cc20cd327f80c5c5ee1821e",
+                MessageTimeoutMs = milliseconds
+            });
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(settings.Validate);
+
+        Assert.Contains("消息超时", exception.Message, StringComparison.Ordinal);
     }
 
     [Fact]

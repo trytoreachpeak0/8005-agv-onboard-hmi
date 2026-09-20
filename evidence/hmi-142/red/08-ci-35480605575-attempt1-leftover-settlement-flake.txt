@@ -1,0 +1,27 @@
+Test run for C:\actions-runner\win11-01-onboard-hmi\_work\8005-agv-onboard-hmi\8005-agv-onboard-hmi\8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+Test run for C:\actions-runner\win11-01-onboard-hmi\_work\8005-agv-onboard-hmi\8005-agv-onboard-hmi\8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+VSTest version 17.11.1 (x64)
+
+
+Starting test execution, please wait...
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:   449, Skipped:     0, Total:   449, Duration: 10 s - SQCD.Agv.UnitTests.dll (net8.0)
+[xUnit.net 00:00:34.88]     SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALeftoverWhoseSettlementResultCouldNotBeSentIsStillRestoredAsLastTimes [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALeftoverWhoseSettlementResultCouldNotBeSentIsStillRestoredAsLastTimes [12 s]
+  Error Message:
+   Timed out after 10s waiting for: recovery decision 2 of 2 to get past the step a projection follows
+OPERATION_PROGRESS: 上次装货在执行中中断：1号仓，未再开锁，需要管理员恢复。
+RESULT_ACK_PENDING: 中断操作的结算结果已持久化，等待服务端确认；不会再次执行仓门IO。
+OPERATION_RECOVERY_REQUIRED: 上次装货操作未完成：1号仓，需要管理员恢复。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken, Func`1 describe) in C:\actions-runner\win11-01-onboard-hmi\_work\8005-agv-onboard-hmi\8005-agv-onboard-hmi\8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.cs:line 594
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.Harness.LetTwoMoreRecoveryDecisionsRunAsync(Func`1 progressed, CancellationToken cancellationToken) in C:\actions-runner\win11-01-onboard-hmi\_work\8005-agv-onboard-hmi\8005-agv-onboard-hmi\8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.UnfinishedResultOnReadySession.cs:line 293
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALeftoverWhoseSettlementResultCouldNotBeSentIsStillRestoredAsLastTimes() in C:\actions-runner\win11-01-onboard-hmi\_work\8005-agv-onboard-hmi\8005-agv-onboard-hmi\8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.UnfinishedResultOnReadySession.cs:line 261
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALeftoverWhoseSettlementResultCouldNotBeSentIsStillRestoredAsLastTimes() in C:\actions-runner\win11-01-onboard-hmi\_work\8005-agv-onboard-hmi\8005-agv-onboard-hmi\8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.UnfinishedResultOnReadySession.cs:line 267
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:   303, Skipped:     0, Total:   304, Duration: 1 m 2 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
