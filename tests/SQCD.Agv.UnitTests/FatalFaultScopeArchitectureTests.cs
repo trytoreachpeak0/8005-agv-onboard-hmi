@@ -360,4 +360,79 @@ public sealed class FatalFaultScopeArchitectureTests
                 .Any(code => code.Contains("ThrowIfFatalFaultLatched", StringComparison.Ordinal));
         }
     }
+
+    /// <summary>
+    /// 复位复核问的「有没有在途装卸」是两个执行器的并，而**聚合本身**（那个 <c>||</c>）此前没有
+    /// 任何判据：两侧各自的行为测试都在，但把 <c>||</c> 写成 <c>&amp;&amp;</c>、或漏掉一侧，两条都不会红
+    /// （审查，判据路条目 1）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>这是源码级守卫，不是行为测试，限度写在这里。</b>要造一条真正分辨它的行为用例，
+    /// 得让一侧忙、另一侧闲，而 <c>WireToGateBusinessService</c> 的构造要一个真
+    /// <c>WireToGateSessionService</c>，只有重 G2 夹具里才有——成本远高于这条守卫，收益是同一个。
+    /// 它守的是写法不是行为：有人把两个执行器换成两个同源的字段，这条仍然绿。
+    /// </para>
+    /// <para>
+    /// 按 onboard-hmi#176 的要求，它自带双向自检（见下一条），不继承本文件那批守卫
+    /// 「只证明今天有判别力」的毛病。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheInFlightAggregateReadsBothExecutorsWithAnOr()
+    {
+        string root = ProtocolIdentityArchitectureTests.RepositoryRoot();
+        string source = File.ReadAllText(
+            Path.Combine(root, "src", "SQCD.Agv.Wpf", "WireToGateBusinessService.cs"));
+
+        AssertAggregateIsAnOrOfBothExecutors(AggregateBody(source));
+    }
+
+    /// <summary>上一条在错误的写法上确实会红，且在正确的写法上不红——两个答案不同才算有判别力。</summary>
+    [Fact]
+    public void ThatAggregateGuardSeparatesRightFromWrong()
+    {
+        // 正确：不该红。
+        AssertAggregateIsAnOrOfBothExecutors(
+            "_executor.HasOperationInFlight || _vectorExecutor.HasOperationInFlight");
+
+        // 四种错法，每一种都该红。
+        foreach (string wrong in new[]
+        {
+            "_executor.HasOperationInFlight",                                          // 漏掉恢复向量那一侧
+            "_vectorExecutor.HasOperationInFlight",                                    // 漏掉仓位命令那一侧
+            "_executor.HasOperationInFlight && _vectorExecutor.HasOperationInFlight",   // 或写成了与
+            "false"                                                                    // 整个判据被掏空
+        })
+        {
+            Assert.ThrowsAny<Xunit.Sdk.XunitException>(
+                () => AssertAggregateIsAnOrOfBothExecutors(wrong));
+        }
+    }
+
+    private static void AssertAggregateIsAnOrOfBothExecutors(string body)
+    {
+        Assert.Contains("_executor.HasOperationInFlight", body, StringComparison.Ordinal);
+        Assert.Contains("_vectorExecutor.HasOperationInFlight", body, StringComparison.Ordinal);
+        Assert.Contains("||", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("&&", body, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// <c>HasSlotWorkInFlight</c> 表达式体的源码，注释已剥掉——判据写在注释里不算数，
+    /// 这正是 onboard-hmi#176 要求别继承的那个洞之一。
+    /// </summary>
+    private static string AggregateBody(string source)
+    {
+        string code = Regex.Replace(
+            Regex.Replace(source, @"//[^\n]*", string.Empty),
+            @"/\*.*?\*/", string.Empty, RegexOptions.Singleline);
+
+        Match match = Regex.Match(
+            code,
+            @"bool\s+HasSlotWorkInFlight\s*=>(?<body>[^;]*);",
+            RegexOptions.Singleline);
+        Assert.True(match.Success, "源码里找不到 HasSlotWorkInFlight 的表达式体——扫描器自己瞎了。");
+        return match.Groups["body"].Value;
+    }
 }

@@ -1683,9 +1683,9 @@ public sealed class OnboardController : IAsyncDisposable
             "OPERATION_BUSY" => "当前装卸操作尚未完成，请完成装卸并关好仓门。",
             "NOT_READY" => "车辆尚未准备好，请等待界面显示“可扫码”。",
             "WIRE_TO_GATE_NOT_READY" =>
-                "上层安全会话尚未就绪，已禁止扫码、开门和发车。请等待连接及恢复完成。",
+                "上层安全会话尚未就绪，本界面已禁止扫码与发车。请等待连接及恢复完成。",
             "WIRE_TO_GATE_JOURNEY_NOT_READY" =>
-                "服务端旅程或当前站点任务尚未同步，已禁止扫码和开门。请等待任务恢复。",
+                "服务端旅程或当前站点任务尚未同步，本界面已禁止扫码。请等待任务恢复。",
             "SUBLOT_NOT_IN_WORKLIST" =>
                 "当前条码不属于服务端下发的站点任务，请核对条码或等待任务刷新。",
             "VISIT_NOT_ACTIVE" => "车辆尚未到站或本次作业已经结束，请等待新的到站任务。",

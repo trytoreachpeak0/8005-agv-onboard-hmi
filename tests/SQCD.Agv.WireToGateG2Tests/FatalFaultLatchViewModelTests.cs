@@ -63,7 +63,13 @@ public sealed class FatalFaultLatchViewModelTests
 
         Assert.NotEqual(OnboardState.Faulted, controller.Current.State);
         Assert.False(viewModel.HasError);
-        Assert.True(viewModel.CanSubmit);
+        // 这里原本还有一条 Assert.True(viewModel.CanSubmit)，删掉了：本用例的 ConfigureWireToGate
+        // 第二个参数传的是常量 () => true，所以那条断言在任何实现下都成立——它看起来在守「一次业务
+        // 拒绝之后扫码入口还在」，实际什么都没守（审查，判据路条目 3）。真判据在
+        // MultiDemandJourneyG2Tests.AnEntryRefusedLocallyIsAMessageToTheOperatorAndNotALatchedVehicle，
+        // 那里接的是真业务服务（harness.Business），并且在拒绝前后各断一次 CanSubmit。
+        // 引名字不引行号：行号会漂移，而我核这条时拿到的行号已经指向了别的测试。
+        // 加强它就要接真服务，那会和 Paths.cs 重复；一条删掉的假断言比一条半真的干净。
         Assert.Contains(
             viewModel.Logs,
             line => line.Kind == OperatorRecordKind.Warning
