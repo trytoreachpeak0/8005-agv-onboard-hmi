@@ -57,10 +57,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 // The race needs the handshake to say READY over the leftover the report names, which the real server
                 // never does (onboard-hmi#128); the outbox then resends the attempt's command after that readiness line.
                 server.AnswerReadyOverPendingFactsForTest = true;
-                // The leftover's UNKNOWN settlement makes the real server announce RECOVERY_REQUIRED on its ack, and the
-                // vehicle then restores the same operation a second time (onboard-hmi#139). Kept off until #139 is
-                // fixed: the restore this test counts is the one the replayed command's claim ran into.
-                server.IgnoreRefusedResultsForReadinessForTest = true;
                 server.SendSlotOperationCommandAfterRecovery = true;
                 server.AdoptDurableRecoveryMemoryFrom(first);
                 // Acknowledging the vehicle's first safety change would republish readiness -- the "next session

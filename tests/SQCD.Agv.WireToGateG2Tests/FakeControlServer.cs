@@ -33,8 +33,7 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// server or here.</item>
 /// <item>Sending gated messages to a session that is not ready is a deviation only
 /// <see cref="ViolateReadinessGateForTest"/> makes, answering READY over pending facts one only
-/// <see cref="AnswerReadyOverPendingFactsForTest"/> makes, and staying READY over a refused result one only
-/// <see cref="IgnoreRefusedResultsForReadinessForTest"/> makes.</item>
+/// <see cref="AnswerReadyOverPendingFactsForTest"/> makes.</item>
 /// </list>
 /// </remarks>
 public sealed class FakeControlServer : IAsyncDisposable
@@ -149,15 +148,6 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// (<c>WireToGateStore.DecideReadinessAsync</c>, <c>noPendingFacts</c>; onboard-hmi#128).
     /// </summary>
     public bool AnswerReadyOverPendingFactsForTest { get; set; }
-
-    /// <summary>
-    /// <b>A deviation from the real server.</b> Leaves refused results out of the readiness decision: an operation
-    /// whose result was not COMPLETED does not hold the vehicle RECOVERY_REQUIRED, and nothing is appended to that
-    /// result's ack. The real server has done both since 2026-09-04 (<c>DecideReadinessAsync</c>'s
-    /// <c>operationNeedsRecovery</c>). What this double did before onboard-hmi#128's review; a test that sets it names
-    /// the reason in a comment.
-    /// </summary>
-    public bool IgnoreRefusedResultsForReadinessForTest { get; set; }
 
     /// <summary>
     /// Attempts this server has settled, across connections and, through
@@ -1843,9 +1833,7 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
 
         // OPERATION_RECOVERY_REQUIRED, last of the reasons as in GetRecoveryReason.
-        return _operationsNeedingRecovery.Count > 0 && !IgnoreRefusedResultsForReadinessForTest
-            ? "SESSION_RECOVERY_REQUIRED"
-            : null;
+        return _operationsNeedingRecovery.Count > 0 ? "SESSION_RECOVERY_REQUIRED" : null;
     }
 
     /// <summary>
