@@ -302,6 +302,129 @@ public sealed partial class MultiDemandJourneyG2Tests
         return await journal.ReadRecoveryStateAsync(cancellationToken);
     }
 
+    /// <summary>
+    /// The demand of a cancellation already sent is gone from the stop: the press is <b>not</b>
+    /// redirected to the demand that is still there. Nothing goes out, and the operator is told the
+    /// answer is the server's to give.
+    /// </summary>
+    /// <remarks>
+    /// This is the rule this ticket adds that is easiest to break by accident, because the obvious
+    /// implementation -- "find the item this cancellationId matches, else fall back to the pick" --
+    /// looks reasonable and silently cancels the wrong task. The server keeps one workflow per
+    /// cancellationId; a press that reused that id for another demand would be a different request
+    /// under the same identity, and the demand the operator never chose would be the one cancelled.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task ASentCancellationWhoseDemandLeftTheStopIsNotRedirectedToTheOtherDemand()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartTwoItemStopAsync(
+            configure: server => server.LoadCancellationAuthorizationsToDrop = 1,
+            cancellationToken: token);
+        SelectWorklistItem(harness, DemandB);
+        Assert.False(await harness.ViewModel.RequestLoadCancellationAsync(token));
+        Assert.True(harness.Business.IsLoadCancellationBeforeSublotOpen);
+
+        // The stop becomes A alone, with the entry request reissued for the new revision -- the pair
+        // the real server sends together, and what makes the new worklist the one this press reads.
+        await harness.Server.SendJourneySnapshotAsync(
+            "CurrentStopWorklistSnapshot",
+            Payloads.Worklist(2, Payloads.ItemA));
+        await harness.Server.SendCommandAsync(
+            "SublotEntryRequested",
+            Guid.NewGuid().ToString("D"),
+            new
+            {
+                operationSessionId = OperationSessionId,
+                stationId = "ST-01",
+                worklistRevision = 2,
+                expectedSublots = SublotAOnly,
+                entryMethods = FrozenEntryMethods,
+                expiresOnRevisionChange = true
+            });
+        await harness.WaitUntilAsync(
+            () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2
+                && harness.Business.ExpectedSublots is ["SUBLOT-A"],
+            "the stop to become A alone, entry request included",
+            token);
+
+        Assert.False(await harness.ViewModel.RequestLoadCancellationAsync(token));
+
+        // Still exactly the one request, still about B: A was never asked about.
+        JsonElement request = Assert.Single(Received(harness, "LoadCancellationStartRequested"));
+        Assert.Equal(DemandB, request.GetProperty("demandId").GetString());
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.Empty(harness.UiErrors);
+        Assert.Contains(
+            harness.Events,
+            item => item.Kind == "RECOVERY_BLOCKED"
+                && item.Message.Contains("取消结果以服务端为准", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The fallback recovery entries name the last settled load only while nothing is armed: with an
+    /// operation armed the subject is that operation, even though the settled load is still on file.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Pinned on the business service, not only through the view model: the view is handed the answer,
+    /// so a view-model test that feeds it a demand id proves the formatting and nothing about the rule.
+    /// </para>
+    /// <para>
+    /// <b>The armed case is seeded, not driven.</b> Driving a real command to the armed state and
+    /// asserting <c>null</c> there passed against an implementation that ignored the arming entirely
+    /// -- measured, see the injection evidence -- because by then the cached state no longer carried
+    /// the settled load, so both a correct and a broken reading returned <c>null</c>. A state written
+    /// with <i>both</i> present is the only shape in which the two readings differ, and that is the
+    /// shape a restart restores after an armed command followed a completed load.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task TheFallbackTargetIsTheSettledLoadOnlyWhileNothingIsArmed(bool armed)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        WireToGateRecoveryOperationContext settled = SettledLoadOf(DemandB);
+        WireToGateRecoveryOperationContext inFlight = SettledLoadOf(DemandA);
+        string journalPath = await NewJournalSeededAsync(
+            WireToGateRecoveryState.Empty with
+            {
+                ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ResultRecorded,
+                LastCompletedLoadOperationContext = settled,
+                OperationContext = armed ? inFlight : null,
+                UnsettledSlotOperationAttemptId = armed ? inFlight.SlotOperationAttemptId : null
+            },
+            token);
+        await using Harness harness = await Harness.StartAsync(
+            server => ConfigureStop(server, ["SUBLOT-A", "SUBLOT-B"], [Payloads.ItemA, Payloads.ItemB]),
+            token,
+            journalPath,
+            new FakeIoModuleClient { OperatorNeverActs = true });
+        // Both cases wait on the same fact -- the seeded state having reached the cache the entries
+        // read -- reported by whichever of the two the seed makes observable.
+        await harness.WaitUntilAsync(
+            () => armed
+                ? harness.Business.CurrentOperationSnapshot is not null
+                : harness.Business.RecoveryFallbackDemandId is not null,
+            "the seeded recovery state to reach the entry gates' cache",
+            token);
+
+        Assert.Equal(armed ? null : DemandB, harness.Business.RecoveryFallbackDemandId);
+        harness.ViewModel.RefreshWireToGateInputState();
+        Assert.Equal(!armed, harness.ViewModel.HasRecoveryFallbackTarget);
+        Assert.Equal(
+            armed ? string.Empty : "目标：子批 SUBLOT-B",
+            harness.ViewModel.RecoveryFallbackTargetText);
+    }
+
+    /// <summary><c>SublotEntryRequested</c> freezes these as a <c>const</c> array in its schema.</summary>
+    private static readonly string[] FrozenEntryMethods = ["SCANNER", "KEYBOARD"];
+
+    private static readonly string[] SublotAOnly = ["SUBLOT-A"];
+
     /// <summary>Writes a journal with this recovery state already in it, for a stop that starts mid-story.</summary>
     private static async Task<string> NewJournalSeededAsync(
         WireToGateRecoveryState seed,
