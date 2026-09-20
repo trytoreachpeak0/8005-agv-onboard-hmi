@@ -3273,13 +3273,13 @@ public sealed partial class WireToGateBusinessService
         }
     }
 
-    private void ReleaseOperation(string key)
-    {
-        lock (_operationAttemptGate)
-        {
-            _operationAttempts.Remove(key);
-        }
-    }
+    /// <remarks>
+    /// Forwards rather than releasing here, because giving a claim up is also what pays an owed recovery entry
+    /// (onboard-hmi#156), and a vector execution is the longest-held claim there is -- it has the doors for as
+    /// long as the compensation takes. A debt recorded while one runs and not paid when it ends would wait for
+    /// the next slot operation, on a vehicle that is in recovery precisely because there may not be one.
+    /// </remarks>
+    private void ReleaseOperation(string key) => ReleaseInFlightAttempt(key);
 
     private void PublishRecoveryVectorOperation(
         WireToGateRecoveryVectorContext context,
