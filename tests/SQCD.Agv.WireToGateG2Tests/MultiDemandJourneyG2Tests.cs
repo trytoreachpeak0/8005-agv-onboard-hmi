@@ -337,7 +337,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                     Guid.NewGuid().ToString("D"),
                     new string('a', 40),
                     CredentialVariable,
-                    TimeSpan.FromSeconds(2),
+                    G2SessionTimeouts.Connect,
                     TimeSpan.FromSeconds(2),
                     1,
                     1,
@@ -553,16 +553,17 @@ public sealed partial class MultiDemandJourneyG2Tests
             string expectation,
             CancellationToken cancellationToken)
         {
-            DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+            StallAwareDeadline deadline = new(TimeSpan.FromSeconds(5));
             while (!predicate())
             {
-                if (DateTimeOffset.UtcNow > deadline)
+                if (deadline.HasExpired)
                 {
                     string errors = string.Join(" | ", UiErrors.Select(error => error.Message));
-                    Assert.Fail($"Timed out after 5s waiting for: {expectation}. UI errors: [{errors}]");
+                    Assert.Fail(
+                        $"Timed out after {deadline.Describe()} waiting for: {expectation}. UI errors: [{errors}]");
                 }
 
-                await Task.Delay(5, cancellationToken);
+                await deadline.PollAsync(cancellationToken);
             }
         }
 

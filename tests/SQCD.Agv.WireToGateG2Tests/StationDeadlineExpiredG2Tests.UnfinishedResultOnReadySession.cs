@@ -258,7 +258,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
         // The settlement runs inside the handshake readiness's own recovery decision and returns TakenOver, so it
         // publishes nothing; the entry comes from the next decision, which resends the result and gets its ack.
         await afterRestart.WaitForEventAsync("RESULT_ACK_PENDING", token);
-        await afterRestart.LetTwoMoreRecoveryDecisionsRunAsync(() => probe!.SettlementReads, token);
+        await afterRestart.LetRecoveryDecisionsRunUntilProjectionAsync(() => probe!.SettlementReads, token);
         await afterRestart.WaitForEventAsync("OPERATION_RECOVERY_REQUIRED", token);
 
         string events = afterRestart.DescribeEvents();
@@ -293,6 +293,48 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 await WaitUntilAsync(
                     () => progressed() > before,
                     $"recovery decision {round + 1} of 2 to get past the step a projection follows",
+                    cancellationToken,
+                    DescribeEvents);
+            }
+        }
+
+        /// <summary>
+        /// Like <see cref="LetTwoMoreRecoveryDecisionsRunAsync"/>, but for the one caller that goes on to wait for
+        /// the projection itself rather than to assert it did not repeat.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The difference matters because the second read is not a fact that has to happen. A decision reads this
+        /// attempt's outbox row only while the attempt is still unsettled: once the resent result is acknowledged,
+        /// <c>UnsettledSlotOperationAttemptId</c> no longer matches and the decision returns early
+        /// (<c>WireToGateBusinessService.cs</c>, before <c>TrySettleInterruptedOperationAsync</c>), so that read
+        /// never comes. Whether it comes at all turns on when the acknowledgement lands relative to the cached
+        /// recovery state -- a race, not a duration, which is why waiting longer does not help.
+        /// </para>
+        /// <para>
+        /// So this waits for either fact: the read, or the projection that read would have produced. Both say the
+        /// decision got to where it was going. Observed in CI run 35486462929, where the wait timed out after its
+        /// full 10 seconds with no stall compensation at all, and the events it printed already contained
+        /// <c>OPERATION_RECOVERY_REQUIRED</c> -- the projection was there, only the second read never was.
+        /// </para>
+        /// <para>
+        /// <b>The other four call sites must keep the old helper.</b> They assert afterwards that the projection did
+        /// NOT come a second time, so their second round has to actually run: accepting an already-published
+        /// projection there would let the round end early and leave "it did not repeat" untested.
+        /// </para>
+        /// </remarks>
+        public async Task LetRecoveryDecisionsRunUntilProjectionAsync(
+            Func<int> progressed,
+            CancellationToken cancellationToken)
+        {
+            for (int round = 0; round < 2; round++)
+            {
+                int before = progressed();
+                await Server.RequestSafetyStateSnapshotAsync();
+                await WaitUntilAsync(
+                    () => progressed() > before || HasEvent("OPERATION_RECOVERY_REQUIRED"),
+                    $"recovery decision {round + 1} of 2 to reach the step a projection follows, "
+                        + "or the projection itself",
                     cancellationToken,
                     DescribeEvents);
             }

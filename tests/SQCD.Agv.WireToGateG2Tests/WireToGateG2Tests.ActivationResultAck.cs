@@ -364,17 +364,25 @@ public sealed partial class WireToGateG2Tests
         TimeSpan limit,
         CancellationToken cancellationToken)
     {
-        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(limit);
-        try
+        // The limit still comes from the call site; only what counts against it changed. This one
+        // swallows its own timeout, so a stall that cut it short would not fail here -- it would
+        // fail in whichever assertion follows, reading as "the vehicle never got there".
+        StallAwareDeadline deadline = new(limit);
+        while (!predicate())
         {
-            while (!predicate())
+            if (deadline.HasExpired)
             {
-                await Task.Delay(5, timeout.Token);
+                return;
             }
-        }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
+
+            try
+            {
+                await deadline.PollAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
         }
     }
 

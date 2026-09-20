@@ -107,8 +107,28 @@ public sealed class JournaledOperationsFeedTests
             }
         }
 
-        public Task WaitForReadStartedAsync(CancellationToken cancellationToken) =>
-            _readStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), cancellationToken);
+        /// <summary>
+        /// 等「首次读已经开始」这件确定会发生的事实。
+        /// </summary>
+        /// <remarks>
+        /// 原本是 <c>Task.WaitAsync(5 秒)</c>：那个 timer 在进程被停住期间照走，于是一次停顿
+        /// 就能把它判成超时，而那几秒里根本没机会去看（onboard-hmi#149）。
+        /// </remarks>
+        public async Task WaitForReadStartedAsync(CancellationToken cancellationToken)
+        {
+            StallAwareDeadline deadline = new(TimeSpan.FromSeconds(5));
+            while (!_readStarted.Task.IsCompleted)
+            {
+                if (deadline.HasExpired)
+                {
+                    throw new TimeoutException($"首次读在 {deadline.Describe()} 内没有开始。");
+                }
+
+                await deadline.PollAsync(cancellationToken);
+            }
+
+            await _readStarted.Task.ConfigureAwait(false);
+        }
 
         public void ReleaseFirstRead() => _firstRead.TrySetResult();
 

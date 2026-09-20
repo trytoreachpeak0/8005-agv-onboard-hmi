@@ -341,7 +341,7 @@ public sealed class SublotRejectedAfterEntryG2Tests
                         Guid.NewGuid().ToString("D"),
                         new string('a', 40),
                         CredentialVariable,
-                        TimeSpan.FromSeconds(2),
+                        G2SessionTimeouts.Connect,
                         TimeSpan.FromSeconds(2),
                         1,
                         1,
@@ -414,15 +414,15 @@ public sealed class SublotRejectedAfterEntryG2Tests
             string expectation,
             CancellationToken cancellationToken)
         {
-            DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(5);
+            StallAwareDeadline deadline = new(TimeSpan.FromSeconds(5));
             while (!predicate())
             {
-                if (DateTimeOffset.UtcNow > deadline)
+                if (deadline.HasExpired)
                 {
-                    Assert.Fail($"Timed out after 5s waiting for: {expectation}");
+                    Assert.Fail($"Timed out after {deadline.Describe()} waiting for: {expectation}");
                 }
 
-                await Task.Delay(5, cancellationToken);
+                await deadline.PollAsync(cancellationToken);
             }
         }
 
