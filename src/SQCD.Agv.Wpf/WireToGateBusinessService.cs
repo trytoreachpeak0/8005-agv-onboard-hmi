@@ -66,6 +66,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private readonly OperatorEventDeduplicator _operatorEventDeduplicator = new();
     private readonly SemaphoreSlim _safetySendGate = new(1, 1);
     private readonly SemaphoreSlim _recoveryRequestGate = new(1, 1);
+    private readonly SemaphoreSlim _operationDisplayGate = new(1, 1);
+    private string? _operationDisplayOwnerAttemptId;
     private WireToGateSublotEntryRequest? _currentEntryRequest;
     private WireToGateSublotRejection? _currentSublotRejection;
     private WireToGateExceptionRecoverySessionSnapshot? _recoverySessionSnapshot;
@@ -641,6 +643,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         _stopping.Dispose();
         _safetySendGate.Dispose();
         _recoveryRequestGate.Dispose();
+        _operationDisplayGate.Dispose();
         await _executor.DisposeAsync().ConfigureAwait(false);
         await _vectorExecutor.DisposeAsync().ConfigureAwait(false);
         GC.SuppressFinalize(this);
@@ -1967,6 +1970,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
         bool restoreAfterRelease = false;
         bool resultUnacknowledged = false;
+        bool ownsDisplay = false;
         try
         {
             if (await IsAttemptTakenOverAsync(command, cancellationToken).ConfigureAwait(false))
@@ -1996,6 +2000,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return;
             }
 
+            // Taken before the first word about this command reaches the screen, and held until its
+            // own result has been shown. Two demands at one stop arrive as two fire-and-forget
+            // handlers, and the executor's gate is further in -- announcing "准备执行…5号仓" out here
+            // put the queued command's slot on screen and highlighted it as the target while the
+            // running one's door stood open on another slot (onboard-hmi#146). Nothing else takes
+            // this gate, and the executor's gate is only ever taken from inside it, so the two cannot
+            // deadlock against each other.
+            await _operationDisplayGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            ownsDisplay = true;
+            Volatile.Write(ref _operationDisplayOwnerAttemptId, command.SlotOperationAttemptId);
             PublishOperation(
                 command,
                 WireToGateHmiOperationStage.Preparing,
@@ -2057,6 +2071,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     ? $"{FormatSlots(command.Slots)}操作完成，正在上报结果。"
                     : $"{FormatSlots(command.Slots)}操作未完成，需要恢复处理。",
                 "final");
+            // The result is on screen and the executor is free: whatever waits behind this command
+            // may start and say so. Reporting the result takes a round trip to the server, and
+            // holding the next demand's unlock behind that would be a queue this vehicle never had.
+            ownsDisplay = ReleaseOperationDisplay(ownsDisplay);
             try
             {
                 if (!completedSuccessfully
@@ -2112,15 +2130,17 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     completedSuccessfully
                         ? $"{FormatSlots(command.Slots)}操作结果已被服务端确认。"
                         : $"{FormatSlots(command.Slots)}操作失败或状态未知，服务端已收到结果，等待管理员恢复。",
-                    new WireToGateHmiOperationSnapshot(
-                        command.SlotOperationAttemptId,
-                        command.OperationType,
-                        command.Slots,
-                        completedSuccessfully
-                            ? WireToGateHmiOperationStage.Completed
-                            : WireToGateHmiOperationStage.RecoveryRequired,
-                        completedSuccessfully ? "操作完成。" : "操作需要管理员恢复。",
-                        execution.ObservedAt));
+                    StillOwnsOperationDisplay(command)
+                        ? new WireToGateHmiOperationSnapshot(
+                            command.SlotOperationAttemptId,
+                            command.OperationType,
+                            command.Slots,
+                            completedSuccessfully
+                                ? WireToGateHmiOperationStage.Completed
+                                : WireToGateHmiOperationStage.RecoveryRequired,
+                            completedSuccessfully ? "操作完成。" : "操作需要管理员恢复。",
+                            execution.ObservedAt)
+                        : null);
             }
             catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
             {
@@ -2150,19 +2170,25 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     $"operation-result-pending:{command.SlotOperationAttemptId}",
                     "RESULT_ACK_PENDING",
                     "操作已安全结束，但结果确认暂未收到；系统将保持同一结果重放，不会重复执行IO。",
-                    new WireToGateHmiOperationSnapshot(
-                        command.SlotOperationAttemptId,
-                        command.OperationType,
-                        command.Slots,
-                        completedSuccessfully
-                            ? WireToGateHmiOperationStage.Reporting
-                            : WireToGateHmiOperationStage.RecoveryRequired,
-                        "结果等待确认，禁止重复操作仓门。",
-                        execution.ObservedAt));
+                    StillOwnsOperationDisplay(command)
+                        ? new WireToGateHmiOperationSnapshot(
+                            command.SlotOperationAttemptId,
+                            command.OperationType,
+                            command.Slots,
+                            completedSuccessfully
+                                ? WireToGateHmiOperationStage.Reporting
+                                : WireToGateHmiOperationStage.RecoveryRequired,
+                            "结果等待确认，禁止重复操作仓门。",
+                            execution.ObservedAt)
+                        : null);
             }
         }
         finally
         {
+            // Every other way out of the block above -- the load cancellation that aborts the run,
+            // a shutdown, a throw -- gives the display up here, so nothing queued behind this
+            // command is held by a command that is no longer running.
+            ReleaseOperationDisplay(ownsDisplay);
             lock (_operationAttemptGate)
             {
                 _operationAttempts.Remove(command.SlotOperationAttemptId);
@@ -2182,6 +2208,34 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             }
         }
     }
+
+    /// <summary>
+    /// Gives the current-operation display up, if this caller holds it. Returns the caller's new
+    /// ownership, which is always false, so the release is idempotent when the <c>finally</c> runs
+    /// after the settlement already released it.
+    /// </summary>
+    private bool ReleaseOperationDisplay(bool owned)
+    {
+        if (owned)
+        {
+            _operationDisplayGate.Release();
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Whether this command is still the one the current-operation display belongs to. A settlement
+    /// goes on publishing after it has given the display up -- the result's acknowledgement, or the
+    /// notice that no acknowledgement came -- and by then the next demand may have started. Those
+    /// events are still shown to the operator; what they no longer do is put a finished operation's
+    /// slots back on screen over the running one's (onboard-hmi#146).
+    /// </summary>
+    private bool StillOwnsOperationDisplay(WireToGateSlotOperationCommand command) =>
+        string.Equals(
+            Volatile.Read(ref _operationDisplayOwnerAttemptId),
+            command.SlotOperationAttemptId,
+            StringComparison.Ordinal);
 
     /// <summary>
     /// Publishes one executor progress report, and records whether it leaves a load's doors open or

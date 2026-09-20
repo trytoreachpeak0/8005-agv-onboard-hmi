@@ -1,0 +1,27 @@
+[
+  {
+    "messageType": "VehicleBusinessStateSnapshot",
+    "origin": "synthetic-peer",
+    "site": "FakeControlServer.CreateJourneyEnvelope <- FakeControlServer.SendJourneySnapshotAsync",
+    "errors": [
+      {
+        "pointer": "#/payload/loadingPhase",
+        "keyword": "anyOf",
+        "message": "Validation anyOf - did not validate against the schema.",
+        "actual": "{\"state\":\"CLOSED\",\"cargoHoldingDeadlineAt\":null,\"closedReason\":null}"
+      }
+    ],
+    "sampleLine": "{\"protocolVersion\":3,\"profileId\":\"AGV_FULL_PRODUCT\",\"protocolReleaseVersion\":\"2.0.0\",\"protocolReleaseManifestSha256\":\"4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7\",\"messageType\":\"VehicleBusinessStateSnapshot\",\"messageId\":\"396daf60-b5b8-4c5b-a4ec-34d8a398151b\",\"correlationId\":null,\"agvId\":\"AGV-8005-01\",\"sessionGeneration\":1,\"sentAt\":\"2026-09-20T00:03:39.4650595+00:00\",\"payload\":{\"vehicleBusinessStateRevision\":2,\"readiness\":\"READY\",\"activePurpose\":\"TRANSPORT\",\"manualChargingHold\":false,\"batteryState\":\"SUFFICIENT\",\"chargingCycleState\":\"NOT_CHARGING\",\"loadingPhase\":{\"state\":\"CLOSED\",\"cargoHoldingDeadlineAt\":null,\"closedReason\":null},\"blockingFacts\":[],\"observedAt\":\"2026-09-20T00:03:39.4646885\\u002B00:00\"}}",
+    "count": 1,
+    "onFile": [
+      {
+        "messageType": "VehicleBusinessStateSnapshot",
+        "pointer": "#/payload/loadingPhase",
+        "keyword": "anyOf",
+        "actual": "{\"state\":\"CLOSED\",\"cargoHoldingDeadlineAt\":null,\"closedReason\":null}",
+        "issue": null,
+        "deliberate": "MultiDemandJourneyG2Tests.AClosedLoadingPhaseWithoutAReasonIsStillRefusedAndLeavesNoHalfState"
+      }
+    ]
+  }
+]

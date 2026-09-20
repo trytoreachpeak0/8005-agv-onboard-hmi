@@ -263,7 +263,32 @@ public sealed class WireToGateSettings
 
     public int ConnectTimeoutMs { get; init; } = 3_000;
 
-    public int MessageTimeoutMs { get; init; } = 3_000;
+    /// <summary>
+    /// 一条要应答的 WIRE_TO_GATE 消息等多久，毫秒。
+    /// </summary>
+    /// <remarks>
+    /// 它同时是**两条心跳到达间距的上界**：心跳循环串行地等 <c>HeartbeatAck</c>，服务端看到的间距是
+    /// max(<see cref="SessionHeartbeatIntervalMs"/>, ack 往返)。所以它与心跳间隔受同一个界约束，
+    /// 见 <see cref="Validate"/>。默认值曾是 3000，恰好等于那个界、余量为零；2026-09-20 随
+    /// onboard-hmi#142 的审查下调到 2500。
+    /// </remarks>
+    public int MessageTimeoutMs { get; init; } = 2_500;
+
+    /// <summary>
+    /// WIRE_TO_GATE 会话心跳的间隔，毫秒。ADR-cross-0027 定的是 2 秒。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 与同一份文件里 <c>ruleGateway.heartbeatIntervalMs</c> 不是一回事：那一个是旧规则网关的心跳
+    /// （<c>TcpJsonRuleGateway</c>），与 WIRE_TO_GATE 会话无关，仍是 5 秒。
+    /// </para>
+    /// <para>
+    /// 心跳与失联阈值是项目级统一配置、不按车设置，所以这里能配的只是「现场真要调」的那一格，
+    /// 上下限由 <see cref="Validate"/> 按阈值卡死，而不是听任现场填。
+    /// </para>
+    /// </remarks>
+    public int SessionHeartbeatIntervalMs { get; init; } =
+        (int)WireToGateSessionService.DefaultHeartbeatInterval.TotalMilliseconds;
 
     public long CapabilityVersion { get; init; } = 1;
 
@@ -352,6 +377,26 @@ public sealed class WireToGateSettings
             || string.IsNullOrWhiteSpace(JournalPath))
         {
             throw new InvalidDataException("WIRE_TO_GATE配置无效。");
+        }
+
+        if (SessionHeartbeatIntervalMs <= 0
+            || SessionHeartbeatIntervalMs >= WireToGateSessionService.MaximumHeartbeatInterval.TotalMilliseconds)
+        {
+            throw new InvalidDataException(
+                "WIRE_TO_GATE会话心跳间隔必须为正，且严格小于ADR-cross-0027静默失联阈值的一半"
+                + $"（{WireToGateSessionService.MaximumHeartbeatInterval.TotalMilliseconds:0}毫秒）。 ");
+        }
+
+        // 心跳循环串行地等 HeartbeatAck，所以服务端看到的**到达间距**是
+        // max(心跳间隔, ack 往返)，而 ack 往返的上界就是这个超时。只卡心跳间隔不卡它，
+        // 上面那道界就能从另一扇门绕开：间隔配 2 秒、超时配 10 秒，服务端慢应答时两条心跳可以隔
+        // 10 秒才到，ADR-cross-0027「单次心跳丢失不构成失联」当场失效。所以这两个值受同一个界约束。
+        if (MessageTimeoutMs >= WireToGateSessionService.MaximumHeartbeatInterval.TotalMilliseconds)
+        {
+            throw new InvalidDataException(
+                "WIRE_TO_GATE消息超时必须严格小于ADR-cross-0027静默失联阈值的一半"
+                + $"（{WireToGateSessionService.MaximumHeartbeatInterval.TotalMilliseconds:0}毫秒）："
+                + "心跳要等应答才算走完一拍，这个超时就是两条心跳到达间距的上界。 ");
         }
 
         if (production

@@ -1,0 +1,45 @@
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.AFailedHeartbeatReconnectsAndTheCadenceResumesOnTheNewSession() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatPacingG2Tests.cs:line 157
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.AFailedHeartbeatReconnectsAndTheCadenceResumesOnTheNewSession() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatPacingG2Tests.cs:line 157
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:16.15]     SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.ASlowHeartbeatAckDoesNotPushTheNextHeartbeatLate [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.ASlowHeartbeatAckDoesNotPushTheNextHeartbeatLate [7 s]
+  Error Message:
+   ack 慢 1 秒时 7 秒窗口里只收到 1 条 Heartbeat，就绪后各段间隔为 5.00 秒。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.ASlowHeartbeatAckDoesNotPushTheNextHeartbeatLate() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 115
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.ASlowHeartbeatAckDoesNotPushTheNextHeartbeatLate() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 118
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.ASlowHeartbeatAckDoesNotPushTheNextHeartbeatLate() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 118
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:22.33]     SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.TheDefaultCadenceIsTwoSecondsAndNotAMillisecondEarlier [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.TheDefaultCadenceIsTwoSecondsAndNotAMillisecondEarlier [10 s]
+  Error Message:
+   等不到第一条心跳。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.WaitForAsync(Func`1 predicate, String what, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatPacingG2Tests.cs:line 217
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.TheDefaultCadenceIsTwoSecondsAndNotAMillisecondEarlier() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatPacingG2Tests.cs:line 56
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.TheDefaultCadenceIsTwoSecondsAndNotAMillisecondEarlier() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatPacingG2Tests.cs:line 59
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.TheDefaultCadenceIsTwoSecondsAndNotAMillisecondEarlier() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatPacingG2Tests.cs:line 59
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:32.61]     SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.TheCadenceHoldsWhileASlotOperationIsInFlight [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.TheCadenceHoldsWhileASlotOperationIsInFlight [10 s]
+  Error Message:
+   等不到装货进行中的第 1 条心跳。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.WaitForAsync(Func`1 predicate, String what, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatPacingG2Tests.cs:line 217
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.TheCadenceHoldsWhileASlotOperationIsInFlight() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatPacingG2Tests.cs:line 113
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.TheCadenceHoldsWhileASlotOperationIsInFlight() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatPacingG2Tests.cs:line 121
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.TheCadenceHoldsWhileASlotOperationIsInFlight() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatPacingG2Tests.cs:line 121
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.TheCadenceHoldsWhileASlotOperationIsInFlight() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatPacingG2Tests.cs:line 121
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:42.67]     SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.AConfiguredIntervalReplacesTheDefault [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.AConfiguredIntervalReplacesTheDefault [10 s]
+  Error Message:
+   等不到第 1 条心跳。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.WaitForAsync(Func`1 predicate, String what, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatPacingG2Tests.cs:line 217
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.AConfiguredIntervalReplacesTheDefault() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatPacingG2Tests.cs:line 80
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.AConfiguredIntervalReplacesTheDefault() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatPacingG2Tests.cs:line 77
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatPacingG2Tests.AConfiguredIntervalReplacesTheDefault() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatPacingG2Tests.cs:line 77
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     6, Passed:     4, Skipped:     0, Total:    10, Duration: 41 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
