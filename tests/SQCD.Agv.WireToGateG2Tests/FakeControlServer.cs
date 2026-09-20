@@ -33,9 +33,8 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// server or here.</item>
 /// <item>Sending gated messages to a session that is not ready is a deviation only
 /// <see cref="ViolateReadinessGateForTest"/> makes, answering READY over pending facts one only
-/// <see cref="AnswerReadyOverPendingFactsForTest"/> makes, staying READY over a refused result one only
-/// <see cref="IgnoreRefusedResultsForReadinessForTest"/> makes, and sending the activation after the journey one only
-/// <see cref="SendActivationAfterJourneyForTest"/> makes.</item>
+/// <see cref="AnswerReadyOverPendingFactsForTest"/> makes, and staying READY over a refused result one only
+/// <see cref="IgnoreRefusedResultsForReadinessForTest"/> makes.</item>
 /// </list>
 /// </remarks>
 public sealed class FakeControlServer : IAsyncDisposable
@@ -159,15 +158,6 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// the reason in a comment.
     /// </summary>
     public bool IgnoreRefusedResultsForReadinessForTest { get; set; }
-
-    /// <summary>
-    /// <b>A deviation from the real server's order.</b> Sends the handshake's
-    /// <c>SlotConfigurationActivationCommand</c> after the journey push instead of before it. The real server replays
-    /// a pending activation as the handshake completes and pushes the journey on the runtime's next pass; with that
-    /// order the vehicle reads a journey snapshot where it expects its activation result's DurableAck
-    /// (onboard-hmi#140). What this double did before onboard-hmi#128's review.
-    /// </summary>
-    public bool SendActivationAfterJourneyForTest { get; set; }
 
     /// <summary>
     /// Attempts this server has settled, across connections and, through
@@ -473,6 +463,42 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     /// <summary>车报上来的那些激活结果，按到达顺序。</summary>
     public IReadOnlyList<JsonElement> ReceivedActivationResults => _activationResults;
+
+    /// <summary>
+    /// Messages written between taking a <c>SlotConfigurationActivationResult</c> and writing its <c>DurableAck</c>,
+    /// in this order: <c>"SessionReadiness"</c> (the readiness this server would announce now) and
+    /// <c>"SlotOperationCommand"</c>. The real server does not promise the ack is the next line the vehicle reads
+    /// (onboard-hmi#140).
+    /// </summary>
+    public IReadOnlyList<string> WriteBeforeActivationResultAck { get; set; } = [];
+
+    /// <summary>
+    /// How many <c>SlotConfigurationActivationResult</c>s to take and then answer nothing, the connection left open:
+    /// the vehicle's wait for the <c>DurableAck</c> times out (onboard-hmi#140).
+    /// </summary>
+    public int ActivationResultAcksToDrop { get; set; }
+
+    /// <summary>
+    /// Takes a <c>SlotConfigurationActivationResult</c> and closes the connection before its <c>DurableAck</c>
+    /// (onboard-hmi#140).
+    /// </summary>
+    public bool DropBeforeActivationResultAck { get; set; }
+
+    /// <summary>Writes each activation result's <c>DurableAck</c> twice (onboard-hmi#140).</summary>
+    public bool DuplicateActivationResultAck { get; set; }
+
+    /// <summary>
+    /// After taking an activation result whose ack <see cref="ActivationResultAcksToDrop"/> withholds, keeps writing
+    /// <c>SessionReadiness</c> for <see cref="SessionReadinessFloodDuration"/> with the connection left open: the
+    /// vehicle's wait for the ack times out while its receive loop is busy applying those lines (onboard-hmi#140
+    /// review S1). <see cref="SessionReadinessFloodFinished"/> turns true when the flood is over.
+    /// </summary>
+    public bool FloodSessionReadinessAfterDroppedActivationResultAck { get; set; }
+
+    /// <summary>How long <see cref="FloodSessionReadinessAfterDroppedActivationResultAck"/> keeps writing.</summary>
+    public TimeSpan SessionReadinessFloodDuration { get; set; } = TimeSpan.FromSeconds(3);
+
+    public bool SessionReadinessFloodFinished { get; private set; }
 
     private readonly List<JsonElement> _activationResults = [];
 
@@ -1206,7 +1232,40 @@ public sealed class FakeControlServer : IAsyncDisposable
                         {
                             _activationResults.Add(root.Clone());
                         }
+
+                        if (ActivationResultAcksToDrop > 0)
+                        {
+                            ActivationResultAcksToDrop--;
+                            if (FloodSessionReadinessAfterDroppedActivationResultAck)
+                            {
+                                await FloodSessionReadinessAsync(context).ConfigureAwait(false);
+                            }
+
+                            break;
+                        }
+
+                        if (DropBeforeActivationResultAck)
+                        {
+                            context.Client.Close();
+                            return;
+                        }
+
+                        foreach (string before in WriteBeforeActivationResultAck)
+                        {
+                            await (before switch
+                            {
+                                "SessionReadiness" => WriteEnvelopeAsync(context, CreateSessionReadiness(context)),
+                                "SlotOperationCommand" => SendSlotOperationCommandAsync(context),
+                                _ => throw new InvalidOperationException($"Unknown message to write: {before}.")
+                            }).ConfigureAwait(false);
+                        }
+
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        if (DuplicateActivationResultAck)
+                        {
+                            await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        }
+
                         break;
                     case "OperationResult" when OperationResultAcksToDrop > 0:
                         OperationResultAcksToDrop--;
@@ -1640,7 +1699,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             // replayed by OnboardRecoveryCoordinator.ReplayPendingCommandsAsync, neither of which asks for READY --
             // a vehicle whose fingerprint disagrees is RECOVERY_REQUIRED and only an activation can fix it. It goes
             // first: that replay runs as the handshake completes, the journey only on the runtime's next pass.
-            if (SendSlotConfigurationActivationAfterRecovery && !SendActivationAfterJourneyForTest)
+            if (SendSlotConfigurationActivationAfterRecovery)
             {
                 await SendSlotConfigurationActivationCommandAsync(context).ConfigureAwait(false);
             }
@@ -1648,11 +1707,6 @@ public sealed class FakeControlServer : IAsyncDisposable
             if (pushNow)
             {
                 await SendGatedAfterRecoveryAsync(context).ConfigureAwait(false);
-            }
-
-            if (SendSlotConfigurationActivationAfterRecovery && SendActivationAfterJourneyForTest)
-            {
-                await SendSlotConfigurationActivationCommandAsync(context).ConfigureAwait(false);
             }
         }
 
@@ -2332,6 +2386,39 @@ public sealed class FakeControlServer : IAsyncDisposable
                     Encoding.UTF8.GetBytes(wireLine)),
                 durablyAcceptedAt = DateTimeOffset.UtcNow
             });
+    }
+
+    /// <summary>
+    /// Writes <c>SessionReadiness</c> as fast as the socket takes it until <see cref="SessionReadinessFloodDuration"/>
+    /// is up or the vehicle stops reading: the point is to keep the vehicle's receive loop applying lines across its
+    /// ack timeout rather than parked on an empty socket.
+    /// </summary>
+    private async Task FloodSessionReadinessAsync(ConnectionContext context)
+    {
+        DateTimeOffset until = DateTimeOffset.UtcNow + SessionReadinessFloodDuration;
+        try
+        {
+            while (DateTimeOffset.UtcNow < until)
+            {
+                for (int i = 0; i < 200; i++)
+                {
+                    await WriteEnvelopeAsync(context, CreateSessionReadiness(context)).ConfigureAwait(false);
+                }
+
+                // Yield, not Delay: a 1 ms delay is 15 ms on this machine, and the vehicle's receive loop would be
+                // parked on an empty socket for almost all of the flood -- which is exactly the state this test
+                // must not leave it in when the ack times out.
+                await Task.Yield();
+            }
+        }
+        catch (Exception)
+        {
+            // The vehicle closed the connection; that is one of the two ways this flood ends.
+        }
+        finally
+        {
+            SessionReadinessFloodFinished = true;
+        }
     }
 
     private async Task SendSlotOperationCommandAsync(ConnectionContext context)
