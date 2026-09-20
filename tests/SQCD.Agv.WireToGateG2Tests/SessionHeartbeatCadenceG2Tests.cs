@@ -8,20 +8,26 @@ using Xunit;
 namespace SQCD.Agv.WireToGateG2Tests;
 
 /// <summary>
-/// 会话心跳的节拍（onboard-hmi#142，ADR-cross-0027）：车载上位机每 2 秒发一次 <c>Heartbeat</c>，
-/// 服务端连续 6 秒没有收到合法消息即判失联，所以单次心跳丢失不能构成失联。
+/// 会话心跳的节拍，走真实计时器（onboard-hmi#142，ADR-cross-0027）：车载上位机每 2 秒发一次
+/// <c>Heartbeat</c>，服务端连续 6 秒没有收到合法消息即判失联，所以单次心跳丢失不能构成失联。
 /// </summary>
 /// <remarks>
 /// <para>
-/// 这个类里只有一条用真实计时器的用例，其余节拍断言在 <c>SessionHeartbeatPacingG2Tests</c>
-/// 里走注入的时间源，零墙钟等待。两者分工不同：注入时间源证明的是「循环按它拿到的间隔推进」，
-/// 这一条证明的是「产品真的用 <c>Task.Delay(TimeSpan, TimeProvider, CancellationToken)</c>
-/// 那条路，并且默认间隔就是 ADR 要的 2 秒」——把默认值写错成 5 秒这种事，只有它看得见。
+/// 这个类只有一条用例，其余节拍断言在 <c>SessionHeartbeatPacingG2Tests</c> 里走注入的时间源，
+/// 零墙钟等待。分工：注入时间源证明「循环按它拿到的间隔推进」，这一条证明「产品真的走
+/// <c>Task.Delay(TimeSpan, TimeProvider, CancellationToken)</c> 那条路，而且出厂默认值本身就是
+/// ADR 要的 2 秒」——默认值被写成 5 秒这种事，只有它看得见。
+/// </para>
+/// <para>
+/// <b>为什么带 1 秒的 ack 延迟，而不是分成两条用例。</b> 心跳循环要等 <c>HeartbeatAck</c> 回来才算
+/// 这一拍走完。那段往返若被算进下一次等待，2 秒的节拍就变成 2 秒加往返。一条带延迟的用例同时钉住
+/// 两件事：默认值是 2 秒，且 ack 的往返不累加。判别力比拆成两条更强，墙钟占用只有一半——在 CI 上
+/// 这台机器还要同时跑服务端的 test 与 l2，xunit 又让各测试类并行，省下的每一秒都在给别人让路。
 /// </para>
 /// <para>
 /// 没有 <c>IntegrationSlice</c> 与 <c>ProtocolVector</c> 标记：心跳不属于任何一条冻结向量，
-/// <c>IntegrationSliceTraitArchitectureTests</c> 的等式要求切片标记恰好是
-/// 本测试所声明向量的投影，声明不出向量就不该带切片。
+/// <c>IntegrationSliceTraitArchitectureTests</c> 的等式要求切片标记恰好是本测试所声明向量的投影，
+/// 声明不出向量就不该带切片。
 /// </para>
 /// </remarks>
 public sealed class SessionHeartbeatCadenceG2Tests
@@ -35,9 +41,16 @@ public sealed class SessionHeartbeatCadenceG2Tests
     private static readonly TimeSpan MaximumGap = TimeSpan.FromSeconds(2.5);
 
     /// <summary>
-    /// 观察窗口。2 秒节拍下窗口内至少有 3 条心跳；写死 5 秒的旧实现一条都凑不齐。
+    /// 服务端应答的往返。比 <see cref="MaximumGap"/> 减去节拍所剩的余量大得多，所以只要它被算进
+    /// 下一次等待，间隔断言必红。
     /// </summary>
-    private static readonly TimeSpan Window = TimeSpan.FromSeconds(7);
+    private static readonly TimeSpan AckDelay = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// 观察窗口的上限。2 秒节拍下第 2 条心跳在第 4 秒就到，用例等到它便收工，窗口只在红的时候用满：
+    /// 写死 5 秒的实现在窗口里凑不齐两条，把 ack 往返算进下一拍的实现两条之间隔 3 秒。
+    /// </summary>
+    private static readonly TimeSpan Window = TimeSpan.FromSeconds(6);
 
     static SessionHeartbeatCadenceG2Tests()
     {
@@ -45,59 +58,17 @@ public sealed class SessionHeartbeatCadenceG2Tests
     }
 
     /// <summary>
-    /// 出厂默认下会话建立后心跳就按 2 秒的节拍来：首条不晚于 2.5 秒，7 秒窗口里不少于 3 条，
-    /// 相邻两条不超过 2.5 秒。
+    /// 出厂默认下会话建立后心跳就按 2 秒的节拍来，而且服务端 ack 慢 1 秒也不把节拍往后挪：
+    /// 首条不晚于 2.5 秒，相邻两条不超过 2.5 秒。
     /// </summary>
     [Fact]
     public async Task TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
-        await using FakeControlServer server = new(IPAddress.Loopback) { SendReadinessAfterRecoveryAck = true };
-        FakeIoModuleClient io = new();
-        await using WireToGateSessionService session = CreateSession(server, io);
-
-        session.Start();
-        await WaitUntilAsync(
-            () => session.Current.Readiness == WireToGateSessionReadiness.Ready,
-            TimeSpan.FromSeconds(10),
-            token);
-        long readyAt = Stopwatch.GetTimestamp();
-
-        await WaitUntilAsync(() => server.HeartbeatArrivals.Count >= 3, Window, token);
-
-        IReadOnlyList<long> arrivals = server.HeartbeatArrivals;
-        Assert.True(
-            arrivals.Count >= 3,
-            $"7 秒窗口里只收到 {arrivals.Count} 条 Heartbeat，{Describe(readyAt, arrivals)}；"
-            + "ADR-cross-0027 要求 2 秒一条。");
-        Assert.True(
-            Stopwatch.GetElapsedTime(readyAt, arrivals[0]) <= MaximumGap,
-            $"首条 Heartbeat 太晚，{Describe(readyAt, arrivals)}；ADR-cross-0027 要求 2 秒一条。");
-        for (int index = 1; index < arrivals.Count; index++)
-        {
-            Assert.True(
-                Stopwatch.GetElapsedTime(arrivals[index - 1], arrivals[index]) <= MaximumGap,
-                $"第 {index} 与第 {index + 1} 条 Heartbeat 之间隔得太久，{Describe(readyAt, arrivals)}；"
-                + "单次心跳丢失就会撞上服务端 6 秒的静默阈值。");
-        }
-    }
-
-    /// <summary>
-    /// 服务端的 <c>HeartbeatAck</c> 慢 1 秒回，节拍不跟着往后挪：心跳循环要等 ack 才算这一拍走完，
-    /// 那段往返若算进下一次等待，2 秒就成了 3 秒。
-    /// </summary>
-    /// <remarks>
-    /// 这是票面第 2 点要核实的那件事的实测面。写锁（<c>_sendGate</c>）只罩着一次写行，不会长时间占住；
-    /// 真正会把心跳往后拖的是等 <c>HeartbeatAck</c>，最长可以拖到 <c>MessageTimeout</c>。
-    /// </remarks>
-    [Fact]
-    public async Task ASlowHeartbeatAckDoesNotPushTheNextHeartbeatLate()
-    {
-        CancellationToken token = TestContext.Current.CancellationToken;
         await using FakeControlServer server = new(IPAddress.Loopback)
         {
             SendReadinessAfterRecoveryAck = true,
-            HeartbeatAckDelay = TimeSpan.FromSeconds(1)
+            HeartbeatAckDelay = AckDelay
         };
         FakeIoModuleClient io = new();
         await using WireToGateSessionService session = CreateSession(server, io);
@@ -109,17 +80,22 @@ public sealed class SessionHeartbeatCadenceG2Tests
             token);
         long readyAt = Stopwatch.GetTimestamp();
 
-        await WaitUntilAsync(() => server.HeartbeatArrivals.Count >= 3, Window, token);
+        await WaitUntilAsync(() => server.HeartbeatArrivals.Count >= 2, Window, token);
 
         IReadOnlyList<long> arrivals = server.HeartbeatArrivals;
         Assert.True(
-            arrivals.Count >= 3,
-            $"ack 慢 1 秒时 7 秒窗口里只收到 {arrivals.Count} 条 Heartbeat，{Describe(readyAt, arrivals)}。");
+            arrivals.Count >= 2,
+            $"{Window.TotalSeconds:0} 秒窗口里只收到 {arrivals.Count} 条 Heartbeat，{Describe(readyAt, arrivals)}；"
+            + "ADR-cross-0027 要求 2 秒一条。");
+        Assert.True(
+            Stopwatch.GetElapsedTime(readyAt, arrivals[0]) <= MaximumGap,
+            $"首条 Heartbeat 太晚，{Describe(readyAt, arrivals)}；ADR-cross-0027 要求 2 秒一条。");
         for (int index = 1; index < arrivals.Count; index++)
         {
             Assert.True(
                 Stopwatch.GetElapsedTime(arrivals[index - 1], arrivals[index]) <= MaximumGap,
-                $"ack 的往返被算进了下一次等待，{Describe(readyAt, arrivals)}；节拍应当按发出时刻推进。");
+                $"第 {index} 与第 {index + 1} 条 Heartbeat 之间隔得太久，{Describe(readyAt, arrivals)}；"
+                + "ack 的往返不该被算进下一次等待，单次心跳丢失就会撞上服务端 6 秒的静默阈值。");
         }
     }
 
@@ -155,7 +131,8 @@ public sealed class SessionHeartbeatCadenceG2Tests
                 new string('a', 40),
                 CredentialVariable,
                 TimeSpan.FromSeconds(2),
-                TimeSpan.FromSeconds(2),
+                // ack 要等 AckDelay 才回来，消息超时必须比它宽裕，否则红的是超时而不是节拍。
+                TimeSpan.FromSeconds(3),
                 1,
                 1,
                 "eight-slot-v1",

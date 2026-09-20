@@ -29,8 +29,10 @@ trytoreachpeak0/8005-agv-control-server#234（连续 6 秒无合法消息即判�
 
 ## 测试分工
 
-- `SessionHeartbeatCadenceG2Tests`（2 条，真实计时器，各 7 秒）：默认节拍就是 2 秒；`HeartbeatAck`
-  慢 1 秒时节拍不跟着往后挪。只有走真实计时器才看得见默认值本身写错。
+- `SessionHeartbeatCadenceG2Tests`（1 条，真实计时器，绿时约 4 秒）：服务端 ack 慢 1 秒的情况下，
+  首条心跳不晚于 2.5 秒、相邻两条不超过 2.5 秒。一条用例同时钉住两件事——默认值是 2 秒，
+  且 ack 的往返不累加到下一拍。只有走真实计时器才看得见默认值本身写错。
+  起初拆成两条各 7 秒，合并是 CI 那次红之后做的（见下），判别力没降：反向验证里两种缺陷各红一次。
 - `SessionHeartbeatPacingG2Tests`（5 条，注入 `ManualTimeProvider`，合计约 1 秒）：差 0.1 秒不早发、
   配置值取代默认、装货进行中不落拍、断链后在新一代会话上恢复、非法间隔被拒。节拍断言钉到毫秒，
   不靠墙钟。
@@ -73,3 +75,43 @@ CI `l2.yml` 的 `rig=real` 作业（vm01 交互式 runner），`real-onboard-com
 
 跑的是 merge 之前的 `6d8bd18e`。之后那个 merge（`c39e5a4`）只是把集成分支上 hmi#134 的改动并进来，
 没有改本票的任何一行，合并本身也是自动完成、无冲突；merge 之后的全量 G2 已重跑并 PASS。
+
+## CI 上红过一次，红的不是本票的用例
+
+`ONBOARD_HMI_G2` 在 `74ceb542`（merge 集成分支之后）红过一次，run
+[35478019226](https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/actions/runs/35478019226)。
+红的是 hmi#127 留下的既有用例，G2 的 293 条里只有它，单元测试 449 条全过：
+
+```
+SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAttemptRefusedWhileRecoveryRequiredStillGetsItsResultOutWhenReissued [FAIL]
+  Error Message:
+   Timed out after 10s waiting for: a mid-session SessionReadiness
+```
+
+原文在 `red/07-ci-35478019226-station-deadline-flake.txt`（从 run 的 `g2-evidence` artifact 里取的
+`logs/dotnet-test-release.log`；CI 日志正文只抬了一行「dotnet-test-release exited with code 1」）。
+
+**与心跳改动无关，理由是机理而不是「跑了没复现」**：那条用例的 `StationDeadlineExpiredG2Tests.Harness`
+只调 `business.Start()` 与 `ConnectAndRecoverAsync`，**全程没有 `session.Start()`**，而心跳循环只在
+`session.Start()` 拉起的 `RunAsync` 里跑。那条用例从头到尾一条 `Heartbeat` 都没发过，2 秒还是 5 秒
+对它没有任何输入。
+
+两组本机对照都复现不出来（这台机器比 CI 那台空闲，本机不是合适的复现环境，两组都只能作旁证）：
+
+| 组 | 跑法 | 结果 |
+| --- | --- | --- |
+| 集成分支顶端 `226ff87`，不含本票任何改动 | 全 G2 项目 × 3 轮，Release | 283 条全绿（`green/05-baseline-…`） |
+| 本票分支 | `StationDeadlineExpiredG2Tests` 单类 × 5 轮，Release | 34 条全绿（`green/05b-…`） |
+| 本票分支，墙钟用例合并之后 | 全 G2 项目 × 3 轮，Release | 292 条全绿（`red/06-…` 的 D 段） |
+
+调度那边另有一条独立观察：同一个用例、同一个等待对象（`a mid-session SessionReadiness`），
+2026-09-20 在别的票的全量上已经红过一次，单独连跑 6 次全过。修那条用例的等待写法由调度另开票，
+不在本票边界内。
+
+**本票自己做的是减少对并行负载的贡献**：原来两条真实计时器用例各占 7 秒墙钟，合并成一条带 1 秒
+ack 延迟的，绿时约 4 秒。反向验证（`red/06-merged-cadence-reverse-verification.txt`）确认判别力没降：
+
+| 把实现改回 | 合并后的用例红成什么样 |
+| --- | --- |
+| 默认写死 5 秒 | 「6 秒窗口里只收到 1 条 Heartbeat，就绪后各段间隔为 5.01 秒」 |
+| 节拍改回「发完再 `Task.Delay`」 | 「第 1 与第 2 条 Heartbeat 之间隔得太久，就绪后各段间隔为 2.00 秒、3.05 秒」 |
