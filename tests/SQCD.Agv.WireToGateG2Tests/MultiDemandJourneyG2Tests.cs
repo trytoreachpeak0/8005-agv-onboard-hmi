@@ -501,6 +501,12 @@ public sealed partial class MultiDemandJourneyG2Tests
                 // App.OnDispatcherUnhandledException reads (8005-agv-onboard-hmi#171). A copy of the
                 // rule here would let this harness keep proving the old behaviour after the product
                 // changed -- which is exactly what it did while "latch everything" was the rule.
+                //
+                // **代价，写下来免得下一个人以为 G2 还在守着分类**：夹具跟着登记表走，所以往
+                // OperatorRejections 里加一个本该锁存的码，整个 G2 套件不会有任何东西变红
+                // （审查，判据路条目 11）。守分类的是
+                // LocalFailureCodeRegistryArchitectureTests，不是这里。这里仍然无条件
+                // _uiErrors.Add，所以各处的 Assert.Empty(harness.UiErrors) 还有牙。
                 switch (OnboardFailureClassification.Classify(exception))
                 {
                     case OnboardCommandFailureKind.ControlledCancellation:

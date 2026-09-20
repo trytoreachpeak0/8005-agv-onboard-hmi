@@ -606,7 +606,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             // 与 RunRecoveryRequestAsync 同一条：按码查表，不拼裸码（8005-agv-onboard-hmi#171）。
             PublishOperatorResponse(
                 "RECOVERY_BLOCKED",
-                OnboardCommandRejectionText.DescribeWithCode(exception.Message));
+                OnboardCommandRejectionText.DescribeRecoveryBlocked(exception.Message));
             return false;
         }
         finally

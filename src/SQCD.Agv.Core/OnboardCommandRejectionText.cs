@@ -90,4 +90,28 @@ public static class OnboardCommandRejectionText
         HasWording(reasonCode)
             ? $"{Describe(reasonCode)}（{reasonCode}）"
             : Describe(reasonCode);
+
+    /// <summary>
+    /// 恢复入口被挡下时操作员读到的话：为什么被挡，加上这条路**必须**保留的那半句现场指引。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>那半句是被静默丢掉过一次的。</b>原文案是「恢复向量被阻断：&lt;码&gt;。**请确认车辆停稳、
+    /// 仓门状态和服务端授权。**」，改成按码查表时注意力全在「让操作员看得懂、让 G2 认得出」，
+    /// 于是尾巴那句安全指引跟着裸码一起没了，换成了 <see cref="Describe"/> 兜底句里的
+    /// 「请核对后重试」——**那句话暗示「什么都没发生，再按一次即可」**。
+    /// </para>
+    /// <para>
+    /// 而落到这条路上的码有一批是登记表里的严重故障码（<c>RECOVERY_SCOPE_MISMATCH</c>、
+    /// <c>RECOVERY_STATE_MISMATCH</c>、<c>RECOVERY_VECTOR_CONFLICT</c> 等），登记表对它们的说法是
+    /// 「某处状态与另一处不一致，本进程对仓门的认知正是有疑问的那一件事」。**登记表说状态存疑，
+    /// 界面说重试就行**——那正是这张票要消灭的形状，只是换了一句话
+    /// （8005-agv-onboard-hmi#171 审查，产品路发现 4）。
+    /// </para>
+    /// <para>
+    /// 教训写在这里而不是提交信息里：**改一段文案之前，先问原来那句话里有没有承载安全信息的成分。**
+    /// </para>
+    /// </remarks>
+    public static string DescribeRecoveryBlocked(string reasonCode) =>
+        $"{DescribeWithCode(reasonCode)}请确认车辆停稳、仓门状态和服务端授权，不要仅凭本提示重试。";
 }

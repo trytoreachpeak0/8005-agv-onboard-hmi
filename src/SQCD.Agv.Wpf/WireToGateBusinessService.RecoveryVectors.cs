@@ -243,7 +243,7 @@ public sealed partial class WireToGateBusinessService
             // 原样显示，那是故意的：猜出来的意思比没有更糟。
             PublishOperatorResponse(
                 "RECOVERY_BLOCKED",
-                OnboardCommandRejectionText.DescribeWithCode(exception.Message));
+                OnboardCommandRejectionText.DescribeRecoveryBlocked(exception.Message));
             return false;
         }
         finally

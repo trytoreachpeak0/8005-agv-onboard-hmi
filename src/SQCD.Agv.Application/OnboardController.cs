@@ -718,6 +718,19 @@ public sealed class OnboardController : IAsyncDisposable
             // reviewed, and EnterFatalFault would not have overwritten this one, so it would be lost.
             if (Interlocked.CompareExchange(ref _fatalFault, null, latched) != latched)
             {
+                // 复核期间锁存被换掉了（并发的 RefuseClearance，或另一条路径）。不能清——那一个没被
+                // 复核过。但也不能一声不吭：操作员按了按钮，界面必须有反应，否则他只会再按一次
+                // （8005-agv-onboard-hmi#171 审查，产品路发现 5）。
+                FatalFault? current = Volatile.Read(ref _fatalFault);
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(OnboardController),
+                    $"严重安全故障复位未生效：复核期间锁存已变化，operator={operatorId}。");
+                if (current is not null)
+                {
+                    RefuseClearance(current, "复核期间故障状态发生变化，请重新复核。", operatorId);
+                }
+
                 return false;
             }
 
@@ -743,6 +756,34 @@ public sealed class OnboardController : IAsyncDisposable
     /// latch first: <see cref="PublishCore"/> rewrites any publish back to the latch's banner while
     /// it stands, so a reason published beside it would never be seen.
     /// </summary>
+    /// <summary>
+    /// 上一次复位被拒的原因不再成立时把它撤掉。
+    /// </summary>
+    /// <remarks>
+    /// 那条原因是**关于按下按钮那一刻的物理状态**的陈述（「3号仓门未关好」）。操作员关好门之后，
+    /// 横幅如果还这么写，它就变成了一件不成立的事——而这正是本票要消灭的形状
+    /// （8005-agv-onboard-hmi#171 审查，产品路发现 5）。所以每次 IO 快照重新评估时，
+    /// 物理复核一旦重新通过就撤掉它，不必等操作员再按一次才发现门其实已经关好了。
+    /// </remarks>
+    private void ForgetStaleClearanceRefusal()
+    {
+        if (Volatile.Read(ref _fatalFault) is not { ClearanceRefusal: not null } stale)
+        {
+            return;
+        }
+
+        if (ValidateRecoverableStartupSnapshot(_ioModule.CurrentSnapshot) is not null)
+        {
+            return;
+        }
+
+        FatalFault cleared = stale with { ClearanceRefusal = null };
+        if (Interlocked.CompareExchange(ref _fatalFault, cleared, stale) == stale)
+        {
+            Publish(OnboardState.Faulted, cleared.Banner, cleared.ErrorCode);
+        }
+    }
+
     private void RefuseClearance(FatalFault latched, string reason, string operatorId)
     {
         FatalFault explained = latched with { ClearanceRefusal = reason };
@@ -1430,6 +1471,8 @@ public sealed class OnboardController : IAsyncDisposable
     // 收到新的 IO 快照
     private void OnIoSnapshotChanged(object? sender, ValueChangedEventArgs<IoSnapshot> args)
     {
+        // 上一次复位被拒的原因是一句关于物理状态的话，物理状态变好了它就不再成立。
+        ForgetStaleClearanceRefusal();
         if (!_startupValidated && args.Value.IsConnected)
         {
             bool safeColdStart = args.Value.Lockers.Count == 8

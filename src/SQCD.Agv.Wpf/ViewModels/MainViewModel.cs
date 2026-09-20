@@ -135,8 +135,15 @@ public sealed class MainViewModel : ViewModelBase
     /// <param name="operatorIdProvider">
     /// Who is at the vehicle, read fresh on each use. Only the fatal-fault clearance entry needs it
     /// (8005-agv-onboard-hmi#171): that entry records who lifted the latch, and an entry whose record
-    /// would say nobody is not one to offer. Null or blank therefore closes it -- including in the
-    /// pre-WIRE_TO_GATE mode, where the same operator-id environment variable still configures it.
+    /// would say nobody is not one to offer. Null or blank therefore closes it.
+    /// <para>
+    /// <b>In the pre-WIRE_TO_GATE mode that means the entry is closed unless the operator-id
+    /// environment variable is actually set.</b> The first version's comment here said both modes
+    /// "configure it through the same environment variable" and concluded the entry works in the old
+    /// mode too -- but what both modes configure is the variable's <i>name</i>; only the WIRE_TO_GATE
+    /// path validates that it has a <i>value</i> (<c>Configuration.cs</c>). Reading "the mechanism
+    /// exists" as "the mechanism is in effect" is how that sentence went wrong (审查，产品路发现 3).
+    /// </para>
     /// </param>
     public MainViewModel(
         OnboardController controller,
@@ -485,6 +492,9 @@ public sealed class MainViewModel : ViewModelBase
                 operatorEvent.Message));
             ClearLogsCommand.RaiseCanExecuteChanged();
             TrimLogs();
+            // 又有事发生了，上一条拒绝回执到此为止——不等那 8 秒走完。操作员扫错一次、随即扫对，
+            // 界面不该继续显示他扫错的那一句（8005-agv-onboard-hmi#171 审查，产品路发现 1）。
+            ClearOperatorNotice();
             // An event can open or close sublot entry without any snapshot arriving -- a cancellation
             // before any sublot being sent, refused or settled -- so the input gates are read again.
             RefreshWireToGateInputStateCore();
@@ -492,18 +502,48 @@ public sealed class MainViewModel : ViewModelBase
             RefreshLockerCardsCore();
         });
 
+    /// <summary>
+    /// 锁存期间恢复入口一律关闭。**这是一项安全职责，不是显示逻辑。**
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 恢复向量（补偿清空、修正装货、强制机械取出）会经 <c>WireToGateRecoveryVectorExecutor</c>
+    /// 真的开门，而那个执行器直接持 <c>IIoModuleClient</c>、不经过 <c>OnboardController</c>，
+    /// 所以严重安全故障锁存在执行那一层拦不住它——**挡住它的是界面这一层**。
+    /// 全仓四个开门点各自受不受锁存约束，见 <c>FatalFaultScopeArchitectureTests</c> 那张表。
+    /// </para>
+    /// <para>
+    /// <b>它是一个方法而不是散在两处的判断，是因为散着的时候它只在其中一处成立。</b>
+    /// 第一版把这段写在 <see cref="ApplyWireToGatePresentationCore"/> 里，并在注释里称它
+    /// 「今天唯一挡住它的就是这几行」——而 <see cref="RefreshWireToGateInputStateCore"/> 重写
+    /// 同样这几个属性、完全不看控制器状态，服务端重发一次录入请求就会把入口放回来
+    /// （8005-agv-onboard-hmi#171 审查）。那句「唯一」是从「我改的那条路径上它是唯一的」推出来的，
+    /// **局部为真，写成了全称。**
+    /// </para>
+    /// </remarks>
+    private bool RecoveryEntriesBlockedByFatalFault =>
+        _lastControllerSnapshot?.State == OnboardState.Faulted;
+
+    /// <summary>恢复入口的最终值：业务说可以，且没有锁存。</summary>
+    private bool AllowRecoveryEntry(bool offeredByBusiness) =>
+        offeredByBusiness && !RecoveryEntriesBlockedByFatalFault;
+
     internal void RefreshWireToGateInputState() => RunOnUiThread(RefreshWireToGateInputStateCore);
 
     private void RefreshWireToGateInputStateCore()
     {
         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? CanSubmit;
-        CanRequestWireToGateRecovery = _wireToGateCanRequestRecovery?.Invoke() == true;
-        CanRequestLoadCancellation = _wireToGateCanRequestLoadCancellation?.Invoke() == true;
-        CanRequestLoadCompensation = _wireToGateCanRequestLoadCompensation?.Invoke() == true;
-        CanRequestLoadCorrection = _wireToGateCanRequestLoadCorrection?.Invoke() == true;
-        CanRequestFaultCargoHandoff = _wireToGateCanRequestFaultCargoHandoff?.Invoke() == true;
-        CanRequestForcedMechanicalRecovery = _wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true;
-        CanRequestManualChargingReturn = _wireToGateCanRequestManualChargingReturn?.Invoke() == true;
+        // 九个恢复入口全部经同一道闸门（AllowRecoveryEntry），另一条刷新路径
+        // ApplyWireToGatePresentationCore 也是。少经一处，锁存期间那个入口就会被这条路径放回来。
+        CanRequestWireToGateRecovery = AllowRecoveryEntry(_wireToGateCanRequestRecovery?.Invoke() == true);
+        CanRequestLoadCancellation = AllowRecoveryEntry(_wireToGateCanRequestLoadCancellation?.Invoke() == true);
+        CanRequestLoadCompensation = AllowRecoveryEntry(_wireToGateCanRequestLoadCompensation?.Invoke() == true);
+        CanRequestLoadCorrection = AllowRecoveryEntry(_wireToGateCanRequestLoadCorrection?.Invoke() == true);
+        CanRequestFaultCargoHandoff = AllowRecoveryEntry(_wireToGateCanRequestFaultCargoHandoff?.Invoke() == true);
+        CanRequestForcedMechanicalRecovery =
+            AllowRecoveryEntry(_wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true);
+        CanRequestManualChargingReturn =
+            AllowRecoveryEntry(_wireToGateCanRequestManualChargingReturn?.Invoke() == true);
         RefreshForcedIsolationCore();
         RefreshRecoveryReasonLockCore();
         // 回落目标随入口一起重算：主体是否已经回落，与入口开关来自同一份恢复状态。
@@ -1368,6 +1408,7 @@ public sealed class MainViewModel : ViewModelBase
                 : hasWarning
                     ? "请处理"
                     : GetStateText(snapshot.State);
+        // 控制器这一侧 hasBlockingError 是真的会变 true 的（故障态、阻断错误码）。
         bool noticeHeld = PublishGuidance(snapshot.Guidance, hasBlockingError);
         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? snapshot.State == OnboardState.ReadyToScan;
         HasWarning = hasWarning || noticeHeld;
@@ -1378,8 +1419,14 @@ public sealed class MainViewModel : ViewModelBase
         // 与上面那一条是两个入口，判据也不共用：启动安全复核受理的是启动期那一个码，复位受理的是
         // 锁存的严重安全故障。把后者并进前者，等于让一个启动期的确认动作在运行期具有清除安全锁存的
         // 能力，而操作员分辨不出他按的是哪一件事（8005-agv-onboard-hmi#171）。
+        //
+        // **这里不判 snapshot.ActiveOperation。** 「有没有在途装卸」由控制器自己在
+        // ClearFatalFaultAsync 里问两把真锁（对端执行器的门、本控制器的操作锁），那才是真实来源。
+        // 第一版在这里多加了一道 ActiveOperation is null，而 SubmitScanAsync 的 finally 只清
+        // _activeOperationCts、不清 _activeOperation：旧模式下一次非 IO/超时类异常锁存之后，
+        // 那个字段再也不会被清，按钮的 Visibility 就永久是 Collapsed——**本票开头那个症状原样复现**
+        // （审查，产品路发现 3）。少一道读自过时字段的判据，比多一道安全。
         CanClearFatalFault = _controller.CanClearFatalFault
-            && snapshot.ActiveOperation is null
             && !string.IsNullOrWhiteSpace(_operatorIdProvider?.Invoke());
         CanReopenOperation = _controller.CanReopenCurrentOperation;
         CanCancelOperation = _controller.CanCancelCurrentOperation;
@@ -1478,17 +1525,26 @@ public sealed class MainViewModel : ViewModelBase
     /// <b>阻断态优先</b>：真出故障时故障横幅盖过提示，因为那一刻要人读的是故障。
     /// </para>
     /// </remarks>
-    private bool PublishGuidance(string guidance, bool blocking)
+    private bool PublishGuidance(string guidance, bool preempting)
     {
-        if (!blocking && _operatorNotice is { } notice && Clock.Now < _operatorNoticeUntil)
+        if (!preempting && _operatorNotice is { } notice && Clock.Now < _operatorNoticeUntil)
         {
             Guidance = notice;
             return true;
         }
 
-        _operatorNotice = null;
+        ClearOperatorNotice();
         Guidance = guidance;
         return false;
+    }
+
+    /// <summary>
+    /// 提示到此为止：有更新的事要说，或者它已经过期。
+    /// </summary>
+    private void ClearOperatorNotice()
+    {
+        _operatorNotice = null;
+        _operatorNoticeUntil = default;
     }
 
     private void AppendOperatorRecord(OnboardSnapshot snapshot)
@@ -1511,15 +1567,9 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        // 这一段不只是「故障时不让点按钮」的显示逻辑，**它承担着一项安全职责**：恢复向量
-        // （补偿清空、修正装货、强制机械取出）会经 WireToGateRecoveryVectorExecutor 真的开门，
-        // 而那个执行器直接持 IIoModuleClient、不经过 OnboardController，所以严重安全故障锁存
-        // 在执行这一层拦不住它——**今天唯一挡住它的就是这几行**。
-        //
-        // 全仓四个开门点各自受不受锁存约束，是一张被守住的表：
-        // tests/SQCD.Agv.UnitTests/FatalFaultScopeArchitectureTests.cs。重构这一段之前先读它。
-        // （8005-agv-onboard-hmi#171）
-        if (_lastControllerSnapshot?.State == OnboardState.Faulted)
+        // 判据与另一条刷新路径共用 AllowRecoveryEntry，理由写在那里：这是安全职责，而散在两处时
+        // 它只在其中一处成立。这里仍然 early return，因为锁存时后面那些横幅计算本来就不该跑。
+        if (RecoveryEntriesBlockedByFatalFault)
         {
             CanRequestWireToGateRecovery = false;
             CanRequestLoadCancellation = false;
@@ -1547,7 +1597,13 @@ public sealed class MainViewModel : ViewModelBase
             sublotRejection is not null);
         RuleConnectionText = _wireToGateSession.Connected ? "在线" : "离线";
         StateText = banner.StateText;
-        bool bannerNoticeHeld = PublishGuidance(banner.Guidance, banner.HasError);
+        // banner.HasError 在 v2 上恒 false（WireToGateHmiPresentation.Create 的每个分支都写死
+        // false），**一个恒 false 的开关和不存在是一样的**——所以「有在途仓位操作」要单独判：
+        // 那一刻门正在开，而「正在打开3号仓」比一条已经读过的拒绝回执要紧得多
+        // （8005-agv-onboard-hmi#171 审查，产品路发现 1）。
+        bool bannerNoticeHeld = PublishGuidance(
+            banner.Guidance,
+            banner.HasError || _wireToGateOperation is not null);
         HasWarning = banner.HasWarning || bannerNoticeHeld;
         HasError = banner.HasError;
         CanReopenOperation = false;
@@ -1569,8 +1625,10 @@ public sealed class MainViewModel : ViewModelBase
 
     private void RefreshForcedIsolationCore()
     {
-        CanConfirmForcedMechanicalRecovery = _wireToGateCanConfirmForcedMechanicalRecovery?.Invoke() == true;
-        CanSubmitHardwareRecoveryRecord = _wireToGateCanSubmitHardwareRecoveryRecord?.Invoke() == true;
+        CanConfirmForcedMechanicalRecovery =
+            AllowRecoveryEntry(_wireToGateCanConfirmForcedMechanicalRecovery?.Invoke() == true);
+        CanSubmitHardwareRecoveryRecord =
+            AllowRecoveryEntry(_wireToGateCanSubmitHardwareRecoveryRecord?.Invoke() == true);
         IReadOnlyList<int> unknown = _wireToGatePhysicallyUnknownSlots?.Invoke() ?? [];
         HasPhysicallyUnknownSlots = unknown.Count > 0;
         PhysicallyUnknownSlotsText = unknown.Count > 0

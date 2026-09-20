@@ -109,8 +109,9 @@ public partial class App : System.Windows.Application, IDisposable
                     new AtomicJsonFile(settings.WireToGate.ActiveSlotConfigurationPath),
                     localSlotConfiguration)
                 : null;
-            // 操作员工号两种模式下都由同一个环境变量配置，所以复位入口在旧模式下也拿得到身份
-            // （8005-agv-onboard-hmi#171）。读取放在每次用的时候，不在启动时定格。
+            // 操作员工号：两种模式配置的是同一个**变量名**，但只有 WIRE_TO_GATE 那条路校验它有**值**。
+            // 所以旧模式下没设这个环境变量时，复位入口不会出现——「有这个机制」不等于「这个机制生效」
+            // （8005-agv-onboard-hmi#171 审查，产品路发现 3）。读取放在每次用的时候，不在启动时定格。
             string operatorIdVariable = settings.WireToGate.OperatorIdEnvironmentVariable;
             MainViewModel viewModel = new(
                 _controller,

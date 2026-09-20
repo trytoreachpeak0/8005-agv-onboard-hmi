@@ -111,6 +111,193 @@ public sealed class FatalFaultLatchViewModelTests
     }
 
     /// <summary>
+    /// 锁存期间恢复入口关闭，**两条刷新路径给同一个答案**（审查，产品路发现 2 ＋ 判据路条目 2）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 这几个入口里有三个（补偿清空、修正装货、强制机械取出）会经
+    /// <c>WireToGateRecoveryVectorExecutor</c> 真的开门，而那个执行器不经过 <c>OnboardController</c>，
+    /// 所以锁存在执行那一层拦不住——**挡住它的就是界面这一层**。
+    /// </para>
+    /// <para>
+    /// 而第一版只在 <c>ApplyWireToGatePresentationCore</c> 那一条路径上挡，还在注释里称它
+    /// 「今天唯一挡住它的就是这几行」。<c>RefreshWireToGateInputStateCore</c> 重写同样这些属性、
+    /// 完全不看控制器状态，**服务端重发一次录入请求（`App.xaml.cs` 挂在 `SublotEntryRequested` 上）
+    /// 就会把入口放回来**。所以这条测试专门走那条平行路径，而不是走快照路径。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => true,
+            canRequestRecovery: () => true,
+            canRequestLoadCancellation: () => true,
+            canRequestLoadCompensation: () => true,
+            canRequestLoadCorrection: () => true,
+            canRequestFaultCargoHandoff: () => true,
+            canRequestForcedMechanicalRecovery: () => true,
+            canRequestManualChargingReturn: () => true);
+        // 会话必须先建立：ApplyWireToGatePresentationCore 开头就 `_wireToGateSession is null` 直接
+        // return，没有会话时那条路径根本不跑——两条路径要比，就得让两条都真的跑。
+        viewModel.UpdateWireToGateStatus(new WireToGateSessionSnapshot(
+            Connected: true,
+            SessionGeneration: 1,
+            Readiness: WireToGateSessionReadiness.RecoveryRequired,
+            ReasonCodes: [],
+            CapabilityVersion: 1,
+            SafetyStateVersion: 1,
+            UpdatedAt: Now));
+        viewModel.RefreshWireToGateInputState();
+        Assert.True(viewModel.CanRequestLoadCompensation);
+        Assert.True(viewModel.CanRequestForcedMechanicalRecovery);
+
+        // 一、快照那条路径关掉它们。
+        controller.EnterFatalFault("UI_COMMAND_FAILED", OnboardFatalFaultBanner.UiCommandFailed);
+        Assert.False(viewModel.CanRequestLoadCompensation);
+
+        // 二、**这一步是判据的核心**：服务端重发录入请求走的正是这条平行路径，业务侧仍然说「可以」，
+        // 而锁存必须让它们保持关闭。第一版在这里会把九个入口全部放回来。
+        viewModel.RefreshWireToGateInputState();
+
+        Assert.False(viewModel.CanRequestWireToGateRecovery);
+        Assert.False(viewModel.CanRequestLoadCancellation);
+        Assert.False(viewModel.CanRequestLoadCompensation);
+        Assert.False(viewModel.CanRequestLoadCorrection);
+        Assert.False(viewModel.CanRequestFaultCargoHandoff);
+        Assert.False(viewModel.CanRequestForcedMechanicalRecovery);
+        Assert.False(viewModel.CanRequestManualChargingReturn);
+        Assert.False(viewModel.CanConfirmForcedMechanicalRecovery);
+        Assert.False(viewModel.CanSubmitHardwareRecoveryRecord);
+    }
+
+    /// <summary>
+    /// 提示会过期。**这条守的是一条新立的红线**（<c>OperatorNoticeHold</c> = 8 秒），
+    /// 而新立的红线要有自己的护栏（审查，判据路条目 5）。
+    /// </summary>
+    /// <remarks>
+    /// 没有这一条，把 <c>OperatorNoticeHold</c> 改成一天全绿——后果是提示行一旦写上一条业务拒绝，
+    /// 整个班次里除非进阻断态否则再也不会被常态横幅换掉，操作员读到的是几小时前的拒绝，而车早就
+    /// 换了站。用注入的时钟推进，不靠真的等 8 秒。
+    /// </remarks>
+    [Fact]
+    public async Task ARefusalStopsHoldingTheBannerOnceItHasExpired()
+    {
+        MultiDemandViewModelTests.ManualClock clock = new(new DateTimeOffset(2026, 9, 21, 8, 0, 0, TimeSpan.Zero));
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, clock: clock);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => throw new InvalidOperationException("SUBLOT_NOT_IN_WORKLIST"),
+            () => true);
+        viewModel.ScanText = "SUBLOT-X";
+
+        viewModel.ScannerSubmitCommand.Execute(null);
+        await WaitUntilAsync(() => viewModel.Logs.Count > 0);
+        Assert.Contains("不属于服务端下发的站点任务", viewModel.Guidance, StringComparison.Ordinal);
+
+        // 还没到期：仍然压住。
+        clock.Advance(TimeSpan.FromSeconds(7));
+        controller.RefreshExternalSafetyState();
+        Assert.Contains("不属于服务端下发的站点任务", viewModel.Guidance, StringComparison.Ordinal);
+
+        // 过期之后：常态横幅拿回那一行。
+        clock.Advance(TimeSpan.FromSeconds(2));
+        controller.RefreshExternalSafetyState();
+        Assert.DoesNotContain("不属于服务端下发的站点任务", viewModel.Guidance, StringComparison.Ordinal);
+        Assert.Equal(controller.Current.Guidance, viewModel.Guidance);
+    }
+
+    /// <summary>
+    /// 门正在开的时候，提示必须让位给「正在打开N号仓」（审查，产品路发现 1 ＋ 判据路条目 6）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>PublishGuidance</c> 的 <c>preempting</c> 参数第一版取自 <c>banner.HasError</c>，而
+    /// <c>WireToGateHmiPresentation.Create</c> 的**每一个分支都写死 <c>HasError: false</c>**
+    /// （全文 10 处 false、0 处 true）——**一个恒为 false 的开关，和不存在是一样的。**
+    /// </para>
+    /// <para>
+    /// 所以判据里加了「有在途仓位操作」：那一刻门正在开，而那句话比一条已经读过的拒绝回执要紧
+    /// 得多。这条测试把提示造在仓位操作已经在途之后，因为 <c>ApplyWireToGateOperatorEvent</c>
+    /// 自己会清提示——要测的是 <c>preempting</c>，不是那条清除。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AnInFlightSlotOperationTakesTheBannerBackFromARefusal()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => throw new InvalidOperationException("SUBLOT_NOT_IN_WORKLIST"),
+            () => true);
+        viewModel.UpdateWireToGateStatus(new WireToGateSessionSnapshot(
+            Connected: true,
+            SessionGeneration: 1,
+            Readiness: WireToGateSessionReadiness.Ready,
+            ReasonCodes: [],
+            CapabilityVersion: 1,
+            SafetyStateVersion: 1,
+            UpdatedAt: Now));
+        // 仓位操作在途：门正在开。
+        viewModel.ApplyWireToGateOperatorEvent(new WireToGateOperatorEvent(
+            Now,
+            "OPERATION_PROGRESS",
+            "正在打开3号仓。",
+            new WireToGateHmiOperationSnapshot(
+                "a5d6ad42-16e6-045c-90ea-2e29b7aaec5d",
+                OperationType.Load,
+                [3],
+                WireToGateHmiOperationStage.Unlocking,
+                "正在打开3号仓。",
+                Now)));
+
+        viewModel.ScanText = "SUBLOT-X";
+        viewModel.ScannerSubmitCommand.Execute(null);
+        await WaitUntilAsync(() => viewModel.Logs.Any(
+            line => line.Message.Contains("不属于服务端下发的站点任务", StringComparison.Ordinal)));
+
+        // 常态横幅又发了一遍。门在开，所以这一行不能还在说他刚才扫错了。
+        controller.RefreshExternalSafetyState();
+
+        Assert.DoesNotContain("不属于服务端下发的站点任务", viewModel.Guidance, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 又有事发生了，上一条拒绝回执就到此为止——不等那 8 秒走完（审查，产品路发现 1）。
+    /// </summary>
+    /// <remarks>
+    /// 审查给的时间线：t=0 扫错子批 → t≈1.5s 扫对 → t≈3s 执行器真的开门、横幅要说「正在打开3号仓」。
+    /// 修之前那两句一句都不会显示，直到 t=8s——**界面在说他刚才扫错了，而门正在他面前打开**。
+    /// 这正是本票要消灭的形状，只是换了一句话。
+    /// </remarks>
+    [Fact]
+    public async Task ANewOperatorEventEndsTheRefusalHoldImmediately()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => throw new InvalidOperationException("SUBLOT_NOT_IN_WORKLIST"),
+            () => true);
+        viewModel.ScanText = "SUBLOT-X";
+
+        viewModel.ScannerSubmitCommand.Execute(null);
+        await WaitUntilAsync(() => viewModel.Logs.Count > 0);
+        Assert.Contains("不属于服务端下发的站点任务", viewModel.Guidance, StringComparison.Ordinal);
+
+        viewModel.ApplyWireToGateOperatorEvent(new WireToGateOperatorEvent(
+            Now,
+            "SUBLOT_SUBMITTED",
+            "子批 SUBLOT-A 已提交，等待服务端下发仓位操作。",
+            null));
+        controller.RefreshExternalSafetyState();
+
+        Assert.DoesNotContain("不属于服务端下发的站点任务", viewModel.Guidance, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// 锁存之后复位入口出现并被通知到窗口；复位之后它自己消失。正常运行里它不出现，由
     /// <c>OnboardControllerTests.ANormalRunNeverOffersTheFatalFaultClearance</c> 钉住。
     /// </summary>
@@ -193,9 +380,12 @@ public sealed class FatalFaultLatchViewModelTests
         }
     }
 
+    private static readonly DateTimeOffset Now = new(2026, 9, 21, 8, 0, 0, TimeSpan.Zero);
+
     private static async Task<MainViewModel> ViewModel(
         OnboardController controller,
-        Func<string?>? operatorIdProvider = null)
+        Func<string?>? operatorIdProvider = null,
+        IClock? clock = null)
     {
         MainViewModel viewModel = new(
             controller,
@@ -204,7 +394,8 @@ public sealed class FatalFaultLatchViewModelTests
             OnboardActiveSlotConfigurationFactory.Create(new WireToGateSettings(), new IoModuleSettings()),
             operatorIdProvider)
         {
-            StationDepartureCountdownDispatcher = null
+            StationDepartureCountdownDispatcher = null,
+            Clock = clock ?? new SystemClock()
         };
         await viewModel.InitializeAsync();
         return viewModel;

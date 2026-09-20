@@ -270,7 +270,12 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.Business.CanSubmitSublot && harness.ViewModel.CanSubmit,
             "the entry request to open scanning",
             token);
-        Assert.True(harness.ViewModel.ScannerSubmitCommand.CanExecute(null) || harness.ViewModel.ScanText.Length == 0);
+        // 锁存前按钮真的能点——这是后面那条 Assert.False 的对照。**要先给 ScanText 赋值**：
+        // canExecute 是 `CanSubmit && !IsNullOrWhiteSpace(ScanText)`，空串时它必然 false，
+        // 而第一版写的是 `CanExecute(null) || ScanText.Length == 0`——两个析取项一个必然 false、
+        // 一个必然 true，整行恒真，一个字节的判别力都没有（审查，判据路条目 4）。
+        harness.ViewModel.ScanText = "SUBLOT-A";
+        Assert.True(harness.ViewModel.ScannerSubmitCommand.CanExecute(null));
 
         harness.Controller.EnterFatalFault("UI_COMMAND_FAILED", OnboardFatalFaultBanner.UiCommandFailed);
         await harness.WaitUntilAsync(

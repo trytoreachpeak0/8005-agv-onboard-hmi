@@ -50,7 +50,7 @@ public sealed class FatalFaultScopeArchitectureTests
     /// <summary>
     /// 全仓**经 <c>IIoModuleClient.PulseUnlockAsync</c> 的**开门点，四个（按文件三条，
     /// <c>OnboardController</c> 里有装卸与重开门两处）。绕开那个接口的路由
-    /// <see cref="NothingReachesTheDoorsExceptThroughTheIoModulePort"/> 关死，两条合起来才是
+    /// <see cref="NothingUnderSrcTouchesTheConcreteModbusClientOutsideItsTwoAllowedSites"/> 收窄，两条合起来覆盖的是
     /// 「全仓开门点」。**改这张表之前先确认你改的是事实，不是为了让测试变绿。**
     /// </summary>
     private static readonly UnlockSite[] UnlockSites =
@@ -157,7 +157,7 @@ public sealed class FatalFaultScopeArchitectureTests
 
     /// <summary>
     /// 这张表只看得见**经 <c>IIoModuleClient.PulseUnlockAsync</c> 的**开门。绕开那个接口、直接
-    /// 拿具体 Modbus 客户端写寄存器的代码，它一个字都看不见——所以那条路要关死。
+    /// 拿具体 Modbus 客户端写寄存器的代码，它一个字都看不见——所以这一条把那个类型的使用收窄到两处。
     /// </summary>
     /// <remarks>
     /// <para>
@@ -166,13 +166,19 @@ public sealed class FatalFaultScopeArchitectureTests
     /// 覆盖了这个接口的全部开门面；缺的那一半正是这一条守的：**没有人从接口下面钻过去**。
     /// </para>
     /// <para>
+    /// <b>它守的没有标题曾经声称的那么多，名字已经按实际收窄。</b>这个仓的 Modbus 是手写在裸
+    /// <c>TcpClient</c> 上的（<c>ModbusTcpIoModuleClient.cs</c> 没有任何 Modbus 库依赖），所以
+    /// **一个新文件自己 <c>new TcpClient()</c> 连 IO 模块、直接写开锁线圈，这一条看不见**
+    /// （审查，判据路条目 8）。它挡的是「照着现成的客户端再用一次」，不是「所有到达仓门的路」。
+    /// </para>
+    /// <para>
     /// 这一条是 8005-agv-onboard-hmi#171 审查之后补的，理由就是这张票本身的教训：
     /// **一个过度声称的表，和一句过度声称的横幅，坏法完全一样**——读的人据此做了一个它撑不住的
     /// 判断。上面那张表如果只扫 <c>PulseUnlockAsync</c> 却自称「全仓开门点」，就是在重犯。
     /// </para>
     /// </remarks>
     [Fact]
-    public void NothingReachesTheDoorsExceptThroughTheIoModulePort()
+    public void NothingUnderSrcTouchesTheConcreteModbusClientOutsideItsTwoAllowedSites()
     {
         string root = ProtocolIdentityArchitectureTests.RepositoryRoot();
         string[] offenders = Directory
@@ -244,6 +250,63 @@ public sealed class FatalFaultScopeArchitectureTests
     }
 
     /// <summary>
+    /// 这一批守卫**自己会不会报红**，用合成源码验，不靠「我当时注入过一次」。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 第一版这四条守卫一条常驻反向验证都没有：判别力是靠一次性注入证的，证据写在 PR 正文里。
+    /// 那证明的是「今天有判别力」，**不是「明天扫描器变瞎时会有人知道」**——而扫描器变瞎正是
+    /// 这一类工具最常见的坏法（审查，判据路条目 9）。
+    /// </para>
+    /// <para>
+    /// 同一个 PR 里 <c>LocalFailureCodeRegistryArchitectureTests</c> 做对了（合成坏例＋合成不该叫的
+    /// 例），说明这不是不会做，是建守卫的默认动作里漏了这一步。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void TheseGuardsStillReportRedOnSyntheticViolations()
+    {
+        // 一、开门前没有守卫 → GuardedWithin 说不通过。
+        string[] unguarded =
+        [
+            "            SetActiveOperation(operation);",
+            "            ThrowIfExternalSafetyNotReady();",
+            "            await _ioModule.PulseUnlockAsync(slotIndex, operationToken).ConfigureAwait(false);"
+        ];
+        Assert.False(
+            new SourceUnlock("synthetic/Unguarded.cs", 3, unguarded).GuardedWithin(GuardProximityLines),
+            "开门前没有守卫，这条守卫却说通过了。");
+
+        // 二、守卫被注释掉 → 同样不通过。这一条是判据路条目 7 指出的那个洞。
+        string[] commentedOut =
+        [
+            "            // ThrowIfFatalFaultLatched(operationToken);  // 锁存判断上移到调用方了",
+            "            await _ioModule.PulseUnlockAsync(slotIndex, operationToken).ConfigureAwait(false);"
+        ];
+        Assert.False(
+            new SourceUnlock("synthetic/CommentedOut.cs", 2, commentedOut).GuardedWithin(GuardProximityLines),
+            "守卫只剩注释，这条守卫却说通过了。");
+
+        // 三、守卫真的在 → 通过。没有这一条，上面两条可以被一个恒 false 的实现满足。
+        string[] guarded =
+        [
+            "            ThrowIfFatalFaultLatched(operationToken);",
+            "            await _ioModule.PulseUnlockAsync(slotIndex, operationToken).ConfigureAwait(false);"
+        ];
+        Assert.True(
+            new SourceUnlock("synthetic/Guarded.cs", 2, guarded).GuardedWithin(GuardProximityLines),
+            "守卫就在上一行，这条守卫却说不通过。");
+
+        // 四、隔太远 → 不通过：守卫要紧挨着开门，中间插进等待就不再是开门那一刻的状态。
+        List<string> tooFar = ["            ThrowIfFatalFaultLatched(operationToken);"];
+        tooFar.AddRange(Enumerable.Repeat("            await SomethingThatWaits();", GuardProximityLines + 1));
+        tooFar.Add("            await _ioModule.PulseUnlockAsync(slotIndex, operationToken).ConfigureAwait(false);");
+        Assert.False(
+            new SourceUnlock("synthetic/TooFar.cs", tooFar.Count, [.. tooFar]).GuardedWithin(GuardProximityLines),
+            $"守卫隔了超过 {GuardProximityLines} 行，这条守卫却说通过了。");
+    }
+
+    /// <summary>
     /// 扫描器自己没瞎：真实源码里确实能找到开门点，而且找得到的数量与表一致。
     /// </summary>
     [Fact]
@@ -283,11 +346,18 @@ public sealed class FatalFaultScopeArchitectureTests
 
     private sealed record SourceUnlock(string Path, int Line, string[] Lines)
     {
+        /// <summary>
+        /// 开门之前的若干行里有没有守卫。**注释里的那一行不算**——把守卫注释掉、在旁边写一句
+        /// 「锁存判断上移到调用方了」，第一版的扫描器照样放行，而表仍然声称这一处受约束
+        /// （审查，判据路条目 7）。同一个 PR 里 <c>LocalFailureCodeRegistryArchitectureTests</c>
+        /// 剥了注释，这里没剥，两张表标准不一致，而不一致的那一边是松的那一边。
+        /// </summary>
         public bool GuardedWithin(int proximity)
         {
             int start = Math.Max(0, Line - 1 - proximity);
             return Lines[start..(Line - 1)]
-                .Any(line => line.Contains("ThrowIfFatalFaultLatched", StringComparison.Ordinal));
+                .Select(line => line.Split("//", 2)[0])
+                .Any(code => code.Contains("ThrowIfFatalFaultLatched", StringComparison.Ordinal));
         }
     }
 }

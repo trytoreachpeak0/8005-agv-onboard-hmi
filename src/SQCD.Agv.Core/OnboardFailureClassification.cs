@@ -68,11 +68,18 @@ public enum FatalFaultClearance
 /// </para>
 /// <para>
 /// <b>They are total over literal throw sites, which is narrower than total.</b> A code carried in a
-/// variable is invisible to a source scan, and one such site is on the scan path today:
-/// <c>WireToGateSessionClient.ThrowIfProtocolProblem</c> rethrows whatever reason code the server put
-/// in a <c>ProtocolProblem</c>. Those arrive unregistered and therefore latch -- see
-/// <see cref="IsRegisteredLocalFailureCode"/>'s callers for how that is handled. Say "every literal
-/// throw site", never "every code".
+/// variable is invisible to a source scan, and <b>there are six such sites under <c>src/</c></b>, not
+/// one as this paragraph first said (审查，判据路条目 15):
+/// <c>OnboardController.ThrowIfAuthoritativeJourneyNotReady</c> (the journey sublot error),
+/// <c>WireToGateRecoveryVectorExecutor</c> and <c>WireToGateSlotOperationExecutor</c>'s
+/// <c>otherDoor</c> refusals, <c>WireToGateSlotOperationExecutor</c>'s precheck failure, and
+/// <c>WireToGateSessionClient</c>'s two <c>ProtocolProblem</c>/<c>SessionRejected</c> rethrows.
+/// (Two further sites forward an inner exception's message, so their codes were already scanned at
+/// the site that threw them.)
+/// <para>
+/// Today every code they carry happens to be registered, so there is no live consequence -- but
+/// nothing reports it when one of them drifts. Say "every literal throw site", never "every code".
+/// </para>
 /// </para>
 /// <para>
 /// <b>Unregistered still means latch.</b> <see cref="Classify"/> falls back to
@@ -262,7 +269,16 @@ public static class OnboardFailureClassification
         ArgumentNullException.ThrowIfNull(exception);
         return exception switch
         {
-            OperationCanceledException => OnboardCommandFailureKind.ControlledCancellation,
+            // TaskCanceledException 派生自 OperationCanceledException，而 HttpClient 超时抛的正是
+            // 它（ControlServerVehicleSafetySignalProvider 走 HttpClient）。一次网络超时不是本控制器
+            // 发出的受控取消，把它静默吞掉是过松的一侧——改前会锁存（过严），不能换成完全没痕迹
+            // （8005-agv-onboard-hmi#171 审查，产品路发现 6）。
+            //
+            // 判据是「这次取消是不是我们自己要求的」：带着一个已被请求取消的 token 才算。
+            OperationCanceledException cancelled
+                when cancelled.CancellationToken.IsCancellationRequested =>
+                OnboardCommandFailureKind.ControlledCancellation,
+            TaskCanceledException => OnboardCommandFailureKind.FatalFault,
             _ when OperatorRejections.Contains(exception.Message) =>
                 OnboardCommandFailureKind.OperatorRejection,
             _ => OnboardCommandFailureKind.FatalFault
