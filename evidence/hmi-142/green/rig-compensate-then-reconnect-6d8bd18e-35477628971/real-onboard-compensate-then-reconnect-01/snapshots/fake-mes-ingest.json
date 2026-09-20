@@ -1,0 +1,50 @@
+{
+  "schemaVersion": "1",
+  "instanceId": "l2-mes",
+  "runId": "run-5a6f37f5",
+  "revision": 3,
+  "observedAt": "2026-09-20T08:03:49.7642079+08:00",
+  "body": {
+    "historyEpoch": "8f14e45f-ea4e-4c1b-9a2b-000000000001",
+    "catalogRevision": 3,
+    "breakContract": false,
+    "demands": [
+      {
+        "demandId": "85d79e30f8cd40eb80cea487b692ba51",
+        "seriesId": "SERIES-85d79e30f8cd40eb80cea487b692ba51",
+        "workType": "WIRE_TO_GATE",
+        "sublot": "L2-CR-20260920T000247731Z",
+        "generation": 1,
+        "demandRevision": 1,
+        "createdAt": "2026-09-20T07:53:30.2503079+08:00",
+        "valueObservedAt": "2026-09-20T08:02:30.2503079+08:00",
+        "valuePollTraceId": "TRACE-85d79e30f8cd40eb80cea487b692ba51",
+        "valueProjectionCommitId": "COMMIT-85d79e30f8cd40eb80cea487b692ba51",
+        "area": "N1-3",
+        "eqp": "EQP-L2-01",
+        "step": null,
+        "mesSourceDate": null,
+        "package": "L2-PACKAGE",
+        "maxBoxCount": 4
+      },
+      {
+        "demandId": "b728034a53c543139942d22c6af8f13f",
+        "seriesId": "SERIES-b728034a53c543139942d22c6af8f13f",
+        "workType": "WIRE_TO_GATE",
+        "sublot": "L2-CR-20260920T000247731Z-NEXT",
+        "generation": 1,
+        "demandRevision": 1,
+        "createdAt": "2026-09-20T07:53:47.0131211+08:00",
+        "valueObservedAt": "2026-09-20T08:02:47.0131211+08:00",
+        "valuePollTraceId": "TRACE-b728034a53c543139942d22c6af8f13f",
+        "valueProjectionCommitId": "COMMIT-b728034a53c543139942d22c6af8f13f",
+        "area": "N1-3",
+        "eqp": "EQP-L2-01",
+        "step": null,
+        "mesSourceDate": null,
+        "package": "L2-PACKAGE",
+        "maxBoxCount": 4
+      }
+    ]
+  }
+}

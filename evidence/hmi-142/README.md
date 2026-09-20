@@ -42,13 +42,34 @@ trytoreachpeak0/8005-agv-control-server#234（连续 6 秒无合法消息即判�
 
 ## 全量 ONBOARD_HMI_G2 与布局检查
 
-`green/onboard-hmi-g2-f70bf673/`：`run-w2g-g2.ps1`（协议克隆在 `scratch/hmi142-protocol`，
-命令经 `Invoke-HeavyLocal.ps1 -Ticket hmi#142`），车载端 `f70bf673`，工作树干净，**PASS**。
-build、test、format 三步全过，出站 schema 校验 4951 行 0 违规，`failures` 为空。
+两轮，命令都经 `Invoke-HeavyLocal.ps1 -Ticket hmi#142`，协议克隆在 `scratch/hmi142-protocol`。
 
-`green/04-ui-layout-f70bf673.json`：`check-ui-layout.ps1`，**PASS**。
+| 证据 | 车载端 | 结论 |
+| --- | --- | --- |
+| `green/onboard-hmi-g2-f70bf673/` | `f70bf673`（merge 之前） | **PASS**，出站 schema 4951 行 0 违规 |
+| `green/onboard-hmi-g2-c39e5a4/` | `c39e5a4`（merge 了 hmi#134 之后） | **PASS**，出站 schema 5339 行 0 违规 |
+
+两轮的 `failures` 都是空，工作树都干净，build／test／format 三步全过。
+
+布局检查：`green/04-ui-layout-f70bf673.json`、`green/06-ui-layout-c39e5a4.json`，都 **PASS**。
 
 ## 真装置 L2
 
-CI `l2.yml` 的 `rig=real` 作业，场景 `real-onboard-compensate-then-reconnect` 一遍，作会话层改动的回归：
-心跳变快会改变真装置上的报文节奏。run 号与结论见下。
+CI `l2.yml` 的 `rig=real` 作业（vm01 交互式 runner），`real-onboard-compensate-then-reconnect` 一遍，
+作会话层改动的回归：心跳变快会改变真装置上的报文节奏。
+
+**run 35477628971，PASS，64 秒**。证据 `green/rig-compensate-then-reconnect-6d8bd18e-35477628971/`
+（`_stage/` 下的构建日志已删，其余原样）。
+
+| 项 | 值 |
+| --- | --- |
+| control-server | `1580755582ba62894310e875e0ebaad5246643e5`（`fp/v2-impl` 当时的顶端） |
+| onboard-hmi | `6d8bd18eb4867198187c9c4a2c68e167631a9dda`（merge 之前的 PR 头） |
+| slots-simulator | `fb5f7c593742bf98bc3957b8729a38aad5321f28` |
+| 整机已提交内存 | 起 3.65 GiB，峰值 6.46 GiB（39 个采样） |
+
+九条判据 `L2-CR-00` 到 `L2-CR-08` 全 PASS，其中 `L2-CR-03`／`L2-CR-05`（重连之后会话回到 Ready）与
+`L2-CR-08`（断开一次只重连一次、到末尾只剩一条连接）正是心跳节奏变化最可能影响的两条。
+
+跑的是 merge 之前的 `6d8bd18e`。之后那个 merge（`c39e5a4`）只是把集成分支上 hmi#134 的改动并进来，
+没有改本票的任何一行，合并本身也是自动完成、无冲突；merge 之后的全量 G2 已重跑并 PASS。
