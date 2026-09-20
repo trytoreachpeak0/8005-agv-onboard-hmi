@@ -18,7 +18,7 @@ public sealed class SqliteWireToGateJournalActiveUnlockSetTests
         await using SqliteWireToGateJournal journal = await CreateJournalAsync(token);
 
         InvalidDataException refused = await Assert.ThrowsAsync<InvalidDataException>(() =>
-            journal.WriteRecoveryStateAsync(State([1, 2]), token));
+            journal.UpdateRecoveryStateAsync(_ => State([1, 2]), token));
 
         Assert.Contains("ACTIVE_UNLOCK_SET", refused.Message, StringComparison.Ordinal);
         Assert.Empty((await journal.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
@@ -33,7 +33,7 @@ public sealed class SqliteWireToGateJournalActiveUnlockSetTests
         int[] active = activeSlot == 0 ? [] : [activeSlot];
         await using SqliteWireToGateJournal journal = await CreateJournalAsync(token);
 
-        await journal.WriteRecoveryStateAsync(State(active), token);
+        await journal.UpdateRecoveryStateAsync(_ => State(active), token);
 
         Assert.Equal(active, (await journal.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
     }

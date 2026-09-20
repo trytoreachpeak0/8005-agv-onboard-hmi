@@ -1713,8 +1713,8 @@ public sealed partial class RecoveryVectorG2Tests
                         cancellationToken);
                 }
 
-                await journal.WriteRecoveryStateAsync(
-                    new WireToGateRecoveryState(
+                await journal.UpdateRecoveryStateAsync(
+                    _ => new WireToGateRecoveryState(
                         armedUnloadOverSettledLoad
                             ? UnloadAttemptId
                             : loadAlreadySettled || nothingOnFile ? null : AttemptId,
@@ -1888,7 +1888,7 @@ public sealed partial class RecoveryVectorG2Tests
             CancellationToken cancellationToken)
         {
             WireToGateRecoveryState state = await _journal.ReadRecoveryStateAsync(cancellationToken);
-            await _journal.WriteRecoveryStateAsync(change(state), cancellationToken);
+            await _journal.UpdateRecoveryStateAsync(_ => change(state), cancellationToken);
         }
 
         /// <summary>

@@ -157,9 +157,6 @@ public sealed class JournaledOperationsFeedTests
         public Task<string> ReadJournalEpochAsync(CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
-        public Task WriteRecoveryStateAsync(WireToGateRecoveryState state, CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
-
         public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
             Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
             CancellationToken cancellationToken = default) =>

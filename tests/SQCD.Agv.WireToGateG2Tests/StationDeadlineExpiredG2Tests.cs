@@ -418,7 +418,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
             if (seed is not null)
             {
                 await journal.InitializeAsync(cancellationToken);
-                await journal.WriteRecoveryStateAsync(seed, cancellationToken);
+                await journal.UpdateRecoveryStateAsync(_ => seed, cancellationToken);
             }
 
             RecordingLogger logger = new();

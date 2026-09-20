@@ -39,9 +39,7 @@ public sealed partial class RecoveryVectorG2Tests
             "ForgetRecoverySessionAsync",
             async inner =>
             {
-                await inner.WriteRecoveryStateAsync(
-                    ResultRecorded(await inner.ReadRecoveryStateAsync(token)),
-                    token);
+                await inner.UpdateRecoveryStateAsync(ResultRecorded, token);
                 await harness.Business.RefreshCachedRecoveryStateForTestAsync(token);
             });
         await SendClosedSnapshotAsync(harness, opened, "RESUME_AFTER_REPAIR", ResumeSlots);
@@ -75,14 +73,14 @@ public sealed partial class RecoveryVectorG2Tests
         WireToGateRecoveryState current = await harness.ReadRecoveryStateAsync(token);
 
         interleaving!.AfterTheNextWriteFrom(
-            "WriteRecoveryStateCachedAsync",
+            "UpdateRecoveryStateCachedAsync",
             async inner =>
             {
-                await inner.WriteRecoveryStateAsync(current with { RecoveryReason = "the later write" }, token);
+                await inner.UpdateRecoveryStateAsync(_ => current with { RecoveryReason = "the later write" }, token);
                 await harness.Business.RefreshCachedRecoveryStateForTestAsync(token);
             });
-        await harness.Business.WriteCachedRecoveryStateForTestAsync(
-            current with { RecoveryReason = "the earlier write" },
+        await harness.Business.UpdateCachedRecoveryStateForTestAsync(
+            _ => current with { RecoveryReason = "the earlier write" },
             token);
 
         Assert.True(interleaving.Fired, "the later write never landed inside the earlier one");
@@ -155,15 +153,6 @@ public sealed partial class RecoveryVectorG2Tests
                 cancellationToken);
             await RunAsync(action);
             return written;
-        }
-
-        public async Task WriteRecoveryStateAsync(
-            WireToGateRecoveryState state,
-            CancellationToken cancellationToken = default)
-        {
-            Func<IWireToGateJournal, Task>? action = TakeTheAction();
-            await inner.WriteRecoveryStateAsync(state, cancellationToken);
-            await RunAsync(action);
         }
 
         private Func<IWireToGateJournal, Task>? TakeTheAction()

@@ -179,25 +179,6 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
         }
     }
 
-    public async Task WriteRecoveryStateAsync(
-        WireToGateRecoveryState state,
-        CancellationToken cancellationToken = default)
-    {
-        ThrowIfDisposed();
-        string json = SerializeForWrite(state);
-
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
-            await WriteRecoveryStateCoreAsync(connection, json, cancellationToken).ConfigureAwait(false);
-        }
-        finally
-        {
-            _gate.Release();
-        }
-    }
-
     private static string SerializeForWrite(WireToGateRecoveryState state)
     {
         ValidateRecoveryState(state);

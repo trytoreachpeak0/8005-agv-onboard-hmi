@@ -77,8 +77,8 @@ public sealed partial class WireToGateG2Tests
         // 说的是另一套事实（没有未结清 attempt、NONE、没开锁），所以「新报告取代旧报告」不只是换了个
         // messageId——下面逐字段断言两条连接发出去的都是**这一套**事实。
         const string unsettledAttemptId = "44444444-4444-4444-8444-444444444444";
-        await journal.WriteRecoveryStateAsync(
-            new WireToGateRecoveryState(
+        await journal.UpdateRecoveryStateAsync(
+            _ => new WireToGateRecoveryState(
                 unsettledAttemptId,
                 WireToGateRecoveryCheckpoint.ActiveUnlockSet,
                 [3],
@@ -753,8 +753,8 @@ public sealed partial class WireToGateG2Tests
                 true,
                 new string('0', 64));
             await session.Journal.InitializeAsync(testToken);
-            await session.Journal.WriteRecoveryStateAsync(
-                new WireToGateRecoveryState(
+            await session.Journal.UpdateRecoveryStateAsync(
+                _ => new WireToGateRecoveryState(
                     attemptId,
                     WireToGateRecoveryCheckpoint.Prepared,
                     [],

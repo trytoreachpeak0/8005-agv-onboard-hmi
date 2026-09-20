@@ -142,7 +142,7 @@ public sealed class WireToGateSlotOperationExecutorTests
 
         WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
             TestContext.Current.CancellationToken);
-        await fixture.Journal.WriteRecoveryStateAsync(state with
+        await fixture.Journal.UpdateRecoveryStateAsync(_ => state with
         {
             ExceptionRecoverySessionId = "44444444-4444-4444-8444-444444444444",
             RecoveryActionId = "55555555-5555-4555-8555-555555555555"
@@ -219,7 +219,7 @@ public sealed class WireToGateSlotOperationExecutorTests
 
         WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
             TestContext.Current.CancellationToken);
-        await fixture.Journal.WriteRecoveryStateAsync(state with
+        await fixture.Journal.UpdateRecoveryStateAsync(_ => state with
         {
             ExceptionRecoverySessionId = "44444444-4444-4444-8444-444444444444",
             RecoveryActionId = "55555555-5555-4555-8555-555555555555"
@@ -1061,8 +1061,8 @@ public sealed class WireToGateSlotOperationExecutorTests
         WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
         await InterruptWhileWaitingAsync(fixture, command);
         WireToGateRecoveryState interrupted = await fixture.Journal.ReadRecoveryStateAsync(token);
-        await fixture.Journal.WriteRecoveryStateAsync(
-            interrupted with { PendingLoadCancellation = PendingCancellation(command) },
+        await fixture.Journal.UpdateRecoveryStateAsync(
+            _ => interrupted with { PendingLoadCancellation = PendingCancellation(command) },
             token);
 
         InvalidDataException refused = await Assert.ThrowsAsync<InvalidDataException>(
@@ -1098,8 +1098,8 @@ public sealed class WireToGateSlotOperationExecutorTests
                         pressed = true;
                         WireToGateRecoveryState current =
                             await fixture.Journal.ReadRecoveryStateAsync(progressToken);
-                        await fixture.Journal.WriteRecoveryStateAsync(
-                            current with { PendingLoadCancellation = PendingCancellation(command) },
+                        await fixture.Journal.UpdateRecoveryStateAsync(
+                            _ => current with { PendingLoadCancellation = PendingCancellation(command) },
                             progressToken);
                     }
 
@@ -1114,6 +1114,58 @@ public sealed class WireToGateSlotOperationExecutorTests
     }
 
     /// <summary>
+    /// The other half of the same rule: a pending cancellation left over from <b>another</b> attempt is
+    /// dropped by the checkpoint, as it always was (onboard-hmi#78).
+    /// </summary>
+    /// <remarks>
+    /// The checkpoint keeps the newest pending cancellation only when it belongs to the attempt being
+    /// executed; anything else falls back to the copy this run started with. That fallback is the one
+    /// place in the executor where onboard-hmi#136 deliberately left a value read outside the journal's
+    /// lock, so it is the one that most needs saying out loud. Without this case, the sibling above
+    /// would pass just as well against an implementation that kept every pending cancellation it found
+    /// -- including one belonging to an attempt this operation knows nothing about, which would then
+    /// travel on the next restart as if it were this attempt's.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task TheExecutorsOwnCheckpointsDropAPendingCancellationOfAnotherAttempt()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true);
+        WireToGatePendingLoadCancellation otherAttempts = PendingCancellation(command) with
+        {
+            SlotOperationAttemptId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+        };
+        bool pressed = false;
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            command,
+            async (progress, progressToken) =>
+            {
+                if (progress.Phase == "WAITING_OPERATOR")
+                {
+                    if (!pressed)
+                    {
+                        pressed = true;
+                        await fixture.Journal.UpdateRecoveryStateAsync(
+                            state => state with { PendingLoadCancellation = otherAttempts },
+                            progressToken);
+                    }
+
+                    fixture.Io.CloseDoor(progress.Active.Single() - 1, cargo: true);
+                }
+            },
+            token);
+
+        Assert.True(pressed, "the pending cancellation was never journaled mid-operation");
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Null(state.PendingLoadCancellation);
+    }
+
+    /// <summary>
     /// REQ-0241: a slot opened by hand under a forced isolation is not operated again until a hardware
     /// recovery record clears it (onboard-hmi#107). The IO reads it as an ordinary locked, empty slot
     /// here, which is exactly why the reading is not trusted: nothing proves what it was left in.
@@ -1125,8 +1177,8 @@ public sealed class WireToGateSlotOperationExecutorTests
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using TestFixture fixture = await TestFixture.CreateAsync(cancellationToken: token);
-        await fixture.Journal.WriteRecoveryStateAsync(
-            WireToGateRecoveryState.Empty with { ForcedIsolation = Isolation([2]) },
+        await fixture.Journal.UpdateRecoveryStateAsync(
+            _ => WireToGateRecoveryState.Empty with { ForcedIsolation = Isolation([2]) },
             token);
 
         WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
@@ -1159,8 +1211,8 @@ public sealed class WireToGateSlotOperationExecutorTests
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using TestFixture fixture = await TestFixture.CreateAsync(cancellationToken: token);
-        await fixture.Journal.WriteRecoveryStateAsync(
-            WireToGateRecoveryState.Empty with { ForcedIsolation = Isolation([3]) },
+        await fixture.Journal.UpdateRecoveryStateAsync(
+            _ => WireToGateRecoveryState.Empty with { ForcedIsolation = Isolation([3]) },
             token);
         WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
 
@@ -1188,8 +1240,8 @@ public sealed class WireToGateSlotOperationExecutorTests
         await using (SqliteWireToGateJournal before = new(journalPath))
         {
             await before.InitializeAsync(token);
-            await before.WriteRecoveryStateAsync(
-                WireToGateRecoveryState.Empty with { ForcedIsolation = Isolation([1, 2]) },
+            await before.UpdateRecoveryStateAsync(
+                _ => WireToGateRecoveryState.Empty with { ForcedIsolation = Isolation([1, 2]) },
                 token);
         }
 
@@ -1630,7 +1682,7 @@ public sealed class WireToGateSlotOperationExecutorTests
 
         WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
             TestContext.Current.CancellationToken);
-        await fixture.Journal.WriteRecoveryStateAsync(state with
+        await fixture.Journal.UpdateRecoveryStateAsync(_ => state with
         {
             ExceptionRecoverySessionId = "44444444-4444-4444-8444-444444444444",
             RecoveryActionId = "55555555-5555-4555-8555-555555555555"

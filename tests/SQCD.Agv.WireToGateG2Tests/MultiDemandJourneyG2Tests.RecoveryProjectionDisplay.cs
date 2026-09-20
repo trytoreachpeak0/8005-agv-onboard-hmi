@@ -439,30 +439,55 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         public void Release() => _release.TrySetResult();
 
-        public Task WriteRecoveryStateAsync(
-            WireToGateRecoveryState state,
-            CancellationToken cancellationToken = default)
-        {
-            if (!string.Equals(state.UnsettledSlotOperationAttemptId, nextAttemptId, StringComparison.Ordinal)
-                || Interlocked.Exchange(ref _held, 1) != 0)
-            {
-                return inner.WriteRecoveryStateAsync(state, cancellationToken);
-            }
-
-            return HeldAsync();
-
-            async Task HeldAsync()
-            {
-                await _release.Task;
-                await inner.WriteRecoveryStateAsync(state, cancellationToken);
-            }
-        }
-
+        /// <remarks>
+        /// <b>Which write to hold is still decided by content</b> -- the paragraph above says why that
+        /// matters -- but since onboard-hmi#136 the recovery state is only ever written by a change
+        /// function under the journal's lock, so there is no whole record to look at on the way in.
+        /// The content is therefore predicted: a state is read outside the lock and
+        /// <paramref name="change"/> is run against it, and the real step below runs it again. Holding
+        /// still happens outside the lock, which is what lets the restore's own read get in while B's
+        /// write waits.
+        /// <para>
+        /// <b>This rests on a property of the change functions, and that property is not free.</b> A
+        /// change function writes nothing itself -- only the journal writes -- but several of the ones
+        /// onboard-hmi#136 introduced report <i>why they wrote nothing</i> through a captured flag, and
+        /// their callers throw on it: <c>WireToGateRecoveryVectorExecutor.EnsureResultObservedAtAsync</c>
+        /// (<c>mismatch</c>, <c>alreadyObserved</c>), <c>WireToGateBusinessService</c>'s resume action
+        /// write (<c>sessionGone</c>), <c>SettleRecoveryVectorStateAsync</c> (<c>vectorChanged</c>,
+        /// <c>isolationStands</c>) and the forced-recovery stamp (<c>alreadyStamped</c>). A prediction
+        /// that set such a flag and a real evaluation that then wrote successfully would leave the
+        /// caller throwing over a write that happened. Each of those functions therefore resets its
+        /// flags on entry, and says so; <b>a new one that does not is not safe to predict</b>. Adding
+        /// one means either giving it the same reset or replacing this prediction with an
+        /// identification that does not re-run the change function.
+        /// </para>
+        /// </remarks>
         public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
             Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
             Action<WireToGateRecoveryState> settled,
             CancellationToken cancellationToken = default) =>
-            inner.UpdateRecoveryStateAsync(
+            HeldIfThisIsTheNextCommandsWriteAsync(change, settled, cancellationToken);
+
+        private async Task<WireToGateRecoveryState?> HeldIfThisIsTheNextCommandsWriteAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            Action<WireToGateRecoveryState> settled,
+            CancellationToken cancellationToken)
+        {
+            if (Volatile.Read(ref _held) == 0)
+            {
+                WireToGateRecoveryState peek = await inner.ReadRecoveryStateAsync(cancellationToken);
+                if (change(peek) is { } predicted
+                    && string.Equals(
+                        predicted.UnsettledSlotOperationAttemptId,
+                        nextAttemptId,
+                        StringComparison.Ordinal)
+                    && Interlocked.Exchange(ref _held, 1) == 0)
+                {
+                    await _release.Task;
+                }
+            }
+
+            return await inner.UpdateRecoveryStateAsync(
                 change,
                 state =>
                 {
@@ -470,6 +495,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                     settled(state);
                 },
                 cancellationToken);
+        }
 
         private void Observe(WireToGateRecoveryState state)
         {
@@ -492,10 +518,15 @@ public sealed partial class MultiDemandJourneyG2Tests
         public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(CancellationToken cancellationToken = default) =>
             inner.ReadRecoveryStateAsync(cancellationToken);
 
+        /// <remarks>
+        /// Routed through the same hold: since onboard-hmi#136 the executor's own checkpoints -- B's
+        /// Prepared among them -- come through this overload rather than a whole-value write, so a
+        /// straight forward here would never hold anything.
+        /// </remarks>
         public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
             Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
             CancellationToken cancellationToken = default) =>
-            inner.UpdateRecoveryStateAsync(change, cancellationToken);
+            HeldIfThisIsTheNextCommandsWriteAsync(change, static _ => { }, cancellationToken);
 
         public Task<WireToGateDurableMessage> SaveOutgoingBeforeSendAsync(
             WireToGateDurableMessage message,

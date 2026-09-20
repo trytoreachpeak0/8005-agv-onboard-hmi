@@ -258,21 +258,36 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     {
         RequireUuid(slotOperationAttemptId, nameof(slotOperationAttemptId));
         ArgumentNullException.ThrowIfNull(pending);
-        WireToGateRecoveryState state = await _journal.ReadRecoveryStateAsync(cancellationToken)
-            .ConfigureAwait(false);
-        if (!string.Equals(state.UnsettledSlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal)
-            || !string.Equals(pending.BusinessId, slotOperationAttemptId, StringComparison.Ordinal))
+        if (!string.Equals(pending.BusinessId, slotOperationAttemptId, StringComparison.Ordinal))
         {
             throw new InvalidDataException("SLOT_OPERATION_CONFLICT");
         }
 
-        WireToGatePendingResult[] kept = state.PendingResults
-            .Where(item => string.Equals(item.BusinessId, slotOperationAttemptId, StringComparison.Ordinal)
-                && !string.Equals(item.MessageId, pending.MessageId, StringComparison.Ordinal))
-            .Append(pending)
-            .ToArray();
-        await _journal.WriteRecoveryStateAsync(state with { PendingResults = kept }, cancellationToken)
-            .ConfigureAwait(false);
+        // Read, checked and written as one step under the journal's lock, as MarkResultRecordedAsync
+        // does. A late acknowledgement can record this very attempt between the read and the write;
+        // with them apart, the write puts the settled attempt back as unsettled and brings its pending
+        // results back with it, and the next session reports a result for an operation the server has
+        // already closed (onboard-hmi#123 review A, onboard-hmi#136 point 1).
+        WireToGateRecoveryState? written = await _journal.UpdateRecoveryStateAsync(
+            state => string.Equals(
+                state.UnsettledSlotOperationAttemptId,
+                slotOperationAttemptId,
+                StringComparison.Ordinal)
+                ? state with
+                {
+                    PendingResults = state.PendingResults
+                        .Where(item =>
+                            string.Equals(item.BusinessId, slotOperationAttemptId, StringComparison.Ordinal)
+                            && !string.Equals(item.MessageId, pending.MessageId, StringComparison.Ordinal))
+                        .Append(pending)
+                        .ToArray()
+                }
+                : null,
+            cancellationToken).ConfigureAwait(false);
+        if (written is null)
+        {
+            throw new InvalidDataException("SLOT_OPERATION_CONFLICT");
+        }
     }
 
     public async Task MarkResultRecordedAsync(
@@ -453,7 +468,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         // OperationContext and the unsettled attempt, which is exactly what compensation and the
         // recovery vectors recognise. CancellationToken.None for the same reason -- once the
         // conclusion has been read it has to reach the disk.
-        await WriteRecoveryStateAsync(
+        await WriteCheckpointAsync(
             context,
             checkpoint,
             stillActive,
@@ -516,7 +531,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             WireToGateRecoveryOperationContext.FromCommand(command);
         List<int> completed = [];
         List<WireToGateSlotExecutionResult> results = [];
-        await WriteRecoveryStateAsync(
+        await WriteCheckpointAsync(
             context,
             WireToGateRecoveryCheckpoint.Prepared,
             [],
@@ -590,7 +605,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         completed = completed.Distinct().Order().ToList();
         WireToGateRecoveryOperationContext context =
             WireToGateRecoveryOperationContext.FromCommand(command);
-        await WriteRecoveryStateAsync(
+        await WriteCheckpointAsync(
             context,
             WireToGateRecoveryCheckpoint.ActiveUnlockSet,
             [],
@@ -632,7 +647,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             // Written once per slot, not once per reopen: the seventeenth reopen answers the same
             // recovery question as the first -- this slot is in the active set and its door may be
             // open -- so the journal bytes would not change.
-            await WriteRecoveryStateAsync(
+            await WriteCheckpointAsync(
                 context,
                 WireToGateRecoveryCheckpoint.ActiveUnlockSet,
                 [physicalSlot],
@@ -656,7 +671,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     []);
                 UpsertResult(results, result);
                 completed.Add(physicalSlot);
-                await WriteRecoveryStateAsync(
+                await WriteCheckpointAsync(
                     context,
                     WireToGateRecoveryCheckpoint.ActiveUnlockSet,
                     [],
@@ -699,7 +714,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     ? WireToGateRecoveryCheckpoint.SafeFinishReached
                     : WireToGateRecoveryCheckpoint.ActiveUnlockSet;
                 IReadOnlyList<int> failureActiveSlots = safeFinish ? [] : [physicalSlot];
-                await WriteRecoveryStateAsync(
+                await WriteCheckpointAsync(
                     context,
                     failureCheckpoint,
                     failureActiveSlots,
@@ -716,7 +731,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             }
         }
 
-        await WriteRecoveryStateAsync(
+        await WriteCheckpointAsync(
             context,
             WireToGateRecoveryCheckpoint.SafeFinishReached,
             [],
@@ -960,7 +975,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         }
     }
 
-    private async Task WriteRecoveryStateAsync(
+    private async Task WriteCheckpointAsync(
         WireToGateRecoveryOperationContext context,
         WireToGateRecoveryCheckpoint checkpoint,
         IReadOnlyList<int> activeSlots,
@@ -969,29 +984,21 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         WireToGateRecoveryState existingState,
         CancellationToken cancellationToken)
     {
-        // The one field of this record another writer owns while the operation runs: the operator's
-        // unanswered load cancellation for this attempt, journaled by the business service after this
-        // run read its existingState. It is read afresh so a checkpoint does not drop it; one left over
-        // from another attempt goes, as it always did (onboard-hmi#78).
-        WireToGatePendingLoadCancellation? pending = (await _journal
-                .ReadRecoveryStateAsync(cancellationToken)
-                .ConfigureAwait(false))
-            .PendingLoadCancellation;
-        if (!string.Equals(
-                pending?.SlotOperationAttemptId,
-                context.SlotOperationAttemptId,
-                StringComparison.Ordinal))
-        {
-            pending = existingState.PendingLoadCancellation;
-        }
-
-        await _journal.WriteRecoveryStateAsync(
-            new WireToGateRecoveryState(
+        // Merged under the journal's lock against the newest state, not against the copy this run read
+        // when it started. This checkpoint owns six fields -- the attempt, the checkpoint itself, the
+        // active unlock set, the operation context, the completed slots and the slot results -- and
+        // every other field is taken as the journal holds it now. Written from the older copy instead,
+        // a checkpoint silently undid whatever landed since: a recovery session released by a CLOSED
+        // snapshot came back, a forced recovery generation went back down, a pending result recorded
+        // in between disappeared (onboard-hmi#136 point 2). Only PendingLoadCancellation was read
+        // afresh, and only because onboard-hmi#78 was bitten by it; that rule is kept below.
+        await _journal.UpdateRecoveryStateAsync(
+            current => new WireToGateRecoveryState(
                 context.SlotOperationAttemptId,
                 checkpoint,
                 activeSlots.Order().ToArray(),
-                existingState.ForcedRecoveryGeneration,
-                existingState.PendingResults)
+                current.ForcedRecoveryGeneration,
+                current.PendingResults)
             {
                 OperationContext = context,
                 CompletedSlots = completedSlots.Distinct().Order().ToArray(),
@@ -1000,18 +1007,25 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     .Select(group => group.Last())
                     .OrderBy(result => result.SlotNo)
                     .ToArray(),
-                ExceptionRecoverySessionId = existingState.ExceptionRecoverySessionId,
-                RecoveryActionId = existingState.RecoveryActionId,
-                RecoverySessionRequestId = existingState.RecoverySessionRequestId,
-                RecoveryActionRequestId = existingState.RecoveryActionRequestId,
-                RecoveryReason = existingState.RecoveryReason,
-                RecoveryOperatorId = existingState.RecoveryOperatorId,
-                RecoveryOperatorVerifiedAt = existingState.RecoveryOperatorVerifiedAt,
-                RecoveryVector = existingState.RecoveryVector,
-                RecoveryResultObservedAt = existingState.RecoveryResultObservedAt,
-                LastCompletedLoadOperationContext = existingState.LastCompletedLoadOperationContext,
-                PendingLoadCancellation = pending,
-                ForcedIsolation = existingState.ForcedIsolation
+                ExceptionRecoverySessionId = current.ExceptionRecoverySessionId,
+                RecoveryActionId = current.RecoveryActionId,
+                RecoverySessionRequestId = current.RecoverySessionRequestId,
+                RecoveryActionRequestId = current.RecoveryActionRequestId,
+                RecoveryReason = current.RecoveryReason,
+                RecoveryOperatorId = current.RecoveryOperatorId,
+                RecoveryOperatorVerifiedAt = current.RecoveryOperatorVerifiedAt,
+                RecoveryVector = current.RecoveryVector,
+                RecoveryResultObservedAt = current.RecoveryResultObservedAt,
+                LastCompletedLoadOperationContext = current.LastCompletedLoadOperationContext,
+                // The operator's unanswered load cancellation for this attempt stays; one left over
+                // from another attempt goes, as it always did (onboard-hmi#78).
+                PendingLoadCancellation = string.Equals(
+                    current.PendingLoadCancellation?.SlotOperationAttemptId,
+                    context.SlotOperationAttemptId,
+                    StringComparison.Ordinal)
+                    ? current.PendingLoadCancellation
+                    : existingState.PendingLoadCancellation,
+                ForcedIsolation = current.ForcedIsolation
             },
             cancellationToken).ConfigureAwait(false);
     }

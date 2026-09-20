@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -399,14 +400,24 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             string recoveryOperatorId = (activeRecovery ? state.RecoveryOperatorId : null) ?? operatorId;
             DateTimeOffset recoveryVerifiedAt = (activeRecovery ? state.RecoveryOperatorVerifiedAt : null)
                 ?? _clock.Now.ToUniversalTime();
-            state = state with
-            {
-                RecoverySessionRequestId = requestId,
-                RecoveryReason = recoveryReason,
-                RecoveryOperatorId = recoveryOperatorId,
-                RecoveryOperatorVerifiedAt = recoveryVerifiedAt
-            };
-            await _session.Journal.WriteRecoveryStateAsync(state, cancellationToken).ConfigureAwait(false);
+            // Merged under the journal's lock: this write owns the four request fields and nothing
+            // else, so everything else is what the journal holds now. Written from the copy read at
+            // the top of this press, it put that copy back over whatever landed in between -- the
+            // attempt this very press is about can be recorded by a late acknowledgement while the
+            // press runs, and the old copy brought it back as unsettled (onboard-hmi#136 point 5).
+            state = await _session.Journal.UpdateRecoveryStateAsync(
+                    current => current with
+                    {
+                        RecoverySessionRequestId = requestId,
+                        RecoveryReason = recoveryReason,
+                        RecoveryOperatorId = recoveryOperatorId,
+                        RecoveryOperatorVerifiedAt = recoveryVerifiedAt
+                    },
+                    cancellationToken).ConfigureAwait(false)
+                // The change function above never returns null, so the journal never returns null
+                // either. Not an InvalidDataException with a reason code: a code that cannot be
+                // emitted would be searched for as a real fault the first time somebody sees it.
+                ?? throw new UnreachableException();
             DateTimeOffset now = recoveryVerifiedAt;
             WireToGateOperatorContextPayload administrator = new(
                 recoveryOperatorId,
@@ -468,13 +479,50 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             // nothing when it refuses -- but every send is a message of its own.
             string actionId = state.RecoveryActionId ?? Guid.NewGuid().ToString("D");
             string actionMessageId = Guid.NewGuid().ToString("D");
-            state = state with
-            {
-                ExceptionRecoverySessionId = opened.ExceptionRecoverySessionId,
-                RecoveryActionId = actionId,
-                RecoveryActionRequestId = actionMessageId
-            };
-            await _session.Journal.WriteRecoveryStateAsync(state, cancellationToken).ConfigureAwait(false);
+            // The widest window on this path: the request above went out and came back over the
+            // network, and the CLOSED snapshot for this very session can arrive while it is out. This
+            // write owns the session id and the two action ids; everything else is what the journal
+            // holds now. Written from the copy read at the top of the press -- which is what it did --
+            // it put the released session's fields back and the vehicle answered
+            // RECOVERY_SESSION_STATE_PENDING for good (onboard-hmi#136 point 6).
+            //
+            // And if the session really was released while the request was out, this write does not
+            // happen at all: the authorization it would record belongs to a session that no longer
+            // exists, so the press fails the way every other scope disagreement on this path fails and
+            // the recovery entry asks again.
+            bool sessionGone = false;
+            state = await _session.Journal.UpdateRecoveryStateAsync(
+                    current =>
+                    {
+                        // Reset on entry: a change function may be evaluated more than once
+                        // for the same step (a test double predicts what a step will write by
+                        // running it against a state read outside the lock -- 
+                        // MultiDemandJourneyG2Tests.RestoreWindowJournal). Left set by an
+                        // earlier evaluation, this flag would make the caller throw over a
+                        // write that actually succeeded.
+                        sessionGone = false;
+                        if (current.ExceptionRecoverySessionId is null
+                            && !string.Equals(
+                                current.RecoverySessionRequestId,
+                                requestId,
+                                StringComparison.Ordinal))
+                        {
+                            sessionGone = true;
+                            return null;
+                        }
+
+                        return current with
+                        {
+                            ExceptionRecoverySessionId = opened.ExceptionRecoverySessionId,
+                            RecoveryActionId = actionId,
+                            RecoveryActionRequestId = actionMessageId
+                        };
+                    },
+                    cancellationToken).ConfigureAwait(false)
+                ?? (sessionGone
+                    ? throw new InvalidDataException("RECOVERY_SESSION_SCOPE_MISMATCH")
+                    // sessionGone is the only way the change function returns null.
+                    : throw new UnreachableException());
 
             RecoveryActionAcceptedPayload accepted = await _session
                 .SubmitRecoveryActionAsync(
