@@ -1,0 +1,29 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-145-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:03.54]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AFailedCompensationResultIsForgottenOnceTheServerAcknowledgesIt [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AFailedCompensationResultIsForgottenOnceTheServerAcknowledgesIt [1 s]
+  Error Message:
+   Assert.Null() Failure: Value is not null
+Expected: null
+Actual:   WireToGateRecoveryVectorContext { VectorType = LOAD_COMPENSATION, PrimaryId = bfd3a029-4348-de5d-a6c6-4c4ec1abc5a8, ExceptionRecoverySessionId = 77777777-7777-4777-8777-777777777777, DemandId = 11111111-1111-4111-8111-111111111111, SlotOperationAttemptId = 33333333-3333-4333-8333-333333333333, HandoffId = , Slots = System.Collections.Generic.List`1[System.Int32], CommandContentSha256 = 0e04cf09bd5711cb4cc36a08c74df7f0abd3e367f9ccec88f281fbf1a4b21448, OperatorId = maintenance-001, OperatorVerificationMethod = SESSION, OperatorVerifiedAt = 9/20/2026 1:21:42 AM +00:00, ForcedRecoveryGeneration =  }
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AssertTheVectorAndSessionAreForgottenAsync(RecoveryVectorHarness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-145-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.SettledVectorRelease.cs:line 173
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AFailedCompensationResultIsForgottenOnceTheServerAcknowledgesIt() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-145-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.SettledVectorRelease.cs:line 102
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AFailedCompensationResultIsForgottenOnceTheServerAcknowledgesIt() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-145-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.SettledVectorRelease.cs:line 102
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:04.01]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnUnknownCompensationResultIsForgottenOnceTheServerAcknowledgesIt [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnUnknownCompensationResultIsForgottenOnceTheServerAcknowledgesIt [431 ms]
+  Error Message:
+   Assert.Null() Failure: Value is not null
+Expected: null
+Actual:   WireToGateRecoveryVectorContext { VectorType = LOAD_COMPENSATION, PrimaryId = bfd3a029-4348-de5d-a6c6-4c4ec1abc5a8, ExceptionRecoverySessionId = 77777777-7777-4777-8777-777777777777, DemandId = 11111111-1111-4111-8111-111111111111, SlotOperationAttemptId = 33333333-3333-4333-8333-333333333333, HandoffId = , Slots = System.Collections.Generic.List`1[System.Int32], CommandContentSha256 = 0e04cf09bd5711cb4cc36a08c74df7f0abd3e367f9ccec88f281fbf1a4b21448, OperatorId = maintenance-001, OperatorVerificationMethod = SESSION, OperatorVerifiedAt = 9/20/2026 1:21:42 AM +00:00, ForcedRecoveryGeneration =  }
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AssertTheVectorAndSessionAreForgottenAsync(RecoveryVectorHarness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-145-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.SettledVectorRelease.cs:line 173
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnUnknownCompensationResultIsForgottenOnceTheServerAcknowledgesIt() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-145-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.SettledVectorRelease.cs:line 67
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnUnknownCompensationResultIsForgottenOnceTheServerAcknowledgesIt() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-145-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.SettledVectorRelease.cs:line 67
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     2, Passed:     1, Skipped:     0, Total:     3, Duration: 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
