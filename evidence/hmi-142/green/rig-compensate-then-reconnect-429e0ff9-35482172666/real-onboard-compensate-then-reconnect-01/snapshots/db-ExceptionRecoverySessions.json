@@ -1,0 +1,18 @@
+{
+  "ExceptionRecoverySessionId": "e49a206d-5f0b-0c55-9c9f-79855b86eea6",
+  "RequestId": "81562f5f-b9ac-4bdb-a0dd-305ccbb6eee6",
+  "RequestContentHash": "28a5ca48a5e57271ce89035ea30c6e5443f689fe77638fdc8f0ed082b12e71fe",
+  "AgvId": "AGV-L2-001",
+  "EventId": "81562f5f-b9ac-4bdb-a0dd-305ccbb6eee6",
+  "DemandId": "112f5d10-e840-4f7a-93b9-cdaca9172726",
+  "SlotsJson": "[1]",
+  "AdministratorId": "L2-OPERATOR",
+  "AdministratorRole": "MAINTENANCE_ADMINISTRATOR",
+  "Reason": "现场确认装货无法继续，申请补偿清空目标仓位。",
+  "State": "CLOSED",
+  "Revision": 4,
+  "SelectedAction": "COMPENSATE_LOAD_ALL_EMPTY",
+  "ForcedRecoveryGeneration": 0,
+  "OpenedAt": "2026-09-20 01:47:00.9493554+00:00",
+  "UpdatedAt": "2026-09-20 01:47:01.7829974+00:00"
+}
