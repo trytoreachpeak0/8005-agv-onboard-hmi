@@ -444,6 +444,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                     WireToGateBusinessService.LoadCancellationDefaultReason,
                     selectedDemandId,
                     token),
+                () => business.IsLoadCancellationDemandSelectionRequired,
                 () => business.CanRequestLoadCompensation,
                 business.RequestLoadCompensationAsync,
                 () => business.CanRequestLoadCorrection,

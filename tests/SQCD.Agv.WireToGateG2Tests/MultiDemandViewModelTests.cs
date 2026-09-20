@@ -351,17 +351,25 @@ public sealed class MultiDemandViewModelTests
     }
 
     /// <summary>
-    /// 清单多于一条、扫码录入开着而扫码前取消不可用时，入口位置显示禁用状态与一句提示，不让操作员以为这项能力不存在。
+    /// 业务层说要先选需求、而清单里还没有选中行时：入口出现但按不动，旁边一句提示；选中一行之后按得动、提示消失。
+    /// 确认框复述所选那一条（批次7-14）。
     /// </summary>
+    /// <remarks>
+    /// 批次7-13 时这里断言的是「暂不可用」那个占位提示，因为当时业务层根本不提供多需求下的扫码前取消。
+    /// 本票把选需求交给操作员，所以同一处要断言的换成了「等一次选择」——断言没有变少：按不动仍然被钉住，
+    /// 而「什么能让它按得动」是新加的。
+    /// </remarks>
     [Fact]
-    public async Task WithTwoItemsTheUnavailableCancellationBeforeSublotIsShownDisabledWithAHint()
+    public async Task WithASelectionRequiredTheCancellationBeforeSublotWaitsForAPick()
     {
         await using OnboardController controller = Controller();
         MainViewModel viewModel = await ViewModel(controller);
         viewModel.ConfigureWireToGate(
             (_, _, _) => Task.CompletedTask,
             () => true,
-            canRequestLoadCancellation: () => false);
+            canRequestLoadCancellation: () => true,
+            loadCancellationRequester: (_, _) => Task.FromResult(true),
+            loadCancellationSelectionRequired: () => true);
         viewModel.UpdateWireToGateStatus(Session());
 
         viewModel.UpdateWireToGateJourney(Journey(Worklist(
@@ -369,13 +377,23 @@ public sealed class MultiDemandViewModelTests
             Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2),
             Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
 
-        Assert.False(viewModel.CanRequestLoadCancellation);
-        Assert.True(viewModel.HasLoadCancellationUnavailableHint);
-        Assert.Equal("本站有多条任务，扫码前取消暂不可用", viewModel.LoadCancellationUnavailableHintText);
+        Assert.True(viewModel.CanRequestLoadCancellation);
+        Assert.False(viewModel.CanPressLoadCancellation);
+        Assert.True(viewModel.HasLoadCancellationSelectionHint);
+        Assert.Equal("请先在清单中选择要取消的任务", viewModel.LoadCancellationSelectionHintText);
+        Assert.Equal(string.Empty, viewModel.LoadCancellationConfirmationDetailText);
+
+        viewModel.SelectedWorklistItem = viewModel.WorklistItems.Single(row => row.DemandId == DemandB);
+
+        Assert.True(viewModel.CanPressLoadCancellation);
+        Assert.False(viewModel.HasLoadCancellationSelectionHint);
+        Assert.Equal(
+            "将要取消的任务：子批 SUBLOT-B，焊线→质检关卡，1 篮。",
+            viewModel.LoadCancellationConfirmationDetailText);
     }
 
     /// <summary>
-    /// 只有一条清单项时与今天相同：取消按钮照常出现，没有提示。
+    /// 只有一条清单项时与今天相同：取消按钮照常出现、按得动，没有提示——业务层不要求选择。
     /// </summary>
     [Fact]
     public async Task WithOneItemTheCancellationBeforeSublotIsOfferedAsBefore()
@@ -394,14 +412,16 @@ public sealed class MultiDemandViewModelTests
             Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2))));
 
         Assert.True(viewModel.CanRequestLoadCancellation);
-        Assert.False(viewModel.HasLoadCancellationUnavailableHint);
+        Assert.True(viewModel.CanPressLoadCancellation);
+        Assert.False(viewModel.HasLoadCancellationSelectionHint);
     }
 
     /// <summary>
-    /// 多条清单项时取消入口是开着的（例如在途装货的取消），就没有「不可用」的提示。
+    /// 多条清单项、但业务层不要求选择时（例如在途装货的取消，主体是那次装货）没有提示，按钮照常按得动。
+    /// 「要不要选」不是按清单条数推出来的，这一条钉的就是这件事。
     /// </summary>
     [Fact]
-    public async Task WithTwoItemsAnOfferedCancellationShowsNoHint()
+    public async Task WithTwoItemsAnOfferedCancellationNeedingNoPickShowsNoHint()
     {
         await using OnboardController controller = Controller();
         MainViewModel viewModel = await ViewModel(controller);
@@ -418,7 +438,8 @@ public sealed class MultiDemandViewModelTests
             Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
 
         Assert.True(viewModel.CanRequestLoadCancellation);
-        Assert.False(viewModel.HasLoadCancellationUnavailableHint);
+        Assert.True(viewModel.CanPressLoadCancellation);
+        Assert.False(viewModel.HasLoadCancellationSelectionHint);
     }
 
     /// <summary>

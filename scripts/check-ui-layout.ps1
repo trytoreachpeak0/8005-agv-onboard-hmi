@@ -37,8 +37,12 @@ $checks = [ordered]@{
     visibleCargoHoldingCountdown = ($xaml -match 'AutomationProperties\.AutomationId="CargoHoldingCountdown"') -and ($xaml -match 'Text="\{Binding CargoHoldingCountdownText\}"') -and ($xaml -match 'AutomationProperties\.ItemStatus="\{Binding CargoHoldingCountdownStatus\}"') -and ($xaml -match 'Binding HasCargoHoldingCountdown, Converter')
     visibleVehicleFullNotice = ($xaml -match 'AutomationProperties\.AutomationId="VehicleFullNotice"') -and ($xaml -match 'Text="\{Binding VehicleFullNoticeText\}"') -and ($xaml -match 'Binding HasVehicleFullNotice, Converter')
     visibleLoadingClosedReason = ($xaml -match 'AutomationProperties\.AutomationId="LoadingClosedReason"') -and ($xaml -match 'Text="\{Binding LoadingClosedReasonText\}"') -and ($xaml -match 'AutomationProperties\.ItemStatus="\{Binding LoadingClosedReasonCode\}"') -and ($xaml -match 'Binding HasLoadingClosedReason, Converter')
-    # 多条清单项时扫码前取消不静默消失：原位置一个禁用的按钮加一句提示；修正装货标出它针对的子批。
-    loadCancellationUnavailableHint = ($xaml -match 'AutomationProperties\.AutomationId="LoadCancellationUnavailable"') -and ($xaml -match 'Text="\{Binding LoadCancellationUnavailableHintText\}"') -and ($xaml -match 'Binding HasLoadCancellationUnavailableHint, Converter') -and ($xaml -match 'IsEnabled="False"[^>]*Content="取消装货"')
+    # 多条清单项时扫码前取消由操作员在清单里选需求（批次7-14，onboard-hmi#135）：清单可选中，取消入口照常
+    # 出现、没选中时按不动，旁边一句提示说要先选。取代批次7-13 那个「暂不可用」的占位按钮。
+    selectableWorklistItems = ($xaml -match 'SelectedItem="\{Binding SelectedWorklistItem, Mode=TwoWay\}"') -and ($xaml -match '<ListBox[^>]*AutomationProperties\.AutomationId="WorklistItems"')
+    loadCancellationSelectionHint = ($xaml -match 'AutomationProperties\.AutomationId="LoadCancellationSelection"') -and ($xaml -match 'Text="\{Binding LoadCancellationSelectionHintText\}"') -and ($xaml -match 'Binding HasLoadCancellationSelectionHint, Converter') -and ($xaml -match 'IsEnabled="\{Binding CanPressLoadCancellation\}"[^>]*Content="取消装货"')
+    # 「暂不可用」那句已被替换，不该再留在界面上：留着会和新提示同时出现，说两件互相矛盾的事。
+    noLoadCancellationUnavailableHint = ($xaml -notmatch 'LoadCancellationUnavailable') -and ($xaml -notmatch '扫码前取消暂不可用')
     loadCorrectionTarget = ($xaml -match 'AutomationProperties\.AutomationId="LoadCorrectionTarget"') -and ($xaml -match 'Text="\{Binding LoadCorrectionTargetText\}"')
     # 判故障只在服务端（REQ-0359）：本机界面不得出现判故障的按钮或绑定。
     noFaultDeclarationEntry = ($xaml -notmatch 'Content="[^"]*(判故障|判定故障|故障判定|人工判)') -and ($xaml -notmatch 'FaultDeclaration')

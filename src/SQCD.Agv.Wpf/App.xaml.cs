@@ -209,6 +209,7 @@ public partial class App : System.Windows.Application, IDisposable
                             WireToGateBusinessService.LoadCancellationDefaultReason,
                             selectedDemandId,
                             cancellationToken),
+                    () => _wireToGateBusiness.IsLoadCancellationDemandSelectionRequired,
                     () => _wireToGateBusiness.CanRequestLoadCompensation,
                     (reason, cancellationToken) => _wireToGateBusiness.RequestLoadCompensationAsync(
                         reason,

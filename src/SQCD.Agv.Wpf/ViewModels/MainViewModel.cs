@@ -22,7 +22,6 @@ public sealed class MainViewModel : ViewModelBase
     private string _visitText = "未到站";
     private bool _hasWorklistItems;
     private bool _hasJourneyPlanLegs;
-    private const string LoadCancellationUnavailableHint = "本站有多条任务，扫码前取消暂不可用";
     private const string LoadCancellationSelectionHint = "请先在清单中选择要取消的任务";
     private bool _hasLoadCancellationSelectionHint;
     private readonly Dictionary<string, IReadOnlyList<int>> _commandSlotsByDemand = new(StringComparer.Ordinal);
@@ -30,7 +29,6 @@ public sealed class MainViewModel : ViewModelBase
     private IReadOnlyList<WireToGateWorklistItem> _worklistItems = [];
     private WorklistItemRow? _selectedWorklistItem;
     private WireToGateRecoveryState? _journaledOperations;
-    private bool _hasLoadCancellationUnavailableHint;
     private string _loadCorrectionTargetText = "修正对象：本站最后一次装货";
     private WireToGateLoadingPhase? _loadingPhase;
     private DispatcherTimer? _cargoHoldingTimer;
@@ -104,6 +102,7 @@ public sealed class MainViewModel : ViewModelBase
     private Func<bool>? _wireToGateCanRequestLoadCorrection;
     private Func<bool>? _wireToGateCanRequestFaultCargoHandoff;
     private Func<string?, CancellationToken, Task<bool>>? _wireToGateLoadCancellationRequester;
+    private Func<bool>? _wireToGateLoadCancellationSelectionRequired;
     private Func<string?, CancellationToken, Task<bool>>? _wireToGateLoadCompensationRequester;
     private Func<CancellationToken, Task<bool>>? _wireToGateLoadCorrectionRequester;
     private Func<string?, CancellationToken, Task<bool>>? _wireToGateFaultCargoHandoffRequester;
@@ -329,6 +328,9 @@ public sealed class MainViewModel : ViewModelBase
 
     private void RebuildWorklistItemsCore()
     {
+        // 行对象每次重建，按引用或按值都会把选择丢掉，而换一次修订号不该抹掉操作员刚做的选择。
+        // 需求真的不在新清单里时选择清空，按下会得到「请重新选择」而不是悄悄换一条。
+        string? selectedDemandId = SelectedWorklistItem?.DemandId;
         WorklistItems.Clear();
         foreach (WireToGateWorklistItem item in _worklistItems)
         {
@@ -348,6 +350,9 @@ public sealed class MainViewModel : ViewModelBase
         }
 
         HasWorklistItems = WorklistItems.Count > 0;
+        SelectedWorklistItem = selectedDemandId is null
+            ? null
+            : WorklistItems.FirstOrDefault(row => row.DemandId == selectedDemandId);
         RefreshLoadCancellationHintCore();
     }
 
@@ -380,6 +385,7 @@ public sealed class MainViewModel : ViewModelBase
         Func<string?, CancellationToken, Task<bool>>? recoveryRequester = null,
         Func<bool>? canRequestLoadCancellation = null,
         Func<string?, CancellationToken, Task<bool>>? loadCancellationRequester = null,
+        Func<bool>? loadCancellationSelectionRequired = null,
         Func<bool>? canRequestLoadCompensation = null,
         Func<string?, CancellationToken, Task<bool>>? loadCompensationRequester = null,
         Func<bool>? canRequestLoadCorrection = null,
@@ -401,6 +407,7 @@ public sealed class MainViewModel : ViewModelBase
         _wireToGateRecoveryRequester = recoveryRequester;
         _wireToGateCanRequestLoadCancellation = canRequestLoadCancellation;
         _wireToGateLoadCancellationRequester = loadCancellationRequester;
+        _wireToGateLoadCancellationSelectionRequired = loadCancellationSelectionRequired;
         _wireToGateCanRequestLoadCompensation = canRequestLoadCompensation;
         _wireToGateLoadCompensationRequester = loadCompensationRequester;
         _wireToGateCanRequestLoadCorrection = canRequestLoadCorrection;
@@ -505,6 +512,7 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (SetProperty(ref _selectedWorklistItem, value))
             {
+                OnPropertyChanged(nameof(LoadCancellationConfirmationDetailText));
                 RefreshLoadCancellationHintCore();
             }
         }
@@ -640,41 +648,38 @@ public sealed class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 清单多于一条、扫码录入开着而扫码前取消不可用时，取消入口的位置显示一个禁用的按钮与一句提示（批次7-13）。
+    /// 「取消装货」这一下按不按得动。入口出现（<see cref="CanRequestLoadCancellation"/>）是一回事，按得动是
+    /// 另一回事：本站多条需求、业务层要一个所选需求而操作员还没选时，按钮留在原位但禁用（批次7-14）。
     /// </summary>
-    /// <remarks>
-    /// 扫码前取消只在清单恰好一条时能定下取消哪条需求（选需求不归车载端），多条时业务层不提供它。这里只把
-    /// 「这项能力暂时不可用」说出来，不让操作员以为它不存在；完整语义归批次7-14（<c>8005-agv-onboard-hmi#135</c>）。
-    /// 取消入口开着（例如在途装货的取消）时没有这句提示。
-    /// </remarks>
-    public bool HasLoadCancellationUnavailableHint
+    public bool CanPressLoadCancellation =>
+        CanRequestLoadCancellation && !HasLoadCancellationSelectionHint;
+
+    /// <summary>
+    /// 是否显示「请先在清单中选择要取消的任务」。业务层说要选，而清单里还没有选中行时出现。
+    /// </summary>
+    public bool HasLoadCancellationSelectionHint
     {
-        get => _hasLoadCancellationUnavailableHint;
+        get => _hasLoadCancellationSelectionHint;
         private set
         {
-            if (SetProperty(ref _hasLoadCancellationUnavailableHint, value))
+            if (SetProperty(ref _hasLoadCancellationSelectionHint, value))
             {
-                OnPropertyChanged(nameof(LoadCancellationUnavailableHintText));
+                OnPropertyChanged(nameof(LoadCancellationSelectionHintText));
+                OnPropertyChanged(nameof(CanPressLoadCancellation));
             }
         }
     }
 
-    public string LoadCancellationUnavailableHintText =>
-        HasLoadCancellationUnavailableHint ? LoadCancellationUnavailableHint : string.Empty;
-
-    /// <summary>本票的桩，实现前恒等于入口本身。</summary>
-    public bool CanPressLoadCancellation => CanRequestLoadCancellation && !_hasLoadCancellationSelectionHint;
-
-    /// <summary>本票的桩，实现前恒为假。</summary>
-    public bool HasLoadCancellationSelectionHint
-    {
-        get => _hasLoadCancellationSelectionHint;
-        private set => SetProperty(ref _hasLoadCancellationSelectionHint, value);
-    }
-
-    /// <summary>本票的桩。</summary>
     public string LoadCancellationSelectionHintText =>
         HasLoadCancellationSelectionHint ? LoadCancellationSelectionHint : string.Empty;
+
+    /// <summary>
+    /// 确认框里复述所选需求：子批号、任务类型与花篮数（批次7-14）。没有选中行时为空，确认框照旧只说通用那段。
+    /// </summary>
+    public string LoadCancellationConfirmationDetailText =>
+        SelectedWorklistItem is { } row
+            ? $"将要取消的任务：子批 {row.Sublot}，{row.TaskTypeText}，{row.ExpectedBasketCountText}。"
+            : string.Empty;
 
     /// <summary>
     /// 「修正装货」入口旁标出它针对的子批（批次7-13）。修正照旧针对本站最后一次装货；那一次的需求来自日志里的
@@ -708,8 +713,14 @@ public sealed class MainViewModel : ViewModelBase
         RefreshLoadCorrectionTargetCore();
     });
 
+    /// <summary>
+    /// 要不要提示先选一条。<b>「要不要选」由业务层说，不在这里按清单条数推</b>（批次7-14）：在途装货的取消、
+    /// 重启后重发已经发出的那次取消，都用不着选，而它们在界面上看起来与「多条清单项」一模一样。
+    /// </summary>
     private void RefreshLoadCancellationHintCore() =>
-        HasLoadCancellationUnavailableHint = WorklistItems.Count > 1 && CanSubmit && !CanRequestLoadCancellation;
+        HasLoadCancellationSelectionHint =
+            _wireToGateLoadCancellationSelectionRequired?.Invoke() == true
+            && SelectedWorklistItem is null;
 
     private void RefreshLoadCorrectionTargetCore()
     {
@@ -821,8 +832,12 @@ public sealed class MainViewModel : ViewModelBase
         {
             if (SetProperty(ref _canRequestLoadCancellation, value))
             {
-                RefreshLoadCancellationHintCore();
+                OnPropertyChanged(nameof(CanPressLoadCancellation));
             }
+
+            // 无条件重算：入口开着不变、而「要不要先选」变了，是常有的事——在途装货的取消结清之后，
+            // 同一个 true 底下要选的答案就换了。只在值变化时重算会把那一刻漏掉。
+            RefreshLoadCancellationHintCore();
         }
     }
 

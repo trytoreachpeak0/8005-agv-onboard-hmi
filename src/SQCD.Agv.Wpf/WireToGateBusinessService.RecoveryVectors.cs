@@ -293,21 +293,77 @@ public sealed partial class WireToGateBusinessService
 
         return session.Readiness == WireToGateSessionReadiness.Ready
             && state.PendingLoadCancellation?.SlotOperationAttemptId is null
-            && FindLoadCancellationBeforeSublot(state) is not null;
+            && FindLoadCancellationBeforeSublot(state, null).Availability
+                is not LoadCancellationBeforeSublotAvailability.None;
     }
+
+    /// <summary>
+    /// Whether the entry is offered but waiting for the operator to pick a demand in the worklist:
+    /// this stop carries more than one and nothing has gone out yet (onboard-hmi#135).
+    /// </summary>
+    /// <remarks>
+    /// Read with no pick on purpose. The question is whether a pick is <i>needed</i>, which is a fact
+    /// about the stop and the journal, not about what is highlighted on screen -- the view decides
+    /// from this plus its own selection whether the button can be pressed. A load in flight is its
+    /// own subject, so this is false while that cancellation is the one on offer.
+    /// </remarks>
+    public bool IsLoadCancellationDemandSelectionRequired =>
+        !(CanUseStationOperator()
+            && HasRecoveryVectorOrLoadOperation(WireToGateRecoveryVectorTypes.LoadCancellation))
+        && CanRequestLoadCancellationBeforeSublot()
+        && FindLoadCancellationBeforeSublot(Volatile.Read(ref _lastRecoveryState), null).Availability
+            is LoadCancellationBeforeSublotAvailability.SelectionRequired;
 
     private sealed record LoadCancellationBeforeSublotTarget(string CancellationId, string DemandId);
 
+    /// <summary>Why a cancellation before any sublot has no subject, when it has none.</summary>
+    private enum LoadCancellationBeforeSublotAvailability
+    {
+        /// <summary>The entry does not apply at all, and is not offered.</summary>
+        None,
+
+        /// <summary>The subject is settled; <c>Target</c> names it.</summary>
+        Ready,
+
+        /// <summary>More than one demand at this stop and the operator has picked none yet.</summary>
+        SelectionRequired,
+
+        /// <summary>The picked demand is not in this stop's worklist. Nothing has gone out for it.</summary>
+        SelectionMissing,
+
+        /// <summary>
+        /// The demand of the cancellation already sent is not in this stop's worklist any more.
+        /// </summary>
+        SentSelectionMissing
+    }
+
+    private sealed record LoadCancellationBeforeSublotOutcome(
+        LoadCancellationBeforeSublotAvailability Availability,
+        LoadCancellationBeforeSublotTarget? Target);
+
     /// <summary>
-    /// The demand a cancellation before any sublot would cancel, or <c>null</c> when there is none.
+    /// The demand a cancellation before any sublot would cancel, or why there is none.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Protocol 2.0.0 took <c>demandId</c> off the entry request, so the demand is read from the
-    /// worklist the request belongs to -- same operation session, revision and station, the check
-    /// <c>SubmitSublotAsync</c> makes -- and only when that worklist names exactly one demand. With
-    /// more than one the vehicle would be choosing which demand to cancel, and choosing a demand is
-    /// never this end's (<c>NEVER_DISCOVER_SELECT_OR_BIND_DEMAND</c>).
+    /// Protocol 2.0.0 took <c>demandId</c> off the entry request, and a stop's worklist carries its
+    /// <c>operationSessionId</c> at the top with nothing per item, so the vehicle cannot read off
+    /// which item the outstanding request belongs to. Where the stop names one demand, that is the
+    /// one. Where it names several, <b>the operator picks in the worklist and the server validates
+    /// the pick</b> (batch 7-06, <c>control-server#211</c>): the pick is a person's, made from the
+    /// list the server itself sent, and this end still discovers no demand, selects none of its own
+    /// accord and binds none (<c>FP-IS-01</c>'s <c>NEVER_DISCOVER_SELECT_OR_BIND_DEMAND</c>). What
+    /// the vehicle must never do is choose one <i>for</i> the operator -- picking the first row, or
+    /// re-deriving a subject after a restart -- and that is what
+    /// <see cref="LoadCancellationBeforeSublotAvailability.SelectionRequired"/> and
+    /// <see cref="LoadCancellationBeforeSublotAvailability.SentSelectionMissing"/> exist to prevent.
+    /// </para>
+    /// <para>
+    /// <b>A cancellation already sent keeps its own subject.</b> Its demand is recovered by deriving
+    /// each item's cancellationId and matching the journaled <c>PendingLoadCancellation</c>, not from
+    /// whatever is picked now: the server compares a retry's whole payload with the one it first
+    /// accepted, so a retry naming another demand is a different request under the same id. No field
+    /// is added to the recovery state for this -- the derivation is the record.
     /// </para>
     /// <para>
     /// "Nothing commanded" is read from what this vehicle holds: no slot operation unsettled or
@@ -319,8 +375,13 @@ public sealed partial class WireToGateBusinessService
     /// this stop -- across a lost answer and a restart -- asks about the same cancellation.
     /// </para>
     /// </remarks>
-    private LoadCancellationBeforeSublotTarget? FindLoadCancellationBeforeSublot(
-        WireToGateRecoveryState state)
+    /// <param name="selectedDemandId">
+    /// The demand picked in the worklist, or <c>null</c> when nothing is picked -- which is also what
+    /// the entry gates and a retry after a restart pass, neither having a pick to offer.
+    /// </param>
+    private LoadCancellationBeforeSublotOutcome FindLoadCancellationBeforeSublot(
+        WireToGateRecoveryState state,
+        string? selectedDemandId)
     {
         if (Volatile.Read(ref _currentEntryRequest) is not { } request
             || _session.CurrentJourney.CurrentStopWorklist is not { } worklist
@@ -330,9 +391,9 @@ public sealed partial class WireToGateBusinessService
                 StringComparison.Ordinal)
             || worklist.Revision != request.WorklistRevision
             || !string.Equals(worklist.StationId, request.StationId, StringComparison.Ordinal)
-            || worklist.Items is not [{ } item])
+            || worklist.Items.Count == 0)
         {
-            return null;
+            return NoLoadCancellationBeforeSublot;
         }
 
         bool running;
@@ -341,21 +402,66 @@ public sealed partial class WireToGateBusinessService
             running = _operationAttempts.Count > 0;
         }
 
-        if (running
-            || state.UnsettledSlotOperationAttemptId is not null
-            || string.Equals(state.OperationContext?.DemandId, item.DemandId, StringComparison.Ordinal)
+        if (running || state.UnsettledSlotOperationAttemptId is not null)
+        {
+            return NoLoadCancellationBeforeSublot;
+        }
+
+        if (state.PendingLoadCancellation is { SlotOperationAttemptId: null } sent)
+        {
+            Core.WireToGateWorklistItem? sentItem = worklist.Items.FirstOrDefault(
+                item => string.Equals(
+                    LoadCancellationBeforeSublotId(item.DemandId, request.OperationSessionId),
+                    sent.CancellationId,
+                    StringComparison.Ordinal));
+            return sentItem is null
+                ? new(LoadCancellationBeforeSublotAvailability.SentSelectionMissing, null)
+                : JudgeLoadCancellationBeforeSublot(state, sentItem, request);
+        }
+
+        if (worklist.Items.Count == 1)
+        {
+            return JudgeLoadCancellationBeforeSublot(state, worklist.Items[0], request);
+        }
+
+        if (selectedDemandId is null)
+        {
+            return new(LoadCancellationBeforeSublotAvailability.SelectionRequired, null);
+        }
+
+        Core.WireToGateWorklistItem? picked = worklist.Items.FirstOrDefault(
+            item => string.Equals(item.DemandId, selectedDemandId, StringComparison.Ordinal));
+        return picked is null
+            ? new(LoadCancellationBeforeSublotAvailability.SelectionMissing, null)
+            : JudgeLoadCancellationBeforeSublot(state, picked, request);
+    }
+
+    private static readonly LoadCancellationBeforeSublotOutcome NoLoadCancellationBeforeSublot =
+        new(LoadCancellationBeforeSublotAvailability.None, null);
+
+    /// <summary>
+    /// The local exclusions, applied to whichever item is the subject: this end asks about a demand
+    /// nothing has been commanded for, and says so before the server has to.
+    /// </summary>
+    private static LoadCancellationBeforeSublotOutcome JudgeLoadCancellationBeforeSublot(
+        WireToGateRecoveryState state,
+        Core.WireToGateWorklistItem item,
+        WireToGateSublotEntryRequest request) =>
+        string.Equals(state.OperationContext?.DemandId, item.DemandId, StringComparison.Ordinal)
             || string.Equals(
                 state.LastCompletedLoadOperationContext?.DemandId,
                 item.DemandId,
-                StringComparison.Ordinal))
-        {
-            return null;
-        }
+                StringComparison.Ordinal)
+            ? NoLoadCancellationBeforeSublot
+            : new(
+                LoadCancellationBeforeSublotAvailability.Ready,
+                new(
+                    LoadCancellationBeforeSublotId(item.DemandId, request.OperationSessionId),
+                    item.DemandId));
 
-        return new(
-            StableUuid($"{item.DemandId}|{request.OperationSessionId}|load-cancellation-before-sublot"),
-            item.DemandId);
-    }
+    /// <summary>The cancellationId every press over this demand at this stop asks about.</summary>
+    private static string LoadCancellationBeforeSublotId(string demandId, string operationSessionId) =>
+        StableUuid($"{demandId}|{operationSessionId}|load-cancellation-before-sublot");
 
     private bool HasRecoveryVectorOrCompletedLoad(string vectorType)
     {
@@ -618,11 +724,40 @@ public sealed partial class WireToGateBusinessService
         string? selectedDemandId,
         CancellationToken cancellationToken)
     {
-        LoadCancellationBeforeSublotTarget target = FindLoadCancellationBeforeSublot(state)
-            ?? throw new InvalidOperationException("RECOVERY_OPERATION_CONTEXT_MISSING");
         if (state.PendingLoadCancellation?.SlotOperationAttemptId is not null)
         {
             throw new InvalidDataException("RECOVERY_VECTOR_CONFLICT");
+        }
+
+        LoadCancellationBeforeSublotOutcome outcome =
+            FindLoadCancellationBeforeSublot(state, selectedDemandId);
+        // Three of the four "no subject" cases are the operator's to resolve, not faults: they are
+        // said in words and nothing is sent. Only "does not apply at all" stays an exception, which
+        // is what a press on an entry that was never offered has always been.
+        if (outcome is not { Availability: LoadCancellationBeforeSublotAvailability.Ready, Target: { } target })
+        {
+            switch (outcome.Availability)
+            {
+                case LoadCancellationBeforeSublotAvailability.SelectionRequired:
+                    PublishOperatorResponse(
+                        "RECOVERY_BLOCKED",
+                        "本站有多条任务，请先在清单中选择要取消的任务，再按「取消装货」。 ");
+                    return false;
+                case LoadCancellationBeforeSublotAvailability.SelectionMissing:
+                    PublishOperatorResponse(
+                        "RECOVERY_BLOCKED",
+                        "所选任务已不在本站清单，请重新选择要取消的任务。 ");
+                    return false;
+                case LoadCancellationBeforeSublotAvailability.SentSelectionMissing:
+                    // Deliberately not retried against another demand: the one asked about is the
+                    // one the server answers for, and its next snapshot or refusal closes this.
+                    PublishOperatorResponse(
+                        "RECOVERY_BLOCKED",
+                        "原选择的任务已不在本站清单，取消结果以服务端为准。 ");
+                    return false;
+                default:
+                    throw new InvalidOperationException("RECOVERY_OPERATION_CONTEXT_MISSING");
+            }
         }
 
         if (await AskForLoadCancellationAsync(

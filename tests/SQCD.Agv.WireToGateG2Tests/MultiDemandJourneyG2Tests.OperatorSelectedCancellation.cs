@@ -159,6 +159,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         SelectWorklistItem(first, DemandB);
         Assert.False(await first.ViewModel.RequestLoadCancellationAsync(token));
         await first.StopVehicleAsync();
+        first.Server.SimulateOnboardProcessRestart();
 
         await using Harness afterRestart = await Harness.StartAgainstAsync(
             first.Server,
@@ -169,6 +170,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => afterRestart.Business.CanRequestLoadCancellation,
             "the cancellation entry to come back after the restart",
             token);
+        // What the entry request and an operator event do in the product, done once here.
+        afterRestart.ViewModel.RefreshWireToGateInputState();
 
         // The restarted process has no selection, and the entry is pressable all the same: the
         // subject is the journal's, not a new pick.
@@ -261,6 +264,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                 () => harness.Business.CanRequestLoadCancellation,
                 "the cancellation-before-sublot entry to be offered",
                 cancellationToken);
+            harness.ViewModel.RefreshWireToGateInputState();
             return harness;
         }
         catch

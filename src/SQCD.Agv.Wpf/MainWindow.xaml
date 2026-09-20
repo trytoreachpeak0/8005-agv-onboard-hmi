@@ -324,31 +324,25 @@
                             Visibility="{Binding CanRequestWireToGateRecovery, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnWireToGateRecoveryClick"
                             Content="申请恢复" />
-                    <Button Margin="0,0,8,0"
-                            Padding="12,6"
-                            FontSize="13"
-                            Background="#D6A32A"
-                            IsEnabled="{Binding CanRequestLoadCancellation}"
-                            Visibility="{Binding CanRequestLoadCancellation, Converter={StaticResource BooleanToVisibilityConverter}}"
-                            Click="OnLoadCancellationClick"
-                            Content="取消装货" />
                     <!--
-                        多条清单项时扫码前取消不可用（批次7-13，8005-agv-onboard-hmi#134）：原位置一个禁用的「取消装货」加一句
-                        提示，不让操作员以为这项能力不存在。取消入口开着时它不出现。完整语义归 8005-agv-onboard-hmi#135。
+                        多条清单项时扫码前取消由操作员在清单里选需求（批次7-14，8005-agv-onboard-hmi#135）：入口照常出现，
+                        没选中时禁用并在旁边说要先选，取代批次7-13 那个「暂不可用」的占位按钮。
                     -->
                     <Button Margin="0,0,4,0"
                             Padding="12,6"
                             FontSize="13"
-                            IsEnabled="False"
-                            Visibility="{Binding HasLoadCancellationUnavailableHint, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Background="#D6A32A"
+                            IsEnabled="{Binding CanPressLoadCancellation}"
+                            Visibility="{Binding CanRequestLoadCancellation, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnLoadCancellationClick"
                             Content="取消装货" />
                     <TextBlock Margin="0,0,8,0"
                                VerticalAlignment="Center"
                                FontSize="13"
                                Foreground="{StaticResource MutedBrush}"
-                               AutomationProperties.AutomationId="LoadCancellationUnavailable"
-                               Text="{Binding LoadCancellationUnavailableHintText}"
-                               Visibility="{Binding HasLoadCancellationUnavailableHint, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                               AutomationProperties.AutomationId="LoadCancellationSelection"
+                               Text="{Binding LoadCancellationSelectionHintText}"
+                               Visibility="{Binding HasLoadCancellationSelectionHint, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"
@@ -496,10 +490,18 @@
                                    TextWrapping="Wrap"
                                    Visibility="{Binding HasLoadingClosedReason, Converter={StaticResource BooleanToVisibilityConverter}}" />
                         <TextBlock FontSize="13" FontWeight="Bold" Foreground="#334155" Text="本站清单" />
-                        <ItemsControl Margin="0,2,0,8"
-                                      AutomationProperties.AutomationId="WorklistItems"
-                                      ItemsSource="{Binding WorklistItems}">
-                            <ItemsControl.ItemTemplate>
+                        <!--
+                            可选中（批次7-14）：扫码前取消要取消哪条需求由操作员在这里点，本票只用于取消，
+                            不是从清单挑待装任务的入口（WORKLIST_SELECTION 归批次 11）。
+                        -->
+                        <ListBox Margin="0,2,0,8"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 HorizontalContentAlignment="Stretch"
+                                 AutomationProperties.AutomationId="WorklistItems"
+                                 ItemsSource="{Binding WorklistItems}"
+                                 SelectedItem="{Binding SelectedWorklistItem, Mode=TwoWay}">
+                            <ListBox.ItemTemplate>
                                 <DataTemplate DataType="{x:Type vm:WorklistItemRow}">
                                     <Border Margin="0,2" Padding="6,4" Background="#F4F7FB" CornerRadius="4">
                                         <Grid>
@@ -533,8 +535,8 @@
                                         </Grid>
                                     </Border>
                                 </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
                         <TextBlock FontSize="13" FontWeight="Bold" Foreground="#334155" Text="行程计划" />
                         <ItemsControl Margin="0,2,0,0"
                                       AutomationProperties.AutomationId="JourneyPlanLegs"
