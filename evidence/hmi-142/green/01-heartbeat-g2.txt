@@ -1,0 +1,6 @@
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:    10, Skipped:     0, Total:    10, Duration: 12 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

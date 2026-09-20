@@ -1,0 +1,31 @@
+Note: switching to '429e0ff9348724c69f1c1d93a136bd869c57d8e4'.
+
+You are in 'detached HEAD' state. You can look around, make experimental
+changes and commit them, and you can discard any commits you make in this
+state without impacting any branches by switching back to a branch.
+
+If you want to create a new branch to retain commits you create, you may
+do so (now or later) by using -c with the switch command. Example:
+
+  git switch -c <new-branch-name>
+
+Or undo this operation with:
+
+  git switch -
+
+Turn off this advice by setting config variable advice.detachedHead to false
+
+  正在确定要还原的项目…
+  已还原 C:\Users\agvops\AppData\Local\8005-l2-peers\onboard-hmi-429e0ff9348724c69f1c1d93a136bd869c57d8e4\clone\src\SQCD.Agv.Core\SQCD.Agv.Core.csproj (用时 143 毫秒)。
+  已还原 C:\Users\agvops\AppData\Local\8005-l2-peers\onboard-hmi-429e0ff9348724c69f1c1d93a136bd869c57d8e4\clone\src\SQCD.Agv.Contracts\SQCD.Agv.Contracts.csproj (用时 143 毫秒)。
+  已还原 C:\Users\agvops\AppData\Local\8005-l2-peers\onboard-hmi-429e0ff9348724c69f1c1d93a136bd869c57d8e4\clone\src\SQCD.Agv.Application\SQCD.Agv.Application.csproj (用时 165 毫秒)。
+  已还原 C:\Users\agvops\AppData\Local\8005-l2-peers\onboard-hmi-429e0ff9348724c69f1c1d93a136bd869c57d8e4\clone\src\SQCD.Agv.AutomationHost\SQCD.Agv.AutomationHost.csproj (用时 165 毫秒)。
+  已还原 C:\Users\agvops\AppData\Local\8005-l2-peers\onboard-hmi-429e0ff9348724c69f1c1d93a136bd869c57d8e4\clone\src\SQCD.Agv.Infrastructure\SQCD.Agv.Infrastructure.csproj (用时 225 毫秒)。
+  已还原 C:\Users\agvops\AppData\Local\8005-l2-peers\onboard-hmi-429e0ff9348724c69f1c1d93a136bd869c57d8e4\clone\src\SQCD.Agv.Wpf\SQCD.Agv.Wpf.csproj (用时 226 毫秒)。
+  SQCD.Agv.Core -> C:\Users\agvops\AppData\Local\8005-l2-peers\onboard-hmi-429e0ff9348724c69f1c1d93a136bd869c57d8e4\clone\src\SQCD.Agv.Core\bin\Release\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Contracts -> C:\Users\agvops\AppData\Local\8005-l2-peers\onboard-hmi-429e0ff9348724c69f1c1d93a136bd869c57d8e4\clone\src\SQCD.Agv.Contracts\bin\Release\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Application -> C:\Users\agvops\AppData\Local\8005-l2-peers\onboard-hmi-429e0ff9348724c69f1c1d93a136bd869c57d8e4\clone\src\SQCD.Agv.Application\bin\Release\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.AutomationHost -> C:\Users\agvops\AppData\Local\8005-l2-peers\onboard-hmi-429e0ff9348724c69f1c1d93a136bd869c57d8e4\clone\src\SQCD.Agv.AutomationHost\bin\Release\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Infrastructure -> C:\Users\agvops\AppData\Local\8005-l2-peers\onboard-hmi-429e0ff9348724c69f1c1d93a136bd869c57d8e4\clone\src\SQCD.Agv.Infrastructure\bin\Release\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.Wpf -> C:\Users\agvops\AppData\Local\8005-l2-peers\onboard-hmi-429e0ff9348724c69f1c1d93a136bd869c57d8e4\clone\src\SQCD.Agv.Wpf\bin\Release\net8.0-windows\win-x64\SQCD.Agv.Wpf.dll
+  SQCD.Agv.Wpf -> C:\Users\agvops\AppData\Local\8005-l2-peers\onboard-hmi-429e0ff9348724c69f1c1d93a136bd869c57d8e4\publish\

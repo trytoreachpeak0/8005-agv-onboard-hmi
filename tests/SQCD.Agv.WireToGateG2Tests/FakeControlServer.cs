@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
@@ -583,6 +584,34 @@ public sealed class FakeControlServer : IAsyncDisposable
         [.. _receivedLoadCancellationAttemptIds];
 
     private readonly ConcurrentQueue<string> _receivedLoadCancellationAttemptIds = new();
+
+    private readonly ConcurrentQueue<long> _heartbeatArrivals = new();
+
+    /// <summary>
+    /// The monotonic <see cref="Stopwatch"/> timestamp of every <c>Heartbeat</c> this server read off
+    /// the wire, in arrival order.
+    /// </summary>
+    /// <remarks>
+    /// Taken here rather than derived from the envelope's <c>sentAt</c>: ADR-cross-0027 measures
+    /// liveness on the receiving side's own monotonic clock and treats the peer's timestamps as
+    /// diagnostics only, so a cadence assertion that read <c>sentAt</c> would be proving the vehicle
+    /// agrees with itself. Pair with <see cref="Stopwatch.GetElapsedTime(long, long)"/>.
+    /// </remarks>
+    /// <remarks>
+    /// <c>ToArray</c> 而不是 <c>[.. _heartbeatArrivals]</c>：后者先读 <c>Count</c> 再 <c>CopyTo</c>，
+    /// 而这个队列正被替身的连接线程写着，两步之间多进来一条就是 <c>IndexOutOfRangeException</c>。
+    /// <see cref="System.Collections.Concurrent.ConcurrentQueue{T}.ToArray"/> 拿的是一致的快照。
+    /// </remarks>
+    public IReadOnlyList<long> HeartbeatArrivals => _heartbeatArrivals.ToArray();
+
+    /// <summary>
+    /// 回 <c>HeartbeatAck</c> 之前先等这么久，模拟一个应答慢的服务端。
+    /// </summary>
+    /// <remarks>
+    /// 车载端的心跳循环要等 ack 回来才算这一拍走完。ack 的往返若被算进下一次等待，2 秒的节拍就会
+    /// 变成 2 秒加往返，而 ADR-cross-0027 的静默阈值只有 6 秒——这个开关就是把那段往返做出来。
+    /// </remarks>
+    public TimeSpan HeartbeatAckDelay { get; set; }
 
     private int _judgedRecoveryRequests;
 
@@ -1213,6 +1242,12 @@ public sealed class FakeControlServer : IAsyncDisposable
                             out _);
                         break;
                     case "Heartbeat":
+                        _heartbeatArrivals.Enqueue(Stopwatch.GetTimestamp());
+                        if (HeartbeatAckDelay > TimeSpan.Zero)
+                        {
+                            await Task.Delay(HeartbeatAckDelay, stoppingToken).ConfigureAwait(false);
+                        }
+
                         await WriteEnvelopeAsync(context, CreateHeartbeatAck(context, root)).ConfigureAwait(false);
                         break;
                     // 协议 v2 消息 8。RELIABLE，所以要 DurableAck——用 RESPONSE 就没有补报语义，断线

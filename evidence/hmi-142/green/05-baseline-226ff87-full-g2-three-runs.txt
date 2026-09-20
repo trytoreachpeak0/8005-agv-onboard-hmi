@@ -1,0 +1,6 @@
+--- baseline 226ff87 run 1
+Passed!  - Failed:     0, Passed:   283, Skipped:     0, Total:   283, Duration: 52 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+--- baseline 226ff87 run 2
+Passed!  - Failed:     0, Passed:   283, Skipped:     0, Total:   283, Duration: 52 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+--- baseline 226ff87 run 3
+Passed!  - Failed:     0, Passed:   283, Skipped:     0, Total:   283, Duration: 50 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

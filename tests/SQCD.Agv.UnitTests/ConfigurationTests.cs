@@ -36,6 +36,118 @@ public sealed class ConfigurationTests
         Assert.Equal(Uri.UriSchemeHttp, vehicleSafetyEndpoint.Scheme);
     }
 
+    /// <summary>
+    /// 两份出厂配置都把会话心跳写成 ADR-cross-0027 的 2 秒（onboard-hmi#142）。
+    /// </summary>
+    /// <remarks>
+    /// 现场不改配置就该符合 ADR，所以默认值在代码与出厂文件里各写一遍，这条把两边钉在一起：
+    /// 服务端按 6 秒静默判失联，出厂文件里留着 5 秒就是每次心跳都擦着阈值走。
+    /// 顺带盯住 <c>ruleGateway.heartbeatIntervalMs</c>——那是旧规则网关的心跳，与 WIRE_TO_GATE
+    /// 会话无关，本票不动它，两者写在同一份文件里，容易被一起改错。
+    /// </remarks>
+    [Theory]
+    [InlineData("src/SQCD.Agv.Wpf/appsettings.json")]
+    [InlineData("src/SQCD.Agv.Wpf/appsettings.Production.example.json")]
+    public void WireToGateExamplesConfigureTheAdrSessionHeartbeatInterval(string relativePath)
+    {
+        string path = FindRepositoryFile(relativePath);
+        using JsonDocument document = JsonDocument.Parse(
+            File.ReadAllText(path),
+            new JsonDocumentOptions
+            {
+                CommentHandling = JsonCommentHandling.Skip,
+                AllowTrailingCommas = true
+            });
+
+        JsonElement wireToGate = document.RootElement.GetProperty("wireToGate");
+
+        Assert.True(
+            wireToGate.TryGetProperty("sessionHeartbeatIntervalMs", out JsonElement configured),
+            $"{relativePath} 的 wireToGate 节没有 sessionHeartbeatIntervalMs。");
+        Assert.Equal(2_000, configured.GetInt32());
+        // 消息超时是两条心跳到达间距的上界，与心跳间隔受同一道界约束（审查 S2）：出厂值必须严格
+        // 小于它，3000 那个旧值恰好等于界、余量为零。
+        Assert.Equal(2_500, wireToGate.GetProperty("messageTimeoutMs").GetInt32());
+        Assert.True(
+            wireToGate.GetProperty("messageTimeoutMs").GetInt32()
+                < WireToGateSessionService.MaximumHeartbeatInterval.TotalMilliseconds,
+            "出厂 messageTimeoutMs 必须严格小于 ADR-cross-0027 静默失联阈值的一半。");
+        Assert.Equal(
+            5_000,
+            document.RootElement.GetProperty("ruleGateway").GetProperty("heartbeatIntervalMs").GetInt32());
+    }
+
+    /// <summary>
+    /// 代码里的默认值就是 ADR-cross-0027 的三个数：2 秒心跳、6 秒静默失联、间隔上限取阈值的一半。
+    /// </summary>
+    /// <remarks>
+    /// 上限是推出来的，不是拍的：丢一条心跳之后下一条要在阈值用完之前到，所以间隔必须严格小于
+    /// 阈值的一半。把这三个数钉在一起，将来谁改了其中一个，改得对不对当场看得见。
+    /// </remarks>
+    [Fact]
+    public void TheSessionHeartbeatDefaultsAreTheAdrNumbers()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(2), WireToGateSessionService.DefaultHeartbeatInterval);
+        Assert.Equal(TimeSpan.FromSeconds(6), WireToGateSessionService.LivenessTimeout);
+        Assert.Equal(TimeSpan.FromSeconds(3), WireToGateSessionService.MaximumHeartbeatInterval);
+        Assert.Equal(2_000, new WireToGateSettings().SessionHeartbeatIntervalMs);
+    }
+
+    /// <summary>
+    /// 0、负数、以及大到会撞上失联阈值的间隔，启动校验就拒掉，不带着走到现场。
+    /// </summary>
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(3_000)]
+    [InlineData(int.MaxValue)]
+    public void ASessionHeartbeatIntervalOutsideTheAdrBoundsIsRejected(int milliseconds)
+    {
+        OnboardSettings settings = CreateValidProductionSettings(
+            wireToGate: new WireToGateSettings
+            {
+                Enabled = true,
+                Host = "control.internal",
+                OnboardInstanceId = "77a9a4b8-7b1c-4f2b-92bd-3872f5871158",
+                OnboardBuildCommit = "a6f05fbced15316a2cc20cd327f80c5c5ee1821e",
+                SessionHeartbeatIntervalMs = milliseconds
+            });
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(settings.Validate);
+
+        Assert.Contains("会话心跳间隔", exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 消息超时也受心跳那道界约束：它就是两条心跳到达间距的上界（onboard-hmi#142 审查 S2）。
+    /// </summary>
+    /// <remarks>
+    /// 心跳循环串行地等 <c>HeartbeatAck</c>，服务端看到的到达间距是 max(心跳间隔, ack 往返)，
+    /// 而 ack 往返的上界就是这个超时。只卡心跳间隔不卡它，那道界就能从另一扇门绕开：间隔配 2 秒、
+    /// 超时配 10 秒，服务端慢应答时两条心跳隔 10 秒才到，ADR-cross-0027 的「单次丢失不构成失联」
+    /// 当场失效。出厂值同日由 3000 下调到 2500——3000 恰好等于那道界，保证在但余量为零。
+    /// </remarks>
+    [Theory]
+    [InlineData(3_000)]
+    [InlineData(10_000)]
+    [InlineData(int.MaxValue)]
+    public void AMessageTimeoutThatWouldStretchTheHeartbeatGapIsRejected(int milliseconds)
+    {
+        OnboardSettings settings = CreateValidProductionSettings(
+            wireToGate: new WireToGateSettings
+            {
+                Enabled = true,
+                Host = "control.internal",
+                OnboardInstanceId = "77a9a4b8-7b1c-4f2b-92bd-3872f5871158",
+                OnboardBuildCommit = "a6f05fbced15316a2cc20cd327f80c5c5ee1821e",
+                MessageTimeoutMs = milliseconds
+            });
+
+        InvalidDataException exception = Assert.Throws<InvalidDataException>(settings.Validate);
+
+        Assert.Contains("消息超时", exception.Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void ProductionWithoutWireToGateIsRejected()
     {
