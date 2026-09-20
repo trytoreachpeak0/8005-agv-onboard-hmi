@@ -1043,6 +1043,26 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// Called outside the lock, deliberately: the publication raises an operator event, and the handlers on it
     /// run on the caller's thread.
     /// </para>
+    /// <para>
+    /// <b>The claim comes out before the question is asked, and that order is load-bearing.</b> It is what makes
+    /// the two orders exhaustive when a restore round records a debt at the same moment as the last executing
+    /// attempt lets go. <see cref="OweRecoveryEntry"/> writes the debt under
+    /// <see cref="_operationAttemptGate"/>, and <see cref="PublishOwedRecoveryEntry"/> reads the count and takes
+    /// the debt under that same lock, so the two linearise: either the debt is recorded first, and whichever of
+    /// the two asks next finds a count of zero and takes it; or the claim comes out first, and the round that
+    /// records the debt asks after recording it and finds the same. Reverse the order here -- ask, then remove --
+    /// and a release can ask while its own claim is still counted, come away empty, and remove afterwards; a debt
+    /// recorded in that gap is then owed to nobody.
+    /// </para>
+    /// <para>
+    /// <b>This is also the reason that interleaving has no end-to-end test of its own</b> (onboard-hmi#156,
+    /// acceptance criterion 5). There is no seam that can pin the two against each other, and a test that raced
+    /// for it would be a coin toss in CI; what stands in its place is the argument above, which holds only while
+    /// this method removes before it asks and both sides go through <see cref="_operationAttemptGate"/>. Change
+    /// either and the argument is gone -- and nothing here will go red to say so, because the failure is a
+    /// recovery entry that quietly never appears. Answer "does that interleaving still hold, and how do I know"
+    /// before moving these two statements past each other.
+    /// </para>
     /// </remarks>
     private void ReleaseInFlightAttempt(string attemptId)
     {
@@ -1064,7 +1084,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// recorded the debt. The second is what makes the pair race-free -- an attempt that finished while that
     /// round was deciding found nothing owed, and would otherwise have been the last chance. It is stated as an
     /// invariant rather than as a number on purpose: the number was three when this was written and was wrong
-    /// the first time it was counted.
+    /// the first time it was counted. <b>Why those two callers exhaust the orders, and which change would end
+    /// that, is written out on <see cref="ReleaseInFlightAttempt"/>; read it before moving the count read or the
+    /// take out of the lock below.</b>
     /// </para>
     /// <para>
     /// <b>Exactly once, by construction.</b> Reading the owed entry and clearing it are one step under the lock,
