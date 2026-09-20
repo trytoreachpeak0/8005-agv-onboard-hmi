@@ -386,7 +386,7 @@ public sealed class MultiDemandViewModelTests
             (_, _, _) => Task.CompletedTask,
             () => true,
             canRequestLoadCancellation: () => true,
-            loadCancellationRequester: _ => Task.FromResult(true));
+            loadCancellationRequester: (_, _) => Task.FromResult(true));
         viewModel.UpdateWireToGateStatus(Session());
 
         viewModel.UpdateWireToGateJourney(Journey(Worklist(
@@ -409,7 +409,7 @@ public sealed class MultiDemandViewModelTests
             (_, _, _) => Task.CompletedTask,
             () => true,
             canRequestLoadCancellation: () => true,
-            loadCancellationRequester: _ => Task.FromResult(true));
+            loadCancellationRequester: (_, _) => Task.FromResult(true));
         viewModel.UpdateWireToGateStatus(Session());
 
         viewModel.UpdateWireToGateJourney(Journey(Worklist(

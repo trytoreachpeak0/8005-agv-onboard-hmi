@@ -99,12 +99,27 @@ public sealed partial class WireToGateBusinessService
     public IReadOnlyList<int> PhysicallyUnknownSlots =>
         Volatile.Read(ref _lastRecoveryState).ForcedIsolation?.PhysicallyUnknownSlots ?? [];
 
+    /// <summary>The reason a press with nothing typed sends.</summary>
+    public const string LoadCancellationDefaultReason = "现场确认装货取消，申请将目标仓位清空。";
+
     public Task<bool> RequestLoadCancellationAsync(
-        string reason = "现场确认装货取消，申请将目标仓位清空。",
+        string reason = LoadCancellationDefaultReason,
         CancellationToken cancellationToken = default) =>
+        RequestLoadCancellationAsync(reason, null, cancellationToken);
+
+    /// <param name="selectedDemandId">
+    /// The demand the operator picked in the worklist, for a cancellation before any sublot at a stop
+    /// that carries more than one (onboard-hmi#135). Ignored where the subject is not the operator's
+    /// to choose: a load in flight is its own subject, one worklist item is that item, and a press
+    /// repeating a request already sent takes its subject from the journal.
+    /// </param>
+    public Task<bool> RequestLoadCancellationAsync(
+        string reason,
+        string? selectedDemandId,
+        CancellationToken cancellationToken) =>
         RunRecoveryRequestAsync(
             WireToGateRecoveryVectorTypes.LoadCancellation,
-            () => RequestLoadCancellationCoreAsync(reason, cancellationToken),
+            () => RequestLoadCancellationCoreAsync(reason, selectedDemandId, cancellationToken),
             cancellationToken);
 
     /// <param name="reason">
@@ -382,6 +397,7 @@ public sealed partial class WireToGateBusinessService
 
     private async Task<bool> RequestLoadCancellationCoreAsync(
         string reason,
+        string? selectedDemandId,
         CancellationToken cancellationToken)
     {
         WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
@@ -413,7 +429,11 @@ public sealed partial class WireToGateBusinessService
 
         if (state.UnsettledSlotOperationAttemptId is null)
         {
-            return await RequestLoadCancellationBeforeSublotAsync(state, reason, cancellationToken)
+            return await RequestLoadCancellationBeforeSublotAsync(
+                    state,
+                    reason,
+                    selectedDemandId,
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -595,6 +615,7 @@ public sealed partial class WireToGateBusinessService
     private async Task<bool> RequestLoadCancellationBeforeSublotAsync(
         WireToGateRecoveryState state,
         string reason,
+        string? selectedDemandId,
         CancellationToken cancellationToken)
     {
         LoadCancellationBeforeSublotTarget target = FindLoadCancellationBeforeSublot(state)
@@ -855,7 +876,7 @@ public sealed partial class WireToGateBusinessService
             "上次按下的装货取消没有收到服务端答复，已按首次内容重新申请；不会再执行原装货。 ");
         await RunRecoveryRequestAsync(
                 WireToGateRecoveryVectorTypes.LoadCancellation,
-                () => RequestLoadCancellationCoreAsync(pending.Reason, cancellationToken),
+                () => RequestLoadCancellationCoreAsync(pending.Reason, null, cancellationToken),
                 cancellationToken)
             .ConfigureAwait(false);
     }

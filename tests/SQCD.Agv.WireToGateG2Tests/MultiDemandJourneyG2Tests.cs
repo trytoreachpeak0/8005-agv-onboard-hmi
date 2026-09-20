@@ -440,7 +440,10 @@ public sealed partial class MultiDemandJourneyG2Tests
                 () => business.CanRequestResumeAfterRepair,
                 business.RequestResumeAfterRepairAsync,
                 () => business.CanRequestLoadCancellation,
-                token => business.RequestLoadCancellationAsync(cancellationToken: token),
+                (selectedDemandId, token) => business.RequestLoadCancellationAsync(
+                    WireToGateBusinessService.LoadCancellationDefaultReason,
+                    selectedDemandId,
+                    token),
                 () => business.CanRequestLoadCompensation,
                 business.RequestLoadCompensationAsync,
                 () => business.CanRequestLoadCorrection,

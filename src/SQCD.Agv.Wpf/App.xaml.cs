@@ -203,8 +203,12 @@ public partial class App : System.Windows.Application, IDisposable
                         reason,
                         cancellationToken),
                     () => _wireToGateBusiness.CanRequestLoadCancellation,
-                    cancellationToken => _wireToGateBusiness.RequestLoadCancellationAsync(
-                        cancellationToken: cancellationToken),
+                    // 所选需求只在扫码前取消、本站多条需求时用得上（批次7-14）；其余情形业务服务忽略它。
+                    (selectedDemandId, cancellationToken) =>
+                        _wireToGateBusiness.RequestLoadCancellationAsync(
+                            WireToGateBusinessService.LoadCancellationDefaultReason,
+                            selectedDemandId,
+                            cancellationToken),
                     () => _wireToGateBusiness.CanRequestLoadCompensation,
                     (reason, cancellationToken) => _wireToGateBusiness.RequestLoadCompensationAsync(
                         reason,

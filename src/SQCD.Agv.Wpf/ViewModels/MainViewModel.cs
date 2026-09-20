@@ -23,9 +23,12 @@ public sealed class MainViewModel : ViewModelBase
     private bool _hasWorklistItems;
     private bool _hasJourneyPlanLegs;
     private const string LoadCancellationUnavailableHint = "本站有多条任务，扫码前取消暂不可用";
+    private const string LoadCancellationSelectionHint = "请先在清单中选择要取消的任务";
+    private bool _hasLoadCancellationSelectionHint;
     private readonly Dictionary<string, IReadOnlyList<int>> _commandSlotsByDemand = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _sublotsByDemand = new(StringComparer.Ordinal);
     private IReadOnlyList<WireToGateWorklistItem> _worklistItems = [];
+    private WorklistItemRow? _selectedWorklistItem;
     private WireToGateRecoveryState? _journaledOperations;
     private bool _hasLoadCancellationUnavailableHint;
     private string _loadCorrectionTargetText = "修正对象：本站最后一次装货";
@@ -100,7 +103,7 @@ public sealed class MainViewModel : ViewModelBase
     private Func<bool>? _wireToGateCanRequestLoadCompensation;
     private Func<bool>? _wireToGateCanRequestLoadCorrection;
     private Func<bool>? _wireToGateCanRequestFaultCargoHandoff;
-    private Func<CancellationToken, Task<bool>>? _wireToGateLoadCancellationRequester;
+    private Func<string?, CancellationToken, Task<bool>>? _wireToGateLoadCancellationRequester;
     private Func<string?, CancellationToken, Task<bool>>? _wireToGateLoadCompensationRequester;
     private Func<CancellationToken, Task<bool>>? _wireToGateLoadCorrectionRequester;
     private Func<string?, CancellationToken, Task<bool>>? _wireToGateFaultCargoHandoffRequester;
@@ -376,7 +379,7 @@ public sealed class MainViewModel : ViewModelBase
         Func<bool>? canRequestRecovery = null,
         Func<string?, CancellationToken, Task<bool>>? recoveryRequester = null,
         Func<bool>? canRequestLoadCancellation = null,
-        Func<CancellationToken, Task<bool>>? loadCancellationRequester = null,
+        Func<string?, CancellationToken, Task<bool>>? loadCancellationRequester = null,
         Func<bool>? canRequestLoadCompensation = null,
         Func<string?, CancellationToken, Task<bool>>? loadCompensationRequester = null,
         Func<bool>? canRequestLoadCorrection = null,
@@ -484,6 +487,27 @@ public sealed class MainViewModel : ViewModelBase
     {
         get => _hasWorklistItems;
         private set => SetProperty(ref _hasWorklistItems, value);
+    }
+
+    /// <summary>
+    /// 操作员在清单里选中的那一行，扫码前取消要取消的需求（批次7-14，<c>REQ-0211</c>）。选择只用于取消：
+    /// 本票不提供从清单挑待装任务的入口（<c>WORKLIST_SELECTION</c>，<c>REQ-0212</c>）。
+    /// </summary>
+    /// <remarks>
+    /// 清单整张替换时按 <c>DemandId</c> 找回同一条（<see cref="RebuildWorklistItemsCore"/>）：行对象每次重建，
+    /// 按引用或按值都会丢，而服务端换一次修订号不该把操作员刚做的选择抹掉。那条需求真的不在新清单里时选择清空，
+    /// 按下会得到「请重新选择」而不是悄悄换一条。
+    /// </remarks>
+    public WorklistItemRow? SelectedWorklistItem
+    {
+        get => _selectedWorklistItem;
+        set
+        {
+            if (SetProperty(ref _selectedWorklistItem, value))
+            {
+                RefreshLoadCancellationHintCore();
+            }
+        }
     }
 
     /// <summary>
@@ -637,6 +661,20 @@ public sealed class MainViewModel : ViewModelBase
 
     public string LoadCancellationUnavailableHintText =>
         HasLoadCancellationUnavailableHint ? LoadCancellationUnavailableHint : string.Empty;
+
+    /// <summary>本票的桩，实现前恒等于入口本身。</summary>
+    public bool CanPressLoadCancellation => CanRequestLoadCancellation && !_hasLoadCancellationSelectionHint;
+
+    /// <summary>本票的桩，实现前恒为假。</summary>
+    public bool HasLoadCancellationSelectionHint
+    {
+        get => _hasLoadCancellationSelectionHint;
+        private set => SetProperty(ref _hasLoadCancellationSelectionHint, value);
+    }
+
+    /// <summary>本票的桩。</summary>
+    public string LoadCancellationSelectionHintText =>
+        HasLoadCancellationSelectionHint ? LoadCancellationSelectionHint : string.Empty;
 
     /// <summary>
     /// 「修正装货」入口旁标出它针对的子批（批次7-13）。修正照旧针对本站最后一次装货；那一次的需求来自日志里的
@@ -1086,10 +1124,14 @@ public sealed class MainViewModel : ViewModelBase
     public Task<bool> RequestWireToGateRecoveryAsync(CancellationToken cancellationToken = default) =>
         RequestWithReasonAsync(_wireToGateRecoveryRequester, cancellationToken);
 
+    /// <summary>
+    /// 按下「取消装货」。所选清单行的需求一并交给业务服务，它只在扫码前取消、且本站有多条需求时用得上；
+    /// 在途装货的取消、只有一条清单项、以及重发已发出的那次取消，主体都不由这里决定（批次7-14）。
+    /// </summary>
     public Task<bool> RequestLoadCancellationAsync(CancellationToken cancellationToken = default) =>
         _wireToGateLoadCancellationRequester is null
             ? Task.FromResult(false)
-            : _wireToGateLoadCancellationRequester(cancellationToken);
+            : _wireToGateLoadCancellationRequester(SelectedWorklistItem?.DemandId, cancellationToken);
 
     public Task<bool> RequestLoadCompensationAsync(CancellationToken cancellationToken = default) =>
         RequestWithReasonAsync(_wireToGateLoadCompensationRequester, cancellationToken);
