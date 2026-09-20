@@ -11,6 +11,45 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
     private const byte ReadDiscreteInputsFunction = 0x02;
     private const byte WriteSingleCoilFunction = 0x05;
 
+    /// <summary>
+    /// The lowest transaction id a request may carry. Zero is excluded on purpose.
+    /// </summary>
+    /// <remarks>
+    /// Zero is the value a truncating module echoes back for request 256, and it is what the
+    /// field failure on 2026-09-13 actually reported
+    /// (<c>transaction 0, protocol 0, unit 255, length 5</c>). Keeping it out of the range of
+    /// legitimate requests is what makes that broken frame detectable: a response carrying 0 can
+    /// never coincide with a request we are waiting on.
+    /// </remarks>
+    private const ushort MinTransactionId = 1;
+
+    /// <summary>
+    /// The highest transaction id a request may carry -- one byte, not two.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The vehicles' Kangnaide C2000 IO module echoes only the <b>low byte</b> of the Modbus TCP
+    /// transaction id. Measured on agv01 on 2026-09-13 over one connection: request 256 came back
+    /// as transaction 0 on every run, at a 50 ms and at a 200 ms read interval alike, so the
+    /// failure is bound to the request count and not to timing. A 16-bit counter therefore loses
+    /// the module after 255 requests -- at the default 100 ms poll and two requests per poll,
+    /// about 13 seconds after connecting. The slots simulator echoes all 16 bits, which is why
+    /// every rehearsal passed. Restricting the counter to 1..255 made the same module answer 600
+    /// consecutive requests with zero errors. The sibling field probe carries the same fix
+    /// (<c>8005-agv-control-server</c>, <c>scripts/field/W1SlotIo.ps1</c>, <c>aeadd667</c>).
+    /// </para>
+    /// <para>
+    /// <b>This is also what makes it safe that <see cref="_transactionId"/> survives a reconnect.</b>
+    /// Every id this class emits now fits in one byte, so a truncating echo is bit-for-bit the id
+    /// we sent, whatever the counter's absolute value is. That holds by construction rather than by
+    /// luck, and it is the reason the reconnect path does not reset the counter. Raise this back to
+    /// <c>ushort.MaxValue</c> and both properties go away together: matching breaks at request 256,
+    /// and after the reconnect it never recovers, because the counter resumes at 257 and every
+    /// subsequent id also exceeds a byte.
+    /// </para>
+    /// </remarks>
+    private const ushort MaxTransactionId = 255;
+
     private readonly IoModuleSettings _settings;
     private readonly IAppLogger _logger;
     private readonly SemaphoreSlim _transportLock = new(1, 1);
@@ -20,6 +59,11 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
     private CancellationTokenSource? _lifetimeCts;
     private Task? _pollTask;
     private IoSnapshot _currentSnapshot = IoSnapshot.Unknown(DateTimeOffset.Now);
+
+    /// <summary>
+    /// The free-running request counter. Deliberately <b>not</b> reset when the transport is closed
+    /// and reopened -- see <see cref="MaxTransactionId"/> for why that is safe by construction.
+    /// </summary>
     private int _transactionId;
     private bool _disposed;
 
@@ -229,7 +273,7 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
         {
             await EnsureConnectedAsync(cancellationToken).ConfigureAwait(false);
             NetworkStream stream = _stream ?? throw new IOException("Modbus TCP连接不可用。");
-            ushort transactionId = unchecked((ushort)Interlocked.Increment(ref _transactionId));
+            ushort transactionId = NextTransactionId();
 
             byte[] request = new byte[7 + pdu.Length];
             BinaryPrimitives.WriteUInt16BigEndian(request.AsSpan(0, 2), transactionId);
@@ -281,6 +325,22 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
         {
             _transportLock.Release();
         }
+    }
+
+    /// <summary>
+    /// The next transaction id, cycling through
+    /// <see cref="MinTransactionId"/>..<see cref="MaxTransactionId"/>.
+    /// </summary>
+    /// <remarks>
+    /// The mask makes the modulus non-negative once <see cref="Interlocked.Increment(ref int)"/>
+    /// wraps past <see cref="int.MaxValue"/>; the one-off discontinuity that introduces at the wrap
+    /// point costs nothing, because the only properties this method owes are that the id stays
+    /// inside the range and that consecutive requests differ.
+    /// </remarks>
+    private ushort NextTransactionId()
+    {
+        int sequence = Interlocked.Increment(ref _transactionId) & int.MaxValue;
+        return (ushort)(MinTransactionId + (sequence % (MaxTransactionId - MinTransactionId + 1)));
     }
 
     private async Task EnsureConnectedAsync(CancellationToken cancellationToken)
