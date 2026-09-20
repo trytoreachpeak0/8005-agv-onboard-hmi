@@ -457,7 +457,8 @@ public sealed partial class MultiDemandJourneyG2Tests
                 token => business.RequestManualChargingReturnToServiceAsync(cancellationToken: token),
                 () => business.IsLoadCancellationBeforeSublotOpen,
                 () => business.CurrentSublotRejection,
-                () => business.RecoveryReasonAlreadyGiven);
+                () => business.RecoveryReasonAlreadyGiven,
+                () => business.RecoveryFallbackDemandId);
             await viewModel.InitializeAsync();
 
             try

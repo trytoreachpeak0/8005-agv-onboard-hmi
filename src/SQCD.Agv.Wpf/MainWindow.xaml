@@ -359,7 +359,10 @@
                             Visibility="{Binding CanRequestLoadCorrection, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnLoadCorrectionClick"
                             Content="修正装货" />
-                    <!-- 修正装货针对本站最后一次装货；多条清单项时标出是哪一个子批（批次7-13）。 -->
+                    <!--
+                        修正装货只针对本站最后一次装货，文案写明这一点并标出是哪一个子批（批次7-13 起，
+                        批次7-14 改写文案）。
+                    -->
                     <TextBlock Margin="0,0,8,0"
                                VerticalAlignment="Center"
                                FontSize="13"
@@ -367,6 +370,17 @@
                                AutomationProperties.AutomationId="LoadCorrectionTarget"
                                Text="{Binding LoadCorrectionTargetText}"
                                Visibility="{Binding CanRequestLoadCorrection, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <!--
+                        补偿清空、故障交接、强制机械恢复回落到「上次完成的装货」时，标出那一条的子批（批次7-14）：
+                        同一站装过两条需求时，操作员否则看不出补偿的是哪一条。有在途操作时不出现。
+                    -->
+                    <TextBlock Margin="0,0,8,0"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Foreground="{StaticResource MutedBrush}"
+                               AutomationProperties.AutomationId="RecoveryFallbackTarget"
+                               Text="{Binding RecoveryFallbackTargetText}"
+                               Visibility="{Binding HasRecoveryFallbackTarget, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"

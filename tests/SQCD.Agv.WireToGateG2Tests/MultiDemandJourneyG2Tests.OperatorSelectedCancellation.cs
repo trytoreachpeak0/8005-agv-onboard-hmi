@@ -166,9 +166,12 @@ public sealed partial class MultiDemandJourneyG2Tests
             token,
             journalPath,
             NewIoWithCargo());
+        // Waited on the unanswered cancellation being back in the entry gates' cache, which is what
+        // makes a pick unnecessary -- not on the entry merely being offered, which it also is while
+        // the cache still reads empty and the stop therefore still looks like "pick one first".
         await afterRestart.WaitUntilAsync(
-            () => afterRestart.Business.CanRequestLoadCancellation,
-            "the cancellation entry to come back after the restart",
+            () => afterRestart.Business.IsLoadCancellationBeforeSublotOpen,
+            "the restarted vehicle to read its unanswered cancellation back from the journal",
             token);
         // What the entry request and an operator event do in the product, done once here.
         afterRestart.ViewModel.RefreshWireToGateInputState();
@@ -179,6 +182,11 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.True(afterRestart.ViewModel.CanPressLoadCancellation);
         Assert.False(afterRestart.ViewModel.HasLoadCancellationSelectionHint);
 
+        // Picked the *other* demand before pressing: a retry must ignore it. Asserting only "nothing
+        // was picked" would leave the interesting failure -- today's pick overwriting the journal's
+        // subject -- untested, because null is exactly what a broken implementation would fall back
+        // from.
+        SelectWorklistItem(afterRestart, DemandA);
         Assert.True(await afterRestart.ViewModel.RequestLoadCancellationAsync(token));
 
         (string MessageId, string WireLine)[] requests =
@@ -196,6 +204,10 @@ public sealed partial class MultiDemandJourneyG2Tests
             retried.RootElement.GetProperty("payload").GetProperty("demandId").GetString());
         Assert.Empty(first.Server.RecoveryRequestConflicts);
         Assert.Equal(0, afterRestart.Io.UnlockCount);
+        // And the operator is told, rather than left to infer it from a screen that still highlights A.
+        Assert.Contains(
+            afterRestart.Events,
+            item => item.Message.Contains("这一次按下是它的重发", StringComparison.Ordinal));
     }
 
     private static FakeIoModuleClient NewIoWithCargo()

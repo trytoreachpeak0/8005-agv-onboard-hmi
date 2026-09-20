@@ -468,13 +468,13 @@ public sealed class MultiDemandViewModelTests
         });
 
         Assert.True(viewModel.CanRequestLoadCorrection);
-        Assert.Equal("修正对象：子批 SUBLOT-B", viewModel.LoadCorrectionTargetText);
+        Assert.Equal("只能修正本站最后一次装货：子批 SUBLOT-B", viewModel.LoadCorrectionTargetText);
 
         viewModel.UpdateWireToGateJourney(Journey(Worklist(
             2,
             Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2))));
 
-        Assert.Equal("修正对象：子批 SUBLOT-B", viewModel.LoadCorrectionTargetText);
+        Assert.Equal("只能修正本站最后一次装货：子批 SUBLOT-B", viewModel.LoadCorrectionTargetText);
     }
 
     /// <summary>
@@ -500,7 +500,84 @@ public sealed class MultiDemandViewModelTests
             LastCompletedLoadOperationContext = WireToGateRecoveryOperationContext.FromCommand(Command(DemandC, [2]))
         });
 
-        Assert.Equal("修正对象：本站最后一次装货", viewModel.LoadCorrectionTargetText);
+        Assert.Equal("只能修正本站最后一次装货", viewModel.LoadCorrectionTargetText);
+    }
+
+    /// <summary>
+    /// 同一站先后装完两条需求：修正对象跟着换成后装的那一条，并且在操作员事件区留下一条正话——先装那一条的
+    /// 修正窗口已经关了（批次7-14，验收第 3 条）。
+    /// </summary>
+    /// <remarks>
+    /// 断言的是「出现了这句话」，不是「没显示错的子批」：窗口关闭这件事不会在别处留下痕迹，操作员按下
+    /// 「修正装货」之前唯一的提醒就是这一条，所以它必须是正事实。日志里没有它、只有「修正对象」那一行悄悄
+    /// 换了内容，就等于没有提醒。
+    /// </remarks>
+    [Fact]
+    public async Task ASecondLoadAtTheSameStopClosesTheFirstCorrectionWindowAndSaysSo()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => false,
+            canRequestLoadCorrection: () => true,
+            loadCorrectionRequester: _ => Task.FromResult(true));
+        viewModel.UpdateWireToGateStatus(Session());
+        viewModel.UpdateWireToGateJourney(Journey(Worklist(
+            1,
+            Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2),
+            Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
+
+        viewModel.UpdateJournaledOperations(WireToGateRecoveryState.Empty with
+        {
+            LastCompletedLoadOperationContext = WireToGateRecoveryOperationContext.FromCommand(Command(DemandA, [1]))
+        });
+
+        Assert.Equal("只能修正本站最后一次装货：子批 SUBLOT-A", viewModel.LoadCorrectionTargetText);
+        // 第一次装完不提醒任何窗口关闭：在它之前没有窗口。
+        Assert.DoesNotContain(viewModel.Logs, line => line.Message.Contains("修正窗口", StringComparison.Ordinal));
+
+        viewModel.UpdateJournaledOperations(WireToGateRecoveryState.Empty with
+        {
+            LastCompletedLoadOperationContext = WireToGateRecoveryOperationContext.FromCommand(Command(DemandB, [2]))
+        });
+
+        Assert.Equal("只能修正本站最后一次装货：子批 SUBLOT-B", viewModel.LoadCorrectionTargetText);
+        Assert.Contains(
+            viewModel.Logs,
+            line => line.Message == "子批 SUBLOT-A 的修正窗口已随子批 SUBLOT-B 装货关闭。");
+    }
+
+    /// <summary>
+    /// 回落到「上次完成的装货」的三个入口（补偿清空、故障交接、强制机械恢复）同样标出目标子批；有在途操作时
+    /// 不标——那时主体就是那次操作，不是「上一次」，业务服务据此给出 <c>null</c>（批次7-14，验收第 3 条）。
+    /// </summary>
+    [Fact]
+    public async Task TheFallbackRecoveryEntriesNameTheTargetSublotOnlyWhenTheyFallBack()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        string? fallbackDemandId = DemandB;
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => false,
+            canRequestLoadCompensation: () => true,
+            loadCompensationRequester: (_, _) => Task.FromResult(true),
+            recoveryFallbackDemandId: () => fallbackDemandId);
+        viewModel.UpdateWireToGateStatus(Session());
+        viewModel.UpdateWireToGateJourney(Journey(Worklist(
+            1,
+            Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2),
+            Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
+
+        Assert.True(viewModel.HasRecoveryFallbackTarget);
+        Assert.Equal("目标：子批 SUBLOT-B", viewModel.RecoveryFallbackTargetText);
+
+        fallbackDemandId = null;
+        viewModel.RefreshWireToGateInputState();
+
+        Assert.False(viewModel.HasRecoveryFallbackTarget);
+        Assert.Equal(string.Empty, viewModel.RecoveryFallbackTargetText);
     }
 
     internal static WireToGateSlotOperationCommand Command(string demandId, IReadOnlyList<int> slots) => new(

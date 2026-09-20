@@ -230,7 +230,8 @@ public partial class App : System.Windows.Application, IDisposable
                         cancellationToken: cancellationToken),
                     () => _wireToGateBusiness.IsLoadCancellationBeforeSublotOpen,
                     () => _wireToGateBusiness.CurrentSublotRejection,
-                    () => _wireToGateBusiness.RecoveryReasonAlreadyGiven);
+                    () => _wireToGateBusiness.RecoveryReasonAlreadyGiven,
+                    () => _wireToGateBusiness.RecoveryFallbackDemandId);
                 viewModel.ConfigureForcedIsolation(
                     () => _wireToGateBusiness.CanConfirmForcedMechanicalRecovery,
                     cancellationToken => _wireToGateBusiness.ConfirmForcedMechanicalRecoveryAsync(

@@ -44,6 +44,8 @@ $checks = [ordered]@{
     # 「暂不可用」那句已被替换，不该再留在界面上：留着会和新提示同时出现，说两件互相矛盾的事。
     noLoadCancellationUnavailableHint = ($xaml -notmatch 'LoadCancellationUnavailable') -and ($xaml -notmatch '扫码前取消暂不可用')
     loadCorrectionTarget = ($xaml -match 'AutomationProperties\.AutomationId="LoadCorrectionTarget"') -and ($xaml -match 'Text="\{Binding LoadCorrectionTargetText\}"')
+    # 回落到「上次完成的装货」的三个入口也标出目标子批（批次7-14，onboard-hmi#135）。
+    recoveryFallbackTarget = ($xaml -match 'AutomationProperties\.AutomationId="RecoveryFallbackTarget"') -and ($xaml -match 'Text="\{Binding RecoveryFallbackTargetText\}"') -and ($xaml -match 'Binding HasRecoveryFallbackTarget, Converter')
     # 判故障只在服务端（REQ-0359）：本机界面不得出现判故障的按钮或绑定。
     noFaultDeclarationEntry = ($xaml -notmatch 'Content="[^"]*(判故障|判定故障|故障判定|人工判)') -and ($xaml -notmatch 'FaultDeclaration')
     dangerStyle = ($xaml -match 'Background="\{StaticResource DangerBrush\}"')

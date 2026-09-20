@@ -93,6 +93,32 @@ public sealed partial class WireToGateBusinessService
             StringComparison.Ordinal);
 
     /// <summary>
+    /// The demand the entries that fall back to the last settled load are about -- compensation,
+    /// fault cargo handoff, forced mechanical recovery -- or <c>null</c> when they are not falling
+    /// back (onboard-hmi#135).
+    /// </summary>
+    /// <remarks>
+    /// <b>Read through <see cref="FindRecoveryOperation"/>, not beside it.</b> Whether the subject is
+    /// the armed operation or the last settled load is that helper's rule, and the question here is
+    /// only which of the two it picked -- so this compares its answer with the settled load rather
+    /// than re-deriving "is anything armed", which is how two copies of one rule drift apart. With
+    /// something armed the entries are about that operation, which the screen already names; the
+    /// subject is the last settled load exactly when there is nothing armed, and then the operator
+    /// has no other way to tell which demand a compensation is about.
+    /// </remarks>
+    public string? RecoveryFallbackDemandId
+    {
+        get
+        {
+            WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+            return FindRecoveryOperation(state, null) is { } subject
+                && ReferenceEquals(subject, state.LastCompletedLoadOperationContext)
+                ? subject.DemandId
+                : null;
+        }
+    }
+
+    /// <summary>
     /// The slots left physically unknown by an acknowledged forced mechanical recovery (REQ-0241),
     /// ascending; empty when there are none.
     /// </summary>
@@ -758,6 +784,19 @@ public sealed partial class WireToGateBusinessService
                 default:
                     throw new InvalidOperationException("RECOVERY_OPERATION_CONTEXT_MISSING");
             }
+        }
+
+        if (selectedDemandId is not null
+            && !string.Equals(selectedDemandId, target.DemandId, StringComparison.Ordinal))
+        {
+            // The subject came from the journal, so this press is the resend of a cancellation that
+            // is still waiting for its answer -- and the operator has a different row highlighted.
+            // Said out loud rather than left to be inferred: otherwise they press for the row they
+            // picked and get, correctly but invisibly, the earlier one.
+            PublishOperatorResponse(
+                "RECOVERY_VECTOR_REQUESTED",
+                "本站已有一次取消在等服务端答复，这一次按下是它的重发；取消的仍是先前选中的那条任务，"
+                + "不是此刻选中的这条。 ");
         }
 
         if (await AskForLoadCancellationAsync(
