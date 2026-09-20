@@ -202,6 +202,7 @@ public sealed partial class MultiDemandJourneyG2Tests
     {
         private readonly object _sync = new();
         private readonly List<Exception> _uiErrors = [];
+        private readonly List<WireToGateOperatorEvent> _events = [];
 
         private Harness(
             FakeControlServer server,
@@ -219,6 +220,28 @@ public sealed partial class MultiDemandJourneyG2Tests
             Business = business;
             Controller = controller;
             ViewModel = viewModel;
+            // Subscribed here rather than beside the view-model handlers below: what a projection
+            // carried is only visible on the event itself, and one raised during the handshake would
+            // otherwise be over before a test could subscribe.
+            business.OperatorEventPublished += (_, args) =>
+            {
+                lock (_events)
+                {
+                    _events.Add(args.Value);
+                }
+            };
+        }
+
+        /// <summary>Every operator event this vehicle has published, oldest first.</summary>
+        public IReadOnlyList<WireToGateOperatorEvent> Events
+        {
+            get
+            {
+                lock (_events)
+                {
+                    return [.. _events];
+                }
+            }
         }
 
         public FakeControlServer Server { get; }

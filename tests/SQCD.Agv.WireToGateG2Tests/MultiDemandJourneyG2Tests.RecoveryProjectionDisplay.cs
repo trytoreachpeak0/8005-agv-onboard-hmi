@@ -54,8 +54,14 @@ public sealed partial class MultiDemandJourneyG2Tests
     private const string ResultAckPendingLine =
         "操作已安全结束，但结果确认暂未收到；系统将保持同一结果重放，不会重复执行IO。";
 
-    /// <summary>The line the restored recovery projection publishes for A.</summary>
+    /// <summary>The line the restored recovery projection publishes for A, in A's own process.</summary>
     private const string RecoveryRestoredLine = "装货操作未完成：1号仓，需要管理员恢复。";
+
+    /// <summary>
+    /// The same line worded as a previous process's, which is what the restore says about an attempt
+    /// this process never ran.
+    /// </summary>
+    private const string PreviousRunRecoveryLine = "上次装货操作未完成：1号仓，需要管理员恢复。";
 
     /// <summary>
     /// A ends <c>UNKNOWN</c> and its result acknowledgement never comes. Its restore reads the
@@ -85,7 +91,8 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         await SendSlotCommandAsync(harness, DemandA, AttemptA, [1]);
         await harness.WaitUntilAsync(
-            () => harness.Business.CurrentExpectedActionWait?.SlotOperationAttemptId == AttemptA
+            () => harness.Business.CurrentOperationSnapshot?.Stage == WireToGateHmiOperationStage.WaitingOperator
+                && harness.Business.CurrentOperationSnapshot?.SlotOperationAttemptId == AttemptA
                 && io.UnlockCount == 1,
             "A's slot to be unlocked and waiting on the operator",
             token);
@@ -162,7 +169,8 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         await SendSlotCommandAsync(harness, DemandA, AttemptA, [1]);
         await harness.WaitUntilAsync(
-            () => harness.Business.CurrentExpectedActionWait?.SlotOperationAttemptId == AttemptA
+            () => harness.Business.CurrentOperationSnapshot?.Stage == WireToGateHmiOperationStage.WaitingOperator
+                && harness.Business.CurrentOperationSnapshot?.SlotOperationAttemptId == AttemptA
                 && io.UnlockCount == 1,
             "A's slot to be unlocked and waiting on the operator",
             token);
@@ -222,10 +230,14 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// stayed green through.
     /// </para>
     /// <para>
-    /// <b>What it asserts is the snapshot, because the entry is a function of it.</b>
+    /// <b>What it asserts is the snapshot on the restore's own event, and nothing weaker.</b>
     /// <c>MainViewModel</c> offers the recovery entry only while the current operation's stage is
     /// <c>RecoveryRequired</c>, so a restore that publishes its line without a snapshot is an entry
-    /// that never appears.
+    /// that never appears. But the current operation is not enough to assert on here: the
+    /// interrupted settlement this restart also runs publishes a <c>RecoveryRequired</c> snapshot of
+    /// its own just before, so the screen would read the same either way and the test would pass over
+    /// a restore that had stopped carrying anything. Measured, not assumed -- an owner-equality
+    /// version of the fix left that weaker assertion green.
     /// </para>
     /// </remarks>
     [Fact]
@@ -233,17 +245,39 @@ public sealed partial class MultiDemandJourneyG2Tests
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string journalPath = Harness.NewJournalPath();
+        FakeIoModuleClient firstIo = new() { OperatorNeverActs = true, KeepSnapshotFresh = true };
         FakeControlServer first;
         await using (Harness before = await StartTwoDemandStopAsync(
-            new FakeIoModuleClient { OperatorNeverActs = true, KeepSnapshotFresh = true },
+            firstIo,
             token,
+            // A's result goes out and is never answered. Without that the restart's own settlement
+            // concludes the attempt and announces the recovery itself, and the restore -- which says
+            // a recovery once per process, whoever said it -- returns before publishing anything.
+            server => server.OperationResultAcksToDrop = 1,
             journalPath: journalPath))
         {
             first = before.Server;
             await SendSlotCommandAsync(before, DemandA, AttemptA, [1]);
+            // Waited on the stage, not just on the clock: the clock is already keyed while the door
+            // is still being unlocked, and lock feedback taken away at that point is retried rather
+            // than given up on.
             await before.WaitUntilAsync(
-                () => before.Business.CurrentExpectedActionWait?.SlotOperationAttemptId == AttemptA,
+                () => before.Business.CurrentOperationSnapshot?.Stage == WireToGateHmiOperationStage.WaitingOperator
+                    && before.Business.CurrentOperationSnapshot?.SlotOperationAttemptId == AttemptA
+                    && firstIo.UnlockCount == 1,
                 "A's slot to be unlocked and waiting on the operator",
+                token);
+
+            // Two waits, because the harness gives each one five seconds and the DurableAck timeout
+            // alone is two.
+            firstIo.SetUnreadable(0);
+            await before.WaitUntilAsync(
+                () => before.Server.ReceivedEnvelopes.Any(item => item.MessageType == "OperationResult"),
+                "A's UNKNOWN result to reach the server",
+                token);
+            await before.WaitUntilAsync(
+                () => OperatorLog(before).Contains(ResultAckPendingLine),
+                "A's acknowledgement to be given up on",
                 token);
         }
 
@@ -262,12 +296,18 @@ public sealed partial class MultiDemandJourneyG2Tests
             io: new FakeIoModuleClient { KeepSnapshotFresh = true });
 
         await after.WaitUntilAsync(
-            () => after.Business.CurrentOperationSnapshot?.Stage == WireToGateHmiOperationStage.RecoveryRequired,
-            "the restored recovery projection to reach the screen",
+            () => after.Events.Any(item => item.Message == PreviousRunRecoveryLine),
+            "the restored recovery projection to be published",
             token);
 
+        WireToGateHmiOperationSnapshot? carried = after.Events
+            .Single(item => item.Message == PreviousRunRecoveryLine)
+            .Operation;
+        Assert.NotNull(carried);
+        Assert.Equal(AttemptA, carried.SlotOperationAttemptId);
+        Assert.Equal([1], carried.Slots);
+        Assert.Equal(WireToGateHmiOperationStage.RecoveryRequired, carried.Stage);
         Assert.Equal(AttemptA, after.Business.CurrentOperationSnapshot?.SlotOperationAttemptId);
-        Assert.Equal([1], after.Business.CurrentOperationSnapshot?.Slots);
         Assert.Empty(after.UiErrors);
     }
 
