@@ -13,6 +13,7 @@ public sealed class OnboardController : IAsyncDisposable
     private readonly OnboardWorkflowOptions _options;
     private readonly Func<bool> _externalSafetyReadyProvider;
     private readonly Func<WireToGateJourneySnapshot?>? _journeyProvider;
+    private readonly Func<bool> _peerSlotWorkInFlightProvider;
     // 操作锁
     private readonly SemaphoreSlim _operationLock = new(1, 1);
     // 线程安全集合
@@ -41,7 +42,18 @@ public sealed class OnboardController : IAsyncDisposable
     private bool _started;
     // 是否已经释放资源、不能继续使用
     private bool _disposed;
-    // 一旦写入便保持到进程退出，普通状态发布不得覆盖严重安全故障。
+    // 一旦写入便保持到 ClearFatalFaultAsync 复核通过，普通状态发布不得覆盖严重安全故障。
+    //
+    // 这个锁存在 v2 上约束什么，是一张写下来并且被守住的表：
+    // tests/SQCD.Agv.UnitTests/FatalFaultScopeArchitectureTests.cs。**答案是「只有本控制器发布的
+    // 快照」——一个物理动作都不在里面。** 本文件里的四个读点有三个在 SubmitScanAsync 那条 MVP
+    // 流程上，而 v2 下界面扫码走 WireToGateBusinessService，那条路一次都不会被调用；第四个是
+    // PublishCore，只改快照。服务端下发的仓位命令与操作员按出来的恢复向量各自直接持
+    // IIoModuleClient，不经过这里。
+    //
+    // 所以：**任何依赖「锁存 ⇒ 本机不会开门」的陈述，在 v2 上都要先去那张表里核一遍。**
+    // 8005-agv-onboard-hmi#171 的第一版就是在这里推错了——写对了「执行器不经过控制器」这个
+    // 一般命题，却只把它用在一处，于是横幅、扫码入口、复位的在途判据三处同时说了假话。
     private FatalFault? _fatalFault;
 
     // 创建控制器时，外部必须把五项依赖传进来。
@@ -52,7 +64,8 @@ public sealed class OnboardController : IAsyncDisposable
         IClock clock,
         OnboardWorkflowOptions options,
         Func<bool>? externalSafetyReadyProvider = null,
-        Func<WireToGateJourneySnapshot?>? journeyProvider = null)
+        Func<WireToGateJourneySnapshot?>? journeyProvider = null,
+        Func<bool>? peerSlotWorkInFlightProvider = null)
     {
         _ioModule = ioModule ?? throw new ArgumentNullException(nameof(ioModule));
         _ruleGateway = ruleGateway ?? throw new ArgumentNullException(nameof(ruleGateway));
@@ -61,6 +74,10 @@ public sealed class OnboardController : IAsyncDisposable
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _externalSafetyReadyProvider = externalSafetyReadyProvider ?? (() => true);
         _journeyProvider = journeyProvider;
+        // v2 的仓位操作与恢复向量都在本控制器之外执行，各有自己的串行化门。复位复核要问的
+        // 「现在有没有在开门」只能从那一侧读——本控制器的 _operationLock 只覆盖 MVP 的
+        // SubmitScanAsync，在 v2 上永远拿得到（8005-agv-onboard-hmi#171）。
+        _peerSlotWorkInFlightProvider = peerSlotWorkInFlightProvider ?? (() => false);
         _current = new OnboardSnapshot(
             OnboardState.Starting,
             false,
@@ -616,6 +633,12 @@ public sealed class OnboardController : IAsyncDisposable
     /// (8005-agv-onboard-hmi#171). False whenever nothing is latched, so a normal run never offers
     /// this entry.
     /// </summary>
+    /// <summary>
+    /// 现在是不是锁存着一个严重安全故障。v2 的业务路径不经过本控制器，所以那一侧要自己读这个，
+    /// 才能让「本界面已禁止扫码开门」成为真的（8005-agv-onboard-hmi#171）。
+    /// </summary>
+    public bool IsFatalFaultLatched => Volatile.Read(ref _fatalFault) is not null;
+
     public bool CanClearFatalFault =>
         Volatile.Read(ref _fatalFault) is { } latched
         && OnboardFailureClassification.Clearance(latched.ErrorCode)
@@ -664,6 +687,15 @@ public sealed class OnboardController : IAsyncDisposable
             != FatalFaultClearance.ClearableBySafetyReview)
         {
             RefuseClearance(latched, "该故障不能在车上复位，请重启车载端程序。", operatorId);
+            return false;
+        }
+
+        // 两把锁都要问。本控制器的 _operationLock 只覆盖 MVP 的 SubmitScanAsync；v2 的仓位操作与
+        // 恢复向量各在自己的执行器里跑，各有自己的门。只问前者，在 v2 上等于没问
+        // （8005-agv-onboard-hmi#171 审查 S2）。
+        if (_peerSlotWorkInFlightProvider())
+        {
+            RefuseClearance(latched, "当前装卸操作尚未结束，请等待其结束后再复位。", operatorId);
             return false;
         }
 

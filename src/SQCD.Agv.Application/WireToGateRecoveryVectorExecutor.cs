@@ -30,6 +30,19 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         ValidateOptions(options);
     }
 
+    /// <summary>
+    /// True while this executor holds its own serialisation gate — a recovery vector is running here
+    /// (8005-agv-onboard-hmi#171). Derived from the gate, never from a field kept beside it; see
+    /// <see cref="WireToGateSlotOperationExecutor.HasOperationInFlight"/> for why that matters.
+    /// </summary>
+    /// <remarks>
+    /// This executor opens doors too — compensation clearing, load correction and forced mechanical
+    /// recovery all pulse the lock at <c>ExecuteExclusiveAsync</c>. It is the fourth of the four
+    /// unlock sites in <c>FatalFaultScopeArchitectureTests</c>, and the one the fatal-fault latch
+    /// cannot reach, so a clearance must ask it as well as the slot executor.
+    /// </remarks>
+    public bool HasOperationInFlight => _operationGate.CurrentCount == 0;
+
     public Task<WireToGateRecoveryVectorExecutionResult> ExecuteClearAsync(
         WireToGateRecoveryVectorContext context,
         Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>? progress,

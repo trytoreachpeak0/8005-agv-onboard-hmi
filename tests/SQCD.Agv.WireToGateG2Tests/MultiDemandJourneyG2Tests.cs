@@ -400,7 +400,11 @@ public sealed partial class MultiDemandJourneyG2Tests
                 OperatorVariable,
                 safety,
                 TimeSpan.FromSeconds(30),
-                TimeSpan.FromMilliseconds(500));
+                TimeSpan.FromMilliseconds(500),
+                recoveryOptions: null,
+                // 与 App 接的是同一根线（8005-agv-onboard-hmi#171）。夹具不接，这里就证不到
+                // 「锁存之后扫码真的被拒」——而那正是故障横幅对操作员说的那句话。
+                fatalFaultLatched: () => controller.IsFatalFaultLatched);
             Harness harness = new(server, io, journalPath, session, business, controller, viewModel);
 
             session.StateChanged += (_, args) => harness.OnUiThread(() =>

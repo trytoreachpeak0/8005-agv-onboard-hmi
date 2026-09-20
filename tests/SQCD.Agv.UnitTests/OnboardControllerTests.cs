@@ -477,9 +477,43 @@ public sealed class OnboardControllerTests
     }
 
     /// <summary>
-    /// Refused while a slot operation is still running. The refusal reason is asserted, not just the
-    /// false: with a door open mid-operation the physical review would refuse too, and then this test
-    /// would pass without the operation gate existing at all.
+    /// v2 那一半：仓位操作跑在本控制器之外，复位必须问得到它（8005-agv-onboard-hmi#171 审查 S2）。
+    /// </summary>
+    /// <remarks>
+    /// 下面那条 <see cref="ClearingIsRefusedWhileASlotOperationIsStillRunning"/> 走的是
+    /// <c>SubmitScanAsync</c> 的操作锁，那是 MVP 路径——**在 v2 上它永远拿得到，所以那条判据
+    /// 在 v2 上是空的，而那条测试照样绿**。两条覆盖的不是同一件事，删任何一条都会留下一个洞。
+    ///
+    /// 这里 IO 快照全部安全（门全锁、开锁输出全 0、快照新鲜），所以拒绝的理由只可能是在途查询——
+    /// 不这么摆的话，物理复核也会拒，这条测试就分不出「在途判据存在」和「门碰巧开着」。
+    /// </remarks>
+    [Fact]
+    public async Task ClearingIsRefusedWhileTheWireToGateExecutorIsStillOpeningADoor()
+    {
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-PEER-BUSY");
+        bool peerBusy = true;
+        await using OnboardController controller = CreateController(
+            io,
+            rule,
+            peerSlotWorkInFlightProvider: () => peerBusy);
+        await controller.StartAsync(TestContext.Current.CancellationToken);
+        controller.EnterFatalFault("UI_COMMAND_FAILED", "操作界面出现异常，本界面已禁止扫码开门。");
+
+        Assert.False(await controller.ClearFatalFaultAsync("OP-7", TestContext.Current.CancellationToken));
+
+        Assert.Contains("当前装卸操作尚未结束", controller.Current.Guidance);
+        AssertStillLatched(controller, "UI_COMMAND_FAILED");
+
+        // 对端空下来之后，同一次复核就过了 -- 证明挡住它的是在途查询，不是别的判据。
+        peerBusy = false;
+        Assert.True(await controller.ClearFatalFaultAsync("OP-7", TestContext.Current.CancellationToken));
+        Assert.NotEqual(OnboardState.Faulted, controller.Current.State);
+    }
+
+    /// <summary>
+    /// MVP 那一半：<c>SubmitScanAsync</c> 持有的操作锁。判据的理由被断言了，不只是 false——
+    /// 操作进行中门是开的，物理复核本来也会拒，只断 false 的话这条测试在没有操作锁判据时照样绿。
     /// </summary>
     [Fact]
     public async Task ClearingIsRefusedWhileASlotOperationIsStillRunning()
@@ -832,7 +866,8 @@ public sealed class OnboardControllerTests
         FakeRuleGateway rule,
         Func<bool>? externalSafetyReadyProvider = null,
         Func<WireToGateJourneySnapshot?>? journeyProvider = null,
-        FakeLogger? logger = null)
+        FakeLogger? logger = null,
+        Func<bool>? peerSlotWorkInFlightProvider = null)
     {
         return new OnboardController(
             io,
@@ -848,7 +883,8 @@ public sealed class OnboardControllerTests
                 128,
                 2),
             externalSafetyReadyProvider,
-            journeyProvider);
+            journeyProvider,
+            peerSlotWorkInFlightProvider);
     }
 
     private sealed class FakeIoModule : IIoModuleClient

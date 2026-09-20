@@ -78,7 +78,11 @@ public partial class App : System.Windows.Application, IDisposable
                             ? journey
                             : null;
                     }
-            : null);
+            : null,
+                // 复位复核要问的「现在有没有在开门」。控制器自己的 _operationLock 只覆盖 MVP 的
+                // SubmitScanAsync，在 v2 上永远拿得到，所以真实来源是那两个执行器各自的门
+                // （8005-agv-onboard-hmi#171）。业务服务晚于控制器构造，故延迟求值。
+                () => _wireToGateBusiness?.HasSlotWorkInFlight == true);
             if (_ruleGateway is TcpJsonRuleGateway legacyRuleGateway)
             {
                 legacyRuleGateway.HeartbeatStatusProvider = () => new RuleHeartbeatStatus(
@@ -181,7 +185,10 @@ public partial class App : System.Windows.Application, IDisposable
                         settings.WireToGate.RecoveryResumeEnabled,
                         settings.WireToGate.RecoveryAuthenticationProofEnvironmentVariable,
                         settings.WireToGate.RecoveryAdministratorRole,
-                        settings.WireToGate.RecoveryVerificationMethod));
+                        settings.WireToGate.RecoveryVerificationMethod),
+                    // 让「本界面已禁止扫码开门」成为真的：v2 的扫码不经过控制器，所以业务服务
+                    // 自己读锁存（8005-agv-onboard-hmi#171）。
+                    () => _controller?.IsFatalFaultLatched == true);
                 _wireToGateBusiness.SublotEntryRequested += (_, args) =>
                 {
                     _logger.Write(

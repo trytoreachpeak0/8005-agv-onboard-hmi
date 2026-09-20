@@ -34,6 +34,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private readonly IVehicleSafetySignalProvider _vehicleSafetySignalProvider;
     private readonly IObservableVehicleSafetySignalProvider? _observableVehicleSafetySignalProvider;
     private readonly string _operatorIdEnvironmentVariable;
+    private readonly Func<bool> _fatalFaultLatched;
     private readonly TimeSpan _ioSnapshotMaxAge;
     private readonly TimeSpan _vehicleSafetyMaxAge;
     private readonly TimeSpan _vehicleSafetyClockSkewTolerance;
@@ -119,9 +120,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         IVehicleSafetySignalProvider? vehicleSafetySignalProvider = null,
         TimeSpan? vehicleSafetyMaxAge = null,
         TimeSpan? vehicleSafetyClockSkewTolerance = null,
-        WireToGateRecoveryOptions? recoveryOptions = null)
+        WireToGateRecoveryOptions? recoveryOptions = null,
+        Func<bool>? fatalFaultLatched = null)
     {
         _session = session;
+        // 严重安全故障锁存的查询。默认「没有锁存」，因为本服务的测试夹具与自动化宿主都不带控制器；
+        // 产品里由 App 接上 OnboardController.IsFatalFaultLatched（8005-agv-onboard-hmi#171）。
+        _fatalFaultLatched = fatalFaultLatched ?? (() => false);
         _ioModule = ioModule;
         _logger = logger;
         _clock = clock;
@@ -180,10 +185,35 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// while its cancellation record is open (control-server#83), so an entry submitted then would
     /// leave the operator waiting for a slot operation that never comes.
     /// </remarks>
+    /// <remarks>
+    /// <para>
+    /// <b>严重安全故障锁存时这里关闭（8005-agv-onboard-hmi#171）。</b>v2 下界面扫码走的是本服务，
+    /// 不再经过 <c>OnboardController.SubmitScanAsync</c>，所以锁存挡不到它——而故障横幅对操作员
+    /// 说的正是「本界面已禁止扫码开门」。判据放在这里而不是界面层，是因为界面层已经有两条刷新
+    /// 路径（<c>ApplyWireToGatePresentationCore</c> 判故障态、<c>RefreshWireToGateInputStateCore</c>
+    /// 不判），在其中一条上加门就是把 onboard-hmi#174 那个按钮忽隐忽现的缺陷再造一遍。
+    /// </para>
+    /// <para>
+    /// 关掉入口只挡住「按钮点不下去」。**横幅断言的是「按下去不会开门」**，那一半由
+    /// <see cref="SubmitSublotAsync"/> 开头的同一条判据承担——两件事，两条判据。
+    /// </para>
+    /// </remarks>
     public bool CanSubmitSublot =>
-        _session.Current.Readiness == WireToGateSessionReadiness.Ready
+        !_fatalFaultLatched()
+        && _session.Current.Readiness == WireToGateSessionReadiness.Ready
         && Volatile.Read(ref _currentEntryRequest) is not null
         && !IsLoadCancellationBeforeSublotOpen;
+
+    /// <summary>
+    /// 本机的仓门工作是不是正在进行：两个执行器各自的串行化门，任一被持有就是 true
+    /// （8005-agv-onboard-hmi#171）。严重安全故障的复位复核拿它当「没有在途装卸」那一条判据。
+    /// </summary>
+    /// <remarks>
+    /// <c>OnboardController</c> 自己的 <c>_operationLock</c> 只覆盖 MVP 的 <c>SubmitScanAsync</c>，
+    /// 在 v2 上永远拿得到，所以那条判据在 v2 上是空的。真实来源只能是真正执行开门的那两个东西。
+    /// </remarks>
+    public bool HasSlotWorkInFlight =>
+        _executor.HasOperationInFlight || _vectorExecutor.HasOperationInFlight;
 
     /// <summary>
     /// The sublots the server's outstanding entry request will accept, or <c>null</c> when there is
@@ -573,9 +603,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 nameof(WireToGateBusinessService),
                 $"恢复申请未执行：session={recoveryId}，reason={exception.Message}。",
                 exception);
+            // 与 RunRecoveryRequestAsync 同一条：按码查表，不拼裸码（8005-agv-onboard-hmi#171）。
             PublishOperatorResponse(
                 "RECOVERY_BLOCKED",
-                $"恢复申请被阻断：{exception.Message}。请检查授权、现场安全条件和服务端状态。 ");
+                OnboardCommandRejectionText.DescribeWithCode(exception.Message));
             return false;
         }
         finally
@@ -592,6 +623,15 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         ThrowIfDisposed();
         ArgumentException.ThrowIfNullOrWhiteSpace(sublot);
         ArgumentException.ThrowIfNullOrWhiteSpace(entryMethod);
+        // 横幅对操作员说的是「本界面已禁止扫码开门」，而那句话断言的是「按下去不会开门」，不是
+        // 「按钮不见了」。关掉 CanSubmitSublot 只做到后者：自动化宿主、服务端重发的录入请求、
+        // 以及任何没有先问入口就直接调进来的路径都绕得过去。所以这里也拦一道
+        // （8005-agv-onboard-hmi#171）。
+        if (_fatalFaultLatched())
+        {
+            throw new InvalidOperationException("FATAL_FAULT_LATCHED");
+        }
+
         WireToGateSublotEntryRequest request = Volatile.Read(ref _currentEntryRequest)
             ?? throw new InvalidOperationException("WIRE_TO_GATE_JOURNEY_NOT_READY");
         if (IsLoadCancellationBeforeSublotOpen)

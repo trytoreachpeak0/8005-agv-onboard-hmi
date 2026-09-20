@@ -67,8 +67,47 @@ public sealed class FatalFaultLatchViewModelTests
         Assert.Contains(
             viewModel.Logs,
             line => line.Kind == OperatorRecordKind.Warning
-                && line.Message == OnboardCommandRejectionText.Describe("SUBLOT_NOT_IN_WORKLIST"));
-        Assert.DoesNotContain("SUBLOT_NOT_IN_WORKLIST", viewModel.Guidance, StringComparison.Ordinal);
+                && line.Message == OnboardCommandRejectionText.DescribeWithCode("SUBLOT_NOT_IN_WORKLIST"));
+        // 读到的是一句中文，不是一个裸码。码留在句末的括号里是有意的：操作员把它报给维护人员，
+        // G2 也靠它认出是哪一条守卫拒的（见 OnboardCommandRejectionText.DescribeWithCode）。
+        Assert.Contains("不属于服务端下发的站点任务", viewModel.Guidance, StringComparison.Ordinal);
+        Assert.StartsWith("当前条码", viewModel.Guidance, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// 被拒的那句话要活过接下来的常态发布（8005-agv-onboard-hmi#171 审查 M1）。
+    /// </summary>
+    /// <remarks>
+    /// IO 快照默认每 100 毫秒到一次，每次都重发一遍常态横幅。所以「把提示写进 Guidance 就完了」
+    /// 在这里不成立——那句话活不过 100 毫秒，操作员根本来不及读。这条用一次真实的重新发布
+    /// （<c>RefreshExternalSafetyState</c> 走的正是 <c>ReevaluateIdleState</c> → <c>PublishCore</c>
+    /// 那条路）来钉它，不靠 sleep。
+    ///
+    /// 同一个 PR 里，复位复核被拒那条路先修掉了同型的问题（原因写进锁存，否则 PublishCore 会
+    /// 改写回原横幅），而这条路当时重犯了一次。
+    /// </remarks>
+    [Fact]
+    public async Task ARefusalSurvivesTheNextRoutineSnapshot()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => throw new InvalidOperationException("SUBLOT_NOT_IN_WORKLIST"),
+            () => true);
+        viewModel.ScanText = "SUBLOT-X";
+
+        viewModel.ScannerSubmitCommand.Execute(null);
+        await WaitUntilAsync(() => viewModel.Logs.Count > 0);
+        string refusal = viewModel.Guidance;
+        Assert.Contains("不属于服务端下发的站点任务", refusal, StringComparison.Ordinal);
+
+        // 常态横幅又发了一遍 —— 提示还在。
+        controller.RefreshExternalSafetyState();
+        Assert.Equal(refusal, viewModel.Guidance);
+        Assert.True(viewModel.HasWarning);
+
+        controller.RefreshExternalSafetyState();
+        Assert.Equal(refusal, viewModel.Guidance);
     }
 
     /// <summary>
@@ -118,11 +157,19 @@ public sealed class FatalFaultLatchViewModelTests
     }
 
     /// <summary>
-    /// 横幅不再声称一件不成立的安全事实。两句共用同一段结尾，所以它们不会各说各的。
+    /// 横幅的**措辞**：两句共用同一段结尾，所以它们不会各说各的。
     /// </summary>
     /// <remarks>
-    /// 这条判据跟着 <c>onboard-hmi#84</c> 走：那张票让锁存真的挡住服务端下发的开锁之后，
-    /// 「仓门仍可能自动打开」就不再准确，届时这条测试与两句文案一起改。
+    /// <para>
+    /// <b>这条只管措辞，管不到那句话是不是真的</b>——第一版就只有这一条，于是「本界面已禁止扫码
+    /// 开门」被换上去之后没有任何东西发现它在 v2 上同样是假的（审查 S1）。真判据在
+    /// <c>MultiDemandJourneyG2Tests.WhileAFatalFaultIsLatchedTheScanEntryIsClosedAndTheSubmitPathRefuses</c>：
+    /// 锁存之后按钮点不下去，**并且**直接调提交路径也被拒。两条都要，删哪一条都会留下一个洞。
+    /// </para>
+    /// <para>
+    /// 「仓门仍可能自动打开」那半句跟着 <c>onboard-hmi#84</c> 走：那张票让锁存真的挡住服务端下发
+    /// 的开锁之后，它就不再准确，届时这条测试与两句文案一起改。
+    /// </para>
     /// </remarks>
     [Theory]
     [InlineData(OnboardFatalFaultBanner.UiCommandFailed)]

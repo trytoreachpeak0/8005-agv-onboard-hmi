@@ -11,11 +11,16 @@ namespace SQCD.Agv.Wpf.ViewModels;
 public sealed class MainViewModel : ViewModelBase
 {
     private const int MaxLogEntries = 300;
+
+    /// <summary>操作员刚被拒的那句话能压住常态横幅多久。够读一句短话，不至于挡住后面的状态。</summary>
+    private static readonly TimeSpan OperatorNoticeHold = TimeSpan.FromSeconds(8);
     private readonly OnboardController _controller;
     private readonly IAppLogger _logger;
     private readonly OperatorRecordFormatter _operatorRecordFormatter = new();
     private readonly SlotGroupLayout _slotGroupLayout;
     private readonly Func<string?>? _operatorIdProvider;
+    private string? _operatorNotice;
+    private DateTimeOffset _operatorNoticeUntil;
     private string _scanText = string.Empty;
     private string _ruleConnectionText = "离线";
     private string _ioConnectionText = "离线";
@@ -1363,9 +1368,9 @@ public sealed class MainViewModel : ViewModelBase
                 : hasWarning
                     ? "请处理"
                     : GetStateText(snapshot.State);
-        Guidance = snapshot.Guidance;
+        bool noticeHeld = PublishGuidance(snapshot.Guidance, hasBlockingError);
         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? snapshot.State == OnboardState.ReadyToScan;
-        HasWarning = hasWarning;
+        HasWarning = hasWarning || noticeHeld;
         HasError = hasBlockingError;
         CanSafetyReview = snapshot.State == OnboardState.Faulted
             && snapshot.ErrorCode == "STARTUP_STATE_UNSAFE"
@@ -1444,13 +1449,47 @@ public sealed class MainViewModel : ViewModelBase
     internal void ReportOperatorRejection(string reasonCode) =>
         RunOnUiThread(() =>
         {
-            string message = OnboardCommandRejectionText.Describe(reasonCode);
+            string message = OnboardCommandRejectionText.DescribeWithCode(reasonCode);
             Logs.Add(new LogLineViewModel(Clock.Now, OperatorRecordKind.Warning, message));
             ClearLogsCommand.RaiseCanExecuteChanged();
             TrimLogs();
+            _operatorNotice = message;
+            _operatorNoticeUntil = Clock.Now + OperatorNoticeHold;
             Guidance = message;
             HasWarning = true;
         });
+
+    /// <summary>
+    /// 发布常态横幅，但不要把操作员刚被拒的那句话冲掉。返回是否压住了。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// IO 快照默认每 100 毫秒到一次，每一次都会重发一遍常态横幅，而发布路径不做去重。所以
+    /// 「把提示写进 <see cref="Guidance"/> 就完了」在这里不成立——那句话活不过 100 毫秒，
+    /// 操作员根本来不及读（8005-agv-onboard-hmi#171 审查 M1）。
+    /// </para>
+    /// <para>
+    /// <b>这与复位复核被拒时把原因写进锁存是同一件事的两层</b>：一条要给操作员看的临时话，
+    /// 必须由**发布路径自己承认它**，而不是在发布之后赋一次值——赋完就会被下一次发布抹掉。
+    /// 控制器那一侧的形状是 <c>FatalFault.Banner</c>（锁存本身就活过发布），界面这一侧是本方法。
+    /// 同一个 PR 里先前只修了控制器那一层，这是另一层。
+    /// </para>
+    /// <para>
+    /// <b>阻断态优先</b>：真出故障时故障横幅盖过提示，因为那一刻要人读的是故障。
+    /// </para>
+    /// </remarks>
+    private bool PublishGuidance(string guidance, bool blocking)
+    {
+        if (!blocking && _operatorNotice is { } notice && Clock.Now < _operatorNoticeUntil)
+        {
+            Guidance = notice;
+            return true;
+        }
+
+        _operatorNotice = null;
+        Guidance = guidance;
+        return false;
+    }
 
     private void AppendOperatorRecord(OnboardSnapshot snapshot)
     {
@@ -1472,6 +1511,14 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
+        // 这一段不只是「故障时不让点按钮」的显示逻辑，**它承担着一项安全职责**：恢复向量
+        // （补偿清空、修正装货、强制机械取出）会经 WireToGateRecoveryVectorExecutor 真的开门，
+        // 而那个执行器直接持 IIoModuleClient、不经过 OnboardController，所以严重安全故障锁存
+        // 在执行这一层拦不住它——**今天唯一挡住它的就是这几行**。
+        //
+        // 全仓四个开门点各自受不受锁存约束，是一张被守住的表：
+        // tests/SQCD.Agv.UnitTests/FatalFaultScopeArchitectureTests.cs。重构这一段之前先读它。
+        // （8005-agv-onboard-hmi#171）
         if (_lastControllerSnapshot?.State == OnboardState.Faulted)
         {
             CanRequestWireToGateRecovery = false;
@@ -1500,8 +1547,8 @@ public sealed class MainViewModel : ViewModelBase
             sublotRejection is not null);
         RuleConnectionText = _wireToGateSession.Connected ? "在线" : "离线";
         StateText = banner.StateText;
-        Guidance = banner.Guidance;
-        HasWarning = banner.HasWarning;
+        bool bannerNoticeHeld = PublishGuidance(banner.Guidance, banner.HasError);
+        HasWarning = banner.HasWarning || bannerNoticeHeld;
         HasError = banner.HasError;
         CanReopenOperation = false;
         CanCancelOperation = false;

@@ -26,6 +26,7 @@ public static class OnboardCommandRejectionText
         // operator reads one sentence whichever path refused the scan.
         ["SUBLOT_NOT_IN_WORKLIST"] = "当前条码不属于服务端下发的站点任务，请核对条码或等待任务刷新。",
         ["LOAD_CANCELLATION_IN_PROGRESS"] = "本站的取消装货正在处理中，请等结果回来后再扫码。",
+        ["FATAL_FAULT_LATCHED"] = "本机已进入严重安全故障，扫码开门已停用。请联系维护人员复核并复位。",
 
         // Not ready yet. Waiting is the action.
         ["WIRE_TO_GATE_NOT_READY"] = "上层安全会话尚未就绪，已禁止扫码、开门和发车。请等待连接及恢复完成。",
@@ -62,4 +63,31 @@ public static class OnboardCommandRejectionText
         Wording.TryGetValue(reasonCode, out string? wording)
             ? wording
             : $"操作被拒绝（{reasonCode}）。请核对后重试，持续出现请联系维护人员。";
+
+    /// <summary>
+    /// The same sentence with the raw code after it — what every operator-facing refusal actually
+    /// uses.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The code stays in front of the operator on purpose</b>, the same way
+    /// <c>WireToGateSublotRejectionText</c> keeps an unrecognised one: it is what they read out to
+    /// whoever is on the other end of the phone. A sentence they understand plus a token maintenance
+    /// can act on beats either alone.
+    /// </para>
+    /// <para>
+    /// <b>It is also what makes a refusal identifiable from outside.</b> The G2 harness waits for a
+    /// <c>RECOVERY_BLOCKED</c> event naming a specific code, precisely so a test cannot pass on some
+    /// other guard's refusal (<c>RecoveryVectorG2Tests.WaitForRecoveryBlockedAsync</c>). Rendering
+    /// only the Chinese sentence took that away and five of those tests stopped being able to tell
+    /// which guard had fired — the right fix was to carry both, not to weaken the assertion.
+    /// </para>
+    /// <para>
+    /// An unrecognised code is not repeated: <see cref="Describe"/>'s fallback already carries it.
+    /// </para>
+    /// </remarks>
+    public static string DescribeWithCode(string reasonCode) =>
+        HasWording(reasonCode)
+            ? $"{Describe(reasonCode)}（{reasonCode}）"
+            : Describe(reasonCode);
 }
