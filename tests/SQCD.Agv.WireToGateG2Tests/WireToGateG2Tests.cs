@@ -12,7 +12,7 @@ using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
 
-public sealed class WireToGateG2Tests
+public sealed partial class WireToGateG2Tests
 {
     private const string CredentialVariable = "W2G_G2_TEST_CREDENTIAL";
 
