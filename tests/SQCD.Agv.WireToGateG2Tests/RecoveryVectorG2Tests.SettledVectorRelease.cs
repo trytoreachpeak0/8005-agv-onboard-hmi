@@ -154,6 +154,91 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// The unacknowledged result is replayed on the next session, once, under its own messageId -- and
+    /// the vehicle settles it once.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The other half of the case above: having kept the record, this end has to actually get the
+    /// result to the server. Nothing in the settlement path does that -- the outbox does, in the
+    /// handshake, for every message whose <c>DurableAck</c> is missing. Asserted across a real restart
+    /// over the same journal rather than by inspecting the outbox row, because "the row is still
+    /// unacknowledged" would hold just as well for a message the handshake had quietly dropped.
+    /// </para>
+    /// <para>
+    /// <b>What this test does not assert is the vector's fate after that acknowledgement.</b> The
+    /// settlement runs inside the send that first produced the result; the replay is a different send,
+    /// in the session client, and no business-side hook watches it -- so the record stays until the
+    /// session's CLOSED snapshot clears it, or, for a vector that may have acted, not at all. The same
+    /// gap exists on the <c>COMPLETED</c> path, unchanged since long before #145, which is why it is
+    /// onboard-hmi#150's to close on both paths at once rather than this ticket's to patch on one.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task AnUnacknowledgedCompensationResultIsReplayedOnceOnTheNextSession()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Path.Combine(
+            Path.GetTempPath(), "w2g-vector", Guid.NewGuid().ToString("N"), "journal.db");
+        await using FakeControlServer server = RecoveryVectorHarness.NewServer();
+        server.SendRecoveryVectorCommandAfterRecoveryAction = false;
+        server.RecoverySlotOperationAttemptId = AttemptId;
+        server.LoadCompensationResultAcksToDrop = 1;
+
+        string resultKey;
+        await using (RecoveryVectorHarness beforeRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: server,
+            journalPath: journalPath,
+            cargoInTargetSlots: true,
+            lockerWaitTimesOut: true))
+        {
+            WireToGateRecoveryState prepared = await PrepareCompensationAsync(beforeRestart, token);
+            resultKey = CompensationResultKey(prepared.RecoveryVector!.PrimaryId);
+            await server.SendCommandAsync(
+                "LoadCompensationCommand", CompensationCommandMessageId, CompensationCommand(prepared));
+            await beforeRestart.WaitForResultAsync("LoadCompensationResult", token);
+            await RecoveryVectorHarness.WaitUntilAsync(
+                () => beforeRestart.Logger.Entries.Any(entry =>
+                    entry.Message.Contains("恢复向量结果暂未收到DurableAck", StringComparison.Ordinal)),
+                "the vehicle to record that the result has no acknowledgement yet",
+                token);
+            Assert.Single(beforeRestart.ResultsOfType("LoadCompensationResult"));
+        }
+
+        await using FakeControlServer serverAfterRestart = RecoveryVectorHarness.NewServer();
+        serverAfterRestart.SendRecoveryVectorCommandAfterRecoveryAction = false;
+        serverAfterRestart.RecoverySlotOperationAttemptId = AttemptId;
+        serverAfterRestart.AdoptDurableRecoveryMemoryFrom(server);
+        await using RecoveryVectorHarness afterRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: serverAfterRestart,
+            journalPath: journalPath,
+            baselineRevision: 2,
+            restart: true);
+
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => afterRestart.ResultsOfType("LoadCompensationResult").Count == 1,
+            "the handshake to replay the unacknowledged compensation result exactly once",
+            token);
+        using JsonDocument replayed = JsonDocument.Parse(
+            afterRestart.ResultsOfType("LoadCompensationResult")[0]);
+        Assert.Equal(
+            FakeControlServerIdentifiers.StableUuid(resultKey),
+            replayed.RootElement.GetProperty("messageId").GetString());
+
+        // Settled once: the replay was acknowledged, and nothing sent a second copy behind it.
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => afterRestart.ReadOutgoingAsync(resultKey, token)
+                .GetAwaiter().GetResult()?.Acknowledged == true,
+            "the replayed result to be acknowledged",
+            token);
+        Assert.Single(afterRestart.ResultsOfType("LoadCompensationResult"));
+    }
+
+    /// <summary>
     /// A second recovery session is opened in the moment between the settlement's guard reading the
     /// journal and its write. Nothing of that session is cleared, and nothing is cleared twice.
     /// </summary>

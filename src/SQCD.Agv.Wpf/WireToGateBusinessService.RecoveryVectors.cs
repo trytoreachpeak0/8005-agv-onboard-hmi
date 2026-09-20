@@ -2119,6 +2119,17 @@ public sealed partial class WireToGateBusinessService
     /// session fields go only while the journal still names this vector's session, so one that has
     /// moved on to another session keeps its own.
     /// </para>
+    /// <para>
+    /// <b>The order on disk is: result into the outbox, sent, its <c>DurableAck</c> recorded against
+    /// the outbox row, then this.</b> Two writes, and the pair is not atomic. Answering the server
+    /// comes first on purpose: a record cleared before the answer is on file would leave the next copy
+    /// of the command refused with <c>RECOVERY_VECTOR_CONTEXT_MISSING</c> and nothing to rebuild the
+    /// answer from. What the order leaves open is the window between the two -- acknowledged, not yet
+    /// forgotten -- where a crash leaves a settled result with the record still on file. That window
+    /// exists on the <c>COMPLETED</c> path in exactly the same shape and has since long before this,
+    /// so closing it belongs to onboard-hmi#150, which closes it on both paths at once. Closing it here
+    /// for one path only would leave the two behaving differently for no stated reason.
+    /// </para>
     /// </remarks>
     private async Task ForgetSettledRecoveryVectorAsync(
         WireToGateRecoveryVectorContext context,
