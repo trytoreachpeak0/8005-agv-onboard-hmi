@@ -2609,7 +2609,11 @@ public sealed partial class WireToGateG2Tests
         // 反过来等受理数是安全的：受理严格晚于记录，所以受理数到 2 时三条一定都已记下。原注释
         // 担心的是「等受理数会让安全评估周期（500 ms）多转出一条把断言弄红」——那一条若真会来，
         // 下面 changed.Length == 3 本来就会红，与等的是哪个量无关。
-        await WaitUntilAsync(() => server.AcceptedSafetyStateChangedCount == 2, testToken);
+        //
+        // 用 >= 而不是 ==：受理数只增不减，所以「到了 2」用 >= 判是等价的，而精确性留给下面那条
+        // Assert.Equal。等待条件与断言写成同一句的话，一旦受理数停在 1，读到的就只是一句泛泛的
+        // 超时，而不是 Expected 2 / Actual 1（2026-09-20 审查 nit）。
+        await WaitUntilAsync(() => server.AcceptedSafetyStateChangedCount >= 2, testToken);
 
         var changed = server.ReceivedEnvelopes
             .Where(item => item.MessageType == "SafetyStateChanged")

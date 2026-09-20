@@ -48,10 +48,15 @@ internal sealed class StallAwareDeadline
 
     /// <summary>
     /// The most that can ever be given back. The largest stall measured was 5171 ms, so this holds
-    /// nearly two consecutive ones. It also bounds the worst case: the longest wait here is 10 s,
-    /// so no wait can exceed 20 s, against a CI job timeout of 30 minutes that whole runs finish
-    /// inside 3 to 4.
+    /// nearly two consecutive ones.
     /// </summary>
+    /// <remarks>
+    /// It also bounds the worst case, <b>per wait</b>: the longest base timeout in this assembly is
+    /// 10 s, so no single wait can run past 20 s. One test may hold several waits, so its own worst
+    /// case is that many times over -- still far inside a CI job that times out at 30 minutes and
+    /// whose whole runs finish in 3 to 4, and only a test that is already failing ever waits out a
+    /// deadline at all.
+    /// </remarks>
     internal static readonly TimeSpan StallBudget = TimeSpan.FromSeconds(10);
 
     private readonly TimeSpan _baseTimeout;

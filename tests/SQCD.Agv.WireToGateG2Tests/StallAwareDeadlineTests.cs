@@ -18,8 +18,33 @@ public sealed class StallAwareDeadlineTests
     /// a wait still fails when it always did. A deadline that quietly waited longer would be a
     /// weaker test dressed up as a fix.
     /// </summary>
+    /// <remarks>
+    /// Asserted through <see cref="StallAwareDeadline.ObservePoll"/> rather than through real polls,
+    /// because this is the guard and a guard must not itself be flaky. Written against real timing
+    /// it would fail whenever this machine stalled -- the very condition the code under test exists
+    /// for -- and the cheapest way to green a flaky guard is to delete its assertions, which is how
+    /// a guard quietly stops guarding (2026-09-20 审查 S1).
+    /// </remarks>
     [Fact]
-    public async Task ADeadlineThatSeesNoStallExpiresAtItsBaseTimeout()
+    public void ADeadlineThatSeesNoStallGivesNothingBack()
+    {
+        StallAwareDeadline deadline = new(TimeSpan.FromMilliseconds(200));
+
+        for (int i = 0; i < 40; i++)
+        {
+            deadline.ObservePoll(TimeSpan.FromMilliseconds(15));
+        }
+
+        Assert.Equal(TimeSpan.Zero, deadline.Stalled);
+    }
+
+    /// <summary>
+    /// The same claim against the real clock, asserted only from below: a deadline must not expire
+    /// before its base timeout. There is deliberately no upper bound here -- a stall would push the
+    /// real elapsed time out, and that is correct behaviour, not a failure.
+    /// </summary>
+    [Fact]
+    public async Task ADeadlineNeverExpiresBeforeItsBaseTimeout()
     {
         StallAwareDeadline deadline = new(TimeSpan.FromMilliseconds(200));
         long startedAt = Stopwatch.GetTimestamp();
@@ -30,13 +55,9 @@ public sealed class StallAwareDeadlineTests
         }
 
         TimeSpan elapsed = Stopwatch.GetElapsedTime(startedAt);
-        Assert.Equal(TimeSpan.Zero, deadline.Stalled);
         Assert.True(
             elapsed >= TimeSpan.FromMilliseconds(200),
             $"expired early, after {elapsed.TotalMilliseconds:0} ms");
-        Assert.True(
-            elapsed < TimeSpan.FromSeconds(2),
-            $"took {elapsed.TotalMilliseconds:0} ms, which is not 'about 200 ms'");
     }
 
     /// <summary>
@@ -85,6 +106,28 @@ public sealed class StallAwareDeadlineTests
             deadline.ObservePoll(TimeSpan.FromSeconds(30));
         }
 
-        Assert.Equal(StallAwareDeadline.StallBudget, deadline.Stalled);
+        // A literal, not StallAwareDeadline.StallBudget: asserting a constant against itself passes
+        // for every value the constant could take (2026-09-20 审查 S2).
+        Assert.Equal(TimeSpan.FromSeconds(10), deadline.Stalled);
+    }
+
+    /// <summary>
+    /// The budget is the one loosening knob this design has, so it gets a guard of its own.
+    /// </summary>
+    /// <remarks>
+    /// Raising it is the exact move this ticket exists to forbid -- "just make the timeout bigger",
+    /// wearing a different hat. Every wait in this assembly can be stretched by changing this single
+    /// number, and no other test would notice. 10 seconds is what the measurement supports: the
+    /// worst single stall observed was 5171 ms, so this holds nearly two consecutive ones.
+    /// **Changing it means changing this test first, on purpose, with a new measurement.**
+    /// </remarks>
+    [Fact]
+    public void TheBudgetStaysWithinWhatWasMeasured()
+    {
+        Assert.True(
+            StallAwareDeadline.StallBudget <= TimeSpan.FromSeconds(10),
+            $"停顿补偿上限被放大到 {StallAwareDeadline.StallBudget.TotalSeconds:0.#} 秒。"
+            + "它是全族等待唯一的放松旋钮：调大它等于把每一条等待的上界一起放大，"
+            + "而没有任何别的测试会发现。要改先拿出新的停顿实测，并改这条测试。");
     }
 }

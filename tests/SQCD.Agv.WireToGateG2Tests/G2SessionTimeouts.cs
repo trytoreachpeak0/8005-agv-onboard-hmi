@@ -6,7 +6,7 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// <remarks>
 /// <para>
 /// Only the connect timeout lives here, and that asymmetry is the point. The two timeouts sit side
-/// by side in <c>WireToGateSessionOptions</c> and were both written as 2 seconds in eleven places,
+/// by side in <c>WireToGateSessionOptions</c> and were both written as 2 seconds in twelve places,
 /// which makes them look like one setting. They are not.
 /// </para>
 /// <para>
@@ -32,7 +32,9 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// network -- at the same instant a 5 ms <c>Task.Delay</c> was late by 3694 ms as well, with the
 /// thread pool idle at 8 threads, so the whole process was stopped. 2 seconds was also stricter
 /// than the vehicle ships with (<c>ConnectTimeoutMs</c> defaults to 3000 in
-/// <c>Configuration.cs</c>), which is backwards for a backstop. 15 s clears the worst measured
+/// <c>Configuration.cs</c>; <c>MessageTimeoutMs</c> defaults to 2500 there, and its own remarks
+/// call it the upper bound on the gap between two heartbeats -- one more sign that it is a
+/// criterion), which is backwards for a backstop. 15 s clears the worst measured
 /// connect four times over while staying far inside a CI job that times out at 30 minutes and
 /// normally finishes in 3 to 4.
 /// </para>
