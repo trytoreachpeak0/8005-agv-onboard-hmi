@@ -1,0 +1,24 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:01.33]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TwoWorklistItemsPassTheViewModelTheJourneyGateAndEntryWithoutAnUnhandledUiError [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TwoWorklistItemsPassTheViewModelTheJourneyGateAndEntryWithoutAnUnhandledUiError [388 ms]
+  Error Message:
+   Assert.Empty() Failure: Collection was not empty
+Collection: [System.InvalidOperationException: Sequence contains more than one element
+   at System.Linq.ThrowHelper.ThrowMoreThanOneElementException()
+   at System.Linq.Enumerable.TryGetSingle[TSource](IEnumerable`1 source, Boolean& found)
+   at System.Linq.Enumerable.SingleOrDefault[TSource](IEnumerable`1 source)
+   at SQCD.Agv.Wpf.ViewModels.MainViewModel.<>c__DisplayClass138_0.<UpdateWireToGateJourney>b__0() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\ViewModels\MainViewModel.cs:line 276
+   at SQCD.Agv.Wpf.ViewModels.MainViewModel.RunOnUiThread(Action action) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\ViewModels\MainViewModel.cs:line 1077
+   at SQCD.Agv.Wpf.ViewModels.MainViewModel.UpdateWireToGateJourney(WireToGateJourneySnapshot snapshot) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\ViewModels\MainViewModel.cs:line 266
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.<>c__DisplayClass29_2.<StartAgainstAsync>b__23() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 371
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.OnUiThread(Action action) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 425]
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TwoWorklistItemsPassTheViewModelTheJourneyGateAndEntryWithoutAnUnhandledUiError() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 76
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TwoWorklistItemsPassTheViewModelTheJourneyGateAndEntryWithoutAnUnhandledUiError() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 89
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 405 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

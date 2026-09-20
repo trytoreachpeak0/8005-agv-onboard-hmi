@@ -86,8 +86,8 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
     private static readonly SortedDictionary<string, string> MessagesWithoutAnImplementation =
         new(StringComparer.Ordinal)
         {
-            ["DemandSelectionRequested"] = "FP-IS-09, batch 7",
-            ["DemandSelectionResult"] = "FP-IS-09, batch 7",
+            ["DemandSelectionRequested"] = "FP-IS-09, batch 11",
+            ["DemandSelectionResult"] = "FP-IS-09, batch 11",
             ["ManualStationClearanceConfirmationRequested"] = "FP-IS-13, batch 8",
             ["ManualStationClearanceConfirmationResult"] = "FP-IS-13, batch 8",
             ["UnableToChargeFieldConfirmationRequested"] = "FP-IS-13, batch 8",

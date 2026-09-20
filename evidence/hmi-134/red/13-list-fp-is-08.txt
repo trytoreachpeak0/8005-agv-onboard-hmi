@@ -1,0 +1,11 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+VSTest version 17.11.1 (x64)
+
+The following Tests are available:
+The following Tests are available:
+    SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ANineLegPlanIsAcknowledgedAndShownInFullInSequenceOrder
+    SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnAddedDemandReplacesThePlanAndItsNewOrderIsShown
+No test matches the given testcase filter `IntegrationSlice=FP-IS-08` in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll

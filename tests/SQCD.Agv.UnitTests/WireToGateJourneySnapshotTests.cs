@@ -3,31 +3,54 @@ using SQCD.Agv.Core;
 namespace SQCD.Agv.UnitTests;
 
 /// <summary>
-/// The journey projection's demand agreement, which protocol v2 moved the ground under.
+/// The journey projection's demand agreement: the worklist's demands are a subset of the plan's.
 /// </summary>
 /// <remarks>
+/// <para>
 /// v2 took <c>demandId</c> off the plan snapshot's top level and put it on each leg, because
-/// <c>legs.maxItems</c> went from 2 to 9. That turns a question the projection used to answer from
-/// one value ("the plan's demand") into a question about a set, and it introduces a case that could
-/// not previously exist: <b>legs that name different demands</b>. Deriving a single nullable
-/// <c>DemandId</c> from that set and feeding it to the old comparison reads the contradiction as
-/// "no demand", which the comparison treats as agreement -- a plan that contradicts itself would
-/// pass the guard <see cref="WireToGateJourneySnapshot.CanAcceptSublot"/> stands behind.
+/// <c>legs.maxItems</c> went from 2 to 9, and <c>items.maxItems</c> went to 8. Until batch 7 the
+/// projection still read both as single values -- a plan whose legs named two demands was never
+/// consistent, and <see cref="WireToGateJourneySnapshot.CanAcceptSublot"/> wanted exactly one item --
+/// so the first multi-demand stop could never take a sublot.
+/// </para>
+/// <para>
+/// Batch 7-13 (<c>8005-agv-onboard-hmi#134</c>) redefined it as a set relation: every demand the
+/// worklist names is one the plan names. The plan lists the legs already completed and the one the
+/// vehicle is at (control server <c>JourneyPlanBuilder</c>: <c>COMPLETED</c> and <c>ARRIVED</c> legs
+/// stay in the snapshot), so a demand being worked here is always among them; a plan naming no
+/// demand at all -- waiting points and chargers only -- still lets the worklist through.
+/// </para>
 /// </remarks>
 public sealed class WireToGateJourneySnapshotTests
 {
     private const string DemandA = "11111111-1111-4111-8111-111111111111";
     private const string DemandB = "22222222-2222-4222-8222-222222222222";
+    private const string DemandC = "33333333-0000-4333-8333-000000000003";
 
+    /// <summary>
+    /// Two demands at one stop, both on the plan: consistent, and a sublot can be taken.
+    /// </summary>
     [Fact]
-    public void APlanWhoseLegsNameDifferentDemandsIsNeverConsistent()
+    public void AWorklistOfTwoDemandsBothOnThePlanIsConsistent()
+    {
+        WireToGateJourneySnapshot journey = Journey(Worklist(DemandA, DemandB), Plan(DemandA, DemandB));
+
+        Assert.Equal([DemandA, DemandB], journey.UpcomingStopPlan!.DemandIds);
+        Assert.True(journey.HasConsistentDemand);
+        Assert.True(journey.CanAcceptSublot);
+    }
+
+    /// <summary>
+    /// A plan naming more demands than this stop's worklist -- the others are picked up or dropped
+    /// elsewhere -- is consistent. Before batch 7 a plan of two demands was never consistent.
+    /// </summary>
+    [Fact]
+    public void APlanNamingMoreDemandsThanTheWorklistIsConsistent()
     {
         WireToGateJourneySnapshot journey = Journey(Worklist(DemandA), Plan(DemandA, DemandB));
 
-        Assert.Equal([DemandA, DemandB], journey.UpcomingStopPlan!.DemandIds);
-        Assert.Null(journey.UpcomingStopPlan.DemandId);
-        Assert.False(journey.HasConsistentDemand);
-        Assert.False(journey.CanAcceptSublot);
+        Assert.True(journey.HasConsistentDemand);
+        Assert.True(journey.CanAcceptSublot);
     }
 
     /// <summary>
@@ -41,26 +64,25 @@ public sealed class WireToGateJourneySnapshotTests
         WireToGateJourneySnapshot journey = Journey(Worklist(DemandA), Plan(DemandA, DemandA));
 
         Assert.Equal([DemandA], journey.UpcomingStopPlan!.DemandIds);
-        Assert.Equal(DemandA, journey.UpcomingStopPlan.DemandId);
         Assert.True(journey.HasConsistentDemand);
     }
 
     /// <summary>
-    /// A plan of legs that carry no demand at all still agrees with the worklist.
+    /// A plan of legs that carry no demand at all still agrees with the worklist, whatever its size.
     /// </summary>
     /// <remarks>
     /// v2's <c>demandId</c> is nullable on the leg, and the legs that carry no demand are the ones
-    /// batches 5 and 8 add -- waiting points and chargers. Those must not make an otherwise usable
-    /// worklist unusable, which is why "none" and "more than one" have to stay distinguishable.
+    /// later batches add -- waiting points and chargers. Those must not make an otherwise usable
+    /// worklist unusable.
     /// </remarks>
     [Fact]
     public void APlanWhoseLegsCarryNoDemandIsConsistent()
     {
-        WireToGateJourneySnapshot journey = Journey(Worklist(DemandA), Plan(null, null));
+        WireToGateJourneySnapshot journey = Journey(Worklist(DemandA, DemandB), Plan(null, null));
 
         Assert.Empty(journey.UpcomingStopPlan!.DemandIds);
-        Assert.Null(journey.UpcomingStopPlan.DemandId);
         Assert.True(journey.HasConsistentDemand);
+        Assert.True(journey.CanAcceptSublot);
     }
 
     [Fact]
@@ -71,6 +93,49 @@ public sealed class WireToGateJourneySnapshotTests
         WireToGateJourneySnapshot journey = Journey(Worklist(DemandA), Plan(DemandB, DemandB));
 
         Assert.False(journey.HasConsistentDemand);
+    }
+
+    /// <summary>
+    /// One worklist demand missing from the plan is enough to make the pair inconsistent, even when
+    /// the other is on it: the subset is checked item by item, not by any single item.
+    /// </summary>
+    [Fact]
+    public void AWorklistDemandMissingFromThePlanIsNotConsistent()
+    {
+        WireToGateJourneySnapshot journey = Journey(Worklist(DemandA, DemandC), Plan(DemandA, DemandB));
+
+        Assert.False(journey.HasConsistentDemand);
+        Assert.False(journey.CanAcceptSublot);
+    }
+
+    /// <summary>
+    /// A worklist with no item takes no sublot -- there is nothing to enter one for.
+    /// </summary>
+    [Fact]
+    public void AnEmptyWorklistCannotAcceptASublot()
+    {
+        WireToGateJourneySnapshot journey = Journey(Worklist(), Plan(DemandA, DemandB));
+
+        Assert.True(journey.HasConsistentDemand);
+        Assert.False(journey.CanAcceptSublot);
+    }
+
+    /// <summary>
+    /// Eight items -- the schema's maximum -- against a plan naming all eight: neither property throws.
+    /// </summary>
+    [Fact]
+    public void EightWorklistItemsAreReadWithoutThrowing()
+    {
+        string[] demands = [.. Enumerable.Range(1, 8).Select(n => $"44444444-0000-4444-8444-0000000000{n:D2}")];
+        WireToGateJourneySnapshot journey = Journey(
+            Worklist(demands),
+            new WireToGateUpcomingStopPlan(
+                1,
+                [.. demands.Select((demand, index) => Leg(index + 1, demand))],
+                new string('c', 64)));
+
+        Assert.True(journey.HasConsistentDemand);
+        Assert.True(journey.CanAcceptSublotAt(DateTimeOffset.UnixEpoch, TimeSpan.FromSeconds(1)));
     }
 
     private static WireToGateJourneySnapshot Journey(
@@ -84,13 +149,14 @@ public sealed class WireToGateJourneySnapshotTests
             plan,
             DateTimeOffset.UnixEpoch);
 
-    private static WireToGateCurrentStopWorklist Worklist(string demandId) =>
+    private static WireToGateCurrentStopWorklist Worklist(params string[] demandIds) =>
         new(
             "ST-01",
             1,
             null,
             null,
-            [new WireToGateWorklistItem(demandId, "TD-001", "SUBLOT-001", "WIRE_TO_GATE", "PICKUP", 1)],
+            [.. demandIds.Select((demandId, index) => new WireToGateWorklistItem(
+                demandId, $"TD-{index + 1:D3}", $"SUBLOT-{index + 1:D3}", "WIRE_TO_GATE", "PICKUP", 1))],
             new string('b', 64));
 
     private static WireToGateUpcomingStopPlan Plan(string? first, string? second) =>

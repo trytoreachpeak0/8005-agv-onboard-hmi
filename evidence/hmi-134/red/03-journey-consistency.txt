@@ -1,0 +1,71 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:02.13]     SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.AWorklistOfTwoDemandsBothOnThePlanIsConsistent [FAIL]
+[xUnit.net 00:00:02.14]     SQCD.Agv.UnitTests.OnboardControllerTests.AJourneyOfTwoItemsAcceptsEitherSublotAndRefusesOneOutsideTheSet [FAIL]
+[xUnit.net 00:00:02.14]     SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.APlanNamingMoreDemandsThanTheWorklistIsConsistent [FAIL]
+[xUnit.net 00:00:02.15]     SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.EightWorklistItemsAreReadWithoutThrowing [FAIL]
+[xUnit.net 00:00:02.15]     SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.AnEmptyWorklistCannotAcceptASublot [FAIL]
+[xUnit.net 00:00:02.16]     SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.APlanWhoseLegsCarryNoDemandIsConsistent [FAIL]
+  Failed SQCD.Agv.UnitTests.OnboardControllerTests.AJourneyOfTwoItemsAcceptsEitherSublotAndRefusesOneOutsideTheSet [74 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "SUBLOT_NOT_IN_WORKLIST"
+Actual:   "WIRE_TO_GATE_JOURNEY_NOT_READY"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.OnboardControllerTests.AJourneyOfTwoItemsAcceptsEitherSublotAndRefusesOneOutsideTheSet() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\OnboardControllerTests.cs:line 150
+   at SQCD.Agv.UnitTests.OnboardControllerTests.AJourneyOfTwoItemsAcceptsEitherSublotAndRefusesOneOutsideTheSet() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\OnboardControllerTests.cs:line 155
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.AWorklistOfTwoDemandsBothOnThePlanIsConsistent [24 ms]
+  Error Message:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.AWorklistOfTwoDemandsBothOnThePlanIsConsistent() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateJourneySnapshotTests.cs:line 39
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Failed SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.APlanNamingMoreDemandsThanTheWorklistIsConsistent [< 1 ms]
+  Error Message:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.APlanNamingMoreDemandsThanTheWorklistIsConsistent() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateJourneySnapshotTests.cs:line 52
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Failed SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.EightWorklistItemsAreReadWithoutThrowing [1 ms]
+  Error Message:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.EightWorklistItemsAreReadWithoutThrowing() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateJourneySnapshotTests.cs:line 137
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Failed SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.AnEmptyWorklistCannotAcceptASublot [< 1 ms]
+  Error Message:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.AnEmptyWorklistCannotAcceptASublot() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateJourneySnapshotTests.cs:line 119
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Failed SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.APlanWhoseLegsCarryNoDemandIsConsistent [1 ms]
+  Error Message:
+   System.InvalidOperationException : Sequence contains more than one element
+  Stack Trace:
+     at System.Linq.ThrowHelper.ThrowMoreThanOneElementException()
+   at System.Linq.Enumerable.TryGetSingle[TSource](IEnumerable`1 source, Boolean& found)
+   at System.Linq.Enumerable.SingleOrDefault[TSource](IEnumerable`1 source)
+   at SQCD.Agv.Core.WireToGateJourneySnapshot.get_HasConsistentDemand() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\src\SQCD.Agv.Core\WireToGateJourney.cs:line 142
+   at SQCD.Agv.UnitTests.WireToGateJourneySnapshotTests.APlanWhoseLegsCarryNoDemandIsConsistent() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateJourneySnapshotTests.cs:line 84
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+
+Failed!  - Failed:     6, Passed:     3, Skipped:     0, Total:     9, Duration: 138 ms - SQCD.Agv.UnitTests.dll (net8.0)
