@@ -73,8 +73,16 @@ public sealed partial class WireToGateBusinessService
         WireToGatePendingHardwareRecoveryRecord record = isolation.PendingRecord ?? NewRecord();
         if (isolation.PendingRecord is null)
         {
-            state = state with { ForcedIsolation = isolation with { PendingRecord = record } };
-            await WriteRecoveryStateCachedAsync(state, cancellationToken).ConfigureAwait(false);
+            // This write owns ForcedIsolation and nothing else, so every other field is what the
+            // journal holds when the step runs -- an executor checkpoint or a released session that
+            // landed since this press read is not undone (onboard-hmi#136 point 7).
+            await UpdateRecoveryStateCachedAsync(
+                    current => current with
+                    {
+                        ForcedIsolation = isolation with { PendingRecord = record }
+                    },
+                    cancellationToken)
+                .ConfigureAwait(false);
         }
 
         HardwareRecoveryRecordResultPayload result = await _session
@@ -97,11 +105,17 @@ public sealed partial class WireToGateBusinessService
                 cancellationToken)
             .ConfigureAwait(false);
 
-        state = await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
+        // Kept as a read whose answer nothing uses: the writes below no longer need a copy of the
+        // state, but this refresh of the cache every entry gate reads happens at this point today, and
+        // a signal check below can leave by exception before any write would refresh it.
+        await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
         if (result.Outcome != "RECORDED")
         {
-            await WriteRecoveryStateCachedAsync(
-                    state with { ForcedIsolation = isolation with { PendingRecord = null } },
+            await UpdateRecoveryStateCachedAsync(
+                    current => current with
+                    {
+                        ForcedIsolation = isolation with { PendingRecord = null }
+                    },
                     cancellationToken)
                 .ConfigureAwait(false);
             string reason = result.Problem?.ReasonCode ?? "HARDWARE_RECOVERY_RECORD_REJECTED";
@@ -112,7 +126,9 @@ public sealed partial class WireToGateBusinessService
         }
 
         RequireValidLiveSignals(isolation.PhysicallyUnknownSlots);
-        await WriteRecoveryStateCachedAsync(state with { ForcedIsolation = null }, cancellationToken)
+        await UpdateRecoveryStateCachedAsync(
+                current => current with { ForcedIsolation = null },
+                cancellationToken)
             .ConfigureAwait(false);
         PublishOperatorResponse(
             "HARDWARE_RECOVERY_RECORDED",

@@ -20,8 +20,8 @@ public sealed class WireToGateRecoveryVectorExecutorTests
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using TestFixture fixture = await TestFixture.CreateAsync([true, true], cancellationToken: token);
-        await fixture.Journal.WriteRecoveryStateAsync(
-            WireToGateRecoveryState.Empty with
+        await fixture.Journal.UpdateRecoveryStateAsync(
+            _ => WireToGateRecoveryState.Empty with
             {
                 ForcedIsolation = new WireToGateForcedIsolation(
                     "77777777-7777-4777-8777-777777777777",
@@ -347,8 +347,8 @@ public sealed class WireToGateRecoveryVectorExecutorTests
             WireToGateRecoveryVectorTypes.LoadCancellation,
             "15151515-1515-4515-8515-151515151515",
             [1, 2]);
-        await fixture.Journal.WriteRecoveryStateAsync(
-            new WireToGateRecoveryState(
+        await fixture.Journal.UpdateRecoveryStateAsync(
+            _ => new WireToGateRecoveryState(
                 context.SlotOperationAttemptId,
                 WireToGateRecoveryCheckpoint.Prepared,
                 [1],
@@ -391,8 +391,8 @@ public sealed class WireToGateRecoveryVectorExecutorTests
             WireToGateRecoveryVectorTypes.LoadCompensation,
             "16161616-1616-4616-8616-161616161616",
             [1]);
-        await fixture.Journal.WriteRecoveryStateAsync(
-            new WireToGateRecoveryState(
+        await fixture.Journal.UpdateRecoveryStateAsync(
+            _ => new WireToGateRecoveryState(
                 context.SlotOperationAttemptId,
                 WireToGateRecoveryCheckpoint.Prepared,
                 [1],
@@ -763,7 +763,7 @@ public sealed class WireToGateRecoveryVectorExecutorTests
                     slot, "COMPLETED", "EMPTY", "LOCKED", "RESET", []))
             ]
         };
-        await fixture.Journal.WriteRecoveryStateAsync(started, token);
+        await fixture.Journal.UpdateRecoveryStateAsync(_ => started, token);
 
         WireToGateRecoveryVectorExecutionResult? refused = await fixture.Executor.RefuseBeforeUnlockAsync(
             context,
@@ -814,8 +814,8 @@ public sealed class WireToGateRecoveryVectorExecutorTests
         CancellationToken token)
     {
         WireToGateRecoveryVectorContext context = CreateContext(vectorType, primaryId, slots);
-        await fixture.Journal.WriteRecoveryStateAsync(
-            new WireToGateRecoveryState(
+        await fixture.Journal.UpdateRecoveryStateAsync(
+            _ => new WireToGateRecoveryState(
                 context.SlotOperationAttemptId,
                 WireToGateRecoveryCheckpoint.Prepared,
                 [],
@@ -840,8 +840,8 @@ public sealed class WireToGateRecoveryVectorExecutorTests
             WireToGateRecoveryVectorTypes.LoadCancellation,
             cancellationId,
             slots);
-        await fixture.Journal.WriteRecoveryStateAsync(
-            new WireToGateRecoveryState(
+        await fixture.Journal.UpdateRecoveryStateAsync(
+            _ => new WireToGateRecoveryState(
                 context.SlotOperationAttemptId,
                 WireToGateRecoveryCheckpoint.Prepared,
                 handedOverOpen,

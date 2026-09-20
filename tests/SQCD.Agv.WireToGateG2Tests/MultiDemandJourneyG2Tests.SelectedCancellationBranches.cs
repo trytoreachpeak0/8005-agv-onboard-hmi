@@ -580,7 +580,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         string path = Harness.NewJournalPath();
         SqliteWireToGateJournal journal = new(path);
         await journal.InitializeAsync(cancellationToken);
-        await journal.WriteRecoveryStateAsync(seed, cancellationToken);
+        await journal.UpdateRecoveryStateAsync(_ => seed, cancellationToken);
         return path;
     }
 

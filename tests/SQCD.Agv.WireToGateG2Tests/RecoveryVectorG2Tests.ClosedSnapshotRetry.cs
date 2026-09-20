@@ -316,11 +316,6 @@ public sealed partial class RecoveryVectorG2Tests
         public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(CancellationToken cancellationToken = default) =>
             inner.ReadRecoveryStateAsync(cancellationToken);
 
-        public Task WriteRecoveryStateAsync(
-            WireToGateRecoveryState state,
-            CancellationToken cancellationToken = default) =>
-            inner.WriteRecoveryStateAsync(state, cancellationToken);
-
         public Task InitializeAsync(CancellationToken cancellationToken = default) =>
             inner.InitializeAsync(cancellationToken);
 

@@ -142,7 +142,7 @@ public sealed class WireToGateSlotOperationExecutorTests
 
         WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
             TestContext.Current.CancellationToken);
-        await fixture.Journal.WriteRecoveryStateAsync(state with
+        await fixture.Journal.UpdateRecoveryStateAsync(_ => state with
         {
             ExceptionRecoverySessionId = "44444444-4444-4444-8444-444444444444",
             RecoveryActionId = "55555555-5555-4555-8555-555555555555"
@@ -219,7 +219,7 @@ public sealed class WireToGateSlotOperationExecutorTests
 
         WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
             TestContext.Current.CancellationToken);
-        await fixture.Journal.WriteRecoveryStateAsync(state with
+        await fixture.Journal.UpdateRecoveryStateAsync(_ => state with
         {
             ExceptionRecoverySessionId = "44444444-4444-4444-8444-444444444444",
             RecoveryActionId = "55555555-5555-4555-8555-555555555555"
@@ -1061,8 +1061,8 @@ public sealed class WireToGateSlotOperationExecutorTests
         WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
         await InterruptWhileWaitingAsync(fixture, command);
         WireToGateRecoveryState interrupted = await fixture.Journal.ReadRecoveryStateAsync(token);
-        await fixture.Journal.WriteRecoveryStateAsync(
-            interrupted with { PendingLoadCancellation = PendingCancellation(command) },
+        await fixture.Journal.UpdateRecoveryStateAsync(
+            _ => interrupted with { PendingLoadCancellation = PendingCancellation(command) },
             token);
 
         InvalidDataException refused = await Assert.ThrowsAsync<InvalidDataException>(
@@ -1098,8 +1098,8 @@ public sealed class WireToGateSlotOperationExecutorTests
                         pressed = true;
                         WireToGateRecoveryState current =
                             await fixture.Journal.ReadRecoveryStateAsync(progressToken);
-                        await fixture.Journal.WriteRecoveryStateAsync(
-                            current with { PendingLoadCancellation = PendingCancellation(command) },
+                        await fixture.Journal.UpdateRecoveryStateAsync(
+                            _ => current with { PendingLoadCancellation = PendingCancellation(command) },
                             progressToken);
                     }
 
@@ -1125,8 +1125,8 @@ public sealed class WireToGateSlotOperationExecutorTests
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using TestFixture fixture = await TestFixture.CreateAsync(cancellationToken: token);
-        await fixture.Journal.WriteRecoveryStateAsync(
-            WireToGateRecoveryState.Empty with { ForcedIsolation = Isolation([2]) },
+        await fixture.Journal.UpdateRecoveryStateAsync(
+            _ => WireToGateRecoveryState.Empty with { ForcedIsolation = Isolation([2]) },
             token);
 
         WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
@@ -1159,8 +1159,8 @@ public sealed class WireToGateSlotOperationExecutorTests
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using TestFixture fixture = await TestFixture.CreateAsync(cancellationToken: token);
-        await fixture.Journal.WriteRecoveryStateAsync(
-            WireToGateRecoveryState.Empty with { ForcedIsolation = Isolation([3]) },
+        await fixture.Journal.UpdateRecoveryStateAsync(
+            _ => WireToGateRecoveryState.Empty with { ForcedIsolation = Isolation([3]) },
             token);
         WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
 
@@ -1188,8 +1188,8 @@ public sealed class WireToGateSlotOperationExecutorTests
         await using (SqliteWireToGateJournal before = new(journalPath))
         {
             await before.InitializeAsync(token);
-            await before.WriteRecoveryStateAsync(
-                WireToGateRecoveryState.Empty with { ForcedIsolation = Isolation([1, 2]) },
+            await before.UpdateRecoveryStateAsync(
+                _ => WireToGateRecoveryState.Empty with { ForcedIsolation = Isolation([1, 2]) },
                 token);
         }
 
@@ -1630,7 +1630,7 @@ public sealed class WireToGateSlotOperationExecutorTests
 
         WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(
             TestContext.Current.CancellationToken);
-        await fixture.Journal.WriteRecoveryStateAsync(state with
+        await fixture.Journal.UpdateRecoveryStateAsync(_ => state with
         {
             ExceptionRecoverySessionId = "44444444-4444-4444-8444-444444444444",
             RecoveryActionId = "55555555-5555-4555-8555-555555555555"

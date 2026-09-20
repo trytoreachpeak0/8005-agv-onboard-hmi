@@ -150,9 +150,10 @@ public sealed partial class RecoveryVectorG2Tests
             token,
             wrapJournal: inner => race = new WriteFunnelRaceJournal(inner));
 
+        // 向量已落盘、观测时间还没写：这正是 EnsureResultObservedAtAsync 会写的那一次。
         race!.BeforeTheNextWriteFrom(
             "EnsureResultObservedAtAsync",
-            static _ => true,
+            static state => state.RecoveryVector is not null && state.RecoveryResultObservedAt is null,
             RecordALateResultAsync);
         Assert.True(await harness.Business.RequestFaultCargoHandoffAsync(
             "现场确认故障仓货物需要交接处理。", token));
@@ -167,38 +168,31 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
-    /// 第 7 处的另一条：挂起取消落盘（<c>RecoveryVectors.cs</c> 的
-    /// <c>RecallOrRecordLoadCancellationAsync</c>）与执行器检查点交错。挂起取消属于本 attempt，
-    /// 收口之后两者都在。
+    /// 第 7 处的第三条：向量准备落盘（<c>RecoveryVectors.cs</c> 的
+    /// <c>WriteRecoveryVectorPreparedAsync</c>）与一份迟到的待发结果交错。基线上向量准备按调用方
+    /// 读到的副本整条写回，那份结果被写成空。
     /// </summary>
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-02")]
-    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
-    public async Task JournalingAPendingCancellationNeverDropsAPendingResultRecordedBeforeIt()
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
+    public async Task PreparingAVectorNeverDropsAPendingResultRecordedBeforeIt()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         WriteFunnelRaceJournal? race = null;
-        await using FakeControlServer server = NewCancellationServer();
-        // 授权被丢弃：这一按发不出结果，但挂起取消已经落盘——正是这张票关心的那一次写入。
-        server.LoadCancellationAuthorizationsToDrop = 1;
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
             token,
-            existingServer: server,
             wrapJournal: inner => race = new WriteFunnelRaceJournal(inner));
-        await RecoveryVectorHarness.WaitUntilAsync(
-            () => harness.Business.CanRequestLoadCancellation,
-            "the load cancellation entry to be offered",
-            token);
 
         race!.BeforeTheNextWriteFrom(
-            "RecallOrRecordLoadCancellationAsync",
+            "WriteRecoveryVectorPreparedAsync",
             static _ => true,
             RecordALateResultAsync);
-        Assert.False(await harness.Business.RequestLoadCancellationAsync("装载结果未知，现场申请取消。", token));
+        Assert.True(await harness.Business.RequestFaultCargoHandoffAsync(
+            "现场确认故障仓货物需要交接处理。", token));
+        await harness.WaitForResultAsync("FaultCargoRecoveryResult", token);
 
         Assert.True(race.Fired, "竞争写入没有落在目标路径的读与写之间");
         WireToGateRecoveryState persisted = await harness.ReadRecoveryStateAsync(token);
-        Assert.NotNull(persisted.PendingLoadCancellation);
         Assert.Equal(
             [LateResultMessageId],
             persisted.PendingResults.Select(result => result.MessageId).ToArray());
@@ -261,8 +255,12 @@ public sealed partial class RecoveryVectorG2Tests
         private Func<WireToGateRecoveryState, bool>? _when;
         private Func<IWireToGateJournal, CancellationToken, Task>? _race;
         private int _fired;
+        private Exception? _raceFailure;
 
         public bool Fired => Volatile.Read(ref _fired) == 1;
+
+        /// <summary>注入自己抛出的异常，或 <c>null</c>。用例失败时先看它。</summary>
+        public Exception? RaceFailure => Volatile.Read(ref _raceFailure);
 
         /// <param name="target">目标业务方法名，按调用栈认。</param>
         /// <param name="when">看当时盘上的状态，决定这一次写入是不是要竞争的那一次。</param>
@@ -280,14 +278,6 @@ public sealed partial class RecoveryVectorG2Tests
         public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(
             CancellationToken cancellationToken = default) =>
             inner.ReadRecoveryStateAsync(cancellationToken);
-
-        public async Task WriteRecoveryStateAsync(
-            WireToGateRecoveryState state,
-            CancellationToken cancellationToken = default)
-        {
-            await RaceIfThisIsTheWriteAsync(cancellationToken);
-            await inner.WriteRecoveryStateAsync(state, cancellationToken);
-        }
 
         public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
             Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
@@ -338,7 +328,18 @@ public sealed partial class RecoveryVectorG2Tests
             }
 
             Volatile.Write(ref _target, null);
-            await race(inner, cancellationToken);
+            try
+            {
+                await race(inner, cancellationToken);
+            }
+            catch (Exception exception)
+            {
+                // 注入自己失败了是测试的问题，不是产品的。记下来，别让它伪装成「窗口没命中」，
+                // 也别让业务层的 catch 把它吞成一次普通的失败。
+                Volatile.Write(ref _raceFailure, exception);
+                throw;
+            }
+
             Volatile.Write(ref _fired, 1);
         }
 

@@ -34,8 +34,8 @@ public sealed class WireToGatePendingLoadCancellationTests
             new DateTimeOffset(2026, 9, 16, 8, 0, 0, TimeSpan.Zero),
             "扫码之前现场确认本站没有要装的货。");
 
-        await journal.WriteRecoveryStateAsync(
-            WireToGateRecoveryState.Empty with { PendingLoadCancellation = pending },
+        await journal.UpdateRecoveryStateAsync(
+            _ => WireToGateRecoveryState.Empty with { PendingLoadCancellation = pending },
             TestContext.Current.CancellationToken);
         WireToGateRecoveryState read = await journal.ReadRecoveryStateAsync(
             TestContext.Current.CancellationToken);
@@ -59,8 +59,8 @@ public sealed class WireToGatePendingLoadCancellationTests
             new DateTimeOffset(2026, 9, 16, 8, 0, 0, TimeSpan.Zero),
             "装载结果未知，现场申请取消。");
 
-        await journal.WriteRecoveryStateAsync(
-            WireToGateRecoveryState.Empty with { PendingLoadCancellation = pending },
+        await journal.UpdateRecoveryStateAsync(
+            _ => WireToGateRecoveryState.Empty with { PendingLoadCancellation = pending },
             TestContext.Current.CancellationToken);
         WireToGateRecoveryState read = await journal.ReadRecoveryStateAsync(
             TestContext.Current.CancellationToken);
@@ -85,8 +85,8 @@ public sealed class WireToGatePendingLoadCancellationTests
             new DateTimeOffset(2026, 9, 16, 8, 0, 0, TimeSpan.Zero),
             "扫码之前现场确认本站没有要装的货。");
 
-        await journal.WriteRecoveryStateAsync(
-            WireToGateRecoveryState.Empty with
+        await journal.UpdateRecoveryStateAsync(
+            _ => WireToGateRecoveryState.Empty with
             {
                 RecoveryVector = vector,
                 PendingLoadCancellation = pending
@@ -108,8 +108,8 @@ public sealed class WireToGatePendingLoadCancellationTests
     {
         await using SqliteWireToGateJournal journal = await OpenJournalAsync();
 
-        await Assert.ThrowsAsync<InvalidDataException>(() => journal.WriteRecoveryStateAsync(
-            WireToGateRecoveryState.Empty with
+        await Assert.ThrowsAsync<InvalidDataException>(() => journal.UpdateRecoveryStateAsync(
+            _ => WireToGateRecoveryState.Empty with
             {
                 RecoveryVector = BeforeSublotVector() with { SlotOperationAttemptId = AttemptId }
             },

@@ -234,11 +234,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
         public Task<string> ReadJournalEpochAsync(CancellationToken cancellationToken = default) =>
             inner.ReadJournalEpochAsync(cancellationToken);
 
-        public Task WriteRecoveryStateAsync(
-            WireToGateRecoveryState state,
-            CancellationToken cancellationToken = default) =>
-            inner.WriteRecoveryStateAsync(state, cancellationToken);
-
         public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
             Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
             CancellationToken cancellationToken = default) =>

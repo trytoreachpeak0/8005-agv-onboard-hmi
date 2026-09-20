@@ -361,19 +361,25 @@ public interface IWireToGateJournal : IAsyncDisposable
     public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(
         CancellationToken cancellationToken = default);
 
-    public Task WriteRecoveryStateAsync(
-        WireToGateRecoveryState state,
-        CancellationToken cancellationToken = default);
-
     /// <summary>
     /// Reads the recovery state, applies <paramref name="change"/> and writes what it returns, as one
     /// step against every other read and write of this journal; <c>null</c> from
     /// <paramref name="change"/> writes nothing. Returns what was written, or <c>null</c>.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// For a writer whose decision rests on what it read. A separate read and write lets another
     /// writer land in between, and the second write then puts the stale read back over it
     /// (onboard-hmi#123 review A: a CLOSED snapshot's release rolling a recorded result back).
+    /// </para>
+    /// <para>
+    /// <b>This is the only way to write the recovery state.</b> There was a
+    /// <c>WriteRecoveryStateAsync</c> taking a whole record until onboard-hmi#136, and every one of its
+    /// callers had read the state, decided outside the lock and written the whole thing back -- so each
+    /// of them silently undid whatever landed in between, with nothing thrown and nothing logged. A
+    /// change function that ignores <paramref name="change"/>'s argument is the same fault wearing this
+    /// method's name; <c>RecoveryStateWriteFunnelArchitectureTests</c> holds both lines.
+    /// </para>
     /// </remarks>
     public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
         Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,

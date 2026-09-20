@@ -28,8 +28,8 @@ public sealed class WireToGateSlotOperationExecutorResultRecordRaceTests
         Directory.CreateDirectory(directory);
         await using SqliteWireToGateJournal sqlite = new(Path.Combine(directory, "journal.db"));
         await sqlite.InitializeAsync(token);
-        await sqlite.WriteRecoveryStateAsync(
-            WireToGateRecoveryState.Empty with
+        await sqlite.UpdateRecoveryStateAsync(
+            _ => WireToGateRecoveryState.Empty with
             {
                 UnsettledSlotOperationAttemptId = AttemptA,
                 ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.SafeFinishReached
@@ -49,8 +49,8 @@ public sealed class WireToGateSlotOperationExecutorResultRecordRaceTests
             () => true);
 
         // The next operation B journals its Prepared at the first moment the recording touches the journal.
-        journal.OnNextRecoveryStateAccess = () => sqlite.WriteRecoveryStateAsync(
-            WireToGateRecoveryState.Empty with
+        journal.OnNextRecoveryStateAccess = () => sqlite.UpdateRecoveryStateAsync(
+            _ => WireToGateRecoveryState.Empty with
             {
                 UnsettledSlotOperationAttemptId = AttemptB,
                 ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.Prepared
@@ -162,11 +162,6 @@ public sealed class WireToGateSlotOperationExecutorResultRecordRaceTests
 
         public Task<string> ReadJournalEpochAsync(CancellationToken cancellationToken = default) =>
             inner.ReadJournalEpochAsync(cancellationToken);
-
-        public Task WriteRecoveryStateAsync(
-            WireToGateRecoveryState state,
-            CancellationToken cancellationToken = default) =>
-            inner.WriteRecoveryStateAsync(state, cancellationToken);
 
         public Task<WireToGateDurableMessage> SaveOutgoingBeforeSendAsync(
             WireToGateDurableMessage message,

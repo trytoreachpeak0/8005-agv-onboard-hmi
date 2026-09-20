@@ -80,17 +80,6 @@ public sealed partial class RecoveryVectorG2Tests
             return read;
         }
 
-        public async Task WriteRecoveryStateAsync(
-            WireToGateRecoveryState state,
-            CancellationToken cancellationToken = default)
-        {
-            await inner.WriteRecoveryStateAsync(state, cancellationToken);
-            if (ResultRecordedMidRelease)
-            {
-                Volatile.Write(ref _finished, 1);
-            }
-        }
-
         public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
             Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
             CancellationToken cancellationToken = default) =>
@@ -127,8 +116,8 @@ public sealed partial class RecoveryVectorG2Tests
         private async Task RecordResultAsync(CancellationToken cancellationToken)
         {
             WireToGateRecoveryState state = await inner.ReadRecoveryStateAsync(cancellationToken);
-            await inner.WriteRecoveryStateAsync(
-                state with
+            await inner.UpdateRecoveryStateAsync(
+                _ => state with
                 {
                     UnsettledSlotOperationAttemptId = null,
                     ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ResultRecorded,

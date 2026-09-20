@@ -100,6 +100,7 @@ public sealed class WireToGateSlotOperationExecutorPendingResultRaceTests
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task WithoutARaceThePendingResultIsJournaledExactlyAsBefore()
     {
@@ -125,6 +126,7 @@ public sealed class WireToGateSlotOperationExecutorPendingResultRaceTests
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     public async Task AJournalWriteFailureLeavesTheStateUntouchedAndThrowsAsBefore()
     {
@@ -293,14 +295,6 @@ public sealed class WireToGateSlotOperationExecutorPendingResultRaceTests
             WireToGateRecoveryState state = await inner.ReadRecoveryStateAsync(cancellationToken);
             await InterleaveAsync();
             return state;
-        }
-
-        public Task WriteRecoveryStateAsync(
-            WireToGateRecoveryState state,
-            CancellationToken cancellationToken = default)
-        {
-            ThrowIfArmed();
-            return inner.WriteRecoveryStateAsync(state, cancellationToken);
         }
 
         public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(

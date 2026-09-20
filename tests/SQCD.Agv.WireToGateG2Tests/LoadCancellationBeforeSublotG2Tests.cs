@@ -602,7 +602,7 @@ public sealed class LoadCancellationBeforeSublotG2Tests
                 await journal.InitializeAsync(cancellationToken);
                 if (seed is not null)
                 {
-                    await journal.WriteRecoveryStateAsync(seed, cancellationToken);
+                    await journal.UpdateRecoveryStateAsync(_ => seed, cancellationToken);
                 }
 
                 WireToGateSessionService session = new(

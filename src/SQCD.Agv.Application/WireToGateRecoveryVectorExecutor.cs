@@ -116,7 +116,6 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 [],
                 [],
                 results,
-                state,
                 CancellationToken.None).ConfigureAwait(false);
             DateTimeOffset observedAt = await EnsureResultObservedAtAsync(
                 context,
@@ -219,7 +218,6 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 [],
                 [],
                 [],
-                state,
                 cancellationToken).ConfigureAwait(false);
             DateTimeOffset emptyObservedAt = await EnsureResultObservedAtAsync(
                 context,
@@ -264,7 +262,6 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                     state.ActiveUnlockSlots,
                     completed,
                     results,
-                    state,
                     CancellationToken.None).ConfigureAwait(false);
                 DateTimeOffset observedAt = await EnsureResultObservedAtAsync(
                     context,
@@ -290,7 +287,6 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 [],
                 completed,
                 results,
-                state,
                 cancellationToken).ConfigureAwait(false);
             state = state with
             {
@@ -316,7 +312,6 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 [],
                 completed,
                 results,
-                state,
                 CancellationToken.None).ConfigureAwait(false);
             DateTimeOffset observedAt = await EnsureResultObservedAtAsync(
                 context,
@@ -347,7 +342,6 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 handedOver.Where(slot => !completed.Contains(slot)).ToArray(),
                 completed,
                 results,
-                state,
                 cancellationToken).ConfigureAwait(false);
             await SendProgressAsync(progress, "PREPARING", [], completed, cancellationToken)
                 .ConfigureAwait(false);
@@ -369,7 +363,6 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                         [slot],
                         completed,
                         results,
-                        state,
                         CancellationToken.None).ConfigureAwait(false);
                     DateTimeOffset observedAt = await EnsureResultObservedAtAsync(
                         context,
@@ -401,7 +394,6 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                     handedOver.Where(slot => !completed.Contains(slot)).ToArray(),
                     completed,
                     results,
-                    state,
                     cancellationToken).ConfigureAwait(false);
             }
 
@@ -445,7 +437,6 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                     [],
                     completed,
                     results,
-                    state,
                     cancellationToken).ConfigureAwait(false);
                 continue;
             }
@@ -464,7 +455,6 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                     [],
                     completed,
                     results,
-                    state,
                     CancellationToken.None).ConfigureAwait(false);
                 DateTimeOffset observedAt = await EnsureResultObservedAtAsync(
                     context,
@@ -483,7 +473,6 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 [physicalSlot],
                 completed,
                 results,
-                state,
                 cancellationToken).ConfigureAwait(false);
             if (!openHandedOver)
             {
@@ -558,7 +547,6 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                     [],
                     completed,
                     results,
-                    state,
                     cancellationToken).ConfigureAwait(false);
                 await SendProgressAsync(progress, "VERIFYING", [], completed, cancellationToken)
                     .ConfigureAwait(false);
@@ -595,7 +583,6 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                     stillActive,
                     completed,
                     results,
-                    state,
                     CancellationToken.None).ConfigureAwait(false);
                 await SendProgressAsync(
                         progress,
@@ -622,7 +609,6 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             [],
             completed,
             results,
-            state,
             cancellationToken).ConfigureAwait(false);
         await SendProgressAsync(progress, "SAFE_FINISH", [], completed, cancellationToken)
             .ConfigureAwait(false);
@@ -664,26 +650,40 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         WireToGateRecoveryVectorContext context,
         CancellationToken cancellationToken)
     {
-        WireToGateRecoveryState state = await _journal
-            .ReadRecoveryStateAsync(cancellationToken)
+        // The scope check and the write are one step under the journal's lock: this write owns
+        // RecoveryResultObservedAt and nothing else, so every other field is taken as the journal
+        // holds it now. Written from a copy read outside the lock, it put back whatever landed in
+        // between -- a released recovery session came back and the entry answered
+        // RECOVERY_SESSION_STATE_PENDING for good (onboard-hmi#136 point 3).
+        DateTimeOffset? alreadyObserved = null;
+        bool mismatch = false;
+        WireToGateRecoveryState? written = await _journal.UpdateRecoveryStateAsync(
+                current =>
+                {
+                    if (current.RecoveryVector is not { } persisted || !SameContext(persisted, context))
+                    {
+                        mismatch = true;
+                        return null;
+                    }
+
+                    if (current.RecoveryResultObservedAt is { } observedAt)
+                    {
+                        alreadyObserved = observedAt;
+                        return null;
+                    }
+
+                    return current with { RecoveryResultObservedAt = _clock.Now.ToUniversalTime() };
+                },
+                cancellationToken)
             .ConfigureAwait(false);
-        if (state.RecoveryVector is not { } persisted
-            || !SameContext(persisted, context))
+        if (mismatch)
         {
             throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
         }
 
-        if (state.RecoveryResultObservedAt is { } observedAt)
-        {
-            return observedAt;
-        }
-
-        DateTimeOffset resultObservedAt = _clock.Now.ToUniversalTime();
-        await _journal.WriteRecoveryStateAsync(
-                state with { RecoveryResultObservedAt = resultObservedAt },
-                cancellationToken)
-            .ConfigureAwait(false);
-        return resultObservedAt;
+        return alreadyObserved
+            ?? written?.RecoveryResultObservedAt
+            ?? throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
     }
 
     private async Task WriteVectorStateAsync(
@@ -692,11 +692,16 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         IReadOnlyList<int> activeSlots,
         IReadOnlyList<int> completedSlots,
         IReadOnlyList<WireToGateSlotExecutionResult> results,
-        WireToGateRecoveryState existingState,
         CancellationToken cancellationToken)
     {
-        await _journal.WriteRecoveryStateAsync(
-            existingState with
+        // Merged under the journal's lock against the newest state. This checkpoint owns the attempt,
+        // the checkpoint, the active unlock set, the completed slots, the slot results and the vector,
+        // and it fills four more from the vector's own context where that context carries them. Every
+        // other field, and the fallback for those four, is what the journal holds now -- not what
+        // existingState held when the vector started, which is how a checkpoint used to drop a pending
+        // result recorded between two of them (onboard-hmi#136 point 4).
+        await _journal.UpdateRecoveryStateAsync(
+            current => current with
             {
                 UnsettledSlotOperationAttemptId = context.SlotOperationAttemptId,
                 ProvenRecoveryCheckpoint = checkpoint,
@@ -709,15 +714,15 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                     .ToArray(),
                 RecoveryVector = context,
                 ExceptionRecoverySessionId = context.ExceptionRecoverySessionId
-                    ?? existingState.ExceptionRecoverySessionId,
+                    ?? current.ExceptionRecoverySessionId,
                 RecoveryActionId = context.VectorType is
                     WireToGateRecoveryVectorTypes.LoadCompensation
                     or WireToGateRecoveryVectorTypes.FaultCargoHandoff
                     ? context.PrimaryId
-                    : existingState.RecoveryActionId,
-                RecoveryOperatorId = context.OperatorId ?? existingState.RecoveryOperatorId,
+                    : current.RecoveryActionId,
+                RecoveryOperatorId = context.OperatorId ?? current.RecoveryOperatorId,
                 RecoveryOperatorVerifiedAt = context.OperatorVerifiedAt
-                    ?? existingState.RecoveryOperatorVerifiedAt
+                    ?? current.RecoveryOperatorVerifiedAt
             },
             cancellationToken).ConfigureAwait(false);
     }

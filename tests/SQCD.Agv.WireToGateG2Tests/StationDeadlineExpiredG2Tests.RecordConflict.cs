@@ -61,10 +61,14 @@ public sealed partial class StationDeadlineExpiredG2Tests
             Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
             CancellationToken cancellationToken = default)
         {
-            if (Interlocked.Exchange(ref _written, 1) == 0)
+            // 认的是「补记迟到结果」那一次，按调用栈认而不是靠「第一次不带 settled 的调用」：
+            // onboard-hmi#136 之后执行器的检查点与待发结果落盘也走这个重载，靠次序认就会注入到
+            // 别人头上（那正是这个替身的注释原来假设不会发生的事）。
+            if (Environment.StackTrace.Contains("MarkResultRecordedAsync", StringComparison.Ordinal)
+                && Interlocked.Exchange(ref _written, 1) == 0)
             {
-                await inner.WriteRecoveryStateAsync(
-                    WireToGateRecoveryState.Empty with
+                await inner.UpdateRecoveryStateAsync(
+                    _ => WireToGateRecoveryState.Empty with
                     {
                         UnsettledSlotOperationAttemptId = NextAttemptId,
                         ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.Prepared
@@ -75,8 +79,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
             return await inner.UpdateRecoveryStateAsync(change, cancellationToken);
         }
 
-        // Business-side reads and writes that cache what they settle on. Only the executor's own
-        // result record goes through the overload above, and that is the write this double races.
+        // Business-side reads and writes that cache what they settle on. The overload above is shared
+        // by every writer that does not cache (onboard-hmi#136), so it picks its target by call stack.
         public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
             Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
             Action<WireToGateRecoveryState> settled,
@@ -91,11 +95,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
 
         public Task<string> ReadJournalEpochAsync(CancellationToken cancellationToken = default) =>
             inner.ReadJournalEpochAsync(cancellationToken);
-
-        public Task WriteRecoveryStateAsync(
-            WireToGateRecoveryState state,
-            CancellationToken cancellationToken = default) =>
-            inner.WriteRecoveryStateAsync(state, cancellationToken);
 
         public Task<WireToGateDurableMessage> SaveOutgoingBeforeSendAsync(
             WireToGateDurableMessage message,
