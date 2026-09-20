@@ -1,0 +1,39 @@
+===== A. 审查改动后，心跳用例全绿 =====
+
+Time Elapsed 00:00:05.52
+Passed!  - Failed:     0, Passed:     9, Skipped:     0, Total:     9, Duration: 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+===== B. 默认值改回写死 5 秒 =====
+
+Time Elapsed 00:00:14.58
+[xUnit.net 00:00:11.60]     SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer [FAIL]
+  Error Message:
+   8 秒窗口里只收到 1 条 Heartbeat，就绪后各段间隔为 5.03 秒；ADR-cross-0027 要求 2 秒一条。
+     at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 96
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 103
+===== C. 只把节拍改回「发完再 Delay」 =====
+
+Time Elapsed 00:00:11.68
+[xUnit.net 00:00:08.99]     SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer [FAIL]
+  Error Message:
+   第 1 与第 2 条 Heartbeat 之间隔得太久，就绪后各段间隔为 2.01 秒、4.53 秒；ack 的往返不该被算进下一次等待，单次心跳丢失就会撞上服务端 6 秒的静默阈值。
+     at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 105
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 103
+===== D. 去掉消息超时那道新校验（审查 S2 的反向验证） =====
+
+Time Elapsed 00:00:06.24
+[xUnit.net 00:00:01.33]     SQCD.Agv.UnitTests.ConfigurationTests.AMessageTimeoutThatWouldStretchTheHeartbeatGapIsRejected(milliseconds: 2147483647) [FAIL]
+[xUnit.net 00:00:01.34]     SQCD.Agv.UnitTests.ConfigurationTests.AMessageTimeoutThatWouldStretchTheHeartbeatGapIsRejected(milliseconds: 3000) [FAIL]
+[xUnit.net 00:00:01.34]     SQCD.Agv.UnitTests.ConfigurationTests.AMessageTimeoutThatWouldStretchTheHeartbeatGapIsRejected(milliseconds: 10000) [FAIL]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+===== E. 恢复，全 G2 项目与单元测试各跑一轮 =====
+
+Time Elapsed 00:00:05.19
+Passed!  - Failed:     0, Passed:   304, Skipped:     0, Total:   304, Duration: 57 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+Passed!  - Failed:     0, Passed:   452, Skipped:     0, Total:   452, Duration: 9 s - SQCD.Agv.UnitTests.dll (net8.0)
+ M src/SQCD.Agv.Infrastructure/Configuration.cs
+ M src/SQCD.Agv.Wpf/appsettings.Production.example.json
+ M src/SQCD.Agv.Wpf/appsettings.json
+ M tests/SQCD.Agv.UnitTests/ConfigurationTests.cs
+ M tests/SQCD.Agv.WireToGateG2Tests/SessionHeartbeatCadenceG2Tests.cs
+ M tests/SQCD.Agv.WireToGateG2Tests/SessionHeartbeatPacingG2Tests.cs

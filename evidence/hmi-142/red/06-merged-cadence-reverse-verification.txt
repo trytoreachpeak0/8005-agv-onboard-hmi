@@ -1,0 +1,33 @@
+===== A. 合并后的 cadence 用例，实现原样 =====
+
+Time Elapsed 00:00:03.71
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+===== B. 把默认值改回写死 5 秒 =====
+
+Time Elapsed 00:00:05.77
+[xUnit.net 00:00:07.57]     SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer [FAIL]
+  Error Message:
+   6 秒窗口里只收到 1 条 Heartbeat，就绪后各段间隔为 5.01 秒；ADR-cross-0027 要求 2 秒一条。
+     at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 86
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 93
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 93
+===== C. 只把节拍改回「发完再 Delay」 =====
+
+Time Elapsed 00:00:08.14
+[xUnit.net 00:00:07.30]     SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer [FAIL]
+  Error Message:
+   第 1 与第 2 条 Heartbeat 之间隔得太久，就绪后各段间隔为 2.00 秒、3.05 秒；ack 的往返不该被算进下一次等待，单次心跳丢失就会撞上服务端 6 秒的静默阈值。
+     at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 95
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 93
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.TheSessionHeartbeatKeepsTheAdrCadenceOnTheRealTimer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 93
+===== D. 恢复实现，全 G2 项目三轮 =====
+
+Time Elapsed 00:00:08.46
+--- mine run 1
+Passed!  - Failed:     0, Passed:   292, Skipped:     0, Total:   292, Duration: 49 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+--- mine run 2
+Passed!  - Failed:     0, Passed:   292, Skipped:     0, Total:   292, Duration: 50 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+--- mine run 3
+Passed!  - Failed:     0, Passed:   292, Skipped:     0, Total:   292, Duration: 48 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+ .../SessionHeartbeatCadenceG2Tests.cs              | 95 ++++++++--------------
+ 1 file changed, 36 insertions(+), 59 deletions(-)

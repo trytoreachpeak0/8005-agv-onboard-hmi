@@ -1,0 +1,15 @@
+--- run 1
+
+Passed!  - Failed:     0, Passed:    34, Skipped:     0, Total:    34, Duration: 51 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+--- run 2
+
+Passed!  - Failed:     0, Passed:    34, Skipped:     0, Total:    34, Duration: 54 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+--- run 3
+
+Passed!  - Failed:     0, Passed:    34, Skipped:     0, Total:    34, Duration: 49 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+--- run 4
+
+Passed!  - Failed:     0, Passed:    34, Skipped:     0, Total:    34, Duration: 49 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+--- run 5
+
+Passed!  - Failed:     0, Passed:    34, Skipped:     0, Total:    34, Duration: 48 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
