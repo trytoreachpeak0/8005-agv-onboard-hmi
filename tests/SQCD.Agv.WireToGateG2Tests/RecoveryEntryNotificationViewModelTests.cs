@@ -108,6 +108,11 @@ public sealed class RecoveryEntryNotificationViewModelTests
         Assert.All(announced, name => Assert.Contains(name ?? "(null)", publicProperties));
     }
 
+    /// <summary>
+    /// 文案取的是「真遗留」那一支——上个进程留下、本进程从未结论过的操作（onboard-hmi#139 之后恢复投影按这个
+    /// 分岔选措辞，本进程结论过的那一支不带「上次」）。这里两种都合法，视图模型不看文案，选它只为让样例对应
+    /// 一个具体的真实场景。
+    /// </summary>
     private static WireToGateOperatorEvent RecoveryRequiredEvent() => new(
         Now,
         "OPERATION_RECOVERY_REQUIRED",
