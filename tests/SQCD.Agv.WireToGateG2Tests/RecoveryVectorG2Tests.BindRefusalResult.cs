@@ -115,7 +115,10 @@ public sealed partial class RecoveryVectorG2Tests
     /// <remarks>
     /// The hash is stamped on the vector at its first bind, not when it is prepared, so this case only
     /// exists for a command that is not the first: the journal below is what one bound command leaves
-    /// behind, and the command sent after it carries content the server changed underneath.
+    /// behind, and the command sent after it carries content the server changed underneath. The
+    /// comparison is between that stamp and the hash <c>BindRecoveryVectorCommandAsync</c> computes
+    /// from the command's own fields -- the command's <c>commandContentSha256</c> is never read here --
+    /// so the disagreement has to be planted on the stamp.
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
@@ -139,8 +142,7 @@ public sealed partial class RecoveryVectorG2Tests
             {
                 RecoveryVector = state.RecoveryVector! with
                 {
-                    CommandContentSha256 = FakeControlServerIdentifiers
-                        .LoadCompensationContentSha256(actionId, DemandId, AttemptId, CompensationSlots)
+                    CommandContentSha256 = new string('a', 64)
                 }
             },
             token);
@@ -148,10 +150,7 @@ public sealed partial class RecoveryVectorG2Tests
         await harness.Server.SendCommandAsync(
             "LoadCompensationCommand",
             CompensationCommandMessageId,
-            UnboundCompensationCommand(
-                actionId,
-                CompensationSlots,
-                contentSha256: new string('a', 64)));
+            UnboundCompensationCommand(actionId, CompensationSlots));
 
         JsonElement result = await harness.WaitForResultAsync("LoadCompensationResult", token);
         AssertRefusedResult(result, actionId, CompensationSlots);
@@ -184,12 +183,31 @@ public sealed partial class RecoveryVectorG2Tests
             "LoadCompensationCommand", CompensationCommandMessageId, command);
         await harness.WaitForResultAsync("LoadCompensationResult", token);
 
-        int blockedBefore = harness.RecoveryBlockedCount;
+        // The replay path publishes OPERATION_REPLAY and sends nothing, so that event is the only
+        // proof the second copy was read at all -- without it "still one result" would hold just as
+        // well for a copy the vehicle never got to.
+        List<string> replays = [];
+        harness.Business.OperatorEventPublished += (_, args) =>
+        {
+            if (args.Value.Kind == "OPERATION_REPLAY")
+            {
+                lock (replays)
+                {
+                    replays.Add(args.Value.Message);
+                }
+            }
+        };
         await harness.Server.SendCommandAsync(
             "LoadCompensationCommand", SecondCommandMessageId, command);
         await RecoveryVectorHarness.WaitUntilAsync(
-            () => harness.RecoveryBlockedCount > blockedBefore,
-            "the vehicle to answer the second copy of the command",
+            () =>
+            {
+                lock (replays)
+                {
+                    return replays.Count > 0;
+                }
+            },
+            "the vehicle to answer the second copy of the command as a replay",
             token);
 
         Assert.Single(harness.ResultsOfType("LoadCompensationResult"));
