@@ -269,6 +269,9 @@ public sealed partial class RecoveryVectorG2Tests
         await harness.WaitForRecoveryBlockedAsync("RECOVERY_SCOPE_MISMATCH", token);
 
         JsonElement result = await harness.WaitForResultAsync("FaultCargoRecoveryResult", token);
+        // One, not "at least one": the old assertion was Assert.Empty, so without this the change from
+        // silence to an answer would also stop noticing a vehicle that answers twice.
+        Assert.Single(harness.ResultsOfType("FaultCargoRecoveryResult"));
         Assert.Equal("FAILED", result.GetProperty("overallOutcome").GetString());
         Assert.Equal(CommandHandoffId, result.GetProperty("handoffId").GetString());
         Assert.Equal(
@@ -810,6 +813,9 @@ public sealed partial class RecoveryVectorG2Tests
 
         JsonElement result = await harness.WaitForResultAsync(
             "ForcedMechanicalRecoveryResult", token);
+        // See the fault cargo case: the old Assert.Empty covered "not twice" for free, and the new
+        // shape does not.
+        Assert.Single(harness.ResultsOfType("ForcedMechanicalRecoveryResult"));
         Assert.Equal("FAILED", result.GetProperty("outcome").GetString());
         Assert.Equal(9, result.GetProperty("forcedRecoveryGeneration").GetInt64());
         Assert.Equal(

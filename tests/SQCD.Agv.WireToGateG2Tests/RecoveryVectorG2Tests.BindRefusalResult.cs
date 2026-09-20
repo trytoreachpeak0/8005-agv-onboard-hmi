@@ -66,9 +66,12 @@ public sealed partial class RecoveryVectorG2Tests
             CompensationCommandMessageId,
             UnboundCompensationCommand(UnpreparedActionId, CompensationSlots));
 
+        // The guard first: waiting on the result before the refusal means a red says only "no result
+        // came", which is also what an unread command looks like. This order makes the red read
+        // "the guard refused with this code, and then nothing was sent".
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_VECTOR_CONTEXT_MISSING", token);
         JsonElement result = await harness.WaitForResultAsync("LoadCompensationResult", token);
         AssertRefusedResult(result, UnpreparedActionId, CompensationSlots);
-        await harness.WaitForRecoveryBlockedAsync("RECOVERY_VECTOR_CONTEXT_MISSING", token);
         Assert.Equal(0, harness.Io.UnlockCount);
     }
 
@@ -98,9 +101,9 @@ public sealed partial class RecoveryVectorG2Tests
             CompensationCommandMessageId,
             UnboundCompensationCommand(actionId, OutOfScopeSlots));
 
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_SCOPE_MISMATCH", token);
         JsonElement result = await harness.WaitForResultAsync("LoadCompensationResult", token);
         AssertRefusedResult(result, actionId, OutOfScopeSlots);
-        await harness.WaitForRecoveryBlockedAsync("RECOVERY_SCOPE_MISMATCH", token);
         Assert.Equal(0, harness.Io.UnlockCount);
 
         // Answering a command is not settling the vector the operator is still waiting on.
@@ -152,9 +155,9 @@ public sealed partial class RecoveryVectorG2Tests
             CompensationCommandMessageId,
             UnboundCompensationCommand(actionId, CompensationSlots));
 
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_COMMAND_HASH_MISMATCH", token);
         JsonElement result = await harness.WaitForResultAsync("LoadCompensationResult", token);
         AssertRefusedResult(result, actionId, CompensationSlots);
-        await harness.WaitForRecoveryBlockedAsync("RECOVERY_COMMAND_HASH_MISMATCH", token);
         Assert.Equal(0, harness.Io.UnlockCount);
     }
 

@@ -1917,10 +1917,18 @@ public sealed partial class WireToGateBusinessService
     /// <remarks>
     /// Each of them says the same thing about the command -- it names a recovery this end did not
     /// prepare, or did not prepare this way -- and that is a thing the server's workflow is entitled to
-    /// hear. The others <c>BindRecoveryVectorCommandAsync</c> can raise are not on this list:
+    /// hear.
+    /// <para>
+    /// <b>The other three are excluded by scope, not by anything about them.</b>
     /// <c>RECOVERY_COMMAND_INVALID</c>, <c>RECOVERY_OPERATION_CONTEXT_MISSING</c> and
-    /// <c>LOAD_CORRECTION_OPERATION_NOT_AVAILABLE</c> are about a command or a journal too malformed to
-    /// answer from, and answering them would mean inventing the identity the answer is addressed by.
+    /// <c>LOAD_CORRECTION_OPERATION_NOT_AVAILABLE</c> leave the server waiting in exactly the same way,
+    /// and could be answered in exactly the same way: every identity the answer needs comes from the
+    /// command's own parameters, and the last two happen while the prepared vector -- operator included
+    /// -- is still on file. onboard-hmi#145 named three codes, so three is what this does; the three
+    /// left silent are on batch 7's residual risk list. An earlier version of this comment claimed they
+    /// could not be answered without inventing an identity, which is not true and would have sent the
+    /// next reader looking for a technical obstacle that is not there.
+    /// </para>
     /// </remarks>
     private static bool IsBindScopeRefusal(string message) => message is
         "RECOVERY_VECTOR_CONTEXT_MISSING"
@@ -2053,15 +2061,30 @@ public sealed partial class WireToGateBusinessService
                 or InvalidDataException)
         {
             // Saved before it is sent, so an answer on file goes out with the outbox on the next
-            // session even though this send never heard back. One that never reached the outbox did
-            // not go anywhere, and the command -- which the server sends again while it has no result
-            // -- is refused, and answered, afresh.
+            // session even though this send never heard back. One that never reached the outbox --
+            // the save itself failed, or building the payload threw -- did not go anywhere and never
+            // will: the two cases need different words, because "waiting for the acknowledgement"
+            // tells whoever reads the log that the next session will carry it, and for the second one
+            // that is false. Read back rather than inferred from the exception type, the way
+            // ReportRefusedBeforeUnlockAsync does. What saves the second case is the command itself:
+            // the server sends it again while it has no result, and it is refused, and answered, afresh.
+            bool onFile = await _session.Journal
+                .ReadOutgoingByDeduplicationKeyAsync(resultKey, cancellationToken)
+                .ConfigureAwait(false) is not null;
             _logger.Write(
                 LogSeverity.Warning,
                 nameof(WireToGateBusinessService),
-                $"未绑定的恢复命令已回 FAILED，但暂未收到DurableAck：type={vectorType}，id={primaryId}，"
-                    + $"reason={refusal}。",
+                onFile
+                    ? $"未绑定的恢复命令的 FAILED 结果已写入发件箱，暂未收到DurableAck：type={vectorType}，"
+                        + $"id={primaryId}，reason={refusal}。"
+                    : $"未绑定的恢复命令的 FAILED 结果未能写入发件箱，不会补发：type={vectorType}，"
+                        + $"id={primaryId}，reason={refusal}。",
                 exception);
+
+            // No RESULT_ACK_PENDING here, unlike the sibling: this path rethrows into the handler that
+            // publishes RECOVERY_BLOCKED, and telling the operator "the result is saved, waiting for
+            // the server" beside "the command was blocked" is two answers to one question. Whether the
+            // answer reached the outbox is the log's to say, and it now says it.
         }
     }
 

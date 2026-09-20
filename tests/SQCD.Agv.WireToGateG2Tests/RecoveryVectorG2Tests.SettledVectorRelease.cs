@@ -310,10 +310,23 @@ public sealed partial class RecoveryVectorG2Tests
     /// The vector and the session are gone, the unsettled load is not, and the next press opens a
     /// second session for it.
     /// </summary>
+    /// <remarks>
+    /// Waited for, not read once. The caller's wait ends at the outbox row being marked acknowledged,
+    /// which the send writes from inside itself; the clearing is what the business task does after that
+    /// send returns, and it is one more SQLite write away. Reading straight through that gap passes
+    /// while the machine is idle and fails whenever the thread pool is busy -- the shape of the random
+    /// reds onboard-hmi#149 traced to seconds-long stalls under load. The assertion below stays, so a
+    /// genuine failure still reports on the same line.
+    /// </remarks>
     private static async Task AssertTheVectorAndSessionAreForgottenAsync(
         RecoveryVectorHarness harness,
         CancellationToken token)
     {
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.ReadRecoveryStateAsync(token).GetAwaiter().GetResult().RecoveryVector is null,
+            "the acknowledged result to clear the vector and its recovery session",
+            token);
+
         WireToGateRecoveryState after = await harness.ReadRecoveryStateAsync(token);
         Assert.Null(after.RecoveryVector);
         Assert.Null(after.ExceptionRecoverySessionId);
