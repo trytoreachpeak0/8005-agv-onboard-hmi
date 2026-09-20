@@ -1,0 +1,26 @@
+[
+  {
+    "DemandId": "2dc71c81-cb3a-4911-87a9-ccc305987d86",
+    "TransportDemandKey": "L2-CR-20260920T010422824Z|WIRE_TO_GATE",
+    "FirstSeenAt": "2026-09-20 01:05:17.8211951+00:00",
+    "DemandCreatedAt": "2026-09-20 00:55:17.1947044+00:00",
+    "DecisionFingerprint": "3872e8e946bd3d441ff16299af2851765de5671e27dd21a64b794d5caa051277",
+    "ReasonCode": "DEMAND_ALREADY_ACCEPTED",
+    "LastSeenAt": "2026-09-20 01:05:40.0441571+00:00",
+    "AcceptedAt": "2026-09-20 01:05:18.7177115+00:00",
+    "StarvationEscalatedAt": null,
+    "StarvationEscalationParameterVersion": null
+  },
+  {
+    "DemandId": "6d6d0330-4fbd-49d4-9b39-1b49c82a96be",
+    "TransportDemandKey": "L2-CR-20260920T010422824Z-NEXT|WIRE_TO_GATE",
+    "FirstSeenAt": "2026-09-20 01:05:40.0441571+00:00",
+    "DemandCreatedAt": "2026-09-20 00:55:39.5362361+00:00",
+    "DecisionFingerprint": "1186d7e70714f197f8411b0f3bbe745c533c218d89488b74ee9cd1ef457431bc",
+    "ReasonCode": "ACCEPTED",
+    "LastSeenAt": "2026-09-20 01:05:40.4649505+00:00",
+    "AcceptedAt": "2026-09-20 01:05:40.4649505+00:00",
+    "StarvationEscalatedAt": null,
+    "StarvationEscalationParameterVersion": null
+  }
+]
