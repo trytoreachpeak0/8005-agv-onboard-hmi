@@ -243,24 +243,39 @@ public sealed partial class RecoveryVectorG2Tests
     /// <c>BindRecoveryVectorCommandAsync</c> can catch it. The slots hold cargo here, which is what
     /// makes <c>UnlockCount</c> worth asserting: had the command been accepted, the executor would
     /// have pulsed the first slot before anything else could fail.
+    /// <para>
+    /// The refusal is answered on the wire since onboard-hmi#145 (b): the server's workflow is
+    /// waiting in <c>AwaitingResult</c> for this command, and nothing else would ever end that wait.
+    /// The result echoes the <b>command's</b> handoff, not the one this end prepared, because the
+    /// workflow it has to land on is the one the command came from. Why that is the right answer
+    /// rather than a claim about slots nobody touched is argued in
+    /// <c>RecoveryVectorG2Tests.BindRefusalResult.cs</c>.
+    /// </para>
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
-    public async Task FaultCargoCommandNamingADifferentHandoffIsRefusedWithoutSlotIo()
+    public async Task FaultCargoCommandNamingADifferentHandoffIsRefusedWithAFailedResult()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
+        const string CommandHandoffId = "5a5a5a5a-5a5a-4a5a-8a5a-5a5a5a5a5a5a";
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
             token,
-            server => server.FaultCargoRecoveryHandoffIdOverride =
-                "5a5a5a5a-5a5a-4a5a-8a5a-5a5a5a5a5a5a",
+            server => server.FaultCargoRecoveryHandoffIdOverride = CommandHandoffId,
             cargoInTargetSlots: true);
 
         Assert.True(await harness.Business.RequestFaultCargoHandoffAsync(
             "现场确认故障仓货物需要交接处理。", token));
-        await harness.WaitForRecoveryBlockedAsync(token);
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_SCOPE_MISMATCH", token);
 
-        Assert.Empty(harness.ResultsOfType("FaultCargoRecoveryResult"));
+        JsonElement result = await harness.WaitForResultAsync("FaultCargoRecoveryResult", token);
+        Assert.Equal("FAILED", result.GetProperty("overallOutcome").GetString());
+        Assert.Equal(CommandHandoffId, result.GetProperty("handoffId").GetString());
+        Assert.Equal(
+            ["NOT_STARTED", "NOT_STARTED"],
+            result.GetProperty("slotResults").EnumerateArray()
+                .Select(slot => slot.GetProperty("outcome").GetString()!)
+                .ToArray());
         Assert.Equal(0, harness.Io.UnlockCount);
     }
 
