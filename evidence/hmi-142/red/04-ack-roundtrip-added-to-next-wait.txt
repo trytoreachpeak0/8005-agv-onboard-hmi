@@ -1,0 +1,16 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:15.64]     SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.ASlowHeartbeatAckDoesNotPushTheNextHeartbeatLate [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.ASlowHeartbeatAckDoesNotPushTheNextHeartbeatLate [7 s]
+  Error Message:
+   ack 慢 1 秒时 7 秒窗口里只收到 2 条 Heartbeat，就绪后各段间隔为 1.99 秒、3.01 秒。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.ASlowHeartbeatAckDoesNotPushTheNextHeartbeatLate() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 115
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.ASlowHeartbeatAckDoesNotPushTheNextHeartbeatLate() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 118
+   at SQCD.Agv.WireToGateG2Tests.SessionHeartbeatCadenceG2Tests.ASlowHeartbeatAckDoesNotPushTheNextHeartbeatLate() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-142-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\SessionHeartbeatCadenceG2Tests.cs:line 118
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:     9, Skipped:     0, Total:    10, Duration: 13 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
