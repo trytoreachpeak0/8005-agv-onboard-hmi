@@ -51,7 +51,46 @@ public sealed class FakeIoModuleClient : IIoModuleClient
 
     public bool IsConnected => true;
 
-    public IoSnapshot CurrentSnapshot { get; private set; }
+    /// <summary>
+    /// Whether a read is stamped as observed now. The real module polls every few milliseconds, so its
+    /// snapshot is never more than that old; this fake stamps one only when a test changes something,
+    /// and the executor refuses to operate on a snapshot older than <c>IoSnapshotMaxAge</c>. A test
+    /// that spends seconds between actions -- waiting out a <c>DurableAck</c>, say -- would otherwise
+    /// fail on staleness that no vehicle would ever see. Off by default: a test that means to prove
+    /// what happens when readings stop must keep its snapshot where it left it.
+    /// </summary>
+    public bool KeepSnapshotFresh { get; init; }
+
+    private IoSnapshot _snapshot = null!;
+
+    public IoSnapshot CurrentSnapshot
+    {
+        get
+        {
+            lock (_sync)
+            {
+                if (!KeepSnapshotFresh)
+                {
+                    return _snapshot;
+                }
+
+                DateTimeOffset now = DateTimeOffset.UtcNow;
+                return _snapshot with
+                {
+                    ObservedAt = now,
+                    Lockers = _snapshot.Lockers.Select(locker => locker with { ObservedAt = now }).ToArray()
+                };
+            }
+        }
+
+        private set
+        {
+            lock (_sync)
+            {
+                _snapshot = value;
+            }
+        }
+    }
 
     public event EventHandler<ValueChangedEventArgs<bool>>? ConnectionChanged;
 

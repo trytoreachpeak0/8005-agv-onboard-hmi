@@ -202,6 +202,7 @@ public sealed partial class MultiDemandJourneyG2Tests
     {
         private readonly object _sync = new();
         private readonly List<Exception> _uiErrors = [];
+        private readonly List<WireToGateOperatorEvent> _events = [];
 
         private Harness(
             FakeControlServer server,
@@ -219,6 +220,28 @@ public sealed partial class MultiDemandJourneyG2Tests
             Business = business;
             Controller = controller;
             ViewModel = viewModel;
+            // Subscribed here rather than beside the view-model handlers below: what a projection
+            // carried is only visible on the event itself, and one raised during the handshake would
+            // otherwise be over before a test could subscribe.
+            business.OperatorEventPublished += (_, args) =>
+            {
+                lock (_events)
+                {
+                    _events.Add(args.Value);
+                }
+            };
+        }
+
+        /// <summary>Every operator event this vehicle has published, oldest first.</summary>
+        public IReadOnlyList<WireToGateOperatorEvent> Events
+        {
+            get
+            {
+                lock (_events)
+                {
+                    return [.. _events];
+                }
+            }
         }
 
         public FakeControlServer Server { get; }
@@ -258,7 +281,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             Action<FakeControlServer> configure,
             CancellationToken cancellationToken,
             string? journalPath = null,
-            FakeIoModuleClient? io = null)
+            FakeIoModuleClient? io = null,
+            Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null)
         {
             FakeControlServer server = new(IPAddress.Loopback)
             {
@@ -268,7 +292,12 @@ public sealed partial class MultiDemandJourneyG2Tests
             configure(server);
             try
             {
-                Harness started = await StartAgainstAsync(server, cancellationToken, journalPath, io);
+                Harness started = await StartAgainstAsync(
+                    server,
+                    cancellationToken,
+                    journalPath,
+                    io,
+                    wrapJournal);
                 started._ownsServer = true;
                 return started;
             }
@@ -283,16 +312,22 @@ public sealed partial class MultiDemandJourneyG2Tests
         /// A new vehicle process against a server that already exists: a restart. The harness that created
         /// the server keeps owning it.
         /// </summary>
+        /// <param name="wrapJournal">
+        /// A decorator over the journal the session, the business service and the operations feed all
+        /// share, for a test that has to fix an interleaving rather than wait for one.
+        /// </param>
         public static async Task<Harness> StartAgainstAsync(
             FakeControlServer server,
             CancellationToken cancellationToken,
             string? journalPath = null,
-            FakeIoModuleClient? io = null)
+            FakeIoModuleClient? io = null,
+            Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null)
         {
             io ??= new FakeIoModuleClient();
             RecordingLogger logger = new();
             StoppedVehicle safety = new();
             journalPath ??= NewJournalPath();
+            SqliteWireToGateJournal journal = new(journalPath);
 
             WireToGateSessionService session = new(
                 new WireToGateSessionOptions(
@@ -310,7 +345,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                     "eight-slot-modbus-v1",
                     SupportsBatchUnlock: false),
                 io,
-                new SqliteWireToGateJournal(journalPath),
+                wrapJournal?.Invoke(journal) ?? journal,
                 logger,
                 new SystemClock(),
                 safety,
@@ -463,11 +498,21 @@ public sealed partial class MultiDemandJourneyG2Tests
         /// The worklist rows as (sublot, side code), read without tripping over a rebuild.
         /// </summary>
         /// <remarks>
+        /// <para>
         /// In the product every view-model update runs on the WPF dispatcher, so nothing reads a
         /// collection while it is being rebuilt. There is no dispatcher here: the journal read that
         /// gives a row its side publishes on whatever thread it finished on, and a test enumerating at
         /// that instant sees "Collection was modified". That is this harness's race, not the product's,
         /// so it is read again rather than asserted on.
+        /// </para>
+        /// <para>
+        /// <b>The race has two exceptions, not one.</b> Enumerating across a change throws
+        /// <c>InvalidOperationException</c>; an indexed read past a collection that has shrunk in the
+        /// meantime throws <c>ArgumentOutOfRangeException</c>, which <c>Select</c> reaches through its
+        /// <c>IList</c> fast path. Measured here on 2026-09-20: a rebuild of the worklist rows during
+        /// a read produced the second one and failed a test for a reason that had nothing to do with
+        /// what it was asserting.
+        /// </para>
         /// </remarks>
         public (string Sublot, string SideCode)[] WorklistRows() =>
             ReadStable(() => ViewModel.WorklistItems.Select(row => (row.Sublot, row.SideCode)).ToArray());
@@ -483,7 +528,9 @@ public sealed partial class MultiDemandJourneyG2Tests
                 {
                     return read();
                 }
-                catch (InvalidOperationException) when (attempt < 50)
+                catch (Exception exception)
+                    when (exception is InvalidOperationException or ArgumentOutOfRangeException
+                        && attempt < 50)
                 {
                     Thread.Sleep(5);
                 }
@@ -554,7 +601,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             await StopServerAsync();
         }
 
-        private static string NewJournalPath()
+        internal static string NewJournalPath()
         {
             string directory = Path.Combine(Path.GetTempPath(), "w2g-multi-demand", Guid.NewGuid().ToString("N"));
             Directory.CreateDirectory(directory);

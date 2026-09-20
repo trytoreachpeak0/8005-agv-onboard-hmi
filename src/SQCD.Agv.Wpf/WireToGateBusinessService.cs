@@ -767,18 +767,36 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             string restoredGuidance = ConcludedHere(context.SlotOperationAttemptId)
                 ? $"{FormatOperationType(context.OperationType)}操作未完成：{FormatSlots(context.Slots)}，需要管理员恢复。"
                 : $"上次{FormatOperationType(context.OperationType)}操作未完成：{FormatSlots(context.Slots)}，需要管理员恢复。";
-            WireToGateHmiOperationSnapshot operation = new(
-                context.SlotOperationAttemptId,
-                context.OperationType,
-                context.Slots,
-                WireToGateHmiOperationStage.RecoveryRequired,
-                restoredGuidance,
-                _clock.Now.ToUniversalTime());
+            // The line always goes out; the snapshot only when no other attempt is holding the screen.
+            // This runs after the command that left the attempt behind has given the display up, so
+            // the next demand may already be at its own door -- and a RecoveryRequired snapshot here
+            // would put the finished attempt's slots back over it and, through PublishOperatorEvent,
+            // stop that demand's expected-action clock as well (onboard-hmi#152, the recovery side of
+            // onboard-hmi#146).
+            //
+            // "No other attempt", not "this attempt": after a restart the owner is null, and this
+            // projection is then the only path that puts the recovery entry on screen
+            // (onboard-hmi#131). Requiring the owner to equal this attempt would take the entry away
+            // from the operator exactly as onboard-hmi#109 did.
+            //
+            // The condition belongs here rather than in PublishOperatorEvent: that method writes the
+            // current snapshot and stops the wait clock before it deduplicates, and on nothing but
+            // "is there a snapshot", so an event swallowed as a duplicate has both side effects
+            // anyway.
+            bool displayFree = NoOtherAttemptOwnsOperationDisplay(context.SlotOperationAttemptId);
             PublishOperatorEvent(
                 $"recovery-operation-restored:{context.SlotOperationAttemptId}",
                 "OPERATION_RECOVERY_REQUIRED",
-                operation.Guidance,
-                operation);
+                restoredGuidance,
+                displayFree
+                    ? new WireToGateHmiOperationSnapshot(
+                        context.SlotOperationAttemptId,
+                        context.OperationType,
+                        context.Slots,
+                        WireToGateHmiOperationStage.RecoveryRequired,
+                        restoredGuidance,
+                        _clock.Now.ToUniversalTime())
+                    : null);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -2236,6 +2254,52 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             Volatile.Read(ref _operationDisplayOwnerAttemptId),
             command.SlotOperationAttemptId,
             StringComparison.Ordinal);
+
+    /// <summary>
+    /// Whether nothing else is holding the current-operation display: either no command has taken it
+    /// in this process, or the one that has is <paramref name="slotOperationAttemptId"/> itself.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Deliberately weaker than <see cref="StillOwnsOperationDisplay"/>, and not an overload of
+    /// it.</b> That one answers "is this command still the display's owner", which is safe where it
+    /// is used: both call sites sit inside command handling, where the owner has necessarily been
+    /// written. The restored recovery projection runs after a restart too, and there the owner is
+    /// <c>null</c> while the projection is the only thing that puts the recovery entry on screen
+    /// (onboard-hmi#131, onboard-hmi#152). Asking the stronger question there would answer "no" and
+    /// take the entry away -- onboard-hmi#109 again.
+    /// </para>
+    /// <para>
+    /// It takes an attempt id rather than a command because a leftover restored from the journal has
+    /// no command object: what the journal holds is the operation context.
+    /// </para>
+    /// <para>
+    /// <b>It answers "who took the display last", not "is anyone at the doors now".</b>
+    /// <see cref="ReleaseOperationDisplay"/> gives the gate back but deliberately leaves
+    /// <see cref="_operationDisplayOwnerAttemptId"/> where it is, because the settlement of the
+    /// attempt that just released goes on publishing about itself (onboard-hmi#146). So the common
+    /// case -- one command, its acknowledgement lost, nothing queued behind it -- reaches here with
+    /// the owner still equal to this very attempt, and it is the <i>equality</i> branch, not the null
+    /// one, that carries its snapshot.
+    /// </para>
+    /// <para>
+    /// <b>Which branch is load-bearing, and which change would silently break it.</b> Clearing the
+    /// owner on release would be harmless: it would land on the null branch and still carry. What
+    /// flips the answer is dropping the equality branch and keeping only <c>owner is null</c> --
+    /// then the commonest path of all stops carrying its snapshot, and the recovery entry stops
+    /// appearing for it. Measured 2026-09-20: with that change every test in
+    /// <c>MultiDemandJourneyG2Tests</c> and <c>StationDeadlineExpiredG2Tests</c> stayed green, which
+    /// is why
+    /// <c>MultiDemandJourneyG2Tests.ALoneAttemptStillCarriesItsSnapshotAfterGivingTheDisplayUp</c>
+    /// exists.
+    /// </para>
+    /// </remarks>
+    private bool NoOtherAttemptOwnsOperationDisplay(string slotOperationAttemptId)
+    {
+        string? owner = Volatile.Read(ref _operationDisplayOwnerAttemptId);
+        return owner is null
+            || string.Equals(owner, slotOperationAttemptId, StringComparison.Ordinal);
+    }
 
     /// <summary>
     /// Publishes one executor progress report, and records whether it leaves a load's doors open or

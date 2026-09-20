@@ -305,7 +305,9 @@ public sealed partial class MultiDemandJourneyG2Tests
     private static async Task<Harness> StartTwoDemandStopAsync(
         FakeIoModuleClient io,
         CancellationToken token,
-        Action<FakeControlServer>? alsoConfigure = null)
+        Action<FakeControlServer>? alsoConfigure = null,
+        Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
+        string? journalPath = null)
     {
         Harness harness = await Harness.StartAsync(
             server =>
@@ -320,7 +322,9 @@ public sealed partial class MultiDemandJourneyG2Tests
                 alsoConfigure?.Invoke(server);
             },
             token,
-            io: io);
+            journalPath: journalPath,
+            io: io,
+            wrapJournal: wrapJournal);
         await harness.WaitUntilAsync(
             () => harness.Session.CurrentJourney.CurrentStopWorklist is not null,
             "the worklist",
