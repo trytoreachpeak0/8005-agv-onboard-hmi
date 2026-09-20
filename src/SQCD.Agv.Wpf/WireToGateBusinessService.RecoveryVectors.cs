@@ -1700,7 +1700,8 @@ public sealed partial class WireToGateBusinessService
                             resultKey,
                             result,
                             cancellationToken),
-                        reportRefused)
+                        reportRefused,
+                        () => ForgetSettledRecoveryVectorAsync(context, cancellationToken))
                     .ConfigureAwait(false);
                 _ = completed;
             }
@@ -1885,6 +1886,102 @@ public sealed partial class WireToGateBusinessService
             }
             : null;
 
+    /// <summary>
+    /// Forgets a vector whose non-<c>COMPLETED</c> result the server has acknowledged, and the
+    /// recovery session it belonged to, keeping the unsettled operation and everything the vector's
+    /// IO left behind (onboard-hmi#145).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The server closes the session on a <c>FAILED</c> or an <c>UNKNOWN</c> result exactly as it does
+    /// on a completed one (control-server#169). Nothing on this end did: the two fields that refuse
+    /// every later recovery entry -- the prepared vector and the session's identity -- were cleared
+    /// only by <see cref="CompleteRecoveryVectorStateAsync"/>, on <c>COMPLETED</c>. So the vehicle sat
+    /// in <c>RECOVERY_SESSION_STATE_PENDING</c> with the server no longer listening, and the only way
+    /// on was to clear the journal by hand.
+    /// </para>
+    /// <para>
+    /// Neither clearing already here fits. <see cref="SettleRecoveryVectorStateAsync"/> also drops the
+    /// attempt and its operation context, which is right for a vector that finished and wrong here:
+    /// the load is still unsettled -- that is what <c>FAILED</c> and <c>UNKNOWN</c> say -- and dropping
+    /// its context would refuse the next recovery with <c>RECOVERY_OPERATION_CONTEXT_MISSING</c>
+    /// instead. <see cref="ForgetRefusedVector"/> is guarded on the vector having done nothing, which
+    /// is the opposite of this case and is why the CLOSED fallback leaves these behind.
+    /// </para>
+    /// <para>
+    /// What the vector's IO left -- the active unlock set, the completed slots, the slot results and
+    /// the proven checkpoint -- stays. A door this vector may have left open is what the next session's
+    /// handshake reports from <c>ActiveUnlockSlots</c>, so clearing it would be telling the server no
+    /// door is open; the next prepared vector resets all four anyway.
+    /// </para>
+    /// <para>
+    /// Guard and write are one journal update, never a read then a write: a second result for the same
+    /// vector, or the session's CLOSED snapshot, may be doing the same thing at the same moment, and
+    /// whichever lands second reads a journal whose vector no longer matches and writes nothing. The
+    /// session fields go only while the journal still names this vector's session, so one that has
+    /// moved on to another session keeps its own.
+    /// </para>
+    /// </remarks>
+    private async Task ForgetSettledRecoveryVectorAsync(
+        WireToGateRecoveryVectorContext context,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _session.Journal.UpdateRecoveryStateAsync(
+                    state => state.RecoveryVector is not { } vector
+                        || !string.Equals(vector.VectorType, context.VectorType, StringComparison.Ordinal)
+                        || !string.Equals(vector.PrimaryId, context.PrimaryId, StringComparison.Ordinal)
+                            ? null
+                            : ForgetSettledVector(state, context),
+                    CacheRecoveryState,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"恢复向量结果已收到服务端确认，但清除向量与恢复会话记录失败：type={context.VectorType}，"
+                    + $"id={context.PrimaryId}。",
+                exception);
+        }
+    }
+
+    /// <summary>
+    /// <paramref name="state"/> without the vector, and without the recovery session when the journal
+    /// still names the one <paramref name="context"/> belonged to.
+    /// </summary>
+    /// <remarks>
+    /// A load correction carries no session at all, so the session fields are not its to clear; every
+    /// other vector's are cleared under the same guard <see cref="ForgetRecoverySessionAsync"/> applies,
+    /// which is what keeps one vector's settlement from forgetting another session's record.
+    /// </remarks>
+    private static WireToGateRecoveryState ForgetSettledVector(
+        WireToGateRecoveryState state,
+        WireToGateRecoveryVectorContext context)
+    {
+        WireToGateRecoveryState cleared = state with
+        {
+            RecoveryVector = null,
+            RecoveryResultObservedAt = null
+        };
+        return context.ExceptionRecoverySessionId is { } session
+            && string.Equals(state.ExceptionRecoverySessionId, session, StringComparison.Ordinal)
+                ? cleared with
+                {
+                    ExceptionRecoverySessionId = null,
+                    RecoveryActionId = null,
+                    RecoverySessionRequestId = null,
+                    RecoveryActionRequestId = null,
+                    RecoveryReason = null,
+                    RecoveryOperatorId = null,
+                    RecoveryOperatorVerifiedAt = null
+                }
+                : cleared;
+    }
+
     private async Task<WireToGateRecoveryVectorContext> BindRecoveryVectorCommandAsync(
         WireToGateRecoveryState state,
         string vectorType,
@@ -2011,12 +2108,19 @@ public sealed partial class WireToGateBusinessService
         return context;
     }
 
+    /// <param name="releaseSettledFailure">
+    /// Run once a non-<c>COMPLETED</c> result has been acknowledged, to forget the vector the way the
+    /// <c>COMPLETED</c> branch below forgets its own (onboard-hmi#145 (a)). Only the server's command
+    /// path passes it: the load cancellation the operator starts keeps its vector on purpose, because
+    /// pressing the entry again re-executes that very vector rather than preparing a new one.
+    /// </param>
     private async Task<bool> ExecuteRecoveryVectorAndReportAsync(
         WireToGateRecoveryVectorContext context,
         bool correction,
         CancellationToken cancellationToken,
         Func<WireToGateRecoveryVectorExecutionResult, Task>? sendResult = null,
-        Func<Task>? reportRefusedBeforeUnlock = null)
+        Func<Task>? reportRefusedBeforeUnlock = null,
+        Func<Task>? releaseSettledFailure = null)
     {
         try
         {
@@ -2107,6 +2211,14 @@ public sealed partial class WireToGateBusinessService
                 "RECOVERY_VECTOR_COMPLETED",
                 $"恢复向量 {context.VectorType} 已完成并收到服务端确认。 ");
             return true;
+        }
+
+        // Forgotten before the operator is told, so the entry the message sends them to is already
+        // pressable when they read it. A write that fails is logged and nothing more: the answer is
+        // on file either way, and the operator event is owed whatever the journal did.
+        if (releaseSettledFailure is not null)
+        {
+            await releaseSettledFailure().ConfigureAwait(false);
         }
 
         PublishOperatorEvent(
