@@ -468,7 +468,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         // OperationContext and the unsettled attempt, which is exactly what compensation and the
         // recovery vectors recognise. CancellationToken.None for the same reason -- once the
         // conclusion has been read it has to reach the disk.
-        await WriteRecoveryStateAsync(
+        await WriteCheckpointAsync(
             context,
             checkpoint,
             stillActive,
@@ -531,7 +531,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             WireToGateRecoveryOperationContext.FromCommand(command);
         List<int> completed = [];
         List<WireToGateSlotExecutionResult> results = [];
-        await WriteRecoveryStateAsync(
+        await WriteCheckpointAsync(
             context,
             WireToGateRecoveryCheckpoint.Prepared,
             [],
@@ -605,7 +605,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         completed = completed.Distinct().Order().ToList();
         WireToGateRecoveryOperationContext context =
             WireToGateRecoveryOperationContext.FromCommand(command);
-        await WriteRecoveryStateAsync(
+        await WriteCheckpointAsync(
             context,
             WireToGateRecoveryCheckpoint.ActiveUnlockSet,
             [],
@@ -647,7 +647,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             // Written once per slot, not once per reopen: the seventeenth reopen answers the same
             // recovery question as the first -- this slot is in the active set and its door may be
             // open -- so the journal bytes would not change.
-            await WriteRecoveryStateAsync(
+            await WriteCheckpointAsync(
                 context,
                 WireToGateRecoveryCheckpoint.ActiveUnlockSet,
                 [physicalSlot],
@@ -671,7 +671,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     []);
                 UpsertResult(results, result);
                 completed.Add(physicalSlot);
-                await WriteRecoveryStateAsync(
+                await WriteCheckpointAsync(
                     context,
                     WireToGateRecoveryCheckpoint.ActiveUnlockSet,
                     [],
@@ -714,7 +714,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     ? WireToGateRecoveryCheckpoint.SafeFinishReached
                     : WireToGateRecoveryCheckpoint.ActiveUnlockSet;
                 IReadOnlyList<int> failureActiveSlots = safeFinish ? [] : [physicalSlot];
-                await WriteRecoveryStateAsync(
+                await WriteCheckpointAsync(
                     context,
                     failureCheckpoint,
                     failureActiveSlots,
@@ -731,7 +731,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             }
         }
 
-        await WriteRecoveryStateAsync(
+        await WriteCheckpointAsync(
             context,
             WireToGateRecoveryCheckpoint.SafeFinishReached,
             [],
@@ -975,7 +975,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         }
     }
 
-    private async Task WriteRecoveryStateAsync(
+    private async Task WriteCheckpointAsync(
         WireToGateRecoveryOperationContext context,
         WireToGateRecoveryCheckpoint checkpoint,
         IReadOnlyList<int> activeSlots,
