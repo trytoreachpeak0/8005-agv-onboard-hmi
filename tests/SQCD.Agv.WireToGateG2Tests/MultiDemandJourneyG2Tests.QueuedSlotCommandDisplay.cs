@@ -139,22 +139,38 @@ public sealed partial class MultiDemandJourneyG2Tests
 
     /// <summary>
     /// A is refused before any unlock -- its slot already holds a basket, so the executor's precheck
-    /// ends it <c>FAILED</c> -- with B arriving while A is still reporting that result. A's result is
-    /// announced before B's <c>Preparing</c>, and A's later acknowledgement does not take the display
-    /// back off B.
+    /// ends it <c>FAILED</c> -- and the acknowledgement of that result never comes. B has the
+    /// executor and its door open by then, and neither A's late "no acknowledgement" notice nor
+    /// anything else of A's settlement takes the display back off B.
     /// </summary>
     /// <remarks>
-    /// <c>FAILED</c> has no executable stretch to queue behind: it presupposes a refusal before the
-    /// first pulse (ADR-cross-0058 decision 5), so B overlaps A's reporting rather than its
-    /// execution. That is the half of the race this outcome can produce, and it is the half where a
-    /// settled command's acknowledgement can still overwrite the one that has started.
+    /// <para>
+    /// <b>This is the only cover on the <c>operation-result-pending:</c> branch</b>, one of the two
+    /// places this ticket changed. Nothing else in the suite loses an acknowledgement, so without
+    /// this test someone could put that snapshot back to unconditional and every test would stay
+    /// green while the operator watched the highlight jump to a slot whose door is shut.
+    /// </para>
+    /// <para>
+    /// <b>Why <c>FAILED</c> comes in here rather than in a test of its own.</b> <c>FAILED</c> has no
+    /// executable stretch to queue behind: the executor produces it only in
+    /// <c>CreateRejectedResult</c>, and both call sites are ahead of the first journal write and of
+    /// any pulse (ADR-cross-0058 decision 5), so A returns as soon as it has the gate. B can
+    /// therefore only overlap A's <i>reporting</i>, which is exactly the window a lost
+    /// acknowledgement stretches out -- so the two belong in one test, and that test is
+    /// deterministic where either half alone was a race.
+    /// </para>
     /// </remarks>
     [Fact]
-    public async Task TheRunningDemandsFailedResultIsShownBeforeTheNextCommandTakesOver()
+    public async Task ARefusedDemandWhoseResultAckIsLostDoesNotTakeTheDisplayBackFromTheNextCommand()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         FakeIoModuleClient io = new() { OperatorNeverActs = true };
-        await using Harness harness = await StartTwoDemandStopAsync(io, token);
+        await using Harness harness = await StartTwoDemandStopAsync(
+            io,
+            token,
+            // A's OperationResult is taken and never answered: its wait for the DurableAck times out
+            // mid-session and the business service publishes RESULT_ACK_PENDING.
+            server => server.OperationResultAcksToDrop = 1);
         // A basket is already in slot 1: loading it again is SLOT_OPERATION_CONFLICT, refused by the
         // executor's precheck without a pulse. Slot 5 is untouched, so B can still run.
         io.CloseDoor(0, cargo: true);
@@ -165,6 +181,11 @@ public sealed partial class MultiDemandJourneyG2Tests
         await harness.WaitUntilAsync(
             () => harness.Business.CurrentOperationSnapshot?.SlotOperationAttemptId == AttemptB && io.UnlockCount == 1,
             "B to take the executor after A's refusal",
+            token);
+        await harness.WaitUntilAsync(
+            () => OperatorLog(harness).Contains(
+                "操作已安全结束，但结果确认暂未收到；系统将保持同一结果重放，不会重复执行IO。"),
+            "A's lost acknowledgement to be reported",
             token);
 
         await AssertWhileAsync(
@@ -281,7 +302,10 @@ public sealed partial class MultiDemandJourneyG2Tests
             "the second command to reach the vehicle",
             token);
 
-    private static async Task<Harness> StartTwoDemandStopAsync(FakeIoModuleClient io, CancellationToken token)
+    private static async Task<Harness> StartTwoDemandStopAsync(
+        FakeIoModuleClient io,
+        CancellationToken token,
+        Action<FakeControlServer>? alsoConfigure = null)
     {
         Harness harness = await Harness.StartAsync(
             server =>
@@ -293,6 +317,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                     ["CurrentStopWorklistSnapshot"] = Payloads.Worklist(1, Payloads.ItemA, Payloads.ItemB),
                     ["UpcomingStopPlanSnapshot"] = Payloads.Plan(1, Payloads.TwoDemandLegs)
                 };
+                alsoConfigure?.Invoke(server);
             },
             token,
             io: io);
@@ -326,6 +351,17 @@ public sealed partial class MultiDemandJourneyG2Tests
             $"the highlight was on [{string.Join("、", highlighted)}], not on slot {physicalSlot} alone.");
     }
 
+    /// <summary>
+    /// The physical slots the locker cards currently highlight as the operation's target.
+    /// <c>Lockers</c> is built once and never grows or shrinks -- only the properties of its items
+    /// change -- so enumerating it cannot collide with a rebuild the way <c>Logs</c> can.
+    /// </summary>
+    private static int[] TargetSlots(Harness harness) =>
+        harness.ViewModel.Lockers
+            .Where(locker => locker.IsTarget)
+            .Select(locker => locker.PhysicalNumber)
+            .ToArray();
+
     /// <summary>Both lines reached the operator, in this order.</summary>
     private static void AssertAnnouncedInOrder(Harness harness, string first, string second)
     {
@@ -344,34 +380,24 @@ public sealed partial class MultiDemandJourneyG2Tests
             harness.Server.ReceivedEnvelopes,
             item => item.MessageType == "SlotOperationCommandRejected");
 
-    /// <summary>The physical slots the locker cards currently highlight as the operation's target.</summary>
-    private static int[] TargetSlots(Harness harness) =>
-        ReadStableList(() => harness.ViewModel.Lockers
-            .Where(locker => locker.IsTarget)
-            .Select(locker => locker.PhysicalNumber)
-            .ToArray());
-
-    /// <summary>The operator log as the screen shows it, oldest first.</summary>
-    private static string[] OperatorLog(Harness harness) =>
-        ReadStableList(() => harness.ViewModel.Logs.Select(line => line.Message).ToArray());
-
     /// <summary>
-    /// The harness publishes view-model updates on whatever thread finished them, so a read can land
-    /// mid-rebuild. That is this harness's race, not the product's (the product has a dispatcher), so
-    /// the read is retried rather than asserted on.
+    /// The operator log as the screen shows it, oldest first. Read by index off a count taken first:
+    /// the harness publishes view-model updates on whatever thread finished them (the product has a
+    /// dispatcher and does not), so enumerating <c>Logs</c> can collide with an <c>Add</c>. Indexing
+    /// does not check the collection's version, and <c>TrimLogs</c> cannot remove anything at these
+    /// sizes, so the count taken up front stays valid -- no retry, and no sleep to tune.
     /// </summary>
-    private static T[] ReadStableList<T>(Func<T[]> read)
+    private static string[] OperatorLog(Harness harness)
     {
-        for (int attempt = 0; ; attempt++)
+        System.Collections.ObjectModel.ObservableCollection<SQCD.Agv.Wpf.ViewModels.LogLineViewModel> lines =
+            harness.ViewModel.Logs;
+        int count = lines.Count;
+        string[] messages = new string[count];
+        for (int index = 0; index < count; index++)
         {
-            try
-            {
-                return read();
-            }
-            catch (InvalidOperationException) when (attempt < 50)
-            {
-                Thread.Sleep(5);
-            }
+            messages[index] = lines[index].Message;
         }
+
+        return messages;
     }
 }
