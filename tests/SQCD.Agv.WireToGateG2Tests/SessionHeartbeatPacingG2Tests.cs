@@ -228,16 +228,35 @@ public sealed class SessionHeartbeatPacingG2Tests
         CancellationToken cancellationToken,
         TimeSpan? timeout = null)
     {
-        TimeSpan limit = timeout ?? TimeSpan.FromSeconds(10);
-        long start = Stopwatch.GetTimestamp();
-        while (!predicate())
+        // 上面那段 remarks 已经把两种用法分开了，这里照着它分：显式传 limit 的是「量节拍」，
+        // 那个上界就是判据本身，补偿它等于把用例名说的界放大，所以保持墙钟；默认 10 秒的是
+        // 「等握手、IO 这类真实往返」，按停顿判——进程被停住的那几秒里没机会去看
+        // （onboard-hmi#149）。
+        if (timeout is { } pacingLimit)
         {
-            if (Stopwatch.GetElapsedTime(start) > limit)
+            long start = Stopwatch.GetTimestamp();
+            while (!predicate())
             {
-                Assert.Fail($"等不到{what}（{limit.TotalSeconds:0.#} 秒内）。");
+                if (Stopwatch.GetElapsedTime(start) > pacingLimit)
+                {
+                    Assert.Fail($"等不到{what}（{pacingLimit.TotalSeconds:0.#} 秒内）。");
+                }
+
+                await Task.Delay(10, cancellationToken);
             }
 
-            await Task.Delay(10, cancellationToken);
+            return;
+        }
+
+        StallAwareDeadline deadline = new(TimeSpan.FromSeconds(10), TimeSpan.FromMilliseconds(10));
+        while (!predicate())
+        {
+            if (deadline.HasExpired)
+            {
+                Assert.Fail($"等不到{what}（{deadline.Describe()}）。");
+            }
+
+            await deadline.PollAsync(cancellationToken);
         }
     }
 

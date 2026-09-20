@@ -135,7 +135,7 @@ public sealed class OperatorEventVisibilityTests
                 Guid.NewGuid().ToString("D"),
                 new string('a', 40),
                 "W2G_OPERATOR_EVENT_VISIBILITY_CREDENTIAL",
-                TimeSpan.FromSeconds(2),
+                G2SessionTimeouts.Connect,
                 TimeSpan.FromSeconds(2),
                 1,
                 1,

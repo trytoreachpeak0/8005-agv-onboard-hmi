@@ -80,7 +80,10 @@ public sealed class SessionHeartbeatCadenceG2Tests
         await using WireToGateSessionService session = CreateSession(server, io);
 
         session.Start();
-        await WaitUntilAsync(
+        // 等的是握手这件确定会发生的事实，所以按停顿判：进程被停住的那几秒里没机会去看，
+        // 不该算进这 10 秒。下面等心跳到达那一处**不能**这样改——那个窗口是判据本身
+        // （onboard-hmi#149）。
+        await WaitUntilStallAwareAsync(
             () => session.Current.Readiness == WireToGateSessionReadiness.Ready,
             TimeSpan.FromSeconds(10),
             token);
@@ -175,6 +178,25 @@ public sealed class SessionHeartbeatCadenceG2Tests
     /// <summary>
     /// 轮询到条件成立或窗口用完为止，不抛：断言留给调用方，好让失败消息带上实测的节拍。
     /// </summary>
+    /// <summary>
+    /// 等一个确定会发生的事实，按停顿判而不是按墙钟判。
+    /// </summary>
+    /// <remarks>
+    /// 只给「等事实」用。**量节拍用 <see cref="WaitUntilAsync"/>**：那里的窗口就是用例要守的界，
+    /// 给它补偿等于把用例名说的上界悄悄放大（onboard-hmi#149）。
+    /// </remarks>
+    private static async Task WaitUntilStallAwareAsync(
+        Func<bool> predicate,
+        TimeSpan window,
+        CancellationToken cancellationToken)
+    {
+        StallAwareDeadline deadline = new(window, TimeSpan.FromMilliseconds(20));
+        while (!predicate() && !deadline.HasExpired)
+        {
+            await deadline.PollAsync(cancellationToken);
+        }
+    }
+
     private static async Task WaitUntilAsync(Func<bool> predicate, TimeSpan window, CancellationToken cancellationToken)
     {
         long start = Stopwatch.GetTimestamp();

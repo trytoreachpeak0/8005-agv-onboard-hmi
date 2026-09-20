@@ -118,7 +118,7 @@ public sealed class OutboundResultShapeTests
                 Guid.NewGuid().ToString("D"),
                 new string('a', 40),
                 "W2G_RESULT_SHAPE_CREDENTIAL",
-                TimeSpan.FromSeconds(2),
+                G2SessionTimeouts.Connect,
                 TimeSpan.FromSeconds(5),
                 1,
                 1,

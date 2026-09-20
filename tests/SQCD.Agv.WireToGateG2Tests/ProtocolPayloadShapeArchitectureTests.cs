@@ -302,7 +302,7 @@ public sealed class ProtocolPayloadShapeArchitectureTests
                     Guid.NewGuid().ToString("D"),
                     new string('a', 40),
                     CredentialVariable,
-                    TimeSpan.FromSeconds(2),
+                    G2SessionTimeouts.Connect,
                     TimeSpan.FromSeconds(5),
                     1,
                     1,
@@ -496,11 +496,38 @@ public sealed class ProtocolPayloadShapeArchitectureTests
     private static string Sha256Of(string value) =>
         WireToGateProtocolSerializer.ComputeSha256(Encoding.UTF8.GetBytes(value));
 
+    /// <summary>
+    /// Bounded on purpose. This wait used to have no limit of its own: a fact that never arrived
+    /// hung the test process until the CI job timed out and was cancelled -- and cancelling a job
+    /// on a self-hosted runner wedges the runner session, which this repository has exactly one of.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why 5 seconds.</b> This is the one place in onboard-hmi#149 that can turn a wait which
+    /// never failed into one that can, so the number needs an argument rather than a habit.
+    /// </para>
+    /// <para>
+    /// Both waits here are one loopback round trip against the double: send a snapshot, see the
+    /// activation result come back. The same round trip is what the other harnesses in this
+    /// assembly give 5 seconds to, and the measurement behind that is in
+    /// <see cref="G2SessionTimeouts"/>: loopback connects ran at a 1.40 ms median with a 123 ms
+    /// worst case idle, and 1.81 ms with a 3694 ms worst case under a doubled load, where the tail
+    /// is a process-wide stall rather than a slow wire. 5 seconds clears that worst case, and the
+    /// stall compensation on top means a real pause is given back rather than charged here -- so
+    /// reaching this limit means the result is not coming, not that the machine was busy.
+    /// </para>
+    /// </remarks>
     private static async Task WaitUntilAsync(Func<bool> predicate, CancellationToken cancellationToken)
     {
+        StallAwareDeadline deadline = new(TimeSpan.FromSeconds(5), TimeSpan.FromMilliseconds(25));
         while (!predicate())
         {
-            await Task.Delay(25, cancellationToken).ConfigureAwait(false);
+            if (deadline.HasExpired)
+            {
+                Assert.Fail($"Timed out after {deadline.Describe()} waiting for a protocol shape probe.");
+            }
+
+            await deadline.PollAsync(cancellationToken);
         }
     }
 

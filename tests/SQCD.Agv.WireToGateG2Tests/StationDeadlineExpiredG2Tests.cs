@@ -432,7 +432,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
                     Guid.NewGuid().ToString("D"),
                     new string('a', 40),
                     CredentialVariable,
-                    TimeSpan.FromSeconds(2),
+                    G2SessionTimeouts.Connect,
                     TimeSpan.FromSeconds(2),
                     baselineRevision,
                     baselineRevision,
@@ -588,15 +588,17 @@ public sealed partial class StationDeadlineExpiredG2Tests
             CancellationToken cancellationToken,
             Func<string>? describe = null)
         {
-            DateTimeOffset deadline = DateTimeOffset.UtcNow.AddSeconds(10);
+            StallAwareDeadline deadline = new(TimeSpan.FromSeconds(10));
             while (!predicate())
             {
-                if (DateTimeOffset.UtcNow > deadline)
+                if (deadline.HasExpired)
                 {
-                    Assert.Fail($"Timed out after 10s waiting for: {expectation}{Environment.NewLine}{describe?.Invoke()}");
+                    Assert.Fail(
+                        $"Timed out after {deadline.Describe()} waiting for: {expectation}"
+                        + $"{Environment.NewLine}{describe?.Invoke()}");
                 }
 
-                await Task.Delay(5, cancellationToken);
+                await deadline.PollAsync(cancellationToken);
             }
         }
 
