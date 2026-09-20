@@ -206,8 +206,21 @@ public sealed class FatalFaultScopeArchitectureTests
     /// <b>这条守的是运行时测试守不住的那一半，而那一半是实测出来的。</b> 把属性改成
     /// <c>Volatile.Read(ref _activeOperation) is not null</c>——一个看起来完全合理的平行来源——
     /// <c>HasOperationInFlightIsTrueWhileTheExecutorIsRunningAndFalseAfterwards</c> 照样绿，因为
-    /// 在 <c>ExecuteAsync</c> 这一条路径上两者恰好一致。它在别的持门路径上就不一致了，而那些
-    /// 路径没有同样便宜的观察点。所以这里在源码这一层钉住来源。
+    /// 在 <c>ExecuteAsync</c> 这一条路径上两者恰好一致。
+    /// </para>
+    /// <para>
+    /// <b>它守的是写法，不是行为。</b><c>_operationGate != null</c> 同样含那个 token，照样能过。
+    /// 退到源码这一层是因为造不出便宜的观察点，不是因为行为差异不存在——**差异在哪是实读过的**：
+    /// <c>SettleInterruptedAsync</c>（持门结算中断的 attempt）与 <c>AbortOperationAsync</c>
+    /// （把门当 barrier 等当前操作结束）都持门而**从不写 <c>_activeOperation</c>**，那个字段只在
+    /// <c>ExecuteAsync</c> 与 <c>ResumeAsync</c> 里写。所以那两条路径上「门被持有而
+    /// <c>_activeOperation</c> 为 null」是真的会发生的。
+    /// </para>
+    /// <para>
+    /// <b>要把这条升级成行为断言，缺的是一个能挂住那两条路径的挂点</b>：现有夹具用的是真
+    /// <c>SqliteWireToGateJournal</c>，没有可以在持门期间回调的替身。下一个人要做这件事，
+    /// 从那里下手，别把这条当洁癖删掉。（<c>WireToGateRecoveryVectorExecutor</c> 那一侧根本没有
+    /// <c>_activeOperation</c> 这样的字段，所以那边今天没有平行来源，这条对它是冗余的守卫。）
     /// </para>
     /// </remarks>
     [Theory]
