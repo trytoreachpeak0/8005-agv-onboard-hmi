@@ -12,14 +12,34 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
     private const byte WriteSingleCoilFunction = 0x05;
 
     /// <summary>
-    /// The lowest transaction id a request may carry. Zero is excluded on purpose.
+    /// The lowest transaction id a request may carry. Zero is excluded on purpose -- but that
+    /// exclusion is <b>not</b> a requirement of the onboard-hmi#52 fix. The constant that is, is
+    /// <see cref="MaxTransactionId"/>.
     /// </summary>
     /// <remarks>
-    /// Zero is the value a truncating module echoes back for request 256, and it is what the
-    /// field failure on 2026-09-13 actually reported
-    /// (<c>transaction 0, protocol 0, unit 255, length 5</c>). Keeping it out of the range of
-    /// legitimate requests is what makes that broken frame detectable: a response carrying 0 can
-    /// never coincide with a request we are waiting on.
+    /// <para>
+    /// Zero is excluded because some Modbus TCP devices emit unsolicited or error frames carrying
+    /// transaction id 0 -- a device that has just reset, or a gateway answering on one's behalf.
+    /// Never issuing 0 ourselves makes every such frame fail the comparison in
+    /// <c>ExecuteRequestAsync</c> by construction, rather than by the accident of no request
+    /// happening to hold 0 at that moment. That is the whole of what this lower bound buys.
+    /// </para>
+    /// <para>
+    /// <b>It buys nothing against the truncating echo, and an earlier version of this comment
+    /// claimed that it did.</b> Work it through. With <see cref="MaxTransactionId"/> at 255 no
+    /// request ever carries 256, so the truncated frame the field reported
+    /// (<c>transaction 0, protocol 0, unit 255, length 5</c>) cannot arise from this client at
+    /// all. Widen the upper bound back and request 256 does answer as 0 -- but <c>0 != 256</c>
+    /// wherever the lower bound sits, so detecting it does not depend on this constant. And were
+    /// the lower bound really 0, id 0 would come round once every 256 requests, the module would
+    /// echo 0 for 0, and that pairing would simply be correct.
+    /// </para>
+    /// <para>
+    /// So if you are here because you need 256 distinct ids: raising this bound is not what stands
+    /// in your way, and lowering it breaks nothing about #52. Read
+    /// <see cref="MaxTransactionId"/> instead -- that is the load-bearing one, and raising it is
+    /// what brings the field defect back.
+    /// </para>
     /// </remarks>
     private const ushort MinTransactionId = 1;
 
