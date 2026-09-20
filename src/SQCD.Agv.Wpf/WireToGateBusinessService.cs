@@ -2273,6 +2273,26 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// It takes an attempt id rather than a command because a leftover restored from the journal has
     /// no command object: what the journal holds is the operation context.
     /// </para>
+    /// <para>
+    /// <b>It answers "who took the display last", not "is anyone at the doors now".</b>
+    /// <see cref="ReleaseOperationDisplay"/> gives the gate back but deliberately leaves
+    /// <see cref="_operationDisplayOwnerAttemptId"/> where it is, because the settlement of the
+    /// attempt that just released goes on publishing about itself (onboard-hmi#146). So the common
+    /// case -- one command, its acknowledgement lost, nothing queued behind it -- reaches here with
+    /// the owner still equal to this very attempt, and it is the <i>equality</i> branch, not the null
+    /// one, that carries its snapshot.
+    /// </para>
+    /// <para>
+    /// <b>Which branch is load-bearing, and which change would silently break it.</b> Clearing the
+    /// owner on release would be harmless: it would land on the null branch and still carry. What
+    /// flips the answer is dropping the equality branch and keeping only <c>owner is null</c> --
+    /// then the commonest path of all stops carrying its snapshot, and the recovery entry stops
+    /// appearing for it. Measured 2026-09-20: with that change every test in
+    /// <c>MultiDemandJourneyG2Tests</c> and <c>StationDeadlineExpiredG2Tests</c> stayed green, which
+    /// is why
+    /// <c>MultiDemandJourneyG2Tests.ALoneAttemptStillCarriesItsSnapshotAfterGivingTheDisplayUp</c>
+    /// exists.
+    /// </para>
     /// </remarks>
     private bool NoOtherAttemptOwnsOperationDisplay(string slotOperationAttemptId)
     {

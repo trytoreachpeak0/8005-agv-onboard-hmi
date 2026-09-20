@@ -108,8 +108,14 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => window!.PreparedWriteHeld,
             "B to reach its own Prepared write",
             token);
+        // Two waits, not one: A's DurableAck timeout alone is two seconds of the harness's five-second
+        // budget, and the restore only starts after it.
         await harness.WaitUntilAsync(
-            () => window!.RestoreHasReadTheLeftover && OperatorLog(harness).Contains(ResultAckPendingLine),
+            () => OperatorLog(harness).Contains(ResultAckPendingLine),
+            "A's acknowledgement to be given up on",
+            token);
+        await harness.WaitUntilAsync(
+            () => window!.RestoreHasReadTheLeftover,
             "A's restore to read the journal while A is still the unsettled attempt",
             token);
 
@@ -127,6 +133,13 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => OperatorLog(harness).Contains(RecoveryRestoredLine),
             "A's restored recovery line to reach the operator",
             token);
+
+        // Asserted on the event itself, not only on its downstream effects. The assertions below say
+        // "B's clock and display were not disturbed", which is also true of a run where the
+        // projection happened to be published before B unlocked -- there would have been nothing to
+        // disturb yet, and the run would go green over an unfixed product. This one says the
+        // projection carried no snapshot, which is the thing the fix actually does.
+        Assert.Null(harness.Events.Single(item => item.Message == RecoveryRestoredLine).Operation);
 
         // Held rather than read once: the clock and the snapshot are written before the event is
         // deduplicated, so a single read can land in front of the overwrite it is meant to catch.
@@ -183,8 +196,14 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => window!.PreparedWriteHeld,
             "B to reach its own Prepared write",
             token);
+        // Two waits, not one: A's DurableAck timeout alone is two seconds of the harness's five-second
+        // budget, and the restore only starts after it.
         await harness.WaitUntilAsync(
-            () => window!.RestoreHasReadTheLeftover && OperatorLog(harness).Contains(ResultAckPendingLine),
+            () => OperatorLog(harness).Contains(ResultAckPendingLine),
+            "A's acknowledgement to be given up on",
+            token);
+        await harness.WaitUntilAsync(
+            () => window!.RestoreHasReadTheLeftover,
             "A's restore to read the journal while A is still the unsettled attempt",
             token);
 
@@ -208,8 +227,75 @@ public sealed partial class MultiDemandJourneyG2Tests
             "B's door to stand open past the overdue threshold",
             token);
 
+        // Same reason as in the test above: without this, an interleaving where the projection landed
+        // before B's unlock would go green over an unfixed product.
+        Assert.Null(harness.Events.Single(item => item.Message == RecoveryRestoredLine).Operation);
         Assert.NotNull(OverdueFor(harness, 5, threshold));
         Assert.Equal(bUnlockedAt, harness.Business.CurrentExpectedActionWait?.FirstUnlockAt);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// One command, its acknowledgement lost, nothing queued behind it: the attempt has given the
+    /// display up but nobody has taken it, and its restore carries its snapshot as it always did.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the commonest path of the three, and the one no test was watching.</b> The display
+    /// is given up before the result is even sent, so by the time the restore runs the attempt no
+    /// longer holds it -- but <c>ReleaseOperationDisplay</c> deliberately leaves the owner field
+    /// where it is, so the owner is still this very attempt and the <i>equality</i> branch is what
+    /// carries the snapshot. Drop that branch and keep only <c>owner is null</c> and this path stops
+    /// putting the recovery entry on screen.
+    /// </para>
+    /// <para>
+    /// <b>Why it needed its own test.</b> Measured 2026-09-20: with the equality branch dropped,
+    /// every test in <c>MultiDemandJourneyG2Tests</c> and <c>StationDeadlineExpiredG2Tests</c> stayed
+    /// green. The two that come closest --
+    /// <c>StationDeadlineExpiredG2Tests.AnUnfinishedResultOnAReadySessionIsRestoredOnce</c> and
+    /// <c>...AckPendingNotUnfinished</c> -- assert <c>Business.CurrentOperationSnapshot</c>, and on
+    /// this path the <c>RESULT_ACK_PENDING</c> event carries a <c>RecoveryRequired</c> snapshot of
+    /// its own moments earlier, so the screen reads identically either way. The assertion here is on
+    /// the restore's own event, the same correction this file's restart test needed.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ALoneAttemptStillCarriesItsSnapshotAfterGivingTheDisplayUp()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true, KeepSnapshotFresh = true };
+        await using Harness harness = await StartTwoDemandStopAsync(
+            io,
+            token,
+            server => server.OperationResultAcksToDrop = 2);
+
+        await SendSlotCommandAsync(harness, DemandA, AttemptA, [1]);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CurrentOperationSnapshot?.Stage == WireToGateHmiOperationStage.WaitingOperator
+                && harness.Business.CurrentOperationSnapshot?.SlotOperationAttemptId == AttemptA
+                && io.UnlockCount == 1,
+            "A's slot to be unlocked and waiting on the operator",
+            token);
+
+        // Nothing is sent for B: this is the single-command shape, where the display is released and
+        // never taken again.
+        io.SetUnreadable(0);
+        await harness.WaitUntilAsync(
+            () => harness.Server.ReceivedEnvelopes.Any(item => item.MessageType == "OperationResult"),
+            "A's UNKNOWN result to reach the server",
+            token);
+        await harness.WaitUntilAsync(
+            () => harness.Events.Any(item => item.Message == RecoveryRestoredLine),
+            "A's restored recovery line to be published",
+            token);
+
+        WireToGateHmiOperationSnapshot? carried = harness.Events
+            .Single(item => item.Message == RecoveryRestoredLine)
+            .Operation;
+        Assert.NotNull(carried);
+        Assert.Equal(AttemptA, carried.SlotOperationAttemptId);
+        Assert.Equal([1], carried.Slots);
+        Assert.Equal(WireToGateHmiOperationStage.RecoveryRequired, carried.Stage);
         Assert.Empty(harness.UiErrors);
     }
 
