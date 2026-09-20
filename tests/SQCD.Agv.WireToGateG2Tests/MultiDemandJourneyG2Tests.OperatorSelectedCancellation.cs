@@ -210,6 +210,28 @@ public sealed partial class MultiDemandJourneyG2Tests
             item => item.Message.Contains("这一次按下是它的重发", StringComparison.Ordinal));
     }
 
+    /// <summary>A stop of these items, with the fake answering cancellation requests.</summary>
+    private static void ConfigureStop(
+        FakeControlServer server,
+        string[] expectedSublots,
+        object[] items,
+        Action<FakeControlServer>? configure = null)
+    {
+        server.SendJourneySnapshotsAfterRecovery = true;
+        // A restart replays the same revision; without this the vehicle reads the replay as a
+        // conflicting revision of its own.
+        server.ReplayJourneySnapshotsWithStableIdentity = true;
+        server.RespondToLoadCancellationRequests = true;
+        server.SublotEntryExpectedSublots = expectedSublots;
+        server.JourneySnapshotPayloads = new Dictionary<string, object>
+        {
+            ["VehicleBusinessStateSnapshot"] = Payloads.BusinessState(1, loadingPhase: null),
+            ["CurrentStopWorklistSnapshot"] = Payloads.Worklist(1, items),
+            ["UpcomingStopPlanSnapshot"] = Payloads.Plan(1, Payloads.TwoDemandLegs)
+        };
+        configure?.Invoke(server);
+    }
+
     private static FakeIoModuleClient NewIoWithCargo()
     {
         // Cargo in the target slots: a clear would unlock, so UnlockCount == 0 means it never ran.
@@ -243,22 +265,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         CancellationToken cancellationToken)
     {
         Harness harness = await Harness.StartAsync(
-            server =>
-            {
-                server.SendJourneySnapshotsAfterRecovery = true;
-                // A restart replays the same revision; without this the vehicle reads the replay as a
-                // conflicting revision of its own.
-                server.ReplayJourneySnapshotsWithStableIdentity = true;
-                server.RespondToLoadCancellationRequests = true;
-                server.SublotEntryExpectedSublots = expectedSublots;
-                server.JourneySnapshotPayloads = new Dictionary<string, object>
-                {
-                    ["VehicleBusinessStateSnapshot"] = Payloads.BusinessState(1, loadingPhase: null),
-                    ["CurrentStopWorklistSnapshot"] = Payloads.Worklist(1, items),
-                    ["UpcomingStopPlanSnapshot"] = Payloads.Plan(1, Payloads.TwoDemandLegs)
-                };
-                configure?.Invoke(server);
-            },
+            server => ConfigureStop(server, expectedSublots, items, configure),
             cancellationToken,
             journalPath,
             NewIoWithCargo());

@@ -580,6 +580,51 @@ public sealed class MultiDemandViewModelTests
         Assert.Equal(string.Empty, viewModel.RecoveryFallbackTargetText);
     }
 
+    /// <summary>
+    /// 新一版清单里没有选中那条需求时选择清空，提示回到「请先在清单中选择」；还在的话选择保住，哪怕整行是
+    /// 重建出来的新对象（批次7-14）。
+    /// </summary>
+    /// <remarks>
+    /// 确认框开着的时候服务端换了清单，就是这个情形。清空而不是顺移到另一行：操作员点的是一条具体的任务，
+    /// 换一条给他按等于替他做了决定。
+    /// </remarks>
+    [Fact]
+    public async Task AWorklistThatDropsThePickedRowClearsTheSelection()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => true,
+            canRequestLoadCancellation: () => true,
+            loadCancellationRequester: (_, _) => Task.FromResult(true),
+            loadCancellationSelectionRequired: () => true);
+        viewModel.UpdateWireToGateStatus(Session());
+        viewModel.UpdateWireToGateJourney(Journey(Worklist(
+            1,
+            Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2),
+            Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
+        viewModel.SelectedWorklistItem = viewModel.WorklistItems.Single(row => row.DemandId == DemandB);
+
+        // 同一条需求还在，但整行换了对象（侧别从日志补上了）：选择要认需求，不认行对象。
+        viewModel.UpdateJournaledOperations(WireToGateRecoveryState.Empty with
+        {
+            LastCompletedLoadOperationContext = WireToGateRecoveryOperationContext.FromCommand(Command(DemandB, [2]))
+        });
+
+        Assert.Equal(DemandB, viewModel.SelectedWorklistItem?.DemandId);
+        Assert.False(viewModel.HasLoadCancellationSelectionHint);
+
+        viewModel.UpdateWireToGateJourney(Journey(Worklist(
+            2,
+            Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2))));
+
+        Assert.Null(viewModel.SelectedWorklistItem);
+        Assert.True(viewModel.HasLoadCancellationSelectionHint);
+        Assert.False(viewModel.CanPressLoadCancellation);
+        Assert.Equal(string.Empty, viewModel.LoadCancellationConfirmationDetailText);
+    }
+
     internal static WireToGateSlotOperationCommand Command(string demandId, IReadOnlyList<int> slots) => new(
         Guid.NewGuid().ToString("D"),
         null,
