@@ -1,0 +1,8 @@
+UI layout audit: C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\evidence\audits\ui-layout-20260919T184639689Z.json
+Status: FAIL
+[31;1mException: [0mC:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\scripts\check-ui-layout.ps1:70[0m
+[31;1m[0m[36;1mLine |[0m
+[31;1m[0m[36;1m[36;1m  70 | [0m     [36;1mthrow ($failed.Name -join [Environment]::NewLine)[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m     | [31;1m     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mvisibleWorklistItems visibleJourneyPlanLegs visibleCargoHoldingCountdown visibleVehicleFullNotice[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m[31;1m[36;1m     | [31;1mvisibleLoadingClosedReason loadCancellationUnavailableHint loadCorrectionTarget[0m

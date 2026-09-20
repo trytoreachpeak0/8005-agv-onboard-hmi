@@ -135,10 +135,24 @@ public partial class App : System.Windows.Application, IDisposable
                     viewModel.UpdateWireToGateStatus(args.Value);
                     _controller.RefreshExternalSafetyState();
                 };
+                // 清单项的侧与修正对象（批次7-13，onboard-hmi#134）：本次运行收到的仓位命令，加上日志里现成的操作
+                // 上下文（只读）。日志在每份行程快照（含重启后从日志恢复的那几份）与每个操作员事件之后重读一次。
+                JournaledOperationsFeed journaledOperations = new(
+                    journal,
+                    viewModel.UpdateJournaledOperations,
+                    _logger);
+                _wireToGate.ServerCommandReceived += (_, args) =>
+                {
+                    if (args.Value is WireToGateSlotOperationCommand command)
+                    {
+                        viewModel.RecordSlotOperationCommand(command);
+                    }
+                };
                 _wireToGate.JourneyChanged += (_, args) =>
                 {
                     viewModel.UpdateWireToGateJourney(args.Value);
                     _controller.RefreshExternalSafetyState();
+                    _ = journaledOperations.RefreshAsync();
                 };
                 _wireToGateBusiness = new WireToGateBusinessService(
                     _wireToGate,
@@ -172,7 +186,10 @@ public partial class App : System.Windows.Application, IDisposable
                     viewModel.RefreshWireToGateInputState();
                 };
                 _wireToGateBusiness.OperatorEventPublished += (_, args) =>
+                {
                     viewModel.ApplyWireToGateOperatorEvent(args.Value);
+                    _ = journaledOperations.RefreshAsync();
+                };
                 viewModel.ConfigureWireToGate(
                     (sublot, inputMethod, cancellationToken) => _wireToGateBusiness.SubmitSublotAsync(
                         sublot,

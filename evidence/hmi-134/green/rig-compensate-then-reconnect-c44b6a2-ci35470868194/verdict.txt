@@ -1,0 +1,26 @@
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:36:57.5284136Z real-onboard-compensate-then-reconnect-01 starting at 3.55 GiB committed
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.0903593Z ##[group]real-onboard-compensate-then-reconnect-01 -- PASS, 66s
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.1079701Z L2 real-onboard-compensate-then-reconnect -> PASS (evidence: C:\actions-runner\win11-01-control-server-desktop\_work\_temp\real-rig-35470868194-1\real-onboard-compensate-then-reconnect-01)
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.1085929Z ##[endgroup]
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5806269Z ### Real-onboard L2 (consecutive, 1 runs)
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5810868Z 
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5820772Z control-server 47ae7376e7a15a3268da509cc968d837000e044b, onboard c44b6a2708aa9af13966450c273d96a3d1bcabf7, simulator fb5f7c593742bf98bc3957b8729a38aad5321f28
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5824642Z 
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5833996Z Whole-machine committed memory during the step: min 3.6 GiB, peak 6.18 GiB (41 samples, commit-samples.csv in the evidence).
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5838193Z 
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5846089Z | Run | Result | Seconds | Committed at start (GiB) |
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5852798Z | --- | --- | --- | --- |
+real-rig	Run real-onboard L2 scenarios	2026-09-19T21:38:03.5859906Z | real-onboard-compensate-then-reconnect-01 | PASS | 66 | 3.55 |
+real-rig	Upload real-rig evidence	﻿2026-09-19T21:38:03.7106498Z ##[group]Run actions/upload-artifact@v7
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7107237Z with:
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7107732Z   name: real-rig-evidence
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7108623Z   path: C:\actions-runner\win11-01-control-server-desktop\_work\_temp\real-rig-35470868194-1
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7109591Z   if-no-files-found: warn
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7110066Z   compression-level: 6
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7110498Z   overwrite: false
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7110935Z   include-hidden-files: false
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7111418Z   archive: true
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7111795Z env:
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7112165Z   NuGetAudit: false
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7112583Z   RIG_MODE: consecutive
+real-rig	Upload real-rig evidence	2026-09-19T21:38:03.7113134Z   RIG_ONLY: real-onboard-compensate-then-reconnect

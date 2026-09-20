@@ -1679,10 +1679,13 @@ public sealed class OnboardController : IAsyncDisposable
             return null;
         }
 
-        WireToGateWorklistItem? item = _journeyProvider()?.CurrentStopWorklist?.Items.SingleOrDefault();
-        return item is null
+        // Membership of the items' sublots, not equality with "the" item: a stop carries up to eight
+        // demands since batch 7-13 (8005-agv-onboard-hmi#134). Which demand the sublot belongs to is
+        // the control server's to bind; this end never picks one.
+        IReadOnlyList<WireToGateWorklistItem> items = _journeyProvider()?.CurrentStopWorklist?.Items ?? [];
+        return items.Count == 0
             ? "WIRE_TO_GATE_JOURNEY_NOT_READY"
-            : string.Equals(item.Sublot, sublot, StringComparison.Ordinal)
+            : items.Any(item => string.Equals(item.Sublot, sublot, StringComparison.Ordinal))
                 ? null
                 : "SUBLOT_NOT_IN_WORKLIST";
     }

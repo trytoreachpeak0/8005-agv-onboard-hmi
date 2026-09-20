@@ -1,0 +1,55 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:01.64]     SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.WithTwoItemsTheUnavailableCancellationBeforeSublotIsShownDisabledWithAHint [FAIL]
+[xUnit.net 00:00:01.65]     SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.TheLoadCorrectionEntryNamesTheSublotOfTheLastCompletedLoad [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.WithTwoItemsTheUnavailableCancellationBeforeSublotIsShownDisabledWithAHint [2 ms]
+  Error Message:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.WithTwoItemsTheUnavailableCancellationBeforeSublotIsShownDisabledWithAHint() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 373
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.WithTwoItemsTheUnavailableCancellationBeforeSublotIsShownDisabledWithAHint() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 374
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.TheLoadCorrectionEntryNamesTheSublotOfTheLastCompletedLoad [6 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "修正对象：子批 SUBLOT-B"
+Actual:   ""
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.TheLoadCorrectionEntryNamesTheSublotOfTheLastCompletedLoad() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 450
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.TheLoadCorrectionEntryNamesTheSublotOfTheLastCompletedLoad() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 456
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:01.68]     SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.EachRowTakesItsSideFromItsOwnDemandsSlotCommand [FAIL]
+[xUnit.net 00:00:01.71]     SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.AnUnknownCorrectionTargetIsNamedAsTheLastLoadAtThisStop [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.EachRowTakesItsSideFromItsOwnDemandsSlotCommand [16 ms]
+  Error Message:
+   Assert.All() Failure: 2 out of 2 items in the collection did not pass.
+[0]: Item:  WorklistItemRow { DemandId = aaaaaaaa-0000-4000-8000-00000000000a, Sublot = SUBLOT-A, DirectionText = 取货, TaskTypeText = 焊线→质检关卡, ExpectedBasketCount = 2, SideText = , SideCode = , ExpectedBasketCountText = 2 篮 }
+     Error: Assert.Equal() Failure: Values differ
+            Expected: Tuple ("待分配", "UNASSIGNED")
+            Actual:   Tuple ("", "")
+[1]: Item:  WorklistItemRow { DemandId = bbbbbbbb-0000-4000-8000-00000000000b, Sublot = SUBLOT-B, DirectionText = 取货, TaskTypeText = 焊线→质检关卡, ExpectedBasketCount = 1, SideText = , SideCode = , ExpectedBasketCountText = 1 篮 }
+     Error: Assert.Equal() Failure: Values differ
+            Expected: Tuple ("待分配", "UNASSIGNED")
+            Actual:   Tuple ("", "")
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.EachRowTakesItsSideFromItsOwnDemandsSlotCommand() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 335
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.EachRowTakesItsSideFromItsOwnDemandsSlotCommand() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 348
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.AnUnknownCorrectionTargetIsNamedAsTheLastLoadAtThisStop [1 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "修正对象：本站最后一次装货"
+Actual:   ""
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.AnUnknownCorrectionTargetIsNamedAsTheLastLoadAtThisStop() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 482
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandViewModelTests.AnUnknownCorrectionTargetIsNamedAsTheLastLoadAtThisStop() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:line 482
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     4, Passed:    14, Skipped:     0, Total:    18, Duration: 338 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

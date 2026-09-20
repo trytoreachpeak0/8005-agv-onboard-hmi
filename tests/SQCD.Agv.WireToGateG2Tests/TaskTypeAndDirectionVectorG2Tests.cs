@@ -73,7 +73,7 @@ public sealed class TaskTypeAndDirectionVectorG2Tests
         Assert.Equal(
             [(false, "卸货", string.Empty), (true, "卸货", "待送→焊线机台")],
             seen);
-        Assert.Equal("ST-AREA-N01 / SUBLOT-001", harness.ViewModel.VisitText);
+        Assert.Equal("ST-AREA-N01", harness.ViewModel.VisitText);
     }
 
     /// <summary>
@@ -134,7 +134,7 @@ public sealed class TaskTypeAndDirectionVectorG2Tests
 
         Assert.Equal("卸货", viewModel.StopDirectionText);
         Assert.Equal("待送→焊线机台", viewModel.TaskTypeText);
-        Assert.Equal("ST-01 / SUBLOT-001", viewModel.VisitText);
+        Assert.Equal("ST-01", viewModel.VisitText);
     }
 
     [Fact]

@@ -1,0 +1,3 @@
+Schema conformance (protocol-v2.0.0 APPROVED_RELEASE): 4952 lines, 4923 distinct, 51 message types; 0 distinct violations, 1 on file; schema compilation 159768 ms, validation 11675 ms.
+DELIBERATE SCHEMA VIOLATION (MultiDemandJourneyG2Tests.AClosedLoadingPhaseWithoutAReasonIsStillRefusedAndLeavesNoHalfState) x1: VehicleBusinessStateSnapshot sent by synthetic-peer FakeControlServer.CreateJourneyEnvelope <- FakeControlServer.SendJourneySnapshotAsync
+  #/payload/loadingPhase [anyOf] Validation anyOf - did not validate against the schema. actual: {"state":"CLOSED","cargoHoldingDeadlineAt":null,"closedReason":null}

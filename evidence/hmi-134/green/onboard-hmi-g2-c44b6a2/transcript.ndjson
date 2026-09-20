@@ -1,0 +1,10 @@
+{"timestampUtc":"2026-09-19T20:01:34.7865206Z","kind":"run.started","data":{"runId":"20260919T200129944Z","integrationSliceId":"","selectedTestCount":null,"hmiRoot":"C:\\Users\\szy\\Desktop\\8005-workspace-v2\\worktrees\\b7-134-8005-agv-onboard-hmi","evidenceType":"ONBOARD_HMI_LOCAL_G2","protocolRoot":"C:/Users/szy/Desktop/8005-workspace-v2/repos/8005-agv-protocol"}}
+{"timestampUtc":"2026-09-19T20:01:49.4766595Z","kind":"protocol.g1.skipped","data":{"reason":"SkipProtocolG1"}}
+{"timestampUtc":"2026-09-19T20:01:49.4937422Z","kind":"command.started","data":{"name":"dotnet-build-release","arguments":["build",".\\SQCD_8005AGV.sln","-c","Release"]}}
+{"timestampUtc":"2026-09-19T20:02:10.3548099Z","kind":"command.completed","data":{"exitCode":0,"log":"dotnet-build-release.log","name":"dotnet-build-release"}}
+{"timestampUtc":"2026-09-19T20:02:10.3630483Z","kind":"command.started","data":{"name":"dotnet-test-release","arguments":["test",".\\SQCD_8005AGV.sln","-c","Release","--no-build","--results-directory","C:\\Users\\szy\\AppData\\Local\\Temp\\claude\\C--Users-szy-Desktop-8005-workspace-v2\\b87d832d-ab95-47ab-b55f-a29704bfeda1\\scratchpad\\g2-run3\\protocol-v2.0.0\\20260919T200129944Z-c44b6a2708aa\\test-results"]}}
+{"timestampUtc":"2026-09-19T20:06:50.6755611Z","kind":"command.completed","data":{"exitCode":0,"log":"dotnet-test-release.log","name":"dotnet-test-release"}}
+{"timestampUtc":"2026-09-19T20:06:50.7806852Z","kind":"command.started","data":{"name":"dotnet-format-verify","arguments":["format",".\\SQCD_8005AGV.sln","--verify-no-changes","--no-restore"]}}
+{"timestampUtc":"2026-09-19T20:12:05.5046119Z","kind":"command.completed","data":{"exitCode":0,"log":"dotnet-format-verify.log","name":"dotnet-format-verify"}}
+{"timestampUtc":"2026-09-19T20:12:05.5523605Z","kind":"evidence.journal.bound","data":{"hmiStatus":"PASS","hmiCommit":"c44b6a2708aa9af13966450c273d96a3d1bcabf7","protocolCommit":"86575456c847041515b7b75e8851a00e0d939804","g1Status":"SKIPPED"}}
+{"timestampUtc":"2026-09-19T20:12:06.1106606Z","kind":"run.completed","data":{"failures":0,"status":"PASS"}}

@@ -3363,18 +3363,15 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         or "OPERATOR_TIMEOUT";
 
     /// <summary>
-    /// Checks an inbound worklist snapshot, and is <b>stricter than the frozen v2 schema on one
-    /// count</b>: <c>items.maxItems</c> went to 8 and this still refuses more than one item.
+    /// Checks an inbound worklist snapshot against the frozen v2 schema, and nothing narrower.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The item count is a business narrowing, not schema conformance -- a legal v2 payload
-    /// carrying two items would be answered with <c>PROTOCOL_SCHEMA_INVALID</c>, which is the wrong
-    /// verdict for it. It is left in place because the projection above it assumes a single demand
-    /// (<c>WireToGateJourneySnapshot.CanAcceptSublot</c> requires exactly one item), so widening the
-    /// check without widening that is how a crash gets introduced. It belongs to batch 7
-    /// (multi-demand worklists, <c>8005-agv-onboard-hmi#61</c>); the control server emits at most
-    /// one item until then, so it is not reachable.
+    /// <b>Inbound journey snapshots carry no business narrowing any more.</b> Until batch 7 this
+    /// refused more than one item, because the projection above it assumed a single demand; batch
+    /// 7-13 (<c>8005-agv-onboard-hmi#134</c>, closing <c>8005-agv-onboard-hmi#61</c>) removed every one
+    /// of those assumptions and widened the count to the schema's own <c>items.maxItems</c> of 8. A
+    /// ninth item is a schema violation, not a narrowing.
     /// </para>
     /// <para>
     /// <c>workType</c> is checked against the schema's own enum -- the six MES literals -- and
@@ -3390,7 +3387,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             || payload.WorklistRevision < 0
             || payload.OperationSessionId is not null && !IsUuid(payload.OperationSessionId)
             || payload.Items is null
-            || payload.Items.Count > 1
+            || payload.Items.Count > 8
             || payload.Items.Any(item =>
                 item is null
                 || !IsUuid(item.DemandId)
@@ -3406,22 +3403,18 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     }
 
     /// <summary>
-    /// Checks an inbound plan snapshot, and is <b>stricter than the frozen v2 schema on one
-    /// count</b>: <c>legs.maxItems</c> went from 2 to 9 and this still refuses more than two.
+    /// Checks an inbound plan snapshot against the frozen v2 schema, and nothing narrower.
     /// </summary>
     /// <remarks>
-    /// Same shape of narrowing as the item count in <see cref="ValidateCurrentStopWorklist"/> and
-    /// the same treatment: a three-leg plan is legal v2 and would be answered
-    /// <c>PROTOCOL_SCHEMA_INVALID</c>. It belongs to batch 7 (multi-leg plans,
-    /// <c>8005-agv-onboard-hmi#61</c>); the control server emits at most two legs until then, so the
-    /// narrowing is not reachable. These two counts are the only narrowings left on the inbound
-    /// journey snapshots.
+    /// Same history as the item count in <see cref="ValidateCurrentStopWorklist"/>: the leg count was
+    /// held at two until batch 7-13 (<c>8005-agv-onboard-hmi#134</c>) and is now the schema's own
+    /// <c>legs.maxItems</c> of 9. A tenth leg is a schema violation, not a narrowing.
     /// </remarks>
-    private static void ValidateUpcomingStopPlan(UpcomingStopPlanSnapshotPayload payload)
+    internal static void ValidateUpcomingStopPlan(UpcomingStopPlanSnapshotPayload payload)
     {
         if (payload.PlanRevision < 0
             || payload.Legs is null
-            || payload.Legs.Count > 2
+            || payload.Legs.Count > 9
             || payload.Legs.Any(leg => leg is null)
             || payload.Legs.Select(leg => leg.Sequence).Distinct().Count() != payload.Legs.Count
             || payload.Legs.OrderBy(leg => leg.Sequence).Select((leg, index) => leg.Sequence == index + 1).Any(valid => !valid)

@@ -1,0 +1,25 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:02.26]     SQCD.Agv.UnitTests.InboundPayloadSchemaBoundaryTests.AWorklistOfEightItemsIsAccepted [FAIL]
+[xUnit.net 00:00:02.26]     SQCD.Agv.UnitTests.InboundPayloadSchemaBoundaryTests.APlanOfNineLegsIsAccepted [FAIL]
+  Failed SQCD.Agv.UnitTests.InboundPayloadSchemaBoundaryTests.AWorklistOfEightItemsIsAccepted [3 ms]
+  Error Message:
+   System.IO.InvalidDataException : PROTOCOL_SCHEMA_INVALID
+  Stack Trace:
+     at SQCD.Agv.Infrastructure.WireToGateSessionClient.ValidateCurrentStopWorklist(CurrentStopWorklistSnapshotPayload payload) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 3238
+   at SQCD.Agv.UnitTests.InboundPayloadSchemaBoundaryTests.AWorklistOfEightItemsIsAccepted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\InboundPayloadSchemaBoundaryTests.cs:line 124
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Failed SQCD.Agv.UnitTests.InboundPayloadSchemaBoundaryTests.APlanOfNineLegsIsAccepted [1 ms]
+  Error Message:
+   System.IO.InvalidDataException : PROTOCOL_SCHEMA_INVALID
+  Stack Trace:
+     at SQCD.Agv.Infrastructure.WireToGateSessionClient.ValidateUpcomingStopPlan(UpcomingStopPlanSnapshotPayload payload) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 3274
+   at SQCD.Agv.UnitTests.InboundPayloadSchemaBoundaryTests.APlanOfNineLegsIsAccepted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-134-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\InboundPayloadSchemaBoundaryTests.cs:line 157
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+
+Failed!  - Failed:     2, Passed:    38, Skipped:     0, Total:    40, Duration: 323 ms - SQCD.Agv.UnitTests.dll (net8.0)
