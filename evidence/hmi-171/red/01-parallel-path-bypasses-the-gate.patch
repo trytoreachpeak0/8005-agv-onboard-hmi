@@ -1,0 +1,27 @@
+diff --git a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+index b8fde93..74d71b3 100644
+--- a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
++++ b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+@@ -535,15 +535,15 @@ public sealed class MainViewModel : ViewModelBase
+         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? CanSubmit;
+         // 九个恢复入口全部经同一道闸门（AllowRecoveryEntry），另一条刷新路径
+         // ApplyWireToGatePresentationCore 也是。少经一处，锁存期间那个入口就会被这条路径放回来。
+-        CanRequestWireToGateRecovery = AllowRecoveryEntry(_wireToGateCanRequestRecovery?.Invoke() == true);
+-        CanRequestLoadCancellation = AllowRecoveryEntry(_wireToGateCanRequestLoadCancellation?.Invoke() == true);
+-        CanRequestLoadCompensation = AllowRecoveryEntry(_wireToGateCanRequestLoadCompensation?.Invoke() == true);
+-        CanRequestLoadCorrection = AllowRecoveryEntry(_wireToGateCanRequestLoadCorrection?.Invoke() == true);
+-        CanRequestFaultCargoHandoff = AllowRecoveryEntry(_wireToGateCanRequestFaultCargoHandoff?.Invoke() == true);
++        CanRequestWireToGateRecovery = _wireToGateCanRequestRecovery?.Invoke() == true;
++        CanRequestLoadCancellation = _wireToGateCanRequestLoadCancellation?.Invoke() == true;
++        CanRequestLoadCompensation = _wireToGateCanRequestLoadCompensation?.Invoke() == true;
++        CanRequestLoadCorrection = _wireToGateCanRequestLoadCorrection?.Invoke() == true;
++        CanRequestFaultCargoHandoff = _wireToGateCanRequestFaultCargoHandoff?.Invoke() == true;
+         CanRequestForcedMechanicalRecovery =
+-            AllowRecoveryEntry(_wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true);
++            _wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true;
+         CanRequestManualChargingReturn =
+-            AllowRecoveryEntry(_wireToGateCanRequestManualChargingReturn?.Invoke() == true);
++            _wireToGateCanRequestManualChargingReturn?.Invoke() == true;
+         RefreshForcedIsolationCore();
+         RefreshRecoveryReasonLockCore();
+         // 回落目标随入口一起重算：主体是否已经回落，与入口开关来自同一份恢复状态。

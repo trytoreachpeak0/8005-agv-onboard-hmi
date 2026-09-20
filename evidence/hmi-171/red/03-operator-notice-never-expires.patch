@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+index b8fde93..06fa5b2 100644
+--- a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
++++ b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+@@ -13,7 +13,7 @@ public sealed class MainViewModel : ViewModelBase
+     private const int MaxLogEntries = 300;
+ 
+     /// <summary>操作员刚被拒的那句话能压住常态横幅多久。够读一句短话，不至于挡住后面的状态。</summary>
+-    private static readonly TimeSpan OperatorNoticeHold = TimeSpan.FromSeconds(8);
++    private static readonly TimeSpan OperatorNoticeHold = TimeSpan.FromHours(24);
+     private readonly OnboardController _controller;
+     private readonly IAppLogger _logger;
+     private readonly OperatorRecordFormatter _operatorRecordFormatter = new();

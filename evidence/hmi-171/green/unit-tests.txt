@@ -1,0 +1,9 @@
+commit: 4e86c698b373952f9b772df4678e8fa655beb182
+命令: dotnet test tests/SQCD.Agv.UnitTests -c Release
+
+  SQCD.Agv.Application -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Release\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.UnitTests -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:   497, Skipped:     0, Total:   497, Duration: 8 s - SQCD.Agv.UnitTests.dll (net8.0)

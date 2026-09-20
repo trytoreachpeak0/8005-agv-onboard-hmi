@@ -1,0 +1,28 @@
+commit: 4e86c698b373952f9b772df4678e8fa655beb182 (注入前的树)
+注入: 构造时丢掉传进来的对端在途查询，恒取 () => false —— 复位复核只问 MVP 那把 _operationLock
+对应: 审查 S2（复位判据「没有在途装卸」在 v2 上恒真）。真实失败模式是「接线没接上」，
+      所以注入选的是构造这一步，而不是删掉判据本身
+预期: 本类只有 ClearingIsRefusedWhileTheWireToGateExecutorIsStillOpeningADoor 红
+命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --filter "FullyQualifiedName~OnboardControllerTests"
+限度: --filter 单类，「只有这一条红」的范围是这个测试类之内
+
+  SQCD.Agv.Contracts -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Release\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Infrastructure -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Release\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.AutomationHost -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Release\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.RuleMock -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\tools\SQCD.Agv.RuleMock\bin\Release\net8.0\win-x64\SQCD.Agv.RuleMock.dll
+  SQCD.Agv.Application -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Release\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.UnitTests -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:01.44]     SQCD.Agv.UnitTests.OnboardControllerTests.ClearingIsRefusedWhileTheWireToGateExecutorIsStillOpeningADoor [FAIL]
+  Failed SQCD.Agv.UnitTests.OnboardControllerTests.ClearingIsRefusedWhileTheWireToGateExecutorIsStillOpeningADoor [1 ms]
+  Error Message:
+   Assert.False() Failure
+Expected: False
+Actual:   True
+  Stack Trace:
+     at SQCD.Agv.UnitTests.OnboardControllerTests.ClearingIsRefusedWhileTheWireToGateExecutorIsStillOpeningADoor() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\OnboardControllerTests.cs:line 503
+   at SQCD.Agv.UnitTests.OnboardControllerTests.ClearingIsRefusedWhileTheWireToGateExecutorIsStillOpeningADoor() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\OnboardControllerTests.cs:line 511
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:    34, Skipped:     0, Total:    35, Duration: 710 ms - SQCD.Agv.UnitTests.dll (net8.0)

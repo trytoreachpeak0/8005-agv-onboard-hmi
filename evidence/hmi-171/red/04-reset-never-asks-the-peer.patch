@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Application/OnboardController.cs b/src/SQCD.Agv.Application/OnboardController.cs
+index 277e198..fd40aa2 100644
+--- a/src/SQCD.Agv.Application/OnboardController.cs
++++ b/src/SQCD.Agv.Application/OnboardController.cs
+@@ -77,7 +77,7 @@ public sealed class OnboardController : IAsyncDisposable
+         // v2 的仓位操作与恢复向量都在本控制器之外执行，各有自己的串行化门。复位复核要问的
+         // 「现在有没有在开门」只能从那一侧读——本控制器的 _operationLock 只覆盖 MVP 的
+         // SubmitScanAsync，在 v2 上永远拿得到（8005-agv-onboard-hmi#171）。
+-        _peerSlotWorkInFlightProvider = peerSlotWorkInFlightProvider ?? (() => false);
++        _peerSlotWorkInFlightProvider = () => false;
+         _current = new OnboardSnapshot(
+             OnboardState.Starting,
+             false,

@@ -525,6 +525,26 @@ public sealed class MainViewModel : ViewModelBase
         _lastControllerSnapshot?.State == OnboardState.Faulted;
 
     /// <summary>恢复入口的最终值：业务说可以，且没有锁存。</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>共用的是判据 <see cref="RecoveryEntriesBlockedByFatalFault"/>，不是这个方法。</b>
+    /// 两条刷新路径写法不同：这一条九行各自过本方法（函数式），
+    /// <c>ApplyWireToGatePresentationCore</c> 用 <c>if (RecoveryEntriesBlockedByFatalFault)</c>
+    /// 加 early return（语句式），它的正常分支直接取业务值、不经本方法。语义等价，结构不同。
+    /// </para>
+    /// <para>
+    /// <b>这九个属性的写入点今天没有结构守卫——见 onboard-hmi#176。</b>
+    /// <c>BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands</c> 断的是行为
+    /// （锁存态下这两条路径走完，九个属性都为 false），**而它成立的前提是「只有这两条路径写这九个
+    /// 属性」，那个前提今天没有任何东西守着**：新加第三条路径直接赋值，那条测试不会红，因为它只调
+    /// 这两个已知入口。承担者是 #176。
+    /// </para>
+    /// <para>
+    /// 写那条守卫的人注意上面第一段：**错误的描述会导致错误的守卫**。只扫 <c>AllowRecoveryEntry(</c>
+    /// 的出现，会把 early-return 那条判成「没有闸门」；反过来，有人把那个 early return 删掉改成直接
+    /// 赋值，扫描器完全看不见。
+    /// </para>
+    /// </remarks>
     private bool AllowRecoveryEntry(bool offeredByBusiness) =>
         offeredByBusiness && !RecoveryEntriesBlockedByFatalFault;
 
@@ -1567,8 +1587,10 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        // 判据与另一条刷新路径共用 AllowRecoveryEntry，理由写在那里：这是安全职责，而散在两处时
-        // 它只在其中一处成立。这里仍然 early return，因为锁存时后面那些横幅计算本来就不该跑。
+        // 与另一条刷新路径共用的是判据 RecoveryEntriesBlockedByFatalFault，不是 AllowRecoveryEntry
+        // 那个方法——这里是 early return 的语句式，那边是九行各自调用的函数式，语义等价、结构不同。
+        // 这里仍然 early return，因为锁存时后面那些横幅计算本来就不该跑。
+        // 这九个属性的写入点没有结构守卫，见 onboard-hmi#176（理由与判据该怎么写，在 AllowRecoveryEntry 上）。
         if (RecoveryEntriesBlockedByFatalFault)
         {
             CanRequestWireToGateRecovery = false;
