@@ -13,6 +13,7 @@ public sealed class OnboardController : IAsyncDisposable
     private readonly OnboardWorkflowOptions _options;
     private readonly Func<bool> _externalSafetyReadyProvider;
     private readonly Func<WireToGateJourneySnapshot?>? _journeyProvider;
+    private readonly Func<bool> _peerSlotWorkInFlightProvider;
     // 操作锁
     private readonly SemaphoreSlim _operationLock = new(1, 1);
     // 线程安全集合
@@ -41,7 +42,18 @@ public sealed class OnboardController : IAsyncDisposable
     private bool _started;
     // 是否已经释放资源、不能继续使用
     private bool _disposed;
-    // 一旦写入便保持到进程退出，普通状态发布不得覆盖严重安全故障。
+    // 一旦写入便保持到 ClearFatalFaultAsync 复核通过，普通状态发布不得覆盖严重安全故障。
+    //
+    // 这个锁存在 v2 上约束什么，是一张写下来并且被守住的表：
+    // tests/SQCD.Agv.UnitTests/FatalFaultScopeArchitectureTests.cs。**答案是「只有本控制器发布的
+    // 快照」——一个物理动作都不在里面。** 本文件里的四个读点有三个在 SubmitScanAsync 那条 MVP
+    // 流程上，而 v2 下界面扫码走 WireToGateBusinessService，那条路一次都不会被调用；第四个是
+    // PublishCore，只改快照。服务端下发的仓位命令与操作员按出来的恢复向量各自直接持
+    // IIoModuleClient，不经过这里。
+    //
+    // 所以：**任何依赖「锁存 ⇒ 本机不会开门」的陈述，在 v2 上都要先去那张表里核一遍。**
+    // 8005-agv-onboard-hmi#171 的第一版就是在这里推错了——写对了「执行器不经过控制器」这个
+    // 一般命题，却只把它用在一处，于是横幅、扫码入口、复位的在途判据三处同时说了假话。
     private FatalFault? _fatalFault;
 
     // 创建控制器时，外部必须把五项依赖传进来。
@@ -52,7 +64,8 @@ public sealed class OnboardController : IAsyncDisposable
         IClock clock,
         OnboardWorkflowOptions options,
         Func<bool>? externalSafetyReadyProvider = null,
-        Func<WireToGateJourneySnapshot?>? journeyProvider = null)
+        Func<WireToGateJourneySnapshot?>? journeyProvider = null,
+        Func<bool>? peerSlotWorkInFlightProvider = null)
     {
         _ioModule = ioModule ?? throw new ArgumentNullException(nameof(ioModule));
         _ruleGateway = ruleGateway ?? throw new ArgumentNullException(nameof(ruleGateway));
@@ -61,6 +74,10 @@ public sealed class OnboardController : IAsyncDisposable
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _externalSafetyReadyProvider = externalSafetyReadyProvider ?? (() => true);
         _journeyProvider = journeyProvider;
+        // v2 的仓位操作与恢复向量都在本控制器之外执行，各有自己的串行化门。复位复核要问的
+        // 「现在有没有在开门」只能从那一侧读——本控制器的 _operationLock 只覆盖 MVP 的
+        // SubmitScanAsync，在 v2 上永远拿得到（8005-agv-onboard-hmi#171）。
+        _peerSlotWorkInFlightProvider = peerSlotWorkInFlightProvider ?? (() => false);
         _current = new OnboardSnapshot(
             OnboardState.Starting,
             false,
@@ -608,7 +625,174 @@ public sealed class OnboardController : IAsyncDisposable
             LogSeverity.Error,
             nameof(OnboardController),
             $"严重安全故障已锁存，code={effective.ErrorCode}；当前活动流程已请求停止。");
-        Publish(OnboardState.Faulted, effective.Guidance, effective.ErrorCode);
+        Publish(OnboardState.Faulted, effective.Banner, effective.ErrorCode);
+    }
+
+    /// <summary>
+    /// True when a fatal fault is latched and its code is one maintenance may lift on this machine
+    /// (8005-agv-onboard-hmi#171). False whenever nothing is latched, so a normal run never offers
+    /// this entry.
+    /// </summary>
+    /// <summary>
+    /// 现在是不是锁存着一个严重安全故障。v2 的业务路径不经过本控制器，所以那一侧要自己读这个，
+    /// 才能让「本界面已禁止扫码开门」成为真的（8005-agv-onboard-hmi#171）。
+    /// </summary>
+    public bool IsFatalFaultLatched => Volatile.Read(ref _fatalFault) is not null;
+
+    public bool CanClearFatalFault =>
+        Volatile.Read(ref _fatalFault) is { } latched
+        && OnboardFailureClassification.Clearance(latched.ErrorCode)
+            == FatalFaultClearance.ClearableBySafetyReview;
+
+    /// <summary>
+    /// Lifts a latched fatal safety fault after maintenance has reviewed the doors, and records who
+    /// did it. Returns false and leaves the latch standing when the review does not hold.
+    /// </summary>
+    /// <param name="operatorId">
+    /// Who is lifting it. Required: the point of this entry is that afterwards somebody can ask who
+    /// opened the vehicle back up and when, so a clearance nobody can be tied to is not one worth
+    /// having.
+    /// </param>
+    /// <remarks>
+    /// <para>
+    /// <b>Four conditions, and each one refuses out loud.</b> There is a latch; its code is
+    /// clearable; no slot operation is running; and the IO snapshot says what
+    /// <see cref="ValidateRecoverableStartupSnapshot"/> requires -- module connected, snapshot fresh,
+    /// all eight slots readable, every unlock output reset, every door locked. The last is the same
+    /// physical review <see cref="ConfirmSafeStartupStateAsync"/> runs, because it is the same
+    /// question: are the doors where this process believes they are.
+    /// </para>
+    /// <para>
+    /// <b>This is deliberately not folded into <see cref="ConfirmSafeStartupStateAsync"/>.</b> That
+    /// method admits one code, <c>STARTUP_STATE_UNSAFE</c>, and it runs before the vehicle has ever
+    /// been allowed to operate -- it sets <c>_startupValidated</c>. Giving it a second job would give
+    /// a startup-time confirmation the power to clear a safety latch during a run, on a press whose
+    /// operator cannot tell the two situations apart. Clearing the latch here leaves
+    /// <c>_startupValidated</c> alone.
+    /// </para>
+    /// </remarks>
+    public async Task<bool> ClearFatalFaultAsync(
+        string operatorId,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(operatorId);
+
+        FatalFault? latched = Volatile.Read(ref _fatalFault);
+        if (latched is null)
+        {
+            return false;
+        }
+
+        if (OnboardFailureClassification.Clearance(latched.ErrorCode)
+            != FatalFaultClearance.ClearableBySafetyReview)
+        {
+            RefuseClearance(latched, "该故障不能在车上复位，请重启车载端程序。", operatorId);
+            return false;
+        }
+
+        // 两把锁都要问。本控制器的 _operationLock 只覆盖 MVP 的 SubmitScanAsync；v2 的仓位操作与
+        // 恢复向量各在自己的执行器里跑，各有自己的门。只问前者，在 v2 上等于没问
+        // （8005-agv-onboard-hmi#171 审查 S2）。
+        if (_peerSlotWorkInFlightProvider())
+        {
+            RefuseClearance(latched, "当前装卸操作尚未结束，请等待其结束后再复位。", operatorId);
+            return false;
+        }
+
+        if (!await _operationLock.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            RefuseClearance(latched, "当前装卸操作尚未结束，请等待其结束后再复位。", operatorId);
+            return false;
+        }
+
+        try
+        {
+            string? unsafeReason = ValidateRecoverableStartupSnapshot(_ioModule.CurrentSnapshot);
+            if (unsafeReason is not null)
+            {
+                RefuseClearance(latched, unsafeReason, operatorId);
+                return false;
+            }
+
+            // Clear the exact latch that was reviewed. A different one arriving meanwhile was never
+            // reviewed, and EnterFatalFault would not have overwritten this one, so it would be lost.
+            if (Interlocked.CompareExchange(ref _fatalFault, null, latched) != latched)
+            {
+                // 复核期间锁存被换掉了（并发的 RefuseClearance，或另一条路径）。不能清——那一个没被
+                // 复核过。但也不能一声不吭：操作员按了按钮，界面必须有反应，否则他只会再按一次
+                // （8005-agv-onboard-hmi#171 审查，产品路发现 5）。
+                FatalFault? current = Volatile.Read(ref _fatalFault);
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(OnboardController),
+                    $"严重安全故障复位未生效：复核期间锁存已变化，operator={operatorId}。");
+                if (current is not null)
+                {
+                    RefuseClearance(current, "复核期间故障状态发生变化，请重新复核。", operatorId);
+                }
+
+                return false;
+            }
+
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(OnboardController),
+                $"严重安全故障已复位：code={latched.ErrorCode}，operator={operatorId}，"
+                + $"at={_clock.Now.ToUniversalTime():O}；仓门全锁、开锁输出全0、快照有效已复核。 ");
+            // Faulted has to be left before ReevaluateIdleState, which republishes the current state
+            // unchanged while it is still Faulted.
+            Publish(OnboardState.Connecting, "严重安全故障已复位，正在重新评估通信和到站状态。");
+            ReevaluateIdleState("严重安全故障已复位，请确认仓位状态后继续作业。");
+            return true;
+        }
+        finally
+        {
+            _operationLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Keeps the latch and tells the operator why this attempt was refused. The reason goes into the
+    /// latch first: <see cref="PublishCore"/> rewrites any publish back to the latch's banner while
+    /// it stands, so a reason published beside it would never be seen.
+    /// </summary>
+    /// <summary>
+    /// 上一次复位被拒的原因不再成立时把它撤掉。
+    /// </summary>
+    /// <remarks>
+    /// 那条原因是**关于按下按钮那一刻的物理状态**的陈述（「3号仓门未关好」）。操作员关好门之后，
+    /// 横幅如果还这么写，它就变成了一件不成立的事——而这正是本票要消灭的形状
+    /// （8005-agv-onboard-hmi#171 审查，产品路发现 5）。所以每次 IO 快照重新评估时，
+    /// 物理复核一旦重新通过就撤掉它，不必等操作员再按一次才发现门其实已经关好了。
+    /// </remarks>
+    private void ForgetStaleClearanceRefusal()
+    {
+        if (Volatile.Read(ref _fatalFault) is not { ClearanceRefusal: not null } stale)
+        {
+            return;
+        }
+
+        if (ValidateRecoverableStartupSnapshot(_ioModule.CurrentSnapshot) is not null)
+        {
+            return;
+        }
+
+        FatalFault cleared = stale with { ClearanceRefusal = null };
+        if (Interlocked.CompareExchange(ref _fatalFault, cleared, stale) == stale)
+        {
+            Publish(OnboardState.Faulted, cleared.Banner, cleared.ErrorCode);
+        }
+    }
+
+    private void RefuseClearance(FatalFault latched, string reason, string operatorId)
+    {
+        FatalFault explained = latched with { ClearanceRefusal = reason };
+        Interlocked.CompareExchange(ref _fatalFault, explained, latched);
+        _logger.Write(
+            LogSeverity.Warning,
+            nameof(OnboardController),
+            $"严重安全故障复位被拒：code={latched.ErrorCode}，operator={operatorId}，reason={reason}");
+        Publish(OnboardState.Faulted, explained.Banner, latched.ErrorCode);
     }
 
     // 规则模块回复成功后、本地写 DO 前的最后检查
@@ -1287,6 +1471,8 @@ public sealed class OnboardController : IAsyncDisposable
     // 收到新的 IO 快照
     private void OnIoSnapshotChanged(object? sender, ValueChangedEventArgs<IoSnapshot> args)
     {
+        // 上一次复位被拒的原因是一句关于物理状态的话，物理状态变好了它就不再成立。
+        ForgetStaleClearanceRefusal();
         if (!_startupValidated && args.Value.IsConnected)
         {
             bool safeColdStart = args.Value.Lockers.Count == 8
@@ -1419,7 +1605,7 @@ public sealed class OnboardController : IAsyncDisposable
         if (fatalFault is not null)
         {
             state = OnboardState.Faulted;
-            guidance = fatalFault.Guidance;
+            guidance = fatalFault.Banner;
             errorCode = fatalFault.ErrorCode;
             departureOverride = false;
         }
@@ -1497,9 +1683,9 @@ public sealed class OnboardController : IAsyncDisposable
             "OPERATION_BUSY" => "当前装卸操作尚未完成，请完成装卸并关好仓门。",
             "NOT_READY" => "车辆尚未准备好，请等待界面显示“可扫码”。",
             "WIRE_TO_GATE_NOT_READY" =>
-                "上层安全会话尚未就绪，已禁止扫码、开门和发车。请等待连接及恢复完成。",
+                "上层安全会话尚未就绪，本界面已禁止扫码与发车。请等待连接及恢复完成。",
             "WIRE_TO_GATE_JOURNEY_NOT_READY" =>
-                "服务端旅程或当前站点任务尚未同步，已禁止扫码和开门。请等待任务恢复。",
+                "服务端旅程或当前站点任务尚未同步，本界面已禁止扫码。请等待任务恢复。",
             "SUBLOT_NOT_IN_WORKLIST" =>
                 "当前条码不属于服务端下发的站点任务，请核对条码或等待任务刷新。",
             "VISIT_NOT_ACTIVE" => "车辆尚未到站或本次作业已经结束，请等待新的到站任务。",
@@ -1863,7 +2049,25 @@ public sealed class OnboardController : IAsyncDisposable
         LockerSnapshot Locker,
         bool Cancelled);
 
-    private sealed record FatalFault(string ErrorCode, string Guidance);
+    /// <param name="Guidance">
+    /// The banner the latch itself carries. It never changes once latched, so a refused clearance
+    /// attempt cannot erase it (8005-agv-onboard-hmi#171).
+    /// </param>
+    private sealed record FatalFault(string ErrorCode, string Guidance)
+    {
+        /// <summary>Why the most recent clearance attempt was refused, or null when none was.</summary>
+        public string? ClearanceRefusal { get; init; }
+
+        /// <summary>
+        /// What the operator reads. <see cref="PublishCore"/> rewrites every publish back to this
+        /// while the latch stands, so a refusal has to be inside the latch to survive -- publishing
+        /// it as an ordinary guidance string would be overwritten by the very next line of that
+        /// method.
+        /// </summary>
+        public string Banner => ClearanceRefusal is null
+            ? Guidance
+            : $"{Guidance} 复位未通过：{ClearanceRefusal}";
+    }
 
     private enum PendingReportKind
     {

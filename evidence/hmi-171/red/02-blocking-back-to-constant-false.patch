@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+index b8fde93..b632632 100644
+--- a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
++++ b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+@@ -1603,7 +1603,7 @@ public sealed class MainViewModel : ViewModelBase
+         // （8005-agv-onboard-hmi#171 审查，产品路发现 1）。
+         bool bannerNoticeHeld = PublishGuidance(
+             banner.Guidance,
+-            banner.HasError || _wireToGateOperation is not null);
++            banner.HasError);
+         HasWarning = banner.HasWarning || bannerNoticeHeld;
+         HasError = banner.HasError;
+         CanReopenOperation = false;

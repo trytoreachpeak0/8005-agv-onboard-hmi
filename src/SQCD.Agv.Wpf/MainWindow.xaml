@@ -451,12 +451,25 @@
                             Visibility="{Binding CanCancelOperation, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnCancelOperationClick"
                             Content="取消本次操作" />
-                    <Button Padding="12,6"
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
                             FontSize="13"
                             IsEnabled="{Binding CanSafetyReview}"
                             Visibility="{Binding CanSafetyReview, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnSafetyReviewClick"
                             Content="启动安全复核" />
+                    <!--
+                        复位严重安全故障（onboard-hmi#171）。与左边的「启动安全复核」是两个入口：那个受理的是
+                        启动期的 STARTUP_STATE_UNSAFE，这个受理的是运行期锁存的严重安全故障。合成一个按钮，
+                        等于让一个启动期的确认动作在运行期具有清除安全锁存的能力，而按的人分辨不出这两件事。
+                    -->
+                    <Button Padding="12,6"
+                            FontSize="13"
+                            Background="{StaticResource DangerBrush}"
+                            IsEnabled="{Binding CanClearFatalFault}"
+                            Visibility="{Binding CanClearFatalFault, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnClearFatalFaultClick"
+                            Content="复位严重安全故障" />
                 </WrapPanel>
             </Grid>
         </Border>

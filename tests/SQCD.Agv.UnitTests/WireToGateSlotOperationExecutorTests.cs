@@ -100,6 +100,42 @@ public sealed class WireToGateSlotOperationExecutorTests
         });
     }
 
+    /// <summary>
+    /// <c>HasOperationInFlight</c> 在这里真的跟着执行走（8005-agv-onboard-hmi#171 审查 S2）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 严重安全故障的复位复核拿它当「现在有没有在开门」那一条判据，而**一个平行维护的 busy 字段
+    /// 漂移起来正好是复位该被挡住的那一刻说「没在跑」**。所以它派生自执行器真正用来串行化的那道
+    /// 门，这条测试钉的就是「它确实跟着那道门」。
+    /// </para>
+    /// <para>
+    /// 观察点取的是 progress 回调——那是执行**中**被调用的，不靠 sleep 也不靠时序碰运气。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task HasOperationInFlightIsTrueWhileTheExecutorIsRunningAndFalseAfterwards()
+    {
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            cancellationToken: TestContext.Current.CancellationToken);
+        Assert.False(fixture.Executor.HasOperationInFlight);
+
+        List<bool> observedDuringRun = [];
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            CreateCommand(OperationType.Load, [1], expectedOccupied: true),
+            (_, _) =>
+            {
+                observedDuringRun.Add(fixture.Executor.HasOperationInFlight);
+                return Task.CompletedTask;
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.NotEmpty(observedDuringRun);
+        Assert.All(observedDuringRun, Assert.True);
+        Assert.False(fixture.Executor.HasOperationInFlight);
+    }
+
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("IntegrationSlice", "FP-IS-07")]

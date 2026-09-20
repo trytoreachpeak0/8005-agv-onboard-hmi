@@ -129,6 +129,25 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         return true;
     }
 
+    /// <summary>
+    /// True while this executor holds its own serialisation gate — that is, while a slot operation
+    /// is actually running here (8005-agv-onboard-hmi#171).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Derived from the gate itself, never from a field kept alongside it.</b> A parallel "busy"
+    /// flag drifts, and the way it drifts is that it reads "nothing running" while this executor is
+    /// between <c>SendProgressAsync(UNLOCKING)</c> and <c>PulseUnlockAsync</c> — which is exactly the
+    /// moment the fatal-fault clearance must not be allowed through.
+    /// </para>
+    /// <para>
+    /// It reads true for the instant <see cref="AbortOperationAsync"/> takes the gate as a barrier.
+    /// That direction is the safe one: a clearance refused a moment too often costs a second press,
+    /// one allowed a moment too early opens a door beside the person who was just told to proceed.
+    /// </para>
+    /// </remarks>
+    public bool HasOperationInFlight => _operationGate.CurrentCount == 0;
+
     public async Task<WireToGateOperationExecutionResult> ExecuteAsync(
         WireToGateSlotOperationCommand command,
         Func<WireToGateOperationProgress, CancellationToken, Task>? progress,

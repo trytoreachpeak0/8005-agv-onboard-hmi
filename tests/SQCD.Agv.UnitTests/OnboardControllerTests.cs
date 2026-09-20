@@ -368,6 +368,194 @@ public sealed class OnboardControllerTests
         Assert.False(controller.Current.DeparturePermitted);
     }
 
+    /// <summary>
+    /// The entry added by 8005-agv-onboard-hmi#171 must not appear in a run where nothing went wrong.
+    /// It is offered only while a clearable fatal fault stands, and a normal run never latches one --
+    /// so if this ever goes red, the entry's condition has been written too wide.
+    /// </summary>
+    [Fact]
+    public async Task ANormalRunNeverOffersTheFatalFaultClearance()
+    {
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-NO-FAULT");
+        await using OnboardController controller = CreateController(io, rule);
+        Assert.False(controller.CanClearFatalFault);
+
+        await controller.StartAsync(TestContext.Current.CancellationToken);
+        Assert.False(controller.CanClearFatalFault);
+
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
+
+        Assert.True(Assert.Single(rule.Results).Success);
+        Assert.False(controller.CanClearFatalFault);
+    }
+
+    /// <summary>
+    /// The clearance is a door review, not a dismiss button: it lifts the latch only once the IO says
+    /// what it has to say. Both halves are asserted, because "latch is null afterwards" alone would
+    /// also be true of an implementation that cleared unconditionally.
+    /// </summary>
+    [Fact]
+    public async Task ClearingAFatalFaultNeedsTheDoorReviewToPassAndThenLetsScanningResume()
+    {
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-CLEARED");
+        FakeLogger logger = new();
+        List<LogEntry> entries = [];
+        logger.EntryWritten += (_, args) => entries.Add(args.Entry);
+        await using OnboardController controller = CreateController(io, rule, logger: logger);
+        await controller.StartAsync(TestContext.Current.CancellationToken);
+
+        controller.EnterFatalFault("UI_COMMAND_FAILED", "操作界面出现异常，本界面已禁止扫码开门。");
+        Assert.True(controller.CanClearFatalFault);
+
+        // 3号仓门没关好：复核不成立，锁存保留。
+        io.SetUnlocked(2);
+        Assert.False(await controller.ClearFatalFaultAsync("OP-7", TestContext.Current.CancellationToken));
+        Assert.Equal(OnboardState.Faulted, controller.Current.State);
+        Assert.Equal("UI_COMMAND_FAILED", controller.Current.ErrorCode);
+        // 原横幅还在，后面多了一句为什么没过 -- 现场线踩过的那个坑：原因若只是发布出去，
+        // PublishCore 会立刻把它改写回原横幅。
+        Assert.Contains("本界面已禁止扫码开门", controller.Current.Guidance);
+        Assert.Contains("3号仓门未关好", controller.Current.Guidance);
+        Assert.True(controller.CanClearFatalFault);
+
+        io.SetLocked(2);
+        Assert.True(await controller.ClearFatalFaultAsync("OP-7", TestContext.Current.CancellationToken));
+
+        Assert.False(controller.CanClearFatalFault);
+        Assert.NotEqual(OnboardState.Faulted, controller.Current.State);
+        Assert.Equal(OnboardState.ReadyToScan, controller.Current.State);
+        Assert.Contains(
+            entries,
+            entry => entry.Severity == LogSeverity.Warning
+                && entry.Message.Contains("严重安全故障已复位", StringComparison.Ordinal)
+                && entry.Message.Contains("UI_COMMAND_FAILED", StringComparison.Ordinal)
+                && entry.Message.Contains("OP-7", StringComparison.Ordinal));
+
+        // 复位之后回到的是可以继续作业的状态，不是一个看起来正常、实际不受理扫码的空壳。
+        await controller.SubmitScanAsync("LOAD-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
+        Assert.True(Assert.Single(rule.Results).Success);
+    }
+
+    /// <summary>
+    /// UNHANDLED_UI_ERROR is registered as terminal: after an exception from nowhere, this process's
+    /// own view of the doors is what is in doubt, so it is not the thing to judge the review.
+    /// </summary>
+    [Fact]
+    public async Task ATerminalFatalFaultIsNotClearedOnTheVehicle()
+    {
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-TERMINAL");
+        await using OnboardController controller = CreateController(io, rule);
+        await controller.StartAsync(TestContext.Current.CancellationToken);
+
+        controller.EnterFatalFault("UNHANDLED_UI_ERROR", "软件运行异常，本界面已禁止继续操作。");
+
+        Assert.False(controller.CanClearFatalFault);
+        // 每一项物理判据都成立，仍然不给复位 -- 拒绝的理由只能是这个码本身。
+        Assert.False(await controller.ClearFatalFaultAsync("OP-7", TestContext.Current.CancellationToken));
+        Assert.Equal(OnboardState.Faulted, controller.Current.State);
+        Assert.Equal("UNHANDLED_UI_ERROR", controller.Current.ErrorCode);
+        Assert.Contains("不能在车上复位", controller.Current.Guidance);
+        AssertStillLatched(controller, "UNHANDLED_UI_ERROR");
+    }
+
+    [Fact]
+    public async Task ClearingWithNothingLatchedDoesNothing()
+    {
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-NO-LATCH");
+        await using OnboardController controller = CreateController(io, rule);
+        await controller.StartAsync(TestContext.Current.CancellationToken);
+        OnboardSnapshot before = controller.Current;
+
+        Assert.False(await controller.ClearFatalFaultAsync("OP-7", TestContext.Current.CancellationToken));
+
+        Assert.Equal(before.State, controller.Current.State);
+        Assert.Equal(before.Guidance, controller.Current.Guidance);
+    }
+
+    /// <summary>
+    /// v2 那一半：仓位操作跑在本控制器之外，复位必须问得到它（8005-agv-onboard-hmi#171 审查 S2）。
+    /// </summary>
+    /// <remarks>
+    /// 下面那条 <see cref="ClearingIsRefusedWhileASlotOperationIsStillRunning"/> 走的是
+    /// <c>SubmitScanAsync</c> 的操作锁，那是 MVP 路径——**在 v2 上它永远拿得到，所以那条判据
+    /// 在 v2 上是空的，而那条测试照样绿**。两条覆盖的不是同一件事，删任何一条都会留下一个洞。
+    ///
+    /// 这里 IO 快照全部安全（门全锁、开锁输出全 0、快照新鲜），所以拒绝的理由只可能是在途查询——
+    /// 不这么摆的话，物理复核也会拒，这条测试就分不出「在途判据存在」和「门碰巧开着」。
+    /// </remarks>
+    [Fact]
+    public async Task ClearingIsRefusedWhileTheWireToGateExecutorIsStillOpeningADoor()
+    {
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-PEER-BUSY");
+        bool peerBusy = true;
+        await using OnboardController controller = CreateController(
+            io,
+            rule,
+            peerSlotWorkInFlightProvider: () => peerBusy);
+        await controller.StartAsync(TestContext.Current.CancellationToken);
+        controller.EnterFatalFault("UI_COMMAND_FAILED", "操作界面出现异常，本界面已禁止扫码开门。");
+
+        Assert.False(await controller.ClearFatalFaultAsync("OP-7", TestContext.Current.CancellationToken));
+
+        Assert.Contains("当前装卸操作尚未结束", controller.Current.Guidance);
+        AssertStillLatched(controller, "UI_COMMAND_FAILED");
+
+        // 对端空下来之后，同一次复核就过了 -- 证明挡住它的是在途查询，不是别的判据。
+        peerBusy = false;
+        Assert.True(await controller.ClearFatalFaultAsync("OP-7", TestContext.Current.CancellationToken));
+        Assert.NotEqual(OnboardState.Faulted, controller.Current.State);
+    }
+
+    /// <summary>
+    /// MVP 那一半：<c>SubmitScanAsync</c> 持有的操作锁。判据的理由被断言了，不只是 false——
+    /// 操作进行中门是开的，物理复核本来也会拒，只断 false 的话这条测试在没有操作锁判据时照样绿。
+    /// </summary>
+    [Fact]
+    public async Task ClearingIsRefusedWhileASlotOperationIsStillRunning()
+    {
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-BUSY-CLEAR");
+        await using OnboardController controller = CreateController(io, rule);
+        await controller.StartAsync(TestContext.Current.CancellationToken);
+
+        bool? clearedMidOperation = null;
+        string? guidanceMidOperation = null;
+        io.BeforeFinalFeedback = () =>
+        {
+            // 这个钩子在 SubmitScanAsync 持有操作锁期间同步调用，所以「锁被占」是确定的，不靠时序碰运气。
+            controller.EnterFatalFault("UI_COMMAND_FAILED", "操作界面出现异常，本界面已禁止扫码开门。");
+            clearedMidOperation = controller.ClearFatalFaultAsync("OP-7").GetAwaiter().GetResult();
+            guidanceMidOperation = controller.Current.Guidance;
+        };
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+            await controller.SubmitScanAsync(
+                "LOAD-001",
+                ScanInputMethod.Scanner,
+                TestContext.Current.CancellationToken).ConfigureAwait(false));
+
+        Assert.False(clearedMidOperation);
+        Assert.Contains("当前装卸操作尚未结束", guidanceMidOperation);
+        AssertStillLatched(controller, "UI_COMMAND_FAILED");
+    }
+
+    /// <summary>
+    /// 锁存是不是真的还在。不能只看发布出来的状态：一次显式的 <c>Publish(Faulted, …)</c> 也能让界面
+    /// 看起来像锁着，而锁存已经被悄悄清掉——注入验证抓到过这个盲点。探针用的是锁存本身的性质：
+    /// <c>EnterFatalFault</c> 第一次胜出，所以锁存还在时新的码进不来，被清掉了就会顶上去。
+    /// </summary>
+    private static void AssertStillLatched(OnboardController controller, string expectedCode)
+    {
+        controller.EnterFatalFault("UI_FATAL_LATCH_PROBE", "探针：这条只有在锁存已被清掉时才会显示。");
+        Assert.Equal(expectedCode, controller.Current.ErrorCode);
+        Assert.Equal(OnboardState.Faulted, controller.Current.State);
+    }
+
     [Fact]
     public async Task IoConnectionLossDuringOperationIsReportedAsSystemWideFault()
     {
@@ -677,12 +865,14 @@ public sealed class OnboardControllerTests
         FakeIoModule io,
         FakeRuleGateway rule,
         Func<bool>? externalSafetyReadyProvider = null,
-        Func<WireToGateJourneySnapshot?>? journeyProvider = null)
+        Func<WireToGateJourneySnapshot?>? journeyProvider = null,
+        FakeLogger? logger = null,
+        Func<bool>? peerSlotWorkInFlightProvider = null)
     {
         return new OnboardController(
             io,
             rule,
-            new FakeLogger(),
+            logger ?? new FakeLogger(),
             new SystemClock(),
             new OnboardWorkflowOptions(
                 TimeSpan.FromMilliseconds(50),
@@ -693,7 +883,8 @@ public sealed class OnboardControllerTests
                 128,
                 2),
             externalSafetyReadyProvider,
-            journeyProvider);
+            journeyProvider,
+            peerSlotWorkInFlightProvider);
     }
 
     private sealed class FakeIoModule : IIoModuleClient
@@ -843,6 +1034,24 @@ public sealed class OnboardControllerTests
             {
                 _cargoOnCloseSequence.Enqueue(cargo);
             }
+        }
+
+        /// <summary>仓门反馈变成「未锁好」，其余不动。复位复核的判据之一。</summary>
+        public void SetUnlocked(int slotIndex) => SetLockFeedback(slotIndex, false);
+
+        /// <summary>仓门反馈变回「已锁好」。</summary>
+        public void SetLocked(int slotIndex) => SetLockFeedback(slotIndex, true);
+
+        private void SetLockFeedback(int slotIndex, bool locked)
+        {
+            DateTimeOffset now = DateTimeOffset.Now;
+            LockerSnapshot[] lockers = _snapshot.Lockers
+                .Select(locker => locker.SlotIndex == slotIndex
+                    ? locker with { LockFeedbackRaw = locked, ObservedAt = now }
+                    : locker with { ObservedAt = now })
+                .ToArray();
+            _snapshot = new IoSnapshot(true, lockers, now);
+            SnapshotChanged?.Invoke(this, new ValueChangedEventArgs<IoSnapshot>(_snapshot));
         }
 
         public void SetUnknown(params int[] slotIndexes)

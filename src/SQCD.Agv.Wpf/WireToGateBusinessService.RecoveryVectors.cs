@@ -237,9 +237,13 @@ public sealed partial class WireToGateBusinessService
                 nameof(WireToGateBusinessService),
                 $"恢复向量{vectorType}未执行：reason={exception.Message}。",
                 exception);
+            // 文案按错误码查表，不是把裸码拼进句子（8005-agv-onboard-hmi#171）。原来发出去的是
+            // 「恢复向量被阻断：RECOVERY_REASON_REQUIRED。…」——一个操作员读不懂的码，正是
+            // OnboardCommandRejectionText 的注释里说「等于什么都没说」的那种。未识别的码仍然
+            // 原样显示，那是故意的：猜出来的意思比没有更糟。
             PublishOperatorResponse(
                 "RECOVERY_BLOCKED",
-                $"恢复向量被阻断：{exception.Message}。请确认车辆停稳、仓门状态和服务端授权。 ");
+                OnboardCommandRejectionText.DescribeRecoveryBlocked(exception.Message));
             return false;
         }
         finally

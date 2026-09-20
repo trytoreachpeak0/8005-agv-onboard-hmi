@@ -400,7 +400,11 @@ public sealed partial class MultiDemandJourneyG2Tests
                 OperatorVariable,
                 safety,
                 TimeSpan.FromSeconds(30),
-                TimeSpan.FromMilliseconds(500));
+                TimeSpan.FromMilliseconds(500),
+                recoveryOptions: null,
+                // 与 App 接的是同一根线（8005-agv-onboard-hmi#171）。夹具不接，这里就证不到
+                // 「锁存之后扫码真的被拒」——而那正是故障横幅对操作员说的那句话。
+                fatalFaultLatched: () => controller.IsFatalFaultLatched);
             Harness harness = new(server, io, journalPath, session, business, controller, viewModel);
 
             session.StateChanged += (_, args) => harness.OnUiThread(() =>
@@ -493,9 +497,31 @@ public sealed partial class MultiDemandJourneyG2Tests
                     _uiErrors.Add(exception);
                 }
 
-                Controller.EnterFatalFault(
-                    "UNHANDLED_UI_ERROR",
-                    "软件运行异常，已禁止继续操作。请确认仓门状态并联系维护人员。");
+                // The routing decision is the product's, read from the same registry
+                // App.OnDispatcherUnhandledException reads (8005-agv-onboard-hmi#171). A copy of the
+                // rule here would let this harness keep proving the old behaviour after the product
+                // changed -- which is exactly what it did while "latch everything" was the rule.
+                //
+                // **代价，写下来免得下一个人以为 G2 还在守着分类**：夹具跟着登记表走，所以往
+                // OperatorRejections 里加一个本该锁存的码，整个 G2 套件不会有任何东西变红
+                // （审查，判据路条目 11）。守分类的是
+                // LocalFailureCodeRegistryArchitectureTests，不是这里。这里仍然无条件
+                // _uiErrors.Add，所以各处的 Assert.Empty(harness.UiErrors) 还有牙。
+                switch (OnboardFailureClassification.Classify(exception))
+                {
+                    case OnboardCommandFailureKind.ControlledCancellation:
+                        break;
+
+                    case OnboardCommandFailureKind.OperatorRejection:
+                        ViewModel.ReportOperatorRejection(exception.Message);
+                        break;
+
+                    default:
+                        Controller.EnterFatalFault(
+                            "UNHANDLED_UI_ERROR",
+                            OnboardFatalFaultBanner.UnhandledUiError);
+                        break;
+                }
             }
         }
 

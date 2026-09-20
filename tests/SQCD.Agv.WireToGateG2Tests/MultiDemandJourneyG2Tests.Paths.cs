@@ -1,6 +1,7 @@
 using System.Text.Json;
 using SQCD.Agv.Application;
 using SQCD.Agv.Core;
+using SQCD.Agv.Wpf;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
@@ -229,6 +230,138 @@ public sealed partial class MultiDemandJourneyG2Tests
         await Task.Delay(200, token);
         Assert.Empty(harness.Submissions);
         Assert.Equal(["SUBLOT-B"], harness.WorklistRows().Select(row => row.Sublot));
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// 故障横幅对操作员说「本界面已禁止扫码开门」。**这条测的是那句话是不是真的**，不是它的措辞
+    /// （8005-agv-onboard-hmi#171 审查 S1）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 第一版只断了措辞（含某词、不含某词），而**问题在事实**：v2 下扫码走业务服务、不经过
+    /// <c>OnboardController.SubmitScanAsync</c>，锁存一个字都管不到它，于是操作员读到「本界面
+    /// 不会再开门了」、扫一下，门就开在他面前。审查抓的就是这一条。
+    /// </para>
+    /// <para>
+    /// <b>两条判据，因为那是两件事</b>：按钮点不下去（<c>CanExecute</c>），**并且**按下去不会开门
+    /// （直接调提交路径也被拒）。横幅断言的是第二件——只断第一件的话，一个「把按钮藏起来、
+    /// 提交路径照走」的实现能通过。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task WhileAFatalFaultIsLatchedTheScanEntryIsClosedAndTheSubmitPathRefuses()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            server =>
+            {
+                server.SendJourneySnapshotsAfterRecovery = true;
+                server.SublotEntryExpectedSublots = ["SUBLOT-A", "SUBLOT-B"];
+                server.JourneySnapshotPayloads = new Dictionary<string, object>
+                {
+                    ["VehicleBusinessStateSnapshot"] = Payloads.BusinessState(1, loadingPhase: null),
+                    ["CurrentStopWorklistSnapshot"] = Payloads.Worklist(1, Payloads.ItemA, Payloads.ItemB),
+                    ["UpcomingStopPlanSnapshot"] = Payloads.Plan(1, Payloads.TwoDemandLegs)
+                };
+            },
+            token);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanSubmitSublot && harness.ViewModel.CanSubmit,
+            "the entry request to open scanning",
+            token);
+        // 锁存前按钮真的能点——这是后面那条 Assert.False 的对照。**要先给 ScanText 赋值**：
+        // canExecute 是 `CanSubmit && !IsNullOrWhiteSpace(ScanText)`，空串时它必然 false，
+        // 而第一版写的是 `CanExecute(null) || ScanText.Length == 0`——两个析取项一个必然 false、
+        // 一个必然 true，整行恒真，一个字节的判别力都没有（审查，判据路条目 4）。
+        harness.ViewModel.ScanText = "SUBLOT-A";
+        Assert.True(harness.ViewModel.ScannerSubmitCommand.CanExecute(null));
+
+        harness.Controller.EnterFatalFault("UI_COMMAND_FAILED", OnboardFatalFaultBanner.UiCommandFailed);
+        await harness.WaitUntilAsync(
+            () => harness.Controller.Current.State == OnboardState.Faulted,
+            "the latch to reach the controller snapshot",
+            token);
+
+        // 一、按钮点不下去。入口关在业务层，所以两条刷新路径读到的是同一个答案。
+        Assert.False(harness.Business.CanSubmitSublot);
+        harness.ViewModel.RefreshWireToGateInputState();
+        Assert.False(harness.ViewModel.CanSubmit);
+        harness.ViewModel.ScanText = "SUBLOT-B";
+        Assert.False(harness.ViewModel.ScannerSubmitCommand.CanExecute(null));
+
+        // 二、按下去也不会开门：绕开入口直接调提交路径，同样被拒，而且一个字节都没发出去。
+        InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => harness.Business.SubmitSublotAsync("SUBLOT-B", "SCANNER", token));
+        Assert.Equal("FATAL_FAULT_LATCHED", refused.Message);
+        await Task.Delay(200, token);
+        Assert.Empty(harness.Submissions);
+    }
+
+    /// <summary>
+    /// The same refusal, reached the way the operator actually reaches it: the scanner command on the
+    /// window. It is a message and the vehicle keeps running (8005-agv-onboard-hmi#171).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The test above calls the business service directly, so it says nothing about what the HMI does
+    /// with the refusal — and what the HMI did with it was <c>EnterFatalFault</c>, latched forever,
+    /// with no entry on the screen to lift it. On 2026-09-16 that is how one mis-scan stopped
+    /// <c>agv01</c> from 10:03 until the shift ended (onboard-hmi#82).
+    /// </para>
+    /// <para>
+    /// This also pins the leftover half of field-line <c>243aa66</c>, which the ticket folded in here
+    /// rather than opening its own: after the server has moved this stop's worklist on, the entry box
+    /// is still up, and what a scan into it raises is exactly this code. So it has to be a message.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AnEntryRefusedLocallyIsAMessageToTheOperatorAndNotALatchedVehicle()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            server =>
+            {
+                server.SendJourneySnapshotsAfterRecovery = true;
+                server.SublotEntryExpectedSublots = ["SUBLOT-A", "SUBLOT-B"];
+                server.JourneySnapshotPayloads = new Dictionary<string, object>
+                {
+                    ["VehicleBusinessStateSnapshot"] = Payloads.BusinessState(1, loadingPhase: null),
+                    ["CurrentStopWorklistSnapshot"] = Payloads.Worklist(1, Payloads.ItemA, Payloads.ItemB),
+                    ["UpcomingStopPlanSnapshot"] = Payloads.Plan(1, Payloads.TwoDemandLegs)
+                };
+            },
+            token);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanSubmitSublot && harness.Session.CurrentJourney.CurrentStopWorklist is not null,
+            "the entry request and its worklist",
+            token);
+        await harness.Server.SendJourneySnapshotAsync("CurrentStopWorklistSnapshot", Payloads.Worklist(2, Payloads.ItemB));
+        await harness.WaitUntilAsync(
+            () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2,
+            "worklist revision 2",
+            token);
+        // 录入框还在（CanSubmitSublot 不查清单版本），操作员照样扫得下去 -- 这正是 243aa66 的残留。
+        Assert.True(harness.ViewModel.CanSubmit);
+
+        harness.ViewModel.ScanText = "SUBLOT-B";
+        harness.ViewModel.ScannerSubmitCommand.Execute(null);
+
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.Logs.Any(line =>
+                line.Kind == OperatorRecordKind.Warning
+                && line.Message.Contains("不属于服务端下发的站点任务", StringComparison.Ordinal)),
+            "the operator to be told why the scan was refused",
+            token);
+
+        // 车没停：没有锁存，故障态没进，扫码入口还在。
+        Assert.NotEqual(OnboardState.Faulted, harness.Controller.Current.State);
+        Assert.False(harness.Controller.CanClearFatalFault);
+        Assert.False(harness.ViewModel.HasError);
+        Assert.True(harness.ViewModel.CanSubmit);
+        Assert.Contains("不属于服务端下发的站点任务", harness.ViewModel.Guidance);
+        // 拒绝仍然是拒绝：一个字节都没有发出去。
+        Assert.Empty(harness.Submissions);
         Assert.Empty(harness.UiErrors);
     }
 

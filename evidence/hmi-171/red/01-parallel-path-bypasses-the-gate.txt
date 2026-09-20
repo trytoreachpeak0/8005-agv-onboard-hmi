@@ -1,0 +1,29 @@
+commit: 4e86c698b373952f9b772df4678e8fa655beb182 (注入前的树)
+注入: RefreshWireToGateInputStateCore 里 7 处 AllowRecoveryEntry(x) 换成 x —— 平行刷新路径不过闸门
+对应: 两路审查的产品缺陷一（「唯一屏障」既没有测试，也不是唯一的）
+预期: 本类 12 条里只有 BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands 红
+命令: dotnet test tests/SQCD.Agv.WireToGateG2Tests -c Release --filter "FullyQualifiedName~FatalFaultLatchViewModelTests"
+限度: --filter 单类，所以「只有这一条红」的范围是这个测试类之内
+
+  SQCD.Agv.Core -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\src\SQCD.Agv.Core\bin\Release\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Contracts -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Release\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Application -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Release\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.Infrastructure -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Release\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.AutomationHost -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Release\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Wpf -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\bin\Release\net8.0-windows\win-x64\SQCD.Agv.Wpf.dll
+  SQCD.Agv.SchemaConformance -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\tools\SQCD.Agv.SchemaConformance\bin\Release\net8.0\win-x64\SQCD.Agv.SchemaConformance.dll
+  SQCD.Agv.WireToGateG2Tests -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:02.03]     SQCD.Agv.WireToGateG2Tests.FatalFaultLatchViewModelTests.BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.FatalFaultLatchViewModelTests.BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands [2 ms]
+  Error Message:
+   Assert.False() Failure
+Expected: False
+Actual:   True
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.FatalFaultLatchViewModelTests.BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\FatalFaultLatchViewModelTests.cs:line 166
+   at SQCD.Agv.WireToGateG2Tests.FatalFaultLatchViewModelTests.BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\FatalFaultLatchViewModelTests.cs:line 174
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:    11, Skipped:     0, Total:    12, Duration: 138 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

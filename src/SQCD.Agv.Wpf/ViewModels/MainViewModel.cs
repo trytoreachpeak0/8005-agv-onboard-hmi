@@ -11,10 +11,16 @@ namespace SQCD.Agv.Wpf.ViewModels;
 public sealed class MainViewModel : ViewModelBase
 {
     private const int MaxLogEntries = 300;
+
+    /// <summary>操作员刚被拒的那句话能压住常态横幅多久。够读一句短话，不至于挡住后面的状态。</summary>
+    private static readonly TimeSpan OperatorNoticeHold = TimeSpan.FromSeconds(8);
     private readonly OnboardController _controller;
     private readonly IAppLogger _logger;
     private readonly OperatorRecordFormatter _operatorRecordFormatter = new();
     private readonly SlotGroupLayout _slotGroupLayout;
+    private readonly Func<string?>? _operatorIdProvider;
+    private string? _operatorNotice;
+    private DateTimeOffset _operatorNoticeUntil;
     private string _scanText = string.Empty;
     private string _ruleConnectionText = "离线";
     private string _ioConnectionText = "离线";
@@ -61,6 +67,7 @@ public sealed class MainViewModel : ViewModelBase
     private bool _hasError;
     private bool _hasWarning;
     private bool _canSafetyReview;
+    private bool _canClearFatalFault;
     private bool _canReopenOperation;
     private bool _canCancelOperation;
     private bool _canRetryPendingResult;
@@ -125,14 +132,29 @@ public sealed class MainViewModel : ViewModelBase
     /// 本机生效仓位配置，仓位区按它的 <c>SlotPosition</c> 分前后两组。启动时读一次就够：激活只改版本名，
     /// 位置名不在指纹里、激活也不动它。
     /// </param>
+    /// <param name="operatorIdProvider">
+    /// Who is at the vehicle, read fresh on each use. Only the fatal-fault clearance entry needs it
+    /// (8005-agv-onboard-hmi#171): that entry records who lifted the latch, and an entry whose record
+    /// would say nobody is not one to offer. Null or blank therefore closes it.
+    /// <para>
+    /// <b>In the pre-WIRE_TO_GATE mode that means the entry is closed unless the operator-id
+    /// environment variable is actually set.</b> The first version's comment here said both modes
+    /// "configure it through the same environment variable" and concluded the entry works in the old
+    /// mode too -- but what both modes configure is the variable's <i>name</i>; only the WIRE_TO_GATE
+    /// path validates that it has a <i>value</i> (<c>Configuration.cs</c>). Reading "the mechanism
+    /// exists" as "the mechanism is in effect" is how that sentence went wrong (审查，产品路发现 3).
+    /// </para>
+    /// </param>
     public MainViewModel(
         OnboardController controller,
         IAppLogger logger,
         string agvId,
-        ActiveSlotConfiguration slotConfiguration)
+        ActiveSlotConfiguration slotConfiguration,
+        Func<string?>? operatorIdProvider = null)
     {
         _controller = controller ?? throw new ArgumentNullException(nameof(controller));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _operatorIdProvider = operatorIdProvider;
         AgvId = agvId;
         Lockers = new ObservableCollection<LockerCardViewModel>(
             Enumerable.Range(0, 8).Select(index => new LockerCardViewModel(index)));
@@ -470,6 +492,9 @@ public sealed class MainViewModel : ViewModelBase
                 operatorEvent.Message));
             ClearLogsCommand.RaiseCanExecuteChanged();
             TrimLogs();
+            // 又有事发生了，上一条拒绝回执到此为止——不等那 8 秒走完。操作员扫错一次、随即扫对，
+            // 界面不该继续显示他扫错的那一句（8005-agv-onboard-hmi#171 审查，产品路发现 1）。
+            ClearOperatorNotice();
             // An event can open or close sublot entry without any snapshot arriving -- a cancellation
             // before any sublot being sent, refused or settled -- so the input gates are read again.
             RefreshWireToGateInputStateCore();
@@ -477,18 +502,68 @@ public sealed class MainViewModel : ViewModelBase
             RefreshLockerCardsCore();
         });
 
+    /// <summary>
+    /// 锁存期间恢复入口一律关闭。**这是一项安全职责，不是显示逻辑。**
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 恢复向量（补偿清空、修正装货、强制机械取出）会经 <c>WireToGateRecoveryVectorExecutor</c>
+    /// 真的开门，而那个执行器直接持 <c>IIoModuleClient</c>、不经过 <c>OnboardController</c>，
+    /// 所以严重安全故障锁存在执行那一层拦不住它——**挡住它的是界面这一层**。
+    /// 全仓四个开门点各自受不受锁存约束，见 <c>FatalFaultScopeArchitectureTests</c> 那张表。
+    /// </para>
+    /// <para>
+    /// <b>它是一个方法而不是散在两处的判断，是因为散着的时候它只在其中一处成立。</b>
+    /// 第一版把这段写在 <see cref="ApplyWireToGatePresentationCore"/> 里，并在注释里称它
+    /// 「今天唯一挡住它的就是这几行」——而 <see cref="RefreshWireToGateInputStateCore"/> 重写
+    /// 同样这几个属性、完全不看控制器状态，服务端重发一次录入请求就会把入口放回来
+    /// （8005-agv-onboard-hmi#171 审查）。那句「唯一」是从「我改的那条路径上它是唯一的」推出来的，
+    /// **局部为真，写成了全称。**
+    /// </para>
+    /// </remarks>
+    private bool RecoveryEntriesBlockedByFatalFault =>
+        _lastControllerSnapshot?.State == OnboardState.Faulted;
+
+    /// <summary>恢复入口的最终值：业务说可以，且没有锁存。</summary>
+    /// <remarks>
+    /// <para>
+    /// <b>共用的是判据 <see cref="RecoveryEntriesBlockedByFatalFault"/>，不是这个方法。</b>
+    /// 两条刷新路径写法不同：这一条九行各自过本方法（函数式），
+    /// <c>ApplyWireToGatePresentationCore</c> 用 <c>if (RecoveryEntriesBlockedByFatalFault)</c>
+    /// 加 early return（语句式），它的正常分支直接取业务值、不经本方法。语义等价，结构不同。
+    /// </para>
+    /// <para>
+    /// <b>这九个属性的写入点今天没有结构守卫——见 onboard-hmi#176。</b>
+    /// <c>BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands</c> 断的是行为
+    /// （锁存态下这两条路径走完，九个属性都为 false），**而它成立的前提是「只有这两条路径写这九个
+    /// 属性」，那个前提今天没有任何东西守着**：新加第三条路径直接赋值，那条测试不会红，因为它只调
+    /// 这两个已知入口。承担者是 #176。
+    /// </para>
+    /// <para>
+    /// 写那条守卫的人注意上面第一段：**错误的描述会导致错误的守卫**。只扫 <c>AllowRecoveryEntry(</c>
+    /// 的出现，会把 early-return 那条判成「没有闸门」；反过来，有人把那个 early return 删掉改成直接
+    /// 赋值，扫描器完全看不见。
+    /// </para>
+    /// </remarks>
+    private bool AllowRecoveryEntry(bool offeredByBusiness) =>
+        offeredByBusiness && !RecoveryEntriesBlockedByFatalFault;
+
     internal void RefreshWireToGateInputState() => RunOnUiThread(RefreshWireToGateInputStateCore);
 
     private void RefreshWireToGateInputStateCore()
     {
         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? CanSubmit;
-        CanRequestWireToGateRecovery = _wireToGateCanRequestRecovery?.Invoke() == true;
-        CanRequestLoadCancellation = _wireToGateCanRequestLoadCancellation?.Invoke() == true;
-        CanRequestLoadCompensation = _wireToGateCanRequestLoadCompensation?.Invoke() == true;
-        CanRequestLoadCorrection = _wireToGateCanRequestLoadCorrection?.Invoke() == true;
-        CanRequestFaultCargoHandoff = _wireToGateCanRequestFaultCargoHandoff?.Invoke() == true;
-        CanRequestForcedMechanicalRecovery = _wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true;
-        CanRequestManualChargingReturn = _wireToGateCanRequestManualChargingReturn?.Invoke() == true;
+        // 九个恢复入口全部经同一道闸门（AllowRecoveryEntry），另一条刷新路径
+        // ApplyWireToGatePresentationCore 也是。少经一处，锁存期间那个入口就会被这条路径放回来。
+        CanRequestWireToGateRecovery = AllowRecoveryEntry(_wireToGateCanRequestRecovery?.Invoke() == true);
+        CanRequestLoadCancellation = AllowRecoveryEntry(_wireToGateCanRequestLoadCancellation?.Invoke() == true);
+        CanRequestLoadCompensation = AllowRecoveryEntry(_wireToGateCanRequestLoadCompensation?.Invoke() == true);
+        CanRequestLoadCorrection = AllowRecoveryEntry(_wireToGateCanRequestLoadCorrection?.Invoke() == true);
+        CanRequestFaultCargoHandoff = AllowRecoveryEntry(_wireToGateCanRequestFaultCargoHandoff?.Invoke() == true);
+        CanRequestForcedMechanicalRecovery =
+            AllowRecoveryEntry(_wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true);
+        CanRequestManualChargingReturn =
+            AllowRecoveryEntry(_wireToGateCanRequestManualChargingReturn?.Invoke() == true);
         RefreshForcedIsolationCore();
         RefreshRecoveryReasonLockCore();
         // 回落目标随入口一起重算：主体是否已经回落，与入口开关来自同一份恢复状态。
@@ -894,6 +969,20 @@ public sealed class MainViewModel : ViewModelBase
         private set => SetProperty(ref _canSafetyReview, value);
     }
 
+    /// <summary>
+    /// 「复位严重安全故障」这个入口现在在不在（8005-agv-onboard-hmi#171）。
+    /// </summary>
+    /// <remarks>
+    /// 三个条件同时成立才出现：车确实锁存着一个严重安全故障；那个故障码登记为可在本机复位
+    /// （<c>UNHANDLED_UI_ERROR</c> 不是，它意味着本进程自己的状态已经不可信，只能重启）；
+    /// 本机能说出是谁在复位。**一次完全正常的运行里第一条就不成立，所以这个入口不会出现。**
+    /// </remarks>
+    public bool CanClearFatalFault
+    {
+        get => _canClearFatalFault;
+        private set => SetProperty(ref _canClearFatalFault, value);
+    }
+
     public bool CanReopenOperation
     {
         get => _canReopenOperation;
@@ -1226,6 +1315,19 @@ public sealed class MainViewModel : ViewModelBase
 
     public Task<bool> ConfirmSafeStartupStateAsync() => _controller.ConfirmSafeStartupStateAsync();
 
+    /// <summary>
+    /// 复位当前锁存的严重安全故障，并把是谁复位的记进日志。判据在
+    /// <see cref="OnboardController.ClearFatalFaultAsync"/>：仓门全锁、开锁输出全 0、快照有效、
+    /// 没有在途装卸操作。不成立时返回 false，锁存保留，横幅上多一句不成立的原因。
+    /// </summary>
+    public Task<bool> ClearFatalFaultAsync(CancellationToken cancellationToken = default)
+    {
+        string? operatorId = _operatorIdProvider?.Invoke();
+        return string.IsNullOrWhiteSpace(operatorId)
+            ? Task.FromResult(false)
+            : _controller.ClearFatalFaultAsync(operatorId, cancellationToken);
+    }
+
     public Task<bool> RequestReopenCurrentOperationAsync() =>
         Task.FromResult(_controller.RequestReopenCurrentOperation());
 
@@ -1326,13 +1428,26 @@ public sealed class MainViewModel : ViewModelBase
                 : hasWarning
                     ? "请处理"
                     : GetStateText(snapshot.State);
-        Guidance = snapshot.Guidance;
+        // 控制器这一侧 hasBlockingError 是真的会变 true 的（故障态、阻断错误码）。
+        bool noticeHeld = PublishGuidance(snapshot.Guidance, hasBlockingError);
         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? snapshot.State == OnboardState.ReadyToScan;
-        HasWarning = hasWarning;
+        HasWarning = hasWarning || noticeHeld;
         HasError = hasBlockingError;
         CanSafetyReview = snapshot.State == OnboardState.Faulted
             && snapshot.ErrorCode == "STARTUP_STATE_UNSAFE"
             && snapshot.ActiveOperation is null;
+        // 与上面那一条是两个入口，判据也不共用：启动安全复核受理的是启动期那一个码，复位受理的是
+        // 锁存的严重安全故障。把后者并进前者，等于让一个启动期的确认动作在运行期具有清除安全锁存的
+        // 能力，而操作员分辨不出他按的是哪一件事（8005-agv-onboard-hmi#171）。
+        //
+        // **这里不判 snapshot.ActiveOperation。** 「有没有在途装卸」由控制器自己在
+        // ClearFatalFaultAsync 里问两把真锁（对端执行器的门、本控制器的操作锁），那才是真实来源。
+        // 第一版在这里多加了一道 ActiveOperation is null，而 SubmitScanAsync 的 finally 只清
+        // _activeOperationCts、不清 _activeOperation：旧模式下一次非 IO/超时类异常锁存之后，
+        // 那个字段再也不会被清，按钮的 Visibility 就永久是 Collapsed——**本票开头那个症状原样复现**
+        // （审查，产品路发现 3）。少一道读自过时字段的判据，比多一道安全。
+        CanClearFatalFault = _controller.CanClearFatalFault
+            && !string.IsNullOrWhiteSpace(_operatorIdProvider?.Invoke());
         CanReopenOperation = _controller.CanReopenCurrentOperation;
         CanCancelOperation = _controller.CanCancelCurrentOperation;
         CanRetryPendingResult = _controller.CanRetryPendingResult;
@@ -1352,14 +1467,104 @@ public sealed class MainViewModel : ViewModelBase
         ApplyWireToGatePresentationCore();
     }
 
+    /// <summary>
+    /// 一次界面命令失败了，车要不要停下。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 原来一律 <c>EnterFatalFault</c>，于是「扫的这个子批不在当前作业清单里」——一次普通的操作员
+    /// 失误——被升级成整车停摆，而 v2 上没有任何代码能把它解开（8005-agv-onboard-hmi#171）。
+    /// </para>
+    /// <para>
+    /// 分类由 <see cref="OnboardFailureClassification"/> 按错误码给出，**不看异常类型**。
+    /// 用类型分不开：<c>RECOVERY_OPERATION_CONTEXT_MISSING</c> 在 8 个抛出点上有 4 种异常类型，
+    /// 而 <c>SUBLOT_NOT_IN_WORKLIST</c> 与 <c>RECOVERY_SCOPE_MISMATCH</c> 共用
+    /// <see cref="InvalidOperationException"/>。更要紧的是，按类型分的判据在下一个新增的业务拒绝
+    /// 出现时不会有任何东西变红。
+    /// </para>
+    /// </remarks>
     private void HandleCommandError(Exception exception)
     {
-        _logger.Write(LogSeverity.Error, nameof(MainViewModel), "界面命令执行失败。", exception);
-        _controller.EnterFatalFault(
-            "UI_COMMAND_FAILED",
-            "操作界面出现异常，已停止开门。请确认仓门状态并联系维护人员。");
-        Guidance = "操作界面出现异常，已停止开门。请确认仓门状态并联系维护人员。";
-        HasError = true;
+        switch (OnboardFailureClassification.Classify(exception))
+        {
+            case OnboardCommandFailureKind.ControlledCancellation:
+                // AsyncCommand 已经先接住了取消，这里只是不让分类判据在两处各说一套。
+                _logger.Write(LogSeverity.Information, nameof(MainViewModel), "界面命令已被取消。", exception);
+                return;
+
+            case OnboardCommandFailureKind.OperatorRejection:
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(MainViewModel),
+                    $"界面命令被业务规则拒绝：{exception.Message}。 ");
+                ReportOperatorRejection(exception.Message);
+                return;
+
+            default:
+                _logger.Write(LogSeverity.Error, nameof(MainViewModel), "界面命令执行失败。", exception);
+                _controller.EnterFatalFault("UI_COMMAND_FAILED", OnboardFatalFaultBanner.UiCommandFailed);
+                Guidance = OnboardFatalFaultBanner.UiCommandFailed;
+                HasError = true;
+                return;
+        }
+    }
+
+    /// <summary>
+    /// 把一条业务拒绝照实摆在操作员面前：进操作记录（留得住），并顶到提示行（立刻看得见）。
+    /// 车不进故障态，扫码入口不关。
+    /// </summary>
+    internal void ReportOperatorRejection(string reasonCode) =>
+        RunOnUiThread(() =>
+        {
+            string message = OnboardCommandRejectionText.DescribeWithCode(reasonCode);
+            Logs.Add(new LogLineViewModel(Clock.Now, OperatorRecordKind.Warning, message));
+            ClearLogsCommand.RaiseCanExecuteChanged();
+            TrimLogs();
+            _operatorNotice = message;
+            _operatorNoticeUntil = Clock.Now + OperatorNoticeHold;
+            Guidance = message;
+            HasWarning = true;
+        });
+
+    /// <summary>
+    /// 发布常态横幅，但不要把操作员刚被拒的那句话冲掉。返回是否压住了。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// IO 快照默认每 100 毫秒到一次，每一次都会重发一遍常态横幅，而发布路径不做去重。所以
+    /// 「把提示写进 <see cref="Guidance"/> 就完了」在这里不成立——那句话活不过 100 毫秒，
+    /// 操作员根本来不及读（8005-agv-onboard-hmi#171 审查 M1）。
+    /// </para>
+    /// <para>
+    /// <b>这与复位复核被拒时把原因写进锁存是同一件事的两层</b>：一条要给操作员看的临时话，
+    /// 必须由**发布路径自己承认它**，而不是在发布之后赋一次值——赋完就会被下一次发布抹掉。
+    /// 控制器那一侧的形状是 <c>FatalFault.Banner</c>（锁存本身就活过发布），界面这一侧是本方法。
+    /// 同一个 PR 里先前只修了控制器那一层，这是另一层。
+    /// </para>
+    /// <para>
+    /// <b>阻断态优先</b>：真出故障时故障横幅盖过提示，因为那一刻要人读的是故障。
+    /// </para>
+    /// </remarks>
+    private bool PublishGuidance(string guidance, bool preempting)
+    {
+        if (!preempting && _operatorNotice is { } notice && Clock.Now < _operatorNoticeUntil)
+        {
+            Guidance = notice;
+            return true;
+        }
+
+        ClearOperatorNotice();
+        Guidance = guidance;
+        return false;
+    }
+
+    /// <summary>
+    /// 提示到此为止：有更新的事要说，或者它已经过期。
+    /// </summary>
+    private void ClearOperatorNotice()
+    {
+        _operatorNotice = null;
+        _operatorNoticeUntil = default;
     }
 
     private void AppendOperatorRecord(OnboardSnapshot snapshot)
@@ -1382,7 +1587,11 @@ public sealed class MainViewModel : ViewModelBase
             return;
         }
 
-        if (_lastControllerSnapshot?.State == OnboardState.Faulted)
+        // 与另一条刷新路径共用的是判据 RecoveryEntriesBlockedByFatalFault，不是 AllowRecoveryEntry
+        // 那个方法——这里是 early return 的语句式，那边是九行各自调用的函数式，语义等价、结构不同。
+        // 这里仍然 early return，因为锁存时后面那些横幅计算本来就不该跑。
+        // 这九个属性的写入点没有结构守卫，见 onboard-hmi#176（理由与判据该怎么写，在 AllowRecoveryEntry 上）。
+        if (RecoveryEntriesBlockedByFatalFault)
         {
             CanRequestWireToGateRecovery = false;
             CanRequestLoadCancellation = false;
@@ -1410,8 +1619,14 @@ public sealed class MainViewModel : ViewModelBase
             sublotRejection is not null);
         RuleConnectionText = _wireToGateSession.Connected ? "在线" : "离线";
         StateText = banner.StateText;
-        Guidance = banner.Guidance;
-        HasWarning = banner.HasWarning;
+        // banner.HasError 在 v2 上恒 false（WireToGateHmiPresentation.Create 的每个分支都写死
+        // false），**一个恒 false 的开关和不存在是一样的**——所以「有在途仓位操作」要单独判：
+        // 那一刻门正在开，而「正在打开3号仓」比一条已经读过的拒绝回执要紧得多
+        // （8005-agv-onboard-hmi#171 审查，产品路发现 1）。
+        bool bannerNoticeHeld = PublishGuidance(
+            banner.Guidance,
+            banner.HasError || _wireToGateOperation is not null);
+        HasWarning = banner.HasWarning || bannerNoticeHeld;
         HasError = banner.HasError;
         CanReopenOperation = false;
         CanCancelOperation = false;
@@ -1432,8 +1647,10 @@ public sealed class MainViewModel : ViewModelBase
 
     private void RefreshForcedIsolationCore()
     {
-        CanConfirmForcedMechanicalRecovery = _wireToGateCanConfirmForcedMechanicalRecovery?.Invoke() == true;
-        CanSubmitHardwareRecoveryRecord = _wireToGateCanSubmitHardwareRecoveryRecord?.Invoke() == true;
+        CanConfirmForcedMechanicalRecovery =
+            AllowRecoveryEntry(_wireToGateCanConfirmForcedMechanicalRecovery?.Invoke() == true);
+        CanSubmitHardwareRecoveryRecord =
+            AllowRecoveryEntry(_wireToGateCanSubmitHardwareRecoveryRecord?.Invoke() == true);
         IReadOnlyList<int> unknown = _wireToGatePhysicallyUnknownSlots?.Invoke() ?? [];
         HasPhysicallyUnknownSlots = unknown.Count > 0;
         PhysicallyUnknownSlotsText = unknown.Count > 0

@@ -1,0 +1,28 @@
+commit: 4e86c698b373952f9b772df4678e8fa655beb182 (注入前的树)
+注入: OperatorNoticeHold 由 8 秒改成 24 小时 —— 提示实际上不再过期
+对应: 判据路条目 5（本票新立的红线要有自己的护栏）。没有这一条，把 8 秒改成一天全绿，
+      后果是提示行一旦写上一条业务拒绝，整个班次里除非进阻断态否则再也不会被常态横幅换掉
+预期: 本类只有 ARefusalStopsHoldingTheBannerOnceItHasExpired 红
+命令: dotnet test tests/SQCD.Agv.WireToGateG2Tests -c Release --filter "FullyQualifiedName~FatalFaultLatchViewModelTests"
+限度: --filter 单类，「只有这一条红」的范围是这个测试类之内
+
+  SQCD.Agv.Infrastructure -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Release\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.AutomationHost -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Release\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Wpf -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\bin\Release\net8.0-windows\win-x64\SQCD.Agv.Wpf.dll
+  SQCD.Agv.SchemaConformance -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\tools\SQCD.Agv.SchemaConformance\bin\Release\net8.0\win-x64\SQCD.Agv.SchemaConformance.dll
+  SQCD.Agv.WireToGateG2Tests -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:01.09]     SQCD.Agv.WireToGateG2Tests.FatalFaultLatchViewModelTests.ARefusalStopsHoldingTheBannerOnceItHasExpired [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.FatalFaultLatchViewModelTests.ARefusalStopsHoldingTheBannerOnceItHasExpired [2 ms]
+  Error Message:
+   Assert.DoesNotContain() Failure: Sub-string found
+             ↓ (pos 4)
+String: "当前条码不属于服务端下发的站点任务，请核对条码或等待任务刷新。（SUBLOT_NOT_IN_WORK"···
+Found:  "不属于服务端下发的站点任务"
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.FatalFaultLatchViewModelTests.ARefusalStopsHoldingTheBannerOnceItHasExpired() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\FatalFaultLatchViewModelTests.cs:line 209
+   at SQCD.Agv.WireToGateG2Tests.FatalFaultLatchViewModelTests.ARefusalStopsHoldingTheBannerOnceItHasExpired() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-171-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\FatalFaultLatchViewModelTests.cs:line 210
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:    11, Skipped:     0, Total:    12, Duration: 115 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
