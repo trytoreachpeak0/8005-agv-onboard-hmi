@@ -940,9 +940,26 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// </remarks>
     private void OweRecoveryEntry(WireToGateRecoveryOperationContext context, string guidance)
     {
+        OwedRecoveryEntry? displaced;
         lock (_operationAttemptGate)
         {
+            displaced = _owedRecoveryEntry;
             _owedRecoveryEntry = new OwedRecoveryEntry(context, guidance);
+        }
+
+        // A recovery entry going quiet is this ticket's whole fault, so every way one can stop being owed says so
+        // in the log. One slot is enough -- the journal holds one unsettled attempt -- but if that ever stops
+        // being true, the displacement is a line to find rather than a silence to reproduce.
+        if (displaced is not null
+            && !string.Equals(
+                displaced.Context.SlotOperationAttemptId,
+                context.SlotOperationAttemptId,
+                StringComparison.Ordinal))
+        {
+            _logger.Write(
+                LogSeverity.Information,
+                nameof(WireToGateBusinessService),
+                $"未补发的恢复入口被顶替：attempt={displaced.Context.SlotOperationAttemptId}让位给attempt={context.SlotOperationAttemptId}。");
         }
     }
 
@@ -951,6 +968,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// </summary>
     private void ForgetOwedRecoveryEntry(string attemptId)
     {
+        bool dropped = false;
         lock (_operationAttemptGate)
         {
             if (string.Equals(
@@ -959,8 +977,46 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 StringComparison.Ordinal))
             {
                 _owedRecoveryEntry = null;
+                dropped = true;
             }
         }
+
+        if (dropped)
+        {
+            _logger.Write(
+                LogSeverity.Information,
+                nameof(WireToGateBusinessService),
+                $"未补发的恢复入口已作废：attempt={attemptId}已结算，操作员不再需要它。");
+        }
+    }
+
+    /// <summary>
+    /// Gives <paramref name="attemptId"/>'s claim on <see cref="_operationAttempts"/> up, and pays an owed
+    /// recovery entry if that leaves nothing executing (onboard-hmi#156).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the only place a claim is given up, and that is an invariant, not a count.</b> The debt is paid
+    /// at the first moment nothing is executing, and <see cref="PublishOwedRecoveryEntry"/> neither retries nor
+    /// schedules: whoever releases the last claim either pays it there and then or nobody does. A release that
+    /// went straight to <see cref="_operationAttempts"/> would therefore not fail, or log, or turn a test red --
+    /// it would leave the recovery entry off the operator's screen, silently, which is the fault this whole
+    /// ticket is about. Adding a fourth path that executes something is fine; releasing its claim anywhere but
+    /// here is not, and <c>InFlightAttemptReleaseArchitectureTests</c> is what says so out loud.
+    /// </para>
+    /// <para>
+    /// Called outside the lock, deliberately: the publication raises an operator event, and the handlers on it
+    /// run on the caller's thread.
+    /// </para>
+    /// </remarks>
+    private void ReleaseInFlightAttempt(string attemptId)
+    {
+        lock (_operationAttemptGate)
+        {
+            _operationAttempts.Remove(attemptId);
+        }
+
+        PublishOwedRecoveryEntry();
     }
 
     /// <summary>
@@ -968,10 +1024,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Called from the two places that answer can change</b>: where an attempt gives its claim on
-    /// <see cref="_operationAttempts"/> up, and at the end of the restore round that recorded the debt. The second
-    /// is what makes the pair race-free -- an attempt that finished while that round was deciding found nothing
-    /// owed, and would otherwise have been the last chance.
+    /// <b>Called from every place that answer can change</b>: <see cref="ReleaseInFlightAttempt"/>, which is the
+    /// one way a claim on <see cref="_operationAttempts"/> is given up, and the end of the restore round that
+    /// recorded the debt. The second is what makes the pair race-free -- an attempt that finished while that
+    /// round was deciding found nothing owed, and would otherwise have been the last chance. It is stated as an
+    /// invariant rather than as a number on purpose: the number was three when this was written and was wrong
+    /// the first time it was counted.
     /// </para>
     /// <para>
     /// <b>Exactly once, by construction.</b> Reading the owed entry and clearing it are one step under the lock,
@@ -1005,10 +1063,20 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// Nothing is running when this publishes, so the expected-action clock the snapshot stops is nobody else's
     /// (onboard-hmi#152).
     /// </para>
+    /// <para>
+    /// <b>And not when a later recovery has taken its place.</b> The attempt that had the doors can end needing
+    /// an administrator itself: it announces its own recovery and gives its claim up in the same <c>finally</c>,
+    /// so a debt paid unconditionally here would put the older attempt's slots on screen over it --
+    /// onboard-hmi#152's fault displaced by a few seconds, and permanent, because the newer attempt's restore
+    /// returns at its own claim and the older debt is never cleared.
+    /// <see cref="_recoveryAnnouncedAttemptId"/> is exactly the question to ask: it names the attempt whose
+    /// recovery the operator was last told about, so anything else there means this debt has been superseded.
+    /// </para>
     /// </remarks>
     private void PublishOwedRecoveryEntry()
     {
         OwedRecoveryEntry owed;
+        string? supersededBy = null;
         lock (_operationAttemptGate)
         {
             if (_operationAttempts.Count != 0 || _owedRecoveryEntry is null)
@@ -1018,6 +1086,22 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
             owed = _owedRecoveryEntry;
             _owedRecoveryEntry = null;
+            if (!string.Equals(
+                _recoveryAnnouncedAttemptId,
+                owed.Context.SlotOperationAttemptId,
+                StringComparison.Ordinal))
+            {
+                supersededBy = _recoveryAnnouncedAttemptId;
+            }
+        }
+
+        if (supersededBy is not null)
+        {
+            _logger.Write(
+                LogSeverity.Information,
+                nameof(WireToGateBusinessService),
+                $"未补发的恢复入口已被取代：attempt={owed.Context.SlotOperationAttemptId}的恢复让位给attempt={supersededBy}，界面保留后者。");
+            return;
         }
 
         PublishOperatorEvent(
@@ -1371,10 +1455,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         }
         finally
         {
-            lock (_operationAttemptGate)
-            {
-                _operationAttempts.Remove(attemptId);
-            }
+            ReleaseInFlightAttempt(attemptId);
         }
     }
 
@@ -2093,10 +2174,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         }
         finally
         {
-            lock (_operationAttemptGate)
-            {
-                _operationAttempts.Remove(command.SlotOperationAttemptId);
-            }
+            ReleaseInFlightAttempt(command.SlotOperationAttemptId);
         }
     }
 
@@ -2379,16 +2457,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             // a shutdown, a throw -- gives the display up here, so nothing queued behind this
             // command is held by a command that is no longer running.
             ReleaseOperationDisplay(ownsDisplay);
-            lock (_operationAttemptGate)
-            {
-                _operationAttempts.Remove(command.SlotOperationAttemptId);
-            }
 
-            // The doors are free and this command has published its last word, so a recovery entry withheld
-            // while it held the screen (onboard-hmi#152) reaches the operator now (onboard-hmi#156). Here rather
-            // than beside the release above, which happens before the result is reported: an entry put up there
-            // would be overwritten moments later by this command's own acknowledgement.
-            PublishOwedRecoveryEntry();
+            // Giving the claim up is also what pays a recovery entry withheld while this command held the screen
+            // (onboard-hmi#152, onboard-hmi#156). Here rather than beside the display release above, which
+            // happens before the result is reported: an entry put up there would be overwritten moments later by
+            // this command's own acknowledgement.
+            ReleaseInFlightAttempt(command.SlotOperationAttemptId);
 
             // A result left unacknowledged while a session is up -- its ack lost with the link intact, or
             // the handshake that brought the session up already past its replay -- would otherwise wait for the next
