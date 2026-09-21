@@ -1,0 +1,3 @@
+commit: 426e18c4c1a8a8c9186b2b96029beab7b8e86b2f
+命令: dotnet format SQCD_8005AGV.sln --verify-no-changes --no-restore
+exit=0

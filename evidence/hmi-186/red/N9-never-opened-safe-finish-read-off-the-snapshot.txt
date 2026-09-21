@@ -1,0 +1,43 @@
+commit: 426e18c4c1a8a8c9186b2b96029beab7b8e86b2f（执行器 blob 7861fea2d318c2482725df2b2ddd31f10ed58f7c，src/tests 与 HEAD 一致）
+变异: 见下方 diff（对 HEAD）
+预期（事先写下）: 只红 ASlotRefusedBeforeItsFirstPulseOnAnUnreadableSnapshotIsNotStartedEverywhere（复审发现原样），红在检查点 SAFE_FINISH_REACHED／ACTIVE_UNLOCK_SET。
+命令: dotnet build tests/SQCD.Agv.UnitTests -c Release；dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~WireToGateSlotOperationExecutor"
+
+diff --git a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
+index 7861fea..aa236d2 100644
+--- a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
++++ b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
+@@ -862,7 +862,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
+                 // safe finish off that same snapshot put a never-opened slot into the active set -- NOT_STARTED in
+                 // the result, a door that may be open in the journal, and opened again for a settlement or a
+                 // resume (second review of PR #190). The other door's state is not this attempt's to hold.
+-                bool safeFinish = neverOpened || IsSafeFinish(failureSnapshot, slotIndex);
++                bool safeFinish = IsSafeFinish(failureSnapshot, slotIndex);
+                 WireToGateRecoveryCheckpoint failureCheckpoint = safeFinish
+                     ? WireToGateRecoveryCheckpoint.SafeFinishReached
+                     : WireToGateRecoveryCheckpoint.ActiveUnlockSet;
+
+    0 Error(s)
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:16.00]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseOnAnUnreadableSnapshotIsNotStartedEverywhere [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseOnAnUnreadableSnapshotIsNotStartedEverywhere [73 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "SAFE_FINISH_REACHED"
+Actual:   "ACTIVE_UNLOCK_SET"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseOnAnUnreadableSnapshotIsNotStartedEverywhere() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 155
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseOnAnUnreadableSnapshotIsNotStartedEverywhere() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 166
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:    75, Skipped:     0, Total:    76, Duration: 16 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+失败断言所在位置（测试文件未变异）:
+  WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 155
+  WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 166

@@ -1943,8 +1943,10 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     /// <summary>
     /// The check before every pulse looks at the whole vehicle, not only at the target set. A door
     /// outside the command that is open, whose output reads energised, or that cannot be read, stops
-    /// the operation before its first pulse: the slot about to be opened is UNKNOWN with the reason,
-    /// the rest NOT_STARTED, and nothing is unlocked.
+    /// the operation before its first pulse, and nothing is unlocked. The slot about to be opened was never
+    /// opened, so it is NOT_STARTED (ADR-cross-0058 decision 6) and carries the reason that stopped the
+    /// attempt; the rest are NOT_STARTED with none. Until onboard-hmi#186 (review of PR #190) that slot was
+    /// UNKNOWN, and a restart's settlement or a resume then counted it as opened.
     /// </summary>
     [Theory]
     [MemberData(nameof(OtherDoorConditions))]
@@ -1983,7 +1985,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
 
         Assert.Empty(fixture.Io.Pulses);
         Assert.Equal("UNKNOWN", result.OverallOutcome);
-        Assert.Equal("UNKNOWN", result.SlotResults[0].Outcome);
+        Assert.Equal("NOT_STARTED", result.SlotResults[0].Outcome);
         Assert.Equal([reason], result.SlotResults[0].ReasonCodes);
         Assert.Equal("LOCKED", result.SlotResults[0].LockState);
         Assert.Equal("NOT_STARTED", result.SlotResults[1].Outcome);
@@ -2029,7 +2031,9 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         Assert.Equal([(1, true)], fixture.Io.Pulses);
         Assert.Equal("UNKNOWN", result.OverallOutcome);
         Assert.Equal("COMPLETED", result.SlotResults[0].Outcome);
-        Assert.Equal("UNKNOWN", result.SlotResults[1].Outcome);
+        // Slot 2 was refused before its first pulse: never opened, so NOT_STARTED under the reason
+        // (onboard-hmi#186, review of PR #190). It was UNKNOWN before.
+        Assert.Equal("NOT_STARTED", result.SlotResults[1].Outcome);
         Assert.Equal(["LOCK_NOT_CLOSED"], result.SlotResults[1].ReasonCodes);
     }
 

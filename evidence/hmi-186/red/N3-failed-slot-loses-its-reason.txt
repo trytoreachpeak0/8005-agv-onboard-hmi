@@ -1,0 +1,86 @@
+commit: 47451cba11721453d2ee30d556dc4ae0cf08ae9b（执行器 blob 5797f2c22699f78c0b97a23ea28270185c354196，src/tests 与 HEAD 一致）
+变异: 见下方 diff（对 HEAD）
+预期（事先写下）: 红 ASettlementDoesNotCall…、ASettlementDoesNotCount…EvenWhenItReadsFinal、ASettlementLeavesTheSlotsAfter…、ASettlementDoesNotCountAnActiveSlot…，共 4 条，红在原因码。二次结算那条不红（它期望的正是通用码）。
+命令: dotnet build tests/SQCD.Agv.UnitTests -c Release；dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~WireToGateSlotOperationExecutor"
+
+diff --git a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
+index 5797f2c..08470e4 100644
+--- a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
++++ b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
+@@ -537,8 +537,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
+                     CreateSlotResult(
+                         locker,
+                         "UNKNOWN",
+-                        JournaledFailure(state, physicalSlot)
+-                            ?? [fresh ? "RECOVERY_CHECKPOINT_NOT_UNIQUE" : "SLOT_STATE_UNKNOWN"]));
++                        [fresh ? "RECOVERY_CHECKPOINT_NOT_UNIQUE" : "SLOT_STATE_UNKNOWN"]));
+                 if (!fresh || !IsSafeFinish(snapshot, physicalSlot - 1))
+                 {
+                     unsafeSlot = true;
+
+    0 Error(s)
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:07.28]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCountAnActiveSlotThatFailedEvenWhenItReadsFinal [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCountAnActiveSlotThatFailedEvenWhenItReadsFinal [283 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ at index 0
+           ↓ (pos 0)
+Expected: "ACTION_NOT_ALLOWED_IN_STATE"
+Actual:   "RECOVERY_CHECKPOINT_NOT_UNIQUE"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCountAnActiveSlotThatFailedEvenWhenItReadsFinal() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 201
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCountAnActiveSlotThatFailedEvenWhenItReadsFinal() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 203
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:12.24]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementLeavesTheSlotsAfterTheFailedOneNotStarted [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementLeavesTheSlotsAfterTheFailedOneNotStarted [1 s]
+  Error Message:
+   Assert.Equal() Failure: Collections differ at index 0
+           ↓ (pos 0)
+Expected: "ACTION_NOT_ALLOWED_IN_STATE"
+Actual:   "RECOVERY_CHECKPOINT_NOT_UNIQUE"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementLeavesTheSlotsAfterTheFailedOneNotStarted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 122
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementLeavesTheSlotsAfterTheFailedOneNotStarted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 127
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:15.05]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCallTheSlotThatFailedAtASafeFinishNotStarted [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCallTheSlotThatFailedAtASafeFinishNotStarted [1 s]
+  Error Message:
+   Assert.Equal() Failure: Collections differ at index 0
+           ↓ (pos 0)
+Expected: "ACTION_NOT_ALLOWED_IN_STATE"
+Actual:   "RECOVERY_CHECKPOINT_NOT_UNIQUE"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCallTheSlotThatFailedAtASafeFinishNotStarted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 48
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCallTheSlotThatFailedAtASafeFinishNotStarted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 50
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:19.33]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCountTheSlotThatFailedAtASafeFinishEvenWhenItReadsFinal [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCountTheSlotThatFailedAtASafeFinishEvenWhenItReadsFinal [1 s]
+  Error Message:
+   Assert.Equal() Failure: Collections differ at index 0
+           ↓ (pos 0)
+Expected: "ACTION_NOT_ALLOWED_IN_STATE"
+Actual:   "RECOVERY_CHECKPOINT_NOT_UNIQUE"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCountTheSlotThatFailedAtASafeFinishEvenWhenItReadsFinal() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 82
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCountTheSlotThatFailedAtASafeFinishEvenWhenItReadsFinal() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 91
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     4, Passed:    70, Skipped:     0, Total:    74, Duration: 16 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+失败断言所在位置（测试文件未变异）:
+  WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 122
+  WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 127
+  WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 201
+  WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 203
+  WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 48
+  WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 50
+  WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 82
+  WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 91
