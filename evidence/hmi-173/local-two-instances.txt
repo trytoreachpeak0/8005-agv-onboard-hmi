@@ -1,18 +1,18 @@
 build: C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi173-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\bin\Release\net8.0-windows\win-x64
 run root: C:\Users\szy\AppData\Local\Temp\claude\C--Users-szy-Desktop-8005-workspace-v2\dfdb933a-6a62-4736-8b2e-a0a754db0b5b\scratchpad\onboard-run
-A pid=29340 window=True
+A pid=30168 window=True
 A minimized before B: True
-B pid=9480 exited=True code=3 ms=11326
+B pid=38776 exited=True code=3 ms=11540
 A still running: True; A minimized after B: False; A is foreground: True
-after killing A: C pid=25548 running=True window=True
+after killing A: C pid=30612 running=True window=True
 C closed normally: exited=True code=0
-after closing C: D pid=31608 running=True window=True
-field-line name held (Global\SQCD.Agv.Wpf-AGV-8005-01): E pid=13540 exited=True code=3 ms=11718
+after closing C: D pid=4208 running=True window=True
+field-line name held (Global\SQCD.Agv.Wpf-AGV-8005-01): E pid=8584 exited=True code=3 ms=11324
 log file: C:\Users\szy\AppData\Local\Temp\claude\C--Users-szy-Desktop-8005-workspace-v2\dfdb933a-6a62-4736-8b2e-a0a754db0b5b\scratchpad\onboard-run\logs\agv-20260921.log
 SingleInstanceGuard lines: 5; startup lines: 3 (expect 3: A, C, D)
 --- SingleInstanceGuard lines ---
-2026-09-21T16:17:14.5239405+08:00	Information	SingleInstanceGuard	抢到了整机单例名字。名字=Global\SQCD.Agv.Wpf.Onboard。
-2026-09-21T16:17:17.5990196+08:00	Warning	SingleInstanceGuard	整机单例名字被另一个车载端持有。本次不启动。名字=Global\SQCD.Agv.Wpf.Onboard。
-2026-09-21T16:17:30.0606262+08:00	Information	SingleInstanceGuard	抢到了整机单例名字。名字=Global\SQCD.Agv.Wpf.Onboard。
-2026-09-21T16:17:32.2476894+08:00	Information	SingleInstanceGuard	抢到了整机单例名字。名字=Global\SQCD.Agv.Wpf.Onboard。
-2026-09-21T16:17:34.5652239+08:00	Warning	SingleInstanceGuard	现场线车载端的单例名字存在。本次不启动。名字=Global\SQCD.Agv.Wpf-AGV-8005-01。
+2026-09-21T16:54:20.5115564+08:00	Information	SingleInstanceGuard	抢到了整机单例名字。名字=Global\SQCD.Agv.Wpf.Onboard。
+2026-09-21T16:54:23.7899588+08:00	Warning	SingleInstanceGuard	整机单例名字被另一个车载端持有。本次不启动。名字=Global\SQCD.Agv.Wpf.Onboard。
+2026-09-21T16:54:36.4189491+08:00	Information	SingleInstanceGuard	抢到了整机单例名字。名字=Global\SQCD.Agv.Wpf.Onboard。
+2026-09-21T16:54:40.4967377+08:00	Information	SingleInstanceGuard	抢到了整机单例名字。名字=Global\SQCD.Agv.Wpf.Onboard。
+2026-09-21T16:54:45.0807986+08:00	Warning	SingleInstanceGuard	现场线车载端的单例名字存在。本次不启动。名字=Global\SQCD.Agv.Wpf-AGV-8005-01。

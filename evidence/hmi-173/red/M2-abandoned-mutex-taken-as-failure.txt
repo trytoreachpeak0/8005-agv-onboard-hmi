@@ -1,13 +1,13 @@
-commit: 7075c5d49ef79edbabd610911eee3867586de07b（守卫 blob b0eed6da93a8bb74807796d57aa69a201a6abeb6、App.xaml.cs blob 3b60dd807f70afed1a490cadfddb8654d1927eae，src/tests 与 HEAD 一致）
+commit: 6956f62c9fef67f7a95c64949697a3717e6037b0（守卫 blob ab869e80be4fe9fb804a338c6d20eabe372fa9e4、App.xaml.cs blob 3b60dd807f70afed1a490cadfddb8654d1927eae，src/tests 与 HEAD 一致）
 变异: 见下方 diff（对 HEAD）
 预期（事先写下）: 只有 AnAbandonedNameIsAcquired 红（被杀的上一个实例留下的名字谁都抢不到）。
 命令: dotnet build tests/SQCD.Agv.UnitTests -c Release，再 dotnet test --no-build --filter "FullyQualifiedName~SingleInstanceGuardTests"
 
 diff --git a/src/SQCD.Agv.Infrastructure/SingleInstanceGuard.cs b/src/SQCD.Agv.Infrastructure/SingleInstanceGuard.cs
-index b0eed6d..2b2490d 100644
+index ab869e8..ea2fb0c 100644
 --- a/src/SQCD.Agv.Infrastructure/SingleInstanceGuard.cs
 +++ b/src/SQCD.Agv.Infrastructure/SingleInstanceGuard.cs
-@@ -190,7 +190,7 @@ public sealed class SingleInstanceGuard : IDisposable
+@@ -215,7 +215,7 @@ public sealed class SingleInstanceGuard : IDisposable
              catch (AbandonedMutexException)
              {
                  // 等待者拿到所有权的同时收到这个异常：这是「抢到了」。
@@ -23,8 +23,8 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:02.29]     SQCD.Agv.UnitTests.SingleInstanceGuardTests.AnAbandonedNameIsAcquired [FAIL]
-  Failed SQCD.Agv.UnitTests.SingleInstanceGuardTests.AnAbandonedNameIsAcquired [6 ms]
+[xUnit.net 00:00:03.01]     SQCD.Agv.UnitTests.SingleInstanceGuardTests.AnAbandonedNameIsAcquired [FAIL]
+  Failed SQCD.Agv.UnitTests.SingleInstanceGuardTests.AnAbandonedNameIsAcquired [9 ms]
   Error Message:
    Assert.Equal() Failure: Values differ
 Expected: Acquired
@@ -34,7 +34,7 @@ Actual:   AlreadyRunning
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
 
-Failed!  - Failed:     1, Passed:    11, Skipped:     0, Total:    12, Duration: 202 ms - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     1, Passed:    13, Skipped:     0, Total:    14, Duration: 221 ms - SQCD.Agv.UnitTests.dll (net8.0)
 
 失败断言所在行（测试文件未变异）:
   63: Assert.Equal(SingleInstanceOutcome.Acquired, OnAnotherThread(() => SingleInstanceGuard.AcquireByName(name)));
