@@ -1,0 +1,19 @@
+run: https://github.com/trytoreachpeak0/8005-agv-control-server/actions/runs/35581062016（CI rig=real，vm01）——最终 head（审查修改后）
+场景: real-onboard-compensate-then-reconnect，1 遍
+
+## 四行核对（从 run 日志「Run real-onboard L2 scenarios」那一步读）
+8005-agv-onboard-hmi @ 6956f62c9fef67f7a95c64949697a3717e6037b0
+control-server @ a234e3ea756a8c4ef9fbc6914224e64370582d08
+slots-simulator @ fb5f7c593742bf98bc3957b8729a38aad5321f28
+##[group]real-onboard-compensate-then-reconnect-01 -- PASS, 71s
+RIG_COMMIT_GUARD|RIG_DESKTOP_LOCK|RIG_DEADLINE：命中 1 次，其中源码回显 1 次
+
+## 车载端日志（产物 real-rig-evidence/.../logs/onboard-app/agv-20260921.log）里守卫与启动的全部行
+2026-09-21T17:04:36.4185729+08:00	Information	SingleInstanceGuard	抢到了整机单例名字。名字=Global\SQCD.Agv.Wpf.Onboard。
+2026-09-21T17:04:36.4744481+08:00	Information	App	车载端启动：agvId=AGV-L2-001，environment=Development，version=0.2.0-safety-mock-travel+6956f62c9fef67f7a95c64949697a3717e6037b0。
+2026-09-21T17:04:53.3301839+08:00	Information	SingleInstanceGuard	抢到了整机单例名字。名字=Global\SQCD.Agv.Wpf.Onboard。
+2026-09-21T17:04:53.3957311+08:00	Information	App	车载端启动：agvId=AGV-L2-001，environment=Development，version=0.2.0-safety-mock-travel+6956f62c9fef67f7a95c64949697a3717e6037b0。
+「本次不启动」命中 0 次
+
+结论：场景里的 RestartOnboard（Kill(true) + WaitForExit(10000) 后再起）之后，新实例抢到了整机名字，场景 PASS；两次启动的版本串都带 6956f62c。
+src 与最终 head 逐字节相同：之后的 7a4fd09 只改了一条单元测试的断言（见 README「CI 第一轮红」），真装置跑的产品代码没变。上一轮在 c0da1f27 上的结果见 summary-c0da1f27.txt。

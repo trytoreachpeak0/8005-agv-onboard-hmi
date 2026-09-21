@@ -12,7 +12,17 @@ namespace SQCD.Agv.Wpf;
 
 public partial class App : System.Windows.Application, IDisposable
 {
+    /// <summary>
+    /// 单例守卫挡下本次启动时的退出码：本机已有车载端在运行，或判断不了有没有。
+    /// </summary>
+    /// <remarks>
+    /// 取 3 而不是 1 或 2：那两个在脚本里是「泛指出错」的常用值，而这一次退出不是出错，是守卫按设计挡下了一次重复
+    /// 启动。与现场线（03027de）用的是同一个值，运维脚本不必分版本判断。启动失败走的仍然是 <c>Shutdown(-1)</c>。
+    /// </remarks>
+    internal const int ExitCodeNotStartedAnotherInstance = 3;
+
     private FileAppLogger? _logger;
+    private SingleInstanceGuard? _singleInstance;
     private ModbusTcpIoModuleClient? _ioModule;
     private IRuleGateway? _ruleGateway;
     private OnboardController? _controller;
@@ -32,6 +42,19 @@ public partial class App : System.Windows.Application, IDisposable
         {
             string settingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
             OnboardSettings settings = OnboardSettings.Load(settingsPath);
+            _logger = new FileAppLogger(settings.Logging);
+            // 单例守卫在任何副作用之前（onboard-hmi#173、#165）：下面的车辆安全投影一构造就开始轮询服务端，IO 客户端
+            // 一构造就握着 Modbus 目标——第二个实例一步都不能走到那里。顺序是判据的一部分；日志器提前是为了让这一行
+            // 落在部署实际在用的日志文件里。
+            _singleInstance = SingleInstanceGuard.Acquire(settings.AgvId, _logger);
+            if (!_singleInstance.ShouldStart)
+            {
+                ShutdownMode = ShutdownMode.OnExplicitShutdown;
+                RunningInstanceWindow.ReportRefusal(_singleInstance, _logger);
+                Shutdown(ExitCodeNotStartedAnotherInstance);
+                return;
+            }
+
             _vehicleSafetySignalProvider = new ControlServerVehicleSafetySignalProvider(
                 settings.VehicleSafety,
                 startPolling: settings.WireToGate.Enabled);
@@ -41,7 +64,6 @@ public partial class App : System.Windows.Application, IDisposable
                     DateTimeOffset.UtcNow,
                     TimeSpan.FromMilliseconds(settings.VehicleSafety.MaximumEvidenceAgeMs),
                     TimeSpan.FromMilliseconds(settings.VehicleSafety.ClockSkewToleranceMs));
-            _logger = new FileAppLogger(settings.Logging);
             _ioModule = new ModbusTcpIoModuleClient(settings.IoModule, _logger);
             _ruleGateway = settings.WireToGate.Enabled
                 ? new DisabledRuleGateway()
@@ -292,6 +314,8 @@ public partial class App : System.Windows.Application, IDisposable
 
             DispatcherUnhandledException += OnDispatcherUnhandledException;
             window.Show();
+            // 第二次双击被挡下时，由本实例自己把窗口调出来（onboard-hmi#165 第 2 条）。
+            RunningInstanceWindow.Listen(window);
             await viewModel.InitializeAsync().ConfigureAwait(true);
             if (settings.WireToGate.Enabled)
             {
@@ -373,6 +397,8 @@ public partial class App : System.Windows.Application, IDisposable
             _logger?.Write(LogSeverity.Warning, nameof(App), "程序退出时停止后台服务失败。", exception);
         }
 
+        // 最后才放开名字：IO 客户端停下之前，下一个实例不该拿到它。
+        _singleInstance?.Dispose();
         GC.SuppressFinalize(this);
     }
 
