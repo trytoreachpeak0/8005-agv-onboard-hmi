@@ -1682,8 +1682,11 @@ public sealed class OnboardController : IAsyncDisposable
             "SUBLOT_TOO_LONG" => "条码内容不正确，请重新扫描。",
             "OPERATION_BUSY" => "当前装卸操作尚未完成，请完成装卸并关好仓门。",
             "NOT_READY" => "车辆尚未准备好，请等待界面显示“可扫码”。",
+            // 与 OnboardCommandRejectionText 里同一个码的那一句逐字相同，那边的注释写了为什么不再说
+            // 「禁止扫码」（8005-agv-onboard-hmi#177）。两份逐字相同由
+            // OnboardControllerTests.ExternalSafetyNotReadyGuidanceClaimsOnlyWhatHoldsWhileTheVehicleMoves 守着。
             "WIRE_TO_GATE_NOT_READY" =>
-                "上层安全会话尚未就绪，本界面已禁止扫码与发车。请等待连接及恢复完成。",
+                "上层安全会话尚未就绪或车辆尚未停稳，本界面已禁止发车。请等待连接及恢复完成、车辆停稳。",
             "WIRE_TO_GATE_JOURNEY_NOT_READY" =>
                 "服务端旅程或当前站点任务尚未同步，本界面已禁止扫码。请等待任务恢复。",
             "SUBLOT_NOT_IN_WORKLIST" =>

@@ -32,11 +32,17 @@ public static class OnboardCommandRejectionText
         // 这两句原来说「已禁止……开门」，那一半在 v2 上不成立，和本票修的是同一个缺陷：
         // 服务端下发的仓位命令走 WireToGateSlotOperationExecutor，它不看控制器状态，照样开门
         // （审查，判据路条目 12）。改成只陈述本界面真正挡得住的事。
-        // **还有一处没改，因为它需要单独判断**：NOT_READY 的条件是「会话 Ready 且车辆停稳」为假，
-        // 所以「会话 Ready、车在动」也会显示这一句，而那时 CanSubmitSublot 只看 Readiness——
-        // 扫码入口可能仍然开着，于是「已禁止扫码」也未必真。是否成立取决于服务端会不会在车移动时
-        // 下发录入请求，那是服务端行为，已报调度，不在本票改。
-        ["WIRE_TO_GATE_NOT_READY"] = "上层安全会话尚未就绪，本界面已禁止扫码与发车。请等待连接及恢复完成。",
+        // NOT_READY 的条件是「会话 Ready 且车辆停稳」为假（App.xaml.cs 按位置传进来的
+        // externalSafetyReadyProvider），所以这一句同时覆盖两种状态，只能说两种状态下都成立的事
+        // （8005-agv-onboard-hmi#177）。会话没 Ready：发送口拒绝扫码。会话 Ready、车在动：本端没有
+        // 任何一层挡——CanSubmitSublot、SubmitSublotAsync、发送口都不看车动没动——而录入请求可能
+        // 还开着。**补上这个口子的是服务端，不是本界面**：车一动，车载端报 departureSafe=false，服务端
+        // 把会话降出 Ready，扫码入口随之关闭，中间隔一次上报往返。这段时间里「本界面已禁止扫码」是假的，
+        // 所以这一句不再说它。「发车」留着：这个状态下控制器自己不放行发车。
+        // 前提由 LoadCancellationBeforeSublotG2Tests.TheEntryStaysOpenWhileTheSessionIsReadyAndTheVehicleMoves
+        // 钉住：哪天扫码入口自己看车动没动了，那条会红，那时这一句才可以重新说禁止扫码。与控制器里那一份
+        // 逐字相同由 OnboardControllerTests.ExternalSafetyNotReadyGuidanceClaimsOnlyWhatHoldsWhileTheVehicleMoves 守着。
+        ["WIRE_TO_GATE_NOT_READY"] = "上层安全会话尚未就绪或车辆尚未停稳，本界面已禁止发车。请等待连接及恢复完成、车辆停稳。",
         ["WIRE_TO_GATE_JOURNEY_NOT_READY"] = "服务端旅程或当前站点任务尚未同步，本界面已禁止扫码。请等待任务恢复。",
         ["WIRE_TO_GATE_JOURNAL_NOT_READY"] = "车载端作业记录尚未就绪，请稍候再试。",
         ["VEHICLE_NOT_READY"] = "车辆当前不满足操作条件，请稍候再试。",

@@ -28,6 +28,32 @@ public sealed class OnboardControllerTests
         Assert.True(controller.Current.DeparturePermitted);
     }
 
+    /// <summary>
+    /// WIRE_TO_GATE_NOT_READY 那一句只说这个状态下两种情形都成立的事（8005-agv-onboard-hmi#177）。
+    /// </summary>
+    /// <remarks>
+    /// 这个状态同时覆盖「会话没 Ready」与「会话 Ready、车在动」。后一种情形下 v2 的扫码入口开着
+    /// （<c>LoadCancellationBeforeSublotG2Tests.TheEntryStaysOpenWhileTheSessionIsReadyAndTheVehicleMoves</c> 钉的就是这个），
+    /// 所以这一句不能说「已禁止扫码」。发车这里确实不放行，上面那条断言了。
+    /// 两份文案——控制器自己的与 <see cref="OnboardCommandRejectionText"/> 里的——必须逐字相同：操作员从哪条路径看到这个码，
+    /// 读到的都该是同一句；改了一份忘了另一份，界面上就同时挂着一句真的和一句假的。
+    /// </remarks>
+    [Fact]
+    public async Task ExternalSafetyNotReadyGuidanceClaimsOnlyWhatHoldsWhileTheVehicleMoves()
+    {
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-WORDING");
+        await using OnboardController controller = CreateController(io, rule, () => false);
+
+        await controller.StartAsync(TestContext.Current.CancellationToken);
+
+        Assert.Equal("WIRE_TO_GATE_NOT_READY", controller.Current.ErrorCode);
+        Assert.Equal(OnboardCommandRejectionText.Describe("WIRE_TO_GATE_NOT_READY"), controller.Current.Guidance);
+        Assert.DoesNotContain("扫码", controller.Current.Guidance, StringComparison.Ordinal);
+        Assert.Contains("车辆尚未停稳", controller.Current.Guidance, StringComparison.Ordinal);
+        Assert.Contains("禁止发车", controller.Current.Guidance, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task ExternalSafetyGateDropDuringVerificationPreventsPhysicalUnlock()
     {

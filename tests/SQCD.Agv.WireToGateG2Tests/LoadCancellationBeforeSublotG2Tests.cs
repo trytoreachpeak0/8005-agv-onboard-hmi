@@ -508,6 +508,58 @@ public sealed class LoadCancellationBeforeSublotG2Tests
         Assert.Equal(JsonValueKind.Null, retriedPayload.GetProperty("slotOperationAttemptId").ValueKind);
     }
 
+    /// <summary>
+    /// 会话 Ready、车在动、手里有一条录入请求：本端的扫码入口是开着的（8005-agv-onboard-hmi#177）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>这条钉的是一句文案的前提，不是一个期望的行为。</b>WIRE_TO_GATE_NOT_READY 在「会话 Ready 且车辆停稳」为假时
+    /// 显示，所以这个状态下也显示；它原来说「本界面已禁止扫码与发车」，而本端 CanSubmitSublot、SubmitSublotAsync、
+    /// 发送口三层都不看车动没动，扫码那一半就是假的。hmi#177 把那一句改成只说「已禁止发车」，理由就是这条断言。
+    /// </para>
+    /// <para>
+    /// <b>它红了，要改的是那一句文案，不是这条。</b>扫码入口哪天自己看车动没动了（调度报给用户的方案 B），这条会红——
+    /// 那时 OnboardCommandRejectionText 与 OnboardController 里 WIRE_TO_GATE_NOT_READY 那一句才可以重新说禁止扫码。
+    /// </para>
+    /// <para>
+    /// <b>这不是一个一直敞开的洞。</b>假服务端不因车动降级会话（RequireSafeSafetyForReadiness 默认关）；它扮演的是真服务端
+    /// 的降级回复到达之前那一段。真服务端收到 departureSafe=false 会把会话降出 Ready（control-server 的
+    /// WireToGateStore.DecideReadinessAsync，豁免只给本车在途装卸造成的门锁原因码），扫码入口随之关闭——中间隔一次
+    /// 上报往返，这条量的就是那段窗口里本端的样子。
+    /// </para>
+    /// <para>
+    /// 等的是「车载端把车在动报出去了」，不是「车动了」：替身一改状态就读断言，读到的可能是本端还没来得及知道车在动的
+    /// 那一刻，入口开着就什么也证明不了。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task TheEntryStaysOpenWhileTheSessionIsReadyAndTheVehicleMoves()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        PushableVehicle vehicle = new();
+        await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(token, vehicle: vehicle);
+        Assert.True(harness.Business.CanSubmitSublot);
+
+        vehicle.StartMoving();
+        await BeforeSublotHarness.WaitUntilAsync(
+            () => harness.Server.ReceivedEnvelopes.Any(envelope =>
+                envelope.MessageType == "SafetyStateChanged" && ReportsMoving(envelope.WireLine)),
+            "the onboard to report the vehicle moving",
+            token);
+
+        Assert.True(harness.Business.CanSubmitSublot);
+    }
+
+    private static bool ReportsMoving(string wireLine)
+    {
+        using JsonDocument document = JsonDocument.Parse(wireLine);
+        JsonElement safety = document.RootElement.GetProperty("payload").GetProperty("safety");
+        return !safety.GetProperty("vehicleStopped").GetBoolean()
+            && !safety.GetProperty("departureSafe").GetBoolean();
+    }
+
     private static WireToGateRecoveryOperationContext SettledLoad() =>
         new(
             "44444444-4444-4444-8444-444444444444",
@@ -581,7 +633,8 @@ public sealed class LoadCancellationBeforeSublotG2Tests
             FakeControlServer? existingServer = null,
             string? journalPath = null,
             long baselineRevision = 1,
-            bool awaitEntryRequest = true)
+            bool awaitEntryRequest = true,
+            IVehicleSafetySignalProvider? vehicle = null)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -594,7 +647,7 @@ public sealed class LoadCancellationBeforeSublotG2Tests
                 io.SetCargoPresent(0, true);
                 io.SetCargoPresent(1, true);
                 RecordingLogger logger = new();
-                StoppedVehicle safety = new();
+                IVehicleSafetySignalProvider safety = vehicle ?? new StoppedVehicle();
 
                 string databasePath = journalPath ?? NewJournalPath();
                 Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
@@ -778,11 +831,37 @@ public sealed class LoadCancellationBeforeSublotG2Tests
             return document.RootElement.GetProperty("payload").Clone();
         }
 
-        /// <summary>车一直停着、读数一直新鲜；这里没有东西取决于运动状态。</summary>
+        /// <summary>车一直停着、读数一直新鲜；除了下面那一条，这里没有东西取决于运动状态。</summary>
         private sealed class StoppedVehicle : IVehicleSafetySignalProvider
         {
             public VehicleSafetySignal Read() =>
                 new(VehicleMotionState.Stopped, DateTimeOffset.UtcNow, "BEFORE_SUBLOT_TEST");
         }
+    }
+
+    /// <summary>
+    /// 先停着（握手与录入请求都要车停稳），再被外力推动。读数一直新鲜，所以动起来就是 Moving 而不是 Unknown。
+    /// </summary>
+    /// <remarks>
+    /// 可订阅，与产品里的 <c>ControlServerVehicleSafetySignalProvider</c> 一样：业务服务只在可订阅的提供者报变化时
+    /// 重算安全状态并上报，不可订阅的只等仓门快照或会话变化顺带触发，那样「车动了」要等别的东西碰巧发生才传得出去。
+    /// </remarks>
+    private sealed class PushableVehicle : IObservableVehicleSafetySignalProvider
+    {
+        private volatile bool _moving;
+
+        public event EventHandler<ValueChangedEventArgs<VehicleSafetySignal>>? SignalChanged;
+
+        public void StartMoving()
+        {
+            _moving = true;
+            SignalChanged?.Invoke(this, new ValueChangedEventArgs<VehicleSafetySignal>(Read()));
+        }
+
+        public VehicleSafetySignal Read() =>
+            new(
+                _moving ? VehicleMotionState.Moving : VehicleMotionState.Stopped,
+                DateTimeOffset.UtcNow,
+                "BEFORE_SUBLOT_TEST");
     }
 }
