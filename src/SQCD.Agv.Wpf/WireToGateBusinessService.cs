@@ -1051,8 +1051,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// Dropping the debt is the side that has been miscounted before: onboard-hmi#156 missed one of its release
-    /// points between three readers. With every write here, a new way of setting or clearing the debt has to be
-    /// a new caller, and <c>RecoveryMarkerPersistenceArchitectureTests</c> makes every caller a registered one.
+    /// points between three readers. With every write here, setting or clearing the debt goes through this method,
+    /// and <c>RecoveryMarkerPersistenceArchitectureTests</c> turns red on a call to it from a method not yet
+    /// registered. <b>A further call from a method that is already registered does not turn anything red</b> (the
+    /// registry is per method, not per call), so review a change to those callers with that in mind.
     /// Takes <see cref="_operationAttemptGate"/> itself; callers already inside it re-enter it.
     /// </remarks>
     private OwedRecoveryEntry? ExchangeOwedRecoveryEntry(OwedRecoveryEntry? next)

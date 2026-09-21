@@ -53,8 +53,16 @@ namespace SQCD.Agv.UnitTests;
 /// in a registered member and all six checks stayed green. The same mistake as onboard-hmi#176's first version,
 /// one criterion over: that one did not recognise the file's own way of writing a field, this one did not
 /// recognise the file's own way of writing to disk. Adding <c>_executor</c> and <c>_session</c> to a list would
-/// repeat it for the next receiver; a closed list of the fields these members may use cannot be passed by a
-/// receiver nobody thought of.
+/// repeat it for the next receiver; a closed list of fields is not passed by a receiver nobody thought of -- as long
+/// as the value stays inside the class.
+/// </para>
+/// <para>
+/// <b>The second review showed the first closed list was not closed</b>: it looked at each member's own lines, so
+/// <c>this._executor</c>, one call to an existing method of the class that writes the journal
+/// (<c>RecordAcknowledgedCompletedResultAsync</c>), and a mark held through <c>ExchangeOwedRecoveryEntry</c>'s return
+/// value all passed. It now follows calls: from every member holding a mark, through every member of the class they
+/// call, across all four files, until nothing new is reached. <b>It stops at the edge of the class</b>: a call on
+/// another object or type, and the <c>OperatorEventPublished</c> event, are not followed.
 /// </para>
 /// <para>
 /// <b>Why the file bound alone is not enough, although the ticket offered it as the hardest check.</b> Its
@@ -74,18 +82,21 @@ namespace SQCD.Agv.UnitTests;
 /// would name the field in a string, which the file bound also sees. No source generator contributes to the class.
 /// </para>
 /// <para>
-/// <b>What it cannot see.</b> It follows names, not values. A registered member that copies a mark into a local
-/// and hands it to a method with an innocent name, which persists it somewhere else, passes every check here --
-/// that case is pinned in <see cref="TheseGuardsTellALeakFromTheCodeAsItIs"/> as a known blind spot (the closed
-/// field list narrows it to methods of the class; it does not close it). The persistence-API word list is a list:
+/// <b>What it cannot see.</b> It follows names, not values, and only inside the class. A member holding a mark that
+/// hands it to a method of <b>another</b> type with an innocent name, which persists it, passes every check here --
+/// pinned in <see cref="TheseGuardsTellALeakFromTheCodeAsItIs"/> as a known blind spot. So does a subscriber of
+/// <c>OperatorEventPublished</c> that stores what it is handed (today: the view model, and a journal refresh that
+/// only reads). A member of the class that only names a type (<c>OwedRecoveryEntry? x</c>) pulls that type into
+/// the closure, which errs on the side of checking more. The persistence-API word list is a list:
 /// a static API whose name matches none of its words slips through. <b>Registering a new reader is a hole a
 /// person has to refuse</b>: a registered member that only returns a mark's value hands it to anyone, and the
 /// failure messages can ask, not stop. A write split over lines is seen when the field ends one line and the
 /// assignment operator starts the next, or <c>ref</c>/<c>out</c> ends one line and the field starts the next
 /// (review M-3); a deconstruction split over lines is not.
 /// <c>_logger.Write</c> is allowed on a premise, not a check: the technical log is written and never read back
-/// into process state (nothing under <c>src/</c> reads it, 2026-09-21). Member boundaries come from
-/// <c>dotnet format</c>'s four-space member indent.
+/// into process state (nothing under <c>src/</c> reads it, 2026-09-21). Members are cut by brace depth with
+/// string literals blanked; a raw or verbatim string holding a brace would throw that off (none today). Signature
+/// and property names are read at the four-space member indent <c>dotnet format</c> keeps.
 /// </para>
 /// <para>
 /// <b>No assertion here is a count.</b> Every registry is compared as a set with what the source has, in both
@@ -129,6 +140,14 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
         "ForgetOwedRecoveryEntry",
         "PublishOwedRecoveryEntry"
     ];
+
+    /// <summary>
+    /// The setters whose return value is a mark's value. A caller of one holds the mark without naming the field,
+    /// so it is checked like a member that does (second review S-3). Every other setter returns <c>void</c> or
+    /// <c>bool</c>; <see cref="MembersThatTouchAMarkReachOnlyTheirListedFields"/> checks that from the declarations,
+    /// so a new setter that hands a mark back cannot be missed here.
+    /// </summary>
+    private static readonly string[] ValueReturningSetters = ["ExchangeOwedRecoveryEntry"];
 
     /// <summary>One registered call into a setter, and why the value it passes cannot be a restored mark.</summary>
     private sealed record Caller(string Setter, string Member, string Why);
@@ -214,16 +233,31 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
         @"/\*.*?\*/",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
 
-    private static readonly Regex MemberBlockEndRegex = new(
-        @"^    \}\s*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+    private const string ClassName = "WireToGateBusinessService";
 
-    private static readonly Regex MemberExpressionEndRegex = new(
-        @"^    \S.*;\s*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
+    /// <summary>
+    /// A method or constructor signature: a name directly before <c>(</c>, with no <c>=</c> and no <c>(</c> before
+    /// it on the line, so <c>private readonly X _y = new(...)</c> is a field and not a method called <c>new</c>.
+    /// </summary>
     private static readonly Regex MemberSignatureRegex = new(
-        @"^    [A-Za-z].*?\b(?<name>\w+)\s*(?:<[^>]*>)?\s*\(",
+        @"^    [A-Za-z][^=(]*?\b(?<name>\w+)\s*(?:<[^>]*>)?\s*\(",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>A property's declaration line: no parenthesis, no <c>=</c>, no <c>;</c>, the name last.</summary>
+    private static readonly Regex PropertyHeaderRegex = new(
+        @"^    (?:public|private|internal|protected)\b[^(=;]*?\b(?<name>\w+)\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex StringLiteralRegex = new(
+        @"""(?:\\.|[^""\\])*""",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex CharLiteralRegex = new(
+        @"'(?:\\.|[^'\\])'",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex NameofRegex = new(
+        @"\bnameof\s*\([^)]*\)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>Where product code lives. <c>tests/</c> is left out: the guards themselves name every token.</summary>
@@ -231,7 +265,7 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
 
     /// <summary>A field of this class by the repository's naming: underscore, lower-case letter. Not preceded by a dot.</summary>
     private static readonly Regex FieldTokenRegex = new(
-        @"(?<![\w.])_[a-z]\w*",
+        @"(?<![\w.])(?:this\.)?(?<field>_[a-z]\w*)",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
@@ -373,10 +407,11 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
     }
 
     /// <summary>
-    /// The fields of the class that the members touching a mark may use. Everything these members can hand a mark
-    /// to, other than their own locals and the methods they call, is one of these -- so a field that can carry a
-    /// value out of the process (<c>_executor</c> and <c>_vectorExecutor</c> write the journal, <c>_session</c> writes
-    /// the outbox and the server) cannot be reached from them without this list changing.
+    /// The fields of the class that a mark's value may reach: used by a member holding a mark, or by any member of the
+    /// class it calls, however deep. A field that can carry a value out of the process (<c>_executor</c> and
+    /// <c>_vectorExecutor</c> write the journal, <c>_session</c> writes the outbox and the server) cannot be reached
+    /// that way without this list changing. Other types and event subscribers are outside what this sees -- see the
+    /// class remarks.
     /// </summary>
     private static readonly (string Field, string Why)[] FieldsMarkMembersMayUse =
     [
@@ -385,19 +420,63 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
         ("_owedRecoveryEntry", "A mark."),
         ("_operationAttempts", "The in-flight set: an owed entry is paid only when it is empty. In memory."),
         ("_logger", "The technical log: written, never read back into process state (nothing under src/ reads it)."),
-        ("_clock", "Time for the snapshot's timestamp.")
+        ("_clock", "Time for the snapshot's timestamp."),
+        ("_currentOperationSnapshot", "PublishOperatorEvent keeps the latest operation snapshot here. In memory."),
+        ("_expectedActionWait", "PublishOperatorEvent stops or restarts the expected-action clock. In memory."),
+        ("_operatorEventDeduplicator", "PublishOperatorEvent drops repeats. In memory.")
     ];
 
     /// <summary>
-    /// The members that touch a mark use exactly the fields in <see cref="FieldsMarkMembersMayUse"/> -- no more, and
-    /// every listed field still used, so the list says what the code does. A field is any <c>_camelCase</c>
-    /// identifier in their code; <c>_</c> alone is a discard and does not count.
+    /// Everything a mark's value can reach inside the class uses exactly the fields in
+    /// <see cref="FieldsMarkMembersMayUse"/> -- no more, and every listed field still used, so the list says what the
+    /// code does. "Everything it can reach" is the members holding a mark (<see cref="MarkValueHolders"/>) and every
+    /// member of the class they call, level after level, across all four files (<see cref="Closure"/>). A field is
+    /// any <c>_camelCase</c> identifier, with or without <c>this.</c>; <c>_</c> alone is a discard.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The second review found three ways past the first version of this check</b>, each compiling, formatted,
+    /// and green: <c>this._executor</c> (the field pattern refused anything after a dot, <c>this.</c> included);
+    /// one call to <c>RecordAcknowledgedCompletedResultAsync</c>, a method of this class that writes the journal
+    /// (the check looked at each member's own lines and followed no calls -- and its own failure message told
+    /// people to move the work into another member, which is that exact shape); and a journal call in
+    /// <c>OweRecoveryEntry</c> passing <c>displaced</c>, a mark it got from <c>ExchangeOwedRecoveryEntry</c>'s return
+    /// value without naming the field. Now the field pattern takes <c>this.</c>, calls are followed, and callers of
+    /// a setter that returns a mark hold one.
+    /// </para>
+    /// <para>
+    /// <b>Where the closure stops.</b> At the edge of the class: a call on another object or type
+    /// (<c>_expectedActionWait.Observe(...)</c>, <c>WireToGateSublotRejectionText.Describe(...)</c>) is not followed,
+    /// and the event <c>OperatorEventPublished</c> hands the snapshot to its subscribers in <c>App</c> (the view model,
+    /// and a journal refresh that reads). A field on the list is safe only if what it reaches is -- that is what the
+    /// Why column claims, and it is read by people.
+    /// </para>
+    /// </remarks>
     [Fact]
     public void MembersThatTouchAMarkReachOnlyTheirListedFields()
     {
         string source = ReadProductFile(BusinessServicePath);
-        string[] used = FieldsUsedBy(source, MarkMembers());
+        (string Path, string Text)[] classFiles = ClassFiles();
+
+        // The closure reads the class from the files named after it. Every file that declares a part of the class
+        // must be among them, or calls into that part go unfollowed -- a set comparison, not a count.
+        string root = ProtocolIdentityArchitectureTests.RepositoryRoot();
+        string[] declaring =
+        [
+            .. Directory.EnumerateFiles(Path.Combine(root, "src"), "*.cs", SearchOption.AllDirectories)
+                .Select(path => Path.GetRelativePath(root, path).Replace('\\', '/'))
+                .Where(relative => !relative.Contains("/obj/", StringComparison.Ordinal)
+                    && !relative.Contains("/bin/", StringComparison.Ordinal))
+                .Where(relative => Regex.IsMatch(
+                    File.ReadAllText(Path.Combine(root, relative)),
+                    $@"\bpartial\s+class\s+{ClassName}\b",
+                    RegexOptions.CultureInvariant))
+                .Order(StringComparer.Ordinal)
+        ];
+        Assert.Equal(declaring, classFiles.Select(file => file.Path).Order(StringComparer.Ordinal));
+
+        Dictionary<string, string[]> reached = Closure(classFiles, MarkValueHolders(source));
+        string[] used = FieldsUsedBy(reached);
         string[] listed = [.. FieldsMarkMembersMayUse.Select(entry => entry.Field)];
 
         string[] added = [.. used.Except(listed, StringComparer.Ordinal)];
@@ -405,14 +484,30 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
 
         Assert.True(
             added.Length == 0 && gone.Length == 0,
-            "The fields reachable from the members that touch a recovery mark changed."
+            "The fields a recovery mark's value can reach changed."
             + string.Concat(added.Select(field => $"{Environment.NewLine}  new:  {field}"))
             + string.Concat(gone.Select(field => $"{Environment.NewLine}  gone: {field}"))
+            + $"{Environment.NewLine}  reached through: {string.Join(", ", reached.Keys.Order(StringComparer.Ordinal))}"
             + $"{Environment.NewLine}**Do not just add a new one to the list.** First answer: can a value handed to "
             + "it outlive the process? _executor and _vectorExecutor write the journal, _session writes the outbox "
             + "and the server can replay it -- any of those carrying a mark is onboard-hmi#109 after the next restart. "
-            + "If the new field is one of those, do the work in another member that does not touch a mark. "
-            + "A field that is gone: remove its line.");
+            + "**Do not hand the mark, or the work that touches it, to another member of this class to get past this "
+            + "check**: calls are followed, and that is the shape the check exists to catch. Keep journal and outbox "
+            + "work in members that never hold a mark. A field that is gone: remove its line.");
+
+        foreach (string setter in Setters)
+        {
+            Match declaration = Regex.Match(
+                source,
+                $@"^    private\s+(?:static\s+)?(?<returns>[\w<>?,\[\]. ]+?)\s+{Regex.Escape(setter)}\s*\(",
+                RegexOptions.Multiline | RegexOptions.CultureInvariant);
+            Assert.True(declaration.Success, $"{setter} is not declared in {BusinessServicePath}; the setter list is stale.");
+            string returns = declaration.Groups["returns"].Value;
+            Assert.True(
+                returns is "void" or "bool" || ValueReturningSetters.Contains(setter, StringComparer.Ordinal),
+                $"{setter} returns {returns}. A setter that hands back a value may be handing back a mark; if it does, "
+                + $"add it to {nameof(ValueReturningSetters)} so its callers are checked as holders of one.");
+        }
     }
 
     /// <summary>
@@ -429,14 +524,15 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
         string source = ReadProductFile(BusinessServicePath);
         string[] members = MarkMembers();
 
-        (string Member, string Api)[] hits = PersistenceApis(source, members);
+        (string Member, string Api)[] hits = PersistenceApis(Closure(ClassFiles(), MarkValueHolders(source)));
 
         Assert.True(
             hits.Length == 0,
-            "A member that touches a recovery mark names a persistence API:"
+            "A member a recovery mark's value can reach names a persistence API:"
             + string.Concat(hits.Select(hit => $"{Environment.NewLine}  {hit.Member}  {hit.Api}"))
-            + $"{Environment.NewLine}If the mark's value reaches it, the mark can outlive the process. If it does not, "
-            + "move the call out of this member rather than widening the check.");
+            + $"{Environment.NewLine}If the mark's value reaches it, the mark can outlive the process. Calls are "
+            + "followed, so moving the call into another member of this class does not get past this check; keep "
+            + "persistence in members that never hold a mark.");
 
         Assert.All(members, member => Assert.True(
             MemberSpans(StripComments(source)).Any(span => span.Name == member),
@@ -744,21 +840,135 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
             """));
         Assert.Equal(registeredShape, withSilentClaim);
 
+        // ---- Second review: each written the way this class writes it. ----
+
+        // S-1: `this.` in front of a field that writes to disk.
+        Assert.Equal(
+            "_executor",
+            Assert.Single(FieldsUsedBy(
+                ClassBody(
+                    """
+                        private void PublishOwedRecoveryEntry()
+                        {
+                            _ = this._executor.MarkResultRecordedAsync(_recoveryAnnouncedAttemptId ?? string.Empty, CancellationToken.None);
+                        }
+                    """),
+                ["PublishOwedRecoveryEntry"]).Except(listedFields, StringComparer.Ordinal)));
+
+        // S-2: one call to an existing method of the class that writes the journal. The closure follows it.
+        Dictionary<string, string[]> throughHelper = SyntheticClosure(
+            """
+                private void PublishOwedRecoveryEntry()
+                {
+                    _ = RecordAcknowledgedCompletedResultAsync(owed.Context, CancellationToken.None);
+                }
+
+                private async Task RecordAcknowledgedCompletedResultAsync(
+                    WireToGateRecoveryOperationContext context,
+                    CancellationToken cancellationToken)
+                {
+                    await _executor.MarkResultRecordedAsync(context.SlotOperationAttemptId, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+            """,
+            "PublishOwedRecoveryEntry");
+        Assert.Contains("RecordAcknowledgedCompletedResultAsync", throughHelper.Keys);
+        Assert.Equal("_executor", Assert.Single(FieldsUsedBy(throughHelper).Except(listedFields, StringComparer.Ordinal)));
+
+        // ...and a mention that is not a call does not pull a member in: nameof, and constructing a type.
+        Dictionary<string, string[]> notCalls = SyntheticClosure(
+            """
+                private void ForgetOwedRecoveryEntry(string attemptId)
+                {
+                    _logger.Write(LogSeverity.Information, nameof(Persist), attemptId);
+                    _ = new OwedRecoveryEntry(context, guidance);
+                }
+
+                private void Persist()
+                {
+                    _session.Journal.Clear();
+                }
+
+                private sealed class OwedRecoveryEntry(WireToGateRecoveryOperationContext Context, string Guidance)
+                {
+                    private readonly object _journalHandle = new();
+                }
+            """,
+            "ForgetOwedRecoveryEntry");
+        Assert.Equal("ForgetOwedRecoveryEntry", Assert.Single(notCalls.Keys));
+
+        // S-3: a member holding a mark from ExchangeOwedRecoveryEntry's return value, never naming the field.
+        string exchangeCaller =
+            """
+                private void OweRecoveryEntry(WireToGateRecoveryOperationContext context, string guidance)
+                {
+                    OwedRecoveryEntry? displaced = ExchangeOwedRecoveryEntry(new OwedRecoveryEntry(context, guidance));
+                    _ = _executor.MarkResultRecordedAsync(displaced?.Context.SlotOperationAttemptId ?? string.Empty, CancellationToken.None);
+                }
+            """;
+        Assert.Contains("OweRecoveryEntry", MarkValueHolders(ClassBody(exchangeCaller)));
+        Assert.Equal(
+            "_executor",
+            Assert.Single(FieldsUsedBy(ClassBody(exchangeCaller), MarkValueHolders(ClassBody(exchangeCaller)))
+                .Except(listedFields, StringComparer.Ordinal)));
+
+        // C-3: a parenthesised target, and a comparison in parentheses that is not a write.
+        Assert.Single(StrayWrites(
+            """
+                private void PublishOwedRecoveryEntry()
+                {
+                    (_recoveryAnnouncedAttemptId) = owed.Context.SlotOperationAttemptId;
+                }
+            """));
+        Assert.Empty(StrayWrites(
+            """
+                private void PublishOwedRecoveryEntry()
+                {
+                    bool same = (_recoveryAnnouncedAttemptId) == owed.Context.SlotOperationAttemptId;
+                }
+            """));
+
+        // An expression-bodied member whose body runs onto a second line is its own member, not part of the next
+        // one (the member cut used to merge PublishOperatorResponse into PublishOperatorEvent).
+        Dictionary<string, string[]> split = SyntheticClosure(
+            """
+                private void PublishOperatorResponse(string kind, string message) =>
+                    RaiseOperatorEvent(kind, message, operation: null);
+
+                private void PublishOperatorEvent(string key)
+                {
+                    _ = _session.SendSafetyStateChangedAsync(key);
+                }
+            """,
+            "PublishOperatorEvent");
+        Assert.Equal("PublishOperatorEvent", Assert.Single(split.Keys));
+
         // ---- Known blind spot, pinned at its current answer. ----
-        // A registered member copies the mark into a local and hands it to a method whose name says nothing of
-        // persistence. If that method writes to disk, the mark leaks, and every check here stays green: they follow
-        // names, not values. Telling this apart needs data flow. When the scanner learns it, this assertion
-        // fails -- move the case up among the leaks then.
+        // A member holding a mark hands it to a method of ANOTHER type whose name says nothing of persistence.
+        // The closure stops at the edge of the class, so if that method writes to disk the mark leaks and every check
+        // here stays green. (A method of this class in the same position is caught now -- the S-2 case above.)
+        // Telling this apart needs the other type's source. When the scanner learns it, this assertion fails --
+        // move the case up among the leaks then.
         Assert.Empty(PersistenceApis(
             ClassBody(
                 """
                     private void PublishOwedRecoveryEntry()
                     {
                         OwedRecoveryEntry? owed = _owedRecoveryEntry;
-                        Remember(owed);
+                        DiagnosticsArchive.Remember(owed);
                     }
                 """),
             ["PublishOwedRecoveryEntry"]));
+        Assert.Empty(FieldsUsedBy(
+            ClassBody(
+                """
+                    private void PublishOwedRecoveryEntry()
+                    {
+                        OwedRecoveryEntry? owed = _owedRecoveryEntry;
+                        DiagnosticsArchive.Remember(owed);
+                    }
+                """),
+            ["PublishOwedRecoveryEntry"]).Except(listedFields, StringComparer.Ordinal));
     }
 
     // ------------------------------------------------------------------------------------------------------------
@@ -841,7 +1051,10 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
         string name = $@"(?:this\.)?{Regex.Escape(field)}";
         return
         [
-            new Regex($@"(?<![\w.]){name}\s*(?:\?\?|<<|>>>|>>|[|&^+\-*/%])?=(?![=>])", RegexOptions.CultureInvariant),
+            // Parentheses around the target are allowed (second review C-3: `(_mark) = x;` passed all three shapes).
+            new Regex(
+                $@"(?<![\w.])(?:\(\s*)*{name}\s*(?:\)\s*)*(?:\?\?|<<|>>>|>>|[|&^+\-*/%])?=(?![=>])",
+                RegexOptions.CultureInvariant),
             new Regex($@"\((?=[^()]*(?<![\w.]){name}\b)[^()]*,[^()]*\)\s*=(?![=>])", RegexOptions.CultureInvariant),
             new Regex($@"\b(?:ref|out)\s+{name}\b", RegexOptions.CultureInvariant)
         ];
@@ -887,33 +1100,112 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
     private static string[] MarkMembers() =>
         [.. Readers.Select(reader => reader.Member).Concat(Markers.Select(marker => marker.Writer)).Distinct()];
 
-    /// <summary>Every <c>_camelCase</c> identifier in the code of the named members, sorted.</summary>
-    private static string[] FieldsUsedBy(string source, string[] members)
+    /// <summary>
+    /// The members that hold a mark's value: those that mention a mark, and those that receive one from a setter's
+    /// return value without naming the field (second review S-3: <c>OweRecoveryEntry</c> gets <c>displaced</c> from
+    /// <c>ExchangeOwedRecoveryEntry</c> and never writes <c>_owedRecoveryEntry</c>).
+    /// </summary>
+    private static string[] MarkValueHolders(string source) =>
+    [
+        .. MarkMembers()
+            .Concat(Calls(source)
+                .Where(call => ValueReturningSetters.Contains(call.Setter, StringComparer.Ordinal))
+                .Select(call => call.Member))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+    ];
+
+    /// <summary>
+    /// <paramref name="seeds"/> and every member of the class they reach by naming it, level after level until
+    /// nothing new is reached (second review S-2: <c>RecordAcknowledgedCompletedResultAsync</c> is a method of this
+    /// class that writes the journal, and one call to it from a mark member passed every check). Bodies come from
+    /// all the class's files. <c>nameof(...)</c> is not a call, <c>new X(</c> constructs a type rather than calling a
+    /// member, and the class's own name is its constructor, which no member calls by name.
+    /// </summary>
+    private static Dictionary<string, string[]> Closure((string Path, string Text)[] classFiles, string[] seeds)
     {
-        string[] lines = StripComments(source);
+        Dictionary<string, List<string>> bodies = new(StringComparer.Ordinal);
+        foreach ((string _, string text) in classFiles)
+        {
+            string[] lines = StripComments(text);
+            foreach (MemberSpan span in MemberSpans(lines).Where(span => span.Name != "(field or unnamed)"))
+            {
+                if (!bodies.TryGetValue(span.Name, out List<string>? body))
+                {
+                    body = [];
+                    bodies[span.Name] = body;
+                }
+
+                body.AddRange(lines[span.Start..(span.End + 1)]);
+            }
+        }
+
+        string[] callable = [.. bodies.Keys.Where(name => name != ClassName)];
+        Dictionary<string, string[]> reached = new(StringComparer.Ordinal);
+        Queue<string> pending = new(seeds);
+        while (pending.TryDequeue(out string? member))
+        {
+            if (reached.ContainsKey(member) || !bodies.TryGetValue(member, out List<string>? body))
+            {
+                continue;
+            }
+
+            reached[member] = [.. body];
+            string code = NameofRegex.Replace(string.Join('\n', body), string.Empty);
+            foreach (string other in callable.Where(other => other != member))
+            {
+                if (Regex.IsMatch(code, $@"(?<![\w.])(?<!new\s)(?:this\.)?{Regex.Escape(other)}\b", RegexOptions.CultureInvariant))
+                {
+                    pending.Enqueue(other);
+                }
+            }
+        }
+
+        return reached;
+    }
+
+    /// <summary>Every field (<c>_camelCase</c>, with or without <c>this.</c>) named in the given bodies, sorted.</summary>
+    private static string[] FieldsUsedBy(Dictionary<string, string[]> bodies) =>
+    [
+        .. bodies.Values
+            .SelectMany(body => body)
+            .SelectMany(line => FieldTokenRegex.Matches(line).Select(match => match.Groups["field"].Value))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+    ];
+
+    /// <summary>Every persistence-API word in the given bodies, with the member it is in.</summary>
+    private static (string Member, string Api)[] PersistenceApis(Dictionary<string, string[]> bodies) =>
+    [
+        .. bodies
+            .SelectMany(entry => entry.Value
+                .SelectMany(line => PersistenceApiRegex.Matches(line).Select(match => (entry.Key, match.Value))))
+            .Distinct()
+    ];
+
+    /// <summary>The whole class, all four files, as the closure reads it.</summary>
+    private static (string Path, string Text)[] ClassFiles()
+    {
+        string root = ProtocolIdentityArchitectureTests.RepositoryRoot();
         return
         [
-            .. MemberSpans(lines)
-                .Where(span => members.Contains(span.Name, StringComparer.Ordinal))
-                .SelectMany(span => lines[span.Start..(span.End + 1)]
-                    .SelectMany(line => FieldTokenRegex.Matches(line).Select(match => match.Value)))
-                .Distinct(StringComparer.Ordinal)
-                .Order(StringComparer.Ordinal)
+            .. Directory.EnumerateFiles(Path.Combine(root, "src", "SQCD.Agv.Wpf"), $"{ClassName}*.cs")
+                .Select(path => (Path.GetRelativePath(root, path).Replace('\\', '/'), File.ReadAllText(path)))
+                .Order()
         ];
     }
 
-    private static (string Member, string Api)[] PersistenceApis(string source, string[] members)
-    {
-        string[] lines = StripComments(source);
-        return
-        [
-            .. MemberSpans(lines)
-                .Where(span => members.Contains(span.Name, StringComparer.Ordinal))
-                .SelectMany(span => lines[span.Start..(span.End + 1)]
-                    .SelectMany(line => PersistenceApiRegex.Matches(line).Select(match => (span.Name, match.Value))))
-                .Distinct()
-        ];
-    }
+    /// <summary>A synthetic class, as the closure reads it.</summary>
+    private static Dictionary<string, string[]> SyntheticClosure(string members, params string[] seeds) =>
+        Closure([("synthetic.cs", ClassBody(members))], seeds);
+
+    /// <summary>The fields reached from <paramref name="seeds"/> in one source, closure included.</summary>
+    private static string[] FieldsUsedBy(string source, string[] seeds) =>
+        FieldsUsedBy(Closure([("source.cs", source)], seeds));
+
+    /// <summary>The persistence-API words reached from <paramref name="seeds"/> in one source, closure included.</summary>
+    private static (string Member, string Api)[] PersistenceApis(string source, string[] seeds) =>
+        PersistenceApis(Closure([("source.cs", source)], seeds));
 
     /// <summary>
     /// Every (file, token) pair where a file other than <paramref name="home"/> names a mark or a setter. Comments
@@ -949,37 +1241,61 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
     }
 
     /// <summary>
-    /// The class body cut into members at four-space indent: a block member ends at a lone <c>}</c>, an
-    /// expression-bodied member or field at a line ending in <c>;</c>.
+    /// The class body cut into members by brace depth: a member starts at the first non-blank line at class depth
+    /// and ends where the depth is back at class depth on a line that closed a brace or ends in <c>;</c>.
     /// </summary>
+    /// <remarks>
+    /// <b>Depth, not indent (onboard-hmi#162 second review).</b> The first version cut at a four-space <c>}</c> or a
+    /// four-space line ending in <c>;</c>, so an expression-bodied member whose body ran onto a second line --
+    /// <c>PublishOperatorResponse(...) =&gt;</c> then <c>RaiseOperatorEvent(...);</c> -- merged with the member after it,
+    /// and <c>PublishOperatorEvent</c> was read under the other's name. That was harmless while each check looked at
+    /// a member's own lines; it is not once calls are followed. String and character literals are blanked before
+    /// braces are counted (an interpolated string holds braces); none of this class's files has a raw or verbatim
+    /// string (2026-09-21), which would need more.
+    /// </remarks>
     private static MemberSpan[] MemberSpans(string[] lines)
     {
+        string[] code = [.. lines.Select(BlankLiterals)];
         List<MemberSpan> spans = [];
-        int start = 0;
-        for (int index = 0; index < lines.Length; index++)
+        int depth = 0;
+        int? start = null;
+        for (int index = 0; index < code.Length; index++)
         {
-            if (!MemberBlockEndRegex.IsMatch(lines[index]) && !MemberExpressionEndRegex.IsMatch(lines[index]))
+            if (depth == 1 && start is null && !string.IsNullOrWhiteSpace(code[index]))
             {
-                continue;
+                start = index;
             }
 
-            spans.Add(new MemberSpan(NameOf(lines, start, index), start, index));
-            start = index + 1;
-        }
-
-        if (start < lines.Length)
-        {
-            spans.Add(new MemberSpan(NameOf(lines, start, lines.Length - 1), start, lines.Length - 1));
+            depth += code[index].Count(character => character == '{') - code[index].Count(character => character == '}');
+            if (start is int first
+                && depth == 1
+                && (code[index].Contains('}', StringComparison.Ordinal) || code[index].TrimEnd().EndsWith(';')))
+            {
+                spans.Add(new MemberSpan(NameOf(code, first, index), first, index));
+                start = null;
+            }
         }
 
         return [.. spans];
     }
 
+    private static string BlankLiterals(string line) =>
+        CharLiteralRegex.Replace(StringLiteralRegex.Replace(line, "\"\""), "''");
+
+    /// <summary>
+    /// A member's name: from a method or constructor signature (a name directly before <c>(</c> with no <c>=</c>
+    /// before it, so a field initialised with <c>new(...)</c> is not one), or from a property's declaration line.
+    /// </summary>
     private static string NameOf(string[] lines, int start, int end)
     {
         for (int index = start; index <= end; index++)
         {
             Match match = MemberSignatureRegex.Match(lines[index]);
+            if (!match.Success)
+            {
+                match = PropertyHeaderRegex.Match(lines[index]);
+            }
+
             if (match.Success)
             {
                 return match.Groups["name"].Value;
