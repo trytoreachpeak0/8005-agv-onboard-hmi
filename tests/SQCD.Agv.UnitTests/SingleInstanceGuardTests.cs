@@ -143,6 +143,23 @@ public sealed class SingleInstanceGuardTests
     }
 
     [Fact]
+    public void AFieldLineNameTakenByAnotherKindOfObjectStopsTheStart()
+    {
+        // Review M-1: .NET 8's Mutex.TryOpenExisting returns false -- not throws -- when the name belongs to an object of
+        // another type, which is indistinguishable from "no such name" there, and the probe let the start through.
+        string agvId = "t-" + Guid.NewGuid().ToString("N");
+        using EventWaitHandle squatter = new(
+            false,
+            EventResetMode.ManualReset,
+            SingleInstanceGuard.BuildFieldLineName(SingleInstanceGuard.FieldLineSessionPrefix, agvId));
+
+        using SingleInstanceGuard guard = SingleInstanceGuard.Acquire(agvId, UniqueName(), logger: null);
+
+        Assert.Equal(SingleInstanceOutcome.Undeterminable, guard.Outcome);
+        Assert.False(guard.ShouldStart);
+    }
+
+    [Fact]
     public void WithNoOtherInstanceTheMachineNameIsTaken()
     {
         string agvId = "t-" + Guid.NewGuid().ToString("N");
@@ -188,6 +205,29 @@ public sealed class SingleInstanceGuardTests
         Assert.True(ioStopped < nameReleased,
             "The single-instance name must be released after the IO client has stopped, not before: otherwise the next "
             + "instance can take the name while this one still writes the DO.");
+    }
+
+    [Fact]
+    public void TheProductionEntryUsesTheOneMachineName()
+    {
+        // Review M-2: every other test passes its own name, so "one name for the whole machine" was pinned only on the
+        // constant -- the public entry could hand the inner overload MachineName + "-" + agvId, or a Local\ name, and all
+        // stayed green. Calling the entry for real would take the real name, which a running onboard (vm01 runs the
+        // real-rig L2 next to the test runner) may hold, so this reads the source instead: the public entry passes
+        // exactly MachineName, and the app calls exactly the public entry.
+        string root = ProtocolIdentityArchitectureTests.RepositoryRoot();
+        CSharpSourceLexer.Lexed guardSource = CSharpSourceLexer.Lex(File.ReadAllText(
+            Path.Combine(root, "src", "SQCD.Agv.Infrastructure", "SingleInstanceGuard.cs")));
+        CSharpSourceLexer.MemberSpan entry = Assert.Single(
+            CSharpSourceLexer.MemberSpans(guardSource),
+            span => span.Name == "Acquire" && span.Text.StartsWith("public static", StringComparison.Ordinal));
+        Assert.Matches(
+            @"^public static SingleInstanceGuard Acquire\(string agvId, IAppLogger\? logger = null\) =>\s*Acquire\(agvId, MachineName, logger\);$",
+            entry.Text.Trim());
+
+        string app = string.Join('\n', CSharpSourceLexer.Lex(File.ReadAllText(
+            Path.Combine(root, "src", "SQCD.Agv.Wpf", "App.xaml.cs"))).Code);
+        Assert.Matches(@"SingleInstanceGuard\.Acquire\(settings\.AgvId, _logger\);", app);
     }
 
     private static int IndexOfOnce(string text, string token)

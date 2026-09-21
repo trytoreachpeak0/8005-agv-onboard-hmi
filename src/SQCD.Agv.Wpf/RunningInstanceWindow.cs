@@ -128,7 +128,8 @@ internal static class RunningInstanceWindow
             timer.Stop();
             notice.Close();
         };
-        notice.Loaded += (_, _) => timer.Start();
+        // 在 ShowDialog 之前启动：计时器挂在当前 Dispatcher 上，模态循环里照样会触发，不依赖窗口的 Loaded 事件。
+        timer.Start();
         _ = notice.ShowDialog();
         timer.Stop();
     }

@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using SQCD.Agv.Core;
 
 namespace SQCD.Agv.Infrastructure;
@@ -138,34 +139,58 @@ public sealed class SingleInstanceGuard : IDisposable
 
     /// <summary>
     /// 只打开、不创建：名字不存在 → 可以启动（不持有任何东西）；存在（打开得了或被拒绝访问）→ 已有实例；
-    /// 名字被别的类型的对象占着、或别的错误 → 判断不了。
+    /// 名字被别的类型的对象占着、或任何别的错误 → 判断不了。
     /// </summary>
+    /// <remarks>
+    /// 直接调 <c>OpenMutexW</c> 读错误码，不用 <see cref="Mutex.TryOpenExisting(string, out Mutex)"/>：.NET 8 的后者遇到
+    /// 名字属于别的类型的对象（<c>ERROR_INVALID_HANDLE</c>）时不抛、返回 false，与「名字不存在」分不开，于是一个事件对象
+    /// 占住现场线的名字就能让这里放行（审查 M-1，复现用例 <c>AFieldLineNameTakenByAnotherKindOfObjectStopsTheStart</c>）。
+    /// 只有 <c>ERROR_FILE_NOT_FOUND</c> 才算不存在；其余错误码一律判断不了——失败方向是拒绝启动。
+    /// </remarks>
     internal static SingleInstanceGuard ProbeExisting(string name)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
-        try
+        IntPtr handle = OpenMutexW(Synchronize, inheritHandle: false, name);
+        if (handle != IntPtr.Zero)
         {
-            if (Mutex.TryOpenExisting(name, out Mutex? existing))
-            {
-                existing.Dispose();
-                return new SingleInstanceGuard(null, SingleInstanceOutcome.AlreadyRunning, name, "现场线车载端的单例名字存在。");
-            }
-
-            return new SingleInstanceGuard(null, SingleInstanceOutcome.Acquired, name, "现场线车载端的单例名字不存在。");
+            _ = CloseHandle(handle);
+            return new SingleInstanceGuard(null, SingleInstanceOutcome.AlreadyRunning, name, "现场线车载端的单例名字存在。");
         }
-        catch (UnauthorizedAccessException)
+
+        int error = Marshal.GetLastWin32Error();
+        return error switch
         {
-            return new SingleInstanceGuard(
+            ErrorFileNotFound => new SingleInstanceGuard(null, SingleInstanceOutcome.Acquired, name, "现场线车载端的单例名字不存在。"),
+            ErrorAccessDenied => new SingleInstanceGuard(
                 null,
                 SingleInstanceOutcome.AlreadyRunning,
                 name,
-                "现场线车载端的单例名字存在，但本账户无权打开（另一个账户的实例持有它）。");
-        }
-        catch (Exception exception) when (exception is WaitHandleCannotBeOpenedException or IOException or ArgumentException)
-        {
-            return Undeterminable(name, exception);
-        }
+                "现场线车载端的单例名字存在，但本账户无权打开（另一个账户的实例持有它）。"),
+            ErrorInvalidHandle => new SingleInstanceGuard(
+                null,
+                SingleInstanceOutcome.Undeterminable,
+                name,
+                "现场线车载端的单例名字被别的类型的对象占着，判断不了，按已有实例处理。"),
+            _ => new SingleInstanceGuard(
+                null,
+                SingleInstanceOutcome.Undeterminable,
+                name,
+                $"打开现场线车载端的单例名字失败（Win32 错误 {error}），判断不了，按已有实例处理。"),
+        };
     }
+
+    private const uint Synchronize = 0x0010_0000;
+    private const int ErrorFileNotFound = 2;
+    private const int ErrorAccessDenied = 5;
+    private const int ErrorInvalidHandle = 6;
+
+    // 用 DllImport 而不是 LibraryImport：后者生成的封送代码要求项目打开 AllowUnsafeBlocks（SYSLIB1062）。
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, ExactSpelling = true, SetLastError = true)]
+    private static extern IntPtr OpenMutexW(uint desiredAccess, [MarshalAs(UnmanagedType.Bool)] bool inheritHandle, string name);
+
+    [DllImport("kernel32.dll", ExactSpelling = true, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool CloseHandle(IntPtr handle);
 
     /// <summary>
     /// 抢一个名字。先打开已存在的：打开得了就去等，被拒绝访问就是已有实例；不存在才建。
