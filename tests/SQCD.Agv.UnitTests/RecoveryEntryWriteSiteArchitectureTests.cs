@@ -1,5 +1,4 @@
 using System.Reflection;
-using System.Text;
 using System.Text.RegularExpressions;
 using static SQCD.Agv.UnitTests.CSharpSourceLexer;
 
@@ -688,8 +687,9 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
         // 回归（两边都红）：换行的表达式体属性里写入口。**这一类在本守卫里本来就红**：它没有闭包，逐个写入点判定，
         // 旧的按缩进切分把这个属性并进相邻成员，写入仍落在某个成员里，既不是 AllowRecoveryEntry 包着的写、也不在
         // 守卫之后，照样判 Unguarded。hmi#162 那边同名的问题是错切让闭包跟不进无名成员，这里没有闭包，那个失效形状
-        // 不存在（hmi#181 票面前提据此更正）。换用 CSharpSourceLexer 之后变的只是报错里的成员名：从并错的相邻成员
-        // （真实文件上是 RefreshWireToGateInputStateCore）变成它自己的名字。下面断言钉住的正是这个名字。
+        // 不存在（hmi#181 票面前提据此更正）。换用 CSharpSourceLexer 之后变的只是报错里的成员名，变成它自己的名字；
+        // 之前取决于放在哪里（真实文件上实测：写入成员前 → RefreshWireToGateInputStateCore，写入成员后 →
+        // OnVehicleSafetySignalChanged，写成单行 → (unnamed)）。下面断言钉住的正是这个名字。
         WriteSite[] expressionBodied = Scan(ClassBody(
             """
                 private bool ReopenCompensation =>
@@ -721,6 +721,44 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
                 }
             """,
             expectedSites: 1,
+            expectedViolations: 1);
+
+        // 反例（hmi#181 审查 S1）：守卫块里跨行的 ref／out／解构写入，开头的 `ref`、`out`、`(` 在入口名字的上一行。
+        // 本票第一版从名字所在行的行首截取计数文本，把它们截在外面，数出 0 次写、0 次 false 而判合规——四种都是。
+        foreach (string splitWrite in new[]
+        {
+            "SetProperty(ref\n                _canRequestLoadCompensation, HasPhysicallyUnknownSlots, nameof(CanRequestLoadCompensation));",
+            "(_,\n                CanRequestLoadCompensation) = (0, true);",
+            "(\n                CanRequestLoadCompensation, _) = (true, 0);",
+            "Open(out\n                _canRequestLoadCompensation);",
+        })
+        {
+            AssertViolates(
+                "    private void ApplyWireToGatePresentationCore()\n    {\n        if (RecoveryEntriesBlockedByFatalFault)\n        {\n"
+                + $"            {splitWrite}\n            return;\n        }}\n    }}",
+                expectedSites: 1,
+                expectedViolations: 1);
+        }
+
+        // 反例（审查 S2，基分支上就有）：同一行上第二次写。按行分类时，这一行只要有一次合规写，整行放行。
+        AssertViolates(
+            """
+                private void RefreshWireToGateInputStateCore()
+                {
+                    CanRequestLoadCompensation = AllowRecoveryEntry(_canRequest?.Invoke() == true); CanRequestLoadCompensation |= HasPhysicallyUnknownSlots;
+                }
+            """,
+            expectedSites: 2,
+            expectedViolations: 1);
+        AssertViolates(
+            """
+                public bool CanRequestLoadCompensation
+                {
+                    get => _canRequestLoadCompensation;
+                    private set { SetProperty(ref _canRequestLoadCompensation, value); _canRequestLoadCompensation |= HasPhysicallyUnknownSlots; }
+                }
+            """,
+            expectedSites: 2,
             expectedViolations: 1);
 
         // 合规：守卫块里跨行写 false 仍是合规的，不因为跨行被误判。
@@ -931,7 +969,9 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             + "（审查中等 2 的五种变异，合成反例都在）；但**守卫之后把写入放进 lambda 或本地函数延迟执行，它判合规**"
             + "（合成例最后一条按当前结果钉着），格式没经过 dotnet format 时缩进近似也会失准。"
             + "写入的形状认得简单与复合赋值、解构赋值、以 ref／out 传出 backing field（审查中等 1），"
-            + "hmi#181 起按成员的代码文本匹配、经 CSharpSourceLexer 读（字符串里的 `//` 不再截断一行，跨行赋值认得出）。"
+            + "hmi#181 起经 CSharpSourceLexer 读、按成员的代码文本匹配，并以**语句**为分类单位（上一个 `;`／`{`／`}` 之后到"
+            + "下一个 `;`）：字符串里的 `//` 不再截断一行；名字与 `=`、`ref`／`out` 与字段、解构的括号与名字分在两行也认得出；"
+            + "同一行上的几次写各自判定。语句边界是按这三个字符往回找的，不是语法分析。"
             + "它看不见的写法：经反射或 XAML 双向绑定写入、在别的文件里写（今天九个属性都是 private set 且类不是 partial，"
             + "所以别的文件写不进来——那是今天的状态，不是这条守卫保证的）；写另一个实例的入口（`other.CanX = true`，"
             + "形状里排除了点号前缀）；九个之外的新入口。词法层自己的限度：同一行两个成员共用这一行、用转义写的标识符"
@@ -946,7 +986,8 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
         new(
             "RecoveryEntryWriteSiteArchitectureTests.TheGuardTellsAThirdWritePathFromACompliantOne",
             GuardKind.SelfCheck,
-            "合成反例覆盖的是**已经想到的**错法（第一版的七种、审查补的十一种、hmi#181 补的逐行读法看不见的四种），"
+            "合成反例覆盖的是**已经想到的**错法（第一版的七种、审查补的十一种、hmi#181 补的逐行读法看不见的四种、"
+            + "hmi#181 审查补的跨行 ref／out／解构四种与同一行第二次写两种），"
             + "想不到的不在里面；这条测试的价值上限"
             + "就是那份清单。最后一例是按当前结果钉住的已知盲区（守卫后的 lambda 延迟写入被判合规），它失败时说明扫描器"
             + "变强了，不是变坏了。"),
@@ -1005,8 +1046,15 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
     /// </para>
     /// <para>
     /// <b>跨行不是一条新规则，是同一组写法换了一个读的范围。</b>写入形状（<see cref="WriteRegexes"/>）不再逐行匹配，
-    /// 而是对整个成员的代码文本匹配，<c>\s*</c> 本来就跨得过换行；命中位置再折回行号。写入点仍按（行，入口）去重，
-    /// 行号取入口名字所在的那一行，所以真实源码上的条数口径不变。票面要的是「统一判据，不追加禁用写法清单」。
+    /// 而是对整个成员的代码文本匹配，<c>\s*</c> 本来就跨得过换行；命中位置再折回行号。票面要的是「统一判据，不追加
+    /// 禁用写法清单」。
+    /// </para>
+    /// <para>
+    /// <b>分类的单位是语句，不是行</b>（hmi#181 审查 S1、S2）。一次写归到它所在的那条语句（<see cref="StatementStart"/>
+    /// 到下一个 <c>;</c>），一条语句对一个入口判一次，行号取入口名字所在的行。按行分类有两个洞：同一行上
+    /// <c>CanX = AllowRecoveryEntry(...); CanX |= y;</c> 的第二次写被第一次的合规放行（基分支上就有）；按行首截取计数文本时，
+    /// 上一行的 <c>ref</c>／<c>out</c>／解构的 <c>(</c> 被截在外面，守卫块里那样的写被判合规（本票第一版引入）。
+    /// 真实源码上每条语句只写一个入口一次，条数 25 不变。
     /// </para>
     /// </remarks>
     private static WriteSite[] Scan(string source)
@@ -1021,34 +1069,45 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             int[] lineStarts = LineStarts(text);
             foreach (RecoveryEntry entry in RecoveryEntries)
             {
-                // 这个入口的每一次写，按它名字所在的行归并；同一行上最后一次写决定计数文本延伸到哪个 `;`，
-                // 这样那一行上的每一次写都在里面——与第一版「整行计数」同一个口径，只是能跨到下一行。
-                SortedDictionary<int, int> lastEndByLine = [];
+                // 这个入口的每一次写，归到它所在的那条语句；一条语句对一个入口只判一次，行号取第一次写时入口名字所在的行。
+                SortedDictionary<int, (int NameAt, int End)> byStatement = [];
                 foreach (Match match in WriteRegexes[entry.Property].Concat(WriteRegexes[entry.BackingField])
                     .SelectMany(regex => regex.Matches(text)))
                 {
-                    int line = LineOf(lineStarts, match.Index + NameOffset(match.Value, entry));
-                    int end = match.Index + match.Length;
-                    lastEndByLine[line] = Math.Max(lastEndByLine.GetValueOrDefault(line), end);
+                    int start = StatementStart(text, match.Index);
+                    int nameAt = match.Index + NameOffset(match.Value, entry);
+                    int end = text.IndexOf(';', match.Index + match.Length);
+                    end = end < 0 ? text.Length : end + 1;
+                    byStatement[start] = byStatement.TryGetValue(start, out (int NameAt, int End) seen)
+                        ? (Math.Min(seen.NameAt, nameAt), Math.Max(seen.End, end))
+                        : (nameAt, end);
                 }
 
-                foreach ((int line, int lastEnd) in lastEndByLine)
+                foreach ((int start, (int nameAt, int end)) in byStatement)
                 {
-                    int index = member.Start + line;
-                    string statement = ReadStatement(lines, index, member.End);
-                    int statementEnd = text.IndexOf(';', lastEnd);
-                    string written = text[lineStarts[line]..(statementEnd < 0 ? text.Length : statementEnd + 1)];
+                    int index = member.Start + LineOf(lineStarts, nameAt);
+                    string statement = text[start..end];
                     sites.Add(new WriteSite(
                         index + 1,
                         entry.Property,
                         member.Name,
-                        statement,
-                        Classify(entry, member, written, statement, index, guards)));
+                        Regex.Replace(statement, @"\s+", " ").Trim(),
+                        Classify(entry, member, statement, index, guards)));
                 }
             }
         }
 
         return [.. sites.OrderBy(site => site.Line).ThenBy(site => site.Entry, StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// 一条语句的起点：往回找到的第一个 <c>;</c>、<c>{</c> 或 <c>}</c> 之后（代码视图里字面量与注释已抹掉，里面的这些字符不算）。
+    /// <c>ref</c>、<c>out</c>、解构的 <c>(</c> 在入口名字的上一行时，它们仍在这条语句里（hmi#181 审查 S1）。
+    /// </summary>
+    private static int StatementStart(string text, int position)
+    {
+        int boundary = position <= 0 ? -1 : text.LastIndexOfAny([';', '{', '}'], position - 1);
+        return boundary + 1;
     }
 
     /// <summary>Where the entry's own name starts inside a write match (a deconstruction match starts at its <c>(</c>).</summary>
@@ -1085,11 +1144,10 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
     /// 一个写入点属于哪一类。顺序有意义：先认 setter 本身，再认函数式，最后才看守卫——
     /// 守卫块内的写入只许是 <c>= false;</c>，块后的写入才被那道 early return 保护。
     /// </summary>
-    /// <param name="written">从写入点所在行的行首，到这一行上最后一次写所在语句的 <c>;</c>（可跨行）。</param>
+    /// <param name="statement">这次写所在的那一条语句，代码视图，可跨行（见 <see cref="StatementStart"/>）。</param>
     private static WriteKind Classify(
         RecoveryEntry entry,
         MemberSpan member,
-        string written,
         string statement,
         int index,
         EarlyReturn[] guards)
@@ -1111,12 +1169,12 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
         }
 
         // 守卫块之内：唯一合规的写法是把它关掉。`CanX = true; return;` 同样是一道 early return，
-        // 而它恰好把入口打开了。这一行里每一次写都得是 `= false;`，ref／解构这类写法一概不算。
-        // 「这一行」延伸到最后一次写所在语句的 `;`：`CanX` 换行 `= true;` 写在守卫块里，按单行数会数出 0 次写、
-        // 0 次 false，两边相等而判合规（hmi#181）。
+        // 而它恰好把入口打开了。这条语句里每一次写都得是 `= false;`，ref／解构这类写法一概不算。
+        // 数的范围是整条语句而不是一行（hmi#181）：按行数，`CanX` 换行 `= true;` 会数出 0 次写、0 次 false 而判合规；
+        // 从名字所在行的行首数，`SetProperty(ref` 换行 `_canX, …)` 的 ref 被截在外面，同样 0 对 0（审查 S1）。
         if (Array.Exists(guards, guard => guard.Header <= index && index <= guard.BlockEnd)
-            && CountWrites(written, entry) == FalseRegexes[entry.Property].Matches(written).Count
-                + FalseRegexes[entry.BackingField].Matches(written).Count)
+            && CountWrites(statement, entry) == FalseRegexes[entry.Property].Matches(statement).Count
+                + FalseRegexes[entry.BackingField].Matches(statement).Count)
         {
             return WriteKind.UnderGuard;
         }
@@ -1265,22 +1323,6 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
     private static bool ReturnAt(string line, int position) =>
         (position == 0 || !(char.IsLetterOrDigit(line[position - 1]) || line[position - 1] == '_'))
         && ReturnRegex.Match(line, position).Success;
-
-    /// <summary>赋值语句全文，跨行读到 <c>;</c> 为止——<c>AllowRecoveryEntry(</c> 常常在下一行。</summary>
-    private static string ReadStatement(string[] lines, int start, int limit)
-    {
-        StringBuilder builder = new();
-        for (int index = start; index <= limit; index++)
-        {
-            builder.Append(lines[index].Trim()).Append(' ');
-            if (lines[index].TrimEnd().EndsWith(';'))
-            {
-                break;
-            }
-        }
-
-        return builder.ToString();
-    }
 
     /// <summary>把一段成员源码包成一个类体，让合成例走的是与真实源码同一条缩进假设。</summary>
     private static string ClassBody(string members) =>
