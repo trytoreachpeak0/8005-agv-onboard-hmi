@@ -164,6 +164,78 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     }
 
     /// <summary>
+    /// The other shape a failure is journaled in: the unlock output never fell back, so the door is not proven
+    /// shut and the failed slot stays in the active set (checkpoint ACTIVE_UNLOCK_SET). After the restart the
+    /// output has fallen back and the door is shut over the basket. Before #186 this settled COMPLETED -- the
+    /// slot is in the active set and reads final. It is UNKNOWN now for the same reason as the safe-finish case:
+    /// the output that did not reset is one of decision 2's hardware conditions, and nobody has confirmed it.
+    /// A second outward change of this PR, declared as such (review of PR #190, point 2).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ASettlementDoesNotCountAnActiveSlotThatFailedEvenWhenItReadsFinal()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(
+            token,
+            unlockOutputResetTimeout: TimeSpan.FromMilliseconds(200));
+        fixture.Io.StickUnlockOutput(0);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
+        WireToGateOperationExecutionResult first = await fixture.Executor.ExecuteAsync(command, null, token);
+        Assert.Equal("UNKNOWN", first.OverallOutcome);
+        Assert.Equal("ACTIVE_UNLOCK_SET", first.JournalCheckpoint);
+        WireToGateRecoveryState journaled = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal([1], journaled.ActiveUnlockSlots);
+        IReadOnlyList<string> failedWith = journaled.SlotResults.Single().ReasonCodes;
+        Assert.Equal("UNKNOWN", journaled.SlotResults.Single().Outcome);
+        fixture.Io.ReleaseUnlockOutput(0);
+        fixture.Io.CloseDoor(0, cargo: true);
+        int unlocksBeforeSettlement = fixture.Io.UnlockCount(0);
+
+        WireToGateOperationExecutionResult settled = await fixture.Executor.SettleInterruptedAsync(token);
+
+        WireToGateSlotExecutionResult slot = settled.SlotResults.Single();
+        Assert.Equal("UNKNOWN", slot.Outcome);
+        Assert.Equal(failedWith, slot.ReasonCodes);
+        Assert.Equal("UNKNOWN", settled.OverallOutcome);
+        Assert.Equal(unlocksBeforeSettlement, fixture.Io.UnlockCount(0));
+    }
+
+    /// <summary>
+    /// A deliberate trade-off, pinned (review of PR #190, point 3). The process died waiting for the operator;
+    /// the first settlement found the door still open and wrote UNKNOWN with RECOVERY_CHECKPOINT_NOT_UNIQUE; the
+    /// process died again before that result reached the outbox; the operator then finished the load. The second
+    /// settlement reads a journal whose own conclusion for the slot is UNKNOWN, and it keeps it: ADR-cross-0017
+    /// keeps an operation whose journal state is UNKNOWN blocked for a person. Before #186 it settled COMPLETED.
+    /// The journaled UNKNOWN cannot be told apart from an execution failure by shape or reason code
+    /// (SLOT_STATE_UNKNOWN is written by both), and a rule keyed on reason codes would be guessing.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ASecondSettlementKeepsTheUnknownTheFirstOneJournaled()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
+        await InterruptWhileWaitingAsync(fixture, command);
+        WireToGateOperationExecutionResult firstSettlement = await fixture.Executor.SettleInterruptedAsync(token);
+        Assert.Equal("UNKNOWN", firstSettlement.SlotResults.Single().Outcome);
+        Assert.Equal(["RECOVERY_CHECKPOINT_NOT_UNIQUE"], firstSettlement.SlotResults.Single().ReasonCodes);
+        fixture.Io.CloseDoor(0, cargo: true);
+
+        WireToGateOperationExecutionResult secondSettlement = await fixture.Executor.SettleInterruptedAsync(token);
+
+        Assert.Equal("UNKNOWN", secondSettlement.SlotResults.Single().Outcome);
+        Assert.Equal(["RECOVERY_CHECKPOINT_NOT_UNIQUE"], secondSettlement.SlotResults.Single().ReasonCodes);
+        Assert.Equal("UNKNOWN", secondSettlement.OverallOutcome);
+        Assert.Equal(1, fixture.Io.UnlockCount(0));
+    }
+
+    /// <summary>
     /// The shape the two-set test misses, checked here so a change in how the executor journals this failure
     /// shows up as a broken premise rather than as a settlement that suddenly passes. Returns the reason the
     /// slot failed with, as journaled.
