@@ -125,7 +125,10 @@ public sealed class SingleInstanceGuardTests
         });
 
         Assert.Equal(SingleInstanceOutcome.AlreadyRunning, outcome);
-        Assert.StartsWith(SingleInstanceGuard.FieldLineSessionPrefix, decidedBy, StringComparison.Ordinal);
+        // Decided by one of the field line's names, not by which one: in session 0 (the CI runner is a service)
+        // Local\X and Global\X are the same object, so the Global probe finds the name held above first.
+        // In an interactive session only the Local probe sees it. Measured on vm01 over ssh, 2026-09-21.
+        Assert.Contains(decidedBy, SingleInstanceGuard.FieldLineNames(agvId));
         // The v2 name was never taken: a later start, once the field line is gone, is not blocked by this one.
         Assert.Equal(SingleInstanceOutcome.Acquired, OnAnotherThread(() => SingleInstanceGuard.AcquireByName(machineName)));
     }
