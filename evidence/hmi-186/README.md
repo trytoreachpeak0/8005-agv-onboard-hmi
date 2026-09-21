@@ -7,7 +7,7 @@
 - `OpenedByThisAttempt`：「开过」＝活动集 ∪ 已完成集 ∪ 日志里该仓结论不是 `NOT_STARTED`。`ResumeExclusiveAsync` 与 `SettleInterruptedExclusiveAsync` 共用这一处。
 - 结算里，日志结论为 `UNKNOWN` 的格一律报 `UNKNOWN`，沿用日志里的原因码，**读数终态也不记 `COMPLETED`**。依据 ADR-cross-0017：「若未结操作曾因锁 DI 等硬件故障进入 VehicleRecoveryRequired，即使重启后信号恢复，也必须先取得 HardwareRecoveryConfirmation，不能仅凭可证明检查点自动续行。」票面原写「读到终态记 COMPLETED」，调度按这句改了验收。管理员授权的恢复（`ResumeExclusiveAsync`）仍认这一格、不再开锁。
 - 没开过的格沿用日志里自己的原因码（物理字段仍是实时读数）。冲突落日志后、记待答前进程退出，重启结算带回 `SLOT_OPERATION_CONFLICT`。
-- **审查第 1 条**：首次执行里，被单门检查（REQ-0357）在本仓第一次脉冲之前拒绝的格，报 `NOT_STARTED`、原因码是那扇门的（决定 6），而不是 `UNKNOWN`。「没发过脉冲」只在进程内确知时才认：`DriveSlotToTargetStateAsync` 记本次调用有没有请求过脉冲，失败分支只在首次执行（`firstRun`）里据此报 `NOT_STARTED`；恢复轮一律仍报 `UNKNOWN`（日志分不出上一轮开没开过，失败分支会把未完成的格都写成 `NOT_STARTED`，审查第 4 条）；重开时被拒仍 `UNKNOWN`。
+- **审查第 1 条**：首次执行里，被单门检查（REQ-0357）在本仓第一次脉冲之前拒绝的格，报 `NOT_STARTED`、原因码是那扇门的（决定 6），而不是 `UNKNOWN`；检查点一律记安全终点、不进活动集（第二轮审查：IO 不新鲜时它曾进了活动集）。「没发过脉冲」只在进程内确知时才认：`DriveSlotToTargetStateAsync` 记本次调用有没有请求过脉冲，失败分支只在首次执行（`firstRun`）里据此报 `NOT_STARTED`；恢复轮一律仍报 `UNKNOWN`（日志分不出上一轮开没开过，失败分支会把未完成的格都写成 `NOT_STARTED`，审查第 4 条）；重开时被拒仍 `UNKNOWN`。
 - `HandleSlotOperationAsync` 显示闸那段注释按现行派发改准（control-server#211；由 control-server#294 负责用服务端测试钉住，该票待做）。hmi#182 以此结论关闭，车载端不加拒绝。
 
 ## red-before-fix.txt
@@ -18,8 +18,9 @@
 
 - `point1-red-at-6e5adb4.txt`：审查所看的头部 `6e5adb4` 上，审查复现（装货 [1,2]、5 号门开着、之后关上、重启结算）红在「1 号格应为 NOT_STARTED、实际 UNKNOWN」；反向用例、恢复轮用例与第 2、3 条两条用例在 `6e5adb4` 上绿（行为未变或已有）。与事先写下的预期一致。
 - `points2-3-red-at-18663e4.txt`：第 2、3 条的两条用例钉住的是相对底座的行为变化，在 `18663e4` 上两条都红（实际 `COMPLETED`、期望 `UNKNOWN`），与审查实测一致。
+- `round2-red-at-47451cb.txt`（第二轮审查）：IO 不新鲜时脉冲前被拒的格，在 `47451cb` 上实时结果已是 `NOT_STARTED`，但日志检查点是 `ACTIVE_UNLOCK_SET`、活动集含该格——用例红在检查点。第 5 条的新用例在 `47451cb` 上绿（行为已有，只缺用例，由 N10 另证）。
 
-## red/：变异探针（8 个，头部 `47451cb`）
+## red/：变异探针（N1–N8 在头部 `47451cb`，N9–N10 在 `426e18c`）
 
 每份开头是事先写下的预期与对 HEAD 的 diff，构建 `0 Error(s)` 才算数，末尾列失败断言位置；每轮后按字节备份还原，blob 与 HEAD 一致。`--filter WireToGateSlotOperationExecutor`（74 条）。
 
@@ -33,18 +34,22 @@
 | `N6` | 恢复轮也认「没发过脉冲」 | 只红 `ASlotRefusedBeforeAResumesFirstPulseIsStillUnknown` |
 | `N7` | 重开时的拒绝也当作脉冲前 | 只红 `ASlotRefusedOnAReopenIsStillUnknown` |
 | `N8` | 首次执行脉冲前的拒绝改回 UNKNOWN（审查第 1 条原样） | 红 5 条：既有契约用例 4 例（改后期望 NOT_STARTED）+ 脉冲前被拒的结算用例 |
+| `N9` | 从未开过的格仍按快照判安全终点（第二轮审查原样） | 只红 `ASlotRefusedBeforeItsFirstPulseOnAnUnreadableSnapshotIsNotStartedEverywhere`，红在检查点 |
+| `N10` | IO 不新鲜时失败格改报 `SLOT_STATE_UNKNOWN`（审查推断的改回写法） | 只红 `AFailedSlotKeepsItsReasonWhenTheSettlementCannotReadTheIo` |
 
 `N7` 第一次写成「无条件抛脉冲前异常」，变量 `pulseRequested` 因此未被使用，项目把这个警告当错误、构建失败，那一轮作废；改成「保留变量、条件恒为脉冲前」后重跑。
 
-## green/（头部 `47451cb`）
+## green/（头部 `426e18c`）
 
-- `unit-tests.txt`：**544 通过、0 失败**（基线 535，在 `18663e4` 上实数；新增 9 条）。
+- `unit-tests.txt`：**546 通过、0 失败**（基线 535，在 `18663e4` 上实数；新增 11 条）。
 - `dotnet-format-verify.txt`：`exit=0`。
 - `g2-multi-demand-and-station-deadline.txt`：`MultiDemandJourneyG2Tests`、`StationDeadlineExpiredG2Tests` 与架构测试，**92 通过**，含 #146/#152/#156 的 7 条。G2 全量走 CI。
 
 ## real-rig/
 
-- `summary-6e5adb4.txt`：审查前的头部 `6e5adb4`，run 35591732768，`real-onboard-compensate-then-reconnect` PASS 66s。审查后代码变了，新头部的真装置在复审之后补跑。
+- `summary.txt`：**最终头部 `426e18c`**，run 35598585215，`real-onboard-compensate-then-reconnect` × 1 **PASS 67s**。三端从场景那一步读：车载端 `426e18c4`、服务端 `0b19397b`、模拟器 `fb5f7c59`；`RIG_*` 只命中 1 次源码回显；两次启动的版本串都带 `426e18c4`。
+- `summary-6e5adb4.txt`：审查前的头部 `6e5adb4`，run 35591732768，PASS 66s。
+- 这个场景重启车载端再走补偿入口，不经过「中途失败后重启结算」与「脉冲前被单门检查拒绝」：它证明本 PR 没把恢复入口与重启路径改坏，那两条行为本身由单测、修前红与变异探针证明。
 
 ## 守不到的
 

@@ -1,0 +1,24 @@
+复审（PR #190 第二轮）的修前红：在代码头部 47451cb 上（本 worktree，src 与 HEAD 990bf30 一致，990bf30 只含 evidence/），只加入两条新用例
+构建 0 Error(s)
+命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~OnAnUnreadableSnapshot|FullyQualifiedName~KeepsItsReasonWhenTheSettlementCannotRead"
+预期（事先写下）: 「不新鲜时被拒」那条红——实时结果已是 NOT_STARTED（断言通过），红在日志检查点应为 SAFE_FINISH_REACHED、实际 ACTIVE_UNLOCK_SET；第 5 条那条绿（行为已有、只是没有用例，由变异 N10 另证）。
+
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:07.30]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseOnAnUnreadableSnapshotIsNotStartedEverywhere [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseOnAnUnreadableSnapshotIsNotStartedEverywhere [236 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "SAFE_FINISH_REACHED"
+Actual:   "ACTIVE_UNLOCK_SET"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseOnAnUnreadableSnapshotIsNotStartedEverywhere() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 155
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseOnAnUnreadableSnapshotIsNotStartedEverywhere() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 166
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:     1, Skipped:     0, Total:     2, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
