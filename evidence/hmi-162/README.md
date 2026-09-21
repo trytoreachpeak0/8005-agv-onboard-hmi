@@ -9,9 +9,10 @@
 `tests/SQCD.Agv.UnitTests/RecoveryMarkerPersistenceArchitectureTests.cs` 守着——**本票的价值就是把这条
 红线从「只有真装置看得见」挪到 CI 能看见的地方**，在下面「守不到什么」一节列出的范围之内。
 
-本目录是**第三轮复审之后**的版本。第一轮审查确认产品代码是纯重构、守卫有三处中等问题；第二轮复审找到
-字段白名单的三种绕法；第三轮复审找到源码读法本身的四个洞（成员名切不出来、字符串里的 `//` 被当注释）。
-下面三节分别写。
+本目录是**第四轮复审之后**的版本。第一轮审查确认产品代码是纯重构、守卫有三处中等问题；第二轮复审找到
+字段白名单的三种绕法；第三轮复审找到源码读法本身的四个洞（成员名切不出来、字符串里的 `//` 被当注释）；
+第四轮复审找到成员切分的一个洞（表达式体成员在 `}` 处被切断，今天就有 3 处）和三处中等问题。
+下面四节分别写。
 
 ## 一个标记要跨重启存活，需要两步；两步都守
 
@@ -25,9 +26,9 @@
 | `EverySetterThatHandsBackAValueIsRegisteredAsOne` | 写出 | **第三轮新增。** 写入口的返回值不是 `void`／`bool`、或者带 `out`／`ref` 参数，就能把标记交还给调用方，必须登记为「交还标记」，调用方随之按持有标记检查 |
 | `TheMarksAndTheirSettersNeverLeaveTheBusinessServiceSource` | 写出 | 两个字段名和六个方法名在 `src/`、`tools/` 产品文件里只出现在 `WireToGateBusinessService.cs` |
 | `OnlyRegisteredMembersTouchTheMarks` | 写出 | 文件内碰字段的成员恰好是登记的那几个 |
-| `MembersThatTouchAMarkReachOnlyTheirListedFields` | 写出 | 从持有标记的成员出发（含经写入口交还值持有标记的成员），沿**代码里点名调用的本类成员**一层层走到闭合，闭包里用到的类字段必须恰好是白名单里的九个。`_executor`／`_vectorExecutor`／`_session` 这类能把值带出进程的字段，**沿这些路径**用不到；经事件、委托、别的类型走出去的路径不在闭包里（见盲区） |
+| `MembersThatTouchAMarkReachOnlyTheirListedFields` | 写出 | 从持有标记的成员出发（含经写入口交还值持有标记的成员），沿**代码里点名调用的本类成员**（直接写名字、`this.`、或本类类名限定）一层层走到闭合，闭包里用到的字段（含另一个实例的 `service._x`）必须恰好是白名单里的九个。`_executor`／`_vectorExecutor`／`_session` 这类能把值带出进程的字段，**沿这些路径**用不到；经事件、委托、别的类型、另一个实例上的方法调用走出去的路径不在闭包里（见盲区） |
 | `NoMemberThatTouchesAMarkNamesAPersistenceApi` | 写出 | 同一个闭包里不出现持久化 API 的词（不区分大小写）；主要负责白名单看不见的静态 API（`File.`、`JsonSerializer`） |
-| `TheLexerNamesEveryMemberOfTheClass` | 自检 | **第三轮新增。** 四个类文件都能读：花括号深度在文件末尾回到 0，每个成员都切得出名字；遇到原始字符串 `"""` 直接红并说明要先扩展词法层 |
+| `TheLexerNamesEveryMemberOfTheClass` | 自检 | **第三轮新增，第四轮加强。** 四个类文件都能读：花括号深度在文件末尾回到 0，每个成员都切得出名字；遇到原始字符串 `"""` 直接红并说明要先扩展词法层。**深度与命名这两条拦不住深度 1 上的错切**（两半都有名字、深度照样归零），所以第四轮加了一条：没有成员以续行记号（`\|\|`、`?`、`:`、`.` 等）开头；并把今天被切错的 3 处钉成完整成员 |
 | `TheseGuardsTellALeakFromTheCodeAsItIs` | 自检 | 每条判据都是源码文本的纯函数，喂合成源码双向验证，外加钉住的已知盲区 |
 
 **没有一条断言是计数。** 每张登记表都与源码做双向集合比较：多了会红，登记了但代码里已经没有了也会红。
@@ -133,7 +134,7 @@ S-2 是根本性的。复审给了两条路：(a) 跟着本类调用算闭包；
   其它文件有用原始字符串的（例如 `SqliteWireToGateJournal.cs`），那些文件退回按原文检查，只会多报不会漏报。
 - **每个文件都断言花括号深度最终回到 0**（M-2），深度不对就拒绝切成员，不带着错的切法往下走。
 - **成员在类深度 1 的边界切**，名字取「第一个 `(`、`=>`、`{`、`;`、`[` 之前的最后一个标识符」，索引器叫 `this[`；
-  自检断言四个文件里没有一个无名成员。
+  自检断言四个文件里没有一个无名成员。（第四轮发现：这条自检与深度归零都拦不住深度 1 上的错切，见下一节。）
 - **「交还标记」自检扩展到 `out`／`ref` 参数**（严重-3）。
 
 **中等与提问**：
@@ -146,6 +147,45 @@ S-2 是根本性的。复审给了两条路：(a) 跟着本类调用算闭包；
   `_recoveryAnnouncedAttemptId` 的 XML doc 从「从新方法恢复会红」改为「还没登记为调用方的方法去调写入口会红」。
 - **Q-1：`void`／`bool` 是前提不是事实。** 返回 `bool` 的写入口今天只回答「占到没有」，放行它靠的是这个前提，
   已在 `HandsOutAValue` 旁写明。
+
+## 第四轮复审改了什么
+
+第四轮复审确认第三轮的四个严重问题、Q-2、M-2 都会变红，词法层本身经受了二十多种写法的攻击。剩下**一个严重项**：
+
+**严重-A：表达式体成员在 `}` 处被静默切断。** 上一版按行切：深度 1 上某行的代码以 `}` 或 `;` 结尾，成员就在这一行结束。
+于是一行以属性模式 `is { … }`、`with { … }` 或对象初始化器结尾、下一行以 `||`、`&&`、`?`、`:`、`??` 续写的表达式体成员，
+被切成两个成员，后半截还拿到一个像样的名字（`Read`、`null`、`MarkResultRecordedAsync`）。「每个成员都有名字」与
+「深度归零」两条自检都拦不住。**这个类今天就有 3 处被切错**：主文件的 `RecoveryReasonAlreadyGiven`（后半截叫 `Read`），
+`.RecoveryVectors.cs` 的 `ForgetRefusedVector` 与 `PersistedOperatorOrNull`（后半截都叫 `null`）。修正前后，真实类上的字段白名单
+都是同样九个字段、都绿，所以今天的代码没有因此漏报；但同样形状的成员如果持有标记并写 journal，后半截没人跟进
+（红证据 `18`～`21`，上一版全绿）。反过来也有怪事：上一版里叫 `null` 的后半截会被任何出现 `null` 的成员「调用」到，
+第三轮红证据 13 的 reached through 列表里就有 `null`。
+
+- **切分改为逐字符判断**（按复审建议）：深度 1 上遇到 `;` 结束；从深度 2 回到 1 的 `}`，只有在这个成员此前没有出现自己的
+  `=` 或 `=>`、且后面紧跟的不是 `=`（自动属性初始化器 `{ get; } = x;`）时才结束。方法、嵌套类型、带访问器的属性在 `}` 结束，
+  表达式体成员与字段初始化器一直走到 `;`。
+- **续行记号自检**：没有成员以 `||`、`&&`、`?`、`:`、`.`、`??`、`,` 等开头，也不以 `is`／`with`／`switch` 这类模式关键字开头。
+  声明永远不会这样开头，所以这条专门接住深度与命名两条看不见的错切。
+- **今天那 3 处钉成回归用例**：断言它们各自只有一个跨度、跨度一直到 `;`、并包含原来被切掉的那半截；类里不再有叫 `Read`、`null` 的成员。
+- **读回侧变体**：后半截恰好叫 `TryClaimRecoveryAnnouncement` 时，原来只被 `HandsOutAValue` 里的 `.Single` 偶然挡住，
+  报 `Sequence contains more than one matching element`，毫无指引（红证据 `22` 现在红在调用方登记那条）。同名写入口声明不止一次
+  现在给出明确报错：列出行号，说明是重载（要单独命名登记）还是切分出错。
+
+**中等**：
+
+- **中等-1**：写入口带委托类型参数（`Action<OwedRecoveryEntry?> handBack`，里面 `handBack(Exchange…(null))`）也能把标记交还调用方。
+  「交还标记」自检现在把按名字认得出的委托类型参数也算上（`Action`、`Func`、`…Callback`、`…Handler` 等；红证据 `23`）。
+- **中等-2**：另一个实例的字段（静态成员里 `service._executor…`）原来认不出。现在字段识别不再排除前面的点号（红证据 `24`）。
+  **同一机理在另外两处也有落点**，一并改了：静态成员写 `service._owedRecoveryEntry = null`（红证据 `26`），以及调用
+  `service.MarkRecoveryAnnounced(...)`（红证据 `27`）。标记名与写入口名只允许出现在这个文件里，所以前面带点号一定指本类。
+- **中等-3**：以类名限定调用本类静态成员 `WireToGateBusinessService.ArchiveMark(...)` 原来不跟进，现在跟（红证据 `25`）。
+  **另一个实例上的方法调用**（`service.RecordAcknowledged…()`）仍然不跟：`x.Name` 可能是别的类型的同名成员。已写进限度。
+- **中等-4**：文档收窄。测试注释、class remarks、PR 正文都写明「深度与命名自检拦不住深度 1 的错切，由续行记号自检兜」；
+  「代码里点名的成员会被跟进去」按修复后的实际能力写（直接写名字、`this.`、本类类名）。
+- **中等-5**：「产品文件非注释改动为 0」补上起点，见下面「写入收口」一节。
+
+**疑问三条写进限度**：同一行两个成员共用这一行；用转义写的标识符（`@_executor`、`\u005Fexecutor`）认不出；
+`@""""` 与 `$"{d:dd'}"` 这类合法字面量会被误拒（大声失败，不会悄悄读错；类里今天没有）。
 
 ## 「只扫一个文件」站得住的条件，逐条核过
 
@@ -165,15 +205,41 @@ S-2 是根本性的。复审给了两条路：(a) 跟着本类调用算闭包；
   **合成一个入口的理由**：置 null 就是还掉欠账，而 hmi#156 数漏的恰好是欠账的释放点。
 
 两个字段的 XML doc 写明了为什么不能持久化、失效时长什么样，指向 hmi#109 和这个测试类。
-三轮审查之后产品文件只改了注释，没有代码：`_recoveryAnnouncedAttemptId` 的 XML doc 与 `ExchangeOwedRecoveryEntry`
-的 remarks，都是把过度声称收窄到实际保证的范围。非注释改动行为 0。
 
-## red/：真实文件上的反向验证（第三轮复审后的守卫，全部重跑）
+**产品代码的改动量，带起点说**（第四轮中等-5）：
+
+- **自 `a776582`（本票第一个提交）起，非注释改动为 0。** 之后四轮审查对产品文件只改了注释：`_recoveryAnnouncedAttemptId`
+  的 XML doc 与 `ExchangeOwedRecoveryEntry` 的 remarks，都是把过度声称收窄到实际保证的范围。
+- **相对基分支 `w2g/fp-v2-impl`，非注释、非空的改动是 22 行（加 13 行、删 9 行）**，就是上面两条收口重构本身。
+  算法：`git diff -U0 origin/w2g/fp-v2-impl HEAD -- src/` 的 `+`／`-` 行，去掉 `//`、`///` 开头的行与空行。
+
+## self/：守卫自身的反向验证（第四轮新增）
+
+真实文件上的注入（下一节）证明守卫认得出泄漏；这里反过来证明**本轮对守卫的每一处修改都有测试在看着**：临时把一处修改
+退回旧写法，看预期的那条测试是否变红，而且红在预期的那条断言上。每份开头有预期、对 HEAD 的 diff、编译结果
+（`0 Error(s)`，编不过就作废），末尾列出失败断言所在的行。八份实际结果全部与预期一致；还原后测试文件的 blob 与 HEAD 一致。
+
+| 文件 | 退回的修改 | 预期（事先写下） | 实际 |
+| --- | --- | --- | --- |
+| `S1-line-based-member-cut-restored` | 成员切分退回上一版的按行规则 | 命名自检红在**续行记号**那条（不是无名成员那条）+ 合成自检红在严重-A 第一例 | 正是这两处；报错列出主文件第 285 行 `Read` |
+| `S2-…-without-the-continuation-check` | S1 再去掉续行记号断言 | 命名自检仍红，红在回归钉 + 合成自检红 | 正是这两处：`RecoveryReasonAlreadyGiven` 的跨度里找不到后半截 |
+| `S3-…-without-continuation-check-or-pins` | S2 再去掉回归钉 | 命名自检**绿**（深度与命名确实看不见错切）；只有合成自检红在严重-A 第一例 | 一致 |
+| `S4-delegate-parameter-not-a-hand-back` | 委托类型参数不算交还 | 只有合成自检红，红在中等-1 用例 | 一致 |
+| `S5-field-after-a-dot-not-seen` | 字段识别重新排除点号前缀 | 只有合成自检红，红在 `service._executor` 用例 | 一致 |
+| `S6-class-name-qualified-call-not-followed` | 闭包不再跟进类名限定调用 | 只有合成自检红，红在中等-3 用例 | 一致 |
+| `S7-dotted-setter-call-not-seen` | 写入口调用重新排除点号前缀 | 只有合成自检红，红在 `service.MarkRecoveryAnnounced` 用例 | 一致 |
+| `S8-dotted-mark-write-not-seen` | 标记写入重新排除点号前缀 | 只有合成自检红，红在 `service._owedRecoveryEntry = null` 用例 | 一致 |
+
+S1 第一版探针写错过一次，记在这里：它在行中间遇到 `}` 也收尾，于是把 `{ get; } = x;` 切出一个无名成员，红在「无名成员」
+那条上。那证明不了续行记号断言能挡住旧切法，因为它没有照旧切法的样子失败。改成忠实的旧规则（`}`、`;` 只在行尾收尾）后重跑，
+才红在续行记号那条上。
+
+## red/：真实文件上的反向验证（第四轮复审后的守卫，全部重跑）
 
 每份开头记着注入时的 HEAD、注入前的 blob、**事先写下的预期**、命令与限度；同名 `.patch` 只含那次注入。
 先提交代码、确认 `src/` 与 HEAD 一致再注入，每份 patch 生成后在干净的树上用 `git apply --check` 验证，
-**十七份全部通过**。还原用按字节的备份，十七次之后 `src/` 与 HEAD 一致。`01`～`12` 是前两轮的注入，按最终版本重跑；
-`13`～`17` 是第三轮新增。实际结果**十七份全部与预期一致**。
+**二十七份全部通过**。还原用按字节的备份，二十七次之后 `src/` 与 HEAD 一致。`01`～`17` 是前三轮的注入，按最终版本重跑；
+`18`～`27` 是第四轮新增。实际结果**二十七份全部与预期一致**。
 
 | 文件 | 注入 | 预期（事先写下） | 实际 |
 | --- | --- | --- | --- |
@@ -186,35 +252,49 @@ S-2 是根本性的。复审给了两条路：(a) 跟着本类调用算闭包；
 | `07-write-split-over-two-lines` | 审查 m6b：登记成员里跨两行写标记 | 只有写入口那条 | 9 条里红 1 条 |
 | `08-silent-claim-in-a-registered-method-known-blind-spot` | 审查 m5：`RestorePending…` 里先无声地占住宣告权 | **全绿**：钉住的已知盲区 | 9 条全绿 |
 | `09-this-prefixed-executor` | 复审 S-1：`this._executor.MarkResultRecordedAsync(...)` | 只有字段白名单那条 | 9 条里红 1 条 |
-| `10-call-to-an-existing-journal-writing-method` | 复审 S-2：一行调用本类现成的 `RecordAcknowledgedCompletedResultAsync` | 字段白名单那条（闭包经它和 `ReadRecoveryStateCachedAsync` 用到 `_executor`、`_session`、`_lastRecoveryState`）+ 持久化 API 那条（闭包里的 `_session.Journal`） | 9 条里红 2 条，正是这两条 |
+| `10-call-to-an-existing-journal-writing-method` | 复审 S-2：一行调用本类现成的 `RecordAcknowledgedCompletedResultAsync` | 字段白名单那条 + 持久化 API 那条 | 9 条里红 2 条，正是这两条 |
 | `11-mark-held-through-exchange-return-value` | 复审 S-3：`OweRecoveryEntry` 把 `displaced` 交给 `_executor` | 只有字段白名单那条 | 9 条里红 1 条 |
 | `12-parenthesised-write` | 复审 C-3：`(_recoveryAnnouncedAttemptId) = ...` | 只有写入口那条 | 9 条里红 1 条 |
-| `13-tuple-returning-method-writes-the-journal` | **第三轮严重-1**：新方法 `private (bool Recorded, string AttemptId) RecordPaid(...)` 写 journal，`PublishOwedRecoveryEntry` 调它（上一版全绿） | 只有字段白名单那条 | 9 条里红 1 条 |
-| `14-expression-bodied-property-reaches-the-executor` | **第三轮严重-2**：换行的表达式体属性 `Executor =>\n _executor;`，`PublishOwedRecoveryEntry` 经它写 journal（上一版全绿） | 只有字段白名单那条 | 9 条里红 1 条 |
-| `15-out-parameter-hands-the-mark-back` | **第三轮严重-3**：`ForgetOwedRecoveryEntry` 加 `out OwedRecoveryEntry? handedBack`（上一版全绿） | 只有「交还标记」登记那条 | 9 条里红 1 条 |
-| `16-double-slash-inside-a-string-hides-a-write` | **第三轮严重-4**：`ReleaseInFlightAttempt` 里 `Parse("onboard://recovery/" + attemptId, out _recoveryAnnouncedAttemptId)`（上一版全绿） | 写入口那条 + 成员登记那条 | 9 条里红 2 条，正是这两条 |
-| `17-double-slash-inside-a-string-in-another-partial-file` | **第三轮严重-4 的另一处**：`.HardwareRecovery.cs` 里 `"onboard://recovery/" + _recoveryAnnouncedAttemptId`（上一版名字边界也绿） | 只有名字边界那条 | 9 条里红 1 条 |
+| `13-tuple-returning-method-writes-the-journal` | 第三轮严重-1：元组返回的新方法 `RecordPaid` 写 journal | 只有字段白名单那条 | 9 条里红 1 条 |
+| `14-expression-bodied-property-reaches-the-executor` | 第三轮严重-2：换行的表达式体属性 `Executor =>\n _executor;` | 只有字段白名单那条 | 9 条里红 1 条 |
+| `15-out-parameter-hands-the-mark-back` | 第三轮严重-3：`ForgetOwedRecoveryEntry` 加 `out` 参数 | 只有「交还标记」登记那条 | 9 条里红 1 条 |
+| `16-double-slash-inside-a-string-hides-a-write` | 第三轮严重-4：`Parse("onboard://recovery/" + attemptId, out _recoveryAnnouncedAttemptId)` | 写入口那条 + 成员登记那条 | 9 条里红 2 条，正是这两条 |
+| `17-double-slash-inside-a-string-in-another-partial-file` | 第三轮严重-4 另一处：`.HardwareRecovery.cs` 里 `"onboard://recovery/" + 字段` | 只有名字边界那条 | 9 条里红 1 条 |
+| `18-property-pattern-then-conditional-reaches-the-executor` | **第四轮严重-A 原复现**：`RecordPaidEntryAsync(owed) =>` `owed is { … }` 换行 `? _executor.MarkResultRecordedAsync(...)` `: Task.CompletedTask;`，`PublishOwedRecoveryEntry` 调它（上一版全绿） | 只有字段白名单那条 | 9 条里红 1 条 |
+| `19-property-pattern-then-or-reaches-the-executor` | **严重-A 变体**：`is { … }` 换行 `\|\| _executor…`（上一版全绿） | 只有字段白名单那条 | 9 条里红 1 条 |
+| `20-property-pattern-then-and-reaches-a-file-api` | **严重-A 变体**：`is { … }` 换行 `&& … System.IO.File.AppendAllText(...)`（上一版全绿） | 只有持久化 API 那条 | 9 条里红 1 条 |
+| `21-with-expression-then-coalesce-reaches-the-executor` | **严重-A 变体**：`owed with { … }` 换行 `?? _executor…`（上一版全绿） | 只有字段白名单那条 | 9 条里红 1 条 |
+| `22-property-pattern-then-and-claims-the-mark` | **严重-A 读回侧变体**：新方法 `ClaimIfNoVector` 以 `is { … }` 换行 `&& TryClaimRecoveryAnnouncement(...)`（上一版只被 `.Single` 偶然挡住） | 只有调用方登记那条 | 9 条里红 1 条 |
+| `23-delegate-parameter-hands-the-mark-back` | **第四轮中等-1**：`ForgetOwedRecoveryEntry` 加 `Action<OwedRecoveryEntry?> handBack` 参数（上一版全绿） | 只有「交还标记」登记那条 | 9 条里红 1 条 |
+| `24-another-instances-executor-from-a-static-member` | **第四轮中等-2**：静态成员 `ArchiveMark(service, id) => _ = service._executor.MarkResultRecordedAsync(...)`，`PublishOwedRecoveryEntry` 调它（上一版全绿） | 只有字段白名单那条 | 9 条里红 1 条 |
+| `25-static-member-called-through-the-class-name` | **第四轮中等-3**：同上，但以 `WireToGateBusinessService.ArchiveMark(...)` 调用（上一版不跟进） | 只有字段白名单那条 | 9 条里红 1 条 |
+| `26-another-instances-mark-written-from-a-static-member` | **中等-2 同一机理在写入侧**：静态成员 `service._owedRecoveryEntry = null;`（上一版全绿） | 写入口那条 + 成员登记那条 | 9 条里红 2 条，正是这两条 |
+| `27-writer-called-on-another-instance` | **中等-2 同一机理在调用侧**：静态成员 `service.MarkRecoveryAnnounced(id)`（上一版全绿） | 只有调用方登记那条 | 9 条里红 1 条 |
 
 ## green/
 
-- `unit-tests.txt` —— `dotnet test tests/SQCD.Agv.UnitTests -c Release`，**513 通过、0 失败**（基线 504，新增 9 条）
+- `unit-tests.txt` —— `dotnet test tests/SQCD.Agv.UnitTests -c Release`，**513 通过、0 失败**（基线 504，新增 9 条；第四轮的新断言都加在已有的两条自检里，条数不变）
 - `dotnet-format-verify.txt` —— `exit=0`，零诊断
-- `g2-multi-demand-journey.txt` —— `MultiDemandJourneyG2Tests` 单类 **47 条全过**（第一轮跑的；审查后产品代码只改了注释）
+- `g2-multi-demand-journey.txt` —— `MultiDemandJourneyG2Tests` 单类 **47 条全过**（第一轮跑的；之后产品代码只改了注释）
 - `probe-which-tests-reach-the-writers.txt` —— 临时让两个写入口抛异常，同一个类 **47 条里 7 条红**，证明那 47 条全绿
   确实走到了改动。前两次探针因编译失败作废（跑的是旧二进制），先看 `0 Error(s)` 才发现
 
 ## 这组守卫守不到什么（测试类 remarks 里有完整版）
 
 - **已登记方法里多一处调用**（M-1）：登记粒度是方法对写入口；`RestorePending…` 本来就从 journal 取 id。钉在合成自检里，红证据 `08`。
-- **闭包只跟代码里点名的本类成员**：持有标记的成员把它交给**别的类型**的方法去落盘；`OperatorEventPublished` 的订阅方
-  把收到的东西存下来；**本类自己的事件或委托**，处理方法在别处挂上去再写盘（第三轮 M-1）——这些所有守卫都绿，都钉在合成自检里。
-  被直接点名调用的本类方法会被跟进去（红证据 `10`、`13`、`14`）。
-- **写入口用返回值和 `out`／`ref` 以外的方式交还标记**（存进另一个字段、触发事件）：「交还标记」那条看不见；
-  存进字段会被字段白名单看见，触发事件就是上一条的盲区。放行返回 `bool` 的写入口靠的是「它只回答占到没有」这个前提。
+- **闭包只跟代码里点名的本类成员**（直接写名字、`this.`、本类类名限定）：持有标记的成员把它交给**别的类型**的方法去落盘；
+  `OperatorEventPublished` 的订阅方把收到的东西存下来；**本类自己的事件或委托**，处理方法在别处挂上去再写盘（第三轮 M-1）；
+  **另一个实例上的方法调用** `service.SomeMethod(...)`（第四轮：`x.Name` 可能是别的类型的同名成员）——这些所有守卫都绿，
+  前三种钉在合成自检里。另一个实例的**字段** `service._x` 看得见（红证据 `24`）。
+- **写入口用返回值、`out`／`ref`、委托类型参数以外的方式交还标记**（存进另一个字段、触发事件、往传进来的容器里放）：
+  「交还标记」那条看不见；存进字段会被字段白名单看见，触发事件就是上一条的盲区。委托类型按名字认，名字不像委托的自定义委托认不出。
+  放行返回 `bool` 的写入口靠的是「它只回答占到没有」这个前提。
 - **不经过字段的同一种失效**（Q-2）：journal 里的「已宣告」标志加恢复时提前 return。
 - **登记一个只返回字段值的读取器**（Q-3）只能靠人拒绝。
-- 持久化词表对静态 API 是一张表；跨多行的解构赋值看不见；**原始字符串 `"""` 词法层不读**，出现在类文件里会红着拒绝，
+- **读法本身的限度**：成员跨度按整行算，同一行两个成员共用这一行；用转义写的标识符（`@_executor`、`\u005Fexecutor`）认不出；
+  `@""""` 与 `$"{d:dd'}"` 这类合法字面量会被误拒（大声失败）；**原始字符串 `"""` 词法层不读**，出现在类文件里会红着拒绝，
   出现在别的产品文件里那个文件按原文检查。
+- 持久化词表对静态 API 是一张表；跨多行的解构赋值看不见。
 - `_logger.Write` 按前提放行：技术日志只写不读。
 
 ## 不做的

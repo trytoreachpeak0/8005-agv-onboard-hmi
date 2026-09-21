@@ -1,0 +1,38 @@
+commit: 17576d7b7f2e0300cfc54b5bef7f167fcb22eed5（守卫测试文件 blob 5ee25a061a22c443d5815719ffa8d75f4d6cfe6f，工作树与 HEAD 一致）
+探针: 把本轮对守卫的修改退回旧写法，见下方 diff（对 HEAD）
+预期: 只有 TheseGuardsTellALeakFromTheCodeAsItIs 红，红在 service._owedRecoveryEntry = null 写入合成例。
+命令: dotnet build tests/SQCD.Agv.UnitTests -c Release，再 dotnet test --no-build --filter "FullyQualifiedName~RecoveryMarkerPersistenceArchitectureTests"
+
+diff --git a/tests/SQCD.Agv.UnitTests/RecoveryMarkerPersistenceArchitectureTests.cs b/tests/SQCD.Agv.UnitTests/RecoveryMarkerPersistenceArchitectureTests.cs
+index 5ee25a0..6563dea 100644
+--- a/tests/SQCD.Agv.UnitTests/RecoveryMarkerPersistenceArchitectureTests.cs
++++ b/tests/SQCD.Agv.UnitTests/RecoveryMarkerPersistenceArchitectureTests.cs
+@@ -1500,7 +1500,7 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
+         [
+             // Parentheses around the target are allowed (second review C-3: `(_mark) = x;` passed all three shapes).
+             new Regex(
+-                $@"(?<!\w)(?:\(\s*)*{name}\s*(?:\)\s*)*(?:\?\?|<<|>>>|>>|[|&^+\-*/%])?=(?![=>])",
++                $@"(?<![\w.])(?:\(\s*)*{name}\s*(?:\)\s*)*(?:\?\?|<<|>>>|>>|[|&^+\-*/%])?=(?![=>])",
+                 RegexOptions.CultureInvariant),
+             new Regex($@"\((?=[^()]*(?<!\w){name}\b)[^()]*,[^()]*\)\s*=(?![=>])", RegexOptions.CultureInvariant),
+             new Regex($@"\b(?:ref|out)\s+{name}\b", RegexOptions.CultureInvariant)
+
+    0 Error(s)
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:04.20]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.TheseGuardsTellALeakFromTheCodeAsItIs [FAIL]
+  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.TheseGuardsTellALeakFromTheCodeAsItIs [91 ms]
+  Error Message:
+   Assert.Single() Failure: The collection was empty
+  Stack Trace:
+     at SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.TheseGuardsTellALeakFromTheCodeAsItIs() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryMarkerPersistenceArchitectureTests.cs:line 1327
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+
+Failed!  - Failed:     1, Passed:     8, Skipped:     0, Total:     9, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+失败断言所在行（探针后的文件）:
+  1327: Assert.Single(StrayWrites(

@@ -1,0 +1,23 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index a653a8f..f270891 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -1163,6 +1163,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+     /// before moving these two statements past each other.
+     /// </para>
+     /// </remarks>
++    private bool PaidAlready(OwedRecoveryEntry owed) =>
++        owed is { Guidance.Length: 0 }
++        || _executor.MarkResultRecordedAsync(owed.Context.SlotOperationAttemptId, CancellationToken.None).IsCompleted;
++
+     private void ReleaseInFlightAttempt(string attemptId)
+     {
+         lock (_operationAttemptGate)
+@@ -1242,6 +1246,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+ 
+             owed = _owedRecoveryEntry;
+             _ = ExchangeOwedRecoveryEntry(null);
++            _ = PaidAlready(owed);
+             if (!string.Equals(
+                 _recoveryAnnouncedAttemptId,
+                 owed.Context.SlotOperationAttemptId,

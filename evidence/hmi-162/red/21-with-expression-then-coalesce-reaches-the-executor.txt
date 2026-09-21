@@ -1,6 +1,6 @@
 commit: 17576d7b7f2e0300cfc54b5bef7f167fcb22eed5（注入前 WireToGateBusinessService.cs blob a653a8f1fd108b6529343c259ef6c7b5cd711ec6、.HardwareRecovery.cs blob 679f73e1481c2bb27f682c05c9882805435b79ae，工作树与 HEAD 一致）
 注入: 见同名 .patch（对 HEAD 生成，已用 git apply --check 验证）
-预期: 只有 MembersThatTouchAMarkReachOnlyTheirListedFields 红（复审 S-3：OweRecoveryEntry 经返回值持有标记；上一版全绿）。
+预期: 只有 MembersThatTouchAMarkReachOnlyTheirListedFields 红（严重-A 变体：with { … } 后接 ??；上一版全绿）。
 命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~RecoveryMarkerPersistenceArchitectureTests"（测试读源码文本；测试程序集先以 0 Error(s) 编过）
 限度: --filter 单类，「只有这几条红」的范围是这个测试类之内
 
@@ -9,16 +9,16 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:05.73]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.MembersThatTouchAMarkReachOnlyTheirListedFields [FAIL]
-  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.MembersThatTouchAMarkReachOnlyTheirListedFields [384 ms]
+[xUnit.net 00:00:04.62]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.MembersThatTouchAMarkReachOnlyTheirListedFields [FAIL]
+  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.MembersThatTouchAMarkReachOnlyTheirListedFields [326 ms]
   Error Message:
    The fields a recovery mark's value can reach changed.
   new:  _executor
-  reached through: ExchangeOwedRecoveryEntry, ForgetOwedRecoveryEntry, MarkRecoveryAnnounced, OperatorEventPublished, OweRecoveryEntry, OwedRecoveryEntry, PublishOperatorEvent, PublishOwedRecoveryEntry, RaiseOperatorEvent, TryClaimRecoveryAnnouncement, _clock, _currentOperationSnapshot, _executor, _expectedActionWait, _logger, _operationAttemptGate, _operationAttempts, _operatorEventDeduplicator, _owedRecoveryEntry, _recoveryAnnouncedAttemptId
+  reached through: ExchangeOwedRecoveryEntry, ForgetOwedRecoveryEntry, MarkRecoveryAnnounced, NextOwed, OperatorEventPublished, OweRecoveryEntry, OwedRecoveryEntry, PublishOperatorEvent, PublishOwedRecoveryEntry, RaiseOperatorEvent, TryClaimRecoveryAnnouncement, _clock, _currentOperationSnapshot, _executor, _expectedActionWait, _logger, _operationAttemptGate, _operationAttempts, _operatorEventDeduplicator, _owedRecoveryEntry, _recoveryAnnouncedAttemptId
 **Do not just add a new one to the list.** First answer: can a value handed to it outlive the process? _executor and _vectorExecutor write the journal, _session writes the outbox and the server can replay it -- any of those carrying a mark is onboard-hmi#109 after the next restart. **Do not hand the mark, or the work that touches it, to another member of this class to get past this check**: a member of this class named in code -- bare, after this. or after the class name -- is followed into, and that is the shape this check exists to catch. Handing it on through an event, another type, or a call on another instance of this class is not followed -- that would be a leak this check misses, not a fix. Keep journal and outbox work in members that never hold a mark. A field that is gone: remove its line.
   Stack Trace:
      at SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.MembersThatTouchAMarkReachOnlyTheirListedFields() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryMarkerPersistenceArchitectureTests.cs:line 497
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
 
-Failed!  - Failed:     1, Passed:     8, Skipped:     0, Total:     9, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     1, Passed:     8, Skipped:     0, Total:     9, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)

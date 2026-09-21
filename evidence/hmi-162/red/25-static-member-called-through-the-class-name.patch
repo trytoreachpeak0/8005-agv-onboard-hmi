@@ -1,0 +1,22 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index a653a8f..f1a0d05 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -1163,6 +1163,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+     /// before moving these two statements past each other.
+     /// </para>
+     /// </remarks>
++    private static void ArchiveMark(WireToGateBusinessService service, string attemptId) =>
++        _ = service._executor.MarkResultRecordedAsync(attemptId, CancellationToken.None);
++
+     private void ReleaseInFlightAttempt(string attemptId)
+     {
+         lock (_operationAttemptGate)
+@@ -1242,6 +1245,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+ 
+             owed = _owedRecoveryEntry;
+             _ = ExchangeOwedRecoveryEntry(null);
++            WireToGateBusinessService.ArchiveMark(this, owed.Context.SlotOperationAttemptId);
+             if (!string.Equals(
+                 _recoveryAnnouncedAttemptId,
+                 owed.Context.SlotOperationAttemptId,
