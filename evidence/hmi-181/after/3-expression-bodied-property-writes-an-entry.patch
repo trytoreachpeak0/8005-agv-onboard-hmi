@@ -1,0 +1,14 @@
+diff --git a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+index 59aa538..ff7a7c5 100644
+--- a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
++++ b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+@@ -589,6 +589,9 @@ public sealed class MainViewModel : ViewModelBase
+         _controller.RefreshExternalSafetyState();
+     }
+ 
++    private bool ReopenCompensation =>
++        CanRequestLoadCompensation = true;
++
+     private void RefreshWireToGateInputStateCore()
+     {
+         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? CanSubmit;
