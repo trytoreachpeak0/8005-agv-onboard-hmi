@@ -534,12 +534,6 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             return CreateRejectedResult(command, initial, started, physicallyUnknown);
         }
 
-        string? precheckFailure = ValidateBeforeOperation(initial, command, command.Slots);
-        if (precheckFailure is not null)
-        {
-            return CreateRejectedResult(command, initial, started);
-        }
-
         // A new operation starts from a clean journal, except for the device facts that outlive
         // every operation.
         WireToGateRecoveryState fresh = WireToGateRecoveryState.Empty with
@@ -548,6 +542,35 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         };
         WireToGateRecoveryOperationContext context =
             WireToGateRecoveryOperationContext.FromCommand(command);
+
+        string? precheckFailure = ValidateBeforeOperation(initial, command, command.Slots);
+        if (precheckFailure == "SLOT_OPERATION_CONFLICT")
+        {
+            // Every target is known, locked and reset -- ValidateBeforeOperation checks that of all of
+            // them before it looks at occupancy, so a conflict is only ever reported over safe slots --
+            // and one of them already holds what the command expects to find absent (or the reverse).
+            // Nothing was opened, yet the demand cannot go on: the server puts it into RecoveryRequired,
+            // and the recovery entries have to find this attempt to get the cargo out
+            // (8005-agv-onboard-hmi#172). Journaled as the operation's own, at the safe finish, which is
+            // the shape every other unsettled FAILED leaves behind; the result itself is the refusal's.
+            WireToGateOperationExecutionResult conflict = CreateRejectedResult(command, initial, started);
+            await WriteCheckpointAsync(
+                context,
+                WireToGateRecoveryCheckpoint.SafeFinishReached,
+                [],
+                [],
+                conflict.SlotResults,
+                fresh,
+                cancellationToken).ConfigureAwait(false);
+            return conflict with { JournalCheckpoint = "SAFE_FINISH_REACHED" };
+        }
+
+        if (precheckFailure is not null)
+        {
+            // Some target is not safe to call finished -- unknown, open or its unlock output not
+            // reset. No safe finish is claimed and nothing is journaled, as before.
+            return CreateRejectedResult(command, initial, started);
+        }
         List<int> completed = [];
         List<WireToGateSlotExecutionResult> results = [];
         await WriteCheckpointAsync(
@@ -601,7 +624,22 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         foreach (int physicalSlot in command.Slots)
         {
             LockerSnapshot locker = snapshot.GetLocker(physicalSlot - 1);
-            if (IsFinalState(locker, command.ExpectedOccupied))
+            // Only a slot this attempt opened can have been brought to its final state by it. One never
+            // opened that already reads final was that way before the command came: for a load, cargo
+            // nobody put there under this attempt. Calling it COMPLETED reported a load that never
+            // happened (8005-agv-onboard-hmi#172); it stays in the remaining set, where the precheck
+            // below refuses it as SLOT_OPERATION_CONFLICT.
+            //
+            // Wider than SettleInterruptedExclusiveAsync's test by the third clause: the slot that
+            // failed mid-execution and still reached a safe finish is journaled with an empty active
+            // set, outside the completed ones, and with an UNKNOWN result. It was opened, and an
+            // operator who finished that load before asking for the resume must see it counted.
+            bool opened = state.ActiveUnlockSlots.Contains(physicalSlot)
+                || state.CompletedSlots.Contains(physicalSlot)
+                || state.SlotResults.Any(result =>
+                    result.SlotNo == physicalSlot
+                    && !string.Equals(result.Outcome, "NOT_STARTED", StringComparison.Ordinal));
+            if (opened && IsFinalState(locker, command.ExpectedOccupied))
             {
                 completed.Add(physicalSlot);
                 UpsertResult(results, CreateSlotResult(locker, "COMPLETED", []));
@@ -1064,6 +1102,10 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             return "SLOT_STATE_UNKNOWN";
         }
 
+        // Two passes, safety of every slot first and occupancy second. The executor journals a
+        // SLOT_OPERATION_CONFLICT as a safe finish (8005-agv-onboard-hmi#172), which is only true when
+        // no slot has a safety problem; one pass stopping at the first problem reported a conflict on
+        // slot 1 over an unreset unlock output on slot 2.
         foreach (int physicalSlot in physicalSlots)
         {
             LockerSnapshot locker = snapshot.GetLocker(physicalSlot - 1);
@@ -1081,7 +1123,11 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             {
                 return "LOCK_NOT_CLOSED";
             }
+        }
 
+        foreach (int physicalSlot in physicalSlots)
+        {
+            LockerSnapshot locker = snapshot.GetLocker(physicalSlot - 1);
             if (locker.HasCargo == command.ExpectedOccupied)
             {
                 // Both occupancy mismatches are one protocol-level conflict:
