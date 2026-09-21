@@ -1,0 +1,67 @@
+# onboard-hmi#181 红绿证据
+
+hmi#176 的恢复入口写入守卫（`tests/SQCD.Agv.UnitTests/RecoveryEntryWriteSiteArchitectureTests.cs`）守的是：九个恢复入口属性
+只能经两种写法写入——右边整个是一次 `AllowRecoveryEntry(...)`，或者落在同一个成员里一道有效的
+`RecoveryEntriesBlockedByFatalFault` early return 之后。第三条写入路径出现就红，因为严重安全故障锁存期间那条路径会把入口放回来，
+而其中三个入口按下去会真的开仓门。
+
+那道守卫逐行用正则读 `MainViewModel.cs`：按「行里第一个 `//`」剥注释，按缩进四格的 `}`／`;` 切成员，逐行找写入。hmi#162 的五轮审查
+证实这种读法会一再漏掉跨行、字符串里的 `//`、表达式体成员等写法，最后在测试里建了一个最小 C# 词法层才收住。本票把那层抽成两个守卫
+共用的 `tests/SQCD.Agv.UnitTests/CSharpSourceLexer.cs`，让 #176 的守卫改用它。
+
+## 改了什么
+
+- **共用辅助，不复制**：`CSharpSourceLexer`（词法层 `Lex`、成员切分 `MemberSpans`、成员名 `NameOf`、续行记号正则）从
+  `RecoveryMarkerPersistenceArchitectureTests.cs` 原样挪出，那个文件净删 469 行、改为引用它。hmi#162 的九条守卫全绿。
+- **#176 的守卫改用它**：去注释改用词法层的代码视图（注释与字面量抹成等长空白，行号不变），成员切分改用 `MemberSpans`。
+- **跨行不是一条新规则**：票面要求「不追加新的禁用写法清单，统一判据」。原有的写入形状（简单／复合赋值、解构、`ref`／`out`）
+  不再逐行匹配，改为对整个成员的代码文本匹配，正则里的 `\s*` 本来就跨得过换行；命中位置再折回行号。写入点仍按（行，入口）去重，
+  所以真实源码上的写入点条数（25）与写入成员（三个）都没变。
+- **守卫块内「只许写 false」的计数延伸到语句的 `;`**：原来按整行数，`CanX` 换行 `= true;` 写在守卫块里会数出 0 次写、
+  0 次 false，两边相等而判合规。
+- **扫描器自检加两项**：视图模型里每个成员都切得出名字，且没有成员以续行记号开头（hmi#162 第四轮复审：深度与命名两项拦不住深度 1 上的错切）。
+- **合成反例补四种**：跨行赋值、字符串里的 `//`、换行的表达式体属性、守卫块里跨行打开入口；另补一例合规（守卫块里跨行写 false）。
+
+产品代码没有改。
+
+## 票面第 2 项的三种写法：修前与修后
+
+在真实 `MainViewModel.cs` 上注入，跑 `RecoveryEntryWriteSiteArchitectureTests`（5 条）。预期都在跑之前写进每份 `.txt` 开头；
+`.patch` 对当时的 HEAD 生成并通过 `git apply --check`；每次注入后按字节备份还原，blob 与 HEAD 一致。`before/` 在基分支 `4cd715e`
+上跑，`after/` 在 `b05a758` 上跑，两者之间 `MainViewModel.cs` 没有变，所以两组 patch 相同。
+
+| 写法 | 修前（`before/`） | 修后（`after/`） |
+| --- | --- | --- |
+| 1 跨行赋值：新方法里 `CanRequestLoadCompensation` 换行 `= true;` | **5 条全绿**：两行各自都不像一次写，条数不变，连「扫描器还睁着眼」也不响 | 红 2 条：写入守卫 + 扫描器自检（条数 26、多出写入成员 `ReopenCompensation`） |
+| 2 字符串里的 `//`：`string link = "onboard://recovery"; CanRequestLoadCompensation = link.Length > 0;` | **5 条全绿**：后半行连同写入被当成注释剥掉 | 红 2 条，同上 |
+| 3 表达式体属性写入：`private bool ReopenCompensation =>` 换行 `CanRequestLoadCompensation = true;` | **已经红 2 条**：违规写入被记在并进去的 `RefreshWireToGateInputStateCore` 名下 | 红 2 条，违规写入记在 `ReopenCompensation` 自己名下 |
+
+**第 3 种与票面前提不符。** 票面说三种在当前守卫下都为绿；实测第 3 种修前就是红的。我试了三种放法（写入成员前、写入成员后、单行），
+都红。原因是 #176 的守卫没有闭包，逐个写入点判定：表达式体成员切错、并进相邻成员，写入仍落在某个成员里，既不是 `AllowRecoveryEntry`
+包着的写，也不在守卫之后，于是判违规。hmi#162 那边的同名问题是错切让闭包跟不进无名成员，前提不同。修后它的变化只在成员名上。
+这一条已报调度，由调度决定完成标准怎么写。
+
+## self/：守卫自身的反向验证
+
+| 文件 | 退回的修改 | 预期（事先写下） | 实际 |
+| --- | --- | --- | --- |
+| `S1-guard-block-count-back-to-one-line` | 守卫块内的计数退回只数写入点那一行 | 只有合成自检红，红在「守卫块里跨行把入口打开」那一例（期望 1 条违规、实得 0 条） | 一致，失败行指向那一例；编译 `0 Error(s)` |
+
+第一次跑这个探针时脚本经 heredoc 写入，`\\n` 被吃成 `\n`，C# 里出现了真换行，编译 13 个错误，而测试照样报「5 条全过」——跑的是旧二进制。
+那次结果作废，改用文件写脚本、编译不过就停，重跑得到上表。
+
+## green/
+
+- `unit-tests.txt` —— `dotnet test tests/SQCD.Agv.UnitTests -c Release`，**514 通过、0 失败**。本票没有新增 `[Fact]`（新断言都加在已有测试里）；
+  比 hmi#162 合入时的 513 多出的一条来自先合入的 #180。
+- `dotnet-format-verify.txt` —— `exit=0`。
+
+## 这道守卫仍然看不见的写法（登记在 `GuardLimits`）
+
+- 经反射或 XAML 双向绑定写入；在别的文件里写（今天九个属性都是 `private set`、类不是 partial，那是状态不是保证）。
+- 写另一个实例的入口（`other.CanX = true`）：写入形状排除了点号前缀。
+- 守卫之后把写入放进 lambda 或本地函数延迟执行：判合规（合成例按当前结果钉着）。「early return 之后」按行号与缩进近似，不是控制流分析。
+- 九个之外的新入口。
+- 词法层自己的限度：同一行两个成员共用这一行；用转义写的标识符认不出；原始字符串拒读（大声失败）。
+
+这是防回归护栏，不是证明：它认的是已经想到的写法形状。第二轮复审仍有绕法就停下，统一判据并收窄声称，不继续加禁用写法（票面「不做」）。

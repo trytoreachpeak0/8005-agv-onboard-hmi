@@ -1,0 +1,60 @@
+commit: 4cd715ee64539317b108f282d34578a745f4cb53（注入前 MainViewModel.cs blob 59aa538c36f749458bb47379076259e169afe433，src/tests 与 HEAD 一致）
+注入: 见同名 .patch（对 HEAD 生成，已用 git apply --check 验证）
+预期（事先写下）: EveryWriteToARecoveryEntryInTheViewModelIsGuarded 红、TheScannerStillSeesTheRealWriteSites 红（条数 26）。旧守卫没有闭包，写入点只要落在任一成员里、不是 Wrapped 也不在守卫之后就判违规；成员切错不影响这一点。**票面前提「当前为绿」不成立**，已报调度。
+命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~RecoveryEntryWriteSiteArchitectureTests"（测试读源码文本；测试程序集先以 0 Error(s) 编过）
+限度: --filter 单类，结论的范围是这个测试类之内
+
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi181-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:03.14]     SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites [FAIL]
+[xUnit.net 00:00:03.16]     SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded [FAIL]
+  Failed SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites [1 s]
+  Error Message:
+   扫描器在 src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs 里找到 26 个恢复入口写入点（setter 以外），登记的是 25 个。**先别改这个数。**
+少了：多半是扫描器瞎了（改名、改格式、正则失配），修扫描器，不是改数。
+多了：先回答三个问题——多出来的是哪个成员里的哪一行；锁存期间它写进去的是什么；它凭什么挡得住锁存（经 AllowRecoveryEntry，还是在方法体顶层一道无条件的 early return 之后）。EveryWriteToARecoveryEntryInTheViewModelIsGuarded 判它合规不等于它真有闸门，那条守卫的盲区列在 GuardLimits 里。
+逐行读过、确认它挡得住之后，才改 ExpectedWriteSiteCount，并在提交说明里写下是哪一行。
+  593  RefreshWireToGateInputStateCore  Unguarded  CanRequestLoadCompensation = true;
+  604  RefreshWireToGateInputStateCore  Wrapped  CanRequestWireToGateRecovery = AllowRecoveryEntry(_wireToGateCanRequestRecovery?.Invoke() == true);
+  605  RefreshWireToGateInputStateCore  Wrapped  CanRequestLoadCancellation = AllowRecoveryEntry(_wireToGateCanRequestLoadCancellation?.Invoke() == true);
+  606  RefreshWireToGateInputStateCore  Wrapped  CanRequestLoadCompensation = AllowRecoveryEntry(_wireToGateCanRequestLoadCompensation?.Invoke() == true);
+  607  RefreshWireToGateInputStateCore  Wrapped  CanRequestLoadCorrection = AllowRecoveryEntry(_wireToGateCanRequestLoadCorrection?.Invoke() == true);
+  608  RefreshWireToGateInputStateCore  Wrapped  CanRequestFaultCargoHandoff = AllowRecoveryEntry(_wireToGateCanRequestFaultCargoHandoff?.Invoke() == true);
+  609  RefreshWireToGateInputStateCore  Wrapped  CanRequestForcedMechanicalRecovery = AllowRecoveryEntry(_wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true);
+  611  RefreshWireToGateInputStateCore  Wrapped  CanRequestManualChargingReturn = AllowRecoveryEntry(_wireToGateCanRequestManualChargingReturn?.Invoke() == true);
+  1645  ApplyWireToGatePresentationCore  UnderGuard  CanRequestWireToGateRecovery = false;
+  1646  ApplyWireToGatePresentationCore  UnderGuard  CanRequestLoadCancellation = false;
+  1647  ApplyWireToGatePresentationCore  UnderGuard  CanRequestLoadCompensation = false;
+  1648  ApplyWireToGatePresentationCore  UnderGuard  CanRequestLoadCorrection = false;
+  1649  ApplyWireToGatePresentationCore  UnderGuard  CanRequestFaultCargoHandoff = false;
+  1650  ApplyWireToGatePresentationCore  UnderGuard  CanRequestForcedMechanicalRecovery = false;
+  1651  ApplyWireToGatePresentationCore  UnderGuard  CanRequestManualChargingReturn = false;
+  1652  ApplyWireToGatePresentationCore  UnderGuard  CanConfirmForcedMechanicalRecovery = false;
+  1653  ApplyWireToGatePresentationCore  UnderGuard  CanSubmitHardwareRecoveryRecord = false;
+  1684  ApplyWireToGatePresentationCore  UnderGuard  CanRequestWireToGateRecovery = _wireToGateCanRequestRecovery?.Invoke() == true && _wireToGateOperation?.Stage == WireToGateHmiOperationStage.RecoveryRequired;
+  1686  ApplyWireToGatePresentationCore  UnderGuard  CanRequestLoadCancellation = _wireToGateCanRequestLoadCancellation?.Invoke() == true;
+  1687  ApplyWireToGatePresentationCore  UnderGuard  CanRequestLoadCompensation = _wireToGateCanRequestLoadCompensation?.Invoke() == true;
+  1688  ApplyWireToGatePresentationCore  UnderGuard  CanRequestLoadCorrection = _wireToGateCanRequestLoadCorrection?.Invoke() == true;
+  1689  ApplyWireToGatePresentationCore  UnderGuard  CanRequestFaultCargoHandoff = _wireToGateCanRequestFaultCargoHandoff?.Invoke() == true;
+  1690  ApplyWireToGatePresentationCore  UnderGuard  CanRequestForcedMechanicalRecovery = _wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true;
+  1691  ApplyWireToGatePresentationCore  UnderGuard  CanRequestManualChargingReturn = _wireToGateCanRequestManualChargingReturn?.Invoke() == true;
+  1700  RefreshForcedIsolationCore  Wrapped  CanConfirmForcedMechanicalRecovery = AllowRecoveryEntry(_wireToGateCanConfirmForcedMechanicalRecovery?.Invoke() == true);
+  1702  RefreshForcedIsolationCore  Wrapped  CanSubmitHardwareRecoveryRecord = AllowRecoveryEntry(_wireToGateCanSubmitHardwareRecoveryRecord?.Invoke() == true);
+  Stack Trace:
+     at SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi181-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryEntryWriteSiteArchitectureTests.cs:line 261
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Failed SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded [26 ms]
+  Error Message:
+   这些地方写了恢复入口，却既没经 AllowRecoveryEntry、也不在一道有效的 RecoveryEntriesBlockedByFatalFault early return 之后：
+  src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs:593  RefreshWireToGateInputStateCore  CanRequestLoadCompensation    CanRequestLoadCompensation = true;
+严重安全故障锁存着的时候，这条路径会把入口放回来，而其中三个按下去会真的开仓门。要么把右边包进 AllowRecoveryEntry，要么在这个成员开头加上那道 early return。
+  Stack Trace:
+     at SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi181-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryEntryWriteSiteArchitectureTests.cs:line 224
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+
+Failed!  - Failed:     2, Passed:     3, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)

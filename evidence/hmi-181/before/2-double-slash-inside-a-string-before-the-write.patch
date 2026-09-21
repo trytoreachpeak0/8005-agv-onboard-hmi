@@ -1,0 +1,16 @@
+diff --git a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+index 59aa538..c902dbb 100644
+--- a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
++++ b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+@@ -567,6 +567,11 @@ public sealed class MainViewModel : ViewModelBase
+ 
+     internal void RefreshWireToGateInputState() => RunOnUiThread(RefreshWireToGateInputStateCore);
+ 
++    private void ReopenCompensation()
++    {
++        string link = "onboard://recovery"; CanRequestLoadCompensation = link.Length > 0;
++    }
++
+     /// <summary>
+     /// 车辆停稳信号一变，入口、横幅与控制器提示一起重算（8005-agv-onboard-hmi#177）。
+     /// </summary>
