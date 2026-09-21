@@ -200,9 +200,10 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
     /// settings. Deliberately wide -- a false red in a member that touches a mark costs one look.
     /// </summary>
     /// <remarks>
-    /// <b>Case-insensitive, and that is not cosmetic.</b> The first version matched <c>Journal</c> only with a
-    /// capital: the synthetic leak <c>_journal.WriteRecoveryMarkAsync(...)</c> -- the way a journal field is actually
-    /// named -- passed it. The reverse check caught that before anything else did.
+    /// <b>Case-insensitive.</b> The first version matched <c>Journal</c> only with a capital, and the synthetic leak
+    /// <c>_journal.WriteRecoveryMarkAsync(...)</c> passed it. That synthetic case was itself not this class's idiom --
+    /// there is no <c>_journal</c> field here -- and the real gap was the one review M-2 found: the class writes to
+    /// disk through <c>_executor</c> and <c>_session</c>, which is why <see cref="FieldsMarkMembersMayUse"/> exists.
     /// </remarks>
     private static readonly Regex PersistenceApiRegex = new(
         @"\b\w*(?:Journal|Serializ|Persist|Sqlite|Outbox|AtomicJsonFile|Database)\w*\b"
