@@ -685,8 +685,11 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             expectedSites: 1,
             expectedViolations: 1);
 
-        // 反例：换行的表达式体属性里写入口。第一版就会判它违规（它没有闭包，写入点落在哪个成员都一样判），
-        // 但成员名是并错的；现在它是自己一个成员。
+        // 回归（两边都红）：换行的表达式体属性里写入口。**这一类在本守卫里本来就红**：它没有闭包，逐个写入点判定，
+        // 旧的按缩进切分把这个属性并进相邻成员，写入仍落在某个成员里，既不是 AllowRecoveryEntry 包着的写、也不在
+        // 守卫之后，照样判 Unguarded。hmi#162 那边同名的问题是错切让闭包跟不进无名成员，这里没有闭包，那个失效形状
+        // 不存在（hmi#181 票面前提据此更正）。换用 CSharpSourceLexer 之后变的只是报错里的成员名：从并错的相邻成员
+        // （真实文件上是 RefreshWireToGateInputStateCore）变成它自己的名字。下面断言钉住的正是这个名字。
         WriteSite[] expressionBodied = Scan(ClassBody(
             """
                 private bool ReopenCompensation =>
