@@ -1,0 +1,42 @@
+commit: e6bea2674a54a80ea92f9df8031999d46c77d321 + 本票工作树（注入前 MainViewModel.cs blob 3371bfe29da1a2a76a9fffd4d27fecf1e9e7c786）
+注入: 新加第三个方法 RefreshRecoveryEntriesFromSomewhereElse，直接按业务值写 CanRequestLoadCompensation
+对应: onboard-hmi#176 —— 结构守卫的反向验证（这道守卫在真实源码上真的会红）
+预期: EveryWriteToARecoveryEntryInTheViewModelIsGuarded 红（报出新方法那一行），且 TheScannerStillSeesTheRealWriteSites 红（赋值点 25→26、成员集合多一个）。其余三条不动。
+命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --filter "FullyQualifiedName~RecoveryEntryWriteSiteArchitectureTests"
+限度: --filter 单类，所以「只有这几条红」的范围是这个测试类之内，不是全仓
+注入后 blob: 7e74c4e13e0957e32bea2d09e62a4dc3ce8ae9e3
+
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  SQCD.Agv.Core -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-176-8005-agv-onboard-hmi\src\SQCD.Agv.Core\bin\Release\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Contracts -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-176-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Release\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Application -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-176-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Release\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.RuleMock -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-176-8005-agv-onboard-hmi\tools\SQCD.Agv.RuleMock\bin\Release\net8.0\win-x64\SQCD.Agv.RuleMock.dll
+  SQCD.Agv.AutomationHost -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-176-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Release\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Infrastructure -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-176-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Release\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.UnitTests -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-176-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-176-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:02.12]     SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites [FAIL]
+[xUnit.net 00:00:02.13]     SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded [FAIL]
+  Failed SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites [16 ms]
+  Error Message:
+   扫描器在 src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs 里找到 26 个恢复入口赋值点，登记的是 25 个。少了多半是扫描器瞎了（改名、改格式、正则失配），多了是真的加了写入点——两种都要回到这张表来说明。
+  Stack Trace:
+     at SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-176-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryEntryWriteSiteArchitectureTests.cs:line 175
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Failed SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded [6 ms]
+  Error Message:
+   这些地方写了恢复入口，却既没经 AllowRecoveryEntry、也不在一道有效的 RecoveryEntriesBlockedByFatalFault early return 之后：
+  src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs:1660  RefreshRecoveryEntriesFromSomewhereElse  CanRequestLoadCompensation    CanRequestLoadCompensation = _wireToGateCanRequestLoadCompensation?.Invoke() == true;
+严重安全故障锁存着的时候，这条路径会把入口放回来，而其中三个按下去会真的开仓门。要么把右边包进 AllowRecoveryEntry，要么在这个成员开头加上那道 early return。
+  Stack Trace:
+     at SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-176-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryEntryWriteSiteArchitectureTests.cs:line 148
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+
+Failed!  - Failed:     2, Passed:     3, Skipped:     0, Total:     5, Duration: 229 ms - SQCD.Agv.UnitTests.dll (net8.0)

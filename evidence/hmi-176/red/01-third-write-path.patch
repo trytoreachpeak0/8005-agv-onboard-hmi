@@ -1,0 +1,68 @@
+diff --git a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+index dd6c67c..7e74c4e 100644
+--- a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
++++ b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+@@ -533,16 +533,19 @@ public sealed class MainViewModel : ViewModelBase
+     /// 加 early return（语句式），它的正常分支直接取业务值、不经本方法。语义等价，结构不同。
+     /// </para>
+     /// <para>
+-    /// <b>这九个属性的写入点今天没有结构守卫——见 onboard-hmi#176。</b>
++    /// <b>这九个属性的写入点由 <c>RecoveryEntryWriteSiteArchitectureTests</c> 守着</b>
++    /// （onboard-hmi#176，就是下面这段注释原先说「今天没有」的那道守卫）。
+     /// <c>BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands</c> 断的是行为
+     /// （锁存态下这两条路径走完，九个属性都为 false），**而它成立的前提是「只有这两条路径写这九个
+-    /// 属性」，那个前提今天没有任何东西守着**：新加第三条路径直接赋值，那条测试不会红，因为它只调
+-    /// 这两个已知入口。承担者是 #176。
++    /// 属性」，它自己证明不了这个前提**：新加第三条路径直接赋值，那条测试不会红，因为它只调这两个
++    /// 已知入口。承担那个前提的就是上面那个测试类，两条是互补的。
+     /// </para>
+     /// <para>
+-    /// 写那条守卫的人注意上面第一段：**错误的描述会导致错误的守卫**。只扫 <c>AllowRecoveryEntry(</c>
++    /// 改那道守卫的人注意上面第一段：**错误的描述会导致错误的守卫**。只扫 <c>AllowRecoveryEntry(</c>
+     /// 的出现，会把 early-return 那条判成「没有闸门」；反过来，有人把那个 early return 删掉改成直接
+-    /// 赋值，扫描器完全看不见。
++    /// 赋值，那样的扫描器完全看不见。所以它的判据是两条并列：**赋值点要么右边是
++    /// <c>AllowRecoveryEntry(...)</c>，要么落在同一个成员里一道有效的 early return 之后**，而
++    /// 「有效」的全部内容是那个 <c>return;</c>——少了它，下面的正常分支会把入口原样写回来。
+     /// </para>
+     /// </remarks>
+     private bool AllowRecoveryEntry(bool offeredByBusiness) =>
+@@ -553,8 +556,12 @@ public sealed class MainViewModel : ViewModelBase
+     private void RefreshWireToGateInputStateCore()
+     {
+         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? CanSubmit;
+-        // 九个恢复入口全部经同一道闸门（AllowRecoveryEntry），另一条刷新路径
+-        // ApplyWireToGatePresentationCore 也是。少经一处，锁存期间那个入口就会被这条路径放回来。
++        // 这条路径上的七个恢复入口各自过 AllowRecoveryEntry；另外两个（强制机械取出的确认、硬件恢复
++        // 记录）在下面的 RefreshForcedIsolationCore 里，写法相同。**另一条刷新路径
++        // ApplyWireToGatePresentationCore 用的不是这个方法，是 early return，语义等价、结构不同**
++        // ——共用的是判据 RecoveryEntriesBlockedByFatalFault。少经一处，锁存期间那个入口就会被放回来。
++        // 这九个入口的写入路径由 RecoveryEntryWriteSiteArchitectureTests 守着（onboard-hmi#176）：
++        // 第三条直接赋值的路径出现就红，两种合规写法它都认得。
+         CanRequestWireToGateRecovery = AllowRecoveryEntry(_wireToGateCanRequestRecovery?.Invoke() == true);
+         CanRequestLoadCancellation = AllowRecoveryEntry(_wireToGateCanRequestLoadCancellation?.Invoke() == true);
+         CanRequestLoadCompensation = AllowRecoveryEntry(_wireToGateCanRequestLoadCompensation?.Invoke() == true);
+@@ -1590,7 +1597,10 @@ public sealed class MainViewModel : ViewModelBase
+         // 与另一条刷新路径共用的是判据 RecoveryEntriesBlockedByFatalFault，不是 AllowRecoveryEntry
+         // 那个方法——这里是 early return 的语句式，那边是九行各自调用的函数式，语义等价、结构不同。
+         // 这里仍然 early return，因为锁存时后面那些横幅计算本来就不该跑。
+-        // 这九个属性的写入点没有结构守卫，见 onboard-hmi#176（理由与判据该怎么写，在 AllowRecoveryEntry 上）。
++        // **下面那个 return; 是这一段的判据本身，不是顺手写的**：少了它，控制流会往下走到正常分支，
++        // 紧接着按业务值把九个入口全部写回来，而这个块看起来完全正确。
++        // 这九个属性的写入路径由 RecoveryEntryWriteSiteArchitectureTests 守着（onboard-hmi#176），
++        // 它认的就是「有效的 early return」，删掉那个 return; 会让这一整段判成不合规。
+         if (RecoveryEntriesBlockedByFatalFault)
+         {
+             CanRequestWireToGateRecovery = false;
+@@ -1645,6 +1655,11 @@ public sealed class MainViewModel : ViewModelBase
+         RefreshLoadCorrectionTargetCore();
+     }
+ 
++    private void RefreshRecoveryEntriesFromSomewhereElse()
++    {
++        CanRequestLoadCompensation = _wireToGateCanRequestLoadCompensation?.Invoke() == true;
++    }
++
+     private void RefreshForcedIsolationCore()
+     {
+         CanConfirmForcedMechanicalRecovery =
