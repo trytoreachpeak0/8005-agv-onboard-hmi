@@ -55,8 +55,9 @@ public enum SingleInstanceOutcome
 /// </para>
 /// <para>
 /// <b><see cref="AbandonedMutexException"/> 是「抢到了」。</b>上一个持有者被 Kill 或崩溃时没人释放，内核把
-/// 所有权连同这个异常交给等待者。当成失败的话，一次崩溃就留下一个谁都抢不到的名字，车再也起不来——
-/// 而 L2 与 G3 重启车载端正是先强杀再起。
+/// 所有权连同这个异常交给下一个等待者。当成失败的话，名字就成了谁都抢不到的，车再也起不来。这一支只在还有
+/// <b>别的句柄</b>让对象活着时才走得到（诊断工具、正在等它的进程）：被杀的进程若握着唯一的句柄，对象随它一起
+/// 销毁，下一次启动是新建名字——L2 与 G3 先强杀再起车载端，走的是这一种。
 /// </para>
 /// </remarks>
 public sealed class SingleInstanceGuard : IDisposable
@@ -260,8 +261,8 @@ public sealed class SingleInstanceGuard : IDisposable
         }
         catch (ApplicationException)
         {
-            // 所有权是线程级的，释放的线程不是抢到的那个时释放不了；交给进程退出，内核在最后一个句柄
-            // 关闭时照样放开名字，下一次启动拿到的是 AbandonedMutexException，仍算抢到。
+            // 所有权是线程级的，释放的线程不是抢到的那个时释放不了；交给进程退出。没有别的句柄时对象随之销毁，
+            // 下一次启动新建名字；有别的句柄时下一次拿到 AbandonedMutexException，同样算抢到。
         }
 
         _mutex.Dispose();

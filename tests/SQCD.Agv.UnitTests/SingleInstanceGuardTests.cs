@@ -49,10 +49,15 @@ public sealed class SingleInstanceGuardTests
     [Fact]
     public void AnAbandonedNameIsAcquired()
     {
-        // The previous holder was killed or crashed: nobody released it. Treating that as a failure would leave a
-        // name nobody can take, and the vehicle would never start again (L2 and G3 kill the onboard to restart it).
+        // The previous holder was killed or crashed while another handle kept the object alive (a diagnostic tool, a
+        // process waiting on it): nobody released it, and the next wait gets AbandonedMutexException together with
+        // ownership. Treating that as a failure would leave a name nobody can take.
+        // The keeper handle is what makes this test mean anything: when the holder's handle is the only one, the kernel
+        // destroys the object as it goes, the next start simply creates it afresh, and the abandoned branch is never
+        // reached -- the first version of this test passed with that branch turned into a failure (mutation M2).
         string name = UniqueName();
         using Holder holder = Holder.Hold(name);
+        using Mutex keeper = Mutex.OpenExisting(name);
         holder.ExitWithoutRelease();
 
         Assert.Equal(SingleInstanceOutcome.Acquired, OnAnotherThread(() => SingleInstanceGuard.AcquireByName(name)));
