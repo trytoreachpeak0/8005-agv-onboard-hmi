@@ -63,19 +63,43 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     /// <summary>
     /// The direction the safe-finish claim must not reach. A conflict is journaled as a safe finish
     /// only because the precheck looks at every slot's safety before any slot's occupancy. Slot 1 is the
-    /// conflict and comes first; slot 2 has its unlock output still energised. A precheck that stops at
-    /// the first problem reports the conflict on slot 1 and never reads slot 2 -- and the executor would
-    /// then journal a safe finish over a live unlock output.
+    /// conflict and comes first; slot 2 fails one safety condition. A precheck that stops at the first
+    /// problem reports the conflict on slot 1 and never reads slot 2 -- and the executor would then
+    /// journal a safe finish over a live unlock output, an open door or a slot it cannot read.
     /// </summary>
-    [Fact]
+    /// <remarks>
+    /// One case per condition in the first pass, because each can be moved behind the occupancy check on
+    /// its own: moving only <c>LOCK_NOT_CLOSED</c> left a single-condition version of this test green
+    /// (review of PR #184). "Unknown" has three ways in -- a null unlock output, a null lock feedback, a
+    /// null light curtain. The first two are also refused by the output and lock checks, so only the
+    /// third needs <c>IsKnown</c> itself, and that is the case given here.
+    /// </remarks>
+    [Theory]
+    [InlineData("UNLOCK_OUTPUT_NOT_RESET")]
+    [InlineData("LOCK_NOT_CLOSED")]
+    [InlineData("SLOT_STATE_UNKNOWN")]
     [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
-    public async Task AConflictBesideAnUnsafeSlotClaimsNoSafeFinishAndJournalsNothing()
+    public async Task AConflictBesideAnUnsafeSlotClaimsNoSafeFinishAndJournalsNothing(string unsafeReason)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(token);
         fixture.Io.CloseDoor(0, cargo: true);
-        fixture.Io.CloseDoorWithUnlockOutputStuckActive(1, cargo: false);
+        switch (unsafeReason)
+        {
+            case "UNLOCK_OUTPUT_NOT_RESET":
+                fixture.Io.CloseDoorWithUnlockOutputStuckActive(1, cargo: false);
+                break;
+            case "LOCK_NOT_CLOSED":
+                fixture.Io.OpenDoor(1);
+                break;
+            case "SLOT_STATE_UNKNOWN":
+                fixture.Io.LoseOccupancyReading(1);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(unsafeReason), unsafeReason, null);
+        }
+
         WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true);
 
         WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(command, null, token);
@@ -83,7 +107,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         Assert.Equal("FAILED", result.OverallOutcome);
         Assert.Equal("NONE", result.JournalCheckpoint);
         Assert.Equal(["SLOT_OPERATION_CONFLICT"], result.SlotResults[0].ReasonCodes);
-        Assert.Equal(["UNLOCK_OUTPUT_NOT_RESET"], result.SlotResults[1].ReasonCodes);
+        Assert.Equal([unsafeReason], result.SlotResults[1].ReasonCodes);
         WireToGateRecoveryState state = await fixture.Journal.ReadRecoveryStateAsync(token);
         Assert.Null(state.UnsettledSlotOperationAttemptId);
         Assert.Null(state.OperationContext);
