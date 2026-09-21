@@ -9,7 +9,8 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// </summary>
 /// <remarks>
 /// <para>
-/// 服务端把每一个非完成的装货结果判进 <c>RecoveryRequired</c>，而 <c>AuthorizeLoadCancellationAsync</c> 对
+/// 服务端把非完成的装货结果判进 <c>RecoveryRequired</c>（唯一例外是按 <c>DeterminateLoadFailure</c> 结成 Failed 的确定性失败，
+/// 服务端注释写明 v2 车载端从不报这种结果），而 <c>AuthorizeLoadCancellationAsync</c> 对
 /// <c>RecoveryRequired</c> 的 operation 一律拒绝。修之前车载端只看「日志里有未结算的装货」，于是操作员看到一个按了
 /// 必定失败的按钮（hmi#172 审查探针：冲突之后 <c>cancel=True</c>）。
 /// </para>

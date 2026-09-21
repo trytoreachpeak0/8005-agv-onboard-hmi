@@ -583,7 +583,8 @@ public sealed class MainViewModel : ViewModelBase
     /// <b>「扫码之前那条路径永远不碰 IO」这个前提不由本方法承担。</b>承担它的是构造：服务端对这种取消只授权空仓位集，
     /// 恢复向量执行器按仓位逐个开门、空集就一次不开，其余向量拿到空仓位集会被 <c>ValidateContext</c> 拒绝；请求路径在
     /// 锁存时拒绝走到在途分支（<c>RefuseDoorOpeningCancellationWhileLatched</c>）。钉住它的行为判据是
-    /// <c>FatalFaultLatchViewModelTests</c> 里锁存期间走扫码前取消、断言零次开门那一条。
+    /// <c>LoadCancellationBeforeSublotG2Tests.ALatchedVehicleCanStillCancelBeforeAnySublotAndOpensNoDoor</c>
+    /// （锁存期间走扫码前取消、断言零次开门）；视图模型这一层的开关由 <c>FatalFaultLatchViewModelTests</c> 钉住。
     /// </para>
     /// <para>
     /// 它是一个单独的方法而不是给 <see cref="AllowRecoveryEntry"/> 加参数，是为了让结构守卫

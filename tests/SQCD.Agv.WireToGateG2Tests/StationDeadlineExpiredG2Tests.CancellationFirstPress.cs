@@ -28,6 +28,13 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// 重启之后日志里是一次开过锁、没结算的装货，带着待答取消记录。中断结算对这种状态拒绝（<c>RECOVERY_STATE_MISMATCH</c>），
     /// 不发 UNKNOWN，所以服务端那边仍是在途、会授权；车载端照待答记录自动重发。原先那一版在重启后由另一个操作员再按一次，
     /// 现在重发是自动的——断的仍然是「重发带的是谁的内容」。
+    /// <para>
+    /// <b>这条守得住的是操作员与 <c>verifiedAt</c>，守不住理由。</b>自动重发（<c>ResendUnansweredLoadCancellationAsync</c>）
+    /// 传进去的本来就是待答记录里的理由，所以把 <c>AskForLoadCancellationAsync</c> 里的 <c>pending.Reason</c> 换成这一次的
+    /// <c>reason</c>，这里照样绿（PR #189 审查低项 1）。理由这一项由扫码前的两条
+    /// <c>LoadCancellationBeforeSublotG2Tests.ALostAuthorizationIsAskedForAgainWithTheFirstPressContent*</c> 承担，它们是人再按一次。
+    /// 在途这一侧「重启后由第二个人手动再按一次」这一格，没有单独的用例。
+    /// </para>
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]

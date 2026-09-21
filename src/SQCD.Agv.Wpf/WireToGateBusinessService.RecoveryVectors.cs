@@ -49,7 +49,8 @@ public sealed partial class WireToGateBusinessService
     /// <b>"No door" is carried by construction, not by this property.</b> The server authorizes this case
     /// with an empty slot set, <c>ValidateContext</c> refuses an empty slot set on every other vector, and the
     /// request path refuses the in-flight branch while latched (<see cref="RequestLoadCancellationCoreAsync"/>).
-    /// <c>FatalFaultLatchViewModelTests</c> pins that no unlock goes out on this path during a latch.
+    /// <c>LoadCancellationBeforeSublotG2Tests.ALatchedVehicleCanStillCancelBeforeAnySublotAndOpensNoDoor</c> pins
+    /// that no unlock goes out on this path during a latch.
     /// </para>
     /// </remarks>
     public bool CanRequestLoadCancellationBeforeAnySublot => CanRequestLoadCancellationBeforeSublot();
@@ -307,9 +308,12 @@ public sealed partial class WireToGateBusinessService
             return vector.VectorType == vectorType;
         }
 
-        // Not once the attempt's own non-completed result is on its way: the server puts every such result
-        // into RecoveryRequired, and AuthorizeLoadCancellationAsync refuses an operation in RecoveryRequired,
-        // so the entry would only offer a press that is certain to fail (8005-agv-onboard-hmi#188). The result
+        // Not once the attempt's own non-completed result is on its way: the server puts such a result into
+        // RecoveryRequired, and AuthorizeLoadCancellationAsync refuses an operation in RecoveryRequired, so the
+        // entry would only offer a press that is certain to fail (8005-agv-onboard-hmi#188). The one exception
+        // is a determinate load failure the server settles as Failed (DeterminateLoadFailure), which it would
+        // still authorize; the server notes that the v2 onboard never reports one, and shutting the entry
+        // there errs the safe way. The result
         // is recorded pending before it is sent, so its presence here means the server has it or is about to.
         // A result sent without being recorded -- the journal overwritten by the next command in between --
         // is not seen here; that shape is onboard-hmi#182's.
