@@ -1,0 +1,12 @@
+守卫版本: reviewed，测试文件取自 91f839a（工作树其余与 HEAD 380820925b759fdf1dcc73548c8989494bfed8b1 一致；注入前 MainViewModel.cs blob 59aa538c36f749458bb47379076259e169afe433）
+注入: 见同名 .patch（对 HEAD 生成，已用 git apply --check 验证）
+预期（事先写下）: 5 条全绿，同基分支。
+命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~RecoveryEntryWriteSiteArchitectureTests"（该版本测试程序集先以 0 Error(s) 编过）
+
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi181-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
