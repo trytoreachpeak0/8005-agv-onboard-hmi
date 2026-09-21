@@ -1,6 +1,7 @@
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
+using static SQCD.Agv.UnitTests.CSharpSourceLexer;
 
 namespace SQCD.Agv.UnitTests;
 
@@ -99,33 +100,6 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
         "RefreshForcedIsolationCore",
         "RefreshWireToGateInputStateCore"
     ];
-
-    private static readonly Regex BlockCommentRegex = new(
-        @"/\*.*?\*/",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
-
-    /// <summary>类体里一个块成员的收尾：缩进四格的单独一个 <c>}</c>。</summary>
-    private static readonly Regex MemberBlockEndRegex = new(
-        @"^    \}\s*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    /// <summary>
-    /// 类体里一个表达式体成员或字段声明的收尾：缩进四格、当行以 <c>;</c> 结束。没有它，
-    /// <c>internal void RefreshWireToGateInputState() =&gt; RunOnUiThread(...);</c> 会和它下面那个
-    /// <c>Core</c> 方法并成一段，成员名就取错了。
-    /// </summary>
-    private static readonly Regex MemberExpressionEndRegex = new(
-        @"^    \S.*;\s*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static readonly Regex MemberSignatureRegex = new(
-        @"^    [A-Za-z].*?\b(?<name>\w+)\s*\(",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    /// <summary>属性声明行：缩进四格、没有括号、没有 <c>=</c>、不以 <c>;</c> 结尾，最后一个词是名字。</summary>
-    private static readonly Regex PropertyHeaderRegex = new(
-        @"^    (?:public|private|internal|protected)\b[^(=;]*?\b(?<name>\w+)\s*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
     /// 守卫头，**必须在方法体顶层**：缩进正好 8 格、紧接着就是 <c>if</c>。这就排除了 <c>else if</c>、
@@ -244,6 +218,8 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
     /// 打错会掉到零）、写入成员恰好是那三个（缩进格式一变，成员切分就不准，而那会悄悄改变「同一个成员里」
     /// 这个判据）、**每个入口恰好一个自己的 setter 被认出来**（属性声明行认不出时，九个 setter 会整批变成
     /// 违规或整批消失）、**函数式与语句式两种写法各自都被认出来过**（只认得函数式那种，正是票面点名的那个陷阱）。
+    /// hmi#181 换用 <see cref="CSharpSourceLexer"/> 后再加两项：视图模型里每个成员都切得出名字，且没有一个以续行
+    /// 记号开头（深度与命名两项拦不住深度 1 上的错切，hmi#162 第四轮复审）。
     /// </para>
     /// <para>
     /// <b>条数那一项的报错措辞是判据的一部分。</b> 第三条写入路径出现、而核心守卫恰好落在它的盲区里时
@@ -296,6 +272,21 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
 
         Assert.Contains(writes, site => site.Kind == WriteKind.Wrapped);
         Assert.Contains(writes, site => site.Kind == WriteKind.UnderGuard);
+
+        // 成员切分本身（hmi#181）：每个成员都有名字，且没有一个以续行记号开头。后一项是 hmi#162 第四轮复审的教训：
+        // 深度 1 上切错的成员两半都有名字、深度照样归零，只有「后半截以 || ? : . 开头」这一点露馅。
+        MemberSpan[] spans = MemberSpans(Lex(ReadRepositoryFile(ViewModelPath)));
+        Assert.True(
+            !spans.Any(span => span.Name == Unnamed),
+            $"{ViewModelPath} 里有成员切不出名字，第 "
+            + $"{string.Join(", ", spans.Where(span => span.Name == Unnamed).Select(span => span.Start + 1))} 行。"
+            + "写入点按成员名判「同一个成员里」，名字取不出来这条判据就失准；先让 CSharpSourceLexer 认得这个形状。");
+        MemberSpan[] tails = [.. spans.Where(span => ContinuationStartRegex.IsMatch(span.Text))];
+        Assert.True(
+            tails.Length == 0,
+            $"{ViewModelPath} 里有成员以续行记号开头，第 "
+            + $"{string.Join(", ", tails.Select(span => $"{span.Start + 1}（{span.Name}）"))} 行：那是上一个成员被切断的后半截，"
+            + "它和前半截都不会被当作它本来的那个成员检查。先修 CSharpSourceLexer.MemberSpans。");
     }
 
     /// <summary>
@@ -669,6 +660,81 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             acrossMembers[1].IsGuarded,
             "另一个成员里的赋值被上一个成员的守卫放行了——「同一个成员里」这半个判据没有生效。");
 
+        // ---- hmi#181：逐行读源码看不见的写法。换用 CSharpSourceLexer 之前这三类里前两类全绿 ----
+
+        // 反例：跨行赋值。名字在一行、`= true;` 在下一行，逐行找写入时两行各自都不像一次写。
+        AssertViolates(
+            """
+                private void ReopenCompensation()
+                {
+                    CanRequestLoadCompensation
+                        = true;
+                }
+            """,
+            expectedSites: 1,
+            expectedViolations: 1);
+
+        // 反例：同一行前面有一个含 `//` 的字符串。按「行里第一个 //」剥注释会把后半行连同写入一起剥掉。
+        AssertViolates(
+            """
+                private void ReopenCompensation()
+                {
+                    string link = "onboard://recovery"; CanRequestLoadCompensation = link.Length > 0;
+                }
+            """,
+            expectedSites: 1,
+            expectedViolations: 1);
+
+        // 反例：换行的表达式体属性里写入口。第一版就会判它违规（它没有闭包，写入点落在哪个成员都一样判），
+        // 但成员名是并错的；现在它是自己一个成员。
+        WriteSite[] expressionBodied = Scan(ClassBody(
+            """
+                private bool ReopenCompensation =>
+                    CanRequestLoadCompensation = true;
+
+                private void RefreshWireToGateInputStateCore()
+                {
+                    CanRequestLoadCompensation = AllowRecoveryEntry(_canRequest?.Invoke() == true);
+                }
+            """));
+        Assert.Equal(2, expressionBodied.Length);
+        Assert.Equal("ReopenCompensation", expressionBodied[0].Member);
+        Assert.False(expressionBodied[0].IsGuarded);
+        Assert.Equal("RefreshWireToGateInputStateCore", expressionBodied[1].Member);
+        Assert.True(expressionBodied[1].IsGuarded);
+
+        // 反例：守卫块里跨行把入口打开。块内「只许写 false」按单行数，会数出 0 次写、0 次 false 而判合规；
+        // 计数要延伸到这次写所在语句的 `;`。
+        AssertViolates(
+            """
+                private void ApplyWireToGatePresentationCore()
+                {
+                    if (RecoveryEntriesBlockedByFatalFault)
+                    {
+                        CanRequestLoadCompensation
+                            = true;
+                        return;
+                    }
+                }
+            """,
+            expectedSites: 1,
+            expectedViolations: 1);
+
+        // 合规：守卫块里跨行写 false 仍是合规的，不因为跨行被误判。
+        AssertCompliant(
+            """
+                private void ApplyWireToGatePresentationCore()
+                {
+                    if (RecoveryEntriesBlockedByFatalFault)
+                    {
+                        CanRequestLoadCompensation
+                            = false;
+                        return;
+                    }
+                }
+            """,
+            expectedSites: 1);
+
         // ---- 已知盲区，按当前结果钉住 ----
 
         // 守卫之后把写入放进 lambda 延迟执行：lambda 真正跑的时候，锁存可能已经立起来了，而守卫只在
@@ -702,17 +768,14 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
     [Fact]
     public void TheRegisteredEntriesAreExactlyWhatTheBehaviouralAssertionCovers()
     {
-        string[] lines = StripComments(ReadRepositoryFile(BehaviouralTestPath));
-        int start = Array.FindIndex(lines, line => line.Contains(BehaviouralTestName, StringComparison.Ordinal));
+        Lexed lexed = Lex(ReadRepositoryFile(BehaviouralTestPath));
+        MemberSpan[] spans = [.. MemberSpans(lexed).Where(span => span.Name == BehaviouralTestName)];
         Assert.True(
-            start >= 0,
-            $"{BehaviouralTestPath} 里找不到 {BehaviouralTestName}。本文件承担的正是那条测试的前提，"
+            spans.Length == 1,
+            $"{BehaviouralTestPath} 里找到 {spans.Length} 个 {BehaviouralTestName}。本文件承担的正是那条测试的前提，"
             + "它改名或被删掉，这里要先知道——别把这一条改成找得到就行。");
 
-        int end = Array.FindIndex(lines, start, line => MemberBlockEndRegex.IsMatch(line));
-        Assert.True(end > start, $"{BehaviouralTestName} 的方法体没有正常结束——扫描器自己瞎了。");
-
-        string[] asserted = lines[start..(end + 1)]
+        string[] asserted = lexed.Code[spans[0].Start..(spans[0].End + 1)]
             .SelectMany(line => Regex.Matches(line, @"Assert\.False\(viewModel\.(?<name>\w+)\)")
                 .Select(match => match.Groups["name"].Value))
             .Distinct(StringComparer.Ordinal)
@@ -864,10 +927,12 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             + "return 要在守卫块第一层，这挡住了嵌套 if、else if、lambda 里的守卫、内层 return、不带花括号的假守卫"
             + "（审查中等 2 的五种变异，合成反例都在）；但**守卫之后把写入放进 lambda 或本地函数延迟执行，它判合规**"
             + "（合成例最后一条按当前结果钉着），格式没经过 dotnet format 时缩进近似也会失准。"
-            + "写入的形状认得简单与复合赋值、解构赋值、以 ref／out 传出 backing field（审查中等 1）；"
+            + "写入的形状认得简单与复合赋值、解构赋值、以 ref／out 传出 backing field（审查中等 1），"
+            + "hmi#181 起按成员的代码文本匹配、经 CSharpSourceLexer 读（字符串里的 `//` 不再截断一行，跨行赋值认得出）。"
             + "它看不见的写法：经反射或 XAML 双向绑定写入、在别的文件里写（今天九个属性都是 private set 且类不是 partial，"
-            + "所以别的文件写不进来——那是今天的状态，不是这条守卫保证的）；赋值行里有字符串字面量含 `//` 时"
-            + "剥注释会截断那一行；以及九个之外的新入口。"),
+            + "所以别的文件写不进来——那是今天的状态，不是这条守卫保证的）；写另一个实例的入口（`other.CanX = true`，"
+            + "形状里排除了点号前缀）；九个之外的新入口。词法层自己的限度：同一行两个成员共用这一行、用转义写的标识符"
+            + "认不出、原始字符串拒读（大声失败）。"),
         new(
             "RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites",
             GuardKind.SelfCheck,
@@ -878,7 +943,8 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
         new(
             "RecoveryEntryWriteSiteArchitectureTests.TheGuardTellsAThirdWritePathFromACompliantOne",
             GuardKind.SelfCheck,
-            "合成反例覆盖的是**已经想到的**错法（第一版的七种、审查补的十一种），想不到的不在里面；这条测试的价值上限"
+            "合成反例覆盖的是**已经想到的**错法（第一版的七种、审查补的十一种、hmi#181 补的逐行读法看不见的四种），"
+            + "想不到的不在里面；这条测试的价值上限"
             + "就是那份清单。最后一例是按当前结果钉住的已知盲区（守卫后的 lambda 延迟写入被判合规），它失败时说明扫描器"
             + "变强了，不是变坏了。"),
         new(
@@ -919,9 +985,6 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
     /// <summary>一道有效的 early return：守卫头所在行，与它管住的那一块的最后一行。</summary>
     private sealed record EarlyReturn(int Header, int BlockEnd);
 
-    /// <summary>类体里被 <see cref="MemberBlockEndRegex"/>／<see cref="MemberExpressionEndRegex"/> 切出来的一段。</summary>
-    private sealed record MemberSpan(string Name, int Start, int End);
-
     private static WriteSite[] ScanViewModel() => Scan(ReadRepositoryFile(ViewModelPath));
 
     /// <summary>
@@ -929,48 +992,101 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
     /// 写成纯函数是为了让 <see cref="TheGuardTellsAThirdWritePathFromACompliantOne"/> 能直接喂合成源码——
     /// hmi#171 那批守卫做不到双向自检，正是因为它们的判据和「去磁盘上读 src 目录」焊在一起。
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>源码经 <see cref="CSharpSourceLexer"/> 读（hmi#181）。</b>第一版逐行用正则近似 C#：按「行里第一个
+    /// <c>//</c>」剥注释，于是 <c>"onboard://x"; CanX = true;</c> 的写入连同后半行一起被剥掉；按缩进四格的
+    /// <c>}</c>／<c>;</c> 切成员，于是换行的表达式体成员并进相邻成员、名字取错；逐行找写入，于是名字在一行、
+    /// <c>= true;</c> 在下一行的赋值两行都不像一次写。现在注释与字面量由词法层抹成等长空白（行号不变），成员由
+    /// <see cref="CSharpSourceLexer.MemberSpans"/> 切。
+    /// </para>
+    /// <para>
+    /// <b>跨行不是一条新规则，是同一组写法换了一个读的范围。</b>写入形状（<see cref="WriteRegexes"/>）不再逐行匹配，
+    /// 而是对整个成员的代码文本匹配，<c>\s*</c> 本来就跨得过换行；命中位置再折回行号。写入点仍按（行，入口）去重，
+    /// 行号取入口名字所在的那一行，所以真实源码上的条数口径不变。票面要的是「统一判据，不追加禁用写法清单」。
+    /// </para>
+    /// </remarks>
     private static WriteSite[] Scan(string source)
     {
-        string[] lines = StripComments(source);
+        Lexed lexed = Lex(source);
+        string[] lines = lexed.Code;
         List<WriteSite> sites = [];
-        foreach (MemberSpan member in SplitIntoMembers(lines))
+        foreach (MemberSpan member in MemberSpans(lexed))
         {
             EarlyReturn[] guards = FindFatalFaultEarlyReturns(lines, member);
-            for (int index = member.Start; index <= member.End; index++)
+            string text = string.Join('\n', lines[member.Start..(member.End + 1)]);
+            int[] lineStarts = LineStarts(text);
+            foreach (RecoveryEntry entry in RecoveryEntries)
             {
-                foreach (RecoveryEntry entry in RecoveryEntries)
+                // 这个入口的每一次写，按它名字所在的行归并；同一行上最后一次写决定计数文本延伸到哪个 `;`，
+                // 这样那一行上的每一次写都在里面——与第一版「整行计数」同一个口径，只是能跨到下一行。
+                SortedDictionary<int, int> lastEndByLine = [];
+                foreach (Match match in WriteRegexes[entry.Property].Concat(WriteRegexes[entry.BackingField])
+                    .SelectMany(regex => regex.Matches(text)))
                 {
-                    if (!WritesTo(lines[index], entry))
-                    {
-                        continue;
-                    }
+                    int line = LineOf(lineStarts, match.Index + NameOffset(match.Value, entry));
+                    int end = match.Index + match.Length;
+                    lastEndByLine[line] = Math.Max(lastEndByLine.GetValueOrDefault(line), end);
+                }
 
+                foreach ((int line, int lastEnd) in lastEndByLine)
+                {
+                    int index = member.Start + line;
                     string statement = ReadStatement(lines, index, member.End);
+                    int statementEnd = text.IndexOf(';', lastEnd);
+                    string written = text[lineStarts[line]..(statementEnd < 0 ? text.Length : statementEnd + 1)];
                     sites.Add(new WriteSite(
                         index + 1,
                         entry.Property,
                         member.Name,
                         statement,
-                        Classify(entry, member, lines[index], statement, index, guards)));
+                        Classify(entry, member, written, statement, index, guards)));
                 }
             }
         }
 
-        return [.. sites];
+        return [.. sites.OrderBy(site => site.Line).ThenBy(site => site.Entry, StringComparer.Ordinal)];
     }
 
-    private static bool WritesTo(string line, RecoveryEntry entry) =>
-        WriteRegexes[entry.Property].Any(regex => regex.IsMatch(line))
-        || WriteRegexes[entry.BackingField].Any(regex => regex.IsMatch(line));
+    /// <summary>Where the entry's own name starts inside a write match (a deconstruction match starts at its <c>(</c>).</summary>
+    private static int NameOffset(string matched, RecoveryEntry entry)
+    {
+        Match name = Regex.Match(
+            matched,
+            $@"(?<![\w.])(?:{Regex.Escape(entry.Property)}|{Regex.Escape(entry.BackingField)})\b",
+            RegexOptions.CultureInvariant);
+        return name.Success ? name.Index : 0;
+    }
+
+    private static int[] LineStarts(string text)
+    {
+        List<int> starts = [0];
+        for (int index = 0; index < text.Length; index++)
+        {
+            if (text[index] == '\n')
+            {
+                starts.Add(index + 1);
+            }
+        }
+
+        return [.. starts];
+    }
+
+    private static int LineOf(int[] lineStarts, int position)
+    {
+        int found = Array.BinarySearch(lineStarts, position);
+        return found >= 0 ? found : ~found - 1;
+    }
 
     /// <summary>
     /// 一个写入点属于哪一类。顺序有意义：先认 setter 本身，再认函数式，最后才看守卫——
     /// 守卫块内的写入只许是 <c>= false;</c>，块后的写入才被那道 early return 保护。
     /// </summary>
+    /// <param name="written">从写入点所在行的行首，到这一行上最后一次写所在语句的 <c>;</c>（可跨行）。</param>
     private static WriteKind Classify(
         RecoveryEntry entry,
         MemberSpan member,
-        string line,
+        string written,
         string statement,
         int index,
         EarlyReturn[] guards)
@@ -993,9 +1109,11 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
 
         // 守卫块之内：唯一合规的写法是把它关掉。`CanX = true; return;` 同样是一道 early return，
         // 而它恰好把入口打开了。这一行里每一次写都得是 `= false;`，ref／解构这类写法一概不算。
+        // 「这一行」延伸到最后一次写所在语句的 `;`：`CanX` 换行 `= true;` 写在守卫块里，按单行数会数出 0 次写、
+        // 0 次 false，两边相等而判合规（hmi#181）。
         if (Array.Exists(guards, guard => guard.Header <= index && index <= guard.BlockEnd)
-            && CountWrites(line, entry) == FalseRegexes[entry.Property].Matches(line).Count
-                + FalseRegexes[entry.BackingField].Matches(line).Count)
+            && CountWrites(written, entry) == FalseRegexes[entry.Property].Matches(written).Count
+                + FalseRegexes[entry.BackingField].Matches(written).Count)
         {
             return WriteKind.UnderGuard;
         }
@@ -1037,68 +1155,6 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
         }
 
         return false;
-    }
-
-    /// <summary>
-    /// 剥掉注释，行号不变。**块注释先剥**：hmi#171 那批守卫只剥行注释，于是一段 <c>/* */</c> 里
-    /// 调用形状的文字会被当成代码读——那是反过来的假绿，而这里两种都剥，于是把守卫藏进任何一种注释都会红。
-    /// </summary>
-    private static string[] StripComments(string source)
-    {
-        string normalised = source.Replace("\r\n", "\n", StringComparison.Ordinal);
-        string withoutBlocks = BlockCommentRegex.Replace(
-            normalised,
-            match => new string('\n', match.Value.Count(character => character == '\n')));
-        return [.. withoutBlocks.Split('\n').Select(line => line.Split("//", 2)[0])];
-    }
-
-    /// <summary>
-    /// 把类体切成成员。**「同一个成员里」是判据的一部分**，所以这个切分的准确性由
-    /// <see cref="TheScannerStillSeesTheRealWriteSites"/> 的成员集合断言盯着：格式一变它就会红。
-    /// </summary>
-    private static MemberSpan[] SplitIntoMembers(string[] lines)
-    {
-        List<MemberSpan> members = [];
-        int start = 0;
-        for (int index = 0; index < lines.Length; index++)
-        {
-            if (!MemberBlockEndRegex.IsMatch(lines[index]) && !MemberExpressionEndRegex.IsMatch(lines[index]))
-            {
-                continue;
-            }
-
-            members.Add(new MemberSpan(NameOf(lines, start, index), start, index));
-            start = index + 1;
-        }
-
-        if (start < lines.Length)
-        {
-            members.Add(new MemberSpan(NameOf(lines, start, lines.Length - 1), start, lines.Length - 1));
-        }
-
-        return [.. members];
-    }
-
-    /// <summary>
-    /// 成员名：方法签名行，或属性声明行（<c>public bool CanRequestX</c>）。属性块要靠后者认出自己的 setter。
-    /// </summary>
-    private static string NameOf(string[] lines, int start, int end)
-    {
-        for (int index = start; index <= end; index++)
-        {
-            Match match = MemberSignatureRegex.Match(lines[index]);
-            if (!match.Success)
-            {
-                match = PropertyHeaderRegex.Match(lines[index]);
-            }
-
-            if (match.Success)
-            {
-                return match.Groups["name"].Value;
-            }
-        }
-
-        return "(unnamed)";
     }
 
     /// <summary>
