@@ -1,0 +1,12 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index a653a8f..0d7137a 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -1015,6 +1015,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+         lock (_operationAttemptGate)
+         {
+             _recoveryAnnouncedAttemptId = attemptId;
++            string persisted = JsonSerializer.Serialize(_recoveryAnnouncedAttemptId, JsonOptions);
+         }
+     }
+ 

@@ -1,0 +1,15 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index a653a8f..4506040 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -1163,6 +1163,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+     /// before moving these two statements past each other.
+     /// </para>
+     /// </remarks>
++    private bool ClaimIfNoVector(string attemptId) =>
++        _lastRecoveryState is { RecoveryVector: null }
++        && TryClaimRecoveryAnnouncement(attemptId);
++
+     private void ReleaseInFlightAttempt(string attemptId)
+     {
+         lock (_operationAttemptGate)

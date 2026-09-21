@@ -64,6 +64,26 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// The attempt an OPERATION_RECOVERY_REQUIRED has already gone out for in this process, from whichever
     /// publishing point reached it first. It decides whether the restore publishes at all.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Never persist this, and never restore it from anything that was.</b> After a restart the restore is
+    /// the operator's only way back to the recovery entry (onboard-hmi#131). A mark that survived the restart
+    /// would make the restore believe the announcement had already gone out in this process, and it would
+    /// publish nothing: the recovery entry would simply not be on the operator's screen.
+    /// </para>
+    /// <para>
+    /// <b>That failure is silent everywhere except on the rig.</b> It is exactly how onboard-hmi#109 went: CI and
+    /// every unit test green, and only the real-onboard recovery scenario showing the entry gone. So the line is
+    /// held by <c>RecoveryMarkerPersistenceArchitectureTests</c> (onboard-hmi#162), not by this comment: the one
+    /// writer is <see cref="MarkRecoveryAnnounced"/>, its callers are registered, and the name may not appear
+    /// outside this file. A restart can only bring this field back through a write, and a write goes through the
+    /// writer; a method that is not yet a registered caller of it turns that test red. <b>An extra call from a
+    /// method already registered does not</b> -- and
+    /// <see cref="RestorePendingRecoveryOperationProjectionAsync"/> is one, holding an attempt id read from the
+    /// journal: a claim there that publishes nothing is onboard-hmi#109 and passes the test. Review that method
+    /// with this in mind.
+    /// </para>
+    /// </remarks>
     private string? _recoveryAnnouncedAttemptId;
 
     /// <summary>
@@ -76,6 +96,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// <b>Process state, like the two marks above, and for the same reason.</b> Nothing here is persisted: after a
     /// restart the restore publishes the entry itself, which is the operator's only way to it (onboard-hmi#131),
     /// and a mark that survived a restart would take it away exactly as onboard-hmi#109 did.
+    /// </para>
+    /// <para>
+    /// <b>Failure looks like nothing.</b> A recovery entry going missing or wrong after a restart is onboard-hmi#109's
+    /// shape: CI and every unit test green, and only the real-onboard recovery scenario sees it. So the line is
+    /// held by <c>RecoveryMarkerPersistenceArchitectureTests</c> (onboard-hmi#162), not by this comment:
+    /// <see cref="ExchangeOwedRecoveryEntry"/> is the only writer, its callers are registered, and the name may
+    /// not appear outside this file.
     /// </para>
     /// <para>
     /// <b>Why it exists at all, rather than the restore simply trying again.</b>
@@ -1039,7 +1066,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return false;
             }
 
-            _recoveryAnnouncedAttemptId = attemptId;
+            // Through the one writer, still under this lock (Monitor is re-entrant), so the check and the take
+            // stay one step (onboard-hmi#162).
+            MarkRecoveryAnnounced(attemptId);
             return true;
         }
     }
@@ -1052,6 +1081,28 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private sealed record OwedRecoveryEntry(WireToGateRecoveryOperationContext Context, string Guidance);
 
     /// <summary>
+    /// The one writer of <see cref="_owedRecoveryEntry"/>: puts <paramref name="next"/> in its place and hands back
+    /// what was there. Owing an entry and dropping one are the same step here (onboard-hmi#162).
+    /// </summary>
+    /// <remarks>
+    /// Dropping the debt is the side that has been miscounted before: onboard-hmi#156 missed one of its release
+    /// points between three readers. With every write here, setting or clearing the debt goes through this method,
+    /// and <c>RecoveryMarkerPersistenceArchitectureTests</c> turns red on a call to it from a method not yet
+    /// registered. <b>A further call from a method that is already registered does not turn anything red</b> (the
+    /// registry is per method, not per call), so review a change to those callers with that in mind.
+    /// Takes <see cref="_operationAttemptGate"/> itself; callers already inside it re-enter it.
+    /// </remarks>
+    private OwedRecoveryEntry? ExchangeOwedRecoveryEntry(OwedRecoveryEntry? next)
+    {
+        lock (_operationAttemptGate)
+        {
+            OwedRecoveryEntry? previous = _owedRecoveryEntry;
+            _owedRecoveryEntry = next;
+            return previous;
+        }
+    }
+
+    /// <summary>
     /// Records that <paramref name="context"/>'s recovery entry is owed to the operator: announced, but not yet
     /// put on screen, because something else was executing when the restore ran.
     /// </summary>
@@ -1062,12 +1113,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// </remarks>
     private void OweRecoveryEntry(WireToGateRecoveryOperationContext context, string guidance)
     {
-        OwedRecoveryEntry? displaced;
-        lock (_operationAttemptGate)
-        {
-            displaced = _owedRecoveryEntry;
-            _owedRecoveryEntry = new OwedRecoveryEntry(context, guidance);
-        }
+        OwedRecoveryEntry? displaced = ExchangeOwedRecoveryEntry(new OwedRecoveryEntry(context, guidance));
 
         // A recovery entry going quiet is this ticket's whole fault, so every way one can stop being owed says so
         // in the log. One slot is enough -- the journal holds one unsettled attempt -- but if that ever stops
@@ -1098,7 +1144,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 attemptId,
                 StringComparison.Ordinal))
             {
-                _owedRecoveryEntry = null;
+                _ = ExchangeOwedRecoveryEntry(null);
                 dropped = true;
             }
         }
@@ -1229,7 +1275,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             }
 
             owed = _owedRecoveryEntry;
-            _owedRecoveryEntry = null;
+            _ = ExchangeOwedRecoveryEntry(null);
             if (!string.Equals(
                 _recoveryAnnouncedAttemptId,
                 owed.Context.SlotOperationAttemptId,

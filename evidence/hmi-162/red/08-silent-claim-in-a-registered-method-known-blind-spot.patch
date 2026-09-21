@@ -1,0 +1,12 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index a653a8f..8c2b918 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -907,6 +907,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+             // operator gets the same fact a second time -- and the recovery decision they make from it is about
+             // the wrong run (onboard-hmi#139). The settlement above still runs whatever this answers: an
+             // unacknowledged result is resent from there whoever concluded it (onboard-hmi#127).
++            _ = TryClaimRecoveryAnnouncement(context.SlotOperationAttemptId);
+             if (!TryClaimRecoveryAnnouncement(context.SlotOperationAttemptId))
+             {
+                 return;

@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index a653a8f..8d9eafc 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -1241,7 +1241,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+             }
+ 
+             owed = _owedRecoveryEntry;
+-            _ = ExchangeOwedRecoveryEntry(null);
++            Interlocked.Exchange(ref _owedRecoveryEntry, null);
+             if (!string.Equals(
+                 _recoveryAnnouncedAttemptId,
+                 owed.Context.SlotOperationAttemptId,

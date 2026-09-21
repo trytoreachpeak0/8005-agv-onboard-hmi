@@ -1,0 +1,12 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index a653a8f..8ad8300 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -1165,6 +1165,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+     /// </remarks>
+     private void ReleaseInFlightAttempt(string attemptId)
+     {
++        _ = Parse("onboard://recovery/" + attemptId, out _recoveryAnnouncedAttemptId);
+         lock (_operationAttemptGate)
+         {
+             _operationAttempts.Remove(attemptId);
