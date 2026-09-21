@@ -33,9 +33,9 @@ namespace SQCD.Agv.UnitTests;
 /// <item><b>The write-out side</b>: neither name, nor the name of any member that sets them, appears anywhere in
 /// the product outside <c>WireToGateBusinessService.cs</c>
 /// (<see cref="TheMarksAndTheirSettersNeverLeaveTheBusinessServiceSource"/>), inside that file only registered
-/// members mention the fields (<see cref="OnlyRegisteredMembersTouchTheMarks"/>), those members reach no field
-/// of the class outside a closed list (<see cref="MembersThatTouchAMarkReachOnlyTheirListedFields"/>), and none of
-/// them names a persistence API (<see cref="NoMemberThatTouchesAMarkNamesAPersistenceApi"/>).</item>
+/// members mention the fields (<see cref="OnlyRegisteredMembersTouchTheMarks"/>), the members a mark's value reaches
+/// by name inside the class use no field outside a list (<see cref="MembersThatTouchAMarkReachOnlyTheirListedFields"/>),
+/// and none of them names a persistence API (<see cref="NoMemberThatTouchesAMarkNamesAPersistenceApi"/>).</item>
 /// </list>
 /// <para>
 /// <b>"Reading back has to write the field" is true of the field, and only of the field.</b> The same failure
@@ -53,8 +53,10 @@ namespace SQCD.Agv.UnitTests;
 /// in a registered member and all six checks stayed green. The same mistake as onboard-hmi#176's first version,
 /// one criterion over: that one did not recognise the file's own way of writing a field, this one did not
 /// recognise the file's own way of writing to disk. Adding <c>_executor</c> and <c>_session</c> to a list would
-/// repeat it for the next receiver; a closed list of fields is not passed by a receiver nobody thought of -- as long
-/// as the value stays inside the class.
+/// repeat it for the next receiver. A list of the fields the value may reach is not passed by a receiver nobody
+/// thought of -- <b>but only along the paths the closure follows</b>: a member named in code. A handler attached
+/// to an event elsewhere, a delegate stored and invoked by another member, another type's method: those are paths
+/// it does not follow, and a receiver at the end of one is not on the list's radar at all.
 /// </para>
 /// <para>
 /// <b>The second review showed the first closed list was not closed</b>: it looked at each member's own lines, so
@@ -86,7 +88,10 @@ namespace SQCD.Agv.UnitTests;
 /// hands it to a method of <b>another</b> type with an innocent name, which persists it, passes every check here --
 /// pinned in <see cref="TheseGuardsTellALeakFromTheCodeAsItIs"/> as a known blind spot. So does a subscriber of
 /// <c>OperatorEventPublished</c> that stores what it is handed (today: the view model, and a journal refresh that
-/// only reads). A member of the class that only names a type (<c>OwedRecoveryEntry? x</c>) pulls that type into
+/// only reads). <b>So does an event or delegate of the class itself</b> (third review M-1): a member holding a mark
+/// raises <c>RecoveryEntryPaid?.Invoke(mark)</c>, and a handler attached in the constructor writes it to the
+/// journal -- the closure follows the name into the event's declaration, not to where a handler was attached.
+/// Pinned, not chased. A member of the class that only names a type (<c>OwedRecoveryEntry? x</c>) pulls that type into
 /// the closure, which errs on the side of checking more. The persistence-API word list is a list:
 /// a static API whose name matches none of its words slips through. <b>Registering a new reader is a hole a
 /// person has to refuse</b>: a registered member that only returns a mark's value hands it to anyone, and the
@@ -94,9 +99,11 @@ namespace SQCD.Agv.UnitTests;
 /// assignment operator starts the next, or <c>ref</c>/<c>out</c> ends one line and the field starts the next
 /// (review M-3); a deconstruction split over lines is not.
 /// <c>_logger.Write</c> is allowed on a premise, not a check: the technical log is written and never read back
-/// into process state (nothing under <c>src/</c> reads it, 2026-09-21). Members are cut by brace depth with
-/// string literals blanked; a raw or verbatim string holding a brace would throw that off (none today). Signature
-/// and property names are read at the four-space member indent <c>dotnet format</c> keeps.
+/// into process state (nothing under <c>src/</c> reads it, 2026-09-21). Everything is read through a small lexer
+/// (<see cref="Lex"/>) that knows regular, verbatim and interpolated strings, character literals and both kinds of
+/// comment; members are cut by brace depth over its code view, and a file whose depth does not end at zero is
+/// refused. <b>It refuses raw string literals</b> rather than guessing at them -- none in the class today; a
+/// <c>"""</c> added there turns <see cref="TheLexerNamesEveryMemberOfTheClass"/> red with the lexer's own message.
 /// </para>
 /// <para>
 /// <b>No assertion here is a count.</b> Every registry is compared as a set with what the source has, in both
@@ -144,8 +151,12 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
     /// <summary>
     /// The setters whose return value is a mark's value. A caller of one holds the mark without naming the field,
     /// so it is checked like a member that does (second review S-3). Every other setter returns <c>void</c> or
-    /// <c>bool</c>; <see cref="MembersThatTouchAMarkReachOnlyTheirListedFields"/> checks that from the declarations,
-    /// so a new setter that hands a mark back cannot be missed here.
+    /// <c>bool</c> and has no <c>out</c>/<c>ref</c> parameter; <see cref="EverySetterThatHandsBackAValueIsRegisteredAsOne"/>
+    /// checks that from the declarations, so a setter handing a mark back <b>through its return value or an out/ref
+    /// parameter</b> is red until registered. One that hands it back another way -- storing it in a field another
+    /// member reads, raising an event -- is not seen by that check (the field would be on the field list's radar;
+    /// the event is the M-1 blind spot). <c>bool</c> is let through on a premise, not a fact: see
+    /// <see cref="HandsOutAValue"/>.
     /// </summary>
     private static readonly string[] ValueReturningSetters = ["ExchangeOwedRecoveryEntry"];
 
@@ -229,9 +240,6 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
         + @"|\bFile\.|\b\w*Stream\w*\b|\bSave\w*\s*\(|\bStore\w*\s*\(|\bSettings\b",
         RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
-    private static readonly Regex BlockCommentRegex = new(
-        @"/\*.*?\*/",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant | RegexOptions.Singleline);
 
     private const string ClassName = "WireToGateBusinessService";
 
@@ -239,22 +247,9 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
     /// A method or constructor signature: a name directly before <c>(</c>, with no <c>=</c> and no <c>(</c> before
     /// it on the line, so <c>private readonly X _y = new(...)</c> is a field and not a method called <c>new</c>.
     /// </summary>
-    private static readonly Regex MemberSignatureRegex = new(
-        @"^    [A-Za-z][^=(]*?\b(?<name>\w+)\s*(?:<[^>]*>)?\s*\(",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    /// <summary>A property's declaration line: no parenthesis, no <c>=</c>, no <c>;</c>, the name last.</summary>
-    private static readonly Regex PropertyHeaderRegex = new(
-        @"^    (?:public|private|internal|protected)\b[^(=;]*?\b(?<name>\w+)\s*$",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private static readonly Regex StringLiteralRegex = new(
-        @"""(?:\\.|[^""\\])*""",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private static readonly Regex CharLiteralRegex = new(
-        @"'(?:\\.|[^'\\])'",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex NameofRegex = new(
         @"\bnameof\s*\([^)]*\)",
@@ -409,9 +404,9 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
     /// <summary>
     /// The fields of the class that a mark's value may reach: used by a member holding a mark, or by any member of the
     /// class it calls, however deep. A field that can carry a value out of the process (<c>_executor</c> and
-    /// <c>_vectorExecutor</c> write the journal, <c>_session</c> writes the outbox and the server) cannot be reached
-    /// that way without this list changing. Other types and event subscribers are outside what this sees -- see the
-    /// class remarks.
+    /// <c>_vectorExecutor</c> write the journal, <c>_session</c> writes the outbox and the server) cannot be used by any
+    /// member the closure reaches without this list changing. How far the closure reaches is the limit: members
+    /// named in code, not event handlers attached elsewhere, not other types -- see the class remarks.
     /// </summary>
     private static readonly (string Field, string Why)[] FieldsMarkMembersMayUse =
     [
@@ -441,8 +436,8 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
     /// (the check looked at each member's own lines and followed no calls -- and its own failure message told
     /// people to move the work into another member, which is that exact shape); and a journal call in
     /// <c>OweRecoveryEntry</c> passing <c>displaced</c>, a mark it got from <c>ExchangeOwedRecoveryEntry</c>'s return
-    /// value without naming the field. Now the field pattern takes <c>this.</c>, calls are followed, and callers of
-    /// a setter that returns a mark hold one.
+    /// value without naming the field. Now the field pattern takes <c>this.</c>, members named in code are followed,
+    /// and callers of a setter that returns a mark hold one.
     /// </para>
     /// <para>
     /// <b>Where the closure stops.</b> At the edge of the class: a call on another object or type
@@ -492,22 +487,63 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
             + "it outlive the process? _executor and _vectorExecutor write the journal, _session writes the outbox "
             + "and the server can replay it -- any of those carrying a mark is onboard-hmi#109 after the next restart. "
             + "**Do not hand the mark, or the work that touches it, to another member of this class to get past this "
-            + "check**: calls are followed, and that is the shape the check exists to catch. Keep journal and outbox "
-            + "work in members that never hold a mark. A field that is gone: remove its line.");
+            + "check**: a member named in code is followed into, and that is the shape this check exists to catch. "
+            + "Handing it on through an event or another type instead is not followed -- that would be a leak this "
+            + "check misses, not a fix. Keep journal and outbox work in members that never hold a mark. "
+            + "A field that is gone: remove its line.");
+    }
 
+    /// <summary>
+    /// A setter that can hand a value back to its caller -- a return type other than <c>void</c>/<c>bool</c>, or an
+    /// <c>out</c>/<c>ref</c> parameter -- is registered in <see cref="ValueReturningSetters"/>, and a registered one
+    /// still can. Its callers then hold a mark without naming the field, and are checked as holders (third review
+    /// severe-3: an <c>out</c> parameter passed the first version, which only read the return type).
+    /// </summary>
+    [Fact]
+    public void EverySetterThatHandsBackAValueIsRegisteredAsOne()
+    {
+        string source = ReadProductFile(BusinessServicePath);
         foreach (string setter in Setters)
         {
-            Match declaration = Regex.Match(
-                source,
-                $@"^    private\s+(?:static\s+)?(?<returns>[\w<>?,\[\]. ]+?)\s+{Regex.Escape(setter)}\s*\(",
-                RegexOptions.Multiline | RegexOptions.CultureInvariant);
-            Assert.True(declaration.Success, $"{setter} is not declared in {BusinessServicePath}; the setter list is stale.");
-            string returns = declaration.Groups["returns"].Value;
+            (bool handsOut, string returns, string parameters) = HandsOutAValue(source, setter);
+            bool registered = ValueReturningSetters.Contains(setter, StringComparer.Ordinal);
             Assert.True(
-                returns is "void" or "bool" || ValueReturningSetters.Contains(setter, StringComparer.Ordinal),
-                $"{setter} returns {returns}. A setter that hands back a value may be handing back a mark; if it does, "
-                + $"add it to {nameof(ValueReturningSetters)} so its callers are checked as holders of one.");
+                handsOut == registered,
+                handsOut
+                    ? $"{setter} returns {returns} ({parameters}), so it can hand a mark back to its caller. Add it to "
+                      + $"{nameof(ValueReturningSetters)}: its callers then hold a mark without naming the field, and "
+                      + "must be checked like the members that do."
+                    : $"{setter} is registered as handing a mark back but returns {returns} ({parameters}) and has no "
+                      + "out/ref parameter. Remove it from the list, so the list says what the code does.");
         }
+    }
+
+    /// <summary>
+    /// The lexer reads every file of the class, the brace depth ends at zero in each, and every member has a name.
+    /// An unnamed member is one the closure cannot follow a call into -- the third review found eighteen
+    /// expression-bodied properties of this class unnamed, <c>CanSubmitSublot</c> among them -- so an unnamed one is
+    /// red here rather than silently skipped. A raw string literal in the class is red here too, with the lexer's
+    /// own message.
+    /// </summary>
+    [Fact]
+    public void TheLexerNamesEveryMemberOfTheClass()
+    {
+        HashSet<string> names = new(StringComparer.Ordinal);
+        foreach ((string path, string text) in ClassFiles())
+        {
+            MemberSpan[] spans = MemberSpans(Lex(text));
+            MemberSpan[] unnamed = [.. spans.Where(span => span.Name == Unnamed)];
+            Assert.True(
+                unnamed.Length == 0,
+                $"{path}: members the lexer could not name, at lines "
+                + $"{string.Join(", ", unnamed.Select(span => span.Start + 1))}. The closure cannot follow a call into "
+                + "a member without a name; teach NameOf the shape before relying on this guard.");
+            names.UnionWith(spans.Select(span => span.Name));
+        }
+
+        Assert.Contains("CanSubmitSublot", names);
+        Assert.Contains("PublishOperatorEvent", names);
+        Assert.Contains("PublishOperatorResponse", names);
     }
 
     /// <summary>
@@ -530,12 +566,12 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
             hits.Length == 0,
             "A member a recovery mark's value can reach names a persistence API:"
             + string.Concat(hits.Select(hit => $"{Environment.NewLine}  {hit.Member}  {hit.Api}"))
-            + $"{Environment.NewLine}If the mark's value reaches it, the mark can outlive the process. Calls are "
-            + "followed, so moving the call into another member of this class does not get past this check; keep "
-            + "persistence in members that never hold a mark.");
+            + $"{Environment.NewLine}If the mark's value reaches it, the mark can outlive the process. Moving the call "
+            + "into another member of this class that is named from here is still caught; moving it behind an event "
+            + "or into another type is not caught, and is not a fix. Keep persistence in members that never hold a mark.");
 
         Assert.All(members, member => Assert.True(
-            MemberSpans(StripComments(source)).Any(span => span.Name == member),
+            MemberSpans(Lex(source)).Any(span => span.Name == member),
             $"{member} is registered but not found in {BusinessServicePath}; this check would pass over nothing."));
     }
 
@@ -943,10 +979,169 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
             "PublishOperatorEvent");
         Assert.Equal("PublishOperatorEvent", Assert.Single(split.Keys));
 
+        // ---- Third review: the lexer. Each case passed the regex version of this scanner. ----
+
+        // Severe-4: `//` inside a string is not a comment; the write after it on the same line is seen.
+        Assert.Single(StrayWrites(
+            """
+                private void ReleaseInFlightAttempt(string link)
+                {
+                    _ = Parse("onboard://recovery/" + link, out _recoveryAnnouncedAttemptId);
+                }
+            """));
+
+        // Q-2: `/*` in one string and `*/` in another do not swallow the code between them.
+        Assert.Single(StrayWrites(
+            """
+                private void ReleaseInFlightAttempt(string link)
+                {
+                    string open = "/*"; _recoveryAnnouncedAttemptId = link; string close = "*/";
+                }
+            """));
+
+        // A verbatim string's doubled quote does not end it, and `//` inside it is text.
+        Assert.Single(StrayWrites(
+            """
+                private void ReleaseInFlightAttempt(string link)
+                {
+                    string note = @"say ""//hi"" "; _recoveryAnnouncedAttemptId = link;
+                }
+            """));
+
+        // An interpolation hole is code: a mark named inside one is seen even with string contents blanked.
+        Assert.Contains(
+            ("_owedRecoveryEntry", "Describe"),
+            Mentions(
+                ClassBody(
+                    """
+                        private string Describe() => $"onboard://{_owedRecoveryEntry?.Context.SlotOperationAttemptId}";
+                    """),
+                ["_owedRecoveryEntry"],
+                keepStrings: false));
+
+        // Braces inside strings, escaped braces in an interpolated string and brace characters do not shift the cut.
+        Assert.Equal(
+            "First,Second",
+            string.Join(',', MemberSpans(Lex(ClassBody(
+                """
+                    private string First() => "{" + $"{{ {Second()} }}" + '{' + '"';
+
+                    private string Second()
+                    {
+                        return "}";
+                    }
+                """))).Select(span => span.Name)));
+
+        // A raw string is refused with the lexer's own message, not guessed at; an unbalanced cut is refused too.
+        NotSupportedException raw = Assert.Throws<NotSupportedException>(
+            () => Lex("public sealed class S\n{\n    private string A() => \"\"\"x\"\"\";\n}\n"));
+        Assert.Contains("raw string", raw.Message, StringComparison.Ordinal);
+        Assert.Throws<InvalidOperationException>(
+            () => MemberSpans(Lex("public sealed class S\n{\n    private void A()\n    {\n")));
+
+        // ---- Third review: member names the regex version could not read. ----
+
+        // Severe-1: a tuple return type -- `(` after a keyword or `<` opens a type, not the parameter list.
+        Assert.Equal("RecordPaid", NameOf("    private (bool Recorded, string AttemptId) RecordPaid(string attemptId)"));
+        Assert.Equal("RecordPaidAsync", NameOf("    private async Task<(bool Recorded, string Id)> RecordPaidAsync(string id)"));
+        Dictionary<string, string[]> throughTuple = SyntheticClosure(
+            """
+                private void PublishOwedRecoveryEntry()
+                {
+                    _ = RecordPaid("a");
+                }
+
+                private (bool Recorded, string AttemptId) RecordPaid(string attemptId)
+                {
+                    _ = _executor.MarkResultRecordedAsync(attemptId, CancellationToken.None);
+                    return (true, attemptId);
+                }
+            """,
+            "PublishOwedRecoveryEntry");
+        Assert.Equal("_executor", Assert.Single(FieldsUsedBy(throughTuple).Except(listedFields, StringComparer.Ordinal)));
+
+        // Severe-2: an expression-bodied property whose body is on the next line -- the shape dotnet format keeps --
+        // a one-line property and an indexer are members the closure follows into.
+        Dictionary<string, string[]> throughProperty = SyntheticClosure(
+            """
+                private WireToGateSlotOperationExecutor Executor =>
+                    _executor;
+
+                private void PublishOwedRecoveryEntry()
+                {
+                    _ = Executor.MarkResultRecordedAsync(_recoveryAnnouncedAttemptId ?? string.Empty, CancellationToken.None);
+                }
+            """,
+            "PublishOwedRecoveryEntry");
+        Assert.Equal("_executor", Assert.Single(FieldsUsedBy(throughProperty).Except(listedFields, StringComparer.Ordinal)));
+        Assert.Equal("Executor", NameOf("    private WireToGateSlotOperationExecutor Executor { get { return _executor; } }"));
+        Assert.Equal("this", NameOf("    private string this[int index] => _session.ToString();"));
+        Dictionary<string, string[]> throughIndexer = SyntheticClosure(
+            """
+                private string this[int index] => _session.ToString();
+
+                private void PublishOwedRecoveryEntry()
+                {
+                    string text = this[0];
+                }
+            """,
+            "PublishOwedRecoveryEntry");
+        Assert.Equal("_session", Assert.Single(FieldsUsedBy(throughIndexer).Except(listedFields, StringComparer.Ordinal)));
+        Assert.Equal("_gate", NameOf("    private readonly object _gate = new();"));
+        Assert.Equal("Wire", NameOf("    [Obsolete(\"   \")]\n    private int[] Wire(Func<bool> check)"));
+
+        // Severe-3: an out parameter hands a value back as surely as a return type does.
+        Assert.True(HandsOutAValue(
+            ClassBody(
+                """
+                    private void ForgetOwedRecoveryEntry(string attemptId, out OwedRecoveryEntry? dropped)
+                    {
+                        dropped = null;
+                    }
+                """),
+            "ForgetOwedRecoveryEntry").HandsOut);
+        Assert.True(HandsOutAValue(
+            ClassBody(
+                """
+                    private OwedRecoveryEntry? ExchangeOwedRecoveryEntry(OwedRecoveryEntry? next) => next;
+                """),
+            "ExchangeOwedRecoveryEntry").HandsOut);
+        Assert.False(HandsOutAValue(
+            ClassBody(
+                """
+                    private bool TryClaimRecoveryAnnouncement(string attemptId)
+                    {
+                        return true;
+                    }
+                """),
+            "TryClaimRecoveryAnnouncement").HandsOut);
+
+        // ---- Known blind spot (third review M-1), pinned at its current answer. ----
+        // A member holding a mark raises an event of the class, and a handler subscribed elsewhere (here in the
+        // constructor) writes it to the journal. The closure follows names into members; it does not follow a
+        // subscription from where the event is raised to where the handler was attached. Not chased -- decided with
+        // the coordinator. When the scanner learns it, this assertion fails; move the case among the leaks then.
+        Assert.Empty(FieldsUsedBy(SyntheticClosure(
+            """
+                private event Action<string>? RecoveryEntryPaid;
+
+                public Synthetic()
+                {
+                    RecoveryEntryPaid += id => _ = _executor.MarkResultRecordedAsync(id, CancellationToken.None);
+                }
+
+                private void PublishOwedRecoveryEntry()
+                {
+                    RecoveryEntryPaid?.Invoke(_recoveryAnnouncedAttemptId ?? string.Empty);
+                }
+            """,
+            "PublishOwedRecoveryEntry")).Except(listedFields, StringComparer.Ordinal));
+
         // ---- Known blind spot, pinned at its current answer. ----
         // A member holding a mark hands it to a method of ANOTHER type whose name says nothing of persistence.
         // The closure stops at the edge of the class, so if that method writes to disk the mark leaks and every check
-        // here stays green. (A method of this class in the same position is caught now -- the S-2 case above.)
+        // here stays green. (A method of this class named directly in the same position is caught -- the S-2 case
+        // above; one reached through an event handler is not -- the M-1 case.)
         // Telling this apart needs the other type's source. When the scanner learns it, this assertion fails --
         // move the case up among the leaks then.
         Assert.Empty(PersistenceApis(
@@ -979,17 +1174,26 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
 
     private sealed record MemberSpan(string Name, int Start, int End);
 
+    /// <summary>
+    /// A source file lexed into two views with the same length and the same lines. <see cref="Code"/> has every
+    /// comment and every literal's contents blanked -- what is left is code, and only code. <see cref="Kept"/> has the
+    /// comments blanked and the string contents kept, for the checks that must see a name written inside a string (a
+    /// reflective read, a JSON key).
+    /// </summary>
+    private sealed record Lexed(string[] Code, string[] Kept);
+
     private static string WriterOf(string field) => Markers.Single(marker => marker.Field == field).Writer;
 
     private static Write[] StrayWrites(string members) =>
         [.. Writes(ClassBody(members)).Where(write => write.Member != WriterOf(write.Field))];
 
-    /// <summary>Every write to a mark, in every shape, with the member it sits in.</summary>
+    /// <summary>Every write to a mark, in every shape, with the member it sits in. Reads code only.</summary>
     private static Write[] Writes(string source)
     {
-        string[] lines = StripComments(source);
+        Lexed lexed = Lex(source);
+        string[] lines = lexed.Code;
         List<Write> writes = [];
-        foreach (MemberSpan member in MemberSpans(lines))
+        foreach (MemberSpan member in MemberSpans(lexed))
         {
             for (int index = member.Start; index <= member.End; index++)
             {
@@ -1062,28 +1266,26 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
 
     /// <summary>Every (setter, member) pair where a member other than the setter itself names it in code.</summary>
     private static (string Setter, string Member)[] Calls(string source) =>
-        [.. Mentions(source, Setters).Select(pair => (Setter: pair.Token, pair.Member))];
+        [.. Mentions(source, Setters, keepStrings: false).Select(pair => (Setter: pair.Token, pair.Member))];
 
     /// <summary>
-    /// Every (token, member) pair where the member's code names the token. Comments do not count, the token's own
-    /// declaration does not count (a field's declaration line, a method's own member), and
-    /// <c>this.</c>-qualified mentions do.
+    /// Every (token, member) pair where the member names the token. Comments never count; a member does not mention
+    /// itself (a field's own declaration, a method's own name); <c>this.</c>-qualified mentions count. With
+    /// <paramref name="keepStrings"/> a name inside a string literal counts too -- a reflective read of a mark.
     /// </summary>
-    private static (string Token, string Member)[] Mentions(string source, string[] tokens)
+    private static (string Token, string Member)[] Mentions(string source, string[] tokens, bool keepStrings = true)
     {
-        string[] lines = StripComments(source);
+        Lexed lexed = Lex(source);
+        string[] lines = keepStrings ? lexed.Kept : lexed.Code;
         HashSet<(string, string)> found = [];
-        foreach (MemberSpan member in MemberSpans(lines))
+        foreach (MemberSpan member in MemberSpans(lexed))
         {
             foreach (string token in tokens.Where(token => token != member.Name))
             {
                 Regex mention = new($@"(?<![\w.])(?:this\.)?{Regex.Escape(token)}\b", RegexOptions.CultureInvariant);
-                Regex declaration = new(
-                    $@"^    (?:private|internal|public|protected)\b[^=;(]*\s{Regex.Escape(token)}\s*;\s*$",
-                    RegexOptions.CultureInvariant);
                 for (int index = member.Start; index <= member.End; index++)
                 {
-                    if (mention.IsMatch(lines[index]) && !declaration.IsMatch(lines[index]))
+                    if (mention.IsMatch(lines[index]))
                     {
                         found.Add((token, member.Name));
                         break;
@@ -1095,15 +1297,14 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
         return [.. found];
     }
 
-    /// <summary>Every persistence-API word in the code of the named members.</summary>
     /// <summary>The members whose code mentions a mark: the registered readers and the writers.</summary>
     private static string[] MarkMembers() =>
         [.. Readers.Select(reader => reader.Member).Concat(Markers.Select(marker => marker.Writer)).Distinct()];
 
     /// <summary>
-    /// The members that hold a mark's value: those that mention a mark, and those that receive one from a setter's
-    /// return value without naming the field (second review S-3: <c>OweRecoveryEntry</c> gets <c>displaced</c> from
-    /// <c>ExchangeOwedRecoveryEntry</c> and never writes <c>_owedRecoveryEntry</c>).
+    /// The members that hold a mark's value: those that mention a mark, and those that get one from a setter that
+    /// hands a mark back -- by return value or through an <c>out</c>/<c>ref</c> parameter -- without naming the field
+    /// (second review S-3: <c>OweRecoveryEntry</c> gets <c>displaced</c> from <c>ExchangeOwedRecoveryEntry</c>).
     /// </summary>
     private static string[] MarkValueHolders(string source) =>
     [
@@ -1116,19 +1317,68 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
     ];
 
     /// <summary>
+    /// Whether <paramref name="setter"/>, as declared in <paramref name="source"/>, can hand a value back to its
+    /// caller: a return type other than <c>void</c> or <c>bool</c>, or an <c>out</c>/<c>ref</c> parameter (third review
+    /// severe-3: <c>ForgetOwedRecoveryEntry(string, out OwedRecoveryEntry? dropped)</c> passed the return-type check).
+    /// </summary>
+    /// <remarks>
+    /// <b><c>bool</c> is let through on a premise, not a fact.</b> <c>TryClaimRecoveryAnnouncement</c>'s <c>bool</c> is
+    /// a function of the mark -- whether it already named this attempt. What a restart would have to bring back to
+    /// hide a recovery entry is the attempt id itself, and one bit that the caller already knew the id of does not
+    /// carry it anywhere new. That is the argument; nothing here checks it.
+    /// </remarks>
+    private static (bool HandsOut, string Returns, string Parameters) HandsOutAValue(string source, string setter)
+    {
+        Lexed lexed = Lex(source);
+        MemberSpan span = MemberSpans(lexed).Single(candidate => candidate.Name == setter);
+        string header = string.Join('\n', lexed.Code[span.Start..(span.End + 1)]);
+        Match match = Regex.Match(header, $@"\b{Regex.Escape(setter)}\s*\(", RegexOptions.CultureInvariant);
+        string returns = Regex.Replace(
+                header[..match.Index],
+                @"\b(?:public|private|protected|internal|static|async|override|sealed|virtual|abstract|unsafe|extern|new|partial)\b",
+                string.Empty,
+                RegexOptions.CultureInvariant)
+            .Trim();
+        int open = match.Index + match.Length - 1;
+        int close = MatchingClose(header, open);
+        string parameters = header[(open + 1)..close];
+        bool handsOut = returns is not ("void" or "bool")
+            || Regex.IsMatch(parameters, @"\b(?:out|ref)\b", RegexOptions.CultureInvariant);
+        return (handsOut, returns, parameters);
+    }
+
+    private static int MatchingClose(string text, int open)
+    {
+        int depth = 0;
+        for (int index = open; index < text.Length; index++)
+        {
+            if (text[index] == '(')
+            {
+                depth++;
+            }
+            else if (text[index] == ')' && --depth == 0)
+            {
+                return index;
+            }
+        }
+
+        throw new InvalidOperationException($"No closing parenthesis for the one at {open}.");
+    }
+
+    /// <summary>
     /// <paramref name="seeds"/> and every member of the class they reach by naming it, level after level until
-    /// nothing new is reached (second review S-2: <c>RecordAcknowledgedCompletedResultAsync</c> is a method of this
-    /// class that writes the journal, and one call to it from a mark member passed every check). Bodies come from
-    /// all the class's files. <c>nameof(...)</c> is not a call, <c>new X(</c> constructs a type rather than calling a
-    /// member, and the class's own name is its constructor, which no member calls by name.
+    /// nothing new is reached (second review S-2). Bodies come from all the class's files, read as code only.
+    /// <c>nameof(...)</c> is not a call, <c>new X(</c> constructs a type rather than calling a member, and the class's
+    /// own name is its constructor, which no member calls by name. A property, an indexer (named <c>this</c>) or a
+    /// field is a member like a method: naming it pulls its body in (third review severe-2).
     /// </summary>
     private static Dictionary<string, string[]> Closure((string Path, string Text)[] classFiles, string[] seeds)
     {
         Dictionary<string, List<string>> bodies = new(StringComparer.Ordinal);
         foreach ((string _, string text) in classFiles)
         {
-            string[] lines = StripComments(text);
-            foreach (MemberSpan span in MemberSpans(lines).Where(span => span.Name != "(field or unnamed)"))
+            Lexed lexed = Lex(text);
+            foreach (MemberSpan span in MemberSpans(lexed).Where(span => span.Name != Unnamed))
             {
                 if (!bodies.TryGetValue(span.Name, out List<string>? body))
                 {
@@ -1136,7 +1386,7 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
                     bodies[span.Name] = body;
                 }
 
-                body.AddRange(lines[span.Start..(span.End + 1)]);
+                body.AddRange(lexed.Code[span.Start..(span.End + 1)]);
             }
         }
 
@@ -1154,7 +1404,10 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
             string code = NameofRegex.Replace(string.Join('\n', body), string.Empty);
             foreach (string other in callable.Where(other => other != member))
             {
-                if (Regex.IsMatch(code, $@"(?<![\w.])(?<!new\s)(?:this\.)?{Regex.Escape(other)}\b", RegexOptions.CultureInvariant))
+                string pattern = other == "this"
+                    ? @"(?<![\w.])this\s*\["
+                    : $@"(?<![\w.])(?<!new\s)(?:this\.)?{Regex.Escape(other)}\b";
+                if (Regex.IsMatch(code, pattern, RegexOptions.CultureInvariant))
                 {
                     pending.Enqueue(other);
                 }
@@ -1208,9 +1461,16 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
         PersistenceApis(Closure([("source.cs", source)], seeds));
 
     /// <summary>
-    /// Every (file, token) pair where a file other than <paramref name="home"/> names a mark or a setter. Comments
-    /// are stripped from <c>.cs</c> files only; in every other kind of file any mention counts.
+    /// Every (file, token) pair where a file other than <paramref name="home"/> names a mark or a setter. In a
+    /// <c>.cs</c> file comments are removed and strings are kept (a reflective read names the field in a string); in
+    /// every other kind of file any mention counts.
     /// </summary>
+    /// <remarks>
+    /// A <c>.cs</c> file this lexer cannot read -- today one, <c>SqliteWireToGateJournal.cs</c>, whose SQL is in raw
+    /// strings -- is scanned as raw text instead. That only adds matches (a mention in a comment would count), so it
+    /// errs towards red, never towards a missed leak. The class's own files get no such fallback: the lexer refuses
+    /// them outright, because every other check cuts members from them.
+    /// </remarks>
     private static (string Path, string Token)[] OutsideMentions((string Path, string Text)[] files, string home)
     {
         string[] tokens = [.. Markers.Select(marker => marker.Field).Concat(Setters)];
@@ -1221,7 +1481,7 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
                 .SelectMany(file =>
                 {
                     string text = file.Path.EndsWith(".cs", StringComparison.OrdinalIgnoreCase)
-                        ? string.Join('\n', StripComments(file.Text))
+                        ? KeptOrRaw(file.Text)
                         : file.Text;
                     return tokens
                         .Where(token => Regex.IsMatch(text, $@"(?<![\w]){Regex.Escape(token)}\b", RegexOptions.CultureInvariant))
@@ -1230,32 +1490,262 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
         ];
     }
 
-    /// <summary>Comments removed, line numbers kept. Block comments first, so a guard hidden in one is gone.</summary>
-    private static string[] StripComments(string source)
+    private static string KeptOrRaw(string text)
     {
-        string normalised = source.Replace("\r\n", "\n", StringComparison.Ordinal);
-        string withoutBlocks = BlockCommentRegex.Replace(
-            normalised,
-            match => new string('\n', match.Value.Count(character => character == '\n')));
-        return [.. withoutBlocks.Split('\n').Select(line => line.Split("//", 2)[0])];
+        try
+        {
+            return string.Join('\n', Lex(text).Kept);
+        }
+        catch (NotSupportedException)
+        {
+            return text;
+        }
+    }
+
+    /// <summary>The comment-free view of a source, strings kept.</summary>
+    private static string[] StripComments(string source) => Lex(source).Kept;
+
+    // ------------------------------------------------------------------------------------------------------------
+    // The lexer (third review). Four rounds of regular expressions approximating C# each missed a shape the next
+    // review found: a `//` inside a string cut the rest of the line away as a comment; `/*` in one string and `*/`
+    // in another swallowed the code between them; a brace in an unusual literal could shift every member after it.
+    // This walks the text character by character instead, the way the compiler reads literals and comments.
+    // ------------------------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// Lexes C# source into <see cref="Lexed"/>. Handles regular, verbatim (<c>@"</c>) and interpolated (<c>$"</c>,
+    /// <c>$@"</c>, <c>@$"</c>) strings -- an interpolation hole is code, lexed as code, nested strings and all --
+    /// character literals, <c>//</c> and <c>/* */</c> comments, and preprocessor lines. A raw string literal
+    /// (<c>"""</c>) is refused with <see cref="NotSupportedException"/>: the guard cannot read it, and saying so is
+    /// the point -- a lexer that guesses is what the four rounds before this one were.
+    /// </summary>
+    private static Lexed Lex(string source)
+    {
+        string text = source.Replace("\r\n", "\n", StringComparison.Ordinal);
+        char[] code = text.ToCharArray();
+        char[] kept = text.ToCharArray();
+        int position = 0;
+        LexCode(text, ref position, code, kept, inHole: false);
+        return new Lexed(new string(code).Split('\n'), new string(kept).Split('\n'));
+    }
+
+    private static void LexCode(string text, ref int position, char[] code, char[] kept, bool inHole)
+    {
+        int nesting = 0;
+        bool lineStart = true;
+        while (position < text.Length)
+        {
+            char current = text[position];
+            if (inHole && nesting == 0 && current == '}')
+            {
+                return;
+            }
+
+            if (current == '\n')
+            {
+                lineStart = true;
+                position++;
+                continue;
+            }
+
+            if (lineStart && current == '#' && !inHole)
+            {
+                int end = text.IndexOf('\n', position);
+                end = end < 0 ? text.Length : end;
+                Blank(code, position, end);
+                Blank(kept, position, end);
+                position = end;
+                continue;
+            }
+
+            if (!char.IsWhiteSpace(current))
+            {
+                lineStart = false;
+            }
+
+            if (current == '/' && At(text, position + 1) == '/')
+            {
+                int end = text.IndexOf('\n', position);
+                end = end < 0 ? text.Length : end;
+                Blank(code, position, end);
+                Blank(kept, position, end);
+                position = end;
+            }
+            else if (current == '/' && At(text, position + 1) == '*')
+            {
+                int end = text.IndexOf("*/", position + 2, StringComparison.Ordinal);
+                if (end < 0)
+                {
+                    throw new NotSupportedException($"Unterminated block comment at {position}.");
+                }
+
+                Blank(code, position, end + 2);
+                Blank(kept, position, end + 2);
+                position = end + 2;
+            }
+            else if (current == '"' && At(text, position + 1) == '"' && At(text, position + 2) == '"')
+            {
+                throw RawStringRefused(text, position);
+            }
+            else if (current is '$' or '@')
+            {
+                int quote = position;
+                bool interpolated = false;
+                bool verbatim = false;
+                while (quote < text.Length && text[quote] is '$' or '@')
+                {
+                    interpolated |= text[quote] == '$';
+                    verbatim |= text[quote] == '@';
+                    quote++;
+                }
+
+                if (At(text, quote) != '"')
+                {
+                    position++;
+                    continue;
+                }
+
+                if (quote - position > 2 || (interpolated && text[position..quote].Count(character => character == '$') > 1)
+                    || (At(text, quote + 1) == '"' && At(text, quote + 2) == '"'))
+                {
+                    throw RawStringRefused(text, position);
+                }
+
+                position = quote;
+                LexString(text, ref position, code, kept, verbatim, interpolated);
+            }
+            else if (current == '"')
+            {
+                LexString(text, ref position, code, kept, verbatim: false, interpolated: false);
+            }
+            else if (current == '\'')
+            {
+                int end = position + 1;
+                if (At(text, end) == '\\')
+                {
+                    end++;
+                }
+
+                end = text.IndexOf('\'', end + 1);
+                if (end < 0)
+                {
+                    throw new NotSupportedException($"Unterminated character literal at {position}.");
+                }
+
+                Blank(code, position + 1, end);
+                position = end + 1;
+            }
+            else
+            {
+                if (inHole)
+                {
+                    nesting += current is '{' or '(' or '[' ? 1 : current is '}' or ')' or ']' ? -1 : 0;
+                }
+
+                position++;
+            }
+        }
+
+        if (inHole)
+        {
+            throw new NotSupportedException("Unterminated interpolation hole.");
+        }
     }
 
     /// <summary>
-    /// The class body cut into members by brace depth: a member starts at the first non-blank line at class depth
-    /// and ends where the depth is back at class depth on a line that closed a brace or ends in <c>;</c>.
+    /// A string starting at the opening quote under <paramref name="position"/>. Its text is blanked in the code
+    /// view; an interpolation hole's braces are blanked and its inside is lexed as code.
     /// </summary>
-    /// <remarks>
-    /// <b>Depth, not indent (onboard-hmi#162 second review).</b> The first version cut at a four-space <c>}</c> or a
-    /// four-space line ending in <c>;</c>, so an expression-bodied member whose body ran onto a second line --
-    /// <c>PublishOperatorResponse(...) =&gt;</c> then <c>RaiseOperatorEvent(...);</c> -- merged with the member after it,
-    /// and <c>PublishOperatorEvent</c> was read under the other's name. That was harmless while each check looked at
-    /// a member's own lines; it is not once calls are followed. String and character literals are blanked before
-    /// braces are counted (an interpolated string holds braces); none of this class's files has a raw or verbatim
-    /// string (2026-09-21), which would need more.
-    /// </remarks>
-    private static MemberSpan[] MemberSpans(string[] lines)
+    private static void LexString(string text, ref int position, char[] code, char[] kept, bool verbatim, bool interpolated)
     {
-        string[] code = [.. lines.Select(BlankLiterals)];
+        int start = position;
+        position++;
+        while (position < text.Length)
+        {
+            char current = text[position];
+            if (!verbatim && current == '\\')
+            {
+                position += 2;
+                continue;
+            }
+
+            if (!verbatim && current == '\n')
+            {
+                throw new NotSupportedException($"Newline inside a regular string starting at {start}.");
+            }
+
+            if (current == '"')
+            {
+                if (verbatim && At(text, position + 1) == '"')
+                {
+                    position += 2;
+                    continue;
+                }
+
+                Blank(code, start + 1, position);
+                position++;
+                return;
+            }
+
+            if (interpolated && current is '{' or '}')
+            {
+                if (At(text, position + 1) == current)
+                {
+                    position += 2;
+                    continue;
+                }
+
+                if (current == '}')
+                {
+                    throw new NotSupportedException($"Unbalanced '}}' in an interpolated string at {position}.");
+                }
+
+                // Blank the text before the hole and the hole's opening brace, lex the hole as code, then carry on
+                // with the string after the hole's closing brace.
+                Blank(code, start + 1, position + 1);
+                position++;
+                LexCode(text, ref position, code, kept, inHole: true);
+                code[position] = ' ';
+                start = position;
+                position++;
+                continue;
+            }
+
+            position++;
+        }
+
+        throw new NotSupportedException($"Unterminated string starting at {start}.");
+    }
+
+    private static NotSupportedException RawStringRefused(string text, int position) => new(
+        $"This guard does not read raw string literals (\"\"\"), found at line {text[..position].Count(character => character == '\n') + 1}. "
+        + "Extend the lexer in RecoveryMarkerPersistenceArchitectureTests before using one in this class; guessing "
+        + "at it is how a member boundary shifts without anything turning red.");
+
+    private static char At(string text, int index) => index < text.Length ? text[index] : '\0';
+
+    private static void Blank(char[] characters, int from, int to)
+    {
+        for (int index = from; index < to && index < characters.Length; index++)
+        {
+            if (characters[index] != '\n')
+            {
+                characters[index] = ' ';
+            }
+        }
+    }
+
+    private const string Unnamed = "(unnamed)";
+
+    /// <summary>
+    /// The class body cut into members by brace depth over the code view: a member starts at the first non-blank line
+    /// at class depth and ends on a line at class depth whose code ends in <c>}</c> or <c>;</c>. The depth must be
+    /// back at zero at the end of the file -- otherwise the cut is wrong somewhere and this says so instead of
+    /// cutting on (third review M-2).
+    /// </summary>
+    private static MemberSpan[] MemberSpans(Lexed lexed)
+    {
+        string[] code = lexed.Code;
         List<MemberSpan> spans = [];
         int depth = 0;
         int? start = null;
@@ -1267,42 +1757,128 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
             }
 
             depth += code[index].Count(character => character == '{') - code[index].Count(character => character == '}');
-            if (start is int first
-                && depth == 1
-                && (code[index].Contains('}', StringComparison.Ordinal) || code[index].TrimEnd().EndsWith(';')))
+            string trimmed = code[index].TrimEnd();
+            if (start is int first && depth == 1 && (trimmed.EndsWith('}') || trimmed.EndsWith(';')))
             {
-                spans.Add(new MemberSpan(NameOf(code, first, index), first, index));
+                spans.Add(new MemberSpan(NameOf(string.Join('\n', code[first..(index + 1)])), first, index));
                 start = null;
             }
+        }
+
+        if (depth != 0)
+        {
+            throw new InvalidOperationException(
+                $"Brace depth ends at {depth}, not 0: the member cut cannot be trusted for this source.");
         }
 
         return [.. spans];
     }
 
-    private static string BlankLiterals(string line) =>
-        CharLiteralRegex.Replace(StringLiteralRegex.Replace(line, "\"\""), "''");
+    private static readonly HashSet<string> DeclarationKeywords = new(StringComparer.Ordinal)
+    {
+        "public", "private", "protected", "internal", "static", "readonly", "async", "override", "sealed", "virtual",
+        "abstract", "unsafe", "extern", "partial", "new", "const", "volatile", "event", "implicit", "explicit",
+        "required", "file", "ref", "fixed"
+    };
 
     /// <summary>
-    /// A member's name: from a method or constructor signature (a name directly before <c>(</c> with no <c>=</c>
-    /// before it, so a field initialised with <c>new(...)</c> is not one), or from a property's declaration line.
+    /// A member's name from its header, read token by token over code: the identifier directly before the first
+    /// parameter list's <c>(</c> (a <c>(</c> after a keyword or <c>&lt;</c> opens a tuple type and is skipped, so
+    /// <c>private (bool A, string B) Name(</c> and <c>Task&lt;(bool, string)&gt; Name(</c> give <c>Name</c>); otherwise the
+    /// last identifier before <c>=&gt;</c>, <c>=</c>, <c>{</c> or <c>;</c> (a property, expression-bodied or not, an
+    /// event, a field). An indexer is <c>this</c>. Attributes before the header and array brackets in a type are
+    /// skipped; generic arguments do not hide the name before them (third review severe-1, severe-2).
     /// </summary>
-    private static string NameOf(string[] lines, int start, int end)
+    private static string NameOf(string header)
     {
-        for (int index = start; index <= end; index++)
+        string? last = null;
+        string? previous = null;
+        int position = 0;
+        while (position < header.Length)
         {
-            Match match = MemberSignatureRegex.Match(lines[index]);
-            if (!match.Success)
+            char current = header[position];
+            if (char.IsWhiteSpace(current))
             {
-                match = PropertyHeaderRegex.Match(lines[index]);
+                position++;
+                continue;
             }
 
-            if (match.Success)
+            if (char.IsLetter(current) || current == '_' || current == '@')
             {
-                return match.Groups["name"].Value;
+                int end = position + 1;
+                while (end < header.Length && (char.IsLetterOrDigit(header[end]) || header[end] == '_'))
+                {
+                    end++;
+                }
+
+                last = header[position..end].TrimStart('@');
+                previous = last;
+                position = end;
+                continue;
+            }
+
+            if (current == '=' && At(header, position + 1) == '>')
+            {
+                return last ?? Unnamed;
+            }
+
+            if (current is '=' or '{' or ';')
+            {
+                return last ?? Unnamed;
+            }
+
+            if (current == '[')
+            {
+                if (last == "this")
+                {
+                    return "this";
+                }
+
+                position = SkipBalanced(header, position, '[', ']');
+                continue;
+            }
+
+            if (current == '<')
+            {
+                position = SkipBalanced(header, position, '<', '>');
+                continue;
+            }
+
+            if (current == '(')
+            {
+                if (previous is not null && !DeclarationKeywords.Contains(previous) && previous == last)
+                {
+                    return previous;
+                }
+
+                position = SkipBalanced(header, position, '(', ')');
+                previous = ")";
+                continue;
+            }
+
+            previous = current.ToString();
+            position++;
+        }
+
+        return last ?? Unnamed;
+    }
+
+    private static int SkipBalanced(string text, int position, char open, char close)
+    {
+        int depth = 0;
+        for (int index = position; index < text.Length; index++)
+        {
+            if (text[index] == open)
+            {
+                depth++;
+            }
+            else if (text[index] == close && --depth == 0)
+            {
+                return index + 1;
             }
         }
 
-        return "(field or unnamed)";
+        return text.Length;
     }
 
     private static string ClassBody(string members) =>

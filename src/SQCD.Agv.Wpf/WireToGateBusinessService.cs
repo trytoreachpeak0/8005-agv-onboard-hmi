@@ -76,8 +76,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// every unit test green, and only the real-onboard recovery scenario showing the entry gone. So the line is
     /// held by <c>RecoveryMarkerPersistenceArchitectureTests</c> (onboard-hmi#162), not by this comment: the one
     /// writer is <see cref="MarkRecoveryAnnounced"/>, its callers are registered, and the name may not appear
-    /// outside this file. A restart can only bring this field back through a write, so restoring it from a new
-    /// method turns that test red. <b>An extra call from a method already registered does not</b> -- and
+    /// outside this file. A restart can only bring this field back through a write, and a write goes through the
+    /// writer; a method that is not yet a registered caller of it turns that test red. <b>An extra call from a
+    /// method already registered does not</b> -- and
     /// <see cref="RestorePendingRecoveryOperationProjectionAsync"/> is one, holding an attempt id read from the
     /// journal: a claim there that publishes nothing is onboard-hmi#109 and passes the test. Review that method
     /// with this in mind.
