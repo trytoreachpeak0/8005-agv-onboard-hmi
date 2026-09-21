@@ -80,6 +80,26 @@
   `MainViewModel.cs` 的三处注释，而这一类正是那九个入口的行为判据所在。**车载端全量 G2 走 CI**，
   本机内存吃紧（常只剩 2–3 GiB），这里只跑与本票直接相关的那一类
 
+## CI 那一轮里，新守卫确实被执行了
+
+CI run
+[`35552076347`](https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/actions/runs/35552076347)
+的 `ONBOARD_HMI_G2` 作业 `Status: PASS`，`SQCD.Agv.UnitTests` **504 通过**、
+`SQCD.Agv.WireToGateG2Tests` **378 通过**（`hmi#149` 那族偶发的 `StationDeadline*` 这轮没撞上）。
+
+**全绿证明不了那五条新测试被执行过**——CI 的作业日志只打 `Status: PASS`，
+`dotnet test` 通过时也不打类名，而 504 恰好与本机相同，两个相同的数字不能互相佐证。
+所以链条是三段，每段单独成立：
+
+1. 推送前 `git merge-base --is-ancestor origin/w2g/fp-v2-impl HEAD` 成立，基线未前移，
+   **CI 那棵树的内容与本机工作树相同**；
+2. 本机 `--filter "FullyQualifiedName!~RecoveryEntryWriteSiteArchitectureTests"` 跑出 **499**，
+   不带过滤跑出 **504**——新类贡献的正是 5 条；
+3. CI 跑出 504。
+
+所以 CI 那 504 里含新类的五条。计数取自 artifact `g2-evidence` 里的
+`logs/dotnet-test-release.log`，不是作业日志。
+
 ## 一并回答了票面评论的那个问题：这一族守卫里，哪几条守的是写法不是行为
 
 答案登记在代码里，不在这份文档里：
