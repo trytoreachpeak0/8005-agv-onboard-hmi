@@ -1,0 +1,78 @@
+探针: MarkRecoveryAnnounced 与 ExchangeOwedRecoveryEntry 开头各加一句 if (Environment.TickCount64 >= 0) { throw ... }（带条件是为了不触发 CS0162/CS8602；前两次探针都因编译失败作废，跑的是旧二进制）
+目的: 证明 green/g2-multi-demand-journey.txt 那 47 条全绿里，有用例真的走到本票改动的两个写入口
+结果: 编译 0 Error(s)，47 条里 7 条红。输出里没有 probe: reached——异常在异步路径里被吞掉，用例按行为红；两次运行唯一的差别是探针，归因成立
+还原: 按字节备份，blob 6290ce86 对上，重编 0 Error(s)
+
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:16.16]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryReachesTheOperatorOnceTheRunningCommandHasFinished [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryReachesTheOperatorOnceTheRunningCommandHasFinished [7 s]
+  Error Message:
+   Timed out after 5s waiting for: A's restored recovery line to reach the operator. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 593
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.DriveAOwedWhileBHoldsTheDoorsAsync(Harness harness, FakeIoModuleClient io, RestoreWindowJournal window, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 281
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryReachesTheOperatorOnceTheRunningCommandHasFinished() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 74
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryReachesTheOperatorOnceTheRunningCommandHasFinished() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 103
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:23.83]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoneAttemptStillCarriesItsSnapshotAfterGivingTheDisplayUp [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoneAttemptStillCarriesItsSnapshotAfterGivingTheDisplayUp [5 s]
+  Error Message:
+   Timed out after 5s waiting for: A's restored recovery line to be published. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 593
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoneAttemptStillCarriesItsSnapshotAfterGivingTheDisplayUp() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryProjectionDisplay.cs:line 287
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoneAttemptStillCarriesItsSnapshotAfterGivingTheDisplayUp() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryProjectionDisplay.cs:line 299
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:31.76]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnOverdueIsStillRaisedOnTheRunningCommandsOwnUnlockAfterARestoredRecoveryProjection [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnOverdueIsStillRaisedOnTheRunningCommandsOwnUnlockAfterARestoredRecoveryProjection [7 s]
+  Error Message:
+   Timed out after 5s waiting for: A's restored recovery line to reach the operator. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 593
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnOverdueIsStillRaisedOnTheRunningCommandsOwnUnlockAfterARestoredRecoveryProjection() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryProjectionDisplay.cs:line 219
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnOverdueIsStillRaisedOnTheRunningCommandsOwnUnlockAfterARestoredRecoveryProjection() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryProjectionDisplay.cs:line 235
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:39.13]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestoredRecoveryProjectionLeavesTheRunningCommandsDisplayAndClockAlone [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestoredRecoveryProjectionLeavesTheRunningCommandsDisplayAndClockAlone [7 s]
+  Error Message:
+   Timed out after 5s waiting for: A's restored recovery line to reach the operator. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 593
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestoredRecoveryProjectionLeavesTheRunningCommandsDisplayAndClockAlone() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryProjectionDisplay.cs:line 132
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestoredRecoveryProjectionLeavesTheRunningCommandsDisplayAndClockAlone() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryProjectionDisplay.cs:line 161
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:51.72]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryDoesNotTakeTheScreenOffTheCommandThatNeedsRecoveryItself [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryDoesNotTakeTheScreenOffTheCommandThatNeedsRecoveryItself [7 s]
+  Error Message:
+   Timed out after 5s waiting for: A's restored recovery line to reach the operator. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 593
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.DriveAOwedWhileBHoldsTheDoorsAsync(Harness harness, FakeIoModuleClient io, RestoreWindowJournal window, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 281
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryDoesNotTakeTheScreenOffTheCommandThatNeedsRecoveryItself() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 204
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryDoesNotTakeTheScreenOffTheCommandThatNeedsRecoveryItself() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 230
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:01.82]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AShownRecoveryEntryIsNotShownAgainWhenTheDoorsComeFreeASecondTime [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AShownRecoveryEntryIsNotShownAgainWhenTheDoorsComeFreeASecondTime [7 s]
+  Error Message:
+   Timed out after 5s waiting for: A's restored recovery line to reach the operator. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 593
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.DriveAOwedWhileBHoldsTheDoorsAsync(Harness harness, FakeIoModuleClient io, RestoreWindowJournal window, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 281
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AShownRecoveryEntryIsNotShownAgainWhenTheDoorsComeFreeASecondTime() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 131
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AShownRecoveryEntryIsNotShownAgainWhenTheDoorsComeFreeASecondTime() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 163
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:13.02]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheRestoredRecoveryProjectionStillCarriesItsSnapshotWhenNothingOwnsTheDisplay [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheRestoredRecoveryProjectionStillCarriesItsSnapshotWhenNothingOwnsTheDisplay [7 s]
+  Error Message:
+   Timed out after 5s waiting for: the restored recovery projection to be published. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 593
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheRestoredRecoveryProjectionStillCarriesItsSnapshotWhenNothingOwnsTheDisplay() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryProjectionDisplay.cs:line 384
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheRestoredRecoveryProjectionStillCarriesItsSnapshotWhenNothingOwnsTheDisplay() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryProjectionDisplay.cs:line 397
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     7, Passed:    40, Skipped:     0, Total:    47, Duration: 1 m 18 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

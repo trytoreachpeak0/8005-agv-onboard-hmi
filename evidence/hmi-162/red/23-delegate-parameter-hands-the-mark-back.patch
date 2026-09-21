@@ -1,0 +1,15 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index a653a8f..dc1b521 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -1100,8 +1100,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+     /// <summary>
+     /// Drops the owed entry if it is <paramref name="attemptId"/>'s and that attempt no longer needs one.
+     /// </summary>
+-    private void ForgetOwedRecoveryEntry(string attemptId)
++    private void ForgetOwedRecoveryEntry(string attemptId, Action<OwedRecoveryEntry?> handBack)
+     {
++        handBack(null);
+         bool dropped = false;
+         lock (_operationAttemptGate)
+         {

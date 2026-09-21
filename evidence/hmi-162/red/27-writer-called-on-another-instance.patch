@@ -1,0 +1,14 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index a653a8f..05ee195 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -1163,6 +1163,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+     /// before moving these two statements past each other.
+     /// </para>
+     /// </remarks>
++    private static void RestoreMark(WireToGateBusinessService service, string attemptId) =>
++        service.MarkRecoveryAnnounced(attemptId);
++
+     private void ReleaseInFlightAttempt(string attemptId)
+     {
+         lock (_operationAttemptGate)
