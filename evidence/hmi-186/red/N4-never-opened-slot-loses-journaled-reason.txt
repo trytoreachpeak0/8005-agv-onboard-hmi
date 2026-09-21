@@ -1,0 +1,42 @@
+commit: 6e5adb4f4ebdc50a419acffb10612951e47e616b（执行器 blob ec9cc5fe08ef99e1a01232672fb7071cdedcc14d，src/tests 与 HEAD 一致）
+变异: 见下方 diff（对 HEAD）
+预期（事先写下）: 只红 ASettledOccupancyConflictKeepsItsReason。共 1 条。
+命令: dotnet build tests/SQCD.Agv.UnitTests -c Release；dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~WireToGateSlotOperationExecutor"
+
+diff --git a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
+index ec9cc5f..3672064 100644
+--- a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
++++ b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
+@@ -390,7 +390,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
+     /// The reason codes the journal holds for <paramref name="physicalSlot"/>'s last result, or none.
+     /// </summary>
+     private static IReadOnlyList<string> JournaledReasonCodes(WireToGateRecoveryState state, int physicalSlot) =>
+-        state.SlotResults.LastOrDefault(result => result.SlotNo == physicalSlot)?.ReasonCodes ?? [];
++        [];
+ 
+     /// <summary>
+     /// The reason codes of <paramref name="physicalSlot"/>'s journaled UNKNOWN result -- the slot this attempt
+
+    0 Error(s)
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:05.50]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason [81 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ
+                                                  ↓ (pos 0)
+Expected: <>z__ReadOnlySingleElementList<string> ["SLOT_OPERATION_CONFLICT"]
+Actual:   string[]                               []
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 159
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 163
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:    68, Skipped:     0, Total:    69, Duration: 16 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+失败断言所在位置（测试文件未变异）:
+  WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 159
+  WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 163

@@ -1,0 +1,16 @@
+run: https://github.com/trytoreachpeak0/8005-agv-control-server/actions/runs/35591732768（CI rig=real，vm01）
+场景: real-onboard-compensate-then-reconnect，1 遍
+
+## 四行核对（从 run 日志「Run real-onboard L2 scenarios」那一步读）
+8005-agv-onboard-hmi @ 6e5adb4f4ebdc50a419acffb10612951e47e616b
+control-server @ 0b19397b6d0bd05292b1d9ec992b7f40edc8290f
+slots-simulator @ fb5f7c593742bf98bc3957b8729a38aad5321f28
+##[group]real-onboard-compensate-then-reconnect-01 -- PASS, 66s
+RIG_COMMIT_GUARD|RIG_DESKTOP_LOCK|RIG_DEADLINE：命中 1 次，其中源码回显 1 次
+
+## 车载端日志（产物 real-rig-evidence/.../logs/onboard-app/agv-20260921.log）里的启动行
+2026-09-21T19:02:32.4535971+08:00	Information	App	车载端启动：agvId=AGV-L2-001，environment=Development，version=0.2.0-safety-mock-travel+6e5adb4f4ebdc50a419acffb10612951e47e616b。
+2026-09-21T19:02:46.7296031+08:00	Information	App	车载端启动：agvId=AGV-L2-001，environment=Development，version=0.2.0-safety-mock-travel+6e5adb4f4ebdc50a419acffb10612951e47e616b。
+
+结论：补偿恢复场景（会重启车载端再走恢复入口）在本 PR 的产品代码上 PASS，两次启动的版本串都带 6e5adb4f。它不经过「中途失败后重启结算」那条路径，证明的是本 PR 没有把恢复入口与重启路径改坏；#186 的行为本身由单测、修前红与变异探针证明。
+src 与本证据所在提交逐字节相同（本证据提交只动 evidence/）。

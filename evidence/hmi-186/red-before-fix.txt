@@ -1,0 +1,59 @@
+修前红：#186 的四条执行器单测（当前版本，方案 B 口径），在修复之前的代码上
+src: 18663e4（w2g/fp-v2-impl，本票之前），临时 worktree 只加入本测试文件；构建 0 Error(s)
+命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~ASettle"
+预期（事先写下）: 四条全红。三条中途失败用例红在「失败的仓应为 UNKNOWN、实际 NOT_STARTED」；冲突用例红在原因码为空。
+
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red186-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:04.25]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCallTheSlotThatFailedAtASafeFinishNotStarted [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCallTheSlotThatFailedAtASafeFinishNotStarted [1 s]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "UNKNOWN"
+Actual:   "NOT_STARTED"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCallTheSlotThatFailedAtASafeFinishNotStarted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red186-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 47
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCallTheSlotThatFailedAtASafeFinishNotStarted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red186-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 50
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:05.37]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCountTheSlotThatFailedAtASafeFinishEvenWhenItReadsFinal [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCountTheSlotThatFailedAtASafeFinishEvenWhenItReadsFinal [1 s]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "UNKNOWN"
+Actual:   "NOT_STARTED"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCountTheSlotThatFailedAtASafeFinishEvenWhenItReadsFinal() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red186-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 81
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementDoesNotCountTheSlotThatFailedAtASafeFinishEvenWhenItReadsFinal() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red186-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 91
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:06.50]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementLeavesTheSlotsAfterTheFailedOneNotStarted [FAIL]
+[xUnit.net 00:00:06.59]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementLeavesTheSlotsAfterTheFailedOneNotStarted [1 s]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "UNKNOWN"
+Actual:   "NOT_STARTED"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementLeavesTheSlotsAfterTheFailedOneNotStarted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red186-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 121
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementLeavesTheSlotsAfterTheFailedOneNotStarted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red186-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 127
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason [84 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ
+                                                  ↓ (pos 0)
+Expected: <>z__ReadOnlySingleElementList<string> ["SLOT_OPERATION_CONFLICT"]
+Actual:   string[]                               []
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red186-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 159
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\red186-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 163
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     4, Passed:     0, Skipped:     0, Total:     4, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)
