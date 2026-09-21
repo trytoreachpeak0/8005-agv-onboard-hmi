@@ -202,7 +202,29 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         !_fatalFaultLatched()
         && _session.Current.Readiness == WireToGateSessionReadiness.Ready
         && Volatile.Read(ref _currentEntryRequest) is not null
-        && !IsLoadCancellationBeforeSublotOpen;
+        && !IsLoadCancellationBeforeSublotOpen
+        && _vehicleStoppedProvider();
+
+    /// <summary>
+    /// 手里有一条录入请求，但车没停稳，所以扫码暂停（8005-agv-onboard-hmi#177）。界面据此写「停稳后可继续扫码」，
+    /// 而不是落到「等待业务指令」——那一句读起来像请求没了，而请求一直在，停稳就回来。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>车动时关扫码是用户定的（hmi#177 的 issue 评论）。</b>在这之前入口只看会话 Ready，车被外力推动时
+    /// 要等服务端把会话降出 Ready（车载端报 departureSafe=false，一次上报往返）才关。现在两道都在：
+    /// <b>本端车一动就关是第一道，服务端降级是第二道</b>，别把其中任何一道当成多余删掉——第一道没了，
+    /// 窗口回来；第二道没了，本端读数一错就没人兜。
+    /// </para>
+    /// <para>
+    /// <b>不去抖，是决定不是疏忽。</b>停稳信号来自服务端车辆安全接口，每次轮询都现场问 RIoT，一次调用出错
+    /// 就读成未停稳。那种抖动今天本来就会经服务端降级让入口消失；这里只是提前一个往返关，并让比往返还短的
+    /// 抖动也看得见。现场装卸货时实际抖不抖，没有 v2 数据。
+    /// </para>
+    /// </remarks>
+    public bool IsSublotEntryPausedUntilStopped =>
+        Volatile.Read(ref _currentEntryRequest) is not null
+        && !_vehicleStoppedProvider();
 
     /// <summary>
     /// 本机的仓门工作是不是正在进行：两个执行器各自的串行化门，任一被持有就是 true
@@ -634,6 +656,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
         WireToGateSublotEntryRequest request = Volatile.Read(ref _currentEntryRequest)
             ?? throw new InvalidOperationException("WIRE_TO_GATE_JOURNEY_NOT_READY");
+        // 与 CanSubmitSublot 的停稳条件是同一件事的两半（8005-agv-onboard-hmi#177）：只关入口不挡提交，自动化宿主
+        // 与任何不先问入口就调进来的路径都绕得过去。请求留着——车停稳就能接着扫。
+        if (!_vehicleStoppedProvider())
+        {
+            throw new InvalidOperationException("VEHICLE_NOT_STOPPED");
+        }
         if (IsLoadCancellationBeforeSublotOpen)
         {
             throw new InvalidOperationException("LOAD_CANCELLATION_IN_PROGRESS");

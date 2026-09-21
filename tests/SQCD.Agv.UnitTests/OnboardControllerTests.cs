@@ -29,29 +29,50 @@ public sealed class OnboardControllerTests
     }
 
     /// <summary>
-    /// WIRE_TO_GATE_NOT_READY 那一句只说这个状态下两种情形都成立的事（8005-agv-onboard-hmi#177）。
+    /// 两句「未就绪」文案各自只说它覆盖的每一种状态下都成立的事，并且与 <see cref="OnboardCommandRejectionText"/> 里
+    /// 同码那一份逐字相同（8005-agv-onboard-hmi#177）。
     /// </summary>
     /// <remarks>
-    /// 这个状态同时覆盖「会话没 Ready」与「会话 Ready、车在动」。后一种情形下 v2 的扫码入口开着
-    /// （<c>LoadCancellationBeforeSublotG2Tests.TheEntryStaysOpenWhileTheSessionIsReadyAndTheVehicleMoves</c> 钉的就是这个），
-    /// 所以这一句不能说「已禁止扫码」。发车这里确实不放行，上面那条断言了。
-    /// 两份文案——控制器自己的与 <see cref="OnboardCommandRejectionText"/> 里的——必须逐字相同：操作员从哪条路径看到这个码，
-    /// 读到的都该是同一句；改了一份忘了另一份，界面上就同时挂着一句真的和一句假的。
+    /// <para>
+    /// WIRE_TO_GATE_NOT_READY 覆盖「会话没 Ready」与「会话 Ready、车没停稳」。hmi#177 之后两支下扫码都被挡住（后一支由
+    /// 业务服务的停稳门挡，<c>LoadCancellationBeforeSublotG2Tests.AMovingVehicleClosesTheEntryAndRefusesTheScanAndAStopBringsItBack</c>
+    /// 钉着），发车由控制器挡（上面第一条），所以它说「禁止扫码与发车」，并说出「车辆尚未停稳」这个原因。
+    /// </para>
+    /// <para>
+    /// WIRE_TO_GATE_JOURNEY_NOT_READY 覆盖的几支下扫码入口都没被挡
+    /// （<c>LoadCancellationBeforeSublotG2Tests.AJourneyThatCannotAcceptASublotDoesNotCloseTheEntry</c> 钉着），所以它不声称
+    /// 禁止任何事。
+    /// </para>
+    /// <para>
+    /// 逐字相同：操作员从哪条路径看到这个码，读到的都该是同一句；改了一份忘了另一份，界面上就同时挂着一句真的和
+    /// 一句假的。
+    /// </para>
     /// </remarks>
     [Fact]
-    public async Task ExternalSafetyNotReadyGuidanceClaimsOnlyWhatHoldsWhileTheVehicleMoves()
+    public async Task NotReadyGuidanceSaysOnlyWhatHoldsInEveryStateItCovers()
     {
         FakeIoModule io = new();
         FakeRuleGateway rule = new(OperationType.Load, "OP-WORDING");
-        await using OnboardController controller = CreateController(io, rule, () => false);
+        await using (OnboardController notReady = CreateController(io, rule, () => false))
+        {
+            await notReady.StartAsync(TestContext.Current.CancellationToken);
+            Assert.Equal("WIRE_TO_GATE_NOT_READY", notReady.Current.ErrorCode);
+            Assert.Equal(OnboardCommandRejectionText.Describe("WIRE_TO_GATE_NOT_READY"), notReady.Current.Guidance);
+            Assert.Contains("车辆尚未停稳", notReady.Current.Guidance, StringComparison.Ordinal);
+            Assert.Contains("禁止扫码与发车", notReady.Current.Guidance, StringComparison.Ordinal);
+        }
 
-        await controller.StartAsync(TestContext.Current.CancellationToken);
-
-        Assert.Equal("WIRE_TO_GATE_NOT_READY", controller.Current.ErrorCode);
-        Assert.Equal(OnboardCommandRejectionText.Describe("WIRE_TO_GATE_NOT_READY"), controller.Current.Guidance);
-        Assert.DoesNotContain("扫码", controller.Current.Guidance, StringComparison.Ordinal);
-        Assert.Contains("车辆尚未停稳", controller.Current.Guidance, StringComparison.Ordinal);
-        Assert.Contains("禁止发车", controller.Current.Guidance, StringComparison.Ordinal);
+        await using OnboardController journeyNotReady = CreateController(
+            new FakeIoModule(),
+            new FakeRuleGateway(OperationType.Load, "OP-WORDING-JOURNEY"),
+            () => true,
+            () => WireToGateJourneySnapshot.Empty);
+        await journeyNotReady.StartAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("WIRE_TO_GATE_JOURNEY_NOT_READY", journeyNotReady.Current.ErrorCode);
+        Assert.Equal(
+            OnboardCommandRejectionText.Describe("WIRE_TO_GATE_JOURNEY_NOT_READY"),
+            journeyNotReady.Current.Guidance);
+        Assert.DoesNotContain("禁止", journeyNotReady.Current.Guidance, StringComparison.Ordinal);
     }
 
     [Fact]

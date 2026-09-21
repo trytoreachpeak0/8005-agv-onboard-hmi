@@ -509,55 +509,88 @@ public sealed class LoadCancellationBeforeSublotG2Tests
     }
 
     /// <summary>
-    /// 会话 Ready、车在动、手里有一条录入请求：本端的扫码入口是开着的（8005-agv-onboard-hmi#177）。
+    /// 车一动，扫码入口关、提交被拒，录入请求留着；停稳后入口回来，同一条请求照常能提交（8005-agv-onboard-hmi#177）。
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>这条钉的是一句文案的前提，不是一个期望的行为。</b>WIRE_TO_GATE_NOT_READY 在「会话 Ready 且车辆停稳」为假时
-    /// 显示，所以这个状态下也显示；它原来说「本界面已禁止扫码与发车」，而本端 CanSubmitSublot、SubmitSublotAsync、
-    /// 发送口三层都不看车动没动，扫码那一半就是假的。hmi#177 把那一句改成只说「已禁止发车」，理由就是这条断言。
+    /// <b>车动时关扫码是用户定的</b>（hmi#177 的 issue 评论）。在这之前入口只看会话 Ready，车被外力推动时要等服务端把
+    /// 会话降出 Ready 才关——车载端报 departureSafe=false、服务端降级、回复回来，一次上报往返。
     /// </para>
     /// <para>
-    /// <b>它红了，要改的是那一句文案，不是这条。</b>扫码入口哪天自己看车动没动了（调度报给用户的方案 B），这条会红——
-    /// 那时 OnboardCommandRejectionText 与 OnboardController 里 WIRE_TO_GATE_NOT_READY 那一句才可以重新说禁止扫码。
+    /// <b>两道都在，别把其中一道当成多余。</b>本端车一动就关是第一道；服务端降级是第二道（control-server 的
+    /// WireToGateStore.DecideReadinessAsync，豁免只给本车在途装卸造成的门锁原因码）。这里的假服务端不因车动降级会话
+    /// （RequireSafeSafetyForReadiness 默认关），所以这条量到的只有第一道——正因为如此，第一道没了它就红。
     /// </para>
     /// <para>
-    /// <b>这不是一个一直敞开的洞。</b>假服务端不因车动降级会话（RequireSafeSafetyForReadiness 默认关）；它扮演的是真服务端
-    /// 的降级回复到达之前那一段。真服务端收到 departureSafe=false 会把会话降出 Ready（control-server 的
-    /// WireToGateStore.DecideReadinessAsync，豁免只给本车在途装卸造成的门锁原因码），扫码入口随之关闭——中间隔一次
-    /// 上报往返，这条量的就是那段窗口里本端的样子。
+    /// 「会话未就绪或车辆尚未停稳，本界面已禁止扫码与发车」那一句（OnboardCommandRejectionText）依赖这一道门：
+    /// 这条红了，那句话就又是假的。
     /// </para>
     /// <para>
-    /// 等的是「车载端把车在动报出去了」，不是「车动了」：替身一改状态就读断言，读到的可能是本端还没来得及知道车在动的
-    /// 那一刻，入口开着就什么也证明不了。
+    /// 请求留着，是为了界面不把「暂停」呈现成「取消」：停稳就回来，而不是等服务端重发。
     /// </para>
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
-    public async Task TheEntryStaysOpenWhileTheSessionIsReadyAndTheVehicleMoves()
+    public async Task AMovingVehicleClosesTheEntryAndRefusesTheScanAndAStopBringsItBack()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         PushableVehicle vehicle = new();
         await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(token, vehicle: vehicle);
         Assert.True(harness.Business.CanSubmitSublot);
+        Assert.False(harness.Business.IsSublotEntryPausedUntilStopped);
+        IReadOnlyList<string>? expected = harness.Business.ExpectedSublots;
+        Assert.NotNull(expected);
 
         vehicle.StartMoving();
-        await BeforeSublotHarness.WaitUntilAsync(
-            () => harness.Server.ReceivedEnvelopes.Any(envelope =>
-                envelope.MessageType == "SafetyStateChanged" && ReportsMoving(envelope.WireLine)),
-            "the onboard to report the vehicle moving",
-            token);
+
+        Assert.False(harness.Business.CanSubmitSublot);
+        Assert.True(harness.Business.IsSublotEntryPausedUntilStopped);
+        Assert.Equal(expected, harness.Business.ExpectedSublots);
+        InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token));
+        Assert.Equal("VEHICLE_NOT_STOPPED", refused.Message);
+        Assert.DoesNotContain(harness.Server.ReceivedEnvelopes, envelope => envelope.MessageType == "SublotSubmitted");
+
+        vehicle.StopMoving();
 
         Assert.True(harness.Business.CanSubmitSublot);
+        Assert.False(harness.Business.IsSublotEntryPausedUntilStopped);
+        Assert.Equal(expected, harness.Business.ExpectedSublots);
+        await harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token);
+        await BeforeSublotHarness.WaitUntilAsync(
+            () => harness.Server.ReceivedEnvelopes.Any(envelope => envelope.MessageType == "SublotSubmitted"),
+            "the entry made after the stop to reach the server",
+            token);
     }
 
-    private static bool ReportsMoving(string wireLine)
+    /// <summary>
+    /// 旅程快照不可接受录入时（这里取「手动充电保持」这一支），扫码入口照样开着（8005-agv-onboard-hmi#177）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>这条钉的是一句文案的前提。</b>WIRE_TO_GATE_JOURNEY_NOT_READY 在 IsAuthoritativeJourneyReady() 为假时显示，
+    /// 而它的几支——业务状态不是 READY、手动充电保持、电量不是 SUFFICIENT、清单为空、快照过期——下扫码入口都不看，
+    /// 所以那一句不能说「已禁止扫码」，hmi#177 把它改成只陈述事实加指引。
+    /// </para>
+    /// <para>
+    /// <b>它红了，是该回头改文案的时候</b>：入口哪天开始看旅程快照了，那一句才可以重新说禁止扫码。选这一支是因为它
+    /// 不依赖时间；快照过期那一支同理，只是要拨表。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task AJourneyThatCannotAcceptASublotDoesNotCloseTheEntry()
     {
-        using JsonDocument document = JsonDocument.Parse(wireLine);
-        JsonElement safety = document.RootElement.GetProperty("payload").GetProperty("safety");
-        return !safety.GetProperty("vehicleStopped").GetBoolean()
-            && !safety.GetProperty("departureSafe").GetBoolean();
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
+            token,
+            server => server.ManualChargingHoldInSnapshots = true);
+
+        Assert.False(harness.Session.CurrentJourney.CanAcceptSublot);
+        Assert.True(harness.Session.CurrentJourney.VehicleBusinessState?.ManualChargingHold);
+        Assert.True(harness.Business.CanSubmitSublot);
     }
 
     private static WireToGateRecoveryOperationContext SettledLoad() =>
@@ -608,6 +641,8 @@ public sealed class LoadCancellationBeforeSublotG2Tests
         public FakeIoModuleClient Io { get; }
 
         public WireToGateBusinessService Business { get; }
+
+        public WireToGateSessionService Session => _session;
 
         public static FakeControlServer NewServer() =>
             new(IPAddress.Loopback)
@@ -852,9 +887,13 @@ public sealed class LoadCancellationBeforeSublotG2Tests
 
         public event EventHandler<ValueChangedEventArgs<VehicleSafetySignal>>? SignalChanged;
 
-        public void StartMoving()
+        public void StartMoving() => Set(moving: true);
+
+        public void StopMoving() => Set(moving: false);
+
+        private void Set(bool moving)
         {
-            _moving = true;
+            _moving = moving;
             SignalChanged?.Invoke(this, new ValueChangedEventArgs<VehicleSafetySignal>(Read()));
         }
 

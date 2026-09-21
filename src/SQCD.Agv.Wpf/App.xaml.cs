@@ -245,7 +245,18 @@ public partial class App : System.Windows.Application, IDisposable
                     () => _wireToGateBusiness.IsLoadCancellationBeforeSublotOpen,
                     () => _wireToGateBusiness.CurrentSublotRejection,
                     () => _wireToGateBusiness.RecoveryReasonAlreadyGiven,
-                    () => _wireToGateBusiness.RecoveryFallbackDemandId);
+                    () => _wireToGateBusiness.RecoveryFallbackDemandId,
+                    // 按名字传，不接着按位置排：按位置传的参数在调用点没有名字，grep 找不到它的用法
+                    // （8005-agv-onboard-hmi#177 票面记下的那一次，就是这样把两个就绪委托判成了「v2 不传」）。
+                    sublotEntryPausedUntilStopped: () => _wireToGateBusiness.IsSublotEntryPausedUntilStopped);
+                // 扫码入口看停稳（8005-agv-onboard-hmi#177），而停稳一变，会话、旅程、录入请求都没变，上面那几条
+                // 刷新路径一条也不会跑。不接这一条，车动了入口照样开着，要等服务端把会话降级才关——正是这张票要去掉
+                // 的窗口。控制器那句 WIRE_TO_GATE_NOT_READY 同理：它也看停稳，却只在会话或旅程变化时重算。
+                vehicleSafetySignalProvider.SignalChanged += (_, _) =>
+                {
+                    viewModel.RefreshWireToGateEntryAvailability();
+                    _controller.RefreshExternalSafetyState();
+                };
                 viewModel.ConfigureForcedIsolation(
                     () => _wireToGateBusiness.CanConfirmForcedMechanicalRecovery,
                     cancellationToken => _wireToGateBusiness.ConfirmForcedMechanicalRecoveryAsync(

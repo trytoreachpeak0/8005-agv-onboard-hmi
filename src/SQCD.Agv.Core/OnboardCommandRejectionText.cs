@@ -32,20 +32,28 @@ public static class OnboardCommandRejectionText
         // 这两句原来说「已禁止……开门」，那一半在 v2 上不成立，和本票修的是同一个缺陷：
         // 服务端下发的仓位命令走 WireToGateSlotOperationExecutor，它不看控制器状态，照样开门
         // （审查，判据路条目 12）。改成只陈述本界面真正挡得住的事。
-        // NOT_READY 的条件是「会话 Ready 且车辆停稳」为假（App.xaml.cs 按位置传进来的
-        // externalSafetyReadyProvider），所以这一句同时覆盖两种状态，只能说两种状态下都成立的事
-        // （8005-agv-onboard-hmi#177）。会话没 Ready：发送口拒绝扫码。会话 Ready、车在动：本端没有
-        // 任何一层挡——CanSubmitSublot、SubmitSublotAsync、发送口都不看车动没动——而录入请求可能
-        // 还开着。**补上这个口子的是服务端，不是本界面**：车一动，车载端报 departureSafe=false，服务端
-        // 把会话降出 Ready，扫码入口随之关闭，中间隔一次上报往返。这段时间里「本界面已禁止扫码」是假的，
-        // 所以这一句不再说它。「发车」留着：这个状态下控制器自己不放行发车。
-        // 前提由 LoadCancellationBeforeSublotG2Tests.TheEntryStaysOpenWhileTheSessionIsReadyAndTheVehicleMoves
-        // 钉住：哪天扫码入口自己看车动没动了，那条会红，那时这一句才可以重新说禁止扫码。与控制器里那一份
-        // 逐字相同由 OnboardControllerTests.ExternalSafetyNotReadyGuidanceClaimsOnlyWhatHoldsWhileTheVehicleMoves 守着。
-        ["WIRE_TO_GATE_NOT_READY"] = "上层安全会话尚未就绪或车辆尚未停稳，本界面已禁止发车。请等待连接及恢复完成、车辆停稳。",
-        ["WIRE_TO_GATE_JOURNEY_NOT_READY"] = "服务端旅程或当前站点任务尚未同步，本界面已禁止扫码。请等待任务恢复。",
+        // 下面两句各自覆盖好几种状态，所以每一句只能说它覆盖的每一种状态下都成立的事——逐支核过，不是逐句核
+        // （8005-agv-onboard-hmi#177）。前人在 DescribeRecoveryBlocked 上留的教训同样适用：改一段文案之前，先问原来
+        // 那句话里有没有承载安全信息的成分；这里「请等待……」那条指引两句都保留了。
+        //
+        // NOT_READY：条件是「会话 Ready 且车辆停稳」为假（App.xaml.cs 按位置传进来的 externalSafetyReadyProvider）。
+        //   会话没 Ready——发送口拒绝扫码；会话 Ready、车没停稳——CanSubmitSublot 关、SubmitSublotAsync 以
+        //   VEHICLE_NOT_STOPPED 拒绝（hmi#177 之前这一支没人挡，「禁止扫码」是假的，要等服务端降级会话才关）。
+        //   两支下控制器都不放行发车。所以「本界面已禁止扫码与发车」两支都成立，并说出「车辆尚未停稳」这个原因。
+        //   这一句依赖停稳门：删掉 CanSubmitSublot 或 SubmitSublotAsync 里看停稳的那一条，这句话就又是假的——
+        //   LoadCancellationBeforeSublotG2Tests.AMovingVehicleClosesTheEntryAndRefusesTheScanAndAStopBringsItBack 会红。
+        // JOURNEY_NOT_READY：条件是 IsAuthoritativeJourneyReady() 为假——业务状态不是 READY、手动充电保持、电量不是
+        //   SUFFICIENT、清单为空、快照过期。这几支下扫码入口都没被挡（入口不看旅程快照，停稳门只加了未停稳一支），
+        //   所以这一句不声称禁止任何事，只陈述事实加指引。前提由
+        //   LoadCancellationBeforeSublotG2Tests.AJourneyThatCannotAcceptASublotDoesNotCloseTheEntry 钉住：那条红了，是该回头
+        //   改这一句的时候。
+        // 两句与 OnboardController 里的同码那一份逐字相同，由
+        // OnboardControllerTests.NotReadyGuidanceSaysOnlyWhatHoldsInEveryStateItCovers 守着。
+        ["WIRE_TO_GATE_NOT_READY"] = "上层安全会话尚未就绪或车辆尚未停稳，本界面已禁止扫码与发车。请等待连接及恢复完成、车辆停稳。",
+        ["WIRE_TO_GATE_JOURNEY_NOT_READY"] = "服务端旅程或当前站点任务尚未同步，请等待任务恢复。",
         ["WIRE_TO_GATE_JOURNAL_NOT_READY"] = "车载端作业记录尚未就绪，请稍候再试。",
         ["VEHICLE_NOT_READY"] = "车辆当前不满足操作条件，请稍候再试。",
+        ["VEHICLE_NOT_STOPPED"] = "车辆尚未停稳，停稳后可继续扫码。",
 
         // Identity and credentials. Maintenance fixes these, not the operator at the vehicle.
         ["WIRE_TO_GATE_OPERATOR_NOT_READY"] = "本机尚未配置操作员工号，请联系维护人员。",

@@ -114,6 +114,7 @@ public sealed class MainViewModel : ViewModelBase
     private Func<string?, CancellationToken, Task<bool>>? _wireToGateLoadCancellationRequester;
     private Func<bool>? _wireToGateLoadCancellationSelectionRequired;
     private Func<string?>? _wireToGateRecoveryFallbackDemandId;
+    private Func<bool>? _wireToGateEntryPausedUntilStopped;
     private string _recoveryFallbackTargetText = string.Empty;
     private Func<string?, CancellationToken, Task<bool>>? _wireToGateLoadCompensationRequester;
     private Func<CancellationToken, Task<bool>>? _wireToGateLoadCorrectionRequester;
@@ -427,9 +428,11 @@ public sealed class MainViewModel : ViewModelBase
         Func<bool>? loadCancellationPending = null,
         Func<WireToGateSublotRejection?>? sublotRejection = null,
         Func<bool>? recoveryReasonAlreadyGiven = null,
-        Func<string?>? recoveryFallbackDemandId = null)
+        Func<string?>? recoveryFallbackDemandId = null,
+        Func<bool>? sublotEntryPausedUntilStopped = null)
     {
         _wireToGateRecoveryReasonAlreadyGiven = recoveryReasonAlreadyGiven;
+        _wireToGateEntryPausedUntilStopped = sublotEntryPausedUntilStopped;
         _wireToGateSubmitter = submitter ?? throw new ArgumentNullException(nameof(submitter));
         _wireToGateCanSubmit = canSubmit ?? throw new ArgumentNullException(nameof(canSubmit));
         _wireToGateCanRequestRecovery = canRequestRecovery;
@@ -552,6 +555,17 @@ public sealed class MainViewModel : ViewModelBase
         offeredByBusiness && !RecoveryEntriesBlockedByFatalFault;
 
     internal void RefreshWireToGateInputState() => RunOnUiThread(RefreshWireToGateInputStateCore);
+
+    /// <summary>
+    /// 入口与横幅一起重算。车辆停稳信号变化时用（8005-agv-onboard-hmi#177）：扫码入口现在看停稳，而停稳一变，
+    /// 会话、旅程、录入请求都没变，原有的几条刷新路径一条也不会跑——不接这一条，车动了入口照样开着，
+    /// 要等服务端把会话降级才关，那正是 hmi#177 要去掉的窗口。
+    /// </summary>
+    internal void RefreshWireToGateEntryAvailability() => RunOnUiThread(() =>
+    {
+        RefreshWireToGateInputStateCore();
+        ApplyWireToGatePresentationCore();
+    });
 
     private void RefreshWireToGateInputStateCore()
     {
@@ -1626,7 +1640,8 @@ public sealed class MainViewModel : ViewModelBase
             _wireToGateOperation,
             _wireToGateCanSubmit?.Invoke() == true,
             _wireToGateLoadCancellationPending?.Invoke() == true,
-            sublotRejection is not null);
+            sublotRejection is not null,
+            _wireToGateEntryPausedUntilStopped?.Invoke() == true);
         RuleConnectionText = _wireToGateSession.Connected ? "在线" : "离线";
         StateText = banner.StateText;
         // banner.HasError 在 v2 上恒 false（WireToGateHmiPresentation.Create 的每个分支都写死

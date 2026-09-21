@@ -121,6 +121,9 @@ public static class OnboardFailureClassification
         "WIRE_TO_GATE_JOURNEY_NOT_READY",
         "WIRE_TO_GATE_JOURNAL_NOT_READY",
         "VEHICLE_NOT_READY",
+        // The vehicle is not stopped, so scanning waits (8005-agv-onboard-hmi#177). Nothing was sent and the
+        // entry request stays open; a stop brings the entry back.
+        "VEHICLE_NOT_STOPPED",
 
         // ---------------------------------------------------------------------------------------
         // The recovery-path codes below are NOT reachable from Classify today, and saying otherwise
