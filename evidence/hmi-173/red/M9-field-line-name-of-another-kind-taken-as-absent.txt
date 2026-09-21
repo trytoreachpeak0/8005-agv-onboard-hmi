@@ -1,4 +1,4 @@
-commit: 6956f62c9fef67f7a95c64949697a3717e6037b0（守卫 blob ab869e80be4fe9fb804a338c6d20eabe372fa9e4、App.xaml.cs blob 3b60dd807f70afed1a490cadfddb8654d1927eae，src/tests 与 HEAD 一致）
+commit: 7a4fd09baa635907b70afca52d86a96f54163a8e（守卫 blob ab869e80be4fe9fb804a338c6d20eabe372fa9e4、App.xaml.cs blob 3b60dd807f70afed1a490cadfddb8654d1927eae，src/tests 与 HEAD 一致）
 变异: 见下方 diff（对 HEAD）
 预期（事先写下）: 只有 AFieldLineNameTakenByAnotherKindOfObjectStopsTheStart 红（审查 M-1 的原样：事件对象占住现场线名字时放行）。
 命令: dotnet build tests/SQCD.Agv.UnitTests -c Release，再 dotnet test --no-build --filter "FullyQualifiedName~SingleInstanceGuardTests"
@@ -23,18 +23,18 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:01.91]     SQCD.Agv.UnitTests.SingleInstanceGuardTests.AFieldLineNameTakenByAnotherKindOfObjectStopsTheStart [FAIL]
-  Failed SQCD.Agv.UnitTests.SingleInstanceGuardTests.AFieldLineNameTakenByAnotherKindOfObjectStopsTheStart [4 ms]
+[xUnit.net 00:00:01.20]     SQCD.Agv.UnitTests.SingleInstanceGuardTests.AFieldLineNameTakenByAnotherKindOfObjectStopsTheStart [FAIL]
+  Failed SQCD.Agv.UnitTests.SingleInstanceGuardTests.AFieldLineNameTakenByAnotherKindOfObjectStopsTheStart [1 ms]
   Error Message:
    Assert.Equal() Failure: Values differ
 Expected: Undeterminable
 Actual:   Acquired
   Stack Trace:
-     at SQCD.Agv.UnitTests.SingleInstanceGuardTests.AFieldLineNameTakenByAnotherKindOfObjectStopsTheStart() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi173-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\SingleInstanceGuardTests.cs:line 158
+     at SQCD.Agv.UnitTests.SingleInstanceGuardTests.AFieldLineNameTakenByAnotherKindOfObjectStopsTheStart() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi173-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\SingleInstanceGuardTests.cs:line 161
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
 
-Failed!  - Failed:     1, Passed:    13, Skipped:     0, Total:    14, Duration: 181 ms - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     1, Passed:    13, Skipped:     0, Total:    14, Duration: 112 ms - SQCD.Agv.UnitTests.dll (net8.0)
 
 失败断言所在行（测试文件未变异）:
-  158: Assert.Equal(SingleInstanceOutcome.Undeterminable, guard.Outcome);
+  161: Assert.Equal(SingleInstanceOutcome.Undeterminable, guard.Outcome);

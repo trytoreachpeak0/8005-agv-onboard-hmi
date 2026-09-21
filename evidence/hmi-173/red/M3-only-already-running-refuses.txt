@@ -1,4 +1,4 @@
-commit: 6956f62c9fef67f7a95c64949697a3717e6037b0（守卫 blob ab869e80be4fe9fb804a338c6d20eabe372fa9e4、App.xaml.cs blob 3b60dd807f70afed1a490cadfddb8654d1927eae，src/tests 与 HEAD 一致）
+commit: 7a4fd09baa635907b70afca52d86a96f54163a8e（守卫 blob ab869e80be4fe9fb804a338c6d20eabe372fa9e4、App.xaml.cs blob 3b60dd807f70afed1a490cadfddb8654d1927eae，src/tests 与 HEAD 一致）
 变异: 见下方 diff（对 HEAD）
 预期（事先写下）: OnlyAcquiredStarts、ANameTakenByAnotherKindOfObjectIsUndeterminableAndStopsTheStart、AFieldLineNameTakenByAnotherKindOfObjectStopsTheStart 三条红（现场线的失败方向：判断不了也启动）。其余绿。
 命令: dotnet build tests/SQCD.Agv.UnitTests -c Release，再 dotnet test --no-build --filter "FullyQualifiedName~SingleInstanceGuardTests"
@@ -23,9 +23,9 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:03.39]     SQCD.Agv.UnitTests.SingleInstanceGuardTests.ANameTakenByAnotherKindOfObjectIsUndeterminableAndStopsTheStart [FAIL]
-[xUnit.net 00:00:03.47]     SQCD.Agv.UnitTests.SingleInstanceGuardTests.AFieldLineNameTakenByAnotherKindOfObjectStopsTheStart [FAIL]
-  Failed SQCD.Agv.UnitTests.SingleInstanceGuardTests.ANameTakenByAnotherKindOfObjectIsUndeterminableAndStopsTheStart [200 ms]
+[xUnit.net 00:00:01.20]     SQCD.Agv.UnitTests.SingleInstanceGuardTests.ANameTakenByAnotherKindOfObjectIsUndeterminableAndStopsTheStart [FAIL]
+[xUnit.net 00:00:01.22]     SQCD.Agv.UnitTests.SingleInstanceGuardTests.AFieldLineNameTakenByAnotherKindOfObjectStopsTheStart [FAIL]
+  Failed SQCD.Agv.UnitTests.SingleInstanceGuardTests.ANameTakenByAnotherKindOfObjectIsUndeterminableAndStopsTheStart [18 ms]
   Error Message:
    Assert.False() Failure
 Expected: False
@@ -34,17 +34,17 @@ Actual:   True
      at SQCD.Agv.UnitTests.SingleInstanceGuardTests.ANameTakenByAnotherKindOfObjectIsUndeterminableAndStopsTheStart() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi173-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\SingleInstanceGuardTests.cs:line 88
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
-  Failed SQCD.Agv.UnitTests.SingleInstanceGuardTests.AFieldLineNameTakenByAnotherKindOfObjectStopsTheStart [4 ms]
+  Failed SQCD.Agv.UnitTests.SingleInstanceGuardTests.AFieldLineNameTakenByAnotherKindOfObjectStopsTheStart [1 ms]
   Error Message:
    Assert.Equal() Failure: Values differ
 Expected: Undeterminable
 Actual:   Acquired
   Stack Trace:
-     at SQCD.Agv.UnitTests.SingleInstanceGuardTests.AFieldLineNameTakenByAnotherKindOfObjectStopsTheStart() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi173-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\SingleInstanceGuardTests.cs:line 158
+     at SQCD.Agv.UnitTests.SingleInstanceGuardTests.AFieldLineNameTakenByAnotherKindOfObjectStopsTheStart() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi173-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\SingleInstanceGuardTests.cs:line 161
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
-[xUnit.net 00:00:03.61]     SQCD.Agv.UnitTests.SingleInstanceGuardTests.OnlyAcquiredStarts [FAIL]
-  Failed SQCD.Agv.UnitTests.SingleInstanceGuardTests.OnlyAcquiredStarts [8 ms]
+[xUnit.net 00:00:01.26]     SQCD.Agv.UnitTests.SingleInstanceGuardTests.OnlyAcquiredStarts [FAIL]
+  Failed SQCD.Agv.UnitTests.SingleInstanceGuardTests.OnlyAcquiredStarts [3 ms]
   Error Message:
    Assert.Equal() Failure: Values differ
 Expected: False
@@ -54,9 +54,9 @@ Actual:   True
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
 
-Failed!  - Failed:     3, Passed:    11, Skipped:     0, Total:    14, Duration: 661 ms - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     3, Passed:    11, Skipped:     0, Total:    14, Duration: 110 ms - SQCD.Agv.UnitTests.dll (net8.0)
 
 失败断言所在行（测试文件未变异）:
   88: Assert.False(guard.ShouldStart);
   96: foreach (SingleInstanceOutcome outcome in Enum.GetValues<SingleInstanceOutcome>())
-  158: Assert.Equal(SingleInstanceOutcome.Undeterminable, guard.Outcome);
+  161: Assert.Equal(SingleInstanceOutcome.Undeterminable, guard.Outcome);

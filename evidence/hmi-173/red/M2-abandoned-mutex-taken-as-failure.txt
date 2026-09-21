@@ -1,4 +1,4 @@
-commit: 6956f62c9fef67f7a95c64949697a3717e6037b0（守卫 blob ab869e80be4fe9fb804a338c6d20eabe372fa9e4、App.xaml.cs blob 3b60dd807f70afed1a490cadfddb8654d1927eae，src/tests 与 HEAD 一致）
+commit: 7a4fd09baa635907b70afca52d86a96f54163a8e（守卫 blob ab869e80be4fe9fb804a338c6d20eabe372fa9e4、App.xaml.cs blob 3b60dd807f70afed1a490cadfddb8654d1927eae，src/tests 与 HEAD 一致）
 变异: 见下方 diff（对 HEAD）
 预期（事先写下）: 只有 AnAbandonedNameIsAcquired 红（被杀的上一个实例留下的名字谁都抢不到）。
 命令: dotnet build tests/SQCD.Agv.UnitTests -c Release，再 dotnet test --no-build --filter "FullyQualifiedName~SingleInstanceGuardTests"
@@ -23,8 +23,8 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:03.01]     SQCD.Agv.UnitTests.SingleInstanceGuardTests.AnAbandonedNameIsAcquired [FAIL]
-  Failed SQCD.Agv.UnitTests.SingleInstanceGuardTests.AnAbandonedNameIsAcquired [9 ms]
+[xUnit.net 00:00:01.37]     SQCD.Agv.UnitTests.SingleInstanceGuardTests.AnAbandonedNameIsAcquired [FAIL]
+  Failed SQCD.Agv.UnitTests.SingleInstanceGuardTests.AnAbandonedNameIsAcquired [2 ms]
   Error Message:
    Assert.Equal() Failure: Values differ
 Expected: Acquired
@@ -34,7 +34,7 @@ Actual:   AlreadyRunning
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
 
-Failed!  - Failed:     1, Passed:    13, Skipped:     0, Total:    14, Duration: 221 ms - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     1, Passed:    13, Skipped:     0, Total:    14, Duration: 115 ms - SQCD.Agv.UnitTests.dll (net8.0)
 
 失败断言所在行（测试文件未变异）:
   63: Assert.Equal(SingleInstanceOutcome.Acquired, OnAnotherThread(() => SingleInstanceGuard.AcquireByName(name)));

@@ -35,7 +35,7 @@
 ## red/：变异探针（守卫与启动路径，11 个）
 
 把一处判断改回错的样子，看预期的测试红、红在预期的断言上。每份开头有事先写下的预期与对 HEAD 的 diff，编译 `0 Error(s)` 才算数，
-末尾列出失败断言所在的行；按字节备份还原，blob 与 HEAD 一致。`--filter SingleInstanceGuardTests`（14 条）。全部在 `6956f62` 上跑。
+末尾列出失败断言所在的行；按字节备份还原，blob 与 HEAD 一致。`--filter SingleInstanceGuardTests`（14 条）。全部在 `7a4fd09` 上跑（产品代码与 `6956f62` 相同）。
 
 | 文件 | 改回的错 | 实际（与预期一致） |
 | --- | --- | --- |
@@ -55,7 +55,7 @@ M10、M11 是 M6 看不见的那一类：M6 改的是常量本身，而公开入
 
 **M2 第一次没红。** 第一版「被遗弃」用例让持有线程不释放就退出，但那个线程握着的是唯一的句柄，线程一退，内核把对象连名字一起销毁，
 下一次走的是新建，根本碰不到被遗弃那一支——把它改成「抢失败」用例照样绿。现在测试另开一个句柄让对象活着。同一个误解也写在现场线
-注释里（「L2/G3 强杀重启靠这一支」）：被杀的进程握着唯一句柄时，重启走的其实是新建。守卫注释已改正，当时的 8 个变异在改正后全部重跑；表中 11 个是审查修改后在 `6956f62` 上的最终一轮。
+注释里（「L2/G3 强杀重启靠这一支」）：被杀的进程握着唯一句柄时，重启走的其实是新建。守卫注释已改正，当时的 8 个变异在改正后全部重跑；表中 11 个是最终一轮，在 `7a4fd09` 上。
 
 ## review/M-1-before-fix.txt
 
@@ -85,10 +85,24 @@ M10、M11 是 M6 看不见的那一类：M6 改的是常量本身，而公开入
 - `summary.txt`：最终 head `6956f62`，run 35581062016，**PASS 71s**。四行核对对上（车载端 `6956f62c`、服务端 `a234e3ea`、模拟器 `fb5f7c59`，`RIG_*` 只命中 1 次源码回显）；车载端日志两次「抢到了整机单例名字」，版本串都带 `6956f62c`，「本次不启动」0 次。
 - `summary-c0da1f27.txt`：审查前的 `c0da1f27`，run 35578451292，PASS 66s，同样两次抢到。
 
+## CI 第一轮红：session 0 下 `Local\` 与 `Global\` 是同一个对象
+
+`f1badcc` 的 CI（run 35581496776）`ONBOARD_HMI_G2` 红了 1 条，是本票自己的用例 `AFieldLineNameThatExistsStopsTheStartWithoutTakingTheMachineName`：
+
+```
+Assert.StartsWith() Failure: String start does not match
+String:         "Global\\SQCD.Agv.Wpf-t-a2a47c3b1f804f8d9f9043f93ba4"···
+Expected start: "Local\\SQCD.Agv.Wpf-"
+```
+
+结论是对的（不启动），断言绑错了「由哪个名字判出」。CI runner 是服务、跑在 session 0，那里 `Local\X` 与 `Global\X` 是同一个内核对象，守卫先探测的 `Global\` 名字就找到了测试持有的 `Local\` 名字；本机交互会话里只有 `Local\` 探测看得见。vm01 经 ssh（session 0）实测`globalSeesLocal=True localSeesGlobal=True`，本机 session 1 两者都是 `False`。此前 PR 一直是草稿，这批用例第一次在 session 0 跑。
+
+修法（`7a4fd09`，只改测试）：断言改为「由现场线的两个名字之一判出」，理由写在断言旁边；「整机名字没被占」仍由下一行断言。产品代码与 `6956f62` 逐字节相同，所以真装置那一轮仍然对应最终 head 的产品代码。11 个变异与绿证据在 `7a4fd09` 上重跑，结果与上一轮相同。
+
 ## green/
 
-- `unit-tests.txt`：`dotnet test tests/SQCD.Agv.UnitTests -c Release`，**528 通过、0 失败**（基线 514，新增 14 条），`6956f62`。
-- `dotnet-format-verify.txt`：`exit=0`，`6956f62`。上一版这个文件的 `exit=` 取的是前一条 `echo` 的退出码，不算数；这次单独存了 format 的退出码。
+- `unit-tests.txt`：`dotnet test tests/SQCD.Agv.UnitTests -c Release`，**528 通过、0 失败**（基线 514，新增 14 条），`7a4fd09`。
+- `dotnet-format-verify.txt`：`exit=0`，`7a4fd09`。上一版这个文件的 `exit=` 取的是前一条 `echo` 的退出码，不算数；这次单独存了 format 的退出码。
 
 ## 守不到的
 

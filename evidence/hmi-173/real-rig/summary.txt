@@ -16,4 +16,4 @@ RIG_COMMIT_GUARD|RIG_DESKTOP_LOCK|RIG_DEADLINE：命中 1 次，其中源码回�
 「本次不启动」命中 0 次
 
 结论：场景里的 RestartOnboard（Kill(true) + WaitForExit(10000) 后再起）之后，新实例抢到了整机名字，场景 PASS；两次启动的版本串都带 6956f62c。
-src/tests 与本证据所在提交逐字节相同（本证据提交只动 evidence/）。上一轮在 c0da1f27 上的结果见 summary-c0da1f27.txt。
+src 与最终 head 逐字节相同：之后的 7a4fd09 只改了一条单元测试的断言（见 README「CI 第一轮红」），真装置跑的产品代码没变。上一轮在 c0da1f27 上的结果见 summary-c0da1f27.txt。

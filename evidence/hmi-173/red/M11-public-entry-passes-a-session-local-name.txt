@@ -1,4 +1,4 @@
-commit: 6956f62c9fef67f7a95c64949697a3717e6037b0（守卫 blob ab869e80be4fe9fb804a338c6d20eabe372fa9e4、App.xaml.cs blob 3b60dd807f70afed1a490cadfddb8654d1927eae，src/tests 与 HEAD 一致）
+commit: 7a4fd09baa635907b70afca52d86a96f54163a8e（守卫 blob ab869e80be4fe9fb804a338c6d20eabe372fa9e4、App.xaml.cs blob 3b60dd807f70afed1a490cadfddb8654d1927eae，src/tests 与 HEAD 一致）
 变异: 见下方 diff（对 HEAD）
 预期（事先写下）: 只有 TheProductionEntryUsesTheOneMachineName 红（公开入口改传会话级名字）。
 命令: dotnet build tests/SQCD.Agv.UnitTests -c Release，再 dotnet test --no-build --filter "FullyQualifiedName~SingleInstanceGuardTests"
@@ -23,18 +23,18 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:01.47]     SQCD.Agv.UnitTests.SingleInstanceGuardTests.TheProductionEntryUsesTheOneMachineName [FAIL]
-  Failed SQCD.Agv.UnitTests.SingleInstanceGuardTests.TheProductionEntryUsesTheOneMachineName [15 ms]
+[xUnit.net 00:00:01.34]     SQCD.Agv.UnitTests.SingleInstanceGuardTests.TheProductionEntryUsesTheOneMachineName [FAIL]
+  Failed SQCD.Agv.UnitTests.SingleInstanceGuardTests.TheProductionEntryUsesTheOneMachineName [11 ms]
   Error Message:
    Assert.Matches() Failure: Pattern not found in value
 Regex: "^public static SingleInstanceGuard Acquire\\(strin"···
 Value: "public static SingleInstanceGuard Acquire(string a"···
   Stack Trace:
-     at SQCD.Agv.UnitTests.SingleInstanceGuardTests.TheProductionEntryUsesTheOneMachineName() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi173-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\SingleInstanceGuardTests.cs:line 224
+     at SQCD.Agv.UnitTests.SingleInstanceGuardTests.TheProductionEntryUsesTheOneMachineName() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi173-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\SingleInstanceGuardTests.cs:line 227
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
 
-Failed!  - Failed:     1, Passed:    13, Skipped:     0, Total:    14, Duration: 131 ms - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     1, Passed:    13, Skipped:     0, Total:    14, Duration: 111 ms - SQCD.Agv.UnitTests.dll (net8.0)
 
 失败断言所在行（测试文件未变异）:
-  224: Assert.Matches(
+  227: Assert.Matches(
