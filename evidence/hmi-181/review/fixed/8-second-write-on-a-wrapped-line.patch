@@ -1,0 +1,13 @@
+diff --git a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+index 59aa538..7d6a23a 100644
+--- a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
++++ b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+@@ -600,7 +600,7 @@ public sealed class MainViewModel : ViewModelBase
+         // 第三条直接赋值的路径出现就红，两种合规写法它都认得。
+         CanRequestWireToGateRecovery = AllowRecoveryEntry(_wireToGateCanRequestRecovery?.Invoke() == true);
+         CanRequestLoadCancellation = AllowRecoveryEntry(_wireToGateCanRequestLoadCancellation?.Invoke() == true);
+-        CanRequestLoadCompensation = AllowRecoveryEntry(_wireToGateCanRequestLoadCompensation?.Invoke() == true);
++        CanRequestLoadCompensation = AllowRecoveryEntry(_wireToGateCanRequestLoadCompensation?.Invoke() == true); CanRequestLoadCompensation |= HasPhysicallyUnknownSlots;
+         CanRequestLoadCorrection = AllowRecoveryEntry(_wireToGateCanRequestLoadCorrection?.Invoke() == true);
+         CanRequestFaultCargoHandoff = AllowRecoveryEntry(_wireToGateCanRequestFaultCargoHandoff?.Invoke() == true);
+         CanRequestForcedMechanicalRecovery =

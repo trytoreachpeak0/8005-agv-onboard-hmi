@@ -1,0 +1,22 @@
+守卫版本: fixed，测试文件取自 7137afd92ae4bd5b29f223821363f5fa673d79e3（工作树其余与 HEAD 7137afd92ae4bd5b29f223821363f5fa673d79e3 一致；注入前 MainViewModel.cs blob 59aa538c36f749458bb47379076259e169afe433）
+注入: 见同名 .patch（对 HEAD 生成，已用 git apply --check 验证）
+预期（事先写下）: 只有 EveryWriteToARecoveryEntryInTheViewModelIsGuarded 红：按语句分类，这条语句里 1 次写、0 次 false，判违规。条数仍是 25，扫描器自检绿。
+命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~RecoveryEntryWriteSiteArchitectureTests"（该版本测试程序集先以 0 Error(s) 编过）
+
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi181-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:03.98]     SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded [FAIL]
+  Failed SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded [31 ms]
+  Error Message:
+   这些地方写了恢复入口，却既没经 AllowRecoveryEntry、也不在一道有效的 RecoveryEntriesBlockedByFatalFault early return 之后：
+  src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs:1645  ApplyWireToGatePresentationCore  CanRequestLoadCompensation    SetProperty(ref _canRequestLoadCompensation, HasPhysicallyUnknownSlots, nameof(CanRequestLoadCompensation));
+严重安全故障锁存着的时候，这条路径会把入口放回来，而其中三个按下去会真的开仓门。要么把右边包进 AllowRecoveryEntry，要么在这个成员开头加上那道 early return。
+  Stack Trace:
+     at SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi181-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryEntryWriteSiteArchitectureTests.cs:line 197
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)

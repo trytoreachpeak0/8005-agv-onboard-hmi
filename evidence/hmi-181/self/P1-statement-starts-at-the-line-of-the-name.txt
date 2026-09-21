@@ -1,0 +1,41 @@
+commit: 7137afd92ae4bd5b29f223821363f5fa673d79e3（测试文件 blob 3f182d6d71655193fc501a5a2210ab486ec9518d，工作树与 HEAD 一致）
+探针: 把本轮的一处判据修改退回，见下方 diff
+预期（事先写下）: 只有 TheGuardTellsAThirdWritePathFromACompliantOne 红，红在审查 S1 那四种跨行写入的合成例（foreach 里的 AssertViolates：期望 1 条违规、实得 0 条）。真实源码上的四条不受影响。
+
+diff --git a/tests/SQCD.Agv.UnitTests/RecoveryEntryWriteSiteArchitectureTests.cs b/tests/SQCD.Agv.UnitTests/RecoveryEntryWriteSiteArchitectureTests.cs
+index 3f182d6..e48d725 100644
+--- a/tests/SQCD.Agv.UnitTests/RecoveryEntryWriteSiteArchitectureTests.cs
++++ b/tests/SQCD.Agv.UnitTests/RecoveryEntryWriteSiteArchitectureTests.cs
+@@ -1074,7 +1074,7 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
+                 foreach (Match match in WriteRegexes[entry.Property].Concat(WriteRegexes[entry.BackingField])
+                     .SelectMany(regex => regex.Matches(text)))
+                 {
+-                    int start = StatementStart(text, match.Index);
++                    int start = text.LastIndexOf('\n', Math.Max(0, match.Index + NameOffset(match.Value, entry) - 1)) + 1;
+                     int nameAt = match.Index + NameOffset(match.Value, entry);
+                     int end = text.IndexOf(';', match.Index + match.Length);
+                     end = end < 0 ? text.Length : end + 1;
+
+    0 Error(s)
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi181-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:02.15]     SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheGuardTellsAThirdWritePathFromACompliantOne [FAIL]
+  Failed SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheGuardTellsAThirdWritePathFromACompliantOne [16 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: 1
+Actual:   0
+  Stack Trace:
+     at SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.AssertViolates(String members, Int32 expectedSites, Int32 expectedViolations) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi181-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryEntryWriteSiteArchitectureTests.cs:line 1348
+   at SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheGuardTellsAThirdWritePathFromACompliantOne() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi181-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryEntryWriteSiteArchitectureTests.cs:line 736
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 705 ms - SQCD.Agv.UnitTests.dll (net8.0)
+
+失败断言所在行（探针后的文件）:
+  736: AssertViolates(
+  1348: Assert.Equal(expectedViolations, sites.Count(site => !site.IsGuarded));

@@ -1,4 +1,4 @@
-commit: b05a75809205830b71e39d9a1bf328e3a8a95823（注入前 MainViewModel.cs blob 59aa538c36f749458bb47379076259e169afe433，src/tests 与 HEAD 一致）
+commit: 7137afd92ae4bd5b29f223821363f5fa673d79e3（注入前 MainViewModel.cs blob 59aa538c36f749458bb47379076259e169afe433，src/tests 与 HEAD 一致）
 注入: 见同名 .patch（对 HEAD 生成，已用 git apply --check 验证）
 预期（事先写下）: 同 1：EveryWrite…IsGuarded 红、TheScannerStillSees… 红。
 命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~RecoveryEntryWriteSiteArchitectureTests"（测试读源码文本；测试程序集先以 0 Error(s) 编过）
@@ -9,15 +9,15 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:01.96]     SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites [FAIL]
-[xUnit.net 00:00:01.96]     SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded [FAIL]
-  Failed SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites [382 ms]
+[xUnit.net 00:00:03.88]     SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites [FAIL]
+[xUnit.net 00:00:03.90]     SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded [FAIL]
+  Failed SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites [832 ms]
   Error Message:
    扫描器在 src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs 里找到 26 个恢复入口写入点（setter 以外），登记的是 25 个。**先别改这个数。**
 少了：多半是扫描器瞎了（改名、改格式、正则失配），修扫描器，不是改数。
 多了：先回答三个问题——多出来的是哪个成员里的哪一行；锁存期间它写进去的是什么；它凭什么挡得住锁存（经 AllowRecoveryEntry，还是在方法体顶层一道无条件的 early return 之后）。EveryWriteToARecoveryEntryInTheViewModelIsGuarded 判它合规不等于它真有闸门，那条守卫的盲区列在 GuardLimits 里。
 逐行读过、确认它挡得住之后，才改 ExpectedWriteSiteCount，并在提交说明里写下是哪一行。
-  572  ReopenCompensation  Unguarded  string link = "                  "; CanRequestLoadCompensation = link.Length > 0;
+  572  ReopenCompensation  Unguarded  CanRequestLoadCompensation = link.Length > 0;
   606  RefreshWireToGateInputStateCore  Wrapped  CanRequestWireToGateRecovery = AllowRecoveryEntry(_wireToGateCanRequestRecovery?.Invoke() == true);
   607  RefreshWireToGateInputStateCore  Wrapped  CanRequestLoadCancellation = AllowRecoveryEntry(_wireToGateCanRequestLoadCancellation?.Invoke() == true);
   608  RefreshWireToGateInputStateCore  Wrapped  CanRequestLoadCompensation = AllowRecoveryEntry(_wireToGateCanRequestLoadCompensation?.Invoke() == true);
@@ -44,17 +44,17 @@ A total of 1 test files matched the specified pattern.
   1702  RefreshForcedIsolationCore  Wrapped  CanConfirmForcedMechanicalRecovery = AllowRecoveryEntry(_wireToGateCanConfirmForcedMechanicalRecovery?.Invoke() == true);
   1704  RefreshForcedIsolationCore  Wrapped  CanSubmitHardwareRecoveryRecord = AllowRecoveryEntry(_wireToGateCanSubmitHardwareRecoveryRecord?.Invoke() == true);
   Stack Trace:
-     at SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi181-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryEntryWriteSiteArchitectureTests.cs:line 237
+     at SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi181-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryEntryWriteSiteArchitectureTests.cs:line 236
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
-  Failed SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded [11 ms]
+  Failed SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded [20 ms]
   Error Message:
    这些地方写了恢复入口，却既没经 AllowRecoveryEntry、也不在一道有效的 RecoveryEntriesBlockedByFatalFault early return 之后：
-  src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs:572  ReopenCompensation  CanRequestLoadCompensation    string link = "                  "; CanRequestLoadCompensation = link.Length > 0;
+  src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs:572  ReopenCompensation  CanRequestLoadCompensation    CanRequestLoadCompensation = link.Length > 0;
 严重安全故障锁存着的时候，这条路径会把入口放回来，而其中三个按下去会真的开仓门。要么把右边包进 AllowRecoveryEntry，要么在这个成员开头加上那道 early return。
   Stack Trace:
-     at SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi181-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryEntryWriteSiteArchitectureTests.cs:line 198
+     at SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi181-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryEntryWriteSiteArchitectureTests.cs:line 197
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
 
-Failed!  - Failed:     2, Passed:     3, Skipped:     0, Total:     5, Duration: 513 ms - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     2, Passed:     3, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
