@@ -1,4 +1,4 @@
-commit: 8c9bf79abecb4b1db1786eedadfa2a1d1f1fb8d2（注入前 WireToGateBusinessService.cs blob 697cdf561a10e2d574e6cb29626a85ee7a5b54ab、.HardwareRecovery.cs blob 679f73e1481c2bb27f682c05c9882805435b79ae，工作树与 HEAD 一致）
+commit: da6152735bf1f840f8445c3f375666225961f6eb（注入前 WireToGateBusinessService.cs blob a653a8f1fd108b6529343c259ef6c7b5cd711ec6、.HardwareRecovery.cs blob 679f73e1481c2bb27f682c05c9882805435b79ae，工作树与 HEAD 一致）
 注入: 见同名 .patch（对 HEAD 生成，已用 git apply --check 验证）
 预期: 只有 MembersThatTouchAMarkReachOnlyTheirListedFields 红（复审 S-3：OweRecoveryEntry 经返回值持有标记；上一版全绿）。
 命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~RecoveryMarkerPersistenceArchitectureTests"（测试读源码文本；测试程序集先以 0 Error(s) 编过）
@@ -9,16 +9,16 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:02.34]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.MembersThatTouchAMarkReachOnlyTheirListedFields [FAIL]
-  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.MembersThatTouchAMarkReachOnlyTheirListedFields [139 ms]
+[xUnit.net 00:00:02.10]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.MembersThatTouchAMarkReachOnlyTheirListedFields [FAIL]
+  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.MembersThatTouchAMarkReachOnlyTheirListedFields [133 ms]
   Error Message:
    The fields a recovery mark's value can reach changed.
   new:  _executor
-  reached through: ExchangeOwedRecoveryEntry, ForgetOwedRecoveryEntry, MarkRecoveryAnnounced, OweRecoveryEntry, OwedRecoveryEntry, PublishOperatorEvent, PublishOwedRecoveryEntry, RaiseOperatorEvent, TryClaimRecoveryAnnouncement
-**Do not just add a new one to the list.** First answer: can a value handed to it outlive the process? _executor and _vectorExecutor write the journal, _session writes the outbox and the server can replay it -- any of those carrying a mark is onboard-hmi#109 after the next restart. **Do not hand the mark, or the work that touches it, to another member of this class to get past this check**: calls are followed, and that is the shape the check exists to catch. Keep journal and outbox work in members that never hold a mark. A field that is gone: remove its line.
+  reached through: ExchangeOwedRecoveryEntry, ForgetOwedRecoveryEntry, MarkRecoveryAnnounced, OperatorEventPublished, OweRecoveryEntry, OwedRecoveryEntry, PublishOperatorEvent, PublishOwedRecoveryEntry, RaiseOperatorEvent, TryClaimRecoveryAnnouncement, _clock, _currentOperationSnapshot, _executor, _expectedActionWait, _logger, _operationAttemptGate, _operationAttempts, _operatorEventDeduplicator, _owedRecoveryEntry, _recoveryAnnouncedAttemptId, null
+**Do not just add a new one to the list.** First answer: can a value handed to it outlive the process? _executor and _vectorExecutor write the journal, _session writes the outbox and the server can replay it -- any of those carrying a mark is onboard-hmi#109 after the next restart. **Do not hand the mark, or the work that touches it, to another member of this class to get past this check**: a member named in code is followed into, and that is the shape this check exists to catch. Handing it on through an event or another type instead is not followed -- that would be a leak this check misses, not a fix. Keep journal and outbox work in members that never hold a mark. A field that is gone: remove its line.
   Stack Trace:
-     at SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.MembersThatTouchAMarkReachOnlyTheirListedFields() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryMarkerPersistenceArchitectureTests.cs:line 485
+     at SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.MembersThatTouchAMarkReachOnlyTheirListedFields() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryMarkerPersistenceArchitectureTests.cs:line 480
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
 
-Failed!  - Failed:     1, Passed:     6, Skipped:     0, Total:     7, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     1, Passed:     8, Skipped:     0, Total:     9, Duration: 839 ms - SQCD.Agv.UnitTests.dll (net8.0)

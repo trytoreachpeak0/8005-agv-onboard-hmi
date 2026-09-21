@@ -1,8 +1,8 @@
 diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
-index 697cdf5..bfcc9b8 100644
+index a653a8f..0d7137a 100644
 --- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
 +++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
-@@ -1014,6 +1014,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+@@ -1015,6 +1015,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
          lock (_operationAttemptGate)
          {
              _recoveryAnnouncedAttemptId = attemptId;

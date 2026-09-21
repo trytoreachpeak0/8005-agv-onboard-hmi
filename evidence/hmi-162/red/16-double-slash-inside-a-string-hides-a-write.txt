@@ -1,6 +1,6 @@
 commit: da6152735bf1f840f8445c3f375666225961f6eb（注入前 WireToGateBusinessService.cs blob a653a8f1fd108b6529343c259ef6c7b5cd711ec6、.HardwareRecovery.cs blob 679f73e1481c2bb27f682c05c9882805435b79ae，工作树与 HEAD 一致）
 注入: 见同名 .patch（对 HEAD 生成，已用 git apply --check 验证）
-预期: EachMarkIsWrittenOnlyByItsOneWriter 红，OnlyRegisteredMembersTouchTheMarks 红（ReleaseInFlightAttempt 成了碰字段的新成员）。
+预期: EachMarkIsWrittenOnlyByItsOneWriter 红（out _recoveryAnnouncedAttemptId 在写入口外），OnlyRegisteredMembersTouchTheMarks 红（ReleaseInFlightAttempt 成了碰字段的新成员）（第三轮复审严重-4：字符串里的 // 把后半行当注释切掉，上一版全绿）。
 命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~RecoveryMarkerPersistenceArchitectureTests"（测试读源码文本；测试程序集先以 0 Error(s) 编过）
 限度: --filter 单类，「只有这几条红」的范围是这个测试类之内
 
@@ -9,25 +9,25 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:01.48]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.OnlyRegisteredMembersTouchTheMarks [FAIL]
-[xUnit.net 00:00:01.72]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.EachMarkIsWrittenOnlyByItsOneWriter [FAIL]
-  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.OnlyRegisteredMembersTouchTheMarks [13 ms]
+[xUnit.net 00:00:02.25]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.OnlyRegisteredMembersTouchTheMarks [FAIL]
+[xUnit.net 00:00:02.51]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.EachMarkIsWrittenOnlyByItsOneWriter [FAIL]
+  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.OnlyRegisteredMembersTouchTheMarks [14 ms]
   Error Message:
    The members that touch a recovery mark changed.
-  new:  ReleaseInFlightAttempt uses _owedRecoveryEntry
+  new:  ReleaseInFlightAttempt uses _recoveryAnnouncedAttemptId
 Before registering a new one, answer: does anything it passes the value to outlive the process? Registering puts the member under the persistence check below; it does not make the member safe.
   Stack Trace:
      at SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.OnlyRegisteredMembersTouchTheMarks() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryMarkerPersistenceArchitectureTests.cs:line 394
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
-  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.EachMarkIsWrittenOnlyByItsOneWriter [224 ms]
+  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.EachMarkIsWrittenOnlyByItsOneWriter [243 ms]
   Error Message:
    A mark is written outside its one writer:
-  src/SQCD.Agv.Wpf/WireToGateBusinessService.cs:1168  ReleaseInFlightAttempt  _owedRecoveryEntry
+  src/SQCD.Agv.Wpf/WireToGateBusinessService.cs:1168  ReleaseInFlightAttempt  _recoveryAnnouncedAttemptId
 Route it through the writer. The writer is not a style rule: it is what makes every way of setting the mark a caller the next test can see, and a mark restored at startup would show up exactly as a new way of setting it (onboard-hmi#162, onboard-hmi#109).
   Stack Trace:
      at SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.EachMarkIsWrittenOnlyByItsOneWriter() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryMarkerPersistenceArchitectureTests.cs:line 292
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
 
-Failed!  - Failed:     2, Passed:     7, Skipped:     0, Total:     9, Duration: 755 ms - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     2, Passed:     7, Skipped:     0, Total:     9, Duration: 869 ms - SQCD.Agv.UnitTests.dll (net8.0)

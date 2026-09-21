@@ -1,6 +1,6 @@
 commit: da6152735bf1f840f8445c3f375666225961f6eb（注入前 WireToGateBusinessService.cs blob a653a8f1fd108b6529343c259ef6c7b5cd711ec6、.HardwareRecovery.cs blob 679f73e1481c2bb27f682c05c9882805435b79ae，工作树与 HEAD 一致）
 注入: 见同名 .patch（对 HEAD 生成，已用 git apply --check 验证）
-预期: 只有 TheMarksAndTheirSettersNeverLeaveTheBusinessServiceSource 红。
+预期: 只有 TheMarksAndTheirSettersNeverLeaveTheBusinessServiceSource 红（第三轮复审严重-4 的另一个文件版：上一版连名字边界也绿）。
 命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~RecoveryMarkerPersistenceArchitectureTests"（测试读源码文本；测试程序集先以 0 Error(s) 编过）
 限度: --filter 单类，「只有这几条红」的范围是这个测试类之内
 
@@ -9,8 +9,8 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:02.08]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.TheMarksAndTheirSettersNeverLeaveTheBusinessServiceSource [FAIL]
-  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.TheMarksAndTheirSettersNeverLeaveTheBusinessServiceSource [45 ms]
+[xUnit.net 00:00:02.32]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.TheMarksAndTheirSettersNeverLeaveTheBusinessServiceSource [FAIL]
+  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.TheMarksAndTheirSettersNeverLeaveTheBusinessServiceSource [74 ms]
   Error Message:
    A recovery mark, or a member that sets one, is named outside WireToGateBusinessService.cs:
   src/SQCD.Agv.Wpf/WireToGateBusinessService.HardwareRecovery.cs  _recoveryAnnouncedAttemptId
@@ -22,4 +22,4 @@ The fix is to move the access back into WireToGateBusinessService.cs, into a mem
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
 
-Failed!  - Failed:     1, Passed:     8, Skipped:     0, Total:     9, Duration: 839 ms - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     1, Passed:     8, Skipped:     0, Total:     9, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)

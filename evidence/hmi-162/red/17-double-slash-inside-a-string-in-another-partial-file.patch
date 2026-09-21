@@ -1,0 +1,11 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.HardwareRecovery.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.HardwareRecovery.cs
+index 679f73e..3b382a9 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.HardwareRecovery.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.HardwareRecovery.cs
+@@ -177,4 +177,6 @@ public sealed partial class WireToGateBusinessService
+             throw new InvalidOperationException("SLOT_STATE_UNKNOWN");
+         }
+     }
++
++    private string PeekRecoveryLink() => "onboard://recovery/" + _recoveryAnnouncedAttemptId;
+ }

@@ -1,8 +1,8 @@
 diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
-index 697cdf5..03330d6 100644
+index a653a8f..b583db3 100644
 --- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
 +++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
-@@ -1241,6 +1241,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+@@ -1242,6 +1242,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
  
              owed = _owedRecoveryEntry;
              _ = ExchangeOwedRecoveryEntry(null);

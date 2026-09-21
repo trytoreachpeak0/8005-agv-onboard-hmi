@@ -1,8 +1,8 @@
 diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
-index 697cdf5..f470396 100644
+index a653a8f..cb9b768 100644
 --- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
 +++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
-@@ -1162,6 +1162,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+@@ -1163,6 +1163,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
      /// before moving these two statements past each other.
      /// </para>
      /// </remarks>
