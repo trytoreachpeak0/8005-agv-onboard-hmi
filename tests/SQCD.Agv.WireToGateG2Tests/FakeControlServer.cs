@@ -2022,9 +2022,21 @@ public sealed class FakeControlServer : IAsyncDisposable
             return;
         }
 
-        bool authorized = LoadCancellationDecision == "AUTHORIZED";
         // 扫码前取消（attempt 为 null）按 control-server#83 应答：授权的仓位集合为空，attempt 照抄 null。
         bool beforeSublot = attemptId is null;
+        // 在途取消照真服务端判：那次装货的非完成结果已经收下、落进 RecoveryRequired 之后一律拒绝。出处是
+        // control-server `OnboardRecoveryCoordinator.AuthorizeLoadCancellationAsync`（fp/v2-impl a234e3ea）：
+        // `operation.Status != StationOperationStatus.RecoveryRequired` 才授权，每次都重判、不按旧记录回答，
+        // 重发的请求是新 messageId，也不会被收件箱当成重放。这个替身原先照样授权，于是有用例测的是一个真服务端下
+        // 不存在的世界（8005-agv-onboard-hmi#188）。
+        bool operationNeedsRecovery;
+        lock (_sync)
+        {
+            operationNeedsRecovery = attemptId is not null && _operationsNeedingRecovery.Contains(attemptId);
+        }
+
+        string decision = operationNeedsRecovery ? "REJECTED" : LoadCancellationDecision;
+        bool authorized = decision == "AUTHORIZED";
         await WriteEnvelopeAsync(
             context,
             CreateEnvelope(
@@ -2034,7 +2046,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                 new
                 {
                     cancellationId,
-                    decision = LoadCancellationDecision,
+                    decision,
                     demandId,
                     slotOperationAttemptId = beforeSublot
                         ? LoadCancellationBeforeSublotAuthorizedAttemptId
