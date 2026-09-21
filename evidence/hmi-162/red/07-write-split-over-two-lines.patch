@@ -1,5 +1,5 @@
 diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
-index 6290ce8..3eca88e 100644
+index 6290ce8..3f73336 100644
 --- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
 +++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
 @@ -76,8 +76,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
@@ -16,12 +16,12 @@ index 6290ce8..3eca88e 100644
      /// </para>
      /// </remarks>
      private string? _recoveryAnnouncedAttemptId;
-@@ -1235,7 +1238,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
-             }
+@@ -1236,6 +1239,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
  
              owed = _owedRecoveryEntry;
--            _ = ExchangeOwedRecoveryEntry(null);
-+            Interlocked.Exchange(ref _owedRecoveryEntry, null);
+             _ = ExchangeOwedRecoveryEntry(null);
++            _recoveryAnnouncedAttemptId
++                = owed.Context.SlotOperationAttemptId;
              if (!string.Equals(
                  _recoveryAnnouncedAttemptId,
                  owed.Context.SlotOperationAttemptId,

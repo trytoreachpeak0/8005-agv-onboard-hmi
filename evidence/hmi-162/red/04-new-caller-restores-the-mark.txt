@@ -1,6 +1,6 @@
-commit: 本票工作树（注入前 WireToGateBusinessService.cs blob 6290ce86c8e4cb7fedbd29ea54138b77efde6eec、.HardwareRecovery.cs blob 679f73e1481c2bb27f682c05c9882805435b79ae）
+commit: 本票工作树，审查后的守卫（注入前 WireToGateBusinessService.cs blob 1f71a9b5aa9e8a195c3bd9599ee7250a0cff930f、.HardwareRecovery.cs blob 679f73e1481c2bb27f682c05c9882805435b79ae）
 注入: 见同名 .patch
-预期: 只有 EveryWayToSetAMarkHasARegisteredCaller 红（新调用方 RestoreRecoveryMarkAtStartup）。
+预期: 只有 EveryWayToSetAMarkHasARegisteredCaller 红。
 命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~RecoveryMarkerPersistenceArchitectureTests"（测试读源码文本；测试程序集先以 0 Error(s) 编过）
 限度: --filter 单类，「只有这几条红」的范围是这个测试类之内
 
@@ -9,15 +9,15 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:01.52]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.EveryWayToSetAMarkHasARegisteredCaller [FAIL]
-  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.EveryWayToSetAMarkHasARegisteredCaller [41 ms]
+[xUnit.net 00:00:01.23]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.EveryWayToSetAMarkHasARegisteredCaller [FAIL]
+  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.EveryWayToSetAMarkHasARegisteredCaller [25 ms]
   Error Message:
    The ways of setting a recovery mark changed.
   new:  RestoreRecoveryMarkAtStartup -> MarkRecoveryAnnounced
 **Do not just register a new caller.** First answer: where does the value it passes come from, and is it this process that is about to publish that recovery? If it can come from anything that outlived the process -- the journal, a file, settings, a server replay -- without this process publishing, it is a restored mark, and the operator loses the recovery entry after a restart with CI green (onboard-hmi#109). Only then add it to Callers, with that answer as its reason. A caller that is gone: remove its line, so the registry says what the code does.
   Stack Trace:
-     at SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.EveryWayToSetAMarkHasARegisteredCaller() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryMarkerPersistenceArchitectureTests.cs:line 236
+     at SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.EveryWayToSetAMarkHasARegisteredCaller() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryMarkerPersistenceArchitectureTests.cs:line 293
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
 
-Failed!  - Failed:     1, Passed:     5, Skipped:     0, Total:     6, Duration: 489 ms - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     1, Passed:     6, Skipped:     0, Total:     7, Duration: 479 ms - SQCD.Agv.UnitTests.dll (net8.0)

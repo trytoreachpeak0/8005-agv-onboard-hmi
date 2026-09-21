@@ -21,22 +21,47 @@ namespace SQCD.Agv.UnitTests;
 /// </para>
 /// <list type="bullet">
 /// <item><b>The read-back side</b>: each field has one writer
-/// (<see cref="EachMarkIsWrittenOnlyByItsOneWriter"/>), and every member that can reach a writer is a registered
-/// caller with a stated reason (<see cref="EveryWayToSetAMarkHasARegisteredCaller"/>). A startup path that
-/// restores a mark has to add a caller, and a new caller is red until somebody answers where its value comes
-/// from.</item>
+/// (<see cref="EachMarkIsWrittenOnlyByItsOneWriter"/>), and every member that calls into the setters is a
+/// registered caller with a stated reason (<see cref="EveryWayToSetAMarkHasARegisteredCaller"/>). A startup path
+/// that restores a mark <b>from a new method</b> is red until somebody answers where its value comes from.
+/// <b>An extra call inside a method that is already registered is not</b> -- the registry is kept per (method,
+/// setter) pair, not per call site, and the closest thing to onboard-hmi#109 is exactly that:
+/// <c>RestorePendingRecoveryOperationProjectionAsync</c> is registered, and its attempt id already comes from the
+/// journal. A second <c>TryClaimRecoveryAnnouncement</c> there that claims without publishing passes every check
+/// (pinned in <see cref="TheseGuardsTellALeakFromTheCodeAsItIs"/>). Per-call-site registration would close it
+/// only by numbering the calls, which is a count; the review of that method stays with people.</item>
 /// <item><b>The write-out side</b>: neither name, nor the name of any member that sets them, appears anywhere in
 /// the product outside <c>WireToGateBusinessService.cs</c>
 /// (<see cref="TheMarksAndTheirSettersNeverLeaveTheBusinessServiceSource"/>), inside that file only registered
-/// members mention the fields (<see cref="OnlyRegisteredMembersTouchTheMarks"/>), and none of those members
-/// names a persistence API (<see cref="NoMemberThatTouchesAMarkNamesAPersistenceApi"/>).</item>
+/// members mention the fields (<see cref="OnlyRegisteredMembersTouchTheMarks"/>), those members reach no field
+/// of the class outside a closed list (<see cref="MembersThatTouchAMarkReachOnlyTheirListedFields"/>), and none of
+/// them names a persistence API (<see cref="NoMemberThatTouchesAMarkNamesAPersistenceApi"/>).</item>
 /// </list>
+/// <para>
+/// <b>"Reading back has to write the field" is true of the field, and only of the field.</b> The same failure
+/// can skip the field entirely: an "announced" flag kept in the journal, and a restore that returns early on it.
+/// Nothing here sees that. It is a different state carrying the same meaning, and it would have to be guarded
+/// where it is read.
+/// </para>
+/// <para>
+/// <b>Why the field list is closed rather than a list of persistence receivers</b> (onboard-hmi#162 review M-2).
+/// The first version only had a word list -- journal, serialize, file, stream -- and its synthetic leak was
+/// <c>_journal.Write...</c>, a shape this class does not have: there is no <c>_journal</c> field here. What this
+/// class really writes to disk through is <c>_executor.MarkResultRecordedAsync</c>/<c>RecordPendingResultAsync</c>
+/// (the journal behind the executor) and <c>_session.Send*Async</c> (the outbox, and the server that can replay it),
+/// none of whose names contains a listed word. The review passed a mark to <c>_executor.MarkResultRecordedAsync</c>
+/// in a registered member and all six checks stayed green. The same mistake as onboard-hmi#176's first version,
+/// one criterion over: that one did not recognise the file's own way of writing a field, this one did not
+/// recognise the file's own way of writing to disk. Adding <c>_executor</c> and <c>_session</c> to a list would
+/// repeat it for the next receiver; a closed list of the fields these members may use cannot be passed by a
+/// receiver nobody thought of.
+/// </para>
 /// <para>
 /// <b>Why the file bound alone is not enough, although the ticket offered it as the hardest check.</b> Its
 /// argument is that passing the value out needs the name somewhere else. That holds for other files; it does not
 /// hold inside the file, which already hands values read from <c>_owedRecoveryEntry</c> to <c>_logger.Write</c>.
-/// A journal call written in the same file keeps the name in the same file. The member registry and the
-/// persistence-API check are what close that.
+/// A journal call written in the same file keeps the name in the same file. The member registry, the closed field
+/// list and the persistence-API check are what close that.
 /// </para>
 /// <para>
 /// <b>The conditions the file bound rests on</b>, checked for this class rather than assumed from
@@ -51,8 +76,13 @@ namespace SQCD.Agv.UnitTests;
 /// <para>
 /// <b>What it cannot see.</b> It follows names, not values. A registered member that copies a mark into a local
 /// and hands it to a method with an innocent name, which persists it somewhere else, passes every check here --
-/// that case is pinned in <see cref="TheseGuardsTellALeakFromTheCodeAsItIs"/> as a known blind spot. The
-/// persistence-API list is a list: an API whose name matches none of its words slips through.
+/// that case is pinned in <see cref="TheseGuardsTellALeakFromTheCodeAsItIs"/> as a known blind spot (the closed
+/// field list narrows it to methods of the class; it does not close it). The persistence-API word list is a list:
+/// a static API whose name matches none of its words slips through. <b>Registering a new reader is a hole a
+/// person has to refuse</b>: a registered member that only returns a mark's value hands it to anyone, and the
+/// failure messages can ask, not stop. A write split over lines is seen when the field ends one line and the
+/// assignment operator starts the next, or <c>ref</c>/<c>out</c> ends one line and the field starts the next
+/// (review M-3); a deconstruction split over lines is not.
 /// <c>_logger.Write</c> is allowed on a premise, not a check: the technical log is written and never read back
 /// into process state (nothing under <c>src/</c> reads it, 2026-09-21). Member boundaries come from
 /// <c>dotnet format</c>'s four-space member indent.
@@ -77,9 +107,19 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
     ];
 
     /// <summary>
-    /// Every member that sets a mark, directly or by calling one that does. A caller of any of these is a way to
-    /// put a value into a mark.
+    /// The writers and the helpers whose whole job is to set or clear a mark: each either writes a field or calls a
+    /// writer, and none does anything else with the value. Their callers are registered in <see cref="Callers"/>.
     /// </summary>
+    /// <remarks>
+    /// The registry stops one level up, on purpose. The registered callers
+    /// (<c>RestorePendingRecoveryOperationProjectionAsync</c>, <c>TrySettleInterruptedOperationAsync</c>,
+    /// <c>HandleSlotOperationAsync</c>, <c>ReleaseInFlightAttempt</c>) also set a mark indirectly, but each is where
+    /// the decision "this process is announcing this attempt now" is made -- after executing it, after settling it,
+    /// or at the restore -- which is the question the registry asks. Their callers do pass the attempt id in (the
+    /// server's command, for <c>HandleSlotOperationAsync</c>), but not the decision. Taking the closure would
+    /// register most of the class and make every new caller of every method a red that says nothing about marks. (The first version's summary said "directly or by calling one that does",
+    /// which by its letter included these four; the review pointed out the list did not follow it.)
+    /// </remarks>
     private static readonly string[] Setters =
     [
         "MarkRecoveryAnnounced",
@@ -188,6 +228,23 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
     /// <summary>Where product code lives. <c>tests/</c> is left out: the guards themselves name every token.</summary>
     private static readonly string[] ProductDirectories = ["src", "tools"];
 
+    /// <summary>A field of this class by the repository's naming: underscore, lower-case letter. Not preceded by a dot.</summary>
+    private static readonly Regex FieldTokenRegex = new(
+        @"(?<![\w.])_[a-z]\w*",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// The second line of an assignment split over two lines: it starts with the operator. The first line ends with
+    /// the field (review M-3: <c>_recoveryAnnouncedAttemptId</c> on one line, <c>= value;</c> on the next).
+    /// </summary>
+    private static readonly Regex AssignmentContinuationRegex = new(
+        @"^\s*(?:\?\?|<<|>>>|>>|[|&^+\-*/%])?=(?![=>])",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex TrailingRefRegex = new(
+        @"\b(?:ref|out)\s*$",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
     private static readonly string[] ConfinedExtensions = [".cs", ".xaml", ".json", ".config", ".xml", ".resx"];
 
     /// <summary>
@@ -279,9 +336,14 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
             leaks.Length == 0,
             "A recovery mark, or a member that sets one, is named outside WireToGateBusinessService.cs:"
             + string.Concat(leaks.Select(leak => $"{Environment.NewLine}  {leak.Path}  {leak.Token}"))
-            + $"{Environment.NewLine}These are process state and must stay in that file. Taking one elsewhere is how it "
-            + "gets logged into a projection, a snapshot, the journal or a JSON file -- and a mark that survives a "
-            + "restart takes the recovery entry off the operator's screen with CI green (onboard-hmi#109).");
+            + $"{Environment.NewLine}These are process state. Taking one elsewhere is how it gets into a projection, a "
+            + "snapshot, the journal or a JSON file -- and a mark that survives a restart takes the recovery entry off "
+            + "the operator's screen with CI green (onboard-hmi#109)."
+            + $"{Environment.NewLine}The fix is to move the access back into WireToGateBusinessService.cs, into a member "
+            + "the other checks here already cover, and pass out only what the other file really needs."
+            + $"{Environment.NewLine}**Do not widen the home to a second file.** Every other check here reads "
+            + $"{BusinessServicePath} only: a second home would lose all of them at once and stay green. If a second "
+            + "file truly has to hold this state, make every check here read both files first.");
     }
 
     /// <summary>
@@ -310,14 +372,61 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
     }
 
     /// <summary>
+    /// The fields of the class that the members touching a mark may use. Everything these members can hand a mark
+    /// to, other than their own locals and the methods they call, is one of these -- so a field that can carry a
+    /// value out of the process (<c>_executor</c> and <c>_vectorExecutor</c> write the journal, <c>_session</c> writes
+    /// the outbox and the server) cannot be reached from them without this list changing.
+    /// </summary>
+    private static readonly (string Field, string Why)[] FieldsMarkMembersMayUse =
+    [
+        ("_operationAttemptGate", "The lock both marks live under."),
+        ("_recoveryAnnouncedAttemptId", "A mark."),
+        ("_owedRecoveryEntry", "A mark."),
+        ("_operationAttempts", "The in-flight set: an owed entry is paid only when it is empty. In memory."),
+        ("_logger", "The technical log: written, never read back into process state (nothing under src/ reads it)."),
+        ("_clock", "Time for the snapshot's timestamp.")
+    ];
+
+    /// <summary>
+    /// The members that touch a mark use exactly the fields in <see cref="FieldsMarkMembersMayUse"/> -- no more, and
+    /// every listed field still used, so the list says what the code does. A field is any <c>_camelCase</c>
+    /// identifier in their code; <c>_</c> alone is a discard and does not count.
+    /// </summary>
+    [Fact]
+    public void MembersThatTouchAMarkReachOnlyTheirListedFields()
+    {
+        string source = ReadProductFile(BusinessServicePath);
+        string[] used = FieldsUsedBy(source, MarkMembers());
+        string[] listed = [.. FieldsMarkMembersMayUse.Select(entry => entry.Field)];
+
+        string[] added = [.. used.Except(listed, StringComparer.Ordinal)];
+        string[] gone = [.. listed.Except(used, StringComparer.Ordinal)];
+
+        Assert.True(
+            added.Length == 0 && gone.Length == 0,
+            "The fields reachable from the members that touch a recovery mark changed."
+            + string.Concat(added.Select(field => $"{Environment.NewLine}  new:  {field}"))
+            + string.Concat(gone.Select(field => $"{Environment.NewLine}  gone: {field}"))
+            + $"{Environment.NewLine}**Do not just add a new one to the list.** First answer: can a value handed to "
+            + "it outlive the process? _executor and _vectorExecutor write the journal, _session writes the outbox "
+            + "and the server can replay it -- any of those carrying a mark is onboard-hmi#109 after the next restart. "
+            + "If the new field is one of those, do the work in another member that does not touch a mark. "
+            + "A field that is gone: remove its line.");
+    }
+
+    /// <summary>
     /// No member that touches a mark names a persistence API. <c>_logger.Write</c> is allowed: the technical log is
     /// written and never read back into process state.
     /// </summary>
+    /// <remarks>
+    /// Since the closed field list above, this check is only for what that list cannot see: static APIs that
+    /// need no field, such as <c>File.</c> or <c>JsonSerializer</c>.
+    /// </remarks>
     [Fact]
     public void NoMemberThatTouchesAMarkNamesAPersistenceApi()
     {
         string source = ReadProductFile(BusinessServicePath);
-        string[] members = [.. Readers.Select(reader => reader.Member).Concat(Markers.Select(marker => marker.Writer)).Distinct()];
+        string[] members = MarkMembers();
 
         (string Member, string Api)[] hits = PersistenceApis(source, members);
 
@@ -489,6 +598,151 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
             [("src/SQCD.Agv.Wpf/Other.cs", "// unlike _owedRecoveryEntry, this survives a restart")],
             Home));
 
+        // ---- Review round: each case below is written the way WireToGateBusinessService.cs itself writes it. ----
+        // The first version's synthetic persistence leak was `_journal.Write...`, a shape this class does not have,
+        // and the real shapes passed. Every criterion gets a case in the file's own idiom, not only the one that
+        // went wrong last time (review M-2).
+
+        // Fields: the class's real ways to disk, each reached from a member that touches a mark.
+        string[] listedFields = [.. FieldsMarkMembersMayUse.Select(entry => entry.Field)];
+        Assert.Equal(
+            "_executor",
+            Assert.Single(FieldsUsedBy(
+                ClassBody(
+                    """
+                        private void PublishOwedRecoveryEntry()
+                        {
+                            _ = _executor.MarkResultRecordedAsync(_recoveryAnnouncedAttemptId ?? string.Empty, CancellationToken.None);
+                        }
+                    """),
+                ["PublishOwedRecoveryEntry"]).Except(listedFields, StringComparer.Ordinal)));
+        Assert.Equal(
+            "_session",
+            Assert.Single(FieldsUsedBy(
+                ClassBody(
+                    """
+                        private void OweRecoveryEntry(WireToGateRecoveryOperationContext context, string guidance)
+                        {
+                            _ = _session.SendRecoveryOperationProgressAsync(_owedRecoveryEntry!.Context, CancellationToken.None);
+                        }
+                    """),
+                ["OweRecoveryEntry"]).Except(listedFields, StringComparer.Ordinal)));
+        Assert.Equal(
+            "_session",
+            Assert.Single(FieldsUsedBy(
+                ClassBody(
+                    """
+                        private void ForgetOwedRecoveryEntry(string attemptId)
+                        {
+                            await _session.Journal.UpdateRecoveryStateAsync(state => state with { Announced = _recoveryAnnouncedAttemptId }, token);
+                        }
+                    """),
+                ["ForgetOwedRecoveryEntry"]).Except(listedFields, StringComparer.Ordinal)));
+        // The member as it is uses only listed fields; `_` alone is a discard, not a field.
+        Assert.Empty(FieldsUsedBy(
+            ClassBody(
+                """
+                    private void ForgetOwedRecoveryEntry(string attemptId)
+                    {
+                        lock (_operationAttemptGate)
+                        {
+                            _ = ExchangeOwedRecoveryEntry(null);
+                        }
+
+                        _logger.Write(LogSeverity.Information, nameof(WireToGateBusinessService), attemptId);
+                    }
+                """),
+            ["ForgetOwedRecoveryEntry"]).Except(listedFields, StringComparer.Ordinal));
+
+        // Writes split over two lines (review M-3 compiled this with no error and all six checks green).
+        Assert.Single(StrayWrites(
+            """
+                private void PublishOwedRecoveryEntry()
+                {
+                    _recoveryAnnouncedAttemptId
+                        = owed.Context.SlotOperationAttemptId;
+                }
+            """));
+        Assert.Single(StrayWrites(
+            """
+                private void PublishOwedRecoveryEntry()
+                {
+                    Interlocked.Exchange(ref
+                        _owedRecoveryEntry, null);
+                }
+            """));
+        // ...while a comparison that happens to break after the field is not a write.
+        Assert.Empty(StrayWrites(
+            """
+                private void PublishOwedRecoveryEntry()
+                {
+                    bool same = _recoveryAnnouncedAttemptId
+                        == owed.Context.SlotOperationAttemptId;
+                }
+            """));
+
+        // Callers, in the shapes the file uses: inside a condition, and a discarded exchange.
+        Assert.Contains(
+            ("TryClaimRecoveryAnnouncement", "ReplayAnnouncementsFromJournalAsync"),
+            Calls(ClassBody(
+                """
+                    private async Task ReplayAnnouncementsFromJournalAsync(CancellationToken cancellationToken)
+                    {
+                        if (!TryClaimRecoveryAnnouncement(pending.SlotOperationAttemptId))
+                        {
+                            return;
+                        }
+                    }
+                """)));
+        Assert.Contains(
+            ("ExchangeOwedRecoveryEntry", "ClearOnReconnect"),
+            Calls(ClassBody(
+                """
+                    private void ClearOnReconnect()
+                    {
+                        _ = ExchangeOwedRecoveryEntry(null);
+                    }
+                """)));
+
+        // Mentions, in the shapes the file reads a mark: null-conditional and pattern.
+        Assert.Contains(
+            ("_owedRecoveryEntry", "ShowDebtInStatusBar"),
+            Mentions(
+                ClassBody(
+                    """
+                        private string ShowDebtInStatusBar() =>
+                            _owedRecoveryEntry?.Context.SlotOperationAttemptId ?? string.Empty;
+                    """),
+                ["_owedRecoveryEntry"]));
+
+        // ---- Known blind spot (review M-1), pinned at its current answer. ----
+        // The caller registry is per (method, setter) pair. A second call inside a method that is already registered
+        // is the same pair, so nothing changes -- and the method this matters for is already registered: the restore
+        // reads its attempt id from the journal. Claiming there without publishing is onboard-hmi#109, and every
+        // check here stays green. Closing it per call site would mean numbering the calls, which is a count.
+        (string Setter, string Member)[] registeredShape = Calls(ClassBody(
+            """
+                private async Task RestorePendingRecoveryOperationProjectionAsync(CancellationToken cancellationToken)
+                {
+                    if (!TryClaimRecoveryAnnouncement(context.SlotOperationAttemptId))
+                    {
+                        return;
+                    }
+                }
+            """));
+        (string Setter, string Member)[] withSilentClaim = Calls(ClassBody(
+            """
+                private async Task RestorePendingRecoveryOperationProjectionAsync(CancellationToken cancellationToken)
+                {
+                    _ = TryClaimRecoveryAnnouncement(journalAttemptId);
+                    if (!TryClaimRecoveryAnnouncement(context.SlotOperationAttemptId))
+                    {
+                        return;
+                    }
+                }
+            """));
+        Assert.Equal(registeredShape, withSilentClaim);
+
         // ---- Known blind spot, pinned at its current answer. ----
         // A registered member copies the mark into a local and hands it to a method whose name says nothing of
         // persistence. If that method writes to disk, the mark leaks, and every check here stays green: they follow
@@ -530,7 +784,8 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
             {
                 foreach (Marker marker in Markers)
                 {
-                    if (WriteShapes(marker.Field).Any(shape => shape.IsMatch(lines[index])))
+                    if (WriteShapes(marker.Field).Any(shape => shape.IsMatch(lines[index]))
+                        || IsSplitWrite(lines, index, member.End, marker.Field))
                     {
                         writes.Add(new Write(marker.Field, member.Name, index + 1));
                     }
@@ -539,6 +794,45 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
         }
 
         return [.. writes];
+    }
+
+    /// <summary>
+    /// A write split over two lines, reported on the line where the field is: the field ends this line and the next
+    /// non-blank line starts with an assignment operator, or <c>ref</c>/<c>out</c> ends the previous non-blank line and
+    /// this one starts with the field (review M-3: the first shape compiled with no error and passed all six checks).
+    /// </summary>
+    private static bool IsSplitWrite(string[] lines, int index, int limit, string field)
+    {
+        string name = $@"(?:this\.)?{Regex.Escape(field)}";
+        if (Regex.IsMatch(lines[index], $@"(?<![\w.]){name}\s*$", RegexOptions.CultureInvariant))
+        {
+            int next = index + 1;
+            while (next <= limit && string.IsNullOrWhiteSpace(lines[next]))
+            {
+                next++;
+            }
+
+            if (next <= limit && AssignmentContinuationRegex.IsMatch(lines[next]))
+            {
+                return true;
+            }
+        }
+
+        if (Regex.IsMatch(lines[index], $@"^\s*{name}\b", RegexOptions.CultureInvariant))
+        {
+            int previous = index - 1;
+            while (previous >= 0 && string.IsNullOrWhiteSpace(lines[previous]))
+            {
+                previous--;
+            }
+
+            if (previous >= 0 && TrailingRefRegex.IsMatch(lines[previous]))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static Regex[] WriteShapes(string field)
@@ -588,6 +882,25 @@ public sealed class RecoveryMarkerPersistenceArchitectureTests
     }
 
     /// <summary>Every persistence-API word in the code of the named members.</summary>
+    /// <summary>The members whose code mentions a mark: the registered readers and the writers.</summary>
+    private static string[] MarkMembers() =>
+        [.. Readers.Select(reader => reader.Member).Concat(Markers.Select(marker => marker.Writer)).Distinct()];
+
+    /// <summary>Every <c>_camelCase</c> identifier in the code of the named members, sorted.</summary>
+    private static string[] FieldsUsedBy(string source, string[] members)
+    {
+        string[] lines = StripComments(source);
+        return
+        [
+            .. MemberSpans(lines)
+                .Where(span => members.Contains(span.Name, StringComparer.Ordinal))
+                .SelectMany(span => lines[span.Start..(span.End + 1)]
+                    .SelectMany(line => FieldTokenRegex.Matches(line).Select(match => match.Value)))
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)
+        ];
+    }
+
     private static (string Member, string Api)[] PersistenceApis(string source, string[] members)
     {
         string[] lines = StripComments(source);
