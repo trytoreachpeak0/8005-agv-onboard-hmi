@@ -2459,12 +2459,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             }
 
             // Taken before the first word about this command reaches the screen, and held until its
-            // own result has been shown. Two demands at one stop arrive as two fire-and-forget
-            // handlers, and the executor's gate is further in -- announcing "准备执行…5号仓" out here
-            // put the queued command's slot on screen and highlighted it as the target while the
-            // running one's door stood open on another slot (onboard-hmi#146). Nothing else takes
-            // this gate, and the executor's gate is only ever taken from inside it, so the two cannot
-            // deadlock against each other.
+            // own result has been shown. Every command is handled fire-and-forget, and the executor's
+            // gate is further in: when two slot commands are here at once, announcing "准备执行…5号仓"
+            // out here put the queued command's slot on screen and highlighted it as the target while
+            // the running one's door stood open on another slot (onboard-hmi#146). The control server
+            // no longer sends a stop's next command until the one before it is Committed, and sends
+            // none while it is in recovery (batch 7-06, control-server#211; control-server#294 is the
+            // ticket that pins this with a server test), so two at once is not its dispatch today; this
+            // gate is what keeps the screen right if they ever do meet (onboard-hmi#182). Nothing else
+            // takes this gate, and the executor's gate is only ever taken from inside it, so the two
+            // cannot deadlock against each other.
             await _operationDisplayGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             ownsDisplay = true;
             Volatile.Write(ref _operationDisplayOwnerAttemptId, command.SlotOperationAttemptId);

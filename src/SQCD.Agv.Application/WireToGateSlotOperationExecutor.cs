@@ -355,6 +355,53 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         };
 
     /// <summary>
+    /// Whether the journaled attempt opened <paramref name="physicalSlot"/>: the one definition a resume and the
+    /// interrupted settlement both judge by (8005-agv-onboard-hmi#186).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three ways in. The active set holds the slot whose door may be open now; the completed set, the slots
+    /// this attempt brought to their final state. The third is the slot that failed mid-execution and still
+    /// reached a safe finish: <see cref="ExecuteRemainingSlotsAsync"/> journals it with an empty active set,
+    /// outside the completed ones, and with an UNKNOWN result. It was opened -- the unlock pulse went out.
+    /// </para>
+    /// <para>
+    /// A slot's journaled result is NOT_STARTED only when this attempt never pulsed it: the slots after the
+    /// one that failed, and every slot of an occupancy conflict (8005-agv-onboard-hmi#172), the conflict slot
+    /// included, which reads final and was never opened. That is what keeps the third clause from counting
+    /// cargo nobody loaded under this attempt.
+    /// </para>
+    /// <para>
+    /// Until #186 the settlement used the first two clauses only, and a restart between the failure's journal
+    /// write and the result reaching the outbox reported the failed slot NOT_STARTED -- the report decision 6
+    /// of ADR-cross-0058 reserves for a slot never opened. Opened is not completed: the settlement still keeps
+    /// that slot UNKNOWN whatever it reads (see <see cref="SettleInterruptedExclusiveAsync"/>), and only a
+    /// resume an administrator authorized counts it.
+    /// </para>
+    /// </remarks>
+    private static bool OpenedByThisAttempt(WireToGateRecoveryState state, int physicalSlot) =>
+        state.ActiveUnlockSlots.Contains(physicalSlot)
+        || state.CompletedSlots.Contains(physicalSlot)
+        || state.SlotResults.Any(result =>
+            result.SlotNo == physicalSlot
+            && !string.Equals(result.Outcome, "NOT_STARTED", StringComparison.Ordinal));
+
+    /// <summary>
+    /// The reason codes the journal holds for <paramref name="physicalSlot"/>'s last result, or none.
+    /// </summary>
+    private static IReadOnlyList<string> JournaledReasonCodes(WireToGateRecoveryState state, int physicalSlot) =>
+        state.SlotResults.LastOrDefault(result => result.SlotNo == physicalSlot)?.ReasonCodes ?? [];
+
+    /// <summary>
+    /// The reason codes of <paramref name="physicalSlot"/>'s journaled UNKNOWN result -- the slot this attempt
+    /// failed on -- or null when the journal holds no failure for it.
+    /// </summary>
+    private static IReadOnlyList<string>? JournaledFailure(WireToGateRecoveryState state, int physicalSlot) =>
+        state.SlotResults.LastOrDefault(result => result.SlotNo == physicalSlot) is { Outcome: "UNKNOWN" } failed
+            ? failed.ReasonCodes
+            : null;
+
+    /// <summary>
     /// Settles a slot operation whose executing process is gone (8005-agv-program#40). It reads the
     /// live IO only, emits no unlock pulse at all, and turns the journal's one unsettled attempt into
     /// a result.
@@ -374,7 +421,10 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// slot that was opened sits in its desired final state and none is left unopened -- the operator
     /// finished the job after the last process died -- makes the outcome a definite COMPLETED, and
     /// calling that unknown would turn a settled result into an unsettled one. Everything else is
-    /// UNKNOWN, which the server turns into RecoveryRequired.
+    /// UNKNOWN, which the server turns into RecoveryRequired. A slot the journal holds as failed is
+    /// never counted toward that COMPLETED, whatever it reads now: it failed on a hardware condition,
+    /// and the same ADR keeps such an operation blocked until a person confirms it
+    /// (8005-agv-onboard-hmi#186).
     /// </para>
     /// <para>
     /// A definite failure is never produced here: FAILED presupposes the station deadline has passed
@@ -438,15 +488,18 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             LockerSnapshot locker = fresh
                 ? TryGetLocker(snapshot, physicalSlot - 1)
                 : LockerSnapshot.Unknown(physicalSlot - 1, snapshot.ObservedAt);
-            bool opened = state.ActiveUnlockSlots.Contains(physicalSlot)
-                || state.CompletedSlots.Contains(physicalSlot);
-            if (!opened)
+            if (!OpenedByThisAttempt(state, physicalSlot))
             {
-                // Never opened: the door is shut and the lock closed, so report what is read and
-                // leave reasonCodes empty (decision 6).
-                UpsertResult(results, CreateSlotResult(locker, "NOT_STARTED", []));
+                // Never opened: the door is shut and the lock closed, so report what is read (decision 6).
+                // The reason is the one the journal holds for this slot, which is empty unless this slot
+                // is what stopped the attempt -- an occupancy conflict journaled at the safe finish, whose
+                // process exited before the refusal was sent (8005-agv-onboard-hmi#172 review). Without it
+                // the settlement reported a refusal with no reason at all.
+                UpsertResult(
+                    results,
+                    CreateSlotResult(locker, "NOT_STARTED", JournaledReasonCodes(state, physicalSlot)));
             }
-            else if (IsFinalState(locker, command.ExpectedOccupied))
+            else if (JournaledFailure(state, physicalSlot) is null && IsFinalState(locker, command.ExpectedOccupied))
             {
                 // A slot the journal calls completed is re-read too: a physical change since the
                 // checkpoint stops it counting as completed.
@@ -459,12 +512,21 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 // keep loading, or give this demand up; the journal and the IO do not imply a single
                 // answer (the "single lawful next step" of ADR-cross-0017). When they are not there,
                 // it is simply unreadable.
+                //
+                // A slot the journal holds as failed stays UNKNOWN whatever it reads now, under the reason it
+                // failed with (8005-agv-onboard-hmi#186). It failed on one of ADR-cross-0058 decision 2's
+                // conditions -- unreadable, lock feedback not valid, unlock output not reset -- and ADR-cross-0017
+                // keeps an operation that went into recovery over such a fault blocked until a person confirms
+                // it: a reading that looks final after a restart is not that confirmation. Counted COMPLETED
+                // here, the server would commit it and nobody would look at the lock. A resume counts it, because
+                // an administrator authorized that resume.
                 UpsertResult(
                     results,
                     CreateSlotResult(
                         locker,
                         "UNKNOWN",
-                        [fresh ? "RECOVERY_CHECKPOINT_NOT_UNIQUE" : "SLOT_STATE_UNKNOWN"]));
+                        JournaledFailure(state, physicalSlot)
+                            ?? [fresh ? "RECOVERY_CHECKPOINT_NOT_UNIQUE" : "SLOT_STATE_UNKNOWN"]));
                 if (!fresh || !IsSafeFinish(snapshot, physicalSlot - 1))
                 {
                     unsafeSlot = true;
@@ -630,16 +692,10 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             // happened (8005-agv-onboard-hmi#172); it stays in the remaining set, where the precheck
             // below refuses it as SLOT_OPERATION_CONFLICT.
             //
-            // Wider than SettleInterruptedExclusiveAsync's test by the third clause: the slot that
-            // failed mid-execution and still reached a safe finish is journaled with an empty active
-            // set, outside the completed ones, and with an UNKNOWN result. It was opened, and an
-            // operator who finished that load before asking for the resume must see it counted.
-            bool opened = state.ActiveUnlockSlots.Contains(physicalSlot)
-                || state.CompletedSlots.Contains(physicalSlot)
-                || state.SlotResults.Any(result =>
-                    result.SlotNo == physicalSlot
-                    && !string.Equals(result.Outcome, "NOT_STARTED", StringComparison.Ordinal));
-            if (opened && IsFinalState(locker, command.ExpectedOccupied))
+            // The slot that failed mid-execution and still reached a safe finish counts here once it reads
+            // final: an administrator authorized this resume, which the interrupted settlement does not have
+            // and why it keeps that slot UNKNOWN (8005-agv-onboard-hmi#186).
+            if (OpenedByThisAttempt(state, physicalSlot) && IsFinalState(locker, command.ExpectedOccupied))
             {
                 completed.Add(physicalSlot);
                 UpsertResult(results, CreateSlotResult(locker, "COMPLETED", []));
