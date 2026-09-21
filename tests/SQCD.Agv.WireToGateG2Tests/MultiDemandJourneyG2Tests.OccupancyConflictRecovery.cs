@@ -30,6 +30,15 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// and the vehicle's own session request on the press. The double answers that request by protocol; it
 /// does not decide which demand it is about.
 /// </para>
+/// <para>
+/// <b>Why the restore is held.</b> The entry gates read a cached copy of the journal. A refusal never
+/// emits the PREPARING progress that refreshes it for a run that opens a door, so unless the handler
+/// refreshes it before sending the result, the copy still shows A settled and nothing armed when the
+/// server's RECOVERY_REQUIRED arrives -- and the entry opens on A. The restore that readiness change starts
+/// also refreshes the copy, a moment later, which hid the stale window in one run and not the next.
+/// <see cref="HeldRestoreJournal"/> holds that restore's journal read until the assertions are done, so
+/// the only refresh that can have happened is the handler's own.
+/// </para>
 /// </remarks>
 public sealed partial class MultiDemandJourneyG2Tests
 {
@@ -43,6 +52,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         CancellationToken token = TestContext.Current.CancellationToken;
         Environment.SetEnvironmentVariable(ConflictProofVariable, "g2-multi-demand-proof");
         FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        HeldRestoreJournal? held = null;
         await using Harness harness = await Harness.StartAsync(
             server =>
             {
@@ -58,6 +68,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             },
             token,
             io: io,
+            wrapJournal: inner => held = new HeldRestoreJournal(inner),
             recoveryOptions: new WireToGateRecoveryOptions(
                 ResumeAfterRepairEnabled: true,
                 ConflictProofVariable,
@@ -70,7 +81,14 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         // Demand A loads slot 5 and completes: the last completed load, and the fallback's answer.
         await SendSlotCommandAsync(harness, DemandA, AttemptA, [5]);
-        await harness.WaitUntilAsync(() => io.UnlockCount == 1, "A's slot to be unlocked", token);
+        // Shut only once the executor is waiting on the operator: a door shut before it has seen the lock
+        // release reads as a lock that never opened, and A ends UNKNOWN instead of completing.
+        await harness.WaitUntilAsync(
+            () => harness.Business.CurrentOperationSnapshot?.Stage == WireToGateHmiOperationStage.WaitingOperator
+                && harness.Business.CurrentOperationSnapshot?.SlotOperationAttemptId == AttemptA
+                && io.UnlockCount == 1,
+            "A's slot to be unlocked and waiting on the operator",
+            token);
         io.CloseDoor(4, cargo: true);
         await harness.WaitUntilAsync(
             () => ReadJournal(harness, token).LastCompletedLoadOperationContext?.DemandId == DemandA
@@ -78,7 +96,23 @@ public sealed partial class MultiDemandJourneyG2Tests
             "A to complete and be recorded",
             token);
         Assert.False(harness.ViewModel.CanRequestLoadCompensation);
+        held!.HoldRestores();
+        try
+        {
+            await RefuseBAndPressCompensationAsync(harness, io, held, token);
+        }
+        finally
+        {
+            held.ReleaseRestores();
+        }
+    }
 
+    private static async Task RefuseBAndPressCompensationAsync(
+        Harness harness,
+        FakeIoModuleClient io,
+        HeldRestoreJournal held,
+        CancellationToken token)
+    {
         // Demand B's slot 1 already holds a basket.
         io.CloseDoor(0, cargo: true);
         await SendSlotCommandAsync(harness, DemandB, AttemptB, [1]);
@@ -100,6 +134,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                 && harness.ViewModel.CanRequestLoadCompensation,
             "the compensation entry to open over B's refused load",
             token);
+        Assert.True(held.RestoreWasHeld, "no restore read was held, so the handler's own refresh was not isolated");
         Assert.Equal(string.Empty, harness.ViewModel.RecoveryFallbackTargetText);
         Assert.False(harness.ViewModel.HasRecoveryFallbackTarget);
 
@@ -142,4 +177,99 @@ public sealed partial class MultiDemandJourneyG2Tests
                 return document.RootElement.GetProperty("payload").Clone();
             })
     ];
+
+    /// <summary>
+    /// Once armed, holds every cached journal read the business service's restore makes
+    /// (<c>RestorePendingRecoveryOperationProjectionAsync</c>) until released; everything else passes.
+    /// </summary>
+    private sealed class HeldRestoreJournal(IWireToGateJournal inner) : IWireToGateJournal
+    {
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _armed;
+        private int _held;
+
+        public bool RestoreWasHeld => Volatile.Read(ref _held) == 1;
+
+        public void HoldRestores() => Volatile.Write(ref _armed, 1);
+
+        public void ReleaseRestores() => _release.TrySetResult();
+
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            CancellationToken cancellationToken = default) =>
+            inner.UpdateRecoveryStateAsync(change, cancellationToken);
+
+        public async Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            Action<WireToGateRecoveryState> settled,
+            CancellationToken cancellationToken = default)
+        {
+            if (Volatile.Read(ref _armed) == 1
+                && Environment.StackTrace.Contains("RestorePendingRecoveryOperationProjectionAsync", StringComparison.Ordinal))
+            {
+                Volatile.Write(ref _held, 1);
+                await _release.Task.WaitAsync(cancellationToken);
+            }
+
+            return await inner.UpdateRecoveryStateAsync(change, settled, cancellationToken);
+        }
+
+        public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(CancellationToken cancellationToken = default) =>
+            inner.ReadRecoveryStateAsync(cancellationToken);
+
+        public Task InitializeAsync(CancellationToken cancellationToken = default) =>
+            inner.InitializeAsync(cancellationToken);
+
+        public Task<string> ReadJournalEpochAsync(CancellationToken cancellationToken = default) =>
+            inner.ReadJournalEpochAsync(cancellationToken);
+
+        public Task<WireToGateDurableMessage> SaveOutgoingBeforeSendAsync(
+            WireToGateDurableMessage message,
+            CancellationToken cancellationToken = default) =>
+            inner.SaveOutgoingBeforeSendAsync(message, cancellationToken);
+
+        public Task<WireToGateDurableMessage> ReplaceOutgoingForReplayAsync(
+            WireToGateDurableMessage expected,
+            WireToGateDurableMessage replacement,
+            CancellationToken cancellationToken = default) =>
+            inner.ReplaceOutgoingForReplayAsync(expected, replacement, cancellationToken);
+
+        public Task<WireToGateDurableMessage?> ReadOutgoingByDeduplicationKeyAsync(
+            string deduplicationKey,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken);
+
+        public Task<WireToGateDurableMessage?> ReadOutgoingByMessageIdAsync(
+            string messageId,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadOutgoingByMessageIdAsync(messageId, cancellationToken);
+
+        public Task MarkOutgoingAcknowledgedAsync(
+            string messageId,
+            string acceptedContentSha256,
+            CancellationToken cancellationToken = default) =>
+            inner.MarkOutgoingAcknowledgedAsync(messageId, acceptedContentSha256, cancellationToken);
+
+        public Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ReadUnacknowledgedOutgoingAsync(cancellationToken);
+
+        public Task<IReadOnlyList<WireToGateAppliedJourneySnapshot>> ReadAppliedJourneySnapshotsAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ReadAppliedJourneySnapshotsAsync(cancellationToken);
+
+        public Task<WireToGateAppliedJourneySnapshot> SaveAppliedJourneySnapshotAsync(
+            WireToGateAppliedJourneySnapshot snapshot,
+            CancellationToken cancellationToken = default) =>
+            inner.SaveAppliedJourneySnapshotAsync(snapshot, cancellationToken);
+
+        public Task<string> ComputeContentSha256Async(CancellationToken cancellationToken = default) =>
+            inner.ComputeContentSha256Async(cancellationToken);
+
+        public ValueTask DisposeAsync()
+        {
+            ReleaseRestores();
+            return inner.DisposeAsync();
+        }
+    }
 }

@@ -2540,14 +2540,54 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 {
                     // Kept pending until the operation settles: every later session reports it and
                     // replays it (CV-OPERATION-RESULT-UNKNOWN-RECONCILE).
-                    await _executor.RecordPendingResultAsync(
-                        command.SlotOperationAttemptId,
-                        new WireToGatePendingResult(
-                            "OperationResult",
+                    try
+                    {
+                        await _executor.RecordPendingResultAsync(
                             command.SlotOperationAttemptId,
+                            new WireToGatePendingResult(
+                                "OperationResult",
+                                command.SlotOperationAttemptId,
+                                command.SlotOperationAttemptId,
+                                payload.ResultContentSha256),
+                            cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (InvalidDataException exception) when (exception.Message == "SLOT_OPERATION_CONFLICT")
+                    {
+                        // The display was given up above, so the next command queued at this stop may already
+                        // have journaled its Prepared over this attempt (8005-agv-onboard-hmi#172; the
+                        // overwrite itself is onboard-hmi#182). The result still goes out: it is the only
+                        // account the server gets of this attempt, and nothing retries a result that was never
+                        // written to the outbox. It is not pending any more -- the journal no longer names this
+                        // attempt as unsettled -- so it is only sent. Before #172 a refusal never came this
+                        // way, and this throw ended the handler with the result unsent.
+                        WireToGateRecoveryState current = await ReadRecoveryStateCachedAsync(cancellationToken)
+                            .ConfigureAwait(false);
+                        _logger.Write(
+                            LogSeverity.Warning,
+                            nameof(WireToGateBusinessService),
+                            $"未结算的仓位操作已被下一次操作覆盖，结果照常上报但不再记为待答：attempt={command.SlotOperationAttemptId}，当前未结算attempt={current.UnsettledSlotOperationAttemptId ?? "无"}。",
+                            exception);
+                    }
+
+                    // The entry gates read a cached copy of the journal, and a refusal journaled by the
+                    // executor (8005-agv-onboard-hmi#172) never went through the PREPARING refresh a run
+                    // that opened a door gets. Left stale, the copy still shows the last completed load
+                    // with nothing armed, and when the server's RECOVERY_REQUIRED for this result arrives
+                    // the compensation entry opens on that load -- another demand. Refreshed before the
+                    // result is sent, so it is current before any readiness this result causes.
+                    //
+                    // Only when the copy does not know this attempt yet. A run that opened a door cached
+                    // it at PREPARING, and an extra read here would be one more read of the journal in the
+                    // window between giving the display up and the restore -- a window
+                    // MultiDemandJourneyG2Tests.RecoveryProjectionDisplay identifies the restore's read in
+                    // by content and order, and would take this one for it.
+                    if (!string.Equals(
+                            Volatile.Read(ref _lastRecoveryState).OperationContext?.SlotOperationAttemptId,
                             command.SlotOperationAttemptId,
-                            payload.ResultContentSha256),
-                        cancellationToken).ConfigureAwait(false);
+                            StringComparison.Ordinal))
+                    {
+                        await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
+                    }
                 }
 
                 // The send path that allows RecoveryRequired, as the interrupted settlement uses: after a reconnect

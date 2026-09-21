@@ -48,10 +48,18 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
-    /// Journals the next operation's Prepared right before the first read-modify-write under the journal lock -- the
-    /// recording of the late result -- as the executor would when the next command starts at that moment.
+    /// Journals the next operation's Prepared right before the first read-modify-write under the journal lock made
+    /// from <paramref name="triggeringCall"/> -- by default the recording of the late result -- as the executor would
+    /// when the next command starts at that moment.
     /// </summary>
-    private sealed class NextOperationJournal(IWireToGateJournal inner) : IWireToGateJournal
+    /// <param name="triggeringCall">
+    /// The executor method whose journal write the next operation lands in front of, matched on the call stack.
+    /// <c>RecordPendingResultAsync</c> is the window onboard-hmi#172 opened: a refused load's result is recorded as
+    /// pending only after the display is given up to the next command.
+    /// </param>
+    private sealed class NextOperationJournal(
+        IWireToGateJournal inner,
+        string triggeringCall = "MarkResultRecordedAsync") : IWireToGateJournal
     {
         private int _written;
 
@@ -64,7 +72,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
             // 认的是「补记迟到结果」那一次，按调用栈认而不是靠「第一次不带 settled 的调用」：
             // onboard-hmi#136 之后执行器的检查点与待发结果落盘也走这个重载，靠次序认就会注入到
             // 别人头上（那正是这个替身的注释原来假设不会发生的事）。
-            if (Environment.StackTrace.Contains("MarkResultRecordedAsync", StringComparison.Ordinal)
+            if (Environment.StackTrace.Contains(triggeringCall, StringComparison.Ordinal)
                 && Interlocked.Exchange(ref _written, 1) == 0)
             {
                 await inner.UpdateRecoveryStateAsync(
