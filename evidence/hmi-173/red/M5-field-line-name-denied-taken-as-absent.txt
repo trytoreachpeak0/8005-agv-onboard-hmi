@@ -1,0 +1,40 @@
+commit: 7075c5d49ef79edbabd610911eee3867586de07b（守卫 blob b0eed6da93a8bb74807796d57aa69a201a6abeb6、App.xaml.cs blob 3b60dd807f70afed1a490cadfddb8654d1927eae，src/tests 与 HEAD 一致）
+变异: 见下方 diff（对 HEAD）
+预期（事先写下）: 只有 AFieldLineNameThatExistsButCannotBeOpenedStopsTheStart 红。
+命令: dotnet build tests/SQCD.Agv.UnitTests -c Release，再 dotnet test --no-build --filter "FullyQualifiedName~SingleInstanceGuardTests"
+
+diff --git a/src/SQCD.Agv.Infrastructure/SingleInstanceGuard.cs b/src/SQCD.Agv.Infrastructure/SingleInstanceGuard.cs
+index b0eed6d..7b61f58 100644
+--- a/src/SQCD.Agv.Infrastructure/SingleInstanceGuard.cs
++++ b/src/SQCD.Agv.Infrastructure/SingleInstanceGuard.cs
+@@ -157,7 +157,7 @@ public sealed class SingleInstanceGuard : IDisposable
+         {
+             return new SingleInstanceGuard(
+                 null,
+-                SingleInstanceOutcome.AlreadyRunning,
++                SingleInstanceOutcome.Acquired,
+                 name,
+                 "现场线车载端的单例名字存在，但本账户无权打开（另一个账户的实例持有它）。");
+         }
+
+    0 Error(s)
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi173-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:02.06]     SQCD.Agv.UnitTests.SingleInstanceGuardTests.AFieldLineNameThatExistsButCannotBeOpenedStopsTheStart [FAIL]
+  Failed SQCD.Agv.UnitTests.SingleInstanceGuardTests.AFieldLineNameThatExistsButCannotBeOpenedStopsTheStart [5 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: AlreadyRunning
+Actual:   Acquired
+  Stack Trace:
+     at SQCD.Agv.UnitTests.SingleInstanceGuardTests.AFieldLineNameThatExistsButCannotBeOpenedStopsTheStart() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi173-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\SingleInstanceGuardTests.cs:line 142
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+
+Failed!  - Failed:     1, Passed:    11, Skipped:     0, Total:    12, Duration: 139 ms - SQCD.Agv.UnitTests.dll (net8.0)
+
+失败断言所在行（测试文件未变异）:
+  142: Assert.Equal(SingleInstanceOutcome.AlreadyRunning, guard.Outcome);
