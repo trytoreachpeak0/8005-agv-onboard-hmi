@@ -23,8 +23,9 @@ namespace SQCD.Agv.UnitTests;
 /// 作者必须回答「它受不受锁存约束」。
 /// </para>
 /// <para>
-/// <b>第四个开门点今天唯一被挡住的方式，是 <c>MainViewModel.ApplyWireToGatePresentationCore</c>
-/// 里那个把 9 个恢复入口置 false 的 <c>if</c>。</b> 也就是说那个 <c>if</c> 承担着一项安全职责。
+/// <b>第四个开门点今天被挡住的方式，是界面这一层的恢复入口闸门</b>：<c>MainViewModel</c> 两条刷新路径在锁存期间把
+/// 8 个恢复入口置 false，取消装货只剩扫码之前那一半（它不开门，onboard-hmi#174）；在途的取消装货另由
+/// <c>WireToGateBusinessService.RefuseDoorOpeningCancellationWhileLatched</c> 在按下时再拒一次。也就是说那些闸门承担着一项安全职责。
 /// 它那里有一条注释指回本文件；删它之前先读那条注释。**那九个入口自己的写入路径由
 /// <see cref="RecoveryEntryWriteSiteArchitectureTests"/> 守着**（onboard-hmi#176），包括那个
 /// <c>if</c> 的 <c>return;</c>——少了它，下面的正常分支会把入口写回来。
@@ -76,9 +77,10 @@ public sealed class FatalFaultScopeArchitectureTests
         new(
             "src/SQCD.Agv.Application/WireToGateRecoveryVectorExecutor.cs",
             GuardedByFatalFault: false,
-            "恢复向量：补偿清空、修正装货、强制机械取出。操作员自己在 HMI 上按出来的，同样绕过控制器。"
-            + "今天唯一挡住它的是 MainViewModel.ApplyWireToGatePresentationCore 里故障态置 false 那一段"
-            + "——那个 if 因此承担着一项安全职责。")
+            "恢复向量：补偿清空、修正装货、强制机械取出，以及在途的取消装货。操作员自己在 HMI 上按出来的，同样绕过控制器。"
+            + "挡住它的是界面这一层：MainViewModel 两条刷新路径在故障态把会开门的入口置 false"
+            + "（取消装货只留扫码之前那一半，那一半授权时仓位集为空、这里一扇门都不开，onboard-hmi#174），"
+            + "在途的取消装货在按下时还有 RefuseDoorOpeningCancellationWhileLatched 再拒一次——这些闸门因此承担着一项安全职责。")
     ];
 
     /// <summary>

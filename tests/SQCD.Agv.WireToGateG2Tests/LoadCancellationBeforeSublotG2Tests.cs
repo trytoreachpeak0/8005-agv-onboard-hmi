@@ -24,7 +24,7 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// 出现。业务服务在连接之前启动，与 <c>App</c> 的顺序一致，会话就绪时的恢复投影因此照常跑。
 /// </para>
 /// </remarks>
-public sealed class LoadCancellationBeforeSublotG2Tests
+public sealed partial class LoadCancellationBeforeSublotG2Tests
 {
     private const string OperatorVariable = "W2G_G2_BEFORE_SUBLOT_OPERATOR";
     private const string CredentialVariable = "W2G_G2_BEFORE_SUBLOT_CREDENTIAL";
@@ -685,7 +685,8 @@ public sealed class LoadCancellationBeforeSublotG2Tests
             string? journalPath = null,
             long baselineRevision = 1,
             bool awaitEntryRequest = true,
-            IVehicleSafetySignalProvider? vehicle = null)
+            IVehicleSafetySignalProvider? vehicle = null,
+            Func<bool>? fatalFaultLatched = null)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -754,7 +755,8 @@ public sealed class LoadCancellationBeforeSublotG2Tests
                     OperatorVariable,
                     safety,
                     TimeSpan.FromSeconds(30),
-                    TimeSpan.FromMilliseconds(500));
+                    TimeSpan.FromMilliseconds(500),
+                    fatalFaultLatched: fatalFaultLatched);
 
                 List<WireToGateOperatorEvent> blocked = [];
                 business.OperatorEventPublished += (_, args) =>
@@ -807,6 +809,12 @@ public sealed class LoadCancellationBeforeSublotG2Tests
                 throw;
             }
         }
+
+        /// <summary>Writes the journal the way another writer on this vehicle would, between two reads of it.</summary>
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            CancellationToken cancellationToken) =>
+            _journal.UpdateRecoveryStateAsync(change, cancellationToken);
 
         public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(
             CancellationToken cancellationToken) =>

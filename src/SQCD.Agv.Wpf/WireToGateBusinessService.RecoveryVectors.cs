@@ -33,6 +33,28 @@ public sealed partial class WireToGateBusinessService
         || CanRequestLoadCancellationBeforeSublot();
 
     /// <summary>
+    /// The half of <see cref="CanRequestLoadCancellation"/> that is a cancellation before any sublot: the
+    /// one half the view keeps open while a severe safety fault is latched (8005-agv-onboard-hmi#174).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why this half and not the other.</b> A cancellation before any sublot is authorized with no slots,
+    /// and <see cref="WireToGateRecoveryVectorExecutor.ExecuteClearAsync"/> pulses once per slot, so it opens
+    /// no door; the vehicle's whole answer is ALL_EMPTY. Kept shut during a latch, it left the operator to
+    /// wait out the station deadline, which suppresses the demand for good -- a heavier end than their own
+    /// cancellation. The in-flight half takes the slots over and pulses them open to be emptied, through an
+    /// executor the latch does not reach, so it stays shut.
+    /// </para>
+    /// <para>
+    /// <b>"No door" is carried by construction, not by this property.</b> The server authorizes this case
+    /// with an empty slot set, <c>ValidateContext</c> refuses an empty slot set on every other vector, and the
+    /// request path refuses the in-flight branch while latched (<see cref="RequestLoadCancellationCoreAsync"/>).
+    /// <c>FatalFaultLatchViewModelTests</c> pins that no unlock goes out on this path during a latch.
+    /// </para>
+    /// </remarks>
+    public bool CanRequestLoadCancellationBeforeAnySublot => CanRequestLoadCancellationBeforeSublot();
+
+    /// <summary>
     /// Whether a cancellation before any sublot has gone out and is not settled: sent and not
     /// refused, or authorized and its result not yet acknowledged.
     /// </summary>
@@ -285,11 +307,20 @@ public sealed partial class WireToGateBusinessService
             return vector.VectorType == vectorType;
         }
 
+        // Not once the attempt's own non-completed result is on its way: the server puts every such result
+        // into RecoveryRequired, and AuthorizeLoadCancellationAsync refuses an operation in RecoveryRequired,
+        // so the entry would only offer a press that is certain to fail (8005-agv-onboard-hmi#188). The result
+        // is recorded pending before it is sent, so its presence here means the server has it or is about to.
+        // A result sent without being recorded -- the journal overwritten by the next command in between --
+        // is not seen here; that shape is onboard-hmi#182's.
         return state.OperationContext is { OperationType: OperationType.Load } context
             && string.Equals(
                 state.UnsettledSlotOperationAttemptId,
                 context.SlotOperationAttemptId,
-                StringComparison.Ordinal);
+                StringComparison.Ordinal)
+            && !state.PendingResults.Any(pending =>
+                string.Equals(pending.MessageType, "OperationResult", StringComparison.Ordinal)
+                && string.Equals(pending.BusinessId, context.SlotOperationAttemptId, StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -570,6 +601,7 @@ public sealed partial class WireToGateBusinessService
                     .ConfigureAwait(false);
             }
 
+            RefuseDoorOpeningCancellationWhileLatched();
             return await ExecuteRecoveryVectorAndReportAsync(
                     existingVector,
                     correction: false,
@@ -592,6 +624,7 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
         }
 
+        RefuseDoorOpeningCancellationWhileLatched();
         WireToGateRecoveryOperationContext operation = RequireUnsettledLoadOperation(state);
         string cancellationId = InFlightLoadCancellationId(operation.DemandId, operation.SlotOperationAttemptId);
 
@@ -661,6 +694,22 @@ public sealed partial class WireToGateBusinessService
                     result,
                     cancellationToken))
             .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The request-side half of keeping the in-flight cancellation shut while a severe safety fault is
+    /// latched (8005-agv-onboard-hmi#174). The view offers only the cancellation before any sublot during a
+    /// latch, but the journal can change between the entry being read and the press: a slot command that
+    /// arrives in between turns "before any sublot" into "a load in flight", and this branch would then
+    /// pulse doors through an executor the latch does not reach. The entry says "the button is shut"; this
+    /// says "a press does not open a door" -- two claims, two checks, as for <see cref="SubmitSublotAsync"/>.
+    /// </summary>
+    private void RefuseDoorOpeningCancellationWhileLatched()
+    {
+        if (_fatalFaultLatched())
+        {
+            throw new InvalidOperationException("FATAL_FAULT_LATCHED");
+        }
     }
 
     /// <summary>

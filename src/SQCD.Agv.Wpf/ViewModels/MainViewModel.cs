@@ -114,6 +114,7 @@ public sealed class MainViewModel : ViewModelBase
     private Func<string?, CancellationToken, Task<bool>>? _wireToGateLoadCancellationRequester;
     private Func<bool>? _wireToGateLoadCancellationSelectionRequired;
     private Func<string?>? _wireToGateRecoveryFallbackDemandId;
+    private Func<bool>? _wireToGateCanRequestLoadCancellationBeforeAnySublot;
     private Func<bool>? _wireToGateEntryPausedUntilStopped;
     private IObservableVehicleSafetySignalProvider? _vehicleSafetySignal;
     private string _recoveryFallbackTargetText = string.Empty;
@@ -431,7 +432,8 @@ public sealed class MainViewModel : ViewModelBase
         Func<bool>? recoveryReasonAlreadyGiven = null,
         Func<string?>? recoveryFallbackDemandId = null,
         Func<bool>? sublotEntryPausedUntilStopped = null,
-        IObservableVehicleSafetySignalProvider? vehicleSafetySignal = null)
+        IObservableVehicleSafetySignalProvider? vehicleSafetySignal = null,
+        Func<bool>? canRequestLoadCancellationBeforeAnySublot = null)
     {
         _wireToGateRecoveryReasonAlreadyGiven = recoveryReasonAlreadyGiven;
         _wireToGateEntryPausedUntilStopped = sublotEntryPausedUntilStopped;
@@ -464,6 +466,7 @@ public sealed class MainViewModel : ViewModelBase
         _wireToGateLoadCancellationPending = loadCancellationPending;
         _wireToGateSublotRejection = sublotRejection;
         _wireToGateRecoveryFallbackDemandId = recoveryFallbackDemandId;
+        _wireToGateCanRequestLoadCancellationBeforeAnySublot = canRequestLoadCancellationBeforeAnySublot;
         _wireToGateEnabled = true;
         RefreshWireToGateInputStateCore();
         ApplyWireToGatePresentationCore();
@@ -517,7 +520,8 @@ public sealed class MainViewModel : ViewModelBase
         });
 
     /// <summary>
-    /// 锁存期间恢复入口一律关闭。**这是一项安全职责，不是显示逻辑。**
+    /// 锁存期间恢复入口一律关闭——唯一的例外是扫码之前的取消装货，它不碰 IO（见 <see cref="AllowLoadCancellationEntry"/>，
+    /// onboard-hmi#174）。**这是一项安全职责，不是显示逻辑。**
     /// </summary>
     /// <remarks>
     /// <para>
@@ -550,7 +554,7 @@ public sealed class MainViewModel : ViewModelBase
     /// <b>这九个属性的写入点由 <c>RecoveryEntryWriteSiteArchitectureTests</c> 守着</b>
     /// （onboard-hmi#176，就是下面这段注释原先说「今天没有」的那道守卫）。
     /// <c>BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands</c> 断的是行为
-    /// （锁存态下这两条路径走完，九个属性都为 false），**而它成立的前提是「只有这两条路径写这九个
+    /// （锁存态下这两条路径走完，八个属性为 false，取消装货只剩扫码之前那一半，onboard-hmi#174），**而它成立的前提是「只有这两条路径写这九个
     /// 属性」，它自己证明不了这个前提**：新加第三条路径直接赋值，那条测试不会红，因为它只调这两个
     /// 已知入口。承担那个前提的就是上面那个测试类，两条是互补的。
     /// </para>
@@ -564,6 +568,31 @@ public sealed class MainViewModel : ViewModelBase
     /// </remarks>
     private bool AllowRecoveryEntry(bool offeredByBusiness) =>
         offeredByBusiness && !RecoveryEntriesBlockedByFatalFault;
+
+    /// <summary>
+    /// 「取消装货」入口的最终值：锁存期间只剩「扫码之前」那一半（8005-agv-onboard-hmi#174）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>这是九个恢复入口里唯一一个锁存期间可以开的，理由只有一条：它不碰 IO。</b>扫码之前取消，服务端授权时
+    /// 仓位集为空，车载端的回答是 ALL_EMPTY，一扇门都不开。锁存期间把它也关掉，操作员只能干等站点超时，而超时会把
+    /// 那张需求永久抑制——比操作员主动取消更重的后果，并且不给选。在途那一半会接管仓位、逐个开门清空，而开门的
+    /// 恢复向量执行器不经过控制器、锁存在执行层拦不住它，所以那一半照旧关着：它走 <see cref="AllowRecoveryEntry"/>。
+    /// </para>
+    /// <para>
+    /// <b>「扫码之前那条路径永远不碰 IO」这个前提不由本方法承担。</b>承担它的是构造：服务端对这种取消只授权空仓位集，
+    /// 恢复向量执行器按仓位逐个开门、空集就一次不开，其余向量拿到空仓位集会被 <c>ValidateContext</c> 拒绝；请求路径在
+    /// 锁存时拒绝走到在途分支（<c>RefuseDoorOpeningCancellationWhileLatched</c>）。钉住它的行为判据是
+    /// <c>FatalFaultLatchViewModelTests</c> 里锁存期间走扫码前取消、断言零次开门那一条。
+    /// </para>
+    /// <para>
+    /// 它是一个单独的方法而不是给 <see cref="AllowRecoveryEntry"/> 加参数，是为了让结构守卫
+    /// <c>RecoveryEntryWriteSiteArchitectureTests</c> 能认出「只有这一个入口」可以这样写：那边只对
+    /// <c>CanRequestLoadCancellation</c> 认这个方法名。给通用闸门加一个「锁存期间也放行」的参数，任何入口都能用。
+    /// </para>
+    /// </remarks>
+    private bool AllowLoadCancellationEntry(bool offeredByBusiness, bool beforeAnySublot) =>
+        beforeAnySublot || AllowRecoveryEntry(offeredByBusiness);
 
     internal void RefreshWireToGateInputState() => RunOnUiThread(RefreshWireToGateInputStateCore);
 
@@ -592,14 +621,17 @@ public sealed class MainViewModel : ViewModelBase
     private void RefreshWireToGateInputStateCore()
     {
         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? CanSubmit;
-        // 这条路径上的七个恢复入口各自过 AllowRecoveryEntry；另外两个（强制机械取出的确认、硬件恢复
+        // 这条路径上的七个恢复入口，六个各自过 AllowRecoveryEntry，取消装货过 AllowLoadCancellationEntry
+        // （锁存期间只剩扫码之前那一半，onboard-hmi#174）；另外两个（强制机械取出的确认、硬件恢复
         // 记录）在下面的 RefreshForcedIsolationCore 里，写法相同。**另一条刷新路径
         // ApplyWireToGatePresentationCore 用的不是这个方法，是 early return，语义等价、结构不同**
         // ——共用的是判据 RecoveryEntriesBlockedByFatalFault。少经一处，锁存期间那个入口就会被放回来。
         // 这九个入口的写入路径由 RecoveryEntryWriteSiteArchitectureTests 守着（onboard-hmi#176）：
-        // 第三条直接赋值的路径出现就红，两种合规写法它都认得。
+        // 第三条直接赋值的路径出现就红，合规写法它都认得。
         CanRequestWireToGateRecovery = AllowRecoveryEntry(_wireToGateCanRequestRecovery?.Invoke() == true);
-        CanRequestLoadCancellation = AllowRecoveryEntry(_wireToGateCanRequestLoadCancellation?.Invoke() == true);
+        CanRequestLoadCancellation = AllowLoadCancellationEntry(
+            _wireToGateCanRequestLoadCancellation?.Invoke() == true,
+            _wireToGateCanRequestLoadCancellationBeforeAnySublot?.Invoke() == true);
         CanRequestLoadCompensation = AllowRecoveryEntry(_wireToGateCanRequestLoadCompensation?.Invoke() == true);
         CanRequestLoadCorrection = AllowRecoveryEntry(_wireToGateCanRequestLoadCorrection?.Invoke() == true);
         CanRequestFaultCargoHandoff = AllowRecoveryEntry(_wireToGateCanRequestFaultCargoHandoff?.Invoke() == true);
@@ -1637,10 +1669,14 @@ public sealed class MainViewModel : ViewModelBase
         // 紧接着按业务值把九个入口全部写回来，而这个块看起来完全正确。
         // 这九个属性的写入路径由 RecoveryEntryWriteSiteArchitectureTests 守着（onboard-hmi#176），
         // 它认的就是「有效的 early return」，删掉那个 return; 会让这一整段判成不合规。
+        // 取消装货写在锁存守卫之前、不在守卫块里：守卫块只许写 false，而它是锁存期间唯一可以开的那一个
+        // （扫码之前那一半，不碰 IO；见 AllowLoadCancellationEntry）。下面正常分支也不再写它。
+        CanRequestLoadCancellation = AllowLoadCancellationEntry(
+            _wireToGateCanRequestLoadCancellation?.Invoke() == true,
+            _wireToGateCanRequestLoadCancellationBeforeAnySublot?.Invoke() == true);
         if (RecoveryEntriesBlockedByFatalFault)
         {
             CanRequestWireToGateRecovery = false;
-            CanRequestLoadCancellation = false;
             CanRequestLoadCompensation = false;
             CanRequestLoadCorrection = false;
             CanRequestFaultCargoHandoff = false;
@@ -1680,7 +1716,6 @@ public sealed class MainViewModel : ViewModelBase
         CanRetryPendingResult = false;
         CanRequestWireToGateRecovery = _wireToGateCanRequestRecovery?.Invoke() == true
             && _wireToGateOperation?.Stage == WireToGateHmiOperationStage.RecoveryRequired;
-        CanRequestLoadCancellation = _wireToGateCanRequestLoadCancellation?.Invoke() == true;
         CanRequestLoadCompensation = _wireToGateCanRequestLoadCompensation?.Invoke() == true;
         CanRequestLoadCorrection = _wireToGateCanRequestLoadCorrection?.Invoke() == true;
         CanRequestFaultCargoHandoff = _wireToGateCanRequestFaultCargoHandoff?.Invoke() == true;

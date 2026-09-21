@@ -61,13 +61,15 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
         "BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands";
 
     /// <summary>
-    /// 真实源码里 setter 以外的写入点条数（7 + 9 + 7 + 2）。**写死是有意的**：这条数字是
+    /// 真实源码里 setter 以外的写入点条数（7 + 1 + 8 + 6 + 2：输入刷新路径七个；展示路径守卫之前的取消装货一个、
+    /// 守卫块八个、正常分支六个；强制隔离两个）。onboard-hmi#174 把展示路径里取消装货的两处写（守卫块的 false 与正常分支
+    /// 的业务值）合成守卫之前的一处 <c>AllowLoadCancellationEntry(...)</c>，所以从 25 变成 24。**写死是有意的**：这条数字是
     /// <see cref="TheScannerStillSeesTheRealWriteSites"/> 判断「扫描器还睁着眼」的判据之一，而扫描器变瞎时的
     /// 默认输出正是「什么都没发现」，与「确实没有」长得一模一样。
     /// **它变了的时候先别改它**：第三条写入路径落在核心守卫盲区里时，这个数是唯一会响的东西。
     /// 先按那条测试报错里的问题逐行回答，确认新写入点挡得住锁存，再改。
     /// </summary>
-    private const int ExpectedWriteSiteCount = 25;
+    private const int ExpectedWriteSiteCount = 24;
 
     /// <summary>一个恢复入口：公开属性，以及它的 backing field（直接写字段一样是绕过）。</summary>
     private sealed record RecoveryEntry(string Property, string BackingField);
@@ -162,13 +164,34 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
                 RegexOptions.Compiled | RegexOptions.CultureInvariant),
             StringComparer.Ordinal);
 
-    /// <summary>函数式写法的开头：简单赋值、右边以 <c>AllowRecoveryEntry(</c> 起头。括号闭合之后的判断在 <see cref="IsWrapped"/>。</summary>
+    /// <summary>
+    /// 锁存期间唯一可以开的那个入口，和它专用的闸门（onboard-hmi#174）。扫码之前的取消装货不碰 IO，锁存期间
+    /// 把它关掉只会让操作员干等站点超时；在途那一半照旧由 <c>AllowRecoveryEntry</c> 挡着
+    /// （<c>AllowLoadCancellationEntry(inFlight, beforeAnySublot) =&gt; beforeAnySublot || AllowRecoveryEntry(inFlight)</c>）。
+    /// </summary>
+    /// <remarks>
+    /// <b>只对这一个入口认这个方法名</b>，别的入口右边写它照样判违规，由
+    /// <see cref="TheGuardTellsAThirdWritePathFromACompliantOne"/> 的合成例钉住。认的是名字，不是它的方法体：
+    /// 把它的方法体改成放行在途那一半，这里看不见，那一半由 G2 的
+    /// <c>ALatchKeepsTheInFlightCancellationShutAndOpensOnlyTheOneBeforeAnySublot</c> 按行为钉住（登记在 <see cref="GuardLimits"/>）。
+    /// </remarks>
+    private static readonly RecoveryEntry LatchExemptEntry = new("CanRequestLoadCancellation", "_canRequestLoadCancellation");
+
+    private const string LatchExemptGate = "AllowLoadCancellationEntry";
+
+    /// <summary>
+    /// 函数式写法的开头：简单赋值、右边以 <c>AllowRecoveryEntry(</c> 起头——取消装货还认 <c>AllowLoadCancellationEntry(</c>。
+    /// 括号闭合之后的判断在 <see cref="IsWrapped"/>。
+    /// </summary>
     private static readonly Dictionary<string, Regex> WrappedHeadRegexes = RecoveryEntries
         .SelectMany(entry => new[] { entry.Property, entry.BackingField })
         .ToDictionary(
             token => token,
             token => new Regex(
-                $@"(?<![\w.])(?:this\.)?{Regex.Escape(token)}\s*=\s*AllowRecoveryEntry\(",
+                $@"(?<![\w.])(?:this\.)?{Regex.Escape(token)}\s*=\s*"
+                + (token == LatchExemptEntry.Property || token == LatchExemptEntry.BackingField
+                    ? $@"(?:AllowRecoveryEntry|{LatchExemptGate})\("
+                    : @"AllowRecoveryEntry\("),
                 RegexOptions.Compiled | RegexOptions.CultureInvariant),
             StringComparer.Ordinal);
 
@@ -371,6 +394,39 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
                 }
             """,
             expectedSites: 1);
+
+        // 合规六：取消装货经它专用的闸门（onboard-hmi#174）。锁存期间只剩扫码之前那一半，它不碰 IO。
+        AssertCompliant(
+            """
+                private void RefreshWireToGateInputStateCore()
+                {
+                    CanRequestLoadCancellation = AllowLoadCancellationEntry(_inFlight?.Invoke() == true, _beforeAnySublot?.Invoke() == true);
+                }
+            """,
+            expectedSites: 1);
+
+        // 反例：别的入口借用取消装货的闸门。那道闸门锁存期间会放行，只许取消装货用——会开门的补偿清空用它，
+        // 等于锁存期间把开门入口放回来。
+        AssertViolates(
+            """
+                private void RefreshWireToGateInputStateCore()
+                {
+                    CanRequestLoadCompensation = AllowLoadCancellationEntry(_canRequest?.Invoke() == true, _beforeAnySublot?.Invoke() == true);
+                }
+            """,
+            expectedSites: 1,
+            expectedViolations: 1);
+
+        // 反例：取消装货的闸门只是右边的一部分。与 AllowRecoveryEntry 同一条「右边整个就是一次调用」的规则。
+        AssertViolates(
+            """
+                private void RefreshWireToGateInputStateCore()
+                {
+                    CanRequestLoadCancellation = AllowLoadCancellationEntry(false, false) || _inFlight?.Invoke() == true;
+                }
+            """,
+            expectedSites: 1,
+            expectedViolations: 1);
 
         // ---- 第一组：第一版就认得的错法 ----
 
@@ -979,6 +1035,9 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             + "`=> offeredByBusiness`、或把 RecoveryEntriesBlockedByFatalFault 改成恒假，这条照样绿"
             + "——那一半由行为判据 BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands 接住，"
             + "两条是互补的，任何一条单独都不够。"
+            + "**取消装货多认一个闸门名 AllowLoadCancellationEntry（onboard-hmi#174），认的是名字不是方法体**："
+            + "把它的方法体改成连在途那一半一起放行，这里照样绿，那一半由 G2 的 "
+            + "ALatchKeepsTheInFlightCancellationShutAndOpensOnlyTheOneBeforeAnySublot 按行为接住。"
             + "**「early return 之后」是按行号与缩进近似的，不是控制流分析**：守卫头要在缩进 8 格的方法体顶层、"
             + "return 要在守卫块第一层，这挡住了嵌套 if、else if、lambda 里的守卫、内层 return、不带花括号的假守卫"
             + "（审查中等 2 的五种变异，合成反例都在）；但**守卫之后把写入放进 lambda 或本地函数延迟执行，它判合规**，"

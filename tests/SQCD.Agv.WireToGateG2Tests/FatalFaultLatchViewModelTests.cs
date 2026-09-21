@@ -121,6 +121,13 @@ public sealed class FatalFaultLatchViewModelTests
     /// </summary>
     /// <remarks>
     /// <para>
+    /// onboard-hmi#174 之后九个里有一个例外：扫码之前的取消装货锁存期间开着，因为它不碰 IO。这里没接那一半
+    /// （<c>canRequestLoadCancellationBeforeAnySublot</c> 不传，视图模型按 false 处理），所以九个照旧全关；例外本身由
+    /// <see cref="ALatchKeepsTheInFlightCancellationShutAndOpensOnlyTheOneBeforeAnySublot"/> 钉住。
+    /// </para>
+    /// </remarks>
+    /// <remarks>
+    /// <para>
     /// 这几个入口里有三个（补偿清空、修正装货、强制机械取出）会经
     /// <c>WireToGateRecoveryVectorExecutor</c> 真的开门，而那个执行器不经过 <c>OnboardController</c>，
     /// 所以锁存在执行那一层拦不住——**挡住它的就是界面这一层**。
@@ -178,6 +185,89 @@ public sealed class FatalFaultLatchViewModelTests
         Assert.False(viewModel.CanRequestManualChargingReturn);
         Assert.False(viewModel.CanConfirmForcedMechanicalRecovery);
         Assert.False(viewModel.CanSubmitHardwareRecoveryRecord);
+    }
+
+    /// <summary>
+    /// 锁存期间取消装货只剩扫码之前那一半（onboard-hmi#174），两条刷新路径同一个答案。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 在途那一半按下去会经恢复向量执行器开门清空，锁存在执行层拦不住它，所以业务侧说「在途可以取消」时入口仍然关着；
+    /// 扫码之前那一半授权时仓位集为空、不开门，锁存期间开着——否则操作员只能干等站点超时，需求被永久抑制。
+    /// </para>
+    /// <para>
+    /// <b>两个方向都断</b>：只断「扫码前开着」，一个把在途那一半也放行的实现（<c>AllowLoadCancellationEntry</c> 里少了
+    /// <c>AllowRecoveryEntry</c>）也能通过；结构守卫只认这个闸门的名字、看不见它的方法体，这一半只有这里接得住。
+    /// 其余八个在扫码前那一半开着的时候也要照旧关着。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ALatchKeepsTheInFlightCancellationShutAndOpensOnlyTheOneBeforeAnySublot()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        bool beforeAnySublot = false;
+        List<string> announced = [];
+        viewModel.PropertyChanged += (_, args) => announced.Add(args.PropertyName ?? string.Empty);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => true,
+            canRequestRecovery: () => true,
+            canRequestLoadCancellation: () => true,
+            canRequestLoadCompensation: () => true,
+            canRequestLoadCorrection: () => true,
+            canRequestFaultCargoHandoff: () => true,
+            canRequestForcedMechanicalRecovery: () => true,
+            canRequestManualChargingReturn: () => true,
+            canRequestLoadCancellationBeforeAnySublot: () => beforeAnySublot);
+        viewModel.UpdateWireToGateStatus(new WireToGateSessionSnapshot(
+            Connected: true,
+            SessionGeneration: 1,
+            Readiness: WireToGateSessionReadiness.Ready,
+            ReasonCodes: [],
+            CapabilityVersion: 1,
+            SafetyStateVersion: 1,
+            UpdatedAt: Now));
+        viewModel.RefreshWireToGateInputState();
+        Assert.True(viewModel.CanRequestLoadCancellation);
+
+        // 一、只有在途那一半：锁存之后两条路径都关。
+        controller.EnterFatalFault("UI_COMMAND_FAILED", OnboardFatalFaultBanner.UiCommandFailed);
+        Assert.False(viewModel.CanRequestLoadCancellation);
+        viewModel.RefreshWireToGateInputState();
+        Assert.False(viewModel.CanRequestLoadCancellation);
+
+        // 二、扫码之前那一半到了：两条路径都开，按钮真的出现在窗口上（属性值 ＋ 以属性名发出的通知）。
+        beforeAnySublot = true;
+        announced.Clear();
+        viewModel.RefreshWireToGateInputState();
+        Assert.True(viewModel.CanRequestLoadCancellation);
+        Assert.Contains(nameof(MainViewModel.CanRequestLoadCancellation), announced);
+        // 会话状态更新先走输入刷新、最后走展示路径，所以这一步读到的是展示路径（守卫之前那一处写）的答案。
+        viewModel.UpdateWireToGateStatus(new WireToGateSessionSnapshot(
+            Connected: true,
+            SessionGeneration: 1,
+            Readiness: WireToGateSessionReadiness.Ready,
+            ReasonCodes: [],
+            CapabilityVersion: 1,
+            SafetyStateVersion: 2,
+            UpdatedAt: Now));
+        Assert.True(viewModel.CanRequestLoadCancellation);
+
+        // 其余八个照旧关着。
+        Assert.False(viewModel.CanRequestWireToGateRecovery);
+        Assert.False(viewModel.CanRequestLoadCompensation);
+        Assert.False(viewModel.CanRequestLoadCorrection);
+        Assert.False(viewModel.CanRequestFaultCargoHandoff);
+        Assert.False(viewModel.CanRequestForcedMechanicalRecovery);
+        Assert.False(viewModel.CanRequestManualChargingReturn);
+        Assert.False(viewModel.CanConfirmForcedMechanicalRecovery);
+        Assert.False(viewModel.CanSubmitHardwareRecoveryRecord);
+
+        // 三、扫码之前那一半走了（例如一条仓位命令到了）：又关上。
+        beforeAnySublot = false;
+        viewModel.RefreshWireToGateInputState();
+        Assert.False(viewModel.CanRequestLoadCancellation);
     }
 
     /// <summary>
