@@ -4,7 +4,7 @@ using SQCD.Agv.Infrastructure;
 
 namespace SQCD.Agv.UnitTests;
 
-public sealed class WireToGateSlotOperationExecutorTests
+public sealed partial class WireToGateSlotOperationExecutorTests
 {
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]

@@ -282,7 +282,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             CancellationToken cancellationToken,
             string? journalPath = null,
             FakeIoModuleClient? io = null,
-            Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null)
+            Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
+            WireToGateRecoveryOptions? recoveryOptions = null)
         {
             FakeControlServer server = new(IPAddress.Loopback)
             {
@@ -297,7 +298,8 @@ public sealed partial class MultiDemandJourneyG2Tests
                     cancellationToken,
                     journalPath,
                     io,
-                    wrapJournal);
+                    wrapJournal,
+                    recoveryOptions);
                 started._ownsServer = true;
                 return started;
             }
@@ -316,12 +318,17 @@ public sealed partial class MultiDemandJourneyG2Tests
         /// A decorator over the journal the session, the business service and the operations feed all
         /// share, for a test that has to fix an interleaving rather than wait for one.
         /// </param>
+        /// <param name="recoveryOptions">
+        /// The recovery switch and administrator proof, for a test that drives a recovery entry. Left
+        /// null, the recovery entries stay shut, as on a vehicle shipped with the switch off.
+        /// </param>
         public static async Task<Harness> StartAgainstAsync(
             FakeControlServer server,
             CancellationToken cancellationToken,
             string? journalPath = null,
             FakeIoModuleClient? io = null,
-            Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null)
+            Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
+            WireToGateRecoveryOptions? recoveryOptions = null)
         {
             io ??= new FakeIoModuleClient();
             RecordingLogger logger = new();
@@ -401,7 +408,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                 safety,
                 TimeSpan.FromSeconds(30),
                 TimeSpan.FromMilliseconds(500),
-                recoveryOptions: null,
+                recoveryOptions: recoveryOptions,
                 // 与 App 接的是同一根线（8005-agv-onboard-hmi#171）。夹具不接，这里就证不到
                 // 「锁存之后扫码真的被拒」——而那正是故障横幅对操作员说的那句话。
                 fatalFaultLatched: () => controller.IsFatalFaultLatched);
