@@ -1,0 +1,16 @@
+diff --git a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+index 3371bfe..7e74c4e 100644
+--- a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
++++ b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+@@ -1655,6 +1655,11 @@ public sealed class MainViewModel : ViewModelBase
+         RefreshLoadCorrectionTargetCore();
+     }
+ 
++    private void RefreshRecoveryEntriesFromSomewhereElse()
++    {
++        CanRequestLoadCompensation = _wireToGateCanRequestLoadCompensation?.Invoke() == true;
++    }
++
+     private void RefreshForcedIsolationCore()
+     {
+         CanConfirmForcedMechanicalRecovery =

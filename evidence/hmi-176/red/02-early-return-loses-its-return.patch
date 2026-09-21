@@ -1,0 +1,12 @@
+diff --git a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+index 3371bfe..b534864 100644
+--- a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
++++ b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+@@ -1612,7 +1612,6 @@ public sealed class MainViewModel : ViewModelBase
+             CanRequestManualChargingReturn = false;
+             CanConfirmForcedMechanicalRecovery = false;
+             CanSubmitHardwareRecoveryRecord = false;
+-            return;
+         }
+ 
+         WireToGateSublotRejection? sublotRejection = _wireToGateSublotRejection?.Invoke();

@@ -1,0 +1,16 @@
+diff --git a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+index 3371bfe..88766ea 100644
+--- a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
++++ b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+@@ -1655,6 +1655,11 @@ public sealed class MainViewModel : ViewModelBase
+         RefreshLoadCorrectionTargetCore();
+     }
+ 
++    private void ReopenLoadCorrectionAfterRecovery()
++    {
++        SetProperty(ref _canRequestLoadCorrection, true, nameof(CanRequestLoadCorrection));
++    }
++
+     private void RefreshForcedIsolationCore()
+     {
+         CanConfirmForcedMechanicalRecovery =

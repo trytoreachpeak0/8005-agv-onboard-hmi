@@ -25,7 +25,15 @@ namespace SQCD.Agv.UnitTests;
 /// <para>
 /// <b>第四个开门点今天唯一被挡住的方式，是 <c>MainViewModel.ApplyWireToGatePresentationCore</c>
 /// 里那个把 9 个恢复入口置 false 的 <c>if</c>。</b> 也就是说那个 <c>if</c> 承担着一项安全职责。
-/// 它那里有一条注释指回本文件；删它之前先读那条注释。
+/// 它那里有一条注释指回本文件；删它之前先读那条注释。**那九个入口自己的写入路径由
+/// <see cref="RecoveryEntryWriteSiteArchitectureTests"/> 守着**（onboard-hmi#176），包括那个
+/// <c>if</c> 的 <c>return;</c>——少了它，下面的正常分支会把入口写回来。
+/// </para>
+/// <para>
+/// <b>本文件每一条守卫守不到什么，逐条登记在
+/// <c>RecoveryEntryWriteSiteArchitectureTests.GuardLimits</c> 那张表里</b>（onboard-hmi#176 的范围补充）。
+/// 这一族**没有一条是行为判据**：它们问的都是源码里有没有某个 token、某个形状，所以换一个语义等价、
+/// token 不同的写法它们就全盲，而那一刻没有任何东西会红。读本文件任何一条之前，先去那张表看它的限度。
 /// </para>
 /// </remarks>
 public sealed class FatalFaultScopeArchitectureTests

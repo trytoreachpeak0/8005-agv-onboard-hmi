@@ -1,0 +1,23 @@
+diff --git a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+index 3371bfe..3cda015 100644
+--- a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
++++ b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+@@ -1601,8 +1601,7 @@ public sealed class MainViewModel : ViewModelBase
+         // 紧接着按业务值把九个入口全部写回来，而这个块看起来完全正确。
+         // 这九个属性的写入路径由 RecoveryEntryWriteSiteArchitectureTests 守着（onboard-hmi#176），
+         // 它认的就是「有效的 early return」，删掉那个 return; 会让这一整段判成不合规。
+-        if (RecoveryEntriesBlockedByFatalFault)
+-        {
++        if (RecoveryEntriesBlockedByFatalFault) HasWarning = true;
+             CanRequestWireToGateRecovery = false;
+             CanRequestLoadCancellation = false;
+             CanRequestLoadCompensation = false;
+@@ -1612,6 +1611,8 @@ public sealed class MainViewModel : ViewModelBase
+             CanRequestManualChargingReturn = false;
+             CanConfirmForcedMechanicalRecovery = false;
+             CanSubmitHardwareRecoveryRecord = false;
++        if (!_wireToGateEnabled)
++        {
+             return;
+         }
+ 
