@@ -112,6 +112,90 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         Assert.Equal("UNKNOWN", resumed.OverallOutcome);
     }
 
+    /// <summary>
+    /// The IO drops after slot 1 completes, so the one-door check before slot 2's first pulse cannot read the other
+    /// doors and refuses with SLOT_STATE_UNKNOWN. Slot 2 was never opened, so its door cannot be standing open because
+    /// of this attempt: the live result, the journal and a later settlement all say so. Before the second review of
+    /// PR #190 the failure branch judged the safe finish from the same unreadable snapshot, put slot 2 into the active
+    /// set under ACTIVE_UNLOCK_SET, and a settlement then counted it as opened: NOT_STARTED live, UNKNOWN settled.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ASlotRefusedBeforeItsFirstPulseOnAnUnreadableSnapshotIsNotStartedEverywhere()
+    {
+        CancellationToken token = BoundedToken(out CancellationTokenSource bounded);
+        using CancellationTokenSource _ = bounded;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
+            command,
+            (progress, _) =>
+            {
+                if (progress.Phase == "WAITING_OPERATOR" && progress.Active.Single() == 1)
+                {
+                    fixture.Io.CloseDoor(0, cargo: true);
+                }
+                else if (progress.Phase == "VERIFYING")
+                {
+                    fixture.Io.Disconnect();
+                }
+
+                return Task.CompletedTask;
+            },
+            token);
+
+        // Live: slot 2 never opened.
+        Assert.Equal([(1, true)], fixture.Io.Pulses);
+        WireToGateSlotExecutionResult live = result.SlotResults.Single(slot => slot.SlotNo == 2);
+        Assert.Equal("NOT_STARTED", live.Outcome);
+        Assert.Equal(["SLOT_STATE_UNKNOWN"], live.ReasonCodes);
+        Assert.Equal("SAFE_FINISH_REACHED", result.JournalCheckpoint);
+
+        // Journal: no door of this attempt may be open.
+        WireToGateRecoveryState journaled = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal(WireToGateRecoveryCheckpoint.SafeFinishReached, journaled.ProvenRecoveryCheckpoint);
+        Assert.Empty(journaled.ActiveUnlockSlots);
+
+        // Settlement, IO still gone: slot 2 is still the slot this attempt never opened.
+        WireToGateOperationExecutionResult settled = await fixture.Executor.SettleInterruptedAsync(token);
+        WireToGateSlotExecutionResult settledSlot = settled.SlotResults.Single(slot => slot.SlotNo == 2);
+        Assert.Equal("NOT_STARTED", settledSlot.Outcome);
+        Assert.Equal(["SLOT_STATE_UNKNOWN"], settledSlot.ReasonCodes);
+    }
+
+    /// <summary>
+    /// The journal holds a failure and the IO is gone when the settlement reads it. The failed slot keeps the reason it
+    /// failed with, not SLOT_STATE_UNKNOWN: the reason says why the slot is in doubt, and the missing reading does not
+    /// change that (review of PR #190, point 5). Its physical fields are UNKNOWN, as the reading is.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task AFailedSlotKeepsItsReasonWhenTheSettlementCannotReadTheIo()
+    {
+        CancellationToken token = BoundedToken(out CancellationTokenSource bounded);
+        using CancellationTokenSource _ = bounded;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
+        fixture.Io.JamLock(0);
+        WireToGateOperationExecutionResult first = await fixture.Executor.ExecuteAsync(command, null, token);
+        IReadOnlyList<string> failedWith = first.SlotResults.Single().ReasonCodes;
+        Assert.Equal("UNKNOWN", first.SlotResults.Single().Outcome);
+        Assert.NotEqual(["SLOT_STATE_UNKNOWN"], failedWith);
+        fixture.Io.Disconnect();
+
+        WireToGateOperationExecutionResult settled = await fixture.Executor.SettleInterruptedAsync(token);
+
+        WireToGateSlotExecutionResult slot = settled.SlotResults.Single();
+        Assert.Equal("UNKNOWN", slot.Outcome);
+        Assert.Equal(failedWith, slot.ReasonCodes);
+        Assert.Equal("UNKNOWN", slot.FinalPhysicalState);
+    }
+
     /// <summary>Bounded, so an unlock that should have been refused fails the test instead of waiting forever.</summary>
     private static CancellationToken BoundedToken(out CancellationTokenSource bounded)
     {

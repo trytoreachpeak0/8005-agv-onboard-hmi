@@ -372,7 +372,11 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// NOT_STARTED is written only for a slot some run of this attempt pulsed, or, in a resume, one refused by the
     /// one-door check before that run's pulse, which may never have been pulsed at all and is counted as opened
     /// on purpose: the journal cannot tell, and counting it keeps it UNKNOWN in a settlement. In the first run a
-    /// slot refused before its first pulse is written NOT_STARTED. Every slot of an occupancy conflict
+    /// slot refused before its first pulse is written NOT_STARTED, at the safe finish and outside the active set,
+    /// whatever the snapshot read -- so the first clause does not count it either; with the IO unreadable it once
+    /// went into the active set (second review of PR #190). The active set can still hold a slot not yet pulsed
+    /// when a process dies between that checkpoint and the pulse; it counts as opened, the conservative side.
+    /// Every slot of an occupancy conflict
     /// (8005-agv-onboard-hmi#172) is NOT_STARTED too, the conflict slot included, which reads final and was never
     /// opened; that is what keeps the third clause from counting cargo nobody loaded under this attempt.
     /// </para>
@@ -834,9 +838,8 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 // only in the first run, where this process has driven every slot it has touched. A
                 // resume re-drives slots an earlier run may have pulsed, and the journal cannot say which
                 // (the loop below overwrites them as NOT_STARTED), so a refusal there stays UNKNOWN.
-                string outcome = exception is RefusedBeforeFirstPulseException && firstRun
-                    ? "NOT_STARTED"
-                    : "UNKNOWN";
+                bool neverOpened = exception is RefusedBeforeFirstPulseException && firstRun;
+                string outcome = neverOpened ? "NOT_STARTED" : "UNKNOWN";
                 UpsertResult(
                     results,
                     CreateSlotResult(ReadLocker(failureSnapshot, slotIndex), outcome, [reason]));
@@ -854,7 +857,12 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                         CreateSlotResult(ReadLocker(failureSnapshot, notStarted - 1), "NOT_STARTED", []));
                 }
 
-                bool safeFinish = IsSafeFinish(failureSnapshot, slotIndex);
+                // A slot this attempt never opened cannot be standing open because of it, whatever the snapshot
+                // says: with the IO unreadable the one-door check refuses with SLOT_STATE_UNKNOWN, and reading the
+                // safe finish off that same snapshot put a never-opened slot into the active set -- NOT_STARTED in
+                // the result, a door that may be open in the journal, and opened again for a settlement or a
+                // resume (second review of PR #190). The other door's state is not this attempt's to hold.
+                bool safeFinish = neverOpened || IsSafeFinish(failureSnapshot, slotIndex);
                 WireToGateRecoveryCheckpoint failureCheckpoint = safeFinish
                     ? WireToGateRecoveryCheckpoint.SafeFinishReached
                     : WireToGateRecoveryCheckpoint.ActiveUnlockSet;
