@@ -29,8 +29,16 @@ namespace SQCD.Agv.UnitTests;
 /// **hmi#171 的注释一度把它写成「九个入口全部收到同一道闸门 AllowRecoveryEntry 后面」**。
 /// 照那句话写出来的守卫只扫 <c>AllowRecoveryEntry(</c>，会把 early-return 那条判成「没有闸门」；
 /// 反过来，有人把那个 <c>return;</c> 删掉改成直接赋值，那样的扫描器完全看不见。
-/// 所以这里的判据是两条并列：**每个赋值点，要么右边是 <c>AllowRecoveryEntry(...)</c>，要么落在同一个
-/// 成员里一道有效的 <c>RecoveryEntriesBlockedByFatalFault</c> early return 之后。**
+/// 所以这里的判据是两条并列：**每一次写，要么是右边整个就是一次 <c>AllowRecoveryEntry(...)</c> 的简单
+/// 赋值，要么落在同一个成员里一道有效的 <c>RecoveryEntriesBlockedByFatalFault</c> early return 之后**
+/// （守卫块之内只许写 <c>false</c>）。第三种合规写法是属性自己的 setter 把 <c>value</c> 写进自己的字段。
+/// </para>
+/// <para>
+/// <b>「一次写」不只是 <c>=</c>。</b> 第一版只认简单赋值，审查在真实文件上加了一个
+/// <c>SetProperty(ref _field, true, ...)</c> 的新成员，五条守卫全绿——而这个文件里每个 setter 都是这个
+/// 形状，下一个人照着抄就是它。现在认四种：简单赋值、复合赋值、解构赋值、以 <c>ref</c>／<c>out</c>
+/// 传出 backing field。「有效的 early return」也有三个条件，见 <see cref="FindFatalFaultEarlyReturns"/>。
+/// 仍然看不见的写法登记在 <see cref="GuardLimits"/> 里，其中一种按当前结果钉在合成例里。
 /// </para>
 /// <para>
 /// <b>「同一个成员里」是判据的一部分，不是实现细节。</b> 守卫在 A 方法里、赋值在 B 方法里，正是这张票
@@ -53,9 +61,11 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
         "BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands";
 
     /// <summary>
-    /// 真实源码里赋值点的条数。**写死是有意的**：这条数字是<see cref="TheScannerStillSeesTheRealWriteSites"/>
-    /// 判断「扫描器还睁着眼」的判据之一，而扫描器变瞎时的默认输出正是「什么都没发现」，与「确实没有」
-    /// 长得一模一样。改动九个入口的写入点之后，回来对一次这个数并说明变化。
+    /// 真实源码里 setter 以外的写入点条数（7 + 9 + 7 + 2）。**写死是有意的**：这条数字是
+    /// <see cref="TheScannerStillSeesTheRealWriteSites"/> 判断「扫描器还睁着眼」的判据之一，而扫描器变瞎时的
+    /// 默认输出正是「什么都没发现」，与「确实没有」长得一模一样。
+    /// **它变了的时候先别改它**：第三条写入路径落在核心守卫盲区里时，这个数是唯一会响的东西。
+    /// 先按那条测试报错里的问题逐行回答，确认新写入点挡得住锁存，再改。
     /// </summary>
     private const int ExpectedWriteSiteCount = 25;
 
@@ -112,28 +122,94 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
         @"^    [A-Za-z].*?\b(?<name>\w+)\s*\(",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    private static readonly Regex FatalFaultGuardRegex = new(
-        @"\bif\s*\(\s*RecoveryEntriesBlockedByFatalFault\s*\)",
-        RegexOptions.Compiled | RegexOptions.CultureInvariant);
-
-    private static readonly Regex ReturnRegex = new(
-        @"\breturn\s*;",
+    /// <summary>属性声明行：缩进四格、没有括号、没有 <c>=</c>、不以 <c>;</c> 结尾，最后一个词是名字。</summary>
+    private static readonly Regex PropertyHeaderRegex = new(
+        @"^    (?:public|private|internal|protected)\b[^(=;]*?\b(?<name>\w+)\s*$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     /// <summary>
-    /// 一次对某个入口的写。**不锚行首**，因为 <c>if (...) { CanRequestX = false; return; }</c> 这种单行
-    /// 写法里赋值不在行首，而它是合法的；锚了行首就会看不见它，也看不见任何塞在别的语句后面的赋值。
-    /// 代价是字段声明的初始化器（<c>private bool _canRequestX = true;</c>）也会被算成一个赋值点，
-    /// 而那正好该红：那是一个默认开着的恢复入口。
+    /// 守卫头，**必须在方法体顶层**：缩进正好 8 格、紧接着就是 <c>if</c>。这就排除了 <c>else if</c>、
+    /// 嵌在另一个块或 lambda 里的守卫——见 <see cref="FindFatalFaultEarlyReturns"/>。
     /// </summary>
-    private static readonly Dictionary<string, Regex> AssignmentRegexes = RecoveryEntries
+    private static readonly Regex TopLevelFatalFaultGuardRegex = new(
+        @"^        if\s*\(\s*RecoveryEntriesBlockedByFatalFault\s*\)",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>从给定位置起正好是一句 <c>return;</c>（<c>\G</c> 锚在 <c>Match(line, position)</c> 的起点）。</summary>
+    private static readonly Regex ReturnRegex = new(
+        @"\Greturn\s*;",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    /// <summary>
+    /// 对一个恢复入口的**一次写**，四种形状（hmi#176 审查中等 1 之后）：
+    /// </summary>
+    /// <remarks>
+    /// <list type="number">
+    /// <item><b>简单与复合赋值</b>：<c>=</c>、<c>|=</c>、<c>&amp;=</c>、<c>^=</c>、<c>??=</c> 等。
+    /// 不锚行首：<c>if (...) { CanX = false; return; }</c> 这种单行写法里赋值不在行首。</item>
+    /// <item><b>解构赋值</b>：<c>(CanX, CanY) = (...)</c>。</item>
+    /// <item><b>以 <c>ref</c>／<c>out</c> 传出 backing field</b>：<c>SetProperty(ref _canX, true, nameof(CanX))</c>。
+    /// <b>这是最该防的一种</b>：这个文件里每一个 setter 都是 <c>SetProperty(ref _field, value)</c>，下一个人
+    /// 加第三条路径时照着现有写法抄一份，就是这个形状——第一版的守卫恰好看不见它。</item>
+    /// </list>
+    /// <para>
+    /// 字段声明的初始化器（<c>private bool _canX = true;</c>）也会被算成一次写，而那正好该红：那是一个
+    /// 默认开着的恢复入口。
+    /// </para>
+    /// </remarks>
+    private static readonly Dictionary<string, Regex[]> WriteRegexes = RecoveryEntries
+        .SelectMany(entry => new[] { entry.Property, entry.BackingField })
+        .ToDictionary(
+            token => token,
+            token =>
+            {
+                string name = $@"(?:this\.)?{Regex.Escape(token)}";
+                return new[]
+                {
+                    new Regex(
+                        $@"(?<![\w.]){name}\s*(?:\?\?|<<|>>>|>>|[|&^+\-*/%])?=(?![=>])",
+                        RegexOptions.Compiled | RegexOptions.CultureInvariant),
+                    new Regex(
+                        $@"\((?=[^()]*(?<![\w.]){name}\b)[^()]*,[^()]*\)\s*=(?![=>])",
+                        RegexOptions.Compiled | RegexOptions.CultureInvariant),
+                    new Regex(
+                        $@"\b(?:ref|out)\s+{name}\b",
+                        RegexOptions.Compiled | RegexOptions.CultureInvariant)
+                };
+            },
+            StringComparer.Ordinal);
+
+    /// <summary>守卫块内唯一合规的写：<c>CanX = false;</c>。</summary>
+    private static readonly Dictionary<string, Regex> FalseRegexes = RecoveryEntries
         .SelectMany(entry => new[] { entry.Property, entry.BackingField })
         .ToDictionary(
             token => token,
             token => new Regex(
-                $@"(?<![\w.])(?:this\.)?{Regex.Escape(token)}\s*=(?![=>])",
+                $@"(?<![\w.])(?:this\.)?{Regex.Escape(token)}\s*=\s*false\s*;",
                 RegexOptions.Compiled | RegexOptions.CultureInvariant),
             StringComparer.Ordinal);
+
+    /// <summary>函数式写法的开头：简单赋值、右边以 <c>AllowRecoveryEntry(</c> 起头。括号闭合之后的判断在 <see cref="IsWrapped"/>。</summary>
+    private static readonly Dictionary<string, Regex> WrappedHeadRegexes = RecoveryEntries
+        .SelectMany(entry => new[] { entry.Property, entry.BackingField })
+        .ToDictionary(
+            token => token,
+            token => new Regex(
+                $@"(?<![\w.])(?:this\.)?{Regex.Escape(token)}\s*=\s*AllowRecoveryEntry\(",
+                RegexOptions.Compiled | RegexOptions.CultureInvariant),
+            StringComparer.Ordinal);
+
+    /// <summary>
+    /// 属性自己的 setter：把 <c>value</c> 原样写进自己的 backing field，不多也不少。
+    /// <c>SetProperty(ref _canX, true)</c> 或 <c>SetProperty(ref _canX, value || x)</c> 不算。
+    /// </summary>
+    private static readonly Dictionary<string, Regex> OwnSetterRegexes = RecoveryEntries.ToDictionary(
+        entry => entry.BackingField,
+        entry => new Regex(
+            $@"\bref\s+(?:this\.)?{Regex.Escape(entry.BackingField)}\s*,\s*value\s*[,)]"
+            + $@"|(?<![\w.])(?:this\.)?{Regex.Escape(entry.BackingField)}\s*=\s*value\s*;",
+            RegexOptions.Compiled | RegexOptions.CultureInvariant),
+        StringComparer.Ordinal);
 
     /// <summary>
     /// 九个属性的写入点没有第三条路径。**这一条是本票的交付物**；它的判别力由
@@ -163,30 +239,54 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
     /// 「什么都没发现」，和「确实没有」长得一模一样**，所以这一条要求扫描器拿出它真的看见了的东西。
     /// </summary>
     /// <remarks>
-    /// 四项一起才够：数量对得上（漏扫会掉数）、九个入口每个都至少被看见两次（某个名字打错会掉到零）、
-    /// 成员集合恰好是那三个（缩进格式一变，成员切分就不准，而那会悄悄改变「同一个成员里」这个判据）、
-    /// **两种写法各自都被认出来过**（只认得函数式那种，正是票面点名的那个陷阱）。
+    /// <para>
+    /// 五项一起才够：setter 以外的写入点条数对得上（漏扫会掉数）、九个入口每个都至少被看见两次（某个名字
+    /// 打错会掉到零）、写入成员恰好是那三个（缩进格式一变，成员切分就不准，而那会悄悄改变「同一个成员里」
+    /// 这个判据）、**每个入口恰好一个自己的 setter 被认出来**（属性声明行认不出时，九个 setter 会整批变成
+    /// 违规或整批消失）、**函数式与语句式两种写法各自都被认出来过**（只认得函数式那种，正是票面点名的那个陷阱）。
+    /// </para>
+    /// <para>
+    /// <b>条数那一项的报错措辞是判据的一部分。</b> 第三条写入路径出现、而核心守卫恰好落在它的盲区里时
+    /// （见 <see cref="GuardLimits"/>），**唯一会红的就是这一项**。第一版的报错说「回到这张表来说明」，
+    /// 等于在教人改掉那个数让它闭嘴，而改完之后核心守卫是唯一防线、它又判那条新路径合规（审查意见）。
+    /// 所以消息里先问问题、后给改数的许可，顺序不能倒。
+    /// </para>
     /// </remarks>
     [Fact]
     public void TheScannerStillSeesTheRealWriteSites()
     {
         WriteSite[] sites = ScanViewModel();
+        WriteSite[] writes = sites.Where(site => site.Kind != WriteKind.OwnSetter).ToArray();
 
         Assert.True(
-            sites.Length == ExpectedWriteSiteCount,
-            $"扫描器在 {ViewModelPath} 里找到 {sites.Length} 个恢复入口赋值点，登记的是 "
-            + $"{ExpectedWriteSiteCount} 个。少了多半是扫描器瞎了（改名、改格式、正则失配），"
-            + "多了是真的加了写入点——两种都要回到这张表来说明。");
+            writes.Length == ExpectedWriteSiteCount,
+            $"扫描器在 {ViewModelPath} 里找到 {writes.Length} 个恢复入口写入点（setter 以外），登记的是 "
+            + $"{ExpectedWriteSiteCount} 个。**先别改这个数。**"
+            + $"{Environment.NewLine}少了：多半是扫描器瞎了（改名、改格式、正则失配），修扫描器，不是改数。"
+            + $"{Environment.NewLine}多了：先回答三个问题——多出来的是哪个成员里的哪一行；锁存期间它写进去的是什么；"
+            + "它凭什么挡得住锁存（经 AllowRecoveryEntry，还是在方法体顶层一道无条件的 early return 之后）。"
+            + "EveryWriteToARecoveryEntryInTheViewModelIsGuarded 判它合规不等于它真有闸门，那条守卫的盲区列在 GuardLimits 里。"
+            + $"{Environment.NewLine}逐行读过、确认它挡得住之后，才改 ExpectedWriteSiteCount，并在提交说明里写下是哪一行。"
+            + $"{Environment.NewLine}{string.Join(Environment.NewLine, writes.Select(site => $"  {site.Line}  {site.Member}  {site.Kind}  {site.Statement.Trim()}"))}");
 
         foreach (RecoveryEntry entry in RecoveryEntries)
         {
+            int seen = writes.Count(site => site.Entry == entry.Property);
             Assert.True(
-                sites.Count(site => site.Entry == entry.Property) >= 2,
-                $"{entry.Property} 在源码里只被看见 {sites.Count(site => site.Entry == entry.Property)} 次。"
+                seen >= 2,
+                $"{entry.Property} 在源码里只被看见 {seen} 次。"
                 + "九个入口每个至少在两条路径上被写，看见不到两次说明这个名字已经对不上源码了。");
+
+            WriteSite[] setters = sites
+                .Where(site => site.Entry == entry.Property && site.Kind == WriteKind.OwnSetter)
+                .ToArray();
+            Assert.True(
+                setters.Length == 1 && setters[0].Member == entry.Property,
+                $"{entry.Property} 应该恰好有一处被认作它自己的 setter，实际 {setters.Length} 处。"
+                + "认不出 setter，说明属性声明行的识别坏了——那时属性块里的写会被算到别的成员名下。");
         }
 
-        string[] members = sites.Select(site => site.Member).Distinct(StringComparer.Ordinal)
+        string[] members = writes.Select(site => site.Member).Distinct(StringComparer.Ordinal)
             .Order(StringComparer.Ordinal).ToArray();
         Assert.True(
             members.SequenceEqual(WritingMembers, StringComparer.Ordinal),
@@ -194,8 +294,8 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             + $"表里：{string.Join(", ", WritingMembers)}。"
             + "新增一个成员就要回答：它凭什么可以写这些入口，锁存期间它写的是什么。");
 
-        Assert.Contains(sites, site => site.ViaAllowRecoveryEntry);
-        Assert.Contains(sites, site => site.UnderFatalFaultEarlyReturn && !site.ViaAllowRecoveryEntry);
+        Assert.Contains(writes, site => site.Kind == WriteKind.Wrapped);
+        Assert.Contains(writes, site => site.Kind == WriteKind.UnderGuard);
     }
 
     /// <summary>
@@ -207,16 +307,21 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
     /// 「当天有判别力」，不是「明天扫描器变瞎时会有人知道」。本票的守卫不继承那个毛病。
     /// </para>
     /// <para>
-    /// 七个反例是**七种真的会发生的错法**，不是凑数：第三条路径（这张票的起因）、early return 被删掉、
-    /// 守卫被行注释掉、守卫被块注释包起来、绕过属性直接写 backing field、
-    /// <b>守卫块里少了 <c>return;</c></b>（那时后面的正常分支照样会把入口写回来，而块内那九个 false
-    /// 看起来完全正确），以及守卫在上一个成员里、赋值在下一个成员里。
+    /// 反例分三组，每一个都是**真会发生的错法**：第一版就认得的七种（第三条路径、early return 被删、守卫被
+    /// 行注释或块注释掉、直接写 backing field、守卫块里少了 <c>return;</c>、守卫在上一个成员里）；审查找到、
+    /// 第一版**看不见**的写法（照着现有 setter 抄的 <c>SetProperty(ref ...)</c>、复合赋值、解构赋值、
+    /// setter 自己写死值、<c>AllowRecoveryEntry(...) || x</c>）；审查找到、第一版**判错**的守卫形状
+    /// （嵌在条件里、<c>else if</c>、塞进 lambda、return 被套进内层 if、不带花括号的守卫头、守卫块里写 true）。
+    /// </para>
+    /// <para>
+    /// <b>最后一个例子是一个已知盲区，按当前结果钉住的</b>：守卫之后把写入放进 lambda 延迟执行，它判合规。
+    /// 钉住它不是认可它，是让下一个改进扫描器的人**知道自己改进了**——那时这一例会失败，把它挪进反例即可。
     /// </para>
     /// </remarks>
     [Fact]
     public void TheGuardTellsAThirdWritePathFromACompliantOne()
     {
-        // 合规一：函数式，右边包进 AllowRecoveryEntry。
+        // 合规一：函数式，右边整个就是一次 AllowRecoveryEntry。
         AssertCompliant(
             """
                 private void RefreshWireToGateInputStateCore()
@@ -242,7 +347,7 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             """,
             expectedSites: 2);
 
-        // 合规三：单行 early return，没有块。语义一样，形状不同——判据认的是语义。
+        // 合规三：单行 early return。语义一样，形状不同——判据认的是语义。
         AssertCompliant(
             """
                 private void ApplyWireToGatePresentationCore()
@@ -254,7 +359,32 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             """,
             expectedSites: 2);
 
-        // 反例一：第三条路径，谁都不经过。**这张票的起因就是这一种。**
+        // 合规四：不带花括号、嵌入语句就是 return;。
+        AssertCompliant(
+            """
+                private void ApplyWireToGatePresentationCore()
+                {
+                    if (RecoveryEntriesBlockedByFatalFault) return;
+
+                    CanRequestLoadCompensation = _canRequest?.Invoke() == true;
+                }
+            """,
+            expectedSites: 1);
+
+        // 合规五：属性自己的 setter 把 value 原样写进自己的字段——这个文件里九个 setter 全是这个形状。
+        AssertCompliant(
+            """
+                public bool CanRequestLoadCompensation
+                {
+                    get => _canRequestLoadCompensation;
+                    private set => SetRecoveryEntry(ref _canRequestLoadCompensation, value);
+                }
+            """,
+            expectedSites: 1);
+
+        // ---- 第一组：第一版就认得的错法 ----
+
+        // 反例：第三条路径，谁都不经过。**这张票的起因就是这一种。**
         AssertViolates(
             """
                 private void RefreshSomethingNewCore()
@@ -265,7 +395,7 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             expectedSites: 1,
             expectedViolations: 1);
 
-        // 反例二：early return 被删掉，正常分支原样留着。扫 AllowRecoveryEntry( 的守卫看不见这一种。
+        // 反例：early return 被删掉，正常分支原样留着。扫 AllowRecoveryEntry( 的守卫看不见这一种。
         AssertViolates(
             """
                 private void ApplyWireToGatePresentationCore()
@@ -276,7 +406,7 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             expectedSites: 1,
             expectedViolations: 1);
 
-        // 反例三：守卫被行注释掉。注释里的那个 false 也不该被数成一个合规赋值点，所以只有一个违规。
+        // 反例：守卫被行注释掉。注释里的那个 false 也不该被数成一个写入点，所以只有一个。
         AssertViolates(
             """
                 private void ApplyWireToGatePresentationCore()
@@ -292,7 +422,7 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             expectedSites: 1,
             expectedViolations: 1);
 
-        // 反例四：守卫被块注释包起来。hmi#171 那批守卫只剥行注释，块注释里的调用会被当成代码读。
+        // 反例：守卫被块注释包起来。hmi#171 那批守卫只剥行注释，块注释里的调用会被当成代码读。
         AssertViolates(
             """
                 private void ApplyWireToGatePresentationCore()
@@ -310,7 +440,7 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             expectedSites: 1,
             expectedViolations: 1);
 
-        // 反例五：绕过属性直接写 backing field。属性是 private set，所以这是类内唯一的另一条写法。
+        // 反例：绕过属性、直接给 backing field 赋值。
         AssertViolates(
             """
                 private void RefreshSomethingNewCore()
@@ -321,7 +451,7 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             expectedSites: 1,
             expectedViolations: 1);
 
-        // 反例六：守卫块里少了 return;。块内九个 false 看起来完全正确，而正常分支紧接着把它们写回来
+        // 反例：守卫块里少了 return;。块内那个 false 看起来完全正确，而正常分支紧接着把它写回来
         // ——**整段都不合规，包括块内那一条**，因为它已经不构成一道 early return 了。
         AssertViolates(
             """
@@ -338,7 +468,182 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             expectedSites: 2,
             expectedViolations: 2);
 
-        // 反例七：守卫在上一个成员里，赋值在下一个成员里。**这一条验的是「同一个成员」那半个判据**：
+        // ---- 第二组：第一版看不见的写法（审查中等 1、疑 3） ----
+
+        // 反例：**照着文件里现有 setter 抄出来的第三条路径**。这是最可能出现的形状，第一版恰好看不见它。
+        AssertViolates(
+            """
+                private void RefreshSomethingNewCore()
+                {
+                    SetProperty(ref _canRequestLoadCorrection, true, nameof(CanRequestLoadCorrection));
+                }
+            """,
+            expectedSites: 1,
+            expectedViolations: 1);
+
+        // 反例：复合赋值，右边还包着闸门——`CanX |= AllowRecoveryEntry(b)` 等于「旧值 或 闸门」。
+        AssertViolates(
+            """
+                private void RefreshSomethingNewCore()
+                {
+                    CanRequestLoadCompensation |= AllowRecoveryEntry(_canRequest?.Invoke() == true);
+                }
+            """,
+            expectedSites: 1,
+            expectedViolations: 1);
+
+        // 反例：解构赋值，一行写两个入口。
+        AssertViolates(
+            """
+                private void RefreshSomethingNewCore()
+                {
+                    (CanRequestLoadCompensation, CanRequestLoadCorrection) = (true, true);
+                }
+            """,
+            expectedSites: 2,
+            expectedViolations: 2);
+
+        // 反例：属性自己的 setter 写死了值，不是 value。
+        AssertViolates(
+            """
+                public bool CanRequestLoadCompensation
+                {
+                    get => _canRequestLoadCompensation;
+                    private set => SetRecoveryEntry(ref _canRequestLoadCompensation, true);
+                }
+            """,
+            expectedSites: 1,
+            expectedViolations: 1);
+
+        // 反例：闸门只是右边的一部分。第一版只问「语句里含 AllowRecoveryEntry(」，这一例它判合规。
+        AssertViolates(
+            """
+                private void RefreshWireToGateInputStateCore()
+                {
+                    CanRequestLoadCorrection = AllowRecoveryEntry(false) || _business;
+                }
+            """,
+            expectedSites: 1,
+            expectedViolations: 1);
+
+        // ---- 第三组：第一版判错的守卫形状（审查中等 2） ----
+
+        // 反例：守卫嵌在条件里。_x 为假时守卫根本不执行，后面的写照样把入口打开。
+        AssertViolates(
+            """
+                private void ApplyWireToGatePresentationCore()
+                {
+                    if (_x)
+                    {
+                        if (RecoveryEntriesBlockedByFatalFault)
+                        {
+                            CanRequestLoadCompensation = false;
+                            return;
+                        }
+                    }
+
+                    CanRequestLoadCompensation = _canRequest?.Invoke() == true;
+                }
+            """,
+            expectedSites: 2,
+            expectedViolations: 2);
+
+        // 反例：写成 else if。前一个分支走了，守卫就不执行。
+        AssertViolates(
+            """
+                private void ApplyWireToGatePresentationCore()
+                {
+                    if (_x)
+                    {
+                        HasWarning = true;
+                    }
+                    else if (RecoveryEntriesBlockedByFatalFault)
+                    {
+                        CanRequestLoadCompensation = false;
+                        return;
+                    }
+
+                    CanRequestLoadCompensation = _canRequest?.Invoke() == true;
+                }
+            """,
+            expectedSites: 2,
+            expectedViolations: 2);
+
+        // 反例：守卫塞进 lambda——那里的 return 只退出 lambda。
+        AssertViolates(
+            """
+                private void ApplyWireToGatePresentationCore()
+                {
+                    RunOnUiThread(() =>
+                    {
+                        if (RecoveryEntriesBlockedByFatalFault)
+                        {
+                            CanRequestLoadCompensation = false;
+                            return;
+                        }
+                    });
+
+                    CanRequestLoadCompensation = _canRequest?.Invoke() == true;
+                }
+            """,
+            expectedSites: 2,
+            expectedViolations: 2);
+
+        // 反例：return 被套进守卫块里的内层 if，不再是无条件的。
+        AssertViolates(
+            """
+                private void ApplyWireToGatePresentationCore()
+                {
+                    if (RecoveryEntriesBlockedByFatalFault)
+                    {
+                        CanRequestLoadCompensation = false;
+                        if (_y)
+                        {
+                            return;
+                        }
+                    }
+
+                    CanRequestLoadCompensation = _canRequest?.Invoke() == true;
+                }
+            """,
+            expectedSites: 2,
+            expectedViolations: 2);
+
+        // 反例：**审查最刁的那一例**。守卫头不带花括号、嵌入语句不是 return，于是那个 false 与后面的写全都
+        // 无条件执行；后面再有一个无关的 if 块带着 return。第一版会一路找到那个无关块，把它的 return 当成守卫的。
+        AssertViolates(
+            """
+                private void ApplyWireToGatePresentationCore()
+                {
+                    if (RecoveryEntriesBlockedByFatalFault) HasWarning = true;
+                    CanRequestLoadCompensation = false;
+                    if (_y)
+                    {
+                        return;
+                    }
+
+                    CanRequestLoadCompensation = _canRequest?.Invoke() == true;
+                }
+            """,
+            expectedSites: 2,
+            expectedViolations: 2);
+
+        // 反例：守卫块本身是一道 early return，但它在块里把入口打开了。块内只许写 false。
+        AssertViolates(
+            """
+                private void ApplyWireToGatePresentationCore()
+                {
+                    if (RecoveryEntriesBlockedByFatalFault)
+                    {
+                        CanRequestLoadCompensation = true;
+                        return;
+                    }
+                }
+            """,
+            expectedSites: 1,
+            expectedViolations: 1);
+
+        // 反例：守卫在上一个成员里，赋值在下一个成员里。**这一条验的是「同一个成员」那半个判据**：
         // 去掉成员边界，第二个赋值点会被上面那道守卫"保护"，于是这一例变绿——而它正是第三条路径。
         WriteSite[] acrossMembers = Scan(ClassBody(
             """
@@ -363,6 +668,25 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
         Assert.False(
             acrossMembers[1].IsGuarded,
             "另一个成员里的赋值被上一个成员的守卫放行了——「同一个成员里」这半个判据没有生效。");
+
+        // ---- 已知盲区，按当前结果钉住 ----
+
+        // 守卫之后把写入放进 lambda 延迟执行：lambda 真正跑的时候，锁存可能已经立起来了，而守卫只在
+        // 这个方法进入时查了一次。扫描器按行号判它在 early return 之后，于是**判合规**。这是错的，但要识别它
+        // 需要知道哪些代码会被推迟执行，那是控制流分析。改进扫描器之后这一例会失败——那时把它挪进反例。
+        AssertCompliant(
+            """
+                private void ApplyWireToGatePresentationCore()
+                {
+                    if (RecoveryEntriesBlockedByFatalFault)
+                    {
+                        return;
+                    }
+
+                    RunOnUiThread(() => CanRequestLoadCompensation = _canRequest?.Invoke() == true);
+                }
+            """,
+            expectedSites: 1);
     }
 
     /// <summary>
@@ -535,17 +859,28 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             "**它守的是写入路径的形状，不是锁存真的挡住了入口。** 把 AllowRecoveryEntry 掏空成 "
             + "`=> offeredByBusiness`、或把 RecoveryEntriesBlockedByFatalFault 改成恒假，这条照样绿"
             + "——那一半由行为判据 BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands 接住，"
-            + "两条是互补的，任何一条单独都不够。它另外看不见：经反射或 XAML 侧写入属性；"
-            + "赋值行里带字符串字面量而字面量中含 `//`（剥注释是逐行切分）；以及九个之外的新入口。"),
+            + "两条是互补的，任何一条单独都不够。"
+            + "**「early return 之后」是按行号与缩进近似的，不是控制流分析**：守卫头要在缩进 8 格的方法体顶层、"
+            + "return 要在守卫块第一层，这挡住了嵌套 if、else if、lambda 里的守卫、内层 return、不带花括号的假守卫"
+            + "（审查中等 2 的五种变异，合成反例都在）；但**守卫之后把写入放进 lambda 或本地函数延迟执行，它判合规**"
+            + "（合成例最后一条按当前结果钉着），格式没经过 dotnet format 时缩进近似也会失准。"
+            + "写入的形状认得简单与复合赋值、解构赋值、以 ref／out 传出 backing field（审查中等 1）；"
+            + "它看不见的写法：经反射或 XAML 双向绑定写入、在别的文件里写（今天九个属性都是 private set 且类不是 partial，"
+            + "所以别的文件写不进来——那是今天的状态，不是这条守卫保证的）；赋值行里有字符串字面量含 `//` 时"
+            + "剥注释会截断那一行；以及九个之外的新入口。"),
         new(
             "RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites",
             GuardKind.SelfCheck,
-            "确认扫描器在真实源码上有输出、条数对得上、九个名字都还命中、成员切分没跑偏、两种写法都认得出。"
-            + "它保证不了扫描器对一种**将来才出现的写法**仍然准——那种写法会表现为条数变化，需要人来判。"),
+            "确认扫描器在真实源码上有输出：setter 以外的写入点条数对得上、九个名字都还命中、每个入口恰好认出一个"
+            + "自己的 setter、成员切分没跑偏、两种写法都认得出。**第三条写入路径落在核心守卫盲区里时，唯一会红的就是"
+            + "它的条数那一项**——所以它的报错先问「多出来的那一行凭什么挡得住锁存」，再许可改数。它保证不了扫描器对一种"
+            + "将来才出现的写法仍然准，也拦不住有人不读报错直接改数。"),
         new(
             "RecoveryEntryWriteSiteArchitectureTests.TheGuardTellsAThirdWritePathFromACompliantOne",
             GuardKind.SelfCheck,
-            "七个合成反例覆盖的是七种**已经想到的**错法。想不到的错法不在里面；这条测试的价值上限就是那份清单。"),
+            "合成反例覆盖的是**已经想到的**错法（第一版的七种、审查补的十一种），想不到的不在里面；这条测试的价值上限"
+            + "就是那份清单。最后一例是按当前结果钉住的已知盲区（守卫后的 lambda 延迟写入被判合规），它失败时说明扫描器"
+            + "变强了，不是变坏了。"),
         new(
             "RecoveryEntryWriteSiteArchitectureTests.TheRegisteredEntriesAreExactlyWhatTheBehaviouralAssertionCovers",
             GuardKind.SourceShape,
@@ -559,17 +894,30 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             + "——守卫的判据改了而限度那一栏没跟着改，这里不会红。那需要人读。"),
     ];
 
-    /// <summary>一个恢复入口的赋值点，以及它落在哪一类合规写法里。</summary>
-    private sealed record WriteSite(
-        int Line,
-        string Entry,
-        string Member,
-        string Statement,
-        bool ViaAllowRecoveryEntry,
-        bool UnderFatalFaultEarlyReturn)
+    /// <summary>一个赋值点落在哪一类写法里。</summary>
+    private enum WriteKind
     {
-        public bool IsGuarded => ViaAllowRecoveryEntry || UnderFatalFaultEarlyReturn;
+        /// <summary>简单赋值，右边**整个**就是一次 <c>AllowRecoveryEntry(...)</c> 调用（函数式）。</summary>
+        Wrapped,
+
+        /// <summary>落在同一个成员里一道有效的 early return 之后，或是它块内的一句 <c>= false;</c>（语句式）。</summary>
+        UnderGuard,
+
+        /// <summary>属性自己的 setter 把 <c>value</c> 写进自己的 backing field。</summary>
+        OwnSetter,
+
+        /// <summary>以上都不是。</summary>
+        Unguarded
     }
+
+    /// <summary>一个恢复入口的写入点，以及它落在哪一类写法里。</summary>
+    private sealed record WriteSite(int Line, string Entry, string Member, string Statement, WriteKind Kind)
+    {
+        public bool IsGuarded => Kind != WriteKind.Unguarded;
+    }
+
+    /// <summary>一道有效的 early return：守卫头所在行，与它管住的那一块的最后一行。</summary>
+    private sealed record EarlyReturn(int Header, int BlockEnd);
 
     /// <summary>类体里被 <see cref="MemberBlockEndRegex"/>／<see cref="MemberExpressionEndRegex"/> 切出来的一段。</summary>
     private sealed record MemberSpan(string Name, int Start, int End);
@@ -577,7 +925,7 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
     private static WriteSite[] ScanViewModel() => Scan(ReadRepositoryFile(ViewModelPath));
 
     /// <summary>
-    /// 判据本体，**一个纯函数**：输入一份类体源码，输出每个恢复入口赋值点与它是否受守卫。
+    /// 判据本体，**一个纯函数**：输入一份类体源码，输出每个恢复入口写入点与它落在哪一类写法里。
     /// 写成纯函数是为了让 <see cref="TheGuardTellsAThirdWritePathFromACompliantOne"/> 能直接喂合成源码——
     /// hmi#171 那批守卫做不到双向自检，正是因为它们的判据和「去磁盘上读 src 目录」焊在一起。
     /// </summary>
@@ -587,13 +935,12 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
         List<WriteSite> sites = [];
         foreach (MemberSpan member in SplitIntoMembers(lines))
         {
-            int[] guards = FindFatalFaultEarlyReturns(lines, member);
+            EarlyReturn[] guards = FindFatalFaultEarlyReturns(lines, member);
             for (int index = member.Start; index <= member.End; index++)
             {
                 foreach (RecoveryEntry entry in RecoveryEntries)
                 {
-                    if (!AssignmentRegexes[entry.Property].IsMatch(lines[index])
-                        && !AssignmentRegexes[entry.BackingField].IsMatch(lines[index]))
+                    if (!WritesTo(lines[index], entry))
                     {
                         continue;
                     }
@@ -604,14 +951,92 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
                         entry.Property,
                         member.Name,
                         statement,
-                        statement.Contains("AllowRecoveryEntry(", StringComparison.Ordinal),
-                        // `<=` 而不是 `<`：单行 early return 里，那句 false 与守卫在同一行。
-                        Array.Exists(guards, guard => guard <= index)));
+                        Classify(entry, member, lines[index], statement, index, guards)));
                 }
             }
         }
 
         return [.. sites];
+    }
+
+    private static bool WritesTo(string line, RecoveryEntry entry) =>
+        WriteRegexes[entry.Property].Any(regex => regex.IsMatch(line))
+        || WriteRegexes[entry.BackingField].Any(regex => regex.IsMatch(line));
+
+    /// <summary>
+    /// 一个写入点属于哪一类。顺序有意义：先认 setter 本身，再认函数式，最后才看守卫——
+    /// 守卫块内的写入只许是 <c>= false;</c>，块后的写入才被那道 early return 保护。
+    /// </summary>
+    private static WriteKind Classify(
+        RecoveryEntry entry,
+        MemberSpan member,
+        string line,
+        string statement,
+        int index,
+        EarlyReturn[] guards)
+    {
+        if (string.Equals(member.Name, entry.Property, StringComparison.Ordinal)
+            && OwnSetterRegexes[entry.BackingField].IsMatch(statement))
+        {
+            return WriteKind.OwnSetter;
+        }
+
+        if (IsWrapped(statement, entry))
+        {
+            return WriteKind.Wrapped;
+        }
+
+        if (Array.Exists(guards, guard => guard.BlockEnd < index))
+        {
+            return WriteKind.UnderGuard;
+        }
+
+        // 守卫块之内：唯一合规的写法是把它关掉。`CanX = true; return;` 同样是一道 early return，
+        // 而它恰好把入口打开了。这一行里每一次写都得是 `= false;`，ref／解构这类写法一概不算。
+        if (Array.Exists(guards, guard => guard.Header <= index && index <= guard.BlockEnd)
+            && CountWrites(line, entry) == FalseRegexes[entry.Property].Matches(line).Count
+                + FalseRegexes[entry.BackingField].Matches(line).Count)
+        {
+            return WriteKind.UnderGuard;
+        }
+
+        return WriteKind.Unguarded;
+    }
+
+    private static int CountWrites(string line, RecoveryEntry entry) =>
+        WriteRegexes[entry.Property].Concat(WriteRegexes[entry.BackingField])
+            .Sum(regex => regex.Matches(line).Count);
+
+    /// <summary>
+    /// 右边**整个**是一次 <c>AllowRecoveryEntry(...)</c> 调用：那个括号一闭合，紧跟着就是 <c>;</c>。
+    /// 只问「语句里含这个字符串」，<c>CanX = AllowRecoveryEntry(false) || business;</c> 也会过（审查疑 3）。
+    /// 只认简单赋值 <c>=</c>：<c>CanX |= AllowRecoveryEntry(b)</c> 等于「旧值 或 闸门」，旧值会漏过闸门。
+    /// </summary>
+    private static bool IsWrapped(string statement, RecoveryEntry entry)
+    {
+        foreach (string token in new[] { entry.Property, entry.BackingField })
+        {
+            Match head = WrappedHeadRegexes[token].Match(statement);
+            if (!head.Success)
+            {
+                continue;
+            }
+
+            int depth = 1;
+            for (int position = head.Index + head.Length; position < statement.Length; position++)
+            {
+                if (statement[position] == '(')
+                {
+                    depth++;
+                }
+                else if (statement[position] == ')' && --depth == 0)
+                {
+                    return statement[(position + 1)..].TrimStart().StartsWith(';');
+                }
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -654,11 +1079,19 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
         return [.. members];
     }
 
+    /// <summary>
+    /// 成员名：方法签名行，或属性声明行（<c>public bool CanRequestX</c>）。属性块要靠后者认出自己的 setter。
+    /// </summary>
     private static string NameOf(string[] lines, int start, int end)
     {
         for (int index = start; index <= end; index++)
         {
             Match match = MemberSignatureRegex.Match(lines[index]);
+            if (!match.Success)
+            {
+                match = PropertyHeaderRegex.Match(lines[index]);
+            }
+
             if (match.Success)
             {
                 return match.Groups["name"].Value;
@@ -669,64 +1102,110 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
     }
 
     /// <summary>
-    /// 成员里每一道**有效的** <c>RecoveryEntriesBlockedByFatalFault</c> early return 的起始行。
+    /// 成员里每一道**有效的** <c>RecoveryEntriesBlockedByFatalFault</c> early return。
     /// </summary>
     /// <remarks>
-    /// <b>「有效」的全部内容是那个 <c>return;</c>。</b> 没有它，块里把九个置 false 之后控制流会往下走，
-    /// 正常分支紧接着按业务值把它们写回来——而那个块看起来完全正确。这种错法在
-    /// <see cref="TheGuardTellsAThirdWritePathFromACompliantOne"/> 的反例六里。
+    /// <para>
+    /// 「有效」是三件事，每一件都对应审查找到的一种骗过第一版的变异（hmi#176 审查中等 2）：
+    /// </para>
+    /// <list type="number">
+    /// <item><b>守卫头在方法体的顶层</b>：缩进正好 8 格、以 <c>if</c> 开头。包进另一个 <c>if</c>、写成
+    /// <c>else if</c>、塞进 <c>RunOnUiThread(() =&gt; { ... })</c>（那里的 return 只退出 lambda），都不算——
+    /// 那时守卫后面的代码不一定被它挡住。</item>
+    /// <item><b><c>return;</c> 在守卫块的第一层</b>：块里再套一层 <c>if (...) { return; }</c>，那个 return
+    /// 不是无条件的。</item>
+    /// <item><b>不带花括号的守卫头，唯一算数的嵌入语句是 <c>return;</c></b>。
+    /// <c>if (RecoveryEntriesBlockedByFatalFault) HasWarning = true;</c> 之后的代码无条件执行；第一版会一路
+    /// 找到后面某个无关的花括号块，把它的 return 当成守卫的。</item>
+    /// </list>
+    /// <para>
+    /// 第一条靠的是缩进，也就是靠 <c>dotnet format</c>：它认的是「格式化过的顶层」，不是控制流意义上的
+    /// 顶层。对一个正则扫描器，真正的控制流分析是质的跨越，本票没有做（登记在 <see cref="GuardLimits"/> 里）。
+    /// </para>
     /// </remarks>
-    private static int[] FindFatalFaultEarlyReturns(string[] lines, MemberSpan member)
+    private static EarlyReturn[] FindFatalFaultEarlyReturns(string[] lines, MemberSpan member)
     {
-        List<int> guards = [];
+        List<EarlyReturn> guards = [];
         for (int index = member.Start; index <= member.End; index++)
         {
-            if (!FatalFaultGuardRegex.IsMatch(lines[index]))
+            Match header = TopLevelFatalFaultGuardRegex.Match(lines[index]);
+            if (!header.Success)
             {
                 continue;
             }
 
-            int blockEnd = FindBlockEnd(lines, index, member.End);
-            int scanEnd = blockEnd < 0 ? index : blockEnd;
-            for (int inner = index; inner <= scanEnd; inner++)
+            int? blockEnd = GuardedBlockEnd(lines, index, header.Index + header.Length, member.End);
+            if (blockEnd is int end)
             {
-                if (ReturnRegex.IsMatch(lines[inner]))
-                {
-                    guards.Add(index);
-                    break;
-                }
+                guards.Add(new EarlyReturn(index, end));
             }
         }
 
         return [.. guards];
     }
 
-    private static int FindBlockEnd(string[] lines, int headerLine, int limit)
+    /// <summary>守卫头后面那条嵌入语句的最后一行——前提是它无条件地 return，否则 <c>null</c>。</summary>
+    private static int? GuardedBlockEnd(string[] lines, int headerLine, int column, int limit)
     {
-        int depth = 0;
-        bool opened = false;
-        for (int index = headerLine; index <= limit; index++)
+        int line = headerLine;
+        int position = column;
+        while (line <= limit)
         {
-            foreach (char character in lines[index])
+            while (position < lines[line].Length && char.IsWhiteSpace(lines[line][position]))
             {
+                position++;
+            }
+
+            if (position < lines[line].Length)
+            {
+                break;
+            }
+
+            line++;
+            position = 0;
+        }
+
+        if (line > limit)
+        {
+            return null;
+        }
+
+        if (lines[line][position] != '{')
+        {
+            return ReturnAt(lines[line], position) ? line : null;
+        }
+
+        int depth = 0;
+        bool returns = false;
+        for (; line <= limit; line++, position = 0)
+        {
+            for (; position < lines[line].Length; position++)
+            {
+                char character = lines[line][position];
                 if (character == '{')
                 {
                     depth++;
-                    opened = true;
                 }
                 else if (character == '}')
                 {
-                    depth--;
-                    if (opened && depth <= 0)
+                    if (--depth == 0)
                     {
-                        return index;
+                        return returns ? line : null;
                     }
+                }
+                else if (depth == 1 && ReturnAt(lines[line], position))
+                {
+                    returns = true;
                 }
             }
         }
 
-        return -1;
+        return null;
     }
+
+    private static bool ReturnAt(string line, int position) =>
+        (position == 0 || !(char.IsLetterOrDigit(line[position - 1]) || line[position - 1] == '_'))
+        && ReturnRegex.Match(line, position).Success;
 
     /// <summary>赋值语句全文，跨行读到 <c>;</c> 为止——<c>AllowRecoveryEntry(</c> 常常在下一行。</summary>
     private static string ReadStatement(string[] lines, int start, int limit)
