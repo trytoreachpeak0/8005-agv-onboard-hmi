@@ -272,7 +272,11 @@ public partial class App : System.Windows.Application, IDisposable
                     // （8005-agv-onboard-hmi#177 票面记下的那一次，就是这样把两个就绪委托判成了「v2 不传」）。
                     sublotEntryPausedUntilStopped: () => _wireToGateBusiness.IsSublotEntryPausedUntilStopped,
                     // 视图模型自己订阅停稳信号的变化，刷新入口、横幅与控制器提示（8005-agv-onboard-hmi#177）。
-                    vehicleSafetySignal: vehicleSafetySignalProvider);
+                    vehicleSafetySignal: vehicleSafetySignalProvider,
+                    // 取消装货在严重安全故障锁存期间唯一还开着的那一半：扫码之前，不碰 IO（8005-agv-onboard-hmi#174）。
+                    // 不接这一条，视图模型按 false 处理，锁存期间取消装货整个关着——安全，但操作员又只能干等站点超时。
+                    canRequestLoadCancellationBeforeAnySublot: () =>
+                        _wireToGateBusiness.CanRequestLoadCancellationBeforeAnySublot);
                 viewModel.ConfigureForcedIsolation(
                     () => _wireToGateBusiness.CanConfirmForcedMechanicalRecovery,
                     cancellationToken => _wireToGateBusiness.ConfirmForcedMechanicalRecoveryAsync(
