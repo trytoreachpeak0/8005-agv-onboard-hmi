@@ -1,4 +1,4 @@
-守卫版本: reviewed，测试文件取自 91f839a（工作树其余与 HEAD 7137afd92ae4bd5b29f223821363f5fa673d79e3 一致；注入前 MainViewModel.cs blob 59aa538c36f749458bb47379076259e169afe433）
+守卫版本: reviewed，测试文件取自 91f839a（工作树其余与 HEAD 380820925b759fdf1dcc73548c8989494bfed8b1 一致；注入前 MainViewModel.cs blob 59aa538c36f749458bb47379076259e169afe433）
 注入: 见同名 .patch（对 HEAD 生成，已用 git apply --check 验证）
 预期（事先写下）: 5 条全绿（审查 S1，本票第一版引入）：跨行认得出这次写，条数回到 25；但计数文本从名字所在行的行首截取，ref 被截在外面，守卫块内 0 次写对 0 次 false 判合规。
 命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~RecoveryEntryWriteSiteArchitectureTests"（该版本测试程序集先以 0 Error(s) 编过）
@@ -9,4 +9,4 @@ VSTest version 17.11.1 (x64)
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
 
-Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 731 ms - SQCD.Agv.UnitTests.dll (net8.0)
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)

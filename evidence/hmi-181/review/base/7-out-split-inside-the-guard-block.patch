@@ -1,5 +1,5 @@
 diff --git a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
-index 59aa538..2030a52 100644
+index 59aa538..b6469aa 100644
 --- a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
 +++ b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
 @@ -1641,7 +1641,8 @@ public sealed class MainViewModel : ViewModelBase
@@ -7,7 +7,7 @@ index 59aa538..2030a52 100644
              CanRequestWireToGateRecovery = false;
              CanRequestLoadCancellation = false;
 -            CanRequestLoadCompensation = false;
-+            Open(out
++            _ = bool.TryParse("true", out
 +                _canRequestLoadCompensation);
              CanRequestLoadCorrection = false;
              CanRequestFaultCargoHandoff = false;

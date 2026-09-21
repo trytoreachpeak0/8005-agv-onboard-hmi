@@ -1,4 +1,4 @@
-commit: 7137afd92ae4bd5b29f223821363f5fa673d79e3（注入前 MainViewModel.cs blob 59aa538c36f749458bb47379076259e169afe433，src/tests 与 HEAD 一致）
+commit: 380820925b759fdf1dcc73548c8989494bfed8b1（注入前 MainViewModel.cs blob 59aa538c36f749458bb47379076259e169afe433，src/tests 与 HEAD 一致）
 注入: 见同名 .patch（对 HEAD 生成，已用 git apply --check 验证）
 预期（事先写下）: EveryWriteToARecoveryEntryInTheViewModelIsGuarded 红（ReopenCompensation 里一次未受保护的写）、TheScannerStillSeesTheRealWriteSites 红（条数 26、写入成员多出 ReopenCompensation）。
 命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~RecoveryEntryWriteSiteArchitectureTests"（测试读源码文本；测试程序集先以 0 Error(s) 编过）
@@ -9,9 +9,9 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:03.95]     SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites [FAIL]
-[xUnit.net 00:00:03.96]     SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded [FAIL]
-  Failed SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites [884 ms]
+[xUnit.net 00:00:03.33]     SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites [FAIL]
+[xUnit.net 00:00:03.35]     SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded [FAIL]
+  Failed SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites [603 ms]
   Error Message:
    扫描器在 src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs 里找到 26 个恢复入口写入点（setter 以外），登记的是 25 个。**先别改这个数。**
 少了：多半是扫描器瞎了（改名、改格式、正则失配），修扫描器，不是改数。
@@ -47,7 +47,7 @@ A total of 1 test files matched the specified pattern.
      at SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi181-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryEntryWriteSiteArchitectureTests.cs:line 236
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
-  Failed SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded [15 ms]
+  Failed SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.EveryWriteToARecoveryEntryInTheViewModelIsGuarded [23 ms]
   Error Message:
    这些地方写了恢复入口，却既没经 AllowRecoveryEntry、也不在一道有效的 RecoveryEntriesBlockedByFatalFault early return 之后：
   src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs:572  ReopenCompensation  CanRequestLoadCompensation    CanRequestLoadCompensation = true;
@@ -57,4 +57,4 @@ A total of 1 test files matched the specified pattern.
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
 
-Failed!  - Failed:     2, Passed:     3, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     2, Passed:     3, Skipped:     0, Total:     5, Duration: 772 ms - SQCD.Agv.UnitTests.dll (net8.0)

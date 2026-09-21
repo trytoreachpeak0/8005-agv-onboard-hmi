@@ -1,4 +1,4 @@
-守卫版本: base，测试文件取自 4cd715e（工作树其余与 HEAD 7137afd92ae4bd5b29f223821363f5fa673d79e3 一致；注入前 MainViewModel.cs blob 59aa538c36f749458bb47379076259e169afe433）
+守卫版本: base，测试文件取自 4cd715e（工作树其余与 HEAD 380820925b759fdf1dcc73548c8989494bfed8b1 一致；注入前 MainViewModel.cs blob 59aa538c36f749458bb47379076259e169afe433）
 注入: 见同名 .patch（对 HEAD 生成，已用 git apply --check 验证）
 预期（事先写下）: 同 refSplit。
 命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~RecoveryEntryWriteSiteArchitectureTests"（该版本测试程序集先以 0 Error(s) 编过）
@@ -8,8 +8,8 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:03.34]     SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites [FAIL]
-  Failed SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites [811 ms]
+[xUnit.net 00:00:06.45]     SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites [FAIL]
+  Failed SQCD.Agv.UnitTests.RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites [1 s]
   Error Message:
    扫描器在 src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs 里找到 24 个恢复入口写入点（setter 以外），登记的是 25 个。**先别改这个数。**
 少了：多半是扫描器瞎了（改名、改格式、正则失配），修扫描器，不是改数。
@@ -44,4 +44,4 @@ A total of 1 test files matched the specified pattern.
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
 
-Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
