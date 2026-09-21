@@ -730,7 +730,7 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             "SetProperty(ref\n                _canRequestLoadCompensation, HasPhysicallyUnknownSlots, nameof(CanRequestLoadCompensation));",
             "(_,\n                CanRequestLoadCompensation) = (0, true);",
             "(\n                CanRequestLoadCompensation, _) = (true, 0);",
-            "Open(out\n                _canRequestLoadCompensation);",
+            "_ = bool.TryParse(\"true\", out\n                _canRequestLoadCompensation);",
         })
         {
             AssertViolates(
@@ -791,6 +791,21 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
                     }
 
                     RunOnUiThread(() => CanRequestLoadCompensation = _canRequest?.Invoke() == true);
+                }
+            """,
+            expectedSites: 1);
+
+        // 同一语句内对同一入口的第二次写（hmi#181 定向核对 E1）：setter 里先按合规形状 SetProperty(ref _x, value)，
+        // 同一条语句里再 `_x |= y`。一条语句对一个入口只判一次，第一次的合规形状掩护了第二次，于是**判合规**。
+        // 基分支同样看不见；同形状还有 `AllowRecoveryEntry(...)` 实参里放 lambda 写同一入口。**不追**：扫描护栏第二轮
+        // 仍有绕法就停下，统一判据、收窄声称（票面「不做」，hmi#162 与 cs#262 的教训）——拆到「一次写一判」要的是
+        // 表达式级的分析，那是另一个量级。这一例失败时说明扫描器变强了，把它挪进反例。
+        AssertCompliant(
+            """
+                public bool CanRequestLoadCorrection
+                {
+                    get => _canRequestLoadCorrection;
+                    private set => _ = SetProperty(ref _canRequestLoadCorrection, value) | (_canRequestLoadCorrection |= HasPhysicallyUnknownSlots);
                 }
             """,
             expectedSites: 1);
@@ -966,12 +981,16 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             + "两条是互补的，任何一条单独都不够。"
             + "**「early return 之后」是按行号与缩进近似的，不是控制流分析**：守卫头要在缩进 8 格的方法体顶层、"
             + "return 要在守卫块第一层，这挡住了嵌套 if、else if、lambda 里的守卫、内层 return、不带花括号的假守卫"
-            + "（审查中等 2 的五种变异，合成反例都在）；但**守卫之后把写入放进 lambda 或本地函数延迟执行，它判合规**"
+            + "（审查中等 2 的五种变异，合成反例都在）；但**守卫之后把写入放进 lambda 或本地函数延迟执行，它判合规**，"
+            + "**写在 AllowRecoveryEntry(...) 实参里的 lambda 同样判合规**（整句被当成一次包着的写）"
             + "（合成例最后一条按当前结果钉着），格式没经过 dotnet format 时缩进近似也会失准。"
             + "写入的形状认得简单与复合赋值、解构赋值、以 ref／out 传出 backing field（审查中等 1），"
             + "hmi#181 起经 CSharpSourceLexer 读、按成员的代码文本匹配，并以**语句**为分类单位（上一个 `;`／`{`／`}` 之后到"
             + "下一个 `;`）：字符串里的 `//` 不再截断一行；名字与 `=`、`ref`／`out` 与字段、解构的括号与名字分在两行也认得出；"
-            + "同一行上的几次写各自判定。语句边界是按这三个字符往回找的，不是语法分析。"
+            + "不同语句各自判定。**同一语句内对同一入口的多次写只判一次，第一次的合规形状会掩护后面的**"
+            + "（`private set => _ = SetProperty(ref _x, value) | (_x |= y);`、`AllowRecoveryEntry(... Task.Run(() => CanX |= y) ...)`，"
+            + "合成例钉着前一种；基分支同样看不见，按扫描护栏「第二轮仍有绕法就停」没有追）。语句边界是按这三个字符往回找的，"
+            + "不是语法分析。"
             + "它看不见的写法：经反射或 XAML 双向绑定写入、在别的文件里写（今天九个属性都是 private set 且类不是 partial，"
             + "所以别的文件写不进来——那是今天的状态，不是这条守卫保证的）；写另一个实例的入口（`other.CanX = true`，"
             + "形状里排除了点号前缀）；九个之外的新入口。词法层自己的限度：同一行两个成员共用这一行、用转义写的标识符"
