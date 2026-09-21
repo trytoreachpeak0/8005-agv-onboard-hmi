@@ -206,8 +206,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         && _vehicleStoppedProvider();
 
     /// <summary>
-    /// 手里有一条录入请求，但车没停稳，所以扫码暂停（8005-agv-onboard-hmi#177）。界面据此写「停稳后可继续扫码」，
-    /// 而不是落到「等待业务指令」——那一句读起来像请求没了，而请求一直在，停稳就回来。
+    /// 手里有一条录入请求，但未能确认车辆停稳，所以扫码暂停（8005-agv-onboard-hmi#177）。界面据此写「确认停稳后可继续
+    /// 扫码」，而不是落到「等待业务指令」——那一句读起来像请求没了。
     /// </summary>
     /// <remarks>
     /// <para>
@@ -215,6 +215,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// 要等服务端把会话降出 Ready（车载端报 departureSafe=false，一次上报往返）才关。现在两道都在：
     /// <b>本端车一动就关是第一道，服务端降级是第二道</b>，别把其中任何一道当成多余删掉——第一道没了，
     /// 窗口回来；第二道没了，本端读数一错就没人兜。
+    /// </para>
+    /// <para>
+    /// <b>「请求留着、停稳就回来」只在会话一直 Ready 时成立。</b>车一动，本端这一道立刻关入口，请求还在；但车载端
+    /// 同时报 departureSafe=false，真服务端 1–2 秒内把会话降出 Ready，<see cref="OnSessionStateChanged"/> 随即清掉录入
+    /// 请求。之后会话回到 Ready，请求要等服务端重发才回来（服务端在会话 Ready 时重发未结算的录入请求，只读核过）。所以
+    /// 比一个上报往返短的车动，入口停稳即回；更长的车动，要等会话恢复加一次重发。后者在 hmi#177 之前就是这样。
     /// </para>
     /// <para>
     /// <b>不去抖，是决定不是疏忽。</b>停稳信号来自服务端车辆安全接口，每次轮询都现场问 RIoT，一次调用出错
@@ -660,7 +666,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         // 与任何不先问入口就调进来的路径都绕得过去。请求留着——车停稳就能接着扫。
         if (!_vehicleStoppedProvider())
         {
-            throw new InvalidOperationException("VEHICLE_NOT_STOPPED");
+            throw new InvalidOperationException("VEHICLE_STOP_NOT_CONFIRMED");
         }
         if (IsLoadCancellationBeforeSublotOpen)
         {

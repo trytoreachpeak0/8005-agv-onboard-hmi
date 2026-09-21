@@ -34,26 +34,40 @@ public static class OnboardCommandRejectionText
         // （审查，判据路条目 12）。改成只陈述本界面真正挡得住的事。
         // 下面两句各自覆盖好几种状态，所以每一句只能说它覆盖的每一种状态下都成立的事——逐支核过，不是逐句核
         // （8005-agv-onboard-hmi#177）。前人在 DescribeRecoveryBlocked 上留的教训同样适用：改一段文案之前，先问原来
-        // 那句话里有没有承载安全信息的成分；这里「请等待……」那条指引两句都保留了。
+        // 那句话里有没有承载安全信息的成分；「请等待」一类的指引留着，只在它对每一支都成立时。
         //
-        // NOT_READY：条件是「会话 Ready 且车辆停稳」为假（App.xaml.cs 按位置传进来的 externalSafetyReadyProvider）。
-        //   会话没 Ready——发送口拒绝扫码；会话 Ready、车没停稳——CanSubmitSublot 关、SubmitSublotAsync 以
-        //   VEHICLE_NOT_STOPPED 拒绝（hmi#177 之前这一支没人挡，「禁止扫码」是假的，要等服务端降级会话才关）。
-        //   两支下控制器都不放行发车。所以「本界面已禁止扫码与发车」两支都成立，并说出「车辆尚未停稳」这个原因。
-        //   这一句依赖停稳门：删掉 CanSubmitSublot 或 SubmitSublotAsync 里看停稳的那一条，这句话就又是假的——
+        // 「车辆停稳」在这里指 vehicleStoppedProvider 为真，即服务端车辆安全接口给出的新鲜 STOPPED。它为假时车可能在动，
+        // 也可能停着而信号是 UNKNOWN 或过期（凭据缺失、HTTP 失败、EVIDENCE_EXPIRED……）。所以文案一律说「未能确认车辆
+        // 已停稳」，不说「车辆尚未停稳」——后者在信号失灵、车其实停着的那一支是假的。告警板（OnboardAlarmEvaluator）
+        // 同样把「未知」「已过期」与运动分开说。
+        //
+        // WIRE_TO_GATE_NOT_READY：条件是「会话 Ready 且车辆停稳」为假（App.xaml.cs 按位置传进来的
+        //   externalSafetyReadyProvider）。两支：
+        //   1. 会话没 Ready——CanSubmitSublot 关，发送口也拒绝扫码；
+        //   2. 会话 Ready、未能确认停稳——CanSubmitSublot 关、SubmitSublotAsync 以 VEHICLE_STOP_NOT_CONFIRMED 拒绝
+        //      （hmi#177 之前这一支没人挡，「禁止扫码」是假的，要等服务端降级会话才关）。
+        //   两支下控制器都不放行发车。所以「本界面已禁止扫码与发车」两支都成立。这一句依赖停稳门：删掉
+        //   CanSubmitSublot 或 SubmitSublotAsync 里看停稳的那一条，它就又是假的——
         //   LoadCancellationBeforeSublotG2Tests.AMovingVehicleClosesTheEntryAndRefusesTheScanAndAStopBringsItBack 会红。
-        // JOURNEY_NOT_READY：条件是 IsAuthoritativeJourneyReady() 为假——业务状态不是 READY、手动充电保持、电量不是
-        //   SUFFICIENT、清单为空、快照过期。这几支下扫码入口都没被挡（入口不看旅程快照，停稳门只加了未停稳一支），
-        //   所以这一句不声称禁止任何事，只陈述事实加指引。前提由
-        //   LoadCancellationBeforeSublotG2Tests.AJourneyThatCannotAcceptASublotDoesNotCloseTheEntry 钉住：那条红了，是该回头
-        //   改这一句的时候。
+        //   指引只写「等连接恢复与停稳确认」加「持续出现请联系维护人员」：信号失灵那一支光等不会好。
+        // WIRE_TO_GATE_JOURNEY_NOT_READY：两处触发，一共七支。
+        //   控制器（IsAuthoritativeJourneyReady() 为假，即 WireToGateJourneySnapshot.CanAcceptSublotAt 为假）：
+        //   1. 车辆业务状态缺失或不是 READY；2. 手动充电保持；3. 电量不是 SUFFICIENT；4. 当前站清单缺失或为空；
+        //   5. HasConsistentDemand 为假；6. 快照或业务状态观测超过有效期。
+        //   业务服务：7. SubmitSublotAsync 手里没有录入请求。
+        //   1–6 下扫码入口都没被挡（入口不看旅程快照，停稳门只加了未停稳一支），所以这一句不能说「已禁止扫码」，也不能
+        //   说「不能录入」；2、3 下旅程是同步的、光等也不会好，所以不能说「尚未同步」「请等待」。七支都成立的只有「当前
+        //   不满足录入条件」这个事实，加上查看告警或找人。前提由
+        //   LoadCancellationBeforeSublotG2Tests.AJourneyThatCannotAcceptASublotDoesNotCloseTheEntry 钉住（取第 2 支）：
+        //   那条红了，是该回头改这一句的时候。
         // 两句与 OnboardController 里的同码那一份逐字相同，由
         // OnboardControllerTests.NotReadyGuidanceSaysOnlyWhatHoldsInEveryStateItCovers 守着。
-        ["WIRE_TO_GATE_NOT_READY"] = "上层安全会话尚未就绪或车辆尚未停稳，本界面已禁止扫码与发车。请等待连接及恢复完成、车辆停稳。",
-        ["WIRE_TO_GATE_JOURNEY_NOT_READY"] = "服务端旅程或当前站点任务尚未同步，请等待任务恢复。",
+        ["WIRE_TO_GATE_NOT_READY"] = "上层安全会话尚未就绪或未能确认车辆已停稳，本界面已禁止扫码与发车。请等待连接恢复及车辆停稳确认；持续出现请联系维护人员。",
+        ["WIRE_TO_GATE_JOURNEY_NOT_READY"] = "旅程或车辆状态当前不满足录入条件，请查看告警或联系班组长。",
         ["WIRE_TO_GATE_JOURNAL_NOT_READY"] = "车载端作业记录尚未就绪，请稍候再试。",
         ["VEHICLE_NOT_READY"] = "车辆当前不满足操作条件，请稍候再试。",
-        ["VEHICLE_NOT_STOPPED"] = "车辆尚未停稳，停稳后可继续扫码。",
+        // 同上：为假也包括信号 UNKNOWN 或过期、车其实停着的那一支，所以说「未能确认」。
+        ["VEHICLE_STOP_NOT_CONFIRMED"] = "未能确认车辆已停稳，确认停稳后可继续扫码；持续出现请联系维护人员。",
 
         // Identity and credentials. Maintenance fixes these, not the operator at the vehicle.
         ["WIRE_TO_GATE_OPERATOR_NOT_READY"] = "本机尚未配置操作员工号，请联系维护人员。",

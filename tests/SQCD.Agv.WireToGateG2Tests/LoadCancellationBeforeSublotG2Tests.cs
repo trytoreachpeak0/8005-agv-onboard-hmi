@@ -522,11 +522,18 @@ public sealed class LoadCancellationBeforeSublotG2Tests
     /// （RequireSafeSafetyForReadiness 默认关），所以这条量到的只有第一道——正因为如此，第一道没了它就红。
     /// </para>
     /// <para>
-    /// 「会话未就绪或车辆尚未停稳，本界面已禁止扫码与发车」那一句（OnboardCommandRejectionText）依赖这一道门：
+    /// 「会话未就绪或未能确认车辆已停稳，本界面已禁止扫码与发车」那一句（OnboardCommandRejectionText）依赖这一道门：
     /// 这条红了，那句话就又是假的。
     /// </para>
     /// <para>
-    /// 请求留着，是为了界面不把「暂停」呈现成「取消」：停稳就回来，而不是等服务端重发。
+    /// <b>「请求留着、停稳自动恢复」有前提：会话一直在 Ready。</b>这里成立，是因为假服务端不降级。真服务端 1–2 秒内就
+    /// 把会话降出 Ready，而 <c>OnSessionStateChanged</c> 一离开 Ready 就清掉录入请求；回到 Ready 后请求要等服务端重发
+    /// 才回来（服务端 ReplayPendingForSessionAsync 在会话 Ready 时重发未结算的录入请求，只读核过，端到端没有用例）。
+    /// 所以这条证的是「比一个上报往返短的车动」，不是任意长的车动。这件事在 hmi#177 之前就存在，不是本票引入的。
+    /// </para>
+    /// <para>
+    /// 「同一条」断在三件事上：服务端发出的录入请求条数前后没变（没有新请求顶替旧的），提交带的
+    /// operationSessionId 与 worklistRevision 等于原请求的，期待子批也没变。
     /// </para>
     /// </remarks>
     [Fact]
@@ -541,6 +548,7 @@ public sealed class LoadCancellationBeforeSublotG2Tests
         Assert.False(harness.Business.IsSublotEntryPausedUntilStopped);
         IReadOnlyList<string>? expected = harness.Business.ExpectedSublots;
         Assert.NotNull(expected);
+        JsonElement original = Assert.Single(harness.PayloadsSent("SublotEntryRequested"));
 
         vehicle.StartMoving();
 
@@ -549,7 +557,7 @@ public sealed class LoadCancellationBeforeSublotG2Tests
         Assert.Equal(expected, harness.Business.ExpectedSublots);
         InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
             () => harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token));
-        Assert.Equal("VEHICLE_NOT_STOPPED", refused.Message);
+        Assert.Equal("VEHICLE_STOP_NOT_CONFIRMED", refused.Message);
         Assert.DoesNotContain(harness.Server.ReceivedEnvelopes, envelope => envelope.MessageType == "SublotSubmitted");
 
         vehicle.StopMoving();
@@ -562,6 +570,14 @@ public sealed class LoadCancellationBeforeSublotG2Tests
             () => harness.Server.ReceivedEnvelopes.Any(envelope => envelope.MessageType == "SublotSubmitted"),
             "the entry made after the stop to reach the server",
             token);
+        Assert.Single(harness.PayloadsSent("SublotEntryRequested"));
+        JsonElement submitted = Assert.Single(harness.PayloadsReceived("SublotSubmitted"));
+        Assert.Equal(
+            original.GetProperty("operationSessionId").GetString(),
+            submitted.GetProperty("operationSessionId").GetString());
+        Assert.Equal(
+            original.GetProperty("worklistRevision").GetInt64(),
+            submitted.GetProperty("worklistRevision").GetInt64());
     }
 
     /// <summary>

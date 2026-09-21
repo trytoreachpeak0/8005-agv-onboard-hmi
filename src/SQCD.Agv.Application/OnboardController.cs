@@ -1685,9 +1685,9 @@ public sealed class OnboardController : IAsyncDisposable
             // 这两句与 OnboardCommandRejectionText 里同码的那一份逐字相同；那边的注释逐支写了每一句为什么成立
             // （8005-agv-onboard-hmi#177）。逐字相同由 OnboardControllerTests.NotReadyGuidanceSaysOnlyWhatHoldsInEveryStateItCovers 守着。
             "WIRE_TO_GATE_NOT_READY" =>
-                "上层安全会话尚未就绪或车辆尚未停稳，本界面已禁止扫码与发车。请等待连接及恢复完成、车辆停稳。",
+                "上层安全会话尚未就绪或未能确认车辆已停稳，本界面已禁止扫码与发车。请等待连接恢复及车辆停稳确认；持续出现请联系维护人员。",
             "WIRE_TO_GATE_JOURNEY_NOT_READY" =>
-                "服务端旅程或当前站点任务尚未同步，请等待任务恢复。",
+                "旅程或车辆状态当前不满足录入条件，请查看告警或联系班组长。",
             "SUBLOT_NOT_IN_WORKLIST" =>
                 "当前条码不属于服务端下发的站点任务，请核对条码或等待任务刷新。",
             "VISIT_NOT_ACTIVE" => "车辆尚未到站或本次作业已经结束，请等待新的到站任务。",

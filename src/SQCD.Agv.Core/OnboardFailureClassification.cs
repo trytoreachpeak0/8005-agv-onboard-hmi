@@ -123,7 +123,7 @@ public static class OnboardFailureClassification
         "VEHICLE_NOT_READY",
         // The vehicle is not stopped, so scanning waits (8005-agv-onboard-hmi#177). Nothing was sent and the
         // entry request stays open; a stop brings the entry back.
-        "VEHICLE_NOT_STOPPED",
+        "VEHICLE_STOP_NOT_CONFIRMED",
 
         // ---------------------------------------------------------------------------------------
         // The recovery-path codes below are NOT reachable from Classify today, and saying otherwise
