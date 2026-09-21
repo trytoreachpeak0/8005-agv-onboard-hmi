@@ -1,0 +1,43 @@
+commit: 47451cba11721453d2ee30d556dc4ae0cf08ae9b（执行器 blob 5797f2c22699f78c0b97a23ea28270185c354196，src/tests 与 HEAD 一致）
+变异: 见下方 diff（对 HEAD）
+预期（事先写下）: 只红 ASlotRefusedOnAReopenIsStillUnknown（调度附加条件 3 的反向用例）。
+命令: dotnet build tests/SQCD.Agv.UnitTests -c Release；dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~WireToGateSlotOperationExecutor"
+
+diff --git a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
+index 5797f2c..90c6604 100644
+--- a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
++++ b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
+@@ -941,7 +941,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
+                         physicalSlot) is { } otherDoor)
+                 {
+                     // Before the first pulse the slot has not been opened by this call; on a reopen it has.
+-                    throw pulseRequested
++                    throw pulseRequested && Environment.TickCount64 < 0
+                         ? new InvalidDataException(otherDoor)
+                         : new RefusedBeforeFirstPulseException(otherDoor);
+                 }
+
+    0 Error(s)
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:11.95]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedOnAReopenIsStillUnknown [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedOnAReopenIsStillUnknown [69 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "UNKNOWN"
+Actual:   "NOT_STARTED"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedOnAReopenIsStillUnknown() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 78
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedOnAReopenIsStillUnknown() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 80
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:    73, Skipped:     0, Total:    74, Duration: 16 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+失败断言所在位置（测试文件未变异）:
+  WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 78
+  WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 80

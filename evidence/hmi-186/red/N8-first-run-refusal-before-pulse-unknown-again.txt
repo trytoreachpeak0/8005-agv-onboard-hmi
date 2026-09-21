@@ -1,0 +1,95 @@
+commit: 47451cba11721453d2ee30d556dc4ae0cf08ae9b（执行器 blob 5797f2c22699f78c0b97a23ea28270185c354196，src/tests 与 HEAD 一致）
+变异: 见下方 diff（对 HEAD）
+预期（事先写下）: 红 ADoorOutsideTheCommandThatIsNotShutRefusesTheUnlock（3 例）、ADoorOpenedElsewhereMidOperationStopsTheNextUnlock、ASlotRefusedBeforeItsFirstPulseSettlesNotStarted，共 5 条（审查第 1 条原样）。
+命令: dotnet build tests/SQCD.Agv.UnitTests -c Release；dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~WireToGateSlotOperationExecutor"
+
+diff --git a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
+index 5797f2c..c46979a 100644
+--- a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
++++ b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
+@@ -835,7 +835,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
+                 // resume re-drives slots an earlier run may have pulsed, and the journal cannot say which
+                 // (the loop below overwrites them as NOT_STARTED), so a refusal there stays UNKNOWN.
+                 string outcome = exception is RefusedBeforeFirstPulseException && firstRun
+-                    ? "NOT_STARTED"
++                    ? "UNKNOWN"
+                     : "UNKNOWN";
+                 UpsertResult(
+                     results,
+
+    0 Error(s)
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:03.39]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorOpenedElsewhereMidOperationStopsTheNextUnlock [FAIL]
+[xUnit.net 00:00:03.45]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorOutsideTheCommandThatIsNotShutRefusesTheUnlock(condition: "unreadable", reason: "SLOT_STATE_UNKNOWN") [FAIL]
+[xUnit.net 00:00:03.52]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorOutsideTheCommandThatIsNotShutRefusesTheUnlock(condition: "output-active", reason: "UNLOCK_OUTPUT_NOT_RESET") [FAIL]
+[xUnit.net 00:00:03.59]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorOutsideTheCommandThatIsNotShutRefusesTheUnlock(condition: "open", reason: "LOCK_NOT_CLOSED") [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorOpenedElsewhereMidOperationStopsTheNextUnlock [157 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "NOT_STARTED"
+Actual:   "UNKNOWN"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorOpenedElsewhereMidOperationStopsTheNextUnlock() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.cs:line 2036
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorOpenedElsewhereMidOperationStopsTheNextUnlock() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.cs:line 2037
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorOutsideTheCommandThatIsNotShutRefusesTheUnlock(condition: "unreadable", reason: "SLOT_STATE_UNKNOWN") [69 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "NOT_STARTED"
+Actual:   "UNKNOWN"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorOutsideTheCommandThatIsNotShutRefusesTheUnlock(String condition, String reason) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.cs:line 1988
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorOutsideTheCommandThatIsNotShutRefusesTheUnlock(String condition, String reason) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.cs:line 1994
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorOutsideTheCommandThatIsNotShutRefusesTheUnlock(condition: "output-active", reason: "UNLOCK_OUTPUT_NOT_RESET") [64 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "NOT_STARTED"
+Actual:   "UNKNOWN"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorOutsideTheCommandThatIsNotShutRefusesTheUnlock(String condition, String reason) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.cs:line 1988
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorOutsideTheCommandThatIsNotShutRefusesTheUnlock(String condition, String reason) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.cs:line 1994
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorOutsideTheCommandThatIsNotShutRefusesTheUnlock(condition: "open", reason: "LOCK_NOT_CLOSED") [64 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "NOT_STARTED"
+Actual:   "UNKNOWN"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorOutsideTheCommandThatIsNotShutRefusesTheUnlock(String condition, String reason) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.cs:line 1988
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorOutsideTheCommandThatIsNotShutRefusesTheUnlock(String condition, String reason) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.cs:line 1994
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:17.72]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseSettlesNotStarted [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseSettlesNotStarted [65 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "NOT_STARTED"
+Actual:   "UNKNOWN"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseSettlesNotStarted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 37
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseSettlesNotStarted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 41
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     5, Passed:    69, Skipped:     0, Total:    74, Duration: 18 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+失败断言所在位置（测试文件未变异）:
+  WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 37
+  WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 41
+  WireToGateSlotOperationExecutorTests.cs:line 1988
+  WireToGateSlotOperationExecutorTests.cs:line 1994
+  WireToGateSlotOperationExecutorTests.cs:line 2036
+  WireToGateSlotOperationExecutorTests.cs:line 2037

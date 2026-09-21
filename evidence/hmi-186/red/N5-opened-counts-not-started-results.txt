@@ -1,13 +1,13 @@
-commit: 6e5adb4f4ebdc50a419acffb10612951e47e616b（执行器 blob ec9cc5fe08ef99e1a01232672fb7071cdedcc14d，src/tests 与 HEAD 一致）
+commit: 47451cba11721453d2ee30d556dc4ae0cf08ae9b（执行器 blob 5797f2c22699f78c0b97a23ea28270185c354196，src/tests 与 HEAD 一致）
 变异: 见下方 diff（对 HEAD）
-预期（事先写下）: 至少红 ASettledOccupancyConflictKeepsItsReason（冲突仓被当开过、读到终态记 COMPLETED）、ASettlementLeavesTheSlotsAfterTheFailedOneNotStarted（2 号仓读到终态记 COMPLETED）、AResumeDoesNotCountASlotThisAttemptNeverOpenedAsCompleted（Load、Unload 两例）。其余是否连带红事先不确定，如实记录。
+预期（事先写下）: 至少红 ASettledOccupancyConflictKeepsItsReason、ASettlementLeavesTheSlotsAfter…、AResumeDoesNotCountASlotThisAttemptNeverOpenedAsCompleted（Load、Unload）、ASlotRefusedBeforeItsFirstPulseSettlesNotStarted。其余是否连带红事先不确定，如实记录。
 命令: dotnet build tests/SQCD.Agv.UnitTests -c Release；dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~WireToGateSlotOperationExecutor"
 
 diff --git a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
-index ec9cc5f..d1d3043 100644
+index 5797f2c..53f340b 100644
 --- a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
 +++ b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
-@@ -383,8 +383,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
+@@ -388,8 +388,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
          state.ActiveUnlockSlots.Contains(physicalSlot)
          || state.CompletedSlots.Contains(physicalSlot)
          || state.SlotResults.Any(result =>
@@ -24,8 +24,8 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:07.08]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason [FAIL]
-  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason [80 ms]
+[xUnit.net 00:00:03.67]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason [63 ms]
   Error Message:
    Assert.Equal() Failure: Strings differ
            ↓ (pos 0)
@@ -36,9 +36,9 @@ Actual:   "UNKNOWN"
      at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 155
    at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 163
 --- End of stack trace from previous location ---
-[xUnit.net 00:00:08.04]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AResumeDoesNotCountASlotThisAttemptNeverOpenedAsCompleted(operationType: Load) [FAIL]
-[xUnit.net 00:00:08.23]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AResumeDoesNotCountASlotThisAttemptNeverOpenedAsCompleted(operationType: Unload) [FAIL]
-  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AResumeDoesNotCountASlotThisAttemptNeverOpenedAsCompleted(operationType: Load) [110 ms]
+[xUnit.net 00:00:04.50]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AResumeDoesNotCountASlotThisAttemptNeverOpenedAsCompleted(operationType: Load) [FAIL]
+[xUnit.net 00:00:04.58]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AResumeDoesNotCountASlotThisAttemptNeverOpenedAsCompleted(operationType: Unload) [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AResumeDoesNotCountASlotThisAttemptNeverOpenedAsCompleted(operationType: Load) [95 ms]
   Error Message:
    Assert.Throws() Failure: No exception was thrown
 Expected: typeof(SQCD.Agv.Application.WireToGateResumeNotStartedException)
@@ -46,7 +46,7 @@ Expected: typeof(SQCD.Agv.Application.WireToGateResumeNotStartedException)
      at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AResumeDoesNotCountASlotThisAttemptNeverOpenedAsCompleted(OperationType operationType) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.OccupancyConflict.cs:line 137
    at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AResumeDoesNotCountASlotThisAttemptNeverOpenedAsCompleted(OperationType operationType) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.OccupancyConflict.cs:line 146
 --- End of stack trace from previous location ---
-  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AResumeDoesNotCountASlotThisAttemptNeverOpenedAsCompleted(operationType: Unload) [177 ms]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AResumeDoesNotCountASlotThisAttemptNeverOpenedAsCompleted(operationType: Unload) [77 ms]
   Error Message:
    Assert.Throws() Failure: No exception was thrown
 Expected: typeof(SQCD.Agv.Application.WireToGateResumeNotStartedException)
@@ -54,7 +54,7 @@ Expected: typeof(SQCD.Agv.Application.WireToGateResumeNotStartedException)
      at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AResumeDoesNotCountASlotThisAttemptNeverOpenedAsCompleted(OperationType operationType) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.OccupancyConflict.cs:line 137
    at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AResumeDoesNotCountASlotThisAttemptNeverOpenedAsCompleted(OperationType operationType) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.OccupancyConflict.cs:line 146
 --- End of stack trace from previous location ---
-[xUnit.net 00:00:13.97]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementLeavesTheSlotsAfterTheFailedOneNotStarted [FAIL]
+[xUnit.net 00:00:11.52]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementLeavesTheSlotsAfterTheFailedOneNotStarted [FAIL]
   Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementLeavesTheSlotsAfterTheFailedOneNotStarted [1 s]
   Error Message:
    Assert.Equal() Failure: Strings differ
@@ -66,8 +66,20 @@ Actual:   "COMPLETED"
      at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementLeavesTheSlotsAfterTheFailedOneNotStarted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 124
    at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettlementLeavesTheSlotsAfterTheFailedOneNotStarted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 127
 --- End of stack trace from previous location ---
+[xUnit.net 00:00:15.83]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseSettlesNotStarted [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseSettlesNotStarted [85 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "NOT_STARTED"
+Actual:   "UNKNOWN"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseSettlesNotStarted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 37
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseSettlesNotStarted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 41
+--- End of stack trace from previous location ---
 
-Failed!  - Failed:     4, Passed:    65, Skipped:     0, Total:    69, Duration: 16 s - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     5, Passed:    69, Skipped:     0, Total:    74, Duration: 16 s - SQCD.Agv.UnitTests.dll (net8.0)
 
 失败断言所在位置（测试文件未变异）:
   WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 124
@@ -76,3 +88,5 @@ Failed!  - Failed:     4, Passed:    65, Skipped:     0, Total:    69, Duration:
   WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 163
   WireToGateSlotOperationExecutorTests.OccupancyConflict.cs:line 137
   WireToGateSlotOperationExecutorTests.OccupancyConflict.cs:line 146
+  WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 37
+  WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 41

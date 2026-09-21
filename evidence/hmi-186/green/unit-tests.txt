@@ -1,4 +1,4 @@
-commit: 6e5adb4f4ebdc50a419acffb10612951e47e616b
+commit: 47451cba11721453d2ee30d556dc4ae0cf08ae9b
 命令: dotnet test tests/SQCD.Agv.UnitTests -c Release
   Determining projects to restore...
   All projects are up-to-date for restore.
@@ -15,4 +15,4 @@ VSTest version 17.11.1 (x64)
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
 
-Passed!  - Failed:     0, Passed:   539, Skipped:     0, Total:   539, Duration: 17 s - SQCD.Agv.UnitTests.dll (net8.0)
+Passed!  - Failed:     0, Passed:   544, Skipped:     0, Total:   544, Duration: 17 s - SQCD.Agv.UnitTests.dll (net8.0)

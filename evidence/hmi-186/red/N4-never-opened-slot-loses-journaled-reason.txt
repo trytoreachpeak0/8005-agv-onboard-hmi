@@ -1,13 +1,13 @@
-commit: 6e5adb4f4ebdc50a419acffb10612951e47e616b（执行器 blob ec9cc5fe08ef99e1a01232672fb7071cdedcc14d，src/tests 与 HEAD 一致）
+commit: 47451cba11721453d2ee30d556dc4ae0cf08ae9b（执行器 blob 5797f2c22699f78c0b97a23ea28270185c354196，src/tests 与 HEAD 一致）
 变异: 见下方 diff（对 HEAD）
-预期（事先写下）: 只红 ASettledOccupancyConflictKeepsItsReason。共 1 条。
+预期（事先写下）: 红 ASettledOccupancyConflictKeepsItsReason 与 ASlotRefusedBeforeItsFirstPulseSettlesNotStarted（两处都靠沿用日志原因码），共 2 条。
 命令: dotnet build tests/SQCD.Agv.UnitTests -c Release；dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~WireToGateSlotOperationExecutor"
 
 diff --git a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
-index ec9cc5f..3672064 100644
+index 5797f2c..58ac9ef 100644
 --- a/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
 +++ b/src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs
-@@ -390,7 +390,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
+@@ -395,7 +395,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
      /// The reason codes the journal holds for <paramref name="physicalSlot"/>'s last result, or none.
      /// </summary>
      private static IReadOnlyList<string> JournaledReasonCodes(WireToGateRecoveryState state, int physicalSlot) =>
@@ -23,8 +23,8 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:05.50]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason [FAIL]
-  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason [81 ms]
+[xUnit.net 00:00:03.63]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason [94 ms]
   Error Message:
    Assert.Equal() Failure: Collections differ
                                                   ↓ (pos 0)
@@ -34,9 +34,22 @@ Actual:   string[]                               []
      at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 159
    at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASettledOccupancyConflictKeepsItsReason() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 163
 --- End of stack trace from previous location ---
+[xUnit.net 00:00:15.62]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseSettlesNotStarted [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseSettlesNotStarted [72 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ
+                                                  ↓ (pos 0)
+Expected: <>z__ReadOnlySingleElementList<string> ["LOCK_NOT_CLOSED"]
+Actual:   string[]                               []
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseSettlesNotStarted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 38
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ASlotRefusedBeforeItsFirstPulseSettlesNotStarted() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi182-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 41
+--- End of stack trace from previous location ---
 
-Failed!  - Failed:     1, Passed:    68, Skipped:     0, Total:    69, Duration: 16 s - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     2, Passed:    72, Skipped:     0, Total:    74, Duration: 15 s - SQCD.Agv.UnitTests.dll (net8.0)
 
 失败断言所在位置（测试文件未变异）:
   WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 159
   WireToGateSlotOperationExecutorTests.InterruptedSettlementOpened.cs:line 163
+  WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 38
+  WireToGateSlotOperationExecutorTests.RefusedBeforeFirstPulse.cs:line 41
