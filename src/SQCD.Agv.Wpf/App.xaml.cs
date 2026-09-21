@@ -245,7 +245,12 @@ public partial class App : System.Windows.Application, IDisposable
                     () => _wireToGateBusiness.IsLoadCancellationBeforeSublotOpen,
                     () => _wireToGateBusiness.CurrentSublotRejection,
                     () => _wireToGateBusiness.RecoveryReasonAlreadyGiven,
-                    () => _wireToGateBusiness.RecoveryFallbackDemandId);
+                    () => _wireToGateBusiness.RecoveryFallbackDemandId,
+                    // 按名字传，不接着按位置排：按位置传的参数在调用点没有名字，grep 找不到它的用法
+                    // （8005-agv-onboard-hmi#177 票面记下的那一次，就是这样把两个就绪委托判成了「v2 不传」）。
+                    sublotEntryPausedUntilStopped: () => _wireToGateBusiness.IsSublotEntryPausedUntilStopped,
+                    // 视图模型自己订阅停稳信号的变化，刷新入口、横幅与控制器提示（8005-agv-onboard-hmi#177）。
+                    vehicleSafetySignal: vehicleSafetySignalProvider);
                 viewModel.ConfigureForcedIsolation(
                     () => _wireToGateBusiness.CanConfirmForcedMechanicalRecovery,
                     cancellationToken => _wireToGateBusiness.ConfirmForcedMechanicalRecoveryAsync(

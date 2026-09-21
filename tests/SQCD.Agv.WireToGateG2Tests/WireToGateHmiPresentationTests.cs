@@ -138,6 +138,35 @@ public sealed class WireToGateHmiPresentationTests
         Assert.Contains("管理员恢复", banner.Guidance, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// 有录入请求而未能确认车辆停稳：提示区说暂停、确认停稳后可继续，而不是「等待业务指令」（8005-agv-onboard-hmi#177）。
+    /// </summary>
+    /// <remarks>
+    /// 另一种写法——让它落到最后那一支「就绪 / 等待业务指令」——读起来就像请求没了，而这一支的前提正是请求还在
+    /// （会话一离开 Ready 请求就被清掉，那时横幅走的是「需要恢复」那一支，不是这里）。
+    /// 它排在「子批被拒收」之前也是有意的：那一支的下一步按 canSubmit 说请求还在不在，车没停稳时 canSubmit 是假的，
+    /// 它会告诉操作员请求没了。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public void AnEntryPausedUntilTheVehicleStopsSaysSoInsteadOfLookingWithdrawn()
+    {
+        foreach (bool sublotRejected in new[] { false, true })
+        {
+            WireToGateHmiBanner banner = WireToGateHmiPresentation.Create(
+                Session(WireToGateSessionReadiness.Ready),
+                operation: null,
+                canSubmit: false,
+                sublotRejected: sublotRejected,
+                entryPausedUntilStopped: true);
+
+            Assert.Equal("暂停扫码", banner.StateText);
+            Assert.Equal("未能确认车辆已停稳，确认停稳后可继续扫码。", banner.Guidance);
+            Assert.True(banner.HasWarning);
+        }
+    }
+
     private static WireToGateSessionSnapshot Session(
         WireToGateSessionReadiness readiness,
         params string[] reasons) =>

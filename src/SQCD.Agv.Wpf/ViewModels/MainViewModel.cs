@@ -114,6 +114,8 @@ public sealed class MainViewModel : ViewModelBase
     private Func<string?, CancellationToken, Task<bool>>? _wireToGateLoadCancellationRequester;
     private Func<bool>? _wireToGateLoadCancellationSelectionRequired;
     private Func<string?>? _wireToGateRecoveryFallbackDemandId;
+    private Func<bool>? _wireToGateEntryPausedUntilStopped;
+    private IObservableVehicleSafetySignalProvider? _vehicleSafetySignal;
     private string _recoveryFallbackTargetText = string.Empty;
     private Func<string?, CancellationToken, Task<bool>>? _wireToGateLoadCompensationRequester;
     private Func<CancellationToken, Task<bool>>? _wireToGateLoadCorrectionRequester;
@@ -427,9 +429,21 @@ public sealed class MainViewModel : ViewModelBase
         Func<bool>? loadCancellationPending = null,
         Func<WireToGateSublotRejection?>? sublotRejection = null,
         Func<bool>? recoveryReasonAlreadyGiven = null,
-        Func<string?>? recoveryFallbackDemandId = null)
+        Func<string?>? recoveryFallbackDemandId = null,
+        Func<bool>? sublotEntryPausedUntilStopped = null,
+        IObservableVehicleSafetySignalProvider? vehicleSafetySignal = null)
     {
         _wireToGateRecoveryReasonAlreadyGiven = recoveryReasonAlreadyGiven;
+        _wireToGateEntryPausedUntilStopped = sublotEntryPausedUntilStopped;
+        if (_vehicleSafetySignal is not null)
+        {
+            _vehicleSafetySignal.SignalChanged -= OnVehicleSafetySignalChanged;
+        }
+        _vehicleSafetySignal = vehicleSafetySignal;
+        if (vehicleSafetySignal is not null)
+        {
+            vehicleSafetySignal.SignalChanged += OnVehicleSafetySignalChanged;
+        }
         _wireToGateSubmitter = submitter ?? throw new ArgumentNullException(nameof(submitter));
         _wireToGateCanSubmit = canSubmit ?? throw new ArgumentNullException(nameof(canSubmit));
         _wireToGateCanRequestRecovery = canRequestRecovery;
@@ -552,6 +566,28 @@ public sealed class MainViewModel : ViewModelBase
         offeredByBusiness && !RecoveryEntriesBlockedByFatalFault;
 
     internal void RefreshWireToGateInputState() => RunOnUiThread(RefreshWireToGateInputStateCore);
+
+    /// <summary>
+    /// 车辆停稳信号一变，入口、横幅与控制器提示一起重算（8005-agv-onboard-hmi#177）。
+    /// </summary>
+    /// <remarks>
+    /// 扫码入口看停稳，而停稳一变，会话、旅程、录入请求都没变，原有的几条刷新路径一条也不会跑——不接这一条，车动了
+    /// 按钮照样可按，要等服务端把会话降级才关；界面会同时挂着「暂停扫码」和一个可按的按钮。控制器那句
+    /// WIRE_TO_GATE_NOT_READY 同理：它也看停稳，别处只在会话或旅程变化时重算。订阅放在这里而不是 App：App 的接线没有
+    /// 测试能碰到，放在 App 时删掉它一条测试都不红（审查 M1）。守它的是
+    /// <c>VehicleMotionEntryViewModelTests</c>。
+    /// </remarks>
+    private void OnVehicleSafetySignalChanged(object? sender, ValueChangedEventArgs<VehicleSafetySignal> args)
+    {
+        _ = sender;
+        _ = args;
+        RunOnUiThread(() =>
+        {
+            RefreshWireToGateInputStateCore();
+            ApplyWireToGatePresentationCore();
+        });
+        _controller.RefreshExternalSafetyState();
+    }
 
     private void RefreshWireToGateInputStateCore()
     {
@@ -1626,7 +1662,8 @@ public sealed class MainViewModel : ViewModelBase
             _wireToGateOperation,
             _wireToGateCanSubmit?.Invoke() == true,
             _wireToGateLoadCancellationPending?.Invoke() == true,
-            sublotRejection is not null);
+            sublotRejection is not null,
+            _wireToGateEntryPausedUntilStopped?.Invoke() == true);
         RuleConnectionText = _wireToGateSession.Connected ? "在线" : "离线";
         StateText = banner.StateText;
         // banner.HasError 在 v2 上恒 false（WireToGateHmiPresentation.Create 的每个分支都写死

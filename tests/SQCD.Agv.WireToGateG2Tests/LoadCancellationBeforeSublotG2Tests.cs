@@ -508,6 +508,107 @@ public sealed class LoadCancellationBeforeSublotG2Tests
         Assert.Equal(JsonValueKind.Null, retriedPayload.GetProperty("slotOperationAttemptId").ValueKind);
     }
 
+    /// <summary>
+    /// 车一动，扫码入口关、提交被拒，录入请求留着；停稳后入口回来，同一条请求照常能提交（8005-agv-onboard-hmi#177）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>车动时关扫码是用户定的</b>（hmi#177 的 issue 评论）。在这之前入口只看会话 Ready，车被外力推动时要等服务端把
+    /// 会话降出 Ready 才关——车载端报 departureSafe=false、服务端降级、回复回来，一次上报往返。
+    /// </para>
+    /// <para>
+    /// <b>两道都在，别把其中一道当成多余。</b>本端车一动就关是第一道；服务端降级是第二道（control-server 的
+    /// WireToGateStore.DecideReadinessAsync，豁免只给本车在途装卸造成的门锁原因码）。这里的假服务端不因车动降级会话
+    /// （RequireSafeSafetyForReadiness 默认关），所以这条量到的只有第一道——正因为如此，第一道没了它就红。
+    /// </para>
+    /// <para>
+    /// 「会话未就绪或未能确认车辆已停稳，本界面已禁止扫码与发车」那一句（OnboardCommandRejectionText）依赖这一道门：
+    /// 这条红了，那句话就又是假的。
+    /// </para>
+    /// <para>
+    /// <b>「请求留着、停稳自动恢复」有前提：会话一直在 Ready。</b>这里成立，是因为假服务端不降级。真服务端 1–2 秒内就
+    /// 把会话降出 Ready，而 <c>OnSessionStateChanged</c> 一离开 Ready 就清掉录入请求；回到 Ready 后请求要等服务端重发
+    /// 才回来（服务端 ReplayPendingForSessionAsync 在会话 Ready 时重发未结算的录入请求，只读核过，端到端没有用例）。
+    /// 所以这条证的是「比一个上报往返短的车动」，不是任意长的车动。这件事在 hmi#177 之前就存在，不是本票引入的。
+    /// </para>
+    /// <para>
+    /// 「同一条」断在三件事上：服务端发出的录入请求条数前后没变（没有新请求顶替旧的），提交带的
+    /// operationSessionId 与 worklistRevision 等于原请求的，期待子批也没变。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task AMovingVehicleClosesTheEntryAndRefusesTheScanAndAStopBringsItBack()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        PushableVehicle vehicle = new();
+        await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(token, vehicle: vehicle);
+        Assert.True(harness.Business.CanSubmitSublot);
+        Assert.False(harness.Business.IsSublotEntryPausedUntilStopped);
+        IReadOnlyList<string>? expected = harness.Business.ExpectedSublots;
+        Assert.NotNull(expected);
+        JsonElement original = Assert.Single(harness.PayloadsSent("SublotEntryRequested"));
+
+        vehicle.StartMoving();
+
+        Assert.False(harness.Business.CanSubmitSublot);
+        Assert.True(harness.Business.IsSublotEntryPausedUntilStopped);
+        Assert.Equal(expected, harness.Business.ExpectedSublots);
+        InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token));
+        Assert.Equal("VEHICLE_STOP_NOT_CONFIRMED", refused.Message);
+        Assert.DoesNotContain(harness.Server.ReceivedEnvelopes, envelope => envelope.MessageType == "SublotSubmitted");
+
+        vehicle.StopMoving();
+
+        Assert.True(harness.Business.CanSubmitSublot);
+        Assert.False(harness.Business.IsSublotEntryPausedUntilStopped);
+        Assert.Equal(expected, harness.Business.ExpectedSublots);
+        await harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token);
+        await BeforeSublotHarness.WaitUntilAsync(
+            () => harness.Server.ReceivedEnvelopes.Any(envelope => envelope.MessageType == "SublotSubmitted"),
+            "the entry made after the stop to reach the server",
+            token);
+        Assert.Single(harness.PayloadsSent("SublotEntryRequested"));
+        JsonElement submitted = Assert.Single(harness.PayloadsReceived("SublotSubmitted"));
+        Assert.Equal(
+            original.GetProperty("operationSessionId").GetString(),
+            submitted.GetProperty("operationSessionId").GetString());
+        Assert.Equal(
+            original.GetProperty("worklistRevision").GetInt64(),
+            submitted.GetProperty("worklistRevision").GetInt64());
+    }
+
+    /// <summary>
+    /// 旅程快照不可接受录入时（这里取「手动充电保持」这一支），扫码入口照样开着（8005-agv-onboard-hmi#177）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>这条钉的是一句文案的前提。</b>WIRE_TO_GATE_JOURNEY_NOT_READY 在 IsAuthoritativeJourneyReady() 为假时显示，
+    /// 而它的几支——业务状态不是 READY、手动充电保持、电量不是 SUFFICIENT、清单为空、快照过期——下扫码入口都不看，
+    /// 所以那一句不能说「已禁止扫码」，hmi#177 把它改成只陈述事实加指引。
+    /// </para>
+    /// <para>
+    /// <b>它红了，是该回头改文案的时候</b>：入口哪天开始看旅程快照了，那一句才可以重新说禁止扫码。选这一支是因为它
+    /// 不依赖时间；快照过期那一支同理，只是要拨表。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task AJourneyThatCannotAcceptASublotDoesNotCloseTheEntry()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(
+            token,
+            server => server.ManualChargingHoldInSnapshots = true);
+
+        Assert.False(harness.Session.CurrentJourney.CanAcceptSublot);
+        Assert.True(harness.Session.CurrentJourney.VehicleBusinessState?.ManualChargingHold);
+        Assert.True(harness.Business.CanSubmitSublot);
+    }
+
     private static WireToGateRecoveryOperationContext SettledLoad() =>
         new(
             "44444444-4444-4444-8444-444444444444",
@@ -557,6 +658,8 @@ public sealed class LoadCancellationBeforeSublotG2Tests
 
         public WireToGateBusinessService Business { get; }
 
+        public WireToGateSessionService Session => _session;
+
         public static FakeControlServer NewServer() =>
             new(IPAddress.Loopback)
             {
@@ -581,7 +684,8 @@ public sealed class LoadCancellationBeforeSublotG2Tests
             FakeControlServer? existingServer = null,
             string? journalPath = null,
             long baselineRevision = 1,
-            bool awaitEntryRequest = true)
+            bool awaitEntryRequest = true,
+            IVehicleSafetySignalProvider? vehicle = null)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -594,7 +698,7 @@ public sealed class LoadCancellationBeforeSublotG2Tests
                 io.SetCargoPresent(0, true);
                 io.SetCargoPresent(1, true);
                 RecordingLogger logger = new();
-                StoppedVehicle safety = new();
+                IVehicleSafetySignalProvider safety = vehicle ?? new StoppedVehicle();
 
                 string databasePath = journalPath ?? NewJournalPath();
                 Directory.CreateDirectory(Path.GetDirectoryName(databasePath)!);
@@ -778,11 +882,41 @@ public sealed class LoadCancellationBeforeSublotG2Tests
             return document.RootElement.GetProperty("payload").Clone();
         }
 
-        /// <summary>车一直停着、读数一直新鲜；这里没有东西取决于运动状态。</summary>
+        /// <summary>车一直停着、读数一直新鲜；除了下面那一条，这里没有东西取决于运动状态。</summary>
         private sealed class StoppedVehicle : IVehicleSafetySignalProvider
         {
             public VehicleSafetySignal Read() =>
                 new(VehicleMotionState.Stopped, DateTimeOffset.UtcNow, "BEFORE_SUBLOT_TEST");
         }
+    }
+
+    /// <summary>
+    /// 先停着（握手与录入请求都要车停稳），再被外力推动。读数一直新鲜，所以动起来就是 Moving 而不是 Unknown。
+    /// </summary>
+    /// <remarks>
+    /// 可订阅，与产品里的 <c>ControlServerVehicleSafetySignalProvider</c> 一样：业务服务只在可订阅的提供者报变化时
+    /// 重算安全状态并上报，不可订阅的只等仓门快照或会话变化顺带触发，那样「车动了」要等别的东西碰巧发生才传得出去。
+    /// </remarks>
+    private sealed class PushableVehicle : IObservableVehicleSafetySignalProvider
+    {
+        private volatile bool _moving;
+
+        public event EventHandler<ValueChangedEventArgs<VehicleSafetySignal>>? SignalChanged;
+
+        public void StartMoving() => Set(moving: true);
+
+        public void StopMoving() => Set(moving: false);
+
+        private void Set(bool moving)
+        {
+            _moving = moving;
+            SignalChanged?.Invoke(this, new ValueChangedEventArgs<VehicleSafetySignal>(Read()));
+        }
+
+        public VehicleSafetySignal Read() =>
+            new(
+                _moving ? VehicleMotionState.Moving : VehicleMotionState.Stopped,
+                DateTimeOffset.UtcNow,
+                "BEFORE_SUBLOT_TEST");
     }
 }

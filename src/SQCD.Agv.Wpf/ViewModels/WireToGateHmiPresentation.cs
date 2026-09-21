@@ -15,7 +15,8 @@ public static class WireToGateHmiPresentation
         WireToGateHmiOperationSnapshot? operation,
         bool canSubmit,
         bool loadCancellationPending = false,
-        bool sublotRejected = false)
+        bool sublotRejected = false,
+        bool entryPausedUntilStopped = false)
     {
         if (operation is { Stage: WireToGateHmiOperationStage.RecoveryRequired })
         {
@@ -60,6 +61,16 @@ public static class WireToGateHmiPresentation
             WireToGateSessionReadiness.Ready when loadCancellationPending => new(
                 "取消中",
                 "正在取消本站装货，等待服务端结果；取消结束前暂停扫码。",
+                HasWarning: true,
+                HasError: false),
+            // An entry request is open but the vehicle is not confirmed stopped -- moving, or its signal UNKNOWN or
+            // expired -- so scanning waits (onboard-hmi#177). "Not confirmed", not "moving": the vehicle may be at rest.
+            // Ahead of the rejection row, whose next step turns on canSubmit: with the entry paused rather
+            // than withdrawn it would tell the operator the request is gone. And ahead of the plain Ready
+            // row for the same reason -- "waiting for a business instruction" reads as if there were none.
+            WireToGateSessionReadiness.Ready when entryPausedUntilStopped => new(
+                "暂停扫码",
+                "未能确认车辆已停稳，确认停稳后可继续扫码。",
                 HasWarning: true,
                 HasError: false),
             // The server refused the last entry (onboard-hmi#77). Its reason has a line of its own;

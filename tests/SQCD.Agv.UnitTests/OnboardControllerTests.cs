@@ -28,6 +28,57 @@ public sealed class OnboardControllerTests
         Assert.True(controller.Current.DeparturePermitted);
     }
 
+    /// <summary>
+    /// 两句「未就绪」文案各自只说它覆盖的每一种状态下都成立的事，并且与 <see cref="OnboardCommandRejectionText"/> 里
+    /// 同码那一份逐字相同（8005-agv-onboard-hmi#177）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// WIRE_TO_GATE_NOT_READY 覆盖「会话没 Ready」与「会话 Ready、车没停稳」。hmi#177 之后两支下扫码都被挡住（后一支由
+    /// 业务服务的停稳门挡，<c>LoadCancellationBeforeSublotG2Tests.AMovingVehicleClosesTheEntryAndRefusesTheScanAndAStopBringsItBack</c>
+    /// 钉着），发车由控制器挡（上面第一条），所以它说「禁止扫码与发车」。停稳一支说「未能确认车辆已停稳」而不是「车辆尚未停稳」：
+    /// 信号 UNKNOWN 或过期时车可能是停着的。
+    /// </para>
+    /// <para>
+    /// WIRE_TO_GATE_JOURNEY_NOT_READY 覆盖的七支（见 OnboardCommandRejectionText 的注释）下扫码入口都没被挡
+    /// （<c>LoadCancellationBeforeSublotG2Tests.AJourneyThatCannotAcceptASublotDoesNotCloseTheEntry</c> 钉着），所以它不声称
+    /// 禁止任何事，也不说「尚未同步」「请等待」——其中两支旅程是同步的、等也不会好。
+    /// </para>
+    /// <para>
+    /// 逐字相同：操作员从哪条路径看到这个码，读到的都该是同一句；改了一份忘了另一份，界面上就同时挂着一句真的和
+    /// 一句假的。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task NotReadyGuidanceSaysOnlyWhatHoldsInEveryStateItCovers()
+    {
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-WORDING");
+        await using (OnboardController notReady = CreateController(io, rule, () => false))
+        {
+            await notReady.StartAsync(TestContext.Current.CancellationToken);
+            Assert.Equal("WIRE_TO_GATE_NOT_READY", notReady.Current.ErrorCode);
+            Assert.Equal(OnboardCommandRejectionText.Describe("WIRE_TO_GATE_NOT_READY"), notReady.Current.Guidance);
+            Assert.Contains("未能确认车辆已停稳", notReady.Current.Guidance, StringComparison.Ordinal);
+            Assert.Contains("禁止扫码与发车", notReady.Current.Guidance, StringComparison.Ordinal);
+        }
+
+        await using OnboardController journeyNotReady = CreateController(
+            new FakeIoModule(),
+            new FakeRuleGateway(OperationType.Load, "OP-WORDING-JOURNEY"),
+            () => true,
+            () => WireToGateJourneySnapshot.Empty);
+        await journeyNotReady.StartAsync(TestContext.Current.CancellationToken);
+        Assert.Equal("WIRE_TO_GATE_JOURNEY_NOT_READY", journeyNotReady.Current.ErrorCode);
+        Assert.Equal(
+            OnboardCommandRejectionText.Describe("WIRE_TO_GATE_JOURNEY_NOT_READY"),
+            journeyNotReady.Current.Guidance);
+        Assert.DoesNotContain("禁止", journeyNotReady.Current.Guidance, StringComparison.Ordinal);
+        // 手动充电保持、电量不足两支下旅程是同步的、光等也不会好。
+        Assert.DoesNotContain("尚未同步", journeyNotReady.Current.Guidance, StringComparison.Ordinal);
+        Assert.DoesNotContain("等待", journeyNotReady.Current.Guidance, StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task ExternalSafetyGateDropDuringVerificationPreventsPhysicalUnlock()
     {
