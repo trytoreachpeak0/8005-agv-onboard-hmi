@@ -1,5 +1,5 @@
-commit: 本票工作树，审查后的守卫（注入前 WireToGateBusinessService.cs blob 1f71a9b5aa9e8a195c3bd9599ee7250a0cff930f、.HardwareRecovery.cs blob 679f73e1481c2bb27f682c05c9882805435b79ae）
-注入: 见同名 .patch
+commit: 8c9bf79abecb4b1db1786eedadfa2a1d1f1fb8d2（注入前 WireToGateBusinessService.cs blob 697cdf561a10e2d574e6cb29626a85ee7a5b54ab、.HardwareRecovery.cs blob 679f73e1481c2bb27f682c05c9882805435b79ae，工作树与 HEAD 一致）
+注入: 见同名 .patch（对 HEAD 生成，已用 git apply --check 验证）
 预期: 只有 NoMemberThatTouchesAMarkNamesAPersistenceApi 红。
 命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~RecoveryMarkerPersistenceArchitectureTests"（测试读源码文本；测试程序集先以 0 Error(s) 编过）
 限度: --filter 单类，「只有这几条红」的范围是这个测试类之内
@@ -9,17 +9,17 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:01.15]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.NoMemberThatTouchesAMarkNamesAPersistenceApi [FAIL]
-  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.NoMemberThatTouchesAMarkNamesAPersistenceApi [55 ms]
+[xUnit.net 00:00:01.81]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.NoMemberThatTouchesAMarkNamesAPersistenceApi [FAIL]
+  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.NoMemberThatTouchesAMarkNamesAPersistenceApi [208 ms]
   Error Message:
-   A member that touches a recovery mark names a persistence API:
+   A member a recovery mark's value can reach names a persistence API:
   MarkRecoveryAnnounced  persisted
   MarkRecoveryAnnounced  JsonSerializer
   MarkRecoveryAnnounced  Serialize
-If the mark's value reaches it, the mark can outlive the process. If it does not, move the call out of this member rather than widening the check.
+If the mark's value reaches it, the mark can outlive the process. Calls are followed, so moving the call into another member of this class does not get past this check; keep persistence in members that never hold a mark.
   Stack Trace:
-     at SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.NoMemberThatTouchesAMarkNamesAPersistenceApi() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryMarkerPersistenceArchitectureTests.cs:line 433
+     at SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.NoMemberThatTouchesAMarkNamesAPersistenceApi() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryMarkerPersistenceArchitectureTests.cs:line 529
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
 
-Failed!  - Failed:     1, Passed:     6, Skipped:     0, Total:     7, Duration: 474 ms - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     1, Passed:     6, Skipped:     0, Total:     7, Duration: 948 ms - SQCD.Agv.UnitTests.dll (net8.0)

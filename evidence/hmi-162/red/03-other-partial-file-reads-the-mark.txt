@@ -1,5 +1,5 @@
-commit: 本票工作树，审查后的守卫（注入前 WireToGateBusinessService.cs blob 1f71a9b5aa9e8a195c3bd9599ee7250a0cff930f、.HardwareRecovery.cs blob 679f73e1481c2bb27f682c05c9882805435b79ae）
-注入: 见同名 .patch
+commit: 8c9bf79abecb4b1db1786eedadfa2a1d1f1fb8d2（注入前 WireToGateBusinessService.cs blob 697cdf561a10e2d574e6cb29626a85ee7a5b54ab、.HardwareRecovery.cs blob 679f73e1481c2bb27f682c05c9882805435b79ae，工作树与 HEAD 一致）
+注入: 见同名 .patch（对 HEAD 生成，已用 git apply --check 验证）
 预期: 只有 TheMarksAndTheirSettersNeverLeaveTheBusinessServiceSource 红。
 命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~RecoveryMarkerPersistenceArchitectureTests"（测试读源码文本；测试程序集先以 0 Error(s) 编过）
 限度: --filter 单类，「只有这几条红」的范围是这个测试类之内
@@ -9,8 +9,8 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:01.62]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.TheMarksAndTheirSettersNeverLeaveTheBusinessServiceSource [FAIL]
-  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.TheMarksAndTheirSettersNeverLeaveTheBusinessServiceSource [61 ms]
+[xUnit.net 00:00:02.18]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.TheMarksAndTheirSettersNeverLeaveTheBusinessServiceSource [FAIL]
+  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.TheMarksAndTheirSettersNeverLeaveTheBusinessServiceSource [42 ms]
   Error Message:
    A recovery mark, or a member that sets one, is named outside WireToGateBusinessService.cs:
   src/SQCD.Agv.Wpf/WireToGateBusinessService.HardwareRecovery.cs  _recoveryAnnouncedAttemptId
@@ -18,8 +18,8 @@ These are process state. Taking one elsewhere is how it gets into a projection, 
 The fix is to move the access back into WireToGateBusinessService.cs, into a member the other checks here already cover, and pass out only what the other file really needs.
 **Do not widen the home to a second file.** Every other check here reads src/SQCD.Agv.Wpf/WireToGateBusinessService.cs only: a second home would lose all of them at once and stay green. If a second file truly has to hold this state, make every check here read both files first.
   Stack Trace:
-     at SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.TheMarksAndTheirSettersNeverLeaveTheBusinessServiceSource() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryMarkerPersistenceArchitectureTests.cs:line 335
+     at SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.TheMarksAndTheirSettersNeverLeaveTheBusinessServiceSource() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\b7-162-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\RecoveryMarkerPersistenceArchitectureTests.cs:line 370
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
 
-Failed!  - Failed:     1, Passed:     6, Skipped:     0, Total:     7, Duration: 525 ms - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     1, Passed:     6, Skipped:     0, Total:     7, Duration: 848 ms - SQCD.Agv.UnitTests.dll (net8.0)

@@ -1,6 +1,6 @@
 commit: 8c9bf79abecb4b1db1786eedadfa2a1d1f1fb8d2（注入前 WireToGateBusinessService.cs blob 697cdf561a10e2d574e6cb29626a85ee7a5b54ab、.HardwareRecovery.cs blob 679f73e1481c2bb27f682c05c9882805435b79ae，工作树与 HEAD 一致）
 注入: 见同名 .patch（对 HEAD 生成，已用 git apply --check 验证）
-预期: 只有 MembersThatTouchAMarkReachOnlyTheirListedFields 红（审查 m3b）。
+预期: 只有 MembersThatTouchAMarkReachOnlyTheirListedFields 红（复审 S-3：OweRecoveryEntry 经返回值持有标记；上一版全绿）。
 命令: dotnet test tests/SQCD.Agv.UnitTests -c Release --no-build --filter "FullyQualifiedName~RecoveryMarkerPersistenceArchitectureTests"（测试读源码文本；测试程序集先以 0 Error(s) 编过）
 限度: --filter 单类，「只有这几条红」的范围是这个测试类之内
 
@@ -9,8 +9,8 @@ VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
-[xUnit.net 00:00:02.21]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.MembersThatTouchAMarkReachOnlyTheirListedFields [FAIL]
-  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.MembersThatTouchAMarkReachOnlyTheirListedFields [107 ms]
+[xUnit.net 00:00:02.34]     SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.MembersThatTouchAMarkReachOnlyTheirListedFields [FAIL]
+  Failed SQCD.Agv.UnitTests.RecoveryMarkerPersistenceArchitectureTests.MembersThatTouchAMarkReachOnlyTheirListedFields [139 ms]
   Error Message:
    The fields a recovery mark's value can reach changed.
   new:  _executor
@@ -21,4 +21,4 @@ A total of 1 test files matched the specified pattern.
    at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
    at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
 
-Failed!  - Failed:     1, Passed:     6, Skipped:     0, Total:     7, Duration: 840 ms - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     1, Passed:     6, Skipped:     0, Total:     7, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)

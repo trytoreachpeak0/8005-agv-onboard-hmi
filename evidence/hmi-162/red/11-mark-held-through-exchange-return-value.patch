@@ -1,0 +1,12 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index 697cdf5..e013f8c 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -1079,6 +1079,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+     private void OweRecoveryEntry(WireToGateRecoveryOperationContext context, string guidance)
+     {
+         OwedRecoveryEntry? displaced = ExchangeOwedRecoveryEntry(new OwedRecoveryEntry(context, guidance));
++        _ = _executor.MarkResultRecordedAsync(displaced?.Context.SlotOperationAttemptId ?? string.Empty, CancellationToken.None);
+ 
+         // A recovery entry going quiet is this ticket's whole fault, so every way one can stop being owed says so
+         // in the log. One slot is enough -- the journal holds one unsettled attempt -- but if that ever stops
