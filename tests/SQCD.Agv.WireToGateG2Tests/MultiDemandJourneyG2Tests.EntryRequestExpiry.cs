@@ -73,10 +73,10 @@ public sealed partial class MultiDemandJourneyG2Tests
             "CurrentStopWorklistSnapshot",
             ClosureWorklist(revision: 2));
 
-        await harness.WaitUntilAsync(
-            () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2,
-            "the closure worklist to be applied",
-            token);
+        // Waited on the screen, not on the session: the session stores the snapshot before it raises
+        // JourneyChanged, so "revision 2 applied" is true a moment before the withdrawal has run at all --
+        // and on a busy machine the assertions below landed in that moment.
+        await WaitForEntryWithdrawnOnScreenAsync(harness, token);
         await AssertWhileAsync(
             DisplaySettleWindow,
             () =>
@@ -125,10 +125,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                 }
             });
 
-        await harness.WaitUntilAsync(
-            () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2,
-            "the next stop's worklist to be applied",
-            token);
+        await WaitForEntryWithdrawnOnScreenAsync(harness, token);
         await AssertWhileAsync(
             DisplaySettleWindow,
             () =>
@@ -307,6 +304,17 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(0, harness.Io.UnlockCount);
         Assert.Empty(harness.UiErrors);
     }
+
+    /// <summary>
+    /// The scan entry is shut on screen and the withdrawal has been announced. Both, because the entry can
+    /// also be shut by some other refresh that happens to read the business gate after the request was
+    /// dropped; only the announcement says the withdrawal itself reached the view.
+    /// </summary>
+    private static Task WaitForEntryWithdrawnOnScreenAsync(Harness harness, CancellationToken token) =>
+        harness.WaitUntilAsync(
+            () => !harness.ViewModel.CanSubmit && OperatorLog(harness).Contains(EntryWithdrawnLine),
+            "the scan entry to be shut on screen and the withdrawal announced",
+            token);
 
     /// <summary>The closure worklist of control-server#323's shape at <paramref name="revision"/>.</summary>
     private static object ClosureWorklist(long revision) =>

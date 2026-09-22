@@ -758,6 +758,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         _started = true;
         _session.ServerCommandReceived += OnServerCommandReceived;
         _session.StateChanged += OnSessionStateChanged;
+        _session.JourneyChanged += OnJourneyChanged;
         _ioModule.SnapshotChanged += OnIoSnapshotChanged;
         if (_observableVehicleSafetySignalProvider is not null)
         {
@@ -783,6 +784,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         {
             _session.ServerCommandReceived -= OnServerCommandReceived;
             _session.StateChanged -= OnSessionStateChanged;
+            _session.JourneyChanged -= OnJourneyChanged;
             _ioModule.SnapshotChanged -= OnIoSnapshotChanged;
             if (_observableVehicleSafetySignalProvider is not null)
             {
@@ -863,6 +865,100 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         if (CanPublishSafetyRevision(args.Value))
         {
             RequestSafetyStateChange();
+        }
+    }
+
+    /// <summary>
+    /// Withdraws the entry request once a worklist says the stop it was made for has ended
+    /// (<c>expiresOnRevisionChange</c>, 8005-agv-onboard-hmi#199).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The event is what shuts the entry on screen, not the field.</b> <c>MainViewModel</c> reads
+    /// <see cref="CanSubmitSublot"/> only when an event reaches it, and in <c>App.xaml.cs</c> its own
+    /// <c>JourneyChanged</c> handler is subscribed before this service exists -- so it has already read
+    /// the gates, with this request still in place, by the time this runs. Clearing the field without
+    /// publishing leaves the scan button live over a stop that is over.
+    /// </para>
+    /// <para>
+    /// A rejection still on show is about the same stop, and goes with it.
+    /// </para>
+    /// </remarks>
+    private void OnJourneyChanged(object? sender, ValueChangedEventArgs<WireToGateJourneySnapshot> args)
+    {
+        if (args.Value.CurrentStopWorklist is not { } worklist
+            || Volatile.Read(ref _currentEntryRequest) is not { } request
+            || !EndsStopOf(worklist, request)
+            || Interlocked.CompareExchange(ref _currentEntryRequest, null, request) != request)
+        {
+            return;
+        }
+
+        if (Volatile.Read(ref _currentSublotRejection) is { } shown)
+        {
+            Interlocked.CompareExchange(ref _currentSublotRejection, null, shown);
+        }
+
+        _logger.Write(
+            LogSeverity.Information,
+            nameof(WireToGateBusinessService),
+            $"本站作业已结束，撤销录入请求：request={request.MessageId}，requestRevision={request.WorklistRevision}，"
+            + $"worklistRevision={worklist.Revision}，items={worklist.Items.Count}，"
+            + $"operationSession={worklist.OperationSessionId ?? "null"}，station={worklist.StationId}。");
+        PublishOperatorEvent(
+            $"sublot-entry-withdrawn:{request.MessageId}",
+            "SUBLOT_ENTRY_WITHDRAWN",
+            "本站作业已结束，录入请求已撤销，不再接收扫码。");
+    }
+
+    /// <summary>
+    /// Whether <paramref name="worklist"/> says the stop <paramref name="request"/> was made for is over.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Only a worklist no older than the request can say so.</b> One behind it is the stop the request
+    /// has already moved past -- a replay, or the next stop's request arriving before its worklist -- and
+    /// judging by it would withdraw the request that has just arrived.
+    /// </para>
+    /// <para>
+    /// <b>Over means empty, or another operation session or station.</b> The control server's closure
+    /// worklist has no items and no session (control-server#323); a stop that ends while the journey goes
+    /// on is followed by the next stop's, under a session of its own (control-server#324).
+    /// </para>
+    /// <para>
+    /// <b>A higher revision alone is not an end.</b> Under the same session, at the same station, with
+    /// items left, it is the same stop working through its demands one by one; the server still accepts an
+    /// entry made against any revision the stop has issued (<c>StopEntryAddress.Covers</c>) and follows
+    /// with the next request itself. What makes a request stale within a stop is the load command that
+    /// answers it (<see cref="WithdrawEntryRequestAnsweredBy"/>), not the revision moving.
+    /// </para>
+    /// </remarks>
+    internal static bool EndsStopOf(
+        WireToGateCurrentStopWorklist worklist,
+        WireToGateSublotEntryRequest request) =>
+        worklist.Revision >= request.WorklistRevision
+        && (worklist.Items.Count == 0
+            || !string.Equals(worklist.OperationSessionId, request.OperationSessionId, StringComparison.Ordinal)
+            || !string.Equals(worklist.StationId, request.StationId, StringComparison.Ordinal));
+
+    /// <summary>
+    /// Withdraws the entry request a LOAD command answers: the entry has been taken, and the server sends the
+    /// next request itself if the stop has demands left (8005-agv-onboard-hmi#199).
+    /// </summary>
+    /// <remarks>
+    /// Without this, a stop loaded to the end kept its entry open: the server sends nothing more for a stop with
+    /// nothing outstanding, so the scan entry and the expected sublots stayed up through the load and the whole
+    /// cargo-holding wait. Matched on the operation session rather than on the command's correlation, because
+    /// a LOAD for this stop answers this stop's request whichever entry it correlates to. No event of its own:
+    /// the command publishes its progress straight after, and that is what the view reads the gates on.
+    /// </remarks>
+    private void WithdrawEntryRequestAnsweredBy(WireToGateSlotOperationCommand command)
+    {
+        if (command.OperationType == OperationType.Load
+            && Volatile.Read(ref _currentEntryRequest) is { } request
+            && string.Equals(request.OperationSessionId, command.OperationSessionId, StringComparison.Ordinal))
+        {
+            Interlocked.CompareExchange(ref _currentEntryRequest, null, request);
         }
     }
 
@@ -2417,6 +2513,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return;
             }
         }
+
+        // After the duplicate checks above, so a resend of a command already taken cannot withdraw a
+        // request the server has issued since.
+        WithdrawEntryRequestAnsweredBy(command);
 
         // The vehicle is taking this stop's load in hand, so a rejection still on show describes an
         // entry the stop has moved past; left up, it would sit beside a load in progress. Cleared
