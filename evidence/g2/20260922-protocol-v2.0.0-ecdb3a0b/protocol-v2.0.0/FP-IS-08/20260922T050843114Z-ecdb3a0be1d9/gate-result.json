@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "1.2.0",
+  "gate": "ONBOARD_HMI_G2",
+  "integrationSliceId": "FP-IS-08",
+  "status": "PASS",
+  "startedAt": "2026-09-22T05:08:43.1140691Z",
+  "finishedAt": "2026-09-22T05:10:38.4369441Z",
+  "implementationRepository": "8005-agv-onboard-hmi",
+  "implementationCommit": "ecdb3a0be1d95ef51e7d40493808ba4659274f41",
+  "implementationBranch": "w2g/b7-18-g2-evidence",
+  "protocolReleaseVersion": "2.0.0",
+  "protocolTag": "protocol-v2.0.0",
+  "protocolProfileId": "AGV_FULL_PRODUCT",
+  "protocolVersion": 3,
+  "protocolApprovalStatus": "APPROVED_RELEASE",
+  "protocolRepositoryCommit": "86575456c847041515b7b75e8851a00e0d939804",
+  "protocolManifestSha256": "4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7",
+  "protocolSchemaBundleSha256": "9db0dbdc22fed7e39edf8d01b1fc40a12f5d70a7414f696f909ab2a87eb8c221",
+  "protocolVectorsSha256": "391fa69a7d6e9f86ea139ba4c74eadf4994bf0a87e89d3dc5258dd7968d9182a",
+  "integrationSliceIndexSha256": "268ce62be4e0ec8fe6d26e2048a59cf1732f02713415a0c5f41b6b009951b6fc",
+  "selectedTestCount": 2,
+  "recordedTestCount": 2,
+  "vectorIds": [
+    "CV-MULTI-STOP-PLAN-NINE-LEGS"
+  ],
+  "buildExitCode": 0,
+  "testExitCode": 0,
+  "formatExitCode": 0,
+  "schemaConformance": {
+    "linesChecked": 36,
+    "linesInViolation": 0,
+    "linesInKnownViolation": 0,
+    "schemaCompilationMilliseconds": 33846,
+    "coverage": "test-results/schema-coverage.json"
+  }
+}
