@@ -3,9 +3,27 @@
 票：https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/issues/199
 PR：https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/pull/200
 
-本文件随证据提交更新；代码树与第二次真装置运行所用的 `19e2757e` 相同（`git diff 19e2757e HEAD -- src tests` 为空）。
+本文件随证据提交更新；代码树与第三次真装置运行所用的 `21dd5586` 相同（`git diff 21dd5586 HEAD -- src tests` 为空）。
 
-## CI 真装置（最终 head，审查修正后）
+## CI 真装置（最终 head：审查修正 + merge 集成分支 `7cf1dcba`，hmi#197）
+
+run [35749679293](https://github.com/trytoreachpeak0/8005-agv-control-server/actions/runs/35749679293)，结论 success。
+
+| 场景 | 结果 | 秒 | 起跑时已提交内存 |
+| --- | --- | --- | --- |
+| `real-onboard-compensate-then-reconnect-01` | PASS | 67 | 4.05 GiB（步骤内峰值 7.36 GiB） |
+
+四行核对（读自 `Run real-onboard L2 scenarios` 那一步）：
+
+```
+control-server @ a98ae9be8433b3e170705a265a3c4fb6060fb6e7
+8005-agv-onboard-hmi @ 21dd5586673b65c49b5b84b55837164c1d49b3b0
+slots-simulator @ fb5f7c593742bf98bc3957b8729a38aad5321f28
+```
+
+`RIG_COMMIT_GUARD|RIG_DESKTOP_LOCK|RIG_DEADLINE`：全日志命中 1 行，带 `^[[36;1m`（源码回显）；不带前缀 0 行。
+
+## CI 真装置（审查修正后、merge hmi#197 前，`19e2757e`，已被上面取代）
 
 run [35746075526](https://github.com/trytoreachpeak0/8005-agv-control-server/actions/runs/35746075526)，结论 success。
 
