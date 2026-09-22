@@ -118,6 +118,13 @@ public sealed partial class StationDeadlineExpiredG2Tests
             window.RecordingCalls == 1,
             $"Expected one recording of the attempt, got {window.RecordingCalls}:{Environment.NewLine}"
             + window.DescribeRecordings());
+        // A "got 2" is not by itself a defect. One schedule makes a second call with no effect: a second restore started
+        // by the readiness reads the recovery state before the first restore's MarkResultRecordedAsync, takes the claim
+        // only after the first has released it, finds the row acknowledged and asks to record again -- the conditional
+        // write finds nothing unsettled and ends in SLOT_OPERATION_CONFLICT, which RecordAcknowledgedCompletedResultAsync
+        // catches. When CI reports "got 2", read the two stacks in the message first: if the second comes from that path,
+        // the product behaved correctly and this assertion is too strict for that schedule; only otherwise is it a
+        // second settlement.
         Assert.Equal(1, window.RecordingsThatClearedTheAttempt);
         WireToGateRecoveryState state = harness.ReadRecoveryState(token);
         Assert.Null(state.UnsettledSlotOperationAttemptId);

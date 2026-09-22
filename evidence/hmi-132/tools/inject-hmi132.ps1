@@ -28,8 +28,16 @@ $mutations = [ordered]@{
     }
 }
 
+# `-Only M1,M3` through pwsh -File arrives as the single string 'M1,M3', which names no mutation: without these checks
+# nothing ran and the script still exited 0 (review of PR #193). Through pwsh -File, pass one name per call (-Only M1).
+# `@($Only | ...)` on a null $Only sends one $null down the pipe and would call it unknown; no -Only means all.
+$unknown = $Only ? @($Only | Where-Object { $_ -notin $mutations.Keys }) : @()
+if ($unknown.Count -gt 0) { throw "Unknown mutation name(s): $($unknown -join ', '). Known: $($mutations.Keys -join ', ')." }
+$ran = 0
+
 foreach ($name in $mutations.Keys) {
     if ($Only -and $name -notin $Only) { continue }
+    $ran++
     $m = $mutations[$name]
     $path = Join-Path $Worktree $m.File
     $backup = "$path.hmi132bak"
@@ -61,3 +69,5 @@ foreach ($name in $mutations.Keys) {
         "$name restored: $restored" | Tee-Object -FilePath (Join-Path $OutDir "$name.txt") -Append
     }
 }
+
+if ($ran -eq 0) { throw "No mutation ran." }
