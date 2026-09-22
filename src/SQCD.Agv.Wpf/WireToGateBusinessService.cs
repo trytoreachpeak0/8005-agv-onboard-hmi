@@ -2536,8 +2536,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     : WireToGateHmiOperationStage.RecoveryRequired,
                 completedSuccessfully
                     ? $"{FormatSlots(command.Slots)}操作完成，正在上报结果。"
-                    : RefusedByFatalFaultLatch(execution)
-                        ? $"本机已锁存严重安全故障，{FormatSlots(command.Slots)}没有再开门；复核并复位后可申请恢复。"
+                    : RefusedByFatalFaultLatch(execution.SlotResults)
+                        ? $"本机已锁存严重安全故障，{FormatSlots(NotCompletedSlots(execution.SlotResults))}停止开门；复核并复位后可申请恢复。"
                         : $"{FormatSlots(command.Slots)}操作未完成，需要恢复处理。",
                 "final");
             // The result is on screen and the executor is free: whatever waits behind this command
@@ -3035,14 +3035,22 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     }
 
     /// <summary>
-    /// The operation stopped at a pulse the fatal-fault latch refused (8005-agv-onboard-hmi#191). The slot
-    /// executor puts <see cref="WireToGateSlotOperationExecutor.FatalFaultLatchedReason"/> on a slot for that
-    /// refusal and for nothing else, so the operator is told why no door opened instead of a bare "not done".
+    /// The run stopped at a pulse the fatal-fault latch refused (8005-agv-onboard-hmi#191). Both executors put
+    /// <see cref="WireToGateSlotOperationExecutor.FatalFaultLatchedReason"/> on a slot for that refusal and for
+    /// nothing else, so the operator is told why the doors stopped instead of a bare "not done".
     /// </summary>
-    private static bool RefusedByFatalFaultLatch(WireToGateOperationExecutionResult execution) =>
-        execution.SlotResults.Any(slot => slot.ReasonCodes.Contains(
+    private static bool RefusedByFatalFaultLatch(IReadOnlyList<WireToGateSlotExecutionResult> slotResults) =>
+        slotResults.Any(slot => slot.ReasonCodes.Contains(
             WireToGateSlotOperationExecutor.FatalFaultLatchedReason,
             StringComparer.Ordinal));
+
+    /// <summary>
+    /// The slots a stopped run left undone -- the refused one and those it never reached. A slot finished before
+    /// the latch is not named: saying it "stopped" would misstate a load or clearance that did complete (PR #198
+    /// review, low item 3).
+    /// </summary>
+    private static IReadOnlyList<int> NotCompletedSlots(IReadOnlyList<WireToGateSlotExecutionResult> slotResults) =>
+        [.. slotResults.Where(slot => slot.Outcome != "COMPLETED").Select(slot => slot.SlotNo)];
 
     private async Task SendOperationRejectedAsync(
         WireToGateSlotOperationCommand command,

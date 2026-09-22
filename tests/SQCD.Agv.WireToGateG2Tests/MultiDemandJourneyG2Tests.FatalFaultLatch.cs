@@ -63,11 +63,39 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(WireToGateRecoveryCheckpoint.SafeFinishReached, journal.ProvenRecoveryCheckpoint);
         Assert.Empty(journal.ActiveUnlockSlots);
         // 操作员看到的是「为什么没开门」，不是一句光秃秃的「操作未完成」。这一句在结果发出之前发布。
-        Assert.Contains(
-            harness.Events,
-            item => item.Kind == "OPERATION_PROGRESS"
-                && item.Message.Contains("本机已锁存严重安全故障", StringComparison.Ordinal));
+        AssertLatchGuidance(harness, "本机已锁存严重安全故障，1、2号仓停止开门；复核并复位后可申请恢复。");
         Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// 两仓装货，1 号仓在锁存前已经开着：操作员装好关门，1 号仓照常完成；轮到 2 号仓第一次开锁时被拒。提示只点名 2 号仓——
+    /// 说「1、2号仓停止开门」会把一个确实装好了的仓说成没装（PR #198 审查低项 3）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-03")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
+    public async Task ALatchMidwayThroughATwoSlotLoadKeepsTheFinishedSlotAndNamesOnlyTheOtherOne()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await StartLatchStopAsync(io, token);
+
+        await SendSlotCommandAsync(harness, DemandA, AttemptA, [1, 2]);
+        await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 1, token);
+        LatchNow(harness);
+        io.CloseDoor(0, cargo: true);
+        JsonElement? result = await WaitForResultOrPulseAsync(harness, io, AttemptA, pulsesBefore: 1, token);
+
+        Assert.Equal(1, io.UnlockCount);
+        JsonElement report = Assert.NotNull(result);
+        Assert.Equal("FAILED", report.GetProperty("overallOutcome").GetString());
+        JsonElement[] slots = [.. report.GetProperty("slotResults").EnumerateArray()];
+        Assert.Equal(
+            [(1, "COMPLETED"), (2, "NOT_STARTED")],
+            slots.Select(slot => (slot.GetProperty("slotNo").GetInt32(), slot.GetProperty("outcome").GetString())));
+        Assert.Equal(["VEHICLE_NOT_READY"], ReasonCodes(slots[1]));
+        AssertLatchGuidance(harness, "本机已锁存严重安全故障，2号仓停止开门；复核并复位后可申请恢复。");
     }
 
     /// <summary>
@@ -188,7 +216,8 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         Assert.Equal(2, io.UnlockCount);
         JsonElement result = Assert.Single(ReceivedPayloads(harness, "LoadCancellationResult"));
-        Assert.NotEqual("ALL_EMPTY", result.GetProperty("overallOutcome").GetString());
+        // FAILED，不只是「不是 ALL_EMPTY」：锁存拒绝的物理状态是读得出来的，错报成 UNKNOWN 也不该过（PR #198 审查）。
+        Assert.Equal("FAILED", result.GetProperty("overallOutcome").GetString());
         JsonElement[] slots = [.. result.GetProperty("slotResults").EnumerateArray()];
         JsonElement refused = Assert.Single(slots, slot => slot.GetProperty("slotNo").GetInt32() == 1);
         Assert.Equal("NOT_STARTED", refused.GetProperty("outcome").GetString());
@@ -197,6 +226,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         JsonElement handedOver = Assert.Single(slots, slot => slot.GetProperty("slotNo").GetInt32() == 2);
         Assert.Equal("COMPLETED", handedOver.GetProperty("outcome").GetString());
         await press;
+        // 恢复向量这一路的提示也说明是锁存，并且只点名没清空的 1 号仓（PR #198 审查低项 2、3）。
+        AssertLatchGuidance(harness, "本机已锁存严重安全故障，1号仓停止开门；复核并复位后可再次申请恢复。");
     }
 
     private static async Task<Harness> StartLatchStopAsync(
@@ -265,6 +296,12 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
         return found is { ValueKind: JsonValueKind.Object } ? found : null;
     }
+
+    /// <summary>操作面板上那一句，逐字断：它点名哪些仓就是这条判据的一部分。</summary>
+    private static void AssertLatchGuidance(Harness harness, string expected) =>
+        Assert.Contains(
+            harness.Events,
+            item => item.Kind == "OPERATION_PROGRESS" && item.Message == expected);
 
     private static string[] ReasonCodes(JsonElement slot) =>
         [.. slot.GetProperty("reasonCodes").EnumerateArray().Select(code => code.GetString()!)];
