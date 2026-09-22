@@ -1395,7 +1395,8 @@ public sealed partial class RecoveryVectorG2Tests
             bool nothingOnFile = false,
             IReadOnlyList<int>? seededForcedIsolation = null,
             bool lockerWaitTimesOut = false,
-            Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null)
+            Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
+            Func<bool>? fatalFaultLatched = null)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -1475,7 +1476,8 @@ public sealed partial class RecoveryVectorG2Tests
                         ResumeAfterRepairEnabled: true,
                         ProofVariable,
                         "MAINTENANCE_ADMINISTRATOR",
-                        "CONFIGURED_PROOF"));
+                        "CONFIGURED_PROOF"),
+                    fatalFaultLatched: fatalFaultLatched);
 
                 WireToGateRecoveryOperationContext loadContext = new(
                     CommandMessageId,

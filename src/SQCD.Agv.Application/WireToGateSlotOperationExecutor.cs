@@ -59,6 +59,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
     private readonly WireToGateSlotOperationExecutorOptions _options;
     private readonly Func<bool> _reopenPermitted;
+    private readonly Func<bool> _fatalFaultLatched;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private ActiveOperation? _activeOperation;
 
@@ -70,18 +71,27 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// control server's projection UNKNOWN (RIOT_EMERGENCY_NOT_OK) -- or while that projection is
     /// stale or unreadable. The first unlock of a slot is the server's command and is not gated here.
     /// </param>
+    /// <param name="fatalFaultLatched">
+    /// Asked immediately before every pulse, the first of a slot and each reopen: while a severe safety
+    /// fault is latched this executor opens no door (8005-agv-onboard-hmi#191, which also settles #84).
+    /// The latch lives on the onboard controller, which this executor does not reference, so it is
+    /// handed in as a question, the way <paramref name="reopenPermitted"/> is. Omitted, nothing is ever
+    /// latched -- only tests that do not exercise the latch omit it.
+    /// </param>
     public WireToGateSlotOperationExecutor(
         IIoModuleClient ioModule,
         IWireToGateJournal journal,
         IClock clock,
         WireToGateSlotOperationExecutorOptions options,
-        Func<bool> reopenPermitted)
+        Func<bool> reopenPermitted,
+        Func<bool>? fatalFaultLatched = null)
     {
         _ioModule = ioModule;
         _journal = journal;
         _clock = clock;
         _options = options;
         _reopenPermitted = reopenPermitted ?? throw new ArgumentNullException(nameof(reopenPermitted));
+        _fatalFaultLatched = fatalFaultLatched ?? (() => false);
         ValidateOptions(options);
     }
 
@@ -195,6 +205,15 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         catch (InvalidDataException exception)
         {
             throw new WireToGateResumeNotStartedException(exception.Message, exception);
+        }
+
+        // A resume is a new decision to open doors, so a latch refuses it whole, before anything is
+        // written: the server closes the resume on the rejection and the operator asks again once the
+        // latch is lifted (8005-agv-onboard-hmi#191). The check in front of each pulse still stands for a
+        // latch that arrives after this one.
+        if (_fatalFaultLatched())
+        {
+            throw new WireToGateResumeNotStartedException("FATAL_FAULT_LATCHED");
         }
 
         await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -818,6 +837,18 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             {
                 throw;
             }
+            catch (FatalFaultLatchedException latched)
+            {
+                return await SettleRefusedByLatchAsync(
+                    command,
+                    context,
+                    existingState,
+                    completed,
+                    results,
+                    progress,
+                    physicalSlot,
+                    neverOpened: !latched.Reopen && firstRun).ConfigureAwait(false);
+            }
             catch (Exception exception) when (
                 exception is IOException
                     or TimeoutException
@@ -898,6 +929,74 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     }
 
     /// <summary>
+    /// Ends the operation at a pulse the fatal-fault latch refused (8005-agv-onboard-hmi#191). The
+    /// operation stops, it is not held: <c>ClearFatalFaultAsync</c> refuses while an operation is in
+    /// flight, so an executor waiting here for the latch to lift would wait for ever.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>FAILED, not UNKNOWN.</b> The door is shut and locked with the output reset -- a first pulse is
+    /// only reached over a slot <see cref="ValidateBeforeOperation"/> found so, and a reopen only after
+    /// the door was read shut -- so nothing about the slot is in doubt, and ADR-cross-0058 decision 2
+    /// keeps UNKNOWN for readings that cannot be trusted. ADR-cross-0016 calls a refusal on a safety
+    /// condition an execution failure. The server sends every result short of COMPLETED to
+    /// RecoveryRequired except a FAILED carrying <c>OPERATOR_TIMEOUT</c> (<c>DeterminateLoadFailure</c>),
+    /// which this never carries.
+    /// </para>
+    /// <para>
+    /// The refused slot is <c>NOT_STARTED</c> when this run never pulsed it, otherwise <c>FAILED</c>; it
+    /// carries the reason, the slots after it are <c>NOT_STARTED</c> with none (decision 6). The journal
+    /// ends at the safe finish with nothing active, which keeps the attempt unsettled and resumable by
+    /// <c>RESUME_AFTER_REPAIR</c> once the latch is lifted.
+    /// </para>
+    /// </remarks>
+    private async Task<WireToGateOperationExecutionResult> SettleRefusedByLatchAsync(
+        WireToGateSlotOperationCommand command,
+        WireToGateRecoveryOperationContext context,
+        WireToGateRecoveryState existingState,
+        List<int> completed,
+        List<WireToGateSlotExecutionResult> results,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
+        int physicalSlot,
+        bool neverOpened)
+    {
+        IoSnapshot snapshot = _ioModule.CurrentSnapshot;
+        UpsertResult(
+            results,
+            CreateSlotResult(
+                ReadLocker(snapshot, physicalSlot - 1),
+                neverOpened ? "NOT_STARTED" : "FAILED",
+                [FatalFaultLatchedReason]));
+        foreach (int notStarted in command.Slots
+            .Where(slot => slot != physicalSlot && !completed.Contains(slot)))
+        {
+            UpsertResult(
+                results,
+                CreateSlotResult(ReadLocker(snapshot, notStarted - 1), "NOT_STARTED", []));
+        }
+
+        bool safeFinish = neverOpened || IsSafeFinish(snapshot, physicalSlot - 1);
+        WireToGateRecoveryCheckpoint checkpoint = safeFinish
+            ? WireToGateRecoveryCheckpoint.SafeFinishReached
+            : WireToGateRecoveryCheckpoint.ActiveUnlockSet;
+        IReadOnlyList<int> active = safeFinish ? [] : [physicalSlot];
+        await WriteCheckpointAsync(
+            context,
+            checkpoint,
+            active,
+            completed,
+            results,
+            existingState,
+            CancellationToken.None).ConfigureAwait(false);
+        await SendProgressAsync(
+                progress,
+                new(safeFinish ? "SAFE_FINISH" : "PAUSED", active, completed),
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        return CreateResult(command, "FAILED", results, checkpoint);
+    }
+
+    /// <summary>
     /// Drives one slot to its target state (ADR-cross-0058 decision 1). A door shut over the opposite
     /// occupancy -- loading without putting a basket in, unloading without taking it out -- gets a
     /// fresh unlock pulse and another prompt: not a failure, not recovery, and no retry limit
@@ -958,6 +1057,10 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     progress,
                     new("UNLOCKING", [physicalSlot], completed, promptRound, cause),
                     cancellationToken).ConfigureAwait(false);
+                // After the progress send, not before it: that send waits on the network, and a latch
+                // arriving during it is exactly the window this check exists for. Nothing is awaited
+                // between here and the pulse.
+                ThrowIfFatalFaultLatched(reopen: pulseRequested);
                 pulseRequested = true;
                 await _ioModule.PulseUnlockAsync(slotIndex, cancellationToken).ConfigureAwait(false);
                 // Both are hardware responses in milliseconds. Missing either one means the lock
@@ -1350,6 +1453,36 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// opened by the call that threw it. The message is the reason code, as for the other door checks.
     /// </summary>
     private sealed class RefusedBeforeFirstPulseException(string reasonCode) : Exception(reasonCode);
+
+    /// <summary>
+    /// The code a latch refusal carries on the wire. Protocol v2.0.0 has no code for "the onboard latched
+    /// a severe safety fault"; <c>VEHICLE_NOT_READY</c> is the registered one the vehicle already uses for
+    /// refusing door IO on its own state (onboard-hmi#123). A dedicated code is on the v3.0.0 list
+    /// (program#115).
+    /// </summary>
+    public const string FatalFaultLatchedReason = "VEHICLE_NOT_READY";
+
+    /// <summary>
+    /// The latch refused the pulse about to be sent. <see cref="Reopen"/> says whether this call had
+    /// already pulsed the slot.
+    /// </summary>
+    private sealed class FatalFaultLatchedException(bool reopen) : Exception("FATAL_FAULT_LATCHED")
+    {
+        public bool Reopen { get; } = reopen;
+    }
+
+    /// <summary>
+    /// The latch check in front of every pulse (8005-agv-onboard-hmi#191). Named as the controller's own
+    /// is, because <c>FatalFaultScopeArchitectureTests</c> looks for this name within a few lines above
+    /// each registered-as-guarded pulse.
+    /// </summary>
+    private void ThrowIfFatalFaultLatched(bool reopen)
+    {
+        if (_fatalFaultLatched())
+        {
+            throw new FatalFaultLatchedException(reopen);
+        }
+    }
 
     private static string MapFailureReason(Exception exception) => exception switch
     {

@@ -15,18 +15,26 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
     private readonly IWireToGateJournal _journal;
     private readonly IClock _clock;
     private readonly WireToGateSlotOperationExecutorOptions _options;
+    private readonly Func<bool> _fatalFaultLatched;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
 
+    /// <param name="fatalFaultLatched">
+    /// Asked immediately before every pulse: while a severe safety fault is latched no vector opens a
+    /// door (8005-agv-onboard-hmi#191). A door already standing open -- one an aborted load handed over --
+    /// is still waited on, since waiting opens nothing. Omitted, nothing is ever latched.
+    /// </param>
     public WireToGateRecoveryVectorExecutor(
         IIoModuleClient ioModule,
         IWireToGateJournal journal,
         IClock clock,
-        WireToGateSlotOperationExecutorOptions options)
+        WireToGateSlotOperationExecutorOptions options,
+        Func<bool>? fatalFaultLatched = null)
     {
         _ioModule = ioModule ?? throw new ArgumentNullException(nameof(ioModule));
         _journal = journal ?? throw new ArgumentNullException(nameof(journal));
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         _options = options;
+        _fatalFaultLatched = fatalFaultLatched ?? (() => false);
         ValidateOptions(options);
     }
 
@@ -507,6 +515,8 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                         throw new InvalidDataException(otherDoor);
                     }
 
+                    // Nothing is awaited between this check and the pulse (8005-agv-onboard-hmi#191).
+                    ThrowIfFatalFaultLatched();
                     pulseSent = true;
                     await _ioModule.PulseUnlockAsync(slotIndex, cancellationToken).ConfigureAwait(false);
                     LockerSnapshot unlocked = await _ioModule.WaitForLockerAsync(
@@ -562,6 +572,48 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             catch (OperationCanceledException)
             {
                 throw;
+            }
+            catch (FatalFaultLatchedException)
+            {
+                // The latch refused this slot's pulse (8005-agv-onboard-hmi#191): it was not opened by
+                // this vector and nothing about it is in doubt, so it is NOT_STARTED with the reason, as
+                // the refusal before any unlock reports it (onboard-hmi#123), and nothing stays active.
+                // The vector stops here and reports FAILED -- never ALL_EMPTY, HANDED_OFF or COMPLETED --
+                // which the server takes to RecoveryRequired; stopping rather than waiting for the latch
+                // to lift is what lets ClearFatalFaultAsync, which refuses while a vector runs, lift it.
+                IoSnapshot refusalSnapshot = _ioModule.CurrentSnapshot;
+                UpsertResult(
+                    results,
+                    CreateSlotResult(
+                        ReadPhysicalSlot(refusalSnapshot, physicalSlot),
+                        "NOT_STARTED",
+                        [FatalFaultLatchedReason]));
+                foreach (int notStarted in context.Slots
+                    .Where(slot => slot != physicalSlot && !completed.Contains(slot)))
+                {
+                    UpsertResult(
+                        results,
+                        CreateSlotResult(ReadPhysicalSlot(refusalSnapshot, notStarted), "NOT_STARTED", []));
+                }
+
+                await WriteVectorStateAsync(
+                    context,
+                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                    [],
+                    completed,
+                    results,
+                    CancellationToken.None).ConfigureAwait(false);
+                await SendProgressAsync(progress, "PAUSED", [], completed, CancellationToken.None)
+                    .ConfigureAwait(false);
+                DateTimeOffset refusedAt = await EnsureResultObservedAtAsync(
+                    context,
+                    CancellationToken.None).ConfigureAwait(false);
+                return CreateResult(
+                    context,
+                    "FAILED",
+                    results,
+                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                    refusedAt);
             }
             catch (Exception exception) when (
                 exception is IOException or TimeoutException or InvalidDataException)
@@ -950,6 +1002,23 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         else
         {
             results.Add(result);
+        }
+    }
+
+    /// <summary>The code a latch refusal carries; see <see cref="WireToGateSlotOperationExecutor"/>.</summary>
+    private const string FatalFaultLatchedReason = WireToGateSlotOperationExecutor.FatalFaultLatchedReason;
+
+    private sealed class FatalFaultLatchedException() : Exception("FATAL_FAULT_LATCHED");
+
+    /// <summary>
+    /// The latch check in front of the pulse (8005-agv-onboard-hmi#191), under the name
+    /// <c>FatalFaultScopeArchitectureTests</c> looks for above each registered-as-guarded pulse.
+    /// </summary>
+    private void ThrowIfFatalFaultLatched()
+    {
+        if (_fatalFaultLatched())
+        {
+            throw new FatalFaultLatchedException();
         }
     }
 

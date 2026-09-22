@@ -190,12 +190,17 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             session.Journal,
             clock,
             executorOptions,
-            IsReopenPermitted);
+            IsReopenPermitted,
+            _fatalFaultLatched);
+        // Both executors ask the latch themselves, immediately before each pulse
+        // (8005-agv-onboard-hmi#191): the checks on this side run when a press is made or a command
+        // arrives, and a latch can come after either.
         _vectorExecutor = new WireToGateRecoveryVectorExecutor(
             ioModule,
             session.Journal,
             clock,
-            executorOptions);
+            executorOptions,
+            _fatalFaultLatched);
 
         // Here rather than in Start: the server replays an unacknowledged CLOSED right after the
         // handshake, and a CLOSED read with no handler in place is acknowledged with no fallback run
@@ -2531,7 +2536,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     : WireToGateHmiOperationStage.RecoveryRequired,
                 completedSuccessfully
                     ? $"{FormatSlots(command.Slots)}操作完成，正在上报结果。"
-                    : $"{FormatSlots(command.Slots)}操作未完成，需要恢复处理。",
+                    : RefusedByFatalFaultLatch(execution)
+                        ? $"本机已锁存严重安全故障，{FormatSlots(command.Slots)}没有再开门；复核并复位后可申请恢复。"
+                        : $"{FormatSlots(command.Slots)}操作未完成，需要恢复处理。",
                 "final");
             // The result is on screen and the executor is free: whatever waits behind this command
             // may start and say so. Reporting the result takes a round trip to the server, and
@@ -3027,6 +3034,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// The operation stopped at a pulse the fatal-fault latch refused (8005-agv-onboard-hmi#191). The slot
+    /// executor puts <see cref="WireToGateSlotOperationExecutor.FatalFaultLatchedReason"/> on a slot for that
+    /// refusal and for nothing else, so the operator is told why no door opened instead of a bare "not done".
+    /// </summary>
+    private static bool RefusedByFatalFaultLatch(WireToGateOperationExecutionResult execution) =>
+        execution.SlotResults.Any(slot => slot.ReasonCodes.Contains(
+            WireToGateSlotOperationExecutor.FatalFaultLatchedReason,
+            StringComparer.Ordinal));
+
     private async Task SendOperationRejectedAsync(
         WireToGateSlotOperationCommand command,
         string reasonCode,
@@ -3289,6 +3306,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return "SLOT_OPERATION_CONFLICT";
             case "SLOT_SET_INVALID":
                 return "SLOT_SET_INVALID";
+            case "FATAL_FAULT_LATCHED":
+                // No protocol code says "latched" (program#115 has it for v3.0.0); the vehicle refuses door
+                // IO on its own state with VEHICLE_NOT_READY, as the slot and vector executors do.
+                return "VEHICLE_NOT_READY";
             case "RECOVERY_OPERATION_CONTEXT_MISSING":
                 // Nothing on file to resume: the same answer the safety gate gives an unpersisted state.
                 return "RECOVERY_SESSION_NOT_OPEN";
