@@ -320,6 +320,9 @@ public partial class App : System.Windows.Application, IDisposable
             _ioModule.ConnectionChanged += (_, _) => _alarmMonitor?.RequestEvaluation();
             _ioModule.SnapshotChanged += (_, _) => _alarmMonitor?.RequestEvaluation();
             _controller.StateChanged += (_, _) => _alarmMonitor?.RequestEvaluation();
+            // Latching and clearing a fatal fault both raise StateChanged; the departure safety reported to the
+            // server has to follow the latch at once (8005-agv-onboard-hmi#197).
+            _controller.StateChanged += (_, _) => _wireToGateBusiness?.RefreshSafetyAfterFatalFaultLatchChange();
             if (_wireToGate is not null)
             {
                 _wireToGate.StateChanged += (_, _) => _alarmMonitor?.RequestEvaluation();

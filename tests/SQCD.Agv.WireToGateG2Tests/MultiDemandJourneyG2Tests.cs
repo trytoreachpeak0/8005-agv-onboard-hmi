@@ -413,6 +413,8 @@ public sealed partial class MultiDemandJourneyG2Tests
                 // 「锁存之后扫码真的被拒」——而那正是故障横幅对操作员说的那句话。
                 fatalFaultLatched: () => controller.IsFatalFaultLatched);
             Harness harness = new(server, io, journalPath, session, business, controller, viewModel);
+            // As the App wires it (8005-agv-onboard-hmi#197).
+            controller.StateChanged += (_, _) => business.RefreshSafetyAfterFatalFaultLatchChange();
 
             session.StateChanged += (_, args) => harness.OnUiThread(() =>
             {

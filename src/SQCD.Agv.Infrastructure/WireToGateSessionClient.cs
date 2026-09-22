@@ -164,6 +164,20 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     public Func<WireToGateExceptionRecoverySessionSnapshot, CancellationToken, Task<bool>>? ClosedRecoverySessionHandler { get; set; }
 
     /// <summary>
+    /// Whether a fatal safety fault is latched on this vehicle, asked every time this client builds a safety
+    /// summary -- the handshake's full <c>SafetyStateSnapshot</c> and the answer to a mid-session snapshot request
+    /// (8005-agv-onboard-hmi#197). Null reads as "not latched".
+    /// </summary>
+    /// <remarks>
+    /// Set by <c>WireToGateBusinessService</c> in its constructor to the same question it passes its two executors,
+    /// so the summary this client sends and the <c>SafetyStateChanged</c> the business service sends cannot disagree
+    /// about the latch. A property rather than a constructor argument for the reason
+    /// <see cref="ClosedRecoverySessionHandler"/> is one: the business service is built after the session, and
+    /// before it is started.
+    /// </remarks>
+    public Func<bool>? FatalFaultLatched { get; set; }
+
+    /// <summary>
     /// Sends one operator entry. Every call is a new entry and gets a messageId of its own.
     /// </summary>
     /// <remarks>
@@ -3516,7 +3530,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             _clock.Now,
             _ioSnapshotMaxAge,
             _vehicleSafetyMaxAge,
-            _vehicleSafetyClockSkewTolerance);
+            _vehicleSafetyClockSkewTolerance,
+            FatalFaultLatched?.Invoke() == true);
 
     private async Task OpenConnectionAsync(CancellationToken cancellationToken)
     {
