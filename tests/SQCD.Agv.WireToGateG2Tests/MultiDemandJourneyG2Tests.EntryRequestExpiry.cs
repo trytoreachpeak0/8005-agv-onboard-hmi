@@ -194,6 +194,18 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         if (!requestFirst)
         {
+            // The entry kept open here has to be one that works, not only a live button (PR #200 review,
+            // the user's decision of 2026-09-22 on #199): A, still on the stop, scanned on screen against
+            // the revision-1 request, leaves the vehicle and is not refused.
+            harness.ViewModel.ScanText = "SUBLOT-A";
+            harness.ViewModel.ScannerSubmitCommand.Execute(null);
+            JsonElement submitted = await harness.WaitForSubmissionAsync(token);
+            Assert.Equal("SUBLOT-A", submitted.GetProperty("sublot").GetString());
+            Assert.Equal(1, submitted.GetProperty("worklistRevision").GetInt64());
+            Assert.DoesNotContain(
+                harness.Server.SentEnvelopes,
+                envelope => envelope.MessageType == "SublotRejected");
+
             await SendEntryRequestAsync(harness, revision: 2, SublotAOnly);
             await harness.WaitUntilAsync(
                 () => harness.Business.ExpectedSublots is ["SUBLOT-A"],

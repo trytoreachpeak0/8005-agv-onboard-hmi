@@ -189,10 +189,17 @@ public sealed partial class MultiDemandJourneyG2Tests
 
     /// <summary>
     /// The operator has the entry request in hand; before the sublot is submitted another demand
-    /// finishes and a worklist of a later revision arrives. The entry is refused locally as
-    /// <c>SUBLOT_NOT_IN_WORKLIST</c> and nothing is sent: the request no longer belongs to the
-    /// worklist in front of the vehicle.
+    /// finishes and a worklist of a later revision arrives. An entry for the demand that has left the
+    /// stop is refused locally as <c>SUBLOT_NOT_IN_WORKLIST</c> and nothing is sent.
     /// </summary>
+    /// <remarks>
+    /// Until PR #200 (8005-agv-onboard-hmi#199) this scanned B, the demand still on the stop, and
+    /// expected a refusal because the request was a revision behind the worklist. That rule was dropped:
+    /// the server accepts an entry against any revision the stop has issued, and the user decided the
+    /// request is kept across a same-stop revision advance, so B now goes through
+    /// (<c>AScanAfterASameStopRevisionAdvanceReachesTheServerAgainstTheRequestInHand</c>). What still has
+    /// to be refused here is A: named by the request, gone from the worklist.
+    /// </remarks>
     [Fact]
     public async Task AWorklistRevisionArrivingBeforeTheEntryIsSubmittedRefusesItLocally()
     {
@@ -224,7 +231,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
 
         InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => harness.Business.SubmitSublotAsync("SUBLOT-B", "SCANNER", token));
+            () => harness.Business.SubmitSublotAsync("SUBLOT-A", "SCANNER", token));
 
         Assert.Equal("SUBLOT_NOT_IN_WORKLIST", refused.Message);
         await Task.Delay(200, token);
@@ -344,7 +351,10 @@ public sealed partial class MultiDemandJourneyG2Tests
         // 录入框还在（CanSubmitSublot 不查清单版本），操作员照样扫得下去 -- 这正是 243aa66 的残留。
         Assert.True(harness.ViewModel.CanSubmit);
 
-        harness.ViewModel.ScanText = "SUBLOT-B";
+        // 扫的是已离站的 A。PR #200（hmi#199）之前扫的是仍在站上的 B，靠「请求落后清单一版」被拒；
+        // 那条规则已取消，B 现在会按第 1 版请求送达服务端。这条要守的是「本地拒绝是提示、不锁存」，
+        // 所以换成一个在新规则下仍然必被本地拒绝的子批。
+        harness.ViewModel.ScanText = "SUBLOT-A";
         harness.ViewModel.ScannerSubmitCommand.Execute(null);
 
         await harness.WaitUntilAsync(
