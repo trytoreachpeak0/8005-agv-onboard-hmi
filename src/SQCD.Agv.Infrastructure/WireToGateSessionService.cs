@@ -112,6 +112,13 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         set => _client.ClosedRecoverySessionHandler = value;
     }
 
+    /// <inheritdoc cref="WireToGateSessionClient.FatalFaultLatched"/>
+    public Func<bool>? FatalFaultLatched
+    {
+        get => _client.FatalFaultLatched;
+        set => _client.FatalFaultLatched = value;
+    }
+
     public Task<string> SendSublotSubmittedAsync(
         string operationSessionId,
         string stationId,

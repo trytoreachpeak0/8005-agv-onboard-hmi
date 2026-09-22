@@ -206,7 +206,29 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         // handshake, and a CLOSED read with no handler in place is acknowledged with no fallback run
         // (onboard-hmi#129). The fallback needs the journal only.
         session.ClosedRecoverySessionHandler = ForgetClosedRecoverySessionAsync;
+        // The session builds the handshake's safety summary itself; it must see the same latch this service
+        // reports in SafetyStateChanged (8005-agv-onboard-hmi#197).
+        session.FatalFaultLatched = _fatalFaultLatched;
     }
+
+    /// <summary>
+    /// The fatal-fault latch may have changed: judge the safety state again and report it if it differs
+    /// (8005-agv-onboard-hmi#197). The App calls this on every <c>OnboardController.StateChanged</c>, which the
+    /// controller raises when it latches and when it clears; a call that changes nothing sends nothing, because the
+    /// report is deduplicated on its content.
+    /// </summary>
+    /// <remarks>
+    /// This service only has a question to ask about the latch, not an event, and nothing else re-evaluates on a
+    /// latch: today the IO module happens to publish a snapshot every poll, which would carry the change within one
+    /// poll, but that is how that module is written, not a promise, and a module that publishes on change only would
+    /// leave a latched vehicle reporting safe until some door moved.
+    /// <para>
+    /// Handed to the thread pool rather than started here. The report runs synchronously up to its first real wait,
+    /// which is past a journal write and a socket write, and the controller raises StateChanged on whatever thread
+    /// latched: for <c>UI_COMMAND_FAILED</c> that is the UI thread.
+    /// </para>
+    /// </remarks>
+    public void RefreshSafetyAfterFatalFaultLatchChange() => _ = Task.Run(RequestSafetyStateChange);
 
     public event EventHandler<ValueChangedEventArgs<WireToGateSublotEntryRequest>>? SublotEntryRequested;
 
@@ -3524,7 +3546,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             observedAt,
             _ioSnapshotMaxAge,
             _vehicleSafetyMaxAge,
-            _vehicleSafetyClockSkewTolerance);
+            _vehicleSafetyClockSkewTolerance,
+            _fatalFaultLatched());
         string signature = JsonSerializer.Serialize(
             new
             {

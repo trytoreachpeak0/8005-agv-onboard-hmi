@@ -2328,7 +2328,8 @@ public sealed partial class WireToGateG2Tests
                 rebasedAt,
                 TimeSpan.FromSeconds(30),
                 TimeSpan.FromSeconds(5),
-                TimeSpan.FromMilliseconds(500)),
+                TimeSpan.FromMilliseconds(500),
+                fatalFaultLatched: false),
             [1, 2, 3, 4, 5, 6, 7, 8],
             testToken);
         business.Start();
