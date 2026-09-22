@@ -8,7 +8,14 @@ namespace SQCD.Agv.UnitTests;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>答案：只有「控制器自己发布的快照」，也就是显示。一个物理动作都不在里面。</b>
+/// <b>答案（#171 时）：只有「控制器自己发布的快照」，也就是显示。一个物理动作都不在里面。</b>
+/// </para>
+/// <para>
+/// <b>#191 之后（2026-09-22）：两个执行器的每一次开锁都受锁存约束。</b>控制器这个字段本身仍然只约束显示，
+/// 但它的值经 <c>IsFatalFaultLatched</c> 以 <c>Func&lt;bool&gt;</c> 注入业务服务，再注入两个执行器，每一次
+/// <c>PulseUnlockAsync</c> 紧前面问一次。行为判据在 <c>MultiDemandJourneyG2Tests.FatalFaultLatch</c>、
+/// <c>RecoveryVectorG2Tests.FatalFaultLatch</c> 与执行器单测里，断的都是开门次数；下表只守「每个开门点都登记了、
+/// 登记为受约束的前面真有那一行」。
 /// </para>
 /// <para>
 /// <c>_fatalFault</c> 在 <c>OnboardController.cs</c> 的读点有五个，其中四个在 <c>SubmitScanAsync</c>
@@ -23,7 +30,7 @@ namespace SQCD.Agv.UnitTests;
 /// 作者必须回答「它受不受锁存约束」。
 /// </para>
 /// <para>
-/// <b>第四个开门点今天被挡住的方式，是界面这一层的恢复入口闸门</b>：<c>MainViewModel</c> 两条刷新路径在锁存期间把
+/// <b>#191 之前，恢复向量执行器那个开门点被挡住的方式只有界面这一层的恢复入口闸门</b>（现在它们仍在，管的是「按下时」）：<c>MainViewModel</c> 两条刷新路径在锁存期间把
 /// 8 个恢复入口置 false，取消装货只剩扫码之前那一半（它不开门，onboard-hmi#174）；在途的取消装货另由
 /// <c>WireToGateBusinessService.RefuseDoorOpeningCancellationWhileLatched</c> 在按下时再拒一次。也就是说那些闸门承担着一项安全职责。
 /// 它那里有一条注释指回本文件；删它之前先读那条注释。**那九个入口自己的写入路径由
@@ -70,17 +77,17 @@ public sealed class FatalFaultScopeArchitectureTests
             "MVP 扫码装卸。受约束，但 v2 下 SubmitScanAsync 从不被调用，所以这条约束在 v2 上是空转的。"),
         new(
             "src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs",
-            GuardedByFatalFault: false,
-            "服务端下发的 SlotOperationCommand。执行器直接持 IIoModuleClient，不经过 OnboardController"
-            + "——这是结构，不是「今天恰好没有引用」。要让锁存挡住它，需要协议层的「车拒绝执行」结果"
-            + "形状（onboard-hmi#84）。"),
+            GuardedByFatalFault: true,
+            "服务端下发的 SlotOperationCommand 与 RESUME_AFTER_REPAIR 续跑。执行器不引用控制器，锁存以 Func<bool> 注入，"
+            + "每一次开锁（首次与重开）紧前面 ThrowIfFatalFaultLatched；被拒按 FAILED 上报，续跑在入口整条拒掉"
+            + "（onboard-hmi#191，一并解决 #84）。"),
         new(
             "src/SQCD.Agv.Application/WireToGateRecoveryVectorExecutor.cs",
-            GuardedByFatalFault: false,
-            "恢复向量：补偿清空、修正装货、强制机械取出，以及在途的取消装货。操作员自己在 HMI 上按出来的，同样绕过控制器。"
-            + "挡住它的是界面这一层：MainViewModel 两条刷新路径在故障态把会开门的入口置 false"
-            + "（取消装货只留扫码之前那一半，那一半授权时仓位集为空、这里一扇门都不开，onboard-hmi#174），"
-            + "在途的取消装货在按下时还有 RefuseDoorOpeningCancellationWhileLatched 再拒一次——这些闸门因此承担着一项安全职责。")
+            GuardedByFatalFault: true,
+            "恢复向量：补偿清空、故障货物交接、修正装货，以及在途的取消装货。同样以 Func<bool> 注入锁存，开锁紧前面"
+            + "ThrowIfFatalFaultLatched；被拒的那一仓 NOT_STARTED、向量报 FAILED，服务端据此进 RecoveryRequired"
+            + "（onboard-hmi#191）。界面层那道恢复入口闸门与 RefuseDoorOpeningCancellationWhileLatched 仍在，"
+            + "但它们只管「按下时」，承担「开门那一刻」的是这里。")
     ];
 
     /// <summary>
@@ -134,35 +141,35 @@ public sealed class FatalFaultScopeArchitectureTests
     }
 
     /// <summary>
-    /// 不受约束的那两处，**不受约束是结构决定的，不是今天恰好如此**：那两个执行器对
-    /// <c>OnboardController</c> 零引用，所以锁存在那条路上没有任何可以生效的地方。
+    /// 两个执行器看锁存，只经构造时注入的那个问题（<c>Func&lt;bool&gt;</c>），不经 <c>OnboardController</c>
+    /// （8005-agv-onboard-hmi#191）。
     /// </summary>
     /// <remarks>
     /// <para>
-    /// 这一条是把「这是结构，不是今天恰好没有引用」那句注释变成可执行的。哪天有人给执行器接上
-    /// 控制器，这里会红——那不一定是错的，但它是一次要写下来的架构变化，不该悄悄发生。
+    /// 这一条原来守的是「不受约束的那两处看不到控制器」——那是它们不受约束的理由。#191 之后两处都受约束了，原来的
+    /// 写法筛出来的集合是空的，会恒绿。它守的那件事本身仍然值得守：执行器在 <c>Application</c> 层、会被同一台车上的两条
+    /// 业务路径复用，锁存是控制器的状态；让执行器直接引用控制器，等于把「锁存从哪里来」这个装配决定写死进执行器。
+    /// 所以现在它对两个执行器直接断言，不再从表里筛。
     /// </para>
     /// <para>
-    /// <b>判据是文本包含，不是符号引用</b>：在那两个文件里写一句提到 <c>OnboardController</c> 的
-    /// 注释，这里也会红。这个近似的方向是保守的（宁可多红一次让人来看），而换成真正的符号分析要
-    /// 引入编译器 API——本仓的其它源码级门禁都没走那条路。知道它会这样，别在那两个文件里顺手写
-    /// 这个类名。
+    /// <b>判据是文本包含，不是符号引用</b>：在那两个文件里写一句提到这个类名的注释，这里也会红。这个近似的方向是保守的
+    /// （宁可多红一次让人来看）。知道它会这样，别在那两个文件里顺手写这个类名。
     /// </para>
     /// </remarks>
-    [Fact]
-    public void TheUnguardedSitesCannotSeeTheControllerAtAll()
+    [Theory]
+    [InlineData("src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs")]
+    [InlineData("src/SQCD.Agv.Application/WireToGateRecoveryVectorExecutor.cs")]
+    public void TheExecutorsSeeTheLatchOnlyThroughTheInjectedQuestion(string path)
     {
         string root = ProtocolIdentityArchitectureTests.RepositoryRoot();
-        foreach (UnlockSite registered in UnlockSites.Where(site => !site.GuardedByFatalFault))
-        {
-            string source = File.ReadAllText(Path.Combine(
-                root, registered.Path.Replace('/', Path.DirectorySeparatorChar)));
+        string source = File.ReadAllText(Path.Combine(root, path.Replace('/', Path.DirectorySeparatorChar)));
 
-            Assert.False(
-                source.Contains("OnboardController", StringComparison.Ordinal),
-                $"{registered.Path} 现在引用了 OnboardController。表里说这一处不受严重安全故障锁存"
-                + "约束，而那条理由是「它根本看不到控制器」——理由没了，结论要重新判，不是照旧。");
-        }
+        Assert.Contains(path, UnlockSites.Select(site => site.Path));
+        Assert.False(
+            source.Contains("OnboardController", StringComparison.Ordinal),
+            $"{path} 现在引用了 OnboardController。锁存应当以构造参数注入（与 App 同一根线），"
+            + "改成直接引用是一次要写下来的架构变化，不该悄悄发生。");
+        Assert.Contains("_fatalFaultLatched()", source, StringComparison.Ordinal);
     }
 
     /// <summary>

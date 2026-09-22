@@ -642,6 +642,57 @@ public sealed class WireToGateRecoveryVectorExecutorTests
         Assert.All(fixture.Io.Pulses, pulse => Assert.True(pulse.OtherDoorsShut));
     }
 
+    /// <summary>
+    /// 修正装货没有 G2 能走到它的开锁（替身不发 <c>LoadCorrectionCommand</c>），所以锁存在这一层断
+    /// （8005-agv-onboard-hmi#191）。锁存发生在 1 号仓那一次开锁之后：1 号仓照常修正完，2 号仓那一次开锁被拒，
+    /// 3 号仓没轮到。修复之前三扇门都开。
+    /// </summary>
+    /// <remarks>
+    /// 锁存在 <c>BeforePulse</c> 里翻起来，那是 1 号仓开锁之内、检查之后——下一次检查一定读到它，与时序无关。结果是
+    /// <c>FAILED</c> 而不是 <c>COMPLETED</c>：业务层照常把它发出去，服务端据此进 RecoveryRequired，不会停在等结果上。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CORRECTION")]
+    public async Task ALatchArrivingMidCorrectionStopsItBeforeTheNextPulse()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        bool latched = false;
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            [true, true, true],
+            correction: true,
+            cancellationToken: token,
+            fatalFaultLatched: () => Volatile.Read(ref latched));
+        fixture.Io.BeforePulse = slot =>
+        {
+            if (slot == 1)
+            {
+                Volatile.Write(ref latched, true);
+            }
+
+            return Task.CompletedTask;
+        };
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteCorrectionAsync(
+            CreateContext(
+                WireToGateRecoveryVectorTypes.LoadCorrection,
+                "1c1c1c1c-1c1c-4c1c-8c1c-1c1c1c1c1c1c",
+                [1, 2, 3]),
+            null,
+            token);
+
+        Assert.Equal([1], fixture.Io.Pulses.Select(pulse => pulse.Slot));
+        Assert.Equal("FAILED", result.OverallOutcome);
+        Assert.Equal(
+            [("COMPLETED", 1), ("NOT_STARTED", 2), ("NOT_STARTED", 3)],
+            result.SlotResults.OrderBy(slot => slot.SlotNo).Select(slot => (slot.Outcome, slot.SlotNo)));
+        Assert.Equal(
+            ["VEHICLE_NOT_READY"],
+            result.SlotResults.Single(slot => slot.SlotNo == 2).ReasonCodes);
+        Assert.Empty(result.SlotResults.Single(slot => slot.SlotNo == 3).ReasonCodes);
+        Assert.Empty((await fixture.Journal.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
+    }
+
     public static TheoryData<string, string> OtherDoorConditions => new()
     {
         { "open", "LOCK_NOT_CLOSED" },
@@ -950,6 +1001,7 @@ public sealed class WireToGateRecoveryVectorExecutorTests
             IReadOnlyList<bool> cargo,
             bool correction = false,
             int? failOnWaitCall = null,
+            Func<bool>? fatalFaultLatched = null,
             CancellationToken cancellationToken = default)
         {
             string directory = Path.Combine(
@@ -970,7 +1022,8 @@ public sealed class WireToGateRecoveryVectorExecutorTests
                     TimeSpan.FromSeconds(1),
                     TimeSpan.FromSeconds(5),
                     TimeSpan.FromMilliseconds(1),
-                    TimeSpan.FromSeconds(1)));
+                    TimeSpan.FromSeconds(1)),
+                fatalFaultLatched);
             return new TestFixture(clock, io, journal, executor);
         }
 

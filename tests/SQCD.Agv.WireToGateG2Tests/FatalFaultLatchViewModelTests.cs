@@ -450,17 +450,22 @@ public sealed class FatalFaultLatchViewModelTests
     /// 锁存之后按钮点不下去，**并且**直接调提交路径也被拒。两条都要，删哪一条都会留下一个洞。
     /// </para>
     /// <para>
-    /// 「仓门仍可能自动打开」那半句跟着 <c>onboard-hmi#84</c> 走：那张票让锁存真的挡住服务端下发
-    /// 的开锁之后，它就不再准确，届时这条测试与两句文案一起改。
+    /// 「仓门仍可能自动打开」那半句原先跟着 <c>onboard-hmi#84</c> 走；#191（一并解决 #84）让锁存挡住两个执行器的
+    /// 每一次开锁之后，按原定的到期条件改掉了。「不再自动开门」只许 <c>UI_COMMAND_FAILED</c> 说：<c>UNHANDLED_UI_ERROR</c>
+    /// 的进程还守不守锁存本身未知，不作这个保证（理由在 <c>OnboardFatalFaultBanner</c>）。那句话是不是真的，判据在
+    /// <c>MultiDemandJourneyG2Tests.FatalFaultLatch</c>；这里仍只管措辞。
     /// </para>
     /// </remarks>
     [Theory]
-    [InlineData(OnboardFatalFaultBanner.UiCommandFailed)]
-    [InlineData(OnboardFatalFaultBanner.UnhandledUiError)]
-    [InlineData(OnboardFatalFaultBanner.UnhandledUiErrorDialog)]
-    public void NoLatchBannerClaimsTheDoorsAreStopped(string banner)
+    [InlineData(OnboardFatalFaultBanner.UiCommandFailed, true)]
+    [InlineData(OnboardFatalFaultBanner.UnhandledUiError, false)]
+    [InlineData(OnboardFatalFaultBanner.UnhandledUiErrorDialog, false)]
+    public void OnlyTheClassifiedLatchClaimsNoMoreDoorsOpen(string banner, bool claimsNoMoreDoors)
     {
-        Assert.Contains("仓门仍可能自动打开", banner, StringComparison.Ordinal);
+        Assert.Equal(claimsNoMoreDoors, banner.Contains("不再自动开门", StringComparison.Ordinal));
+        Assert.DoesNotContain("仓门仍可能自动打开", banner, StringComparison.Ordinal);
+        Assert.EndsWith(OnboardFatalFaultBanner.OpenDoorsStayOpen, banner, StringComparison.Ordinal);
+        // 「已停止开门」是 #82 那句不实的原话，不再用它：它读起来像连开着的门也停了。
         Assert.DoesNotContain("已停止开门", banner, StringComparison.Ordinal);
         // 实现层面的说法留给日志：站在车前的人不需要知道有个服务端才能读懂这句话。
         Assert.DoesNotContain("服务端", banner, StringComparison.Ordinal);

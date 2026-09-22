@@ -804,6 +804,18 @@ public sealed class FakeControlServer : IAsyncDisposable
     public Action? BeforeHardwareRecoveryRecordResult { get; set; }
 
     /// <summary>
+    /// Runs after a <c>LoadCancellationStartRequested</c> arrives and before it is answered: the window
+    /// between the vehicle asking and the authorization coming back (8005-agv-onboard-hmi#191).
+    /// </summary>
+    public Action? BeforeLoadCancellationAuthorization { get; set; }
+
+    /// <summary>
+    /// Runs after a recovery action is accepted and before the command it authorizes is sent: the
+    /// window between the operator's request and the command arriving (8005-agv-onboard-hmi#191).
+    /// </summary>
+    public Action? BeforeRecoveryVectorCommand { get; set; }
+
+    /// <summary>
     /// The <c>slotOperationAttemptId</c> the <c>commandContentSha256</c> is computed over.
     /// </summary>
     /// <remarks>
@@ -2050,6 +2062,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             operationNeedsRecovery = attemptId is not null && _operationsNeedingRecovery.Contains(attemptId);
         }
 
+        BeforeLoadCancellationAuthorization?.Invoke();
         string decision = operationNeedsRecovery ? "REJECTED" : LoadCancellationDecision;
         bool authorized = decision == "AUTHORIZED";
         await WriteEnvelopeAsync(
@@ -2140,6 +2153,7 @@ public sealed class FakeControlServer : IAsyncDisposable
 
         if (SendRecoveryVectorCommandAfterRecoveryAction)
         {
+            BeforeRecoveryVectorCommand?.Invoke();
             for (int copy = 0; copy < Math.Max(1, RecoveryVectorCommandCopies); copy++)
             {
                 await SendRecoveryVectorCommandAsync(context, payload, sessionId, actionId)
