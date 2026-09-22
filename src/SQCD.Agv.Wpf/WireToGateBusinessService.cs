@@ -2250,8 +2250,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         // entries against. So a newer revision keeps the request when the worklist in front of the vehicle
         // is still the request's stop. The rejection carries no station; the worklist does, and the station
         // is what tells a single-demand journey's pickup from its drop-off, which share an operation session.
+        //
+        // Except for WORKLIST_REVISION_STALE, which says the stop has ended (PR #200 delta review, F2). It can
+        // arrive before the closure snapshot, while the worklist in front of the vehicle still reads as the
+        // request's stop; keeping the request then told the operator "no more scans" and "scan again" at once.
         WireToGateSublotEntryRequest? request = Volatile.Read(ref _currentEntryRequest);
         bool keep = request is not null
+            && !string.Equals(payload.Problem.ReasonCode, "WORKLIST_REVISION_STALE", StringComparison.Ordinal)
             && string.Equals(request.OperationSessionId, payload.OperationSessionId, StringComparison.Ordinal)
             && (request.WorklistRevision == payload.CurrentWorklistRevision
                 || _session.CurrentJourney.CurrentStopWorklist is { } worklist
