@@ -794,7 +794,8 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
             PublishOperatorResponse(
                 "RECOVERY_BLOCKED",
-                $"服务端拒绝装货取消：{authorization.Problem?.ReasonCode ?? "ACTION_NOT_ALLOWED_IN_STATE"}。 ");
+                WireToGateSublotRejectionText.LoadCancellationRefusal(
+                    authorization.Problem?.ReasonCode ?? "ACTION_NOT_ALLOWED_IN_STATE") + " ");
             return null;
         }
 

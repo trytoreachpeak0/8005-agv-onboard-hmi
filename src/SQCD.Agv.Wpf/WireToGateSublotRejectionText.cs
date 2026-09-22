@@ -35,6 +35,10 @@ public static class WireToGateSublotRejectionText
         return $"子批 {rejection.RejectedSublot} 被服务端拒收：{Reason(rejection.ReasonCode)}。";
     }
 
+    /// <summary>The line for a <c>LoadCancellationAuthorization</c> the server refused.</summary>
+    public static string LoadCancellationRefusal(string reasonCode) =>
+        $"服务端拒绝装货取消：{reasonCode}。";
+
     /// <summary>What the operator can do next, which turns on whether the entry request was kept.</summary>
     public static string NextStep(bool canEnterAgain) =>
         canEnterAgain

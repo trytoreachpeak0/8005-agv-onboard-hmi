@@ -1,0 +1,342 @@
+using System.Text.Json;
+using SQCD.Agv.Application;
+using SQCD.Agv.Core;
+using Xunit;
+
+namespace SQCD.Agv.WireToGateG2Tests;
+
+/// <summary>
+/// When the vehicle stops honouring a <c>SublotEntryRequested</c>: the stop it was made for has ended
+/// (<c>expiresOnRevisionChange</c>), or a load command has answered it
+/// (<c>trytoreachpeak0/8005-agv-onboard-hmi#199</c>, program#86 on v2).
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>What was wrong.</b> The entry request was dropped in three places only -- the session leaving
+/// Ready, a rejection naming another session or revision, and an acknowledged cancellation before any
+/// sublot. A server that ended the stop early (station deadline, the last demand cancelled) and said
+/// so with a newer, empty worklist left the scan entry open and the expected sublots in place; a stop
+/// loaded to the end left them open too, through the whole cargo-holding wait.
+/// </para>
+/// <para>
+/// <b>"The stop ended" and "the stop moved on" are two different answers, and both are asserted.</b>
+/// A newer worklist that is empty, or names another operation session or station, ends the stop: the
+/// request goes. A newer worklist under the same operation session with items left is the same stop
+/// working through its demands one by one, and the control server still accepts an entry made against
+/// any revision this stop has issued (<c>StopEntryAddress.Covers</c>, control-server
+/// <c>JourneyStopCursor.cs</c>); dropping the request there would shut the entry for nothing.
+/// </para>
+/// <para>
+/// <b>Every assertion that matters is on the view model.</b> <c>MainViewModel</c> reads the entry gates
+/// only when an event reaches it, and in <c>App.xaml.cs</c> its <c>JourneyChanged</c> handler is
+/// subscribed before the business service's. A business service that drops the request on the worklist
+/// and publishes nothing has <c>CanSubmitSublot</c> false while the screen goes on offering the scan.
+/// </para>
+/// </remarks>
+public sealed partial class MultiDemandJourneyG2Tests
+{
+    /// <summary>The line the operator reads when the stop's entry request is withdrawn.</summary>
+    private const string EntryWithdrawnLine = "本站作业已结束，录入请求已撤销，不再接收扫码。";
+
+    /// <summary>The operation session of the stop after <c>ST-01</c>.</summary>
+    private const string NextOperationSessionId = "88888888-8888-4888-8888-888888888888";
+
+    /// <summary>
+    /// The A-form closure control-server#323 sends: a higher revision, no items, no operation session,
+    /// no deadline. The entry request goes, and the screen says the stop has nothing left.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task AHigherRevisionEmptyWorklistWithdrawsTheEntryRequestOnScreen()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartOneItemStopAsync(
+            configure: server => server.JourneySnapshotPayloads = new Dictionary<string, object>
+            {
+                ["VehicleBusinessStateSnapshot"] = Payloads.BusinessState(1, loadingPhase: null),
+                // A live deadline first, so "无倒计时" afterwards is the closure's doing and not the default.
+                ["CurrentStopWorklistSnapshot"] = Payloads.WorklistAt(
+                    1,
+                    DateTimeOffset.UtcNow.AddMinutes(10),
+                    Payloads.ItemA),
+                ["UpcomingStopPlanSnapshot"] = Payloads.Plan(1, Payloads.TwoDemandLegs)
+            },
+            cancellationToken: token);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.CanSubmit && harness.ViewModel.CanRequestLoadCancellation,
+            "the scan entry and the cancel-before-scan entry to be on screen",
+            token);
+        Assert.NotEqual(StationDepartureCountdownFormatter.AbsentText, harness.ViewModel.StationDepartureCountdownText);
+
+        await harness.Server.SendJourneySnapshotAsync(
+            "CurrentStopWorklistSnapshot",
+            ClosureWorklist(revision: 2));
+
+        await harness.WaitUntilAsync(
+            () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2,
+            "the closure worklist to be applied",
+            token);
+        await AssertWhileAsync(
+            DisplaySettleWindow,
+            () =>
+            {
+                Assert.False(harness.ViewModel.CanSubmit, "the scan entry is still open on screen");
+                Assert.False(
+                    harness.ViewModel.CanRequestLoadCancellation,
+                    "the cancel-before-scan entry is still on screen");
+                Assert.Equal("ST-01 / 无待处理任务", harness.ViewModel.VisitText);
+                Assert.Equal(StationDepartureCountdownFormatter.AbsentText, harness.ViewModel.StationDepartureCountdownText);
+            },
+            token);
+        Assert.Null(harness.Business.ExpectedSublots);
+        Assert.False(harness.Business.CanSubmitSublot);
+        Assert.Single(OperatorLog(harness), line => line == EntryWithdrawnLine);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// The B-form control-server#324 sends: the stop ends and the journey goes on, so the next worklist
+    /// has items and names another operation session and station. The request made for the last stop goes.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task ANewerWorklistForAnotherOperationSessionWithdrawsTheEntryRequestOnScreen()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartOneItemStopAsync(cancellationToken: token);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.CanSubmit,
+            "the scan entry to be on screen",
+            token);
+
+        await harness.Server.SendJourneySnapshotAsync(
+            "CurrentStopWorklistSnapshot",
+            new
+            {
+                stationId = "ST-GATE",
+                worklistRevision = 2,
+                operationSessionId = NextOperationSessionId,
+                stationDepartureDeadlineAt = (DateTimeOffset?)null,
+                items = new[]
+                {
+                    Payloads.Item(DemandA, "TD-A", "SUBLOT-A", "WIRE_TO_GATE", "DROPOFF", 2)
+                }
+            });
+
+        await harness.WaitUntilAsync(
+            () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2,
+            "the next stop's worklist to be applied",
+            token);
+        await AssertWhileAsync(
+            DisplaySettleWindow,
+            () =>
+            {
+                Assert.False(harness.ViewModel.CanSubmit, "the last stop's scan entry is still open on screen");
+                Assert.False(harness.ViewModel.CanRequestLoadCancellation);
+            },
+            token);
+        Assert.Null(harness.Business.ExpectedSublots);
+        Assert.Single(OperatorLog(harness), line => line == EntryWithdrawnLine);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// The counter-case: the same stop working through its demands. One of two demands leaves, and the
+    /// server sends the next revision of the worklist and of the entry request under the same operation
+    /// session. Nothing is withdrawn -- not the request in hand while the worklist is ahead of it, and
+    /// not the new one -- whichever of the two messages arrives first.
+    /// </summary>
+    /// <remarks>
+    /// <paramref name="requestFirst"/> false is the control server's own order
+    /// (<c>JourneyRuntimeEngine</c> publishes the worklist, then the entry request). True is the order a
+    /// replay can produce, and it is the one a "the worklist changed, drop the request" rule gets wrong:
+    /// it would drop the request that has just arrived.
+    /// </remarks>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task AnAdvancingRevisionUnderTheSameOperationSessionDoesNotWithdrawTheEntryRequest(bool requestFirst)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartTwoItemStopAsync(cancellationToken: token);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.CanSubmit,
+            "the scan entry to be on screen",
+            token);
+
+        if (requestFirst)
+        {
+            await SendEntryRequestAsync(harness, revision: 2, SublotAOnly);
+            await harness.WaitUntilAsync(
+                () => harness.Business.ExpectedSublots is ["SUBLOT-A"],
+                "the revision-2 entry request to be taken",
+                token);
+        }
+
+        await harness.Server.SendJourneySnapshotAsync(
+            "CurrentStopWorklistSnapshot",
+            Payloads.Worklist(2, Payloads.ItemA));
+        await harness.WaitUntilAsync(
+            () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2,
+            "the revision-2 worklist to be applied",
+            token);
+
+        // Held, not read once: the withdrawal this guards against would come a moment after the worklist.
+        await AssertWhileAsync(
+            DisplaySettleWindow,
+            () =>
+            {
+                Assert.True(harness.ViewModel.CanSubmit, "the scan entry was shut by a same-stop revision");
+                Assert.NotNull(harness.Business.ExpectedSublots);
+            },
+            token);
+
+        if (!requestFirst)
+        {
+            await SendEntryRequestAsync(harness, revision: 2, SublotAOnly);
+            await harness.WaitUntilAsync(
+                () => harness.Business.ExpectedSublots is ["SUBLOT-A"],
+                "the revision-2 entry request to be taken",
+                token);
+        }
+
+        await AssertWhileAsync(
+            DisplaySettleWindow,
+            () =>
+            {
+                Assert.True(harness.ViewModel.CanSubmit, "the revision-2 entry request is not on screen");
+                Assert.Equal(["SUBLOT-A"], harness.Business.ExpectedSublots);
+            },
+            token);
+        Assert.DoesNotContain(EntryWithdrawnLine, OperatorLog(harness));
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// The ticket's third point, checked rather than assumed: the stop's only demand is scanned, loaded
+    /// and acknowledged, and the server -- which sends nothing more for a stop with nothing outstanding --
+    /// moves into the cargo-holding wait. The load command answered the entry request, so the scan entry
+    /// is shut from the load onwards and stays shut through the wait.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task TheLoadCommandThatAnswersTheEntryRequestWithdrawsItThroughTheCargoHoldingWait()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true, KeepSnapshotFresh = true };
+        await using Harness harness = await Harness.StartAsync(
+            server => ConfigureStop(server, ["SUBLOT-A"], [Payloads.ItemA]),
+            token,
+            io: io);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.CanSubmit,
+            "the scan entry to be on screen",
+            token);
+
+        await harness.Business.SubmitSublotAsync("SUBLOT-A", "SCANNER", token);
+        await harness.WaitForSubmissionAsync(token);
+        string submissionId = SubmissionMessageId(harness);
+        await harness.Server.SendCommandAsync(
+            "SlotOperationCommand",
+            Guid.NewGuid().ToString("D"),
+            SlotCommand(DemandA, AttemptA, [1]),
+            submissionId);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CurrentOperationSnapshot?.Stage == WireToGateHmiOperationStage.WaitingOperator
+                && io.UnlockCount == 1,
+            "slot 1 to be unlocked for the load",
+            token);
+        Assert.False(harness.ViewModel.CanSubmit, "the scan entry is still open while its load is running");
+
+        io.CloseDoor(0, cargo: true);
+        await harness.WaitUntilAsync(
+            () => OperatorLog(harness).Contains("1号仓操作结果已被服务端确认。"),
+            "the load's result to be acknowledged",
+            token);
+        await harness.Server.SendJourneySnapshotAsync(
+            "VehicleBusinessStateSnapshot",
+            Payloads.BusinessState(
+                2,
+                Payloads.LoadingPhase("CARGO_HOLDING_WAIT", DateTimeOffset.UtcNow.AddMinutes(10))));
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.HasCargoHoldingCountdown,
+            "the cargo-holding wait to be on screen",
+            token);
+
+        await AssertWhileAsync(
+            DisplaySettleWindow,
+            () => Assert.False(harness.ViewModel.CanSubmit, "the scan entry reopened after the stop was loaded"),
+            token);
+        Assert.Null(harness.Business.ExpectedSublots);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// A cancellation before any sublot that reaches the server after the stop has ended is refused as
+    /// <c>WORKLIST_REVISION_STALE</c> (control-server#324), and the operator reads what that means rather
+    /// than the bare code.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task ACancellationRefusedAsStaleTellsTheOperatorTheStopHasEnded()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartOneItemStopAsync(
+            configure: server =>
+            {
+                server.LoadCancellationDecision = "REJECTED";
+                server.LoadCancellationRejectionReasonCode = "WORKLIST_REVISION_STALE";
+            },
+            cancellationToken: token);
+
+        Assert.False(await harness.ViewModel.RequestLoadCancellationAsync(token));
+
+        await harness.WaitUntilAsync(
+            () => OperatorLog(harness).Any(line => line.StartsWith("服务端拒绝装货取消", StringComparison.Ordinal)),
+            "the refusal to reach the operator",
+            token);
+        Assert.Contains(
+            "服务端拒绝装货取消：本站作业已结束，无需再取消（WORKLIST_REVISION_STALE）。",
+            OperatorLog(harness).Select(line => line.Trim()));
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>The closure worklist of control-server#323's shape at <paramref name="revision"/>.</summary>
+    private static object ClosureWorklist(long revision) =>
+        new
+        {
+            stationId = "ST-01",
+            worklistRevision = revision,
+            operationSessionId = (string?)null,
+            stationDepartureDeadlineAt = (DateTimeOffset?)null,
+            items = Array.Empty<object>()
+        };
+
+    private static Task SendEntryRequestAsync(Harness harness, long revision, string[] expectedSublots) =>
+        harness.Server.SendCommandAsync(
+            "SublotEntryRequested",
+            Guid.NewGuid().ToString("D"),
+            new
+            {
+                operationSessionId = OperationSessionId,
+                stationId = "ST-01",
+                worklistRevision = revision,
+                expectedSublots,
+                entryMethods = FrozenEntryMethods,
+                expiresOnRevisionChange = true
+            });
+
+    /// <summary>The messageId of the one <c>SublotSubmitted</c> the server has taken, which a LOAD answers.</summary>
+    private static string SubmissionMessageId(Harness harness)
+    {
+        using JsonDocument document = JsonDocument.Parse(Assert.Single(harness.Submissions));
+        return document.RootElement.GetProperty("messageId").GetString()!;
+    }
+}
