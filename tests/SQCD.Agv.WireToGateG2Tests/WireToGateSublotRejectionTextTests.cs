@@ -19,6 +19,8 @@ public sealed class WireToGateSublotRejectionTextTests
     [InlineData("SUBLOT_BOX_COUNT_UNAVAILABLE", "查不到该子批的箱数")]
     [InlineData("PACKAGE_CAPACITY_UNRESOLVED", "该 PACKAGE 的花篮容量未登记或有冲突")]
     [InlineData("EXPECTED_BASKET_COUNT_MISMATCH", "花篮数量与已预留仓位数不符")]
+    // 站点提前结束之后迟到的扫码（onboard-hmi#199，control-server#324）。
+    [InlineData("WORKLIST_REVISION_STALE", "本站作业已结束，不再接收扫码")]
     public void EachRejectionCodeTheCandidateNamesHasItsOwnSentence(string reasonCode, string expected)
     {
         Assert.Equal(expected, WireToGateSublotRejectionText.Reason(reasonCode));
@@ -56,6 +58,20 @@ public sealed class WireToGateSublotRejectionTextTests
         Assert.Equal(
             "本站录入清单已变化，等待服务端新的录入请求。",
             WireToGateSublotRejectionText.NextStep(canEnterAgain: false));
+    }
+
+    /// <summary>
+    /// 取消被拒同样按码说话：<c>WORKLIST_REVISION_STALE</c> 是「本站已结束」，其余码照旧显示原码（onboard-hmi#199）。
+    /// </summary>
+    [Fact]
+    public void ARefusedCancellationSaysTheStopHasEndedWhenTheWorklistIsStale()
+    {
+        Assert.Equal(
+            "服务端拒绝装货取消：本站作业已结束，无需再取消（WORKLIST_REVISION_STALE）。",
+            WireToGateSublotRejectionText.LoadCancellationRefusal("WORKLIST_REVISION_STALE"));
+        Assert.Equal(
+            "服务端拒绝装货取消：ACTION_NOT_ALLOWED_IN_STATE。",
+            WireToGateSublotRejectionText.LoadCancellationRefusal("ACTION_NOT_ALLOWED_IN_STATE"));
     }
 
     private static WireToGateSublotRejection Rejection(string reasonCode, string sublot, string? demandId) =>

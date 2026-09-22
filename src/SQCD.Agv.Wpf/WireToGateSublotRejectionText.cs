@@ -25,8 +25,12 @@ public static class WireToGateSublotRejectionText
         "SUBLOT_BOX_COUNT_UNAVAILABLE" => "查不到该子批的箱数",
         "PACKAGE_CAPACITY_UNRESOLVED" => "该 PACKAGE 的花篮容量未登记或有冲突",
         "EXPECTED_BASKET_COUNT_MISMATCH" => "花篮数量与已预留仓位数不符",
+        // An entry that reached the server after the stop had ended (8005-agv-onboard-hmi#199).
+        WorklistRevisionStale => "本站作业已结束，不再接收扫码",
         _ => $"未识别的拒收原因（{reasonCode}）"
     };
+
+    private const string WorklistRevisionStale = "WORKLIST_REVISION_STALE";
 
     /// <summary>The reason line: which entry was refused, and why.</summary>
     public static string Describe(WireToGateSublotRejection rejection)
@@ -34,6 +38,17 @@ public static class WireToGateSublotRejectionText
         ArgumentNullException.ThrowIfNull(rejection);
         return $"子批 {rejection.RejectedSublot} 被服务端拒收：{Reason(rejection.ReasonCode)}。";
     }
+
+    /// <summary>The line for a <c>LoadCancellationAuthorization</c> the server refused.</summary>
+    /// <remarks>
+    /// <c>WORKLIST_REVISION_STALE</c> is a cancellation that arrived after the stop had ended
+    /// (control-server#324): nothing is left to cancel, and the operator is told so, with the code kept for
+    /// whoever is on the phone. Every other code is shown as itself, as before.
+    /// </remarks>
+    public static string LoadCancellationRefusal(string reasonCode) =>
+        reasonCode == WorklistRevisionStale
+            ? $"服务端拒绝装货取消：本站作业已结束，无需再取消（{WorklistRevisionStale}）。"
+            : $"服务端拒绝装货取消：{reasonCode}。";
 
     /// <summary>What the operator can do next, which turns on whether the entry request was kept.</summary>
     public static string NextStep(bool canEnterAgain) =>

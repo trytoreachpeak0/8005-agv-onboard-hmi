@@ -538,6 +538,12 @@ public sealed class FakeControlServer : IAsyncDisposable
     public string LoadCancellationDecision { get; set; } = "AUTHORIZED";
 
     /// <summary>
+    /// 拒绝取消时 <c>problem.reasonCode</c> 回什么。默认是真服务端在途单已落进 RecoveryRequired 时回的码；
+    /// 站点结束之后迟到的取消，服务端回 <c>WORKLIST_REVISION_STALE</c>（control-server#324）。
+    /// </summary>
+    public string LoadCancellationRejectionReasonCode { get; set; } = "ACTION_NOT_ALLOWED_IN_STATE";
+
+    /// <summary>
     /// 授权时回给车载端的仓位。默认是在途装货那两个仓，与 <c>RecoveryVectorHarness</c> 种下的
     /// 装货操作一致。
     /// </summary>
@@ -2082,7 +2088,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                         ? null
                         : new
                         {
-                            reasonCode = "ACTION_NOT_ALLOWED_IN_STATE",
+                            reasonCode = operationNeedsRecovery
+                                ? "ACTION_NOT_ALLOWED_IN_STATE"
+                                : LoadCancellationRejectionReasonCode,
                             fieldPath = "payload.demandId",
                             displayMessage = "当前状态不允许取消装货。"
                         }

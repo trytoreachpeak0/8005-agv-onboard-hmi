@@ -457,15 +457,13 @@ public sealed partial class WireToGateBusinessService
         WireToGateRecoveryState state,
         string? selectedDemandId)
     {
+        // Not "same revision" (PR #200 second review, L2): after a same-stop revision advance the request in
+        // hand is kept and entries against it are accepted (#199), and the server's cancellation matches the
+        // stop by its revision range too (LoadCancellationBeforeSublot.AnswersTheStop). The subject is picked
+        // from the worklist as it stands, so a demand that has left the stop cannot be cancelled here.
         if (Volatile.Read(ref _currentEntryRequest) is not { } request
             || _session.CurrentJourney.CurrentStopWorklist is not { } worklist
-            || !string.Equals(
-                worklist.OperationSessionId,
-                request.OperationSessionId,
-                StringComparison.Ordinal)
-            || worklist.Revision != request.WorklistRevision
-            || !string.Equals(worklist.StationId, request.StationId, StringComparison.Ordinal)
-            || worklist.Items.Count == 0)
+            || !IsStopOf(worklist, request))
         {
             return NoLoadCancellationBeforeSublot;
         }
@@ -794,7 +792,8 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
             PublishOperatorResponse(
                 "RECOVERY_BLOCKED",
-                $"服务端拒绝装货取消：{authorization.Problem?.ReasonCode ?? "ACTION_NOT_ALLOWED_IN_STATE"}。 ");
+                WireToGateSublotRejectionText.LoadCancellationRefusal(
+                    authorization.Problem?.ReasonCode ?? "ACTION_NOT_ALLOWED_IN_STATE") + " ");
             return null;
         }
 

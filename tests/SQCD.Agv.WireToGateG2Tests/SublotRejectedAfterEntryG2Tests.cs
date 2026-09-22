@@ -158,13 +158,19 @@ public sealed class SublotRejectedAfterEntryG2Tests
     }
 
     /// <summary>
-    /// 拒收里的修订比录入请求新：清单已经变了，录入请求清掉，再扫会在本地被拒，提示操作员等服务端的新请求。
-    /// 这里拒收带了 <c>demandId</c>，与 null 的情形显示方式相同。
+    /// 拒收里的修订比录入请求新，但车上的清单仍是同一站（同作业会话、同站点、仍有需求）：录入请求保留，提示操作员核对后重扫，
+    /// 再扫照样送出。这里拒收带了 <c>demandId</c>，与 null 的情形显示方式相同。
     /// </summary>
+    /// <remarks>
+    /// PR #200（hmi#199）之前这条叫 <c>ARejectionAtANewerRevisionClearsTheEntryRequest</c>：修订号一新就清请求。用户 2026-09-22
+    /// 定同一站修订号前进时不撤录入请求（「按修法二，放宽本地检查」，记在 #199），服务端也接受本站任一版修订号的提交；
+    /// 协议向量对车载端要求的是 <c>KEEP_ENTRY_OPEN_FOR_RESCAN</c>，没有「修订号更新就清」。站已经换了（包括单需求旅程
+    /// 卸货站与取货站共用作业会话的情形）时，清单本身会让 <c>OnJourneyChanged</c> 撤掉请求，不靠这里。
+    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("ProtocolVector", "CV-SUBLOT-REJECTED-AFTER-ENTRY")]
-    public async Task ARejectionAtANewerRevisionClearsTheEntryRequest()
+    public async Task ARejectionAtANewerRevisionOfTheSameStopKeepsTheEntryRequest()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using RejectionHarness harness = await RejectionHarness.StartAsync(
@@ -179,17 +185,18 @@ public sealed class SublotRejectedAfterEntryG2Tests
         await harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token);
         WireToGateOperatorEvent rejected = await harness.WaitForEventAsync("SUBLOT_REJECTED", token);
 
-        Assert.False(harness.Business.CanSubmitSublot);
+        Assert.True(harness.Business.CanSubmitSublot);
         WireToGateSublotRejection notice = Assert.IsType<WireToGateSublotRejection>(
             harness.Business.CurrentSublotRejection);
-        Assert.False(notice.EntryRequestKept);
+        Assert.True(notice.EntryRequestKept);
         Assert.Equal("11111111-1111-1111-1111-111111111111", notice.DemandId);
         Assert.Contains("花篮数量与已预留仓位数不符", rejected.Message, StringComparison.Ordinal);
-        Assert.Contains("等待服务端新的录入请求", rejected.Message, StringComparison.Ordinal);
-        InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token));
-        Assert.Equal("WIRE_TO_GATE_JOURNEY_NOT_READY", refused.Message);
-        Assert.Equal(1, harness.SubmissionCount);
+        Assert.Contains("请核对物料后重新扫码", rejected.Message, StringComparison.Ordinal);
+        await harness.Business.SubmitSublotAsync("SUBLOT-001", "SCANNER", token);
+        await RejectionHarness.WaitUntilAsync(
+            () => harness.SubmissionCount == 2,
+            "the rescan to be sent",
+            token);
     }
 
     /// <summary>
