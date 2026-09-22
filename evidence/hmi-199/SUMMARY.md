@@ -3,9 +3,29 @@
 票：https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/issues/199
 PR：https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/pull/200
 
-本文件随证据提交更新；代码树与第三次真装置运行所用的 `21dd5586` 相同（`git diff 21dd5586 HEAD -- src tests` 为空）。
+本文件随证据提交更新；代码树与第四次真装置运行所用的 `02268bb0` 相同（`git diff 02268bb0 HEAD -- src tests` 为空）。
 
-## CI 真装置（最终 head：审查修正 + merge 集成分支 `7cf1dcba`，hmi#197）
+## CI 真装置（最终 head：第二轮审查 L1／L2／L4 之后）
+
+run [35754913023](https://github.com/trytoreachpeak0/8005-agv-control-server/actions/runs/35754913023)，结论 success。
+
+| 场景 | 结果 | 秒 | 起跑时已提交内存 |
+| --- | --- | --- | --- |
+| `real-onboard-compensate-then-reconnect-01` | PASS | 71 | 5.35 GiB（步骤内峰值 8.33 GiB） |
+
+四行核对（读自 `Run real-onboard L2 scenarios` 那一步）：
+
+```
+control-server @ a98ae9be8433b3e170705a265a3c4fb6060fb6e7
+8005-agv-onboard-hmi @ 02268bb05af29800a5a774c625a3213585e400ed
+slots-simulator @ fb5f7c593742bf98bc3957b8729a38aad5321f28
+```
+
+`RIG_COMMIT_GUARD|RIG_DESKTOP_LOCK|RIG_DEADLINE`：全日志命中 1 行，带 `^[[36;1m`（源码回显）；不带前缀 0 行。
+
+第二轮审查改了扫码前取消入口的判断（`FindLoadCancellationBeforeSublot`），这个场景有录入请求时每次界面刷新都会经过它，所以重跑。
+
+## CI 真装置（第二轮审查前，`21dd5586`，已被上面取代）
 
 run [35749679293](https://github.com/trytoreachpeak0/8005-agv-control-server/actions/runs/35749679293)，结论 success。
 
@@ -63,7 +83,7 @@ slots-simulator @ fb5f7c593742bf98bc3957b8729a38aad5321f28
 
 ## 红证据与反向验证
 
-见 PR 正文。审查修正另有红提交 `febb20d`，变异：恢复「修订号必须相等」→ 两条端到端用例红在 `the control server to receive SublotSubmitted`；去掉「子批须在最新清单」→ 三条负面断言红。
+见 PR 正文。第二轮审查另有红提交 `8bd3291`、修复 `02268bb0`，三组变异（拒收保留、取消入口、扫码提交各恢复「修订号相等」）各只红预期用例。审查修正另有红提交 `febb20d`，变异：恢复「修订号必须相等」→ 两条端到端用例红在 `the control server to receive SublotSubmitted`；去掉「子批须在最新清单」→ 三条负面断言红。
 
 以下为审查前的记录：红提交 `1490c28`：修复前 6 条新用例红、反例 2 支绿。修复提交 `23b4755` 之后：
 
