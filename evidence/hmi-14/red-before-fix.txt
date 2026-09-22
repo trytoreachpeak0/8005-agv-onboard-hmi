@@ -1,0 +1,28 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi14-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:01:34.26]     SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(rejection: "missing-file") [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(rejection: "missing-file") [1 m 31 s]
+  Error Message:
+   车载端在 90 秒内没有退出：配置被拒后进程仍然活着。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(String rejection) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi14-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StartupConfigurationRejectionTests.cs:line 68
+--- End of stack trace from previous location ---
+[xUnit.net 00:03:05.14]     SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(rejection: "malformed-json") [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(rejection: "malformed-json") [1 m 30 s]
+  Error Message:
+   车载端在 90 秒内没有退出：配置被拒后进程仍然活着。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(String rejection) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi14-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StartupConfigurationRejectionTests.cs:line 68
+--- End of stack trace from previous location ---
+[xUnit.net 00:04:35.97]     SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(rejection: "message-timeout-at-liveness-bound") [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(rejection: "message-timeout-at-liveness-bound") [1 m 30 s]
+  Error Message:
+   车载端在 90 秒内没有退出：配置被拒后进程仍然活着。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(String rejection) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi14-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StartupConfigurationRejectionTests.cs:line 68
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     3, Passed:     0, Skipped:     0, Total:     3, Duration: 4 m 33 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

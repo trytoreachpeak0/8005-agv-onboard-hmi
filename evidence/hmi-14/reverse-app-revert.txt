@@ -1,0 +1,13 @@
+  Failed SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(rejection: "missing-file") [1 m 30 s]
+  Error Message:
+   车载端在 90 秒内没有退出：配置被拒后进程仍然活着。
+--
+  Failed SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(rejection: "malformed-json") [1 m 31 s]
+  Error Message:
+   车载端在 90 秒内没有退出：配置被拒后进程仍然活着。
+--
+  Failed SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(rejection: "message-timeout-at-liveness-bound") [1 m 31 s]
+  Error Message:
+   车载端在 90 秒内没有退出：配置被拒后进程仍然活着。
+--
+Failed!  - Failed:     3, Passed:     0, Skipped:     0, Total:     3, Duration: 4 m 33 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
