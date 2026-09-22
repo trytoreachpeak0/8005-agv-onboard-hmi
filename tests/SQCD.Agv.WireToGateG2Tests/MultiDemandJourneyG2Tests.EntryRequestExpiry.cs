@@ -335,6 +335,110 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
+    /// The other side of the keep rule (PR #200 delta review, F1): the server refuses at a newer revision
+    /// while the worklist in front of the vehicle is not the request's stop -- here the next stop's request
+    /// (same operation session, another station, as a single-demand journey's drop-off has) arrived before
+    /// its worklist, and the vehicle still shows the pickup's. The request is not kept.
+    /// </summary>
+    /// <remarks>
+    /// Without this case nothing exercised <c>keep == false</c> after the flip: forcing <c>keep = true</c>
+    /// left every rejection test green (measured in the delta review).
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-SUBLOT-REJECTED-AFTER-ENTRY")]
+    public async Task ARefusalAtANewerRevisionWhileTheWorklistIsAnotherStationDoesNotKeepTheRequest()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartOneItemStopAsync(cancellationToken: token);
+        await harness.Server.SendCommandAsync(
+            "SublotEntryRequested",
+            Guid.NewGuid().ToString("D"),
+            new
+            {
+                operationSessionId = OperationSessionId,
+                stationId = "ST-GATE",
+                worklistRevision = 3,
+                expectedSublots = SublotAOnly,
+                entryMethods = FrozenEntryMethods,
+                expiresOnRevisionChange = true
+            });
+        await harness.WaitUntilAsync(
+            () => harness.Business.ExpectedSublots is ["SUBLOT-A"]
+                && harness.Session.CurrentJourney.CurrentStopWorklist?.StationId == "ST-01",
+            "the next stop's request to be taken while the pickup's worklist is still shown",
+            token);
+
+        await harness.Server.SendCommandAsync(
+            "SublotRejected",
+            Guid.NewGuid().ToString("D"),
+            new
+            {
+                demandId = (string?)null,
+                operationSessionId = OperationSessionId,
+                problem = new
+                {
+                    reasonCode = "EXPECTED_BASKET_COUNT_MISMATCH",
+                    fieldPath = (string?)null,
+                    displayMessage = (string?)null
+                },
+                currentWorklistRevision = 4,
+                rejectedSublot = "SUBLOT-A"
+            },
+            Guid.NewGuid().ToString("D"));
+        await harness.WaitUntilAsync(
+            () => harness.Business.CurrentSublotRejection is not null,
+            "the refusal to reach the vehicle",
+            token);
+
+        Assert.False(harness.Business.CurrentSublotRejection!.EntryRequestKept);
+        Assert.False(harness.Business.CanSubmitSublot);
+        Assert.Contains(
+            OperatorLog(harness),
+            line => line.Contains("等待服务端新的录入请求", StringComparison.Ordinal));
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// A refusal as <c>WORKLIST_REVISION_STALE</c> says the stop has ended, and may arrive before the
+    /// closure snapshot does (PR #200 delta review, F2). The request is not kept, whatever the worklist in
+    /// front of the vehicle still says, so the operator is not told both "no more scans" and "scan again".
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-SUBLOT-REJECTED-AFTER-ENTRY")]
+    public async Task AStaleWorklistRefusalWithdrawsTheRequestEvenBeforeTheClosureSnapshot()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartOneItemStopAsync(
+            configure: server =>
+            {
+                server.RejectSublotSubmissionsWith = "WORKLIST_REVISION_STALE";
+                server.RejectionWorklistRevision = 2;
+            },
+            cancellationToken: token);
+
+        harness.ViewModel.ScanText = "SUBLOT-A";
+        harness.ViewModel.ScannerSubmitCommand.Execute(null);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CurrentSublotRejection is not null,
+            "the stale refusal to reach the vehicle",
+            token);
+
+        Assert.False(harness.Business.CurrentSublotRejection!.EntryRequestKept);
+        Assert.False(harness.Business.CanSubmitSublot);
+        string refusal = Assert.Single(
+            OperatorLog(harness),
+            line => line.Contains("本站作业已结束，不再接收扫码", StringComparison.Ordinal));
+        Assert.DoesNotContain("请核对物料后重新扫码", refusal, StringComparison.Ordinal);
+        await AssertWhileAsync(
+            DisplaySettleWindow,
+            () => Assert.False(harness.ViewModel.CanSubmit, "a stale refusal left the scan entry open"),
+            token);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
     /// In the same window the cancel-before-scan entry is offered too, and pressing it asks the server about
     /// the demand still on the stop (PR #200 second review, L2). The server's cancellation path accepts the
     /// stop's revision range as its entry path does (<c>LoadCancellationBeforeSublot.AnswersTheStop</c>).
