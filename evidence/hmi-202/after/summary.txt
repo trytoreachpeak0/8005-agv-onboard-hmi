@@ -1,0 +1,33 @@
+test dll=C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi202-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll lastWrite=2026-09-23T00:36:54.1171451+08:00 sha256=A96C1599C605553BA1893FEC947F2244FFC9376938E2D7E7EB18BB7FDA7EAD4F
+worktree=C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi202-8005-agv-onboard-hmi head=61ec73d9a47e56c56df8342832727512e20972bd dotnet=8.0.425 count=30 filter=FullyQualifiedName~WritingTheResultObservationNeverDropsAPendingResultRecordedBeforeIt
+run 01: exit=0 passed=1 failed=0
+run 02: exit=0 passed=1 failed=0
+run 03: exit=0 passed=1 failed=0
+run 04: exit=0 passed=1 failed=0
+run 05: exit=0 passed=1 failed=0
+run 06: exit=0 passed=1 failed=0
+run 07: exit=0 passed=1 failed=0
+run 08: exit=0 passed=1 failed=0
+run 09: exit=0 passed=1 failed=0
+run 10: exit=0 passed=1 failed=0
+run 11: exit=0 passed=1 failed=0
+run 12: exit=0 passed=1 failed=0
+run 13: exit=0 passed=1 failed=0
+run 14: exit=0 passed=1 failed=0
+run 15: exit=0 passed=1 failed=0
+run 16: exit=0 passed=1 failed=0
+run 17: exit=0 passed=1 failed=0
+run 18: exit=0 passed=1 failed=0
+run 19: exit=0 passed=1 failed=0
+run 20: exit=0 passed=1 failed=0
+run 21: exit=0 passed=1 failed=0
+run 22: exit=0 passed=1 failed=0
+run 23: exit=0 passed=1 failed=0
+run 24: exit=0 passed=1 failed=0
+run 25: exit=0 passed=1 failed=0
+run 26: exit=0 passed=1 failed=0
+run 27: exit=0 passed=1 failed=0
+run 28: exit=0 passed=1 failed=0
+run 29: exit=0 passed=1 failed=0
+run 30: exit=0 passed=1 failed=0
+TOTAL: 30 runs, 0 not passed

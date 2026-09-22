@@ -1,0 +1,9 @@
+run-01.txt: Assert.NotNull() Failure: Value of type 'Nullable<DateTimeOffset>' does not have a value @ WriteFunnelRace.cs:line 167
+run-02.txt: Assert.NotNull() Failure: Value of type 'Nullable<DateTimeOffset>' does not have a value @ WriteFunnelRace.cs:line 167
+run-05.txt: Assert.NotNull() Failure: Value of type 'Nullable<DateTimeOffset>' does not have a value @ WriteFunnelRace.cs:line 167
+run-06.txt: Assert.NotNull() Failure: Value of type 'Nullable<DateTimeOffset>' does not have a value @ WriteFunnelRace.cs:line 167
+run-08.txt: Assert.NotNull() Failure: Value of type 'Nullable<DateTimeOffset>' does not have a value @ WriteFunnelRace.cs:line 167
+run-10.txt: Assert.NotNull() Failure: Value of type 'Nullable<DateTimeOffset>' does not have a value @ WriteFunnelRace.cs:line 167
+run-15.txt: Assert.NotNull() Failure: Value of type 'Nullable<DateTimeOffset>' does not have a value @ WriteFunnelRace.cs:line 167
+run-26.txt: Assert.NotNull() Failure: Value of type 'Nullable<DateTimeOffset>' does not have a value @ WriteFunnelRace.cs:line 167
+run-28.txt: Assert.NotNull() Failure: Value of type 'Nullable<DateTimeOffset>' does not have a value @ WriteFunnelRace.cs:line 167

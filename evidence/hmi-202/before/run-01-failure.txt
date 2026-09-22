@@ -1,0 +1,16 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi202-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:09.03]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.WritingTheResultObservationNeverDropsAPendingResultRecordedBeforeIt [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.WritingTheResultObservationNeverDropsAPendingResultRecordedBeforeIt [2 s]
+  Error Message:
+   Assert.NotNull() Failure: Value of type 'Nullable<DateTimeOffset>' does not have a value
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.WritingTheResultObservationNeverDropsAPendingResultRecordedBeforeIt() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi202-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.WriteFunnelRace.cs:line 167
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.WritingTheResultObservationNeverDropsAPendingResultRecordedBeforeIt() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi202-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.WriteFunnelRace.cs:line 167
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 2 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+

@@ -1,0 +1,22 @@
+diff --git a/src/SQCD.Agv.Application/WireToGateRecoveryVectorExecutor.cs b/C:/Users/szy/AppData/Local/Temp/claude/C--Users-szy-Desktop-8005-workspace-v2/d6feffcd-2c37-4c00-a1e5-e9b89c559b2f/scratchpad/mut/src/SQCD.Agv.Application/WireToGateRecoveryVectorExecutor.cs
+index 6e29930..2c76dd8 100644
+--- a/src/SQCD.Agv.Application/WireToGateRecoveryVectorExecutor.cs
++++ b/C:/Users/szy/AppData/Local/Temp/claude/C--Users-szy-Desktop-8005-workspace-v2/d6feffcd-2c37-4c00-a1e5-e9b89c559b2f/scratchpad/mut/src/SQCD.Agv.Application/WireToGateRecoveryVectorExecutor.cs
+@@ -739,7 +739,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
+                         return null;
+                     }
+ 
+-                    return current with { RecoveryResultObservedAt = _clock.Now.ToUniversalTime() };
++                    return current; // MUTATION hmi#202: stamp not persisted
+                 },
+                 cancellationToken)
+             .ConfigureAwait(false);
+@@ -752,7 +752,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
+         // one already on file. A reason code here could never be emitted.
+         return alreadyObserved
+             ?? written?.RecoveryResultObservedAt
+-            ?? throw new UnreachableException();
++            ?? _clock.Now.ToUniversalTime(); // MUTATION hmi#202
+     }
+ 
+     private async Task WriteVectorStateAsync(

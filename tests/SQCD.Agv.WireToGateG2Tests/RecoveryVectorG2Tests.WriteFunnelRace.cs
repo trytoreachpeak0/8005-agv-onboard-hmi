@@ -138,6 +138,25 @@ public sealed partial class RecoveryVectorG2Tests
     /// 第 3 处（<c>WireToGateRecoveryVectorExecutor.EnsureResultObservedAtAsync</c>，写结果观测时间）：
     /// 读与写之间一份迟到的待发结果被记进 journal，基线上随整条记录被写回空。
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>判据读的是「观测时间刚写完」那一刻的 journal，不是等结果发出去之后再读。</b>这条用例依赖的时序是：
+    /// 观测时间写入 → 结果发出 → 服务端收到并回 <c>DurableAck</c> → 车载端结算
+    /// （<c>SettleRecoveryVectorStateAsync</c>，把 <c>RecoveryResultObservedAt</c> 与向量一起清成空，
+    /// <c>PendingResults</c> 不动）。
+    /// </para>
+    /// <para>
+    /// 所以不能用「等服务端收到结果」来等：<c>WaitForResultAsync</c> 在服务端收到时就返回，而假服务端
+    /// 收到的同时就回了 ack，之后再读 journal 会与结算赛跑。读落在结算之后，待发结果那条照样对，观测时间
+    /// 却读到空——同一台机器上八次里红两次（onboard-hmi#202）。反过来，结算之后的状态里观测时间按设计
+    /// 就是空，所以那时去读它根本判不出写入有没有发生。
+    /// </para>
+    /// <para>
+    /// 改为由包装日志在目标写入返回、控制权交回产品之前读一次 journal：产品这条路径是顺序的，结算在
+    /// 结果发出之后，结果发出在这次写入返回之后，所以这一刻结算按构造还没有发生，不靠计时。
+    /// 结果发出之后仍然读一次最终状态，只断待发结果——结算不动它，这一条不受时序影响。
+    /// </para>
+    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
@@ -160,11 +179,21 @@ public sealed partial class RecoveryVectorG2Tests
         await harness.WaitForResultAsync("FaultCargoRecoveryResult", token);
 
         Assert.True(race.Fired, "竞争写入没有落在目标路径的读与写之间");
+        Assert.Null(race.RaceFailure);
+        // 目标写入刚落盘、结算还不可能发生的那一刻（见上面的 remarks）。两个字段必须同时成立：
+        // 待发结果没被写回空，观测时间也确实写进去了。
+        WireToGateRecoveryState justWritten = race.StateAfterTargetWrite
+            ?? throw new InvalidOperationException("包装日志没有在目标写入之后读到 journal");
+        Assert.Equal(
+            [LateResultMessageId],
+            justWritten.PendingResults.Select(result => result.MessageId).ToArray());
+        Assert.NotNull(justWritten.RecoveryResultObservedAt);
+
+        // 结算之后：待发结果仍在。这里不断观测时间——结算按设计把它清成空。
         WireToGateRecoveryState persisted = await harness.ReadRecoveryStateAsync(token);
         Assert.Equal(
             [LateResultMessageId],
             persisted.PendingResults.Select(result => result.MessageId).ToArray());
-        Assert.NotNull(persisted.RecoveryResultObservedAt);
     }
 
     /// <summary>
@@ -380,8 +409,18 @@ public sealed partial class RecoveryVectorG2Tests
         private Func<IWireToGateJournal, CancellationToken, Task>? _race;
         private int _fired;
         private Exception? _raceFailure;
+        private WireToGateRecoveryState? _stateAfterTargetWrite;
 
         public bool Fired => Volatile.Read(ref _fired) == 1;
+
+        /// <summary>
+        /// 目标写入返回之后、控制权交回产品之前从 journal 读到的状态；注入没触发时为 <c>null</c>。
+        /// </summary>
+        /// <remarks>
+        /// 给那些「写入之后产品自己还会再改同一个字段」的判据用：在这一刻读，产品后面的写入按构造还没有
+        /// 发生，不必和它赛跑（onboard-hmi#202）。
+        /// </remarks>
+        public WireToGateRecoveryState? StateAfterTargetWrite => Volatile.Read(ref _stateAfterTargetWrite);
 
         /// <summary>注入自己抛出的异常，或 <c>null</c>。用例失败时先看它。</summary>
         public Exception? RaceFailure => Volatile.Read(ref _raceFailure);
@@ -413,22 +452,32 @@ public sealed partial class RecoveryVectorG2Tests
             Action<WireToGateRecoveryState> settled,
             CancellationToken cancellationToken = default)
         {
-            await RaceIfThisIsTheWriteAsync(cancellationToken);
-            return await inner.UpdateRecoveryStateAsync(change, settled, cancellationToken);
+            bool isTargetWrite = await RaceIfThisIsTheWriteAsync(cancellationToken);
+            WireToGateRecoveryState? written =
+                await inner.UpdateRecoveryStateAsync(change, settled, cancellationToken);
+            if (isTargetWrite)
+            {
+                Volatile.Write(
+                    ref _stateAfterTargetWrite,
+                    await inner.ReadRecoveryStateAsync(cancellationToken));
+            }
+
+            return written;
         }
 
-        private async Task RaceIfThisIsTheWriteAsync(CancellationToken cancellationToken)
+        /// <returns>这一次写入就是注入所针对的那一次写入时为 <c>true</c>。</returns>
+        private async Task<bool> RaceIfThisIsTheWriteAsync(CancellationToken cancellationToken)
         {
             if (Volatile.Read(ref _target) is not { } target)
             {
-                return;
+                return false;
             }
 
             string stack = Environment.StackTrace;
             if (!stack.Contains(target, StringComparison.Ordinal)
                 || stack.Contains("ReadRecoveryStateCachedAsync", StringComparison.Ordinal))
             {
-                return;
+                return false;
             }
 
             // 直接调接口的写入点栈里没有中间层名字；经业务服务缓存写的那些有。两种都是写入。
@@ -437,18 +486,18 @@ public sealed partial class RecoveryVectorG2Tests
                 && !stack.Contains("UpdateRecoveryStateCachedAsync", StringComparison.Ordinal);
             if (!throughCache && !direct)
             {
-                return;
+                return false;
             }
 
             if (Volatile.Read(ref _when) is { } when
                 && !when(await inner.ReadRecoveryStateAsync(cancellationToken)))
             {
-                return;
+                return false;
             }
 
             if (Interlocked.Exchange(ref _race, null) is not { } race)
             {
-                return;
+                return false;
             }
 
             Volatile.Write(ref _target, null);
@@ -465,6 +514,8 @@ public sealed partial class RecoveryVectorG2Tests
             }
 
             Volatile.Write(ref _fired, 1);
+
+            return true;
         }
 
         public Task InitializeAsync(CancellationToken cancellationToken = default) =>
