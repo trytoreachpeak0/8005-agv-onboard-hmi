@@ -214,6 +214,89 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
+    /// The entry the counter-case keeps open is one that works: between the same stop's revision-2 worklist
+    /// and its revision-2 request, a sublot still on the stop scanned on screen reaches the server against
+    /// the revision-1 request -- which the server accepts (<c>StopEntryAddress.Covers</c>) -- and a sublot
+    /// that has left the stop is refused on the vehicle and never sent.
+    /// </summary>
+    /// <remarks>
+    /// Until PR #200's review the vehicle's own check demanded the worklist and the request be at the same
+    /// revision, so in this window the button was live and every scan was refused locally as
+    /// <c>SUBLOT_NOT_IN_WORKLIST</c>. Keeping the request (the user's decision, recorded on #199) is only
+    /// right if the scan it offers goes through; this is what says it does.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task AScanAfterASameStopRevisionAdvanceReachesTheServerAgainstTheRequestInHand()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartTwoItemStopAsync(cancellationToken: token);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.CanSubmit,
+            "the scan entry to be on screen",
+            token);
+
+        // B leaves the stop; the revision-2 request has not arrived yet.
+        await harness.Server.SendJourneySnapshotAsync(
+            "CurrentStopWorklistSnapshot",
+            Payloads.Worklist(2, Payloads.ItemA));
+        await harness.WaitUntilAsync(
+            () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2,
+            "the revision-2 worklist to be applied",
+            token);
+
+        // B is no longer on the stop: refused here, nothing sent.
+        InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => harness.Business.SubmitSublotAsync("SUBLOT-B", "SCANNER", token));
+        Assert.Equal("SUBLOT_NOT_IN_WORKLIST", refused.Message);
+
+        // A, scanned the way the operator scans it.
+        harness.ViewModel.ScanText = "SUBLOT-A";
+        Assert.True(harness.ViewModel.ScannerSubmitCommand.CanExecute(null));
+        harness.ViewModel.ScannerSubmitCommand.Execute(null);
+
+        JsonElement submitted = await harness.WaitForSubmissionAsync(token);
+        Assert.Equal("SUBLOT-A", submitted.GetProperty("sublot").GetString());
+        Assert.Equal(1, submitted.GetProperty("worklistRevision").GetInt64());
+        Assert.Equal(OperationSessionId, submitted.GetProperty("operationSessionId").GetString());
+        Assert.Single(harness.Submissions);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// An entry request that arrives after the worklist has already ended its stop -- a replay racing the
+    /// closure snapshot -- is not taken: the entry stays shut.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-PICKUP-SUBLOT-LOAD")]
+    public async Task AnEntryRequestArrivingAfterItsStopHasEndedIsNotTaken()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartOneItemStopAsync(cancellationToken: token);
+        await harness.Server.SendJourneySnapshotAsync("CurrentStopWorklistSnapshot", ClosureWorklist(revision: 2));
+        await WaitForEntryWithdrawnOnScreenAsync(harness, token);
+
+        await SendEntryRequestAsync(harness, revision: 1, ["SUBLOT-A"]);
+        await harness.WaitUntilAsync(
+            () => harness.Server.SentEnvelopes.Count(envelope => envelope.MessageType == "SublotEntryRequested") >= 2,
+            "the late entry request to have been sent",
+            token);
+
+        // Held: sent is not yet handled, and a taken request would open the entry a moment later.
+        await AssertWhileAsync(
+            DisplaySettleWindow,
+            () =>
+            {
+                Assert.False(harness.ViewModel.CanSubmit, "a request for an ended stop reopened the scan entry");
+                Assert.Null(harness.Business.ExpectedSublots);
+            },
+            token);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
     /// The ticket's third point, checked rather than assumed: the stop's only demand is scanned, loaded
     /// and acknowledged, and the server -- which sends nothing more for a stop with nothing outstanding --
     /// moves into the cargo-holding wait. The load command answered the entry request, so the scan entry
