@@ -17,9 +17,15 @@ public partial class App : System.Windows.Application, IDisposable
     /// </summary>
     /// <remarks>
     /// 取 3 而不是 1 或 2：那两个在脚本里是「泛指出错」的常用值，而这一次退出不是出错，是守卫按设计挡下了一次重复
-    /// 启动。与现场线（03027de）用的是同一个值，运维脚本不必分版本判断。启动失败走的仍然是 <c>Shutdown(-1)</c>。
+    /// 启动。与现场线（03027de）用的是同一个值，运维脚本不必分版本判断。启动失败走的仍然是 <see cref="ExitCodeStartupFailed"/>（-1）。
     /// </remarks>
     internal const int ExitCodeNotStartedAnotherInstance = 3;
+
+    /// <summary>
+    /// 启动失败的退出码：配置被拒，或启动途中 IO／网络出错。
+    /// </summary>
+    /// <remarks>一直是 -1，运维脚本按它判断；onboard-hmi#14 改的是「能不能退出来」，不是退出码。</remarks>
+    internal const int ExitCodeStartupFailed = -1;
 
     private FileAppLogger? _logger;
     private SingleInstanceGuard? _singleInstance;
@@ -38,10 +44,21 @@ public partial class App : System.Windows.Application, IDisposable
     {
         base.OnStartup(e);
 
+        // 引导日志器在任何可能被拒的东西之前建（onboard-hmi#14）：它不读业务配置，写到固定的 <程序目录>/logs，
+        // 与出厂配置的日志目录是同一个。修复之前读配置在建日志器之前，配置一被拒，catch 拿到的日志器是 null，
+        // 一个字节都不写，再被一个没人点的模态框挡住退出——车上看到的就是「进程活着、没窗口、没日志」。
+        FileAppLogger bootstrapLogger = new(new LogSettings());
+        string settingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
+        OnboardSettings? loadedSettings = StartupConfiguration.TryLoad(settingsPath, bootstrapLogger);
+        if (loadedSettings is null)
+        {
+            await ExitAfterStartupFailureAsync().ConfigureAwait(true);
+            return;
+        }
+
+        OnboardSettings settings = loadedSettings;
         try
         {
-            string settingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
-            OnboardSettings settings = OnboardSettings.Load(settingsPath);
             _logger = new FileAppLogger(settings.Logging);
             // 单例守卫在任何副作用之前（onboard-hmi#173、#165）：下面的车辆安全投影一构造就开始轮询服务端，IO 客户端
             // 一构造就握着 Modbus 目标——第二个实例一步都不能走到那里。顺序是判据的一部分；日志器提前是为了让这一行
@@ -355,15 +372,32 @@ public partial class App : System.Windows.Application, IDisposable
                 or System.Net.Sockets.SocketException
                 or System.Text.Json.JsonException)
         {
-            _logger?.Write(LogSeverity.Error, nameof(App), "车载端启动失败。", exception);
+            (_logger ?? bootstrapLogger).Write(LogSeverity.Error, nameof(App), "车载端启动失败。", exception);
             System.Diagnostics.Debug.WriteLine(exception);
-            MessageBox.Show(
-                "软件无法启动，请联系维护人员检查程序配置。",
-                "软件启动失败",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
-            Shutdown(-1);
+            await ExitAfterStartupFailureAsync().ConfigureAwait(true);
         }
+    }
+
+    /// <summary>
+    /// 原因已经写进日志之后的退出：交互式桌面上给现场一个有时限的提示框，然后以 <see cref="ExitCodeStartupFailed"/> 退出。
+    /// </summary>
+    /// <remarks>取舍见 <see cref="StartupFailureNotice"/>：提示框不阻塞退出，最多挡 30 秒，不在交互式桌面上就不弹。</remarks>
+    private async Task ExitAfterStartupFailureAsync()
+    {
+        // 提示框不是本应用的窗口，关掉它不该、也不会触发「最后一个窗口关闭即退出」；退出只由下面那次 Shutdown 决定。
+        ShutdownMode = ShutdownMode.OnExplicitShutdown;
+        if (Environment.UserInteractive)
+        {
+            await StartupFailureNotice.ShowAsync(
+                () => MessageBox.Show(
+                    "软件无法启动，请联系维护人员检查程序配置。原因已写入程序目录下的 logs 日志。",
+                    "软件启动失败",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error),
+                StartupFailureNotice.Timeout).ConfigureAwait(true);
+        }
+
+        Shutdown(ExitCodeStartupFailed);
     }
 
     protected override void OnExit(ExitEventArgs e)

@@ -1,0 +1,18 @@
+== baseline
+    0 Error(s)
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 765 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+== mutation: IsBackground = true, -> IsBackground = false,
+matches 1
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.StartupFailurePathTests.ANoticeNobodyDismissesStopsHoldingTheExitAtTheTimeout [316 ms]
+  Error Message:
+   Assert.True() Failure
+Failed!  - Failed:     1, Passed:     3, Skipped:     0, Total:     4, Duration: 594 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+== mutation: Task.WhenAny(closed.Task, Task.Delay(timeout)) -> Task.WhenAny(closed.Task)
+matches 1
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.StartupFailurePathTests.ANoticeNobodyDismissesStopsHoldingTheExitAtTheTimeout [10 s]
+  Error Message:
+   System.TimeoutException : The operation has timed out.
+Failed!  - Failed:     1, Passed:     3, Skipped:     0, Total:     4, Duration: 10 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+restored

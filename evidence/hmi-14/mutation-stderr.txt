@@ -1,0 +1,13 @@
+  Failed SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(rejection: "missing-file") [31 s]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    ""
+  Failed SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(rejection: "malformed-json") [31 s]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    ""
+  Failed SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(rejection: "message-timeout-at-liveness-bound") [32 s]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    ""
+Failed!  - Failed:     3, Passed:     4, Skipped:     0, Total:     7, Duration: 1 m 35 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
