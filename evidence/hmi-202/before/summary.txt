@@ -1,0 +1,32 @@
+worktree=C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi202-8005-agv-onboard-hmi head=7cf1dcbaf5bf7886f3276179895c77f02fcfdcc6 dotnet=8.0.425 count=30 filter=FullyQualifiedName~WritingTheResultObservationNeverDropsAPendingResultRecordedBeforeIt
+run 01: exit=1 passed=0 failed=1 -> C:\Users\szy\AppData\Local\Temp\claude\C--Users-szy-Desktop-8005-workspace-v2\d6feffcd-2c37-4c00-a1e5-e9b89c559b2f\scratchpad\before\run-01.txt
+run 02: exit=1 passed=0 failed=1 -> C:\Users\szy\AppData\Local\Temp\claude\C--Users-szy-Desktop-8005-workspace-v2\d6feffcd-2c37-4c00-a1e5-e9b89c559b2f\scratchpad\before\run-02.txt
+run 03: exit=0 passed=1 failed=0
+run 04: exit=0 passed=1 failed=0
+run 05: exit=1 passed=0 failed=1 -> C:\Users\szy\AppData\Local\Temp\claude\C--Users-szy-Desktop-8005-workspace-v2\d6feffcd-2c37-4c00-a1e5-e9b89c559b2f\scratchpad\before\run-05.txt
+run 06: exit=1 passed=0 failed=1 -> C:\Users\szy\AppData\Local\Temp\claude\C--Users-szy-Desktop-8005-workspace-v2\d6feffcd-2c37-4c00-a1e5-e9b89c559b2f\scratchpad\before\run-06.txt
+run 07: exit=0 passed=1 failed=0
+run 08: exit=1 passed=0 failed=1 -> C:\Users\szy\AppData\Local\Temp\claude\C--Users-szy-Desktop-8005-workspace-v2\d6feffcd-2c37-4c00-a1e5-e9b89c559b2f\scratchpad\before\run-08.txt
+run 09: exit=0 passed=1 failed=0
+run 10: exit=1 passed=0 failed=1 -> C:\Users\szy\AppData\Local\Temp\claude\C--Users-szy-Desktop-8005-workspace-v2\d6feffcd-2c37-4c00-a1e5-e9b89c559b2f\scratchpad\before\run-10.txt
+run 11: exit=0 passed=1 failed=0
+run 12: exit=0 passed=1 failed=0
+run 13: exit=0 passed=1 failed=0
+run 14: exit=0 passed=1 failed=0
+run 15: exit=1 passed=0 failed=1 -> C:\Users\szy\AppData\Local\Temp\claude\C--Users-szy-Desktop-8005-workspace-v2\d6feffcd-2c37-4c00-a1e5-e9b89c559b2f\scratchpad\before\run-15.txt
+run 16: exit=0 passed=1 failed=0
+run 17: exit=0 passed=1 failed=0
+run 18: exit=0 passed=1 failed=0
+run 19: exit=0 passed=1 failed=0
+run 20: exit=0 passed=1 failed=0
+run 21: exit=0 passed=1 failed=0
+run 22: exit=0 passed=1 failed=0
+run 23: exit=0 passed=1 failed=0
+run 24: exit=0 passed=1 failed=0
+run 25: exit=0 passed=1 failed=0
+run 26: exit=1 passed=0 failed=1 -> C:\Users\szy\AppData\Local\Temp\claude\C--Users-szy-Desktop-8005-workspace-v2\d6feffcd-2c37-4c00-a1e5-e9b89c559b2f\scratchpad\before\run-26.txt
+run 27: exit=0 passed=1 failed=0
+run 28: exit=1 passed=0 failed=1 -> C:\Users\szy\AppData\Local\Temp\claude\C--Users-szy-Desktop-8005-workspace-v2\d6feffcd-2c37-4c00-a1e5-e9b89c559b2f\scratchpad\before\run-28.txt
+run 29: exit=0 passed=1 failed=0
+run 30: exit=0 passed=1 failed=0
+TOTAL: 30 runs, 9 not passed
