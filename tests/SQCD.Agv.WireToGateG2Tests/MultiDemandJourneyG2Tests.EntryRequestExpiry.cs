@@ -38,6 +38,9 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// <summary>The line the operator reads when the stop's entry request is withdrawn.</summary>
     private const string EntryWithdrawnLine = "本站作业已结束，录入请求已撤销，不再接收扫码。";
 
+    /// <summary>A sublot only the drop-off's request names, so waiting on it cannot be met by the pickup's.</summary>
+    private static readonly string[] SublotGateOnly = ["SUBLOT-GATE"];
+
     /// <summary>The operation session of the stop after <c>ST-01</c>.</summary>
     private const string NextOperationSessionId = "88888888-8888-4888-8888-888888888888";
 
@@ -359,12 +362,16 @@ public sealed partial class MultiDemandJourneyG2Tests
                 operationSessionId = OperationSessionId,
                 stationId = "ST-GATE",
                 worklistRevision = 3,
-                expectedSublots = SublotAOnly,
+                expectedSublots = SublotGateOnly,
                 entryMethods = FrozenEntryMethods,
                 expiresOnRevisionChange = true
             });
+        // Waited on a sublot only the new request names. Waiting on SUBLOT-A, or on a count of entry-request
+        // events, can be satisfied by the pickup's own request (it names SUBLOT-A; a resend adds an event),
+        // and a refusal handled in that moment is judged against the pickup's request -- which is kept,
+        // correctly, and this test went red about once in twenty runs for it.
         await harness.WaitUntilAsync(
-            () => harness.Business.ExpectedSublots is ["SUBLOT-A"]
+            () => harness.Business.ExpectedSublots is ["SUBLOT-GATE"]
                 && harness.Session.CurrentJourney.CurrentStopWorklist?.StationId == "ST-01",
             "the next stop's request to be taken while the pickup's worklist is still shown",
             token);
@@ -383,7 +390,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                     displayMessage = (string?)null
                 },
                 currentWorklistRevision = 4,
-                rejectedSublot = "SUBLOT-A"
+                rejectedSublot = "SUBLOT-GATE"
             },
             Guid.NewGuid().ToString("D"));
         await harness.WaitUntilAsync(

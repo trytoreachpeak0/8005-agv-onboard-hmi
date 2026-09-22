@@ -3,7 +3,7 @@
 票：https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/issues/199
 PR：https://github.com/trytoreachpeak0/8005-agv-onboard-hmi/pull/200
 
-本文件随证据提交更新；代码树与第四次真装置运行所用的 `02268bb0` 相同（`git diff 02268bb0 HEAD -- src tests` 为空）。
+本文件随证据提交更新。第四次真装置运行用的是 `02268bb0`；之后增量审查 F1／F2 只改了 `src/SQCD.Agv.Wpf/WireToGateBusinessService.cs` 里的 `HandleSublotRejected`（`WORKLIST_REVISION_STALE` 拒收不保留请求），加上测试。`real-onboard-compensate-then-reconnect` 全程没有服务端拒收，走不到这个函数，经调度同意不重跑真装置，下面的记录对最终 head 仍然成立。
 
 ## CI 真装置（最终 head：第二轮审查 L1／L2／L4 之后）
 
@@ -83,7 +83,7 @@ slots-simulator @ fb5f7c593742bf98bc3957b8729a38aad5321f28
 
 ## 红证据与反向验证
 
-见 PR 正文。第二轮审查另有红提交 `8bd3291`、修复 `02268bb0`，三组变异（拒收保留、取消入口、扫码提交各恢复「修订号相等」）各只红预期用例。审查修正另有红提交 `febb20d`，变异：恢复「修订号必须相等」→ 两条端到端用例红在 `the control server to receive SublotSubmitted`；去掉「子批须在最新清单」→ 三条负面断言红。
+见 PR 正文。增量审查另有红提交 `f8bd74e`、修复 `7f8e40e`：变异「只要有请求就保留」→ F1、F2 两条都红；变异「去掉过期原因码那一项」→ 只红 F2。第二轮审查另有红提交 `8bd3291`、修复 `02268bb0`，三组变异（拒收保留、取消入口、扫码提交各恢复「修订号相等」）各只红预期用例。审查修正另有红提交 `febb20d`，变异：恢复「修订号必须相等」→ 两条端到端用例红在 `the control server to receive SublotSubmitted`；去掉「子批须在最新清单」→ 三条负面断言红。
 
 以下为审查前的记录：红提交 `1490c28`：修复前 6 条新用例红、反例 2 支绿。修复提交 `23b4755` 之后：
 
