@@ -172,6 +172,14 @@ public sealed partial class MultiDemandJourneyG2Tests
                 () => harness.Business.ExpectedSublots is ["SUBLOT-A"],
                 "the revision-2 entry request to be taken",
                 token);
+
+            // The request is now ahead of the worklist (still revision 1). The server accepts it -- its
+            // revision is the stop's current one -- so the vehicle sends it (PR #200 second review, L4).
+            harness.ViewModel.ScanText = "SUBLOT-A";
+            harness.ViewModel.ScannerSubmitCommand.Execute(null);
+            JsonElement ahead = await harness.WaitForSubmissionAsync(token);
+            Assert.Equal("SUBLOT-A", ahead.GetProperty("sublot").GetString());
+            Assert.Equal(2, ahead.GetProperty("worklistRevision").GetInt64());
         }
 
         await harness.Server.SendJourneySnapshotAsync(
@@ -273,6 +281,91 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(1, submitted.GetProperty("worklistRevision").GetInt64());
         Assert.Equal(OperationSessionId, submitted.GetProperty("operationSessionId").GetString());
         Assert.Single(harness.Submissions);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// The window's scan is refused by the server for a reason of its own, naming the revision it has
+    /// moved to. The stop is the same, so the request stays and the operator is told to scan again -- not
+    /// "wait for a new request" (PR #200 second review, L1).
+    /// </summary>
+    /// <remarks>
+    /// Until then a rejection kept the request only at the request's own revision, so after a same-stop
+    /// advance every server refusal withdrew an entry the user decided must stay (#199).
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-SUBLOT-REJECTED-AFTER-ENTRY")]
+    public async Task AServerRefusalAfterASameStopRevisionAdvanceKeepsTheEntryOpenForARescan()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartTwoItemStopAsync(
+            configure: server =>
+            {
+                server.RejectSublotSubmissionsWith = "SUBLOT_BOX_COUNT_UNAVAILABLE";
+                server.RejectionWorklistRevision = 2;
+            },
+            cancellationToken: token);
+        await harness.Server.SendJourneySnapshotAsync(
+            "CurrentStopWorklistSnapshot",
+            Payloads.Worklist(2, Payloads.ItemA));
+        await harness.WaitUntilAsync(
+            () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2,
+            "the revision-2 worklist to be applied",
+            token);
+
+        harness.ViewModel.ScanText = "SUBLOT-A";
+        harness.ViewModel.ScannerSubmitCommand.Execute(null);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CurrentSublotRejection is not null,
+            "the server's refusal to reach the vehicle",
+            token);
+
+        Assert.True(harness.Business.CurrentSublotRejection!.EntryRequestKept);
+        Assert.Contains(OperatorLog(harness), line => line.Contains("请核对物料后重新扫码", StringComparison.Ordinal));
+        await AssertWhileAsync(
+            DisplaySettleWindow,
+            () =>
+            {
+                Assert.True(harness.ViewModel.CanSubmit, "the refusal withdrew a same-stop entry");
+                Assert.NotNull(harness.Business.ExpectedSublots);
+            },
+            token);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// In the same window the cancel-before-scan entry is offered too, and pressing it asks the server about
+    /// the demand still on the stop (PR #200 second review, L2). The server's cancellation path accepts the
+    /// stop's revision range as its entry path does (<c>LoadCancellationBeforeSublot.AnswersTheStop</c>).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task TheCancelBeforeScanEntryStaysOfferedAcrossASameStopRevisionAdvance()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartTwoItemStopAsync(cancellationToken: token);
+        await harness.Server.SendJourneySnapshotAsync(
+            "CurrentStopWorklistSnapshot",
+            Payloads.Worklist(2, Payloads.ItemA));
+        await harness.WaitUntilAsync(
+            () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2
+                && harness.WorklistRows() is [("SUBLOT-A", _)],
+            "the revision-2 worklist to be on screen",
+            token);
+
+        await AssertWhileAsync(
+            DisplaySettleWindow,
+            () => Assert.True(
+                harness.ViewModel.CanRequestLoadCancellation,
+                "the cancel-before-scan entry was hidden by a same-stop revision"),
+            token);
+
+        await harness.ViewModel.RequestLoadCancellationAsync(token);
+        JsonElement request = Assert.Single(Received(harness, "LoadCancellationStartRequested"));
+        Assert.Equal(DemandA, request.GetProperty("demandId").GetString());
+        Assert.Equal(0, harness.Io.UnlockCount);
         Assert.Empty(harness.UiErrors);
     }
 
