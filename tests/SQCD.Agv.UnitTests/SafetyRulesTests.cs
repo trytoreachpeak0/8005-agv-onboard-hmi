@@ -1,3 +1,4 @@
+using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
 
@@ -134,7 +135,8 @@ public sealed class SafetyRulesTests
             now,
             TimeSpan.FromSeconds(1),
             TimeSpan.FromSeconds(5),
-            TimeSpan.FromMilliseconds(500));
+            TimeSpan.FromMilliseconds(500),
+            fatalFaultLatched: false);
 
         Assert.False(summary.DepartureSafe);
         Assert.False(summary.VehicleStopped);
@@ -143,6 +145,108 @@ public sealed class SafetyRulesTests
         Assert.DoesNotContain(
             expectedUnknown ? "ACTION_NOT_ALLOWED_IN_STATE" : "VEHICLE_NOT_READY",
             summary.ReasonCodes);
+    }
+
+    /// <summary>
+    /// A latched fatal safety fault makes departure unsafe on its own, with every physical reading in order
+    /// (8005-agv-onboard-hmi#197). Before this the evaluator never saw the latch, and a latched vehicle told the
+    /// server it could leave.
+    /// </summary>
+    /// <remarks>
+    /// Only <c>departureSafe</c> and the reason change. The other four fields describe physical readings, and the
+    /// latch does not change any of them -- in particular it is a known state, not an unknown one, so it must not
+    /// set <c>unknownPresent</c> (the server would read that as missing evidence and answer UNKNOWN, not UNSAFE).
+    /// </remarks>
+    [Fact]
+    public void AFatalFaultLatchAloneMakesDepartureUnsafeAndSaysSo()
+    {
+        DateTimeOffset now = DateTimeOffset.Now;
+
+        var summary = EvaluateAllInOrder(now, VehicleMotionState.Stopped, fatalFaultLatched: true);
+
+        Assert.False(summary.DepartureSafe);
+        Assert.Equal([WireToGateSafetyEvaluator.FatalFaultLatchedReason], summary.ReasonCodes);
+        Assert.True(summary.VehicleStopped);
+        Assert.True(summary.AllTargetSlotsLocked);
+        Assert.True(summary.AllUnlockOutputsReset);
+        Assert.False(summary.UnknownPresent);
+    }
+
+    /// <summary>
+    /// The unlatched evaluation is what it was before #197: safe, no reason.
+    /// </summary>
+    [Fact]
+    public void WithoutALatchTheSafetySummaryIsUnchanged()
+    {
+        DateTimeOffset now = DateTimeOffset.Now;
+
+        var summary = EvaluateAllInOrder(now, VehicleMotionState.Stopped, fatalFaultLatched: false);
+
+        Assert.True(summary.DepartureSafe);
+        Assert.Empty(summary.ReasonCodes);
+        Assert.False(summary.UnknownPresent);
+    }
+
+    /// <summary>
+    /// The latch reason is added beside the others, never in place of them, and it is a code outside both of the
+    /// control server's allow-lists that relax departure safety: <c>OwnMovementOrderExplanation.VehicleOnlyReasons</c>
+    /// (VEHICLE_NOT_READY, ACTION_NOT_ALLOWED_IN_STATE -- control-server#314 lets the pickup dispatch plan through
+    /// when every reason is in it) and <c>WireToGateStore.OperationInducedUnsafety</c> (LOCK_NOT_CLOSED,
+    /// UNLOCK_OUTPUT_NOT_RESET -- readiness stays Ready mid-load when every reason is in it).
+    /// </summary>
+    /// <remarks>
+    /// The two cases are the two in which the server would otherwise excuse the unsafety: a vehicle driving on this
+    /// server's own order (motion unknown, <c>VEHICLE_NOT_READY</c>) and a vehicle whose door stands open for a load.
+    /// Had the latch borrowed <c>VEHICLE_NOT_READY</c>, the first would read exactly as it reads unlatched. The two
+    /// allow-lists are copied here from control-server <c>fp/v2-impl</c> 80a12868; if either gains
+    /// <c>DEPARTURE_UNSAFE</c>, this reason has to move.
+    /// </remarks>
+    [Theory]
+    [InlineData(VehicleMotionState.Unknown, false, "VEHICLE_NOT_READY")]
+    [InlineData(VehicleMotionState.Stopped, true, "LOCK_NOT_CLOSED")]
+    public void TheLatchReasonStaysBesideTheOthersAndOutsideEveryServerAllowList(
+        VehicleMotionState motionState,
+        bool doorOpen,
+        string otherReason)
+    {
+        DateTimeOffset now = DateTimeOffset.Now;
+        string[] vehicleOnlyReasons = ["VEHICLE_NOT_READY", "ACTION_NOT_ALLOWED_IN_STATE"];
+        string[] operationInducedUnsafety = ["LOCK_NOT_CLOSED", "UNLOCK_OUTPUT_NOT_RESET"];
+
+        var latched = EvaluateAllInOrder(now, motionState, fatalFaultLatched: true, doorOpen: doorOpen);
+        var unlatched = EvaluateAllInOrder(now, motionState, fatalFaultLatched: false, doorOpen: doorOpen);
+
+        Assert.Contains(otherReason, unlatched.ReasonCodes);
+        Assert.Equal(
+            [.. unlatched.ReasonCodes, WireToGateSafetyEvaluator.FatalFaultLatchedReason],
+            latched.ReasonCodes);
+        Assert.Equal(unlatched.UnknownPresent, latched.UnknownPresent);
+        Assert.False(latched.DepartureSafe);
+        Assert.DoesNotContain(WireToGateSafetyEvaluator.FatalFaultLatchedReason, vehicleOnlyReasons);
+        Assert.DoesNotContain(WireToGateSafetyEvaluator.FatalFaultLatchedReason, operationInducedUnsafety);
+    }
+
+    private static WireToGateSafetySummaryPayload EvaluateAllInOrder(
+        DateTimeOffset now,
+        VehicleMotionState motionState,
+        bool fatalFaultLatched,
+        bool doorOpen = false)
+    {
+        IoSnapshot snapshot = CreateSnapshot(targetHasCargo: false, targetLocked: !doorOpen) with
+        {
+            ObservedAt = now,
+            Lockers = CreateSnapshot(false, !doorOpen).Lockers
+                .Select(locker => locker with { ObservedAt = now })
+                .ToArray()
+        };
+        return WireToGateSafetyEvaluator.Evaluate(
+            snapshot,
+            new VehicleSafetySignal(motionState, now.AddMilliseconds(100), "CONTROL_SERVER"),
+            now,
+            TimeSpan.FromSeconds(1),
+            TimeSpan.FromSeconds(5),
+            TimeSpan.FromMilliseconds(500),
+            fatalFaultLatched);
     }
 
     [Fact]
