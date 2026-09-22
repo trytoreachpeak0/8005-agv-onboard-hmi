@@ -1145,7 +1145,16 @@ public sealed class FakeControlServer : IAsyncDisposable
             list.Add((connectionIndex, messageType));
             Received = list;
         }
+
+        EnvelopeReceived?.Invoke(connectionIndex, messageType, messageId);
     }
+
+    /// <summary>
+    /// Raised on the connection's own thread for every envelope the vehicle sent, as it is read and before this
+    /// double answers it: for a test that has to place an arrival on one timeline with what the vehicle did
+    /// (onboard-hmi#132, a result that must arrive after the vehicle took its readiness).
+    /// </summary>
+    public event Action<int, string, string>? EnvelopeReceived;
 
     private void RecordConnection(int connectionIndex, ConcurrentQueue<string> order)
     {
