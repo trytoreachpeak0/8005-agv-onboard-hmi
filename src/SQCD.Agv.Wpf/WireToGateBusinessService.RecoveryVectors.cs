@@ -2735,7 +2735,9 @@ public sealed partial class WireToGateBusinessService
                 : WireToGateHmiOperationStage.RecoveryRequired,
             success
                 ? "物理状态已达到安全收尾条件，正在上报恢复结果。"
-                : "恢复向量未完成，已保持故障安全并准备上报未知/失败结果。",
+                : RefusedByFatalFaultLatch(result.SlotResults)
+                    ? $"本机已锁存严重安全故障，{FormatSlots(NotCompletedSlots(result.SlotResults))}停止开门；复核并复位后可再次申请恢复。"
+                    : "恢复向量未完成，已保持故障安全并准备上报未知/失败结果。",
             "final");
 
         if (sendResult is not null)

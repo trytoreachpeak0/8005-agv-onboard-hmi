@@ -990,11 +990,12 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             + "或者那个方法本身被改成空实现，它照样绿——token 在就算数。它的判别力由 "
             + "TheseGuardsStillReportRedOnSyntheticViolations 验，那是这一族里唯一有合成验证的产品守卫。"),
         new(
-            "FatalFaultScopeArchitectureTests.TheUnguardedSitesCannotSeeTheControllerAtAll",
+            "FatalFaultScopeArchitectureTests.TheExecutorsSeeTheLatchOnlyThroughTheInjectedQuestion",
             GuardKind.SourceShape,
-            "判据是「文件文本里不出现 OnboardController」。把控制器包一层接口或别名注入进那两个执行器，"
-            + "它一个字都看不见；反过来在那两个文件里写一句提到这个类名的注释，它会误红（文件里已注明，方向是保守的）。"
-            + "没有合成反向验证。"),
+            "判据是「文件文本里不出现 OnboardController，并且出现 _fatalFaultLatched()」。把控制器包一层接口或别名注入进那两个"
+            + "执行器，前一半一个字都看不见；后一半只要那个 token 还在就算数，调用挪到开锁之后、或者结果被丢掉，它照样绿——"
+            + "锁存是否真挡住开门由 MultiDemandJourneyG2Tests.FatalFaultLatch 与 RecoveryVectorG2Tests.FatalFaultLatch 的开门次数断言"
+            + "承担（onboard-hmi#191）。在那两个文件里写一句提到控制器类名的注释，它会误红（方向是保守的）。没有合成反向验证。"),
         new(
             "FatalFaultScopeArchitectureTests.NothingUnderSrcTouchesTheConcreteModbusClientOutsideItsTwoAllowedSites",
             GuardKind.SourceShape,
