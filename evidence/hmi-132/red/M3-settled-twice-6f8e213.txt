@@ -1,0 +1,464 @@
+M3 applied: 1	0	src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:08.66
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 8.0.31)
+[xUnit.net 00:00:00.30]   Discovering: SQCD.Agv.WireToGateG2Tests
+[xUnit.net 00:00:00.78]   Discovered:  SQCD.Agv.WireToGateG2Tests
+[xUnit.net 00:00:01.08]   Starting:    SQCD.Agv.WireToGateG2Tests
+[xUnit.net 00:00:02.47]     SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(windowEnd: AfterOutboxRead) [FAIL]
+[xUnit.net 00:00:02.47]       Expected one recording of the attempt, got 2:
+[xUnit.net 00:00:02.47]          at System.Environment.get_StackTrace()
+[xUnit.net 00:00:02.47]          at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.HandshakeWindowJournal.UpdateRecoveryStateAsync(Func`2 change, Action`1 settled, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 287
+[xUnit.net 00:00:02.47]          at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.HandshakeWindowJournal.UpdateRecoveryStateAsync(Func`2 change, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 277
+[xUnit.net 00:00:02.47]          at SQCD.Agv.Application.WireToGateSlotOperationExecutor.MarkResultRecordedAsync(String slotOperationAttemptId, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 321
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+[xUnit.net 00:00:02.47]          at SQCD.Agv.Application.WireToGateSlotOperationExecutor.MarkResultRecordedAsync(String slotOperationAttemptId, CancellationToken cancellationToken)
+[xUnit.net 00:00:02.47]          at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1360
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+[xUnit.net 00:00:02.47]          at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken)
+[xUnit.net 00:00:02.47]          at SQCD.Agv.Wpf.WireToGateBusinessService.TrySettleInterruptedOperationAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1528
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+[xUnit.net 00:00:02.47]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetResult(TResult result)
+[xUnit.net 00:00:02.47]          at SQCD.Agv.Wpf.WireToGateBusinessService.TryResendUnacknowledgedResultAsync(WireToGateRecoveryOperationContext context, String resultKey, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1437
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+[xUnit.net 00:00:02.47]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+[xUnit.net 00:00:02.47]          at SQCD.Agv.Infrastructure.WireToGateSessionClient.ResendOperationResultAsync(String deduplicationKey, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 323
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+[xUnit.net 00:00:02.47]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+[xUnit.net 00:00:02.47]          at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendDurableCoreAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Boolean allowRecoveryRequired, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1112
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+[xUnit.net 00:00:02.47]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.Task.CancellationPromise`1.System.Threading.Tasks.ITaskCompletionAction.Invoke(Task completingTask)
+[xUnit.net 00:00:02.47]          at System.Threading.ThreadPoolWorkQueue.Dispatch()
+[xUnit.net 00:00:02.47]          at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+[xUnit.net 00:00:02.47]       ----
+[xUnit.net 00:00:02.47]          at System.Environment.get_StackTrace()
+[xUnit.net 00:00:02.47]          at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.HandshakeWindowJournal.UpdateRecoveryStateAsync(Func`2 change, Action`1 settled, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 287
+[xUnit.net 00:00:02.47]          at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.HandshakeWindowJournal.UpdateRecoveryStateAsync(Func`2 change, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 277
+[xUnit.net 00:00:02.47]          at SQCD.Agv.Application.WireToGateSlotOperationExecutor.MarkResultRecordedAsync(String slotOperationAttemptId, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 321
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+[xUnit.net 00:00:02.47]          at SQCD.Agv.Application.WireToGateSlotOperationExecutor.MarkResultRecordedAsync(String slotOperationAttemptId, CancellationToken cancellationToken)
+[xUnit.net 00:00:02.47]          at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1360
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+[xUnit.net 00:00:02.47]          at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken)
+[xUnit.net 00:00:02.47]          at SQCD.Agv.Wpf.WireToGateBusinessService.TrySettleInterruptedOperationAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1529
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+[xUnit.net 00:00:02.47]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder.SetResult()
+[xUnit.net 00:00:02.47]          at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1393
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+[xUnit.net 00:00:02.47]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:02.47]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+[xUnit.net 00:00:02.47]          at SQCD.Agv.Wpf.WireToGateBusinessService.ReadRecoveryStateCachedAsync(CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.RecoveryVectors.cs:line 3113
+[xUnit.net 00:00:02.47]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+[xUnit.net 00:00:02.48]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:02.48]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:02.48]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+[xUnit.net 00:00:02.48]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:02.48]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:02.48]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:02.48]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+[xUnit.net 00:00:02.48]          at SQCD.Agv.Infrastructure.SqliteWireToGateJournal.UpdateRecoveryStateAsync(Func`2 change, Action`1 settled, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\SqliteWireToGateJournal.cs:line 180
+[xUnit.net 00:00:02.48]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+[xUnit.net 00:00:02.48]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:02.48]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:02.48]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+[xUnit.net 00:00:02.48]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:02.48]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:02.48]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:02.48]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+[xUnit.net 00:00:02.48]          at System.Threading.SemaphoreSlim.WaitUntilCountOrTimeoutAsync(TaskNode asyncWaiter, Int32 millisecondsTimeout, CancellationToken cancellationToken)
+[xUnit.net 00:00:02.48]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:02.48]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:02.48]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:02.48]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:02.48]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:02.48]          at System.Threading.Tasks.Task.CancellationPromise`1.System.Threading.Tasks.ITaskCompletionAction.Invoke(Task completingTask)
+[xUnit.net 00:00:02.48]          at System.Threading.ThreadPoolWorkQueue.Dispatch()
+[xUnit.net 00:00:02.48]          at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+[xUnit.net 00:00:02.48]       Stack Trace:
+[xUnit.net 00:00:02.48]         C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs(117,0): at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(HandshakeWindowEnd windowEnd)
+[xUnit.net 00:00:02.48]         C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs(126,0): at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(HandshakeWindowEnd windowEnd)
+[xUnit.net 00:00:02.48]         --- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(windowEnd: AfterOutboxRead) [1 s]
+  Error Message:
+   Expected one recording of the attempt, got 2:
+   at System.Environment.get_StackTrace()
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.HandshakeWindowJournal.UpdateRecoveryStateAsync(Func`2 change, Action`1 settled, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 287
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.HandshakeWindowJournal.UpdateRecoveryStateAsync(Func`2 change, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 277
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.MarkResultRecordedAsync(String slotOperationAttemptId, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 321
+   at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.MarkResultRecordedAsync(String slotOperationAttemptId, CancellationToken cancellationToken)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1360
+   at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.TrySettleInterruptedOperationAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1528
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetResult(TResult result)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.TryResendUnacknowledgedResultAsync(WireToGateRecoveryOperationContext context, String resultKey, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1437
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ResendOperationResultAsync(String deduplicationKey, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 323
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendDurableCoreAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Boolean allowRecoveryRequired, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1112
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Threading.Tasks.Task.CancellationPromise`1.System.Threading.Tasks.ITaskCompletionAction.Invoke(Task completingTask)
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+----
+   at System.Environment.get_StackTrace()
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.HandshakeWindowJournal.UpdateRecoveryStateAsync(Func`2 change, Action`1 settled, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 287
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.HandshakeWindowJournal.UpdateRecoveryStateAsync(Func`2 change, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 277
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.MarkResultRecordedAsync(String slotOperationAttemptId, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 321
+   at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.MarkResultRecordedAsync(String slotOperationAttemptId, CancellationToken cancellationToken)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1360
+   at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.TrySettleInterruptedOperationAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1529
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder.SetResult()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1393
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.ReadRecoveryStateCachedAsync(CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.RecoveryVectors.cs:line 3113
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at SQCD.Agv.Infrastructure.SqliteWireToGateJournal.UpdateRecoveryStateAsync(Func`2 change, Action`1 settled, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\SqliteWireToGateJournal.cs:line 180
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at System.Threading.SemaphoreSlim.WaitUntilCountOrTimeoutAsync(TaskNode asyncWaiter, Int32 millisecondsTimeout, CancellationToken cancellationToken)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Threading.Tasks.Task.CancellationPromise`1.System.Threading.Tasks.ITaskCompletionAction.Invoke(Task completingTask)
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(HandshakeWindowEnd windowEnd) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 117
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(HandshakeWindowEnd windowEnd) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 126
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:03.32]     SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(windowEnd: AfterRecoveryReportAck) [FAIL]
+[xUnit.net 00:00:03.32]       Expected one recording of the attempt, got 2:
+[xUnit.net 00:00:03.32]          at System.Environment.get_StackTrace()
+[xUnit.net 00:00:03.32]          at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.HandshakeWindowJournal.UpdateRecoveryStateAsync(Func`2 change, Action`1 settled, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 287
+[xUnit.net 00:00:03.32]          at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.HandshakeWindowJournal.UpdateRecoveryStateAsync(Func`2 change, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 277
+[xUnit.net 00:00:03.32]          at SQCD.Agv.Application.WireToGateSlotOperationExecutor.MarkResultRecordedAsync(String slotOperationAttemptId, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 321
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+[xUnit.net 00:00:03.32]          at SQCD.Agv.Application.WireToGateSlotOperationExecutor.MarkResultRecordedAsync(String slotOperationAttemptId, CancellationToken cancellationToken)
+[xUnit.net 00:00:03.32]          at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1360
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+[xUnit.net 00:00:03.32]          at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken)
+[xUnit.net 00:00:03.32]          at SQCD.Agv.Wpf.WireToGateBusinessService.TrySettleInterruptedOperationAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1528
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+[xUnit.net 00:00:03.32]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetResult(TResult result)
+[xUnit.net 00:00:03.32]          at SQCD.Agv.Wpf.WireToGateBusinessService.TryResendUnacknowledgedResultAsync(WireToGateRecoveryOperationContext context, String resultKey, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1437
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+[xUnit.net 00:00:03.32]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+[xUnit.net 00:00:03.32]          at SQCD.Agv.Infrastructure.WireToGateSessionClient.ResendOperationResultAsync(String deduplicationKey, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 323
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+[xUnit.net 00:00:03.32]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+[xUnit.net 00:00:03.32]          at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendDurableCoreAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Boolean allowRecoveryRequired, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1112
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+[xUnit.net 00:00:03.32]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task.CancellationPromise`1.System.Threading.Tasks.ITaskCompletionAction.Invoke(Task completingTask)
+[xUnit.net 00:00:03.32]          at System.Threading.ThreadPoolWorkQueue.Dispatch()
+[xUnit.net 00:00:03.32]          at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+[xUnit.net 00:00:03.32]       ----
+[xUnit.net 00:00:03.32]          at System.Environment.get_StackTrace()
+[xUnit.net 00:00:03.32]          at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.HandshakeWindowJournal.UpdateRecoveryStateAsync(Func`2 change, Action`1 settled, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 287
+[xUnit.net 00:00:03.32]          at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.HandshakeWindowJournal.UpdateRecoveryStateAsync(Func`2 change, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 277
+[xUnit.net 00:00:03.32]          at SQCD.Agv.Application.WireToGateSlotOperationExecutor.MarkResultRecordedAsync(String slotOperationAttemptId, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 321
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+[xUnit.net 00:00:03.32]          at SQCD.Agv.Application.WireToGateSlotOperationExecutor.MarkResultRecordedAsync(String slotOperationAttemptId, CancellationToken cancellationToken)
+[xUnit.net 00:00:03.32]          at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1360
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+[xUnit.net 00:00:03.32]          at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken)
+[xUnit.net 00:00:03.32]          at SQCD.Agv.Wpf.WireToGateBusinessService.TrySettleInterruptedOperationAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1529
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+[xUnit.net 00:00:03.32]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder.SetResult()
+[xUnit.net 00:00:03.32]          at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1393
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+[xUnit.net 00:00:03.32]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+[xUnit.net 00:00:03.32]          at SQCD.Agv.Wpf.WireToGateBusinessService.ReadRecoveryStateCachedAsync(CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.RecoveryVectors.cs:line 3113
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+[xUnit.net 00:00:03.32]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+[xUnit.net 00:00:03.32]          at SQCD.Agv.Infrastructure.SqliteWireToGateJournal.UpdateRecoveryStateAsync(Func`2 change, Action`1 settled, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\SqliteWireToGateJournal.cs:line 180
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+[xUnit.net 00:00:03.32]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+[xUnit.net 00:00:03.32]          at System.Threading.SemaphoreSlim.WaitUntilCountOrTimeoutAsync(TaskNode asyncWaiter, Int32 millisecondsTimeout, CancellationToken cancellationToken)
+[xUnit.net 00:00:03.32]          at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+[xUnit.net 00:00:03.32]          at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+[xUnit.net 00:00:03.32]          at System.Threading.Tasks.Task.CancellationPromise`1.System.Threading.Tasks.ITaskCompletionAction.Invoke(Task completingTask)
+[xUnit.net 00:00:03.32]          at System.Threading.ThreadPoolWorkQueue.Dispatch()
+[xUnit.net 00:00:03.32]          at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+[xUnit.net 00:00:03.32]       Stack Trace:
+[xUnit.net 00:00:03.32]         C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs(117,0): at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(HandshakeWindowEnd windowEnd)
+[xUnit.net 00:00:03.32]         C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs(126,0): at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(HandshakeWindowEnd windowEnd)
+[xUnit.net 00:00:03.32]         --- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(windowEnd: AfterRecoveryReportAck) [842 ms]
+  Error Message:
+   Expected one recording of the attempt, got 2:
+   at System.Environment.get_StackTrace()
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.HandshakeWindowJournal.UpdateRecoveryStateAsync(Func`2 change, Action`1 settled, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 287
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.HandshakeWindowJournal.UpdateRecoveryStateAsync(Func`2 change, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 277
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.MarkResultRecordedAsync(String slotOperationAttemptId, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 321
+   at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.MarkResultRecordedAsync(String slotOperationAttemptId, CancellationToken cancellationToken)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1360
+   at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.TrySettleInterruptedOperationAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1528
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetResult(TResult result)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.TryResendUnacknowledgedResultAsync(WireToGateRecoveryOperationContext context, String resultKey, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1437
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ResendOperationResultAsync(String deduplicationKey, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 323
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendDurableCoreAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Boolean allowRecoveryRequired, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1112
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Threading.Tasks.Task.CancellationPromise`1.System.Threading.Tasks.ITaskCompletionAction.Invoke(Task completingTask)
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+----
+   at System.Environment.get_StackTrace()
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.HandshakeWindowJournal.UpdateRecoveryStateAsync(Func`2 change, Action`1 settled, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 287
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.HandshakeWindowJournal.UpdateRecoveryStateAsync(Func`2 change, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 277
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.MarkResultRecordedAsync(String slotOperationAttemptId, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 321
+   at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.MarkResultRecordedAsync(String slotOperationAttemptId, CancellationToken cancellationToken)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1360
+   at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.TrySettleInterruptedOperationAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1529
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder.SetResult()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RecordAcknowledgedCompletedResultAsync(WireToGateRecoveryOperationContext context, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1393
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.ReadRecoveryStateCachedAsync(CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\WireToGateBusinessService.RecoveryVectors.cs:line 3113
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at SQCD.Agv.Infrastructure.SqliteWireToGateJournal.UpdateRecoveryStateAsync(Func`2 change, Action`1 settled, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\SqliteWireToGateJournal.cs:line 180
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext()
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at System.Threading.SemaphoreSlim.WaitUntilCountOrTimeoutAsync(TaskNode asyncWaiter, Int32 millisecondsTimeout, CancellationToken cancellationToken)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Threading.Tasks.Task.CancellationPromise`1.System.Threading.Tasks.ITaskCompletionAction.Invoke(Task completingTask)
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(HandshakeWindowEnd windowEnd) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 117
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(HandshakeWindowEnd windowEnd) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 126
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:36.97]   Finished:    SQCD.Agv.WireToGateG2Tests (ID = '49ca968b152ee26ad6f6d0a92a02e8b6fd417c2cb70eda51ad0ba3bcaea3c7f7')
+
+Test Run Failed.
+Total tests: 2
+     Failed: 2
+ Total time: 37.4715 Seconds
+M3 test exit: 1
+M3 restored: 2FA8ED258FD7BE3638E06763CD674819274171B24215488A053868F844A613B0

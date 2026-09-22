@@ -1,0 +1,99 @@
+M2 applied: 6	0	src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+    0 Warning(s)
+    0 Error(s)
+
+Time Elapsed 00:00:08.60
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 8.0.31)
+[xUnit.net 00:00:00.30]   Discovering: SQCD.Agv.WireToGateG2Tests
+[xUnit.net 00:00:00.80]   Discovered:  SQCD.Agv.WireToGateG2Tests
+[xUnit.net 00:00:01.05]   Starting:    SQCD.Agv.WireToGateG2Tests
+[xUnit.net 00:00:02.39]     SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(windowEnd: AfterOutboxRead) [FAIL]
+[xUnit.net 00:00:02.39]       The result has to arrive after this generation's readiness.
+[xUnit.net 00:00:02.39]       readiness::Recovering
+[xUnit.net 00:00:02.39]       received:1:SessionHello
+[xUnit.net 00:00:02.39]       readiness:1:Recovering
+[xUnit.net 00:00:02.40]       received:1:CapabilitySnapshot
+[xUnit.net 00:00:02.40]       received:1:SafetyStateSnapshot
+[xUnit.net 00:00:02.40]       received:1:OnboardAlarmSnapshot
+[xUnit.net 00:00:02.40]       received:1:RecoveryStateReport
+[xUnit.net 00:00:02.40]       readiness:1:Ready
+[xUnit.net 00:00:02.40]       received:1:SafetyStateChanged
+[xUnit.net 00:00:02.40]       received:1:SnapshotAppliedAck
+[xUnit.net 00:00:02.40]       received:1:SnapshotAppliedAck
+[xUnit.net 00:00:02.40]       received:1:SnapshotAppliedAck
+[xUnit.net 00:00:02.40]       received:1:OperationProgress
+[xUnit.net 00:00:02.40]       readiness:1:Ready
+[xUnit.net 00:00:02.40]       received:1:OperationProgress
+[xUnit.net 00:00:02.40]       received:1:OperationProgress
+[xUnit.net 00:00:02.40]       readiness::Disconnected
+[xUnit.net 00:00:02.40]       readiness::Recovering
+[xUnit.net 00:00:02.40]       received:2:SessionHello
+[xUnit.net 00:00:02.40]       readiness:2:Recovering
+[xUnit.net 00:00:02.40]       received:2:CapabilitySnapshot
+[xUnit.net 00:00:02.40]       received:2:SafetyStateSnapshot
+[xUnit.net 00:00:02.40]       received:2:OnboardAlarmSnapshot
+[xUnit.net 00:00:02.40]       received:2:OperationResult
+[xUnit.net 00:00:02.40]       received:2:RecoveryStateReport
+[xUnit.net 00:00:02.40]       readiness:2:Ready
+[xUnit.net 00:00:02.40]       received:2:SafetyStateChanged
+[xUnit.net 00:00:02.40]       received:2:SnapshotAppliedAck
+[xUnit.net 00:00:02.40]       received:2:SnapshotAppliedAck
+[xUnit.net 00:00:02.40]       received:2:SnapshotAppliedAck
+[xUnit.net 00:00:02.40]       readiness:2:Ready
+[xUnit.net 00:00:02.40]       Stack Trace:
+[xUnit.net 00:00:02.40]         C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs(112,0): at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(HandshakeWindowEnd windowEnd)
+[xUnit.net 00:00:02.40]         C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs(126,0): at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(HandshakeWindowEnd windowEnd)
+[xUnit.net 00:00:02.40]         --- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(windowEnd: AfterOutboxRead) [1 s]
+  Error Message:
+   The result has to arrive after this generation's readiness.
+readiness::Recovering
+received:1:SessionHello
+readiness:1:Recovering
+received:1:CapabilitySnapshot
+received:1:SafetyStateSnapshot
+received:1:OnboardAlarmSnapshot
+received:1:RecoveryStateReport
+readiness:1:Ready
+received:1:SafetyStateChanged
+received:1:SnapshotAppliedAck
+received:1:SnapshotAppliedAck
+received:1:SnapshotAppliedAck
+received:1:OperationProgress
+readiness:1:Ready
+received:1:OperationProgress
+received:1:OperationProgress
+readiness::Disconnected
+readiness::Recovering
+received:2:SessionHello
+readiness:2:Recovering
+received:2:CapabilitySnapshot
+received:2:SafetyStateSnapshot
+received:2:OnboardAlarmSnapshot
+received:2:OperationResult
+received:2:RecoveryStateReport
+readiness:2:Ready
+received:2:SafetyStateChanged
+received:2:SnapshotAppliedAck
+received:2:SnapshotAppliedAck
+received:2:SnapshotAppliedAck
+readiness:2:Ready
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(HandshakeWindowEnd windowEnd) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 112
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(HandshakeWindowEnd windowEnd) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi-132-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:line 126
+--- End of stack trace from previous location ---
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce(windowEnd: AfterRecoveryReportAck) [913 ms]
+[xUnit.net 00:00:37.54]   Finished:    SQCD.Agv.WireToGateG2Tests (ID = '49ca968b152ee26ad6f6d0a92a02e8b6fd417c2cb70eda51ad0ba3bcaea3c7f7')
+
+Test Run Failed.
+Total tests: 2
+     Passed: 1
+     Failed: 1
+ Total time: 38.0464 Seconds
+M2 test exit: 1
+M2 restored: 11E91FFC67B7FFDD6C2DE3E15752650D4A8073F4BB928F01B685334B19ABB027
