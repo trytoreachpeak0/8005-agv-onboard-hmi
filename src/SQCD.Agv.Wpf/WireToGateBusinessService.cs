@@ -960,7 +960,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// <para>
     /// <b>Over means empty, or another operation session or station.</b> The control server's closure
     /// worklist has no items and no session (control-server#323); a stop that ends while the journey goes
-    /// on is followed by the next stop's, under a session of its own (control-server#324).
+    /// on is followed by the next stop's (control-server#324). Both are checked because neither alone is
+    /// enough: a single-demand journey's pickup and drop-off share one operation session
+    /// (control-server <c>SingleDemandJourneyShape.cs</c>), so there the station is what changes.
     /// </para>
     /// <para>
     /// <b>Another session or station counts only from a strictly newer worklist.</b> Revisions rise per
@@ -984,6 +986,23 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         || worklist.Revision > request.WorklistRevision
             && (!string.Equals(worklist.OperationSessionId, request.OperationSessionId, StringComparison.Ordinal)
                 || !string.Equals(worklist.StationId, request.StationId, StringComparison.Ordinal));
+
+    /// <summary>
+    /// Whether <paramref name="worklist"/> describes the stop <paramref name="request"/> was made for, with
+    /// something still to enter: same operation session, same station, items left.
+    /// </summary>
+    /// <remarks>
+    /// The vehicle's stand-in for the server's <c>StopEntryAddress.Covers</c>, which it cannot apply itself: it
+    /// never learns a stop's first revision. Both halves are needed. The operation session alone does not tell
+    /// stops apart -- a single-demand journey's pickup and drop-off share one
+    /// (control-server <c>SingleDemandJourneyShape.cs</c>) -- and the station is what separates them.
+    /// </remarks>
+    internal static bool IsStopOf(
+        WireToGateCurrentStopWorklist worklist,
+        WireToGateSublotEntryRequest request) =>
+        worklist.Items.Count > 0
+        && string.Equals(worklist.OperationSessionId, request.OperationSessionId, StringComparison.Ordinal)
+        && string.Equals(worklist.StationId, request.StationId, StringComparison.Ordinal);
 
     /// <summary>
     /// Withdraws the entry request a LOAD command answers: the entry has been taken, and the server sends the
@@ -2224,10 +2243,19 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         // still stands, so they can scan again straight away. Anything else means the worklist moved
         // and the server owes a new request; the old one must not accept another entry meanwhile.
         // The compare-exchange keeps a request that arrived after this rejection was sent.
+        //
+        // "Same revision" is not the only way to be the same stop (PR #200 second review, L1). After a
+        // same-stop revision advance the server refuses at its newer revision while the request in hand --
+        // which the user decided is kept across that advance (#199) -- is still one the server accepts
+        // entries against. So a newer revision keeps the request when the worklist in front of the vehicle
+        // is still the request's stop. The rejection carries no station; the worklist does, and the station
+        // is what tells a single-demand journey's pickup from its drop-off, which share an operation session.
         WireToGateSublotEntryRequest? request = Volatile.Read(ref _currentEntryRequest);
         bool keep = request is not null
             && string.Equals(request.OperationSessionId, payload.OperationSessionId, StringComparison.Ordinal)
-            && request.WorklistRevision == payload.CurrentWorklistRevision;
+            && (request.WorklistRevision == payload.CurrentWorklistRevision
+                || _session.CurrentJourney.CurrentStopWorklist is { } worklist
+                    && IsStopOf(worklist, request));
         if (!keep && request is not null)
         {
             Interlocked.CompareExchange(ref _currentEntryRequest, null, request);
