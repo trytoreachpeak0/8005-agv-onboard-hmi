@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using SQCD.Agv.Wpf;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
@@ -63,10 +64,20 @@ public sealed class StartupConfigurationRejectionTests
             string settingsPath = Path.Combine(root, "appsettings.json");
             string expectedReason = WriteRejectedSettings(settingsPath, rejection);
 
-            (int exitCode, bool exited) = await RunAsync(Path.Combine(root, "SQCD.Agv.Wpf.exe"));
+            (int exitCode, bool exited, TimeSpan elapsed) = await RunAsync(Path.Combine(root, "SQCD.Agv.Wpf.exe"));
 
             Assert.True(exited, $"车载端在 {ExitBudget.TotalSeconds:0} 秒内没有退出：配置被拒后进程仍然活着。");
             Assert.NotEqual(0, exitCode);
+            if (!Environment.UserInteractive)
+            {
+                // Where nobody can see a notice (the session-0 CI runner, like this test host), none
+                // may be shown: the process has to end before the notice timeout could even elapse.
+                // In an interactive session the notice is shown and bounded, which is what the
+                // budget above allows for.
+                Assert.True(
+                    elapsed < StartupFailureNotice.Timeout,
+                    $"非交互会话里车载端用了 {elapsed} 才退出：不该弹的提示框弹了，挡满了时限。");
+            }
             string log = ReadLogs(root);
             Assert.Contains(expectedReason, log, StringComparison.Ordinal);
             Assert.Contains(settingsPath, log, StringComparison.OrdinalIgnoreCase);
@@ -108,8 +119,13 @@ public sealed class StartupConfigurationRejectionTests
         }
     }
 
-    private static async Task<(int ExitCode, bool Exited)> RunAsync(string executable)
+    /// <remarks>
+    /// Whatever the outcome, the process is gone when this returns: past the budget it is killed with
+    /// its whole tree and waited for, so a red run cannot leave an orphan holding the CI job open.
+    /// </remarks>
+    private static async Task<(int ExitCode, bool Exited, TimeSpan Elapsed)> RunAsync(string executable)
     {
+        Stopwatch elapsed = Stopwatch.StartNew();
         using Process process = Process.Start(new ProcessStartInfo(executable)
         {
             UseShellExecute = false,
@@ -119,14 +135,14 @@ public sealed class StartupConfigurationRejectionTests
         try
         {
             await process.WaitForExitAsync(budget.Token);
-            return (process.ExitCode, true);
+            return (process.ExitCode, true, elapsed.Elapsed);
         }
         catch (OperationCanceledException)
         {
             // The defect's own shape: kill it so a red run does not leave a windowless process behind.
             process.Kill(entireProcessTree: true);
             await process.WaitForExitAsync(CancellationToken.None);
-            return (process.ExitCode, false);
+            return (process.ExitCode, false, elapsed.Elapsed);
         }
     }
 
