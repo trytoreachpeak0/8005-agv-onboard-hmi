@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using SQCD.Agv.Wpf;
@@ -64,7 +65,8 @@ public sealed class StartupConfigurationRejectionTests
             string settingsPath = Path.Combine(root, "appsettings.json");
             string expectedReason = WriteRejectedSettings(settingsPath, rejection);
 
-            (int exitCode, bool exited, TimeSpan elapsed) = await RunAsync(Path.Combine(root, "SQCD.Agv.Wpf.exe"));
+            (int exitCode, bool exited, TimeSpan elapsed, string standardError) =
+                await RunAsync(Path.Combine(root, "SQCD.Agv.Wpf.exe"));
 
             Assert.True(exited, $"车载端在 {ExitBudget.TotalSeconds:0} 秒内没有退出：配置被拒后进程仍然活着。");
             Assert.NotEqual(0, exitCode);
@@ -81,6 +83,12 @@ public sealed class StartupConfigurationRejectionTests
             string log = ReadLogs(root);
             Assert.Contains(expectedReason, log, StringComparison.Ordinal);
             Assert.Contains(settingsPath, log, StringComparison.OrdinalIgnoreCase);
+            // The same line on stderr, which is where a launcher looks: the L2 harness points
+            // logging.directory at its evidence folder and captures stderr as <name>.err.log, so a
+            // reason written only under the bootstrap logs/ beside the executable does not land with
+            // the rest of its evidence (review of onboard-hmi#196).
+            Assert.Contains(expectedReason, standardError, StringComparison.Ordinal);
+            Assert.Contains(settingsPath, standardError, StringComparison.OrdinalIgnoreCase);
         }
         finally
         {
@@ -121,28 +129,57 @@ public sealed class StartupConfigurationRejectionTests
 
     /// <remarks>
     /// Whatever the outcome, the process is gone when this returns: past the budget it is killed with
-    /// its whole tree and waited for, so a red run cannot leave an orphan holding the CI job open.
+    /// its whole tree and waited for, so a red run cannot leave an orphan holding the CI job open.  If
+    /// even that fails, the test fails loudly rather than returning as if the process had ended.
     /// </remarks>
-    private static async Task<(int ExitCode, bool Exited, TimeSpan Elapsed)> RunAsync(string executable)
+    private static async Task<(int ExitCode, bool Exited, TimeSpan Elapsed, string StandardError)> RunAsync(
+        string executable)
     {
         Stopwatch elapsed = Stopwatch.StartNew();
         using Process process = Process.Start(new ProcessStartInfo(executable)
         {
             UseShellExecute = false,
+            RedirectStandardError = true,
+            // Decoded as UTF-8 on purpose: the launcher's .err.log is read as UTF-8, so a child that
+            // wrote the ANSI code page would fail here with mojibake instead of passing unnoticed.
+            StandardErrorEncoding = new UTF8Encoding(false),
             WorkingDirectory = Path.GetDirectoryName(executable)!
         }) ?? throw new InvalidOperationException("SQCD.Agv.Wpf.exe did not start.");
+        // Drained concurrently: a child blocked on a full stderr pipe would look exactly like the hang.
+        Task<string> standardError = process.StandardError.ReadToEndAsync(CancellationToken.None);
         using CancellationTokenSource budget = new(ExitBudget);
         try
         {
             await process.WaitForExitAsync(budget.Token);
-            return (process.ExitCode, true, elapsed.Elapsed);
+            return (process.ExitCode, true, elapsed.Elapsed, await standardError);
         }
         catch (OperationCanceledException)
         {
             // The defect's own shape: kill it so a red run does not leave a windowless process behind.
-            process.Kill(entireProcessTree: true);
-            await process.WaitForExitAsync(CancellationToken.None);
-            return (process.ExitCode, false, elapsed.Elapsed);
+            try
+            {
+                process.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException)
+            {
+                // It ended between the budget running out and the kill; the wait below confirms it.
+            }
+            catch (System.ComponentModel.Win32Exception exception)
+            {
+                Assert.Fail($"超时后结束车载端进程 {process.Id} 失败：{exception.Message}");
+            }
+
+            using CancellationTokenSource killBudget = new(TimeSpan.FromSeconds(30));
+            try
+            {
+                await process.WaitForExitAsync(killBudget.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                Assert.Fail($"车载端进程 {process.Id} 被结束后 30 秒仍未退出，可能留下孤儿进程。");
+            }
+
+            return (process.ExitCode, false, elapsed.Elapsed, await standardError);
         }
     }
 

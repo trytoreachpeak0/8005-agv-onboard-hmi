@@ -7,8 +7,10 @@
 | 文件 | 内容 |
 | --- | --- |
 | `red-before-fix.txt` | 修复前（`86d42ce` 的 `App.xaml.cs`）三种真实拒收全部 90 秒不退出 |
-| `green.txt` | 修复后 7 条全绿；进程用例约 32 秒＝本机交互式桌面上提示框的 30 秒时限＋启动 |
+| `green.txt` | 修复后 7 条全绿（含 stderr 断言）；进程用例约 32 秒＝本机交互式桌面上提示框的 30 秒时限＋启动 |
 | `reverse-app-revert.txt` | 只把 `App.xaml.cs` 退回 `86d42ce`（新文件保留），进程用例三条全红，都是 90 秒不退出 |
+| `red-stderr-before.txt` | 审查（#196）要求拒收原因也写到 stderr：先加断言，三条进程用例红在 stderr 为空（`String: ""`），日志文件那几条断言照旧通过 |
+| `mutation-stderr.txt` | 只去掉缺省路径上那次 stderr 写入：三条进程用例全红、同样是 `String: ""`，其余 4 条照绿。中途还抓到一次编码问题：先用 `Console.Error` 时 WinExe 按 GBK 写，UTF-8 读出来是乱码，所以改成显式 UTF-8 |
 | `mutation-notice.txt` | 提示框两处变异：线程改为前台、去掉超时，各自只红 `ANoticeNobodyDismissesStopsHoldingTheExitAtTheTimeout`；两次都先确认 `0 Error(s)` |
 
 拒收是真实的：`messageTimeoutMs=3000`（出厂 `appsettings.json` 打开 `wireToGate` 后只改这一个值）、配置文件缺失、JSON 语法错误，不是删掉判据。

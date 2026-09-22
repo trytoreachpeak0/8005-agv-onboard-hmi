@@ -1,9 +1,9 @@
-  Passed SQCD.Agv.WireToGateG2Tests.StartupFailurePathTests.ARejectedConfigurationIsLoggedWithItsPathAndOriginalReason [324 ms]
-  Passed SQCD.Agv.WireToGateG2Tests.StartupFailurePathTests.ADismissedNoticeReleasesTheExitAtOnce [358 ms]
-  Passed SQCD.Agv.WireToGateG2Tests.StartupFailurePathTests.AnAcceptedConfigurationLoadsAndLogsNothing [142 ms]
-  Passed SQCD.Agv.WireToGateG2Tests.StartupFailurePathTests.ANoticeNobodyDismissesStopsHoldingTheExitAtTheTimeout [330 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.StartupFailurePathTests.ARejectedConfigurationIsLoggedWithItsPathAndOriginalReason [539 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.StartupFailurePathTests.ADismissedNoticeReleasesTheExitAtOnce [267 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.StartupFailurePathTests.AnAcceptedConfigurationLoadsAndLogsNothing [53 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.StartupFailurePathTests.ANoticeNobodyDismissesStopsHoldingTheExitAtTheTimeout [364 ms]
   Passed SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(rejection: "missing-file") [32 s]
-  Passed SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(rejection: "malformed-json") [33 s]
-  Passed SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(rejection: "message-timeout-at-liveness-bound") [34 s]
+  Passed SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(rejection: "malformed-json") [32 s]
+  Passed SQCD.Agv.WireToGateG2Tests.StartupConfigurationRejectionTests.RejectedConfigurationIsLoggedWithItsPathAndTheProcessExitsNonZero(rejection: "message-timeout-at-liveness-bound") [31 s]
 Total tests: 7
- Total time: 1.7348 Minutes
+ Total time: 1.6881 Minutes

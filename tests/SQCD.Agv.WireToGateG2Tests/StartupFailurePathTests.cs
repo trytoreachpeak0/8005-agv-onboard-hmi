@@ -32,8 +32,9 @@ public sealed class StartupFailurePathTests
         try
         {
             RecordingLogger logger = new();
+            using StringWriter standardError = new();
 
-            OnboardSettings? settings = StartupConfiguration.TryLoad(settingsPath, logger);
+            OnboardSettings? settings = StartupConfiguration.TryLoad(settingsPath, logger, standardError);
 
             Assert.Null(settings);
             (LogSeverity severity, _, string message) = Assert.Single(logger.Entries);
@@ -44,6 +45,8 @@ public sealed class StartupFailurePathTests
                 "WIRE_TO_GATE消息超时必须严格小于ADR-cross-0027静默失联阈值的一半",
                 message,
                 StringComparison.Ordinal);
+            // The launcher's copy: the same line, once, on stderr.
+            Assert.Equal(message + Environment.NewLine, standardError.ToString());
         }
         finally
         {
@@ -62,12 +65,14 @@ public sealed class StartupFailurePathTests
         try
         {
             RecordingLogger logger = new();
+            using StringWriter standardError = new();
 
-            OnboardSettings? settings = StartupConfiguration.TryLoad(settingsPath, logger);
+            OnboardSettings? settings = StartupConfiguration.TryLoad(settingsPath, logger, standardError);
 
             Assert.NotNull(settings);
             Assert.Equal(2999, settings.WireToGate.MessageTimeoutMs);
             Assert.Empty(logger.Entries);
+            Assert.Empty(standardError.ToString());
         }
         finally
         {
