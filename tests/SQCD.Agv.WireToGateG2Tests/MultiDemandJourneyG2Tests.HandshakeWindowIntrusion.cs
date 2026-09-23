@@ -142,6 +142,84 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
+    /// 一份已经发出、正在等 <c>DurableAck</c> 的安全上报，因为它的连接被关掉而失败：业务服务不去断开会话，此后连上的
+    /// 新会话一直连着、保持就绪。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 等确认的一方由 <c>CloseConnectionAsync</c> 叫醒，而 <c>DisconnectAsync</c> 要到关完才 <c>Publish</c> 新状态，所以
+    /// 失败处理读到的会话往往还是旧的那一代——按「读到的代号」判是不是旧会话的失败，会判成当前会话的，照样断开。
+    /// 等它真去断开时，新会话可能已经连上了，被断开的就是新会话（cs#323 那次车载端日志里正有这样一条
+    /// 「SafetyStateChanged发送失败：WIRE_TO_GATE连接已关闭」）。
+    /// </para>
+    /// <para>
+    /// 时序是构造出来的：日志器在业务服务写下那条失败日志之后、它接着动手之前把它停住（写日志正是判断之后、断开之前
+    /// 那一刻），测试在这段空档里把新会话连到就绪，再放行。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("IntegrationSlice", "FP-IS-05")]
+    [Trait("ProtocolVector", "CV-SESSION-RECONNECT-DURING-RECOVERY")]
+    public async Task ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await Harness.StartAsync(_ => { }, token, io: io);
+        try
+        {
+            await WaitForSafetyReportsToSettleAsync(harness, token);
+            int firstConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
+
+            // A lock feedback stops reading; the report of it reaches the server, which takes it and never answers.
+            harness.Server.AnswerSafetyStateChanged = false;
+            int reportsBefore = SafetyChangesOn(harness, firstConnection).Length;
+            io.SetUnreadable(0);
+            io.PublishSnapshot();
+            await harness.WaitUntilAsync(
+                () => SafetyChangesOn(harness, firstConnection).Length > reportsBefore,
+                "the report to reach the server and wait there for its acknowledgement",
+                token);
+
+            // The connection closes under it; the report fails, and the business service is held right after it has
+            // decided what that failure means and logged it.
+            harness.Logger.HoldNextEntryStartingWith("SafetyStateChanged");
+            await harness.Session.Client.DisconnectAsync();
+            await harness.Logger.HoldEntered.WaitAsync(TimeSpan.FromSeconds(10), token);
+
+            // In that gap the vehicle is back: a new session, Ready.
+            harness.Server.AnswerSafetyStateChanged = true;
+            await harness.Session.Client.ConnectAndRecoverAsync(token);
+            int secondConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
+            long secondGeneration = harness.Session.Current.SessionGeneration
+                ?? throw new InvalidOperationException("The new session has no generation.");
+            Assert.NotEqual(firstConnection, secondConnection);
+            Assert.Equal(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
+
+            harness.Logger.ReleaseHold();
+            // Room for the disconnect the failure must not cause.
+            await Task.Delay(TimeSpan.FromMilliseconds(500), token);
+
+            // The new session is still the one, still connected and Ready, and no third connection was needed.
+            Assert.Equal(secondConnection, harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection));
+            Assert.True(harness.Session.Current.Connected);
+            Assert.Equal(secondGeneration, harness.Session.Current.SessionGeneration);
+            Assert.Equal(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
+            // Because the failure was taken for what it is -- its connection was gone -- and not for a failure of
+            // the session now in place.
+            (string message, Exception failure) = Assert.Single(SafetyReportFailures(harness));
+            Assert.IsAssignableFrom<IOException>(failure);
+            Assert.Contains("不断开当前会话", message, StringComparison.Ordinal);
+            Assert.Empty(harness.UiErrors);
+        }
+        finally
+        {
+            // A business service still parked in the logger would keep the harness's disposal waiting forever.
+            harness.Logger.ReleaseHold();
+        }
+    }
+
+    /// <summary>
     /// 一份写进了发件箱、却从没送到服务端的安全上报：下一次握手不补发它，只发自己的全量快照；握手照常走完、会话就绪；
     /// 服务端拿到的是此刻的读数而不是那一份；那一份之后也不会再发出去，也不妨碍下一次真实变化的上报。
     /// </summary>

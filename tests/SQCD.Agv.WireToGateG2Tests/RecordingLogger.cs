@@ -44,6 +44,22 @@ internal sealed class RecordingLogger : IAppLogger
         }
     }
 
+    private string? _holdPrefix;
+    private readonly TaskCompletionSource _holdReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _holdEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>
+    /// Parks the next writer of an entry starting with <paramref name="prefix"/> right after the entry is kept, until
+    /// <see cref="ReleaseHold"/>: a service that logs and then acts is held between the two, so a test can change the
+    /// world in that gap instead of hoping a schedule opens it. One hold per logger.
+    /// </summary>
+    public void HoldNextEntryStartingWith(string prefix) => Volatile.Write(ref _holdPrefix, prefix);
+
+    /// <summary>Completes once a writer is parked by <see cref="HoldNextEntryStartingWith"/>.</summary>
+    public Task HoldEntered => _holdEntered.Task;
+
+    public void ReleaseHold() => _holdReleased.TrySetResult();
+
     public void Write(
         LogSeverity severity,
         string source,
@@ -57,6 +73,15 @@ internal sealed class RecordingLogger : IAppLogger
             {
                 _exceptions.Add((message, exception));
             }
+        }
+
+        string? prefix = Volatile.Read(ref _holdPrefix);
+        if (prefix is not null
+            && message.StartsWith(prefix, StringComparison.Ordinal)
+            && Interlocked.CompareExchange(ref _holdPrefix, null, prefix) == prefix)
+        {
+            _holdEntered.TrySetResult();
+            _holdReleased.Task.Wait();
         }
     }
 }
