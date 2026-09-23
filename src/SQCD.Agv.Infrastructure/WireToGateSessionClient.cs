@@ -3641,10 +3641,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         {
             if (Volatile.Read(ref _connectionEpoch) != connectionEpoch)
             {
-                throw new IOException("WIRE_TO_GATE连接已换代，这条报文不属于当前连接。");
+                throw new WireToGateConnectionGoneException("WIRE_TO_GATE连接已换代，这条报文不属于当前连接。");
             }
 
-            StreamWriter writer = _writer ?? throw new IOException("WIRE_TO_GATE连接不可用。");
+            StreamWriter writer = _writer
+                ?? throw new WireToGateConnectionGoneException("WIRE_TO_GATE连接不可用。");
             await writer.WriteLineAsync(normalized.AsMemory(), cancellationToken).ConfigureAwait(false);
         }
         finally
@@ -3692,7 +3693,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         _receiveFailure = null;
         foreach (KeyValuePair<string, TaskCompletionSource<WireToGateEnvelope>> waiter in _responseWaiters)
         {
-            waiter.Value.TrySetException(new IOException("WIRE_TO_GATE连接已关闭。"));
+            waiter.Value.TrySetException(new WireToGateConnectionGoneException("WIRE_TO_GATE连接已关闭。"));
         }
         _responseWaiters.Clear();
         _completedManualChargingResultFingerprints.Clear();

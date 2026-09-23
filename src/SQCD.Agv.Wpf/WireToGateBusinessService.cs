@@ -1978,19 +1978,24 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         }
         catch (Exception exception)
         {
-            // 这一份判断时依据的那一代会话已经不在了（断开或已换代）：失败属于那一代，断开只会打掉此刻正在握手或刚
-            // 就绪的新一代（8005-agv-onboard-hmi#204）。什么都不断，只记下来。服务端不会缺这一份的信息：新一代握手
-            // 的全量 SafetyStateSnapshot 已经取代了它，上面换代那段会把它作废；新一代就绪时 OnSessionStateChanged
-            // 再触发一轮（就绪若恰好落在本轮持锁期间，_safetyRefreshPending 让工作循环退出前再跑一轮），按此刻的
-            // 读数补报。
-            // 会话代没变的失败仍走下面的老路：断开，由重连后的新会话全量同步。
-            if (judgedOnGeneration is not null
-                && _session.Current.SessionGeneration != judgedOnGeneration)
+            // 这一份所在的连接已经不在了（被关掉，或已换成下一条）：失败属于那条连接，没有东西可断——关掉它的那一方
+            // （断开、重连、心跳循环）也会把下一条连上；此刻去断开，打掉的是正在握手或刚就绪的新会话
+            // （8005-agv-onboard-hmi#204）。什么都不断，只记下来。服务端不会缺这一份的信息：新一代握手的全量
+            // SafetyStateSnapshot 已经取代了它，上面换代那段会把它作废；新一代就绪时 OnSessionStateChanged 再触发
+            // 一轮（就绪若恰好落在本轮持锁期间，_safetyRefreshPending 让工作循环退出前再跑一轮），按此刻的读数补报。
+            //
+            // 主要靠异常类型认，不靠读会话状态：等确认的一方在 CloseConnectionAsync 里被叫醒，那时 DisconnectAsync
+            // 还没 Publish，这里读到的往往仍是旧代。代号那一条兜住类型认不出、状态却已发布的情形（接收循环自己挂掉，
+            // 等确认的一方拿到的是循环的异常）。
+            // 连接还在的失败（例如等确认超时）仍走下面的老路：断开，由重连后的新会话全量同步。
+            if (exception is WireToGateConnectionGoneException
+                || judgedOnGeneration is not null
+                    && _session.Current.SessionGeneration != judgedOnGeneration)
             {
                 _logger.Write(
                     LogSeverity.Warning,
                     nameof(WireToGateBusinessService),
-                    $"SafetyStateChanged未能在它所属的会话代{judgedOnGeneration}上发出，那一代已结束；不断开当前会话，由新会话重新上报。",
+                    $"SafetyStateChanged未能在它所属的连接上发出（会话代{judgedOnGeneration}），那条连接已关闭或已换代；不断开当前会话，由新会话重新上报。",
                     exception);
                 return;
             }

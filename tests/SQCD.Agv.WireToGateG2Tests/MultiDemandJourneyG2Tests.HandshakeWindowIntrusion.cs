@@ -108,10 +108,10 @@ public sealed partial class MultiDemandJourneyG2Tests
             // And nothing on it carries a generation that is not this one.
             Assert.Empty(ForeignGenerationsOn(harness, secondConnection, secondGeneration));
             // Kept out by the check on the connection it was judged against, not lost some other way; and the failure was
-            // taken as the old session's, so the handshake under way was left alone. The first half without the second is
-            // what cs#323 saw next: the refusal itself disconnects the new session in the middle of its handshake.
+            // taken for what it is -- its connection gone -- so the handshake under way was left alone. The first half
+            // without the second still loses the session: the refusal itself would disconnect the new one mid-handshake.
             (string message, Exception refusal) = Assert.Single(SafetyReportFailures(harness));
-            Assert.IsType<IOException>(refusal);
+            Assert.IsType<WireToGateConnectionGoneException>(refusal);
             Assert.Contains("换代", refusal.Message, StringComparison.Ordinal);
             Assert.Contains($"会话代{firstGeneration}", message, StringComparison.Ordinal);
             Assert.Contains("不断开当前会话", message, StringComparison.Ordinal);
@@ -208,7 +208,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             // Because the failure was taken for what it is -- its connection was gone -- and not for a failure of
             // the session now in place.
             (string message, Exception failure) = Assert.Single(SafetyReportFailures(harness));
-            Assert.IsAssignableFrom<IOException>(failure);
+            Assert.IsType<WireToGateConnectionGoneException>(failure);
             Assert.Contains("不断开当前会话", message, StringComparison.Ordinal);
             Assert.Empty(harness.UiErrors);
         }
