@@ -14,8 +14,24 @@ namespace SQCD.Agv.WireToGateG2Tests;
 internal sealed class RecordingLogger : IAppLogger
 {
     private readonly List<(LogSeverity Severity, string Source, string Message)> _entries = [];
+    private readonly List<(string Message, Exception Exception)> _exceptions = [];
 
     public event EventHandler<LogEntryEventArgs>? EntryWritten;
+
+    /// <summary>
+    /// Each entry written with an exception, with that exception: for a test that has to tell which failure a
+    /// guard caught, not only that one was logged.
+    /// </summary>
+    public IReadOnlyList<(string Message, Exception Exception)> Exceptions
+    {
+        get
+        {
+            lock (_entries)
+            {
+                return _exceptions.ToArray();
+            }
+        }
+    }
 
     public IReadOnlyList<(LogSeverity Severity, string Source, string Message)> Entries
     {
@@ -34,10 +50,13 @@ internal sealed class RecordingLogger : IAppLogger
         string message,
         Exception? exception = null)
     {
-        _ = exception;
         lock (_entries)
         {
             _entries.Add((severity, source, message));
+            if (exception is not null)
+            {
+                _exceptions.Add((message, exception));
+            }
         }
     }
 }

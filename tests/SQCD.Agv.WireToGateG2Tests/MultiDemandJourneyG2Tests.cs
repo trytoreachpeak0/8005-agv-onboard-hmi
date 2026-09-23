@@ -258,6 +258,9 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         public MainViewModel ViewModel { get; }
 
+        /// <summary>What the vehicle logged, for a test whose assertion is about which failure was caught.</summary>
+        public RecordingLogger Logger { get; private init; } = null!;
+
         /// <summary>What <c>App.OnDispatcherUnhandledException</c> would have caught on the UI thread.</summary>
         public IReadOnlyList<Exception> UiErrors
         {
@@ -412,7 +415,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                 // 与 App 接的是同一根线（8005-agv-onboard-hmi#171）。夹具不接，这里就证不到
                 // 「锁存之后扫码真的被拒」——而那正是故障横幅对操作员说的那句话。
                 fatalFaultLatched: () => controller.IsFatalFaultLatched);
-            Harness harness = new(server, io, journalPath, session, business, controller, viewModel);
+            Harness harness = new(server, io, journalPath, session, business, controller, viewModel) { Logger = logger };
             // As the App wires it (8005-agv-onboard-hmi#197).
             controller.StateChanged += (_, _) => business.RefreshSafetyAfterFatalFaultLatchChange();
 
