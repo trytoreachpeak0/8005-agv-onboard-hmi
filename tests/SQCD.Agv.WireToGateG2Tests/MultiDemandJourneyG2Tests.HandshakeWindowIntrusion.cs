@@ -611,11 +611,25 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         public void ReleaseHandshake() => _handshakeReleased.TrySetResult();
 
+        /// <summary>How many times the session client's pass over stale rows (RequestStaleResend) has read the outbox.</summary>
+        public int StalePassReads => Volatile.Read(ref _stalePassReads);
+
+        private int _stalePassReads;
+
         public async Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
             CancellationToken cancellationToken = default)
         {
+            // The handshake is no longer the only reader: the pass over stale rows reads the outbox too, and holding that
+            // read instead would park the pass while the handshake runs on. Told apart by the flag the pass sets.
+            bool fromStalePass = WireToGateSessionClient.InStaleResendPass;
             IReadOnlyList<WireToGateDurableMessage> read =
                 await inner.ReadUnacknowledgedOutgoingAsync(cancellationToken);
+            if (fromStalePass)
+            {
+                Interlocked.Increment(ref _stalePassReads);
+                return read;
+            }
+
             if (Interlocked.Exchange(ref _holdHandshake, 0) == 1)
             {
                 _handshakeHeld.TrySetResult();

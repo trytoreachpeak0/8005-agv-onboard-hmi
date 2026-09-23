@@ -73,9 +73,15 @@ public sealed partial class MultiDemandJourneyG2Tests
             }
             else
             {
+                int passReadsBefore = race.StalePassReads;
                 reconnect = harness.Session.Client.ConnectAndRecoverAsync(token);
                 await reconnect;
                 Assert.Equal(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
+                // Let the pass the handshake asked for read the outbox before the held message lands, so this cell is
+                // carried by the other request alone -- the one a refused write makes. Without this wait that pass,
+                // started off-thread, sometimes read after the release and delivered the row itself (M9b: 8 red in 10).
+                // A scheduling aid, not a check: in builds without the pass the wait simply runs out.
+                SpinWait.SpinUntil(() => race.StalePassReads > passReadsBefore, TimeSpan.FromSeconds(2));
             }
 
             int secondConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
@@ -131,6 +137,10 @@ public sealed partial class MultiDemandJourneyG2Tests
             Assert.Equal(secondConnection, harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection));
             Assert.Equal(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
             Assert.Empty(harness.UiErrors);
+            // Nothing but the pass over stale rows sends this row, so the journal double must have seen that pass read the
+            // outbox. If it did not, WireToGateSessionClient.InStaleResendPass no longer marks the pass, and the holds in
+            // these tests would park the pass's read in place of the handshake's without a word.
+            Assert.True(race.StalePassReads > 0, "The pass over stale rows delivered the row but was never recognised.");
         }
         finally
         {
