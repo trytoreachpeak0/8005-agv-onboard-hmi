@@ -724,30 +724,18 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             // 超时断开、再重连一次（8005-agv-control-server#33）。v2 服务端判 Ready 更要求本代次三者
             // 齐全，缺一样都出不来。
             //
-            // 不补发的持久报文有两种，理由相同：这次握手会发一份新的取代它，而补发它会让服务端在这里还没发完
-            // 的快照中间回一条 SessionReadiness——握手每发一条都只读下一行当作它的答复，那条就绪会被当成下一个
-            // 快照的 ack 读走，报 HANDSHAKE_SEQUENCE_INVALID。
-            // - RecoveryStateReport：说的是发出它那次握手时的事实；服务端还会接着重放待确认的恢复命令。
-            // - SafetyStateChanged：下面的全量 SafetyStateSnapshot 说的是此刻的读数，那一份更早，晚到只会把服务端
-            //   退回过时的状态。服务端对第一次受理的 SafetyStateChanged 无条件跟一条就绪（control-server
-            //   OnboardMessageProcessor），上一代没送到的那一份补发过去正是第一次受理——cs#323 红运行的 ver5
-            //   就是这样让第 2 代握手失败的（8005-agv-onboard-hmi#204）。
+            // 唯一不补发的持久报文是 RecoveryStateReport：它说的是发出它那次握手时的事实，而这次握手
+            // 会发一份新的取代它。补发旧报告还会让服务端立即回一条 SessionReadiness、再重放它待确认的
+            // 恢复命令，全都夹在这里还没发完的快照中间。
             IReadOnlyList<WireToGateDurableMessage> unacknowledged = await _journal
                 .ReadUnacknowledgedOutgoingAsync(cancellationToken)
                 .ConfigureAwait(false);
             List<WireToGateDurableMessage> supersededReports = [];
-            List<WireToGateDurableMessage> supersededSafetyChanges = [];
             foreach (WireToGateDurableMessage pending in unacknowledged)
             {
                 if (string.Equals(pending.MessageType, "RecoveryStateReport", StringComparison.Ordinal))
                 {
                     supersededReports.Add(pending);
-                    continue;
-                }
-
-                if (string.Equals(pending.MessageType, "SafetyStateChanged", StringComparison.Ordinal))
-                {
-                    supersededSafetyChanges.Add(pending);
                     continue;
                 }
 
@@ -788,15 +776,6 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     safety,
                     slotStates),
                 cancellationToken).ConfigureAwait(false);
-            // The snapshot that supersedes them is applied, so nothing is owed on them any more. Settled before the
-            // recovery report below, whose journal hash counts every unacknowledged business message: left open they
-            // would be reported as still owed, and carried into every later handshake's skip list forever.
-            foreach (WireToGateDurableMessage superseded in supersededSafetyChanges)
-            {
-                await _journal
-                    .MarkOutgoingAcknowledgedAsync(superseded.MessageId, superseded.ContentSha256, cancellationToken)
-                    .ConfigureAwait(false);
-            }
 
             await SendOnboardAlarmSnapshotAsync(generation, cancellationToken).ConfigureAwait(false);
             IReadOnlyList<WireToGateDurableMessage> pendingResultReplays =

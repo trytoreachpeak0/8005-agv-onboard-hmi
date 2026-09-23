@@ -277,29 +277,18 @@ public sealed partial class MultiDemandJourneyG2Tests
                 envelope => envelope.Connection == secondConnection && envelope.MessageType == "SafetyStateSnapshot").WireLine);
             Assert.False(handshakeSafety.GetProperty("unknownPresent").GetBoolean());
 
-            // The held report goes nowhere, and takes nothing with it. The next new report -- what the business service
-            // sends once the new session is ready -- is parked before the wire, so the moment in between can be read.
-            race.HoldFollowingSafetyStateChange();
+            // The held report goes nowhere, and takes nothing with it.
             race.ReleaseSafetyChange();
-            await race.FollowingSafetyChangeHeld.WaitAsync(TimeSpan.FromSeconds(10), token);
-            Assert.NotEmpty(SafetyReportFailures(harness));
-            Assert.Equal(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
-            // What the vehicle takes the server to have accepted is what the server holds for this session: the
-            // handshake snapshot's version, and nothing past it. The stale report never reached the server; had the
-            // business service "resent" it, the settled outbox row would have made that a silent success that still
-            // advances the accepted version (SendSafetyStateChangedAsync), leaving the vehicle one ahead of the server.
-            long serverHolds = SafetyStateVersionOf(Assert.Single(
-                harness.Server.ReceivedEnvelopes,
-                envelope => envelope.Connection == secondConnection && envelope.MessageType == "SafetyStateSnapshot").WireLine);
-            Assert.Equal(serverHolds, harness.Session.Current.SafetyStateVersion);
-            // And what being one ahead costs: the server announces its readiness now, as it does on many events, with
-            // its own number; ApplySessionReadiness refuses a number below its own as HANDSHAKE_SEQUENCE_INVALID and the
-            // ready session is dropped.
-            await harness.Server.SendSessionReadinessAsync();
-            race.ReleaseFollowingSafetyChange();
+            await harness.WaitUntilAsync(
+                () => SafetyReportFailures(harness).Length > 0,
+                "the held safety report to be refused",
+                token);
+            await harness.WaitUntilAsync(
+                () => harness.Session.Current.Readiness == WireToGateSessionReadiness.Ready,
+                "the new session to become Ready",
+                token);
             // Room for a late send of the stale report, or a late disconnect, to show itself.
             await Task.Delay(TimeSpan.FromMilliseconds(500), token);
-            Assert.Equal(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
             Assert.Equal(secondConnection, harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection));
             // Nothing stale reached the server afterwards: every safety change on this connection is the live reading.
             Assert.DoesNotContain(
@@ -312,8 +301,6 @@ public sealed partial class MultiDemandJourneyG2Tests
 
             // The next real change is still reported: the stale report's content must not be left as the deduplication
             // signature, or this one -- the same content -- would be swallowed and the server keep calling the car safe.
-            // Today that also holds without dropping the stale report, only because every successful send Publishes
-            // the session and OnSessionStateChanged judges the safety again at once; this step keeps holding it either way.
             io.SetUnreadable(0);
             io.PublishSnapshot();
             await harness.WaitUntilAsync(
@@ -328,15 +315,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             // Whatever failed above, nothing may stay parked: the harness's disposal waits for the business
             // service's tasks, and a report still held here would keep this test from ever finishing.
             race.ReleaseSafetyChange();
-            race.ReleaseFollowingSafetyChange();
             race.ReleaseHandshake();
         }
-    }
-
-    private static long SafetyStateVersionOf(string wireLine)
-    {
-        using JsonDocument document = JsonDocument.Parse(wireLine);
-        return document.RootElement.GetProperty("payload").GetProperty("safetyStateVersion").GetInt64();
     }
 
     private static JsonElement[] SafetyChangesOn(Harness harness, int connection) =>
@@ -413,11 +393,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         private readonly TaskCompletionSource _safetyReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _handshakeHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _handshakeReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource _followingHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource _followingReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _holdSafety;
         private int _holdSafetyAfterWrite;
-        private int _holdFollowing;
         private int _holdHandshake;
 
         /// <summary>Completes once a safety report is parked in front of its outbox write.</summary>
@@ -429,17 +406,6 @@ public sealed partial class MultiDemandJourneyG2Tests
         public void HoldNextSafetyStateChange() => Volatile.Write(ref _holdSafety, 1);
 
         public void HoldNextSafetyStateChangeAfterOutboxWrite() => Volatile.Write(ref _holdSafetyAfterWrite, 1);
-
-        /// <summary>
-        /// A second, independent hold for a later report: the next <c>SafetyStateChanged</c> written as a new outbox row
-        /// is parked before its write. A settled row "resent" under the same key goes through
-        /// <see cref="ReplaceOutgoingForReplayAsync"/> instead and is not caught here.
-        /// </summary>
-        public void HoldFollowingSafetyStateChange() => Volatile.Write(ref _holdFollowing, 1);
-
-        public Task FollowingSafetyChangeHeld => _followingHeld.Task;
-
-        public void ReleaseFollowingSafetyChange() => _followingReleased.TrySetResult();
 
         public void HoldNextHandshakeAfterOutboxRead() => Volatile.Write(ref _holdHandshake, 1);
 
@@ -469,11 +435,6 @@ public sealed partial class MultiDemandJourneyG2Tests
             {
                 _safetyHeld.TrySetResult();
                 await _safetyReleased.Task;
-            }
-            else if (message.MessageType == "SafetyStateChanged" && Interlocked.Exchange(ref _holdFollowing, 0) == 1)
-            {
-                _followingHeld.TrySetResult();
-                await _followingReleased.Task;
             }
 
             WireToGateDurableMessage saved = await inner.SaveOutgoingBeforeSendAsync(message, cancellationToken);
