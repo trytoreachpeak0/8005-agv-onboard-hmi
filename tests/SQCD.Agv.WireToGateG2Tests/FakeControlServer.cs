@@ -873,6 +873,18 @@ public sealed class FakeControlServer : IAsyncDisposable
     }
 
     /// <summary>
+    /// Announces the latest session's readiness once more, unprompted, with the versions this server has
+    /// actually accepted. The real server does this on many events that are not the vehicle's own message --
+    /// a journey change, a recovery decision -- so a vehicle must take one at any moment of a ready session.
+    /// </summary>
+    public Task SendSessionReadinessAsync()
+    {
+        ConnectionContext context = Volatile.Read(ref _latestSession)
+            ?? throw new InvalidOperationException("No session has been accepted yet.");
+        return WriteEnvelopeAsync(context, CreateSessionReadiness(context));
+    }
+
+    /// <summary>
     /// Sends a server command the test composes itself, under the messageId it names, on the latest
     /// session. Sending the same messageId twice is how the real server's outbox resends a RELIABLE
     /// command it has no answer to yet.

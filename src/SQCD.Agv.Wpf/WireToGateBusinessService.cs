@@ -1928,6 +1928,18 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             {
                 _lastSafetyGeneration = current.SessionGeneration;
                 _lastSafetySignature = null;
+                // 上一代判断、到换代仍没被接受的那一份作废：这一代握手的全量 SafetyStateSnapshot 已经说了此刻的读数，
+                // 握手也不再补发它、并把它在发件箱里了结（WireToGateSessionClient.ConnectAndRecoverAsync）。再拿它
+                // 「重发」会落在那一行上成为一次无声的成功，却照样把车载端记的已接受版本推过服务端真拿到的那个；
+                // 服务端下一条就绪带着自己的版本号，会被 ApplySessionReadiness 判为 HANDSHAKE_SEQUENCE_INVALID，
+                // 刚就绪的会话就此断开（8005-agv-onboard-hmi#204）。版本号越过它，此后的上报不与它重号。
+                if (_pendingSafetyChange is not null)
+                {
+                    _nextSafetyStateVersion = Math.Max(
+                        _nextSafetyStateVersion,
+                        checked(_pendingSafetyChange.Version + 1));
+                    _pendingSafetyChange = null;
+                }
             }
 
             _nextSafetyStateVersion = Math.Max(
@@ -1967,10 +1979,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         catch (Exception exception)
         {
             // 这一份判断时依据的那一代会话已经不在了（断开或已换代）：失败属于那一代，断开只会打掉此刻正在握手或刚
-            // 就绪的新一代（8005-agv-onboard-hmi#204）。什么都不断，只记下来。这一份不丢：_pendingSafetyChange
-            // 原样留着，新一代就绪时 OnSessionStateChanged 会再触发一轮（就绪若恰好落在本轮持锁期间，
-            // _safetyRefreshPending 让工作循环退出前再跑一轮），换代全量补报的规则（上面那段）照常生效。
-            // 会话代没变的失败仍走下面的老路：断开并以同一版本和内容重试。
+            // 就绪的新一代（8005-agv-onboard-hmi#204）。什么都不断，只记下来。服务端不会缺这一份的信息：新一代握手
+            // 的全量 SafetyStateSnapshot 已经取代了它，上面换代那段会把它作废；新一代就绪时 OnSessionStateChanged
+            // 再触发一轮（就绪若恰好落在本轮持锁期间，_safetyRefreshPending 让工作循环退出前再跑一轮），按此刻的
+            // 读数补报。
+            // 会话代没变的失败仍走下面的老路：断开，由重连后的新会话全量同步。
             if (judgedOnGeneration is not null
                 && _session.Current.SessionGeneration != judgedOnGeneration)
             {
@@ -1985,7 +1998,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _logger.Write(
                 LogSeverity.Error,
                 nameof(WireToGateBusinessService),
-                "SafetyStateChanged发送失败，正在断开会话并以同一版本和内容重试。",
+                "SafetyStateChanged发送失败，正在断开会话；重连后由新会话的全量安全快照取代这一份。",
                 exception);
             try
             {
