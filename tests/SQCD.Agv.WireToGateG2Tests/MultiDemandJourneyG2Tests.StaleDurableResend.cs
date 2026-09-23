@@ -226,7 +226,8 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// 业务服务会把它当成当前会话的失败去断开会话，缺陷二就回来了。
     /// </para>
     /// <para>
-    /// <b>写是怎么挂住的，不靠时序：</b>假服务端停止读取、接收缓冲调小，车载端写一行 16 MB 的报文。写不完是按构造的：
+    /// <b>写是怎么挂住的，不靠时序：</b>假服务端停止读取、接收缓冲调小，车载端写一行 16 MB 的报文（一条合法的
+    /// <c>SublotSubmitted</c>，批号取 16 MB；程序集的出站 schema 检查读每一行，垃圾载荷会让整轮在清理阶段失败）。写不完是按构造的：
     /// 对端一个字节都不再收，而两端缓冲加起来远小于这一行。用例先断言写确实开始了（对端 socket 上有数据在等）且还没写完，
     /// 再关连接。
     /// </para>
@@ -246,12 +247,18 @@ public sealed partial class MultiDemandJourneyG2Tests
             await WaitForSafetyReportsToSettleAsync(harness, token);
 
             harness.Server.PauseReading = true;
-            Task<string> send = harness.Session.Client.SendDurableAsync(
-                "OperationProgress",
-                "hmi204:hung-write",
-                "66666666-6666-6666-6666-666666666666",
-                null,
-                new { padding = new string('x', 16 * 1024 * 1024) },
+            // A long line that is still a valid message: the assembly's outbound schema check reads every line the vehicle
+            // sends, and a junk payload fails the whole run at assembly cleanup. SublotSubmitted is the durable message
+            // whose sublot has no length limit.
+            Task<string> send = harness.Session.Client.SendSublotSubmittedAsync(
+                "66666666-6666-4666-8666-666666666666",
+                "HMI204-STATION",
+                1,
+                new string('x', 16 * 1024 * 1024),
+                "SCANNER",
+                "hmi204-operator",
+                "BADGE",
+                DateTimeOffset.UtcNow,
                 token);
             await harness.WaitUntilAsync(
                 () => harness.Server.DataWaitingWhilePaused,
