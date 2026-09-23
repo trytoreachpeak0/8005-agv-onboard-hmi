@@ -43,6 +43,11 @@ foreach ($state in $States) {
                 git restore --source bc30a54 --worktree -- $client $business
                 if ($LASTEXITCODE -ne 0) { throw 'git restore for PRE failed' }
             }
+            'HEAD' {
+                # The committed client: its epoch and its writer still two fields, before the handle.
+                git restore --source HEAD --worktree -- $client
+                if ($LASTEXITCODE -ne 0) { throw 'git restore for HEAD failed' }
+            }
             'FIX' { }
             default {
                 python "$sp/mutate.py" (Get-Location).Path $state
@@ -64,7 +69,7 @@ foreach ($state in $States) {
                 "fail=$($Matches[1]) pass=$($Matches[2]) total=$($Matches[3])"
             } else { 'NO SUMMARY' }
             $red = [regex]::Matches($text, 'MultiDemandJourneyG2Tests\.(\S+?)(\((?:next|trigger): \w+\))? \[FAIL\]') |
-                ForEach-Object { ($_.Groups[1].Value -replace 'ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession', 'closed' -replace 'ASafetyReportUnansweredOnALiveConnectionStillDisconnectsTheSession', 'live' -replace 'ASafetyReportStillInFlightStaysOutOfTheNextHandshake', 'inflight') + $_.Groups[2].Value } |
+                ForEach-Object { ($_.Groups[1].Value -replace 'ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession', 'closed' -replace 'ASafetyReportUnansweredOnALiveConnectionStillDisconnectsTheSession', 'live' -replace 'ASafetyReportStillInFlightStaysOutOfTheNextHandshake', 'inflight' -replace 'ASafetyReportJudgedWhileTheConnectionIsClosingIsNotWrittenIntoIt', 'closing') + $_.Groups[2].Value } |
                 Sort-Object -Unique
             $lines = [regex]::Matches($text, 'HandshakeWindowIntrusion\.cs:line (\d+)') | ForEach-Object { $_.Groups[1].Value } |
                 Group-Object | Sort-Object Count -Descending | Select-Object -First 3 | ForEach-Object { "$($_.Name)x$($_.Count)" }

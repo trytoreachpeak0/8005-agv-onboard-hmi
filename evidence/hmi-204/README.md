@@ -4,7 +4,7 @@
 
 ## 修的是什么
 
-在途的业务报文（这里是 `SafetyStateChanged`）在写发件箱期间会话换了代，会带着旧代号写进新连接、插在新握手中间；它随后的失败又会把新会话断开。两条都早于 #197。
+在途的业务报文（这里是 `SafetyStateChanged`）在写发件箱期间会话换了代，会带着旧代号写进新连接、插在新握手中间；它随后的失败又会把新会话断开。两条在 #197 之前的代码上同样能触发，所以 #197 不是它们的必要条件；#197 与 cs#323 那次现场红是否相关没有证明。
 
 cs#323 那次 `HANDSHAKE_SEQUENCE_INVALID` 的来源不是这个，在服务端，见 control-server#340。
 
@@ -19,6 +19,11 @@ cs#323 那次 `HANDSHAKE_SEQUENCE_INVALID` 的来源不是这个，在服务端�
 | `runs/inflight-10x.txt` | 第一条用例在 M1、M1b、修后三种状态下各连跑 10 次 |
 | `runs/samples.txt` | 上面几种红各取第 1 次的失败原文 |
 | `tools/run10.ps1`、`tools/mutate.py` | 连跑与变异脚本；变异只替换一处、匹配数不是 1 就退出 |
+| `red/closing-at-19d48ff.txt` | 审查第 1 条的新用例（`9543a4f`）在 `19d48ff` 产品代码上的红：停住期间判定的那份写进了正在关的连接 |
+| `runs/closing-10x.txt` | 审查后本票四条用例 6 格，在 `19d48ff`、M1、M1b、M7、修后五种状态下各连跑 10 次 |
+| `runs/closing-round1-10x.txt`、`runs/closing-round1-double-refusal.txt` | 作废的第一轮与它的一份红原文：新用例当时断言「恰好一次拒绝」，同一份被拒两次时就红；改断言后重跑的是上一行 |
+| `runs/resend-10x.txt` | 审查第 2 条：补发断言在 M5、M5x、M6、修后四种状态下各 10 次 |
+| `tools/summarize.ps1` | 从每次的原始输出重建连跑汇总（`resend-10x.txt` 的那一轮当时没存汇总） |
 
 历史提交上的那两份（`7cf1dcba`、`742f155e`）是在分离 worktree 里只加测试夹具跑的，`742f155e` 另外照抄了 `7cf1dcba` 里的一个等待辅助方法（该提交还没有它）。
 
@@ -31,6 +36,12 @@ cs#323 那次 `HANDSHAKE_SEQUENCE_INVALID` 的来源不是这个，在服务端�
 | M2 | 失败处理的条件改为恒假：一律断开 | 集成分支原来的逻辑 |
 | M3 | 去掉按类型认，只按读到的会话代号判 | `bc30a54` 的判法 |
 | M4 | 失败处理的条件改为恒真：一律不断开 | 新异常类型把该断的也吞了 |
+| M5 | 会话就绪时不再重报安全状态（`OnSessionStateChanged` 那一处） | 被拒的那份没人补发——结果仍绿，因为 #197 那根线也会重报 |
+| M5x | M5 再加上 #197 那根线（`RefreshSafetyAfterFatalFaultLatchChange`）不做事 | 两条触发路都没有 |
+| M6 | 被拒后把待发的那份丢掉 | 被拒等于丢失 |
+| M7 | `(序号, 写入口)` 对象改到关连接最后才拿掉 | 关连接途中写入口仍在，核对通过、写进正在关的连接 |
+
+M1 与 M1b 在审查后按新代码重写了匹配文本（核对的是对象里的序号），语义不变。
 
 「修前」是把两个产品文件用 `git restore --source bc30a54 --worktree` 换成 `bc30a54` 的样子。
 
@@ -51,4 +62,26 @@ cs#323 那次 `HANDSHAKE_SEQUENCE_INVALID` 的来源不是这个，在服务端�
 | M4 | – | 10/10 绿 | 10/10 红，第 324 行等不到会话断开 |
 | 修后 | 10/10 绿 | 10/10 绿 | 10/10 绿 |
 
-本机全量（最终头部，经 `Invoke-HeavyLocal`）：`SQCD.Agv.UnitTests` 553/553，`SQCD.Agv.WireToGateG2Tests` 429/429。
+本机全量（`eb0df6eb`，经 `Invoke-HeavyLocal`）：`SQCD.Agv.UnitTests` 553/553，`SQCD.Agv.WireToGateG2Tests` 429/429。
+
+## 审查后（审查对 `eb0df6eb`）
+
+审查第 1 条（核对与写要原子）与第 2 条（被拒的那份要断言补发）的结果。第 1 条的表是本票四条用例共 6 格一起跑的：
+
+| 状态 | 第一条用例两格 | 「连接被关掉」两格与「活连接」一格 | 新用例（关连接途中） |
+| --- | --- | --- | --- |
+| `19d48ff`（序号与写入口是两个字段） | 10/10 绿 | 10/10 绿 | **10/10 红**，第 410 行旧连接上多出一份 |
+| M1 / M1b | **各 10/10 红**，第 100 行 | 10/10 绿 | 10/10 绿：关连接途中对象已拿掉，不走到序号比较就被拒 |
+| M7 | 10/10 绿 | 10/10 绿 | **10/10 红**，第 410 行 |
+| 修后 | 10/10 绿 | 10/10 绿 | 10/10 绿 |
+
+第 2 条（第一条用例两格）：
+
+| 状态 | 结果 |
+| --- | --- |
+| M5 | 10/10 绿：#197 那根线照样把被拒的那份重发出去 |
+| M5x | 10/10 红：IO 读数格红在「等不到同一 messageId 重发」；锁存格红在前置条件（锁存不再触发任何上报），那一格的红不算判别力 |
+| M6 | 10/10 红：两格都等不到同一 messageId 重发 |
+| 修后 | 10/10 绿 |
+
+审查后本机只跑相关测试类（车载端全量 G2 只走 CI）：`SQCD.Agv.WireToGateG2Tests` 里的 `MultiDemandJourneyG2Tests`、`WireToGateG2Tests`、`RecoveryVectorG2Tests`、`SessionHeartbeatPacingG2Tests`、`StationDeadlineExpiredG2Tests`、`LoadCancellationBeforeSublotG2Tests` 与按那几处发送口的名字搜出的三个视图模型测试类，共 307/307；`SQCD.Agv.UnitTests` 553/553。

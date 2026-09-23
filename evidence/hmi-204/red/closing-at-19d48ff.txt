@@ -1,0 +1,9 @@
+# 9543a4f 的新用例，产品代码为 19d48ff 原样（连接序号与写入口还是两个字段）
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportJudgedWhileTheConnectionIsClosingIsNotWrittenIntoIt [940 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: 1
+Actual:   2
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportJudgedWhileTheConnectionIsClosingIsNotWrittenIntoIt() in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 410
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportJudgedWhileTheConnectionIsClosingIsNotWrittenIntoIt() in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 448
