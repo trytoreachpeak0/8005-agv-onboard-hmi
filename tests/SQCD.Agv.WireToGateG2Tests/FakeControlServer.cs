@@ -73,6 +73,29 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public int Port { get; }
 
+    /// <summary>
+    /// While set, no connection reads anything more from its socket: the vehicle's writes pile up in the socket buffers
+    /// and, once those are full, a write stays pending (8005-agv-onboard-hmi#204, a write hung when its connection is
+    /// closed). A read already waiting on the socket still returns what it gets, at most one buffer.
+    /// </summary>
+    public bool PauseReading
+    {
+        get => Volatile.Read(ref _pauseReading);
+        set => Volatile.Write(ref _pauseReading, value);
+    }
+
+    /// <summary>Set once a paused connection found bytes waiting on its socket: the vehicle is writing into it.</summary>
+    public bool DataWaitingWhilePaused => Volatile.Read(ref _dataWaitingWhilePaused);
+
+    /// <summary>The receive buffer of connections accepted from now on; small, so a paused one fills up quickly.</summary>
+    public int ListenerReceiveBufferSize
+    {
+        set => _listener.Server.ReceiveBufferSize = value;
+    }
+
+    private bool _pauseReading;
+    private bool _dataWaitingWhilePaused;
+
     public bool DropAfterRecoveryAck { get; set; }
 
     public bool DropBeforeRecoveryAck { get; set; }
@@ -1073,6 +1096,55 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
     }
 
+    /// <summary>The read side of a connection, held while <see cref="PauseReading"/> is set.</summary>
+    private sealed class PausableReadStream(NetworkStream inner, FakeControlServer server) : Stream
+    {
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            while (server.PauseReading)
+            {
+                if (inner.DataAvailable)
+                {
+                    Volatile.Write(ref server._dataWaitingWhilePaused, true);
+                }
+
+                await Task.Delay(10, cancellationToken).ConfigureAwait(false);
+            }
+
+            return await inner.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
+        }
+
+        public override Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+            ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+        public override int Read(byte[] buffer, int offset, int count) =>
+            ReadAsync(buffer, offset, count, CancellationToken.None).GetAwaiter().GetResult();
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
     private sealed class ConnectionContext : IDisposable
     {
         public required int ConnectionIndex;
@@ -1159,7 +1231,12 @@ public sealed class FakeControlServer : IAsyncDisposable
             {
                 ConnectionIndex = connectionIndex,
                 Client = client,
-                Reader = new StreamReader(stream, new UTF8Encoding(false, true), false, 4_096, leaveOpen: true),
+                Reader = new StreamReader(
+                    new PausableReadStream(stream, this),
+                    new UTF8Encoding(false, true),
+                    false,
+                    4_096,
+                    leaveOpen: true),
                 Writer = new StreamWriter(stream, new UTF8Encoding(false), 4_096, leaveOpen: true)
                 {
                     AutoFlush = true,

@@ -14,8 +14,24 @@ namespace SQCD.Agv.WireToGateG2Tests;
 internal sealed class RecordingLogger : IAppLogger
 {
     private readonly List<(LogSeverity Severity, string Source, string Message)> _entries = [];
+    private readonly List<(string Message, Exception Exception)> _exceptions = [];
 
     public event EventHandler<LogEntryEventArgs>? EntryWritten;
+
+    /// <summary>
+    /// Each entry written with an exception, with that exception: for a test that has to tell which failure a
+    /// guard caught, not only that one was logged.
+    /// </summary>
+    public IReadOnlyList<(string Message, Exception Exception)> Exceptions
+    {
+        get
+        {
+            lock (_entries)
+            {
+                return _exceptions.ToArray();
+            }
+        }
+    }
 
     public IReadOnlyList<(LogSeverity Severity, string Source, string Message)> Entries
     {
@@ -28,16 +44,44 @@ internal sealed class RecordingLogger : IAppLogger
         }
     }
 
+    private string? _holdPrefix;
+    private readonly TaskCompletionSource _holdReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private readonly TaskCompletionSource _holdEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>
+    /// Parks the next writer of an entry starting with <paramref name="prefix"/> right after the entry is kept, until
+    /// <see cref="ReleaseHold"/>: a service that logs and then acts is held between the two, so a test can change the
+    /// world in that gap instead of hoping a schedule opens it. One hold per logger.
+    /// </summary>
+    public void HoldNextEntryStartingWith(string prefix) => Volatile.Write(ref _holdPrefix, prefix);
+
+    /// <summary>Completes once a writer is parked by <see cref="HoldNextEntryStartingWith"/>.</summary>
+    public Task HoldEntered => _holdEntered.Task;
+
+    public void ReleaseHold() => _holdReleased.TrySetResult();
+
     public void Write(
         LogSeverity severity,
         string source,
         string message,
         Exception? exception = null)
     {
-        _ = exception;
         lock (_entries)
         {
             _entries.Add((severity, source, message));
+            if (exception is not null)
+            {
+                _exceptions.Add((message, exception));
+            }
+        }
+
+        string? prefix = Volatile.Read(ref _holdPrefix);
+        if (prefix is not null
+            && message.StartsWith(prefix, StringComparison.Ordinal)
+            && Interlocked.CompareExchange(ref _holdPrefix, null, prefix) == prefix)
+        {
+            _holdEntered.TrySetResult();
+            _holdReleased.Task.Wait();
         }
     }
 }

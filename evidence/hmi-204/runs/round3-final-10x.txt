@@ -1,0 +1,199 @@
+# 第三轮最终一轮：本票 14 格，十三种代码状态各 10 次，-BaseRef 2466113。修后状态是 39a82ab（之后的 a59d718 只改注释）。
+# HEAD 状态给 2466113 的客户端插了恒为 false 的 InStaleResendPass 以便编译，见 red/round3-at-2466113.txt 开头。
+dotnet 8.0.425 in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi204-8005-agv-onboard-hmi
+================ HEAD
+SHIM WireToGateSessionClient.cs matches 1
+  diff:  1 file changed, 6 insertions(+), 181 deletions(-)
+  build: 0 Error(s)
+  run 1: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 2: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 3: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 4: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 5: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 6: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 7: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 8: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 9: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 10: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  restored OK
+================ FIX
+  diff: 
+  build: 0 Error(s)
+  run 1: fail=0 pass=14 total=14 | red: none | at: 
+  run 2: fail=0 pass=14 total=14 | red: none | at: 
+  run 3: fail=0 pass=14 total=14 | red: none | at: 
+  run 4: fail=0 pass=14 total=14 | red: none | at: 
+  run 5: fail=0 pass=14 total=14 | red: none | at: 
+  run 6: fail=0 pass=14 total=14 | red: none | at: 
+  run 7: fail=0 pass=14 total=14 | red: none | at: 
+  run 8: fail=0 pass=14 total=14 | red: none | at: 
+  run 9: fail=0 pass=14 total=14 | red: none | at: 
+  run 10: fail=0 pass=14 total=14 | red: none | at: 
+  restored OK
+================ M5
+M5 WireToGateBusinessService.cs matches 1
+  diff:  1 file changed, 1 insertion(+), 1 deletion(-)
+  build: 0 Error(s)
+  run 1: fail=0 pass=14 total=14 | red: none | at: 
+  run 2: fail=0 pass=14 total=14 | red: none | at: 
+  run 3: fail=0 pass=14 total=14 | red: none | at: 
+  run 4: fail=0 pass=14 total=14 | red: none | at: 
+  run 5: fail=0 pass=14 total=14 | red: none | at: 
+  run 6: fail=0 pass=14 total=14 | red: none | at: 
+  run 7: fail=0 pass=14 total=14 | red: none | at: 
+  run 8: fail=0 pass=14 total=14 | red: none | at: 
+  run 9: fail=0 pass=14 total=14 | red: none | at: 
+  run 10: fail=0 pass=14 total=14 | red: none | at: 
+  restored OK
+================ M6
+M6 WireToGateBusinessService.cs matches 1
+  diff:  1 file changed, 1 insertion(+)
+  build: 0 Error(s)
+  run 1: fail=3 pass=11 total=14 | red: closing inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: HandshakeWindowIntrusion:132x2 HandshakeWindowIntrusion:167x2 HandshakeWindowIntrusion:426x1 HandshakeWindowIntrusion:461x1
+  run 2: fail=2 pass=12 total=14 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: HandshakeWindowIntrusion:132x2 HandshakeWindowIntrusion:167x2
+  run 3: fail=2 pass=12 total=14 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: HandshakeWindowIntrusion:132x2 HandshakeWindowIntrusion:167x2
+  run 4: fail=2 pass=12 total=14 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: HandshakeWindowIntrusion:132x2 HandshakeWindowIntrusion:167x2
+  run 5: fail=2 pass=12 total=14 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: HandshakeWindowIntrusion:132x2 HandshakeWindowIntrusion:167x2
+  run 6: fail=2 pass=12 total=14 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: HandshakeWindowIntrusion:132x2 HandshakeWindowIntrusion:167x2
+  run 7: fail=3 pass=11 total=14 | red: closing inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: HandshakeWindowIntrusion:132x2 HandshakeWindowIntrusion:167x2 HandshakeWindowIntrusion:426x1 HandshakeWindowIntrusion:461x1
+  run 8: fail=2 pass=12 total=14 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: HandshakeWindowIntrusion:132x2 HandshakeWindowIntrusion:167x2
+  run 9: fail=3 pass=11 total=14 | red: closing inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: HandshakeWindowIntrusion:132x2 HandshakeWindowIntrusion:167x2 HandshakeWindowIntrusion:426x1 HandshakeWindowIntrusion:461x1
+  run 10: fail=2 pass=12 total=14 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: HandshakeWindowIntrusion:132x2 HandshakeWindowIntrusion:167x2
+  restored OK
+================ M9
+M9 WireToGateSessionClient.cs matches 1
+  diff:  1 file changed, 1 insertion(+), 1 deletion(-)
+  build: 0 Error(s)
+  run 1: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 2: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 3: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 4: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 5: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 6: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 7: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 8: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 9: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 10: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  restored OK
+================ M9a
+M9a WireToGateSessionClient.cs matches 1
+  diff:  1 file changed, 2 deletions(-)
+  build: 0 Error(s)
+  run 1: fail=1 pass=13 total=14 | red: stale(moment: DuringHandshake) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 2: fail=1 pass=13 total=14 | red: stale(moment: DuringHandshake) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 3: fail=1 pass=13 total=14 | red: stale(moment: DuringHandshake) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 4: fail=1 pass=13 total=14 | red: stale(moment: DuringHandshake) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 5: fail=1 pass=13 total=14 | red: stale(moment: DuringHandshake) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 6: fail=1 pass=13 total=14 | red: stale(moment: DuringHandshake) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 7: fail=1 pass=13 total=14 | red: stale(moment: DuringHandshake) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 8: fail=2 pass=12 total=14 | red: result(moment: AfterReady) stale(moment: DuringHandshake) | at: ResultRefusedAcrossReconnect:116x1 ResultRefusedAcrossReconnect:149x1 StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 9: fail=1 pass=13 total=14 | red: stale(moment: DuringHandshake) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 10: fail=1 pass=13 total=14 | red: stale(moment: DuringHandshake) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  restored OK
+================ M9b
+M9b WireToGateSessionClient.cs matches 1
+  diff:  1 file changed, 1 deletion(-)
+  build: 0 Error(s)
+  run 1: fail=1 pass=13 total=14 | red: stale(moment: AfterReady) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 2: fail=1 pass=13 total=14 | red: stale(moment: AfterReady) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 3: fail=1 pass=13 total=14 | red: stale(moment: AfterReady) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 4: fail=1 pass=13 total=14 | red: stale(moment: AfterReady) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 5: fail=1 pass=13 total=14 | red: stale(moment: AfterReady) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 6: fail=1 pass=13 total=14 | red: stale(moment: AfterReady) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 7: fail=1 pass=13 total=14 | red: stale(moment: AfterReady) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 8: fail=1 pass=13 total=14 | red: stale(moment: AfterReady) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 9: fail=1 pass=13 total=14 | red: stale(moment: AfterReady) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  run 10: fail=1 pass=13 total=14 | red: stale(moment: AfterReady) | at: StaleDurableResend:120x1 StaleDurableResend:149x1
+  restored OK
+================ M10
+M10 WireToGateSessionClient.cs matches 1
+  diff:  1 file changed, 1 insertion(+), 1 deletion(-)
+  build: 0 Error(s)
+  run 1: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:269x1 StaleDurableResend:276x1
+  run 2: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:269x1 StaleDurableResend:276x1
+  run 3: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:269x1 StaleDurableResend:276x1
+  run 4: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:269x1 StaleDurableResend:276x1
+  run 5: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:269x1 StaleDurableResend:276x1
+  run 6: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:269x1 StaleDurableResend:276x1
+  run 7: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:269x1 StaleDurableResend:276x1
+  run 8: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:269x1 StaleDurableResend:276x1
+  run 9: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:269x1 StaleDurableResend:276x1
+  run 10: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:269x1 StaleDurableResend:276x1
+  restored OK
+================ M11
+M11 WireToGateSessionClient.cs matches 1
+  diff:  1 file changed, 2 insertions(+), 1 deletion(-)
+  build: 0 Error(s)
+  run 1: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:270x1 StaleDurableResend:276x1
+  run 2: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:270x1 StaleDurableResend:276x1
+  run 3: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:270x1 StaleDurableResend:276x1
+  run 4: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:270x1 StaleDurableResend:276x1
+  run 5: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:270x1 StaleDurableResend:276x1
+  run 6: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:270x1 StaleDurableResend:276x1
+  run 7: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:270x1 StaleDurableResend:276x1
+  run 8: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:270x1 StaleDurableResend:276x1
+  run 9: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:270x1 StaleDurableResend:276x1
+  run 10: fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:270x1 StaleDurableResend:276x1
+  restored OK
+================ M12
+M12 WireToGateSessionClient.cs matches 1
+  diff:  1 file changed, 1 insertion(+), 1 deletion(-)
+  build: 0 Error(s)
+  run 1: fail=1 pass=13 total=14 | red: reject | at: StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 2: fail=1 pass=13 total=14 | red: reject | at: StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 3: fail=1 pass=13 total=14 | red: reject | at: StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 4: fail=1 pass=13 total=14 | red: reject | at: StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 5: fail=1 pass=13 total=14 | red: reject | at: StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 6: fail=1 pass=13 total=14 | red: reject | at: StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 7: fail=1 pass=13 total=14 | red: reject | at: StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 8: fail=1 pass=13 total=14 | red: reject | at: StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 9: fail=1 pass=13 total=14 | red: reject | at: StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 10: fail=1 pass=13 total=14 | red: reject | at: StaleDurableResend:196x1 StaleDurableResend:206x1
+  restored OK
+================ M13
+M13 WireToGateSessionClient.cs matches 1
+  diff:  1 file changed, 1 deletion(-)
+  build: 0 Error(s)
+  run 1: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:143x2 StaleDurableResend:149x2
+  run 2: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:143x2 StaleDurableResend:149x2
+  run 3: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:143x2 StaleDurableResend:149x2
+  run 4: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:143x2 StaleDurableResend:149x2
+  run 5: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:143x2 StaleDurableResend:149x2
+  run 6: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:143x2 StaleDurableResend:149x2
+  run 7: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:143x2 StaleDurableResend:149x2
+  run 8: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:143x2 StaleDurableResend:149x2
+  run 9: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:143x2 StaleDurableResend:149x2
+  run 10: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:143x2 StaleDurableResend:149x2
+  restored OK
+================ M9R
+M9R WireToGateSessionClient.cs matches 1
+M9R WireToGateBusinessService.cs matches 1
+  diff:  2 files changed, 2 insertions(+), 2 deletions(-)
+  build: 0 Error(s)
+  run 1: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 2: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 3: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 4: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 5: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 6: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 7: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 8: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 9: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  run 10: fail=2 pass=12 total=14 | red: stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2
+  restored OK
+================ M9T
+M9T WireToGateSessionClient.cs matches 1
+M9T WireToGateBusinessService.cs matches 1
+  diff:  2 files changed, 6 insertions(+), 1 deletion(-)
+  build: 0 Error(s)
+  run 1: fail=6 pass=8 total=14 | red: r132(windowEnd: AfterOutboxRead) r132(windowEnd: AfterRecoveryReportAck) result(moment: AfterReady) result(moment: DuringHandshake) stale(moment: AfterReady) stale(moment: DuringHandshake) | at: ResultInHandshakeWindow:133x2 ResultInHandshakeWindow:92x2 ResultRefusedAcrossReconnect:116x2 ResultRefusedAcrossReconnect:149x2
+  run 2: fail=6 pass=8 total=14 | red: r132(windowEnd: AfterOutboxRead) r132(windowEnd: AfterRecoveryReportAck) result(moment: AfterReady) result(moment: DuringHandshake) stale(moment: AfterReady) stale(moment: DuringHandshake) | at: ResultInHandshakeWindow:133x2 ResultInHandshakeWindow:92x2 ResultRefusedAcrossReconnect:116x2 ResultRefusedAcrossReconnect:149x2
+  run 3: fail=6 pass=8 total=14 | red: r132(windowEnd: AfterOutboxRead) r132(windowEnd: AfterRecoveryReportAck) result(moment: AfterReady) result(moment: DuringHandshake) stale(moment: AfterReady) stale(moment: DuringHandshake) | at: ResultInHandshakeWindow:133x2 ResultInHandshakeWindow:92x2 ResultRefusedAcrossReconnect:116x2 ResultRefusedAcrossReconnect:149x2
+  run 4: fail=6 pass=8 total=14 | red: r132(windowEnd: AfterOutboxRead) r132(windowEnd: AfterRecoveryReportAck) result(moment: AfterReady) result(moment: DuringHandshake) stale(moment: AfterReady) stale(moment: DuringHandshake) | at: ResultInHandshakeWindow:133x2 ResultInHandshakeWindow:92x2 ResultRefusedAcrossReconnect:116x2 ResultRefusedAcrossReconnect:149x2
+  run 5: fail=6 pass=8 total=14 | red: r132(windowEnd: AfterOutboxRead) r132(windowEnd: AfterRecoveryReportAck) result(moment: AfterReady) result(moment: DuringHandshake) stale(moment: AfterReady) stale(moment: DuringHandshake) | at: ResultInHandshakeWindow:133x2 ResultInHandshakeWindow:92x2 ResultRefusedAcrossReconnect:116x2 ResultRefusedAcrossReconnect:149x2
+  run 6: fail=6 pass=8 total=14 | red: r132(windowEnd: AfterOutboxRead) r132(windowEnd: AfterRecoveryReportAck) result(moment: AfterReady) result(moment: DuringHandshake) stale(moment: AfterReady) stale(moment: DuringHandshake) | at: ResultInHandshakeWindow:133x2 ResultInHandshakeWindow:92x2 ResultRefusedAcrossReconnect:116x2 ResultRefusedAcrossReconnect:149x2
+  run 7: fail=6 pass=8 total=14 | red: r132(windowEnd: AfterOutboxRead) r132(windowEnd: AfterRecoveryReportAck) result(moment: AfterReady) result(moment: DuringHandshake) stale(moment: AfterReady) stale(moment: DuringHandshake) | at: ResultInHandshakeWindow:133x2 ResultInHandshakeWindow:92x2 ResultRefusedAcrossReconnect:116x2 ResultRefusedAcrossReconnect:149x2
+  run 8: fail=6 pass=8 total=14 | red: r132(windowEnd: AfterOutboxRead) r132(windowEnd: AfterRecoveryReportAck) result(moment: AfterReady) result(moment: DuringHandshake) stale(moment: AfterReady) stale(moment: DuringHandshake) | at: ResultInHandshakeWindow:133x2 ResultInHandshakeWindow:92x2 ResultRefusedAcrossReconnect:116x2 ResultRefusedAcrossReconnect:149x2
+  run 9: fail=6 pass=8 total=14 | red: r132(windowEnd: AfterOutboxRead) r132(windowEnd: AfterRecoveryReportAck) result(moment: AfterReady) result(moment: DuringHandshake) stale(moment: AfterReady) stale(moment: DuringHandshake) | at: ResultInHandshakeWindow:133x2 ResultInHandshakeWindow:92x2 ResultRefusedAcrossReconnect:116x2 ResultRefusedAcrossReconnect:149x2
+  run 10: fail=6 pass=8 total=14 | red: r132(windowEnd: AfterOutboxRead) r132(windowEnd: AfterRecoveryReportAck) result(moment: AfterReady) result(moment: DuringHandshake) stale(moment: AfterReady) stale(moment: DuringHandshake) | at: ResultInHandshakeWindow:133x2 ResultInHandshakeWindow:92x2 ResultRefusedAcrossReconnect:116x2 ResultRefusedAcrossReconnect:149x2
+  restored OK

@@ -1,0 +1,16 @@
+# 742f155e（#191，不含 #197）产品代码，只加测试夹具与一个照抄自 7cf1dcba 的等待辅助方法
+# 锁存格红在前置条件（那时锁存不触发上报）；IO 读数格红在判据
+Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(trigger: FatalFaultLatch) [11 s]
+  Error Message:
+  System.TimeoutException : The operation has timed out.
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(SafetyReportTrigger trigger) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 69
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(SafetyReportTrigger trigger) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 120
+Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(trigger: IoSnapshot) [180 ms]
+  Error Message:
+  Assert.Equal() Failure: Collections differ
+  Expected: ["SessionHello"]
+  Actual:   ["SessionHello", "SafetyStateChanged"]
+  ↑ (pos 1)
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(SafetyReportTrigger trigger) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 94
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(SafetyReportTrigger trigger) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 120
+  Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2, Duration: 11 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

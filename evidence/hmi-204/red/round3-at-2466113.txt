@@ -1,0 +1,34 @@
+# 第三轮新用例在 2466113 的产品代码上的红（最终一轮 run10 的 HEAD 状态第 1 次；用例是提交 39a82ab 的版本）。10 次都是这四格红，其余 10 格绿。
+# HEAD 状态为了编译给 2466113 的客户端插了一个恒为 false 的 InStaleResendPass（2466113 没有补发扫描，这个属性在那里不改变任何行为）。
+
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWriteStillPendingWhenItsConnectionIsClosedFailsAsConnectionGoneAndTheCloseCompletes [10 s]
+  Error Message:
+   Assert.Null() Failure: Value is not null
+Expected: null
+Actual:   System.InvalidOperationException: The stream is currently in use by a previous operation on the stream.
+   at System.IO.StreamWriter.ThrowAsyncIOInProgress()
+   at System.IO.StreamWriter.FlushAsync()
+
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ADurableMessageRefusedAcrossAReconnectIsDeliveredOnTheNextSession(moment: DuringHandshake) [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the refused OperationProgress 8cd18087-6bf3-e850-bd18-48fd691fd77f to be sent on the next session. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 605
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ADurableMessageRefusedAcrossAReconnectIsDeliveredOnTheNextSession(RefusalMoment moment) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleDurableResend.cs:line 120
+
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ADurableMessageRefusedAcrossAReconnectIsDeliveredOnTheNextSession(moment: AfterReady) [7 s]
+  Error Message:
+   Timed out after 5s waiting for: the refused OperationProgress 01c72a18-fa93-0d55-bc45-7d4317915631 to be sent on the next session. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 605
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ADurableMessageRefusedAcrossAReconnectIsDeliveredOnTheNextSession(RefusalMoment moment) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleDurableResend.cs:line 120
+
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARejectionOfAPreviousSessionsCommandStaysOutOfTheNextHandshake [685 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ
+Expected: ["SessionHello"]
+Actual:   ["SessionHello", "ProtocolProblem"]
+                           ↑ (pos 1)
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARejectionOfAPreviousSessionsCommandStaysOutOfTheNextHandshake() in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleDurableResend.cs:line 196
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARejectionOfAPreviousSessionsCommandStaysOutOfTheNextHandshake() in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleDurableResend.cs:line 206

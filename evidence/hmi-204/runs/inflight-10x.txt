@@ -1,0 +1,46 @@
+dotnet 8.0.425 in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi204-8005-agv-onboard-hmi
+================ M1
+M1 WireToGateSessionClient.cs matches 1
+  diff:  1 file changed, 5 deletions(-)
+  build: 0 Error(s)
+  run 1: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 2: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 3: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 4: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 5: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 6: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 7: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 8: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 9: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 10: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  restored OK
+================ M1b
+M1b WireToGateSessionClient.cs matches 1
+  diff:  1 file changed, 1 insertion(+), 1 deletion(-)
+  build: 0 Error(s)
+  run 1: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 2: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 3: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 4: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 5: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 6: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 7: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 8: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 9: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  run 10: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 134x2
+  restored OK
+================ FIX
+  diff: 
+  build: 0 Error(s)
+  run 1: fail=0 pass=2 total=2 | red: none | at: 
+  run 2: fail=0 pass=2 total=2 | red: none | at: 
+  run 3: fail=0 pass=2 total=2 | red: none | at: 
+  run 4: fail=0 pass=2 total=2 | red: none | at: 
+  run 5: fail=0 pass=2 total=2 | red: none | at: 
+  run 6: fail=0 pass=2 total=2 | red: none | at: 
+  run 7: fail=0 pass=2 total=2 | red: none | at: 
+  run 8: fail=0 pass=2 total=2 | red: none | at: 
+  run 9: fail=0 pass=2 total=2 | red: none | at: 
+  run 10: fail=0 pass=2 total=2 | red: none | at: 
+  restored OK
+exit=0

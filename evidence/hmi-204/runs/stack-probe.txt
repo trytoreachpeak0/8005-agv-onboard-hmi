@@ -1,0 +1,153 @@
+# 审查第 2 条的调用栈探针。条件：业务服务施加 M5（会话就绪那一处不再重报），只跑第一条用例的 IoSnapshot 格一次；
+# 每次调用 RequestSafetyStateChange 时追加一次 Environment.StackTrace（探针是临时加的，跑完按备份还原并核哈希）。
+# 目的：M5 下那一格仍绿，要找出是谁把被拒的那份重发出去的。所以这里没有来自 OnSessionStateChanged 的调用是 M5 的结果，不是它不存在。
+# 「thread-pool (Task.Run)」即 RequestSafetyStateChange 作为方法组直接由线程池任务执行、上面没有调用方帧。
+# 全仓只有一处这样调用：src/SQCD.Agv.Wpf/WireToGateBusinessService.cs:231 RefreshSafetyAfterFatalFaultLatchChange => _ = Task.Run(RequestSafetyStateChange)，
+# 接在 App.xaml.cs:325 的 OnboardController.StateChanged 上（#197 那根线）。M5x 关掉它后 IO 读数格变红，与此一致。
+# 调用来源计数：
+#    10  thread-pool (Task.Run)
+#     1  at SQCD.Agv.Wpf.WireToGateBusinessService.Start()
+#     1  at SQCD.Agv.Wpf.WireToGateBusinessService.OnIoSnapshotChanged(Object sender, ValueChangedEventArgs`1 args)
+
+at System.Environment.get_StackTrace()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RequestSafetyStateChange() in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1830
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+----    at System.Environment.get_StackTrace()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RequestSafetyStateChange() in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1830
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+----    at System.Environment.get_StackTrace()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RequestSafetyStateChange() in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1830
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+----    at System.Environment.get_StackTrace()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RequestSafetyStateChange() in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1830
+   at SQCD.Agv.Wpf.WireToGateBusinessService.Start() in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 804
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.StartAgainstAsync(FakeControlServer server, CancellationToken cancellationToken, String journalPath, FakeIoModuleClient io, Func`2 wrapJournal, WireToGateRecoveryOptions recoveryOptions) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 483
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ConnectAndRecoverAsync(CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 811
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendRecoveryStateReportAsync(Int64 generation, IoSnapshot io, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1776
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ReadEnvelopeAsync(Nullable`1 expectedGeneration, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 3662
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at System.IO.StreamReader.ReadLineAsyncInternal(CancellationToken cancellationToken)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at System.IO.StreamReader.ReadBufferAsync(CancellationToken cancellationToken)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Net.Sockets.SocketAsyncEventArgs.<>c.<.cctor>b__173_0(UInt32 errorCode, UInt32 numBytes, NativeOverlapped* nativeOverlapped)
+   at System.Threading.PortableThreadPool.IOCompletionPoller.Callback.Invoke(Event e)
+   at System.Threading.ThreadPoolTypedWorkItemQueue`2.System.Threading.IThreadPoolWorkItem.Execute()
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+----    at System.Environment.get_StackTrace()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RequestSafetyStateChange() in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1830
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+----    at System.Environment.get_StackTrace()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RequestSafetyStateChange() in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1830
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+----    at System.Environment.get_StackTrace()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RequestSafetyStateChange() in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1830
+   at SQCD.Agv.Wpf.WireToGateBusinessService.OnIoSnapshotChanged(Object sender, ValueChangedEventArgs`1 args) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1817
+   at SQCD.Agv.WireToGateG2Tests.FakeIoModuleClient.PublishSnapshot() in tests\SQCD.Agv.WireToGateG2Tests\FakeIoModuleClient.cs:line 106
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TriggerSafetyChange(Harness harness, FakeIoModuleClient io, SafetyReportTrigger trigger) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 381
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(SafetyReportTrigger trigger) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 74
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder.SetResult()
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 611
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder.SetResult()
+   at SQCD.Agv.WireToGateG2Tests.StallAwareDeadline.PollAsync(CancellationToken cancellationToken) in tests\SQCD.Agv.WireToGateG2Tests\StallAwareDeadline.cs:line 91
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task.TrySetResult()
+   at System.Threading.Tasks.Task.DelayPromise.CompleteTimedOut()
+   at System.Threading.TimerQueueTimer.Fire(Boolean isThreadPool)
+   at System.Threading.TimerQueue.FireNextTimers()
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+----    at System.Environment.get_StackTrace()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RequestSafetyStateChange() in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1830
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+----    at System.Environment.get_StackTrace()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RequestSafetyStateChange() in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1830
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+----    at System.Environment.get_StackTrace()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RequestSafetyStateChange() in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1830
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+----    at System.Environment.get_StackTrace()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RequestSafetyStateChange() in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1830
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+----    at System.Environment.get_StackTrace()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RequestSafetyStateChange() in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1830
+   at System.Threading.ExecutionContext.RunFromThreadPoolDispatchLoop(Thread threadPoolThread, ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Threading.Tasks.Task.ExecuteWithThreadLocal(Task& currentTaskSlot, Thread threadPoolThread)
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()

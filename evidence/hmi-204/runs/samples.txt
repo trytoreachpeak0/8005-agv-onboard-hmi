@@ -1,0 +1,60 @@
+# 修前（bc30a54）第 1 次
+Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession(next: Ready) [1 s]
+  Error Message:
+  Assert.True() Failure
+  Expected: True
+  Actual:   False
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession(NextSessionState next) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 270
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession(NextSessionState next) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 291
+Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession(next: Handshaking) [1 s]
+  Error Message:
+  Assert.True() Failure
+  Expected: True
+  Actual:   False
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession(NextSessionState next) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 270
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession(NextSessionState next) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 291
+  Failed!  - Failed:     2, Passed:     1, Skipped:     0, Total:     3, Duration: 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+# M3 第 1 次
+Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession(next: Ready) [1 s]
+  Error Message:
+  Assert.True() Failure
+  Expected: True
+  Actual:   False
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession(NextSessionState next) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 270
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession(NextSessionState next) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 291
+Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession(next: Handshaking) [1 s]
+  Error Message:
+  Assert.True() Failure
+  Expected: True
+  Actual:   False
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession(NextSessionState next) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 270
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession(NextSessionState next) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 291
+  Failed!  - Failed:     2, Passed:     1, Skipped:     0, Total:     3, Duration: 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+# M4 第 1 次
+Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportUnansweredOnALiveConnectionStillDisconnectsTheSession [5 s]
+  Error Message:
+  Timed out after 5s waiting for: the business service to disconnect the session after the unanswered report. UI errors: []
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportUnansweredOnALiveConnectionStillDisconnectsTheSession() in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 324
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportUnansweredOnALiveConnectionStillDisconnectsTheSession() in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 334
+  Failed!  - Failed:     1, Passed:     2, Skipped:     0, Total:     3, Duration: 8 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+# M1 第 1 次（第一条用例）
+Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(trigger: IoSnapshot) [563 ms]
+  Error Message:
+  Assert.Equal() Failure: Collections differ
+  Expected: ["SessionHello"]
+  Actual:   ["SessionHello", "SafetyStateChanged"]
+  ↑ (pos 1)
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(SafetyReportTrigger trigger) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 100
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(SafetyReportTrigger trigger) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 134
+Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(trigger: FatalFaultLatch) [114 ms]
+  Error Message:
+  Assert.Equal() Failure: Collections differ
+  Expected: ["SessionHello"]
+  Actual:   ["SessionHello", "SafetyStateChanged"]
+  ↑ (pos 1)
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(SafetyReportTrigger trigger) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 100
+    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(SafetyReportTrigger trigger) in tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 134
+  Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2, Duration: 720 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

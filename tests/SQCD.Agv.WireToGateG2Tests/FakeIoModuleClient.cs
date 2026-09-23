@@ -96,6 +96,15 @@ public sealed class FakeIoModuleClient : IIoModuleClient
 
     public event EventHandler<ValueChangedEventArgs<IoSnapshot>>? SnapshotChanged;
 
+    /// <summary>
+    /// Announces the readings as they stand, the way the real Modbus client announces every poll. The
+    /// setters above change the readings without raising anything, so the vehicle finds a change only
+    /// when something else makes it read; a test that needs the change itself to drive the vehicle --
+    /// the safety report that follows a reading, say -- says so here.
+    /// </summary>
+    public void PublishSnapshot() =>
+        SnapshotChanged?.Invoke(this, new ValueChangedEventArgs<IoSnapshot>(CurrentSnapshot));
+
     public void SetCargoPresent(int slotIndex, bool present)
     {
         lock (_sync)
