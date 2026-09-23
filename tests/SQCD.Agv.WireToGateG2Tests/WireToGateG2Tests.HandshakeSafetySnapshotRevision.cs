@@ -107,7 +107,7 @@ public sealed partial class WireToGateG2Tests
         // "safety revision 2 has conflicting content".
         IReadOnlyList<string> refusals = server.SafetyRevisionConflicts;
         Assert.True(refusals.Count == 0, $"the server refused: {string.Join(" | ", refusals)}");
-        Assert.Null(handshakeFailure);
+        Assert.True(handshakeFailure is null, $"the handshake failed: {handshakeFailure?.GetType().Name}: {handshakeFailure?.Message}");
 
         var second = server.ReceivedEnvelopes.Where(item => item.Connection == 2).ToArray();
         // The field's order, the change resent before the capability snapshot, both in one generation.
