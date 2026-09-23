@@ -71,6 +71,7 @@ foreach ($state in $States) {
         for ($i = 1; $i -le $Runs; $i++) {
             $out = "$sp/$Tag-$state-$i.txt"
             dotnet test $project --no-build --filter $filter *> $out
+            $testExit = $LASTEXITCODE
             $text = Get-Content $out -Raw
             $summary = if ($text -match 'Failed:\s+(\d+), Passed:\s+(\d+), Skipped:\s+\d+, Total:\s+(\d+)') {
                 "fail=$($Matches[1]) pass=$($Matches[2]) total=$($Matches[3])"
@@ -92,7 +93,10 @@ foreach ($state in $States) {
             $lines = [regex]::Matches($text, '(?:HandshakeWindowIntrusion|StaleDurableResend|ResultRefusedAcrossReconnect|ResultInHandshakeWindow)\.cs:line (\d+)') |
                 ForEach-Object { "$($_.Value -replace '\.cs:line ', ':')" } |
                 Group-Object | Sort-Object Count -Descending | Select-Object -First 4 | ForEach-Object { "$($_.Name)x$($_.Count)" }
-            "  run ${i}: $summary | red: $(if ($red) { $red -join ' ' } else { 'none' }) | at: $($lines -join ' ')"
+            # A failure outside the tests -- an assembly fixture throwing at cleanup -- leaves every test passed and the run
+            # failed; the counts above cannot show it, the exit code and this line can.
+            $cleanup = if ($text -match 'Test Assembly Cleanup Failure') { ' CLEANUP-FAILURE' } else { '' }
+            "  run ${i}: exit=$testExit$cleanup $summary | red: $(if ($red) { $red -join ' ' } else { 'none' }) | at: $($lines -join ' ')"
         }
     }
     finally {

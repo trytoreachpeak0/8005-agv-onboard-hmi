@@ -1,0 +1,63 @@
+# 挂起写用例改用合法的 16 MB SublotSubmitted 之后（69aaee0），与它相关的四种状态各 10 次，-BaseRef 2466113。
+# 这一轮起逐次记 dotnet test 的退出码（exit=）与有无程序集清理失败（CLEANUP-FAILURE）。修后 10 次 exit=0 且无清理失败；
+# 其余三种状态有用例红，exit=1 是它们自己的红，也都没有清理失败。
+dotnet 8.0.425 in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi204-8005-agv-onboard-hmi
+================ HEAD
+SHIM WireToGateSessionClient.cs matches 1
+  diff:  1 file changed, 6 insertions(+), 182 deletions(-)
+  build: 0 Error(s)
+  run 1: exit=1 fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 2: exit=1 fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 3: exit=1 fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 4: exit=1 fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 5: exit=1 fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 6: exit=1 fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 7: exit=1 fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 8: exit=1 fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 9: exit=1 fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  run 10: exit=1 fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:120x2 StaleDurableResend:149x2 StaleDurableResend:196x1 StaleDurableResend:206x1
+  restored OK
+================ FIX
+  diff: 
+  build: 0 Error(s)
+  run 1: exit=0 fail=0 pass=14 total=14 | red: none | at: 
+  run 2: exit=0 fail=0 pass=14 total=14 | red: none | at: 
+  run 3: exit=0 fail=0 pass=14 total=14 | red: none | at: 
+  run 4: exit=0 fail=0 pass=14 total=14 | red: none | at: 
+  run 5: exit=0 fail=0 pass=14 total=14 | red: none | at: 
+  run 6: exit=0 fail=0 pass=14 total=14 | red: none | at: 
+  run 7: exit=0 fail=0 pass=14 total=14 | red: none | at: 
+  run 8: exit=0 fail=0 pass=14 total=14 | red: none | at: 
+  run 9: exit=0 fail=0 pass=14 total=14 | red: none | at: 
+  run 10: exit=0 fail=0 pass=14 total=14 | red: none | at: 
+  restored OK
+================ M10
+M10 WireToGateSessionClient.cs matches 1
+  diff:  1 file changed, 1 insertion(+), 1 deletion(-)
+  build: 0 Error(s)
+  run 1: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:276x1 StaleDurableResend:283x1
+  run 2: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:276x1 StaleDurableResend:283x1
+  run 3: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:276x1 StaleDurableResend:283x1
+  run 4: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:276x1 StaleDurableResend:283x1
+  run 5: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:276x1 StaleDurableResend:283x1
+  run 6: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:276x1 StaleDurableResend:283x1
+  run 7: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:276x1 StaleDurableResend:283x1
+  run 8: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:276x1 StaleDurableResend:283x1
+  run 9: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:276x1 StaleDurableResend:283x1
+  run 10: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:276x1 StaleDurableResend:283x1
+  restored OK
+================ M11
+M11 WireToGateSessionClient.cs matches 1
+  diff:  1 file changed, 2 insertions(+), 1 deletion(-)
+  build: 0 Error(s)
+  run 1: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:277x1 StaleDurableResend:283x1
+  run 2: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:277x1 StaleDurableResend:283x1
+  run 3: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:277x1 StaleDurableResend:283x1
+  run 4: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:277x1 StaleDurableResend:283x1
+  run 5: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:277x1 StaleDurableResend:283x1
+  run 6: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:277x1 StaleDurableResend:283x1
+  run 7: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:277x1 StaleDurableResend:283x1
+  run 8: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:277x1 StaleDurableResend:283x1
+  run 9: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:277x1 StaleDurableResend:283x1
+  run 10: exit=1 fail=1 pass=13 total=14 | red: hungwrite | at: StaleDurableResend:277x1 StaleDurableResend:283x1
+  restored OK

@@ -94,6 +94,7 @@ M1 与 M1b 在审查后按新代码重写了匹配文本（核对的是对象里
 | --- | --- |
 | `red/round3-at-2466113.txt` | 第三轮新用例（`39a82ab` 那一版）在 `2466113` 产品代码上的四格红：挂起写（M-A）、通用补发两格（M-B）、回绝上一代命令（第 5 条） |
 | `runs/round3-final-10x.txt` | 本票 14 格，十三种代码状态各 10 次（最终一轮） |
+| `runs/round3-hungwrite-rerun-10x.txt` | 挂起写改用合法报文之后，相关四种状态各 10 次，逐次带退出码 |
 | `runs/round3-superseded-12states.txt` | 被取代的一轮，留作两处用例修正的依据（M9b 8/10；M12 下 #132 一格被替身卡错对象） |
 | `runs/round3-voided.txt` | 作废的一轮：前提断言事后读库，1/10 读到已被正确重发的行而红 |
 | `runs/m9a-result-once.txt` | 最终一轮 M9a 下 OperationResult 就绪后格那一次超时，与之后 40 次单跑的探针结果 |
@@ -137,4 +138,16 @@ M6 下 closing 的红不在「不丢」，在前面的「只有一行未确认�
 
 与预测不符的写在上表里：M6 下 closing 会红；M9R 下 result 就绪后格不红；M9a 下那一次 result 超时。
 
-本机只跑相关测试类（最终头部）：G2 里 9 个类 313/313，`SQCD.Agv.UnitTests` 553/553；架构测试通过；本轮改动的 6 个 `.cs` 文件 `dotnet format --verify-no-changes` exit 0；逐字节 LF、无 BOM。
+### 程序集清理失败（所有第三轮运行，之后修掉）
+
+车载端 CI（run 35893726706）两个测试项目全过，`dotnet test` 却以 1 退出：程序集级夹具 `OutboundSchemaConformance`（出站 schema 检查）在清理阶段报 `OperationProgress ... #/payload/padding [additionalProperties]`。挂起写用例为了把写挂住，发了一条载荷不合 schema 的报文。回查本机：**第三轮上面引用的每一次运行都带着这条清理失败**，统计脚本只数用例红绿、没看退出码，所以没看见。它发生在全部用例跑完之后，用例的红绿不受影响，上面的表仍然成立；但那些运行的退出码都是 1。
+
+修法（`69aaee0`）：改用一条合法的 16 MB `SublotSubmitted`（`sublot` 没有长度上限，其余字段按 schema 取合法值）。连跑脚本此后逐次记退出码与有无程序集清理失败。与挂起写相关的四种状态重跑，见 `runs/round3-hungwrite-rerun-10x.txt`：
+
+| 状态 | 结果（10 次） |
+| --- | --- |
+| `2466113` | 挂起写、回绝、stale 两格红，与上表相同；无清理失败 |
+| 修后 | 14 格全绿，**退出码 0**，无清理失败 |
+| M10、M11 | 只有挂起写红，与上表相同；无清理失败 |
+
+本机只跑相关测试类（最终头部 `69aaee0`）：G2 里 9 个类 313/313，`SQCD.Agv.UnitTests` 553/553，都没有程序集清理失败；架构测试通过；本轮改动的 6 个 `.cs` 文件 `dotnet format --verify-no-changes` exit 0；逐字节 LF、无 BOM。
