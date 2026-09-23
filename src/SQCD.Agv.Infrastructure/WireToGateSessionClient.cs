@@ -56,10 +56,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     private TcpClient? _client;
     private Stream? _stream;
     private StreamReader? _reader;
-    private StreamWriter? _writer;
 
-    // 当前 TCP 连接的序号，每开一个、每关一个都前进一格。判「现在可以发」与真正写之间隔着挂起点，而下面那几个
-    // 连接字段会随重连整套换新；一条报文记下判断时的这个序号，SendLineAsync 写之前核对（onboard-hmi#204）。
+    // 当前连接的写入口与它的序号，是同一个对象，打开时整个放上、关闭时第一步整个拿掉。判「现在可以发」与真正写之间
+    // 隔着挂起点，连接会在这中间换掉；一条报文记下判断时的序号，SendLineAsync 读一次这个对象，序号对得上才用它的
+    // 写入口。两者若是各自读的字段，就有一段「序号已是新的、写入口仍是旧的」的空档（onboard-hmi#204）。
+    private WriteConnection? _writeConnection;
+
+    // 给连接编号的计数器，只增不减，所以任何两个连接的序号都不同。
     private long _connectionEpoch;
     private WireToGateSessionSnapshot _current;
     private WireToGateJourneySnapshot _journey;
@@ -133,9 +136,12 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
     /// <summary>
     /// 此刻这一代连接的序号。一条报文要在**判断它可以发出去的那一刻**读它，再原样交给
-    /// <see cref="SendLineAsync"/>；读得越早，覆盖的挂起点越多（onboard-hmi#204）。
+    /// <see cref="SendLineAsync"/>；读得越早，覆盖的挂起点越多（onboard-hmi#204）。没有可写的连接时是
+    /// <see cref="NoConnectionEpoch"/>，它不等于任何连接的序号，所以这样判定的报文一定不会写出去。
     /// </summary>
-    private long CurrentConnectionEpoch => Volatile.Read(ref _connectionEpoch);
+    private long CurrentConnectionEpoch => Volatile.Read(ref _writeConnection)?.Epoch ?? NoConnectionEpoch;
+
+    private const long NoConnectionEpoch = -1;
 
     /// <summary>
     /// 服务端最近 ack 的那一份告警快照。握手里的与会话中途的都算；还没 ack 过任何一份时为 <c>null</c>。
@@ -813,6 +819,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     public async Task SendHeartbeatAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+        // Read before the snapshot, as in SendDurableCoreAsync (8005-agv-onboard-hmi#204).
+        long connectionEpoch = CurrentConnectionEpoch;
         WireToGateSessionSnapshot current = Current;
         if (!current.Connected || current.SessionGeneration is null)
         {
@@ -843,7 +851,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
         try
         {
-            await SendEnvelopeAsync(heartbeat, CurrentConnectionEpoch, cancellationToken).ConfigureAwait(false);
+            await SendEnvelopeAsync(heartbeat, connectionEpoch, cancellationToken).ConfigureAwait(false);
             WireToGateEnvelope ackEnvelope = await response.Task
                 .WaitAsync(_options.MessageTimeout, cancellationToken)
                 .ConfigureAwait(false);
@@ -870,6 +878,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     {
         ThrowIfDisposed();
         RequireUuid(messageId, nameof(messageId));
+        // Read before the snapshot, as in SendDurableCoreAsync (8005-agv-onboard-hmi#204).
+        long connectionEpoch = CurrentConnectionEpoch;
         WireToGateSessionSnapshot current = Current;
         if (!current.Connected
             || current.SessionGeneration is null
@@ -896,7 +906,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
         try
         {
-            await SendEnvelopeAsync(request, CurrentConnectionEpoch, cancellationToken).ConfigureAwait(false);
+            await SendEnvelopeAsync(request, connectionEpoch, cancellationToken).ConfigureAwait(false);
             WireToGateEnvelope responseEnvelope = await response.Task
                 .WaitAsync(_options.MessageTimeout, cancellationToken)
                 .ConfigureAwait(false);
@@ -923,6 +933,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     {
         ThrowIfDisposed();
         RequireUuid(messageId, nameof(messageId));
+        // Read before the snapshot, as in SendDurableCoreAsync (8005-agv-onboard-hmi#204).
+        long connectionEpoch = CurrentConnectionEpoch;
         WireToGateSessionSnapshot current = Current;
         if (!current.Connected
             || current.SessionGeneration is null
@@ -940,7 +952,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             current.SessionGeneration,
             _clock.Now.ToUniversalTime(),
             payload);
-        await SendEnvelopeAsync(request, CurrentConnectionEpoch, cancellationToken).ConfigureAwait(false);
+        await SendEnvelopeAsync(request, connectionEpoch, cancellationToken).ConfigureAwait(false);
         return messageId;
     }
 
@@ -966,6 +978,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         ThrowIfDisposed();
         RequireUuid(messageId, nameof(messageId));
         ValidateManualChargingRequest(payload);
+        // Read before the snapshot, as in SendDurableCoreAsync (8005-agv-onboard-hmi#204).
+        long connectionEpoch = CurrentConnectionEpoch;
         WireToGateSessionSnapshot current = Current;
         if (!current.Connected
             || current.SessionGeneration is null
@@ -992,7 +1006,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
         try
         {
-            await SendEnvelopeAsync(request, CurrentConnectionEpoch, cancellationToken).ConfigureAwait(false);
+            await SendEnvelopeAsync(request, connectionEpoch, cancellationToken).ConfigureAwait(false);
             WireToGateEnvelope responseEnvelope = await response.Task
                 .WaitAsync(_options.MessageTimeout, cancellationToken)
                 .ConfigureAwait(false);
@@ -3570,13 +3584,15 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             _client = client;
             _stream = stream;
             _reader = new StreamReader(stream, new UTF8Encoding(false, true), false, 4_096, true);
-            _writer = new StreamWriter(stream, new UTF8Encoding(false), 4_096, true)
+            StreamWriter writer = new(stream, new UTF8Encoding(false), 4_096, true)
             {
                 AutoFlush = true,
                 NewLine = "\n"
             };
-            // Last, so the epoch names a connection that can already be written to.
-            Interlocked.Increment(ref _connectionEpoch);
+            // Last, and in one write: the epoch and the writer it names become visible together.
+            Volatile.Write(
+                ref _writeConnection,
+                new WriteConnection(Interlocked.Increment(ref _connectionEpoch), writer));
         }
         catch
         {
@@ -3602,10 +3618,14 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// </summary>
     /// <remarks>
     /// <para>
-    /// 核对与写都在 <c>_sendGate</c> 里，<c>_writer</c> 也在里面才读。判「现在可以发」与真正写之间至少隔着排这把
-    /// 锁，业务报文还隔着一次写发件箱；<c>_writer</c> 字段会随重连整个换掉，所以那之后读到的可能是**下一个**连接
-    /// 的写入口。少了这道核对，一条属于上一代的报文就写进了新连接，插在 <c>SessionHello</c> 与
-    /// <c>CapabilitySnapshot</c> 中间，服务端据此判握手顺序错误，车载端随后报 <c>HANDSHAKE_SEQUENCE_INVALID</c>。
+    /// 核对与写都在 <c>_sendGate</c> 里。判「现在可以发」与真正写之间至少隔着排这把锁，业务报文还隔着一次写发件箱；
+    /// 连接会随重连整个换掉，所以那之后看到的可能是**下一个**连接。少了这道核对，一条属于上一代的报文就写进了新连接，
+    /// 插在 <c>SessionHello</c> 与 <c>CapabilitySnapshot</c> 中间，服务端据此判握手顺序错误。
+    /// </para>
+    /// <para>
+    /// 核对的序号与写的入口来自同一次读到的 <see cref="WriteConnection"/>，不是两个字段各读一次：关连接要走好几步，
+    /// 分开读就会在「序号已换、写入口还在」的那一段里核对通过，报文写进一条正在关的连接，它的确认再也等不到。
+    /// <c>CloseConnectionAsync</c> 第一步就把这个对象拿掉。
     /// </para>
     /// <para>
     /// 参数必填而不给默认值：默认值漏传时会悄悄退化成「不核对」，而那正是缺陷本身的形态。调用方要在它判断
@@ -3618,14 +3638,14 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         await _sendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (Volatile.Read(ref _connectionEpoch) != connectionEpoch)
+            WriteConnection connection = Volatile.Read(ref _writeConnection)
+                ?? throw new WireToGateConnectionGoneException("WIRE_TO_GATE连接不可用。");
+            if (connection.Epoch != connectionEpoch)
             {
                 throw new WireToGateConnectionGoneException("WIRE_TO_GATE连接已换代，这条报文不属于当前连接。");
             }
 
-            StreamWriter writer = _writer
-                ?? throw new WireToGateConnectionGoneException("WIRE_TO_GATE连接不可用。");
-            await writer.WriteLineAsync(normalized.AsMemory(), cancellationToken).ConfigureAwait(false);
+            await connection.Writer.WriteLineAsync(normalized.AsMemory(), cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -3663,9 +3683,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
     private async ValueTask CloseConnectionAsync()
     {
-        // First, so a send parked on _sendGate right now fails its epoch check instead of writing into whatever
-        // connection comes next (8005-agv-onboard-hmi#204).
-        Interlocked.Increment(ref _connectionEpoch);
+        // First, so from here on nothing can be written: a send parked on _sendGate right now, or one judged while the
+        // steps below run, finds no connection instead of writing into this closing one or whichever comes next
+        // (8005-agv-onboard-hmi#204).
+        WriteConnection? writeConnection = Interlocked.Exchange(ref _writeConnection, null);
         Interlocked.Exchange(ref _receiveLoopGeneration, 0);
         _receiveStopping?.Cancel();
         _receiveStopping = null;
@@ -3679,10 +3700,9 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
         ResetJourneyProjection();
 
-        if (_writer is not null)
+        if (writeConnection is not null)
         {
-            await _writer.DisposeAsync().ConfigureAwait(false);
-            _writer = null;
+            await writeConnection.Writer.DisposeAsync().ConfigureAwait(false);
         }
         _reader?.Dispose();
         _reader = null;
@@ -3962,4 +3982,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     private sealed record HeartbeatPayload(long CapabilityVersion, long SafetyStateVersion);
 
     private sealed record HeartbeatAckPayload(string ReceivedHeartbeatMessageId, DateTimeOffset ServerTime);
+
+    /// <summary>One connection's writer and the epoch that names it, replaced and removed as one.</summary>
+    private sealed record WriteConnection(long Epoch, StreamWriter Writer);
 }
