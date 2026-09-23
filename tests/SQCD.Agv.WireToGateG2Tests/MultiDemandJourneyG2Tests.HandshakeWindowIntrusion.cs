@@ -109,11 +109,41 @@ public sealed partial class MultiDemandJourneyG2Tests
             Assert.Contains($"会话代{firstGeneration}", message, StringComparison.Ordinal);
             Assert.Contains("不断开当前会话", message, StringComparison.Ordinal);
 
+            // The refused report is on file, unacknowledged: its identity is what must reach the new session.
+            WireToGateDurableMessage refused = Assert.Single(
+                await race.ReadUnacknowledgedOutgoingAsync(token),
+                row => row.MessageType == "SafetyStateChanged");
+            long refusedVersion = SafetyStateVersionOf(refused.WireLine);
+
             race.ReleaseHandshake();
             await reconnect;
             await harness.WaitUntilAsync(
                 () => harness.Session.Current.Readiness == WireToGateSessionReadiness.Ready,
                 "the new session to become Ready",
+                token);
+
+            // Not lost: once the new session is Ready, the same report -- the same messageId, the same
+            // safetyStateVersion -- goes out on the new connection and is acknowledged. Refusing it is only safe because
+            // this happens; a refusal that dropped the report would leave the server without that change.
+            // Two independent triggers resend it, so switching off one leaves this green: the session turning Ready
+            // (OnSessionStateChanged) and #197's line, which judges the safety again on every OnboardController
+            // StateChanged. Only with both off does the IoSnapshot cell go red here (the FatalFaultLatch cell then
+            // never reports at all and stops at its precondition). Dropping the refused report instead goes red in both.
+            await harness.WaitUntilAsync(
+                () => harness.Server.ReceivedEnvelopes.Any(envelope =>
+                    envelope.Connection == secondConnection && envelope.MessageId == refused.MessageId),
+                $"the refused report {refused.MessageId} to be sent again on the new connection",
+                token);
+            var resent = Assert.Single(
+                harness.Server.ReceivedEnvelopes,
+                envelope => envelope.Connection == secondConnection && envelope.MessageId == refused.MessageId);
+            Assert.Equal("SafetyStateChanged", resent.MessageType);
+            Assert.Equal(refusedVersion, SafetyStateVersionOf(resent.WireLine));
+            Assert.Equal(secondGeneration, GenerationOf(resent.WireLine));
+            await harness.WaitUntilAsync(
+                () => race.ReadOutgoingByMessageIdAsync(refused.MessageId, token).GetAwaiter().GetResult()
+                    is { Acknowledged: true },
+                $"the refused report {refused.MessageId} to be acknowledged",
                 token);
             // Room for a late disconnect or a late write to show itself; the report above has already settled, so this is
             // only for something the fix failed to stop.
@@ -382,6 +412,12 @@ public sealed partial class MultiDemandJourneyG2Tests
             .Where(item => item.Generation is not null && item.Generation != generation)
             .Select(item => $"{item.MessageType}@{item.Generation}")
     ];
+
+    private static long SafetyStateVersionOf(string wireLine)
+    {
+        using JsonDocument document = JsonDocument.Parse(wireLine);
+        return document.RootElement.GetProperty("payload").GetProperty("safetyStateVersion").GetInt64();
+    }
 
     private static long? GenerationOf(string wireLine)
     {
