@@ -129,6 +129,143 @@ public sealed partial class WireToGateG2Tests
         Assert.Equal(0, io.UnlockCount);
     }
 
+    /// <summary>
+    /// Two changes left unacknowledged, both resent in the same handshake: the snapshot goes above the higher of the
+    /// two, not merely above the first.
+    /// </summary>
+    /// <remarks>
+    /// The server takes neither in the first generation (<see cref="FakeControlServer.AnswerSafetyStateChanged"/> off:
+    /// not handled, not answered, the connection left open), so both are first deliveries in the second and both write
+    /// the generation's revision, v2 then v3. The snapshot must be v4.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("ProtocolVector", "CV-SNAPSHOT-SAME-REVISION-CONFLICT")]
+    public async Task AHandshakeSnapshotAfterTwoResentSafetyChangesGoesAboveTheLaterOne()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            ShareSafetyRevisionAcrossChangeAndSnapshot = true,
+            AnswerSafetyStateChanged = false
+        };
+        string journalPath = NewJournalPath();
+        string onboardInstanceId = Guid.NewGuid().ToString("D");
+        FakeIoModuleClient io = new();
+        WireToGateSafetySummaryPayload unsafeSummary = new(
+            false,
+            true,
+            false,
+            false,
+            true,
+            ["SLOT_STATE_UNKNOWN", "LOCK_NOT_CLOSED", "UNLOCK_OUTPUT_NOT_RESET"]);
+
+        await using (WireToGateSessionClient firstClient = CreateClient(
+            server,
+            io,
+            journalPath,
+            onboardInstanceId: onboardInstanceId,
+            messageTimeout: TimeSpan.FromMilliseconds(200)))
+        {
+            await firstClient.ConnectAndRecoverAsync(testToken);
+            Assert.Equal(1, firstClient.Current.SafetyStateVersion);
+            foreach (long revision in new long[] { 2, 3 })
+            {
+                await Assert.ThrowsAsync<TimeoutException>(() => firstClient.SendSafetyStateChangedAsync(
+                    revision,
+                    DateTimeOffset.UtcNow,
+                    unsafeSummary,
+                    [1, 2, 3, 4, 5, 6, 7, 8],
+                    testToken));
+            }
+        }
+
+        server.AnswerSafetyStateChanged = true;
+        await using WireToGateSessionClient secondClient = CreateClient(
+            server,
+            io,
+            journalPath,
+            onboardInstanceId: onboardInstanceId);
+        Exception? handshakeFailure = await Record.ExceptionAsync(() => secondClient.ConnectAndRecoverAsync(testToken));
+
+        IReadOnlyList<string> refusals = server.SafetyRevisionConflicts;
+        Assert.True(refusals.Count == 0, $"the server refused: {string.Join(" | ", refusals)}");
+        Assert.True(handshakeFailure is null, $"the handshake failed: {handshakeFailure?.GetType().Name}: {handshakeFailure?.Message}");
+        var second = server.ReceivedEnvelopes.Where(item => item.Connection == 2).ToArray();
+        Assert.Equal(
+            ["SessionHello", "SafetyStateChanged", "SafetyStateChanged", "CapabilitySnapshot", "SafetyStateSnapshot"],
+            second.Take(5).Select(item => item.MessageType).ToArray());
+        Assert.Equal([2L, 3L], [RevisionOf(second[1].WireLine), RevisionOf(second[2].WireLine)]);
+        Assert.Equal(4, RevisionOf(second[4].WireLine));
+        Assert.Equal(WireToGateSessionReadiness.Ready, secondClient.Current.Readiness);
+        Assert.Equal(4, secondClient.Current.SafetyStateVersion);
+    }
+
+    /// <summary>
+    /// The resent change was already taken in the first generation and only its acknowledgement was lost: the server
+    /// answers the resend from its inbox and writes no revision in the second generation. The snapshot still takes the
+    /// next revision -- one number skipped, which is harmless -- and the handshake completes.
+    /// </summary>
+    /// <remarks>
+    /// The vehicle cannot tell this case from a first delivery: both are answered with a <c>DurableAck</c>. The rule is
+    /// therefore "a change was resent", not "a change was newly written on the server", and this pins that it does no
+    /// harm when nothing was written.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("ProtocolVector", "CV-SNAPSHOT-SAME-REVISION-CONFLICT")]
+    public async Task AHandshakeSnapshotAfterResendingAChangeTheServerAlreadyTookStillCompletesTheHandshake()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            ShareSafetyRevisionAcrossChangeAndSnapshot = true,
+            DropBeforeSafetyStateChangedAck = true
+        };
+        string journalPath = NewJournalPath();
+        string onboardInstanceId = Guid.NewGuid().ToString("D");
+        FakeIoModuleClient io = new();
+
+        await using (WireToGateSessionClient firstClient = CreateClient(
+            server,
+            io,
+            journalPath,
+            onboardInstanceId: onboardInstanceId))
+        {
+            await firstClient.ConnectAndRecoverAsync(testToken);
+            await Assert.ThrowsAnyAsync<IOException>(() => firstClient.SendSafetyStateChangedAsync(
+                2,
+                DateTimeOffset.UtcNow,
+                new WireToGateSafetySummaryPayload(false, true, false, false, true, ["SLOT_STATE_UNKNOWN"]),
+                [1, 2, 3, 4, 5, 6, 7, 8],
+                testToken));
+        }
+
+        Assert.Equal(1, server.AcceptedSafetyStateChangedCount);
+        server.DropBeforeSafetyStateChangedAck = false;
+        await using WireToGateSessionClient secondClient = CreateClient(
+            server,
+            io,
+            journalPath,
+            onboardInstanceId: onboardInstanceId);
+        Exception? handshakeFailure = await Record.ExceptionAsync(() => secondClient.ConnectAndRecoverAsync(testToken));
+
+        IReadOnlyList<string> refusals = server.SafetyRevisionConflicts;
+        Assert.True(refusals.Count == 0, $"the server refused: {string.Join(" | ", refusals)}");
+        Assert.True(handshakeFailure is null, $"the handshake failed: {handshakeFailure?.GetType().Name}: {handshakeFailure?.Message}");
+        var second = server.ReceivedEnvelopes.Where(item => item.Connection == 2).ToArray();
+        Assert.Equal(
+            ["SessionHello", "SafetyStateChanged", "CapabilitySnapshot", "SafetyStateSnapshot"],
+            second.Take(4).Select(item => item.MessageType).ToArray());
+        // Taken once: the resend was answered from the first acceptance, not accepted again.
+        Assert.Equal(1, server.AcceptedSafetyStateChangedCount);
+        Assert.Equal(3, RevisionOf(second[3].WireLine));
+        Assert.Equal(WireToGateSessionReadiness.Ready, secondClient.Current.Readiness);
+        Assert.Equal(3, secondClient.Current.SafetyStateVersion);
+    }
+
     private static long RevisionOf(string wireLine)
     {
         using JsonDocument document = JsonDocument.Parse(wireLine);
