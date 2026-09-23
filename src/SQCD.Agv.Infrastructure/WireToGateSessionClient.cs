@@ -64,6 +64,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
     // 给连接编号的计数器，只增不减，所以任何两个连接的序号都不同。
     private long _connectionEpoch;
+
+    // 补发握手没看到的发件箱行：有人要一遍、正在跑一遍（onboard-hmi#204，见 RequestStaleResend）。
+    private int _staleResendRequested;
+    private int _staleResendRunning;
     private WireToGateSessionSnapshot _current;
     private WireToGateJourneySnapshot _journey;
     private CancellationTokenSource? _receiveStopping;
@@ -800,6 +804,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             ThrowIfProtocolProblem(readinessEnvelope);
             ApplySessionReadiness(readinessEnvelope, requireExactConfiguredBaseline: true);
             StartReceiveLoop(generation);
+            // After the loop is up: the pass waits for its acknowledgements through it (onboard-hmi#204).
+            RequestStaleResend();
             foreach (WireToGateDurableMessage pendingResult in pendingResultReplays)
             {
                 await ReplayAcknowledgedResultAsync(pendingResult, generation, cancellationToken)
@@ -1126,7 +1132,18 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
         try
         {
-            await SendLineAsync(stored.WireLine, connectionEpoch, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await SendLineAsync(stored.WireLine, connectionEpoch, cancellationToken).ConfigureAwait(false);
+            }
+            catch (WireToGateConnectionGoneException)
+            {
+                // On file under a connection that is gone. If a newer session is already up, its handshake may have read
+                // the outbox before this row landed; see RequestStaleResend (onboard-hmi#204).
+                RequestStaleResend();
+                throw;
+            }
+
             WireToGateEnvelope ackEnvelope = await response.Task
                 .WaitAsync(_options.MessageTimeout, cancellationToken)
                 .ConfigureAwait(false);
@@ -1152,6 +1169,111 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             _responseWaiters.TryRemove(stored.MessageId, out _);
         }
     }
+
+    /// <summary>
+    /// Asks for one pass over the outbox for rows still under an older generation, run off the caller's thread
+    /// (8005-agv-onboard-hmi#204).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A handshake replays the rows that are unacknowledged when it reads the outbox. A message judged sendable on the
+    /// previous connection can land in the outbox after that read; its own write then fails the connection check, and
+    /// nothing else would send it before the next, unrelated disconnect. Before the check existed it was written into
+    /// the new connection instead, broke that handshake, and the reconnect replayed it -- so without this pass the check
+    /// would have turned "delivered after one more reconnect" into "delivered whenever the link next drops".
+    /// </para>
+    /// <para>
+    /// Asked for at two points, which between them leave no gap: once a session can take durable messages with its
+    /// receive loop running (rows that landed before), and whenever a durable write is refused as its connection gone
+    /// (rows that land after). A request made while a pass runs makes that pass run once more, so none is lost and
+    /// passes never overlap.
+    /// </para>
+    /// <para>
+    /// <c>SafetyStateChanged</c> is left out: the business service resends it itself and knows its version order, which a
+    /// resend from here does not. <c>RecoveryStateReport</c> belongs to the handshake. Everything else goes out exactly
+    /// as on file -- same messageId and content, rebound to this generation -- as the handshake's own replay sends it. A
+    /// pass that fails leaves the rest for the next handshake, which is where they waited before this pass existed.
+    /// </para>
+    /// </remarks>
+    private void RequestStaleResend()
+    {
+        Volatile.Write(ref _staleResendRequested, 1);
+        if (Interlocked.CompareExchange(ref _staleResendRunning, 1, 0) == 0)
+        {
+            _ = Task.Run(RunStaleResendAsync);
+        }
+    }
+
+    private async Task RunStaleResendAsync()
+    {
+        do
+        {
+            try
+            {
+                while (Interlocked.Exchange(ref _staleResendRequested, 0) == 1)
+                {
+                    await ResendStaleRowsOnceAsync().ConfigureAwait(false);
+                }
+            }
+            finally
+            {
+                Volatile.Write(ref _staleResendRunning, 0);
+            }
+        }
+        // A request that came in after the last check found this pass still running and started nothing.
+        while (Volatile.Read(ref _staleResendRequested) == 1
+            && Interlocked.CompareExchange(ref _staleResendRunning, 1, 0) == 0);
+    }
+
+    private async Task ResendStaleRowsOnceAsync()
+    {
+        WireToGateSessionSnapshot current = Current;
+        if (_disposed || !CanResendDurable(current) || current.SessionGeneration is not long generation)
+        {
+            return;
+        }
+
+        try
+        {
+            IReadOnlyList<WireToGateDurableMessage> pending = await _journal
+                .ReadUnacknowledgedOutgoingAsync(CancellationToken.None)
+                .ConfigureAwait(false);
+            foreach (WireToGateDurableMessage row in pending)
+            {
+                if (row.MessageType is "SafetyStateChanged" or "RecoveryStateReport")
+                {
+                    continue;
+                }
+
+                WireToGateEnvelope envelope = WireToGateProtocolSerializer.DeserializeAndValidate(
+                    row.WireLine.TrimEnd('\r', '\n'),
+                    _options.AgvId);
+                if (envelope.SessionGeneration is not long rowGeneration || rowGeneration >= generation)
+                {
+                    continue;
+                }
+
+                await SendDurableCoreAsync(
+                    row.MessageType,
+                    row.DeduplicationKey,
+                    row.MessageId,
+                    envelope.CorrelationId,
+                    envelope.Payload,
+                    allowRecoveryRequired: true,
+                    CancellationToken.None).ConfigureAwait(false);
+            }
+        }
+        catch (Exception exception) when (
+            exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
+        {
+            // Left for the next handshake. A connection gone mid-pass has asked for another pass already.
+        }
+    }
+
+    private static bool CanResendDurable(WireToGateSessionSnapshot snapshot) =>
+        snapshot.Connected
+        && snapshot.SessionGeneration is not null
+        && snapshot.Readiness is WireToGateSessionReadiness.Ready or WireToGateSessionReadiness.RecoveryRequired;
 
     /// <summary>
     /// The outbox row for a durable message: the one already on file under this key, content-checked against
@@ -1974,7 +2096,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
                 if (string.Equals(envelope.MessageType, "SessionReadiness", StringComparison.Ordinal))
                 {
+                    bool couldSend = CanResendDurable(Current);
                     ApplySessionReadiness(envelope, requireExactConfiguredBaseline: false);
+                    if (!couldSend && CanResendDurable(Current))
+                    {
+                        RequestStaleResend();
+                    }
+
                     continue;
                 }
 
@@ -2434,9 +2562,18 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(command);
         ArgumentException.ThrowIfNullOrWhiteSpace(reasonCode);
+        // The answer belongs to the connection the command came in on. The epoch is read first and the receive loop's
+        // generation after: a close zeroes that generation, and a new loop only starts with the next one, so an epoch
+        // that already names a later connection cannot pass the check below (onboard-hmi#204).
+        long connectionEpoch = CurrentConnectionEpoch;
+        if (Interlocked.Read(ref _receiveLoopGeneration) != command.SessionGeneration)
+        {
+            throw new WireToGateConnectionGoneException("这条命令所属的会话已经不在了，不再回它的ProtocolProblem。");
+        }
+
         await SendEnvelopeAsync(
                 CreateProtocolProblem(command.MessageId, command.MessageType, command.SessionGeneration, reasonCode),
-                CurrentConnectionEpoch,
+                connectionEpoch,
                 cancellationToken)
             .ConfigureAwait(false);
     }
@@ -3645,7 +3782,19 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 throw new WireToGateConnectionGoneException("WIRE_TO_GATE连接已换代，这条报文不属于当前连接。");
             }
 
-            await connection.Writer.WriteLineAsync(normalized.AsMemory(), cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await connection.Writer.WriteLineAsync(normalized.AsMemory(), cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (
+                exception is IOException or InvalidOperationException
+                && !ReferenceEquals(Volatile.Read(ref _writeConnection), connection))
+            {
+                // Closed while this write was still pending -- CloseConnectionAsync does not take _sendGate -- so it ended
+                // with whatever the torn-down stream threw, ObjectDisposedException among them, which is not an
+                // IOException. Its connection is gone, and that is what the caller has to be told (onboard-hmi#204).
+                throw new WireToGateConnectionGoneException("WIRE_TO_GATE连接在这条报文写到一半时被关闭。", exception);
+            }
         }
         finally
         {
@@ -3702,7 +3851,17 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
         if (writeConnection is not null)
         {
-            await writeConnection.Writer.DisposeAsync().ConfigureAwait(false);
+            try
+            {
+                await writeConnection.Writer.DisposeAsync().ConfigureAwait(false);
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or IOException)
+            {
+                // A write is still pending on it (the connection stuck, as in the field): StreamWriter refuses to be
+                // disposed mid-write. Going on is what ends that write -- disposing the stream below fails it -- and
+                // stopping here would leave the reader, the stream and the socket open with the write hung on them
+                // (onboard-hmi#204).
+            }
         }
         _reader?.Dispose();
         _reader = null;
