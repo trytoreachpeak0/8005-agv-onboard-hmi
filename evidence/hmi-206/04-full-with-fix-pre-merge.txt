@@ -1,0 +1,7 @@
+full solution test with fix (pre-merge, base 1184bb07 + test 1e921bd8 + fix), via Invoke-HeavyLocal
+Passed!  - Failed:     0, Passed:   553, Skipped:     0, Total:   553, Duration: 20 s - SQCD.Agv.UnitTests.dll (net8.0)
+[xUnit.net 00:00:35.68]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoadRefusedOverAnOccupiedSlotOffersCompensationForThatDemandNotTheLastCompletedOne [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoadRefusedOverAnOccupiedSlotOffersCompensationForThatDemandNotTheLastCompletedOne [599 ms]
+  Error Message:
+   no restore read was held, so the handler's own refresh was not isolated
+Failed!  - Failed:     1, Passed:   425, Skipped:     0, Total:   426, Duration: 1 m 35 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

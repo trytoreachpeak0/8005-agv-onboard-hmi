@@ -103,6 +103,42 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool DropBeforeSafetyStateChangedAck { get; set; }
 
     /// <summary>
+    /// Closes the connection on a <c>SafetyStateChanged</c> before taking it: nothing is recorded, so the vehicle's
+    /// next handshake is that change's first delivery. Unlike <see cref="DropBeforeSafetyStateChangedAck"/>, which
+    /// models an acknowledgement lost after acceptance, this is the change that never reached the server's inbox
+    /// (onboard-hmi#206: the field's v5 appears in the inbox only under the second generation).
+    /// </summary>
+    public bool DropSafetyStateChangedBeforeAccepting { get; set; }
+
+    /// <summary>
+    /// Keeps one safety revision per session generation for <c>SafetyStateChanged</c> and <c>SafetyStateSnapshot</c>
+    /// together, compared by the hash of the whole line, the way the real server does: both messages go through
+    /// <c>WireToGateStore.ApplySafetySnapshotAsync</c>, whose <c>ApplyRevision</c> throws on the same revision with a
+    /// different hash or on a lower revision, and the connection ends without a <c>ProtocolProblem</c>
+    /// (onboard-hmi#206). Each refusal is kept in <see cref="SafetyRevisionConflicts"/> in the server's wording.
+    /// </summary>
+    /// <remarks>
+    /// Off, this double keys its snapshots by message type, so a <c>SafetyStateChanged</c> and a
+    /// <c>SafetyStateSnapshot</c> at the same revision never meet. That difference is why a handshake snapshot at the
+    /// number of the change it had just resent went unseen here.
+    /// </remarks>
+    public bool ShareSafetyRevisionAcrossChangeAndSnapshot { get; set; }
+
+    /// <summary>What <see cref="ShareSafetyRevisionAcrossChangeAndSnapshot"/> refused, oldest first.</summary>
+    public IReadOnlyList<string> SafetyRevisionConflicts
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _safetyRevisionConflicts.ToArray();
+            }
+        }
+    }
+
+    private readonly List<string> _safetyRevisionConflicts = [];
+
+    /// <summary>
     /// 收下 OperationResult、在 DurableAck 发出去之前断开连接：服务端已经把结果收下了，车却听不到。
     /// 这正是真装置 L2 场景 real-onboard-durable-ack-lost 用代理打开的那扇窗
     /// （8005-agv-control-server#33）。
@@ -1127,6 +1163,15 @@ public sealed class FakeControlServer : IAsyncDisposable
         public volatile bool SafetyStateSnapshotRequested;
 
         /// <summary>
+        /// This generation's safety revision and the hash of the line that set it, under
+        /// <see cref="ShareSafetyRevisionAcrossChangeAndSnapshot"/>: <c>SessionRecoveryRow.SafetyRevision</c> and
+        /// <c>SafetyHash</c>, which the real server clears at every new generation. Guarded by the server's lock.
+        /// </summary>
+        public long? SafetyRevisionOnFile;
+
+        public string? SafetyHashOnFile;
+
+        /// <summary>
         /// The unsettled attempt and the pending result messageIds this session's RecoveryStateReport named and
         /// the server has not reconciled yet: <c>SessionRecoveryRow.PendingAttemptIdsJson</c> and
         /// <c>PendingResultIdsJson</c>. Guarded by the server's lock.
@@ -1552,7 +1597,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                             .ConfigureAwait(false);
                         break;
                     case "SafetyStateChanged" when AnswerSafetyStateChanged:
-                        await HandleSafetyStateChangedAsync(context, root).ConfigureAwait(false);
+                        await HandleSafetyStateChangedAsync(context, line, root).ConfigureAwait(false);
                         break;
                 }
             }
@@ -1648,6 +1693,11 @@ public sealed class FakeControlServer : IAsyncDisposable
             _ => snapshot.GetProperty("payload").GetProperty("safetyStateVersion").GetInt64()
         };
         string contentSha256 = WireToGateProtocolSerializer.ComputeSha256(Encoding.UTF8.GetBytes(line));
+        if (messageType == "SafetyStateSnapshot" && RefuseSharedSafetyRevision(context, messageType, revision, contentSha256))
+        {
+            return;
+        }
+
         if (messageType == "CapabilitySnapshot")
         {
             context.CapabilityVersion = revision;
@@ -2375,8 +2425,63 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
     }
 
-    private async Task HandleSafetyStateChangedAsync(ConnectionContext context, JsonElement message)
+    /// <summary>
+    /// Under <see cref="ShareSafetyRevisionAcrossChangeAndSnapshot"/>, applies <paramref name="revision"/> to this
+    /// generation's one safety revision the way <c>WireToGateStore.ApplyRevision</c> does, or refuses it and ends the
+    /// connection. Returns whether it was refused; always false with the option off.
+    /// </summary>
+    private bool RefuseSharedSafetyRevision(
+        ConnectionContext context,
+        string messageType,
+        long revision,
+        string lineSha256)
     {
+        if (!ShareSafetyRevisionAcrossChangeAndSnapshot)
+        {
+            return false;
+        }
+
+        string? refusal = null;
+        lock (_sync)
+        {
+            if (context.SafetyRevisionOnFile == revision && context.SafetyHashOnFile != lineSha256)
+            {
+                refusal = $"safety revision {revision} has conflicting content.";
+            }
+            else if (context.SafetyRevisionOnFile > revision)
+            {
+                refusal = $"safety revision regressed from {context.SafetyRevisionOnFile} to {revision}.";
+            }
+
+            if (refusal is null)
+            {
+                context.SafetyRevisionOnFile = revision;
+                context.SafetyHashOnFile = lineSha256;
+            }
+            else
+            {
+                _safetyRevisionConflicts.Add(
+                    $"connection {context.ConnectionIndex}, generation {context.Generation}, {messageType}: {refusal}");
+            }
+        }
+
+        if (refusal is null)
+        {
+            return false;
+        }
+
+        context.Client.Close();
+        return true;
+    }
+
+    private async Task HandleSafetyStateChangedAsync(ConnectionContext context, string line, JsonElement message)
+    {
+        if (DropSafetyStateChangedBeforeAccepting)
+        {
+            context.Client.Close();
+            return;
+        }
+
         string messageId = message.GetProperty("messageId").GetString()!;
         JsonElement payload = message.GetProperty("payload");
         string payloadJson = payload.GetRawText();
@@ -2384,6 +2489,24 @@ public sealed class FakeControlServer : IAsyncDisposable
         bool departureSafe = payload.GetProperty("safety").GetProperty("departureSafe").GetBoolean();
         bool conflict;
         bool replayedIntoLaterSession;
+        bool firstDelivery;
+        lock (_sync)
+        {
+            firstDelivery = !_acceptedSafetyStateChanges.ContainsKey(messageId);
+        }
+
+        // Only a first delivery writes the revision: the real server answers a SafetyStateChanged already in its inbox
+        // from its first acceptance, "without touching business state a second time" (OnboardMessageProcessor).
+        if (firstDelivery
+            && RefuseSharedSafetyRevision(
+                context,
+                "SafetyStateChanged",
+                safetyStateVersion,
+                WireToGateProtocolSerializer.ComputeSha256(Encoding.UTF8.GetBytes(line))))
+        {
+            return;
+        }
+
         lock (_sync)
         {
             bool accepted = _acceptedSafetyStateChanges.TryGetValue(

@@ -1,0 +1,4 @@
+full solution test on bde31a1 (merged f31ca2b7), dotnet build SQCD_8005AGV.sln --no-incremental, then dotnet test --no-build via Invoke-HeavyLocal
+Passed!  - Failed:     0, Passed:   553, Skipped:     0, Total:   553, Duration: 18 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+Passed!  - Failed:     0, Passed:   438, Skipped:     0, Total:   438, Duration: 1 m 35 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

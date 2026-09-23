@@ -1,0 +1,39 @@
+probe: 1e921bd8f55edfea834c721caaddb7a952174304 with ShareSafetyRevisionAcrossChangeAndSnapshot = false (default double)
+diff --git a/tests/SQCD.Agv.WireToGateG2Tests/WireToGateG2Tests.HandshakeSafetySnapshotRevision.cs b/tests/SQCD.Agv.WireToGateG2Tests/WireToGateG2Tests.HandshakeSafetySnapshotRevision.cs
+index 5874675..d39cad8 100644
+--- a/tests/SQCD.Agv.WireToGateG2Tests/WireToGateG2Tests.HandshakeSafetySnapshotRevision.cs
++++ b/tests/SQCD.Agv.WireToGateG2Tests/WireToGateG2Tests.HandshakeSafetySnapshotRevision.cs
+@@ -56,7 +56,7 @@ public sealed partial class WireToGateG2Tests
+         await using FakeControlServer server = new(IPAddress.Loopback)
+         {
+             SendReadinessAfterRecoveryAck = true,
+-            ShareSafetyRevisionAcrossChangeAndSnapshot = true
++            ShareSafetyRevisionAcrossChangeAndSnapshot = false
+         };
+         string journalPath = NewJournalPath();
+         string onboardInstanceId = Guid.NewGuid().ToString("D");
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi206-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:02.25]     SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False) [FAIL]
+[xUnit.net 00:00:02.42]     SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True) [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False) [543 ms]
+  Error Message:
+   the handshake snapshot carries revision 2, not above the change it resent at 2
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(Boolean sameSafety) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi206-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\WireToGateG2Tests.HandshakeSafetySnapshotRevision.cs:line 124
+   at SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(Boolean sameSafety) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi206-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\WireToGateG2Tests.HandshakeSafetySnapshotRevision.cs:line 129
+   at SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(Boolean sameSafety) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi206-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\WireToGateG2Tests.HandshakeSafetySnapshotRevision.cs:line 129
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True) [157 ms]
+  Error Message:
+   the handshake snapshot carries revision 2, not above the change it resent at 2
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(Boolean sameSafety) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi206-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\WireToGateG2Tests.HandshakeSafetySnapshotRevision.cs:line 124
+   at SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(Boolean sameSafety) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi206-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\WireToGateG2Tests.HandshakeSafetySnapshotRevision.cs:line 129
+   at SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(Boolean sameSafety) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi206-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\WireToGateG2Tests.HandshakeSafetySnapshotRevision.cs:line 129
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2, Duration: 766 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
