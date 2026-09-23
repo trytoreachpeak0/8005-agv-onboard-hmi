@@ -744,6 +744,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 .ReadUnacknowledgedOutgoingAsync(cancellationToken)
                 .ConfigureAwait(false);
             List<WireToGateDurableMessage> supersededReports = [];
+            bool resentSafetyStateChange = false;
             foreach (WireToGateDurableMessage pending in unacknowledged)
             {
                 if (string.Equals(pending.MessageType, "RecoveryStateReport", StringComparison.Ordinal))
@@ -752,6 +753,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     continue;
                 }
 
+                resentSafetyStateChange |= string.Equals(
+                    pending.MessageType,
+                    "SafetyStateChanged",
+                    StringComparison.Ordinal);
                 await ReplayDurableOutgoingAsync(pending, generation, cancellationToken)
                     .ConfigureAwait(false);
             }
@@ -776,8 +781,17 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     1),
                 cancellationToken).ConfigureAwait(false);
 
+            // 一个 safetyStateVersion 只对应一份安全状态（CV-SNAPSHOT-SAME-REVISION-CONFLICT），号由车载端发。
+            // 上面补发过 SafetyStateChanged 时，服务端这一代已经把它的号记下了，而且安全变化与安全快照共用
+            // 同一个号、按整行哈希比（WireToGateStore.ApplySafetySnapshotAsync）：快照再用这个号，哪怕 safety
+            // 逐字相同也是同号异内容，握手当场断开（onboard-hmi#206）。所以这时快照取下一个号，与会话中途的
+            // 快照（PublishSafetyStateSnapshotAsync）同一个规矩。没补发时照旧用已接受的号：服务端每一代从零
+            // 开始，那个号在这一代里还没对应任何内容。
             WireToGateSafetySummaryPayload safety = CreateSafetySummary(io);
-            long safetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
+            long acceptedSafetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
+            long safetyStateVersion = resentSafetyStateChange
+                ? checked(acceptedSafetyStateVersion + 1)
+                : acceptedSafetyStateVersion;
             await SendSnapshotAndRequireAckAsync(
                 "SafetyStateSnapshot",
                 "SAFETY_STATE",
@@ -789,6 +803,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     safety,
                     slotStates),
                 cancellationToken).ConfigureAwait(false);
+            // 服务端在握手末尾的 SessionReadiness 里回报的是这份快照的号，ApplySessionReadiness 要求恰好相等。
+            AdvanceSafetyStateVersion(safetyStateVersion);
 
             await SendOnboardAlarmSnapshotAsync(generation, cancellationToken).ConfigureAwait(false);
             IReadOnlyList<WireToGateDurableMessage> pendingResultReplays =
