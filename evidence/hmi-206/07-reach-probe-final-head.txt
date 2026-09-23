@@ -1,0 +1,26 @@
+reach probe on bde31a1 (merged f31ca2b7): the resend branch replaced by throw new InvalidOperationException("HMI206-PROBE-REACHED"), --no-incremental, full G2 via Invoke-HeavyLocal; product file restored from backup, SHA-256 checked
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession(next: Ready) [743 ms]
+  Error Message:
+   System.InvalidOperationException : HMI206-PROBE-REACHED
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession(next: Handshaking) [3 s]
+  Error Message:
+   System.InvalidOperationException : HMI206-PROBE-REACHED
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False) [116 ms]
+  Error Message:
+   the handshake failed: InvalidOperationException: HMI206-PROBE-REACHED
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True) [131 ms]
+  Error Message:
+   the handshake failed: InvalidOperationException: HMI206-PROBE-REACHED
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.LostSafetyStateChangedAckReplaysSameIdentityAndBusinessContentFromJournal [137 ms]
+  Error Message:
+   System.InvalidOperationException : HMI206-PROBE-REACHED
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.BusinessResendsSafetyStateAfterSessionGenerationChangeWhileVehicleIdle [112 ms]
+  Error Message:
+   System.InvalidOperationException : HMI206-PROBE-REACHED
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.BusinessSafetySendFailureDisconnectsAndReplaysPendingRevision [142 ms]
+  Error Message:
+   System.InvalidOperationException : HMI206-PROBE-REACHED
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportJudgedWhileTheConnectionIsClosingIsNotWrittenIntoIt [120 ms]
+  Error Message:
+   System.InvalidOperationException : HMI206-PROBE-REACHED
+Failed!  - Failed:     8, Passed:   430, Skipped:     0, Total:   438, Duration: 1 m 39 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

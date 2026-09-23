@@ -1,0 +1,251 @@
+head: 1e921bd8f55edfea834c721caaddb7a952174304; product file with fix: 8fe62e3e461f06b84e57845fcdeccb666b00e470cc2d0ad70a05eb82d117bc48; N=10
+=== FIXED
+ src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs | 18 +++++++++++++++++-
+ 1 file changed, 17 insertions(+), 1 deletion(-)
++            bool resentSafetyStateChange = false;
++                resentSafetyStateChange |= string.Equals(
++                    pending.MessageType,
++                    "SafetyStateChanged",
++                    StringComparison.Ordinal);
++            // 一个 safetyStateVersion 只对应一份安全状态（CV-SNAPSHOT-SAME-REVISION-CONFLICT），号由车载端发。
++            // 上面补发过 SafetyStateChanged 时，服务端这一代已经把它的号记下了，而且安全变化与安全快照共用
++            // 同一个号、按整行哈希比（WireToGateStore.ApplySafetySnapshotAsync）：快照再用这个号，哪怕 safety
++            // 逐字相同也是同号异内容，握手当场断开（onboard-hmi#206）。所以这时快照取下一个号，与会话中途的
++            // 快照（PublishSafetyStateSnapshotAsync）同一个规矩。没补发时照旧用已接受的号：服务端每一代从零
++            // 开始，那个号在这一代里还没对应任何内容。
+-            long safetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
++            long acceptedSafetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
++            long safetyStateVersion = resentSafetyStateChange
++                ? checked(acceptedSafetyStateVersion + 1)
++                : acceptedSafetyStateVersion;
++            // 服务端在握手末尾的 SessionReadiness 里回报的是这份快照的号，ApplySessionReadiness 要求恰好相等。
++            AdvanceSafetyStateVersion(safetyStateVersion);
+build:     0 Error(s)
+run 1: Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2
+run 2: Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2
+run 3: Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2
+run 4: Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2
+run 5: Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2
+run 6: Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2
+run 7: Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2
+run 8: Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2
+run 9: Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2
+run 10: Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2
+restored: 8fe62e3e461f06b84e57845fcdeccb666b00e470cc2d0ad70a05eb82d117bc48 OK
+=== M1 fix removed: the handshake snapshot takes the accepted revision again
+ src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs | 16 +++++++++++++++-
+ 1 file changed, 15 insertions(+), 1 deletion(-)
++            bool resentSafetyStateChange = false;
++                resentSafetyStateChange |= string.Equals(
++                    pending.MessageType,
++                    "SafetyStateChanged",
++                    StringComparison.Ordinal);
++            // 一个 safetyStateVersion 只对应一份安全状态（CV-SNAPSHOT-SAME-REVISION-CONFLICT），号由车载端发。
++            // 上面补发过 SafetyStateChanged 时，服务端这一代已经把它的号记下了，而且安全变化与安全快照共用
++            // 同一个号、按整行哈希比（WireToGateStore.ApplySafetySnapshotAsync）：快照再用这个号，哪怕 safety
++            // 逐字相同也是同号异内容，握手当场断开（onboard-hmi#206）。所以这时快照取下一个号，与会话中途的
++            // 快照（PublishSafetyStateSnapshotAsync）同一个规矩。没补发时照旧用已接受的号：服务端每一代从零
++            // 开始，那个号在这一代里还没对应任何内容。
+-            long safetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
++            long acceptedSafetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
++            long safetyStateVersion = acceptedSafetyStateVersion;
++            // 服务端在握手末尾的 SessionReadiness 里回报的是这份快照的号，ApplySessionReadiness 要求恰好相等。
++            AdvanceSafetyStateVersion(safetyStateVersion);
+build:     0 Error(s)
+run 1: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 2: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 3: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 4: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 5: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 6: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 7: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 8: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 9: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 10: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+restored: 8fe62e3e461f06b84e57845fcdeccb666b00e470cc2d0ad70a05eb82d117bc48 OK
+=== M2 the accepted revision is not advanced to the snapshot's
+ src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
++            bool resentSafetyStateChange = false;
++                resentSafetyStateChange |= string.Equals(
++                    pending.MessageType,
++                    "SafetyStateChanged",
++                    StringComparison.Ordinal);
++            // 一个 safetyStateVersion 只对应一份安全状态（CV-SNAPSHOT-SAME-REVISION-CONFLICT），号由车载端发。
++            // 上面补发过 SafetyStateChanged 时，服务端这一代已经把它的号记下了，而且安全变化与安全快照共用
++            // 同一个号、按整行哈希比（WireToGateStore.ApplySafetySnapshotAsync）：快照再用这个号，哪怕 safety
++            // 逐字相同也是同号异内容，握手当场断开（onboard-hmi#206）。所以这时快照取下一个号，与会话中途的
++            // 快照（PublishSafetyStateSnapshotAsync）同一个规矩。没补发时照旧用已接受的号：服务端每一代从零
++            // 开始，那个号在这一代里还没对应任何内容。
+-            long safetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
++            long acceptedSafetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
++            long safetyStateVersion = resentSafetyStateChange
++                ? checked(acceptedSafetyStateVersion + 1)
++                : acceptedSafetyStateVersion;
++            // 服务端在握手末尾的 SessionReadiness 里回报的是这份快照的号，ApplySessionReadiness 要求恰好相等。
+build:     0 Error(s)
+run 1: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   Assert.Null() Failure: Value is not null
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   Assert.Null() Failure: Value is not null
+run 2: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   Assert.Null() Failure: Value is not null
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   Assert.Null() Failure: Value is not null
+run 3: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   Assert.Null() Failure: Value is not null
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   Assert.Null() Failure: Value is not null
+run 4: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   Assert.Null() Failure: Value is not null
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   Assert.Null() Failure: Value is not null
+run 5: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   Assert.Null() Failure: Value is not null
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   Assert.Null() Failure: Value is not null
+run 6: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   Assert.Null() Failure: Value is not null
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   Assert.Null() Failure: Value is not null
+run 7: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   Assert.Null() Failure: Value is not null
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   Assert.Null() Failure: Value is not null
+run 8: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   Assert.Null() Failure: Value is not null
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   Assert.Null() Failure: Value is not null
+run 9: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   Assert.Null() Failure: Value is not null
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   Assert.Null() Failure: Value is not null
+run 10: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   Assert.Null() Failure: Value is not null
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   Assert.Null() Failure: Value is not null
+restored: 8fe62e3e461f06b84e57845fcdeccb666b00e470cc2d0ad70a05eb82d117bc48 OK
+=== M3 the resend is never noticed (the flag is never set)
+ src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs | 18 +++++++++++++++++-
+ 1 file changed, 17 insertions(+), 1 deletion(-)
++            bool resentSafetyStateChange = false;
++                _ = string.Equals(
++                    pending.MessageType,
++                    "SafetyStateChanged",
++                    StringComparison.Ordinal);
++            // 一个 safetyStateVersion 只对应一份安全状态（CV-SNAPSHOT-SAME-REVISION-CONFLICT），号由车载端发。
++            // 上面补发过 SafetyStateChanged 时，服务端这一代已经把它的号记下了，而且安全变化与安全快照共用
++            // 同一个号、按整行哈希比（WireToGateStore.ApplySafetySnapshotAsync）：快照再用这个号，哪怕 safety
++            // 逐字相同也是同号异内容，握手当场断开（onboard-hmi#206）。所以这时快照取下一个号，与会话中途的
++            // 快照（PublishSafetyStateSnapshotAsync）同一个规矩。没补发时照旧用已接受的号：服务端每一代从零
++            // 开始，那个号在这一代里还没对应任何内容。
+-            long safetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
++            long acceptedSafetyStateVersion = Volatile.Read(ref _acceptedSafetyStateVersion);
++            long safetyStateVersion = resentSafetyStateChange
++                ? checked(acceptedSafetyStateVersion + 1)
++                : acceptedSafetyStateVersion;
++            // 服务端在握手末尾的 SessionReadiness 里回报的是这份快照的号，ApplySessionReadiness 要求恰好相等。
++            AdvanceSafetyStateVersion(safetyStateVersion);
+build:     0 Error(s)
+run 1: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 2: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 3: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 4: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 5: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 6: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 7: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 8: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 9: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+run 10: Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: False)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AHandshakeSnapshotAfterAResentSafetyChangeTakesAHigherRevisionInTheSameGeneration(sameSafety: True)
+   the server refused: connection 2, generation 2, SafetyStateSnapshot: safety revision 2 has conflicting content.
+restored: 8fe62e3e461f06b84e57845fcdeccb666b00e470cc2d0ad70a05eb82d117bc48 OK
+done
