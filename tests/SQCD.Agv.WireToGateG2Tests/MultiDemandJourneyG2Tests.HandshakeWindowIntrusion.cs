@@ -134,34 +134,91 @@ public sealed partial class MultiDemandJourneyG2Tests
         }
     }
 
+    /// <summary>Where the next session is when the old session's failed report is finally acted on.</summary>
+    public enum NextSessionState
+    {
+        /// <summary>Its handshake is under way: SessionHello out, CapabilitySnapshot not.</summary>
+        Handshaking,
+
+        /// <summary>Its handshake is done and it is Ready.</summary>
+        Ready
+    }
+
     /// <summary>
     /// 一份已经发出、正在等 <c>DurableAck</c> 的安全上报，因为它的连接被关掉而失败：业务服务不去断开会话，此后连上的
-    /// 新会话一直连着、保持就绪。
+    /// 新会话——还在握手的，或已经就绪的——一直连着。
     /// </summary>
     /// <remarks>
     /// <para>
-    /// 等确认的一方由 <c>CloseConnectionAsync</c> 叫醒，而 <c>DisconnectAsync</c> 要到关完才 <c>Publish</c> 新状态，所以
-    /// 失败处理读到的会话往往还是旧的那一代——按「读到的代号」判是不是旧会话的失败，会判成当前会话的，照样断开。
-    /// 等它真去断开时，新会话可能已经连上了，被断开的就是新会话（cs#323 那次车载端日志里正有这样一条
-    /// 「SafetyStateChanged发送失败：WIRE_TO_GATE连接已关闭」）。
+    /// <b>钉住的时序：</b>等确认的一方由 <c>CloseConnectionAsync</c> 叫醒，而 <c>DisconnectAsync</c> 要到关完才
+    /// <c>Publish</c>。失败处理若在这段空档里读会话状态，读到的仍是旧那一代、仍连着，按「读到的代号」判就会判成当前会话
+    /// 的失败而去断开；等它真去断开时，新会话已经连上，被断开的就是新会话。
     /// </para>
     /// <para>
-    /// 时序是构造出来的：日志器在业务服务写下那条失败日志之后、它接着动手之前把它停住（写日志正是判断之后、断开之前
-    /// 那一刻），测试在这段空档里把新会话连到就绪，再放行。
+    /// <b>三个卡点，每一个都挪到「对方已不可能再做那件事」的时刻，不靠调度碰运气：</b>
+    /// </para>
+    /// <list type="number">
+    /// <item><description>关连接的线程：<c>CloseConnectionAsync</c> 叫醒等确认的一方之后清空旅程，同步触发
+    /// <c>JourneyChanged</c>——此刻 <c>DisconnectAsync</c> 还没 <c>Publish</c>。测试在这个事件里把它停住，一直停到业务服务
+    /// 做完判断，所以判断时读到的必然是旧那一代（用例先断言了这一点）。车上要有旅程，这个事件才会发，所以假服务端握手后
+    /// 下发旅程快照。</description></item>
+    /// <item><description>业务服务：写下那条失败日志之后、接着动手之前，被 <c>RecordingLogger</c> 停住（写日志正是判断之后、
+    /// 断开之前那一刻）。</description></item>
+    /// <item><description>新会话：<see cref="NextSessionState.Handshaking"/> 停在「读完发件箱、还没发能力快照」，
+    /// <see cref="NextSessionState.Ready"/> 走完握手。然后才放行业务服务。</description></item>
+    /// </list>
+    /// <para>
+    /// 放行之后留 1 秒看它会不会去断开：修前它在放行后立刻同步调 <c>DisconnectAsync</c>，没有任何等待，1 秒只是给
+    /// 「不该发生的事」一个发生的机会，红的那一侧不靠它。
     /// </para>
     /// </remarks>
-    [Fact]
+    [Theory]
+    [InlineData(NextSessionState.Handshaking)]
+    [InlineData(NextSessionState.Ready)]
     [Trait("IntegrationSlice", "FP-IS-00")]
     [Trait("IntegrationSlice", "FP-IS-05")]
     [Trait("ProtocolVector", "CV-SESSION-RECONNECT-DURING-RECOVERY")]
-    public async Task ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession()
+    public async Task ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession(NextSessionState next)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         FakeIoModuleClient io = new() { OperatorNeverActs = true };
-        await using Harness harness = await Harness.StartAsync(_ => { }, token, io: io);
+        ReconnectRaceJournal race = null!;
+        await using Harness harness = await Harness.StartAsync(
+            server =>
+            {
+                server.SendJourneySnapshotsAfterRecovery = true;
+                server.JourneySnapshotPayloads = new Dictionary<string, object>
+                {
+                    ["VehicleBusinessStateSnapshot"] = Payloads.BusinessState(1, loadingPhase: null),
+                    ["CurrentStopWorklistSnapshot"] = Payloads.Worklist(1, Payloads.ItemA, Payloads.ItemB),
+                    ["UpcomingStopPlanSnapshot"] = Payloads.Plan(1, Payloads.TwoDemandLegs)
+                };
+            },
+            token,
+            io: io,
+            wrapJournal: inner => race = new ReconnectRaceJournal(inner));
+
+        // Hold 1: the closing thread, parked where DisconnectAsync has woken the waiters and not yet published.
+        int parkClosingThread = 0;
+        bool judgedWhileParked = false;
+        WireToGateSessionSnapshot? sessionAtJudgement = null;
+        harness.Session.JourneyChanged += (_, args) =>
+        {
+            if (args.Value == WireToGateJourneySnapshot.Empty && Interlocked.Exchange(ref parkClosingThread, 0) == 1)
+            {
+                judgedWhileParked = harness.Logger.HoldEntered.Wait(TimeSpan.FromSeconds(10));
+                sessionAtJudgement = harness.Session.Current;
+            }
+        };
         try
         {
             await WaitForSafetyReportsToSettleAsync(harness, token);
+            await harness.WaitUntilAsync(
+                () => harness.Session.CurrentJourney != WireToGateJourneySnapshot.Empty,
+                "a journey on the vehicle, so closing the connection clears it",
+                token);
+            long firstGeneration = harness.Session.Current.SessionGeneration
+                ?? throw new InvalidOperationException("The first session has no generation.");
             int firstConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
 
             // A lock feedback stops reading; the report of it reaches the server, which takes it and never answers.
@@ -174,32 +231,52 @@ public sealed partial class MultiDemandJourneyG2Tests
                 "the report to reach the server and wait there for its acknowledgement",
                 token);
 
-            // The connection closes under it; the report fails, and the business service is held right after it has
-            // decided what that failure means and logged it.
+            // Hold 2: the business service, right after it has judged the failure and logged it.
             harness.Logger.HoldNextEntryStartingWith("SafetyStateChanged");
+            Volatile.Write(ref parkClosingThread, 1);
             await harness.Session.Client.DisconnectAsync();
-            await harness.Logger.HoldEntered.WaitAsync(TimeSpan.FromSeconds(10), token);
 
-            // In that gap the vehicle is back: a new session, Ready.
+            // The premise, or the rest proves nothing: the failure was judged while the closing thread was parked, and
+            // what the session said at that moment was still the old generation, connected.
+            Assert.True(judgedWhileParked, "The business service did not judge the failure while DisconnectAsync was parked.");
+            Assert.NotNull(sessionAtJudgement);
+            Assert.True(sessionAtJudgement.Connected);
+            Assert.Equal(firstGeneration, sessionAtJudgement.SessionGeneration);
+
+            // Hold 3: the next session, in its handshake or Ready, before the business service is let go.
             harness.Server.AnswerSafetyStateChanged = true;
-            await harness.Session.Client.ConnectAndRecoverAsync(token);
+            Task<WireToGateSessionSnapshot> reconnect;
+            if (next == NextSessionState.Handshaking)
+            {
+                race.HoldNextHandshakeAfterOutboxRead();
+                reconnect = harness.Session.Client.ConnectAndRecoverAsync(token);
+                await race.HandshakeHeld.WaitAsync(TimeSpan.FromSeconds(10), token);
+            }
+            else
+            {
+                reconnect = harness.Session.Client.ConnectAndRecoverAsync(token);
+                await reconnect;
+                Assert.Equal(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
+            }
+
             int secondConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
             long secondGeneration = harness.Session.Current.SessionGeneration
                 ?? throw new InvalidOperationException("The new session has no generation.");
             Assert.NotEqual(firstConnection, secondConnection);
-            Assert.Equal(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
 
             harness.Logger.ReleaseHold();
-            // Room for the disconnect the failure must not cause.
-            await Task.Delay(TimeSpan.FromMilliseconds(500), token);
-
-            // The new session is still the one, still connected and Ready, and no third connection was needed.
-            Assert.Equal(secondConnection, harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection));
+            await Task.Delay(TimeSpan.FromSeconds(1), token);
+            // Still connected, still this generation, mid-handshake or Ready as it was.
             Assert.True(harness.Session.Current.Connected);
             Assert.Equal(secondGeneration, harness.Session.Current.SessionGeneration);
+
+            race.ReleaseHandshake();
+            await reconnect;
             Assert.Equal(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
-            // Because the failure was taken for what it is -- its connection was gone -- and not for a failure of
-            // the session now in place.
+            Assert.Equal(secondGeneration, harness.Session.Current.SessionGeneration);
+            Assert.Equal(secondConnection, harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection));
+            // Because the failure was taken for what it is -- its connection was gone -- and not for a failure of the
+            // session now in place.
             (string message, Exception failure) = Assert.Single(SafetyReportFailures(harness));
             Assert.IsType<WireToGateConnectionGoneException>(failure);
             Assert.Contains("不断开当前会话", message, StringComparison.Ordinal);
@@ -207,9 +284,54 @@ public sealed partial class MultiDemandJourneyG2Tests
         }
         finally
         {
-            // A business service still parked in the logger would keep the harness's disposal waiting forever.
+            // Nothing may stay parked, or the harness's disposal waits forever.
+            Volatile.Write(ref parkClosingThread, 0);
             harness.Logger.ReleaseHold();
+            race.ReleaseHandshake();
         }
+    }
+
+    /// <summary>
+    /// 反过来：连接还活着时的失败——服务端收下上报、连接一直开着、就是不回 <c>DurableAck</c>，等确认超时——业务服务仍然
+    /// 断开会话，由重连后的新会话以同一版本和内容重试。
+    /// </summary>
+    /// <remarks>
+    /// 守的是 <see cref="WireToGateConnectionGoneException"/> 的边界：它只标「连接已经不在了」，不能把活连接上该断的也吞掉。
+    /// 这个夹具不跑会话服务的心跳循环，服务端也不关连接，所以会话若变成断开，只可能是业务服务自己断的。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("IntegrationSlice", "FP-IS-05")]
+    [Trait("ProtocolVector", "CV-SESSION-RECONNECT-DURING-RECOVERY")]
+    public async Task ASafetyReportUnansweredOnALiveConnectionStillDisconnectsTheSession()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await Harness.StartAsync(_ => { }, token, io: io);
+        await WaitForSafetyReportsToSettleAsync(harness, token);
+        int firstConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
+
+        harness.Server.AnswerSafetyStateChanged = false;
+        int reportsBefore = SafetyChangesOn(harness, firstConnection).Length;
+        io.SetUnreadable(0);
+        io.PublishSnapshot();
+        await harness.WaitUntilAsync(
+            () => SafetyChangesOn(harness, firstConnection).Length > reportsBefore,
+            "the report to reach the server and wait there for its acknowledgement",
+            token);
+
+        // The acknowledgement times out (MessageTimeout is 2 s here) on a connection that is still open.
+        await harness.WaitUntilAsync(
+            () => harness.Session.Current.Readiness == WireToGateSessionReadiness.Disconnected,
+            "the business service to disconnect the session after the unanswered report",
+            token);
+        (string message, Exception failure) = Assert.Single(SafetyReportFailures(harness));
+        Assert.IsType<TimeoutException>(failure);
+        Assert.StartsWith("SafetyStateChanged发送失败，正在断开会话", message, StringComparison.Ordinal);
+        // The vehicle's own disconnect, not the server's: it never opened a second connection or lost the first one
+        // any other way.
+        Assert.Equal(firstConnection, harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection));
+        Assert.Empty(harness.UiErrors);
     }
 
     private static JsonElement[] SafetyChangesOn(Harness harness, int connection) =>
