@@ -6,24 +6,35 @@ using Xunit;
 namespace SQCD.Agv.WireToGateG2Tests;
 
 /// <summary>
-/// 一份还在路上的安全上报，不能落进下一次握手（8005-agv-onboard-hmi#204）。
+/// 上一代会话没送到的安全上报，不能进入下一次握手（8005-agv-onboard-hmi#204）。
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>缺陷：</b><c>SendDurableCoreAsync</c> 先读会话快照判「现在可以发」，再 <c>await</c> 写发件箱，最后才
-/// <c>SendLineAsync</c>；而 <c>SendLineAsync</c> 是在那之后才去读 <c>_writer</c> 字段的。写发件箱这一段里会话要是
-/// 换了代，这条报文就写进了**新连接**——带着旧代次、插在 <c>SessionHello</c> 与 <c>CapabilitySnapshot</c> 中间。
-/// 服务端看到的正是 cs#323 那次红运行里读到的顺序，车载端随后报 <c>HANDSHAKE_SEQUENCE_INVALID</c>。
+/// <b>缺陷一，cs#323 那次红运行里发生的：握手把它补发了。</b>握手一开始补发上一代没等到 <c>DurableAck</c> 的持久报文，
+/// <c>SafetyStateChanged</c> 也在内。它若从没到过服务端，补发就是第一次受理，服务端按
+/// <c>OnboardMessageProcessor</c> 的 <c>SafetyStateChanged</c> 分支回 <c>DurableAck</c> 并**无条件**跟一条
+/// <c>SessionReadiness</c>；车载端补发只读走 ack，接着发 <c>CapabilitySnapshot</c>、等它的 ack，读到的却是那条就绪，
+/// 报 <c>HANDSHAKE_SEQUENCE_INVALID：期望SnapshotAppliedAck，实际SessionReadiness</c>。那次运行的服务端库
+/// <c>ProtocolInbox</c> 里，ver5 生成于第 1 代（sentAt 16:20:38.992），带着第 2 代号、排在第 2 代
+/// <c>SessionHello</c> 之后 <c>CapabilitySnapshot</c> 之前，首次回复正是 ack + 就绪。补发它也是错的：握手里的全量
+/// <c>SafetyStateSnapshot</c> 已经说了此刻的真相，那一份是更早的，晚到只会把服务端退回过时的状态。
+/// 与 <c>RecoveryStateReport</c> 不补发是同一个理由，见 <see cref="AnUnsentSafetyChangeIsNotReplayedIntoTheNextHandshake"/>。
 /// </para>
 /// <para>
-/// <b>两个触发源都要挡住。</b><see cref="SafetyReportTrigger.FatalFaultLatch"/> 是 #197 新接的那根线
-/// （<c>OnboardController.StateChanged</c> → <c>RefreshSafetyAfterFatalFaultLatchChange</c>），现场那次 IO 抖动正是
-/// 经它多出一路并发上报；<see cref="SafetyReportTrigger.IoSnapshot"/> 是 #197 之前就有的那根线
-/// （<c>IIoModuleClient.SnapshotChanged</c>）。根因在发送口，与是谁按下去的无关，所以两格跑同一段判据。
+/// <b>缺陷二，查缺陷一时读代码发现的：在途的那一份写进了新连接。</b><c>SendDurableCoreAsync</c> 先判「现在可以发」，
+/// 再 <c>await</c> 写发件箱，<c>SendLineAsync</c> 这之后才读 <c>_writer</c>。这一段里会话换了代，报文就带着旧代次写进
+/// 新连接、插在 <c>SessionHello</c> 与 <c>CapabilitySnapshot</c> 中间；它随后的失败又被当成当前会话的，把正在握手的
+/// 新会话断掉。见 <see cref="ASafetyReportStillInFlightStaysOutOfTheNextHandshake"/>。
 /// </para>
 /// <para>
-/// <b>窗口是构造出来的，不靠时序碰运气</b>（<see cref="ReconnectRaceJournal"/>）：先把这一份卡在写发件箱之前，
-/// 再把重连卡在「读完发件箱、还没发能力快照」那一刻，然后放行前者。两头都卡住，缺陷在时才可能有报文挤进来。
+/// <b>两个触发源。</b><see cref="SafetyReportTrigger.FatalFaultLatch"/> 是 #197 新接的那根线
+/// （<c>OnboardController.StateChanged</c> → <c>RefreshSafetyAfterFatalFaultLatchChange</c>），
+/// <see cref="SafetyReportTrigger.IoSnapshot"/> 是 #197 之前就有的那根线（<c>IIoModuleClient.SnapshotChanged</c>）。
+/// 缺陷在发送口与握手，与是谁按下去的无关，所以两格跑同一段判据。
+/// </para>
+/// <para>
+/// <b>窗口是构造出来的，不靠时序碰运气</b>（<see cref="ReconnectRaceJournal"/>）：把这一份卡在写发件箱之前或之后，
+/// 需要时再把重连卡在「读完发件箱、还没发能力快照」那一刻。
 /// </para>
 /// </remarks>
 public sealed partial class MultiDemandJourneyG2Tests
@@ -58,67 +69,184 @@ public sealed partial class MultiDemandJourneyG2Tests
             token,
             io: io,
             wrapJournal: inner => race = new ReconnectRaceJournal(inner));
-        await WaitForSafetyReportsToSettleAsync(harness, token);
-        long firstGeneration = harness.Session.Current.SessionGeneration
-            ?? throw new InvalidOperationException("The first session has no generation.");
-        int firstConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
+        try
+        {
+            await WaitForSafetyReportsToSettleAsync(harness, token);
+            long firstGeneration = harness.Session.Current.SessionGeneration
+                ?? throw new InvalidOperationException("The first session has no generation.");
+            int firstConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
 
-        // One safety report is under way and held just before its outbox row is written.
-        race.HoldNextSafetyStateChange();
-        TriggerSafetyChange(harness, io, trigger);
-        await race.SafetyChangeHeld.WaitAsync(TimeSpan.FromSeconds(10), token);
+            // One safety report is under way and held just before its outbox row is written.
+            race.HoldNextSafetyStateChange();
+            TriggerSafetyChange(harness, io, trigger);
+            await race.SafetyChangeHeld.WaitAsync(TimeSpan.FromSeconds(10), token);
 
-        // The session changes generation underneath it, and the new handshake is held with only its
-        // SessionHello out.
-        race.HoldNextHandshakeAfterOutboxRead();
-        await harness.Session.Client.DisconnectAsync();
-        Task<WireToGateSessionSnapshot> reconnect = harness.Session.Client.ConnectAndRecoverAsync(token);
-        await race.HandshakeHeld.WaitAsync(TimeSpan.FromSeconds(10), token);
-        long secondGeneration = harness.Session.Current.SessionGeneration
-            ?? throw new InvalidOperationException("The held handshake has no session generation.");
-        Assert.NotEqual(firstGeneration, secondGeneration);
-        int secondConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
-        Assert.NotEqual(firstConnection, secondConnection);
-        Assert.Equal(["SessionHello"], MessageTypesOn(harness, secondConnection));
+            // The session changes generation underneath it, and the new handshake is held with only its
+            // SessionHello out.
+            race.HoldNextHandshakeAfterOutboxRead();
+            await harness.Session.Client.DisconnectAsync();
+            Task<WireToGateSessionSnapshot> reconnect = harness.Session.Client.ConnectAndRecoverAsync(token);
+            await race.HandshakeHeld.WaitAsync(TimeSpan.FromSeconds(10), token);
+            long secondGeneration = harness.Session.Current.SessionGeneration
+                ?? throw new InvalidOperationException("The held handshake has no session generation.");
+            Assert.NotEqual(firstGeneration, secondGeneration);
+            int secondConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
+            Assert.NotEqual(firstConnection, secondConnection);
+            Assert.Equal(["SessionHello"], MessageTypesOn(harness, secondConnection));
 
-        // Released here, the held report finds a connection that is no longer the one it was judged against.
-        race.ReleaseSafetyChange();
-        // Wait for the report to settle one way or the other -- refused and logged, or on the new connection -- rather
-        // than for a fixed time: either way the assertions below then read a finished outcome, on both sides.
-        await harness.WaitUntilAsync(
-            () => SafetyReportFailures(harness).Length > 0 || MessageTypesOn(harness, secondConnection).Length > 1,
-            "the held safety report to be refused or to reach the new connection",
-            token);
+            // Released here, the held report finds a connection that is no longer the one it was judged against.
+            race.ReleaseSafetyChange();
+            // Wait for the report to settle one way or the other -- refused and logged, or on the new connection -- rather
+            // than for a fixed time: either way the assertions below then read a finished outcome, on both sides.
+            await harness.WaitUntilAsync(
+                () => SafetyReportFailures(harness).Length > 0 || MessageTypesOn(harness, secondConnection).Length > 1,
+                "the held safety report to be refused or to reach the new connection",
+                token);
 
-        // Nothing but the handshake's own SessionHello has reached the new connection.
-        Assert.Equal(["SessionHello"], MessageTypesOn(harness, secondConnection));
-        // And nothing on it carries a generation that is not this one.
-        Assert.Empty(ForeignGenerationsOn(harness, secondConnection, secondGeneration));
-        // Kept out by the check on the connection it was judged against, not lost some other way; and the failure was
-        // taken as the old session's, so the handshake under way was left alone. The first half without the second is
-        // what cs#323 saw next: the refusal itself disconnects the new session in the middle of its handshake.
-        (string message, Exception refusal) = Assert.Single(SafetyReportFailures(harness));
-        Assert.IsType<IOException>(refusal);
-        Assert.Contains("换代", refusal.Message, StringComparison.Ordinal);
-        Assert.Contains($"会话代{firstGeneration}", message, StringComparison.Ordinal);
-        Assert.Contains("不断开当前会话", message, StringComparison.Ordinal);
+            // Nothing but the handshake's own SessionHello has reached the new connection.
+            Assert.Equal(["SessionHello"], MessageTypesOn(harness, secondConnection));
+            // And nothing on it carries a generation that is not this one.
+            Assert.Empty(ForeignGenerationsOn(harness, secondConnection, secondGeneration));
+            // Kept out by the check on the connection it was judged against, not lost some other way; and the failure was
+            // taken as the old session's, so the handshake under way was left alone. The first half without the second is
+            // what cs#323 saw next: the refusal itself disconnects the new session in the middle of its handshake.
+            (string message, Exception refusal) = Assert.Single(SafetyReportFailures(harness));
+            Assert.IsType<IOException>(refusal);
+            Assert.Contains("换代", refusal.Message, StringComparison.Ordinal);
+            Assert.Contains($"会话代{firstGeneration}", message, StringComparison.Ordinal);
+            Assert.Contains("不断开当前会话", message, StringComparison.Ordinal);
 
-        race.ReleaseHandshake();
-        await reconnect;
-        await harness.WaitUntilAsync(
-            () => harness.Session.Current.Readiness == WireToGateSessionReadiness.Ready,
-            "the new session to become Ready",
-            token);
-        // Room for a late disconnect or a late write to show itself; the report above has already settled, so this is
-        // only for something the fix failed to stop.
-        await Task.Delay(TimeSpan.FromMilliseconds(500), token);
-        Assert.Equal(
-            secondConnection,
-            harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection));
-        Assert.Empty(ForeignGenerationsOn(harness, secondConnection, secondGeneration));
-        Assert.Equal(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
-        Assert.Empty(harness.UiErrors);
+            race.ReleaseHandshake();
+            await reconnect;
+            await harness.WaitUntilAsync(
+                () => harness.Session.Current.Readiness == WireToGateSessionReadiness.Ready,
+                "the new session to become Ready",
+                token);
+            // Room for a late disconnect or a late write to show itself; the report above has already settled, so this is
+            // only for something the fix failed to stop.
+            await Task.Delay(TimeSpan.FromMilliseconds(500), token);
+            Assert.Equal(
+                secondConnection,
+                harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection));
+            Assert.Empty(ForeignGenerationsOn(harness, secondConnection, secondGeneration));
+            Assert.Equal(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
+            Assert.Empty(harness.UiErrors);
+        }
+        finally
+        {
+            // Whatever failed above, nothing may stay parked: the harness's disposal waits for the business
+            // service's tasks, and a report still held here would keep this test from ever finishing.
+            race.ReleaseSafetyChange();
+            race.ReleaseHandshake();
+        }
     }
+
+    /// <summary>
+    /// 一份写进了发件箱、却从没送到服务端的安全上报：下一次握手不补发它，只发自己的全量快照；握手照常走完、会话就绪；
+    /// 服务端拿到的是此刻的读数而不是那一份；那一份之后也不会再发出去，也不妨碍下一次真实变化的上报。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 假服务端打开 <c>SendReadinessAfterSafetyStateChangedAck</c>，按真服务端对**第一次受理**的作答：ack 后跟一条就绪
+    /// （control-server <c>OnboardMessageProcessor</c> 的 <c>SafetyStateChanged</c> 分支）。那一份从没发出去，补发它就是
+    /// 第一次受理，cs#323 的 ver5 正是这样。
+    /// </para>
+    /// <para>
+    /// 卡住期间读数恢复，那一份（读不到）就不再是真的。最后三段判据靠这一点分辨：服务端拿到的是全量快照还是晚到的过时那一份；
+    /// 那一行是否已了结、不会被后面的握手再带出去；下一次又读不到时是照常上报，还是被那份过时内容留下的去重签名吞掉——
+    /// 后者会让服务端一直以为这辆车可以出发。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("IntegrationSlice", "FP-IS-05")]
+    [Trait("ProtocolVector", "CV-SESSION-RECONNECT-DURING-RECOVERY")]
+    public async Task AnUnsentSafetyChangeIsNotReplayedIntoTheNextHandshake()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        ReconnectRaceJournal race = null!;
+        await using Harness harness = await Harness.StartAsync(
+            server => server.SendReadinessAfterSafetyStateChangedAck = true,
+            token,
+            io: io,
+            wrapJournal: inner => race = new ReconnectRaceJournal(inner));
+        try
+        {
+            await WaitForSafetyReportsToSettleAsync(harness, token);
+            int firstConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
+
+            // A lock feedback stops reading; the report of it is on file and held before it reaches the wire.
+            race.HoldNextSafetyStateChangeAfterOutboxWrite();
+            io.SetUnreadable(0);
+            io.PublishSnapshot();
+            await race.SafetyChangeHeld.WaitAsync(TimeSpan.FromSeconds(10), token);
+            // The reading comes back, unannounced, before the vehicle reconnects: what is on file is no longer true.
+            io.CloseDoor(0, cargo: false);
+
+            await harness.Session.Client.DisconnectAsync();
+            await harness.Session.Client.ConnectAndRecoverAsync(token);
+            int secondConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
+            Assert.NotEqual(firstConnection, secondConnection);
+
+            // The handshake is its own five messages in order: nothing replayed ahead of the capability snapshot.
+            Assert.Equal(
+                ["SessionHello", "CapabilitySnapshot", "SafetyStateSnapshot", "OnboardAlarmSnapshot", "RecoveryStateReport"],
+                MessageTypesOn(harness, secondConnection).Take(5));
+            // Its full snapshot says what is true now.
+            JsonElement handshakeSafety = SafetyOf(Assert.Single(
+                harness.Server.ReceivedEnvelopes,
+                envelope => envelope.Connection == secondConnection && envelope.MessageType == "SafetyStateSnapshot").WireLine);
+            Assert.False(handshakeSafety.GetProperty("unknownPresent").GetBoolean());
+
+            // The held report goes nowhere, and takes nothing with it.
+            race.ReleaseSafetyChange();
+            await harness.WaitUntilAsync(
+                () => SafetyReportFailures(harness).Length > 0,
+                "the held safety report to be refused",
+                token);
+            await harness.WaitUntilAsync(
+                () => harness.Session.Current.Readiness == WireToGateSessionReadiness.Ready,
+                "the new session to become Ready",
+                token);
+            // Room for a late send of the stale report, or a late disconnect, to show itself.
+            await Task.Delay(TimeSpan.FromMilliseconds(500), token);
+            Assert.Equal(secondConnection, harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection));
+            // Nothing stale reached the server afterwards: every safety change on this connection is the live reading.
+            Assert.DoesNotContain(
+                SafetyChangesOn(harness, secondConnection),
+                safety => safety.GetProperty("unknownPresent").GetBoolean());
+            // The superseded row is settled, so no later handshake carries it either.
+            Assert.DoesNotContain(
+                await race.ReadUnacknowledgedOutgoingAsync(token),
+                message => message.MessageType == "SafetyStateChanged");
+
+            // The next real change is still reported: the stale report's content must not be left as the deduplication
+            // signature, or this one -- the same content -- would be swallowed and the server keep calling the car safe.
+            io.SetUnreadable(0);
+            io.PublishSnapshot();
+            await harness.WaitUntilAsync(
+                () => SafetyChangesOn(harness, secondConnection)
+                    .Any(safety => safety.GetProperty("unknownPresent").GetBoolean()),
+                "the reading that stopped again to be reported",
+                token);
+            Assert.Empty(harness.UiErrors);
+        }
+        finally
+        {
+            // Whatever failed above, nothing may stay parked: the harness's disposal waits for the business
+            // service's tasks, and a report still held here would keep this test from ever finishing.
+            race.ReleaseSafetyChange();
+            race.ReleaseHandshake();
+        }
+    }
+
+    private static JsonElement[] SafetyChangesOn(Harness harness, int connection) =>
+    [
+        .. harness.Server.ReceivedEnvelopes
+            .Where(envelope => envelope.Connection == connection && envelope.MessageType == "SafetyStateChanged")
+            .Select(envelope => SafetyOf(envelope.WireLine))
+    ];
 
     private static void TriggerSafetyChange(Harness harness, FakeIoModuleClient io, SafetyReportTrigger trigger)
     {
@@ -172,12 +300,14 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
-    /// Holds one <c>SafetyStateChanged</c> just before its outbox row is written, and the next handshake right
-    /// after it has read the outbox -- the point where its SessionHello is out and its CapabilitySnapshot is not.
+    /// Holds one <c>SafetyStateChanged</c> on either side of its outbox write, and the next handshake right after it
+    /// has read the outbox -- the point where its SessionHello is out and its CapabilitySnapshot is not.
     /// </summary>
     /// <remarks>
-    /// Held before the inner write on purpose: the row never reaches the outbox, so the handshake's own replay
-    /// cannot carry it and whatever arrives on the new connection arrived by the send path under test.
+    /// Before the write (<see cref="HoldNextSafetyStateChange"/>): the row never reaches the outbox, so the handshake
+    /// cannot replay it and whatever arrives on the new connection arrived by the send path. After the write
+    /// (<see cref="HoldNextSafetyStateChangeAfterOutboxWrite"/>): the row is on file and was never sent, which is where
+    /// cs#323's ver5 was when its first session stalled, and only the handshake's replay can carry it.
     /// </remarks>
     private sealed class ReconnectRaceJournal(IWireToGateJournal inner) : IWireToGateJournal
     {
@@ -186,6 +316,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         private readonly TaskCompletionSource _handshakeHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _handshakeReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _holdSafety;
+        private int _holdSafetyAfterWrite;
         private int _holdHandshake;
 
         /// <summary>Completes once a safety report is parked in front of its outbox write.</summary>
@@ -195,6 +326,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         public Task HandshakeHeld => _handshakeHeld.Task;
 
         public void HoldNextSafetyStateChange() => Volatile.Write(ref _holdSafety, 1);
+
+        public void HoldNextSafetyStateChangeAfterOutboxWrite() => Volatile.Write(ref _holdSafetyAfterWrite, 1);
 
         public void HoldNextHandshakeAfterOutboxRead() => Volatile.Write(ref _holdHandshake, 1);
 
@@ -226,7 +359,14 @@ public sealed partial class MultiDemandJourneyG2Tests
                 await _safetyReleased.Task;
             }
 
-            return await inner.SaveOutgoingBeforeSendAsync(message, cancellationToken);
+            WireToGateDurableMessage saved = await inner.SaveOutgoingBeforeSendAsync(message, cancellationToken);
+            if (message.MessageType == "SafetyStateChanged" && Interlocked.Exchange(ref _holdSafetyAfterWrite, 0) == 1)
+            {
+                _safetyHeld.TrySetResult();
+                await _safetyReleased.Task;
+            }
+
+            return saved;
         }
 
         public Task MarkOutgoingAcknowledgedAsync(
