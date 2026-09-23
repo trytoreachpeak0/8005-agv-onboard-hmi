@@ -1237,7 +1237,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// of <see cref="IWireToGateJournal.ReadUnacknowledgedOutgoingAsync"/>, and doubles that park "the handshake's outbox
     /// read" took the next call to be it. The pass reads the outbox too, and the journal cannot tell the two apart. An
     /// explicit flag rather than a look at the call stack, which a rename, a split or an optimised build would defeat
-    /// without a sound.
+    /// without a sound. Static, but not shared across the process: the AsyncLocal is per async flow, so several clients
+    /// in one process -- the multi-vehicle fixtures -- each see only their own pass.
     /// </remarks>
     public static bool InStaleResendPass => StaleResendFlow.Value;
 
