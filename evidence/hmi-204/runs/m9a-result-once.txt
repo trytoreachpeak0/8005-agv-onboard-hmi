@@ -1,0 +1,20 @@
+# 最终一轮 M9a 第 8 次：OperationResult 就绪后格等「会话回到 Ready 且装货已结算」10 秒超时（另有 2.7 秒进程停顿被扣回），
+# 而事件里已有 OPERATION_COMPLETED——结果送达并被确认了。原因未查明。
+# 之后在 M9a 下只跑这一格 40 次，并在「同一 messageId 第二次登记等确认者」处与 #127 重发的 catch 处加探针：
+# 40 次全绿，两处探针都没有命中。单独跑复现不出，那一次是 14 格并行、整机停顿之下。
+
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultRefusedAcrossAReconnectIsDeliveredOnTheNextSessionAndSettledOnce(moment: AfterReady) [14 s]
+  Error Message:
+   Timed out after 10s (+2.7s given back for process stalls) waiting for: the result delivered and the load settled
+OPERATION_PROGRESS: 准备执行装货：1号仓。
+OPERATION_PROGRESS: 正在检查1号仓的安全条件。
+OPERATION_PROGRESS: 正在打开1号仓。
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。
+OPERATION_PROGRESS: 正在核对仓门、货物和输出状态；已完成 1/1。
+OPERATION_PROGRESS: 全部目标仓已达到安全收尾状态，正在上报结果。
+OPERATION_PROGRESS: 1号仓操作完成，正在上报结果。
+RESULT_ACK_PENDING: 操作已安全结束，但结果确认暂未收到；系统将保持同一结果重放，不会重复执行IO。
+OPERATION_COMPLETED: 1号仓操作结果已被服务端确认。
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken, Func`1 describe) in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.cs:line 596
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AResultRefusedAcrossAReconnectIsDeliveredOnTheNextSessionAndSettledOnce(ResultRefusalMoment moment) in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ResultRefusedAcrossReconnect.cs:line 116

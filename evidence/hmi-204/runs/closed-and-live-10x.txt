@@ -1,0 +1,75 @@
+dotnet 8.0.425 in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi204-8005-agv-onboard-hmi
+================ PRE
+  diff:  2 files changed, 11 insertions(+), 18 deletions(-)
+  build: 0 Error(s)
+  run 1: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 2: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 3: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 4: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 5: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 6: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 7: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 8: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 9: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 10: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  restored OK
+================ M2
+M2 WireToGateBusinessService.cs matches 1
+  diff:  1 file changed, 1 insertion(+), 3 deletions(-)
+  build: 0 Error(s)
+  run 1: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 2: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 3: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 4: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 5: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 6: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 7: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 8: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 9: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 10: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  restored OK
+================ M3
+M3 WireToGateBusinessService.cs matches 1
+  diff:  1 file changed, 1 insertion(+), 2 deletions(-)
+  build: 0 Error(s)
+  run 1: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 2: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 3: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 4: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 5: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 6: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 7: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 8: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 9: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  run 10: fail=2 pass=1 total=3 | red: closed(next: Handshaking) closed(next: Ready) | at: 270x2 291x2
+  restored OK
+================ M4
+M4 WireToGateBusinessService.cs matches 1
+  diff:  1 file changed, 1 insertion(+), 3 deletions(-)
+  build: 0 Error(s)
+  run 1: fail=1 pass=2 total=3 | red: live | at: 324x1 334x1
+  run 2: fail=1 pass=2 total=3 | red: live | at: 324x1 334x1
+  run 3: fail=1 pass=2 total=3 | red: live | at: 324x1 334x1
+  run 4: fail=1 pass=2 total=3 | red: live | at: 324x1 334x1
+  run 5: fail=1 pass=2 total=3 | red: live | at: 324x1 334x1
+  run 6: fail=1 pass=2 total=3 | red: live | at: 324x1 334x1
+  run 7: fail=1 pass=2 total=3 | red: live | at: 324x1 334x1
+  run 8: fail=1 pass=2 total=3 | red: live | at: 324x1 334x1
+  run 9: fail=1 pass=2 total=3 | red: live | at: 324x1 334x1
+  run 10: fail=1 pass=2 total=3 | red: live | at: 324x1 334x1
+  restored OK
+================ FIX
+  diff: 
+  build: 0 Error(s)
+  run 1: fail=0 pass=3 total=3 | red: none | at: 
+  run 2: fail=0 pass=3 total=3 | red: none | at: 
+  run 3: fail=0 pass=3 total=3 | red: none | at: 
+  run 4: fail=0 pass=3 total=3 | red: none | at: 
+  run 5: fail=0 pass=3 total=3 | red: none | at: 
+  run 6: fail=0 pass=3 total=3 | red: none | at: 
+  run 7: fail=0 pass=3 total=3 | red: none | at: 
+  run 8: fail=0 pass=3 total=3 | red: none | at: 
+  run 9: fail=0 pass=3 total=3 | red: none | at: 
+  run 10: fail=0 pass=3 total=3 | red: none | at: 
+  restored OK
+exit=0

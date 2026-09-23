@@ -1,0 +1,80 @@
+# 第一轮（作废，未引用为通过证据）。新用例当时用 Assert.Single 断言「恰好一次拒绝」：
+# 修后 4/10、M1b 1/10 红在那一行，每次都是同一份报文被拒两次、两次都是 WireToGateConnectionGoneException。
+# 断言改为「至少一次且每次都是连接已不在」后重跑，见 closing-10x.txt。
+# M7 第 2 次另有一格（closed(next: Ready)）红在开头的等待（第 245 行，等握手后的完整安全状态被接受，5 秒超时），
+# 那时还没到任何卡点、也没有关过连接，M7 改的代码只在关连接时走到；那一轮整机很慢（五种状态跑了约 50 分钟）。
+dotnet 8.0.425 in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi204-8005-agv-onboard-hmi
+================ HEAD
+  diff: 
+  build: 0 Error(s)
+  run 1: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  run 2: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  run 3: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  run 4: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  run 5: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  run 6: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  run 7: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  run 8: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  run 9: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  run 10: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  restored OK
+================ M1
+M1 WireToGateSessionClient.cs matches 1
+  diff:  1 file changed, 47 insertions(+), 29 deletions(-)
+  build: 0 Error(s)
+  run 1: fail=2 pass=4 total=6 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2
+  run 2: fail=2 pass=4 total=6 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2
+  run 3: fail=3 pass=3 total=6 | red: closing inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2 412x1
+  run 4: fail=3 pass=3 total=6 | red: closing inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2 412x1
+  run 5: fail=3 pass=3 total=6 | red: closing inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2 412x1
+  run 6: fail=2 pass=4 total=6 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2
+  run 7: fail=2 pass=4 total=6 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2
+  run 8: fail=2 pass=4 total=6 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2
+  run 9: fail=2 pass=4 total=6 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2
+  run 10: fail=2 pass=4 total=6 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2
+  restored OK
+================ M1b
+M1b WireToGateSessionClient.cs matches 1
+  diff:  1 file changed, 50 insertions(+), 27 deletions(-)
+  build: 0 Error(s)
+  run 1: fail=2 pass=4 total=6 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2
+  run 2: fail=2 pass=4 total=6 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2
+  run 3: fail=2 pass=4 total=6 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2
+  run 4: fail=2 pass=4 total=6 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2
+  run 5: fail=2 pass=4 total=6 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2
+  run 6: fail=2 pass=4 total=6 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2
+  run 7: fail=2 pass=4 total=6 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2
+  run 8: fail=2 pass=4 total=6 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2
+  run 9: fail=2 pass=4 total=6 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2
+  run 10: fail=3 pass=3 total=6 | red: closing inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 100x2 164x2 412x1
+  restored OK
+================ M7
+M7 WireToGateSessionClient.cs matches 1
+M7 WireToGateSessionClient.cs matches 1
+  diff:  1 file changed, 50 insertions(+), 26 deletions(-)
+  build: 0 Error(s)
+  run 1: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  run 2: fail=2 pass=4 total=6 | red: closed(next: Ready) closing | at: 245x1 321x1 410x1
+  run 3: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  run 4: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  run 5: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  run 6: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  run 7: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  run 8: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  run 9: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  run 10: fail=1 pass=5 total=6 | red: closing | at: 410x1 448x1
+  restored OK
+================ FIX
+  diff:  1 file changed, 49 insertions(+), 26 deletions(-)
+  build: 0 Error(s)
+  run 1: fail=0 pass=6 total=6 | red: none | at: 
+  run 2: fail=1 pass=5 total=6 | red: closing | at: 412x1 448x1
+  run 3: fail=1 pass=5 total=6 | red: closing | at: 412x1 448x1
+  run 4: fail=0 pass=6 total=6 | red: none | at: 
+  run 5: fail=1 pass=5 total=6 | red: closing | at: 412x1 448x1
+  run 6: fail=1 pass=5 total=6 | red: closing | at: 412x1 448x1
+  run 7: fail=0 pass=6 total=6 | red: none | at: 
+  run 8: fail=0 pass=6 total=6 | red: none | at: 
+  run 9: fail=0 pass=6 total=6 | red: none | at: 
+  run 10: fail=0 pass=6 total=6 | red: none | at: 
+  restored OK

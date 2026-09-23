@@ -165,7 +165,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// </summary>
     /// <remarks>
     /// Only the vehicle's own reads and writes pass through here, so where it holds is exactly where the handshake is:
-    /// <see cref="ReadUnacknowledgedOutgoingAsync"/> is called by the handshake alone, and the RecoveryStateReport's
+    /// <see cref="ReadUnacknowledgedOutgoingAsync"/> is held only for the handshake's call (the pass over stale rows reads
+    /// it too, and is let through), and the RecoveryStateReport's
     /// acknowledgement is marked right before the handshake reads its readiness.
     /// </remarks>
     private sealed class HandshakeWindowJournal(IWireToGateJournal inner) : IWireToGateJournal
@@ -177,6 +178,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
         private int _holding;
         private int _recordingCalls;
         private int _recordingsThatCleared;
+        private readonly TaskCompletionSource _resultSaveHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _resultSaveReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _holdResultSave;
 
         /// <summary>Set by the test once the session client exists; read for the session state at the save.</summary>
         private WireToGateSessionClient? _client;
@@ -204,6 +208,17 @@ public sealed partial class StationDeadlineExpiredG2Tests
         public int RecordingsThatClearedTheAttempt => Volatile.Read(ref _recordingsThatCleared);
 
         public void HoldAt(HandshakeWindowEnd end) => _holdAt = end;
+
+        /// <summary>Completes once the load's result is parked in front of its outbox write.</summary>
+        public Task ResultSaveHeld => _resultSaveHeld.Task;
+
+        /// <summary>Parks the next outbox write of the load's result before it reaches the journal.</summary>
+        public void HoldNextResultSave() => Volatile.Write(ref _holdResultSave, 1);
+
+        public void ReleaseResultSave() => _resultSaveReleased.TrySetResult();
+
+        /// <summary>The load's result row as it was when first written, before anything could rebind it.</summary>
+        public string? ResultWireLineAsSaved { get; private set; }
 
         public void Release() => _released.TrySetResult();
 
@@ -237,8 +252,12 @@ public sealed partial class StationDeadlineExpiredG2Tests
         public async Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
             CancellationToken cancellationToken = default)
         {
+            // Not only the handshake reads the outbox any more: the session client's pass over stale rows
+            // (RequestStaleResend, onboard-hmi#204) does too, and holding it here would report the handshake held while
+            // it is still before SessionAccepted. Told apart by the flag the pass sets.
+            bool fromStalePass = WireToGateSessionClient.InStaleResendPass;
             IReadOnlyList<WireToGateDurableMessage> read = await inner.ReadUnacknowledgedOutgoingAsync(cancellationToken);
-            if (TakeHold(HandshakeWindowEnd.AfterOutboxRead))
+            if (!fromStalePass && TakeHold(HandshakeWindowEnd.AfterOutboxRead))
             {
                 await HoldAsync();
             }
@@ -250,6 +269,12 @@ public sealed partial class StationDeadlineExpiredG2Tests
             WireToGateDurableMessage message,
             CancellationToken cancellationToken = default)
         {
+            if (message.DeduplicationKey == ResultKey && Interlocked.Exchange(ref _holdResultSave, 0) == 1)
+            {
+                _resultSaveHeld.TrySetResult();
+                await _resultSaveReleased.Task;
+            }
+
             if (message.MessageType == "RecoveryStateReport" && _holdAt == HandshakeWindowEnd.AfterRecoveryReportAck)
             {
                 _reportMessageId = message.MessageId;
@@ -258,6 +283,10 @@ public sealed partial class StationDeadlineExpiredG2Tests
             bool resultInWindow = message.DeduplicationKey == ResultKey && Volatile.Read(ref _holding) == 1;
             WireToGateSessionSnapshot? atSave = resultInWindow ? _client?.Current : null;
             WireToGateDurableMessage saved = await inner.SaveOutgoingBeforeSendAsync(message, cancellationToken);
+            if (message.DeduplicationKey == ResultKey && ResultWireLineAsSaved is null)
+            {
+                ResultWireLineAsSaved = saved.WireLine;
+            }
             if (atSave is not null && ResultSavedWhileHeld is null)
             {
                 ResultSavedWhileHeld = atSave;

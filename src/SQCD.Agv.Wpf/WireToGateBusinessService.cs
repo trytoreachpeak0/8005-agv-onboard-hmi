@@ -1896,6 +1896,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         }
 
         await _safetySendGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        // The session generation this report was judged against; set once the judging is done. A failure is this
+        // session's to act on only while that generation is still the live one (8005-agv-onboard-hmi#204).
+        long? judgedOnGeneration = null;
         try
         {
             if (_disposed || !CanPublishSafetyRevision(_session.Current))
@@ -1904,6 +1907,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             }
 
             WireToGateSessionSnapshot current = _session.Current;
+            judgedOnGeneration = current.SessionGeneration;
             if (_pendingSafetyChange is not null
                 && current.SafetyStateVersion >= _pendingSafetyChange.Version)
             {
@@ -1962,6 +1966,28 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         }
         catch (Exception exception)
         {
+            // 这一份所在的连接已经不在了（被关掉，或已换成下一条）：失败属于那条连接，没有东西可断——关掉它的那一方
+            // （断开、重连、心跳循环）也会把下一条连上；此刻去断开，打掉的是正在握手或刚就绪的新会话
+            // （8005-agv-onboard-hmi#204）。什么都不断，只记下来。这一份不丢：_pendingSafetyChange 原样留着，新会话
+            // 就绪时 OnSessionStateChanged 再触发一轮（就绪若恰好落在本轮持锁期间，_safetyRefreshPending 让工作循环
+            // 退出前再跑一轮），以同一版本和内容重发；它的发件箱行若已写下，握手也会先补发它。
+            //
+            // 主要靠异常类型认，不靠读会话状态：等确认的一方在 CloseConnectionAsync 里被叫醒，那时 DisconnectAsync
+            // 还没 Publish，这里读到的往往仍是旧代。代号那一条兜住类型认不出、状态却已发布的情形（接收循环自己挂掉，
+            // 等确认的一方拿到的是循环的异常）。
+            // 连接还在的失败（例如等确认超时）仍走下面的老路：断开并以同一版本和内容重试。
+            if (exception is WireToGateConnectionGoneException
+                || judgedOnGeneration is not null
+                    && _session.Current.SessionGeneration != judgedOnGeneration)
+            {
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    $"SafetyStateChanged未能在它所属的连接上发出（会话代{judgedOnGeneration}），那条连接已关闭或已换代；不断开当前会话，由新会话重新上报。",
+                    exception);
+                return;
+            }
+
             _logger.Write(
                 LogSeverity.Error,
                 nameof(WireToGateBusinessService),

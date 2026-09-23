@@ -1,0 +1,14 @@
+# 第一轮修后第 2 次，新用例的红原文（断言恰好一次拒绝，实际两次，都是连接已不在）
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportJudgedWhileTheConnectionIsClosingIsNotWrittenIntoIt [169 ms]
+  Error Message:
+   Assert.Single() Failure: The collection contained 2 items
+Collection: [Tuple ("SafetyStateChanged未能在它所属的连接上发出（会话代1），那条连接已关闭或已换代；不"···, SQCD.Agv.Infrastructure.WireToGateConnectionGoneException: WIRE_TO_GATE连接不可用。
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendLineAsync(String line, Int64 connectionEpoch, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 3641
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendDurableCoreAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Boolean allowRecoveryRequired, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1129
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendSafetyStateChangedAsync(Int64 safetyStateVersion, DateTimeOffset observedAt, WireToGateSafetySummaryPayload safety, IReadOnlyList`1 affectedSlots, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 634
+   at SQCD.Agv.Wpf.WireToGateBusinessService.QueueSafetyStateChangeAsync(CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1952), Tuple ("SafetyStateChanged未能在它所属的连接上发出（会话代1），那条连接已关闭或已换代；不"···, SQCD.Agv.Infrastructure.WireToGateConnectionGoneException: WIRE_TO_GATE连接不可用。
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendLineAsync(String line, Int64 connectionEpoch, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 3641
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendDurableCoreAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Boolean allowRecoveryRequired, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1129
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendSafetyStateChangedAsync(Int64 safetyStateVersion, DateTimeOffset observedAt, WireToGateSafetySummaryPayload safety, IReadOnlyList`1 affectedSlots, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 634
+   at SQCD.Agv.Wpf.WireToGateBusinessService.QueueSafetyStateChangeAsync(CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1952)]
+  Stack Trace:

@@ -1,0 +1,47 @@
+# 审查第 2 条：第一条用例的补发断言，四种代码状态各 10 次，从每次的原始输出按 run10.ps1 同样的解析重建汇总（tools/summarize.ps1）。
+# 行号是加断言旁注释之前的版本：128 为等不到同一 messageId 在新连接上重发，75 为锁存格的前置条件（等卡点），160 为调用栈外层。
+# M5 只关「会话就绪时重发」；M5x 再关 #197 那根线；M6 被拒后把那份丢掉。
+================ M5
+  run 1: fail=0 pass=2 total=2 | red: none | at: 
+  run 2: fail=0 pass=2 total=2 | red: none | at: 
+  run 3: fail=0 pass=2 total=2 | red: none | at: 
+  run 4: fail=0 pass=2 total=2 | red: none | at: 
+  run 5: fail=0 pass=2 total=2 | red: none | at: 
+  run 6: fail=0 pass=2 total=2 | red: none | at: 
+  run 7: fail=0 pass=2 total=2 | red: none | at: 
+  run 8: fail=0 pass=2 total=2 | red: none | at: 
+  run 9: fail=0 pass=2 total=2 | red: none | at: 
+  run 10: fail=0 pass=2 total=2 | red: none | at: 
+================ M5x
+  run 1: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 160x2 128x1 75x1
+  run 2: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 160x2 128x1 75x1
+  run 3: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 160x2 128x1 75x1
+  run 4: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 160x2 128x1 75x1
+  run 5: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 160x2 128x1 75x1
+  run 6: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 160x2 128x1 75x1
+  run 7: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 160x2 128x1 75x1
+  run 8: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 160x2 128x1 75x1
+  run 9: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 160x2 128x1 75x1
+  run 10: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 160x2 128x1 75x1
+================ M6
+  run 1: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 128x2 160x2
+  run 2: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 128x2 160x2
+  run 3: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 128x2 160x2
+  run 4: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 128x2 160x2
+  run 5: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 128x2 160x2
+  run 6: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 128x2 160x2
+  run 7: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 128x2 160x2
+  run 8: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 128x2 160x2
+  run 9: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 128x2 160x2
+  run 10: fail=2 pass=0 total=2 | red: inflight(trigger: FatalFaultLatch) inflight(trigger: IoSnapshot) | at: 128x2 160x2
+================ FIX
+  run 1: fail=0 pass=2 total=2 | red: none | at: 
+  run 2: fail=0 pass=2 total=2 | red: none | at: 
+  run 3: fail=0 pass=2 total=2 | red: none | at: 
+  run 4: fail=0 pass=2 total=2 | red: none | at: 
+  run 5: fail=0 pass=2 total=2 | red: none | at: 
+  run 6: fail=0 pass=2 total=2 | red: none | at: 
+  run 7: fail=0 pass=2 total=2 | red: none | at: 
+  run 8: fail=0 pass=2 total=2 | red: none | at: 
+  run 9: fail=0 pass=2 total=2 | red: none | at: 
+  run 10: fail=0 pass=2 total=2 | red: none | at: 
