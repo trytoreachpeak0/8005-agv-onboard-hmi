@@ -70,6 +70,61 @@ MUTATIONS['M7'] = [
      '            await writeConnection.Writer.DisposeAsync().ConfigureAwait(false);' + NL +
      '            Volatile.Write(ref _writeConnection, null);' + NL)]
 
+# --- round 3 (review of 2466113): M-B scan, M-A close, item 5 rejection, and which path delivers OperationResult.
+SCAN_START = ('            _ = Task.Run(RunStaleResendAsync);', '            GC.KeepAlive(this);')
+# The scan never runs.
+MUTATIONS['M9'] = (CLIENT,) + SCAN_START
+# Only the request once the handshake has its receive loop up is gone.
+MUTATIONS['M9a'] = (CLIENT,
+    '            StartReceiveLoop(generation);' + NL +
+    '            // After the loop is up: the pass waits for its acknowledgements through it (onboard-hmi#204).' + NL +
+    '            RequestStaleResend();' + NL,
+    '            StartReceiveLoop(generation);' + NL)
+# Only the request when a durable write is refused as its connection gone is gone.
+MUTATIONS['M9b'] = (CLIENT,
+    '                RequestStaleResend();' + NL + '                throw;' + NL,
+    '                throw;' + NL)
+# Close stops at the writer it cannot dispose, as before.
+MUTATIONS['M10'] = (CLIENT,
+    '            catch (Exception exception) when (exception is InvalidOperationException or IOException)' + NL +
+    '            {' + NL +
+    '                // A write is still pending on it',
+    '            catch (Exception exception) when (exception is InvalidOperationException or IOException && Environment.TickCount64 < 0)' + NL +
+    '            {' + NL +
+    '                // A write is still pending on it')
+# A write ended by the close is passed on as whatever the torn-down stream threw.
+MUTATIONS['M11'] = (CLIENT,
+    '                exception is IOException or InvalidOperationException' + NL +
+    '                && !ReferenceEquals(Volatile.Read(ref _writeConnection), connection))',
+    '                exception is IOException or InvalidOperationException' + NL +
+    '                && !ReferenceEquals(Volatile.Read(ref _writeConnection), connection)' + NL +
+    '                && Environment.TickCount64 < 0)')
+# The rejection no longer checks which session the command belongs to.
+MUTATIONS['M12'] = (CLIENT,
+    '        if (Interlocked.Read(ref _receiveLoopGeneration) != command.SessionGeneration)',
+    '        if (Interlocked.Read(ref _receiveLoopGeneration) != command.SessionGeneration && Environment.TickCount64 < 0)')
+# No scan, and no #127 restore right after a refused result while a session is up.
+MUTATIONS['M9R'] = [MUTATIONS['M9'], (BUSINESS,
+    '            if (restoreAfterRelease' + NL + '                || resultUnacknowledged' + NL,
+    '            if (restoreAfterRelease' + NL + '                || resultUnacknowledged && Environment.TickCount64 < 0' + NL)]
+# No scan, and the #127 resend of an unacknowledged result sends nothing.
+MUTATIONS['M9T'] = [MUTATIONS['M9'], (BUSINESS,
+    '        CancellationToken cancellationToken)' + NL + '    {' + NL +
+    '        if (_session.Current.Readiness is not (WireToGateSessionReadiness.Ready' + NL,
+    '        CancellationToken cancellationToken)' + NL + '    {' + NL +
+    '        if (Environment.TickCount64 >= 0)' + NL + '        {' + NL + '            return false;' + NL + '        }' + NL + NL +
+    '        if (_session.Current.Readiness is not (WireToGateSessionReadiness.Ready' + NL)]
+
+# The pass no longer marks its flow: test doubles cannot tell its outbox read from the handshake's.
+MUTATIONS['M13'] = (CLIENT, '        StaleResendFlow.Value = true;' + NL, '')
+
+# Not a mutation: lets the round-3 tests compile against 2466113's client, which has no stale-row pass and so
+# nothing that could ever set the flag. Applied by run10.ps1's HEAD state only.
+MUTATIONS['SHIM'] = (CLIENT,
+    'public sealed class WireToGateSessionClient : IAsyncDisposable' + NL + '{' + NL,
+    'public sealed class WireToGateSessionClient : IAsyncDisposable' + NL + '{' + NL +
+    '    public static bool InStaleResendPass => false;' + NL + NL)
+
 spec = MUTATIONS[name]
 for rel, old, new in (spec if isinstance(spec, list) else [spec]):
     p = root + '/' + rel

@@ -85,3 +85,56 @@ M1 与 M1b 在审查后按新代码重写了匹配文本（核对的是对象里
 | 修后 | 10/10 绿 |
 
 审查后本机只跑相关测试类（车载端全量 G2 只走 CI）：`SQCD.Agv.WireToGateG2Tests` 里的 `MultiDemandJourneyG2Tests`、`WireToGateG2Tests`、`RecoveryVectorG2Tests`、`SessionHeartbeatPacingG2Tests`、`StationDeadlineExpiredG2Tests`、`LoadCancellationBeforeSublotG2Tests` 与按那几处发送口的名字搜出的三个视图模型测试类，共 307/307；`SQCD.Agv.UnitTests` 553/553。
+
+## 增量审查后（审查对 `2466113`；调度提为必修的 M-A、M-B 与第 3-6 条）
+
+### 文件
+
+| 文件 | 内容 |
+| --- | --- |
+| `red/round3-at-2466113.txt` | 第三轮新用例（`39a82ab` 那一版）在 `2466113` 产品代码上的四格红：挂起写（M-A）、通用补发两格（M-B）、回绝上一代命令（第 5 条） |
+| `runs/round3-final-10x.txt` | 本票 14 格，十三种代码状态各 10 次（最终一轮） |
+| `runs/round3-superseded-12states.txt` | 被取代的一轮，留作两处用例修正的依据（M9b 8/10；M12 下 #132 一格被替身卡错对象） |
+| `runs/round3-voided.txt` | 作废的一轮：前提断言事后读库，1/10 读到已被正确重发的行而红 |
+| `runs/m9a-result-once.txt` | 最终一轮 M9a 下 OperationResult 就绪后格那一次超时，与之后 40 次单跑的探针结果 |
+| `runs/m9r-probe.txt` | M9R 下 OperationResult 就绪后格仍绿，恢复投影每次被谁触发的调用栈 |
+| `runs/stack-probe.txt` | 审查第 2 条的调用栈探针（在 M5 下取），写明了取样条件 |
+
+「HEAD」状态把会话客户端换成 `2466113` 的样子。第三轮的用例读 `WireToGateSessionClient.InStaleResendPass`，`2466113` 还没有它，所以这一状态给那份客户端插了一个恒为 `false` 的同名属性以便编译（`tools/mutate.py` 的 `SHIM`）。`2466113` 没有补发扫描，这个属性在那里不改变任何行为。
+
+### 变异（第三轮新增）
+
+| 名称 | 改了什么 |
+| --- | --- |
+| M9 | 补发扫描不跑 |
+| M9a | 只去掉「握手起好接收循环之后」那一处要扫描 |
+| M9b | 只去掉「持久写被认作连接已不在」那一处要扫描 |
+| M10 | 关连接遇到写入口释放失败仍中止（M-A 修前） |
+| M11 | 写到一半被关时不包成连接已不在 |
+| M12 | 回绝命令不核代次 |
+| M13 | 补发扫描不设 `InStaleResendPass` |
+| M9R | M9，再去掉 #127 结果发送失败后 finally 里的恢复 |
+| M9T | M9，再让 #127 的 `TryResendUnacknowledgedResultAsync` 什么都不发 |
+
+### 结果（最终一轮，每格 10 次；stale＝通用补发两格，result＝OperationResult 两格，r132＝#132 两格）
+
+| 状态 | 红的格子 | 其余 |
+| --- | --- | --- |
+| `2466113` | 挂起写、回绝、stale 两格 | 绿；result 两格绿（#127 已覆盖） |
+| 修后 | 无 | 14 格绿 |
+| M5 | 无 | 绿（#197 那根线照样重发） |
+| M6 | inflight 两格；closing 3/10（上一轮 8/10） | 绿 |
+| M9 | stale 两格 | result 两格绿 |
+| M9a | stale 握手中那格；另有 1 次 result 就绪后格超时，见 `m9a-result-once.txt` | 绿 |
+| M9b | stale 就绪后那格 | 绿 |
+| M10、M11 | 挂起写 | 绿 |
+| M12 | 回绝 | 绿 |
+| M13 | stale 两格（红在「送达即断言扫描被认出」那道护栏） | 绿 |
+| M9R | stale 两格 | result 两格绿：恢复投影在每次 Ready/RecoveryRequired 发布上都跑，拒绝之后再来一次发布就重发，见 `m9r-probe.txt` |
+| M9T | stale、result、r132 各两格 | 绿 |
+
+M6 下 closing 的红不在「不丢」，在前面的「只有一行未确认」：M6 丢掉待发后下一次触发另写一行新版本，写得早就红、晚就绿，所以次数随调度变。
+
+与预测不符的写在上表里：M6 下 closing 会红；M9R 下 result 就绪后格不红；M9a 下那一次 result 超时。
+
+本机只跑相关测试类（最终头部）：G2 里 9 个类 313/313，`SQCD.Agv.UnitTests` 553/553；架构测试通过；本轮改动的 6 个 `.cs` 文件 `dotnet format --verify-no-changes` exit 0；逐字节 LF、无 BOM。

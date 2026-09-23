@@ -1,0 +1,191 @@
+# 第三轮 M9R 下 OperationResult 就绪后格仍绿，查是什么把结果送出去的。条件：施加 M9R（不扫、去掉 #127 结果发送失败后 finally 里的恢复），
+# 用例已在装货开始后关掉假服务端握手后重发仓位命令；只跑那一格一次。每次进入 RestorePendingRecoveryOperationProjectionAsync 记一次调用栈
+# （探针临时加的，跑完按备份还原并核哈希）。读到的：恢复投影在每一次 Ready/RecoveryRequired 的会话状态发布上都会跑，重连后除了握手本身，
+# 还有安全上报确认后的状态重发布与接收循环里的就绪各触发一次；拒绝之后只要再来一次发布，放开占用的 attempt 就会被重发。
+# 没钉住的：是哪一次恢复投影真正发出了结果（探针只记投影，不记发送）。
+# 各次恢复投影（会话状态  调用链）：
+#   1. Ready             Wpf.WireToGateBusinessService.OnSessionStateChanged <- Infrastructure.WireToGateSessionService.OnClientStateChanged <- Infrastructure.WireToGateSessionClient.Publish <- Infrastructure.WireToGateSessionClient.ApplySessionReadiness <- Infrastructure.WireToGateSessionClient.ConnectAndRecoverAsync
+#   2. Ready             Wpf.WireToGateBusinessService.OnSessionStateChanged <- Infrastructure.WireToGateSessionService.OnClientStateChanged <- Infrastructure.WireToGateSessionClient.Publish <- Infrastructure.WireToGateSessionClient.SendSafetyStateChangedAsync <- Infrastructure.WireToGateSessionClient.SendDurableCoreAsync
+#   3. RecoveryRequired  Wpf.WireToGateBusinessService.OnSessionStateChanged <- Infrastructure.WireToGateSessionService.OnClientStateChanged <- Infrastructure.WireToGateSessionClient.Publish <- Infrastructure.WireToGateSessionClient.ApplySessionReadiness <- Infrastructure.WireToGateSessionClient.ConnectAndRecoverAsync
+#   4. RecoveryRequired  Wpf.WireToGateBusinessService.OnSessionStateChanged <- Infrastructure.WireToGateSessionService.OnClientStateChanged <- Infrastructure.WireToGateSessionClient.Publish <- Infrastructure.WireToGateSessionClient.SendSafetyStateChangedAsync <- Infrastructure.WireToGateSessionClient.SendDurableCoreAsync
+#   5. Ready             Wpf.WireToGateBusinessService.OnSessionStateChanged <- Infrastructure.WireToGateSessionService.OnClientStateChanged <- Infrastructure.WireToGateSessionClient.Publish <- Infrastructure.WireToGateSessionClient.ApplySessionReadiness <- Infrastructure.WireToGateSessionClient.ReceiveLoopAsync
+
+---- restore Ready
+   at System.Environment.get_StackTrace()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RestorePendingRecoveryOperationProjectionAsync(CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1031
+   at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RestorePendingRecoveryOperationProjectionAsync(CancellationToken cancellationToken)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.OnSessionStateChanged(Object sender, ValueChangedEventArgs`1 args) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 899
+   at SQCD.Agv.Infrastructure.WireToGateSessionService.OnClientStateChanged(Object sender, ValueChangedEventArgs`1 args) in src\SQCD.Agv.Infrastructure\WireToGateSessionService.cs:line 408
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.Publish(Boolean connected, Nullable`1 generation, WireToGateSessionReadiness readiness, IReadOnlyList`1 reasonCodes) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 3897
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ApplySessionReadiness(WireToGateEnvelope envelope, Boolean requireExactConfiguredBaseline) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 3929
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ConnectAndRecoverAsync(CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 805
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendRecoveryStateReportAsync(Int64 generation, IoSnapshot io, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1912
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ReadEnvelopeAsync(Nullable`1 expectedGeneration, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 3831
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at System.IO.StreamReader.ReadLineAsyncInternal(CancellationToken cancellationToken)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at System.IO.StreamReader.ReadBufferAsync(CancellationToken cancellationToken)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Net.Sockets.SocketAsyncEventArgs.<>c.<.cctor>b__173_0(UInt32 errorCode, UInt32 numBytes, NativeOverlapped* nativeOverlapped)
+   at System.Threading.PortableThreadPool.IOCompletionPoller.Callback.Invoke(Event e)
+   at System.Threading.ThreadPoolTypedWorkItemQueue`2.System.Threading.IThreadPoolWorkItem.Execute()
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+---- restore Ready
+   at System.Environment.get_StackTrace()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RestorePendingRecoveryOperationProjectionAsync(CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1031
+   at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RestorePendingRecoveryOperationProjectionAsync(CancellationToken cancellationToken)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.OnSessionStateChanged(Object sender, ValueChangedEventArgs`1 args) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 899
+   at SQCD.Agv.Infrastructure.WireToGateSessionService.OnClientStateChanged(Object sender, ValueChangedEventArgs`1 args) in src\SQCD.Agv.Infrastructure\WireToGateSessionService.cs:line 408
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.Publish(Boolean connected, Nullable`1 generation, WireToGateSessionReadiness readiness, IReadOnlyList`1 reasonCodes) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 3897
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendSafetyStateChangedAsync(Int64 safetyStateVersion, DateTimeOffset observedAt, WireToGateSafetySummaryPayload safety, IReadOnlyList`1 affectedSlots, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 652
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendDurableCoreAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Boolean allowRecoveryRequired, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1171
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Threading.Tasks.Task.CancellationPromise`1.System.Threading.Tasks.ITaskCompletionAction.Invoke(Task completingTask)
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+---- restore RecoveryRequired
+   at System.Environment.get_StackTrace()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RestorePendingRecoveryOperationProjectionAsync(CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1031
+   at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RestorePendingRecoveryOperationProjectionAsync(CancellationToken cancellationToken)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.OnSessionStateChanged(Object sender, ValueChangedEventArgs`1 args) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 899
+   at SQCD.Agv.Infrastructure.WireToGateSessionService.OnClientStateChanged(Object sender, ValueChangedEventArgs`1 args) in src\SQCD.Agv.Infrastructure\WireToGateSessionService.cs:line 408
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.Publish(Boolean connected, Nullable`1 generation, WireToGateSessionReadiness readiness, IReadOnlyList`1 reasonCodes) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 3897
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ApplySessionReadiness(WireToGateEnvelope envelope, Boolean requireExactConfiguredBaseline) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 3929
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ConnectAndRecoverAsync(CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 805
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendRecoveryStateReportAsync(Int64 generation, IoSnapshot io, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1912
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ReadEnvelopeAsync(Nullable`1 expectedGeneration, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 3831
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at System.IO.StreamReader.ReadLineAsyncInternal(CancellationToken cancellationToken)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at System.IO.StreamReader.ReadBufferAsync(CancellationToken cancellationToken)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Net.Sockets.SocketAsyncEventArgs.<>c.<.cctor>b__173_0(UInt32 errorCode, UInt32 numBytes, NativeOverlapped* nativeOverlapped)
+   at System.Threading.PortableThreadPool.IOCompletionPoller.Callback.Invoke(Event e)
+   at System.Threading.ThreadPoolTypedWorkItemQueue`2.System.Threading.IThreadPoolWorkItem.Execute()
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+---- restore RecoveryRequired
+   at System.Environment.get_StackTrace()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RestorePendingRecoveryOperationProjectionAsync(CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1031
+   at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RestorePendingRecoveryOperationProjectionAsync(CancellationToken cancellationToken)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.OnSessionStateChanged(Object sender, ValueChangedEventArgs`1 args) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 899
+   at SQCD.Agv.Infrastructure.WireToGateSessionService.OnClientStateChanged(Object sender, ValueChangedEventArgs`1 args) in src\SQCD.Agv.Infrastructure\WireToGateSessionService.cs:line 408
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.Publish(Boolean connected, Nullable`1 generation, WireToGateSessionReadiness readiness, IReadOnlyList`1 reasonCodes) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 3897
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendSafetyStateChangedAsync(Int64 safetyStateVersion, DateTimeOffset observedAt, WireToGateSafetySummaryPayload safety, IReadOnlyList`1 affectedSlots, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 652
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendDurableCoreAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Boolean allowRecoveryRequired, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1171
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.ExecutionContextCallback(Object s)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Threading.Tasks.Task.CancellationPromise`1.System.Threading.Tasks.ITaskCompletionAction.Invoke(Task completingTask)
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()
+---- restore Ready
+   at System.Environment.get_StackTrace()
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RestorePendingRecoveryOperationProjectionAsync(CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 1031
+   at System.Runtime.CompilerServices.AsyncMethodBuilderCore.Start[TStateMachine](TStateMachine& stateMachine)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.RestorePendingRecoveryOperationProjectionAsync(CancellationToken cancellationToken)
+   at SQCD.Agv.Wpf.WireToGateBusinessService.OnSessionStateChanged(Object sender, ValueChangedEventArgs`1 args) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 899
+   at SQCD.Agv.Infrastructure.WireToGateSessionService.OnClientStateChanged(Object sender, ValueChangedEventArgs`1 args) in src\SQCD.Agv.Infrastructure\WireToGateSessionService.cs:line 408
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.Publish(Boolean connected, Nullable`1 generation, WireToGateSessionReadiness readiness, IReadOnlyList`1 reasonCodes) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 3897
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ApplySessionReadiness(WireToGateEnvelope envelope, Boolean requireExactConfiguredBaseline) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 3929
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ReceiveLoopAsync(StreamReader reader, Int64 generation, CancellationTokenSource stopping, TaskCompletionSource`1 failure) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 2100
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at System.IO.StreamReader.ReadLineAsyncInternal(CancellationToken cancellationToken)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Threading.Tasks.AwaitTaskContinuation.RunOrScheduleAction(IAsyncStateMachineBox box, Boolean allowInlining)
+   at System.Threading.Tasks.Task.RunContinuations(Object continuationObject)
+   at System.Threading.Tasks.Task`1.TrySetResult(TResult result)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.SetExistingTaskResult(Task`1 task, TResult result)
+   at System.IO.StreamReader.ReadBufferAsync(CancellationToken cancellationToken)
+   at System.Threading.ExecutionContext.RunInternal(ExecutionContext executionContext, ContextCallback callback, Object state)
+   at System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1.AsyncStateMachineBox`1.MoveNext(Thread threadPoolThread)
+   at System.Net.Sockets.SocketAsyncEventArgs.<>c.<.cctor>b__173_0(UInt32 errorCode, UInt32 numBytes, NativeOverlapped* nativeOverlapped)
+   at System.Threading.PortableThreadPool.IOCompletionPoller.Callback.Invoke(Event e)
+   at System.Threading.ThreadPoolTypedWorkItemQueue`2.System.Threading.IThreadPoolWorkItem.Execute()
+   at System.Threading.ThreadPoolWorkQueue.Dispatch()
+   at System.Threading.PortableThreadPool.WorkerThread.WorkerThreadStart()

@@ -4,7 +4,9 @@ param(
     [string[]] $States = @('PRE', 'M2', 'M3', 'M4', 'FIX'),
     [int] $Runs = 10,
     [string] $Filter = 'FullyQualifiedName~ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession|FullyQualifiedName~ASafetyReportUnansweredOnALiveConnectionStillDisconnectsTheSession',
-    [string] $Tag = 'r10'
+    [string] $Tag = 'r10',
+    # The commit whose client the HEAD state restores.
+    [string] $BaseRef = 'HEAD'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,9 +46,14 @@ foreach ($state in $States) {
                 if ($LASTEXITCODE -ne 0) { throw 'git restore for PRE failed' }
             }
             'HEAD' {
-                # The committed client: its epoch and its writer still two fields, before the handle.
-                git restore --source HEAD --worktree -- $client
+                # The client as $BaseRef left it (the business service is the same there).
+                git restore --source $BaseRef --worktree -- $client
                 if ($LASTEXITCODE -ne 0) { throw 'git restore for HEAD failed' }
+                # The round-3 tests read WireToGateSessionClient.InStaleResendPass, which $BaseRef may not have yet.
+                if (-not (Select-String -Path $client -Pattern 'InStaleResendPass' -Quiet)) {
+                    python "$sp/mutate.py" (Get-Location).Path SHIM
+                    if ($LASTEXITCODE -ne 0) { throw 'shim did not apply exactly once' }
+                }
             }
             'FIX' { }
             default {
@@ -68,11 +75,23 @@ foreach ($state in $States) {
             $summary = if ($text -match 'Failed:\s+(\d+), Passed:\s+(\d+), Skipped:\s+\d+, Total:\s+(\d+)') {
                 "fail=$($Matches[1]) pass=$($Matches[2]) total=$($Matches[3])"
             } else { 'NO SUMMARY' }
-            $red = [regex]::Matches($text, 'MultiDemandJourneyG2Tests\.(\S+?)(\((?:next|trigger): \w+\))? \[FAIL\]') |
-                ForEach-Object { ($_.Groups[1].Value -replace 'ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession', 'closed' -replace 'ASafetyReportUnansweredOnALiveConnectionStillDisconnectsTheSession', 'live' -replace 'ASafetyReportStillInFlightStaysOutOfTheNextHandshake', 'inflight' -replace 'ASafetyReportJudgedWhileTheConnectionIsClosingIsNotWrittenIntoIt', 'closing') + $_.Groups[2].Value } |
+            $red = [regex]::Matches($text, '(?:MultiDemandJourneyG2Tests|StationDeadlineExpiredG2Tests)\.(\S+?)(\((?:next|trigger|moment|windowEnd): \w+\))? \[FAIL\]') |
+                ForEach-Object {
+                    ($_.Groups[1].Value `
+                        -replace 'ASafetyReportWhoseConnectionClosedUnderItDoesNotDropTheNextSession', 'closed' `
+                        -replace 'ASafetyReportUnansweredOnALiveConnectionStillDisconnectsTheSession', 'live' `
+                        -replace 'ASafetyReportStillInFlightStaysOutOfTheNextHandshake', 'inflight' `
+                        -replace 'ASafetyReportJudgedWhileTheConnectionIsClosingIsNotWrittenIntoIt', 'closing' `
+                        -replace 'ADurableMessageRefusedAcrossAReconnectIsDeliveredOnTheNextSession', 'stale' `
+                        -replace 'AWriteStillPendingWhenItsConnectionIsClosedFailsAsConnectionGoneAndTheCloseCompletes', 'hungwrite' `
+                        -replace 'ARejectionOfAPreviousSessionsCommandStaysOutOfTheNextHandshake', 'reject' `
+                        -replace 'AResultRefusedAcrossAReconnectIsDeliveredOnTheNextSessionAndSettledOnce', 'result' `
+                        -replace 'AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce', 'r132') + $_.Groups[2].Value
+                } |
                 Sort-Object -Unique
-            $lines = [regex]::Matches($text, 'HandshakeWindowIntrusion\.cs:line (\d+)') | ForEach-Object { $_.Groups[1].Value } |
-                Group-Object | Sort-Object Count -Descending | Select-Object -First 3 | ForEach-Object { "$($_.Name)x$($_.Count)" }
+            $lines = [regex]::Matches($text, '(?:HandshakeWindowIntrusion|StaleDurableResend|ResultRefusedAcrossReconnect|ResultInHandshakeWindow)\.cs:line (\d+)') |
+                ForEach-Object { "$($_.Value -replace '\.cs:line ', ':')" } |
+                Group-Object | Sort-Object Count -Descending | Select-Object -First 4 | ForEach-Object { "$($_.Name)x$($_.Count)" }
             "  run ${i}: $summary | red: $(if ($red) { $red -join ' ' } else { 'none' }) | at: $($lines -join ' ')"
         }
     }

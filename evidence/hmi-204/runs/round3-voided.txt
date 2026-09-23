@@ -1,0 +1,20 @@
+# 作废、未引用的一轮：第三轮第一次跑到 HEAD 状态，OperationResult 就绪后格 1/10 红在前提断言
+# （Expected: 1, Actual: 2：测试事后读库时，那一行已被 #127 正确重发并重绑到第 2 代）。改为在落盘那一刻取样后整轮重跑。
+dotnet 8.0.425 in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi204-8005-agv-onboard-hmi
+================ HEAD
+  diff: 
+  build: 0 Error(s)
+  run 1: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:109x2 StaleDurableResend:131x2 StaleDurableResend:178x1 StaleDurableResend:188x1
+  run 2: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:109x2 StaleDurableResend:131x2 StaleDurableResend:178x1 StaleDurableResend:188x1
+  run 3: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:109x2 StaleDurableResend:131x2 StaleDurableResend:178x1 StaleDurableResend:188x1
+  run 4: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:109x2 StaleDurableResend:131x2 StaleDurableResend:178x1 StaleDurableResend:188x1
+  run 5: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:109x2 StaleDurableResend:131x2 StaleDurableResend:178x1 StaleDurableResend:188x1
+  run 6: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:109x2 StaleDurableResend:131x2 StaleDurableResend:178x1 StaleDurableResend:188x1
+  run 7: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:109x2 StaleDurableResend:131x2 StaleDurableResend:178x1 StaleDurableResend:188x1
+  run 8: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:109x2 StaleDurableResend:131x2 StaleDurableResend:178x1 StaleDurableResend:188x1
+  run 9: fail=4 pass=10 total=14 | red: hungwrite reject stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:109x2 StaleDurableResend:131x2 StaleDurableResend:178x1 StaleDurableResend:188x1
+  run 10: fail=5 pass=9 total=14 | red: hungwrite reject result(moment: AfterReady) stale(moment: AfterReady) stale(moment: DuringHandshake) | at: StaleDurableResend:109x2 StaleDurableResend:131x2 ResultRefusedAcrossReconnect:100x1 ResultRefusedAcrossReconnect:138x1
+  restored OK
+================ FIX
+  diff:  1 file changed, 163 insertions(+), 4 deletions(-)
+  build: 0 Error(s)
