@@ -68,6 +68,9 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     // 补发握手没看到的发件箱行：有人要一遍、正在跑一遍（onboard-hmi#204，见 RequestStaleResend）。
     private int _staleResendRequested;
     private int _staleResendRunning;
+
+    // 只在一遍补发扫描的异步流里为真，见 InStaleResendPass。
+    private static readonly AsyncLocal<bool> StaleResendFlow = new();
     private WireToGateSessionSnapshot _current;
     private WireToGateJourneySnapshot _journey;
     private CancellationTokenSource? _receiveStopping;
@@ -1225,8 +1228,23 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             && Interlocked.CompareExchange(ref _staleResendRunning, 1, 0) == 0);
     }
 
+    /// <summary>
+    /// True while the calling async flow is this client's pass over stale outbox rows (<see cref="RequestStaleResend"/>).
+    /// Nothing in the product reads it.
+    /// </summary>
+    /// <remarks>
+    /// Test doubles of the journal need it (onboard-hmi#204): until that pass existed the handshake was the only caller
+    /// of <see cref="IWireToGateJournal.ReadUnacknowledgedOutgoingAsync"/>, and doubles that park "the handshake's outbox
+    /// read" took the next call to be it. The pass reads the outbox too, and the journal cannot tell the two apart. An
+    /// explicit flag rather than a look at the call stack, which a rename, a split or an optimised build would defeat
+    /// without a sound.
+    /// </remarks>
+    public static bool InStaleResendPass => StaleResendFlow.Value;
+
     private async Task ResendStaleRowsOnceAsync()
     {
+        // Scoped to this call: an async method's ExecutionContext changes do not flow back to its caller.
+        StaleResendFlow.Value = true;
         WireToGateSessionSnapshot current = Current;
         if (_disposed || !CanResendDurable(current) || current.SessionGeneration is not long generation)
         {
