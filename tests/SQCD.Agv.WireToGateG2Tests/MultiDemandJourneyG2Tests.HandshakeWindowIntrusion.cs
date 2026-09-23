@@ -134,6 +134,9 @@ public sealed partial class MultiDemandJourneyG2Tests
                     envelope.Connection == secondConnection && envelope.MessageId == refused.MessageId),
                 $"the refused report {refused.MessageId} to be sent again on the new connection",
                 token);
+            // Exactly once, and deterministically so: the two triggers run one after the other under _safetySendGate,
+            // and whichever comes second finds the row acknowledged and sends nothing. The session client's own resend
+            // of rows a handshake missed (RequestStaleResend) leaves SafetyStateChanged to this service.
             var resent = Assert.Single(
                 harness.Server.ReceivedEnvelopes,
                 envelope => envelope.Connection == secondConnection && envelope.MessageId == refused.MessageId);
@@ -426,7 +429,9 @@ public sealed partial class MultiDemandJourneyG2Tests
         long refusedVersion = SafetyStateVersionOf(refused.WireLine);
 
         // And not lost: the next session carries the same report -- the same messageId, the same safetyStateVersion --
-        // under its own generation, and it is acknowledged.
+        // under its own generation, and it is acknowledged. Unlike the first test's resend, this one is the handshake's
+        // RELIABLE replay: the row was on file before the new handshake read the outbox. Once, because the replay
+        // acknowledges it inside the handshake and the business service's resends then find it acknowledged.
         await harness.Session.Client.ConnectAndRecoverAsync(token);
         await harness.WaitUntilAsync(
             () => harness.Session.Current.Readiness == WireToGateSessionReadiness.Ready,
@@ -441,8 +446,9 @@ public sealed partial class MultiDemandJourneyG2Tests
                 envelope.Connection == secondConnection && envelope.MessageId == refused.MessageId),
             $"the refused report {refused.MessageId} to be sent on the new connection",
             token);
-        var resent = harness.Server.ReceivedEnvelopes.First(envelope =>
-            envelope.Connection == secondConnection && envelope.MessageId == refused.MessageId);
+        var resent = Assert.Single(
+            harness.Server.ReceivedEnvelopes,
+            envelope => envelope.Connection == secondConnection && envelope.MessageId == refused.MessageId);
         Assert.Equal("SafetyStateChanged", resent.MessageType);
         Assert.Equal(refusedVersion, SafetyStateVersionOf(resent.WireLine));
         Assert.Equal(secondGeneration, GenerationOf(resent.WireLine));
@@ -563,8 +569,9 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
-    /// Holds one <c>SafetyStateChanged</c> just before its outbox row is written, and the next handshake right
-    /// after it has read the outbox -- the point where its SessionHello is out and its CapabilitySnapshot is not.
+    /// Holds one durable message (a <c>SafetyStateChanged</c> unless told otherwise) just before its outbox row is
+    /// written, and the next handshake right after it has read the outbox -- the point where its SessionHello is out
+    /// and its CapabilitySnapshot is not.
     /// </summary>
     /// <remarks>
     /// Held before the inner write on purpose: the row never reaches the outbox, so the handshake's own replay
@@ -577,6 +584,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         private readonly TaskCompletionSource _handshakeHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private readonly TaskCompletionSource _handshakeReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
         private int _holdSafety;
+        private string _holdMessageType = "SafetyStateChanged";
         private int _holdHandshake;
 
         /// <summary>Completes once a safety report is parked in front of its outbox write.</summary>
@@ -585,11 +593,21 @@ public sealed partial class MultiDemandJourneyG2Tests
         /// <summary>Completes once a handshake is parked with its SessionHello out and nothing else.</summary>
         public Task HandshakeHeld => _handshakeHeld.Task;
 
-        public void HoldNextSafetyStateChange() => Volatile.Write(ref _holdSafety, 1);
+        public void HoldNextSafetyStateChange() => HoldNextSave("SafetyStateChanged");
+
+        /// <summary>Holds the next outbox write of <paramref name="messageType"/>; <see cref="SafetyChangeHeld"/> completes on it.</summary>
+        public void HoldNextSave(string messageType)
+        {
+            Volatile.Write(ref _holdMessageType, messageType);
+            Volatile.Write(ref _holdSafety, 1);
+        }
 
         public void HoldNextHandshakeAfterOutboxRead() => Volatile.Write(ref _holdHandshake, 1);
 
         public void ReleaseSafetyChange() => _safetyReleased.TrySetResult();
+
+        /// <summary>The held message's row as it was when written, before anything could rebind or acknowledge it.</summary>
+        public WireToGateDurableMessage? HeldRowAsSaved { get; private set; }
 
         public void ReleaseHandshake() => _handshakeReleased.TrySetResult();
 
@@ -611,13 +629,21 @@ public sealed partial class MultiDemandJourneyG2Tests
             WireToGateDurableMessage message,
             CancellationToken cancellationToken = default)
         {
-            if (message.MessageType == "SafetyStateChanged" && Interlocked.Exchange(ref _holdSafety, 0) == 1)
+            bool held = message.MessageType == Volatile.Read(ref _holdMessageType)
+                && Interlocked.Exchange(ref _holdSafety, 0) == 1;
+            if (held)
             {
                 _safetyHeld.TrySetResult();
                 await _safetyReleased.Task;
             }
 
-            return await inner.SaveOutgoingBeforeSendAsync(message, cancellationToken);
+            WireToGateDurableMessage saved = await inner.SaveOutgoingBeforeSendAsync(message, cancellationToken);
+            if (held)
+            {
+                HeldRowAsSaved = saved;
+            }
+
+            return saved;
         }
 
         public Task MarkOutgoingAcknowledgedAsync(
