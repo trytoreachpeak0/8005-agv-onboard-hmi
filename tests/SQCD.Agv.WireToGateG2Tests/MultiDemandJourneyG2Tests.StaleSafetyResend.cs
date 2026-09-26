@@ -330,7 +330,14 @@ public sealed partial class MultiDemandJourneyG2Tests
             int failuresBefore = SafetyReportFailures(harness).Length;
             race.FailNextAcknowledgement(stale.MessageId);
             race.ReleaseHandshake();
-            await reconnect;
+            // Either order is right, and which one comes is scheduling: the business service gives the change up as soon as
+            // the handshake announces readiness, on another thread, and the failed write disconnects the session. That can
+            // land before the handshake's own tail has returned, which then fails for its connection being gone (seen once in
+            // 3 x 6 runs of evidence/hmi-208/05). What has to hold is that the write was tried and failed -- the next line.
+            Exception? handshakeEnd = await Record.ExceptionAsync(() => reconnect);
+            Assert.True(
+                handshakeEnd is null or IOException,
+                $"the handshake ended with {handshakeEnd?.GetType().Name}: {handshakeEnd?.Message}");
             int secondConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
             await race.AcknowledgementFailed.WaitAsync(TimeSpan.FromSeconds(10), token);
             await harness.WaitUntilAsync(
