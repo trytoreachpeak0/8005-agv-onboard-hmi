@@ -463,7 +463,7 @@ public sealed partial class MultiDemandJourneyG2Tests
 
     /// <summary>
     /// 反过来：连接还活着时的失败——服务端收下上报、连接一直开着、就是不回 <c>DurableAck</c>，等确认超时——业务服务仍然
-    /// 断开会话，由重连后的新会话以同一版本和内容重试。
+    /// 断开会话，由重连后的新会话重试：读数没变就以同一版本和内容，变了就放弃它、改报此刻读数（hmi#208）。
     /// </summary>
     /// <remarks>
     /// 守的是 <see cref="WireToGateConnectionGoneException"/> 的边界：它只标「连接已经不在了」，不能把活连接上该断的也吞掉。

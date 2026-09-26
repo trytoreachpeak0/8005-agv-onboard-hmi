@@ -1937,30 +1937,38 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             SafetyEvaluation evaluation = EvaluateSafety(_ioModule.CurrentSnapshot);
             string signature = evaluation.Signature;
 
-            // A change kept across a reconnect that the handshake did not carry -- the reconciliation above left it, so
-            // its version is still above the accepted one -- and whose content the IO has since moved past. The handshake
-            // snapshot went on file at the accepted version with the IO of that moment; sent now, this one would go on
-            // file above it with older content, and the server takes the higher version whatever its observedAt
-            // (control-server WireToGateStore.ApplyRevision). Older content that says safe is what dispatch can send a
-            // vehicle off on (8005-agv-onboard-hmi#208). So it is given up: its outbox row, if it has one, is marked no
-            // longer owed so no later handshake replays it, and its version is skipped, never given to other content.
-            // The present reading goes out below as a change of its own.
+            // A change still pending -- the reconciliation above left it, so its version is still above the accepted
+            // one -- whose content the IO has since moved past is never sent. The case that matters is a reconnect the
+            // handshake did not carry it across: the handshake snapshot went on file at the accepted version with the IO
+            // of that moment, and this one would go on file above it with older content, since the server takes the
+            // higher version whatever its observedAt (control-server WireToGateStore.ApplyRevision). Older content that
+            // says safe is what dispatch can send a vehicle off on (8005-agv-onboard-hmi#208). So it is given up: its
+            // outbox row, if it has one, is marked no longer owed so no later handshake replays it, and its version is
+            // skipped, never given to other content. The present reading goes out below as a change of its own.
             //
-            // Same content, it goes out as it is: the same messageId and version on the new session (onboard-hmi#204).
-            // Given up only after the row is settled: a failure there leaves it pending, and the next round tries again
-            // rather than send it.
-            if (_pendingSafetyChange is { } carried
-                && carried.SessionGeneration != current.SessionGeneration
-                && !string.Equals(carried.Signature, signature, StringComparison.Ordinal))
+            // Not keyed on the session generation having changed: the server numbers generations from its store, and a
+            // replaced store numbers them from the start again, so a new session can carry the old number. Within one
+            // generation the only way here with a change pending is a failure whose connection is already gone
+            // (onboard-hmi#204); giving it up there too skips a version and reports the present reading, never older.
+            //
+            // Same content, it goes out as it is: the same messageId and version (onboard-hmi#204). Given up only after
+            // the row is settled: a failure there throws, the session is disconnected with the change still pending, and
+            // the next session decides again rather than send it.
+            if (_pendingSafetyChange is { } stale
+                && !string.Equals(stale.Signature, signature, StringComparison.Ordinal))
             {
-                await _session.AbandonSafetyStateChangedAsync(carried.Version, carried.ObservedAt, cancellationToken)
+                await _session.AbandonSafetyStateChangedAsync(stale.Version, stale.ObservedAt, cancellationToken)
                     .ConfigureAwait(false);
-                _nextSafetyStateVersion = Math.Max(_nextSafetyStateVersion, checked(carried.Version + 1));
+                _nextSafetyStateVersion = Math.Max(_nextSafetyStateVersion, checked(stale.Version + 1));
                 _pendingSafetyChange = null;
+                // Reported below whatever the last signature was: with the change given up, what the server holds is not
+                // known to be the present reading. The generation reset above cannot be relied on for it -- under a
+                // repeated generation number it does not fire.
+                _lastSafetySignature = null;
                 _logger.Write(
                     LogSeverity.Warning,
                     nameof(WireToGateBusinessService),
-                    $"会话代{carried.SessionGeneration}未发出的SafetyStateChanged（版本{carried.Version}）重连握手没有带上，其内容已被此刻读数取代；放弃它、跳过该版本，改报此刻读数。");
+                    $"未发出的SafetyStateChanged（版本{stale.Version}）内容已被此刻读数取代；放弃它、跳过该版本，改报此刻读数。");
             }
 
             if (_pendingSafetyChange is null
@@ -1974,8 +1982,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 evaluation.ObservedAt,
                 evaluation.Safety,
                 [1, 2, 3, 4, 5, 6, 7, 8],
-                signature,
-                current.SessionGeneration);
+                signature);
             SafetyChangeWork pending = _pendingSafetyChange;
             await _session.SendSafetyStateChangedAsync(
                 pending.Version,
@@ -1998,13 +2005,14 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             // （断开、重连、心跳循环）也会把下一条连上；此刻去断开，打掉的是正在握手或刚就绪的新会话
             // （8005-agv-onboard-hmi#204）。什么都不断，只记下来。这一份不丢：_pendingSafetyChange 原样留着，新会话
             // 就绪时 OnSessionStateChanged 再触发一轮（就绪若恰好落在本轮持锁期间，_safetyRefreshPending 让工作循环
-            // 退出前再跑一轮），以同一版本和内容重发；它的发件箱行若已写下，握手也会先补发它。握手没带上它、
-            // 而此刻读数已与它不同时，新会话放弃它而不是重发（8005-agv-onboard-hmi#208，见上面的对账）。
+            // 退出前再跑一轮），此刻读数与它相同就以同一版本和内容重发，不同就放弃它、改报此刻读数
+            // （8005-agv-onboard-hmi#208，见上面的对账）；它的发件箱行若已写下，握手也会先补发它。
             //
             // 主要靠异常类型认，不靠读会话状态：等确认的一方在 CloseConnectionAsync 里被叫醒，那时 DisconnectAsync
             // 还没 Publish，这里读到的往往仍是旧代。代号那一条兜住类型认不出、状态却已发布的情形（接收循环自己挂掉，
             // 等确认的一方拿到的是循环的异常）。
-            // 连接还在的失败（例如等确认超时）仍走下面的老路：断开并以同一版本和内容重试。
+            // 连接还在的失败（例如等确认超时，或放弃旧变化时标记发件箱行失败）仍走下面的老路：断开会话，待发项留着，
+            // 重连后按此刻读数决定原样重发还是放弃。
             if (exception is WireToGateConnectionGoneException
                 || judgedOnGeneration is not null
                     && _session.Current.SessionGeneration != judgedOnGeneration)
@@ -2020,7 +2028,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _logger.Write(
                 LogSeverity.Error,
                 nameof(WireToGateBusinessService),
-                "SafetyStateChanged发送失败，正在断开会话并以同一版本和内容重试。",
+                "SafetyStateChanged发送失败，正在断开会话；待发项留着，重连后按此刻读数决定原样重发还是放弃。",
                 exception);
             try
             {
@@ -3665,15 +3673,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         WireToGateSafetySummaryPayload Safety,
         string Signature);
 
-    /// <param name="SessionGeneration">The session the change was judged against: one still pending under a later session
-    /// was kept across a reconnect (8005-agv-onboard-hmi#208).</param>
     private sealed record SafetyChangeWork(
         long Version,
         DateTimeOffset ObservedAt,
         WireToGateSafetySummaryPayload Safety,
         IReadOnlyList<int> AffectedSlots,
-        string Signature,
-        long? SessionGeneration);
+        string Signature);
 
     private sealed class DelegateVehicleSafetySignalProvider : IVehicleSafetySignalProvider
     {
