@@ -1,0 +1,33 @@
+# hmi#208 审查后新增用例的修前红：测试提交 db94c010b298679972c88bac145ca10d69273111 上，产品代码为 02d8dae（本 PR 第一版修复，作废条件仍含会话代号比较）
+# 命令：dotnet build tests/SQCD.Agv.WireToGateG2Tests --no-incremental && dotnet test tests/SQCD.Agv.WireToGateG2Tests --no-build --filter "FullyQualifiedName~ASafetyChangeTheHandshakeDidNotCarry|FullyQualifiedName~GivingUpAStaleSafetyChange"
+    0 Warning(s)
+    0 Error(s)
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:04.36]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFileUnderARepeatedGenerationNumber) [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFileUnderARepeatedGenerationNumber) [715 ms]
+  Error Message:
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 202
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 260
+  Standard Output Messages:
+ On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+
+
+[xUnit.net 00:00:05.38]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.GivingUpAStaleSafetyChangeWhoseOutboxWriteFailsDisconnectsAndTheNextHandshakeSupersedesIt [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.GivingUpAStaleSafetyChangeWhoseOutboxWriteFailsDisconnectsAndTheNextHandshakeSupersedesIt [195 ms]
+  Error Message:
+   Assert.DoesNotContain() Failure: Sub-string found
+                                       ↓ (pos 30)
+String: "SafetyStateChanged发送失败，正在断开会话并以同一版本和内容重试。"
+Found:  "以同一版本和内容重试"
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.GivingUpAStaleSafetyChangeWhoseOutboxWriteFailsDisconnectsAndTheNextHandshakeSupersedesIt() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 346
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.GivingUpAStaleSafetyChangeWhoseOutboxWriteFailsDisconnectsAndTheNextHandshakeSupersedesIt() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 397
+
+Failed!  - Failed:     2, Passed:     2, Skipped:     0, Total:     4, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1

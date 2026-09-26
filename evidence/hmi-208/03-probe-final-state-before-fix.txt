@@ -1,14 +1,21 @@
-# 探针：修复前的产品代码（三个产品文件取自 6a249f5，即 w2g/fp-v2-impl@b789c3d4 的内容），测试取自 HEAD 02d8daebc4a7194726de297ea0dbea802a996b75，关掉两条主断言
-# 目的：证明其余断言（最终状态是此刻读数、一个号一份内容、发件箱不留旧行）修复前就成立，缺陷只在窗口
+# head 9f574ee7df6ccb6db8a1416e74e451ed314ac510; product files from 6a249f5 (= w2g/fp-v2-impl@b789c3d4, unfixed); main assertions reversed
+# build: dotnet build tests/SQCD.Agv.WireToGateG2Tests --no-incremental -v q
+# test:  dotnet test tests/SQCD.Agv.WireToGateG2Tests --no-build --filter "FullyQualifiedName~ASafetyChangeTheHandshakeDidNotCarry" --logger "console;verbosity=detailed"
  .../WireToGateSessionClient.cs                     | 52 ++++------------------
  .../WireToGateSessionService.cs                    |  6 ---
- src/SQCD.Agv.Wpf/WireToGateBusinessService.cs      | 38 ++--------------
- 3 files changed, 11 insertions(+), 85 deletions(-)
+ src/SQCD.Agv.Wpf/WireToGateBusinessService.cs      | 43 ++----------------
+ 3 files changed, 11 insertions(+), 90 deletions(-)
 probe applied: 2 replacements
 -                safeOnFile.Length == 0,
-+                true || safeOnFile.Length == 0,
++                safeOnFile.Length > 0,
 -            Assert.Empty(readyAnnounced);
-+            _ = readyAnnounced;
-    0 Error(s)
-Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2
++            Assert.NotEmpty(readyAnnounced);
+build:     0 Error(s)
+  Passed ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFile) [940 ms]
+ On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+  Passed ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFileUnderARepeatedGenerationNumber) [672 ms]
+ On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+  Passed ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead) [655 ms]
+ On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
 exit=0
+restored; tree clean: yes
