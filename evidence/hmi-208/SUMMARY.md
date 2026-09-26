@@ -14,6 +14,8 @@
 | `05-reverse-verification-after-review-first-run.txt` | 第二版修复 `53321d5` 上第一次跑六个变异；M6 第 2 轮多红的一条暴露了用例自己的竞态，由 `9f574ee` 改正 |
 | `06-stability-20-runs.txt` | `9f574ee` 上本票用例连跑 20 次，退出码 20 次为 0 |
 | `07-reverse-verification-final-head.txt` | 最终头部 `9f574ee` 上的反向验证，六个变异各 3 次，脚本 `hmi208-mutations-2.sh` |
+| `08-real-rig-red-36257155944-diagnosis.md` | 新头部第一次 CI 真装置红（run 36257155944）的机理：接收循环在同步写盘时被卡住、心跳超时断线；读到与推的分开；不指向本 PR 代码的依据；断线后装货结果会怎样 |
+| `09-real-rig-rerun-idle.txt` | vm01 空闲时同 head 重跑（run 36258605363）PASS 56s 的四行核对与对照数；只算空闲条件下的对照 |
 
 ## 修复前是什么样
 

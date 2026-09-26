@@ -1,0 +1,21 @@
+# 真装置重跑（vm01 空闲时同 head 对照）：CI rig=real run 36258605363，结论 success
+# https://github.com/trytoreachpeak0/8005-agv-control-server/actions/runs/36258605363
+# 派发前 01:19:09 核过：cs#362 的 test 36256827779 与 l2 36256827782 均 completed；8005-agv-control-server、8005-agv-onboard-hmi、8005-mes-ingest、riot-sdk、8005-agv-protocol 五个仓都没有 in_progress / queued / waiting 作业
+# 命令：gh workflow run l2.yml -R trytoreachpeak0/8005-agv-control-server --ref fp/v2-impl -f rig=real -f onboard_ref=c19736f3601f4e0dfcea101dda98e2c3eaa57bef -f simulator_ref=fb5f7c593742bf98bc3957b8729a38aad5321f28 -f scenarios=real-onboard-compensate-then-reconnect -f mode=consecutive
+
+四行（读自 gh run view --log 的「Run real-onboard L2 scenarios」那一步）：
+1. 三端：
+  control-server @ a374881c030a7e28a605c3e14a6e402bc60e6cc0   （fp/v2-impl 已含 cs#358，未含 cs#362）
+  8005-agv-onboard-hmi @ c19736f3601f4e0dfcea101dda98e2c3eaa57bef
+  slots-simulator @ fb5f7c593742bf98bc3957b8729a38aad5321f28
+2. real-onboard-compensate-then-reconnect-01 starting at 4.16 GiB committed
+   real-onboard-compensate-then-reconnect-01 -- PASS, 56s
+   Whole-machine committed memory during the step: min 4.22 GiB, peak 7.48 GiB (40 samples)
+3. 停机码在源码回显之外：RIG_COMMIT_GUARD 0、RIG_DESKTOP_LOCK 0、RIG_DEADLINE 0、NOT_STARTED 0
+4. 没有停机（无 cancel、无 ##[error]）
+
+对照（读自这次的证据包 gh run download 36258605363）：
+- 代理连接 1：01:21:35.383 server->onboard SlotOperationCommand，01:21:35.587 onboard->server OperationProgress，间隔 0.20 秒（第一次红 36257155944 这里停了 4 秒以上；36252845068 是 0.17 秒）
+- 车载端 app 日志 25 行：「放弃它、跳过该版本」0 次——这个场景不制造握手没带上的旧安全变化，放弃分支没执行；「上层会话不可用」1 次，是场景自己注入的断线
+
+这次通过只算空闲条件下的对照，不是本 PR 代码没问题的证据。第一次红的机理与「不指向本 PR 代码」的依据见 08。
