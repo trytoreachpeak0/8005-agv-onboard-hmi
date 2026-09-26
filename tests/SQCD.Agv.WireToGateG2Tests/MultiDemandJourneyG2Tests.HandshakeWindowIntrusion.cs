@@ -697,11 +697,50 @@ public sealed partial class MultiDemandJourneyG2Tests
             return saved;
         }
 
+        /// <summary>
+        /// The next time the row <paramref name="messageId"/> is marked acknowledged, the write fails and the row stays as it
+        /// was (onboard-hmi#208). Completes <see cref="AcknowledgementFailed"/> when it has thrown.
+        /// </summary>
+        public void FailNextAcknowledgement(string messageId)
+        {
+            lock (_failAcknowledgementGate)
+            {
+                _failAcknowledgementOf = messageId;
+            }
+        }
+
+        /// <summary>Completes once <see cref="FailNextAcknowledgement"/> has failed a write.</summary>
+        public Task AcknowledgementFailed => _acknowledgementFailed.Task;
+
+        private readonly TaskCompletionSource _acknowledgementFailed =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly object _failAcknowledgementGate = new();
+        private string? _failAcknowledgementOf;
+
         public Task MarkOutgoingAcknowledgedAsync(
             string messageId,
             string acceptedContentSha256,
-            CancellationToken cancellationToken = default) =>
-            inner.MarkOutgoingAcknowledgedAsync(messageId, acceptedContentSha256, cancellationToken);
+            CancellationToken cancellationToken = default)
+        {
+            bool fail;
+            // By content, under a lock: Interlocked.CompareExchange on a string compares references.
+            lock (_failAcknowledgementGate)
+            {
+                fail = string.Equals(_failAcknowledgementOf, messageId, StringComparison.Ordinal);
+                if (fail)
+                {
+                    _failAcknowledgementOf = null;
+                }
+            }
+
+            if (fail)
+            {
+                _acknowledgementFailed.TrySetResult();
+                throw new IOException("Marking the outbox row acknowledged failed (test double, onboard-hmi#208).");
+            }
+
+            return inner.MarkOutgoingAcknowledgedAsync(messageId, acceptedContentSha256, cancellationToken);
+        }
 
         public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
             Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,

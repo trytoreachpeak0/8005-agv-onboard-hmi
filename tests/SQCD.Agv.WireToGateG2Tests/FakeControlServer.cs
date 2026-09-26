@@ -147,6 +147,14 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// The next session gets the generation number of the one before it instead of the next one: what a vehicle sees
+    /// when the server's store is replaced and generations are numbered from the start again (onboard-hmi#208).
+    /// </summary>
+    public void RepeatGenerationOnNextSession() => Volatile.Write(ref _repeatGenerationOnNextSession, 1);
+
+    private int _repeatGenerationOnNextSession;
+
     /// <summary>One write of <see cref="SafetyWrittenOnFile"/>.</summary>
     public sealed record SafetyOnFile(
         int Connection,
@@ -1682,7 +1690,11 @@ public sealed class FakeControlServer : IAsyncDisposable
         long generation;
         lock (_sync)
         {
-            generation = ++_sessionGeneration;
+            // A server whose store was replaced numbers its generations from the start again, so the next session
+            // can carry a number the vehicle has already seen (onboard-hmi#208). One session, then back to counting.
+            generation = Interlocked.Exchange(ref _repeatGenerationOnNextSession, 0) == 1 && _sessionGeneration > 0
+                ? _sessionGeneration
+                : ++_sessionGeneration;
             // 真服务端只在一个会话之内比对快照修订号：BeginSessionRecoveryAsync 每个新世代都会清空，
             // 所以重连之后的那次握手是从零采纳的。这里原来跨同一实例的重连一直留着记忆，正是因为这个
             // 差别，车载端「补发之后跳过快照」的握手才只在这个替身上过得去、在真服务端上过不去

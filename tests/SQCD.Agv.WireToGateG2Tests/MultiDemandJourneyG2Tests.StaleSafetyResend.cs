@@ -21,9 +21,11 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// 让车动起来的东西。车载端下一轮会用当前内容补一份更大的号，所以最终状态是对的——那一段窗口才是缺陷。
 /// </para>
 /// <para>
-/// <b>两格，都是握手没看到这一份：</b><see cref="UnseenByTheHandshake.LandedAfterTheOutboxRead"/> 是 hmi#204 的形状
+/// <b>三格，都是握手没看到这一份：</b><see cref="UnseenByTheHandshake.LandedAfterTheOutboxRead"/> 是 hmi#204 的形状
 /// （行在新握手读完发件箱之后才落盘，发送时连接已不在）；<see cref="UnseenByTheHandshake.NeverOnFile"/> 是写发件箱就失败、
-/// 从没写进日志，活连接上的失败按老路断开会话。窗口都是构造出来的（<see cref="ReconnectRaceJournal"/>），不靠时序。
+/// 从没写进日志，活连接上的失败按老路断开会话；<see cref="UnseenByTheHandshake.NeverOnFileUnderARepeatedGenerationNumber"/>
+/// 再加上服务端换库后代号从头数、新会话撞上旧代号，所以「旧不旧」不能靠代号有没有变来判。窗口都是构造出来的
+/// （<see cref="ReconnectRaceJournal"/>），不靠时序。
 /// </para>
 /// </remarks>
 public sealed partial class MultiDemandJourneyG2Tests
@@ -35,7 +37,14 @@ public sealed partial class MultiDemandJourneyG2Tests
         LandedAfterTheOutboxRead,
 
         /// <summary>Its outbox write failed on a live connection, so it was never on file and the session was disconnected.</summary>
-        NeverOnFile
+        NeverOnFile,
+
+        /// <summary>
+        /// As <see cref="NeverOnFile"/>, and the next session comes back under the same generation number: the server's
+        /// store was replaced and it numbers generations from the start again. Whether a kept change is stale cannot rest
+        /// on the generation having changed.
+        /// </summary>
+        NeverOnFileUnderARepeatedGenerationNumber
     }
 
     /// <summary>
@@ -45,6 +54,7 @@ public sealed partial class MultiDemandJourneyG2Tests
     [Theory]
     [InlineData(UnseenByTheHandshake.LandedAfterTheOutboxRead)]
     [InlineData(UnseenByTheHandshake.NeverOnFile)]
+    [InlineData(UnseenByTheHandshake.NeverOnFileUnderARepeatedGenerationNumber)]
     [Trait("IntegrationSlice", "FP-IS-00")]
     [Trait("IntegrationSlice", "FP-IS-05")]
     [Trait("ProtocolVector", "CV-SESSION-RECONNECT-DURING-RECOVERY")]
@@ -78,6 +88,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             await WaitForLatestOnFileAsync(harness, departureSafe: false, token);
             int firstConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
             long acceptedBefore = harness.Session.Current.SafetyStateVersion;
+            long firstGeneration = harness.Session.Current.SessionGeneration
+                ?? throw new InvalidOperationException("The first session has no generation.");
 
             // The door reads locked again: the vehicle judges itself safe and that change does not go out.
             WireToGateDurableMessage missing;
@@ -124,7 +136,24 @@ public sealed partial class MultiDemandJourneyG2Tests
                 // Unsafe again while the vehicle is off line.
                 io.SetUnreadable(0);
                 io.PublishSnapshot();
+                if (unseen == UnseenByTheHandshake.NeverOnFileUnderARepeatedGenerationNumber)
+                {
+                    harness.Server.RepeatGenerationOnNextSession();
+                }
+
                 await harness.Session.Client.ConnectAndRecoverAsync(token);
+            }
+
+            // The generation premise of each cell: new everywhere but the repeated one, where it is the same number.
+            long secondGeneration = harness.Session.Current.SessionGeneration
+                ?? throw new InvalidOperationException("The second session has no generation.");
+            if (unseen == UnseenByTheHandshake.NeverOnFileUnderARepeatedGenerationNumber)
+            {
+                Assert.Equal(firstGeneration, secondGeneration);
+            }
+            else
+            {
+                Assert.NotEqual(firstGeneration, secondGeneration);
             }
 
             // The premise, sampled when the change went missing: it said safe, one above what the server had.
@@ -150,6 +179,13 @@ public sealed partial class MultiDemandJourneyG2Tests
             await Task.Delay(TimeSpan.FromMilliseconds(500), token);
 
             FakeControlServer.SafetyOnFile[] second = OnFile(harness, secondConnection);
+            string sequence =
+                "On file in the second session, in order: "
+                + string.Join(" | ", second.Select(entry => $"{entry.MessageType} v{entry.Revision} departureSafe={entry.DepartureSafe}"))
+                + $"; SessionReadiness sent on it: {string.Join(", ", ReadinessSentOn(harness, secondConnection))}";
+            // Printed whether or not anything fails, so a run says which code it ran against (evidence/hmi-208, probe 03).
+            TestContext.Current.TestOutputHelper?.WriteLine(sequence);
+
             // The handshake did not carry the missing change -- the case this test is about -- and its snapshot said
             // what the IO said: unsafe, at the revision already accepted.
             FakeControlServer.SafetyOnFile handshake = second[0];
@@ -165,9 +201,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             FakeControlServer.SafetyOnFile[] safeOnFile = second.Where(entry => entry.DepartureSafe).ToArray();
             Assert.True(
                 safeOnFile.Length == 0,
-                "the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: "
-                + string.Join(" | ", second.Select(entry => $"{entry.MessageType} v{entry.Revision} departureSafe={entry.DepartureSafe}"))
-                + $"; SessionReadiness sent on it: {string.Join(", ", ReadinessSentOn(harness, secondConnection))}");
+                "the server had departure-safe on file while the IO read unsafe. " + sequence);
             // And the server did not act on it: it never called the session ready.
             Assert.Empty(readyAnnounced);
 
@@ -221,6 +255,143 @@ public sealed partial class MultiDemandJourneyG2Tests
         finally
         {
             // Nothing may stay parked, or the harness's disposal waits forever.
+            race.ReleaseSafetyChange();
+            race.ReleaseHandshake();
+        }
+    }
+
+    /// <summary>
+    /// 放弃那份旧变化时，标记它发件箱行的那次写盘失败：会话断开，旧内容一次也没在会话就绪期间写上服务端；下一次握手
+    /// 补发那一行，但同一次握手的快照以更大的号盖掉它，服务端直到就绪都没据它宣布过 READY。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 这是修法自己的失败路径（两路审查都指出剩余风险里那句「以同一版本和内容重试」写错了）。失败落进业务服务的通用
+    /// catch，按活连接失败断开；待发项留着。下一次握手读到的发件箱里有那一行、仍未确认，照 RELIABLE 补发，
+    /// hmi#206 的规则让同一次握手的快照取再下一个号。服务端在握手期间是 <c>HANDSHAKE_INCOMPLETE</c>，派车只读就绪
+    /// 会话的事实（control-server <c>OnboardDispatchFactsReader</c>），所以握手里那一瞬的旧内容不是本票的缺陷。
+    /// </para>
+    /// <para>
+    /// 第三次连接前关掉 <see cref="FakeControlServer.SendReadinessAfterSafetyStateChangedAck"/>：这个替身对握手里补发的
+    /// 首次到达也会附一条 <c>SessionReadiness</c>，真服务端在 control-server#340 之后不会，那会打断握手、测到的是替身。
+    /// 握手末尾的那条就绪通知照发，READY 与否由它判。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("IntegrationSlice", "FP-IS-05")]
+    [Trait("ProtocolVector", "CV-SESSION-RECONNECT-DURING-RECOVERY")]
+    public async Task GivingUpAStaleSafetyChangeWhoseOutboxWriteFailsDisconnectsAndTheNextHandshakeSupersedesIt()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { KeepSnapshotFresh = true };
+        ReconnectRaceJournal race = null!;
+        await using Harness harness = await Harness.StartAsync(
+            server =>
+            {
+                server.ShareSafetyRevisionAcrossChangeAndSnapshot = true;
+                server.RequireSafeSafetyForReadiness = true;
+                server.SendReadinessAfterSafetyStateChangedAck = true;
+            },
+            token,
+            io: io,
+            wrapJournal: inner => race = new ReconnectRaceJournal(inner));
+        try
+        {
+            await WaitForSafetyReportsToSettleAsync(harness, token);
+            io.SetUnreadable(0);
+            io.PublishSnapshot();
+            await WaitForLatestOnFileAsync(harness, departureSafe: false, token);
+            long acceptedBefore = harness.Session.Current.SafetyStateVersion;
+
+            // The shape of LandedAfterTheOutboxRead: a safe change, parked before its outbox write, lands after the next
+            // handshake has read the outbox, and the IO turns unsafe in between.
+            race.HoldNextSafetyStateChange();
+            io.CloseDoor(0, cargo: false);
+            io.PublishSnapshot();
+            await race.SafetyChangeHeld.WaitAsync(TimeSpan.FromSeconds(10), token);
+            race.HoldNextHandshakeAfterOutboxRead();
+            await harness.Session.Client.DisconnectAsync();
+            Task<WireToGateSessionSnapshot> reconnect = harness.Session.Client.ConnectAndRecoverAsync(token);
+            await race.HandshakeHeld.WaitAsync(TimeSpan.FromSeconds(10), token);
+            io.SetUnreadable(0);
+            io.PublishSnapshot();
+            race.ReleaseSafetyChange();
+            await harness.WaitUntilAsync(
+                () => SafetyReportFailures(harness).Length > 0,
+                "the parked change to find its connection gone",
+                token);
+            WireToGateDurableMessage stale = race.HeldRowAsSaved
+                ?? throw new InvalidOperationException("The parked change was never written.");
+            Assert.Equal(acceptedBefore + 1, SafetyStateVersionOf(stale.WireLine));
+            Assert.True(SafetyOf(stale.WireLine).GetProperty("departureSafe").GetBoolean());
+
+            // Giving it up fails at the write that marks its row.
+            int failuresBefore = SafetyReportFailures(harness).Length;
+            race.FailNextAcknowledgement(stale.MessageId);
+            race.ReleaseHandshake();
+            await reconnect;
+            int secondConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
+            await race.AcknowledgementFailed.WaitAsync(TimeSpan.FromSeconds(10), token);
+            await harness.WaitUntilAsync(
+                () => harness.Session.Current.Readiness == WireToGateSessionReadiness.Disconnected
+                    && SafetyReportFailures(harness).Length > failuresBefore,
+                "the business service to disconnect after the failed write",
+                token);
+
+            // Logged for what happened: the kept change is decided again on the next session, not resent as it was.
+            (string message, Exception failure) = SafetyReportFailures(harness)[^1];
+            Assert.IsType<IOException>(failure);
+            Assert.StartsWith("SafetyStateChanged发送失败，正在断开会话", message, StringComparison.Ordinal);
+            Assert.DoesNotContain("以同一版本和内容重试", message, StringComparison.Ordinal);
+            Assert.Contains("按此刻读数", message, StringComparison.Ordinal);
+
+            // Nothing safe went on file in that session, and it was never called ready.
+            FakeControlServer.SafetyOnFile[] second = OnFile(harness, secondConnection);
+            Assert.DoesNotContain(second, entry => entry.DepartureSafe);
+            Assert.DoesNotContain("READY", ReadinessSentOn(harness, secondConnection));
+
+            // The next handshake replays the row still on file and supersedes it in the same handshake.
+            harness.Server.SendReadinessAfterSafetyStateChangedAck = false;
+            await harness.Session.Client.ConnectAndRecoverAsync(token);
+            int thirdConnection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
+            Assert.NotEqual(secondConnection, thirdConnection);
+            await harness.WaitUntilAsync(
+                () => OnFile(harness, thirdConnection) is [.., var last]
+                    && last.MessageType == "SafetyStateChanged"
+                    && !last.DepartureSafe
+                    && harness.Session.Current.SafetyStateVersion == last.Revision
+                    && OnFile(harness, thirdConnection).Any(entry => entry.MessageType == "SafetyStateSnapshot"),
+                "the present reading to be on file and accepted after the third handshake",
+                token);
+            await Task.Delay(TimeSpan.FromMilliseconds(500), token);
+
+            FakeControlServer.SafetyOnFile[] third = OnFile(harness, thirdConnection);
+            string sequence =
+                "On file in the third session, in order: "
+                + string.Join(" | ", third.Select(entry => $"{entry.MessageType} v{entry.Revision} departureSafe={entry.DepartureSafe}"))
+                + $"; SessionReadiness sent on it: {string.Join(", ", ReadinessSentOn(harness, thirdConnection))}";
+            TestContext.Current.TestOutputHelper?.WriteLine(sequence);
+            int snapshotAt = Array.FindIndex(third, entry => entry.MessageType == "SafetyStateSnapshot");
+            // The replayed row, older content, went on file inside the handshake -- before its snapshot, which is above it.
+            Assert.True(snapshotAt > 0, sequence);
+            Assert.Contains(
+                third[..snapshotAt],
+                entry => entry.MessageType == "SafetyStateChanged" && entry.Revision == SafetyStateVersionOf(stale.WireLine));
+            Assert.True(third[snapshotAt].Revision > SafetyStateVersionOf(stale.WireLine), sequence);
+            // From the snapshot on, what the IO read; and the session was never called ready on the older content.
+            Assert.True(third[snapshotAt..].All(entry => !entry.DepartureSafe), sequence);
+            Assert.DoesNotContain("READY", ReadinessSentOn(harness, thirdConnection));
+
+            // Settled at last: nothing left for another handshake to replay.
+            Assert.DoesNotContain(
+                await race.ReadUnacknowledgedOutgoingAsync(token),
+                row => row.MessageType == "SafetyStateChanged");
+            Assert.Empty(harness.Server.SafetyRevisionConflicts);
+            Assert.Empty(harness.UiErrors);
+        }
+        finally
+        {
             race.ReleaseSafetyChange();
             race.ReleaseHandshake();
         }
