@@ -51,6 +51,7 @@ public sealed class FakeControlServer : IAsyncDisposable
         = new();
     private readonly Dictionary<string, (string Payload, long Generation)> _acceptedSafetyStateChanges =
         new(StringComparer.Ordinal);
+    private readonly List<SafetyOnFile> _safetyWrittenOnFile = [];
     private readonly object _sync = new();
     private long _sessionGeneration;
     private static readonly string[] OpenRecoverySessionAllowedActions =
@@ -123,6 +124,37 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// number of the change it had just resent went unseen here.
     /// </remarks>
     public bool ShareSafetyRevisionAcrossChangeAndSnapshot { get; set; }
+
+    /// <summary>
+    /// Under <see cref="ShareSafetyRevisionAcrossChangeAndSnapshot"/>, every safety state the server wrote on file, oldest
+    /// first: what the real server's <c>SessionRecoveries</c> row said, one entry per write (onboard-hmi#208).
+    /// </summary>
+    /// <remarks>
+    /// The real server keeps the summary of the message at the highest revision of the generation and nothing orders
+    /// the writes but the revision -- <c>ApplyRevision</c> compares no <c>observedAt</c> (control-server
+    /// <c>a407ec61</c>, <c>WireToGateStore.cs:3358-3369</c>) -- so a change with a higher revision and older content
+    /// replaces a snapshot. Dispatch reads the summary from here (<c>OnboardDispatchFactsReader</c>): an entry that
+    /// says <c>departureSafe</c> is one the server could have sent the vehicle off on.
+    /// </remarks>
+    public IReadOnlyList<SafetyOnFile> SafetyWrittenOnFile
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _safetyWrittenOnFile.ToArray();
+            }
+        }
+    }
+
+    /// <summary>One write of <see cref="SafetyWrittenOnFile"/>.</summary>
+    public sealed record SafetyOnFile(
+        int Connection,
+        long Generation,
+        string MessageType,
+        long Revision,
+        bool DepartureSafe,
+        string SafetyJson);
 
     /// <summary>What <see cref="ShareSafetyRevisionAcrossChangeAndSnapshot"/> refused, oldest first.</summary>
     public IReadOnlyList<string> SafetyRevisionConflicts
@@ -1693,7 +1725,13 @@ public sealed class FakeControlServer : IAsyncDisposable
             _ => snapshot.GetProperty("payload").GetProperty("safetyStateVersion").GetInt64()
         };
         string contentSha256 = WireToGateProtocolSerializer.ComputeSha256(Encoding.UTF8.GetBytes(line));
-        if (messageType == "SafetyStateSnapshot" && RefuseSharedSafetyRevision(context, messageType, revision, contentSha256))
+        if (messageType == "SafetyStateSnapshot"
+            && RefuseSharedSafetyRevision(
+                context,
+                messageType,
+                revision,
+                contentSha256,
+                snapshot.GetProperty("payload").GetProperty("safety")))
         {
             return;
         }
@@ -2434,7 +2472,8 @@ public sealed class FakeControlServer : IAsyncDisposable
         ConnectionContext context,
         string messageType,
         long revision,
-        string lineSha256)
+        string lineSha256,
+        JsonElement safety)
     {
         if (!ShareSafetyRevisionAcrossChangeAndSnapshot)
         {
@@ -2457,6 +2496,13 @@ public sealed class FakeControlServer : IAsyncDisposable
             {
                 context.SafetyRevisionOnFile = revision;
                 context.SafetyHashOnFile = lineSha256;
+                _safetyWrittenOnFile.Add(new SafetyOnFile(
+                    context.ConnectionIndex,
+                    context.Generation,
+                    messageType,
+                    revision,
+                    safety.GetProperty("departureSafe").GetBoolean(),
+                    safety.GetRawText()));
             }
             else
             {
@@ -2502,7 +2548,8 @@ public sealed class FakeControlServer : IAsyncDisposable
                 context,
                 "SafetyStateChanged",
                 safetyStateVersion,
-                WireToGateProtocolSerializer.ComputeSha256(Encoding.UTF8.GetBytes(line))))
+                WireToGateProtocolSerializer.ComputeSha256(Encoding.UTF8.GetBytes(line)),
+                payload.GetProperty("safety")))
         {
             return;
         }

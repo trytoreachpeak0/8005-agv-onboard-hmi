@@ -604,6 +604,34 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         public void HoldNextHandshakeAfterOutboxRead() => Volatile.Write(ref _holdHandshake, 1);
 
+        /// <summary>
+        /// The next outbox write of <paramref name="messageType"/> fails before anything reaches the inner journal: the
+        /// message is never on file (onboard-hmi#208). Completes <see cref="SaveFailed"/> when it has thrown.
+        /// </summary>
+        public void FailNextSave(string messageType)
+        {
+            Volatile.Write(ref _failMessageType, messageType);
+            Volatile.Write(ref _failNextSave, 1);
+        }
+
+        /// <summary>Completes once <see cref="FailNextSave"/> has failed a write.</summary>
+        public Task SaveFailed => _saveFailed.Task;
+
+        /// <summary>
+        /// Every row the journal returned from an outbox write, oldest first, acknowledged or not: what the vehicle has put
+        /// its name to (onboard-hmi#208).
+        /// </summary>
+        public IReadOnlyList<WireToGateDurableMessage> SavedRows => [.. _savedRows];
+
+        private readonly System.Collections.Concurrent.ConcurrentQueue<WireToGateDurableMessage> _savedRows = new();
+
+        /// <summary>The message whose write <see cref="FailNextSave"/> failed, as it was handed to the journal.</summary>
+        public WireToGateDurableMessage? FailedSave { get; private set; }
+
+        private readonly TaskCompletionSource _saveFailed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _failNextSave;
+        private string _failMessageType = "SafetyStateChanged";
+
         public void ReleaseSafetyChange() => _safetyReleased.TrySetResult();
 
         /// <summary>The held message's row as it was when written, before anything could rebind or acknowledge it.</summary>
@@ -643,6 +671,14 @@ public sealed partial class MultiDemandJourneyG2Tests
             WireToGateDurableMessage message,
             CancellationToken cancellationToken = default)
         {
+            if (message.MessageType == Volatile.Read(ref _failMessageType)
+                && Interlocked.Exchange(ref _failNextSave, 0) == 1)
+            {
+                FailedSave = message;
+                _saveFailed.TrySetResult();
+                throw new IOException("The outbox write failed (test double, onboard-hmi#208).");
+            }
+
             bool held = message.MessageType == Volatile.Read(ref _holdMessageType)
                 && Interlocked.Exchange(ref _holdSafety, 0) == 1;
             if (held)
@@ -652,6 +688,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             }
 
             WireToGateDurableMessage saved = await inner.SaveOutgoingBeforeSendAsync(message, cancellationToken);
+            _savedRows.Enqueue(saved);
             if (held)
             {
                 HeldRowAsSaved = saved;
