@@ -1,0 +1,6 @@
+# 稳定性：头部 9f574ee7df6ccb6db8a1416e74e451ed314ac510（第二版修复 53321d5 + 本条用例改动），连跑 20 次
+# 命令：dotnet build tests/SQCD.Agv.WireToGateG2Tests（增量，前一次改动后首次构建）；循环 20 次 dotnet test --no-build --filter "FullyQualifiedName~GivingUpAStaleSafetyChange|FullyQualifiedName~ASafetyChangeTheHandshakeDidNotCarry"，逐次记退出码
+# 输出原文（只打印非零退出的轮次与汇总）：
+    0 Error(s)
+exit0=20 nonzero=0
+

@@ -1,0 +1,198 @@
+head: 9f574ee7df6ccb6db8a1416e74e451ed314ac510; business service with fix: 199524398353a567ac1ad71baf34f38c37fb81f7e3704ea384335e9c6a6d9b8a; N=3
+=== FIXED
+build:     0 Error(s)
+run 1: exit=0 Passed!  - Failed:     0, Passed:    10, Skipped:     0, Total:    10
+run 2: exit=0 Passed!  - Failed:     0, Passed:    10, Skipped:     0, Total:    10
+run 3: exit=0 Passed!  - Failed:     0, Passed:    10, Skipped:     0, Total:    10
+restored: 199524398353a567ac1ad71baf34f38c37fb81f7e3704ea384335e9c6a6d9b8a OK
+=== M1 the give-up branch never taken: the kept change goes out as it is
+ src/SQCD.Agv.Wpf/WireToGateBusinessService.cs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+-            if (_pendingSafetyChange is { } stale
++            if (_pendingSafetyChange is { } stale && false
+build:     0 Error(s)
+run 1: exit=1 Failed!  - Failed:     4, Passed:     6, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFile)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFileUnderARepeatedGenerationNumber)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.GivingUpAStaleSafetyChangeWhoseOutboxWriteFailsDisconnectsAndTheNextHandshakeSupersedesIt
+   Assert.DoesNotContain() Failure: Filter matched in collection
+      3 StaleSafetyResend.cs:line 202
+      3 StaleSafetyResend.cs:line 260
+      1 StaleSafetyResend.cs:line 358
+      1 StaleSafetyResend.cs:line 404
+run 2: exit=1 Failed!  - Failed:     4, Passed:     6, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFile)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFileUnderARepeatedGenerationNumber)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.GivingUpAStaleSafetyChangeWhoseOutboxWriteFailsDisconnectsAndTheNextHandshakeSupersedesIt
+   Assert.DoesNotContain() Failure: Filter matched in collection
+      3 StaleSafetyResend.cs:line 202
+      3 StaleSafetyResend.cs:line 260
+      1 StaleSafetyResend.cs:line 358
+      1 StaleSafetyResend.cs:line 404
+run 3: exit=1 Failed!  - Failed:     4, Passed:     6, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFile)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFileUnderARepeatedGenerationNumber)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.GivingUpAStaleSafetyChangeWhoseOutboxWriteFailsDisconnectsAndTheNextHandshakeSupersedesIt
+   Assert.DoesNotContain() Failure: Filter matched in collection
+      3 StaleSafetyResend.cs:line 202
+      3 StaleSafetyResend.cs:line 260
+      1 StaleSafetyResend.cs:line 358
+      1 StaleSafetyResend.cs:line 404
+restored: 199524398353a567ac1ad71baf34f38c37fb81f7e3704ea384335e9c6a6d9b8a OK
+=== M2 the version is not skipped: the given-up number goes to the present reading
+ src/SQCD.Agv.Wpf/WireToGateBusinessService.cs | 1 -
+ 1 file changed, 1 deletion(-)
+-                _nextSafetyStateVersion = Math.Max(_nextSafetyStateVersion, checked(stale.Version + 1));
+build:     0 Error(s)
+run 1: exit=1 Failed!  - Failed:     1, Passed:     9, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   the outbox holds two safety states under one revision: v4
+      1 StaleSafetyResend.cs:line 241
+      1 StaleSafetyResend.cs:line 260
+run 2: exit=1 Failed!  - Failed:     1, Passed:     9, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   the outbox holds two safety states under one revision: v4
+      1 StaleSafetyResend.cs:line 241
+      1 StaleSafetyResend.cs:line 260
+run 3: exit=1 Failed!  - Failed:     1, Passed:     9, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   the outbox holds two safety states under one revision: v4
+      1 StaleSafetyResend.cs:line 241
+      1 StaleSafetyResend.cs:line 260
+restored: 199524398353a567ac1ad71baf34f38c37fb81f7e3704ea384335e9c6a6d9b8a OK
+=== M3 the outbox row is not settled: it stays unacknowledged for a later handshake
+ src/SQCD.Agv.Wpf/WireToGateBusinessService.cs | 2 --
+ 1 file changed, 2 deletions(-)
+-                await _session.AbandonSafetyStateChangedAsync(stale.Version, stale.ObservedAt, cancellationToken)
+-                    .ConfigureAwait(false);
+build:     0 Error(s)
+run 1: exit=1 Failed!  - Failed:     2, Passed:     8, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   Assert.DoesNotContain() Failure: Filter matched in collection
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.GivingUpAStaleSafetyChangeWhoseOutboxWriteFailsDisconnectsAndTheNextHandshakeSupersedesIt
+   System.TimeoutException : The operation has timed out.
+      1 StaleSafetyResend.cs:line 247
+      1 StaleSafetyResend.cs:line 260
+      1 StaleSafetyResend.cs:line 342
+      1 StaleSafetyResend.cs:line 404
+run 2: exit=1 Failed!  - Failed:     2, Passed:     8, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   Assert.DoesNotContain() Failure: Filter matched in collection
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.GivingUpAStaleSafetyChangeWhoseOutboxWriteFailsDisconnectsAndTheNextHandshakeSupersedesIt
+   System.TimeoutException : The operation has timed out.
+      1 StaleSafetyResend.cs:line 247
+      1 StaleSafetyResend.cs:line 260
+      1 StaleSafetyResend.cs:line 342
+      1 StaleSafetyResend.cs:line 404
+run 3: exit=1 Failed!  - Failed:     2, Passed:     8, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   Assert.DoesNotContain() Failure: Filter matched in collection
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.GivingUpAStaleSafetyChangeWhoseOutboxWriteFailsDisconnectsAndTheNextHandshakeSupersedesIt
+   System.TimeoutException : The operation has timed out.
+      1 StaleSafetyResend.cs:line 247
+      1 StaleSafetyResend.cs:line 260
+      1 StaleSafetyResend.cs:line 342
+      1 StaleSafetyResend.cs:line 404
+restored: 199524398353a567ac1ad71baf34f38c37fb81f7e3704ea384335e9c6a6d9b8a OK
+=== M4 no content comparison: every kept change is given up, same content or not
+ src/SQCD.Agv.Wpf/WireToGateBusinessService.cs | 3 +--
+ 1 file changed, 1 insertion(+), 2 deletions(-)
+-            if (_pendingSafetyChange is { } stale
+-                && !string.Equals(stale.Signature, signature, StringComparison.Ordinal))
++            if (_pendingSafetyChange is { } stale)
+build:     0 Error(s)
+run 1: exit=1 Failed!  - Failed:     3, Passed:     7, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(trigger: FatalFaultLatch)
+   Timed out after 5s waiting for: the refused report 09e2abe5-2a63-0e5a-a126-e37798b2fefa to be sent again on the new connection. UI errors: []
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(trigger: IoSnapshot)
+   Timed out after 5s waiting for: the refused report 5cb85bf6-867c-4156-a894-2bfb29e952d9 to be sent again on the new connection. UI errors: []
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportJudgedWhileTheConnectionIsClosingIsNotWrittenIntoIt
+   Assert.Single() Failure: The collection did not contain any matching items
+      2 HandshakeWindowIntrusion.cs:line 132
+      2 HandshakeWindowIntrusion.cs:line 167
+      1 HandshakeWindowIntrusion.cs:line 426
+      1 HandshakeWindowIntrusion.cs:line 461
+run 2: exit=1 Failed!  - Failed:     3, Passed:     7, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(trigger: FatalFaultLatch)
+   Timed out after 5s waiting for: the refused report 35af16ff-6e42-ec52-ab0b-ccc4ce41fe1a to be sent again on the new connection. UI errors: []
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(trigger: IoSnapshot)
+   Timed out after 5s waiting for: the refused report 6357f841-f5e0-d45f-9918-a680647d7446 to be sent again on the new connection. UI errors: []
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportJudgedWhileTheConnectionIsClosingIsNotWrittenIntoIt
+   Assert.Single() Failure: The collection did not contain any matching items
+      2 HandshakeWindowIntrusion.cs:line 132
+      2 HandshakeWindowIntrusion.cs:line 167
+      1 HandshakeWindowIntrusion.cs:line 426
+      1 HandshakeWindowIntrusion.cs:line 461
+run 3: exit=1 Failed!  - Failed:     3, Passed:     7, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(trigger: FatalFaultLatch)
+   Timed out after 5s waiting for: the refused report 88dd3566-0bb7-a454-ac16-e885a13ca5cd to be sent again on the new connection. UI errors: []
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(trigger: IoSnapshot)
+   Timed out after 5s waiting for: the refused report 8d781e94-57ec-9751-8c9e-031a44602fef to be sent again on the new connection. UI errors: []
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportJudgedWhileTheConnectionIsClosingIsNotWrittenIntoIt
+   Timed out after 5s waiting for: the refused report 33e28ab0-7cc7-655b-b7ff-4dd1c7c194ed to be sent on the new connection. UI errors: []
+      2 HandshakeWindowIntrusion.cs:line 132
+      2 HandshakeWindowIntrusion.cs:line 167
+      1 HandshakeWindowIntrusion.cs:line 444
+      1 HandshakeWindowIntrusion.cs:line 461
+restored: 199524398353a567ac1ad71baf34f38c37fb81f7e3704ea384335e9c6a6d9b8a OK
+=== M5 the first fix's condition back: given up only when the session generation number changed
+ src/SQCD.Agv.Wpf/WireToGateBusinessService.cs | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
++                && stale.SessionGeneration != current.SessionGeneration
+-                signature);
++                signature,
++                current.SessionGeneration);
+-        string Signature);
++        string Signature,
++        long? SessionGeneration = null);
+build:     0 Error(s)
+run 1: exit=1 Failed!  - Failed:     1, Passed:     9, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFileUnderARepeatedGenerationNumber)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+      1 StaleSafetyResend.cs:line 202
+      1 StaleSafetyResend.cs:line 260
+run 2: exit=1 Failed!  - Failed:     1, Passed:     9, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFileUnderARepeatedGenerationNumber)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+      1 StaleSafetyResend.cs:line 202
+      1 StaleSafetyResend.cs:line 260
+run 3: exit=1 Failed!  - Failed:     1, Passed:     9, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFileUnderARepeatedGenerationNumber)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+      1 StaleSafetyResend.cs:line 202
+      1 StaleSafetyResend.cs:line 260
+restored: 199524398353a567ac1ad71baf34f38c37fb81f7e3704ea384335e9c6a6d9b8a OK
+=== M6 the signature is not cleared after giving up: the present reading may go unreported
+ src/SQCD.Agv.Wpf/WireToGateBusinessService.cs | 1 -
+ 1 file changed, 1 deletion(-)
+-                _lastSafetySignature = null;
+build:     0 Error(s)
+run 1: exit=1 Failed!  - Failed:     1, Passed:     9, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFileUnderARepeatedGenerationNumber)
+   Timed out after 5s waiting for: a change above the handshake snapshot, saying unsafe, to be on file and accepted. UI errors: []
+      1 StaleSafetyResend.cs:line 170
+      1 StaleSafetyResend.cs:line 260
+run 2: exit=1 Failed!  - Failed:     1, Passed:     9, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFileUnderARepeatedGenerationNumber)
+   Timed out after 5s waiting for: a change above the handshake snapshot, saying unsafe, to be on file and accepted. UI errors: []
+      1 StaleSafetyResend.cs:line 170
+      1 StaleSafetyResend.cs:line 260
+run 3: exit=1 Failed!  - Failed:     1, Passed:     9, Skipped:     0, Total:    10
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFileUnderARepeatedGenerationNumber)
+   Timed out after 5s waiting for: a change above the handshake snapshot, saying unsafe, to be on file and accepted. UI errors: []
+      1 StaleSafetyResend.cs:line 170
+      1 StaleSafetyResend.cs:line 260
+restored: 199524398353a567ac1ad71baf34f38c37fb81f7e3704ea384335e9c6a6d9b8a OK
+done

@@ -463,7 +463,7 @@ public sealed partial class MultiDemandJourneyG2Tests
 
     /// <summary>
     /// 反过来：连接还活着时的失败——服务端收下上报、连接一直开着、就是不回 <c>DurableAck</c>，等确认超时——业务服务仍然
-    /// 断开会话，由重连后的新会话以同一版本和内容重试。
+    /// 断开会话，由重连后的新会话重试：读数没变就以同一版本和内容，变了就放弃它、改报此刻读数（hmi#208）。
     /// </summary>
     /// <remarks>
     /// 守的是 <see cref="WireToGateConnectionGoneException"/> 的边界：它只标「连接已经不在了」，不能把活连接上该断的也吞掉。
@@ -604,6 +604,34 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         public void HoldNextHandshakeAfterOutboxRead() => Volatile.Write(ref _holdHandshake, 1);
 
+        /// <summary>
+        /// The next outbox write of <paramref name="messageType"/> fails before anything reaches the inner journal: the
+        /// message is never on file (onboard-hmi#208). Completes <see cref="SaveFailed"/> when it has thrown.
+        /// </summary>
+        public void FailNextSave(string messageType)
+        {
+            Volatile.Write(ref _failMessageType, messageType);
+            Volatile.Write(ref _failNextSave, 1);
+        }
+
+        /// <summary>Completes once <see cref="FailNextSave"/> has failed a write.</summary>
+        public Task SaveFailed => _saveFailed.Task;
+
+        /// <summary>
+        /// Every row the journal returned from an outbox write, oldest first, acknowledged or not: what the vehicle has put
+        /// its name to (onboard-hmi#208).
+        /// </summary>
+        public IReadOnlyList<WireToGateDurableMessage> SavedRows => [.. _savedRows];
+
+        private readonly System.Collections.Concurrent.ConcurrentQueue<WireToGateDurableMessage> _savedRows = new();
+
+        /// <summary>The message whose write <see cref="FailNextSave"/> failed, as it was handed to the journal.</summary>
+        public WireToGateDurableMessage? FailedSave { get; private set; }
+
+        private readonly TaskCompletionSource _saveFailed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _failNextSave;
+        private string _failMessageType = "SafetyStateChanged";
+
         public void ReleaseSafetyChange() => _safetyReleased.TrySetResult();
 
         /// <summary>The held message's row as it was when written, before anything could rebind or acknowledge it.</summary>
@@ -643,6 +671,14 @@ public sealed partial class MultiDemandJourneyG2Tests
             WireToGateDurableMessage message,
             CancellationToken cancellationToken = default)
         {
+            if (message.MessageType == Volatile.Read(ref _failMessageType)
+                && Interlocked.Exchange(ref _failNextSave, 0) == 1)
+            {
+                FailedSave = message;
+                _saveFailed.TrySetResult();
+                throw new IOException("The outbox write failed (test double, onboard-hmi#208).");
+            }
+
             bool held = message.MessageType == Volatile.Read(ref _holdMessageType)
                 && Interlocked.Exchange(ref _holdSafety, 0) == 1;
             if (held)
@@ -652,6 +688,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             }
 
             WireToGateDurableMessage saved = await inner.SaveOutgoingBeforeSendAsync(message, cancellationToken);
+            _savedRows.Enqueue(saved);
             if (held)
             {
                 HeldRowAsSaved = saved;
@@ -660,11 +697,50 @@ public sealed partial class MultiDemandJourneyG2Tests
             return saved;
         }
 
+        /// <summary>
+        /// The next time the row <paramref name="messageId"/> is marked acknowledged, the write fails and the row stays as it
+        /// was (onboard-hmi#208). Completes <see cref="AcknowledgementFailed"/> when it has thrown.
+        /// </summary>
+        public void FailNextAcknowledgement(string messageId)
+        {
+            lock (_failAcknowledgementGate)
+            {
+                _failAcknowledgementOf = messageId;
+            }
+        }
+
+        /// <summary>Completes once <see cref="FailNextAcknowledgement"/> has failed a write.</summary>
+        public Task AcknowledgementFailed => _acknowledgementFailed.Task;
+
+        private readonly TaskCompletionSource _acknowledgementFailed =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly object _failAcknowledgementGate = new();
+        private string? _failAcknowledgementOf;
+
         public Task MarkOutgoingAcknowledgedAsync(
             string messageId,
             string acceptedContentSha256,
-            CancellationToken cancellationToken = default) =>
-            inner.MarkOutgoingAcknowledgedAsync(messageId, acceptedContentSha256, cancellationToken);
+            CancellationToken cancellationToken = default)
+        {
+            bool fail;
+            // By content, under a lock: Interlocked.CompareExchange on a string compares references.
+            lock (_failAcknowledgementGate)
+            {
+                fail = string.Equals(_failAcknowledgementOf, messageId, StringComparison.Ordinal);
+                if (fail)
+                {
+                    _failAcknowledgementOf = null;
+                }
+            }
+
+            if (fail)
+            {
+                _acknowledgementFailed.TrySetResult();
+                throw new IOException("Marking the outbox row acknowledged failed (test double, onboard-hmi#208).");
+            }
+
+            return inner.MarkOutgoingAcknowledgedAsync(messageId, acceptedContentSha256, cancellationToken);
+        }
 
         public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
             Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,

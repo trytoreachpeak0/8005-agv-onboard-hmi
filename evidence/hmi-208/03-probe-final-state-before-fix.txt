@@ -1,0 +1,21 @@
+# head 9f574ee7df6ccb6db8a1416e74e451ed314ac510; product files from 6a249f5 (= w2g/fp-v2-impl@b789c3d4, unfixed); main assertions reversed
+# build: dotnet build tests/SQCD.Agv.WireToGateG2Tests --no-incremental -v q
+# test:  dotnet test tests/SQCD.Agv.WireToGateG2Tests --no-build --filter "FullyQualifiedName~ASafetyChangeTheHandshakeDidNotCarry" --logger "console;verbosity=detailed"
+ .../WireToGateSessionClient.cs                     | 52 ++++------------------
+ .../WireToGateSessionService.cs                    |  6 ---
+ src/SQCD.Agv.Wpf/WireToGateBusinessService.cs      | 43 ++----------------
+ 3 files changed, 11 insertions(+), 90 deletions(-)
+probe applied: 2 replacements
+-                safeOnFile.Length == 0,
++                safeOnFile.Length > 0,
+-            Assert.Empty(readyAnnounced);
++            Assert.NotEmpty(readyAnnounced);
+build:     0 Error(s)
+  Passed ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFile) [940 ms]
+ On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+  Passed ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFileUnderARepeatedGenerationNumber) [672 ms]
+ On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+  Passed ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead) [655 ms]
+ On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+exit=0
+restored; tree clean: yes

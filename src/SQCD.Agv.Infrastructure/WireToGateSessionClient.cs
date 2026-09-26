@@ -630,14 +630,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             throw new InvalidDataException("SLOT_SET_INVALID");
         }
 
-        string journalEpoch = Volatile.Read(ref _journalEpoch)
-            ?? throw new InvalidOperationException("WIRE_TO_GATE_JOURNAL_NOT_READY");
-        // The epoch supplies strict cross-journal uniqueness.  The version and
-        // observation time keep retries of one in-memory work item stable while
-        // allowing a later observation to remain a distinct event even if a
-        // runtime is still using the same server baseline version.
-        string deduplicationKey =
-            $"safety-state-changed:{journalEpoch}:{safetyStateVersion}:{observedAt.ToUniversalTime():O}";
+        string deduplicationKey = SafetyStateChangedDeduplicationKey(safetyStateVersion, observedAt);
         string messageId = await SendDurableCoreAsync(
             "SafetyStateChanged",
             deduplicationKey,
@@ -658,6 +651,49 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             current.Readiness,
             current.ReasonCodes);
         return messageId;
+    }
+
+    /// <summary>
+    /// Gives up a <c>SafetyStateChanged</c> that will never be sent: its outbox row, if it has one and it is still
+    /// unacknowledged, is marked as no longer owed, so no later handshake replays it (8005-agv-onboard-hmi#208).
+    /// </summary>
+    /// <remarks>
+    /// For a change the business service kept across a reconnect that the handshake did not carry, whose content the
+    /// IO has since moved past. Sent now it would go on file above the handshake snapshot with older content; replayed
+    /// by a later handshake it would do the same in that generation. "Acknowledged" here means what it means for the
+    /// superseded <c>RecoveryStateReport</c>s in <see cref="ConnectAndRecoverAsync"/>: nothing more is owed the server.
+    /// </remarks>
+    /// <returns>True when a row was on file and has been given up; false when there was none or it was already settled.</returns>
+    public async Task<bool> AbandonSafetyStateChangedAsync(
+        long safetyStateVersion,
+        DateTimeOffset observedAt,
+        CancellationToken cancellationToken = default)
+    {
+        WireToGateDurableMessage? row = await _journal
+            .ReadOutgoingByDeduplicationKeyAsync(
+                SafetyStateChangedDeduplicationKey(safetyStateVersion, observedAt),
+                cancellationToken)
+            .ConfigureAwait(false);
+        if (row is null || row.Acknowledged)
+        {
+            return false;
+        }
+
+        await _journal
+            .MarkOutgoingAcknowledgedAsync(row.MessageId, row.ContentSha256, cancellationToken)
+            .ConfigureAwait(false);
+        return true;
+    }
+
+    private string SafetyStateChangedDeduplicationKey(long safetyStateVersion, DateTimeOffset observedAt)
+    {
+        string journalEpoch = Volatile.Read(ref _journalEpoch)
+            ?? throw new InvalidOperationException("WIRE_TO_GATE_JOURNAL_NOT_READY");
+        // The epoch supplies strict cross-journal uniqueness.  The version and
+        // observation time keep retries of one in-memory work item stable while
+        // allowing a later observation to remain a distinct event even if a
+        // runtime is still using the same server baseline version.
+        return $"safety-state-changed:{journalEpoch}:{safetyStateVersion}:{observedAt.ToUniversalTime():O}";
     }
 
     public async Task<WireToGateSessionSnapshot> ConnectAndRecoverAsync(
