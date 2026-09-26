@@ -1,0 +1,14 @@
+# 探针：修复前的产品代码（三个产品文件取自 6a249f5，即 w2g/fp-v2-impl@b789c3d4 的内容），测试取自 HEAD 02d8daebc4a7194726de297ea0dbea802a996b75，关掉两条主断言
+# 目的：证明其余断言（最终状态是此刻读数、一个号一份内容、发件箱不留旧行）修复前就成立，缺陷只在窗口
+ .../WireToGateSessionClient.cs                     | 52 ++++------------------
+ .../WireToGateSessionService.cs                    |  6 ---
+ src/SQCD.Agv.Wpf/WireToGateBusinessService.cs      | 38 ++--------------
+ 3 files changed, 11 insertions(+), 85 deletions(-)
+probe applied: 2 replacements
+-                safeOnFile.Length == 0,
++                true || safeOnFile.Length == 0,
+-            Assert.Empty(readyAnnounced);
++            _ = readyAnnounced;
+    0 Error(s)
+Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2
+exit=0

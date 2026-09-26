@@ -1,0 +1,107 @@
+head: 02d8daebc4a7194726de297ea0dbea802a996b75; business service with fix: b5cba84847edf013b6440b7690cfc79c6226a6f9a84c10b1abbd678fa7a24fa1; N=3
+=== FIXED
+build:     0 Error(s)
+run 1: exit=0 Passed!  - Failed:     0, Passed:     8, Skipped:     0, Total:     8
+run 2: exit=0 Passed!  - Failed:     0, Passed:     8, Skipped:     0, Total:     8
+run 3: exit=0 Passed!  - Failed:     0, Passed:     8, Skipped:     0, Total:     8
+restored: b5cba84847edf013b6440b7690cfc79c6226a6f9a84c10b1abbd678fa7a24fa1 OK
+=== M1 the give-up branch never taken: the kept change goes out as it is
+ src/SQCD.Agv.Wpf/WireToGateBusinessService.cs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+-                && carried.SessionGeneration != current.SessionGeneration
++                && false && carried.SessionGeneration != current.SessionGeneration
+build:     0 Error(s)
+run 1: exit=1 Failed!  - Failed:     2, Passed:     6, Skipped:     0, Total:     8
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFile)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+      2      at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 166
+      2    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 226
+run 2: exit=1 Failed!  - Failed:     2, Passed:     6, Skipped:     0, Total:     8
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFile)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+      2      at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 166
+      2    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 226
+run 3: exit=1 Failed!  - Failed:     2, Passed:     6, Skipped:     0, Total:     8
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: NeverOnFile)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   the server had departure-safe on file while the IO read unsafe. On file in the second session, in order: SafetyStateSnapshot v3 departureSafe=False | SafetyStateChanged v4 departureSafe=True | SafetyStateChanged v5 departureSafe=False; SessionReadiness sent on it: RECOVERY_REQUIRED, READY, RECOVERY_REQUIRED
+      2      at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 166
+      2    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 226
+restored: b5cba84847edf013b6440b7690cfc79c6226a6f9a84c10b1abbd678fa7a24fa1 OK
+=== M2 the version is not skipped: the given-up number goes to the present reading
+ src/SQCD.Agv.Wpf/WireToGateBusinessService.cs | 1 -
+ 1 file changed, 1 deletion(-)
+-                _nextSafetyStateVersion = Math.Max(_nextSafetyStateVersion, checked(carried.Version + 1));
+build:     0 Error(s)
+run 1: exit=1 Failed!  - Failed:     1, Passed:     7, Skipped:     0, Total:     8
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   the outbox holds two safety states under one revision: v4
+      1      at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 207
+      1    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 226
+run 2: exit=1 Failed!  - Failed:     1, Passed:     7, Skipped:     0, Total:     8
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   the outbox holds two safety states under one revision: v4
+      1      at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 207
+      1    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 226
+run 3: exit=1 Failed!  - Failed:     1, Passed:     7, Skipped:     0, Total:     8
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   the outbox holds two safety states under one revision: v4
+      1      at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 207
+      1    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 226
+restored: b5cba84847edf013b6440b7690cfc79c6226a6f9a84c10b1abbd678fa7a24fa1 OK
+=== M3 the outbox row is not settled: it stays unacknowledged for a later handshake
+ src/SQCD.Agv.Wpf/WireToGateBusinessService.cs | 2 --
+ 1 file changed, 2 deletions(-)
+-                await _session.AbandonSafetyStateChangedAsync(carried.Version, carried.ObservedAt, cancellationToken)
+-                    .ConfigureAwait(false);
+build:     0 Error(s)
+run 1: exit=1 Failed!  - Failed:     1, Passed:     7, Skipped:     0, Total:     8
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   Assert.DoesNotContain() Failure: Filter matched in collection
+      1      at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 213
+      1    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 226
+run 2: exit=1 Failed!  - Failed:     1, Passed:     7, Skipped:     0, Total:     8
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   Assert.DoesNotContain() Failure: Filter matched in collection
+      1      at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 213
+      1    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 226
+run 3: exit=1 Failed!  - Failed:     1, Passed:     7, Skipped:     0, Total:     8
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(unseen: LandedAfterTheOutboxRead)
+   Assert.DoesNotContain() Failure: Filter matched in collection
+      1      at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 213
+      1    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyChangeTheHandshakeDidNotCarryPutsNoOlderContentOnFileAboveTheSnapshot(UnseenByTheHandshake unseen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.StaleSafetyResend.cs:line 226
+restored: b5cba84847edf013b6440b7690cfc79c6226a6f9a84c10b1abbd678fa7a24fa1 OK
+=== M4 no content comparison: every kept change is given up, same content or not
+ src/SQCD.Agv.Wpf/WireToGateBusinessService.cs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+-                && !string.Equals(carried.Signature, signature, StringComparison.Ordinal))
++)
+build:     0 Error(s)
+run 1: exit=1 Failed!  - Failed:     2, Passed:     6, Skipped:     0, Total:     8
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(trigger: FatalFaultLatch)
+   Timed out after 5s waiting for: the refused report bc7376ef-dc60-0158-82ce-54871b67864f to be sent again on the new connection. UI errors: []
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(trigger: IoSnapshot)
+   Timed out after 5s waiting for: the refused report 13895450-fa44-655e-a7a2-1caa1b6d3129 to be sent again on the new connection. UI errors: []
+      2    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(SafetyReportTrigger trigger) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 132
+      2    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(SafetyReportTrigger trigger) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 167
+run 2: exit=1 Failed!  - Failed:     2, Passed:     6, Skipped:     0, Total:     8
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(trigger: FatalFaultLatch)
+   Timed out after 5s waiting for: the refused report d9e7e6d8-9bee-ae59-9a42-fdd77a064faf to be sent again on the new connection. UI errors: []
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(trigger: IoSnapshot)
+   Timed out after 5s waiting for: the refused report 883ef60b-dc3b-c950-8b6e-81fb6e3af2bf to be sent again on the new connection. UI errors: []
+      2    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(SafetyReportTrigger trigger) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 132
+      2    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(SafetyReportTrigger trigger) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 167
+run 3: exit=1 Failed!  - Failed:     2, Passed:     6, Skipped:     0, Total:     8
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(trigger: FatalFaultLatch)
+   Timed out after 5s waiting for: the refused report 236c86d8-6510-4d5f-8f87-123805b924b7 to be sent again on the new connection. UI errors: []
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(trigger: IoSnapshot)
+   Timed out after 5s waiting for: the refused report 2f11d7fc-de9d-e05c-9013-5ed3d7177cc8 to be sent again on the new connection. UI errors: []
+      2    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(SafetyReportTrigger trigger) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 132
+      2    at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASafetyReportStillInFlightStaysOutOfTheNextHandshake(SafetyReportTrigger trigger) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi208-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:line 167
+restored: b5cba84847edf013b6440b7690cfc79c6226a6f9a84c10b1abbd678fa7a24fa1 OK
+done
