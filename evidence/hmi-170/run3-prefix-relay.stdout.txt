@@ -1,0 +1,50 @@
+{
+  "Mode": "relay",
+  "TransitionCount": 1,
+  "Transitions": [
+    "160ms connected"
+  ],
+  "ConnectedAtEnd": true,
+  "ConnectedSnapshots": 127,
+  "TransactionCounter": 256,
+  "PollInterval": {
+    "Count": 126,
+    "MeanMs": 100.49,
+    "MedianMs": 100.26,
+    "P05Ms": 99.61,
+    "P95Ms": 102.34,
+    "MaxMs": 115.82
+  },
+  "RequestsPerSecond": 19.90236452805993,
+  "Pairing": {
+    "Requests": 256,
+    "Responses": 256,
+    "Paired": 256,
+    "EchoEqualsRequest": 256,
+    "EchoEqualsLowByteOnly": 0,
+    "EchoOther": 0,
+    "NotLowByteRule": 1,
+    "DistinctRequestIds": 256,
+    "MinRequestId": 1,
+    "MaxRequestId": 256,
+    "Wraps": 0,
+    "FirstMismatches": [],
+    "SampleAroundHighIds": [
+      "conn 1: req 250 (0x00FA) -\u003E resp 250 (0x00FA)",
+      "conn 1: req 251 (0x00FB) -\u003E resp 251 (0x00FB)",
+      "conn 1: req 252 (0x00FC) -\u003E resp 252 (0x00FC)",
+      "conn 1: req 253 (0x00FD) -\u003E resp 253 (0x00FD)",
+      "conn 1: req 254 (0x00FE) -\u003E resp 254 (0x00FE)",
+      "conn 1: req 255 (0x00FF) -\u003E resp 255 (0x00FF)",
+      "conn 1: req 256 (0x0100) -\u003E resp 256 (0x0100)"
+    ]
+  },
+  "RelayConnections": 1,
+  "Pass": false,
+  "Verdicts": [
+    "connection: exactly one transition (connected) and still connected at the end",
+    "pairing: 256/256 responses echo the request id exactly, 0 echo only its low byte, 0 echo something else; 0 requests unanswered",
+    "rule: at least one response id is NOT (request id \u0026 0xFF) -- STOP and report",
+    "range: ids 1..256, 256 distinct, 0 wraps"
+  ]
+}

@@ -1,0 +1,11 @@
+{"t":6.66,"kind":"probe-start","data":{"Mode":"relay","ModuleHost":"192.168.71.150","ModulePort":502,"UnitId":255,"DurationSeconds":180,"PollIntervalMs":100,"ReconnectDelayMs":1000,"StopOnDisconnect":false,"clientAssembly":"SQCD.Agv.Infrastructure, Version=0.2.0.0, Culture=neutral, PublicKeyToken=null","clientVersion":"0.2.0-safety-mock-travel\u002B24af41e4ab769f10cd15381fd3b4a56babb62c78","machine":"DESKTOP-94OA6CK","vehicleClockUtc":"2027-02-14T19:56:44.4523457+00:00"}}
+{"t":110.343,"kind":"relay-listening","data":{"port":62547}}
+{"t":134.181,"kind":"client-log","data":{"severity":"Information","source":"ModbusTcpIoModuleClient","message":"\u5DF2\u8FDE\u63A5IO\u6A21\u5757 127.0.0.1:62547\uFF0CUnitId=255\u3002","exception":null}}
+{"t":138.698,"kind":"relay-connection-open","data":{"connection":1}}
+{"t":160.552,"kind":"connection","data":{"connected":true,"duringProbeStop":false}}
+{"t":165.786,"kind":"io","data":{"lockers":"011 011 011 011 011 011 011 011","legend":"per slot: DO lockDI curtainDI"}}
+{"t":12926.345,"kind":"rule-violation","data":{"connection":1,"requestId":256,"responseId":256,"frameT":12926.0921,"hex":"010000000005FF0202FFFF"}}
+{"t":12936.362,"kind":"stop-requested","data":{"reason":"response id is not (request id \u0026 0xFF)"}}
+{"t":12942.628,"kind":"relay-connection-closed","data":{"connection":1}}
+{"t":12940.301,"kind":"stopping","data":{"connectedAtEnd":true,"transactionCounter":256}}
+{"t":12944.517,"kind":"connection","data":{"connected":false,"duringProbeStop":true}}

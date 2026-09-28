@@ -1,0 +1,9 @@
+{"t":7.709,"kind":"probe-start","data":{"Mode":"relay","ModuleHost":"192.168.71.150","ModulePort":502,"UnitId":255,"DurationSeconds":300,"PollIntervalMs":100,"ReconnectDelayMs":1000,"StopOnDisconnect":true,"clientAssembly":"SQCD.Agv.Infrastructure, Version=0.2.0.0, Culture=neutral, PublicKeyToken=null","clientVersion":"0.2.0-safety-mock-travel\u002Bd51b19d1f788260f6e07138ef8dbd628887b86c1","machine":"DESKTOP-94OA6CK","vehicleClockUtc":"2027-02-14T19:51:26.8050984+00:00"}}
+{"t":114.903,"kind":"relay-listening","data":{"port":62544}}
+{"t":137.867,"kind":"client-log","data":{"severity":"Information","source":"ModbusTcpIoModuleClient","message":"\u5DF2\u8FDE\u63A5IO\u6A21\u5757 127.0.0.1:62544\uFF0CUnitId=255\u3002","exception":null}}
+{"t":141.247,"kind":"relay-connection-open","data":{"connection":1}}
+{"t":163.976,"kind":"connection","data":{"connected":true,"duringProbeStop":false}}
+{"t":169.004,"kind":"io","data":{"lockers":"011 011 011 011 011 011 011 011","legend":"per slot: DO lockDI curtainDI"}}
+{"t":300131.76,"kind":"stopping","data":{"connectedAtEnd":true,"transactionCounter":5978}}
+{"t":300142.684,"kind":"connection","data":{"connected":false,"duringProbeStop":true}}
+{"t":300142.987,"kind":"relay-connection-closed","data":{"connection":1}}
