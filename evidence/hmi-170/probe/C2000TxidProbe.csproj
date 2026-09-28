@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Read-only field probe for onboard-hmi#170. Drives the product's own ModbusTcpIoModuleClient
+    (poll loop only: FC01 + FC02) against a real C2000 module and records what the wire carried.
+    Not part of the solution on purpose: it is evidence, built once for one field window.
+    SourceRoot lets the same probe be compiled against another checkout of src/ (the pre-#169
+    client) without copying the product source.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <SourceRoot Condition="'$(SourceRoot)' == ''">../../../src</SourceRoot>
+    <SelfContained>true</SelfContained>
+    <PublishSingleFile>true</PublishSingleFile>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="$(SourceRoot)/SQCD.Agv.Core/SQCD.Agv.Core.csproj" />
+    <ProjectReference Include="$(SourceRoot)/SQCD.Agv.Infrastructure/SQCD.Agv.Infrastructure.csproj" />
+  </ItemGroup>
+</Project>
