@@ -51,6 +51,7 @@ internal static class Program
             options.PollIntervalMs,
             options.ReconnectDelayMs,
             options.StopOnDisconnect,
+            options.StopOnRuleViolation,
             clientAssembly = typeof(ModbusTcpIoModuleClient).Assembly.FullName,
             clientVersion = typeof(ModbusTcpIoModuleClient).Assembly
                 .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
@@ -73,6 +74,12 @@ internal static class Program
         {
             relay = new Relay(options.ModuleHost, options.ModulePort, recorder, () =>
             {
+                if (!options.StopOnRuleViolation)
+                {
+                    // Recorded by the relay already; this run collects the rule instead of judging it.
+                    return;
+                }
+
                 recorder.Event("stop-requested", new { reason = "response id is not (request id & 0xFF)" });
                 stopping.Cancel();
             });
@@ -190,21 +197,29 @@ internal sealed record Options(
     int PollIntervalMs,
     int ReconnectDelayMs,
     bool StopOnDisconnect,
+    bool StopOnRuleViolation,
     string OutputDirectory)
 {
     public const string Usage =
         "C2000TxidProbe --mode direct|relay --out <dir> [--host 192.168.71.150] [--port 502] [--unit-id 255] " +
-        "[--seconds 300] [--poll-ms 100] [--reconnect-ms 1000] [--keep-going-after-disconnect]";
+        "[--seconds 300] [--poll-ms 100] [--reconnect-ms 1000] [--keep-going-after-disconnect] [--keep-going-after-rule-violation]";
 
     public static Options Parse(string[] args)
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
         bool keepGoing = false;
+        bool keepGoingAfterRule = false;
         for (int i = 0; i < args.Length; i++)
         {
             if (args[i] == "--keep-going-after-disconnect")
             {
                 keepGoing = true;
+                continue;
+            }
+
+            if (args[i] == "--keep-going-after-rule-violation")
+            {
+                keepGoingAfterRule = true;
                 continue;
             }
 
@@ -231,6 +246,7 @@ internal sealed record Options(
             int.Parse(Get(map, "poll-ms", "100"), CultureInfo.InvariantCulture),
             int.Parse(Get(map, "reconnect-ms", "1000"), CultureInfo.InvariantCulture),
             !keepGoing,
+            !keepGoingAfterRule,
             Get(map, "out", null));
     }
 
