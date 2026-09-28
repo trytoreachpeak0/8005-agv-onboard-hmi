@@ -27,9 +27,9 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
     /// <para>
     /// <b>It buys nothing against the truncating echo, and an earlier version of this comment
     /// claimed that it did.</b> Work it through. With <see cref="MaxTransactionId"/> at 255 no
-    /// request ever carries 256, so the truncated frame the field reported
-    /// (<c>transaction 0, protocol 0, unit 255, length 5</c>) cannot arise from this client at
-    /// all. Widen the upper bound back and request 256 does answer as 0 -- but <c>0 != 256</c>
+    /// request ever carries 256, so a truncated answer to it (the frame onboard-hmi#52 was filed
+    /// on, <c>transaction 0, protocol 0, unit 255, length 5</c> -- itself a probe misreading, see
+    /// <see cref="MaxTransactionId"/>) cannot arise from this client at all. Widen the upper bound back and request 256 does answer as 0 -- but <c>0 != 256</c>
     /// wherever the lower bound sits, so detecting it does not depend on this constant. And were
     /// the lower bound really 0, id 0 would come round once every 256 requests, the module would
     /// echo 0 for 0, and that pairing would simply be correct.
@@ -48,15 +48,22 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The vehicles' Kangnaide C2000 IO module echoes only the <b>low byte</b> of the Modbus TCP
-    /// transaction id. Measured on agv01 on 2026-09-13 over one connection: request 256 came back
-    /// as transaction 0 on every run, at a 50 ms and at a 200 ms read interval alike, so the
-    /// failure is bound to the request count and not to timing. A 16-bit counter therefore loses
-    /// the module after 255 requests -- at the default 100 ms poll and two requests per poll,
-    /// about 13 seconds after connecting. The slots simulator echoes all 16 bits, which is why
-    /// every rehearsal passed. Restricting the counter to 1..255 made the same module answer 600
-    /// consecutive requests with zero errors. The sibling field probe carries the same fix
-    /// (<c>8005-agv-control-server</c>, <c>scripts/field/W1SlotIo.ps1</c>, <c>aeadd667</c>).
+    /// One byte keeps the client paired with <b>both</b> kinds of module it could meet: one that
+    /// echoes the full 16-bit Modbus TCP transaction id, and one that echoes only its low byte.
+    /// For an id in 1..255 the two echoes are the same value, so neither can mismatch.
+    /// </para>
+    /// <para>
+    /// Only the full-echo kind has actually been observed. The vehicles' Kangnaide C2000 on agv02,
+    /// driven by this client on 2026-09-28, echoed all 16 bits of ids 1..3590 (onboard-hmi#170,
+    /// <c>evidence/hmi-170</c>); agv01 and agv03 were not measured that way. This constant was
+    /// introduced (onboard-hmi#52) on the belief that the C2000 truncates, taken from agv01 on
+    /// 2026-09-13: request 256 appeared to come back as 0. That reading was the field probe's own
+    /// parse error, not the module -- <c>8005-agv-control-server</c>'s
+    /// <c>scripts/field/W1SlotIo.ps1</c> before <c>aeadd667</c> computed the id as
+    /// <c>($header[0] -shl 8) -bor $header[1]</c> on a <c>byte[]</c>, and in pwsh
+    /// <c>[byte]1 -shl 8</c> stays a Byte and yields 0. The upper bound is kept anyway: a
+    /// truncating Modbus device is legitimate, and at the default 100 ms poll a 16-bit counter
+    /// would lose one about 13 seconds after connecting.
     /// </para>
     /// <para>
     /// <b>This is also what makes it safe that <see cref="_transactionId"/> survives a reconnect.</b>
