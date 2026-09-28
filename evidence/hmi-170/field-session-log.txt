@@ -1,0 +1,79 @@
+onboard-hmi#170 field session log, agv02, 2026-09-28
+
+Verbatim terminal output copied from the implementing session's own tool results, in order.
+It was not written to a file on the vehicle at the time; this file is the transcription the
+reviewer asked for (pre-run checks, control-host timestamps). Commands are the ones that
+produced it: precheck.sh (ssh agv02, Get-NetTCPConnection -RemotePort 502 excluding TimeWait,
+processes matching SQCD|Slots|Simulator|C2000TxidProbe, C2000Service present) and date -Iseconds
+on the control host around each probe run. The agv02 clock was still wrong (2027) until the
+clock fix at the end.
+
+=== pre-check before run1 ===
+agv02 clock 2027-02-15T03:40:01.0323758+08:00
+conns502=0
+onboard/probe procs=0
+C2000Service=True
+control-host 2026-09-28T15:33:34+08:00
+
+=== run1-direct ===
+start control-host 2026-09-28T15:38:48+08:00
+exit=0
+end control-host 2026-09-28T15:43:50+08:00
+
+=== pre-check before run2 ===
+agv02 clock 2027-02-15T03:51:25.7704771+08:00
+conns502=0
+onboard/probe procs=0
+C2000Service=True
+control-host 2026-09-28T15:44:59+08:00
+
+=== run2-relay ===
+start control-host 2026-09-28T15:44:59+08:00
+exit=0
+end control-host 2026-09-28T15:50:01+08:00
+
+=== pre-check before run3 ===
+agv02 clock 2027-02-15T03:56:42.6689760+08:00
+conns502=0
+onboard/probe procs=0
+C2000Service=True
+control-host 2026-09-28T15:50:16+08:00
+
+=== run3-prefix-relay (stopped by the rule check at request 256) ===
+start control-host 2026-09-28T15:50:16+08:00
+exit=1
+end control-host 2026-09-28T15:50:31+08:00
+
+=== check after run3 ===
+agv02 clock 2027-02-15T03:57:14.0042478+08:00
+conns502=0
+onboard/probe procs=0
+C2000Service=True
+control-host 2026-09-28T15:50:47+08:00
+
+=== decision relayed by the coordinator between run3 and run3b ===
+Run the rest of round 3 with the rule check recording instead of stopping; same pre-fix client
+24af41e, relay, read-only, FC01/FC02 only, 180 s total. Implemented as the probe switch
+--keep-going-after-rule-violation (commit 9ea6f83); run3b's events.ndjson probe-start line
+records StopOnRuleViolation=false.
+
+=== pre-check before run3b ===
+agv02 clock 2027-02-15T04:05:57.4664872+08:00
+conns502=0
+onboard/probe procs=0
+C2000Service=True
+control-host 2026-09-28T15:59:31+08:00
+
+=== run3b-prefix-relay-record ===
+start control-host 2026-09-28T15:59:31+08:00
+exit=1
+end control-host 2026-09-28T16:02:34+08:00
+
+=== check after run3b ===
+agv02 clock 2027-02-15T04:09:03.9434008+08:00
+conns502=0
+onboard/probe procs=0
+C2000Service=True
+control-host 2026-09-28T16:02:37+08:00
+
+Clock fix followed at 16:03:44 control-host time; see clock-fix-agv02.txt.

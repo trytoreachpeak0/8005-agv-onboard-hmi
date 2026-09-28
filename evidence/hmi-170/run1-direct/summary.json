@@ -1,0 +1,25 @@
+{
+  "Mode": "direct",
+  "TransitionCount": 1,
+  "Transitions": [
+    "146ms connected"
+  ],
+  "ConnectedAtEnd": true,
+  "ConnectedSnapshots": 2982,
+  "TransactionCounter": 5964,
+  "PollInterval": {
+    "Count": 2981,
+    "MeanMs": 100.6,
+    "MedianMs": 100.25,
+    "P05Ms": 100.18,
+    "P95Ms": 100.33,
+    "MaxMs": 122.4
+  },
+  "RequestsPerSecond": 19.88153548730734,
+  "Pairing": null,
+  "RelayConnections": 0,
+  "Pass": true,
+  "Verdicts": [
+    "connection: exactly one transition (connected) and still connected at the end"
+  ]
+}

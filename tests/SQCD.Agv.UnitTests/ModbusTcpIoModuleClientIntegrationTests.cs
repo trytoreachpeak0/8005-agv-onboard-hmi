@@ -48,11 +48,19 @@ public sealed class ModbusTcpIoModuleClientIntegrationTests
     /// </summary>
     /// <remarks>
     /// <para>
-    /// This is onboard-hmi#52. The vehicles' Kangnaide C2000 module echoes one byte, so a 16-bit
-    /// counter stops matching at request 256 -- measured on agv01 on 2026-09-13, at a 50 ms and at
-    /// a 200 ms read interval alike. The client then closes the transport, reconnects, resumes the
-    /// counter at 257 and mismatches <i>every</i> request from there on. The simulator echoes all
-    /// 16 bits, which is why the field windows never saw it.
+    /// This is onboard-hmi#52, and the module it models is a <b>hypothesis, not an observed
+    /// device</b>. Against a module that echoes one byte, a 16-bit counter stops matching at request
+    /// 256; the client then closes the transport, reconnects, resumes the counter at 257 and
+    /// mismatches <i>every</i> request from there on.
+    /// </para>
+    /// <para>
+    /// No real C2000 has been seen to truncate. The 2026-09-13 "request 256 came back as 0" on
+    /// agv01 was the PowerShell field probe misreading the answer: it parsed the id as
+    /// <c>($header[0] -shl 8) -bor $header[1]</c> on a <c>byte[]</c>, and in pwsh
+    /// <c>[byte]1 -shl 8</c> stays a Byte and yields 0. The real module on agv02, driven by this
+    /// client on 2026-09-28, echoed all 16 bits of ids 1..3590 (onboard-hmi#170,
+    /// <c>evidence/hmi-170</c>). The test is kept because the 1..255 range must stay safe
+    /// against a truncating module as well as a full-echo one; agv01 and agv03 were not measured.
     /// </para>
     /// <para>
     /// <b>Why the assertions are what they are.</b> "600 requests and nothing threw" would also
@@ -354,8 +362,10 @@ public sealed class ModbusTcpIoModuleClientIntegrationTests
     }
 
     /// <summary>
-    /// The vehicles' Kangnaide C2000 module: only the low byte of the transaction id comes back,
-    /// so request 256 answers as transaction 0.
+    /// A hypothetical truncating module: only the low byte of the transaction id comes back, so
+    /// request 256 answers as transaction 0. Not a model of the vehicles' C2000 -- the one on agv02
+    /// echoes all 16 bits (onboard-hmi#170); see the remarks on
+    /// <see cref="LowByteEchoingModuleKeepsPairingResponsesPastRequest255"/>.
     /// </summary>
     private static ushort EchoLowByteOnly(ushort requestTransactionId) =>
         (ushort)(requestTransactionId & 0xFF);
