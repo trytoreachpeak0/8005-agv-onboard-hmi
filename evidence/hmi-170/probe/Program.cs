@@ -71,7 +71,11 @@ internal static class Program
         int clientPort = options.ModulePort;
         if (options.Mode == "relay")
         {
-            relay = new Relay(options.ModuleHost, options.ModulePort, recorder);
+            relay = new Relay(options.ModuleHost, options.ModulePort, recorder, () =>
+            {
+                recorder.Event("stop-requested", new { reason = "response id is not (request id & 0xFF)" });
+                stopping.Cancel();
+            });
             clientPort = relay.Start();
             clientHost = IPAddress.Loopback.ToString();
             recorder.Event("relay-listening", new { port = clientPort });
@@ -320,8 +324,9 @@ internal sealed record FrameRecord(
 /// Byte-transparent loopback relay. Each accepted client connection gets its own upstream
 /// connection; bytes are forwarded as they arrive and a copy is framed by MBAP length for the log.
 /// </summary>
-internal sealed class Relay(string upstreamHost, int upstreamPort, Recorder recorder) : IDisposable
+internal sealed class Relay(string upstreamHost, int upstreamPort, Recorder recorder, Action onRuleViolation) : IDisposable
 {
+    private readonly Dictionary<int, Queue<int>> _outstanding = [];
     private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
     private readonly CancellationTokenSource _stop = new();
     private readonly List<Task> _tasks = [];
@@ -484,6 +489,46 @@ internal sealed class Relay(string upstreamHost, int upstreamPort, Recorder reco
         }
 
         recorder.Frame(frame);
+        CheckRule(frame);
+    }
+
+    // Checked live, frame by frame, so a run stops at the first response that is not
+    // (request id & 0xFF) even when --keep-going-after-disconnect lets it ride over disconnects.
+    private void CheckRule(FrameRecord frame)
+    {
+        int? requestId = null;
+        lock (_outstanding)
+        {
+            if (!_outstanding.TryGetValue(frame.Connection, out Queue<int>? queue))
+            {
+                queue = new Queue<int>();
+                _outstanding[frame.Connection] = queue;
+            }
+
+            if (frame.Dir == "req")
+            {
+                queue.Enqueue(frame.TransactionId);
+                return;
+            }
+
+            if (queue.TryDequeue(out int id))
+            {
+                requestId = id;
+            }
+        }
+
+        if (requestId is null || frame.TransactionId != (requestId.Value & 0xFF))
+        {
+            recorder.Event("rule-violation", new
+            {
+                connection = frame.Connection,
+                requestId,
+                responseId = frame.TransactionId,
+                frameT = frame.T,
+                hex = frame.Hex,
+            });
+            onRuleViolation();
+        }
     }
 }
 
@@ -494,6 +539,7 @@ internal sealed record Pairing(
     int EchoEqualsRequest,
     int EchoEqualsLowByteOnly,
     int EchoOther,
+    int NotLowByteRule,
     int DistinctRequestIds,
     int MinRequestId,
     int MaxRequestId,
@@ -557,7 +603,9 @@ internal sealed record Summary(
             verdicts.Add($"pairing: {pairing.EchoEqualsRequest}/{pairing.Paired} responses echo the request id exactly, " +
                 $"{pairing.EchoEqualsLowByteOnly} echo only its low byte, {pairing.EchoOther} echo something else; " +
                 $"{pairing.Requests - pairing.Paired} requests unanswered");
-            bool lowByteRule = pairing.EchoOther == 0 && pairing.Paired > 0;
+            // Judged per pair against (id & 0xFF) directly. An exact echo of an id above 255 is NOT
+            // the low-byte rule, even though the pairing tally files it under "equal".
+            bool lowByteRule = pairing.NotLowByteRule == 0 && pairing.Paired > 0;
             verdicts.Add(lowByteRule
                 ? "rule: every response id equals (request id & 0xFF)"
                 : "rule: at least one response id is NOT (request id & 0xFF) -- STOP and report");
@@ -584,6 +632,7 @@ internal sealed record Summary(
         int equal = 0;
         int lowByte = 0;
         int other = 0;
+        int notLowByte = 0;
         var ids = new List<int>();
         var mismatches = new List<string>();
         var high = new List<string>();
@@ -605,8 +654,14 @@ internal sealed record Summary(
                 if (!queue.TryDequeue(out FrameRecord? request))
                 {
                     other++;
+                    notLowByte++;
                     mismatches.Add($"conn {connection.Key}: response {frame.TransactionId} with no outstanding request");
                     continue;
+                }
+
+                if (frame.TransactionId != (request.TransactionId & 0xFF))
+                {
+                    notLowByte++;
                 }
 
                 string pairText = $"conn {connection.Key}: req {request.TransactionId} (0x{request.TransactionId:X4}) -> resp {frame.TransactionId} (0x{frame.TransactionId:X4})";
@@ -639,7 +694,7 @@ internal sealed record Summary(
         }
 
         int wraps = ids.Zip(ids.Skip(1), (a, b) => b < a ? 1 : 0).Sum();
-        return new Pairing(requests, responses, equal + lowByte + other, equal, lowByte, other,
+        return new Pairing(requests, responses, equal + lowByte + other, equal, lowByte, other, notLowByte,
             ids.Distinct().Count(), ids.Count > 0 ? ids.Min() : -1, ids.Count > 0 ? ids.Max() : -1, wraps,
             mismatches, high);
     }
