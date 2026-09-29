@@ -206,6 +206,48 @@ public sealed class OnboardControllerTests
         Assert.True(Assert.Single(rule.Results).Success);
     }
 
+    /// <summary>
+    /// <c>REQ-0281</c> at the controller (batch 9-15, <c>8005-agv-onboard-hmi#220</c>): a transport under way whose
+    /// battery the server now projects as <c>LOW</c>, <c>MANDATORY_CHARGE</c> or <c>UNKNOWN</c> still loads at its
+    /// next pickup -- the scan goes on to verification and the door opens once. Red before this ticket, when the
+    /// controller refused every one of them with <c>WIRE_TO_GATE_JOURNEY_NOT_READY</c>.
+    /// </summary>
+    /// <remarks>
+    /// This is the onboard half of the L1 the control server's <c>8005-agv-control-server#403</c> asks for
+    /// ("a transport that crosses the entry line still loads at its later stops"); the server half is that ticket's.
+    /// </remarks>
+    [Theory]
+    [InlineData("LOW")]
+    [InlineData("MANDATORY_CHARGE")]
+    [InlineData("UNKNOWN")]
+    public async Task ATransportStopLoadsWhateverBatteryStateTheServerProjects(string batteryState)
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        WireToGateJourneySnapshot journey = new(
+            new WireToGateVehicleBusinessState(
+                1, "READY", "TRANSPORT", false, batteryState, "NOT_CHARGING", null, [], now, new string('a', 64)),
+            new WireToGateCurrentStopWorklist(
+                "ST-01",
+                1,
+                null,
+                null,
+                [new WireToGateWorklistItem(
+                    "11111111-1111-1111-1111-111111111111", "TD-001", "SUBLOT-001", "WIRE_TO_GATE", "PICKUP", 1)],
+                new string('b', 64)),
+            null,
+            now);
+        FakeIoModule io = new();
+        FakeRuleGateway rule = new(OperationType.Load, "OP-BATTERY-" + batteryState);
+        await using OnboardController controller = CreateController(io, rule, () => true, () => journey);
+        await controller.StartAsync(TestContext.Current.CancellationToken);
+
+        await controller.SubmitScanAsync("SUBLOT-001", ScanInputMethod.Scanner, TestContext.Current.CancellationToken);
+
+        Assert.NotEqual("WIRE_TO_GATE_JOURNEY_NOT_READY", controller.Current.ErrorCode);
+        Assert.Equal(1, io.PulseCount);
+        Assert.True(Assert.Single(rule.Results).Success);
+    }
+
     [Fact]
     public async Task LoadFlowUnlocksOnceAndReportsSuccess()
     {

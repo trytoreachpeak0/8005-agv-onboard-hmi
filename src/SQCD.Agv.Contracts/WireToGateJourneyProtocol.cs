@@ -14,11 +14,12 @@ namespace SQCD.Agv.Contracts;
 /// on every snapshot the v2 server sends.
 /// </para>
 /// <para>
-/// <b>2.0.0 added three things, and this end parses all of them without using any.</b>
+/// <b>2.0.0 added three things, and this end parses all of them.</b>
 /// <c>BatteryState</c> gained <c>MANDATORY_CHARGE</c>; <c>ChargingCycleState</c> is new with seven
 /// values; <c>LoadingPhase</c> is new, required and nullable as a whole. The behaviour behind them
-/// is batches 7 and 9 -- cargo holding and the charging cycle -- so nothing here reads them yet.
-/// They are parsed to the full extent the schema declares anyway, because the alternative is to
+/// is batches 7 and 9 -- cargo holding and the charging cycle -- and the display reads them since
+/// batch 7-13 and batch 9-15 (<c>8005-agv-onboard-hmi#220</c>); none of them is judged here.
+/// They are parsed to the full extent the schema declares, because the alternative is to
 /// accept only what the control server happens to send during batch 5, and
 /// <c>8005-agv-onboard-hmi#38</c> is what that costs: an inbound check narrower than the contract,
 /// locking a live session on a payload the protocol calls legal.

@@ -367,7 +367,8 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     /// <summary>
     /// The <c>activePurpose</c> of every business-state snapshot this fake builds itself. <c>TRANSPORT</c>
-    /// unless a test puts the vehicle on an idle return (<c>IDLE_RETURN</c>, onboard-hmi#217).
+    /// unless a test puts the vehicle on an idle return (<c>IDLE_RETURN</c>, onboard-hmi#217), a charge
+    /// (<c>CHARGING</c>) or a charger clearance (<c>CLEARING_MAINTENANCE</c>, onboard-hmi#220).
     /// </summary>
     public string JourneyActivePurpose { get; set; } = "TRANSPORT";
 
@@ -896,6 +897,18 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// clears a hold on its own authority.
     /// </summary>
     public bool ManualChargingHoldInSnapshots { get; set; }
+
+    /// <summary>
+    /// The <c>batteryState</c> of every business-state snapshot this fake builds itself (batch 9-15,
+    /// onboard-hmi#220). <c>SUFFICIENT</c> unless a test puts the vehicle over the charging line.
+    /// </summary>
+    public string JourneyBatteryState { get; set; } = "SUFFICIENT";
+
+    /// <summary>
+    /// The <c>chargingCycleState</c> of every business-state snapshot this fake builds itself (batch 9-15,
+    /// onboard-hmi#220). <c>NOT_CHARGING</c> unless a test puts the vehicle in a charging cycle.
+    /// </summary>
+    public string JourneyChargingCycleState { get; set; } = "NOT_CHARGING";
 
     public string ManualChargingReturnToServiceOutcome { get; set; } =
         "RETURNED_TO_ELIGIBILITY_EVALUATION";
@@ -2848,8 +2861,8 @@ public sealed class FakeControlServer : IAsyncDisposable
                 readiness = "READY",
                 activePurpose = JourneyActivePurpose,
                 manualChargingHold = ManualChargingHoldInSnapshots,
-                batteryState = "SUFFICIENT",
-                chargingCycleState = "NOT_CHARGING",
+                batteryState = JourneyBatteryState,
+                chargingCycleState = JourneyChargingCycleState,
                 loadingPhase = (object?)null,
                 blockingFacts = Array.Empty<object>(),
                 observedAt
@@ -2932,9 +2945,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                     vehicleBusinessStateRevision = 1,
                     readiness = "READY",
                     activePurpose = JourneyActivePurpose,
-                    manualChargingHold = false,
-                    batteryState = "SUFFICIENT",
-                    chargingCycleState = "NOT_CHARGING",
+                    manualChargingHold = ManualChargingHoldInSnapshots,
+                    batteryState = JourneyBatteryState,
+                    chargingCycleState = JourneyChargingCycleState,
                     loadingPhase = (object?)null,
                     blockingFacts = VectorBlockingFacts
                         .Select(fact => new { reasonCode = fact.ReasonCode, subjectType = fact.SubjectType, subjectId = fact.SubjectId })
