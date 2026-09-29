@@ -330,6 +330,20 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </summary>
     public string? VectorPublicStationFunction { get; set; }
 
+    /// <summary>
+    /// The <c>stopPurposeCategory</c> of each leg of the plan snapshot
+    /// <see cref="VectorJourneySnapshotsAfterRecovery"/> sends, in the order of <see cref="VectorPlanLegs"/>;
+    /// null makes every leg <c>BUSINESS</c>. A <c>WAITING_POINT</c> or <c>CHARGER</c> leg carries no demand
+    /// (<c>demandId</c> null), as the v2 control server sends it (batch 8-22, onboard-hmi#217).
+    /// </summary>
+    public IReadOnlyList<string>? VectorLegStopPurposeCategories { get; set; }
+
+    /// <summary>
+    /// The <c>activePurpose</c> of every business-state snapshot this fake builds itself. <c>TRANSPORT</c>
+    /// unless a test puts the vehicle on an idle return (<c>IDLE_RETURN</c>, onboard-hmi#217).
+    /// </summary>
+    public string JourneyActivePurpose { get; set; } = "TRANSPORT";
+
     public bool ReplayJourneySnapshotsWithStableIdentity { get; set; }
 
     /// <summary>
@@ -2784,7 +2798,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             {
                 vehicleBusinessStateRevision = 1,
                 readiness = "READY",
-                activePurpose = "TRANSPORT",
+                activePurpose = JourneyActivePurpose,
                 manualChargingHold = ManualChargingHoldInSnapshots,
                 batteryState = "SUFFICIENT",
                 chargingCycleState = "NOT_CHARGING",
@@ -2869,7 +2883,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                 {
                     vehicleBusinessStateRevision = 1,
                     readiness = "READY",
-                    activePurpose = "TRANSPORT",
+                    activePurpose = JourneyActivePurpose,
                     manualChargingHold = false,
                     batteryState = "SUFFICIENT",
                     chargingCycleState = "NOT_CHARGING",
@@ -2902,14 +2916,16 @@ public sealed class FakeControlServer : IAsyncDisposable
                 {
                     planRevision = 1,
                     legs = VectorPlanLegs
+                        .Select((leg, index) => (Leg: leg, Category: VectorLegStopPurposeCategories?[index] ?? "BUSINESS"))
                         .Select((leg, index) => Leg(
                             $"22222222-2222-4222-8222-2222222222{index + 1:D2}",
-                            leg.LegType,
-                            demandId,
-                            leg.State,
+                            leg.Leg.LegType,
+                            leg.Category == "BUSINESS" ? demandId : null,
+                            leg.Leg.State,
                             sequence: index + 1,
-                            stationId: leg.StationId,
-                            publicStationFunction: VectorPublicStationFunction))
+                            stationId: leg.Leg.StationId,
+                            publicStationFunction: VectorPublicStationFunction,
+                            stopPurposeCategory: leg.Category))
                         .ToArray()
                 },
                 _ => throw new InvalidDataException($"Unsupported vector snapshot type {messageType}.")
@@ -2954,16 +2970,17 @@ public sealed class FakeControlServer : IAsyncDisposable
     private static object Leg(
         string movementLegId,
         string? legType,
-        string demandId,
+        string? demandId,
         string state,
         int sequence = 1,
         string stationId = "ST-01",
-        string? publicStationFunction = null) =>
+        string? publicStationFunction = null,
+        string stopPurposeCategory = "BUSINESS") =>
         new
         {
             movementLegId,
             legType,
-            stopPurposeCategory = "BUSINESS",
+            stopPurposeCategory,
             demandId,
             publicStationFunction,
             sequence,

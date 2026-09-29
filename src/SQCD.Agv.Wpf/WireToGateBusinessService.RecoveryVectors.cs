@@ -461,7 +461,10 @@ public sealed partial class WireToGateBusinessService
         // hand is kept and entries against it are accepted (#199), and the server's cancellation matches the
         // stop by its revision range too (LoadCancellationBeforeSublot.AnswersTheStop). The subject is picked
         // from the worklist as it stands, so a demand that has left the stop cannot be cancelled here.
+        // A waiting point is not a business stop (onboard-hmi#217, NEVER_LOAD_AT_WAITING_POINT): there is nothing
+        // to give up before loading, so the entry is not offered even if the server sent a worklist and a request.
         if (Volatile.Read(ref _currentEntryRequest) is not { } request
+            || _session.CurrentJourney.IsWaitingPointStop
             || _session.CurrentJourney.CurrentStopWorklist is not { } worklist
             || !IsStopOf(worklist, request))
         {

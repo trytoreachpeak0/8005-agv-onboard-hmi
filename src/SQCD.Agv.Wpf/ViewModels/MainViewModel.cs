@@ -26,6 +26,8 @@ public sealed class MainViewModel : ViewModelBase
     private string _ioConnectionText = "离线";
     private string _wireToGateText = "未启用";
     private string _visitText = "未到站";
+    private string _idleReturnStatus = string.Empty;
+    private string? _loggedWaitingPointContradiction;
     private bool _hasWorklistItems;
     private bool _hasJourneyPlanLegs;
     private const string LoadCancellationSelectionHint = "请先在清单中选择要取消的任务";
@@ -323,11 +325,17 @@ public sealed class MainViewModel : ViewModelBase
         RefreshStationDepartureCountdownCore();
         SyncStationDepartureCountdownTimerCore();
         // 到站那一格只留站名，子批号在清单列表里：一站最多 8 条需求，挑哪一条放这里都不对（批次7-13）。
-        VisitText = snapshot.CurrentStopWorklist is not { } worklist
-            ? "旅程未同步"
-            : worklist.Items.Count == 0
-                ? $"{worklist.StationId} / 无待处理任务"
-                : worklist.StationId;
+        // 空闲返回先于清单判断（批次8-22，onboard-hmi#217）：服务端到等待点不发清单或发空清单都行，两种都不是
+        // 「旅程未同步」或「无待处理任务」；等待点腿之后来了业务计划，这一格在同一份快照上回到下面三种写法。
+        IdleReturnStatus = WireToGateIdleReturnText.Status(snapshot);
+        VisitText = snapshot.IsWaitingPointStop
+            ? WireToGateIdleReturnText.VisitText(snapshot)
+            : snapshot.CurrentStopWorklist is not { } worklist
+                ? "旅程未同步"
+                : worklist.Items.Count == 0
+                    ? $"{worklist.StationId} / 无待处理任务"
+                    : worklist.StationId;
+        LogWaitingPointContradictionCore(snapshot);
         _worklistOperationSessionId = snapshot.CurrentStopWorklist?.OperationSessionId;
         ReplaceWorklistItemsCore(snapshot.CurrentStopWorklist?.Items ?? []);
         ReplaceJourneyPlanLegsCore(snapshot.UpcomingStopPlan?.Legs ?? []);
@@ -341,6 +349,34 @@ public sealed class MainViewModel : ViewModelBase
         RefreshWireToGateInputStateCore();
         ApplyWireToGatePresentationCore();
     });
+
+    /// <summary>
+    /// 等待点停靠又来了带项的清单：服务端的矛盾，车载端不装货（录入门拒它），记一条警告。
+    /// </summary>
+    /// <remarks>
+    /// 同一对计划与清单修订号只记一次：握手重推、业务状态刷新都会带着同一份清单再走一遍这里。
+    /// </remarks>
+    private void LogWaitingPointContradictionCore(WireToGateJourneySnapshot snapshot)
+    {
+        if (!snapshot.HasWorklistItemsAtWaitingPoint)
+        {
+            _loggedWaitingPointContradiction = null;
+            return;
+        }
+
+        string key = $"{snapshot.UpcomingStopPlan?.Revision}/{snapshot.CurrentStopWorklist!.StationId}/{snapshot.CurrentStopWorklist.Revision}";
+        if (key == _loggedWaitingPointContradiction)
+        {
+            return;
+        }
+
+        _loggedWaitingPointContradiction = key;
+        _logger.Write(
+            LogSeverity.Warning,
+            nameof(MainViewModel),
+            $"等待点停靠收到带项的清单（计划修订 {snapshot.UpcomingStopPlan?.Revision}，站 {snapshot.CurrentStopWorklist.StationId}，"
+                + $"清单修订 {snapshot.CurrentStopWorklist.Revision}，{snapshot.CurrentStopWorklist.Items.Count} 项）：服务端矛盾，不开录入、不装货。");
+    }
 
     /// <summary>
     /// 清单列表整张替换：新修订号的清单、断线后的空旅程都是整值，旧行不留。
@@ -981,6 +1017,16 @@ public sealed class MainViewModel : ViewModelBase
     {
         get => _visitText;
         private set => SetProperty(ref _visitText, value);
+    }
+
+    /// <summary>
+    /// 到站那一格给 UIA 的 ItemStatus（AutomationId <c>IdleReturnStatus</c>）：<c>EN_ROUTE_TO_WAITING_POINT</c>／
+    /// <c>AT_WAITING_POINT</c>，不是空闲返回时是空串（批次8-22，onboard-hmi#217）。
+    /// </summary>
+    public string IdleReturnStatus
+    {
+        get => _idleReturnStatus;
+        private set => SetProperty(ref _idleReturnStatus, value);
     }
 
     public string StopDirectionText

@@ -50,11 +50,13 @@ public static class OnboardCommandRejectionText
         //   CanSubmitSublot 或 SubmitSublotAsync 里看停稳的那一条，它就又是假的——
         //   LoadCancellationBeforeSublotG2Tests.AMovingVehicleClosesTheEntryAndRefusesTheScanAndAStopBringsItBack 会红。
         //   指引只写「等连接恢复与停稳确认」加「持续出现请联系维护人员」：信号失灵那一支光等不会好。
-        // WIRE_TO_GATE_JOURNEY_NOT_READY：两处触发，一共七支。
+        // WIRE_TO_GATE_JOURNEY_NOT_READY：两处触发，一共九支。
         //   控制器（IsAuthoritativeJourneyReady() 为假，即 WireToGateJourneySnapshot.CanAcceptSublotAt 为假）：
         //   1. 车辆业务状态缺失或不是 READY；2. 手动充电保持；3. 电量不是 SUFFICIENT；4. 当前站清单缺失或为空；
-        //   5. HasConsistentDemand 为假；6. 快照或业务状态观测超过有效期。
-        //   业务服务：7. SubmitSublotAsync 手里没有录入请求。
+        //   5. HasConsistentDemand 为假；6. 快照或业务状态观测超过有效期；8. 当前是等待点停靠（onboard-hmi#217）。
+        //   业务服务：7. SubmitSublotAsync 手里没有录入请求；9. SubmitSublotAsync 时当前是等待点停靠。
+        //   8、9 是同一件事：等待点不装货。这一支入口是关着的（CanSubmitSublot 直接读 IsWaitingPointStop），9 只挡
+        //   不先问入口就调进来的路径；「当前不满足录入条件」在这一支也成立。
         //   1–6 下扫码入口都没被挡（入口不看旅程快照，停稳门只加了未停稳一支），所以这一句不能说「已禁止扫码」，也不能
         //   说「不能录入」；2、3 下旅程是同步的、光等也不会好，所以不能说「尚未同步」「请等待」。七支都成立的只有「当前
         //   不满足录入条件」这个事实，加上查看告警或找人。前提由

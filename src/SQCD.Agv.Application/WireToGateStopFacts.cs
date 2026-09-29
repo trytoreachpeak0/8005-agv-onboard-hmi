@@ -47,12 +47,14 @@ public static class WireToGateStopFacts
         };
 
     /// <summary>
-    /// 本站清单项的任务类型文案：全部清单项的任务类型相同时是它，没有清单项或各项不同时是空串。
+    /// 本站清单项的任务类型文案：全部清单项的任务类型相同时是它，没有清单项或各项不同时是空串；等待点停靠时也是空串。
     /// </summary>
     public static string TaskTypeText(WireToGateJourneySnapshot journey)
     {
         ArgumentNullException.ThrowIfNull(journey);
-        return Shared(journey.CurrentStopWorklist?.Items ?? [], ItemTaskTypeText);
+        return journey.IsWaitingPointStop
+            ? string.Empty
+            : Shared(journey.CurrentStopWorklist?.Items ?? [], ItemTaskTypeText);
     }
 
     /// <summary>
@@ -60,22 +62,31 @@ public static class WireToGateStopFacts
     /// <c>legType</c>；说不出一个方向（含清单项之间不一致）时是空串。
     /// </summary>
     /// <remarks>
+    /// <para>
     /// 到站后清单是本站的权威，所以它优先；还在路上、清单没下发时，按序号第一条未完成的腿就是正在去的那一站。
     /// 清单已下发但没有清单项（同一行显示「无待处理任务」）时方向为空，不退回去读计划腿，否则会自相矛盾。
     /// <c>legType</c> 为 <c>null</c> 的腿（等待点、充电桩）不带方向。
+    /// </para>
+    /// <para>
+    /// <b>等待点停靠时两段都是空串，清单里有项也一样</b>（批次8-22，<c>8005-agv-onboard-hmi#217</c>）：等待点不承担业务
+    /// （<c>REQ-0289</c>），服务端同时发来带项的清单是它自己的矛盾，顶栏不替它写出一个「取货」。当前腿的取法是
+    /// <see cref="WireToGateJourneySnapshot.CurrentLeg"/>，与等待点判断同一处。
+    /// </para>
     /// </remarks>
     public static string DirectionText(WireToGateJourneySnapshot journey)
     {
         ArgumentNullException.ThrowIfNull(journey);
+        if (journey.IsWaitingPointStop)
+        {
+            return string.Empty;
+        }
+
         if (journey.CurrentStopWorklist is not null)
         {
             return Shared(journey.CurrentStopWorklist.Items, ItemDirectionText);
         }
 
-        WireToGateMovementLeg? currentLeg = journey.UpcomingStopPlan?.Legs
-            .OrderBy(leg => leg.Sequence)
-            .FirstOrDefault(leg => leg.State != "COMPLETED");
-        return currentLeg?.LegType switch
+        return journey.CurrentLeg?.LegType switch
         {
             "TO_PICKUP" => PickupText,
             "TO_DROPOFF" => DropoffText,

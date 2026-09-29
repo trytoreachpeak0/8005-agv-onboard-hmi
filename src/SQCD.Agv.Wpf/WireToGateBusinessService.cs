@@ -251,12 +251,21 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// 关掉入口只挡住「按钮点不下去」。**横幅断言的是「按下去不会开门」**，那一半由
     /// <see cref="SubmitSublotAsync"/> 开头的同一条判据承担——两件事，两条判据。
     /// </para>
+    /// <para>
+    /// <b>等待点停靠时也关（批次8-22，onboard-hmi#217，<c>NEVER_LOAD_AT_WAITING_POINT</c>）。</b>入口不读
+    /// <see cref="WireToGateJourneySnapshot.CanAcceptSublot"/>，那一条只管控制器，所以只改它关不住这个按钮：
+    /// 服务端在等待点同时发来带项的清单与录入请求时，按钮照样出现、提交照样发出去。这里直接读
+    /// <see cref="WireToGateJourneySnapshot.IsWaitingPointStop"/>，<see cref="SubmitSublotAsync"/> 再拦一道。
+    /// 不读 <c>CanAcceptSublot</c> 整条是有意的：它的其余几支（手动充电保持等）不关入口，由
+    /// <c>AJourneyThatCannotAcceptASublotDoesNotCloseTheEntry</c> 钉着。
+    /// </para>
     /// </remarks>
     public bool CanSubmitSublot =>
         !_fatalFaultLatched()
         && _session.Current.Readiness == WireToGateSessionReadiness.Ready
         && Volatile.Read(ref _currentEntryRequest) is not null
         && !IsLoadCancellationBeforeSublotOpen
+        && !_session.CurrentJourney.IsWaitingPointStop
         && _vehicleStoppedProvider();
 
     /// <summary>
@@ -725,6 +734,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         if (IsLoadCancellationBeforeSublotOpen)
         {
             throw new InvalidOperationException("LOAD_CANCELLATION_IN_PROGRESS");
+        }
+
+        // 与 CanSubmitSublot 的等待点条件是同一件事的两半（onboard-hmi#217）：等待点不装货，服务端同时发来的清单与
+        // 录入请求是它自己的矛盾，这里不替它发 SublotSubmitted。码沿用「当前不满足录入条件」，那一句在这一支也成立。
+        if (_session.CurrentJourney.IsWaitingPointStop)
+        {
+            throw new InvalidOperationException("WIRE_TO_GATE_JOURNEY_NOT_READY");
         }
 
         // Protocol 2.0.0 replaced the request's single expectedSublot and its demandId with a set.
