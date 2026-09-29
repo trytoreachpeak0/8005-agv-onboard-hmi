@@ -101,9 +101,11 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
         // Batch 6 (8005-agv-onboard-hmi#115): the onboard half of task-type admission and the
         // reversed-direction journey.
         // Batch 7-13 (8005-agv-onboard-hmi#134): the onboard half of the multi-stop journey plan.
+        // Batch 8-22 (8005-agv-onboard-hmi#217): the onboard half of the waiting-point idle return.
         "FP-IS-08",
         "FP-IS-10",
         "FP-IS-11",
+        "FP-IS-12",
         "FP-IS-14",
         "FP-IS-15"
     ];
@@ -115,9 +117,10 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Six entries since batch 7-13 bound <c>CV-MULTI-STOP-PLAN-NINE-LEGS</c> (<c>FP-IS-08</c>,
-    /// <c>8005-agv-onboard-hmi#134</c>), and each was checked here rather than transferred from the
-    /// control server.
+    /// Five entries since batch 8-22 bound <c>CV-WAITING-POINT-IDLE-RETURN</c> (<c>FP-IS-12</c>,
+    /// <c>8005-agv-onboard-hmi#217</c>), after batch 7-13 bound <c>CV-MULTI-STOP-PLAN-NINE-LEGS</c>
+    /// (<c>FP-IS-08</c>, <c>8005-agv-onboard-hmi#134</c>); each was checked here rather than transferred
+    /// from the control server.
     /// The wire messages these slices are defined in terms of -- <c>DemandSelectionRequested</c>,
     /// <c>SlotConfigurationActivationCommand</c>, <c>OnboardAlarmSnapshot</c>,
     /// <c>UnableToChargeFieldConfirmationRequested</c> and
@@ -144,7 +147,6 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
             ["CV-AUTOMATIC-CHARGING-CYCLE"] = "FP-IS-13, batch 9",
             ["CV-MANUAL-STATION-CLEARANCE"] = "FP-IS-13, batch 9",
             ["CV-UNABLE-TO-CHARGE-FIELD-CONFIRMATION"] = "FP-IS-13, batch 9",
-            ["CV-WAITING-POINT-IDLE-RETURN"] = "FP-IS-12, batch 8",
             ["CV-WORKLIST-SELECTION-ACCEPTED"] = "FP-IS-09, batch 11",
             ["CV-WORKLIST-SELECTION-STALE-REVISION"] = "FP-IS-09, batch 11"
         };

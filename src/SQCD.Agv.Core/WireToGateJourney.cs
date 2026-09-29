@@ -107,6 +107,47 @@ public sealed record WireToGateJourneySnapshot(
     public bool HasAuthoritativeWorklist => CurrentStopWorklist is not null;
 
     /// <summary>
+    /// The leg the vehicle is on: the first leg, by <c>sequence</c>, that is not <c>COMPLETED</c>.
+    /// </summary>
+    /// <remarks>
+    /// The one reading of "the current leg" on this end (batch 8-22, <c>8005-agv-onboard-hmi#217</c>): the
+    /// direction shown while no worklist has arrived and the waiting-point judgement below both take it
+    /// from here, so the two can never disagree about which leg the vehicle is on.
+    /// </remarks>
+    public WireToGateMovementLeg? CurrentLeg => UpcomingStopPlan?.Legs
+        .OrderBy(leg => leg.Sequence)
+        .FirstOrDefault(leg => leg.State != "COMPLETED");
+
+    /// <summary>
+    /// Whether the vehicle is on an idle return to a waiting point: the current leg's
+    /// <c>stopPurposeCategory</c> is <c>WAITING_POINT</c>, or the business state's <c>activePurpose</c> is
+    /// <c>IDLE_RETURN</c> (batch 8-22, <c>8005-agv-onboard-hmi#217</c>; vector
+    /// <c>CV-WAITING-POINT-IDLE-RETURN</c>, <c>TREAT_WAITING_POINT_AS_NON_BUSINESS_STOP</c>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both facts are the server's, read as sent; nothing is inferred from a station id or a station name.
+    /// Either one is enough, because the two snapshots arrive separately and the vehicle must not be
+    /// offered a load in the window between them.
+    /// </para>
+    /// <para>
+    /// <b>Nothing local remembers it.</b> A plan with a business leg and a <c>TRANSPORT</c> purpose puts this
+    /// back to false on the snapshot that carries them, with no further condition (<c>REQ-0293</c>: the
+    /// vehicle takes part in transport again once the idle return is released).
+    /// </para>
+    /// </remarks>
+    public bool IsWaitingPointStop =>
+        CurrentLeg?.StopPurposeCategory == "WAITING_POINT"
+        || VehicleBusinessState?.ActivePurpose == "IDLE_RETURN";
+
+    /// <summary>
+    /// A worklist with items at a waiting point: a contradiction on the server's side, since a waiting
+    /// point carries no business role (<c>REQ-0289</c>). Nothing is loaded; the vehicle logs it.
+    /// </summary>
+    public bool HasWorklistItemsAtWaitingPoint =>
+        IsWaitingPointStop && CurrentStopWorklist?.Items.Count > 0;
+
+    /// <summary>
     /// Whether every demand the worklist names is one the plan names.
     /// </summary>
     /// <remarks>
@@ -123,6 +164,11 @@ public sealed record WireToGateJourneySnapshot(
     /// <see cref="CanAcceptSublot"/> instead. Nothing here reads a single item or a single demand,
     /// so no size of either can throw.
     /// </para>
+    /// <para>
+    /// That pass-through is not what keeps a waiting point from being loaded: since batch 8-22
+    /// (<c>8005-agv-onboard-hmi#217</c>, <c>NEVER_LOAD_AT_WAITING_POINT</c>) <see cref="CanAcceptSublot"/> refuses
+    /// on <see cref="IsWaitingPointStop"/> first. This property stays a statement about demands only.
+    /// </para>
     /// </remarks>
     public bool HasConsistentDemand
     {
@@ -135,8 +181,16 @@ public sealed record WireToGateJourneySnapshot(
         }
     }
 
+    /// <summary>
+    /// Whether this journey projection admits a sublot entry at all.
+    /// </summary>
+    /// <remarks>
+    /// Never at a waiting point, whatever worklist arrived with it (<c>NEVER_LOAD_AT_WAITING_POINT</c>,
+    /// <c>8005-agv-onboard-hmi#217</c>).
+    /// </remarks>
     public bool CanAcceptSublot =>
-        VehicleBusinessState?.Readiness == "READY"
+        !IsWaitingPointStop
+        && VehicleBusinessState?.Readiness == "READY"
         && VehicleBusinessState.ManualChargingHold is false
         && VehicleBusinessState.BatteryState == "SUFFICIENT"
         && CurrentStopWorklist?.Items.Count >= 1
