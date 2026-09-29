@@ -207,6 +207,16 @@ public sealed class WaitingPointIdleReturnG2Tests
         Assert.Equal("空闲返回：前往等待点", harness.ViewModel.VisitText);
         Assert.Equal(WireToGateIdleReturnText.EnRouteStatus, harness.ViewModel.IdleReturnStatus);
         Assert.Equal(string.Empty, harness.ViewModel.StopDirectionText);
+
+        // All three gates read the purpose too, not the leg alone: with the leg a business one, a gate that looked
+        // only at the leg would offer the cancellation or send the entry here (review mutation M8).
+        await AssertCancellationStaysClosedAsync(harness, token);
+        InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => harness.Business.SubmitSublotAsync("SUBLOT-A", "SCANNER", token));
+        Assert.Equal("WIRE_TO_GATE_JOURNEY_NOT_READY", refused.Message);
+        await Task.Delay(300, token);
+        Assert.Empty(harness.Submissions);
+        Assert.Equal(0, harness.Io.UnlockCount);
         Assert.Empty(harness.UiErrors);
     }
 
