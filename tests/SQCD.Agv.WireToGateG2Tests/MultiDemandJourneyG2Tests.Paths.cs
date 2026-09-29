@@ -188,6 +188,157 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
+    /// The upgrade path (8005-agv-onboard-hmi#214): an empty worklist in the 2.0.0 shape -- no
+    /// <c>stopEndedReason</c> property, as a 2.0.0 build journaled it -- is replayed from the journal on
+    /// restart without throwing.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The journal stores the payload bytes as they arrived, so the first session is fed the 2.0.0 bytes
+    /// and the restart replays exactly those through <c>RestorePersistedJourneyProjectionAsync</c>. The
+    /// replay runs before the session's <c>SessionHello</c> and throws on a payload it cannot take or on
+    /// a revision that does not match the journal's (<c>PERSISTED_SNAPSHOT_REVISION_MISMATCH</c>), so the
+    /// second connection's hello reaching the server is the replay having taken the snapshot at its
+    /// revision.
+    /// </para>
+    /// <para>
+    /// The in-memory projection is deliberately not the criterion: a disconnect resets it, the replay
+    /// runs once per start, and this fake pushes the journey once per server -- under load the second
+    /// session can reconnect during its handshake and legitimately show no worklist.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task AnEmptyWorklistJournaledInTheVersionTwoShapeReplaysOnRestartWithItsRevision()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness first = await Harness.StartAsync(
+            server =>
+            {
+                server.SendJourneySnapshotsAfterRecovery = true;
+                server.JourneySnapshotPayloads = new Dictionary<string, object>
+                {
+                    ["CurrentStopWorklistSnapshot"] = new
+                    {
+                        stationId = "ST-01",
+                        worklistRevision = 5,
+                        operationSessionId = (string?)null,
+                        stationDepartureDeadlineAt = (DateTimeOffset?)null,
+                        items = Array.Empty<object>()
+                    }
+                };
+            },
+            token,
+            io: io);
+        // The acknowledgement, not the projection: the client updates its projection before it journals
+        // the snapshot and acknowledges only after.
+        await first.WaitUntilAsync(
+            () => Acknowledged(first.Server).Contains(("CURRENT_STOP_WORKLIST", 5)),
+            "the 2.0.0-shaped worklist to be journaled and acknowledged",
+            token);
+
+        await first.StopVehicleAsync();
+        first.Server.SimulateOnboardProcessRestart();
+        int hellosBefore = first.Server.Received.Count(item => item.MessageType == "SessionHello");
+        ReplayRecordingJournal? replay = null;
+        await using Harness second = await Harness.StartAgainstAsync(
+            first.Server,
+            token,
+            first.JournalPath,
+            io,
+            wrapJournal: inner => replay = new ReplayRecordingJournal(inner));
+        await second.WaitUntilAsync(
+            () => first.Server.Received.Count(item => item.MessageType == "SessionHello") > hellosBefore,
+            "the restarted session's hello, sent only after the replay",
+            token);
+
+        WireToGateAppliedJourneySnapshot replayed = Assert.Single(
+            replay!.Replayed!,
+            snapshot => snapshot.MessageType == "CurrentStopWorklistSnapshot");
+        Assert.Equal(5, replayed.Revision);
+        Assert.DoesNotContain("stopEndedReason", replayed.PayloadJson, StringComparison.Ordinal);
+        Assert.Empty(second.UiErrors);
+    }
+
+    /// <summary>Records what the start-up replay read from the journal; everything passes through.</summary>
+    private sealed class ReplayRecordingJournal(IWireToGateJournal inner) : IWireToGateJournal
+    {
+        private IReadOnlyList<WireToGateAppliedJourneySnapshot>? _replayed;
+
+        public IReadOnlyList<WireToGateAppliedJourneySnapshot>? Replayed => Volatile.Read(ref _replayed);
+
+        public async Task<IReadOnlyList<WireToGateAppliedJourneySnapshot>> ReadAppliedJourneySnapshotsAsync(
+            CancellationToken cancellationToken = default)
+        {
+            IReadOnlyList<WireToGateAppliedJourneySnapshot> snapshots =
+                await inner.ReadAppliedJourneySnapshotsAsync(cancellationToken);
+            Volatile.Write(ref _replayed, snapshots);
+            return snapshots;
+        }
+
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            CancellationToken cancellationToken = default) =>
+            inner.UpdateRecoveryStateAsync(change, cancellationToken);
+
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            Action<WireToGateRecoveryState> settled,
+            CancellationToken cancellationToken = default) =>
+            inner.UpdateRecoveryStateAsync(change, settled, cancellationToken);
+
+        public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(CancellationToken cancellationToken = default) =>
+            inner.ReadRecoveryStateAsync(cancellationToken);
+
+        public Task InitializeAsync(CancellationToken cancellationToken = default) =>
+            inner.InitializeAsync(cancellationToken);
+
+        public Task<string> ReadJournalEpochAsync(CancellationToken cancellationToken = default) =>
+            inner.ReadJournalEpochAsync(cancellationToken);
+
+        public Task<WireToGateDurableMessage> SaveOutgoingBeforeSendAsync(
+            WireToGateDurableMessage message,
+            CancellationToken cancellationToken = default) =>
+            inner.SaveOutgoingBeforeSendAsync(message, cancellationToken);
+
+        public Task<WireToGateDurableMessage> ReplaceOutgoingForReplayAsync(
+            WireToGateDurableMessage expected,
+            WireToGateDurableMessage replacement,
+            CancellationToken cancellationToken = default) =>
+            inner.ReplaceOutgoingForReplayAsync(expected, replacement, cancellationToken);
+
+        public Task<WireToGateDurableMessage?> ReadOutgoingByDeduplicationKeyAsync(
+            string deduplicationKey,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken);
+
+        public Task<WireToGateDurableMessage?> ReadOutgoingByMessageIdAsync(
+            string messageId,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadOutgoingByMessageIdAsync(messageId, cancellationToken);
+
+        public Task MarkOutgoingAcknowledgedAsync(
+            string messageId,
+            string acceptedContentSha256,
+            CancellationToken cancellationToken = default) =>
+            inner.MarkOutgoingAcknowledgedAsync(messageId, acceptedContentSha256, cancellationToken);
+
+        public Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ReadUnacknowledgedOutgoingAsync(cancellationToken);
+
+        public Task<WireToGateAppliedJourneySnapshot> SaveAppliedJourneySnapshotAsync(
+            WireToGateAppliedJourneySnapshot snapshot,
+            CancellationToken cancellationToken = default) =>
+            inner.SaveAppliedJourneySnapshotAsync(snapshot, cancellationToken);
+
+        public Task<string> ComputeContentSha256Async(CancellationToken cancellationToken = default) =>
+            inner.ComputeContentSha256Async(cancellationToken);
+
+        public ValueTask DisposeAsync() => inner.DisposeAsync();
+    }
+
+    /// <summary>
     /// The operator has the entry request in hand; before the sublot is submitted another demand
     /// finishes and a worklist of a later revision arrives. An entry for the demand that has left the
     /// stop is refused locally as <c>SUBLOT_NOT_IN_WORKLIST</c> and nothing is sent.
@@ -501,6 +652,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             new
             {
                 preDepartureSafetyCheckId = checkId,
+                checkPurpose = "DEPARTURE",
                 // The first demand the stop accepted -- A, not B -- as the control server fills it.
                 demandId = DemandA,
                 movementLegId = "22222222-2222-4222-8222-000000000002",
@@ -520,11 +672,67 @@ public sealed partial class MultiDemandJourneyG2Tests
             JsonElement result = await WaitForPayloadAsync(harness, "PreDepartureSafetyCheckResult", token);
             Assert.Equal(checkId, result.GetProperty("preDepartureSafetyCheckId").GetString());
             Assert.Equal(expected, result.GetProperty("outcome").GetString());
+            // Protocol 3.0.0: the result carries the purpose it answers (8005-agv-onboard-hmi#214).
+            Assert.Equal("DEPARTURE", result.GetProperty("checkPurpose").GetString());
             Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "ProtocolProblem");
         }
 
         Assert.True(harness.Session.Current.Connected);
         Assert.Equal(2, harness.WorklistRows().Length);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// The two purposes protocol 3.0.0 added besides <c>DEPARTURE</c> reach the vehicle schema-valid and
+    /// are refused as <c>ACTION_NOT_ALLOWED_IN_STATE</c>, session kept, with no result: this build does not
+    /// yet decide what a <c>SAFE</c> may release for a held vehicle or a move without a demand, so it
+    /// answers nothing rather than lend them the departure evaluation (8005-agv-onboard-hmi#214; the
+    /// answer itself is 8005-agv-onboard-hmi#219 and later tickets).
+    /// </summary>
+    [Theory]
+    [InlineData("NON_BUSINESS_MOVE")]
+    [InlineData("HOLD_RELEASE")]
+    public async Task ACheckForAPurposeThisBuildDoesNotAnswerIsRefusedAndTheSessionKept(string purpose)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await Harness.StartAsync(
+            server =>
+            {
+                server.SendJourneySnapshotsAfterRecovery = true;
+                server.JourneySnapshotPayloads = new Dictionary<string, object>
+                {
+                    ["VehicleBusinessStateSnapshot"] = Payloads.BusinessState(1, loadingPhase: null),
+                    ["CurrentStopWorklistSnapshot"] = Payloads.Worklist(1, Payloads.ItemA),
+                    ["UpcomingStopPlanSnapshot"] = Payloads.Plan(1, Payloads.TwoDemandLegs)
+                };
+            },
+            token,
+            io: io);
+        await harness.WaitUntilAsync(
+            () => harness.Session.CurrentJourney.CurrentStopWorklist is not null && harness.Session.Current.SafetyStateVersion > 0,
+            "the worklist and an accepted safety state",
+            token);
+
+        bool nonBusinessMove = purpose == "NON_BUSINESS_MOVE";
+        await harness.Server.SendCommandAsync(
+            "PreDepartureSafetyCheck",
+            Guid.NewGuid().ToString("D"),
+            new
+            {
+                preDepartureSafetyCheckId = Guid.NewGuid().ToString("D"),
+                checkPurpose = purpose,
+                demandId = (string?)null,
+                movementLegId = nonBusinessMove ? "22222222-2222-4222-8222-000000000009" : null,
+                expectedSafetyStateVersion = harness.Session.Current.SafetyStateVersion,
+                targetStationId = nonBusinessMove ? "ST-WAIT" : null
+            });
+
+        JsonElement problem = await WaitForPayloadAsync(harness, "ProtocolProblem", token);
+        Assert.Equal("PreDepartureSafetyCheck", problem.GetProperty("rejectedMessageType").GetString());
+        Assert.Equal("ACTION_NOT_ALLOWED_IN_STATE", problem.GetProperty("problem").GetProperty("reasonCode").GetString());
+        Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "PreDepartureSafetyCheckResult");
+        Assert.True(harness.Session.Current.Connected);
         Assert.Empty(harness.UiErrors);
     }
 

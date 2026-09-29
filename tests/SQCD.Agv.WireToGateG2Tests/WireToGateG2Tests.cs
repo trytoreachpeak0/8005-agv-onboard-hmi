@@ -3118,8 +3118,7 @@ public sealed partial class WireToGateG2Tests
             capability,
             safety,
             "eight-slot-v1",
-            "eight-slot-modbus-v1",
-            SupportsBatchUnlock: false);
+            "eight-slot-modbus-v1");
 
     private static string NewJournalPath()
     {

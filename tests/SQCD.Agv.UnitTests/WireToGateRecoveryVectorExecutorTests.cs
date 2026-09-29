@@ -687,7 +687,7 @@ public sealed class WireToGateRecoveryVectorExecutorTests
             [("COMPLETED", 1), ("NOT_STARTED", 2), ("NOT_STARTED", 3)],
             result.SlotResults.OrderBy(slot => slot.SlotNo).Select(slot => (slot.Outcome, slot.SlotNo)));
         Assert.Equal(
-            ["VEHICLE_NOT_READY"],
+            ["ONBOARD_FATAL_FAULT_LATCHED"],
             result.SlotResults.Single(slot => slot.SlotNo == 2).ReasonCodes);
         Assert.Empty(result.SlotResults.Single(slot => slot.SlotNo == 3).ReasonCodes);
         Assert.Empty((await fixture.Journal.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);

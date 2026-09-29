@@ -12,7 +12,7 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// <para>
 /// <b>判据（#191 票面，调度 2026-09-22 确认）：</b>锁存期间任何一次新的开锁脉冲都拒绝；已经开着的门照常等操作员关上。
 /// 被拒的那一次照实上报：<c>FAILED</c>，从没开过的仓 <c>NOT_STARTED</c>，开过又空关、这次不再重开的仓 <c>FAILED</c>，原因码
-/// <c>VEHICLE_NOT_READY</c>（协议 v2.0.0 没有更准的码，专用码记在 program#115）。服务端对非完成结果一律判
+/// <c>ONBOARD_FATAL_FAULT_LATCHED</c>（协议 3.0.0 的专用码，onboard-hmi#214；此前借用 <c>VEHICLE_NOT_READY</c>）。服务端对非完成结果一律判
 /// <c>RecoveryRequired</c> 并 Block（<c>WireToGateStore</c> 结果落库处、<c>DeterminateLoadFailure.Judge</c> 只放过
 /// <c>OPERATOR_TIMEOUT</c>），所以它得到一个答复，不会停在等结果上。
 /// </para>
@@ -55,7 +55,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal([1, 2], slots.Select(slot => slot.GetProperty("slotNo").GetInt32()));
         Assert.All(slots, slot => Assert.Equal("NOT_STARTED", slot.GetProperty("outcome").GetString()));
         // 停下它的是 1 号仓那一次开锁，原因记在那一仓；2 号仓只是没轮到（ADR-cross-0058 第 6 条）。
-        Assert.Equal(["VEHICLE_NOT_READY"], ReasonCodes(slots[0]));
+        Assert.Equal(["ONBOARD_FATAL_FAULT_LATCHED"], ReasonCodes(slots[0]));
         Assert.Empty(ReasonCodes(slots[1]));
 
         WireToGateRecoveryState journal = ReadJournal(harness, token);
@@ -94,7 +94,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(
             [(1, "COMPLETED"), (2, "NOT_STARTED")],
             slots.Select(slot => (slot.GetProperty("slotNo").GetInt32(), slot.GetProperty("outcome").GetString())));
-        Assert.Equal(["VEHICLE_NOT_READY"], ReasonCodes(slots[1]));
+        Assert.Equal(["ONBOARD_FATAL_FAULT_LATCHED"], ReasonCodes(slots[1]));
         AssertLatchGuidance(harness, "本机已锁存严重安全故障，2号仓停止开门；复核并复位后可申请恢复。");
     }
 
@@ -151,7 +151,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal("EMPTY", slot.GetProperty("finalPhysicalState").GetString());
         Assert.Equal("LOCKED", slot.GetProperty("lockState").GetString());
         Assert.Equal("RESET", slot.GetProperty("unlockOutputState").GetString());
-        Assert.Equal(["VEHICLE_NOT_READY"], ReasonCodes(slot));
+        Assert.Equal(["ONBOARD_FATAL_FAULT_LATCHED"], ReasonCodes(slot));
         Assert.Empty(ReadJournal(harness, token).ActiveUnlockSlots);
     }
 
@@ -222,7 +222,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         JsonElement refused = Assert.Single(slots, slot => slot.GetProperty("slotNo").GetInt32() == 1);
         Assert.Equal("NOT_STARTED", refused.GetProperty("outcome").GetString());
         Assert.Equal("OCCUPIED", refused.GetProperty("finalPhysicalState").GetString());
-        Assert.Equal(["VEHICLE_NOT_READY"], ReasonCodes(refused));
+        Assert.Equal(["ONBOARD_FATAL_FAULT_LATCHED"], ReasonCodes(refused));
         JsonElement handedOver = Assert.Single(slots, slot => slot.GetProperty("slotNo").GetInt32() == 2);
         Assert.Equal("COMPLETED", handedOver.GetProperty("outcome").GetString());
         await press;

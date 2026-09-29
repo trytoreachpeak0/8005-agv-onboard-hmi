@@ -122,7 +122,7 @@ public sealed partial class RecoveryVectorG2Tests
 
     /// <summary>
     /// 1、2 号仓都有货、锁着、输出复位，都没被这个向量开过：<c>NOT_STARTED</c>，读数照实。1 号仓是锁存拒掉的那一次开锁，带
-    /// <c>VEHICLE_NOT_READY</c>；2 号仓没轮到，不带原因（ADR-cross-0058 第 6 条）。
+    /// <c>ONBOARD_FATAL_FAULT_LATCHED</c>（协议 3.0.0，onboard-hmi#214）；2 号仓没轮到，不带原因（ADR-cross-0058 第 6 条）。
     /// </summary>
     private static void AssertRefusedByLatchAsRead(JsonElement slotResults)
     {
@@ -136,7 +136,7 @@ public sealed partial class RecoveryVectorG2Tests
             Assert.Equal("RESET", slot.GetProperty("unlockOutputState").GetString());
         });
         Assert.Equal(
-            ["VEHICLE_NOT_READY"],
+            ["ONBOARD_FATAL_FAULT_LATCHED"],
             slots[0].GetProperty("reasonCodes").EnumerateArray().Select(code => code.GetString()!));
         Assert.Empty(slots[1].GetProperty("reasonCodes").EnumerateArray());
     }

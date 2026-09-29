@@ -5,5 +5,12 @@
     "keyword": "anyOf",
     "actual": "{\"state\":\"CLOSED\",\"cargoHoldingDeadlineAt\":null,\"closedReason\":null}",
     "deliberate": "MultiDemandJourneyG2Tests.AClosedLoadingPhaseWithoutAReasonIsStillRefusedAndLeavesNoHalfState"
+  },
+  {
+    "messageType": "CurrentStopWorklistSnapshot",
+    "pointer": "#/payload/stopEndedReason",
+    "keyword": "required",
+    "actual": "(absent)",
+    "deliberate": "MultiDemandJourneyG2Tests.AnEmptyWorklistJournaledInTheVersionTwoShapeReplaysOnRestartWithItsRevision"
   }
 ]

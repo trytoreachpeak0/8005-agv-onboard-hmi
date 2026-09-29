@@ -315,6 +315,7 @@ public sealed class WireToGateSessionService : IAsyncDisposable
 
     public Task<string> SendPreDepartureSafetyCheckResultAsync(
         string preDepartureSafetyCheckId,
+        string checkPurpose,
         string outcome,
         DateTimeOffset observedAt,
         long safetyStateVersion,
@@ -323,6 +324,7 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         _client.SendPreDepartureSafetyCheckResultAsync(
             preDepartureSafetyCheckId,
+            checkPurpose,
             outcome,
             observedAt,
             safetyStateVersion,

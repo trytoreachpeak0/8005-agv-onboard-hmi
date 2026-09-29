@@ -256,6 +256,7 @@ public sealed partial class RecoveryVectorG2Tests
                 slots,
                 selectedAction,
                 allowedActions = Array.Empty<string>(),
+                closedReason = (string?)null,
                 blockingFacts = Array.Empty<object>()
             });
 

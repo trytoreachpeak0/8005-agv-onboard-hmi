@@ -98,6 +98,56 @@ public sealed class MultiDemandViewModelTests
     }
 
     /// <summary>
+    /// 清单空了且带「本站结束原因」（协议 3.0.0 的 <c>stopEndedReason</c>，onboard-hmi#214）：到站那一格写原因，
+    /// 替代笼统的「无待处理任务」。
+    /// </summary>
+    [Theory]
+    [InlineData("COMPLETED", "ST-01 / 本站作业已完成")]
+    [InlineData("STATION_DEADLINE_EXPIRED", "ST-01 / 本站因超时结束")]
+    [InlineData("LOAD_CANCELLED", "ST-01 / 本站因装货取消结束")]
+    [InlineData("LOAD_COMPENSATED", "ST-01 / 本站因补偿清空结束")]
+    [InlineData("CARGO_HANDED_OFF", "ST-01 / 本站因货物交接结束")]
+    [InlineData("DEMAND_RELEASED", "ST-01 / 本站因任务释放结束")]
+    [InlineData("TRIP_TERMINATED", "ST-01 / 本站因行程终止结束")]
+    public async Task AnEmptyWorklistWithAStopEndedReasonSaysWhyTheStopEnded(string reason, string expected)
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+
+        viewModel.UpdateWireToGateJourney(Journey(Worklist(3) with { StopEndedReason = reason }));
+
+        Assert.Equal(expected, viewModel.VisitText);
+    }
+
+    /// <summary>
+    /// 原因为空（从 2.0.0 升上来、日志里重放的旧清单）照旧写「无待处理任务」，不编原因。
+    /// </summary>
+    [Fact]
+    public async Task AnEmptyWorklistWithoutAStopEndedReasonStillSaysNothingIsPending()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+
+        viewModel.UpdateWireToGateJourney(Journey(Worklist(3) with { StopEndedReason = null }));
+
+        Assert.Equal("ST-01 / 无待处理任务", viewModel.VisitText);
+    }
+
+    /// <summary>
+    /// 文案表里没有的原因原样显示：猜出来的意思比没有更糟（与 <c>OnboardCommandRejectionText</c> 同一规矩）。
+    /// </summary>
+    [Fact]
+    public async Task AStopEndedReasonTheTextTableDoesNotKnowIsShownVerbatim()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+
+        viewModel.UpdateWireToGateJourney(Journey(Worklist(3) with { StopEndedReason = "SOME_FUTURE_REASON" }));
+
+        Assert.Equal("ST-01 / SOME_FUTURE_REASON", viewModel.VisitText);
+    }
+
+    /// <summary>
     /// 断线时会话客户端把投影清成空旅程：清单列表一起清掉，不留上一站的行。
     /// </summary>
     [Fact]

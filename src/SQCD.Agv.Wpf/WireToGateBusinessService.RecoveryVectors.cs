@@ -1721,6 +1721,31 @@ public sealed partial class WireToGateBusinessService
             observedAt = alreadyStamped ?? observedAt;
         }
 
+        if (IsolationOnADemandNeedsAHandoffRecord(context, "MECHANICALLY_ISOLATED"))
+        {
+            // Protocol 3.0.0: an isolation on a demand must name the cargo handoff (cargoHandoff: sublot,
+            // receiver, time), and this build has no screen to take it -- 8005-agv-onboard-hmi#216 adds one.
+            // Fail closed until then (coordinator's decision on 8005-agv-onboard-hmi#214): nothing is sent,
+            // no value is made up, and the vehicle stays RecoveryRequired. The confirmation is already on
+            // disk -- the authorized vector and the observation stamp above -- so it survives a restart,
+            // a second press lands here again, and #216 sends the result from exactly this state.
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"强制机械取出已确认但未上报：id={context.PrimaryId}，demand={context.DemandId}。"
+                    + "协议 3.0.0 要求有需求的机械隔离结果带货物交接记录，本版本尚无登记界面（onboard-hmi#216），不发结果、不编值。");
+            PublishRecoveryVectorOperation(
+                context,
+                WireToGateHmiOperationStage.RecoveryRequired,
+                $"强制机械取出已确认，但本版本还不能登记货物交接，结果暂不上报；{FormatSlots(context.Slots)}保持禁止操作，车辆保持需恢复。",
+                "handoff-record-required");
+            PublishOperatorEvent(
+                $"forced-recovery-handoff-record-required:{context.PrimaryId}",
+                "RECOVERY_BLOCKED",
+                "强制机械取出结果需要货物交接记录，本版本尚不能登记，结果暂不上报（FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED）；请联系维护人员。 ");
+            return false;
+        }
+
         string resultKey =
             $"recovery-vector-result:{WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery}:{context.PrimaryId}";
         try
@@ -2873,6 +2898,11 @@ public sealed partial class WireToGateBusinessService
             // and no electronic reading proves anything about what was done. The outcome is the
             // operator's confirmation, never an executor's finish (onboard-hmi#107). The two proof
             // flags are constants for the same reason -- see ForcedMechanicalRecoveryResultPayload.
+            // The backstop to ConfirmForcedMechanicalRecoveryCoreAsync's fail-closed: an isolation on a
+            // demand is never sent without its handoff record, whoever the caller.
+            WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery
+                when IsolationOnADemandNeedsAHandoffRecord(context, result.OverallOutcome) =>
+                throw new InvalidDataException("FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED"),
             WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery => _session
                 .SendForcedMechanicalRecoveryResultAsync(
                     resultKey,
@@ -2888,11 +2918,28 @@ public sealed partial class WireToGateBusinessService
                         RequirePersistedOperator(context),
                         result.ObservedAt,
                         ElectronicEmptyProven: false,
-                        VehicleReadyProven: false),
+                        VehicleReadyProven: false,
+                        // COPY_COMMAND_DEMAND_INTO_RESULT. The handoff is null here because an isolation on a
+                        // demand never reaches this line (the arm above), and every other shape has none.
+                        DemandId: context.DemandId,
+                        CargoHandoff: null),
                     cancellationToken),
             _ => throw new InvalidDataException("RECOVERY_VECTOR_TYPE_INVALID")
         };
     }
+
+    /// <summary>
+    /// Whether this forced recovery result would have to carry a cargo handoff record: protocol 3.0.0's
+    /// <c>ForcedMechanicalRecoveryResult</c> requires <c>cargoHandoff</c> exactly when the outcome is
+    /// <c>MECHANICALLY_ISOLATED</c> and <c>demandId</c> is set, and this build cannot take one yet
+    /// (8005-agv-onboard-hmi#214, #216).
+    /// </summary>
+    private static bool IsolationOnADemandNeedsAHandoffRecord(
+        WireToGateRecoveryVectorContext context,
+        string outcome) =>
+        context.VectorType == WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery
+        && outcome == "MECHANICALLY_ISOLATED"
+        && context.DemandId is { Length: > 0 };
 
     private Task CompleteRecoveryVectorStateAsync(
         WireToGateRecoveryVectorContext context,

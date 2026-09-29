@@ -4,9 +4,9 @@
 
 ## 为什么是副本而不是引用
 
-`manifest/release.json` 是发布身份、63 条消息面与 11 条 denylist 的权威定义，`schemas/` 是
-63 条消息与公共类型的权威形状，`errors/error-codes.json` 是 58 个错误码的权威集合，
-`integration-slices/index.json` 是 16 个切片与 33 个一致性向量的权威划分——四者的
+`manifest/release.json` 是发布身份、65 条消息面与 11 条 denylist 的权威定义，`schemas/` 是
+65 条消息与公共类型的权威形状，`errors/error-codes.json` 是 62 个错误码的权威集合，
+`integration-slices/index.json` 是 16 个切片与 39 个一致性向量的权威划分——四者的
 权威副本都在 `8005-agv-protocol`。本仓库的 `ProtocolIdentityArchitectureTests`、
 `ProtocolMessageSurfaceArchitectureTests`、`ProtocolPayloadShapeArchitectureTests`、
 `ReasonCodeRegistryArchitectureTests` 与 `ProtocolVectorTestBindingArchitectureTests` 要把它们
@@ -24,15 +24,15 @@
    `SQCD.Agv.Contracts.WireToGateRelease.ManifestSha256`——车载端每条报文的信封都带着这个值。
    `ProtocolIdentityArchitectureTests.TheVendoredManifestIsTheProtocolManifestByteForByte`
    直接拿那个常量去核副本：常量让副本可信，副本让常量可查，两边互为凭据。
-2. 其余 71 个文件（69 个 schema ＋ 1 份错误码注册表 ＋ 1 份切片索引）**逐个出现在该 manifest
+2. 其余 73 个文件（71 个 schema ＋ 1 份错误码注册表 ＋ 1 份切片索引）**逐个出现在该 manifest
    自己的 `files` 表里**，`role`／`bytes`／`sha256` 齐全，`sha256` 是原始字节摘要而非规范化摘要。
    `ProtocolIdentityArchitectureTests.EveryOtherVendoredFileIsPinnedByTheManifestFileTable`
    遍历本目录，逐个与那张表比对，并断言没有一个文件游离在表外。
 
 于是整棵副本的可信度**追溯到线上那一个值**，链条上没有任何一处是人手抄进测试的。
 
-`manifest` 里的 `errorRegistrySha256`（`75857a50…`）不是这里用的那个：它由协议仓自己的
-规范化算法（JCS）算出，与原始字节摘要（`a52d7151…`）不同。本仓不复现那个算法——复现它就
+`manifest` 里的 `errorRegistrySha256`（`3386154c…`）不是这里用的那个：它由协议仓自己的
+规范化算法（JCS）算出，与原始字节摘要（`d248027d…`）不同。本仓不复现那个算法——复现它就
 变成了重新实现一个算法，而不是核对一份副本。`files` 表那一栏才是按字节的。
 
 ## 当前副本
@@ -42,33 +42,26 @@
 | 项 | 值 |
 | --- | --- |
 | 来源仓库 | `8005-agv-protocol` |
-| 来源提交 | `86575456c847041515b7b75e8851a00e0d939804`（注释 tag `protocol-v2.0.0` 指向的提交） |
-| 取用日期 | 2026-09-16 |
+| 来源提交 | `3f091cb2eae7c58cec54a95dd9389c9180bc7b4c`（分支 `batch-p3/protocol-v3.0.0-candidate`，父提交 `86575456`） |
+| 取用日期 | 2026-09-29 |
 
 | 来源路径 | 内容 |
 | --- | --- |
-| `manifest/release.json` | `status CONTENT_SNAPSHOT`、`releaseVersion 2.0.0`、`protocolVersion 3`、`profileId AGV_FULL_PRODUCT`、63 条消息、11 条 denylist、1785 条文件表项 |
-| `schemas/`（整棵树） | 69 个文件，`$id` 段 `agv-full-product/v3` |
-| `errors/error-codes.json` | `registryVersion 1.1.0`、`appendOnly true`、58 个码（1.0.0 的 54 个一个未删，新增 `SUBLOT_NOT_IN_DISPATCH_SCOPE`、`SUBLOT_BOX_COUNT_UNAVAILABLE`、`PACKAGE_CAPACITY_UNRESOLVED`、`OPERATOR_TIMEOUT`） |
-| `integration-slices/index.json` | 16 个切片 `FP-IS-00`～`FP-IS-15`、`vectorIds` 条目 36 条、去重 33 个向量（新增 `CV-LOAD-CANCELLATION-BEFORE-LOAD`、`CV-SUBLOT-REJECTED-AFTER-ENTRY`，都挂 `FP-IS-02`） |
+| `manifest/release.json` | `status CONTENT_SNAPSHOT`、`releaseVersion 3.0.0`、`protocolVersion 4`、`profileId AGV_FULL_PRODUCT`、65 条消息、11 条 denylist、1897 条文件表项 |
+| `schemas/`（整棵树） | 71 个文件，`$id` 段 `agv-full-product/v4`（新增 `SlotFaultDeclarationCommand`、`SlotFaultDeclarationResult`） |
+| `errors/error-codes.json` | `registryVersion 1.2.0`、62 个码（1.1.0 的 58 个一个未改，末尾新增 `SLOT_FAULT_DECLARED`、`RECOVERY_ACTION_RESULT_NOT_RECONCILED`、`ONBOARD_FATAL_FAULT_LATCHED`、`SLOT_DOOR_LOCK_UNPROVEN_AFTER_EMPTY`） |
+| `integration-slices/index.json` | 16 个切片、`vectorIds` 条目 42 条、去重 39 个向量（新增六条：`FP-IS-02` 一条，`FP-IS-07` 五条） |
 
-那个提交先由 `8005-agv-program#96` 作为 `v2.0.0` 候选交付并冻结，G1 于 2026-09-15 在协议仓 CI 上
-实跑通过（run
-[35049199772](https://github.com/trytoreachpeak0/8005-agv-protocol/actions/runs/35049199772)）。
-2026-09-16 它被发布为 `protocol-v2.0.0`（`8005-agv-program#97`）：发布打的注释 tag 解引用到同一个
-提交，**内容一字未改**，所以这次换身份不需要重新 vendor 任何文件——四份副本仍是候选那一刻的字节。
+**它是候选，不是发布。**候选身份以 `8005-agv-program#151` 的关闭评论为准（`8005-agv-onboard-hmi#214`）。
+`WireToGateRelease.ApprovalStatus` 写着 `SUPERSEDING_CANDIDATE`，`Tag` 写着 `protocol-v3.0.0`——这个 tag 届时
+尚不存在，由 `8005-agv-program#152` 在同一提交上打出，两个字段要一起读才如实。这份副本只在批次分支
+`w2g/batch-p3/v3` 上；集成分支在正式发布前仍是 `protocol-v2.0.0`。在它上面跑出的 G2 一律是
+`UNRELEASED_CANDIDATE`，不计入批次出口。候选若重发（`8005-agv-program#151` 追加评论公布新身份），照下面四步重新
+vendor。
 
-**它是已批准发布，不是候选。** `WireToGateRelease.ApprovalStatus` 写着 `APPROVED_RELEASE`，
-`Tag` 写着 `protocol-v2.0.0`，而这个 tag 在协议仓里已经打出并指向上面那个提交。发布批准记在外置
-attestation 里（Release 附件 `release-approval.json`，SHA-256
-`db745d0dffd6fa4c206003d7d4b49d771327cc6fcc6276ff19de97c01e3631f6`）：一份批准，`approverKind`
-为 `AI_AGENT`、`authorizedBy` 为 Zhengyu Shao（协议治理 2026-09-12 起允许 AI 批准，当次由用户在
-对话里授权）。attestation 不进 manifest，所以它的哈希不影响本目录任何一个字节。理由见
-`src/SQCD.Agv.Contracts/WireToGateProtocol.cs` 的注释。
-
-**`protocolVersion` 同为 3 的还有 MVP 线的 `WIRE_TO_GATE_MVP 0.3.0`。** 这个整数只在同一
-`profileId` 内单调递增，所以身份比较一律比完整的 `ProtocolReleaseIdentity`，日志与证据里写协议
-版本时成对写 `(profileId, protocolVersion)`。
+**`protocolVersion` 只在同一 `profileId` 内单调递增**（`WIRE_TO_GATE_MVP 0.3.0` 与 `AGV_FULL_PRODUCT 2.0.0` 都是
+3），所以身份比较一律比完整的 `ProtocolReleaseIdentity`，日志与证据里写协议版本时成对写
+`(profileId, protocolVersion)`，本副本是 `(AGV_FULL_PRODUCT, 4)`。
 
 ## 上游改了以后怎么刷新
 
@@ -93,7 +86,7 @@ attestation 里（Release 附件 `release-approval.json`，SHA-256
 3. 把它填进 `src/SQCD.Agv.Contracts/WireToGateProtocol.cs` 的 `ManifestSha256`，**并把那里
    其余八个常量一起改到位**——那不是抄哈希，那是换一次协议身份，
    `ProtocolIdentityArchitectureTests` 会逐字段核对。最后更新上表的来源提交与取用日期。
-   其余 71 个文件不需要任何人抄哈希：它们由新 manifest 的 `files` 表自动重新钉住。
+   其余 73 个文件不需要任何人抄哈希：它们由新 manifest 的 `files` 表自动重新钉住。
 
 4. 跑测试。四处会随之报缺或报多，**都不是测试写错了**：
 
@@ -104,7 +97,7 @@ attestation 里（Release 附件 `release-approval.json`，SHA-256
    - **错误码增删** → `ReasonCodeRegistryArchitectureTests`：`IsProtocolErrorCode` 那份内联
      清单与注册表不再逐个相等。
    - **切片或向量增删** → `ProtocolVectorTestBindingArchitectureTests`：切片数／条目数／去重向量数
-     不再是 16／36／33，或者某个新向量还没有车载端具名测试与之绑定。
+     不再是 16／42／39，或者某个新向量还没有车载端具名测试与之绑定。
 
 **整份拷贝，不要手工编辑副本。**副本与上游的差异没有任何机制能自动发现，唯一的保障是
 「它永远是 `cp` 出来的」这条纪律。

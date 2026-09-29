@@ -60,10 +60,11 @@ public sealed record WireToGatePreDepartureSafetyCheck(
     long SessionGeneration,
     DateTimeOffset SentAt,
     string PreDepartureSafetyCheckId,
-    string DemandId,
-    string MovementLegId,
+    string CheckPurpose,
+    string? DemandId,
+    string? MovementLegId,
     long ExpectedSafetyStateVersion,
-    string TargetStationId)
+    string? TargetStationId)
     : WireToGateServerCommand("PreDepartureSafetyCheck", MessageId, null, SessionGeneration, SentAt);
 
 public sealed record WireToGateRecoveryCommand(
@@ -179,7 +180,8 @@ public sealed record WireToGateExceptionRecoverySessionSnapshot(
     IReadOnlyList<int> Slots,
     string? SelectedAction,
     IReadOnlyList<string> AllowedActions,
-    IReadOnlyList<WireToGateRecoveryBlockingFact> BlockingFacts)
+    IReadOnlyList<WireToGateRecoveryBlockingFact> BlockingFacts,
+    string? ClosedReason = null)
     : WireToGateServerCommand(
         "ExceptionRecoverySessionSnapshot",
         MessageId,

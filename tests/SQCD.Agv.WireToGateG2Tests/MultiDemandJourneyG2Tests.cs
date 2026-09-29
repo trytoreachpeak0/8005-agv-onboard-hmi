@@ -158,6 +158,8 @@ public sealed partial class MultiDemandJourneyG2Tests
                 worklistRevision = revision,
                 operationSessionId = OperationSessionId,
                 stationDepartureDeadlineAt,
+                // Protocol 3.0.0: null while there are items, a reason once there are none.
+                stopEndedReason = items.Length == 0 ? "COMPLETED" : (string?)null,
                 items
             };
 
@@ -352,8 +354,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                     1,
                     1,
                     "eight-slot-v1",
-                    "eight-slot-modbus-v1",
-                    SupportsBatchUnlock: false),
+                    "eight-slot-modbus-v1"),
                 io,
                 wrapJournal?.Invoke(journal) ?? journal,
                 logger,
