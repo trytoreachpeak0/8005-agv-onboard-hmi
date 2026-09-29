@@ -178,6 +178,65 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// A receive loop of a connection that has since been replaced does not publish the readiness it read last
+    /// (control-server#380, the coordinator's follow-up). The loop checks for cancellation once per line, before it
+    /// applies it; a loop past that check when the reconnect begins goes on to publish its old session's readiness --
+    /// and, if held up long enough, after the new handshake has published the new session's. Nothing announces
+    /// readiness again until it changes, so the stale one would stand: RECOVERY_REQUIRED here, a fault cargo handoff
+    /// entry over a session that is READY.
+    /// </summary>
+    /// <remarks>
+    /// Held where the loop logs the line it received -- after its cancellation check, before it publishes -- by
+    /// <see cref="RecordingLogger.HoldNextEntryStartingWith"/>; released only after the new session is up. No timing.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
+    public async Task AReplacedReceiveLoopDoesNotPublishItsOldSessionsReadinessOverTheNewOne()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            loadAlreadySettled: true);
+        await BringSessionToReadyAsync(harness, token);
+        long oldGeneration = harness.Session.Current.SessionGeneration!.Value;
+
+        // The old session's last readiness line is RECOVERY_REQUIRED, and its loop is parked on it.
+        harness.Server.ReadinessReasonOverride = "SESSION_RECOVERY_REQUIRED";
+        harness.Logger.HoldNextEntryStartingWith("收到SessionReadiness：");
+        await harness.Server.RequestSafetyStateSnapshotAsync();
+        await harness.Logger.HoldEntered.WaitAsync(TimeSpan.FromSeconds(30), token);
+        Assert.Equal(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
+
+        // The vehicle reconnects; the new session is READY.
+        harness.Server.ReadinessReasonOverride = null;
+        WireToGateSessionSnapshot reconnected = await harness.Session.Client.ConnectAndRecoverAsync(token);
+        Assert.True(reconnected.SessionGeneration > oldGeneration);
+        Assert.Equal(WireToGateSessionReadiness.Ready, reconnected.Readiness);
+
+        harness.Logger.ReleaseHold();
+        // Done with the line either way: published (会话状态发布) or dropped (丢弃SessionReadiness), both logged with the
+        // old generation, so the assertions below read the state after the old loop acted, not before.
+        string oldGenerationField = $"generation={oldGeneration}，";
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Logger.Entries.Any(entry =>
+                (entry.Message.StartsWith("会话状态发布：source=SessionReadiness，", StringComparison.Ordinal)
+                    || entry.Message.StartsWith("丢弃SessionReadiness：", StringComparison.Ordinal))
+                && entry.Message.Contains(oldGenerationField, StringComparison.Ordinal)),
+            "the replaced receive loop to be done with its last readiness line",
+            token);
+        Stopwatch watch = Stopwatch.StartNew();
+        while (watch.Elapsed < SettleWatch)
+        {
+            WireToGateSessionSnapshot current = harness.Session.Current;
+            Assert.Equal(reconnected.SessionGeneration, current.SessionGeneration);
+            Assert.Equal(WireToGateSessionReadiness.Ready, current.Readiness);
+            Assert.False(harness.Business.CanRequestFaultCargoHandoff);
+            await Task.Delay(50, token);
+        }
+    }
+
+    /// <summary>
     /// The harness ends its handshake RECOVERY_REQUIRED (departure unknown until the vehicle is stopped). A requested
     /// snapshot, answered with the vehicle stopped, brings READY: the entry is then shut, which is where the handoff
     /// finds the session in the field.
