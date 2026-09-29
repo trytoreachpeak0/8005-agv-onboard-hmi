@@ -1,6 +1,7 @@
 using System.Text.Json;
 using SQCD.Agv.Application;
 using SQCD.Agv.Core;
+using SQCD.Agv.Wpf;
 using Xunit;
 using Harness = SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness;
 using Payloads = SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Payloads;
@@ -93,65 +94,146 @@ public sealed class WaitingPointIdleReturnG2Tests
     /// <summary>
     /// <c>NEVER_LOAD_AT_WAITING_POINT</c>, the cell <c>HasConsistentDemand</c> used to let through: the plan has
     /// only a waiting-point leg (no demand), and the server nevertheless sends a worklist with an item and an
-    /// entry request. Neither the entry nor the cancellation before any sublot is offered, a direct submit is
-    /// refused with nothing sent, and the contradiction is logged once.
+    /// entry request. The entry is not offered, the stop reads as the waiting point it is, and the
+    /// contradiction is logged once.
     /// </summary>
     /// <remarks>
-    /// The purpose is left at <c>TRANSPORT</c> on purpose: the leg's category alone has to be enough. Before
-    /// batch 8-22 this stop offered both buttons and sent the entry.
+    /// <para>
+    /// The purpose is left at <c>TRANSPORT</c> on purpose: the leg's category alone has to be enough.
+    /// </para>
+    /// <para>
+    /// One of three gates, pinned alone: the one in <c>CanSubmitSublot</c>. A submit that bypasses the button is
+    /// <see cref="ADirectSubmitAtAWaitingPointIsRefusedAndSendsNothing"/>, the cancellation before any sublot is
+    /// <see cref="TheCancellationBeforeAnySublotIsNotOfferedAtAWaitingPoint"/>; each goes red with only its own
+    /// gate removed. The same stop made a business one is the control,
+    /// <see cref="AnOrdinaryBusinessStopOffersTheEntryAndSendsIt"/>.
+    /// </para>
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-12")]
     [Trait("ProtocolVector", "CV-WAITING-POINT-IDLE-RETURN")]
-    public async Task NoLoadIsOfferedAtAWaitingPointEvenWithAWorklistItemAndAnEntryRequest()
+    public async Task NoEntryIsOfferedAtAWaitingPointEvenWithAWorklistItemAndAnEntryRequest()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
-        await using Harness harness = await Harness.StartAsync(
-            server =>
-            {
-                server.SendJourneySnapshotsAfterRecovery = true;
-                server.SublotEntryExpectedSublots = ["SUBLOT-A"];
-                server.JourneySnapshotPayloads = new Dictionary<string, object>
-                {
-                    ["CurrentStopWorklistSnapshot"] = Payloads.Worklist(1, Payloads.ItemA),
-                    ["UpcomingStopPlanSnapshot"] = Payloads.Plan(1, [WaitingPointLeg(1, "ARRIVED")])
-                };
-            },
-            token);
-
-        await harness.WaitUntilAsync(
-            () => harness.Business.ExpectedSublots is not null
-                && harness.Session.CurrentJourney is { CurrentStopWorklist: not null, UpcomingStopPlan: not null }
-                && AcknowledgedKinds(harness.Server).Length == 3,
-            "the worklist, the waiting-point plan and the entry request",
-            token);
+        await using Harness harness = await StartWithEntryRequestAsync("TRANSPORT", WaitingPointLeg(1, "ARRIVED"), token);
 
         string[] acknowledged = AcknowledgedKinds(harness.Server);
         Assert.Contains("UPCOMING_STOP_PLAN", acknowledged);
         Assert.Contains("VEHICLE_BUSINESS_STATE", acknowledged);
         Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "ProtocolProblem");
-        Assert.Equal("TRANSPORT", harness.Session.CurrentJourney.VehicleBusinessState!.ActivePurpose);
 
-        // What the operator sees: no entry, no cancellation, the stop described as the waiting point it is.
         await AssertEntryStaysClosedAsync(harness, token);
         Assert.Equal($"在等待点 {WaitingPoint} 待命", harness.ViewModel.VisitText);
         Assert.Equal(WireToGateIdleReturnText.AtWaitingPointStatus, harness.ViewModel.IdleReturnStatus);
         Assert.Equal(string.Empty, harness.ViewModel.StopDirectionText);
         Assert.Equal(string.Empty, harness.ViewModel.TaskTypeText);
-        Assert.False(harness.Session.CurrentJourney.CanAcceptSublot);
-
-        // And a press that bypasses the button does not go out either.
-        InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => harness.Business.SubmitSublotAsync("SUBLOT-A", "SCANNER", token));
-        Assert.Equal("WIRE_TO_GATE_JOURNEY_NOT_READY", refused.Message);
-        await Task.Delay(200, token);
-        Assert.Empty(harness.Submissions);
-        Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "LoadCancellationStartRequested");
-        Assert.Equal(0, harness.Io.UnlockCount);
-
         Assert.Single(
             harness.Logger.Entries,
             entry => entry.Severity == LogSeverity.Warning && entry.Message.StartsWith("等待点停靠收到带项的清单", StringComparison.Ordinal));
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// The second gate of <c>NEVER_LOAD_AT_WAITING_POINT</c>: a submit that does not ask the button first -- the
+    /// automation host, any path straight into the business service -- is refused at the waiting point, no
+    /// <c>SublotSubmitted</c> goes out and no door opens.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-12")]
+    [Trait("ProtocolVector", "CV-WAITING-POINT-IDLE-RETURN")]
+    public async Task ADirectSubmitAtAWaitingPointIsRefusedAndSendsNothing()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartWithEntryRequestAsync("TRANSPORT", WaitingPointLeg(1, "ARRIVED"), token);
+
+        InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => harness.Business.SubmitSublotAsync("SUBLOT-A", "SCANNER", token));
+
+        Assert.Equal("WIRE_TO_GATE_JOURNEY_NOT_READY", refused.Message);
+        await Task.Delay(300, token);
+        Assert.Empty(harness.Submissions);
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// The third gate: the cancellation before any sublot is not offered at a waiting point -- there is nothing
+    /// to give up before loading -- and a press that reaches the business service anyway sends nothing.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-12")]
+    [Trait("ProtocolVector", "CV-WAITING-POINT-IDLE-RETURN")]
+    public async Task TheCancellationBeforeAnySublotIsNotOfferedAtAWaitingPoint()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartWithEntryRequestAsync("TRANSPORT", WaitingPointLeg(1, "ARRIVED"), token);
+
+        await AssertCancellationStaysClosedAsync(harness, token);
+        try
+        {
+            await harness.Business.RequestLoadCancellationAsync(
+                WireToGateBusinessService.LoadCancellationDefaultReason, token);
+        }
+        catch (InvalidOperationException)
+        {
+            // A press on an entry that was never offered has always been refused this way; what counts is below.
+        }
+
+        await Task.Delay(300, token);
+        Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "LoadCancellationStartRequested");
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// The two facts disagree: the business state says <c>IDLE_RETURN</c>, the plan's current leg is still a
+    /// <c>BUSINESS</c> one (a plan that has not caught up, or a server contradiction). Either fact is enough, so
+    /// the entry stays shut and the cell says an idle return without borrowing the business leg's station.
+    /// </summary>
+    /// <remarks>
+    /// Why "either": the two snapshots arrive separately, and a load must not be offered in the window between
+    /// them, whichever comes first. The cost is that a purpose released late holds the entry shut until it
+    /// arrives -- the operator waits one snapshot, where the other choice could open a door at a waiting point.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-12")]
+    [Trait("ProtocolVector", "CV-WAITING-POINT-IDLE-RETURN")]
+    public async Task AnIdleReturnPurposeOverABusinessLegStillOffersNoEntry()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartWithEntryRequestAsync("IDLE_RETURN", BusinessLeg(1, "ARRIVED"), token);
+
+        Assert.Equal("BUSINESS", harness.Session.CurrentJourney.CurrentLeg!.StopPurposeCategory);
+        await AssertEntryStaysClosedAsync(harness, token);
+        Assert.Equal("空闲返回：前往等待点", harness.ViewModel.VisitText);
+        Assert.Equal(WireToGateIdleReturnText.EnRouteStatus, harness.ViewModel.IdleReturnStatus);
+        Assert.Equal(string.Empty, harness.ViewModel.StopDirectionText);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// The control for the four above: the same stop, worklist and entry request with the leg a <c>BUSINESS</c>
+    /// one and the purpose <c>TRANSPORT</c>. Both entries are offered and the entry goes out -- the waiting-point
+    /// gates do not reach an ordinary transport stop.
+    /// </summary>
+    [Fact]
+    public async Task AnOrdinaryBusinessStopOffersTheEntryAndSendsIt()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartWithEntryRequestAsync("TRANSPORT", BusinessLeg(1, "ARRIVED"), token);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.CanSubmit && harness.ViewModel.CanRequestLoadCancellation,
+            "the entry and the cancellation before any sublot to be offered",
+            token);
+
+        Assert.True(harness.Business.CanSubmitSublot);
+        Assert.True(harness.Business.CanRequestLoadCancellation);
+        Assert.Equal("ST-01", harness.ViewModel.VisitText);
+        Assert.Equal(string.Empty, harness.ViewModel.IdleReturnStatus);
+        Assert.Equal("取货", harness.ViewModel.StopDirectionText);
+
+        await harness.Business.SubmitSublotAsync("SUBLOT-A", "SCANNER", token);
+        JsonElement submitted = await harness.WaitForSubmissionAsync(token);
+        Assert.Equal("SUBLOT-A", submitted.GetProperty("sublot").GetString());
         Assert.Empty(harness.UiErrors);
     }
 
@@ -345,19 +427,74 @@ public sealed class WaitingPointIdleReturnG2Tests
     /// read can land in that gap and see a button that has not been opened <i>yet</i>, which made this pass once
     /// with the waiting-point gate removed.
     /// </remarks>
-    private static async Task AssertEntryStaysClosedAsync(Harness harness, CancellationToken token)
+    private static Task AssertEntryStaysClosedAsync(Harness harness, CancellationToken token) =>
+        HoldsForHalfASecondAsync(
+            () =>
+            {
+                Assert.False(harness.ViewModel.CanSubmit);
+                Assert.False(harness.Business.CanSubmitSublot);
+            },
+            token);
+
+    /// <summary>The same, for the cancellation before any sublot.</summary>
+    private static Task AssertCancellationStaysClosedAsync(Harness harness, CancellationToken token) =>
+        HoldsForHalfASecondAsync(
+            () =>
+            {
+                Assert.False(harness.ViewModel.CanRequestLoadCancellation);
+                Assert.False(harness.Business.CanRequestLoadCancellation);
+            },
+            token);
+
+    private static async Task HoldsForHalfASecondAsync(Action assertion, CancellationToken token)
     {
         DateTimeOffset until = DateTimeOffset.UtcNow.AddMilliseconds(500);
         do
         {
-            Assert.False(harness.ViewModel.CanSubmit);
-            Assert.False(harness.ViewModel.CanRequestLoadCancellation);
-            Assert.False(harness.Business.CanSubmitSublot);
-            Assert.False(harness.Business.CanRequestLoadCancellation);
+            assertion();
             await Task.Delay(20, token);
         }
         while (DateTimeOffset.UtcNow < until);
     }
+
+    /// <summary>
+    /// A stop at <c>ST-01</c> with one worklist item (<c>SUBLOT-A</c>) and an entry request for it, under the given
+    /// purpose and plan leg -- the only two things the tests above vary.
+    /// </summary>
+    private static async Task<Harness> StartWithEntryRequestAsync(string activePurpose, object leg, CancellationToken token)
+    {
+        Harness harness = await Harness.StartAsync(
+            server =>
+            {
+                server.SendJourneySnapshotsAfterRecovery = true;
+                server.JourneyActivePurpose = activePurpose;
+                server.SublotEntryExpectedSublots = ["SUBLOT-A"];
+                server.JourneySnapshotPayloads = new Dictionary<string, object>
+                {
+                    ["CurrentStopWorklistSnapshot"] = Payloads.Worklist(1, Payloads.ItemA),
+                    ["UpcomingStopPlanSnapshot"] = Payloads.Plan(1, [leg])
+                };
+            },
+            token);
+        try
+        {
+            await harness.WaitUntilAsync(
+                () => harness.Business.ExpectedSublots is not null
+                    && harness.Session.CurrentJourney is { CurrentStopWorklist: not null, UpcomingStopPlan: not null }
+                    && AcknowledgedKinds(harness.Server).Length == 3,
+                "the business state, the worklist, the plan and the entry request",
+                token);
+            return harness;
+        }
+        catch
+        {
+            await harness.DisposeAsync();
+            throw;
+        }
+    }
+
+    private static object BusinessLeg(int sequence, string state) =>
+        Payloads.Leg(sequence, "TO_PICKUP", "BUSINESS", ItemADemand, "ST-01", state);
 
     private static object WaitingPointLeg(int sequence, string state) =>
         Payloads.Leg(sequence, null, "WAITING_POINT", null, WaitingPoint, state);
