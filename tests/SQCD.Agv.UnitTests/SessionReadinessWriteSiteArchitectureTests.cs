@@ -38,10 +38,10 @@ public sealed class SessionReadinessWriteSiteArchitectureTests
 
     /// <summary>
     /// The <c>Publish</c> calls in the client today: handshake start, session accepted, handshake failed, disconnect,
-    /// dispose, receive failed, SessionReadiness. Kept literal: a scanner that stops finding calls reports nothing, which
-    /// looks exactly like nothing wrong.
+    /// dispose, receive failed. Kept literal: a scanner that stops finding calls reports nothing, which looks exactly like
+    /// nothing wrong. The server's readiness goes through <c>PublishServerReadiness</c> instead.
     /// </summary>
-    private const int ExpectedPublishCalls = 7;
+    private const int ExpectedPublishCalls = 6;
 
     [Fact]
     public void EveryPublishedReadinessIsTheServersOrALifecycleLiteral()
@@ -55,17 +55,49 @@ public sealed class SessionReadinessWriteSiteArchitectureTests
             Assert.Equal(5, call.Arguments.Length);
             string readiness = call.Arguments[2];
             string reasons = call.Arguments[3];
-            bool literal = Regex.IsMatch(readiness, @"^WireToGateSessionReadiness\.\w+$")
-                           && Regex.IsMatch(reasons, @"^\[.*\]$", RegexOptions.Singleline);
-            bool fromServer = call.Member == "ApplySessionReadiness"
-                              && readiness == "mappedReadiness"
-                              && reasons == "readiness.ReasonCodes";
             Assert.True(
-                literal || fromServer,
+                Regex.IsMatch(readiness, @"^WireToGateSessionReadiness\.\w+$")
+                && Regex.IsMatch(reasons, @"^\[.*\]$", RegexOptions.Singleline),
                 $"{call.Member} publishes readiness '{readiness}' with reasons '{reasons}'. Readiness comes from the "
-                + "server's SessionReadiness or is a lifecycle literal; to publish the current state again with new "
-                + "versions, call PublishAcceptedVersions, which reads it under the lock (control-server#380).");
+                + "server's SessionReadiness (PublishServerReadiness) or is a lifecycle literal; to publish the current "
+                + "state again with new versions, call PublishAcceptedVersions, which reads it under the lock "
+                + "(control-server#380).");
         });
+
+        (string Member, string[] Arguments) server = Assert.Single(Calls(source, "PublishServerReadiness"));
+        Assert.Equal("ApplySessionReadiness", server.Member);
+        Assert.Equal("mappedReadiness", server.Arguments[1]);
+        Assert.Equal("readiness.ReasonCodes", server.Arguments[2]);
+    }
+
+    /// <summary>
+    /// A line a receive loop read is published only while that loop is the live one, tested under the lock; the loop
+    /// passes its own generation, and it is live before it runs (control-server#380, a replaced loop's readiness).
+    /// </summary>
+    [Fact]
+    public void AReceiveLoopsReadinessIsPublishedOnlyWhileThatLoopIsLive()
+    {
+        string source = Source();
+
+        string publish = Member(source, "PublishServerReadiness");
+        int gate = publish.IndexOf("lock (_stateGate)", StringComparison.Ordinal);
+        int live = publish.IndexOf("Interlocked.Read(ref _receiveLoopGeneration) != loop", StringComparison.Ordinal);
+        int write = publish.IndexOf("PublishUnderGate(", StringComparison.Ordinal);
+        int advance = publish.IndexOf("AdvanceSafetyStateVersion(", StringComparison.Ordinal);
+        Assert.True(gate >= 0 && gate < live && live < advance && advance < write,
+            "PublishServerReadiness must test the loop's generation under the lock before it moves the accepted safety "
+            + "version or publishes.");
+
+        (string Member, string[] Arguments)[] applies = Calls(source, "ApplySessionReadiness");
+        Assert.Equal(
+            ["ConnectAndRecoverAsync:receiveLoopGeneration: null", "ReceiveLoopAsync:generation"],
+            applies.Select(call => $"{call.Member}:{call.Arguments[2]}").Order(StringComparer.Ordinal).ToArray());
+
+        string start = Member(source, "StartReceiveLoop");
+        Assert.True(
+            start.IndexOf("Interlocked.Exchange(ref _receiveLoopGeneration, generation)", StringComparison.Ordinal)
+                < start.IndexOf("Task.Run(", StringComparison.Ordinal),
+            "StartReceiveLoop runs the loop before its generation is live; its first readiness line would be dropped.");
     }
 
     [Fact]
@@ -81,7 +113,7 @@ public sealed class SessionReadinessWriteSiteArchitectureTests
             .Where(member => member.Name != "PublishUnderGate")
             .SelectMany(member => Enumerable.Repeat(member.Name, Regex.Count(member.Body, @"\bPublishUnderGate\(")))
             .Order(StringComparer.Ordinal)];
-        Assert.Equal(["Publish", "PublishAcceptedVersions"], callers);
+        Assert.Equal(["Publish", "PublishAcceptedVersions", "PublishServerReadiness"], callers);
         foreach (string caller in callers)
         {
             string body = Member(source, caller);
@@ -101,9 +133,12 @@ public sealed class SessionReadinessWriteSiteArchitectureTests
         File.ReadAllText(Path.Combine(ProtocolIdentityArchitectureTests.RepositoryRoot(), ClientPath)));
 
     /// <summary>Every call of <c>Publish(</c> itself -- not its declaration, not the methods whose names start with it.</summary>
-    private static (string Member, string[] Arguments)[] PublishCalls(string source) =>
+    private static (string Member, string[] Arguments)[] PublishCalls(string source) => Calls(source, "Publish");
+
+    /// <summary>Every call of the method named <paramref name="name"/>, with the member it is made in; not its declaration.</summary>
+    private static (string Member, string[] Arguments)[] Calls(string source, string name) =>
     [
-        .. Members(source).SelectMany(member => Regex.Matches(member.Body, @"(?<![\w.])Publish\(")
+        .. Members(source).SelectMany(member => Regex.Matches(member.Body, $@"(?<![\w.]){Regex.Escape(name)}\(")
             .Where(match => !member.Body[..match.Index].EndsWith("void ", StringComparison.Ordinal))
             .Select(match => (member.Name, Arguments(member.Body, match.Index + match.Length))))
     ];

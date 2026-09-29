@@ -863,7 +863,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             WireToGateEnvelope readinessEnvelope = await ReadEnvelopeAsync(generation, cancellationToken)
                 .ConfigureAwait(false);
             ThrowIfProtocolProblem(readinessEnvelope);
-            ApplySessionReadiness(readinessEnvelope, requireExactConfiguredBaseline: true);
+            ApplySessionReadiness(readinessEnvelope, requireExactConfiguredBaseline: true, receiveLoopGeneration: null);
             StartReceiveLoop(generation);
             // After the loop is up: the pass waits for its acknowledgements through it (onboard-hmi#204).
             RequestStaleResend();
@@ -2137,8 +2137,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             TaskCreationOptions.RunContinuationsAsynchronously);
         _receiveStopping = stopping;
         _receiveFailure = failure;
-        _ = Task.Run(() => ReceiveLoopAsync(reader, generation, stopping, failure), stopping.Token);
+        // Live before it runs: a line it reads is published only while its generation is the live one
+        // (PublishServerReadiness, 8005-agv-control-server#380), and one read before this store would be dropped.
         Interlocked.Exchange(ref _receiveLoopGeneration, generation);
+        _ = Task.Run(() => ReceiveLoopAsync(reader, generation, stopping, failure), stopping.Token);
     }
 
     private async Task ReceiveLoopAsync(
@@ -2173,7 +2175,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 if (string.Equals(envelope.MessageType, "SessionReadiness", StringComparison.Ordinal))
                 {
                     bool couldSend = CanResendDurable(Current);
-                    ApplySessionReadiness(envelope, requireExactConfiguredBaseline: false);
+                    ApplySessionReadiness(envelope, requireExactConfiguredBaseline: false, generation);
                     if (!couldSend && CanResendDurable(Current))
                     {
                         RequestStaleResend();
@@ -3952,8 +3954,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
     /// <summary>
     /// Publishes a session state whose connection, generation, readiness and reason codes the caller decides: the
-    /// handshake's steps, a disconnect, and <see cref="ApplySessionReadiness"/> -- the one site that takes readiness from
-    /// the server.
+    /// handshake's steps and a disconnect. Readiness from the server goes through <see cref="PublishServerReadiness"/>.
     /// </summary>
     private void Publish(
         bool connected,
@@ -4032,9 +4033,14 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     private void RecordDiagnostic(string line) =>
         DiagnosticRecorded?.Invoke(this, new ValueChangedEventArgs<string>(line));
 
+    /// <param name="receiveLoopGeneration">
+    /// The generation of the receive loop that read the line, or <c>null</c> for the handshake's own. A loop's line is
+    /// published only while that loop is still the live one, see <see cref="PublishServerReadiness"/>.
+    /// </param>
     private void ApplySessionReadiness(
         WireToGateEnvelope envelope,
-        bool requireExactConfiguredBaseline)
+        bool requireExactConfiguredBaseline,
+        long? receiveLoopGeneration)
     {
         WireToGateProtocolSerializer.RequireMessage(envelope, "SessionReadiness");
         if (envelope.CorrelationId is not null)
@@ -4065,8 +4071,54 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             + $"generation={envelope.SessionGeneration?.ToString(CultureInfo.InvariantCulture) ?? "null"}，"
             + $"readiness={readiness.Readiness}，reasonCodes=[{string.Join(",", readiness.ReasonCodes)}]，"
             + $"acceptedSafetyStateVersion={readiness.AcceptedSafetyStateVersion.ToString(CultureInfo.InvariantCulture)}。");
-        AdvanceSafetyStateVersion(readiness.AcceptedSafetyStateVersion);
-        Publish(true, envelope.SessionGeneration, mappedReadiness, readiness.ReasonCodes, "SessionReadiness");
+        PublishServerReadiness(
+            envelope,
+            mappedReadiness,
+            readiness.ReasonCodes,
+            readiness.AcceptedSafetyStateVersion,
+            receiveLoopGeneration);
+    }
+
+    /// <summary>
+    /// Publishes the readiness the server sent, and the safety version it accepted with it -- unless the receive loop
+    /// that read it has been replaced.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A replaced loop's line is dropped</b> (8005-agv-control-server#380). A loop checks for cancellation once per
+    /// line, before it applies it. One past that check when a reconnect begins still reaches here, and held up long enough
+    /// it arrives after the new handshake published the new session: its old generation and old readiness would stand,
+    /// and the server announces readiness again only on a change. The test is taken under the lock every publication
+    /// takes, so it cannot pass and then be overtaken: <see cref="ConnectAndRecoverAsync"/> zeroes the loop generation
+    /// before its first publication, and <see cref="CloseConnectionAsync"/> before anything else, so a line that finds its
+    /// loop still live is published before either of them publishes anything.
+    /// </para>
+    /// <para>
+    /// The accepted safety version moves under the same test. A replaced loop moving it could leave the new handshake's
+    /// readiness, which must match the configured baseline exactly, looking out of sequence.
+    /// </para>
+    /// </remarks>
+    private void PublishServerReadiness(
+        WireToGateEnvelope envelope,
+        WireToGateSessionReadiness readiness,
+        IReadOnlyList<string> reasonCodes,
+        long acceptedSafetyStateVersion,
+        long? receiveLoopGeneration)
+    {
+        lock (_stateGate)
+        {
+            if (receiveLoopGeneration is long loop && Interlocked.Read(ref _receiveLoopGeneration) != loop)
+            {
+                RecordDiagnostic(
+                    $"丢弃SessionReadiness：messageId={envelope.MessageId}，"
+                    + $"generation={loop.ToString(CultureInfo.InvariantCulture)}，readiness={readiness}，"
+                    + "读到它的接收循环已被替换。");
+                return;
+            }
+
+            AdvanceSafetyStateVersion(acceptedSafetyStateVersion);
+            PublishUnderGate(true, envelope.SessionGeneration, readiness, reasonCodes, "SessionReadiness");
+        }
     }
 
     private void AdvanceSafetyStateVersion(long safetyStateVersion)
