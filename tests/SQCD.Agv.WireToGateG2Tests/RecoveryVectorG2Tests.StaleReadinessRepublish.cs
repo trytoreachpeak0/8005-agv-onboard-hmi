@@ -237,6 +237,62 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// A replaced loop's line that reports a safety version ahead of the vehicle's is dropped whole: the version does not
+    /// move either, and the reconnect's handshake, whose readiness must match the baseline it sent exactly, completes.
+    /// </summary>
+    /// <remarks>
+    /// The window is between the handshake building its SafetyStateSnapshot from the accepted version and it checking the
+    /// server's readiness against that version. The old loop is let go inside it: after the new connection's
+    /// RecoveryStateReport has reached the server, before the server's answer is let out
+    /// (<see cref="FakeControlServer.HandshakeReadinessHold"/>). Moved by the old line, the accepted version would be ahead
+    /// of the one the server reports, and <c>ApplySessionReadiness</c> refuses that with <c>HANDSHAKE_SEQUENCE_INVALID</c>.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
+    public async Task AReplacedReceiveLoopsHigherSafetyVersionDoesNotBreakTheReconnectHandshake()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            loadAlreadySettled: true);
+        await BringSessionToReadyAsync(harness, token);
+        long oldGeneration = harness.Session.Current.SessionGeneration!.Value;
+        long acceptedBefore = harness.Session.Current.SafetyStateVersion;
+
+        harness.Server.ReadinessAcceptedSafetyStateVersionOverride = acceptedBefore + 50;
+        harness.Logger.HoldNextEntryStartingWith("收到SessionReadiness：");
+        await harness.Server.RequestSafetyStateSnapshotAsync();
+        await harness.Logger.HoldEntered.WaitAsync(TimeSpan.FromSeconds(30), token);
+
+        harness.Server.ReadinessAcceptedSafetyStateVersionOverride = null;
+        TaskCompletionSource handshakeHold = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Server.HandshakeReadinessHold = handshakeHold.Task;
+        int reportsBefore = harness.Server.Received.Count(item => item.MessageType == "RecoveryStateReport");
+        Task<WireToGateSessionSnapshot> reconnect = harness.Session.Client.ConnectAndRecoverAsync(token);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Server.Received.Count(item => item.MessageType == "RecoveryStateReport") > reportsBefore,
+            "the reconnect's RecoveryStateReport to reach the server",
+            token);
+
+        harness.Logger.ReleaseHold();
+        string oldGenerationField = $"generation={oldGeneration}，";
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Logger.Entries.Any(entry =>
+                (entry.Message.StartsWith("会话状态发布：source=SessionReadiness，", StringComparison.Ordinal)
+                    || entry.Message.StartsWith("丢弃SessionReadiness：", StringComparison.Ordinal))
+                && entry.Message.Contains(oldGenerationField, StringComparison.Ordinal)),
+            "the replaced receive loop to be done with its last readiness line",
+            token);
+        handshakeHold.SetResult();
+
+        WireToGateSessionSnapshot reconnected = await reconnect;
+        Assert.True(reconnected.SessionGeneration > oldGeneration);
+        Assert.Equal(WireToGateSessionReadiness.Ready, reconnected.Readiness);
+        Assert.True(reconnected.SafetyStateVersion < acceptedBefore + 50);
+    }
+
+    /// <summary>
     /// The harness ends its handshake RECOVERY_REQUIRED (departure unknown until the vehicle is stopped). A requested
     /// snapshot, answered with the vehicle stopped, brings READY: the entry is then shut, which is where the handoff
     /// finds the session in the field.

@@ -281,6 +281,18 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </summary>
     public Task? ReadinessAfterSafetyAckHold { get; set; }
 
+    /// <summary>
+    /// When set, the SessionReadiness that ends a handshake (after the <c>RecoveryStateReport</c>) is written only once
+    /// this task completes (cs#380).
+    /// </summary>
+    public Task? HandshakeReadinessHold { get; set; }
+
+    /// <summary>
+    /// When set, every SessionReadiness this double writes reports this <c>acceptedSafetyStateVersion</c> instead of the
+    /// one it tracks: a line from a session whose safety version ran ahead of the vehicle's (cs#380).
+    /// </summary>
+    public long? ReadinessAcceptedSafetyStateVersionOverride { get; set; }
+
     public bool SendJourneySnapshotsAfterRecovery { get; set; }
 
     public bool SendDemandAcceptanceSnapshotsAfterRecovery { get; set; }
@@ -1928,6 +1940,11 @@ public sealed class FakeControlServer : IAsyncDisposable
 
         if (sendReadiness)
         {
+            if (HandshakeReadinessHold is { } handshakeHold)
+            {
+                await handshakeHold.ConfigureAwait(false);
+            }
+
             await WriteEnvelopeAsync(
                 context,
                 ForceRecoveryRequiredReadiness
@@ -2695,7 +2712,8 @@ public sealed class FakeControlServer : IAsyncDisposable
                 // ProtocolErrorCodes.ToSessionReadinessReasonCode, and only these are in the protocol's error registry.
                 reasonCodes = reasonCode is null ? Array.Empty<string>() : [reasonCode],
                 acceptedCapabilityVersion = Math.Max(context.CapabilityVersion, context.AcceptedCapabilityVersion),
-                acceptedSafetyStateVersion = Math.Max(context.SafetyStateVersion, context.AcceptedSafetyStateVersion),
+                acceptedSafetyStateVersion = ReadinessAcceptedSafetyStateVersionOverride
+                    ?? Math.Max(context.SafetyStateVersion, context.AcceptedSafetyStateVersion),
                 vehicleBusinessStateRevision = 0
             });
     }
