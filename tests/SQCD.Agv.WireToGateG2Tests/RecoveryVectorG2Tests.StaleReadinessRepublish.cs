@@ -79,6 +79,18 @@ public sealed partial class RecoveryVectorG2Tests
 
         await AssertRecoveryRequiredAndEntryOfferedAsync(harness, token);
         Assert.True(harness.Session.Current.SafetyStateVersion > before);
+
+        // The diagnostics the next field red is read by (control-server#380): the readiness as received, each
+        // publication with who made it, and the entry as judged on it.
+        string[] logged = [.. harness.Logger.Entries.Select(entry => entry.Message)];
+        Assert.Contains(logged, line => line.StartsWith("收到SessionReadiness：", StringComparison.Ordinal)
+            && line.Contains("readiness=RECOVERY_REQUIRED，reasonCodes=[SESSION_RECOVERY_REQUIRED]", StringComparison.Ordinal));
+        Assert.Contains(logged, line => line.StartsWith("会话状态发布：source=SafetyStateSnapshot-ack，", StringComparison.Ordinal));
+        Assert.Contains(logged, line => line.StartsWith("会话状态发布：source=SessionReadiness，", StringComparison.Ordinal)
+            && line.Contains("readiness=RecoveryRequired", StringComparison.Ordinal));
+        Assert.Contains(logged, line => line.StartsWith("判恢复入口：", StringComparison.Ordinal)
+            && line.Contains("readiness=RecoveryRequired", StringComparison.Ordinal)
+            && line.Contains($"subject=Load/{DemandId}/{AttemptId}（最近完成的装货）", StringComparison.Ordinal));
     }
 
     /// <summary>

@@ -72,6 +72,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     // 只在一遍补发扫描的异步流里为真，见 InStaleResendPass。
     private static readonly AsyncLocal<bool> StaleResendFlow = new();
     private WireToGateSessionSnapshot _current;
+
+    // Every write of _current and the StateChanged it raises happen under this lock, and so does the read a republish
+    // builds its snapshot from (8005-agv-control-server#380). See PublishAcceptedVersions.
+    private readonly object _stateGate = new();
     private WireToGateJourneySnapshot _journey;
     private CancellationTokenSource? _receiveStopping;
     private TaskCompletionSource<Exception>? _receiveFailure;
@@ -158,6 +162,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     public WireToGateJourneySnapshot CurrentJourney => Volatile.Read(ref _journey);
 
     public event EventHandler<ValueChangedEventArgs<WireToGateSessionSnapshot>>? StateChanged;
+
+    /// <summary>
+    /// One line per session-state publication and per <c>SessionReadiness</c> applied, for the application log
+    /// (8005-agv-control-server#380): when the recovery entry does not appear, these say whether the readiness arrived,
+    /// and which publication the screen was last given. Raised on the publishing thread.
+    /// </summary>
+    public event EventHandler<ValueChangedEventArgs<string>>? DiagnosticRecorded;
 
     public event EventHandler<ValueChangedEventArgs<WireToGateJourneySnapshot>>? JourneyChanged;
 
@@ -644,12 +655,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             allowRecoveryRequired: true,
             cancellationToken).ConfigureAwait(false);
         AdvanceSafetyStateVersion(safetyStateVersion);
-        WireToGateSessionSnapshot current = Current;
-        Publish(
-            current.Connected,
-            current.SessionGeneration,
-            current.Readiness,
-            current.ReasonCodes);
+        PublishAcceptedVersions("SafetyStateChanged-ack");
         return messageId;
     }
 
@@ -714,7 +720,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         Interlocked.Exchange(ref _receiveLoopGeneration, 0);
         _alarmPublishGate.Release();
 
-        Publish(false, null, WireToGateSessionReadiness.Recovering, []);
+        Publish(false, null, WireToGateSessionReadiness.Recovering, [], "handshake-start");
         await _journal.InitializeAsync(cancellationToken).ConfigureAwait(false);
         string journalEpoch = await _journal.ReadJournalEpochAsync(cancellationToken).ConfigureAwait(false);
         Volatile.Write(ref _journalEpoch, journalEpoch);
@@ -765,7 +771,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
             RequireUuid(accepted.ServerInstanceId, nameof(accepted.ServerInstanceId));
             WireToGateProtocolSerializer.RequireExactReleaseIdentity(accepted.AcceptedProtocolReleaseIdentity);
-            Publish(true, generation, WireToGateSessionReadiness.Recovering, []);
+            Publish(true, generation, WireToGateSessionReadiness.Recovering, [], "session-accepted");
 
             // 上一个会话没等到 ack 的持久报文先补发，下面那份报告因此看到的是已经对齐的账。补发与否，
             // 握手都照常走完：真服务端每个新世代都从零开始，手上没有能力快照、安全快照和恢复状态报告，
@@ -872,7 +878,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         catch
         {
             await CloseConnectionAsync().ConfigureAwait(false);
-            Publish(false, null, WireToGateSessionReadiness.Disconnected, ["SESSION_RECOVERY_REQUIRED"]);
+            Publish(false, null, WireToGateSessionReadiness.Disconnected, ["SESSION_RECOVERY_REQUIRED"], "handshake-failed");
             throw;
         }
     }
@@ -1428,7 +1434,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         }
         finally
         {
-            Publish(false, null, WireToGateSessionReadiness.Disconnected, ["SESSION_RECOVERY_REQUIRED"]);
+            Publish(false, null, WireToGateSessionReadiness.Disconnected, ["SESSION_RECOVERY_REQUIRED"], "disconnect");
         }
     }
 
@@ -1443,7 +1449,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         await CloseConnectionAsync().ConfigureAwait(false);
         _sendGate.Dispose();
         _alarmPublishGate.Dispose();
-        Publish(false, null, WireToGateSessionReadiness.Disconnected, []);
+        Publish(false, null, WireToGateSessionReadiness.Disconnected, [], "dispose");
         GC.SuppressFinalize(this);
     }
 
@@ -1758,8 +1764,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         }
 
         AdvanceSafetyStateVersion(safetyStateVersion);
-        WireToGateSessionSnapshot current = Current;
-        Publish(current.Connected, current.SessionGeneration, current.Readiness, current.ReasonCodes);
+        PublishAcceptedVersions("SafetyStateSnapshot-ack");
         return true;
     }
 
@@ -2319,7 +2324,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         }
 
         ResetJourneyProjection();
-        Publish(false, null, WireToGateSessionReadiness.Disconnected, ["SESSION_RECOVERY_REQUIRED"]);
+        Publish(false, null, WireToGateSessionReadiness.Disconnected, ["SESSION_RECOVERY_REQUIRED"], "receive-failed");
     }
 
     private async Task ApplyJourneySnapshotAsync(
@@ -3945,11 +3950,62 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         _client = null;
     }
 
+    /// <summary>
+    /// Publishes a session state whose connection, generation, readiness and reason codes the caller decides: the
+    /// handshake's steps, a disconnect, and <see cref="ApplySessionReadiness"/> -- the one site that takes readiness from
+    /// the server.
+    /// </summary>
     private void Publish(
         bool connected,
         long? generation,
         WireToGateSessionReadiness readiness,
-        IReadOnlyList<string> reasonCodes)
+        IReadOnlyList<string> reasonCodes,
+        string source)
+    {
+        lock (_stateGate)
+        {
+            PublishUnderGate(connected, generation, readiness, reasonCodes, source);
+        }
+    }
+
+    /// <summary>
+    /// Publishes the session state again with the capability and safety versions accepted since, and everything else
+    /// exactly as the latest publication left it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Read and written under one lock, never passed in</b> (8005-agv-control-server#380). An ack's waiter used to read
+    /// <see cref="Current"/> and hand what it read to <see cref="Publish"/>. The receive loop completes that waiter and goes
+    /// straight on to the SessionReadiness the server appends after the ack; the waiter runs on another thread. Read before
+    /// the loop applied RECOVERY_REQUIRED and written after, it put READY back -- and the server announces readiness only
+    /// on a change, so nothing ever corrected it. The fault cargo handoff entry, offered only on RECOVERY_REQUIRED, stayed
+    /// shut: CI real-rig run 36477303574.
+    /// </para>
+    /// <para>
+    /// <b>Why a lock and not only "leave readiness alone".</b> Taking readiness from the latest snapshot at the moment of
+    /// writing keeps the stored state right, but the StateChanged raised afterwards could still reach a subscriber after
+    /// the loop's own: the screen keeps the snapshot it is handed (<c>MainViewModel.UpdateWireToGateStatus</c>), so it
+    /// would show READY over a session that is RECOVERY_REQUIRED. Under the lock each write and its StateChanged go out
+    /// together, in the order of the writes. Every subscriber only records, signals or queues work
+    /// (<c>Dispatcher.BeginInvoke</c>, <c>SemaphoreSlim.Release</c>, a tracked task); none waits on another thread, which
+    /// is what holding a lock across the raise needs.
+    /// </para>
+    /// </remarks>
+    private void PublishAcceptedVersions(string source)
+    {
+        lock (_stateGate)
+        {
+            WireToGateSessionSnapshot latest = _current;
+            PublishUnderGate(latest.Connected, latest.SessionGeneration, latest.Readiness, latest.ReasonCodes, source);
+        }
+    }
+
+    private void PublishUnderGate(
+        bool connected,
+        long? generation,
+        WireToGateSessionReadiness readiness,
+        IReadOnlyList<string> reasonCodes,
+        string source)
     {
         WireToGateSessionSnapshot snapshot = new(
             connected,
@@ -3965,8 +4021,16 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             Volatile.Write(ref _lastSessionGeneration, current);
         }
 
+        RecordDiagnostic(
+            $"会话状态发布：source={source}，connected={connected}，"
+            + $"generation={generation?.ToString(CultureInfo.InvariantCulture) ?? "null"}，"
+            + $"readiness={readiness}，reasonCodes=[{string.Join(",", reasonCodes)}]，"
+            + $"safetyStateVersion={snapshot.SafetyStateVersion.ToString(CultureInfo.InvariantCulture)}。");
         StateChanged?.Invoke(this, new ValueChangedEventArgs<WireToGateSessionSnapshot>(snapshot));
     }
+
+    private void RecordDiagnostic(string line) =>
+        DiagnosticRecorded?.Invoke(this, new ValueChangedEventArgs<string>(line));
 
     private void ApplySessionReadiness(
         WireToGateEnvelope envelope,
@@ -3996,8 +4060,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             "RECOVERY_REQUIRED" => WireToGateSessionReadiness.RecoveryRequired,
             _ => throw new InvalidDataException("SessionReadiness.readiness无效。")
         };
+        RecordDiagnostic(
+            $"收到SessionReadiness：messageId={envelope.MessageId}，"
+            + $"generation={envelope.SessionGeneration?.ToString(CultureInfo.InvariantCulture) ?? "null"}，"
+            + $"readiness={readiness.Readiness}，reasonCodes=[{string.Join(",", readiness.ReasonCodes)}]，"
+            + $"acceptedSafetyStateVersion={readiness.AcceptedSafetyStateVersion.ToString(CultureInfo.InvariantCulture)}。");
         AdvanceSafetyStateVersion(readiness.AcceptedSafetyStateVersion);
-        Publish(true, envelope.SessionGeneration, mappedReadiness, readiness.ReasonCodes);
+        Publish(true, envelope.SessionGeneration, mappedReadiness, readiness.ReasonCodes, "SessionReadiness");
     }
 
     private void AdvanceSafetyStateVersion(long safetyStateVersion)
