@@ -266,6 +266,21 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool RequireSafeSafetyForReadiness { get; set; }
 
+    /// <summary>
+    /// When set, every SessionReadiness this double decides from now on is RECOVERY_REQUIRED with this wire reason code,
+    /// whatever the modelled inputs say: the real server's verdicts this double does not model, such as a cargo handoff
+    /// an administrator prepared (control-server#345), reach the vehicle only as that line (onboard-hmi, cs#380).
+    /// </summary>
+    public string? ReadinessReasonOverride { get; set; }
+
+    /// <summary>
+    /// When set, the SessionReadiness this double appends after a mid-session safety message's ack -- a requested
+    /// <c>SafetyStateSnapshot</c>'s <c>SnapshotAppliedAck</c>, or a <c>SafetyStateChanged</c>'s <c>DurableAck</c> -- is
+    /// written only once this task completes; the ack itself goes out at once. It lets a test hold the line until the
+    /// vehicle has acted on the ack (cs#380).
+    /// </summary>
+    public Task? ReadinessAfterSafetyAckHold { get; set; }
+
     public bool SendJourneySnapshotsAfterRecovery { get; set; }
 
     public bool SendDemandAcceptanceSnapshotsAfterRecovery { get; set; }
@@ -1858,6 +1873,7 @@ public sealed class FakeControlServer : IAsyncDisposable
         // decided again and announced right after the ack (8005-agv-control-server#142).
         if (messageType == "SafetyStateSnapshot" && context.SafetyStateSnapshotRequested)
         {
+            await HoldReadinessAfterSafetyAckAsync().ConfigureAwait(false);
             await WriteEnvelopeAsync(context, CreateSessionReadiness(context)).ConfigureAwait(false);
             await ReleaseGatedSendsIfReadyAsync(context).ConfigureAwait(false);
         }
@@ -2057,6 +2073,11 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </summary>
     private string? DecideReadinessReason(ConnectionContext context)
     {
+        if (ReadinessReasonOverride is { } forced)
+        {
+            return forced;
+        }
+
         context.PendingAttempts.ExceptWith(_settledAttempts);
         if (!AnswerReadyOverPendingFactsForTest
             && (context.PendingAttempts.Count > 0 || context.PendingResultIds.Count > 0))
@@ -2610,8 +2631,17 @@ public sealed class FakeControlServer : IAsyncDisposable
         // 因为一个还没走完握手的世代没有任何就绪变化可宣告（8005-agv-control-server#33）。
         if (SendReadinessAfterSafetyStateChangedAck && !replayedIntoLaterSession)
         {
+            await HoldReadinessAfterSafetyAckAsync().ConfigureAwait(false);
             await WriteEnvelopeAsync(context, CreateSessionReadiness(context)).ConfigureAwait(false);
             await ReleaseGatedSendsIfReadyAsync(context).ConfigureAwait(false);
+        }
+    }
+
+    private async Task HoldReadinessAfterSafetyAckAsync()
+    {
+        if (ReadinessAfterSafetyAckHold is { } hold)
+        {
+            await hold.ConfigureAwait(false);
         }
     }
 
