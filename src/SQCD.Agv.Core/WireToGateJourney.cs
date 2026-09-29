@@ -7,8 +7,10 @@ namespace SQCD.Agv.Core;
 /// <see cref="ChargingCycleState"/> and <see cref="LoadingPhase"/> arrived with protocol 2.0.0.
 /// <see cref="LoadingPhase"/> is read by the vehicle's display since batch 7-13
 /// (<c>8005-agv-onboard-hmi#134</c>: cargo holding, the vehicle full, why loading closed) and never
-/// decides anything here -- those judgements are the control server's. The charging cycle is
-/// carried, not consumed, until batch 9.
+/// decides anything here -- those judgements are the control server's. The charging cycle,
+/// <see cref="BatteryState"/> and <see cref="ManualChargingHold"/> are shown since batch 9-15
+/// (<c>8005-agv-onboard-hmi#220</c>); of the three only <see cref="ManualChargingHold"/> gates a sublot
+/// entry (<see cref="WireToGateJourneySnapshot.CanAcceptSublot"/>), and the battery never does.
 /// </remarks>
 public sealed record WireToGateVehicleBusinessState(
     long Revision,
@@ -148,6 +150,49 @@ public sealed record WireToGateJourneySnapshot(
         IsWaitingPointStop && CurrentStopWorklist?.Items.Count > 0;
 
     /// <summary>
+    /// Whether the vehicle is on a charging stop: the current leg's <c>stopPurposeCategory</c> is
+    /// <c>CHARGER</c>, or the business state's <c>activePurpose</c> is <c>CHARGING</c> (batch 9-15,
+    /// <c>8005-agv-onboard-hmi#220</c>; vector <c>CV-AUTOMATIC-CHARGING-CYCLE</c>,
+    /// <c>NEVER_LOAD_AT_CHARGER</c>).
+    /// </summary>
+    /// <remarks>
+    /// Built the way <see cref="IsWaitingPointStop"/> is, for the same reasons: both facts are the server's,
+    /// either one is enough because the two snapshots arrive separately, and nothing local remembers it -- a
+    /// plan with a business leg and a <c>TRANSPORT</c> purpose puts it back to false on the snapshot that
+    /// carries them.
+    /// </remarks>
+    public bool IsChargerStop =>
+        CurrentLeg?.StopPurposeCategory == "CHARGER"
+        || VehicleBusinessState?.ActivePurpose == "CHARGING";
+
+    /// <summary>
+    /// Whether the vehicle is clearing a charger: the business state's <c>activePurpose</c> is
+    /// <c>CLEARING_MAINTENANCE</c> (batch 9-15, <c>8005-agv-onboard-hmi#220</c>; <c>REQ-0178</c>).
+    /// </summary>
+    /// <remarks>
+    /// The purpose alone is enough, as <c>IDLE_RETURN</c> and <c>CHARGING</c> are: the clearance goes to a
+    /// waiting point, and while the plan has not caught up its current leg may still be the charger or even an
+    /// old business leg -- a window that must not offer a load. There is no leg category of its own to read;
+    /// the waiting-point leg it heads for is <see cref="IsWaitingPointStop"/>'s already.
+    /// </remarks>
+    public bool IsClearingStop => VehicleBusinessState?.ActivePurpose == "CLEARING_MAINTENANCE";
+
+    /// <summary>
+    /// A stop that is not a business one: a waiting point, a charger, or a charger clearance on its way to a
+    /// waiting point. The one judgement the four entry gates read -- the sublot admission below, the entry
+    /// button, the submit and the cancellation before any sublot -- so a further kind of non-business stop is
+    /// added in one place.
+    /// </summary>
+    public bool IsNonBusinessStop => IsWaitingPointStop || IsChargerStop || IsClearingStop;
+
+    /// <summary>
+    /// A worklist with items at a non-business stop, waiting point, charger or clearance: the server's contradiction.
+    /// Nothing is loaded; the vehicle logs it.
+    /// </summary>
+    public bool HasWorklistItemsAtNonBusinessStop =>
+        IsNonBusinessStop && CurrentStopWorklist?.Items.Count > 0;
+
+    /// <summary>
     /// Whether every demand the worklist names is one the plan names.
     /// </summary>
     /// <remarks>
@@ -167,7 +212,8 @@ public sealed record WireToGateJourneySnapshot(
     /// <para>
     /// That pass-through is not what keeps a waiting point from being loaded: since batch 8-22
     /// (<c>8005-agv-onboard-hmi#217</c>, <c>NEVER_LOAD_AT_WAITING_POINT</c>) <see cref="CanAcceptSublot"/> refuses
-    /// on <see cref="IsWaitingPointStop"/> first. This property stays a statement about demands only.
+    /// on <see cref="IsNonBusinessStop"/> first, and since batch 9-15 that covers chargers too. This property
+    /// stays a statement about demands only.
     /// </para>
     /// </remarks>
     public bool HasConsistentDemand
@@ -185,14 +231,31 @@ public sealed record WireToGateJourneySnapshot(
     /// Whether this journey projection admits a sublot entry at all.
     /// </summary>
     /// <remarks>
-    /// Never at a waiting point, whatever worklist arrived with it (<c>NEVER_LOAD_AT_WAITING_POINT</c>,
-    /// <c>8005-agv-onboard-hmi#217</c>).
+    /// <para>
+    /// Never at a waiting point, a charger or during a charger clearance, whatever worklist arrived with it
+    /// (<c>NEVER_LOAD_AT_WAITING_POINT</c>, <c>8005-agv-onboard-hmi#217</c>; <c>NEVER_LOAD_AT_CHARGER</c>,
+    /// <c>8005-agv-onboard-hmi#220</c>).
+    /// </para>
+    /// <para>
+    /// <b>The battery is not read here</b> (batch 9-15, <c>8005-agv-onboard-hmi#220</c>). This used to require
+    /// <c>batteryState == "SUFFICIENT"</c>, written while the control server sent that as a constant. Once it
+    /// projects the real state (<c>8005-agv-control-server#403</c>), a transport that crosses the
+    /// mandatory-charge line on the way gets <c>MANDATORY_CHARGE</c> or <c>LOW</c>, and telemetry that goes
+    /// missing gets <c>UNKNOWN</c>; each would have refused the next pickup of a transport already under way,
+    /// against <c>REQ-0281</c> (a running task is not interrupted by crossing the line) and <c>REQ-0287</c>
+    /// (missing telemetry only raises an alarm). When to charge is the server's policy
+    /// (<c>NEVER_DECIDE_POLICY_LOCALLY</c>): it stops giving the vehicle stops, it does not ask the vehicle to
+    /// refuse them.
+    /// </para>
+    /// <para>
+    /// <see cref="WireToGateVehicleBusinessState.ManualChargingHold"/> stays: the server sets it only on a vehicle
+    /// that has no purpose (<c>8005-agv-control-server#404</c>), so a transport under way does not meet it.
+    /// </para>
     /// </remarks>
     public bool CanAcceptSublot =>
-        !IsWaitingPointStop
+        !IsNonBusinessStop
         && VehicleBusinessState?.Readiness == "READY"
         && VehicleBusinessState.ManualChargingHold is false
-        && VehicleBusinessState.BatteryState == "SUFFICIENT"
         && CurrentStopWorklist?.Items.Count >= 1
         && HasConsistentDemand;
 

@@ -23,6 +23,11 @@ $checks = [ordered]@{
     visibleStopDirectionAndTaskType = ($xaml -match 'AutomationProperties\.AutomationId="StopDirection"') -and ($xaml -match 'Text="\{Binding StopDirectionText\}"') -and ($xaml -match 'AutomationProperties\.AutomationId="TaskType"') -and ($xaml -match 'Text="\{Binding TaskTypeText\}"')
     # 站点功能名不上界面（v2 服务端保持为空），准入阻断原因也不上界面（只在服务端与看板，规格第 5.3 节）。
     noStationFunctionOrAdmissionReason = ($xaml -notmatch 'PublicStationFunction|StationFunction') -and ($xaml -notmatch 'Admission|准入')
+    # 电量与充电状态（批次9-15，onboard-hmi#220）：车辆那一格，UIA 按 AutomationId 找它们，ItemStatus 给原始值。
+    # 真装置场景 real-onboard-charging-cycle 与 G3 journey 场景（control-server#405）按这两个名字读车载端。
+    # 两格各自的 AutomationId、ItemStatus 与 Text 必须落在同一个 <TextBlock> 里：只查三样都在文件里，两格的绑定互换
+    # 也会过（PR #223 审查）。[^>]* 不跨出元素的起始标签。
+    visibleBatteryAndChargingStatus = ($xaml -match '<TextBlock[^>]*AutomationProperties\.AutomationId="BatteryStatus"[^>]*AutomationProperties\.ItemStatus="\{Binding BatteryStatus\}"[^>]*Text="\{Binding BatteryStatusText\}"') -and ($xaml -match '<TextBlock[^>]*AutomationProperties\.AutomationId="ChargingStatus"[^>]*AutomationProperties\.ItemStatus="\{Binding ChargingStatus\}"[^>]*Text="\{Binding ChargingStatusText\}"') -and ($xaml -notmatch 'BatteryPercent')
     blockingGuidance = ($xaml -match 'Text="\{Binding Guidance\}"')
     visibleStationDeadline = ($xaml -match 'AutomationProperties\.AutomationId="StationDepartureCountdown"') -and ($xaml -match 'Text="\{Binding StationDepartureCountdownText\}"') -and $stationDeadlineTiersStyled -and $stationDeadlineFixedSize
     visibleSublotRejectionReason = ($xaml -match 'AutomationProperties\.AutomationId="SublotRejectionReason"') -and ($xaml -match 'AutomationProperties\.ItemStatus="\{Binding SublotRejectionReasonCode\}"') -and ($xaml -match 'Text="\{Binding SublotRejectionText\}"') -and ($xaml -match 'Binding HasSublotRejection, Converter')

@@ -47,12 +47,12 @@ public static class WireToGateStopFacts
         };
 
     /// <summary>
-    /// 本站清单项的任务类型文案：全部清单项的任务类型相同时是它，没有清单项或各项不同时是空串；等待点停靠时也是空串。
+    /// 本站清单项的任务类型文案：全部清单项的任务类型相同时是它，没有清单项或各项不同时是空串；等待点或充电桩停靠时也是空串。
     /// </summary>
     public static string TaskTypeText(WireToGateJourneySnapshot journey)
     {
         ArgumentNullException.ThrowIfNull(journey);
-        return journey.IsWaitingPointStop
+        return journey.IsNonBusinessStop
             ? string.Empty
             : Shared(journey.CurrentStopWorklist?.Items ?? [], ItemTaskTypeText);
     }
@@ -72,11 +72,15 @@ public static class WireToGateStopFacts
     /// （<c>REQ-0289</c>），服务端同时发来带项的清单是它自己的矛盾，顶栏不替它写出一个「取货」。当前腿的取法是
     /// <see cref="WireToGateJourneySnapshot.CurrentLeg"/>，与等待点判断同一处。
     /// </para>
+    /// <para>
+    /// <b>充电桩停靠同样两段都是空串</b>（批次9-15，<c>8005-agv-onboard-hmi#220</c>）：判据是
+    /// <see cref="WireToGateJourneySnapshot.IsNonBusinessStop"/>，等待点与充电桩一处判断。
+    /// </para>
     /// </remarks>
     public static string DirectionText(WireToGateJourneySnapshot journey)
     {
         ArgumentNullException.ThrowIfNull(journey);
-        if (journey.IsWaitingPointStop)
+        if (journey.IsNonBusinessStop)
         {
             return string.Empty;
         }

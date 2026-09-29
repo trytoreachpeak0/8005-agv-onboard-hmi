@@ -27,10 +27,12 @@ namespace SQCD.Agv.UnitTests;
 /// </para>
 /// <para>
 /// <b>The batch bound is load-bearing, and <c>CV-MANUAL-CHARGING-RETURN</c> is why.</b> That vector
-/// belongs to <c>FP-IS-07</c> and to <c>FP-IS-13</c>, and four tests here prove it. Projecting it
-/// onto <c>FP-IS-13</c> would let <c>-Slice FP-IS-13</c> select four tests and write
-/// <c>"status": "PASS"</c> for a slice whose other three vectors have no implementation on either
-/// end -- a green gate over a quarter-built slice. Ticket 14 closed the zero-test form of that hole
+/// belongs to <c>FP-IS-07</c> and to <c>FP-IS-13</c>, and several tests here prove it (six when batch 9-15
+/// counted them; batch 9-15 also added the <c>CV-AUTOMATIC-CHARGING-CYCLE</c> tests, which carry no slice yet
+/// for the same reason). Projecting it onto <c>FP-IS-13</c> would let <c>-Slice FP-IS-13</c> select those
+/// tests and write
+/// <c>"status": "PASS"</c> for a slice whose other vectors are not all built on either end -- a green
+/// gate over a part-built slice. Ticket 14 closed the zero-test form of that hole
 /// on the control server by refusing a filter that selects nothing; a filter that selects
 /// <i>some</i> tests cannot be caught that way, so it is closed here instead, at the trait.
 /// <see cref="NoTestCarriesASliceThisBatchDoesNotImplement"/> states it on its own rather than

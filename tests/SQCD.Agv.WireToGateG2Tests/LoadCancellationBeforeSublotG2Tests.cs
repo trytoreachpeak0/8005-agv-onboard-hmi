@@ -586,7 +586,8 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
     /// <remarks>
     /// <para>
     /// <b>这条钉的是一句文案的前提。</b>WIRE_TO_GATE_JOURNEY_NOT_READY 在 IsAuthoritativeJourneyReady() 为假时显示，
-    /// 而它的几支——业务状态不是 READY、手动充电保持、电量不是 SUFFICIENT、清单为空、快照过期——下扫码入口都不看，
+    /// 而它的几支——业务状态不是 READY、手动充电保持、清单为空、快照过期——下扫码入口都不看（「电量不是 SUFFICIENT」
+    /// 那一支已于批次9-15 删掉，onboard-hmi#220），
     /// 所以那一句不能说「已禁止扫码」，hmi#177 把它改成只陈述事实加指引。
     /// </para>
     /// <para>

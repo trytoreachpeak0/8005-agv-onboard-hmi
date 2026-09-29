@@ -27,7 +27,11 @@ public sealed class MainViewModel : ViewModelBase
     private string _wireToGateText = "未启用";
     private string _visitText = "未到站";
     private string _idleReturnStatus = string.Empty;
-    private string? _loggedWaitingPointContradiction;
+    private string _batteryStatusText = string.Empty;
+    private string _batteryStatus = string.Empty;
+    private string _chargingStatusText = string.Empty;
+    private string _chargingStatus = string.Empty;
+    private string? _loggedNonBusinessStopContradiction;
     private bool _hasWorklistItems;
     private bool _hasJourneyPlanLegs;
     private const string LoadCancellationSelectionHint = "请先在清单中选择要取消的任务";
@@ -325,17 +329,25 @@ public sealed class MainViewModel : ViewModelBase
         RefreshStationDepartureCountdownCore();
         SyncStationDepartureCountdownTimerCore();
         // 到站那一格只留站名，子批号在清单列表里：一站最多 8 条需求，挑哪一条放这里都不对（批次7-13）。
-        // 空闲返回先于清单判断（批次8-22，onboard-hmi#217）：服务端到等待点不发清单或发空清单都行，两种都不是
-        // 「旅程未同步」或「无待处理任务」；等待点腿之后来了业务计划，这一格在同一份快照上回到下面三种写法。
+        // 非业务停靠先于清单判断（批次8-22 等待点，onboard-hmi#217；批次9-15 充电桩与清桩，onboard-hmi#220）：服务端
+        // 到等待点或充电桩不发清单或发空清单都行，两种都不是「旅程未同步」或「无待处理任务」；之后来了业务计划，这一格
+        // 在同一份快照上回到下面三种写法。哪一种非业务停靠由 WireToGateNonBusinessStop 一处分类，两个文案类只有一个说话。
         IdleReturnStatus = WireToGateIdleReturnText.Status(snapshot);
-        VisitText = snapshot.IsWaitingPointStop
-            ? WireToGateIdleReturnText.VisitText(snapshot)
+        VisitText = snapshot.IsNonBusinessStop
+            ? WireToGateChargingText.VisitText(snapshot) is { Length: > 0 } chargingVisit
+                ? chargingVisit
+                : WireToGateIdleReturnText.VisitText(snapshot)
             : snapshot.CurrentStopWorklist is not { } worklist
                 ? "旅程未同步"
                 : worklist.Items.Count == 0
                     ? $"{worklist.StationId} / 无待处理任务"
                     : worklist.StationId;
-        LogWaitingPointContradictionCore(snapshot);
+        LogNonBusinessStopContradictionCore(snapshot);
+        // 电量与充电状态整值跟随业务状态：断线清投影时一起变空，重启从日志恢复时一起回来（onboard-hmi#220）。
+        BatteryStatusText = WireToGateChargingText.BatteryText(snapshot);
+        BatteryStatus = WireToGateChargingText.BatteryStatus(snapshot);
+        ChargingStatusText = WireToGateChargingText.StatusText(snapshot);
+        ChargingStatus = WireToGateChargingText.CycleStatus(snapshot);
         _worklistOperationSessionId = snapshot.CurrentStopWorklist?.OperationSessionId;
         ReplaceWorklistItemsCore(snapshot.CurrentStopWorklist?.Items ?? []);
         ReplaceJourneyPlanLegsCore(snapshot.UpcomingStopPlan?.Legs ?? []);
@@ -351,30 +363,37 @@ public sealed class MainViewModel : ViewModelBase
     });
 
     /// <summary>
-    /// 等待点停靠又来了带项的清单：服务端的矛盾，车载端不装货（录入门拒它），记一条警告。
+    /// 等待点或充电桩停靠又来了带项的清单：服务端的矛盾，车载端不装货（录入门拒它），记一条警告。
     /// </summary>
     /// <remarks>
+    /// <para>
     /// 同一对计划与清单修订号只记一次：握手重推、业务状态刷新都会带着同一份清单再走一遍这里。
+    /// </para>
+    /// <para>
+    /// 开头按停靠的种类写「等待点停靠……」（批次8-22 原样）或「充电桩停靠……」（批次9-15）；种类用
+    /// <see cref="WireToGateNonBusinessStop.Classify"/>，与到站那一格同一处，清桩归等待点。
+    /// </para>
     /// </remarks>
-    private void LogWaitingPointContradictionCore(WireToGateJourneySnapshot snapshot)
+    private void LogNonBusinessStopContradictionCore(WireToGateJourneySnapshot snapshot)
     {
-        if (!snapshot.HasWorklistItemsAtWaitingPoint)
+        if (!snapshot.HasWorklistItemsAtNonBusinessStop)
         {
-            _loggedWaitingPointContradiction = null;
+            _loggedNonBusinessStopContradiction = null;
             return;
         }
 
         string key = $"{snapshot.UpcomingStopPlan?.Revision}/{snapshot.CurrentStopWorklist!.StationId}/{snapshot.CurrentStopWorklist.Revision}";
-        if (key == _loggedWaitingPointContradiction)
+        if (key == _loggedNonBusinessStopContradiction)
         {
             return;
         }
 
-        _loggedWaitingPointContradiction = key;
+        _loggedNonBusinessStopContradiction = key;
+        string stop = WireToGateNonBusinessStop.Classify(snapshot) == WireToGateNonBusinessStopKind.Charging ? "充电桩" : "等待点";
         _logger.Write(
             LogSeverity.Warning,
             nameof(MainViewModel),
-            $"等待点停靠收到带项的清单（计划修订 {snapshot.UpcomingStopPlan?.Revision}，站 {snapshot.CurrentStopWorklist.StationId}，"
+            $"{stop}停靠收到带项的清单（计划修订 {snapshot.UpcomingStopPlan?.Revision}，站 {snapshot.CurrentStopWorklist.StationId}，"
                 + $"清单修订 {snapshot.CurrentStopWorklist.Revision}，{snapshot.CurrentStopWorklist.Items.Count} 项）：服务端矛盾，不开录入、不装货。");
     }
 
@@ -1020,13 +1039,45 @@ public sealed class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 到站那一格给 UIA 的 ItemStatus（AutomationId <c>IdleReturnStatus</c>）：<c>EN_ROUTE_TO_WAITING_POINT</c>／
-    /// <c>AT_WAITING_POINT</c>，不是空闲返回时是空串（批次8-22，onboard-hmi#217）。
+    /// 到站那一格给 UIA 的 ItemStatus（AutomationId <c>IdleReturnStatus</c>）：空闲返回时
+    /// <c>EN_ROUTE_TO_WAITING_POINT</c>／<c>AT_WAITING_POINT</c>（批次8-22，onboard-hmi#217），清桩时
+    /// <c>CLEARING_TO_WAITING_POINT</c>／<c>CLEARING_AT_WAITING_POINT</c>（批次9-15，onboard-hmi#220），其余是空串。
     /// </summary>
     public string IdleReturnStatus
     {
         get => _idleReturnStatus;
         private set => SetProperty(ref _idleReturnStatus, value);
+    }
+
+    /// <summary>车辆那一格的电量文字（批次9-15，onboard-hmi#220）：服务端 <c>batteryState</c> 的中文，不显示百分比。</summary>
+    public string BatteryStatusText
+    {
+        get => _batteryStatusText;
+        private set => SetProperty(ref _batteryStatusText, value);
+    }
+
+    /// <summary>电量那一格给 UIA 的 ItemStatus（AutomationId <c>BatteryStatus</c>）：<c>batteryState</c> 原始值，没有业务状态时是空串。</summary>
+    public string BatteryStatus
+    {
+        get => _batteryStatus;
+        private set => SetProperty(ref _batteryStatus, value);
+    }
+
+    /// <summary>车辆那一格的充电状态文字：充电周期状态与「需人工充电：服务端保持」（批次9-15，onboard-hmi#220）。</summary>
+    public string ChargingStatusText
+    {
+        get => _chargingStatusText;
+        private set => SetProperty(ref _chargingStatusText, value);
+    }
+
+    /// <summary>
+    /// 充电状态那一格给 UIA 的 ItemStatus（AutomationId <c>ChargingStatus</c>）：<c>chargingCycleState</c> 原始值，
+    /// <c>NOT_CHARGING</c> 也照报，没有业务状态时是空串。
+    /// </summary>
+    public string ChargingStatus
+    {
+        get => _chargingStatus;
+        private set => SetProperty(ref _chargingStatus, value);
     }
 
     public string StopDirectionText

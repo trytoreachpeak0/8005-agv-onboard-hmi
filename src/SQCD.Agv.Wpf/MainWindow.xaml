@@ -39,6 +39,27 @@
                                Text="{Binding AgvId}"
                                TextTrimming="CharacterEllipsis"
                                ToolTip="{Binding AgvId}" />
+                    <!--
+                    电量与充电状态（批次9-15，onboard-hmi#220）：只显示服务端下发的 batteryState、chargingCycleState 与
+                    manualChargingHold，不显示百分比（线上没有）。UIA 按 AutomationId BatteryStatus、ChargingStatus 找它们，
+                    ItemStatus 分别给 batteryState、chargingCycleState 的原始值；没有业务状态时都为空。
+                    -->
+                    <DockPanel Margin="0,2,0,0" LastChildFill="True">
+                        <TextBlock DockPanel.Dock="Left"
+                                   AutomationProperties.AutomationId="BatteryStatus"
+                                   AutomationProperties.ItemStatus="{Binding BatteryStatus}"
+                                   FontSize="12"
+                                   Foreground="{StaticResource MutedBrush}"
+                                   Text="{Binding BatteryStatusText}" />
+                        <TextBlock Margin="8,0,0,0"
+                                   AutomationProperties.AutomationId="ChargingStatus"
+                                   AutomationProperties.ItemStatus="{Binding ChargingStatus}"
+                                   FontSize="12"
+                                   FontWeight="Bold"
+                                   Text="{Binding ChargingStatusText}"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip="{Binding ChargingStatusText}" />
+                    </DockPanel>
                 </StackPanel>
                 <StackPanel Grid.Column="1">
                     <TextBlock FontSize="12" Foreground="{StaticResource MutedBrush}" Text="任务系统" />
@@ -60,6 +81,9 @@
                     到站那一格（批次8-22）：空闲返回时写「空闲返回：前往等待点 <站>」或「在等待点 <站> 待命」，方向与任务类型为空。
                     UIA 按 AutomationId IdleReturnStatus 找它，ItemStatus 给原始值 EN_ROUTE_TO_WAITING_POINT／AT_WAITING_POINT，
                     不是空闲返回时为空。
+                    批次9-15（onboard-hmi#220）：充电停靠时写「前往充电桩 <站>」「在充电桩 <站> 充电中」等，ItemStatus 为空（充电周期
+                    的原始值在车辆那一格的 ChargingStatus）；清桩去等待点写「清桩：……」，ItemStatus 给 CLEARING_TO_WAITING_POINT／
+                    CLEARING_AT_WAITING_POINT，不报空闲返回的值。两种停靠方向与任务类型都为空。
                     -->
                     <DockPanel LastChildFill="True">
                         <TextBlock DockPanel.Dock="Left" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="到站" />
