@@ -4002,9 +4002,14 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// writing keeps the stored state right, but the StateChanged raised afterwards could still reach a subscriber after
     /// the loop's own: the screen keeps the snapshot it is handed (<c>MainViewModel.UpdateWireToGateStatus</c>), so it
     /// would show READY over a session that is RECOVERY_REQUIRED. Under the lock each write and its StateChanged go out
-    /// together, in the order of the writes. Every subscriber only records, signals or queues work
-    /// (<c>Dispatcher.BeginInvoke</c>, <c>SemaphoreSlim.Release</c>, a tracked task); none waits on another thread, which
-    /// is what holding a lock across the raise needs.
+    /// together, in the order of the writes. No subscriber waits on another thread, which is what holding a lock across
+    /// the raise needs: StateChanged's only record, signal or queue work (<c>Dispatcher.BeginInvoke</c>,
+    /// <c>SemaphoreSlim.Release</c>, a tracked task). One of them is not free, though. <see cref="FinishFailedSession"/>
+    /// also raises JourneyChanged under this lock, and the application's handler asks <c>JournaledOperationsFeed</c> for a
+    /// refresh, whose first read of the SQLite journal can run synchronously on this thread before its first await. That is
+    /// a disk read held inside the lock, not a wait on another thread: the cost is a reconnect's first publication starting a
+    /// few milliseconds later (independent incremental review S-3). <c>SessionReadinessWriteSiteArchitectureTests</c> keeps
+    /// <c>Dispatcher.Invoke</c> out of the product, the one form of a subscriber that would wait.
     /// </para>
     /// </remarks>
     private void PublishAcceptedVersions(string source)

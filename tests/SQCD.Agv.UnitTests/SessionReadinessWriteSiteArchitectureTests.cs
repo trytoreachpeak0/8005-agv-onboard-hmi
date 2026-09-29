@@ -129,6 +129,13 @@ public sealed class SessionReadinessWriteSiteArchitectureTests
             read > republish.IndexOf("lock (_stateGate)", StringComparison.Ordinal),
             "PublishAcceptedVersions reads the session state before it holds the lock.");
 
+        // A failed loop's finish publishes through PublishUnderGate, not Publish, so the literal check above does not see
+        // it (independent incremental review S-2): its readiness and reasons are held to the same rule here.
+        (string Member, string[] Arguments) finishPublish = Assert.Single(
+            Calls(source, "PublishUnderGate"), call => call.Member == "FinishFailedSession");
+        Assert.Matches(@"^WireToGateSessionReadiness\.\w+$", finishPublish.Arguments[2]);
+        Assert.Matches(@"^\[.*\]$", finishPublish.Arguments[3]);
+
         // A failed loop's finish checks its generation under the same lock it publishes under (independent review S3/S-6):
         // taken apart, a reconnect can complete between the two and the finish's Disconnected lands on the new session.
         string finish = Member(source, "FinishFailedSession");
@@ -204,13 +211,18 @@ public sealed class SessionReadinessWriteSiteArchitectureTests
         Assert.Equal(1, SynchronousDispatches("Application.Current.Dispatcher.Invoke(() => Refresh());"));
         Assert.Equal(1, SynchronousDispatches("dispatcher.Invoke(action);"));
         Assert.Equal(1, SynchronousDispatches("Dispatcher . Invoke (action, DispatcherPriority.Send);"));
+        // Independent incremental review S-1: the scanner once began with a word boundary, which fails after the
+        // underscore of a field name, and did not allow the null-conditional between the object and Invoke.
+        Assert.Equal(1, SynchronousDispatches("Application.Current?.Dispatcher?.Invoke(() => Refresh());"));
+        Assert.Equal(1, SynchronousDispatches("_uiDispatcher.Invoke(action);"));
+        Assert.Equal(0, SynchronousDispatches("_uiDispatcher?.BeginInvoke(action);"));
         Assert.Equal(0, SynchronousDispatches("_ = dispatcher.BeginInvoke(action);"));
         Assert.Equal(0, SynchronousDispatches("_ = Dispatcher.InvokeAsync(() => Focus());"));
         Assert.Equal(0, SynchronousDispatches("StateChanged?.Invoke(this, args);"));
     }
 
     private static int SynchronousDispatches(string source) =>
-        Regex.Count(source, @"\bdispatcher\s*\.\s*Invoke\s*\(", RegexOptions.IgnoreCase);
+        Regex.Count(source, @"dispatcher\s*\??\s*\.\s*Invoke\s*\(", RegexOptions.IgnoreCase);
 
     private static string Source() => WithoutWholeLineComments(
         File.ReadAllText(Path.Combine(ProtocolIdentityArchitectureTests.RepositoryRoot(), ClientPath)));
