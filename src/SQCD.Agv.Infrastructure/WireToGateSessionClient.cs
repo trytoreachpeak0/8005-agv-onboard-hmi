@@ -72,6 +72,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     // 只在一遍补发扫描的异步流里为真，见 InStaleResendPass。
     private static readonly AsyncLocal<bool> StaleResendFlow = new();
     private WireToGateSessionSnapshot _current;
+
+    // Every write of _current and the StateChanged it raises happen under this lock, and so does the read a republish
+    // builds its snapshot from (8005-agv-control-server#380). See PublishAcceptedVersions.
+    private readonly object _stateGate = new();
     private WireToGateJourneySnapshot _journey;
     private CancellationTokenSource? _receiveStopping;
     private TaskCompletionSource<Exception>? _receiveFailure;
@@ -158,6 +162,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     public WireToGateJourneySnapshot CurrentJourney => Volatile.Read(ref _journey);
 
     public event EventHandler<ValueChangedEventArgs<WireToGateSessionSnapshot>>? StateChanged;
+
+    /// <summary>
+    /// One line per session-state publication and per <c>SessionReadiness</c> applied, for the application log
+    /// (8005-agv-control-server#380): when the recovery entry does not appear, these say whether the readiness arrived,
+    /// and which publication the screen was last given. Raised on the publishing thread.
+    /// </summary>
+    public event EventHandler<ValueChangedEventArgs<string>>? DiagnosticRecorded;
 
     public event EventHandler<ValueChangedEventArgs<WireToGateJourneySnapshot>>? JourneyChanged;
 
@@ -644,12 +655,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             allowRecoveryRequired: true,
             cancellationToken).ConfigureAwait(false);
         AdvanceSafetyStateVersion(safetyStateVersion);
-        WireToGateSessionSnapshot current = Current;
-        Publish(
-            current.Connected,
-            current.SessionGeneration,
-            current.Readiness,
-            current.ReasonCodes);
+        PublishAcceptedVersions("SafetyStateChanged-ack");
         return messageId;
     }
 
@@ -714,7 +720,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         Interlocked.Exchange(ref _receiveLoopGeneration, 0);
         _alarmPublishGate.Release();
 
-        Publish(false, null, WireToGateSessionReadiness.Recovering, []);
+        Publish(false, null, WireToGateSessionReadiness.Recovering, [], "handshake-start");
         await _journal.InitializeAsync(cancellationToken).ConfigureAwait(false);
         string journalEpoch = await _journal.ReadJournalEpochAsync(cancellationToken).ConfigureAwait(false);
         Volatile.Write(ref _journalEpoch, journalEpoch);
@@ -765,7 +771,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
             RequireUuid(accepted.ServerInstanceId, nameof(accepted.ServerInstanceId));
             WireToGateProtocolSerializer.RequireExactReleaseIdentity(accepted.AcceptedProtocolReleaseIdentity);
-            Publish(true, generation, WireToGateSessionReadiness.Recovering, []);
+            Publish(true, generation, WireToGateSessionReadiness.Recovering, [], "session-accepted");
 
             // 上一个会话没等到 ack 的持久报文先补发，下面那份报告因此看到的是已经对齐的账。补发与否，
             // 握手都照常走完：真服务端每个新世代都从零开始，手上没有能力快照、安全快照和恢复状态报告，
@@ -857,7 +863,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             WireToGateEnvelope readinessEnvelope = await ReadEnvelopeAsync(generation, cancellationToken)
                 .ConfigureAwait(false);
             ThrowIfProtocolProblem(readinessEnvelope);
-            ApplySessionReadiness(readinessEnvelope, requireExactConfiguredBaseline: true);
+            ApplySessionReadiness(readinessEnvelope, requireExactConfiguredBaseline: true, receiveLoopGeneration: null);
             StartReceiveLoop(generation);
             // After the loop is up: the pass waits for its acknowledgements through it (onboard-hmi#204).
             RequestStaleResend();
@@ -872,7 +878,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         catch
         {
             await CloseConnectionAsync().ConfigureAwait(false);
-            Publish(false, null, WireToGateSessionReadiness.Disconnected, ["SESSION_RECOVERY_REQUIRED"]);
+            Publish(false, null, WireToGateSessionReadiness.Disconnected, ["SESSION_RECOVERY_REQUIRED"], "handshake-failed");
             throw;
         }
     }
@@ -1428,7 +1434,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         }
         finally
         {
-            Publish(false, null, WireToGateSessionReadiness.Disconnected, ["SESSION_RECOVERY_REQUIRED"]);
+            Publish(false, null, WireToGateSessionReadiness.Disconnected, ["SESSION_RECOVERY_REQUIRED"], "disconnect");
         }
     }
 
@@ -1443,7 +1449,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         await CloseConnectionAsync().ConfigureAwait(false);
         _sendGate.Dispose();
         _alarmPublishGate.Dispose();
-        Publish(false, null, WireToGateSessionReadiness.Disconnected, []);
+        Publish(false, null, WireToGateSessionReadiness.Disconnected, [], "dispose");
         GC.SuppressFinalize(this);
     }
 
@@ -1758,8 +1764,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         }
 
         AdvanceSafetyStateVersion(safetyStateVersion);
-        WireToGateSessionSnapshot current = Current;
-        Publish(current.Connected, current.SessionGeneration, current.Readiness, current.ReasonCodes);
+        PublishAcceptedVersions("SafetyStateSnapshot-ack");
         return true;
     }
 
@@ -2132,8 +2137,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             TaskCreationOptions.RunContinuationsAsynchronously);
         _receiveStopping = stopping;
         _receiveFailure = failure;
-        _ = Task.Run(() => ReceiveLoopAsync(reader, generation, stopping, failure), stopping.Token);
+        // Live before it runs: a line it reads is published only while its generation is the live one
+        // (PublishServerReadiness, 8005-agv-control-server#380), and one read before this store would be dropped.
         Interlocked.Exchange(ref _receiveLoopGeneration, generation);
+        _ = Task.Run(() => ReceiveLoopAsync(reader, generation, stopping, failure), stopping.Token);
     }
 
     private async Task ReceiveLoopAsync(
@@ -2168,7 +2175,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 if (string.Equals(envelope.MessageType, "SessionReadiness", StringComparison.Ordinal))
                 {
                     bool couldSend = CanResendDurable(Current);
-                    ApplySessionReadiness(envelope, requireExactConfiguredBaseline: false);
+                    ApplySessionReadiness(envelope, requireExactConfiguredBaseline: false, generation);
                     if (!couldSend && CanResendDurable(Current))
                     {
                         RequestStaleResend();
@@ -2303,23 +2310,38 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// 这一代会话失败的收尾，只在接收循环自己的线程上、循环已经停止处理之后做。
     /// </summary>
     /// <remarks>
+    /// <para>
     /// 这一代已经不是活着的那一代时什么都不做：重连或 <see cref="CloseConnectionAsync"/> 已经收过尾，
     /// 再发一次 <c>Disconnected</c> 会盖掉新会话刚发布的状态。
+    /// </para>
+    /// <para>
+    /// <b>核对与收尾在同一把锁里</b>（8005-agv-control-server#380 审查）。CAS 通过之后、发布之前若不持锁，
+    /// 一次重连可以在这中间走完：新握手清零循环代次、发布新会话，然后这里的 <c>Disconnected</c>
+    /// 盖上去，而等待者与行程投影也会被清到新会话头上——与 <see cref="PublishServerReadiness"/> 修的是同一个形状。
+    /// 持着 <c>_stateGate</c>，<see cref="ConnectAndRecoverAsync"/> 的第一次发布就排在整段收尾之后。
+    /// </para>
     /// </remarks>
     private void FinishFailedSession(Exception exception, long generation)
     {
-        if (Interlocked.CompareExchange(ref _receiveLoopGeneration, 0, generation) != generation)
+        lock (_stateGate)
         {
-            return;
-        }
+            if (Interlocked.CompareExchange(ref _receiveLoopGeneration, 0, generation) != generation)
+            {
+                return;
+            }
 
-        foreach (KeyValuePair<string, TaskCompletionSource<WireToGateEnvelope>> waiter in _responseWaiters)
-        {
-            waiter.Value.TrySetException(exception);
-        }
+            RecordDiagnostic(
+                $"接收循环失败收尾：generation={generation.ToString(CultureInfo.InvariantCulture)}，"
+                + $"{exception.GetType().Name}：{exception.Message}");
+            foreach (KeyValuePair<string, TaskCompletionSource<WireToGateEnvelope>> waiter in _responseWaiters)
+            {
+                waiter.Value.TrySetException(exception);
+            }
 
-        ResetJourneyProjection();
-        Publish(false, null, WireToGateSessionReadiness.Disconnected, ["SESSION_RECOVERY_REQUIRED"]);
+            ResetJourneyProjection();
+            PublishUnderGate(
+                false, null, WireToGateSessionReadiness.Disconnected, ["SESSION_RECOVERY_REQUIRED"], "receive-failed");
+        }
     }
 
     private async Task ApplyJourneySnapshotAsync(
@@ -3945,11 +3967,66 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         _client = null;
     }
 
+    /// <summary>
+    /// Publishes a session state whose connection, generation, readiness and reason codes the caller decides: the
+    /// handshake's steps and a disconnect. Readiness from the server goes through <see cref="PublishServerReadiness"/>.
+    /// </summary>
     private void Publish(
         bool connected,
         long? generation,
         WireToGateSessionReadiness readiness,
-        IReadOnlyList<string> reasonCodes)
+        IReadOnlyList<string> reasonCodes,
+        string source)
+    {
+        lock (_stateGate)
+        {
+            PublishUnderGate(connected, generation, readiness, reasonCodes, source);
+        }
+    }
+
+    /// <summary>
+    /// Publishes the session state again with the capability and safety versions accepted since, and everything else
+    /// exactly as the latest publication left it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Read and written under one lock, never passed in</b> (8005-agv-control-server#380). An ack's waiter used to read
+    /// <see cref="Current"/> and hand what it read to <see cref="Publish"/>. The receive loop completes that waiter and goes
+    /// straight on to the SessionReadiness the server appends after the ack; the waiter runs on another thread. Read before
+    /// the loop applied RECOVERY_REQUIRED and written after, it put READY back -- and the server announces readiness only
+    /// on a change, so nothing ever corrected it. The fault cargo handoff entry, offered only on RECOVERY_REQUIRED, stayed
+    /// shut: CI real-rig run 36477303574.
+    /// </para>
+    /// <para>
+    /// <b>Why a lock and not only "leave readiness alone".</b> Taking readiness from the latest snapshot at the moment of
+    /// writing keeps the stored state right, but the StateChanged raised afterwards could still reach a subscriber after
+    /// the loop's own: the screen keeps the snapshot it is handed (<c>MainViewModel.UpdateWireToGateStatus</c>), so it
+    /// would show READY over a session that is RECOVERY_REQUIRED. Under the lock each write and its StateChanged go out
+    /// together, in the order of the writes. No subscriber waits on another thread, which is what holding a lock across
+    /// the raise needs: StateChanged's only record, signal or queue work (<c>Dispatcher.BeginInvoke</c>,
+    /// <c>SemaphoreSlim.Release</c>, a tracked task). One of them is not free, though. <see cref="FinishFailedSession"/>
+    /// also raises JourneyChanged under this lock, and the application's handler asks <c>JournaledOperationsFeed</c> for a
+    /// refresh, whose first read of the SQLite journal can run synchronously on this thread before its first await. That is
+    /// a disk read held inside the lock, not a wait on another thread: the cost is a reconnect's first publication starting a
+    /// few milliseconds later (independent incremental review S-3). <c>SessionReadinessWriteSiteArchitectureTests</c> keeps
+    /// <c>Dispatcher.Invoke</c> out of the product, the one form of a subscriber that would wait.
+    /// </para>
+    /// </remarks>
+    private void PublishAcceptedVersions(string source)
+    {
+        lock (_stateGate)
+        {
+            WireToGateSessionSnapshot latest = _current;
+            PublishUnderGate(latest.Connected, latest.SessionGeneration, latest.Readiness, latest.ReasonCodes, source);
+        }
+    }
+
+    private void PublishUnderGate(
+        bool connected,
+        long? generation,
+        WireToGateSessionReadiness readiness,
+        IReadOnlyList<string> reasonCodes,
+        string source)
     {
         WireToGateSessionSnapshot snapshot = new(
             connected,
@@ -3965,12 +4042,25 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             Volatile.Write(ref _lastSessionGeneration, current);
         }
 
+        RecordDiagnostic(
+            $"会话状态发布：source={source}，connected={connected}，"
+            + $"generation={generation?.ToString(CultureInfo.InvariantCulture) ?? "null"}，"
+            + $"readiness={readiness}，reasonCodes=[{string.Join(",", reasonCodes)}]，"
+            + $"safetyStateVersion={snapshot.SafetyStateVersion.ToString(CultureInfo.InvariantCulture)}。");
         StateChanged?.Invoke(this, new ValueChangedEventArgs<WireToGateSessionSnapshot>(snapshot));
     }
 
+    private void RecordDiagnostic(string line) =>
+        DiagnosticRecorded?.Invoke(this, new ValueChangedEventArgs<string>(line));
+
+    /// <param name="receiveLoopGeneration">
+    /// The generation of the receive loop that read the line, or <c>null</c> for the handshake's own. A loop's line is
+    /// published only while that loop is still the live one, see <see cref="PublishServerReadiness"/>.
+    /// </param>
     private void ApplySessionReadiness(
         WireToGateEnvelope envelope,
-        bool requireExactConfiguredBaseline)
+        bool requireExactConfiguredBaseline,
+        long? receiveLoopGeneration)
     {
         WireToGateProtocolSerializer.RequireMessage(envelope, "SessionReadiness");
         if (envelope.CorrelationId is not null)
@@ -3996,8 +4086,59 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             "RECOVERY_REQUIRED" => WireToGateSessionReadiness.RecoveryRequired,
             _ => throw new InvalidDataException("SessionReadiness.readiness无效。")
         };
-        AdvanceSafetyStateVersion(readiness.AcceptedSafetyStateVersion);
-        Publish(true, envelope.SessionGeneration, mappedReadiness, readiness.ReasonCodes);
+        RecordDiagnostic(
+            $"收到SessionReadiness：messageId={envelope.MessageId}，"
+            + $"generation={envelope.SessionGeneration?.ToString(CultureInfo.InvariantCulture) ?? "null"}，"
+            + $"readiness={readiness.Readiness}，reasonCodes=[{string.Join(",", readiness.ReasonCodes)}]，"
+            + $"acceptedSafetyStateVersion={readiness.AcceptedSafetyStateVersion.ToString(CultureInfo.InvariantCulture)}。");
+        PublishServerReadiness(
+            envelope,
+            mappedReadiness,
+            readiness.ReasonCodes,
+            readiness.AcceptedSafetyStateVersion,
+            receiveLoopGeneration);
+    }
+
+    /// <summary>
+    /// Publishes the readiness the server sent, and the safety version it accepted with it -- unless the receive loop
+    /// that read it has been replaced.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A replaced loop's line is dropped</b> (8005-agv-control-server#380). A loop checks for cancellation once per
+    /// line, before it applies it. One past that check when a reconnect begins still reaches here, and held up long enough
+    /// it arrives after the new handshake published the new session: its old generation and old readiness would stand,
+    /// and the server announces readiness again only on a change. The test is taken under the lock every publication
+    /// takes, so it cannot pass and then be overtaken: <see cref="ConnectAndRecoverAsync"/> zeroes the loop generation
+    /// before its first publication, and <see cref="CloseConnectionAsync"/> before anything else, so a line that finds its
+    /// loop still live is published before either of them publishes anything.
+    /// </para>
+    /// <para>
+    /// The accepted safety version moves under the same test. A replaced loop moving it could leave the new handshake's
+    /// readiness, which must match the configured baseline exactly, looking out of sequence.
+    /// </para>
+    /// </remarks>
+    private void PublishServerReadiness(
+        WireToGateEnvelope envelope,
+        WireToGateSessionReadiness readiness,
+        IReadOnlyList<string> reasonCodes,
+        long acceptedSafetyStateVersion,
+        long? receiveLoopGeneration)
+    {
+        lock (_stateGate)
+        {
+            if (receiveLoopGeneration is long loop && Interlocked.Read(ref _receiveLoopGeneration) != loop)
+            {
+                RecordDiagnostic(
+                    $"丢弃SessionReadiness：messageId={envelope.MessageId}，"
+                    + $"generation={loop.ToString(CultureInfo.InvariantCulture)}，readiness={readiness}，"
+                    + "读到它的接收循环已被替换。");
+                return;
+            }
+
+            AdvanceSafetyStateVersion(acceptedSafetyStateVersion);
+            PublishUnderGate(true, envelope.SessionGeneration, readiness, reasonCodes, "SessionReadiness");
+        }
     }
 
     private void AdvanceSafetyStateVersion(long safetyStateVersion)

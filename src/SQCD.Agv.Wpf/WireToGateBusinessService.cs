@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -121,6 +122,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private WireToGateSublotEntryRequest? _currentEntryRequest;
     private WireToGateSublotRejection? _currentSublotRejection;
     private WireToGateExceptionRecoverySessionSnapshot? _recoverySessionSnapshot;
+
+    // What RecordRecoveryEntryJudgement last logged: generation, readiness and reasons.
+    private string? _lastRecoveryEntryJudgementKey;
     private readonly object _recoverySessionAttemptGate = new();
     private (string ExceptionRecoverySessionId, string? SlotOperationAttemptId)? _recoverySessionAttempt;
     private string? _inconsistentRecoverySessionId;
@@ -903,6 +907,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private void OnSessionStateChanged(object? sender, ValueChangedEventArgs<WireToGateSessionSnapshot> args)
     {
         _operatorEventDeduplicator.ResetOnNewGeneration(args.Value.SessionGeneration);
+        RecordRecoveryEntryJudgement(args.Value);
 
         if (args.Value.Readiness != WireToGateSessionReadiness.Ready)
         {
@@ -919,6 +924,36 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         {
             RequestSafetyStateChange();
         }
+    }
+
+    /// <summary>
+    /// Logs how the fault cargo handoff entry is judged whenever the session's readiness or reasons change
+    /// (8005-agv-control-server#380): the readiness it was judged on, the subject <see cref="FindRecoveryOperation"/> picks
+    /// from the cached recovery state, the recovery session on file, and the entry itself. Once per change, not per
+    /// publication -- a safety version moving on alone does not log.
+    /// </summary>
+    private void RecordRecoveryEntryJudgement(WireToGateSessionSnapshot session)
+    {
+        string key = $"{session.SessionGeneration}|{session.Readiness}|{string.Join(",", session.ReasonCodes)}";
+        if (string.Equals(Interlocked.Exchange(ref _lastRecoveryEntryJudgementKey, key), key, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+        WireToGateRecoveryOperationContext? subject = FindRecoveryOperation(state, FaultCargoHandoffAction);
+        string subjectText = subject is null
+            ? "none"
+            : $"{subject.OperationType}/{subject.DemandId}/{subject.SlotOperationAttemptId}"
+                + (ReferenceEquals(subject, state.LastCompletedLoadOperationContext) ? "（最近完成的装货）" : "（在途操作）");
+        _logger.Write(
+            LogSeverity.Information,
+            nameof(WireToGateBusinessService),
+            $"判恢复入口：generation={session.SessionGeneration?.ToString(CultureInfo.InvariantCulture) ?? "null"}，"
+            + $"readiness={session.Readiness}，reasonCodes=[{string.Join(",", session.ReasonCodes)}]，"
+            + $"subject={subjectText}，recoveryVector={state.RecoveryVector?.VectorType ?? "none"}，"
+            + $"recoverySession={Volatile.Read(ref _recoverySessionSnapshot)?.State ?? "none"}，"
+            + $"faultCargoHandoff={CanRequestFaultCargoHandoff}。");
     }
 
     /// <summary>

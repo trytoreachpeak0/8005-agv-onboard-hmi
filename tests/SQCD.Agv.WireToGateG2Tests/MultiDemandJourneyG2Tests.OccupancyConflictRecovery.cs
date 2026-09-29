@@ -134,7 +134,17 @@ public sealed partial class MultiDemandJourneyG2Tests
                 && harness.ViewModel.CanRequestLoadCompensation,
             "the compensation entry to open over B's refused load",
             token);
-        Assert.True(held.RestoreWasHeld, "no restore read was held, so the handler's own refresh was not isolated");
+        // Waited for, not read once (control-server#380): nothing orders the entry opening before or after the restore
+        // task reaching its held read. The readiness change starts that task on the session's StateChanged, and anything
+        // the handler does first -- #380 added a diagnostic there -- lets the entry open while the task is still on its
+        // way, and a read taken at that moment said "not held" in 2 of 4 full runs. Late is fine: the hold is armed
+        // before B is refused, so the restore cannot have refreshed the cached copy whenever it gets there, and every
+        // assertion below still sees only the handler's own refresh. Never getting there is the failure this names.
+        await harness.WaitUntilAsync(
+            () => held.RestoreWasHeld,
+            "the restore's journal read to reach the hold -- it never did, so the hold did not isolate the handler's own "
+            + "refresh",
+            token);
         Assert.Equal(string.Empty, harness.ViewModel.RecoveryFallbackTargetText);
         Assert.False(harness.ViewModel.HasRecoveryFallbackTarget);
 

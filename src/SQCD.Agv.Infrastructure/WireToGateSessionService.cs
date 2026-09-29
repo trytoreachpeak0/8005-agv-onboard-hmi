@@ -86,6 +86,7 @@ public sealed class WireToGateSessionService : IAsyncDisposable
             vehicleSafetyMaxAge,
             vehicleSafetyClockSkewTolerance);
         _client.StateChanged += OnClientStateChanged;
+        _client.DiagnosticRecorded += OnClientDiagnosticRecorded;
         _client.JourneyChanged += OnClientJourneyChanged;
         _client.ServerCommandReceived += OnClientServerCommandReceived;
     }
@@ -389,6 +390,7 @@ public sealed class WireToGateSessionService : IAsyncDisposable
 
         _disposed = true;
         _client.StateChanged -= OnClientStateChanged;
+        _client.DiagnosticRecorded -= OnClientDiagnosticRecorded;
         _client.JourneyChanged -= OnClientJourneyChanged;
         _client.ServerCommandReceived -= OnClientServerCommandReceived;
         _stopping.Cancel();
@@ -412,6 +414,9 @@ public sealed class WireToGateSessionService : IAsyncDisposable
 
     private void OnClientStateChanged(object? sender, ValueChangedEventArgs<WireToGateSessionSnapshot> args) =>
         StateChanged?.Invoke(this, args);
+
+    private void OnClientDiagnosticRecorded(object? sender, ValueChangedEventArgs<string> args) =>
+        _logger.Write(LogSeverity.Information, nameof(WireToGateSessionClient), args.Value);
 
     private void OnClientJourneyChanged(object? sender, ValueChangedEventArgs<WireToGateJourneySnapshot> args) =>
         JourneyChanged?.Invoke(this, args);

@@ -1,0 +1,486 @@
+using System.Diagnostics;
+using System.Reflection;
+using SQCD.Agv.Contracts;
+using SQCD.Agv.Core;
+using SQCD.Agv.Infrastructure;
+using Xunit;
+
+namespace SQCD.Agv.WireToGateG2Tests;
+
+/// <summary>
+/// A readiness line applied while an acknowledged safety message is being republished stays applied
+/// (<c>trytoreachpeak0/8005-agv-control-server#380</c>).
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>What was seen.</b> CI real-rig run 36477303574, <c>real-onboard-cancelled-rebuild-cargo-proof</c>: an administrator
+/// prepared a cargo handoff, the server judged the session <c>RECOVERY_REQUIRED</c> and appended that readiness to its
+/// answer to the vehicle's next <c>SafetyStateSnapshot</c> -- the stored first response is 1234 bytes in that run and in
+/// the passing one, against 1195 for the READY answers before it. The fault cargo handoff entry never appeared, and the
+/// server, which announces readiness only on a change, never said it again.
+/// </para>
+/// <para>
+/// <b>The interleaving.</b> The receive loop completes the snapshot's ack waiter, whose continuation runs on another
+/// thread (<c>RunContinuationsAsynchronously</c>), and goes straight on to the readiness line after it. The waiter,
+/// <c>PublishSafetyStateSnapshotAsync</c>, then republished the session state it read from <c>Current</c> to carry the
+/// newly accepted safety version -- a read and a write with nothing between them held. Read before the loop applied
+/// RECOVERY_REQUIRED and written after, it put READY back. The entry is offered only while the session says
+/// RECOVERY_REQUIRED, so it stayed shut. <c>SendSafetyStateChangedAsync</c> ends the same way after its DurableAck, and
+/// the server appends readiness to every SafetyStateChanged answer.
+/// </para>
+/// <para>
+/// <b>How the interleaving is forced, not waited for.</b> The server double sends the ack at once and holds the
+/// readiness line behind it (<see cref="FakeControlServer.ReadinessAfterSafetyAckHold"/>). The session's clock is read
+/// inside the republish, after the session state has been read and before it is written; <see cref="RepublishGateClock"/>
+/// stops the waiter's thread at that read, and only there -- by the frames on its stack. Then the readiness line is let
+/// go, the receive loop runs until it has applied it, and the waiter is let go last. Nothing depends on which thread wins
+/// on its own. Holding the line matters: without it the SafetyStateChanged waiter, which writes its journal before it
+/// reads the session state, lost to the receive loop every time in this harness and the test was green over the defect.
+/// A republish that reads and writes under the lock the receive loop also takes cannot be held that way without holding
+/// the loop too; the gate then gives up after <see cref="LoopGrace"/> and lets the waiter finish first, which is the order
+/// the fix guarantees.
+/// </para>
+/// <para>
+/// The consequence is asserted, not the mechanism: the session's readiness is RECOVERY_REQUIRED and the fault cargo
+/// handoff entry is offered, and they stay so.
+/// </para>
+/// </remarks>
+public sealed partial class RecoveryVectorG2Tests
+{
+    /// <summary>
+    /// How long the gate lets the receive loop run before it lets the waiter go. The loop applies one line; this bound
+    /// only matters where the loop cannot run, because the republish holds the lock it needs.
+    /// </summary>
+    private static readonly TimeSpan LoopGrace = TimeSpan.FromSeconds(3);
+
+    /// <summary>How long the final state is watched for a late overwrite.</summary>
+    private static readonly TimeSpan SettleWatch = TimeSpan.FromSeconds(2);
+
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
+    public async Task RecoveryRequiredAfterAMidSessionSnapshotAckSurvivesTheSnapshotsRepublish()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        using RepublishGateClock clock = new("PublishSafetyStateSnapshotAsync");
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            loadAlreadySettled: true,
+            sessionClock: clock);
+        await BringSessionToReadyAsync(harness, token);
+
+        harness.Server.ReadinessReasonOverride = "SESSION_RECOVERY_REQUIRED";
+        TaskCompletionSource readinessHold = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Server.ReadinessAfterSafetyAckHold = readinessHold.Task;
+        clock.Arm();
+        await harness.Server.RequestSafetyStateSnapshotAsync();
+        long before = harness.Session.Current.SafetyStateVersion;
+        await RunGatedInterleavingAsync(harness, clock, readinessHold, token);
+
+        await AssertRecoveryRequiredAndEntryOfferedAsync(harness, token);
+        Assert.True(harness.Session.Current.SafetyStateVersion > before);
+
+        // The diagnostics the next field red is read by (control-server#380): the readiness as received, each
+        // publication with who made it, and the entry as judged on it.
+        string[] logged = [.. harness.Logger.Entries.Select(entry => entry.Message)];
+        Assert.Contains(logged, line => line.StartsWith("收到SessionReadiness：", StringComparison.Ordinal)
+            && line.Contains("readiness=RECOVERY_REQUIRED，reasonCodes=[SESSION_RECOVERY_REQUIRED]", StringComparison.Ordinal));
+        Assert.Contains(logged, line => line.StartsWith("会话状态发布：source=SafetyStateSnapshot-ack，", StringComparison.Ordinal));
+        Assert.Contains(logged, line => line.StartsWith("会话状态发布：source=SessionReadiness，", StringComparison.Ordinal)
+            && line.Contains("readiness=RecoveryRequired", StringComparison.Ordinal));
+        Assert.Contains(logged, line => line.StartsWith("判恢复入口：", StringComparison.Ordinal)
+            && line.Contains("readiness=RecoveryRequired", StringComparison.Ordinal)
+            && line.Contains($"subject=Load/{DemandId}/{AttemptId}（最近完成的装货）", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The other direction through the same interleaving: a READY that follows the ack, after a handoff or a recovery
+    /// settled, takes effect too. A republish that simply refused to lower readiness, or one that kept the stronger of
+    /// two, would keep the vehicle out of work here instead -- the way G3 FP-IS-07 resume-007 once did.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
+    public async Task ReadyAfterAMidSessionSnapshotAckSurvivesTheSnapshotsRepublish()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        using RepublishGateClock clock = new("PublishSafetyStateSnapshotAsync");
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            loadAlreadySettled: true,
+            sessionClock: clock);
+        // The harness leaves the handshake RECOVERY_REQUIRED, departure unknown, and nothing announces readiness again.
+        Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, harness.Session.Current.Readiness);
+        Assert.True(harness.Business.CanRequestFaultCargoHandoff);
+
+        TaskCompletionSource readinessHold = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Server.ReadinessAfterSafetyAckHold = readinessHold.Task;
+        long before = harness.Session.Current.SafetyStateVersion;
+        clock.Arm();
+        await harness.Server.RequestSafetyStateSnapshotAsync();
+        Assert.True(
+            await clock.WaitUntilEnteredAsync(TimeSpan.FromSeconds(30), token),
+            "The republish after the ack never read the session clock; the gate did not engage.");
+        readinessHold.SetResult();
+        Stopwatch grace = Stopwatch.StartNew();
+        while (harness.Session.Current.Readiness != WireToGateSessionReadiness.Ready && grace.Elapsed < LoopGrace)
+        {
+            await Task.Delay(20, token);
+        }
+
+        clock.Release();
+
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Session.Current.Readiness == WireToGateSessionReadiness.Ready
+                && !harness.Business.CanRequestFaultCargoHandoff,
+            "the session to stay READY with the fault cargo handoff entry shut",
+            token);
+        Stopwatch watch = Stopwatch.StartNew();
+        while (watch.Elapsed < SettleWatch)
+        {
+            Assert.Equal(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
+            await Task.Delay(50, token);
+        }
+
+        Assert.True(harness.Session.Current.SafetyStateVersion > before);
+    }
+
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
+    public async Task RecoveryRequiredAfterASafetyStateChangedAckSurvivesTheChangesRepublish()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        using RepublishGateClock clock = new("SendSafetyStateChangedAsync");
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            loadAlreadySettled: true,
+            sessionClock: clock);
+        await BringSessionToReadyAsync(harness, token);
+
+        harness.Server.SendReadinessAfterSafetyStateChangedAck = true;
+        harness.Server.ReadinessReasonOverride = "SESSION_RECOVERY_REQUIRED";
+        TaskCompletionSource readinessHold = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Server.ReadinessAfterSafetyAckHold = readinessHold.Task;
+        long version = harness.Session.Current.SafetyStateVersion + 100;
+        clock.Arm();
+        Task<string> change = harness.Session.SendSafetyStateChangedAsync(
+            version,
+            DateTimeOffset.UtcNow,
+            new WireToGateSafetySummaryPayload(true, true, true, true, false, []),
+            [1],
+            token);
+        await RunGatedInterleavingAsync(harness, clock, readinessHold, token);
+        await change;
+
+        await AssertRecoveryRequiredAndEntryOfferedAsync(harness, token);
+        Assert.True(harness.Session.Current.SafetyStateVersion >= version);
+    }
+
+    /// <summary>
+    /// A receive loop of a connection that has since been replaced does not publish the readiness it read last
+    /// (control-server#380, the coordinator's follow-up). The loop checks for cancellation once per line, before it
+    /// applies it; a loop past that check when the reconnect begins goes on to publish its old session's readiness --
+    /// and, if held up long enough, after the new handshake has published the new session's. Nothing announces
+    /// readiness again until it changes, so the stale one would stand: RECOVERY_REQUIRED here, a fault cargo handoff
+    /// entry over a session that is READY.
+    /// </summary>
+    /// <remarks>
+    /// Held where the loop logs the line it received -- after its cancellation check, before it publishes -- by
+    /// <see cref="RecordingLogger.HoldNextEntryStartingWith"/>; released only after the new session is up. No timing.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
+    public async Task AReplacedReceiveLoopDoesNotPublishItsOldSessionsReadinessOverTheNewOne()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            loadAlreadySettled: true);
+        await BringSessionToReadyAsync(harness, token);
+        long oldGeneration = harness.Session.Current.SessionGeneration!.Value;
+
+        // The old session's last readiness line is RECOVERY_REQUIRED, and its loop is parked on it.
+        harness.Server.ReadinessReasonOverride = "SESSION_RECOVERY_REQUIRED";
+        harness.Logger.HoldNextEntryStartingWith("收到SessionReadiness：");
+        await harness.Server.RequestSafetyStateSnapshotAsync();
+        await harness.Logger.HoldEntered.WaitAsync(TimeSpan.FromSeconds(30), token);
+        Assert.Equal(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
+
+        // The vehicle reconnects; the new session is READY.
+        harness.Server.ReadinessReasonOverride = null;
+        WireToGateSessionSnapshot reconnected = await harness.Session.Client.ConnectAndRecoverAsync(token);
+        Assert.True(reconnected.SessionGeneration > oldGeneration);
+        Assert.Equal(WireToGateSessionReadiness.Ready, reconnected.Readiness);
+
+        await ReleaseReplacedLoopAndWaitAsync(harness, oldGeneration, token);
+        Stopwatch watch = Stopwatch.StartNew();
+        while (watch.Elapsed < SettleWatch)
+        {
+            WireToGateSessionSnapshot current = harness.Session.Current;
+            Assert.Equal(reconnected.SessionGeneration, current.SessionGeneration);
+            Assert.Equal(WireToGateSessionReadiness.Ready, current.Readiness);
+            Assert.False(harness.Business.CanRequestFaultCargoHandoff);
+            await Task.Delay(50, token);
+        }
+    }
+
+    /// <summary>
+    /// A replaced loop's line that reports a safety version ahead of the vehicle's is dropped whole: the version does not
+    /// move either, and the reconnect's handshake, whose readiness must match the baseline it sent exactly, completes.
+    /// </summary>
+    /// <remarks>
+    /// The window is between the handshake building its SafetyStateSnapshot from the accepted version and it checking the
+    /// server's readiness against that version. The old loop is let go inside it: after the new connection's
+    /// RecoveryStateReport has reached the server, before the server's answer is let out
+    /// (<see cref="FakeControlServer.HandshakeReadinessHold"/>). Moved by the old line, the accepted version would be ahead
+    /// of the one the server reports, and <c>ApplySessionReadiness</c> refuses that with <c>HANDSHAKE_SEQUENCE_INVALID</c>.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
+    public async Task AReplacedReceiveLoopsHigherSafetyVersionDoesNotBreakTheReconnectHandshake()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            loadAlreadySettled: true);
+        await BringSessionToReadyAsync(harness, token);
+        long oldGeneration = harness.Session.Current.SessionGeneration!.Value;
+        long acceptedBefore = harness.Session.Current.SafetyStateVersion;
+
+        harness.Server.ReadinessAcceptedSafetyStateVersionOverride = acceptedBefore + 50;
+        harness.Logger.HoldNextEntryStartingWith("收到SessionReadiness：");
+        await harness.Server.RequestSafetyStateSnapshotAsync();
+        await harness.Logger.HoldEntered.WaitAsync(TimeSpan.FromSeconds(30), token);
+
+        harness.Server.ReadinessAcceptedSafetyStateVersionOverride = null;
+        TaskCompletionSource handshakeHold = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        harness.Server.HandshakeReadinessHold = handshakeHold.Task;
+        int reportsBefore = harness.Server.Received.Count(item => item.MessageType == "RecoveryStateReport");
+        Task<WireToGateSessionSnapshot> reconnect = harness.Session.Client.ConnectAndRecoverAsync(token);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Server.Received.Count(item => item.MessageType == "RecoveryStateReport") > reportsBefore,
+            "the reconnect's RecoveryStateReport to reach the server",
+            token);
+
+        await ReleaseReplacedLoopAndWaitAsync(harness, oldGeneration, token);
+        handshakeHold.SetResult();
+
+        WireToGateSessionSnapshot reconnected = await reconnect;
+        Assert.True(reconnected.SessionGeneration > oldGeneration);
+        Assert.Equal(WireToGateSessionReadiness.Ready, reconnected.Readiness);
+        Assert.True(reconnected.SafetyStateVersion < acceptedBefore + 50);
+    }
+
+    /// <summary>
+    /// A receive loop that failed and is finishing its session does not publish Disconnected over a session a reconnect
+    /// has brought up meanwhile (independent review of cs#380, S3/S-6: the same shape as the readiness line, a check
+    /// and the publication it guards taken apart).
+    /// </summary>
+    /// <remarks>
+    /// The server drops the connection on the vehicle's next SafetyStateChanged, so the loop reads end-of-stream and
+    /// finishes its session. It is parked on the line that finish logs (接收循环失败收尾), after its generation check;
+    /// the vehicle reconnects, and only then is the finish let go. Done under the lock, the check and everything after it
+    /// come before the reconnect's first publication, and the reconnect waits for them: the gate lets it run for
+    /// <see cref="LoopGrace"/> and then lets the finish go first. Taken apart, the reconnect completes in the gap, and the
+    /// finish then publishes Disconnected over the new READY session.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
+    public async Task AFailedLoopsFinishDoesNotPublishDisconnectedOverTheSessionAReconnectBroughtUp()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            loadAlreadySettled: true);
+        await BringSessionToReadyAsync(harness, token);
+        long oldGeneration = harness.Session.Current.SessionGeneration!.Value;
+
+        harness.Logger.HoldNextEntryStartingWith("接收循环失败收尾：");
+        harness.Server.DropBeforeSafetyStateChangedAck = true;
+        Task<string> dropped = harness.Session.SendSafetyStateChangedAsync(
+            harness.Session.Current.SafetyStateVersion + 1,
+            DateTimeOffset.UtcNow,
+            new WireToGateSafetySummaryPayload(true, true, true, true, false, []),
+            [1],
+            token);
+        await harness.Logger.HoldEntered.WaitAsync(TimeSpan.FromSeconds(30), token);
+        harness.Server.DropBeforeSafetyStateChangedAck = false;
+
+        // Off the test thread: the reconnect takes the lock before its first await, and with the finish holding it that
+        // is where it waits -- on this thread it would keep the test from ever letting the finish go.
+        Task<WireToGateSessionSnapshot> reconnect = Task.Run(() => harness.Session.Client.ConnectAndRecoverAsync(token), token);
+        await Task.WhenAny(reconnect, Task.Delay(LoopGrace, token));
+        harness.Logger.ReleaseHold();
+        WireToGateSessionSnapshot reconnected = await reconnect;
+        await Assert.ThrowsAnyAsync<Exception>(() => dropped);
+        Assert.True(reconnected.SessionGeneration > oldGeneration);
+        Assert.Equal(WireToGateSessionReadiness.Ready, reconnected.Readiness);
+
+        // The finish has published by now whichever way it ran; watched for a while regardless.
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Logger.Entries.Any(entry =>
+                entry.Message.StartsWith("会话状态发布：source=receive-failed，", StringComparison.Ordinal)),
+            "the failed loop's finish to publish",
+            token);
+        Stopwatch watch = Stopwatch.StartNew();
+        while (watch.Elapsed < SettleWatch)
+        {
+            WireToGateSessionSnapshot current = harness.Session.Current;
+            Assert.True(current.Connected, "The failed loop's Disconnected stands over the reconnected session.");
+            Assert.Equal(reconnected.SessionGeneration, current.SessionGeneration);
+            Assert.Equal(WireToGateSessionReadiness.Ready, current.Readiness);
+            await Task.Delay(50, token);
+        }
+
+    }
+
+    /// <summary>
+    /// Lets the replaced receive loop go on from where the logger parked it, and waits until it is done with the line it
+    /// was holding: published it (会话状态发布：source=SessionReadiness) or dropped it (丢弃SessionReadiness), either
+    /// logged with the old generation.
+    /// </summary>
+    /// <remarks>
+    /// <b>Only entries written after the release count</b> (independent review of cs#380, M-1). The old session had
+    /// already logged such lines with that generation -- its handshake's readiness and the one that made it READY -- so
+    /// a wait over every entry returned at once, before the loop moved. The assertions after it then ran against a loop
+    /// still on its way, and a loop that moves the version or publishes a little later passed them: the reviewer's probe,
+    /// the version moved before the check plus 200 ms more in the old loop, went green 3/3.
+    /// </remarks>
+    private static async Task ReleaseReplacedLoopAndWaitAsync(
+        RecoveryVectorHarness harness,
+        long oldGeneration,
+        CancellationToken token)
+    {
+        int entriesBefore = harness.Logger.Entries.Count;
+        string oldGenerationField = $"generation={oldGeneration}，";
+        harness.Logger.ReleaseHold();
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Logger.Entries.Skip(entriesBefore).Any(entry =>
+                (entry.Message.StartsWith("会话状态发布：source=SessionReadiness，", StringComparison.Ordinal)
+                    || entry.Message.StartsWith("丢弃SessionReadiness：", StringComparison.Ordinal))
+                && entry.Message.Contains(oldGenerationField, StringComparison.Ordinal)),
+            "the replaced receive loop to be done with its last readiness line",
+            token);
+    }
+
+    /// <summary>
+    /// The harness ends its handshake RECOVERY_REQUIRED (departure unknown until the vehicle is stopped). A requested
+    /// snapshot, answered with the vehicle stopped, brings READY: the entry is then shut, which is where the handoff
+    /// finds the session in the field.
+    /// </summary>
+    private static async Task BringSessionToReadyAsync(RecoveryVectorHarness harness, CancellationToken token)
+    {
+        await harness.Server.RequestSafetyStateSnapshotAsync();
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Session.Current.Readiness == WireToGateSessionReadiness.Ready
+                && !harness.Business.CanRequestFaultCargoHandoff,
+            "the session to be READY with the fault cargo handoff entry shut",
+            token);
+    }
+
+    /// <summary>
+    /// Waits for the waiter to stop at the gate, lets the readiness line after the ack go and the receive loop apply
+    /// it, then lets the waiter finish its republish.
+    /// </summary>
+    private static async Task RunGatedInterleavingAsync(
+        RecoveryVectorHarness harness,
+        RepublishGateClock clock,
+        TaskCompletionSource readinessHold,
+        CancellationToken token)
+    {
+        Assert.True(
+            await clock.WaitUntilEnteredAsync(TimeSpan.FromSeconds(30), token),
+            "The republish after the ack never read the session clock; the gate did not engage.");
+        Assert.Equal(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
+        readinessHold.SetResult();
+        Stopwatch grace = Stopwatch.StartNew();
+        while (harness.Session.Current.Readiness != WireToGateSessionReadiness.RecoveryRequired
+            && grace.Elapsed < LoopGrace)
+        {
+            await Task.Delay(20, token);
+        }
+
+        clock.Release();
+    }
+
+    private static async Task AssertRecoveryRequiredAndEntryOfferedAsync(
+        RecoveryVectorHarness harness,
+        CancellationToken token)
+    {
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired
+                && harness.Business.CanRequestFaultCargoHandoff,
+            "the session to stay RECOVERY_REQUIRED with the fault cargo handoff entry offered",
+            token);
+        Stopwatch watch = Stopwatch.StartNew();
+        while (watch.Elapsed < SettleWatch)
+        {
+            Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, harness.Session.Current.Readiness);
+            Assert.True(harness.Business.CanRequestFaultCargoHandoff);
+            await Task.Delay(50, token);
+        }
+    }
+
+    /// <summary>
+    /// A clock that, once armed, holds the first thread reading it from inside a session-state republish that the
+    /// named async method of <see cref="WireToGateSessionClient"/> makes after its ack, until released.
+    /// </summary>
+    /// <remarks>
+    /// Recognised by the stack: a frame of that method's state machine, and under it a synchronous
+    /// <see cref="WireToGateSessionClient"/> method whose name contains <c>Publish</c> -- not the method's own lambdas,
+    /// which are compiler-named and read the clock while building the message, before anything is sent.
+    /// </remarks>
+    private sealed class RepublishGateClock(string asyncMethod) : IClock, IDisposable
+    {
+        private readonly SemaphoreSlim _entered = new(0, 1);
+        private readonly ManualResetEventSlim _released = new(false);
+        private int _armed;
+
+        public DateTimeOffset Now
+        {
+            get
+            {
+                if (Volatile.Read(ref _armed) == 1
+                    && IsRepublishFromAsyncMethod()
+                    && Interlocked.Exchange(ref _armed, 0) == 1)
+                {
+                    _entered.Release();
+                    _released.Wait(TimeSpan.FromSeconds(60));
+                }
+
+                return DateTimeOffset.Now;
+            }
+        }
+
+        public void Arm() => Volatile.Write(ref _armed, 1);
+
+        public Task<bool> WaitUntilEnteredAsync(TimeSpan timeout, CancellationToken token) =>
+            _entered.WaitAsync(timeout, token);
+
+        public void Release() => _released.Set();
+
+        public void Dispose()
+        {
+            _released.Set();
+            _entered.Dispose();
+            _released.Dispose();
+        }
+
+        private bool IsRepublishFromAsyncMethod()
+        {
+            StackFrame[] frames = new StackTrace(false).GetFrames();
+            bool fromAsyncMethod = frames.Any(frame =>
+                frame.GetMethod()?.DeclaringType?.Name.StartsWith($"<{asyncMethod}>", StringComparison.Ordinal) == true);
+            bool inRepublish = frames.Any(frame => frame.GetMethod() is MethodBase method
+                && method.DeclaringType == typeof(WireToGateSessionClient)
+                && method.Name.Contains("Publish", StringComparison.Ordinal)
+                && !method.Name.StartsWith('<')
+                && !method.Name.EndsWith("Async", StringComparison.Ordinal));
+            return fromAsyncMethod && inRepublish;
+        }
+    }
+}

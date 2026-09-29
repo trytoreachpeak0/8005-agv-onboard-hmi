@@ -1324,6 +1324,8 @@ public sealed partial class RecoveryVectorG2Tests
 
         public FakeControlServer Server { get; }
 
+        public WireToGateSessionService Session => _session;
+
         public FakeIoModuleClient Io { get; }
 
         public WireToGateBusinessService Business { get; }
@@ -1396,7 +1398,8 @@ public sealed partial class RecoveryVectorG2Tests
             IReadOnlyList<int>? seededForcedIsolation = null,
             bool lockerWaitTimesOut = false,
             Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
-            Func<bool>? fatalFaultLatched = null)
+            Func<bool>? fatalFaultLatched = null,
+            IClock? sessionClock = null)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -1445,7 +1448,7 @@ public sealed partial class RecoveryVectorG2Tests
                     io,
                     wrapJournal?.Invoke(journal) ?? journal,
                     logger,
-                    new SystemClock(),
+                    sessionClock ?? new SystemClock(),
                     safety,
                     new OnboardAlarmBoard("AGV-8005-01", TimeProvider.System),
                     new SlotConfigurationActivationCoordinator(
