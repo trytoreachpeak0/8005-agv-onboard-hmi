@@ -340,7 +340,8 @@ public sealed class MainViewModel : ViewModelBase
             : snapshot.CurrentStopWorklist is not { } worklist
                 ? "旅程未同步"
                 : worklist.Items.Count == 0
-                    ? $"{worklist.StationId} / 无待处理任务"
+                    // 清单空了写本站为什么结束（协议 3.0.0 的 stopEndedReason，onboard-hmi#214）；没有原因时照旧。
+                    ? $"{worklist.StationId} / {WireToGateStopEndedReasonText.Describe(worklist.StopEndedReason)}"
                     : worklist.StationId;
         LogNonBusinessStopContradictionCore(snapshot);
         // 电量与充电状态整值跟随业务状态：断线清投影时一起变空，重启从日志恢复时一起回来（onboard-hmi#220）。

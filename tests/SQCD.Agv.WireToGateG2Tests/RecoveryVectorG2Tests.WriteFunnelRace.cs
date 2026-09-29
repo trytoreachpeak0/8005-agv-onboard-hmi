@@ -37,8 +37,8 @@ public sealed partial class RecoveryVectorG2Tests
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
             token,
             cargoInTargetSlots: true,
-            wrapJournal: inner => race = new WriteFunnelRaceJournal(inner));
-        await harness.IsolateByForcedRecoveryAsync(token);
+            wrapJournal: inner => race = new WriteFunnelRaceJournal(inner),
+            seededRecoveryState: AcknowledgedForcedIsolationState);
 
         // 隔离记录已经带上待发记录，说明这一次写入就是「记录被 RECORDED 之后清隔离」那一次，
         // 不是它前面那次落待发记录的写入。按状态认，不按第几次写入认。

@@ -318,7 +318,7 @@ public partial class MainWindow : Window
     {
         if (_viewModel is null
             || MessageBox.Show(
-                "请确认：车辆已断电、抱闸隔离，并已由具备现场作业资质的人员以机械方式开锁或拆卸、取出货物。\n\n系统不会输出开锁。确认后上报「已机械隔离」，这些仓位随后标为物理状态未知，禁止操作，直到提交硬件恢复记录。是否确认？",
+                "请确认：车辆已断电、抱闸隔离，并已由具备现场作业资质的人员以机械方式开锁或拆卸、取出货物。\n\n系统不会输出开锁。确认后记录本次确认；本版本还不能登记货物交接，结果暂不上报，车辆保持需恢复，这些仓位保持禁止操作。是否确认？",
                 "确认强制机械取出",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,
@@ -329,7 +329,7 @@ public partial class MainWindow : Window
 
         if (!await _viewModel.ConfirmForcedMechanicalRecoveryAsync())
         {
-            ShowRecoveryFailure("强制机械取出结果未被服务端确认。请检查连接后再次确认，系统不会输出开锁。", "确认失败");
+            ShowRecoveryFailure("强制机械取出已确认并记录，但本版本还不能登记货物交接，结果暂不上报；车辆保持需恢复，这些仓位保持禁止操作。系统不会输出开锁。", "结果暂不上报");
         }
     }
 

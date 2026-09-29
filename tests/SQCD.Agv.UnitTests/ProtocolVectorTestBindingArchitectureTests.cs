@@ -90,7 +90,7 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// gate evidence -- so the boundary has to be stated somewhere on this side, and this is the
     /// smallest form it takes. The two pin sets below are what make it load-bearing instead of
     /// decorative, and
-    /// <see cref="TheIndexParsesIntoSixteenSlicesAndThirtyThreeDistinctVectors"/> is what lets it be
+    /// <see cref="TheIndexParsesIntoSixteenSlicesAndThirtyNineDistinctVectors"/> is what lets it be
     /// stated as slice ids at all: it pins each slice's id to its own sequence, so the ids named here
     /// and the sequences the index carries cannot drift apart.
     /// </para>
@@ -196,6 +196,13 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// <c>SublotRejectedAfterEntryG2Tests</c> binds it. The set is empty again.
     /// </para>
     /// <para>
+    /// <b>The 3.0.0 candidate refilled it with six</b> (8005-agv-onboard-hmi#214), all frozen onto
+    /// slices this line implements -- five on <c>FP-IS-07</c>, one on <c>FP-IS-02</c> -- and all
+    /// describing behaviour that ticket does not build: it carries the candidate's shapes only. Each
+    /// note names the ticket that owes the test; <c>CV-VEHICLE-HOLD-DOOR-REPAIR-RELEASE</c> has no
+    /// onboard ticket yet, and its note says so rather than guessing one.
+    /// </para>
+    /// <para>
     /// <b>They are pinned here rather than in <see cref="VectorsAwaitingTheirSlice"/>.</b> The
     /// ticket asked for the other set, and the other set will not hold them:
     /// <see cref="EveryScheduledPinBelongsOnlyToSlicesThisBatchDoesNotImplement"/> refuses a
@@ -206,7 +213,22 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// </para>
     /// </remarks>
     private static readonly IReadOnlyDictionary<string, string> VectorsThisBatchOwesANamedTest =
-        new SortedDictionary<string, string>(StringComparer.Ordinal);
+        new SortedDictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["CV-LOAD-CANCELLATION-EMPTY-DOOR-UNPROVEN"] =
+                "FP-IS-02, 3.0.0 candidate; the cancellation clearing path, 8005-agv-onboard-hmi#219",
+            ["CV-LOAD-COMPENSATION-EMPTY-DOOR-UNPROVEN"] =
+                "FP-IS-07, 3.0.0 candidate; the compensation clearing path, 8005-agv-onboard-hmi#219",
+            ["CV-RECOVERY-SESSION-CLOSED-RESULT-NOT-RECONCILED"] =
+                "FP-IS-07, 3.0.0 candidate; the recovery session's closed reason, 8005-agv-onboard-hmi#216",
+            ["CV-SLOT-FAULT-DECLARATION-APPLIED"] =
+                "FP-IS-07, 3.0.0 candidate; the administrator's slot fault declaration, 8005-agv-onboard-hmi#215",
+            ["CV-SLOT-FAULT-DECLARATION-NOT-APPLICABLE"] =
+                "FP-IS-07, 3.0.0 candidate; the administrator's slot fault declaration, 8005-agv-onboard-hmi#215",
+            ["CV-VEHICLE-HOLD-DOOR-REPAIR-RELEASE"] =
+                "FP-IS-07, 3.0.0 candidate; HARDWARE_REPAIR_RELEASE and the HOLD_RELEASE check, no onboard "
+                + "ticket yet (reported on 8005-agv-onboard-hmi#214)"
+        };
 
     private sealed record VectorBinding(string VectorId, string TestName);
 
@@ -253,23 +275,24 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// </summary>
     /// <remarks>
     /// Without this, every assertion below could pass over an empty parse. The three counts are the
-    /// ones that differ from each other -- 16 slices, 36 <c>vectorIds</c> entries, 33 distinct
+    /// ones that differ from each other -- 16 slices, 42 <c>vectorIds</c> entries, 39 distinct
     /// vectors -- so a parse that lost a slice, or one that forgot to deduplicate, is reported here
     /// rather than silently narrowing what the binding check covers. The three vectors shared across
-    /// slices are counted rather than named: the count is the entire difference between 36 and 33,
+    /// slices are counted rather than named: the count is the entire difference between 42 and 39,
     /// and writing their ids out would put a hand-copied fragment of the vector list in a file whose
     /// whole point is not to hold one. The 2.0.0 candidate added two vectors to <c>FP-IS-02</c> and
-    /// no slice, which is why only the first two counts moved.
+    /// no slice; the 3.0.0 candidate added six (one to <c>FP-IS-02</c>, five to <c>FP-IS-07</c>) and
+    /// no slice, and shares none of them, so again only the first two counts moved.
     /// </remarks>
     [Fact]
-    public void TheIndexParsesIntoSixteenSlicesAndThirtyThreeDistinctVectors()
+    public void TheIndexParsesIntoSixteenSlicesAndThirtyNineDistinctVectors()
     {
         Slice[] slices = Slices();
         string[] entries = [.. slices.SelectMany(slice => slice.VectorIds)];
 
         Assert.Equal(16, slices.Length);
-        Assert.Equal(36, entries.Length);
-        Assert.Equal(33, FrozenVectorIds().Length);
+        Assert.Equal(42, entries.Length);
+        Assert.Equal(39, FrozenVectorIds().Length);
 
         // Each slice's id paired with its own sequence, not the two sets compared separately.
         // LastSliceSequenceThisBatchImplements is stated as a sequence and read as a batch boundary
@@ -370,6 +393,70 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
             "These vectors belong to slices this batch implements, so a missing named test is a gap "
             + "rather than a schedule -- move them to " + nameof(VectorsThisBatchOwesANamedTest)
             + " with a finding: " + string.Join(", ", wronglyPinned));
+    }
+
+    /// <summary>
+    /// A build that names an approved release carries neither the forced-recovery hold nor the pins
+    /// that owe its handoff tests (8005-agv-onboard-hmi#214).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// On the 3.0.0 candidate an isolation on a demand cannot be reported -- the result needs a cargo
+    /// handoff record this build cannot take -- so the confirmation is held unreported
+    /// (<c>IsolationOnADemandNeedsAHandoffRecord</c> in <c>WireToGateBusinessService.RecoveryVectors.cs</c>),
+    /// and 8005-agv-onboard-hmi#216 owes the screen that ends the hold. A vehicle running that hold stays
+    /// RecoveryRequired after every forced recovery on a demand, and the only way out is editing its
+    /// journal. The batch branch is not allowed on a vehicle until #216 lands; this is what keeps that a
+    /// build fact rather than a sentence in the exit ticket: the day <c>ApprovalStatus</c> says
+    /// <c>APPROVED_RELEASE</c>, the hold and every pin labelled <c>8005-agv-onboard-hmi#216</c> must be gone.
+    /// </para>
+    /// <para>
+    /// On the candidate the rule does not fire, so <see cref="TheReleaseGateCatchesTheHoldThatIsHereToday"/>
+    /// runs the same check as though today's build were the release.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AnApprovedReleaseCarriesNoForcedRecoveryHoldAndOwesNoHandoffTests()
+    {
+        string[] offences = ReleaseGateOffences(WireToGateRelease.ApprovalStatus);
+
+        Assert.True(
+            offences.Length == 0,
+            "This build names an approved release but still holds forced-recovery results for a missing "
+            + "handoff screen, or still owes that screen's tests: " + string.Join("; ", offences));
+    }
+
+    /// <summary>
+    /// The release gate above is not vacuous: run against today's source and pins as though they were the
+    /// release, it reports both the hold and the #216 pins.
+    /// </summary>
+    [Fact]
+    public void TheReleaseGateCatchesTheHoldThatIsHereToday()
+    {
+        string[] offences = ReleaseGateOffences("APPROVED_RELEASE");
+
+        Assert.Contains(offences, offence => offence.Contains("IsolationOnADemandNeedsAHandoffRecord", StringComparison.Ordinal));
+        Assert.Contains(offences, offence => offence.Contains("CV-RECOVERY-SESSION-CLOSED-RESULT-NOT-RECONCILED", StringComparison.Ordinal));
+    }
+
+    private static string[] ReleaseGateOffences(string approvalStatus)
+    {
+        if (approvalStatus != "APPROVED_RELEASE")
+        {
+            return [];
+        }
+
+        string source = File.ReadAllText(Path.Combine(
+            VendoredSliceIndex.RepositoryRoot(), "src", "SQCD.Agv.Wpf", "WireToGateBusinessService.RecoveryVectors.cs"));
+        return
+        [
+            .. source.Contains("IsolationOnADemandNeedsAHandoffRecord", StringComparison.Ordinal)
+                ? ["WireToGateBusinessService.RecoveryVectors.cs still has IsolationOnADemandNeedsAHandoffRecord"]
+                : Array.Empty<string>(),
+            .. VectorsThisBatchOwesANamedTest
+                .Where(pin => pin.Value.Contains("8005-agv-onboard-hmi#216", StringComparison.Ordinal))
+                .Select(pin => $"{pin.Key} is still pinned as owed by 8005-agv-onboard-hmi#216")
+        ];
     }
 
     /// <summary>

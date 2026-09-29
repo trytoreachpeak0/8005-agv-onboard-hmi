@@ -2062,6 +2062,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                 new
                 {
                     preDepartureSafetyCheckId = PreDepartureSafetyCheckIdAfterRecovery,
+                    checkPurpose = "DEPARTURE",
                     demandId = "11111111-1111-4111-8111-111111111111",
                     movementLegId = "22222222-2222-4222-8222-222222222222",
                     expectedSafetyStateVersion,
@@ -2248,6 +2249,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                         .ToArray(),
                     selectedAction = closed ? "COMPENSATE_LOAD_ALL_EMPTY" : null,
                     allowedActions = closed ? Array.Empty<string>() : OpenRecoverySessionAllowedActions,
+                    closedReason = (string?)null,
                     blockingFacts = closed
                         ? []
                         : new[]
@@ -2876,6 +2878,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                 worklistRevision = 1,
                 operationSessionId = OperationSessionId,
                 stationDepartureDeadlineAt = StationDepartureDeadlineAt,
+                stopEndedReason = (string?)null,
                 items = new[]
                 {
                     new
@@ -2911,6 +2914,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                     worklistRevision = 1,
                     operationSessionId = OperationSessionId,
                     stationDepartureDeadlineAt = StationDepartureDeadlineAt,
+                    stopEndedReason = (string?)null,
                     items = new[]
                     {
                         new
@@ -2960,6 +2964,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                     worklistRevision = 1,
                     operationSessionId = OperationSessionId,
                     stationDepartureDeadlineAt = StationDepartureDeadlineAt,
+                    stopEndedReason = (string?)null,
                     items = new[]
                     {
                         new
@@ -3113,6 +3118,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                 worklistRevision = 1,
                 operationSessionId = OperationSessionId,
                 stationDepartureDeadlineAt = StationDepartureDeadlineAt,
+                stopEndedReason = (string?)null,
                 items = new[]
                 {
                     new

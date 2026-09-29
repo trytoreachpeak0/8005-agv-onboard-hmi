@@ -1455,12 +1455,18 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     private sealed class RefusedBeforeFirstPulseException(string reasonCode) : Exception(reasonCode);
 
     /// <summary>
-    /// The code a latch refusal carries on the wire. Protocol v2.0.0 has no code for "the onboard latched
-    /// a severe safety fault"; <c>VEHICLE_NOT_READY</c> is the registered one the vehicle already uses for
-    /// refusing door IO on its own state (onboard-hmi#123). A dedicated code is on the v3.0.0 list
-    /// (program#115).
+    /// The code a latch refusal carries on the wire, in a slot result's <c>reasonCodes</c>.
     /// </summary>
-    public const string FatalFaultLatchedReason = "VEHICLE_NOT_READY";
+    /// <remarks>
+    /// Protocol 3.0.0 registered <c>ONBOARD_FATAL_FAULT_LATCHED</c>, and its <c>allowedMessageTypes</c> name the
+    /// five results that carry <c>slotResults</c> -- <c>OperationResult</c>, <c>LoadCorrectionResult</c>,
+    /// <c>LoadCancellationResult</c>, <c>LoadCompensationResult</c>, <c>FaultCargoRecoveryResult</c> -- beside the
+    /// three safety messages (8005-agv-onboard-hmi#214). Until then this borrowed <c>VEHICLE_NOT_READY</c>
+    /// (onboard-hmi#191). It has the same value as <c>WireToGateSafetyEvaluator.FatalFaultLatchedReason</c> but is a
+    /// separate one on purpose: that one says "do not depart" in a safety summary, this one says "this slot was
+    /// not pulsed" in a slot result, and the business service recognizes a latch refusal by this one alone.
+    /// </remarks>
+    public const string FatalFaultLatchedReason = "ONBOARD_FATAL_FAULT_LATCHED";
 
     /// <summary>
     /// The latch refused the pulse about to be sent. <see cref="Reopen"/> says whether this call had

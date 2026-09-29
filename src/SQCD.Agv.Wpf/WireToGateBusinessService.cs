@@ -3305,6 +3305,24 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         WireToGatePreDepartureSafetyCheck command,
         CancellationToken cancellationToken)
     {
+        // Protocol 3.0.0 added checkPurpose. This line answers DEPARTURE, the one purpose it has always
+        // answered. NON_BUSINESS_MOVE and HOLD_RELEASE reach here schema-valid, but what a SAFE answer
+        // may release for them (a held vehicle, a move with no demand) is not decided on this side yet
+        // (8005-agv-onboard-hmi#219 and later tickets). Until it is, they are refused rather than
+        // answered with the departure evaluation: a SAFE this build cannot stand behind is worse than
+        // no answer, and the control server keeps the vehicle where it is (8005-agv-onboard-hmi#214).
+        if (command.CheckPurpose != "DEPARTURE")
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"出发前安全检查的用途本版本尚不作答：check={command.PreDepartureSafetyCheckId}，" +
+                $"checkPurpose={command.CheckPurpose}。回ACTION_NOT_ALLOWED_IN_STATE，不作答。");
+            await _session.RejectServerCommandAsync(command, "ACTION_NOT_ALLOWED_IN_STATE", cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
         // CV-PREDEPARTURE-SAFETY-EXPIRES. The check names the safety state version it is asking about.
         // Once this vehicle has had a later version accepted, the question is about a state that no
         // longer holds: answering would report today's safety against it. Refused as
@@ -3329,6 +3347,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         long safetyStateVersion = _session.Current.SafetyStateVersion;
         await _session.SendPreDepartureSafetyCheckResultAsync(
             command.PreDepartureSafetyCheckId,
+            command.CheckPurpose,
             safe ? "SAFE" : evaluation.Safety.UnknownPresent ? "UNKNOWN" : "UNSAFE",
             evaluation.ObservedAt,
             safetyStateVersion,
@@ -3618,8 +3637,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             case "SLOT_SET_INVALID":
                 return "SLOT_SET_INVALID";
             case "FATAL_FAULT_LATCHED":
-                // No protocol code says "latched" (program#115 has it for v3.0.0); the vehicle refuses door
-                // IO on its own state with VEHICLE_NOT_READY, as the slot and vector executors do.
+                // Protocol 3.0.0 has ONBOARD_FATAL_FAULT_LATCHED, but its allowedMessageTypes do not include
+                // SlotOperationCommandRejected, the message this answer travels in (8005-agv-onboard-hmi#214).
+                // So the refused resume keeps VEHICLE_NOT_READY: the registered code for the vehicle refusing
+                // door IO on its own state.
                 return "VEHICLE_NOT_READY";
             case "RECOVERY_OPERATION_CONTEXT_MISSING":
                 // Nothing on file to resume: the same answer the safety gate gives an unpersisted state.

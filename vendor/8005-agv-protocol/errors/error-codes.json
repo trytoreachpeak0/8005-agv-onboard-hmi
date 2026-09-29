@@ -1,5 +1,5 @@
 {
-  "registryVersion": "1.1.0",
+  "registryVersion": "1.2.0",
   "appendOnly": true,
   "displayMessageAuthoritative": false,
   "codes": [
@@ -591,6 +591,55 @@
       ],
       "retryDisposition": "AFTER_STATE_CHANGE",
       "introducedInRelease": "2.0.0"
+    },
+    {
+      "code": "SLOT_FAULT_DECLARED",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "An administrator declared the slot faulty on the control server and the onboard HMI applied the declaration, so the slot's SlotResult in OperationResult has outcome UNKNOWN and carries this code in its reasonCodes, and the slot operation leaves only through an exception recovery session (REQ-0359, CP-0005 section 4.3 item 3).",
+      "allowedMessageTypes": [
+        "OperationResult"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "3.0.0"
+    },
+    {
+      "code": "RECOVERY_ACTION_RESULT_NOT_RECONCILED",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "The exception recovery session closed because its recovery action will not reconcile: the result reported FAILED or UNKNOWN, the result reported success that its per-slot results do not bear out, or the vehicle refused the SlotOperationResumeCommand with SlotOperationCommandRejected so no result will come; the demand stays blocked and an administrator opens a new exception recovery session to choose the next action.",
+      "allowedMessageTypes": [
+        "ExceptionRecoverySessionSnapshot"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "3.0.0"
+    },
+    {
+      "code": "ONBOARD_FATAL_FAULT_LATCHED",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "The onboard HMI has latched a fatal safety fault: it reports departure unsafe and refuses to open any slot until a person reviews and resets the latch. It is not VEHICLE_NOT_READY, not a vehicle that has not come to a stop, and not an unsafe state caused by the slot operation in progress, so it is never forgiven as operation-induced unsafety.",
+      "allowedMessageTypes": [
+        "SafetyStateChanged",
+        "SafetyStateSnapshot",
+        "PreDepartureSafetyCheckResult",
+        "OperationResult",
+        "LoadCorrectionResult",
+        "LoadCancellationResult",
+        "LoadCompensationResult",
+        "FaultCargoRecoveryResult"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "3.0.0"
+    },
+    {
+      "code": "SLOT_DOOR_LOCK_UNPROVEN_AFTER_EMPTY",
+      "category": "SAFETY_RECOVERY",
+      "meaning": "The slot's light curtain reads EMPTY but its sensors cannot prove the door locked or the unlock output reset: the cargo business settles the slot as empty and the result carries overallOutcome ALL_EMPTY_DOOR_UNPROVEN, never ALL_EMPTY, which still means every slot EMPTY, LOCKED and RESET; no further slot is opened, and the vehicle stays held, whether a cancellation or a compensation left it held, until a HardwareRecoveryRecord on a HARDWARE_REPAIR_RELEASE recovery action, then LOCKED, RESET and EMPTY readings of the slot that the control server receives after the record, then a SAFE PreDepartureSafetyCheck with checkPurpose HOLD_RELEASE; the code stands in the blockingFacts of VehicleBusinessStateSnapshot for as long as the vehicle is held (REQ-0364, CP-0009).",
+      "allowedMessageTypes": [
+        "LoadCancellationResult",
+        "LoadCompensationResult",
+        "VehicleBusinessStateSnapshot"
+      ],
+      "retryDisposition": "MANUAL_REVIEW",
+      "introducedInRelease": "3.0.0"
     }
   ]
 }

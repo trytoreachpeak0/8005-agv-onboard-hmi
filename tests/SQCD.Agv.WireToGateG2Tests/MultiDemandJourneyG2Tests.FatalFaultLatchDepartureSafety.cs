@@ -20,13 +20,16 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// （<c>EnterFatalFault</c> / <c>ClearFatalFaultAsync</c>），夹具与 App 一样把控制器的 <c>StateChanged</c> 接到业务服务。
 /// </para>
 /// <para>
-/// <b>原因码：</b>协议 v2.0.0 没有「车载端锁存」的码，借用 <c>DEPARTURE_UNSAFE</c>，理由与不能用 <c>VEHICLE_NOT_READY</c>
-/// 的原因写在 <see cref="WireToGateSafetyEvaluator.FatalFaultLatchedReason"/>；专用码在 program#115（v3.0.0 待办）。
+/// <b>原因码：</b>安全摘要里的原因是协议 3.0.0 的专用码 <c>ONBOARD_FATAL_FAULT_LATCHED</c>（onboard-hmi#214；此前借用
+/// <c>DEPARTURE_UNSAFE</c>），不能用 <c>VEHICLE_NOT_READY</c> 的理由写在 <see cref="WireToGateSafetyEvaluator.FatalFaultLatchedReason"/>。
+/// 假服务端就绪判定里的 <c>DEPARTURE_UNSAFE</c> 是服务端自己的就绪原因，与安全摘要的原因是两回事，照旧。
 /// </para>
 /// </remarks>
 public sealed partial class MultiDemandJourneyG2Tests
 {
     private const string DepartureUnsafe = "DEPARTURE_UNSAFE";
+
+    private const string FatalFaultLatched = "ONBOARD_FATAL_FAULT_LATCHED";
 
     /// <summary>
     /// 锁存：下一份安全摘要出发不安全，原因只有锁存这一项，四个物理字段照旧（门都锁着、输出复位、车停着、没有未知）；
@@ -52,7 +55,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         LatchNow(harness);
 
         JsonElement latched = await WaitForReportedSafetyAsync(harness, departureSafe: false, token);
-        Assert.Equal([DepartureUnsafe], SafetyReasons(latched));
+        Assert.Equal([FatalFaultLatched], SafetyReasons(latched));
         Assert.True(latched.GetProperty("vehicleStopped").GetBoolean());
         Assert.True(latched.GetProperty("allTargetSlotsLocked").GetBoolean());
         Assert.True(latched.GetProperty("allUnlockOutputsReset").GetBoolean());
@@ -121,6 +124,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             new
             {
                 preDepartureSafetyCheckId = checkId,
+                checkPurpose = "DEPARTURE",
                 demandId = DemandA,
                 movementLegId = "22222222-2222-4222-8222-000000000002",
                 expectedSafetyStateVersion = harness.Session.Current.SafetyStateVersion,
@@ -130,9 +134,10 @@ public sealed partial class MultiDemandJourneyG2Tests
         JsonElement result = await WaitForPayloadAsync(harness, "PreDepartureSafetyCheckResult", token);
         Assert.Equal(checkId, result.GetProperty("preDepartureSafetyCheckId").GetString());
         Assert.Equal("UNSAFE", result.GetProperty("outcome").GetString());
+        Assert.Equal("DEPARTURE", result.GetProperty("checkPurpose").GetString());
         JsonElement safety = result.GetProperty("safety");
         Assert.False(safety.GetProperty("departureSafe").GetBoolean());
-        Assert.Equal([DepartureUnsafe], SafetyReasons(safety));
+        Assert.Equal([FatalFaultLatched], SafetyReasons(safety));
         Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "ProtocolProblem");
     }
 
@@ -161,7 +166,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         JsonElement[] handshake = SafetyPayloads(harness, "SafetyStateSnapshot", afterConnection: firstConnection);
         JsonElement safety = Assert.Single(handshake);
         Assert.False(safety.GetProperty("departureSafe").GetBoolean());
-        Assert.Equal([DepartureUnsafe], SafetyReasons(safety));
+        Assert.Equal([FatalFaultLatched], SafetyReasons(safety));
     }
 
     /// <summary>

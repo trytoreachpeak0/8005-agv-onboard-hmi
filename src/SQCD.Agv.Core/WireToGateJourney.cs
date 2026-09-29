@@ -60,7 +60,8 @@ public sealed record WireToGateCurrentStopWorklist(
     string? OperationSessionId,
     DateTimeOffset? StationDepartureDeadlineAt,
     IReadOnlyList<WireToGateWorklistItem> Items,
-    string ContentSha256);
+    string ContentSha256,
+    string? StopEndedReason = null);
 
 public sealed record WireToGateMovementLeg(
     string MovementLegId,

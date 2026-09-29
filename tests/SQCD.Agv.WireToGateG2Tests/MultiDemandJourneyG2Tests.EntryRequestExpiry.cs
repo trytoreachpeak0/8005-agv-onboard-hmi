@@ -88,7 +88,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                 Assert.False(
                     harness.ViewModel.CanRequestLoadCancellation,
                     "the cancel-before-scan entry is still on screen");
-                Assert.Equal("ST-01 / 无待处理任务", harness.ViewModel.VisitText);
+                Assert.Equal("ST-01 / 本站作业已完成", harness.ViewModel.VisitText);
                 Assert.Equal(StationDepartureCountdownFormatter.AbsentText, harness.ViewModel.StationDepartureCountdownText);
             },
             token);
@@ -122,6 +122,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                 worklistRevision = 2,
                 operationSessionId = NextOperationSessionId,
                 stationDepartureDeadlineAt = (DateTimeOffset?)null,
+                stopEndedReason = (string?)null,
                 items = new[]
                 {
                     Payloads.Item(DemandA, "TD-A", "SUBLOT-A", "WIRE_TO_GATE", "DROPOFF", 2)
@@ -623,6 +624,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             worklistRevision = revision,
             operationSessionId = (string?)null,
             stationDepartureDeadlineAt = (DateTimeOffset?)null,
+            stopEndedReason = "COMPLETED",
             items = Array.Empty<object>()
         };
 

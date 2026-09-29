@@ -160,7 +160,12 @@ public static class OnboardFailureClassification
         "HARDWARE_RECOVERY_NOT_REQUIRED",
         "HARDWARE_RECOVERY_OBSERVATIONS_REQUIRED",
         "HARDWARE_RECOVERY_RECORD_REQUIRED",
-        "SLOT_STATE_UNKNOWN"
+        "SLOT_STATE_UNKNOWN",
+
+        // A forced recovery on a demand cannot be reported without a cargo handoff record, which this
+        // build cannot take yet (8005-agv-onboard-hmi#214, #216). The confirmation is kept and nothing
+        // is sent; latching the vehicle over a missing screen would add nothing but a second hold.
+        "FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED"
     };
 
     /// <summary>

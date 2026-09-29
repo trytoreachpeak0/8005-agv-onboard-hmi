@@ -469,6 +469,287 @@ public sealed class InboundPayloadSchemaBoundaryTests
         """;
 
     /// <summary>
+    /// <c>stopEndedReason</c> (3.0.0, 8005-agv-onboard-hmi#214): on an empty worklist every one of the
+    /// schema's seven values is accepted by the session client's own check and reaches the record.
+    /// </summary>
+    [Theory]
+    [InlineData("COMPLETED")]
+    [InlineData("STATION_DEADLINE_EXPIRED")]
+    [InlineData("LOAD_CANCELLED")]
+    [InlineData("LOAD_COMPENSATED")]
+    [InlineData("CARGO_HANDED_OFF")]
+    [InlineData("DEMAND_RELEASED")]
+    [InlineData("TRIP_TERMINATED")]
+    public void EveryStopEndedReasonTheSchemaDeclaresIsAcceptedOnAnEmptyWorklist(string reason)
+    {
+        CurrentStopWorklistSnapshotPayload payload = Inbound<CurrentStopWorklistSnapshotPayload>(
+            "CurrentStopWorklistSnapshot",
+            EmptyWorklistPayload($"\"{reason}\""));
+
+        WireToGateSessionClient.ValidateCurrentStopWorklist(payload);
+
+        Assert.Empty(payload.Items);
+        Assert.Equal(reason, payload.StopEndedReason);
+    }
+
+    /// <summary>
+    /// A worklist with items carries <c>stopEndedReason: null</c>, the schema's <c>then</c> branch.
+    /// </summary>
+    [Fact]
+    public void AWorklistWithItemsIsAcceptedWithANullStopEndedReason()
+    {
+        CurrentStopWorklistSnapshotPayload payload = Inbound<CurrentStopWorklistSnapshotPayload>(
+            "CurrentStopWorklistSnapshot",
+            WorklistPayloadWithStopEndedReason("null"));
+
+        WireToGateSessionClient.ValidateCurrentStopWorklist(payload);
+
+        Assert.Null(payload.StopEndedReason);
+        Assert.Single(payload.Items);
+    }
+
+    /// <summary>
+    /// A reason beside items, or a reason outside the seven, is the schema refusing it, not a narrowing.
+    /// </summary>
+    [Fact]
+    public void AStopEndedReasonBesideItemsOrOutsideTheSchemaIsRefused()
+    {
+        CurrentStopWorklistSnapshotPayload besideItems = Inbound<CurrentStopWorklistSnapshotPayload>(
+            "CurrentStopWorklistSnapshot",
+            WorklistPayloadWithStopEndedReason("\"COMPLETED\""));
+        CurrentStopWorklistSnapshotPayload unknown = Inbound<CurrentStopWorklistSnapshotPayload>(
+            "CurrentStopWorklistSnapshot",
+            EmptyWorklistPayload("\"FINISHED\""));
+
+        Assert.Equal(
+            "PROTOCOL_SCHEMA_INVALID",
+            Assert.Throws<InvalidDataException>(
+                () => WireToGateSessionClient.ValidateCurrentStopWorklist(besideItems)).Message);
+        Assert.Equal(
+            "PROTOCOL_SCHEMA_INVALID",
+            Assert.Throws<InvalidDataException>(
+                () => WireToGateSessionClient.ValidateCurrentStopWorklist(unknown)).Message);
+    }
+
+    /// <summary>
+    /// The upgrade path: an empty worklist in the 2.0.0 shape -- no <c>stopEndedReason</c> property at
+    /// all, as a 2.0.0 build journaled it -- deserializes with a <c>null</c> reason and passes the same
+    /// check the journal replay runs, so the first start after an upgrade does not throw on it.
+    /// </summary>
+    [Fact]
+    public void AnEmptyWorklistInTheVersionTwoShapeStillPassesTheCheckTheReplayRuns()
+    {
+        CurrentStopWorklistSnapshotPayload payload = Inbound<CurrentStopWorklistSnapshotPayload>(
+            "CurrentStopWorklistSnapshot",
+            """
+            {"stationId":"STATION-01","worklistRevision":7,"operationSessionId":null,
+            "stationDepartureDeadlineAt":null,"items":[]}
+            """);
+
+        WireToGateSessionClient.ValidateCurrentStopWorklist(payload);
+
+        Assert.Null(payload.StopEndedReason);
+        Assert.Equal(7, payload.WorklistRevision);
+    }
+
+    /// <summary>
+    /// <c>closedReason</c> (3.0.0) is <c>null</c> on every state, which the schema allows everywhere.
+    /// </summary>
+    [Theory]
+    [InlineData("OPEN")]
+    [InlineData("ACTION_SELECTED")]
+    [InlineData("EXECUTING")]
+    [InlineData("CLOSED")]
+    public void ARecoverySessionSnapshotIsAcceptedWithANullClosedReasonInEveryState(string state)
+    {
+        ExceptionRecoverySessionSnapshotPayload payload = Inbound<ExceptionRecoverySessionSnapshotPayload>(
+            "ExceptionRecoverySessionSnapshot",
+            RecoverySessionSnapshotPayload(state, "null"));
+
+        WireToGateSessionClient.ValidateExceptionRecoverySessionSnapshot(payload);
+
+        Assert.Null(payload.ClosedReason);
+    }
+
+    /// <summary>
+    /// A <c>CLOSED</c> session takes every code of the vendored registry as its <c>closedReason</c>
+    /// (<c>$defs/ErrorCode</c> is the registry), not only the one the control server sends today.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(RegisteredErrorCodes))]
+    public void AClosedRecoverySessionTakesEveryRegisteredCodeAsItsClosedReason(string code)
+    {
+        ExceptionRecoverySessionSnapshotPayload payload = Inbound<ExceptionRecoverySessionSnapshotPayload>(
+            "ExceptionRecoverySessionSnapshot",
+            RecoverySessionSnapshotPayload("CLOSED", $"\"{code}\""));
+
+        WireToGateSessionClient.ValidateExceptionRecoverySessionSnapshot(payload);
+
+        Assert.Equal(code, payload.ClosedReason);
+    }
+
+    /// <summary>
+    /// A reason on a session that is not <c>CLOSED</c>, or a code the registry does not hold, is refused.
+    /// </summary>
+    [Theory]
+    [InlineData("OPEN", "RECOVERY_ACTION_RESULT_NOT_RECONCILED")]
+    [InlineData("EXECUTING", "RECOVERY_ACTION_RESULT_NOT_RECONCILED")]
+    [InlineData("CLOSED", "NOT_A_REGISTERED_CODE")]
+    public void AClosedReasonOutsideTheSchemaIsRefused(string state, string code)
+    {
+        ExceptionRecoverySessionSnapshotPayload payload = Inbound<ExceptionRecoverySessionSnapshotPayload>(
+            "ExceptionRecoverySessionSnapshot",
+            RecoverySessionSnapshotPayload(state, $"\"{code}\""));
+
+        Assert.Equal(
+            "PROTOCOL_SCHEMA_INVALID",
+            Assert.Throws<InvalidDataException>(
+                () => WireToGateSessionClient.ValidateExceptionRecoverySessionSnapshot(payload)).Message);
+    }
+
+    /// <summary>
+    /// <c>HARDWARE_REPAIR_RELEASE</c> (3.0.0) in <c>allowedActions</c> and <c>selectedAction</c> is taken:
+    /// this build offers no such action yet, but a snapshot naming it is schema-legal.
+    /// </summary>
+    [Fact]
+    public void ARecoverySessionSnapshotNamingTheHardwareRepairReleaseActionIsAccepted()
+    {
+        ExceptionRecoverySessionSnapshotPayload payload = Inbound<ExceptionRecoverySessionSnapshotPayload>(
+            "ExceptionRecoverySessionSnapshot",
+            RecoverySessionSnapshotPayload(
+                "ACTION_SELECTED",
+                "null",
+                selectedAction: "\"HARDWARE_REPAIR_RELEASE\"",
+                allowedActions: "[\"HARDWARE_REPAIR_RELEASE\"]"));
+
+        WireToGateSessionClient.ValidateExceptionRecoverySessionSnapshot(payload);
+
+        Assert.Equal("HARDWARE_REPAIR_RELEASE", payload.SelectedAction);
+    }
+
+    /// <summary>
+    /// <c>checkPurpose</c> (3.0.0): each of the three purposes, with the ids its <c>if/then</c> clause
+    /// requires, passes the session client's check. Answering the two non-departure purposes is the
+    /// business service's call, not this check's.
+    /// </summary>
+    [Theory]
+    [InlineData("DEPARTURE", Demand, Leg, "\"ST-GATE\"")]
+    [InlineData("NON_BUSINESS_MOVE", "null", Leg, "\"ST-WAIT\"")]
+    [InlineData("HOLD_RELEASE", "null", "null", "null")]
+    public void EveryCheckPurposeWithItsOwnIdsIsAccepted(
+        string purpose,
+        string demandId,
+        string movementLegId,
+        string targetStationId)
+    {
+        PreDepartureSafetyCheckPayload payload = Inbound<PreDepartureSafetyCheckPayload>(
+            "PreDepartureSafetyCheck",
+            PreDepartureSafetyCheckPayload(purpose, demandId, movementLegId, targetStationId));
+
+        WireToGateSessionClient.ValidatePreDepartureSafetyCheck(payload);
+
+        Assert.Equal(purpose, payload.CheckPurpose);
+    }
+
+    /// <summary>
+    /// The ids a purpose's clause pins to null or to a string, the other way round, and a purpose
+    /// outside the enum, are refused.
+    /// </summary>
+    [Theory]
+    [InlineData("DEPARTURE", "null", Leg, "\"ST-GATE\"")]
+    [InlineData("DEPARTURE", Demand, Leg, "null")]
+    [InlineData("NON_BUSINESS_MOVE", Demand, Leg, "\"ST-WAIT\"")]
+    [InlineData("NON_BUSINESS_MOVE", "null", "null", "\"ST-WAIT\"")]
+    [InlineData("HOLD_RELEASE", "null", Leg, "null")]
+    [InlineData("HOLD_RELEASE", Demand, "null", "null")]
+    [InlineData("HOLD_RELEASE", "null", "null", "\"ST-GATE\"")]
+    [InlineData("RELEASE", Demand, Leg, "\"ST-GATE\"")]
+    public void ACheckPurposeWithTheWrongIdsIsRefused(
+        string purpose,
+        string demandId,
+        string movementLegId,
+        string targetStationId)
+    {
+        PreDepartureSafetyCheckPayload payload = Inbound<PreDepartureSafetyCheckPayload>(
+            "PreDepartureSafetyCheck",
+            PreDepartureSafetyCheckPayload(purpose, demandId, movementLegId, targetStationId));
+
+        Assert.Throws<InvalidDataException>(
+            () => WireToGateSessionClient.ValidatePreDepartureSafetyCheck(payload));
+    }
+
+    private const string Demand = "\"00000000-0000-4000-8000-0000000000d1\"";
+
+    private const string Leg = "\"00000000-0000-4000-8000-0000000000d2\"";
+
+    public static TheoryData<string> RegisteredErrorCodes()
+    {
+        string path = Path.Combine(
+            RepositoryRoot(), "vendor", "8005-agv-protocol", "errors", "error-codes.json");
+        using JsonDocument registry = JsonDocument.Parse(File.ReadAllBytes(path));
+        TheoryData<string> codes = [];
+        foreach (JsonElement code in registry.RootElement.GetProperty("codes").EnumerateArray())
+        {
+            codes.Add(code.GetProperty("code").GetString()!);
+        }
+
+        return codes;
+    }
+
+    private static string RepositoryRoot()
+    {
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "SQCD_8005AGV.sln")))
+        {
+            directory = directory.Parent;
+        }
+
+        return directory?.FullName ?? throw new InvalidOperationException("SQCD_8005AGV.sln not found above the test output.");
+    }
+
+    private static string EmptyWorklistPayload(string stopEndedReason) =>
+        $$"""
+        {"stationId":"STATION-01","worklistRevision":7,
+        "operationSessionId":"00000000-0000-4000-8000-0000000000aa",
+        "stationDepartureDeadlineAt":null,"stopEndedReason":{{stopEndedReason}},"items":[]}
+        """;
+
+    private static string WorklistPayloadWithStopEndedReason(string stopEndedReason) =>
+        $$"""
+        {"stationId":"STATION-01","worklistRevision":7,
+        "operationSessionId":"00000000-0000-4000-8000-0000000000aa",
+        "stationDepartureDeadlineAt":null,"stopEndedReason":{{stopEndedReason}},
+        "items":[{"demandId":"00000000-0000-4000-8000-0000000000bb",
+        "transportDemandKey":"TDK-1","sublot":"SL-1","workType":"WIRE_TO_GATE",
+        "stopRole":"PICKUP","expectedBasketCount":2}]}
+        """;
+
+    private static string RecoverySessionSnapshotPayload(
+        string state,
+        string closedReason,
+        string selectedAction = "null",
+        string allowedActions = "[\"RESUME_AFTER_REPAIR\"]") =>
+        $$"""
+        {"exceptionRecoverySessionId":"00000000-0000-4000-8000-000000000012",
+        "recoverySessionRevision":1,"state":"{{state}}","administratorId":"admin-1",
+        "administratorRole":"MAINTENANCE_ADMINISTRATOR",
+        "eventId":"00000000-0000-4000-8000-000000000013","demandId":null,
+        "slotOperationAttemptId":null,"slots":[1],"selectedAction":{{selectedAction}},
+        "allowedActions":{{allowedActions}},"blockingFacts":[],"closedReason":{{closedReason}}}
+        """;
+
+    private static string PreDepartureSafetyCheckPayload(
+        string purpose,
+        string demandId,
+        string movementLegId,
+        string targetStationId) =>
+        $$"""
+        {"preDepartureSafetyCheckId":"00000000-0000-4000-8000-0000000000d0",
+        "checkPurpose":"{{purpose}}","demandId":{{demandId}},"movementLegId":{{movementLegId}},
+        "expectedSafetyStateVersion":3,"targetStationId":{{targetStationId}}}
+        """;
+
+    /// <summary>
     /// Runs the payload through the client's own envelope path: identity check, then the closed
     /// payload deserialisation.
     /// </summary>

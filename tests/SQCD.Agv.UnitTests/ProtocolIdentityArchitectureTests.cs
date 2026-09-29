@@ -56,8 +56,8 @@ public sealed class ProtocolIdentityArchitectureTests
         Dictionary<string, string> table = ManifestFileTable();
         string[] vendored = VendoredFiles();
 
-        Assert.Equal(71, vendored.Length);
-        Assert.Equal(69, vendored.Count(path => path.StartsWith("schemas/", StringComparison.Ordinal)));
+        Assert.Equal(73, vendored.Length);
+        Assert.Equal(71, vendored.Count(path => path.StartsWith("schemas/", StringComparison.Ordinal)));
 
         List<string> offences = [];
         foreach (string relative in vendored)
@@ -88,7 +88,7 @@ public sealed class ProtocolIdentityArchitectureTests
     /// <b>Six of ten, and the other four are named here rather than left to look covered.</b>
     /// <c>ManifestSha256</c> is <see cref="TheVendoredManifestIsTheProtocolManifestByteForByte"/>'s
     /// job -- a manifest cannot carry its own digest. <c>Tag</c> and <c>ApprovalStatus</c> are
-    /// <see cref="TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsTheApprovedRelease"/>'s.
+    /// <see cref="TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsTheSupersedingCandidate"/>'s.
     /// </para>
     /// <para>
     /// <b><c>Commit</c> is the one no assertion in this assembly can bind.</b> Nothing inside the
@@ -159,19 +159,21 @@ public sealed class ProtocolIdentityArchitectureTests
     }
 
     /// <summary>
-    /// The tag is schema-legal, and the approval status says it names the approved release.
+    /// The tag is schema-legal, and the approval status says it names a candidate, not a release.
     /// </summary>
     /// <remarks>
-    /// The two are checked together because either alone says too little. Until 2026-09-16
-    /// <c>protocol-v2.0.0</c> had not been cut and this test asserted <c>SUPERSEDING_CANDIDATE</c>.
-    /// The change was made here on purpose the day the annotated tag and its approval attestation
-    /// were published, and it is also what stops the development-grade G2 runs made on the candidate
-    /// from counting as the gate's evidence -- a run binds the identity this constant held when it
-    /// ran. That the tag really points at <see cref="WireToGateRelease.Commit"/> is checked by
-    /// <c>scripts/run-w2g-g2.ps1</c> against a protocol checkout, which this assembly does not have.
+    /// The two are checked together because either alone says too little: <c>protocol-v3.0.0</c> does
+    /// not exist yet, and <c>SUPERSEDING_CANDIDATE</c> is what makes naming it truthful
+    /// (8005-agv-onboard-hmi#214). This test asserted <c>APPROVED_RELEASE</c> while the build bound
+    /// <c>protocol-v2.0.0</c>; it flips back on purpose the day <c>protocol-v3.0.0</c> is cut
+    /// (8005-agv-control-server#393), and that flip is also what keeps the development-grade G2 runs
+    /// made on the candidate from counting as the gate's evidence -- a run binds the identity this
+    /// constant held when it ran. That a tag, once it exists, points at
+    /// <see cref="WireToGateRelease.Commit"/> is checked by <c>scripts/run-w2g-g2.ps1</c> against a
+    /// protocol checkout, which this assembly does not have.
     /// </remarks>
     [Fact]
-    public void TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsTheApprovedRelease()
+    public void TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsTheSupersedingCandidate()
     {
         using JsonDocument types = JsonDocument.Parse(File.ReadAllBytes(
             Path.Combine(VendorRoot(), "schemas", "common", "types.schema.json")));
@@ -180,20 +182,22 @@ public sealed class ProtocolIdentityArchitectureTests
 
         Assert.Matches(tag.GetProperty("pattern").GetString()!, WireToGateRelease.Tag);
         Assert.True(WireToGateRelease.Tag.Length >= tag.GetProperty("minLength").GetInt32());
-        Assert.Equal("APPROVED_RELEASE", WireToGateRelease.ApprovalStatus);
+        Assert.Equal("SUPERSEDING_CANDIDATE", WireToGateRelease.ApprovalStatus);
     }
 
     /// <summary>
-    /// An envelope whose <c>protocolVersion</c> is this build's 3 but whose release is
-    /// <c>WIRE_TO_GATE_MVP 0.3.0</c> is refused.
+    /// An envelope whose <c>protocolVersion</c> is this build's 4 but whose profile, release version or
+    /// manifest is another release's is refused.
     /// </summary>
     /// <remarks>
     /// <para>
     /// The integer is only monotonic <i>within</i> a profile: <c>WIRE_TO_GATE_MVP 0.2.0</c> and
     /// <c>AGV_FULL_PRODUCT 1.0.0</c> were both 2, and <c>WIRE_TO_GATE_MVP 0.3.0</c> and
-    /// <c>AGV_FULL_PRODUCT 2.0.0</c> are both 3. So a peer on the MVP line now agrees with this
-    /// build on the one field that looks like a version, and a comparison that stopped there would
-    /// admit its payloads -- which have different shapes under the same message names.
+    /// <c>AGV_FULL_PRODUCT 2.0.0</c> are both 3. A peer of another profile can therefore agree with
+    /// this build on the one field that looks like a version, and a comparison that stopped there
+    /// would admit its payloads -- which have different shapes under the same message names. The
+    /// <c>releaseVersion</c> variant is <c>2.0.0</c>, the release this build replaced
+    /// (8005-agv-onboard-hmi#214).
     /// </para>
     /// <para>
     /// The three variants below are the three remaining identity fields, each wrong on its own with
@@ -204,7 +208,7 @@ public sealed class ProtocolIdentityArchitectureTests
     [Fact]
     public void AnEnvelopeOnADifferentReleaseWithTheSameProtocolVersionIsRefused()
     {
-        Assert.Equal(3, WireToGateRelease.ProtocolVersion);
+        Assert.Equal(4, WireToGateRelease.ProtocolVersion);
 
         foreach ((string what, string line) in ForeignReleaseEnvelopes())
         {
@@ -230,7 +234,7 @@ public sealed class ProtocolIdentityArchitectureTests
         yield return ("profileId", Envelope(
             "WIRE_TO_GATE_MVP", WireToGateRelease.ReleaseVersion, WireToGateRelease.ManifestSha256));
         yield return ("releaseVersion", Envelope(
-            WireToGateRelease.ProfileId, "0.3.0", WireToGateRelease.ManifestSha256));
+            WireToGateRelease.ProfileId, "2.0.0", WireToGateRelease.ManifestSha256));
         yield return ("protocolReleaseManifestSha256", Envelope(
             WireToGateRelease.ProfileId, WireToGateRelease.ReleaseVersion, ManifestOfAnotherRelease));
 

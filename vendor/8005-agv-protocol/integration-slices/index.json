@@ -111,7 +111,8 @@
         "CV-LOAD-CORRECTION",
         "CV-LOAD-CANCELLATION-ALL-EMPTY",
         "CV-LOAD-CANCELLATION-BEFORE-LOAD",
-        "CV-SUBLOT-REJECTED-AFTER-ENTRY"
+        "CV-SUBLOT-REJECTED-AFTER-ENTRY",
+        "CV-LOAD-CANCELLATION-EMPTY-DOOR-UNPROVEN"
       ],
       "gates": [
         "G1",
@@ -124,7 +125,8 @@
         "requiredOutcomes": [
           "SUBLOT_BOUND_TO_OPERATION_SESSION",
           "SLOT_SET_AUTHORIZED_ONCE",
-          "CORRECTION_AND_CANCELLATION_AUTHORIZED"
+          "CORRECTION_AND_CANCELLATION_AUTHORIZED",
+          "EMPTY_SLOTS_SETTLE_WHILE_UNPROVEN_DOOR_HOLDS_VEHICLE"
         ],
         "authorityModel": {
           "controlServerFact": "OperationSession",
@@ -141,11 +143,13 @@
         "ownerResponsibilities": {
           "controlServer": [
             "AUTHORIZE_SLOT_SET",
-            "RECONCILE_LOAD_OUTCOME"
+            "RECONCILE_LOAD_OUTCOME",
+            "HOLD_VEHICLE_ON_UNPROVEN_DOOR"
           ],
           "onboardHmi": [
             "SUBMIT_SCANNED_SUBLOT",
-            "LOAD_ONLY_AUTHORIZED_SLOTS"
+            "LOAD_ONLY_AUTHORIZED_SLOTS",
+            "REPORT_UNPROVEN_DOOR_AFTER_EMPTY"
           ]
         }
       },
@@ -213,7 +217,7 @@
         "G3"
       ],
       "definition": {
-        "scope": "DESTINATION_BATCH_UNLOAD",
+        "scope": "DESTINATION_UNLOAD",
         "requiredOutcomes": [
           "UNLOAD_COMMITTED_ONCE",
           "FINAL_PHYSICAL_STATE_PROVEN_EMPTY"
@@ -343,7 +347,12 @@
         "CV-EXCEPTION-COMPENSATE",
         "CV-FAULT-CARGO-HANDOFF",
         "CV-FORCED-MECHANICAL-RECOVERY",
-        "CV-MANUAL-CHARGING-RETURN"
+        "CV-MANUAL-CHARGING-RETURN",
+        "CV-SLOT-FAULT-DECLARATION-APPLIED",
+        "CV-SLOT-FAULT-DECLARATION-NOT-APPLICABLE",
+        "CV-RECOVERY-SESSION-CLOSED-RESULT-NOT-RECONCILED",
+        "CV-LOAD-COMPENSATION-EMPTY-DOOR-UNPROVEN",
+        "CV-VEHICLE-HOLD-DOOR-REPAIR-RELEASE"
       ],
       "gates": [
         "G1",
@@ -356,14 +365,22 @@
         "requiredOutcomes": [
           "RECOVERY_SESSION_REQUIRES_VERIFIED_ADMINISTRATOR",
           "EVERY_RECOVERY_ACTION_AUTHORIZED",
-          "FORCED_RECOVERY_FENCED_BY_GENERATION"
+          "FORCED_RECOVERY_FENCED_BY_GENERATION",
+          "SLOT_FAULT_DECLARATION_APPLIED_ONLY_TO_AWAITING_SLOT",
+          "FORCED_ISOLATION_ON_A_DEMAND_SETTLES_ON_A_NAMED_HANDOFF",
+          "UNRECONCILED_SESSION_CLOSE_STATES_ITS_REASON",
+          "EMPTY_SLOTS_SETTLE_WHILE_UNPROVEN_DOOR_HOLDS_VEHICLE",
+          "HELD_VEHICLE_RELEASED_ONLY_BY_REPAIR_RECORD_AND_FRESH_PROOF"
         ],
         "authorityModel": {
-          "controlServerFact": "ExceptionRecoverySession",
+          "controlServerFact": "SlotFaultDeclarationAndExceptionRecoverySession",
           "wireMessages": [
             "ExceptionRecoverySessionOpened",
             "RecoveryActionAccepted",
-            "ForcedMechanicalRecoveryCommand"
+            "ForcedMechanicalRecoveryCommand",
+            "SlotFaultDeclarationCommand",
+            "ExceptionRecoverySessionSnapshot",
+            "HardwareRecoveryRecordSubmitted"
           ],
           "onboardMode": [
             "PHYSICAL_EXECUTION_AUTHORITY",
@@ -373,11 +390,19 @@
         "ownerResponsibilities": {
           "controlServer": [
             "AUTHORIZE_EVERY_RECOVERY_ACTION",
-            "FENCE_BY_GENERATION"
+            "FENCE_BY_GENERATION",
+            "DECLARE_SLOT_FAULT_ONLY_ON_OVERDUE_SLOT",
+            "CLOSE_UNRECONCILED_SESSION_WITH_REASON",
+            "HOLD_VEHICLE_ON_UNPROVEN_DOOR",
+            "RELEASE_HELD_VEHICLE_ONLY_ON_FRESH_PROOF"
           ],
           "onboardHmi": [
             "ACT_ONLY_ON_AUTHORIZED_SCOPE",
-            "REPORT_RECOVERY_OUTCOME"
+            "REPORT_RECOVERY_OUTCOME",
+            "VERIFY_DECLARATION_BEFORE_ABORTING",
+            "RECORD_FORCED_REMOVAL_HANDOFF",
+            "REPORT_UNPROVEN_DOOR_AFTER_EMPTY",
+            "SUBMIT_REPAIR_RECORD_WITHOUT_SLOT_IO"
           ]
         }
       },
@@ -509,7 +534,6 @@
             "BLOCK_ON_MISSING_BINDING"
           ],
           "onboardHmi": [
-            "DISPLAY_ADMISSION_BLOCK_REASON",
             "NEVER_INFER_UNBOUND_TASK_TYPE"
           ]
         }

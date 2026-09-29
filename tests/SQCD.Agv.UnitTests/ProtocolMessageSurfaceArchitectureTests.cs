@@ -90,6 +90,8 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
             ["DemandSelectionResult"] = "FP-IS-09, batch 11",
             ["ManualStationClearanceConfirmationRequested"] = "FP-IS-13, batch 8",
             ["ManualStationClearanceConfirmationResult"] = "FP-IS-13, batch 8",
+            ["SlotFaultDeclarationCommand"] = "FP-IS-07, 8005-agv-onboard-hmi#215",
+            ["SlotFaultDeclarationResult"] = "FP-IS-07, 8005-agv-onboard-hmi#215",
             ["UnableToChargeFieldConfirmationRequested"] = "FP-IS-13, batch 8",
             ["UnableToChargeFieldConfirmationResult"] = "FP-IS-13, batch 8"
         };
@@ -135,7 +137,9 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
     ];
 
     /// <summary>
-    /// The parse of the manifest, checked against the shape v2 froze.
+    /// The parse of the manifest, checked against the shape the bound release froze: 65 message types
+    /// since the 3.0.0 candidate added <c>SlotFaultDeclarationCommand</c> and
+    /// <c>SlotFaultDeclarationResult</c> (8005-agv-onboard-hmi#214).
     /// </summary>
     /// <remarks>
     /// Without this, every assertion below could pass over an empty parse: an empty message table
@@ -144,9 +148,9 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
     /// wrong property is reported here.
     /// </remarks>
     [Fact]
-    public void TheManifestParsesIntoSixtyThreeMessagesAndElevenDenylistedTypes()
+    public void TheManifestParsesIntoSixtyFiveMessagesAndElevenDenylistedTypes()
     {
-        Assert.Equal(63, FrozenMessageTypes().Length);
+        Assert.Equal(65, FrozenMessageTypes().Length);
         Assert.Equal(11, DenylistedMessageTypes().Length);
         Assert.Empty(FrozenMessageTypes().Intersect(DenylistedMessageTypes(), StringComparer.Ordinal));
     }

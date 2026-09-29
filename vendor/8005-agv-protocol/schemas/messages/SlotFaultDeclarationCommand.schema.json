@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.8005-agv.local/agv-full-product/v4/messages/LoadCancellationAuthorization.schema.json",
-  "title": "LoadCancellationAuthorization",
+  "$id": "https://schemas.8005-agv.local/agv-full-product/v4/messages/SlotFaultDeclarationCommand.schema.json",
+  "title": "SlotFaultDeclarationCommand",
   "type": "object",
   "properties": {
     "protocolVersion": {
@@ -27,13 +27,13 @@
     "messageType": {
       "type": "string",
       "minLength": 1,
-      "const": "LoadCancellationAuthorization"
+      "const": "SlotFaultDeclarationCommand"
     },
     "messageId": {
       "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/Id"
     },
     "correlationId": {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/Id"
+      "type": "null"
     },
     "agvId": {
       "type": "string",
@@ -51,56 +51,55 @@
     "payload": {
       "type": "object",
       "properties": {
-        "cancellationId": {
+        "declarationId": {
           "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/Id"
-        },
-        "decision": {
-          "type": "string",
-          "enum": [
-            "AUTHORIZED",
-            "REJECTED"
-          ]
         },
         "demandId": {
           "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/Id"
         },
         "slotOperationAttemptId": {
-          "anyOf": [
-            {
-              "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/Id"
-            },
-            {
-              "type": "null"
-            }
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/Id"
+        },
+        "slotNo": {
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/SlotNo"
+        },
+        "administrator": {
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/OperatorContext"
+        },
+        "administratorRole": {
+          "type": "string",
+          "enum": [
+            "MAINTENANCE_ADMINISTRATOR",
+            "SYSTEM_ADMINISTRATOR"
           ]
         },
-        "slots": {
-          "type": "array",
-          "items": {
-            "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/SlotNo"
-          },
-          "maxItems": 8,
-          "uniqueItems": true,
-          "x-sortedAscending": true
-        },
-        "problem": {
-          "anyOf": [
-            {
-              "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/Problem"
-            },
-            {
-              "type": "null"
-            }
+        "faultCategory": {
+          "type": "string",
+          "enum": [
+            "LOCK",
+            "LIGHT_CURTAIN",
+            "DOOR_MECHANISM",
+            "IO_MODULE"
           ]
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1
+        },
+        "declaredAt": {
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/Instant"
         }
       },
       "required": [
-        "cancellationId",
-        "decision",
+        "declarationId",
         "demandId",
         "slotOperationAttemptId",
-        "slots",
-        "problem"
+        "slotNo",
+        "administrator",
+        "administratorRole",
+        "faultCategory",
+        "note",
+        "declaredAt"
       ],
       "additionalProperties": false
     }

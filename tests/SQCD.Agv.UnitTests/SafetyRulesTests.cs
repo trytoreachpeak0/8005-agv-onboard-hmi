@@ -199,7 +199,7 @@ public sealed class SafetyRulesTests
     /// server's own order (motion unknown, <c>VEHICLE_NOT_READY</c>) and a vehicle whose door stands open for a load.
     /// Had the latch borrowed <c>VEHICLE_NOT_READY</c>, the first would read exactly as it reads unlatched. The two
     /// allow-lists are copied here from control-server <c>fp/v2-impl</c> 80a12868; if either gains
-    /// <c>DEPARTURE_UNSAFE</c>, this reason has to move.
+    /// <c>ONBOARD_FATAL_FAULT_LATCHED</c>, the protocol's own meaning for that code has been broken.
     /// </remarks>
     [Theory]
     [InlineData(VehicleMotionState.Unknown, false, "VEHICLE_NOT_READY")]
@@ -224,6 +224,29 @@ public sealed class SafetyRulesTests
         Assert.False(latched.DepartureSafe);
         Assert.DoesNotContain(WireToGateSafetyEvaluator.FatalFaultLatchedReason, vehicleOnlyReasons);
         Assert.DoesNotContain(WireToGateSafetyEvaluator.FatalFaultLatchedReason, operationInducedUnsafety);
+    }
+
+    /// <summary>
+    /// The latch reason is protocol 3.0.0's dedicated <c>ONBOARD_FATAL_FAULT_LATCHED</c>, written out here as a
+    /// literal, and it is none of the four codes the control server's two allow-lists excuse
+    /// (8005-agv-onboard-hmi#214).
+    /// </summary>
+    /// <remarks>
+    /// The two tests above compare against the constant itself, so they would stay green if the constant were
+    /// switched to <c>VEHICLE_NOT_READY</c> -- the one change the evaluator's remarks forbid. This one does not:
+    /// the literal pins the value, and the four codes are listed by name rather than read from the constant.
+    /// </remarks>
+    [Fact]
+    public void TheLatchReasonIsTheDedicatedCodeAndNoneOfTheFourTheServerExcuses()
+    {
+        Assert.Equal("ONBOARD_FATAL_FAULT_LATCHED", WireToGateSafetyEvaluator.FatalFaultLatchedReason);
+        Assert.DoesNotContain(
+            WireToGateSafetyEvaluator.FatalFaultLatchedReason,
+            (string[])["VEHICLE_NOT_READY", "ACTION_NOT_ALLOWED_IN_STATE", "LOCK_NOT_CLOSED", "UNLOCK_OUTPUT_NOT_RESET"]);
+
+        var summary = EvaluateAllInOrder(DateTimeOffset.Now, VehicleMotionState.Stopped, fatalFaultLatched: true);
+
+        Assert.Equal(["ONBOARD_FATAL_FAULT_LATCHED"], summary.ReasonCodes);
     }
 
     private static WireToGateSafetySummaryPayload EvaluateAllInOrder(
