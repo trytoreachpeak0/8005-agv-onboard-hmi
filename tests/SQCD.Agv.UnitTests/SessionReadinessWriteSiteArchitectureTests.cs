@@ -38,10 +38,11 @@ public sealed class SessionReadinessWriteSiteArchitectureTests
 
     /// <summary>
     /// The <c>Publish</c> calls in the client today: handshake start, session accepted, handshake failed, disconnect,
-    /// dispose, receive failed. Kept literal: a scanner that stops finding calls reports nothing, which looks exactly like
-    /// nothing wrong. The server's readiness goes through <c>PublishServerReadiness</c> instead.
+    /// dispose. Kept literal: a scanner that stops finding calls reports nothing, which looks exactly like nothing wrong.
+    /// The server's readiness goes through <c>PublishServerReadiness</c>, a failed loop's finish through
+    /// <c>PublishUnderGate</c> under the lock it holds for its generation check.
     /// </summary>
-    private const int ExpectedPublishCalls = 6;
+    private const int ExpectedPublishCalls = 5;
 
     [Fact]
     public void EveryPublishedReadinessIsTheServersOrALifecycleLiteral()
@@ -113,7 +114,7 @@ public sealed class SessionReadinessWriteSiteArchitectureTests
             .Where(member => member.Name != "PublishUnderGate")
             .SelectMany(member => Enumerable.Repeat(member.Name, Regex.Count(member.Body, @"\bPublishUnderGate\(")))
             .Order(StringComparer.Ordinal)];
-        Assert.Equal(["Publish", "PublishAcceptedVersions", "PublishServerReadiness"], callers);
+        Assert.Equal(["FinishFailedSession", "Publish", "PublishAcceptedVersions", "PublishServerReadiness"], callers);
         foreach (string caller in callers)
         {
             string body = Member(source, caller);
@@ -127,7 +128,89 @@ public sealed class SessionReadinessWriteSiteArchitectureTests
         Assert.True(
             read > republish.IndexOf("lock (_stateGate)", StringComparison.Ordinal),
             "PublishAcceptedVersions reads the session state before it holds the lock.");
+
+        // A failed loop's finish checks its generation under the same lock it publishes under (independent review S3/S-6):
+        // taken apart, a reconnect can complete between the two and the finish's Disconnected lands on the new session.
+        string finish = Member(source, "FinishFailedSession");
+        int finishGate = finish.IndexOf("lock (_stateGate)", StringComparison.Ordinal);
+        int check = finish.IndexOf("Interlocked.CompareExchange(ref _receiveLoopGeneration", StringComparison.Ordinal);
+        Assert.True(
+            finishGate >= 0 && finishGate < check,
+            "FinishFailedSession checks its generation outside lock (_stateGate).");
     }
+
+    /// <summary>
+    /// The call scanner sees a call written through <c>this.</c> as well as a bare one (independent review S-1): the old
+    /// republish written as <c>this.Publish(current.Connected, ...)</c> passed every guard here and every G2 test.
+    /// </summary>
+    [Fact]
+    public void TheCallScannerSeesCallsThroughThis()
+    {
+        const string sample = """
+            internal sealed class Sample
+            {
+                private void Republish()
+                {
+                    WireToGateSessionSnapshot current = Current;
+                    this.Publish(current.Connected, current.SessionGeneration, current.Readiness, current.ReasonCodes, "x");
+                }
+
+                private void Lifecycle()
+                {
+                    Publish(false, null, WireToGateSessionReadiness.Disconnected, [], "y");
+                    other.Publish(1, 2, 3, 4, 5);
+                }
+
+                private void Publish(bool connected, long? generation, object readiness, object reasonCodes, string source)
+                {
+                }
+            }
+            """;
+
+        (string Member, string[] Arguments)[] calls = PublishCalls(sample);
+
+        Assert.Equal(
+            ["Lifecycle:WireToGateSessionReadiness.Disconnected", "Republish:current.Readiness"],
+            calls.Select(call => $"{call.Member}:{call.Arguments[2]}").Order(StringComparer.Ordinal).ToArray());
+    }
+
+    /// <summary>
+    /// Nothing in the product marshals synchronously onto the UI thread (independent review S1). The session client raises
+    /// StateChanged, and a failed loop's finish JourneyChanged, while holding <c>_stateGate</c>; that is safe only while no
+    /// subscriber waits on another thread. <c>Dispatcher.Invoke</c> is exactly such a wait: a handler that used it would
+    /// hold the lock until the UI thread ran, and a UI thread about to publish session state would wait for the lock.
+    /// <c>BeginInvoke</c> and <c>InvokeAsync</c> queue and return.
+    /// </summary>
+    [Fact]
+    public void NothingInTheProductMarshalsSynchronouslyOntoTheUiThread()
+    {
+        string root = Path.Combine(ProtocolIdentityArchitectureTests.RepositoryRoot(), "src");
+        string[] files = [.. Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories)
+            .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal)
+                && !file.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal))];
+        Assert.Contains(files, file => file.EndsWith("MainViewModel.cs", StringComparison.Ordinal));
+
+        string[] synchronous = [.. files
+            .Where(file => SynchronousDispatches(WithoutWholeLineComments(File.ReadAllText(file))) > 0)
+            .Select(file => Path.GetRelativePath(root, file))];
+
+        Assert.Empty(synchronous);
+    }
+
+    /// <summary>The scanner above tells a synchronous dispatch from the queued ones, whichever way it is written.</summary>
+    [Fact]
+    public void TheDispatchScannerTellsInvokeFromBeginInvokeAndInvokeAsync()
+    {
+        Assert.Equal(1, SynchronousDispatches("Application.Current.Dispatcher.Invoke(() => Refresh());"));
+        Assert.Equal(1, SynchronousDispatches("dispatcher.Invoke(action);"));
+        Assert.Equal(1, SynchronousDispatches("Dispatcher . Invoke (action, DispatcherPriority.Send);"));
+        Assert.Equal(0, SynchronousDispatches("_ = dispatcher.BeginInvoke(action);"));
+        Assert.Equal(0, SynchronousDispatches("_ = Dispatcher.InvokeAsync(() => Focus());"));
+        Assert.Equal(0, SynchronousDispatches("StateChanged?.Invoke(this, args);"));
+    }
+
+    private static int SynchronousDispatches(string source) =>
+        Regex.Count(source, @"\bdispatcher\s*\.\s*Invoke\s*\(", RegexOptions.IgnoreCase);
 
     private static string Source() => WithoutWholeLineComments(
         File.ReadAllText(Path.Combine(ProtocolIdentityArchitectureTests.RepositoryRoot(), ClientPath)));
@@ -135,10 +218,14 @@ public sealed class SessionReadinessWriteSiteArchitectureTests
     /// <summary>Every call of <c>Publish(</c> itself -- not its declaration, not the methods whose names start with it.</summary>
     private static (string Member, string[] Arguments)[] PublishCalls(string source) => Calls(source, "Publish");
 
-    /// <summary>Every call of the method named <paramref name="name"/>, with the member it is made in; not its declaration.</summary>
+    /// <summary>
+    /// Every call of the method named <paramref name="name"/> on this instance -- bare, or through <c>this.</c> -- with the
+    /// member it is made in; not its declaration, and not a same-named method of another object.
+    /// </summary>
     private static (string Member, string[] Arguments)[] Calls(string source, string name) =>
     [
-        .. Members(source).SelectMany(member => Regex.Matches(member.Body, $@"(?<![\w.]){Regex.Escape(name)}\(")
+        .. Members(source).SelectMany(member => Regex.Matches(
+                member.Body, $@"(?:(?<=\bthis\.)|(?<![\w.])){Regex.Escape(name)}\(")
             .Where(match => !member.Body[..match.Index].EndsWith("void ", StringComparison.Ordinal))
             .Select(match => (member.Name, Arguments(member.Body, match.Index + match.Length))))
     ];

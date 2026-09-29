@@ -214,17 +214,7 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.True(reconnected.SessionGeneration > oldGeneration);
         Assert.Equal(WireToGateSessionReadiness.Ready, reconnected.Readiness);
 
-        harness.Logger.ReleaseHold();
-        // Done with the line either way: published (会话状态发布) or dropped (丢弃SessionReadiness), both logged with the
-        // old generation, so the assertions below read the state after the old loop acted, not before.
-        string oldGenerationField = $"generation={oldGeneration}，";
-        await RecoveryVectorHarness.WaitUntilAsync(
-            () => harness.Logger.Entries.Any(entry =>
-                (entry.Message.StartsWith("会话状态发布：source=SessionReadiness，", StringComparison.Ordinal)
-                    || entry.Message.StartsWith("丢弃SessionReadiness：", StringComparison.Ordinal))
-                && entry.Message.Contains(oldGenerationField, StringComparison.Ordinal)),
-            "the replaced receive loop to be done with its last readiness line",
-            token);
+        await ReleaseReplacedLoopAndWaitAsync(harness, oldGeneration, token);
         Stopwatch watch = Stopwatch.StartNew();
         while (watch.Elapsed < SettleWatch)
         {
@@ -275,21 +265,106 @@ public sealed partial class RecoveryVectorG2Tests
             "the reconnect's RecoveryStateReport to reach the server",
             token);
 
-        harness.Logger.ReleaseHold();
-        string oldGenerationField = $"generation={oldGeneration}，";
-        await RecoveryVectorHarness.WaitUntilAsync(
-            () => harness.Logger.Entries.Any(entry =>
-                (entry.Message.StartsWith("会话状态发布：source=SessionReadiness，", StringComparison.Ordinal)
-                    || entry.Message.StartsWith("丢弃SessionReadiness：", StringComparison.Ordinal))
-                && entry.Message.Contains(oldGenerationField, StringComparison.Ordinal)),
-            "the replaced receive loop to be done with its last readiness line",
-            token);
+        await ReleaseReplacedLoopAndWaitAsync(harness, oldGeneration, token);
         handshakeHold.SetResult();
 
         WireToGateSessionSnapshot reconnected = await reconnect;
         Assert.True(reconnected.SessionGeneration > oldGeneration);
         Assert.Equal(WireToGateSessionReadiness.Ready, reconnected.Readiness);
         Assert.True(reconnected.SafetyStateVersion < acceptedBefore + 50);
+    }
+
+    /// <summary>
+    /// A receive loop that failed and is finishing its session does not publish Disconnected over a session a reconnect
+    /// has brought up meanwhile (independent review of cs#380, S3/S-6: the same shape as the readiness line, a check
+    /// and the publication it guards taken apart).
+    /// </summary>
+    /// <remarks>
+    /// The server drops the connection on the vehicle's next SafetyStateChanged, so the loop reads end-of-stream and
+    /// finishes its session. It is parked on the line that finish logs (接收循环失败收尾), after its generation check;
+    /// the vehicle reconnects, and only then is the finish let go. Done under the lock, the check and everything after it
+    /// come before the reconnect's first publication, and the reconnect waits for them: the gate lets it run for
+    /// <see cref="LoopGrace"/> and then lets the finish go first. Taken apart, the reconnect completes in the gap, and the
+    /// finish then publishes Disconnected over the new READY session.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
+    public async Task AFailedLoopsFinishDoesNotPublishDisconnectedOverTheSessionAReconnectBroughtUp()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            loadAlreadySettled: true);
+        await BringSessionToReadyAsync(harness, token);
+        long oldGeneration = harness.Session.Current.SessionGeneration!.Value;
+
+        harness.Logger.HoldNextEntryStartingWith("接收循环失败收尾：");
+        harness.Server.DropBeforeSafetyStateChangedAck = true;
+        Task<string> dropped = harness.Session.SendSafetyStateChangedAsync(
+            harness.Session.Current.SafetyStateVersion + 1,
+            DateTimeOffset.UtcNow,
+            new WireToGateSafetySummaryPayload(true, true, true, true, false, []),
+            [1],
+            token);
+        await harness.Logger.HoldEntered.WaitAsync(TimeSpan.FromSeconds(30), token);
+        harness.Server.DropBeforeSafetyStateChangedAck = false;
+
+        // Off the test thread: the reconnect takes the lock before its first await, and with the finish holding it that
+        // is where it waits -- on this thread it would keep the test from ever letting the finish go.
+        Task<WireToGateSessionSnapshot> reconnect = Task.Run(() => harness.Session.Client.ConnectAndRecoverAsync(token), token);
+        await Task.WhenAny(reconnect, Task.Delay(LoopGrace, token));
+        harness.Logger.ReleaseHold();
+        WireToGateSessionSnapshot reconnected = await reconnect;
+        await Assert.ThrowsAnyAsync<Exception>(() => dropped);
+        Assert.True(reconnected.SessionGeneration > oldGeneration);
+        Assert.Equal(WireToGateSessionReadiness.Ready, reconnected.Readiness);
+
+        // The finish has published by now whichever way it ran; watched for a while regardless.
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Logger.Entries.Any(entry =>
+                entry.Message.StartsWith("会话状态发布：source=receive-failed，", StringComparison.Ordinal)),
+            "the failed loop's finish to publish",
+            token);
+        Stopwatch watch = Stopwatch.StartNew();
+        while (watch.Elapsed < SettleWatch)
+        {
+            WireToGateSessionSnapshot current = harness.Session.Current;
+            Assert.True(current.Connected, "The failed loop's Disconnected stands over the reconnected session.");
+            Assert.Equal(reconnected.SessionGeneration, current.SessionGeneration);
+            Assert.Equal(WireToGateSessionReadiness.Ready, current.Readiness);
+            await Task.Delay(50, token);
+        }
+
+    }
+
+    /// <summary>
+    /// Lets the replaced receive loop go on from where the logger parked it, and waits until it is done with the line it
+    /// was holding: published it (会话状态发布：source=SessionReadiness) or dropped it (丢弃SessionReadiness), either
+    /// logged with the old generation.
+    /// </summary>
+    /// <remarks>
+    /// <b>Only entries written after the release count</b> (independent review of cs#380, M-1). The old session had
+    /// already logged such lines with that generation -- its handshake's readiness and the one that made it READY -- so
+    /// a wait over every entry returned at once, before the loop moved. The assertions after it then ran against a loop
+    /// still on its way, and a loop that moves the version or publishes a little later passed them: the reviewer's probe,
+    /// the version moved before the check plus 200 ms more in the old loop, went green 3/3.
+    /// </remarks>
+    private static async Task ReleaseReplacedLoopAndWaitAsync(
+        RecoveryVectorHarness harness,
+        long oldGeneration,
+        CancellationToken token)
+    {
+        int entriesBefore = harness.Logger.Entries.Count;
+        string oldGenerationField = $"generation={oldGeneration}，";
+        harness.Logger.ReleaseHold();
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Logger.Entries.Skip(entriesBefore).Any(entry =>
+                (entry.Message.StartsWith("会话状态发布：source=SessionReadiness，", StringComparison.Ordinal)
+                    || entry.Message.StartsWith("丢弃SessionReadiness：", StringComparison.Ordinal))
+                && entry.Message.Contains(oldGenerationField, StringComparison.Ordinal)),
+            "the replaced receive loop to be done with its last readiness line",
+            token);
     }
 
     /// <summary>

@@ -2310,23 +2310,38 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// 这一代会话失败的收尾，只在接收循环自己的线程上、循环已经停止处理之后做。
     /// </summary>
     /// <remarks>
+    /// <para>
     /// 这一代已经不是活着的那一代时什么都不做：重连或 <see cref="CloseConnectionAsync"/> 已经收过尾，
     /// 再发一次 <c>Disconnected</c> 会盖掉新会话刚发布的状态。
+    /// </para>
+    /// <para>
+    /// <b>核对与收尾在同一把锁里</b>（8005-agv-control-server#380 审查）。CAS 通过之后、发布之前若不持锁，
+    /// 一次重连可以在这中间走完：新握手清零循环代次、发布新会话，然后这里的 <c>Disconnected</c>
+    /// 盖上去，而等待者与行程投影也会被清到新会话头上——与 <see cref="PublishServerReadiness"/> 修的是同一个形状。
+    /// 持着 <c>_stateGate</c>，<see cref="ConnectAndRecoverAsync"/> 的第一次发布就排在整段收尾之后。
+    /// </para>
     /// </remarks>
     private void FinishFailedSession(Exception exception, long generation)
     {
-        if (Interlocked.CompareExchange(ref _receiveLoopGeneration, 0, generation) != generation)
+        lock (_stateGate)
         {
-            return;
-        }
+            if (Interlocked.CompareExchange(ref _receiveLoopGeneration, 0, generation) != generation)
+            {
+                return;
+            }
 
-        foreach (KeyValuePair<string, TaskCompletionSource<WireToGateEnvelope>> waiter in _responseWaiters)
-        {
-            waiter.Value.TrySetException(exception);
-        }
+            RecordDiagnostic(
+                $"接收循环失败收尾：generation={generation.ToString(CultureInfo.InvariantCulture)}，"
+                + $"{exception.GetType().Name}：{exception.Message}");
+            foreach (KeyValuePair<string, TaskCompletionSource<WireToGateEnvelope>> waiter in _responseWaiters)
+            {
+                waiter.Value.TrySetException(exception);
+            }
 
-        ResetJourneyProjection();
-        Publish(false, null, WireToGateSessionReadiness.Disconnected, ["SESSION_RECOVERY_REQUIRED"], "receive-failed");
+            ResetJourneyProjection();
+            PublishUnderGate(
+                false, null, WireToGateSessionReadiness.Disconnected, ["SESSION_RECOVERY_REQUIRED"], "receive-failed");
+        }
     }
 
     private async Task ApplyJourneySnapshotAsync(
