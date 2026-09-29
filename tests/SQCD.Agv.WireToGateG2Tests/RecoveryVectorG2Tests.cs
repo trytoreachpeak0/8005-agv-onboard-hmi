@@ -395,6 +395,13 @@ public sealed partial class RecoveryVectorG2Tests
             () => afterRestart.Business.CanConfirmForcedMechanicalRecovery,
             "the held forced recovery to still wait for the confirmation after the restart",
             token);
+        // Before any second press, the restored line already says the confirmation is held -- not the
+        // "cut power and extract by hand" instruction, which would read as a second extraction.
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => afterRestart.Business.CurrentOperationSnapshot?.Guidance.Contains("不能登记货物交接", StringComparison.Ordinal) == true,
+            "the restored operation line to say the confirmation is held",
+            token);
+        Assert.DoesNotContain("请先断电", afterRestart.Business.CurrentOperationSnapshot!.Guidance, StringComparison.Ordinal);
 
         WireToGateRecoveryState afterRestartState = await afterRestart.ReadRecoveryStateAsync(token);
         Assert.Equal(
@@ -782,6 +789,10 @@ public sealed partial class RecoveryVectorG2Tests
         // shape does not.
         Assert.Single(harness.ResultsOfType("ForcedMechanicalRecoveryResult"));
         Assert.Equal("FAILED", result.GetProperty("outcome").GetString());
+        // COPY_COMMAND_DEMAND_INTO_RESULT (3.0.0, 8005-agv-onboard-hmi#214): a result that is not an
+        // isolation copies the command's demand and carries no handoff record.
+        Assert.Equal(DemandId, result.GetProperty("demandId").GetString());
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("cargoHandoff").ValueKind);
         Assert.Equal(9, result.GetProperty("forcedRecoveryGeneration").GetInt64());
         Assert.Equal(
             [1],

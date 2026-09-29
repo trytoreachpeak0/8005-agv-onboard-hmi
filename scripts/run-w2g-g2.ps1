@@ -34,7 +34,7 @@ if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
 # 提交上创建；ApprovalStatus 为 SUPERSEDING_CANDIDATE，所以下面只在 tag 已存在时核它指向 Commit，
 # 不要求它存在。这份身份上跑出的 G2 一律是 UNRELEASED_CANDIDATE，不计入批次出口。
 #
-# ProtocolVersion 只在同一 profileId 内单调递增（WIRE_TO_GATE_MVP 0.3.0 与 AGV_FULL_PRODUCT 2.0.0 都是 3）：整数只在同一 profileId 内单调递增，
+# ProtocolVersion 只在同一 profileId 内单调递增（WIRE_TO_GATE_MVP 0.3.0 与 AGV_FULL_PRODUCT 2.0.0 都是 3），
 # 所以身份比较一律逐字段比完整身份，不得只比这个整数。
 $expected = [ordered]@{
     ProtocolVersion = 4

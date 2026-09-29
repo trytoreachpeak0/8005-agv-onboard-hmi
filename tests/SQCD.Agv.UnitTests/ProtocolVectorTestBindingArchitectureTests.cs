@@ -396,6 +396,70 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     }
 
     /// <summary>
+    /// A build that names an approved release carries neither the forced-recovery hold nor the pins
+    /// that owe its handoff tests (8005-agv-onboard-hmi#214).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// On the 3.0.0 candidate an isolation on a demand cannot be reported -- the result needs a cargo
+    /// handoff record this build cannot take -- so the confirmation is held unreported
+    /// (<c>IsolationOnADemandNeedsAHandoffRecord</c> in <c>WireToGateBusinessService.RecoveryVectors.cs</c>),
+    /// and 8005-agv-onboard-hmi#216 owes the screen that ends the hold. A vehicle running that hold stays
+    /// RecoveryRequired after every forced recovery on a demand, and the only way out is editing its
+    /// journal. The batch branch is not allowed on a vehicle until #216 lands; this is what keeps that a
+    /// build fact rather than a sentence in the exit ticket: the day <c>ApprovalStatus</c> says
+    /// <c>APPROVED_RELEASE</c>, the hold and every pin labelled <c>8005-agv-onboard-hmi#216</c> must be gone.
+    /// </para>
+    /// <para>
+    /// On the candidate the rule does not fire, so <see cref="TheReleaseGateCatchesTheHoldThatIsHereToday"/>
+    /// runs the same check as though today's build were the release.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public void AnApprovedReleaseCarriesNoForcedRecoveryHoldAndOwesNoHandoffTests()
+    {
+        string[] offences = ReleaseGateOffences(WireToGateRelease.ApprovalStatus);
+
+        Assert.True(
+            offences.Length == 0,
+            "This build names an approved release but still holds forced-recovery results for a missing "
+            + "handoff screen, or still owes that screen's tests: " + string.Join("; ", offences));
+    }
+
+    /// <summary>
+    /// The release gate above is not vacuous: run against today's source and pins as though they were the
+    /// release, it reports both the hold and the #216 pins.
+    /// </summary>
+    [Fact]
+    public void TheReleaseGateCatchesTheHoldThatIsHereToday()
+    {
+        string[] offences = ReleaseGateOffences("APPROVED_RELEASE");
+
+        Assert.Contains(offences, offence => offence.Contains("IsolationOnADemandNeedsAHandoffRecord", StringComparison.Ordinal));
+        Assert.Contains(offences, offence => offence.Contains("CV-RECOVERY-SESSION-CLOSED-RESULT-NOT-RECONCILED", StringComparison.Ordinal));
+    }
+
+    private static string[] ReleaseGateOffences(string approvalStatus)
+    {
+        if (approvalStatus != "APPROVED_RELEASE")
+        {
+            return [];
+        }
+
+        string source = File.ReadAllText(Path.Combine(
+            VendoredSliceIndex.RepositoryRoot(), "src", "SQCD.Agv.Wpf", "WireToGateBusinessService.RecoveryVectors.cs"));
+        return
+        [
+            .. source.Contains("IsolationOnADemandNeedsAHandoffRecord", StringComparison.Ordinal)
+                ? ["WireToGateBusinessService.RecoveryVectors.cs still has IsolationOnADemandNeedsAHandoffRecord"]
+                : Array.Empty<string>(),
+            .. VectorsThisBatchOwesANamedTest
+                .Where(pin => pin.Value.Contains("8005-agv-onboard-hmi#216", StringComparison.Ordinal))
+                .Select(pin => $"{pin.Key} is still pinned as owed by 8005-agv-onboard-hmi#216")
+        ];
+    }
+
+    /// <summary>
     /// The mirror: nothing is pinned as a gap this batch owes unless it really belongs to a slice
     /// this batch implements.
     /// </summary>

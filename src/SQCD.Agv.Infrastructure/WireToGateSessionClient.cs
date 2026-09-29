@@ -3396,16 +3396,28 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// it here keeps that failure on this side of the wire, where the journal has not yet recorded
     /// a claim the vehicle cannot support.
     /// </remarks>
-    private static void ValidateForcedMechanicalRecoveryResult(
+    /// <remarks>
+    /// <c>demandId</c> and <c>cargoHandoff</c> (3.0.0, 8005-agv-onboard-hmi#214) are checked in both
+    /// directions of the schema's <c>if/then/else</c>: an isolation on a demand must carry a handoff
+    /// record, and every other result must carry none. Today the business service never builds the
+    /// first shape (it holds that confirmation unreported); this check stays right once
+    /// 8005-agv-onboard-hmi#216 adds the send path that does.
+    /// </remarks>
+    internal static void ValidateForcedMechanicalRecoveryResult(
         ForcedMechanicalRecoveryResultPayload payload)
     {
         ArgumentNullException.ThrowIfNull(payload);
         RequireUuid(payload.ExceptionRecoverySessionId, nameof(payload.ExceptionRecoverySessionId));
         RequireUuid(payload.RecoveryActionId, nameof(payload.RecoveryActionId));
+        bool isolationOnADemand = payload.Outcome == "MECHANICALLY_ISOLATED" && payload.DemandId is not null;
         if (payload.ForcedRecoveryGeneration < 0
             || payload.Outcome is not ("MECHANICALLY_ISOLATED" or "FAILED" or "UNKNOWN")
             || payload.ElectronicEmptyProven
-            || payload.VehicleReadyProven)
+            || payload.VehicleReadyProven
+            || payload.DemandId is not null && !IsUuid(payload.DemandId)
+            || isolationOnADemand != (payload.CargoHandoff is not null)
+            || payload.CargoHandoff is { } handoff
+                && (string.IsNullOrWhiteSpace(handoff.Sublot) || string.IsNullOrWhiteSpace(handoff.ReceiverName)))
         {
             throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
         }
@@ -3740,6 +3752,9 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// no reason. That is the shape a 2.0.0 build journaled, and <c>RestorePersistedJourneyProjectionAsync</c>
     /// replays the journal through this same check on the first start after an upgrade -- refusing it
     /// would stop the vehicle from starting over a display field. It shows as it did before, 「无待处理任务」.
+    /// The same check serves the live path, so a 3.0.0 server sending that shape on the wire is let
+    /// through too, not refused as <c>PROTOCOL_SCHEMA_INVALID</c>; the replay and the live receipt cannot
+    /// tell the two apart, because the payload record reads a missing member and an explicit <c>null</c> alike.
     /// </para>
     /// </remarks>
     internal static void ValidateCurrentStopWorklist(CurrentStopWorklistSnapshotPayload payload)

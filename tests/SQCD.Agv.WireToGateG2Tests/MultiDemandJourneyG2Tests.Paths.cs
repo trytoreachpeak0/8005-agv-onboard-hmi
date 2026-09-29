@@ -1,6 +1,8 @@
 using System.Text.Json;
 using SQCD.Agv.Application;
+using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
+using SQCD.Agv.Infrastructure;
 using SQCD.Agv.Wpf;
 using Xunit;
 
@@ -190,74 +192,61 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// <summary>
     /// The upgrade path (8005-agv-onboard-hmi#214): an empty worklist in the 2.0.0 shape -- no
     /// <c>stopEndedReason</c> property, as a 2.0.0 build journaled it -- is replayed from the journal on
-    /// restart without throwing.
+    /// start without throwing.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The journal stores the payload bytes as they arrived, so the first session is fed the 2.0.0 bytes
-    /// and the restart replays exactly those through <c>RestorePersistedJourneyProjectionAsync</c>. The
-    /// replay runs before the session's <c>SessionHello</c> and throws on a payload it cannot take or on
-    /// a revision that does not match the journal's (<c>PERSISTED_SNAPSHOT_REVISION_MISMATCH</c>), so the
-    /// second connection's hello reaching the server is the replay having taken the snapshot at its
-    /// revision.
+    /// The 2.0.0 bytes are written straight into the journal a 2.0.0 build would have left, not sent over
+    /// the wire: this build's server never sends that shape, and a fake that did would put a schema-invalid
+    /// line on the wire the outbound schema gate would then have to be told to ignore.
     /// </para>
     /// <para>
-    /// The in-memory projection is deliberately not the criterion: a disconnect resets it, the replay
-    /// runs once per start, and this fake pushes the journey once per server -- under load the second
-    /// session can reconnect during its handshake and legitimately show no worklist.
+    /// The replay runs before the session's <c>SessionHello</c> and throws on a payload it cannot take or on
+    /// a revision that does not match the journal's (<c>PERSISTED_SNAPSHOT_REVISION_MISMATCH</c>), so the
+    /// hello reaching the server is the replay having taken the snapshot at its revision. The in-memory
+    /// projection is deliberately not the criterion: a disconnect during the handshake resets it and the
+    /// replay runs once per start.
     /// </para>
     /// </remarks>
     [Fact]
     public async Task AnEmptyWorklistJournaledInTheVersionTwoShapeReplaysOnRestartWithItsRevision()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
-        FakeIoModuleClient io = new() { OperatorNeverActs = true };
-        await using Harness first = await Harness.StartAsync(
-            server =>
-            {
-                server.SendJourneySnapshotsAfterRecovery = true;
-                server.JourneySnapshotPayloads = new Dictionary<string, object>
-                {
-                    ["CurrentStopWorklistSnapshot"] = new
-                    {
-                        stationId = "ST-01",
-                        worklistRevision = 5,
-                        operationSessionId = (string?)null,
-                        stationDepartureDeadlineAt = (DateTimeOffset?)null,
-                        items = Array.Empty<object>()
-                    }
-                };
-            },
-            token,
-            io: io);
-        // The acknowledgement, not the projection: the client updates its projection before it journals
-        // the snapshot and acknowledges only after.
-        await first.WaitUntilAsync(
-            () => Acknowledged(first.Server).Contains(("CURRENT_STOP_WORKLIST", 5)),
-            "the 2.0.0-shaped worklist to be journaled and acknowledged",
-            token);
+        const string versionTwoWorklist =
+            "{\"stationId\":\"ST-01\",\"worklistRevision\":5,\"operationSessionId\":null,"
+            + "\"stationDepartureDeadlineAt\":null,\"items\":[]}";
+        string journalPath = Path.Combine(Path.GetTempPath(), $"w2g-v2-journal-{Guid.NewGuid():N}.db");
+        await using (SqliteWireToGateJournal versionTwoJournal = new(journalPath))
+        {
+            await versionTwoJournal.InitializeAsync(token);
+            await versionTwoJournal.SaveAppliedJourneySnapshotAsync(
+                new WireToGateAppliedJourneySnapshot(
+                    "CurrentStopWorklistSnapshot",
+                    "00000000-0000-4000-8000-000000000205",
+                    5,
+                    WireToGateProtocolSerializer.ComputePayloadContentSha256(versionTwoWorklist),
+                    versionTwoWorklist,
+                    DateTimeOffset.UtcNow),
+                token);
+        }
 
-        await first.StopVehicleAsync();
-        first.Server.SimulateOnboardProcessRestart();
-        int hellosBefore = first.Server.Received.Count(item => item.MessageType == "SessionHello");
         ReplayRecordingJournal? replay = null;
-        await using Harness second = await Harness.StartAgainstAsync(
-            first.Server,
+        await using Harness harness = await Harness.StartAsync(
+            _ => { },
             token,
-            first.JournalPath,
-            io,
+            journalPath,
             wrapJournal: inner => replay = new ReplayRecordingJournal(inner));
-        await second.WaitUntilAsync(
-            () => first.Server.Received.Count(item => item.MessageType == "SessionHello") > hellosBefore,
-            "the restarted session's hello, sent only after the replay",
+        await harness.WaitUntilAsync(
+            () => harness.Server.Received.Any(item => item.MessageType == "SessionHello"),
+            "the session's hello, sent only after the replay",
             token);
 
         WireToGateAppliedJourneySnapshot replayed = Assert.Single(
             replay!.Replayed!,
             snapshot => snapshot.MessageType == "CurrentStopWorklistSnapshot");
         Assert.Equal(5, replayed.Revision);
-        Assert.DoesNotContain("stopEndedReason", replayed.PayloadJson, StringComparison.Ordinal);
-        Assert.Empty(second.UiErrors);
+        Assert.Equal(versionTwoWorklist, replayed.PayloadJson);
+        Assert.Empty(harness.UiErrors);
     }
 
     /// <summary>Records what the start-up replay read from the journal; everything passes through.</summary>

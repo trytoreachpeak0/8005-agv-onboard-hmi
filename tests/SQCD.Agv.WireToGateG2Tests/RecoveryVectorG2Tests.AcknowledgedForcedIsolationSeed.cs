@@ -24,8 +24,12 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// <c>StartAsync(token, cargoInTargetSlots: true)</c> on <c>w2g/batch-p3/v3@59dd5452</c> -- the batch
 /// branch before this ticket, where the result still went out and was acknowledged. The captured
 /// <c>pendingResults</c> entry is the interrupted load the harness settles UNKNOWN on start; it is part of
-/// the real state and is kept. <see cref="TheSeededIsolationIsTheCapturedStateFieldForField"/> checks the
-/// journal holds exactly this after the harness starts.
+/// the real state and is kept; its <c>contentSha256</c> differs from run to run (the settled result carries
+/// an observation time), so a capture on another day will not match this text byte for byte -- the value
+/// here is one real run's, not a constant of the product. That the capture was taken from the real path is
+/// recorded here and was reproduced in review on <c>59dd5452</c>; no test in this assembly can prove it.
+/// <see cref="TheSeedReachesTheJournalWithoutLoss"/> checks only the harness side: what the harness writes
+/// is what the journal reads back.
 /// </para>
 /// </remarks>
 public sealed partial class RecoveryVectorG2Tests
@@ -73,11 +77,15 @@ public sealed partial class RecoveryVectorG2Tests
     private static readonly JsonSerializerOptions SeedSerializerOptions = new(JsonSerializerDefaults.Web);
 
     /// <summary>
-    /// The seed reaches the journal whole: what the harness reads back after starting over it
-    /// serializes to the captured text, field for field.
+    /// The seed reaches the journal without loss: what the harness reads back after starting over it
+    /// serializes to the seed text, field for field.
     /// </summary>
+    /// <remarks>
+    /// This is a check on the seeding, not on the seed: change a field of the seed and both sides move
+    /// together. What makes the seed right is where it came from (see the class remarks).
+    /// </remarks>
     [Fact]
-    public async Task TheSeededIsolationIsTheCapturedStateFieldForField()
+    public async Task TheSeedReachesTheJournalWithoutLoss()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(

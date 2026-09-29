@@ -1734,15 +1734,11 @@ public sealed partial class WireToGateBusinessService
                 nameof(WireToGateBusinessService),
                 $"强制机械取出已确认但未上报：id={context.PrimaryId}，demand={context.DemandId}。"
                     + "协议 3.0.0 要求有需求的机械隔离结果带货物交接记录，本版本尚无登记界面（onboard-hmi#216），不发结果、不编值。");
-            PublishRecoveryVectorOperation(
-                context,
-                WireToGateHmiOperationStage.RecoveryRequired,
-                $"强制机械取出已确认，但本版本还不能登记货物交接，结果暂不上报；{FormatSlots(context.Slots)}保持禁止操作，车辆保持需恢复。",
-                "handoff-record-required");
+            PublishForcedConfirmationHeld(context);
             PublishOperatorEvent(
                 $"forced-recovery-handoff-record-required:{context.PrimaryId}",
                 "RECOVERY_BLOCKED",
-                "强制机械取出结果需要货物交接记录，本版本尚不能登记，结果暂不上报（FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED）；请联系维护人员。 ");
+                "强制机械取出结果需要货物交接记录，本版本尚不能登记，结果暂不上报（FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED）；请联系维护人员。");
             return false;
         }
 
@@ -1812,6 +1808,16 @@ public sealed partial class WireToGateBusinessService
 
     private void PublishForcedConfirmationAwaited(WireToGateRecoveryVectorContext context)
     {
+        // Already confirmed and held for the handoff record (8005-agv-onboard-hmi#214): after a restart or a
+        // resent command, asking the people at the vehicle to cut power and extract again would read as a
+        // second extraction. The confirmation is on disk; say it is held.
+        if (Volatile.Read(ref _lastRecoveryState).RecoveryResultObservedAt is not null
+            && IsolationOnADemandNeedsAHandoffRecord(context, "MECHANICALLY_ISOLATED"))
+        {
+            PublishForcedConfirmationHeld(context);
+            return;
+        }
+
         string guidance =
             $"强制机械取出已授权：请先断电、抱闸隔离车辆，再由有资质人员以机械方式开锁或拆卸，取出{FormatSlots(context.Slots)}的货物；"
             + "系统不会输出开锁。完成后由申请人按「已隔离并完成机械取出」确认。";
@@ -2940,6 +2946,20 @@ public sealed partial class WireToGateBusinessService
         context.VectorType == WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery
         && outcome == "MECHANICALLY_ISOLATED"
         && context.DemandId is { Length: > 0 };
+
+    /// <summary>
+    /// The operation line for a confirmed isolation on a demand that is held unreported until a cargo
+    /// handoff record can be taken (8005-agv-onboard-hmi#214, #216).
+    /// </summary>
+    private void PublishForcedConfirmationHeld(WireToGateRecoveryVectorContext context) =>
+        PublishRecoveryVectorOperation(
+            context,
+            WireToGateHmiOperationStage.RecoveryRequired,
+            ForcedConfirmationHeldGuidance(context.Slots),
+            "handoff-record-required");
+
+    internal static string ForcedConfirmationHeldGuidance(IReadOnlyList<int> slots) =>
+        $"强制机械取出已确认，但本版本还不能登记货物交接，结果暂不上报；{FormatSlots(slots)}保持禁止操作，车辆保持需恢复。";
 
     private Task CompleteRecoveryVectorStateAsync(
         WireToGateRecoveryVectorContext context,
