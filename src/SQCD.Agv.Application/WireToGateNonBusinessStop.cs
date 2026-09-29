@@ -33,7 +33,8 @@ public enum WireToGateNonBusinessStopKind
 /// <para>
 /// <b>先看业务状态的 <c>activePurpose</c>，说不清时再看当前腿的类别。</b>用途说的是车在做什么，腿说的是车往哪去。
 /// 批次 9 里清桩与空闲返回共用等待点集合（<c>REQ-0178</c>），同一条 <c>WAITING_POINT</c> 腿可能是空闲返回也可能是
-/// 清桩，只有用途分得开；清桩刚开始时当前腿可能还是 <c>CHARGER</c>，也要写清桩而不是充电。用途为 <c>null</c> 或
+/// 清桩，只有用途分得开；清桩刚开始时当前腿可能还是 <c>CHARGER</c>，甚至计划没跟上时还是旧的业务腿，都写清桩
+/// （<c>CLEARING_MAINTENANCE</c> 用途单独即算非业务停靠，与 <c>IDLE_RETURN</c>、<c>CHARGING</c> 对称）。用途为 <c>null</c> 或
 /// <c>TRANSPORT</c> 时（计划先到、用途还没跟上）按腿：<c>CHARGER</c> 是充电，<c>WAITING_POINT</c> 照批次8-22 算空闲返回。
 /// </para>
 /// <para>

@@ -256,7 +256,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// <see cref="SubmitSublotAsync"/> 开头的同一条判据承担——两件事，两条判据。
     /// </para>
     /// <para>
-    /// <b>非业务停靠时也关：等待点（批次8-22，onboard-hmi#217，<c>NEVER_LOAD_AT_WAITING_POINT</c>）与充电桩
+    /// <b>非业务停靠时也关：等待点（批次8-22，onboard-hmi#217，<c>NEVER_LOAD_AT_WAITING_POINT</c>）、充电桩与清桩途中
     /// （批次9-15，onboard-hmi#220，<c>NEVER_LOAD_AT_CHARGER</c>）。</b>入口不读
     /// <see cref="WireToGateJourneySnapshot.CanAcceptSublot"/>，那一条只管控制器，所以只改它关不住这个按钮：
     /// 服务端在等待点或充电桩同时发来带项的清单与录入请求时，按钮照样出现、提交照样发出去。这里直接读

@@ -166,14 +166,27 @@ public sealed record WireToGateJourneySnapshot(
         || VehicleBusinessState?.ActivePurpose == "CHARGING";
 
     /// <summary>
-    /// A stop that is not a business one: a waiting point or a charger. The one judgement the four entry gates
-    /// read -- the sublot admission below, the entry button, the submit and the cancellation before any
-    /// sublot -- so a third kind of non-business stop is added in one place.
+    /// Whether the vehicle is clearing a charger: the business state's <c>activePurpose</c> is
+    /// <c>CLEARING_MAINTENANCE</c> (batch 9-15, <c>8005-agv-onboard-hmi#220</c>; <c>REQ-0178</c>).
     /// </summary>
-    public bool IsNonBusinessStop => IsWaitingPointStop || IsChargerStop;
+    /// <remarks>
+    /// The purpose alone is enough, as <c>IDLE_RETURN</c> and <c>CHARGING</c> are: the clearance goes to a
+    /// waiting point, and while the plan has not caught up its current leg may still be the charger or even an
+    /// old business leg -- a window that must not offer a load. There is no leg category of its own to read;
+    /// the waiting-point leg it heads for is <see cref="IsWaitingPointStop"/>'s already.
+    /// </remarks>
+    public bool IsClearingStop => VehicleBusinessState?.ActivePurpose == "CLEARING_MAINTENANCE";
 
     /// <summary>
-    /// A worklist with items at a non-business stop, waiting point or charger: the server's contradiction.
+    /// A stop that is not a business one: a waiting point, a charger, or a charger clearance on its way to a
+    /// waiting point. The one judgement the four entry gates read -- the sublot admission below, the entry
+    /// button, the submit and the cancellation before any sublot -- so a further kind of non-business stop is
+    /// added in one place.
+    /// </summary>
+    public bool IsNonBusinessStop => IsWaitingPointStop || IsChargerStop || IsClearingStop;
+
+    /// <summary>
+    /// A worklist with items at a non-business stop, waiting point, charger or clearance: the server's contradiction.
     /// Nothing is loaded; the vehicle logs it.
     /// </summary>
     public bool HasWorklistItemsAtNonBusinessStop =>
@@ -219,7 +232,7 @@ public sealed record WireToGateJourneySnapshot(
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Never at a waiting point or a charger, whatever worklist arrived with it
+    /// Never at a waiting point, a charger or during a charger clearance, whatever worklist arrived with it
     /// (<c>NEVER_LOAD_AT_WAITING_POINT</c>, <c>8005-agv-onboard-hmi#217</c>; <c>NEVER_LOAD_AT_CHARGER</c>,
     /// <c>8005-agv-onboard-hmi#220</c>).
     /// </para>

@@ -54,7 +54,7 @@ public static class OnboardCommandRejectionText
         //   控制器（IsAuthoritativeJourneyReady() 为假，即 WireToGateJourneySnapshot.CanAcceptSublotAt 为假）：
         //   1. 车辆业务状态缺失或不是 READY；2. 手动充电保持；4. 当前站清单缺失或为空；
         //   5. HasConsistentDemand 为假；6. 快照或业务状态观测超过有效期；
-        //   8. 当前是非业务停靠——等待点（onboard-hmi#217）或充电桩（onboard-hmi#220）。
+        //   8. 当前是非业务停靠——等待点（onboard-hmi#217）、充电桩或清桩途中（onboard-hmi#220）。
         //   业务服务：7. SubmitSublotAsync 手里没有录入请求；9. SubmitSublotAsync 时当前是非业务停靠。
         //   第 3 支「电量不是 SUFFICIENT」已于批次9-15（onboard-hmi#220）删掉：服务端开始按实况投影电量之后
         //   （control-server#403），在途搬运越过强制充电线会在下一个取货站被这一支拒装，违反 REQ-0281；

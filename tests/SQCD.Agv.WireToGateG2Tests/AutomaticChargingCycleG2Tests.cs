@@ -147,10 +147,7 @@ public sealed class AutomaticChargingCycleG2Tests
         CancellationToken token = TestContext.Current.CancellationToken;
         await using Harness harness = await StartWithEntryRequestAsync("TRANSPORT", ChargerLeg(1, "ARRIVED"), token);
 
-        string[] acknowledged = AcknowledgedKinds(harness.Server);
-        Assert.Contains("UPCOMING_STOP_PLAN", acknowledged);
-        Assert.Contains("VEHICLE_BUSINESS_STATE", acknowledged);
-        Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "ProtocolProblem");
+        AssertEachSnapshotAcknowledgedOnce(harness);
 
         await AssertEntryStaysClosedAsync(harness, token);
         Assert.Equal($"在充电桩 {Charger}", harness.ViewModel.VisitText);
@@ -172,6 +169,7 @@ public sealed class AutomaticChargingCycleG2Tests
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using Harness harness = await StartWithEntryRequestAsync("TRANSPORT", ChargerLeg(1, "ARRIVED"), token);
+        AssertEachSnapshotAcknowledgedOnce(harness);
 
         InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
             () => harness.Business.SubmitSublotAsync("SUBLOT-A", "SCANNER", token));
@@ -193,6 +191,7 @@ public sealed class AutomaticChargingCycleG2Tests
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using Harness harness = await StartWithEntryRequestAsync("TRANSPORT", ChargerLeg(1, "ARRIVED"), token);
+        AssertEachSnapshotAcknowledgedOnce(harness);
 
         await AssertCancellationStaysClosedAsync(harness, token);
         try
@@ -223,6 +222,7 @@ public sealed class AutomaticChargingCycleG2Tests
         await using Harness harness = await StartWithEntryRequestAsync(
             "CHARGING", BusinessLeg(1, "ARRIVED"), token, server => server.JourneyChargingCycleState = "EN_ROUTE");
 
+        AssertEachSnapshotAcknowledgedOnce(harness);
         Assert.Equal("BUSINESS", harness.Session.CurrentJourney.CurrentLeg!.StopPurposeCategory);
         await AssertEntryStaysClosedAsync(harness, token);
         Assert.Equal("前往充电桩", harness.ViewModel.VisitText);
@@ -356,6 +356,32 @@ public sealed class AutomaticChargingCycleG2Tests
         Assert.Equal($"清桩：前往等待点 {WaitingPoint}", harness.ViewModel.VisitText);
         Assert.DoesNotContain("空闲返回", harness.ViewModel.VisitText, StringComparison.Ordinal);
         AssertShownAsNonBusinessStop(harness);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// The clearance purpose alone, over an old business leg with a worklist item and an entry request: every gate
+    /// stays shut and the cell says a clearance without the business leg's station -- symmetric with
+    /// <see cref="AChargingPurposeOverABusinessLegStillOffersNoEntry"/>.
+    /// </summary>
+    [Fact]
+    public async Task AClearancePurposeOverABusinessLegOffersNoEntry()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartWithEntryRequestAsync("CLEARING_MAINTENANCE", BusinessLeg(1, "ARRIVED"), token);
+
+        AssertEachSnapshotAcknowledgedOnce(harness);
+        await AssertEntryStaysClosedAsync(harness, token);
+        await AssertCancellationStaysClosedAsync(harness, token);
+        Assert.Equal("清桩：前往等待点", harness.ViewModel.VisitText);
+        Assert.Equal(WireToGateIdleReturnText.ClearingEnRouteStatus, harness.ViewModel.IdleReturnStatus);
+        Assert.Equal(string.Empty, harness.ViewModel.StopDirectionText);
+        InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => harness.Business.SubmitSublotAsync("SUBLOT-A", "SCANNER", token));
+        Assert.Equal("WIRE_TO_GATE_JOURNEY_NOT_READY", refused.Message);
+        await Task.Delay(300, token);
+        Assert.Empty(harness.Submissions);
+        Assert.Equal(0, harness.Io.UnlockCount);
         Assert.Empty(harness.UiErrors);
     }
 
@@ -552,6 +578,19 @@ public sealed class AutomaticChargingCycleG2Tests
         Assert.Equal(string.Empty, harness.ViewModel.TaskTypeText);
         Assert.False(harness.ViewModel.CanSubmit);
         Assert.False(harness.ViewModel.CanRequestLoadCancellation);
+    }
+
+    /// <summary>
+    /// The vector's two <c>SnapshotAppliedAck</c> -- the plan's and the business state's -- each exactly once, with the
+    /// worklist's that this path also sends, in the order the fake sends them; and no <c>ProtocolProblem</c>. Exact,
+    /// not a containment: a second ack of either kind or a missing one is a change in what the peer sees.
+    /// </summary>
+    private static void AssertEachSnapshotAcknowledgedOnce(Harness harness)
+    {
+        Assert.Equal(
+            ["VEHICLE_BUSINESS_STATE", "CURRENT_STOP_WORKLIST", "UPCOMING_STOP_PLAN"],
+            AcknowledgedKinds(harness.Server));
+        Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "ProtocolProblem");
     }
 
     private static string[] AcknowledgedKinds(FakeControlServer server) =>

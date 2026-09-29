@@ -255,6 +255,28 @@ public sealed class WireToGateChargingJourneyTests
     }
 
     /// <summary>
+    /// The clearance purpose alone, symmetric with <c>IDLE_RETURN</c> and <c>CHARGING</c>: the plan has not caught up
+    /// and its current leg is still an old business one with a worklist item. No sublot is admitted, the cell says
+    /// a clearance without borrowing the business leg's station, and direction and task type stay empty.
+    /// </summary>
+    [Fact]
+    public void AClearancePurposeAloneAdmitsNoSublotOverAnOldBusinessLeg()
+    {
+        WireToGateJourneySnapshot journey = Journey("CLEARING_MAINTENANCE", Worklist(DemandA), Business(1, DemandA, "ARRIVED"));
+
+        Assert.Equal("BUSINESS", journey.CurrentLeg!.StopPurposeCategory);
+        Assert.True(journey.IsClearingStop);
+        Assert.True(journey.IsNonBusinessStop);
+        Assert.True(journey.HasWorklistItemsAtNonBusinessStop);
+        Assert.False(journey.CanAcceptSublot);
+        Assert.Equal(WireToGateNonBusinessStopKind.Clearing, WireToGateNonBusinessStop.Classify(journey));
+        Assert.Equal("清桩：前往等待点", WireToGateIdleReturnText.VisitText(journey));
+        Assert.Equal(WireToGateIdleReturnText.ClearingEnRouteStatus, WireToGateIdleReturnText.Status(journey));
+        Assert.Equal(string.Empty, WireToGateStopFacts.DirectionText(journey));
+        Assert.Equal(string.Empty, WireToGateStopFacts.TaskTypeText(journey));
+    }
+
+    /// <summary>
     /// The guard against fixing too much on the waiting-point side: an <c>IDLE_RETURN</c> or a <c>null</c>
     /// purpose on a waiting-point leg reads exactly as batch 8-22 wrote it.
     /// </summary>
@@ -271,13 +293,21 @@ public sealed class WireToGateChargingJourneyTests
     }
 
     /// <summary>
-    /// The classification and the entry gates never disagree: for every purpose and every current-leg category
-    /// the protocol allows, a kind other than <c>None</c> is exactly a non-business stop, and exactly one of the
-    /// two text classes speaks then.
+    /// The classification, cell by cell, for every purpose and every current-leg category the protocol allows,
+    /// and the entry gates never disagreeing with it: a kind other than <c>None</c> is exactly a non-business stop,
+    /// and exactly one of the two text classes speaks then.
     /// </summary>
+    /// <remarks>
+    /// The purposes <c>CHARGING</c>, <c>CLEARING_MAINTENANCE</c> and <c>IDLE_RETURN</c> decide alone, whatever the
+    /// leg; <c>null</c> and <c>TRANSPORT</c> leave it to the leg. The row a clearance over a business leg used to be
+    /// <c>None</c> (review of PR #223): the purpose alone now closes the entry, as the other two do.
+    /// </remarks>
     [Theory]
     [MemberData(nameof(PurposeAndLegMatrix))]
-    public void TheKindIsNoneExactlyWhenTheStopIsABusinessOne(string? activePurpose, string legCategory)
+    public void EveryPurposeAndLegCellHasItsKindAndTheGatesAgree(
+        string? activePurpose,
+        string legCategory,
+        WireToGateNonBusinessStopKind expected)
     {
         WireToGateMovementLeg leg = legCategory switch
         {
@@ -288,24 +318,37 @@ public sealed class WireToGateChargingJourneyTests
         WireToGateJourneySnapshot journey = Journey(activePurpose, null, leg);
 
         WireToGateNonBusinessStopKind kind = WireToGateNonBusinessStop.Classify(journey);
+        Assert.Equal(expected, kind);
         Assert.Equal(journey.IsNonBusinessStop, kind != WireToGateNonBusinessStopKind.None);
         int speaking = new[] { WireToGateChargingText.VisitText(journey), WireToGateIdleReturnText.VisitText(journey) }
             .Count(text => text.Length > 0);
         Assert.Equal(journey.IsNonBusinessStop ? 1 : 0, speaking);
     }
 
-    public static TheoryData<string?, string> PurposeAndLegMatrix()
+    public static TheoryData<string?, string, WireToGateNonBusinessStopKind> PurposeAndLegMatrix()
     {
-        TheoryData<string?, string> data = new();
-        foreach (string? purpose in new[] { null, "TRANSPORT", "CHARGING", "CLEARING_MAINTENANCE", "IDLE_RETURN" })
+        const WireToGateNonBusinessStopKind None = WireToGateNonBusinessStopKind.None;
+        const WireToGateNonBusinessStopKind Idle = WireToGateNonBusinessStopKind.IdleReturn;
+        const WireToGateNonBusinessStopKind Clearing = WireToGateNonBusinessStopKind.Clearing;
+        const WireToGateNonBusinessStopKind Charging = WireToGateNonBusinessStopKind.Charging;
+        return new TheoryData<string?, string, WireToGateNonBusinessStopKind>
         {
-            foreach (string category in new[] { "BUSINESS", "WAITING_POINT", "CHARGER" })
-            {
-                data.Add(purpose, category);
-            }
-        }
-
-        return data;
+            { null, "BUSINESS", None },
+            { null, "WAITING_POINT", Idle },
+            { null, "CHARGER", Charging },
+            { "TRANSPORT", "BUSINESS", None },
+            { "TRANSPORT", "WAITING_POINT", Idle },
+            { "TRANSPORT", "CHARGER", Charging },
+            { "CHARGING", "BUSINESS", Charging },
+            { "CHARGING", "WAITING_POINT", Charging },
+            { "CHARGING", "CHARGER", Charging },
+            { "CLEARING_MAINTENANCE", "BUSINESS", Clearing },
+            { "CLEARING_MAINTENANCE", "WAITING_POINT", Clearing },
+            { "CLEARING_MAINTENANCE", "CHARGER", Clearing },
+            { "IDLE_RETURN", "BUSINESS", Idle },
+            { "IDLE_RETURN", "WAITING_POINT", Idle },
+            { "IDLE_RETURN", "CHARGER", Idle }
+        };
     }
 
     private static WireToGateJourneySnapshot Journey(
