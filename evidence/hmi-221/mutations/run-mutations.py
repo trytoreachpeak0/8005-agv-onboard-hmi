@@ -189,6 +189,37 @@ MUTATIONS = [
      "            _ = new WireToGateStationClearanceOutcome(\n                WireToGateStationClearanceOutcomeKind.Unknown,",
      [G2],
      ["AnUnansweredClearanceIsShownAsUnknownAndAResubmissionCarriesTheSameConfirmationRequestId"]),
+    # ---- after the independent review (S1, S3, S4) ----
+    ("R1-protocol-problem-treated-as-unknown",
+     "审查 S1：与请求关联的 ProtocolProblem 不单独认，照旧当成普通失败",
+     CLIENT,
+     "                throw new WireToGateRequestNotAcceptedException(\n",
+     "                throw new InvalidDataException(\n",
+     [G2],
+     ["AProtocolProblemToTheRequestEndsItsIdAndEachLaterPressIsANewConfirmation"]),
+    ("R2-only-listed-exceptions-caught",
+     "审查 S3：按下只接列表里的四种异常",
+     BUSINESS,
+     "        catch (Exception exception)\n        {\n            // Every failure, not a list of them.",
+     "        catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)\n        {\n            // Every failure, not a list of them.",
+     [G2],
+     ["ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown"]),
+    ("R3-contradictory-result-accepted",
+     "审查 S4：不拒收自相矛盾的应答",
+     CLIENT,
+     "            || payload.Outcome == \"REJECTED\" && payload.StationReleased\n            || payload.Outcome == \"CONFIRMED\" && payload.Problem is not null)\n",
+     ")\n",
+     [G2],
+     ["AResultThatContradictsItselfIsRefusedAndThePressEndsAsUnknown"]),
+    ("R4-malformed-result-surfaces-as-json-exception",
+     "审查 S3：畸形应答不在类型化读取之前拒收，JsonException 原样冒出",
+     CLIENT,
+     ["            || outcome.ValueKind is not JsonValueKind.String\n",
+      "        catch (JsonException exception)\n        {\n            throw new InvalidDataException(\"PROTOCOL_SCHEMA_INVALID\", exception);\n        }\n\n        RequireUuid(payload.ConfirmationRequestId, nameof(payload.ConfirmationRequestId));\n        // The two combinations"],
+     ["",
+      "        catch (JsonException)\n        {\n            throw;\n        }\n\n        RequireUuid(payload.ConfirmationRequestId, nameof(payload.ConfirmationRequestId));\n        // The two combinations"],
+     [G2],
+     ["AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable"]),
 ]
 
 FAILED = re.compile(r"^\s+Failed (\S.*?) \[[^\]]*\]\s*$")
@@ -216,12 +247,17 @@ def main():
         if only and name not in only:
             continue
         original = read(path)
-        hits = original.count(old)
-        if hits != 1:
-            print(f"{name}: NOT APPLIED, pattern matched {hits} times")
+        pairs = list(zip(old, new)) if isinstance(old, list) else [(old, new)]
+        hits = [original.count(a) for a, _ in pairs]
+        if any(hit != 1 for hit in hits):
+            print(f"{name}: NOT APPLIED, patterns matched {hits} times")
             summary.append((name, what, "NOT APPLIED", [], expected))
             continue
-        write(path, original.replace(old, new))
+        mutated = original
+        for a, b in pairs:
+            mutated = mutated.replace(a, b)
+        write(path, mutated)
+        old, new = " ||| ".join(a for a, _ in pairs), " ||| ".join(b for _, b in pairs)
         log = [f"# {name}", what, f"file: {path}", "", "--- replaced ---", old, "--- with ---", new, ""]
         failed = []
         status = "ran"

@@ -31,6 +31,9 @@ public static class WireToGateStationClearanceText
     /// <summary>等应答超时或断线，结果未知。</summary>
     public const string UnknownStatus = "UNKNOWN";
 
+    /// <summary>服务端以 <c>ProtocolProblem</c> 答这条请求：读到了，没有受理。</summary>
+    public const string NotAcceptedStatus = "NOT_ACCEPTED";
+
     /// <summary>确认对话框的正文：原桩、确认人，以及这一次是不是对结果未知的那一次的重新提交。</summary>
     public static string ConfirmationText(WireToGateStationClearancePrompt prompt)
     {
@@ -72,6 +75,8 @@ public static class WireToGateStationClearanceText
             $"服务端已确认清桩（充电桩 {outcome.StationId}），站点尚未释放。车辆与站点状态以服务端下发的为准。",
         { Kind: WireToGateStationClearanceOutcomeKind.Rejected } =>
             $"服务端拒绝清桩确认（充电桩 {outcome.StationId}）：{outcome.ReasonCode ?? "未给出原因"}。站点保持原状态。",
+        { Kind: WireToGateStationClearanceOutcomeKind.NotAccepted } =>
+            $"服务端没有受理清桩确认（充电桩 {outcome.StationId}）：{outcome.ReasonCode ?? "未给出原因"}。站点保持原状态，再次提交会是一次新的确认。",
         _ => $"清桩确认（充电桩 {outcome.StationId}）结果未知，请查看车辆状态后再决定是否重新提交。"
             + (outcome.ReasonCode is null ? string.Empty : $"原因：{outcome.ReasonCode}。")
     };
@@ -83,6 +88,7 @@ public static class WireToGateStationClearanceText
         { Kind: WireToGateStationClearanceOutcomeKind.Confirmed, StationReleased: true } => ConfirmedReleasedStatus,
         { Kind: WireToGateStationClearanceOutcomeKind.Confirmed } => ConfirmedNotReleasedStatus,
         { Kind: WireToGateStationClearanceOutcomeKind.Rejected } => RejectedStatus,
+        { Kind: WireToGateStationClearanceOutcomeKind.NotAccepted } => NotAcceptedStatus,
         _ => UnknownStatus
     };
 }

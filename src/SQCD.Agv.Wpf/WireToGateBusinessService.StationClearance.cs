@@ -3,6 +3,7 @@ using System.Text.Json;
 using SQCD.Agv.Application;
 using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
+using SQCD.Agv.Infrastructure;
 
 namespace SQCD.Agv.Wpf;
 
@@ -41,7 +42,8 @@ namespace SQCD.Agv.Wpf;
 /// result unknown and nothing is resent. When the operator presses again for the same charger, the same
 /// payload goes out again -- the same <c>confirmationRequestId</c>, the message's business dedup key -- under a
 /// new messageId, because the server's inbox refuses a repeated messageId whose line differs in so much as
-/// <c>sentAt</c>. An answer of either kind ends that: the next press is a new confirmation. The request is kept
+/// <c>sentAt</c>. An answer ends that -- a result of either kind, or a <c>ProtocolProblem</c> correlated to the
+/// request, which says the server read it and did not take it: the next press is a new confirmation. The request is kept
 /// in memory only (the release manifest gives the message <c>durableBeforeSend: false</c>); a restart forgets
 /// it, and the press after a restart carries a new id.
 /// </para>
@@ -183,16 +185,41 @@ public sealed partial class WireToGateBusinessService
 
             return StationClearancePress.Blocked("会话未就绪，清桩确认未发送。");
         }
-        catch (Exception exception) when (
-            exception is IOException
-                or TimeoutException
-                or InvalidOperationException
-                or InvalidDataException)
+        catch (WireToGateRequestNotAcceptedException exception) when (request is not null)
         {
+            // The server's own answer to this request: read, and not taken. That ends the id. Kept as unknown, every
+            // later press would resend the id the server has just refused -- and a refusal such as
+            // BUSINESS_ID_CONTENT_CONFLICT is about that id (8005-agv-onboard-hmi#221 review, S1).
             _logger.Write(
                 LogSeverity.Warning,
                 nameof(WireToGateBusinessService),
-                $"人工清桩确认未完成：confirmationRequestId={request?.ConfirmationRequestId ?? "未生成"}，reason={exception.Message}。",
+                $"服务端没有受理人工清桩确认：confirmationRequestId={request.ConfirmationRequestId}，reason={exception.ReasonCode}。");
+            WireToGateStationClearanceOutcome? notAccepted = EndStationClearanceAsNotAccepted(
+                request, exception.ReasonCode);
+            return notAccepted is null
+                ? new StationClearancePress(false, null, string.Empty)
+                : new StationClearancePress(
+                    false,
+                    "STATION_CLEARANCE_NOT_ACCEPTED",
+                    WireToGateStationClearanceText.StatusText(notAccepted));
+        }
+        catch (Exception exception)
+        {
+            // Every failure, not a list of them. The session fails a waiting request with whatever its receive loop
+            // failed with, and that is not this method's to enumerate: a malformed message of any type read while
+            // this press waits surfaces here as a JsonException. Escaping from here it reaches the window's
+            // async void handler and from there the dispatcher's unhandled-exception path, which latches
+            // UNHANDLED_UI_ERROR until the vehicle is restarted -- for a press that changed nothing
+            // (8005-agv-onboard-hmi#221 review, S3).
+            bool expected = exception is IOException
+                or TimeoutException
+                or InvalidOperationException
+                or InvalidDataException;
+            _logger.Write(
+                expected ? LogSeverity.Warning : LogSeverity.Error,
+                nameof(WireToGateBusinessService),
+                $"人工清桩确认未完成：confirmationRequestId={request?.ConfirmationRequestId ?? "未生成"}，"
+                + $"{exception.GetType().Name}：{exception.Message}。",
                 exception);
             if (request is null)
             {
@@ -315,6 +342,29 @@ public sealed partial class WireToGateBusinessService
                 unanswered.StationId,
                 result.StationReleased,
                 result.Problem?.ReasonCode);
+            return _stationClearanceOutcome;
+        }
+    }
+
+    private WireToGateStationClearanceOutcome? EndStationClearanceAsNotAccepted(
+        ManualStationClearanceConfirmationRequestedPayload request,
+        string reasonCode)
+    {
+        lock (_stationClearanceGate)
+        {
+            // Not if a result got here first through the late path: that one stands.
+            if (!ReferenceEquals(_stationClearanceUnanswered, request))
+            {
+                return null;
+            }
+
+            _stationClearanceUnanswered = null;
+            _stationClearanceOutcome = new WireToGateStationClearanceOutcome(
+                WireToGateStationClearanceOutcomeKind.NotAccepted,
+                request.ConfirmationRequestId,
+                request.StationId,
+                false,
+                reasonCode);
             return _stationClearanceOutcome;
         }
     }

@@ -935,6 +935,25 @@ public sealed class FakeControlServer : IAsyncDisposable
     public int ManualStationClearanceResponseCopies { get; set; } = 1;
 
     /// <summary>
+    /// Set, each <c>ManualStationClearanceConfirmationRequested</c> is answered with a <c>ProtocolProblem</c>
+    /// carrying this reason and correlated to the request, instead of a result: the server read the request and
+    /// did not take it.
+    /// </summary>
+    public string? ManualStationClearanceProtocolProblem { get; set; }
+
+    /// <summary>
+    /// A <c>ProtocolProblem</c> the test composes, about the message id it names and correlated to it, on the
+    /// latest session.
+    /// </summary>
+    public Task SendProtocolProblemAsync(string rejectedMessageId, string rejectedMessageType, string reasonCode)
+    {
+        ConnectionContext context = Volatile.Read(ref _latestSession)
+            ?? throw new InvalidOperationException("No session has been accepted yet.");
+        return WriteEnvelopeAsync(
+            context, CreateProtocolProblem(context, rejectedMessageId, rejectedMessageType, reasonCode));
+    }
+
+    /// <summary>
     /// A <c>ManualStationClearanceConfirmationResult</c> the test composes, correlated to the request messageId it
     /// names, on the latest session.
     /// </summary>
@@ -1728,7 +1747,8 @@ public sealed class FakeControlServer : IAsyncDisposable
                             .ConfigureAwait(false);
                         break;
                     case "ManualStationClearanceConfirmationRequested"
-                        when RespondToManualStationClearanceConfirmations:
+                        when RespondToManualStationClearanceConfirmations
+                            || ManualStationClearanceProtocolProblem is not null:
                         await HandleManualStationClearanceConfirmationRequestedAsync(context, root)
                             .ConfigureAwait(false);
                         break;
@@ -2589,6 +2609,16 @@ public sealed class FakeControlServer : IAsyncDisposable
         string messageId = request.GetProperty("messageId").GetString()!;
         string confirmationRequestId =
             request.GetProperty("payload").GetProperty("confirmationRequestId").GetString()!;
+        if (ManualStationClearanceProtocolProblem is { } reasonCode)
+        {
+            await WriteEnvelopeAsync(
+                context,
+                CreateProtocolProblem(
+                    context, messageId, "ManualStationClearanceConfirmationRequested", reasonCode))
+                .ConfigureAwait(false);
+            return;
+        }
+
         int responseCopies = Math.Max(0, ManualStationClearanceResponseCopies);
         for (int index = 0; index < responseCopies; index++)
         {

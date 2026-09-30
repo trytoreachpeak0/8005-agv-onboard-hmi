@@ -31,12 +31,15 @@ public enum WireToGateStationClearanceOutcomeKind
 {
     Confirmed,
     Rejected,
-    Unknown
+    Unknown,
+    NotAccepted
 }
 
 /// <summary>
 /// What the last confirmation came to. <c>Unknown</c> is a timeout or a dropped session: the request
-/// may or may not have been taken, and it is never sent again on its own.
+/// may or may not have been taken, and it is never sent again on its own. <c>NotAccepted</c> is the
+/// server answering the request itself with a <c>ProtocolProblem</c>: it read it and did not take it,
+/// which ends that confirmation request id as surely as a result does.
 /// </summary>
 public sealed record WireToGateStationClearanceOutcome(
     WireToGateStationClearanceOutcomeKind Kind,

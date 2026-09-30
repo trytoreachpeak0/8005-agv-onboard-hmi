@@ -390,8 +390,10 @@ public sealed class ManualStationClearanceG2Tests
             [.. harness.Events.Where(item => item.Kind == "STATION_CLEARANCE_BLOCKED")];
         Assert.Equal(2, refusals.Length);
         Assert.All(refusals, item => Assert.Contains("还在等待服务端应答", item.Message, StringComparison.Ordinal));
-        await AssertNothingIsSentAsync(harness, 1, token);
 
+        // Answered straight away: the first press is waiting on the product's own two-second message timeout, and
+        // anything held here first is time taken out of it -- a stalled process would run the wait out and turn
+        // this test red for the wrong reason. The window that shows nothing more was sent comes after the answer.
         await harness.Server.SendManualStationClearanceResultAsync(request.MessageId, request.ConfirmationRequestId);
         Assert.True(await first);
         await WaitForStatusAsync(harness, WireToGateStationClearanceText.ConfirmedReleasedStatus, token);
@@ -530,6 +532,218 @@ public sealed class ManualStationClearanceG2Tests
                 Assert.Single(harness.Events, item => item.Kind.StartsWith("STATION_CLEARANCE_", StringComparison.Ordinal));
             },
             token);
+    }
+
+    /// <summary>
+    /// The server answers the request itself with a <c>ProtocolProblem</c>: it read the request and did not take
+    /// it. That is an answer, shown as such with its reason code, and it ends the confirmation request id -- every
+    /// later press is a new confirmation.
+    /// </summary>
+    /// <remarks>
+    /// Treated as an unknown, the id would be kept and resent on each press, and the refusal used here is about
+    /// that very id: the review's probe had three presses send the same refused id and the screen say 「结果未知」
+    /// each time (<c>8005-agv-onboard-hmi#221</c> review, S1).
+    /// </remarks>
+    [Fact]
+    public async Task AProtocolProblemToTheRequestEndsItsIdAndEachLaterPressIsANewConfirmation()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(
+            token, server => server.ManualStationClearanceProtocolProblem = "BUSINESS_ID_CONTENT_CONFLICT");
+        StationClearanceDisplay shown = await WaitForEntryAsync(harness, token);
+
+        Assert.False(await harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt!, token));
+
+        StationClearanceDisplay notAccepted = await WaitForDisplayAsync(
+            harness,
+            display => display.Status == WireToGateStationClearanceText.NotAcceptedStatus && display.CanConfirm,
+            "the refusal shown and the entry offered again",
+            token);
+        Assert.Contains("服务端没有受理", notAccepted.StatusText, StringComparison.Ordinal);
+        Assert.Contains("BUSINESS_ID_CONTENT_CONFLICT", notAccepted.StatusText, StringComparison.Ordinal);
+        Assert.DoesNotContain("结果未知", notAccepted.StatusText, StringComparison.Ordinal);
+        Assert.Null(notAccepted.Prompt!.ResubmittedConfirmationRequestId);
+        Assert.Single(harness.Events, item => item.Kind == "STATION_CLEARANCE_NOT_ACCEPTED");
+        Assert.DoesNotContain(harness.Events, item => item.Kind == "STATION_CLEARANCE_UNKNOWN");
+        Assert.True(harness.Session.Current.Connected);
+
+        Assert.False(await harness.ViewModel.ConfirmStationClearanceAsync(notAccepted.Prompt, token));
+        StationClearanceDisplay again = await WaitForEntryAsync(harness, token);
+        Assert.Null(again.Prompt!.ResubmittedConfirmationRequestId);
+        Assert.False(await harness.ViewModel.ConfirmStationClearanceAsync(again.Prompt, token));
+
+        string[] ids = [.. Requests(harness).Select(request => request.ConfirmationRequestId)];
+        Assert.Equal(3, ids.Length);
+        Assert.Equal(3, ids.Distinct(StringComparer.Ordinal).Count());
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// A <c>ProtocolProblem</c> about some other message does not end the id. It is not an answer to the request:
+    /// it fails the session, the press ends as unknown, and after the reconnect the same confirmation is offered
+    /// again under the same id.
+    /// </summary>
+    [Fact]
+    public async Task AProtocolProblemAboutAnotherMessageLeavesTheRequestUnknownUnderTheSameId()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(token);
+        StationClearanceDisplay shown = await WaitForEntryAsync(harness, token);
+
+        Task<bool> press = harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt!, token);
+        await harness.WaitUntilAsync(() => Requests(harness).Length == 1, "the request to reach the server", token);
+        SentRequest first = Assert.Single(Requests(harness));
+        await harness.Server.SendProtocolProblemAsync(
+            Guid.NewGuid().ToString("D"), "OperationProgress", "PROTOCOL_SCHEMA_INVALID");
+        Assert.False(await press);
+
+        await WaitForStatusAsync(harness, WireToGateStationClearanceText.UnknownStatus, token);
+        Assert.DoesNotContain(harness.Events, item => item.Kind == "STATION_CLEARANCE_NOT_ACCEPTED");
+        await harness.WaitUntilAsync(() => !harness.Session.Current.Connected, "the session to be failed", token);
+
+        await ReconnectAndExpectTheSameConfirmationAsync(harness, first, token);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// A malformed result -- <c>outcome</c> a number -- is refused as <c>PROTOCOL_SCHEMA_INVALID</c> like any other
+    /// malformed message: the press ends as unknown, nothing escapes it, the vehicle is not latched, and the same
+    /// confirmation can be resubmitted after the reconnect.
+    /// </summary>
+    /// <remarks>
+    /// The review's probe: this line came out of the typed read as a <c>JsonException</c>, escaped the press, and
+    /// through the window's <c>async void</c> handler latched <c>UNHANDLED_UI_ERROR</c> until a restart
+    /// (<c>8005-agv-onboard-hmi#221</c> review, S3). The malformed line is registered in
+    /// <c>schema-known-violations.json</c> as deliberate.
+    /// </remarks>
+    [Fact]
+    public async Task AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(token);
+        StationClearanceDisplay shown = await WaitForEntryAsync(harness, token);
+
+        Task<bool> press = harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt!, token);
+        await harness.WaitUntilAsync(() => Requests(harness).Length == 1, "the request to reach the server", token);
+        SentRequest first = Assert.Single(Requests(harness));
+        await harness.Server.SendCommandAsync(
+            "ManualStationClearanceConfirmationResult",
+            Guid.NewGuid().ToString("D"),
+            new
+            {
+                confirmationRequestId = first.ConfirmationRequestId,
+                outcome = 5,
+                problem = (object?)null,
+                stationReleased = true
+            },
+            first.MessageId);
+
+        Assert.False(await press);
+        await WaitForStatusAsync(harness, WireToGateStationClearanceText.UnknownStatus, token);
+        // Refused as a malformed message, by name: the catch-all below it would also have ended the press as
+        // unknown, with a JsonException, and this test must not pass on that.
+        Assert.Contains(
+            harness.Logger.Exceptions,
+            entry => entry.Exception is InvalidDataException { Message: "PROTOCOL_SCHEMA_INVALID" }
+                && entry.Message.StartsWith("人工清桩确认未完成", StringComparison.Ordinal));
+        Assert.False(harness.Controller.IsFatalFaultLatched);
+        Assert.Empty(harness.UiErrors);
+
+        await ReconnectAndExpectTheSameConfirmationAsync(harness, first, token);
+        Assert.False(harness.Controller.IsFatalFaultLatched);
+    }
+
+    /// <summary>
+    /// The session fails a waiting request with whatever its receive loop failed with, and that need not be one of
+    /// the failures a request expects: here another message's malformed payload surfaces as a
+    /// <c>JsonException</c>. The press still ends as unknown, and nothing escapes it to latch the vehicle.
+    /// </summary>
+    /// <remarks>
+    /// This is the case the press's catch-all exists for. The clearance result's own malformed payloads no longer
+    /// reach it -- they are refused as <c>PROTOCOL_SCHEMA_INVALID</c> before the typed read, see the test above --
+    /// so it is pinned with a message this ticket does not own: a <c>ManualChargingReturnToServiceResult</c> whose
+    /// <c>outcome</c> is a number. Registered in <c>schema-known-violations.json</c> as deliberate.
+    /// </remarks>
+    [Fact]
+    public async Task ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(token);
+        StationClearanceDisplay shown = await WaitForEntryAsync(harness, token);
+
+        Task<bool> press = harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt!, token);
+        await harness.WaitUntilAsync(() => Requests(harness).Length == 1, "the request to reach the server", token);
+        await harness.Server.SendCommandAsync(
+            "ManualChargingReturnToServiceResult",
+            Guid.NewGuid().ToString("D"),
+            new
+            {
+                requestId = Guid.NewGuid().ToString("D"),
+                outcome = 5,
+                problem = (object?)null,
+                vehicleBusinessStateRevision = 1
+            },
+            Guid.NewGuid().ToString("D"));
+
+        Assert.False(await press);
+        StationClearanceDisplay unknown = await WaitForStatusAsync(
+            harness, WireToGateStationClearanceText.UnknownStatus, token);
+        Assert.Contains("结果未知", unknown.StatusText, StringComparison.Ordinal);
+        Assert.Contains(
+            harness.Logger.Exceptions,
+            entry => entry.Exception is JsonException
+                && entry.Message.StartsWith("人工清桩确认未完成", StringComparison.Ordinal));
+        Assert.False(harness.Controller.IsFatalFaultLatched);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// A result whose fields contradict each other is refused rather than shown: a rejection that says the station
+    /// was released, and a confirmation that carries a problem. The press ends as unknown and the screen never
+    /// states either half.
+    /// </summary>
+    [Theory]
+    [InlineData("REJECTED", true, false)]
+    [InlineData("REJECTED", true, true)]
+    [InlineData("CONFIRMED", true, true)]
+    [InlineData("CONFIRMED", false, true)]
+    public async Task AResultThatContradictsItselfIsRefusedAndThePressEndsAsUnknown(
+        string outcome,
+        bool stationReleased,
+        bool withProblem)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(
+            token,
+            server =>
+            {
+                server.RespondToManualStationClearanceConfirmations = true;
+                server.ManualStationClearanceOutcome = outcome;
+                server.ManualStationClearanceStationReleased = stationReleased;
+                server.ManualStationClearanceProblem = withProblem
+                    ? new WireToGateProblemPayload("ACTION_NOT_ALLOWED_IN_STATE", null, null)
+                    : null;
+            });
+        StationClearanceDisplay shown = await WaitForEntryAsync(harness, token);
+
+        Assert.False(await harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt!, token));
+
+        await WaitForStatusAsync(harness, WireToGateStationClearanceText.UnknownStatus, token);
+        await AssertWhileAsync(
+            () =>
+            {
+                Assert.Equal(WireToGateStationClearanceText.UnknownStatus, harness.ViewModel.StationClearance.Status);
+                Assert.DoesNotContain(
+                    harness.Events,
+                    item => item.Kind is "STATION_CLEARANCE_CONFIRMED" or "STATION_CLEARANCE_REJECTED");
+            },
+            token);
+        Assert.Contains(
+            harness.Logger.Exceptions,
+            entry => entry.Exception.Message == "PROTOCOL_SCHEMA_INVALID"
+                && entry.Message.StartsWith("人工清桩确认未完成", StringComparison.Ordinal));
+        Assert.False(harness.Controller.IsFatalFaultLatched);
+        Assert.Empty(harness.UiErrors);
     }
 
     /// <summary>
@@ -825,6 +1039,50 @@ public sealed class ManualStationClearanceG2Tests
         await AssertNothingIsSentAsync(harness, 0, token);
     }
 
+    /// <summary>
+    /// Reconnects, waits for the new session to settle, and requires the entry to offer <paramref name="first"/>
+    /// again -- the unknown still shown -- and the press made on it to carry the same id and payload.
+    /// </summary>
+    private static async Task ReconnectAndExpectTheSameConfirmationAsync(
+        Harness harness,
+        SentRequest first,
+        CancellationToken token)
+    {
+        harness.Server.RespondToManualStationClearanceConfirmations = true;
+        await harness.Session.Client.ConnectAndRecoverAsync(token);
+        await WaitForTheWireToGoQuietAsync(harness, token);
+        StationClearanceDisplay again = await WaitForDisplayAsync(
+            harness,
+            display => display.Prompt?.ResubmittedConfirmationRequestId == first.ConfirmationRequestId
+                && display.Status == WireToGateStationClearanceText.UnknownStatus,
+            "the entry to offer the same confirmation again after the reconnect, the unknown still shown",
+            token);
+
+        Assert.True(await harness.ViewModel.ConfirmStationClearanceAsync(again.Prompt!, token));
+        SentRequest resubmitted = Requests(harness)[^1];
+        Assert.Equal(2, Requests(harness).Length);
+        Assert.Equal(first.ConfirmationRequestId, resubmitted.ConfirmationRequestId);
+        Assert.Equal(first.Payload.GetRawText(), resubmitted.Payload.GetRawText());
+        Assert.NotEqual(first.MessageId, resubmitted.MessageId);
+        await WaitForStatusAsync(harness, WireToGateStationClearanceText.ConfirmedReleasedStatus, token);
+    }
+
+    /// <summary>What each harness's session client recorded, for the message of a wait that ran out.</summary>
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Harness, List<string>> SessionDiagnostics = [];
+
+    private static string[] DiagnosticsOf(Harness harness)
+    {
+        if (!SessionDiagnostics.TryGetValue(harness, out List<string>? diagnostics))
+        {
+            return [];
+        }
+
+        lock (diagnostics)
+        {
+            return [.. diagnostics];
+        }
+    }
+
     private sealed record SentRequest(string MessageId, int Connection, JsonElement Root)
     {
         public JsonElement Payload => Root.GetProperty("payload");
@@ -862,16 +1120,29 @@ public sealed class ManualStationClearanceG2Tests
             server =>
             {
                 server.VectorJourneySnapshotsAfterRecovery = ["UpcomingStopPlanSnapshot", "VehicleBusinessStateSnapshot"];
-                server.JourneyActivePurpose = purpose;
+                // Both snapshots are fixed objects, the business state included. The fake's own business state takes
+                // observedAt afresh on every send, so a reconnect would resend revision 1 with other content and the
+                // vehicle would rightly fail the new session with SNAPSHOT_REVISION_CONTENT_CONFLICT -- which is what
+                // these tests' reconnects did until this was pinned. The real server resends a revision as it was.
                 server.JourneySnapshotPayloads = new Dictionary<string, object>
                 {
                     ["UpcomingStopPlanSnapshot"] = Payloads.Plan(
-                        1, legs ?? [ChargerLeg(1, Charger, "COMPLETED"), WaitingLeg(2, "ACTIVE")])
+                        1, legs ?? [ChargerLeg(1, Charger, "COMPLETED"), WaitingLeg(2, "ACTIVE")]),
+                    ["VehicleBusinessStateSnapshot"] = BusinessState(1, purpose)
                 };
                 configure?.Invoke(server);
             },
             token,
             recoveryOptions: recoveryOptions ?? VerifiedMaintainer());
+        List<string> diagnostics = [];
+        SessionDiagnostics.Add(harness, diagnostics);
+        harness.Session.Client.DiagnosticRecorded += (_, args) =>
+        {
+            lock (diagnostics)
+            {
+                diagnostics.Add(args.Value);
+            }
+        };
         try
         {
             await harness.WaitUntilAsync(
@@ -904,14 +1175,34 @@ public sealed class ManualStationClearanceG2Tests
         CancellationToken token)
     {
         StationClearanceDisplay display = StationClearanceDisplay.Empty;
-        await harness.WaitUntilAsync(
-            () =>
-            {
-                display = harness.ViewModel.StationClearance;
-                return predicate(display);
-            },
-            expectation,
-            token);
+        try
+        {
+            await harness.WaitUntilAsync(
+                () =>
+                {
+                    display = harness.ViewModel.StationClearance;
+                    return predicate(display);
+                },
+                expectation,
+                token);
+        }
+        catch (Xunit.Sdk.XunitException exception)
+        {
+            // Both layers, so a timeout says whether the business service never offered it or the view model never
+            // showed what the business service offers.
+            throw new Xunit.Sdk.XunitException(
+                $"{exception.Message} View model: {display}. Business service: {harness.Business.StationClearance}. "
+                + $"Session: {harness.Session.Current.Readiness}, connected={harness.Session.Current.Connected}, "
+                + $"reasons=[{string.Join(",", harness.Session.Current.ReasonCodes)}]. Warnings and errors logged: "
+                + string.Join(
+                    " | ",
+                    harness.Logger.Entries
+                        .Where(entry => entry.Severity is LogSeverity.Warning or LogSeverity.Error)
+                        .Select(entry => $"{entry.Source}: {entry.Message}")
+                        .TakeLast(8))
+                + ". Session diagnostics: " + string.Join(" | ", DiagnosticsOf(harness).TakeLast(12)));
+        }
+
         return display;
     }
 

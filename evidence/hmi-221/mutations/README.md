@@ -22,3 +22,17 @@ M04／M08 是确认之后还要继续用入口的用例，M14／M19 是走过「
 
 把 `MainWindow.xaml` 里说明与结果两行的 `Text` 绑定对调，跑 `scripts/check-ui-layout.ps1`：`Status: FAIL`，点名
 `stationClearanceEntry`。还原后 `PASS`。输出在 `M20-notice-and-status-bindings-swapped.txt`。
+
+## 独立审查之后（S1、S3、S4）
+
+审查要求补的用例同样各做了一次注入，都在审查修改的提交上跑，全部变红，红的只有对应的用例：
+
+| 注入 | 改坏了什么 | 红 |
+| --- | --- | --- |
+| R1 | 与请求关联的 `ProtocolProblem` 不单独认，当成普通失败 | `AProtocolProblemToTheRequestEndsItsIdAndEachLaterPressIsANewConfirmation` |
+| R2 | 按下只接原来列表里的四种异常 | `ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown` |
+| R3 | 不拒收自相矛盾的应答 | `AResultThatContradictsItselfIsRefusedAndThePressEndsAsUnknown`（4 个取值） |
+| R4 | 畸形应答不在类型化读取之前拒收，`JsonException` 原样冒出 | `AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable` |
+
+M01～M19 是在 `d4c9644` 上跑的，审查修改之后没有整批重跑；它们针对的判断与用例在这次修改里没有变，变的是等待辅助方法
+与假服务端的配置。

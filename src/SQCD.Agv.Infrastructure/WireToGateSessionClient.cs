@@ -1174,7 +1174,15 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             WireToGateEnvelope responseEnvelope = await response.Task
                 .WaitAsync(_options.MessageTimeout, cancellationToken)
                 .ConfigureAwait(false);
-            ThrowIfProtocolProblem(responseEnvelope);
+            if (string.Equals(responseEnvelope.MessageType, "ProtocolProblem", StringComparison.Ordinal))
+            {
+                // It reached this waiter by its correlationId, so it is the server's answer to this request: read and
+                // not taken. Told apart from a wait that ran out, because the caller ends the id on this one.
+                throw new WireToGateRequestNotAcceptedException(
+                    WireToGateProtocolSerializer
+                        .DeserializePayload<ProtocolProblemPayload>(responseEnvelope).Problem.ReasonCode);
+            }
+
             WireToGateProtocolSerializer.RequireMessage(
                 responseEnvelope,
                 "ManualStationClearanceConfirmationResult",
@@ -1220,19 +1228,38 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             throw new InvalidDataException("CORRELATION_INVALID");
         }
 
-        if (!envelope.Payload.TryGetProperty("confirmationRequestId", out _)
-            || !envelope.Payload.TryGetProperty("outcome", out _)
-            || !envelope.Payload.TryGetProperty("problem", out _)
+        // Each property's JSON kind is checked here, before the typed read: a number where a string belongs would
+        // otherwise surface as a JsonException, which is not what a malformed message is reported as anywhere else.
+        if (!envelope.Payload.TryGetProperty("confirmationRequestId", out JsonElement confirmationRequestId)
+            || confirmationRequestId.ValueKind is not JsonValueKind.String
+            || !envelope.Payload.TryGetProperty("outcome", out JsonElement outcome)
+            || outcome.ValueKind is not JsonValueKind.String
+            || !envelope.Payload.TryGetProperty("problem", out JsonElement problem)
+            || problem.ValueKind is not (JsonValueKind.Object or JsonValueKind.Null)
             || !envelope.Payload.TryGetProperty("stationReleased", out JsonElement stationReleased)
             || stationReleased.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
         {
             throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
         }
 
-        ManualStationClearanceConfirmationResultPayload payload = WireToGateProtocolSerializer
-            .DeserializePayload<ManualStationClearanceConfirmationResultPayload>(envelope);
+        ManualStationClearanceConfirmationResultPayload payload;
+        try
+        {
+            payload = WireToGateProtocolSerializer
+                .DeserializePayload<ManualStationClearanceConfirmationResultPayload>(envelope);
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID", exception);
+        }
+
         RequireUuid(payload.ConfirmationRequestId, nameof(payload.ConfirmationRequestId));
-        if (payload.Outcome is not ("CONFIRMED" or "REJECTED"))
+        // The two combinations that contradict themselves are refused rather than shown: a rejection that says the
+        // station was released, and a confirmation that carries a problem. The screen would have to pick one half
+        // of the message to believe (8005-agv-onboard-hmi#221 review, S4).
+        if (payload.Outcome is not ("CONFIRMED" or "REJECTED")
+            || payload.Outcome == "REJECTED" && payload.StationReleased
+            || payload.Outcome == "CONFIRMED" && payload.Problem is not null)
         {
             throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
         }

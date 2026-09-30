@@ -89,3 +89,14 @@ M19-result-status-unknown-hidden	RED AS EXPECTED	结果未知时不显示结果�
 	SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ALaterClearanceOfTheSameChargerStartsFromNothing
 M03-no-gate-on-a-second-press	RED AS EXPECTED	第一次应答之前不挡第二次按下
 	SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ASecondPressWhileTheFirstIsUnansweredSendsNothing
+R1-protocol-problem-treated-as-unknown	RED AS EXPECTED	审查 S1：与请求关联的 ProtocolProblem 不单独认，照旧当成普通失败
+	SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AProtocolProblemToTheRequestEndsItsIdAndEachLaterPressIsANewConfirmation
+R2-only-listed-exceptions-caught	RED AS EXPECTED	审查 S3：按下只接列表里的四种异常
+	SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown
+R3-contradictory-result-accepted	RED AS EXPECTED	审查 S4：不拒收自相矛盾的应答
+	SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AResultThatContradictsItselfIsRefusedAndThePressEndsAsUnknown(outcome: "CONFIRMED", stationReleased: True, withProblem: True)
+	SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AResultThatContradictsItselfIsRefusedAndThePressEndsAsUnknown(outcome: "REJECTED", stationReleased: True, withProblem: False)
+	SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AResultThatContradictsItselfIsRefusedAndThePressEndsAsUnknown(outcome: "CONFIRMED", stationReleased: False, withProblem: True)
+	SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AResultThatContradictsItselfIsRefusedAndThePressEndsAsUnknown(outcome: "REJECTED", stationReleased: True, withProblem: True)
+R4-malformed-result-surfaces-as-json-exception	RED AS EXPECTED	审查 S3：畸形应答不在类型化读取之前拒收，JsonException 原样冒出
+	SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable

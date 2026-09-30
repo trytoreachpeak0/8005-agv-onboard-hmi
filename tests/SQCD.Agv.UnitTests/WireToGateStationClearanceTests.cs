@@ -122,7 +122,8 @@ public sealed class WireToGateStationClearanceTests
 
     /// <summary>
     /// The result line: confirmed with the server's <c>stationReleased</c> either way, rejected with the reason
-    /// code as sent, and unknown with the sentence the ticket fixes.
+    /// code as sent, unknown with the sentence the ticket fixes, and not accepted -- the server's
+    /// <c>ProtocolProblem</c> to the request -- as its own line, never as unknown.
     /// </summary>
     [Fact]
     public void TheResultLineSaysWhatTheServerSaid()
@@ -132,11 +133,14 @@ public sealed class WireToGateStationClearanceTests
         WireToGateStationClearanceOutcome rejected = Outcome(
             WireToGateStationClearanceOutcomeKind.Rejected, false, "ACTION_NOT_ALLOWED_IN_STATE");
         WireToGateStationClearanceOutcome unknown = Outcome(WireToGateStationClearanceOutcomeKind.Unknown, false, null);
+        WireToGateStationClearanceOutcome notAccepted = Outcome(
+            WireToGateStationClearanceOutcomeKind.NotAccepted, false, "BUSINESS_ID_CONTENT_CONFLICT");
 
         Assert.Equal(WireToGateStationClearanceText.ConfirmedReleasedStatus, WireToGateStationClearanceText.Status(released));
         Assert.Equal(WireToGateStationClearanceText.ConfirmedNotReleasedStatus, WireToGateStationClearanceText.Status(held));
         Assert.Equal(WireToGateStationClearanceText.RejectedStatus, WireToGateStationClearanceText.Status(rejected));
         Assert.Equal(WireToGateStationClearanceText.UnknownStatus, WireToGateStationClearanceText.Status(unknown));
+        Assert.Equal(WireToGateStationClearanceText.NotAcceptedStatus, WireToGateStationClearanceText.Status(notAccepted));
         Assert.Equal(string.Empty, WireToGateStationClearanceText.Status(null));
         Assert.Equal(string.Empty, WireToGateStationClearanceText.StatusText(null));
 
@@ -146,6 +150,9 @@ public sealed class WireToGateStationClearanceTests
         Assert.Contains("站点尚未释放", WireToGateStationClearanceText.StatusText(held), StringComparison.Ordinal);
         Assert.Contains(Charger, WireToGateStationClearanceText.StatusText(released), StringComparison.Ordinal);
         Assert.Contains("ACTION_NOT_ALLOWED_IN_STATE", WireToGateStationClearanceText.StatusText(rejected), StringComparison.Ordinal);
+        Assert.Contains("服务端没有受理", WireToGateStationClearanceText.StatusText(notAccepted), StringComparison.Ordinal);
+        Assert.Contains("BUSINESS_ID_CONTENT_CONFLICT", WireToGateStationClearanceText.StatusText(notAccepted), StringComparison.Ordinal);
+        Assert.DoesNotContain("结果未知", WireToGateStationClearanceText.StatusText(notAccepted), StringComparison.Ordinal);
         Assert.Contains(
             "结果未知，请查看车辆状态后再决定是否重新提交",
             WireToGateStationClearanceText.StatusText(unknown),
