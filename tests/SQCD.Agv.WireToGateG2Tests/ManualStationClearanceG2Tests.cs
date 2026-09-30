@@ -242,13 +242,10 @@ public sealed class ManualStationClearanceG2Tests
             : [WaitingLeg(1, "ACTIVE")];
         await using Harness harness = await StartAsync(
             token, server => server.RespondToManualStationClearanceConfirmations = true, legs);
-        await harness.WaitUntilAsync(
-            () => harness.ViewModel.StationClearance.HasNotice,
-            "the reason the entry is not offered",
-            token);
+        StationClearanceDisplay display = await WaitForDisplayAsync(
+            harness, shown => shown.HasNotice, "the reason the entry is not offered", token);
 
         await AssertTheEntryStaysShutAsync(harness, token);
-        StationClearanceDisplay display = harness.ViewModel.StationClearance;
         Assert.Null(display.Prompt);
         Assert.Contains("充电桩", display.NoticeText, StringComparison.Ordinal);
         Assert.Contains("不可用", display.NoticeText, StringComparison.Ordinal);
@@ -327,7 +324,11 @@ public sealed class ManualStationClearanceG2Tests
         Assert.Single(harness.Events, item => item.Kind == "STATION_CLEARANCE_UNKNOWN");
 
         // The entry now says what the next press is: the same confirmation again.
-        StationClearanceDisplay again = harness.ViewModel.StationClearance;
+        StationClearanceDisplay again = await WaitForDisplayAsync(
+            harness,
+            display => display.Prompt?.ResubmittedConfirmationRequestId == first.ConfirmationRequestId,
+            "the entry to offer the same confirmation again",
+            token);
         Assert.Equal(
             new WireToGateStationClearancePrompt(Charger, Maintainer, first.ConfirmationRequestId), again.Prompt);
         Assert.Contains("重新提交", again.ConfirmationText, StringComparison.Ordinal);
@@ -373,11 +374,12 @@ public sealed class ManualStationClearanceG2Tests
 
         Task<bool> first = harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt!, token);
         await harness.WaitUntilAsync(() => Requests(harness).Length == 1, "the first request to reach the server", token);
-        await harness.WaitUntilAsync(
-            () => harness.ViewModel.StationClearance is { CanConfirm: false, HasNotice: true },
+        StationClearanceDisplay awaiting = await WaitForDisplayAsync(
+            harness,
+            display => display is { CanConfirm: false, HasNotice: true },
             "the entry to be withdrawn while the answer is awaited",
             token);
-        Assert.Contains("等待服务端应答", harness.ViewModel.StationClearance.NoticeText, StringComparison.Ordinal);
+        Assert.Contains("等待服务端应答", awaiting.NoticeText, StringComparison.Ordinal);
 
         SentRequest request = Assert.Single(Requests(harness));
         Assert.False(await harness.Business.ConfirmStationClearanceAsync(shown.Prompt!, token));
@@ -555,14 +557,17 @@ public sealed class ManualStationClearanceG2Tests
 
         harness.Server.RespondToManualStationClearanceConfirmations = true;
         await harness.Session.Client.ConnectAndRecoverAsync(token);
-        await harness.WaitUntilAsync(
-            () => harness.ViewModel.StationClearance.Prompt?.ResubmittedConfirmationRequestId == first.ConfirmationRequestId,
-            "the entry to offer the same confirmation again after the reconnect",
-            token);
+        // The new session is still settling when the handshake returns -- snapshots replayed, the safety state
+        // reported again, readiness announced -- and the entry is withdrawn and offered again as it does. The press
+        // below is made once that is over, on the reading the wait returns.
+        await WaitForTheWireToGoQuietAsync(harness, token);
         await AssertNothingIsSentAsync(harness, 1, token);
-
-        StationClearanceDisplay again = harness.ViewModel.StationClearance;
-        Assert.Equal(WireToGateStationClearanceText.UnknownStatus, again.Status);
+        StationClearanceDisplay again = await WaitForDisplayAsync(
+            harness,
+            display => display.Prompt?.ResubmittedConfirmationRequestId == first.ConfirmationRequestId
+                && display.Status == WireToGateStationClearanceText.UnknownStatus,
+            "the entry to offer the same confirmation again after the reconnect, the unknown still shown",
+            token);
         Assert.True(await harness.ViewModel.ConfirmStationClearanceAsync(again.Prompt!, token));
         SentRequest[] requests = Requests(harness);
         Assert.Equal(2, requests.Length);
@@ -603,17 +608,14 @@ public sealed class ManualStationClearanceG2Tests
         await harness.Server.SendJourneySnapshotAsync(
             "UpcomingStopPlanSnapshot",
             Payloads.Plan(2, [ChargerLeg(1, OtherCharger, "COMPLETED"), WaitingLeg(2, "ACTIVE")]));
-        await harness.WaitUntilAsync(
-            () => harness.ViewModel.StationClearance.Prompt?.StationId == OtherCharger,
-            "the entry to name the other charger",
-            token);
+        StationClearanceDisplay current = await WaitForDisplayAsync(
+            harness, display => display.Prompt?.StationId == OtherCharger, "the entry to name the other charger", token);
 
         Assert.False(await harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt, token));
         await AssertNothingIsSentAsync(harness, 0, token);
         Assert.Single(harness.Events, item => item.Kind == "STATION_CLEARANCE_BLOCKED");
         Assert.False(harness.ViewModel.StationClearance.HasStatus);
 
-        StationClearanceDisplay current = harness.ViewModel.StationClearance;
         Assert.Contains(OtherCharger, current.ConfirmationText, StringComparison.Ordinal);
         Assert.True(await harness.ViewModel.ConfirmStationClearanceAsync(current.Prompt!, token));
         SentRequest request = Assert.Single(Requests(harness));
@@ -635,13 +637,16 @@ public sealed class ManualStationClearanceG2Tests
         Assert.False(await harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt!, token));
         await WaitForStatusAsync(harness, WireToGateStationClearanceText.UnknownStatus, token);
         SentRequest request = Assert.Single(Requests(harness));
-        StationClearanceDisplay resubmission = harness.ViewModel.StationClearance;
-        Assert.Equal(request.ConfirmationRequestId, resubmission.Prompt!.ResubmittedConfirmationRequestId);
+        StationClearanceDisplay resubmission = await WaitForDisplayAsync(
+            harness,
+            display => display.Prompt?.ResubmittedConfirmationRequestId == request.ConfirmationRequestId,
+            "the entry to offer the same confirmation again",
+            token);
 
         await harness.Server.SendManualStationClearanceResultAsync(request.MessageId, request.ConfirmationRequestId);
         await WaitForStatusAsync(harness, WireToGateStationClearanceText.ConfirmedReleasedStatus, token);
 
-        Assert.False(await harness.ViewModel.ConfirmStationClearanceAsync(resubmission.Prompt, token));
+        Assert.False(await harness.ViewModel.ConfirmStationClearanceAsync(resubmission.Prompt!, token));
         await AssertNothingIsSentAsync(harness, 1, token);
         Assert.Single(harness.Events, item => item.Kind == "STATION_CLEARANCE_BLOCKED");
         Assert.Equal(
@@ -669,9 +674,11 @@ public sealed class ManualStationClearanceG2Tests
         Assert.False(await harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt!, token));
         await WaitForStatusAsync(harness, WireToGateStationClearanceText.UnknownStatus, token);
         SentRequest unanswered = Assert.Single(Requests(harness));
-        Assert.Equal(
-            unanswered.ConfirmationRequestId,
-            harness.ViewModel.StationClearance.Prompt!.ResubmittedConfirmationRequestId);
+        await WaitForDisplayAsync(
+            harness,
+            display => display.Prompt?.ResubmittedConfirmationRequestId == unanswered.ConfirmationRequestId,
+            "the entry to offer the same confirmation again",
+            token);
 
         await harness.Server.SendJourneySnapshotAsync("VehicleBusinessStateSnapshot", BusinessState(2, "IDLE_RETURN"));
         await harness.WaitUntilAsync(
@@ -880,26 +887,44 @@ public sealed class ManualStationClearanceG2Tests
         }
     }
 
-    private static async Task<StationClearanceDisplay> WaitForEntryAsync(Harness harness, CancellationToken token)
-    {
-        await harness.WaitUntilAsync(
-            () => harness.ViewModel.StationClearance.CanConfirm,
-            "the clearance entry to be offered on the view model",
-            token);
-        return harness.ViewModel.StationClearance;
-    }
-
-    private static async Task<StationClearanceDisplay> WaitForStatusAsync(
+    /// <summary>
+    /// Waits for the view model's entry to satisfy <paramref name="predicate"/> and returns <b>the reading that
+    /// satisfied it</b>.
+    /// </summary>
+    /// <remarks>
+    /// Reading the view model again after the wait is a second reading, and the entry can have moved in between
+    /// -- it is withdrawn and offered again as a session reconnects, for one. The first version of these helpers
+    /// did exactly that, and a whole-suite run caught it: the wait saw the entry, the read after it saw none, and
+    /// the press went out with a null prompt.
+    /// </remarks>
+    private static async Task<StationClearanceDisplay> WaitForDisplayAsync(
         Harness harness,
-        string status,
+        Func<StationClearanceDisplay, bool> predicate,
+        string expectation,
         CancellationToken token)
     {
+        StationClearanceDisplay display = StationClearanceDisplay.Empty;
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.StationClearance.Status == status,
-            $"the result line on the view model to read {status}",
+            () =>
+            {
+                display = harness.ViewModel.StationClearance;
+                return predicate(display);
+            },
+            expectation,
             token);
-        return harness.ViewModel.StationClearance;
+        return display;
     }
+
+    private static Task<StationClearanceDisplay> WaitForEntryAsync(Harness harness, CancellationToken token) =>
+        WaitForDisplayAsync(
+            harness, display => display.CanConfirm, "the clearance entry to be offered on the view model", token);
+
+    private static Task<StationClearanceDisplay> WaitForStatusAsync(
+        Harness harness,
+        string status,
+        CancellationToken token) =>
+        WaitForDisplayAsync(
+            harness, display => display.Status == status, $"the result line on the view model to read {status}", token);
 
     /// <summary>
     /// The plan has reached the view model: its leg rows are what <c>UpdateWireToGateJourney</c> writes from the
@@ -945,8 +970,9 @@ public sealed class ManualStationClearanceG2Tests
     }
 
     /// <summary>
-    /// Nothing more arrives at the server for 300 ms: the safety report the business service sends on start has
-    /// gone, so what is counted after the press is the press's.
+    /// Nothing crosses the wire in either direction for 300 ms: the safety report the business service sends on
+    /// start has gone and the session has stopped announcing readiness, so what is counted after the press is the
+    /// press's, and the entry is not about to be withdrawn by a session that is still settling.
     /// </summary>
     private static async Task WaitForTheWireToGoQuietAsync(Harness harness, CancellationToken token)
     {
@@ -955,7 +981,7 @@ public sealed class ManualStationClearanceG2Tests
         await harness.WaitUntilAsync(
             () =>
             {
-                int now = harness.Server.ReceivedEnvelopes.Count;
+                int now = harness.Server.ReceivedEnvelopes.Count + harness.Server.SentEnvelopes.Count;
                 if (now != count)
                 {
                     count = now;
