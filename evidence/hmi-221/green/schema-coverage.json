@@ -1,0 +1,219 @@
+{
+  "protocol": {
+    "tag": "protocol-v2.0.0",
+    "releaseVersion": "2.0.0",
+    "profileId": "AGV_FULL_PRODUCT",
+    "protocolVersion": 3,
+    "approvalStatus": "APPROVED_RELEASE",
+    "manifestSha256": "4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7",
+    "vendoredSchemaFiles": 69
+  },
+  "validator": "Corvus.Json.Validator 4.6.7",
+  "linesObserved": 10709,
+  "testAuthoredLinesSkipped": 2,
+  "linesChecked": 10707,
+  "distinctLinesChecked": 10636,
+  "linesInViolation": 0,
+  "linesInKnownViolation": 1,
+  "linesInIssueViolation": 0,
+  "linesInDeliberateViolation": 1,
+  "schemaCompilationMilliseconds": 79920,
+  "validationMilliseconds": 6859,
+  "byMessageType": {
+    "CapabilitySnapshot": {
+      "product": 448
+    },
+    "CurrentStopWorklistSnapshot": {
+      "synthetic-peer": 221
+    },
+    "DurableAck": {
+      "synthetic-peer": 1575
+    },
+    "ExceptionRecoverySessionOpened": {
+      "synthetic-peer": 98
+    },
+    "ExceptionRecoverySessionRejected": {
+      "synthetic-peer": 1
+    },
+    "ExceptionRecoverySessionRequested": {
+      "product": 99
+    },
+    "ExceptionRecoverySessionSnapshot": {
+      "synthetic-peer": 28
+    },
+    "FaultCargoRecoveryCommand": {
+      "synthetic-peer": 10
+    },
+    "FaultCargoRecoveryResult": {
+      "product": 12
+    },
+    "ForcedMechanicalRecoveryCommand": {
+      "synthetic-peer": 12
+    },
+    "ForcedMechanicalRecoveryResult": {
+      "product": 14
+    },
+    "HardwareRecoveryRecordResult": {
+      "synthetic-peer": 8
+    },
+    "HardwareRecoveryRecordSubmitted": {
+      "product": 8
+    },
+    "Heartbeat": {
+      "product": 21
+    },
+    "HeartbeatAck": {
+      "synthetic-peer": 20
+    },
+    "LoadCancellationAuthorization": {
+      "synthetic-peer": 31
+    },
+    "LoadCancellationResult": {
+      "product": 30
+    },
+    "LoadCancellationStartRequested": {
+      "product": 42
+    },
+    "LoadCompensationCommand": {
+      "synthetic-peer": 38
+    },
+    "LoadCompensationRequested": {
+      "product": 44
+    },
+    "LoadCompensationResult": {
+      "product": 25
+    },
+    "LoadCorrectionRequested": {
+      "product": 5
+    },
+    "LoadCorrectionResult": {
+      "product": 3
+    },
+    "ManualChargingReturnToServiceRequested": {
+      "product": 9
+    },
+    "ManualChargingReturnToServiceResult": {
+      "synthetic-peer": 9
+    },
+    "ManualStationClearanceConfirmationRequested": {
+      "product": 22
+    },
+    "ManualStationClearanceConfirmationResult": {
+      "synthetic-peer": 23
+    },
+    "OnboardAlarmSnapshot": {
+      "product": 453
+    },
+    "OperationProgress": {
+      "product": 403
+    },
+    "OperationResult": {
+      "product": 211
+    },
+    "PreDepartureSafetyCheck": {
+      "synthetic-peer": 7
+    },
+    "PreDepartureSafetyCheckResult": {
+      "product": 8
+    },
+    "ProtocolProblem": {
+      "product": 5,
+      "synthetic-peer": 2
+    },
+    "RecoveryActionAccepted": {
+      "synthetic-peer": 92
+    },
+    "RecoveryActionSubmitted": {
+      "product": 92
+    },
+    "RecoveryStateReport": {
+      "product": 447
+    },
+    "SafetyStateChanged": {
+      "product": 462
+    },
+    "SafetyStateSnapshot": {
+      "product": 484
+    },
+    "SafetyStateSnapshotRequested": {
+      "synthetic-peer": 37
+    },
+    "SessionAccepted": {
+      "synthetic-peer": 448
+    },
+    "SessionHello": {
+      "product": 448
+    },
+    "SessionReadiness": {
+      "synthetic-peer": 1348
+    },
+    "SlotConfigurationActivationCommand": {
+      "synthetic-peer": 15
+    },
+    "SlotConfigurationActivationResult": {
+      "product": 15
+    },
+    "SlotOperationCommand": {
+      "synthetic-peer": 98
+    },
+    "SlotOperationCommandRejected": {
+      "product": 24
+    },
+    "SlotOperationResumeCommand": {
+      "synthetic-peer": 18
+    },
+    "SnapshotAppliedAck": {
+      "product": 705,
+      "synthetic-peer": 1383
+    },
+    "SublotEntryRequested": {
+      "synthetic-peer": 90
+    },
+    "SublotRejected": {
+      "synthetic-peer": 16
+    },
+    "SublotSubmitted": {
+      "product": 39
+    },
+    "UpcomingStopPlanSnapshot": {
+      "synthetic-peer": 251
+    },
+    "VehicleBusinessStateSnapshot": {
+      "synthetic-peer": 250
+    }
+  },
+  "origins": {
+    "product": {
+      "directions": [
+        "O_TO_C",
+        "BIDIRECTIONAL"
+      ],
+      "messageTypesObserved": 28,
+      "messageTypesNotObserved": [
+        "DemandSelectionRequested",
+        "DurableAck",
+        "UnableToChargeFieldConfirmationRequested"
+      ],
+      "messageTypesOutsideDirection": []
+    },
+    "syntheticPeer": {
+      "directions": [
+        "C_TO_O",
+        "BIDIRECTIONAL"
+      ],
+      "messageTypesObserved": 27,
+      "messageTypesNotObserved": [
+        "CapabilitySnapshotRequested",
+        "DemandSelectionResult",
+        "LoadCompensationRejected",
+        "LoadCorrectionCommand",
+        "LoadCorrectionRejected",
+        "RecoveryActionRejected",
+        "SessionRejected",
+        "UnableToChargeFieldConfirmationResult"
+      ],
+      "messageTypesOutsideDirection": []
+    }
+  },
+  "knownViolationEntriesNotMatched": []
+}
