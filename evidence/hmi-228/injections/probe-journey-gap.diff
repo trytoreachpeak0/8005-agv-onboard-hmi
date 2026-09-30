@@ -1,0 +1,12 @@
+diff --git a/src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs b/src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+index 4c9fb86..9cc5c45 100644
+--- a/src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
++++ b/src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+@@ -2861,6 +2861,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
+             Volatile.Write(ref _journey, updated);
+         }
+ 
++        Thread.Sleep(200); // HMI228-INJECT
+         JourneyChanged?.Invoke(this, new ValueChangedEventArgs<WireToGateJourneySnapshot>(updated));
+     }
+ 

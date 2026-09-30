@@ -1,0 +1,27 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:02.01]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnEntryRefusedLocallyIsAMessageToTheOperatorAndNotALatchedVehicle [FAIL]
+[xUnit.net 00:00:02.86]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoadRefusedOverAnOccupiedSlotOffersCompensationForThatDemandNotTheLastCompletedOne [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnEntryRefusedLocallyIsAMessageToTheOperatorAndNotALatchedVehicle [549 ms]
+  Error Message:
+   Assert.True() Failure
+Expected: True
+Actual:   False
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnEntryRefusedLocallyIsAMessageToTheOperatorAndNotALatchedVehicle() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.Paths.cs:line 369
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnEntryRefusedLocallyIsAMessageToTheOperatorAndNotALatchedVehicle() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.Paths.cs:line 392
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoadRefusedOverAnOccupiedSlotOffersCompensationForThatDemandNotTheLastCompletedOne [832 ms]
+  Error Message:
+   Assert.False() Failure
+Expected: False
+Actual:   True
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoadRefusedOverAnOccupiedSlotOffersCompensationForThatDemandNotTheLastCompletedOne() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.OccupancyConflictRecovery.cs:line 98
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoadRefusedOverAnOccupiedSlotOffersCompensationForThatDemandNotTheLastCompletedOne() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.OccupancyConflictRecovery.cs:line 106
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

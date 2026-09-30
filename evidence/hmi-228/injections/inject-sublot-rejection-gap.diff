@@ -1,0 +1,12 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index 1d10f75..5025f54 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -2398,6 +2398,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+             EntryRequestKept: keep,
+             _clock.Now.ToUniversalTime());
+         Volatile.Write(ref _currentSublotRejection, rejection);
++        Thread.Sleep(500); // HMI228-INJECT: fixed gap between the field and the operator event
+         _logger.Write(
+             LogSeverity.Warning,
+             nameof(WireToGateBusinessService),

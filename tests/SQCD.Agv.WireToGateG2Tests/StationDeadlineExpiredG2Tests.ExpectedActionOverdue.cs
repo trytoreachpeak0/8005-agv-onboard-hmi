@@ -210,7 +210,13 @@ public sealed partial class StationDeadlineExpiredG2Tests
             "the requested SafetyStateSnapshot",
             token);
         long lostAckVersion = SafetySnapshots(harness.Server)[^1].GetProperty("safetyStateVersion").GetInt64();
-        Assert.Contains(("SafetyStateSnapshot", lostAckVersion), harness.Server.AppliedSnapshots.ToArray());
+        // Waited for, not read once (onboard-hmi#228): the fake server lists a line as received before it
+        // handles it, so the snapshot is among the received messages a moment before it is applied. A timeout
+        // is the snapshot taken and never applied.
+        await Harness.WaitUntilAsync(
+            () => harness.Server.AppliedSnapshots.Contains(("SafetyStateSnapshot", lostAckVersion)),
+            $"the fake server to apply SafetyStateSnapshot {lostAckVersion}, the one whose ack it drops",
+            token);
         // The answer waits for its ack for the session's message timeout (2 s here) and gives up.
         await Task.Delay(TimeSpan.FromSeconds(3), token);
 

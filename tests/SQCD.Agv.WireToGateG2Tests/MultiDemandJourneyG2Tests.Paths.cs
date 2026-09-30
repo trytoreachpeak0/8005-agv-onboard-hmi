@@ -363,10 +363,20 @@ public sealed partial class MultiDemandJourneyG2Tests
         await harness.Server.SendJourneySnapshotAsync("CurrentStopWorklistSnapshot", Payloads.Worklist(2, Payloads.ItemB));
         await harness.WaitUntilAsync(
             () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2,
-            "worklist revision 2",
+            "session took worklist revision 2",
             token);
         // 录入框还在（CanSubmitSublot 不查清单版本），操作员照样扫得下去 -- 这正是 243aa66 的残留。
-        Assert.True(harness.ViewModel.CanSubmit);
+        //
+        // 等到视图模型也吃下第 2 版再读，并且持续读（onboard-hmi#228）：会话先存快照、后发 JourneyChanged，只等会话层
+        // 的话，这一条读到的还是第 1 版下的入口——那时它本来就开着，第 2 版把它关掉的实现在这一行照样绿。
+        await harness.WaitUntilAsync(
+            () => harness.WorklistRows() is [("SUBLOT-B", _)],
+            "view model showed worklist revision 2",
+            token);
+        await AssertWhileAsync(
+            DisplaySettleWindow,
+            () => Assert.True(harness.ViewModel.CanSubmit, "worklist revision 2 shut the scan entry"),
+            token);
 
         // 扫的是已离站的 A。PR #200（hmi#199）之前扫的是仍在站上的 B，靠「请求落后清单一版」被拒；
         // 那条规则已取消，B 现在会按第 1 版请求送达服务端。这条要守的是「本地拒绝是提示、不锁存」，

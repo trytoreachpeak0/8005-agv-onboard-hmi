@@ -1,0 +1,26 @@
+diff --git a/tests/SQCD.Agv.WireToGateG2Tests/FakeControlServer.cs b/tests/SQCD.Agv.WireToGateG2Tests/FakeControlServer.cs
+index d8f3494..7b5486d 100644
+--- a/tests/SQCD.Agv.WireToGateG2Tests/FakeControlServer.cs
++++ b/tests/SQCD.Agv.WireToGateG2Tests/FakeControlServer.cs
+@@ -1479,6 +1479,8 @@ public sealed class FakeControlServer : IAsyncDisposable
+         return matches;
+     }
+ 
++    private int Hmi228InjectedAcks;
++
+     private async Task HandleConnectionAsync(
+         int connectionIndex,
+         ConnectionContext context,
+@@ -1498,6 +1500,12 @@ public sealed class FakeControlServer : IAsyncDisposable
+                 JsonElement root = document.RootElement;
+                 string messageType = root.GetProperty("messageType").GetString()!;
+                 string messageId = root.GetProperty("messageId").GetString()!;
++                // HMI228-INJECT: the third SnapshotAppliedAck is read 500 ms late, always.
++                if (messageType == "SnapshotAppliedAck" && Interlocked.Increment(ref Hmi228InjectedAcks) == 3)
++                {
++                    await Task.Delay(500, stoppingToken).ConfigureAwait(false);
++                }
++
+                 RecordMessage(connectionIndex, context.ReceivedOrder, messageType, messageId, line);
+ 
+                 if (!string.Equals(messageType, "SessionHello", StringComparison.Ordinal)
