@@ -81,9 +81,13 @@ public sealed class WaitingPointIdleReturnG2Tests
         await harness.Server.SendJourneySnapshotAsync(
             "UpcomingStopPlanSnapshot",
             Payloads.Plan(2, [WaitingPointLeg(1, "ARRIVED")]));
+        // Both cells, because the view model writes the status one statement before the visit text: the
+        // status alone is true a moment before the text below has been written at all (onboard-hmi#228).
+        // Waited for as "no longer the en-route text", so what it changed to is still the assertion's to say.
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.IdleReturnStatus == WireToGateIdleReturnText.AtWaitingPointStatus,
-            "the arrived waiting-point leg to be shown",
+            () => harness.ViewModel.IdleReturnStatus == WireToGateIdleReturnText.AtWaitingPointStatus
+                && harness.ViewModel.VisitText != $"空闲返回：前往等待点 {WaitingPoint}",
+            "the arrived waiting-point leg to be shown in the status and the visit text",
             token);
 
         Assert.Equal($"在等待点 {WaitingPoint} 待命", harness.ViewModel.VisitText);

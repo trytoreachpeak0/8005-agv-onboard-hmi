@@ -89,7 +89,14 @@ public sealed partial class WireToGateG2Tests
         };
 
         await client.ConnectAndRecoverAsync(testToken);
-        await WaitBrieflyUntilAsync(() => Volatile.Read(ref slotCommands) == 1, testToken);
+        // Both, because they finish on different sides of the wire: the command counts once the vehicle has
+        // handled it, the acks once the server has read them -- and the fake server reads nothing while it
+        // writes the readiness, the command and the ack, so the vehicle has the command before the server
+        // has read the last ack the vehicle wrote ahead of it (onboard-hmi#228).
+        await WaitBrieflyUntilAsync(
+            () => Volatile.Read(ref slotCommands) == 1
+                && server.Received.Count(item => item.MessageType == "SnapshotAppliedAck") == 3,
+            testToken);
 
         Assert.Equal(
             (3, 1, 1, true, WireToGateSessionReadiness.Ready),
