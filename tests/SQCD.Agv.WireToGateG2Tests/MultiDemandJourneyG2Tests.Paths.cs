@@ -87,19 +87,19 @@ public sealed partial class MultiDemandJourneyG2Tests
             "VehicleBusinessStateSnapshot",
             Payloads.BusinessState(4, loadingPhase: null));
         // The session takes revision 4 before JourneyChanged reaches the view model, so waiting on the
-        // session alone lets the assertions below read the view model still showing revision 3. Wait on
-        // the lines themselves; the session revision pins that it was revision 4 that took them away.
+        // session alone would let a view-model read still see revision 3. Two waits, so a timeout says
+        // which layer did not move: the session first (it was revision 4 that arrived), then the lines.
         await harness.WaitUntilAsync(
-            () => harness.Session.CurrentJourney.VehicleBusinessState?.Revision == 4
-                && !harness.ViewModel.HasLoadingClosedReason
+            () => harness.Session.CurrentJourney.VehicleBusinessState?.Revision == 4,
+            "session took revision 4",
+            token);
+        await harness.WaitUntilAsync(
+            () => !harness.ViewModel.HasLoadingClosedReason
                 && harness.ViewModel.LoadingClosedReasonCode.Length == 0
                 && !harness.ViewModel.HasCargoHoldingCountdown,
-            "the fourth business state to take the closed-reason line away",
+            "view model cleared the closed-reason line",
             token);
 
-        Assert.False(harness.ViewModel.HasLoadingClosedReason);
-        Assert.Equal(string.Empty, harness.ViewModel.LoadingClosedReasonCode);
-        Assert.False(harness.ViewModel.HasCargoHoldingCountdown);
         Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "ProtocolProblem");
         Assert.Empty(harness.UiErrors);
     }
