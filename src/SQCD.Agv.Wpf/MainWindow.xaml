@@ -175,6 +175,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -458,6 +459,19 @@
                             Visibility="{Binding CanRequestManualChargingReturn, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnManualChargingReturnClick"
                             Content="充电后返回服务" />
+                    <!--
+                        人工清桩确认（批次9-16，8005-agv-onboard-hmi#221）：服务端说车在清桩中、面前是已验证的维护人员、计划里说得出
+                        原充电桩时出现。它不在那九个恢复入口里，严重安全故障锁存期间照常开着：只发一条请求、显示服务端的结果，
+                        不碰 IO、不开门，也不在本地释放站点。说明与结果两行在下面单独一行。
+                    -->
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            AutomationProperties.AutomationId="ConfirmStationClearance"
+                            IsEnabled="{Binding StationClearance.CanConfirm}"
+                            Visibility="{Binding StationClearance.CanConfirm, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnConfirmStationClearanceClick"
+                            Content="确认清桩" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"
@@ -500,6 +514,31 @@
                             Click="OnClearFatalFaultClick"
                             Content="复位严重安全故障" />
                 </WrapPanel>
+                <!--
+                    人工清桩确认的说明与结果（8005-agv-onboard-hmi#221），各占一行、没有时 Collapsed。说明只有两种：清桩中却说不出
+                    原充电桩，和已提交正在等应答。结果那一行的 ItemStatus 是原始值（CONFIRMED_STATION_RELEASED／
+                    CONFIRMED_STATION_NOT_RELEASED／REJECTED／UNKNOWN），UIA 按 AutomationId 找它。三样绑同一个
+                    StationClearance，整值替换。
+                -->
+                <StackPanel Grid.Row="6"
+                            Grid.Column="0"
+                            Grid.ColumnSpan="3">
+                    <TextBlock Margin="0,6,0,0"
+                               FontSize="13"
+                               Foreground="{StaticResource MutedBrush}"
+                               AutomationProperties.AutomationId="StationClearanceNotice"
+                               Text="{Binding StationClearance.NoticeText}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding StationClearance.HasNotice, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock Margin="0,6,0,0"
+                               FontSize="13"
+                               FontWeight="Bold"
+                               AutomationProperties.AutomationId="StationClearanceStatus"
+                               AutomationProperties.ItemStatus="{Binding StationClearance.Status}"
+                               Text="{Binding StationClearance.StatusText}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding StationClearance.HasStatus, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                </StackPanel>
             </Grid>
         </Border>
 

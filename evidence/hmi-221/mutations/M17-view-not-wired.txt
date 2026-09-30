@@ -1,0 +1,37 @@
+# M17-view-not-wired
+接线把视图委托接到一个恒为「不在清桩」的值上
+file: src/SQCD.Agv.Wpf/StationClearanceWiring.cs
+
+--- replaced ---
+() => business.StationClearance,
+--- with ---
+() => SQCD.Agv.Core.WireToGateStationClearanceView.NotClearing,
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "stationId") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "observedAt") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "verificationMethod") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "operatorId") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "publicStationFunction") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "clearedCondition") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ARestartOffersTheEntryFromTheRestoredStateAndAsksTheOperatorAfresh [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APressMadeAsAResubmissionIsRefusedOnceTheResultHasArrived [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AResultThatArrivesAfterTheTimeoutSettlesTheUnknownOnce [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ADifferentAnswerUnderAnAnsweredIdFailsTheSessionAndDoesNotRewriteTheResult [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ARepeatedResultIsHandledOnce [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AConfirmedClearanceChangesNothingOnTheVehicleUntilTheServersNextSnapshot [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AnUnansweredClearanceIsShownAsUnknownAndAResubmissionCarriesTheSameConfirmationRequestId [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ASecondPressWhileTheFirstIsUnansweredSendsNothing [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedWithoutOneChargerInThePlanAndTheScreenSaysWhy(twoChargers: True) [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedWithoutOneChargerInThePlanAndTheScreenSaysWhy(twoChargers: False) [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ADroppedSessionLeavesAnUnknownThatIsResubmittedUnderTheSameIdAfterReconnecting [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheConfirmationCarriesTheOperatorTheChargerAndTheConditionAndIsShownConfirmed [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ALatchLeavesTheClearanceEntryOpenAndOpensNoDoor [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APressMadeForOneChargerDoesNotConfirmAnother [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ALaterClearanceOfTheSameChargerStartsFromNothing [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ARejectedClearanceShowsTheServersReasonAndTheNextPressIsANewConfirmation [5 s]
+Failed!  - Failed:    22, Passed:     5, Skipped:     0, Total:    27, Duration: 1 m 58 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheConfirmationCarriesTheOperatorTheChargerAndTheConditionAndIsShownConfirmed
+missing: none

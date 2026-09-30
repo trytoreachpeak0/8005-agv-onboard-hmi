@@ -64,9 +64,30 @@ public static class WireToGateStationClearanceStation
     /// The charger a clearance is about: the <c>stationId</c> of the plan's <c>CHARGER</c> leg, or
     /// <c>null</c> when the plan does not name exactly one charger.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Read from the server's plan as sent. The leg's state is not consulted: a clearance begins with the
+    /// vehicle still on the charger and goes on after that leg is <c>COMPLETED</c> and a waiting-point leg
+    /// has taken over, and it is the same charger throughout.
+    /// </para>
+    /// <para>
+    /// <b><c>null</c> rather than a guess.</b> No charger leg, or legs at two different chargers, leaves
+    /// nothing that says which station was suspended; the current leg, the waiting point and the station's
+    /// name are not evidence of it. Whether the plan keeps the charger leg during a clearance is the control
+    /// server's to settle (<c>8005-agv-control-server#406</c>); until it does, the entry is not offered and
+    /// the screen says why.
+    /// </para>
+    /// </remarks>
     public static string? Resolve(WireToGateJourneySnapshot journey)
     {
         ArgumentNullException.ThrowIfNull(journey);
-        return null;
+        string[] chargers =
+        [
+            .. (journey.UpcomingStopPlan?.Legs ?? [])
+                .Where(leg => leg.StopPurposeCategory == "CHARGER")
+                .Select(leg => leg.StationId)
+                .Distinct(StringComparer.Ordinal)
+        ];
+        return chargers.Length == 1 ? chargers[0] : null;
     }
 }

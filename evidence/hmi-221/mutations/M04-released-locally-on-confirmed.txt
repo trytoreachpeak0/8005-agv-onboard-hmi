@@ -1,0 +1,24 @@
+# M04-released-locally-on-confirmed
+CONFIRMED 且 stationReleased=true 之后本地就把入口收起（当作清桩已结束）
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.StationClearance.cs
+
+--- replaced ---
+        if (!journey.IsClearingStop)
+        {
+            return new(null, WireToGateStationClearanceUnavailability.NotClearing, outcome);
+--- with ---
+        if (!journey.IsClearingStop
+            || outcome is { Kind: WireToGateStationClearanceOutcomeKind.Confirmed, StationReleased: true })
+        {
+            return new(null, WireToGateStationClearanceUnavailability.NotClearing, outcome);
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AResultThatArrivesAfterTheTimeoutSettlesTheUnknownOnce [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AConfirmedClearanceChangesNothingOnTheVehicleUntilTheServersNextSnapshot [425 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AnUnansweredClearanceIsShownAsUnknownAndAResubmissionCarriesTheSameConfirmationRequestId [3 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ADroppedSessionLeavesAnUnknownThatIsResubmittedUnderTheSameIdAfterReconnecting [628 ms]
+Failed!  - Failed:     4, Passed:    23, Skipped:     0, Total:    27, Duration: 28 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AConfirmedClearanceChangesNothingOnTheVehicleUntilTheServersNextSnapshot
+missing: none

@@ -351,9 +351,18 @@ public sealed class ManualStationClearanceG2Tests
     /// the answer finally comes, and the entry is withdrawn for as long as the answer is awaited.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The first press is known to be in flight, not assumed: the server has its request and has not answered.
-    /// The second goes to the business service directly, past the withdrawn button, with the prompt the operator
-    /// was shown -- the gate refuses it, not the prompt.
+    /// The second goes to the business service directly, past the withdrawn button.
+    /// </para>
+    /// <para>
+    /// <b>It is pressed twice over, because two things could refuse it and only one of them is the gate.</b> With
+    /// the prompt the operator was shown, the prompt check would refuse it as well: an unanswered request now
+    /// exists, so the current prompt is a resubmission and the shown one is not. Pressed only that way, this test
+    /// stayed green with the gate removed (fault injection M03). So it is also pressed with the prompt that would
+    /// be current were nothing awaited -- the resubmission of the request in flight -- which only the gate can
+    /// refuse, and the refusal is read for the gate's own words.
+    /// </para>
     /// </remarks>
     [Fact]
     public async Task ASecondPressWhileTheFirstIsUnansweredSendsNothing()
@@ -370,11 +379,17 @@ public sealed class ManualStationClearanceG2Tests
             token);
         Assert.Contains("等待服务端应答", harness.ViewModel.StationClearance.NoticeText, StringComparison.Ordinal);
 
-        Assert.False(await harness.Business.ConfirmStationClearanceAsync(shown.Prompt!, token));
-        Assert.False(first.IsCompleted);
-        Assert.Single(harness.Events, item => item.Kind == "STATION_CLEARANCE_BLOCKED");
-
         SentRequest request = Assert.Single(Requests(harness));
+        Assert.False(await harness.Business.ConfirmStationClearanceAsync(shown.Prompt!, token));
+        Assert.False(await harness.Business.ConfirmStationClearanceAsync(
+            shown.Prompt! with { ResubmittedConfirmationRequestId = request.ConfirmationRequestId }, token));
+        Assert.False(first.IsCompleted);
+        WireToGateOperatorEvent[] refusals =
+            [.. harness.Events.Where(item => item.Kind == "STATION_CLEARANCE_BLOCKED")];
+        Assert.Equal(2, refusals.Length);
+        Assert.All(refusals, item => Assert.Contains("还在等待服务端应答", item.Message, StringComparison.Ordinal));
+        await AssertNothingIsSentAsync(harness, 1, token);
+
         await harness.Server.SendManualStationClearanceResultAsync(request.MessageId, request.ConfirmationRequestId);
         Assert.True(await first);
         await WaitForStatusAsync(harness, WireToGateStationClearanceText.ConfirmedReleasedStatus, token);
@@ -466,6 +481,53 @@ public sealed class ManualStationClearanceG2Tests
             token);
         await AssertNothingIsSentAsync(harness, 1, token);
         Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// A second, different answer under a confirmation request id already answered is the server contradicting
+    /// itself: the session is failed closed with <c>BUSINESS_ID_CONTENT_CONFLICT</c>, as it is for a manual
+    /// charging return, and the answer on screen is not rewritten by the second one.
+    /// </summary>
+    /// <remarks>
+    /// Held over a window: a rewrite would come a moment after the conflicting line was read, and a single read
+    /// straight after sending it would pass on the version that rewrote.
+    /// </remarks>
+    [Fact]
+    public async Task ADifferentAnswerUnderAnAnsweredIdFailsTheSessionAndDoesNotRewriteTheResult()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(
+            token, server => server.RespondToManualStationClearanceConfirmations = true);
+        StationClearanceDisplay shown = await WaitForEntryAsync(harness, token);
+        Assert.True(await harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt!, token));
+        await WaitForStatusAsync(harness, WireToGateStationClearanceText.ConfirmedReleasedStatus, token);
+        SentRequest request = Assert.Single(Requests(harness));
+        List<string> diagnostics = [];
+        harness.Session.Client.DiagnosticRecorded += (_, args) =>
+        {
+            lock (diagnostics)
+            {
+                diagnostics.Add(args.Value);
+            }
+        };
+
+        await harness.Server.SendManualStationClearanceResultAsync(
+            request.MessageId, request.ConfirmationRequestId, stationReleased: false);
+
+        await harness.WaitUntilAsync(() => !harness.Session.Current.Connected, "the session to be failed closed", token);
+        lock (diagnostics)
+        {
+            Assert.Contains(
+                diagnostics, line => line.Contains("BUSINESS_ID_CONTENT_CONFLICT", StringComparison.Ordinal));
+        }
+        await AssertWhileAsync(
+            () =>
+            {
+                Assert.Equal(
+                    WireToGateStationClearanceText.ConfirmedReleasedStatus, harness.ViewModel.StationClearance.Status);
+                Assert.Single(harness.Events, item => item.Kind.StartsWith("STATION_CLEARANCE_", StringComparison.Ordinal));
+            },
+            token);
     }
 
     /// <summary>
@@ -584,6 +646,50 @@ public sealed class ManualStationClearanceG2Tests
         Assert.Single(harness.Events, item => item.Kind == "STATION_CLEARANCE_BLOCKED");
         Assert.Equal(
             WireToGateStationClearanceText.ConfirmedReleasedStatus, harness.ViewModel.StationClearance.Status);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// A clearance that ended and one that begins later are two clearances, even at the same charger with the
+    /// same maintainer. Once the server has said the vehicle is no longer clearing, what this vehicle held of an
+    /// unknown confirmation is gone: the entry that comes back asks afresh, shows no old result, and its press
+    /// carries a new id.
+    /// </summary>
+    /// <remarks>
+    /// Without it the unknown's id would be offered as a resubmission in the next clearance, and a server that
+    /// answers a repeated id from its first answer would report the old clearance's <c>CONFIRMED</c> for a
+    /// charger nobody has confirmed this time.
+    /// </remarks>
+    [Fact]
+    public async Task ALaterClearanceOfTheSameChargerStartsFromNothing()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(token);
+        StationClearanceDisplay shown = await WaitForEntryAsync(harness, token);
+        Assert.False(await harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt!, token));
+        await WaitForStatusAsync(harness, WireToGateStationClearanceText.UnknownStatus, token);
+        SentRequest unanswered = Assert.Single(Requests(harness));
+        Assert.Equal(
+            unanswered.ConfirmationRequestId,
+            harness.ViewModel.StationClearance.Prompt!.ResubmittedConfirmationRequestId);
+
+        await harness.Server.SendJourneySnapshotAsync("VehicleBusinessStateSnapshot", BusinessState(2, "IDLE_RETURN"));
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.StationClearance == StationClearanceDisplay.Empty,
+            "the first clearance to end on the view model",
+            token);
+
+        harness.Server.RespondToManualStationClearanceConfirmations = true;
+        await harness.Server.SendJourneySnapshotAsync("VehicleBusinessStateSnapshot", BusinessState(3, Clearing));
+        StationClearanceDisplay later = await WaitForEntryAsync(harness, token);
+        Assert.Equal(new WireToGateStationClearancePrompt(Charger, Maintainer, null), later.Prompt);
+        Assert.False(later.HasStatus);
+
+        Assert.True(await harness.ViewModel.ConfirmStationClearanceAsync(later.Prompt!, token));
+        SentRequest[] requests = Requests(harness);
+        Assert.Equal(2, requests.Length);
+        Assert.NotEqual(unanswered.ConfirmationRequestId, requests[1].ConfirmationRequestId);
+        Assert.Equal(requests[1].ConfirmationRequestId, requests[1].MessageId);
         Assert.Empty(harness.UiErrors);
     }
 

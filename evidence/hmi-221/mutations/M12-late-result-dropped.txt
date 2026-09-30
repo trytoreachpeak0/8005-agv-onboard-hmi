@@ -1,0 +1,27 @@
+# M12-late-result-dropped
+没有等待者的应答一律丢掉，不交给业务服务
+file: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+
+--- replaced ---
+        if (repeated)
+        {
+            return;
+        }
+
+        ServerCommandReceived?.Invoke(
+--- with ---
+        if (repeated || envelope.MessageId.Length > 0)
+        {
+            return;
+        }
+
+        ServerCommandReceived?.Invoke(
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APressMadeAsAResubmissionIsRefusedOnceTheResultHasArrived [7 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AResultThatArrivesAfterTheTimeoutSettlesTheUnknownOnce [7 s]
+Failed!  - Failed:     2, Passed:    25, Skipped:     0, Total:    27, Duration: 39 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AResultThatArrivesAfterTheTimeoutSettlesTheUnknownOnce; APressMadeAsAResubmissionIsRefusedOnceTheResultHasArrived
+missing: none

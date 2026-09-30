@@ -1,0 +1,17 @@
+# M09b-maintenance-switch-not-required
+不看维护开关与凭据，只要有操作员号和在线会话
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.StationClearance.cs
+
+--- replaced ---
+if (!CanUseRecoveryOperator(requireProof: true)
+--- with ---
+if (!CanUseStationOperator()
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedWithoutAVerifiedMaintainer(maintenanceSwitch: False, proofVariable: "W2G_G2_STATION_CLEARANCE_PROOF") [63 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedWithoutAVerifiedMaintainer(maintenanceSwitch: True, proofVariable: "W2G_G2_STATION_CLEARANCE_PROOF_UNSET") [77 ms]
+Failed!  - Failed:     2, Passed:    25, Skipped:     0, Total:    27, Duration: 28 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheEntryIsNotOfferedWithoutAVerifiedMaintainer(maintenanceSwitch: False; TheEntryIsNotOfferedWithoutAVerifiedMaintainer(maintenanceSwitch: True
+missing: none

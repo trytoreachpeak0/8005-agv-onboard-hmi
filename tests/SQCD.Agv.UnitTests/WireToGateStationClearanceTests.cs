@@ -212,6 +212,49 @@ public sealed class WireToGateStationClearanceTests
         Assert.DoesNotContain("ConfigureStationClearance(", harness, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The window's click handler reads the view model's entry once, before the dialog, and hands back the prompt
+    /// from that one reading.
+    /// </summary>
+    /// <remarks>
+    /// The dialog is a modal <c>MessageBox</c>, which no test can drive, and the view model goes on refreshing
+    /// while it is open. A handler that read the entry again after the dialog would show one charger and confirm
+    /// another with every G2 test still green, because those tests start at the view model. So the shape is held
+    /// here: one reading, and the prompt passed on is the one taken from it.
+    /// </remarks>
+    [Fact]
+    public void TheClickHandlerConfirmsThePromptItBuiltTheDialogFrom()
+    {
+        string window = File.ReadAllText(Path.Combine(
+            ProtocolIdentityArchitectureTests.RepositoryRoot(), "src", "SQCD.Agv.Wpf", "MainWindow.xaml.cs"));
+        int start = window.IndexOf("void OnConfirmStationClearanceClick(", StringComparison.Ordinal);
+        Assert.True(start >= 0, "The click handler is gone or renamed.");
+        int end = window.IndexOf("\n    }\n", start, StringComparison.Ordinal);
+        Assert.True(end > start);
+        string handler = window[start..end];
+
+        Assert.Equal(1, CountOf(handler, ".StationClearance"));
+        Assert.Contains(
+            "_viewModel?.StationClearance is not { Prompt: { } prompt, ConfirmationText: var confirmationText }",
+            handler,
+            StringComparison.Ordinal);
+        Assert.Contains("MessageBox.Show(\n                confirmationText,", handler, StringComparison.Ordinal);
+        Assert.Contains("_viewModel.ConfirmStationClearanceAsync(prompt)", handler, StringComparison.Ordinal);
+    }
+
+    private static int CountOf(string text, string value)
+    {
+        int count = 0;
+        for (int index = text.IndexOf(value, StringComparison.Ordinal);
+            index >= 0;
+            index = text.IndexOf(value, index + value.Length, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
+    }
+
     private static WireToGateStationClearanceOutcome Outcome(
         WireToGateStationClearanceOutcomeKind kind,
         bool stationReleased,

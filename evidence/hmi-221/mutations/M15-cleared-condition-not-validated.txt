@@ -1,0 +1,17 @@
+# M15-cleared-condition-not-validated
+发送前不校验 clearedCondition
+file: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+
+--- replaced ---
+            || payload.ClearedCondition is not ("STATION_EMPTY" or "OBSTRUCTION_REMOVED" or "CARGO_RELOCATED")
+
+--- with ---
+
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "clearedCondition") [72 ms]
+Failed!  - Failed:     1, Passed:    26, Skipped:     0, Total:    27, Duration: 29 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "clearedCondition")
+missing: none

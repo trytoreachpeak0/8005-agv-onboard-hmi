@@ -54,6 +54,9 @@ $checks = [ordered]@{
     loadCorrectionTarget = ($xaml -match 'AutomationProperties\.AutomationId="LoadCorrectionTarget"') -and ($xaml -match 'Text="\{Binding LoadCorrectionTargetText\}"')
     # 回落到「上次完成的装货」的三个入口也标出目标子批（批次7-14，onboard-hmi#135）。
     recoveryFallbackTarget = ($xaml -match 'AutomationProperties\.AutomationId="RecoveryFallbackTarget"') -and ($xaml -match 'Text="\{Binding RecoveryFallbackTargetText\}"') -and ($xaml -match 'Binding HasRecoveryFallbackTarget, Converter')
+    # 人工清桩确认（批次9-16，onboard-hmi#221）：按钮、说明、结果三样绑同一个 StationClearance；UIA 按 AutomationId 找，结果那一行的
+    # ItemStatus 给原始值。每一样的 AutomationId 与它的绑定必须落在同一个元素里：只查都在文件里，说明与结果两行的绑定互换也照样通过。
+    stationClearanceEntry = ($xaml -match '<Button[^>]*AutomationProperties\.AutomationId="ConfirmStationClearance"[^>]*IsEnabled="\{Binding StationClearance\.CanConfirm\}"[^>]*Visibility="\{Binding StationClearance\.CanConfirm, Converter[^>]*Click="OnConfirmStationClearanceClick"') -and ($xaml -match '<TextBlock[^>]*AutomationProperties\.AutomationId="StationClearanceNotice"[^>]*Text="\{Binding StationClearance\.NoticeText\}"[^>]*Visibility="\{Binding StationClearance\.HasNotice, Converter') -and ($xaml -match '<TextBlock[^>]*AutomationProperties\.AutomationId="StationClearanceStatus"[^>]*AutomationProperties\.ItemStatus="\{Binding StationClearance\.Status\}"[^>]*Text="\{Binding StationClearance\.StatusText\}"[^>]*Visibility="\{Binding StationClearance\.HasStatus, Converter')
     # 判故障只在服务端（REQ-0359）：本机界面不得出现判故障的按钮或绑定。
     noFaultDeclarationEntry = ($xaml -notmatch 'Content="[^"]*(判故障|判定故障|故障判定|人工判)') -and ($xaml -notmatch 'FaultDeclaration')
     dangerStyle = ($xaml -match 'Background="\{StaticResource DangerBrush\}"')

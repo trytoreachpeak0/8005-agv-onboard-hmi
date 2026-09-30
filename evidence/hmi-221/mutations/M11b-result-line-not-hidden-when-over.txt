@@ -1,0 +1,21 @@
+# M11b-result-line-not-hidden-when-over
+读视图时不按当前旅程隐藏结果，只靠事件处理清字段
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.StationClearance.cs
+
+--- replaced ---
+        if (ServerSaysTheClearanceIsOver(journey))
+        {
+            outcome = null;
+--- with ---
+        if (ServerSaysTheClearanceIsOver(journey) && outcome is null)
+        {
+            outcome = null;
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AConfirmedClearanceChangesNothingOnTheVehicleUntilTheServersNextSnapshot [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ALaterClearanceOfTheSameChargerStartsFromNothing [7 s]
+Failed!  - Failed:     2, Passed:    25, Skipped:     0, Total:    27, Duration: 41 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AConfirmedClearanceChangesNothingOnTheVehicleUntilTheServersNextSnapshot
+missing: none

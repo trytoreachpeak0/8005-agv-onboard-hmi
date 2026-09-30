@@ -371,6 +371,33 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// 人工清桩确认（8005-agv-onboard-hmi#221）。对话框依据的那一份在弹出之前取定，确认之后原样交回。
+    /// </summary>
+    /// <remarks>
+    /// 对话框开着的时候界面照常刷新：服务端可能换了原充电桩，上一次提交的结果也可能回来。这里只读一次
+    /// <c>StationClearance</c>，正文与交回去的 <c>Prompt</c> 出自同一份记录；业务服务发现它已经不是当前这一份就拒绝，不发。
+    /// 确认之后再去读一次，就成了「对话框写的是甲、发出去的是乙」（<c>WireToGateStationClearanceTests</c> 有一条结构守卫）。
+    /// </remarks>
+    private async void OnConfirmStationClearanceClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel?.StationClearance is not { Prompt: { } prompt, ConfirmationText: var confirmationText }
+            || MessageBox.Show(
+                confirmationText,
+                "确认清桩",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.ConfirmStationClearanceAsync(prompt))
+        {
+            ShowRecoveryFailure("清桩确认没有得到服务端的确认。原因见入口下方的结果一行和操作记录；站点状态以服务端为准。", "清桩确认未完成");
+        }
+    }
+
     private static void ShowRecoveryFailure(string message, string title) =>
         MessageBox.Show(
             message,

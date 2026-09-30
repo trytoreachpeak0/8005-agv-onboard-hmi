@@ -1963,9 +1963,11 @@ public sealed class MainViewModel : ViewModelBase
 
     private static OperatorRecordKind MapOperatorEventKind(string kind) => kind switch
     {
-        "OPERATION_COMPLETED" or "MANUAL_CHARGING_RETURN_ACCEPTED" => OperatorRecordKind.Success,
-        "OPERATION_RECOVERY_REQUIRED" or "RECOVERY_BLOCKED" => OperatorRecordKind.Error,
-        "RESULT_ACK_PENDING" or "RECOVERY_AUTHORIZED" or "SUBLOT_REJECTED" => OperatorRecordKind.Warning,
+        "OPERATION_COMPLETED" or "MANUAL_CHARGING_RETURN_ACCEPTED" or "STATION_CLEARANCE_CONFIRMED" =>
+            OperatorRecordKind.Success,
+        "OPERATION_RECOVERY_REQUIRED" or "RECOVERY_BLOCKED" or "STATION_CLEARANCE_REJECTED" => OperatorRecordKind.Error,
+        "RESULT_ACK_PENDING" or "RECOVERY_AUTHORIZED" or "SUBLOT_REJECTED" or "STATION_CLEARANCE_UNKNOWN"
+            or "STATION_CLEARANCE_BLOCKED" => OperatorRecordKind.Warning,
         "SUBLOT_ENTRY_REQUESTED" or "SUBLOT_ENTRY_WITHDRAWN" or "SUBLOT_SUBMITTED" or "OPERATION_PROGRESS"
             or "OPERATION_REPLAY" =>
             OperatorRecordKind.Operation,
