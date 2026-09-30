@@ -134,7 +134,30 @@ public sealed record WireToGateRecoveryVectorContext(
     /// report the generation the command it answers was issued under, byte for byte.
     /// </remarks>
     public long? ForcedRecoveryGeneration { get; init; }
+
+    /// <summary>
+    /// The cargo handoff the operator recorded when confirming a forced mechanical recovery on a demand
+    /// (REQ-0242, protocol 3.0.0 <c>cargoHandoff</c>, 8005-agv-onboard-hmi#216); null until then, and for
+    /// every other vector.
+    /// </summary>
+    /// <remarks>
+    /// Written in the same journal step as the confirmation's observation stamp and before the result is
+    /// built, and the result reads it from here only -- never from the screen -- so a press after a lost
+    /// acknowledgement, and the outbox replay after a restart, carry the same record. Once on file it is
+    /// never replaced: a later press with other text still sends this one.
+    /// </remarks>
+    public WireToGateForcedCargoHandoff? CargoHandoff { get; init; }
 }
+
+/// <summary>
+/// Which sublot a forced mechanical recovery took out, the named person it was handed to, and when
+/// (protocol 3.0.0 <c>ForcedMechanicalRecoveryResult.cargoHandoff</c>). It records the cargo's rescue and
+/// the handover of responsibility; it proves neither an empty slot nor a ready vehicle (REQ-0242).
+/// </summary>
+public sealed record WireToGateForcedCargoHandoff(
+    string Sublot,
+    string ReceiverName,
+    DateTimeOffset HandedOverAt);
 
 public sealed record WireToGateRecoveryVectorExecutionResult(
     string VectorType,

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -117,6 +118,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private readonly OperatorEventDeduplicator _operatorEventDeduplicator = new();
     private readonly SemaphoreSlim _safetySendGate = new(1, 1);
     private readonly SemaphoreSlim _recoveryRequestGate = new(1, 1);
+
+    // The forced recovery and SUBLOT the operator was last warned about (SublotConfirmedAgainstDemand).
+    // Read and written only under _recoveryRequestGate.
+    private string? _forcedSublotWarnedFor;
+
+    // The CLOSED recovery session snapshots (session and revision) whose closing was said to the operator,
+    // one small entry per closed session for the life of the process. Separate from
+    // _recoverySessionSnapshot on purpose; see the CLOSED case in the pump.
+    private readonly ConcurrentDictionary<string, byte> _announcedClosedRecoverySessions =
+        new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _operationDisplayGate = new(1, 1);
     private string? _operationDisplayOwnerAttemptId;
     private WireToGateSublotEntryRequest? _currentEntryRequest;
@@ -2269,12 +2280,31 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         ref _recoverySessionSnapshot,
                         recoverySnapshot.State == "CLOSED" ? null : recoverySnapshot);
 
-                    PublishOperatorEvent(
-                        $"recovery-session-snapshot:{recoverySnapshot.ExceptionRecoverySessionId}:{recoverySnapshot.RecoverySessionRevision}",
-                        "RECOVERY_SESSION_UPDATED",
-                        recoverySnapshot.State == "CLOSED"
-                            ? "服务端恢复会话已关闭。"
-                            : $"收到服务端恢复会话状态：{recoverySnapshot.State}。 ");
+                    string snapshotKey =
+                        $"recovery-session-snapshot:{recoverySnapshot.ExceptionRecoverySessionId}:{recoverySnapshot.RecoverySessionRevision}";
+                    if (recoverySnapshot.State == "CLOSED")
+                    {
+                        // The reason is said once per closed session and revision, in this process: the
+                        // server resends a CLOSED it has no acknowledgement for on the next session, and
+                        // the event deduplicator is cleared on every new generation. Kept in its own field,
+                        // never in _recoverySessionSnapshot -- that one is null after a CLOSED, and the
+                        // recovery entries coming back depends on exactly that (8005-agv-onboard-hmi#216).
+                        if (_announcedClosedRecoverySessions.TryAdd(snapshotKey, 0))
+                        {
+                            PublishOperatorEvent(
+                                snapshotKey,
+                                "RECOVERY_SESSION_UPDATED",
+                                WireToGateRecoverySessionClosedReasonText.Describe(recoverySnapshot.ClosedReason));
+                        }
+                    }
+                    else
+                    {
+                        PublishOperatorEvent(
+                            snapshotKey,
+                            "RECOVERY_SESSION_UPDATED",
+                            $"收到服务端恢复会话状态：{recoverySnapshot.State}。 ");
+                    }
+
                     break;
                 case WireToGateSlotOperationCommand operation:
                     await HandleSlotOperationAsync(operation, cancellationToken).ConfigureAwait(false);

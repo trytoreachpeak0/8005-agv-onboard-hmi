@@ -426,14 +426,62 @@
                             Visibility="{Binding CanRequestForcedMechanicalRecovery, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnForcedMechanicalRecoveryClick"
                             Content="强制机械恢复" />
+                    <!--
+                        强制取出的货物交接记录（批次8-14，8005-agv-onboard-hmi#216）：有需求的强制取出，确认时填子批号与
+                        接收人，缺哪项确认按钮就不可用并写明缺什么。记录一经登记就只发那一份，框收起、改为显示已登记的内容。
+                    -->
+                    <TextBlock Margin="0,0,4,0"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Text="子批号"
+                               Visibility="{Binding NeedsForcedCargoHandoff, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBox Width="160"
+                             Margin="0,0,8,0"
+                             Padding="4"
+                             FontSize="13"
+                             MaxLength="100"
+                             VerticalContentAlignment="Center"
+                             AutomationProperties.AutomationId="ForcedHandoffSublot"
+                             AutomationProperties.Name="交接货物子批号"
+                             Text="{Binding ForcedHandoffSublot, UpdateSourceTrigger=PropertyChanged}"
+                             Visibility="{Binding NeedsForcedCargoHandoff, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock Margin="0,0,4,0"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Text="接收人"
+                               Visibility="{Binding NeedsForcedCargoHandoff, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBox Width="120"
+                             Margin="0,0,8,0"
+                             Padding="4"
+                             FontSize="13"
+                             MaxLength="100"
+                             VerticalContentAlignment="Center"
+                             AutomationProperties.AutomationId="ForcedHandoffReceiverName"
+                             AutomationProperties.Name="货物接收人"
+                             Text="{Binding ForcedHandoffReceiverName, UpdateSourceTrigger=PropertyChanged}"
+                             Visibility="{Binding NeedsForcedCargoHandoff, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock Margin="0,0,8,0"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Foreground="{StaticResource MutedBrush}"
+                               AutomationProperties.AutomationId="ForcedCargoHandoffOnFile"
+                               Text="{Binding ForcedCargoHandoffOnFileText}"
+                               Visibility="{Binding HasForcedCargoHandoffOnFile, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"
                             Background="#D6A32A"
-                            IsEnabled="{Binding CanConfirmForcedMechanicalRecovery}"
+                            IsEnabled="{Binding CanSubmitForcedMechanicalRecoveryConfirmation}"
                             Visibility="{Binding CanConfirmForcedMechanicalRecovery, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnConfirmForcedMechanicalRecoveryClick"
                             Content="已隔离并完成机械取出" />
+                    <TextBlock Margin="0,0,8,0"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Foreground="{StaticResource MutedBrush}"
+                               AutomationProperties.AutomationId="ForcedCargoHandoffMissing"
+                               Text="{Binding ForcedCargoHandoffMissingText}"
+                               Visibility="{Binding NeedsForcedCargoHandoff, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <TextBox Width="240"
                              Margin="0,0,8,0"
                              Padding="4"
