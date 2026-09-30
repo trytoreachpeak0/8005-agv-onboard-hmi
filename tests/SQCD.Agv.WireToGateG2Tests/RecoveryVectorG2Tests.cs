@@ -283,21 +283,19 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
-    /// Protocol 3.0.0: a forced recovery on a demand confirmed <c>MECHANICALLY_ISOLATED</c> must carry a
-    /// cargo handoff record, and this build cannot take one, so the confirmation fails closed -- no
-    /// result, no made-up value, the confirmation kept on disk (8005-agv-onboard-hmi#214, coordinator's
-    /// decision A1).
+    /// REPORT_FORCED_RECOVERY_OUTCOME, including the two proofs the schema forbids this message
+    /// from ever claiming -- and, since protocol 3.0.0, COPY_COMMAND_DEMAND_INTO_RESULT and
+    /// REPORT_CARGO_HANDOFF_RECORD_IN_RESULT: the result names the command's demand and carries the
+    /// handoff record the operator entered, and the record proves neither of the two (REQ-0242).
     /// </summary>
     /// <remarks>
-    /// Until #214 this was <c>ForcedMechanicalRecoveryOutcomeIsReportedWithNeitherProofClaimed</c>, which
-    /// drove the result out and checked its shape. 8005-agv-onboard-hmi#216 adds the handoff screen and
-    /// turns it back into that: the result, both proofs <c>false</c>, the demand copied from the command,
-    /// and the handoff record.
+    /// Held unreported between 8005-agv-onboard-hmi#214 and #216, which added the handoff record; this is
+    /// the reporting test restored, not a new one.
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
-    public async Task AConfirmedIsolationOnADemandIsHeldUnreportedWithoutAHandoffRecord()
+    public async Task ForcedMechanicalRecoveryOutcomeIsReportedWithNeitherProofClaimed()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
@@ -307,26 +305,60 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.True(harness.Business.CanRequestForcedMechanicalRecovery);
         Assert.True(await harness.Business.RequestForcedMechanicalRecoveryAsync(
             "现场确认仓门无法电动解锁，申请强制机械恢复。", token));
-        await harness.ConfirmForcedMechanicalRecoveryHeldAsync(token);
+        await harness.ConfirmForcedMechanicalRecoveryAsync(token);
 
-        WireToGateRecoveryState state = await harness.AssertConfirmedIsolationHeldUnreportedAsync(token);
+        JsonElement result = await harness.WaitForResultAsync(
+            "ForcedMechanicalRecoveryResult", token);
+
+        Assert.Equal("MECHANICALLY_ISOLATED", result.GetProperty("outcome").GetString());
+        Assert.Equal(4, result.GetProperty("forcedRecoveryGeneration").GetInt64());
+        Assert.Equal(
+            ActionIdFor(ForcedMechanicalRecoveryAction),
+            result.GetProperty("recoveryActionId").GetString());
+        Assert.False(result.GetProperty("electronicEmptyProven").GetBoolean());
+        Assert.False(result.GetProperty("vehicleReadyProven").GetBoolean());
+
+        // Not a slotResults array with everything UNKNOWN: this message carries the slot set only.
+        Assert.Equal(
+            [1, 2],
+            result.GetProperty("slots").EnumerateArray().Select(slot => slot.GetInt32()).ToArray());
+        Assert.False(result.TryGetProperty("slotResults", out _));
+        Assert.Equal(DemandId, result.GetProperty("demandId").GetString());
+        JsonElement handoff = result.GetProperty("cargoHandoff");
+        Assert.Equal(RecoveryVectorHarness.HandoffSublot, handoff.GetProperty("sublot").GetString());
+        Assert.Equal(RecoveryVectorHarness.HandoffReceiver, handoff.GetProperty("receiverName").GetString());
+
+        // The generation the command carried is now the vehicle's own, which is what makes the
+        // next fence decision meaningful.
+        WireToGateRecoveryState state = await harness.ReadRecoveryStateAsync(token);
         Assert.Equal(4, state.ForcedRecoveryGeneration);
     }
 
     /// <summary>
-    /// REQ-0241: a forced mechanical recovery sends no unlock DO at any point -- before the operator's
-    /// confirmation and after it -- and, on a demand, reports nothing until a cargo handoff record can be
-    /// taken (protocol 3.0.0; 8005-agv-onboard-hmi#214).
+    /// REQ-0241: a forced mechanical recovery sends no unlock DO at any point, and reports
+    /// <c>MECHANICALLY_ISOLATED</c> only once the operator has confirmed the isolation and the
+    /// manual extraction (onboard-hmi#107).
     /// </summary>
     /// <remarks>
-    /// Until #214 the second half asserted the acknowledged isolation (business side settled, slots
-    /// physically unknown); that is unreachable until 8005-agv-onboard-hmi#216, which restores it. The
-    /// isolation itself is covered from a captured acknowledged state by the hardware-recovery tests.
+    /// <para>
+    /// Until #107 the command ran through the ordinary clear executor: it pulsed every occupied
+    /// target slot and waited for <c>EMPTY</c> and a closed lock, then mapped that electronic
+    /// finish onto <c>MECHANICALLY_ISOLATED</c>. That is the opposite of the requirement -- the
+    /// lock is exactly what cannot be trusted here, the people at the vehicle have cut its power,
+    /// and a qualified person opens it by hand. The slots hold cargo in this case, so the old path
+    /// would have pulsed slot 1 before anything else.
+    /// </para>
+    /// <para>
+    /// Once the server acknowledged the result, the business side is settled -- the server has
+    /// cancelled the operation -- so the attempt goes from the journal with no OperationResult,
+    /// and what remains is the device side: the two slots are physically unknown until a hardware
+    /// recovery record clears them.
+    /// </para>
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
-    public async Task ForcedMechanicalRecoverySendsNoUnlockAndHoldsTheConfirmationWithoutAHandoffRecord()
+    public async Task ForcedMechanicalRecoverySendsNoUnlockAndReportsOnlyAfterTheOperatorConfirms()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
@@ -342,33 +374,44 @@ public sealed partial class RecoveryVectorG2Tests
 
         Assert.Equal(0, harness.Io.UnlockCount);
         Assert.Empty(harness.ResultsOfType("ForcedMechanicalRecoveryResult"));
+        // The seeded load was settled UNKNOWN when the vehicle came up; that one result is the
+        // harness's, and the forced recovery must add none.
         int operationResultsBefore = harness.ResultsOfType("OperationResult").Count;
 
-        await harness.ConfirmForcedMechanicalRecoveryHeldAsync(token);
+        await harness.ConfirmForcedMechanicalRecoveryAsync(token);
+        JsonElement result = await harness.WaitForResultAsync(
+            "ForcedMechanicalRecoveryResult", token);
 
-        await harness.AssertConfirmedIsolationHeldUnreportedAsync(token);
+        Assert.Equal("MECHANICALLY_ISOLATED", result.GetProperty("outcome").GetString());
+        Assert.Equal(0, harness.Io.UnlockCount);
         Assert.Equal(operationResultsBefore, harness.ResultsOfType("OperationResult").Count);
+        Assert.False(harness.Business.CanConfirmForcedMechanicalRecovery);
+
+        WireToGateRecoveryState state = await harness.ReadRecoveryStateAsync(token);
+        Assert.Null(state.UnsettledSlotOperationAttemptId);
+        Assert.Null(state.OperationContext);
+        Assert.Null(state.RecoveryVector);
+        Assert.Equal([1, 2], state.ForcedIsolation!.PhysicallyUnknownSlots);
+        Assert.Equal(RecoverySessionId, state.ForcedIsolation.ExceptionRecoverySessionId);
         Assert.Equal(
-            WireToGateHmiOperationStage.RecoveryRequired,
-            harness.Business.CurrentOperationSnapshot!.Stage);
+            ActionIdFor(ForcedMechanicalRecoveryAction),
+            state.ForcedIsolation.RecoveryActionId);
+        Assert.Equal([1, 2], harness.Business.PhysicallyUnknownSlots);
     }
 
     /// <summary>
-    /// The held confirmation is on disk: a restart keeps it -- the authorized vector and the observation
-    /// stamp, byte for byte -- and a confirmation after the restart is held again, with no result sent
-    /// before or after it and not a single unlock (8005-agv-onboard-hmi#214). This is the state
-    /// 8005-agv-onboard-hmi#216 sends the result from.
+    /// The wait for the operator's confirmation is on disk: a restart keeps waiting, and the
+    /// confirmation after it still reports without a single unlock.
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
-    public async Task AHeldForcedRecoveryConfirmationIsStillHeldAfterARestart()
+    public async Task AForcedRecoveryAwaitingConfirmationIsStillAwaitingItAfterARestart()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         string journalPath = Path.Combine(
             Path.GetTempPath(), "w2g-vector", Guid.NewGuid().ToString("N"), "journal.db");
         await using FakeControlServer server = RecoveryVectorHarness.NewServer();
-        WireToGateRecoveryState beforeRestartState;
 
         await using (RecoveryVectorHarness beforeRestart = await RecoveryVectorHarness.StartAsync(
             token,
@@ -378,8 +421,11 @@ public sealed partial class RecoveryVectorG2Tests
         {
             Assert.True(await beforeRestart.Business.RequestForcedMechanicalRecoveryAsync(
                 "现场确认仓门无法电动解锁，申请强制机械恢复。", token));
-            await beforeRestart.ConfirmForcedMechanicalRecoveryHeldAsync(token);
-            beforeRestartState = await beforeRestart.AssertConfirmedIsolationHeldUnreportedAsync(token);
+            await RecoveryVectorHarness.WaitUntilAsync(
+                () => beforeRestart.Business.CanConfirmForcedMechanicalRecovery,
+                "the authorized forced recovery to wait for the operator's confirmation",
+                token);
+            Assert.Equal(0, beforeRestart.Io.UnlockCount);
         }
 
         await using FakeControlServer serverAfterRestart = RecoveryVectorHarness.NewServer();
@@ -393,25 +439,15 @@ public sealed partial class RecoveryVectorG2Tests
             cargoInTargetSlots: true);
         await RecoveryVectorHarness.WaitUntilAsync(
             () => afterRestart.Business.CanConfirmForcedMechanicalRecovery,
-            "the held forced recovery to still wait for the confirmation after the restart",
+            "the forced recovery to still wait for the confirmation after the restart",
             token);
-        // Before any second press, the restored line already says the confirmation is held -- not the
-        // "cut power and extract by hand" instruction, which would read as a second extraction.
-        await RecoveryVectorHarness.WaitUntilAsync(
-            () => afterRestart.Business.CurrentOperationSnapshot?.Guidance.Contains("不能登记货物交接", StringComparison.Ordinal) == true,
-            "the restored operation line to say the confirmation is held",
-            token);
-        Assert.DoesNotContain("请先断电", afterRestart.Business.CurrentOperationSnapshot!.Guidance, StringComparison.Ordinal);
 
-        WireToGateRecoveryState afterRestartState = await afterRestart.ReadRecoveryStateAsync(token);
-        Assert.Equal(
-            JsonSerializer.Serialize(beforeRestartState.RecoveryVector),
-            JsonSerializer.Serialize(afterRestartState.RecoveryVector));
-        Assert.Equal(beforeRestartState.RecoveryResultObservedAt, afterRestartState.RecoveryResultObservedAt);
+        await afterRestart.ConfirmForcedMechanicalRecoveryAsync(token);
+        JsonElement result = await afterRestart.WaitForResultAsync(
+            "ForcedMechanicalRecoveryResult", token);
 
-        await afterRestart.ConfirmForcedMechanicalRecoveryHeldAsync(token);
-        WireToGateRecoveryState heldAgain = await afterRestart.AssertConfirmedIsolationHeldUnreportedAsync(token);
-        Assert.Equal(beforeRestartState.RecoveryResultObservedAt, heldAgain.RecoveryResultObservedAt);
+        Assert.Equal("MECHANICALLY_ISOLATED", result.GetProperty("outcome").GetString());
+        Assert.Equal(0, afterRestart.Io.UnlockCount);
         Assert.DoesNotContain(
             server.ReceivedEnvelopes,
             envelope => envelope.MessageType == "ForcedMechanicalRecoveryResult");
@@ -430,8 +466,8 @@ public sealed partial class RecoveryVectorG2Tests
         CancellationToken token = TestContext.Current.CancellationToken;
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
             token,
-            cargoInTargetSlots: true,
-            seededRecoveryState: AcknowledgedForcedIsolationState);
+            cargoInTargetSlots: true);
+        await harness.IsolateByForcedRecoveryAsync(token);
         Assert.True(harness.Business.CanSubmitHardwareRecoveryRecord);
         int operationResultsBefore = harness.ResultsOfType("OperationResult").Count;
 
@@ -480,8 +516,8 @@ public sealed partial class RecoveryVectorG2Tests
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
             token,
             server => server.HardwareRecoveryRecordOutcome = "REJECTED",
-            cargoInTargetSlots: true,
-            seededRecoveryState: AcknowledgedForcedIsolationState);
+            cargoInTargetSlots: true);
+        await harness.IsolateByForcedRecoveryAsync(token);
 
         Assert.False(await harness.Business.SubmitHardwareRecoveryRecordAsync(
             "复测锁反馈正常。", token));
@@ -504,8 +540,8 @@ public sealed partial class RecoveryVectorG2Tests
         CancellationToken token = TestContext.Current.CancellationToken;
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
             token,
-            cargoInTargetSlots: true,
-            seededRecoveryState: AcknowledgedForcedIsolationState);
+            cargoInTargetSlots: true);
+        await harness.IsolateByForcedRecoveryAsync(token);
         harness.Io.SetUnreadable(1);
 
         Assert.False(await harness.Business.SubmitHardwareRecoveryRecordAsync(
@@ -564,14 +600,9 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
-    /// onboard-hmi#107: an unload whose slot operation ended UNKNOWN offers the forced mechanical
-    /// recovery, and the recovery sends no unlock. On a demand its confirmation is held unreported until
-    /// a cargo handoff record can be taken (protocol 3.0.0; 8005-agv-onboard-hmi#214).
+    /// onboard-hmi#107: the forced mechanical recovery is on offer over an UNKNOWN unload too, and
+    /// sends no unlock there either.
     /// </summary>
-    /// <remarks>
-    /// Until #214 this also asserted the result's slot set <c>[3]</c> and slot 3 physically unknown after
-    /// the acknowledgement; 8005-agv-onboard-hmi#216 restores both.
-    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
@@ -586,10 +617,16 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.True(harness.Business.CanRequestForcedMechanicalRecovery);
         Assert.True(await harness.Business.RequestForcedMechanicalRecoveryAsync(
             "卸货仓锁无法电动解锁，申请强制机械取出。", token));
-        await harness.ConfirmForcedMechanicalRecoveryHeldAsync(token);
+        await harness.ConfirmForcedMechanicalRecoveryAsync(token);
 
-        WireToGateRecoveryState state = await harness.AssertConfirmedIsolationHeldUnreportedAsync(token);
-        Assert.Equal([3], state.RecoveryVector!.Slots);
+        JsonElement result = await harness.WaitForResultAsync(
+            "ForcedMechanicalRecoveryResult", token);
+        Assert.Equal("MECHANICALLY_ISOLATED", result.GetProperty("outcome").GetString());
+        Assert.Equal(
+            [3],
+            result.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()).ToArray());
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.Equal([3], harness.Business.PhysicallyUnknownSlots);
     }
 
     /// <summary>
@@ -676,8 +713,8 @@ public sealed partial class RecoveryVectorG2Tests
         CancellationToken token = TestContext.Current.CancellationToken;
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
             token,
-            cargoInTargetSlots: true,
-            seededRecoveryState: AcknowledgedForcedIsolationState);
+            cargoInTargetSlots: true);
+        await harness.IsolateByForcedRecoveryAsync(token);
         harness.Server.BeforeHardwareRecoveryRecordResult = () => harness.Io.SetUnreadable(1);
 
         Assert.False(await harness.Business.SubmitHardwareRecoveryRecordAsync(
@@ -1375,8 +1412,7 @@ public sealed partial class RecoveryVectorG2Tests
             bool lockerWaitTimesOut = false,
             Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
             Func<bool>? fatalFaultLatched = null,
-            IClock? sessionClock = null,
-            string? seededRecoveryState = null)
+            IClock? sessionClock = null)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -1522,31 +1558,6 @@ public sealed partial class RecoveryVectorG2Tests
                         loadAlreadySettled,
                         armedUnloadOverSettledLoad,
                         nothingOnFile,
-                        seededIsolation: false,
-                        cancellationToken);
-                }
-
-                if (seededRecoveryState is not null)
-                {
-                    // A whole recovery state captured from a real run, written as it was read back
-                    // (see AcknowledgedForcedIsolationState). Nothing of the default seed below is
-                    // mixed into it.
-                    await journal.UpdateRecoveryStateAsync(
-                        _ => JsonSerializer.Deserialize<WireToGateRecoveryState>(seededRecoveryState, SeedSerializerOptions),
-                        cancellationToken);
-                    return await FinishStartAsync(
-                        server,
-                        ownsServer,
-                        io,
-                        journal,
-                        session,
-                        business,
-                        safety,
-                        logger,
-                        loadAlreadySettled,
-                        armedUnloadOverSettledLoad,
-                        nothingOnFile,
-                        seededIsolation: true,
                         cancellationToken);
                 }
 
@@ -1593,7 +1604,6 @@ public sealed partial class RecoveryVectorG2Tests
                     loadAlreadySettled,
                     armedUnloadOverSettledLoad,
                     nothingOnFile,
-                    seededIsolation: false,
                     cancellationToken);
             }
             catch
@@ -1619,7 +1629,6 @@ public sealed partial class RecoveryVectorG2Tests
             bool loadAlreadySettled,
             bool armedUnloadOverSettledLoad,
             bool nothingOnFile,
-            bool seededIsolation,
             CancellationToken cancellationToken)
         {
             // The readiness has to be RECOVERY_REQUIRED when the action is submitted -- with no
@@ -1657,16 +1666,7 @@ public sealed partial class RecoveryVectorG2Tests
             // refreshes on its first pass; the seeded journal alone does not answer them. The
             // request path reads the journal directly, so this wait is what makes the gates
             // meaningful to assert rather than what makes the request work.
-            if (seededIsolation)
-            {
-                // The seeded state is an acknowledged isolation: nothing armed, the slots physically
-                // unknown. The pump surfacing that set is the signal it read the journal.
-                await WaitUntilAsync(
-                    () => business.PhysicallyUnknownSlots.Count > 0,
-                    "the business pump to surface the seeded forced isolation",
-                    cancellationToken);
-            }
-            else if (nothingOnFile)
+            if (nothingOnFile)
             {
                 // No operation snapshot and no entry can turn true here, so neither is a signal the
                 // pump ran. The one SafetyStateChanged it sends when it starts is.
@@ -1740,53 +1740,94 @@ public sealed partial class RecoveryVectorG2Tests
         }
 
         /// <summary>
-        /// Confirms the authorized forced recovery the way the HMI button does, and expects the press to be
-        /// held: protocol 3.0.0 requires a cargo handoff record this build cannot take
-        /// (8005-agv-onboard-hmi#214). 8005-agv-onboard-hmi#216 replaces the held press with a reported one.
+        /// Takes the seeded load through a whole forced mechanical recovery -- request, authorization,
+        /// the operator's confirmation, the server's acknowledgement -- so its slots end up physically
+        /// unknown.
         /// </summary>
-        public async Task ConfirmForcedMechanicalRecoveryHeldAsync(CancellationToken cancellationToken)
+        public async Task IsolateByForcedRecoveryAsync(CancellationToken cancellationToken)
+        {
+            Assert.True(await Business.RequestForcedMechanicalRecoveryAsync(
+                "现场确认仓门无法电动解锁，申请强制机械恢复。", cancellationToken));
+            await ConfirmForcedMechanicalRecoveryAsync(cancellationToken);
+            await WaitUntilAsync(
+                () => Business.PhysicallyUnknownSlots.Count > 0,
+                "the acknowledged forced recovery to leave its slots physically unknown",
+                cancellationToken);
+        }
+
+        /// <summary>The SUBLOT the harness's handoff record names, and the worklist it sends names for the demand.</summary>
+        public const string HandoffSublot = "SUBLOT-FORCED-001";
+
+        /// <summary>The receiver the harness's handoff record names.</summary>
+        public const string HandoffReceiver = "收货员王一";
+
+        private long _worklistRevision = 100;
+
+        /// <summary>
+        /// Waits for the authorized forced recovery to be waiting on the operator, then confirms
+        /// the isolation and the manual extraction the way the HMI button does -- with the cargo handoff
+        /// record protocol 3.0.0 requires on a demand, whose SUBLOT the current stop's worklist names for
+        /// that demand, so the check before sending passes on the first press (8005-agv-onboard-hmi#216).
+        /// </summary>
+        public async Task ConfirmForcedMechanicalRecoveryAsync(CancellationToken cancellationToken)
         {
             await WaitUntilAsync(
                 () => Business.CanConfirmForcedMechanicalRecovery,
                 "the authorized forced recovery to wait for the operator's confirmation",
                 cancellationToken);
-            Assert.False(await Business.ConfirmForcedMechanicalRecoveryAsync(cancellationToken));
+            string demandId = (await ReadRecoveryStateAsync(cancellationToken)).RecoveryVector!.DemandId;
+            if (Session.CurrentJourney.CurrentStopWorklist?.Items.Any(item => item.DemandId == demandId) != true)
+            {
+                await NameTheDemandOnTheWorklistAsync(demandId, HandoffSublot, cancellationToken);
+            }
+
+            Assert.True(
+                await Business.ConfirmForcedMechanicalRecoveryAsync(HandoffSublot, HandoffReceiver, cancellationToken),
+                string.Join(" / ", Logger.Entries
+                    .Where(entry => entry.Severity >= LogSeverity.Warning)
+                    .Select(entry => entry.Message)
+                    .TakeLast(3)));
         }
 
         /// <summary>
-        /// The fail-closed state a held confirmation leaves: the operator told why, nothing on the wire for
-        /// a settle window, no unlock, no isolation, and the confirmation on disk -- the authorized vector
-        /// and its observation stamp -- still waiting to be confirmed and reported.
+        /// Sends a current stop worklist naming <paramref name="demandId"/> with <paramref name="sublot"/> --
+        /// what the forced recovery's SUBLOT check reads -- and waits for the vehicle to hold it. Each call is a
+        /// new revision, so a later call replaces the worklist rather than conflicting with it.
         /// </summary>
-        public async Task<WireToGateRecoveryState> AssertConfirmedIsolationHeldUnreportedAsync(
+        public async Task NameTheDemandOnTheWorklistAsync(
+            string demandId,
+            string sublot,
             CancellationToken cancellationToken)
         {
-            await WaitForRecoveryBlockedAsync("FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED", cancellationToken);
-            // The operator is told why on the operation line itself, not only in the event log: the
-            // confirmation's own guard says it; the send-site backstop alone would not.
+            long revision = Interlocked.Increment(ref _worklistRevision);
+            await Server.SendJourneySnapshotAsync(
+                "CurrentStopWorklistSnapshot",
+                new
+                {
+                    stationId = "ST-01",
+                    worklistRevision = revision,
+                    operationSessionId = (string?)null,
+                    stationDepartureDeadlineAt = (DateTimeOffset?)null,
+                    stopEndedReason = (string?)null,
+                    items = new[]
+                    {
+                        new
+                        {
+                            demandId,
+                            transportDemandKey = "TD-FORCED-001",
+                            sublot,
+                            workType = "WIRE_TO_GATE",
+                            stopRole = "PICKUP",
+                            expectedBasketCount = 2
+                        }
+                    }
+                });
             await WaitUntilAsync(
-                () => Business.CurrentOperationSnapshot?.Guidance.Contains("不能登记货物交接", StringComparison.Ordinal) == true,
-                "the operation line to say the result waits for a cargo handoff record",
+                () => Session.CurrentJourney.CurrentStopWorklist is { } worklist
+                    && worklist.Revision == revision,
+                "the vehicle to hold the worklist naming the forced recovery's demand",
                 cancellationToken);
-            // Not one read: a result would reach the server a moment after the press returned.
-            for (int check = 0; check < 5; check++)
-            {
-                Assert.Empty(ResultsOfType("ForcedMechanicalRecoveryResult"));
-                await Task.Delay(100, cancellationToken);
-            }
-
-            Assert.Equal(0, Io.UnlockCount);
-            Assert.Empty(Business.PhysicallyUnknownSlots);
-            Assert.True(Business.CanConfirmForcedMechanicalRecovery);
-            WireToGateRecoveryState state = await ReadRecoveryStateAsync(cancellationToken);
-            Assert.Null(state.ForcedIsolation);
-            Assert.NotNull(state.RecoveryResultObservedAt);
-            Assert.Equal(WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery, state.RecoveryVector!.VectorType);
-            Assert.NotNull(state.RecoveryVector.CommandContentSha256);
-            Assert.False(string.IsNullOrEmpty(state.RecoveryVector.DemandId));
-            return state;
         }
-
 
         public IReadOnlyList<string> ResultsOfType(string messageType) =>
         [

@@ -294,7 +294,7 @@ public sealed partial class RecoveryVectorG2Tests
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
-    public async Task AForcedRecoveryIsNotRefusedOnVehicleMotionAndItsConfirmationIsHeldOnlyForTheHandoffRecord()
+    public async Task AForcedRecoveryIsNotRefusedOnVehicleMotionAndStillReportsOnConfirmation()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
@@ -305,13 +305,13 @@ public sealed partial class RecoveryVectorG2Tests
         harness.VehicleMotionUnknown();
         Assert.True(await harness.Business.RequestForcedMechanicalRecoveryAsync(
             "现场确认仓门无法电动解锁，申请强制机械恢复。", token));
-        await harness.ConfirmForcedMechanicalRecoveryHeldAsync(token);
+        await harness.ConfirmForcedMechanicalRecoveryAsync(token);
 
-        // Held, and held for the missing handoff record alone (8005-agv-onboard-hmi#214): the one
-        // refusal is that one, not a motion guard. Until #214 this asserted the reported result;
-        // 8005-agv-onboard-hmi#216 restores it.
-        await harness.AssertConfirmedIsolationHeldUnreportedAsync(token);
-        Assert.Equal(1, harness.RecoveryBlockedCount);
+        JsonElement result = await harness.WaitForResultAsync("ForcedMechanicalRecoveryResult", token);
+
+        Assert.Equal("MECHANICALLY_ISOLATED", result.GetProperty("outcome").GetString());
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.Equal(0, harness.RecoveryBlockedCount);
     }
 
     /// <summary>

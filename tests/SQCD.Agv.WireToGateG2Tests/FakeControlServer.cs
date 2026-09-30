@@ -99,6 +99,13 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public bool DropAfterRecoveryAck { get; set; }
 
+    /// <summary>
+    /// Records a <c>ForcedMechanicalRecoveryResult</c> and never acknowledges it: the result is on the
+    /// vehicle's disk and on the wire, and the vehicle is left waiting -- the moment a crash or restart
+    /// replays it from (8005-agv-onboard-hmi#216).
+    /// </summary>
+    public bool WithholdForcedMechanicalRecoveryResultAck { get; set; }
+
     public bool DropBeforeRecoveryAck { get; set; }
 
     public bool DropBeforeSafetyStateChangedAck { get; set; }
@@ -1659,6 +1666,8 @@ public sealed class FakeControlServer : IAsyncDisposable
                                 _operationsNeedingRecovery.Remove(settledAttempt);
                             }
                         }).ConfigureAwait(false);
+                        break;
+                    case "ForcedMechanicalRecoveryResult" when WithholdForcedMechanicalRecoveryResultAck:
                         break;
                     case "SublotSubmitted":
                     case "OperationProgress":

@@ -219,8 +219,6 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
                 "FP-IS-02, 3.0.0 candidate; the cancellation clearing path, 8005-agv-onboard-hmi#219",
             ["CV-LOAD-COMPENSATION-EMPTY-DOOR-UNPROVEN"] =
                 "FP-IS-07, 3.0.0 candidate; the compensation clearing path, 8005-agv-onboard-hmi#219",
-            ["CV-RECOVERY-SESSION-CLOSED-RESULT-NOT-RECONCILED"] =
-                "FP-IS-07, 3.0.0 candidate; the recovery session's closed reason, 8005-agv-onboard-hmi#216",
             ["CV-SLOT-FAULT-DECLARATION-APPLIED"] =
                 "FP-IS-07, 3.0.0 candidate; the administrator's slot fault declaration, 8005-agv-onboard-hmi#215",
             ["CV-SLOT-FAULT-DECLARATION-NOT-APPLICABLE"] =
@@ -411,8 +409,10 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// <c>APPROVED_RELEASE</c>, the hold and every pin labelled <c>8005-agv-onboard-hmi#216</c> must be gone.
     /// </para>
     /// <para>
-    /// On the candidate the rule does not fire, so <see cref="TheReleaseGateCatchesTheHoldThatIsHereToday"/>
-    /// runs the same check as though today's build were the release.
+    /// On the candidate the rule does not fire, so <see cref="TodaysBuildWouldPassTheReleaseGate"/> runs the
+    /// same check as though today's build were the release. 8005-agv-onboard-hmi#216 ended the hold and
+    /// named the closed-reason vector's test, so that check is empty now; until then it asserted that both
+    /// offences were reported.
     /// </para>
     /// </remarks>
     [Fact]
@@ -427,16 +427,16 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     }
 
     /// <summary>
-    /// The release gate above is not vacuous: run against today's source and pins as though they were the
-    /// release, it reports both the hold and the #216 pins.
+    /// Run against today's source and pins as though they were the release, the gate above finds nothing:
+    /// the hold is gone and nothing is pinned as owed by 8005-agv-onboard-hmi#216. The gate itself stays, so
+    /// a hold reintroduced under the same name, or a new #216 pin, would still stop a release.
     /// </summary>
     [Fact]
-    public void TheReleaseGateCatchesTheHoldThatIsHereToday()
+    public void TodaysBuildWouldPassTheReleaseGate()
     {
         string[] offences = ReleaseGateOffences("APPROVED_RELEASE");
 
-        Assert.Contains(offences, offence => offence.Contains("IsolationOnADemandNeedsAHandoffRecord", StringComparison.Ordinal));
-        Assert.Contains(offences, offence => offence.Contains("CV-RECOVERY-SESSION-CLOSED-RESULT-NOT-RECONCILED", StringComparison.Ordinal));
+        Assert.True(offences.Length == 0, string.Join("; ", offences));
     }
 
     private static string[] ReleaseGateOffences(string approvalStatus)

@@ -89,7 +89,13 @@ public sealed class MainViewModel : ViewModelBase
     private string _physicallyUnknownSlotsText = string.Empty;
     private string _hardwareRecoveryObservations = string.Empty;
     private Func<bool>? _wireToGateCanConfirmForcedMechanicalRecovery;
-    private Func<CancellationToken, Task<bool>>? _wireToGateForcedMechanicalRecoveryConfirmer;
+    private Func<string?, string?, CancellationToken, Task<bool>>? _wireToGateForcedMechanicalRecoveryConfirmer;
+    private Func<bool>? _wireToGateForcedConfirmationNeedsCargoHandoff;
+    private Func<WireToGateForcedCargoHandoff?>? _wireToGateForcedCargoHandoffOnFile;
+    private string _forcedHandoffSublot = string.Empty;
+    private string _forcedHandoffReceiverName = string.Empty;
+    private bool _needsForcedCargoHandoff;
+    private string _forcedCargoHandoffOnFileText = string.Empty;
     private Func<IReadOnlyList<int>>? _wireToGatePhysicallyUnknownSlots;
     private Func<bool>? _wireToGateCanSubmitHardwareRecoveryRecord;
     private Func<string, CancellationToken, Task<bool>>? _wireToGateHardwareRecoveryRecordSubmitter;
@@ -533,15 +539,24 @@ public sealed class MainViewModel : ViewModelBase
     /// the operator's confirmation of the isolation and the manual extraction, and the hardware
     /// recovery record that clears the slots it left physically unknown.
     /// </summary>
+    /// <param name="confirmer">Takes the SUBLOT and receiver the operator entered for the cargo handoff.</param>
+    /// <param name="needsCargoHandoff">
+    /// Whether the confirmation awaited needs a cargo handoff record entered (8005-agv-onboard-hmi#216).
+    /// </param>
+    /// <param name="cargoHandoffOnFile">The record already on file, which every later press sends.</param>
     internal void ConfigureForcedIsolation(
         Func<bool> canConfirm,
-        Func<CancellationToken, Task<bool>> confirmer,
+        Func<string?, string?, CancellationToken, Task<bool>> confirmer,
         Func<IReadOnlyList<int>> physicallyUnknownSlots,
         Func<bool> canSubmitRecord,
-        Func<string, CancellationToken, Task<bool>> recordSubmitter)
+        Func<string, CancellationToken, Task<bool>> recordSubmitter,
+        Func<bool>? needsCargoHandoff = null,
+        Func<WireToGateForcedCargoHandoff?>? cargoHandoffOnFile = null)
     {
         _wireToGateCanConfirmForcedMechanicalRecovery = canConfirm;
         _wireToGateForcedMechanicalRecoveryConfirmer = confirmer;
+        _wireToGateForcedConfirmationNeedsCargoHandoff = needsCargoHandoff;
+        _wireToGateForcedCargoHandoffOnFile = cargoHandoffOnFile;
         _wireToGatePhysicallyUnknownSlots = physicallyUnknownSlots;
         _wireToGateCanSubmitHardwareRecoveryRecord = canSubmitRecord;
         _wireToGateHardwareRecoveryRecordSubmitter = recordSubmitter;
@@ -1281,7 +1296,106 @@ public sealed class MainViewModel : ViewModelBase
     public bool CanConfirmForcedMechanicalRecovery
     {
         get => _canConfirmForcedMechanicalRecovery;
-        private set => SetProperty(ref _canConfirmForcedMechanicalRecovery, value);
+        private set
+        {
+            if (SetProperty(ref _canConfirmForcedMechanicalRecovery, value))
+            {
+                OnPropertyChanged(nameof(NeedsForcedCargoHandoff));
+                OnPropertyChanged(nameof(HasForcedCargoHandoffOnFile));
+                OnForcedHandoffInputChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// The SUBLOT of the cargo a forced mechanical recovery took out, as the operator entered it for the
+    /// handoff record (protocol 3.0.0 <c>cargoHandoff.sublot</c>, 8005-agv-onboard-hmi#216).
+    /// </summary>
+    public string ForcedHandoffSublot
+    {
+        get => _forcedHandoffSublot;
+        set
+        {
+            if (SetProperty(ref _forcedHandoffSublot, value ?? string.Empty))
+            {
+                OnForcedHandoffInputChanged();
+            }
+        }
+    }
+
+    /// <summary>The named person the cargo was handed to (<c>cargoHandoff.receiverName</c>).</summary>
+    public string ForcedHandoffReceiverName
+    {
+        get => _forcedHandoffReceiverName;
+        set
+        {
+            if (SetProperty(ref _forcedHandoffReceiverName, value ?? string.Empty))
+            {
+                OnForcedHandoffInputChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether the confirmation step shows the two handoff fields: the step is on offer, the forced recovery
+    /// is on a demand and no record is on file yet. Read through <see cref="CanConfirmForcedMechanicalRecovery"/>
+    /// so a latch that closes the step closes the fields with it, whichever refresh path closed it.
+    /// </summary>
+    public bool NeedsForcedCargoHandoff
+    {
+        get => _needsForcedCargoHandoff && CanConfirmForcedMechanicalRecovery;
+        private set
+        {
+            if (SetProperty(ref _needsForcedCargoHandoff, value))
+            {
+                OnForcedHandoffInputChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// What the handoff record still lacks, in the operator's words, or empty when nothing is missing.
+    /// The confirm button stays disabled while this is not empty.
+    /// </summary>
+    public string ForcedCargoHandoffMissingText =>
+        !NeedsForcedCargoHandoff
+            ? string.Empty
+            : (string.IsNullOrWhiteSpace(ForcedHandoffSublot), string.IsNullOrWhiteSpace(ForcedHandoffReceiverName)) switch
+            {
+                (true, true) => "请填写取出货物的子批号和接收人。",
+                (true, false) => "请填写取出货物的子批号。",
+                (false, true) => "请填写接收人。",
+                _ => string.Empty
+            };
+
+    /// <summary>
+    /// The confirm button's enabled state: the step is on offer and the handoff record, when one is
+    /// needed, is complete. Visibility stays on <see cref="CanConfirmForcedMechanicalRecovery"/>, so the
+    /// button does not vanish while the operator is still typing.
+    /// </summary>
+    public bool CanSubmitForcedMechanicalRecoveryConfirmation =>
+        CanConfirmForcedMechanicalRecovery && ForcedCargoHandoffMissingText.Length == 0;
+
+    /// <summary>The handoff record already on file, described for the operator, or empty.</summary>
+    public string ForcedCargoHandoffOnFileText
+    {
+        get => _forcedCargoHandoffOnFileText;
+        private set
+        {
+            if (SetProperty(ref _forcedCargoHandoffOnFileText, value))
+            {
+                OnPropertyChanged(nameof(HasForcedCargoHandoffOnFile));
+            }
+        }
+    }
+
+    public bool HasForcedCargoHandoffOnFile =>
+        ForcedCargoHandoffOnFileText.Length > 0 && CanConfirmForcedMechanicalRecovery;
+
+    private void OnForcedHandoffInputChanged()
+    {
+        OnPropertyChanged(nameof(ForcedCargoHandoffMissingText));
+        OnPropertyChanged(nameof(CanSubmitForcedMechanicalRecoveryConfirmation));
     }
 
     public bool CanSubmitHardwareRecoveryRecord
@@ -1563,10 +1677,28 @@ public sealed class MainViewModel : ViewModelBase
         return accepted;
     }
 
-    public Task<bool> ConfirmForcedMechanicalRecoveryAsync(CancellationToken cancellationToken = default) =>
-        _wireToGateForcedMechanicalRecoveryConfirmer is null
-            ? Task.FromResult(false)
-            : _wireToGateForcedMechanicalRecoveryConfirmer(cancellationToken);
+    /// <remarks>
+    /// Sends the two handoff fields as typed; the business service trims them, checks them and writes them
+    /// to the journal before anything goes out. They are cleared only once the result was acknowledged, so
+    /// a press that was refused or warned about keeps what the operator typed.
+    /// </remarks>
+    public async Task<bool> ConfirmForcedMechanicalRecoveryAsync(CancellationToken cancellationToken = default)
+    {
+        if (_wireToGateForcedMechanicalRecoveryConfirmer is not { } confirmer)
+        {
+            return false;
+        }
+
+        bool reported = await confirmer(ForcedHandoffSublot, ForcedHandoffReceiverName, cancellationToken)
+            .ConfigureAwait(true);
+        if (reported)
+        {
+            ForcedHandoffSublot = string.Empty;
+            ForcedHandoffReceiverName = string.Empty;
+        }
+
+        return reported;
+    }
 
     public Task<bool> SubmitHardwareRecoveryRecordAsync(CancellationToken cancellationToken = default) =>
         _wireToGateHardwareRecoveryRecordSubmitter is null
@@ -1832,6 +1964,10 @@ public sealed class MainViewModel : ViewModelBase
             AllowRecoveryEntry(_wireToGateCanConfirmForcedMechanicalRecovery?.Invoke() == true);
         CanSubmitHardwareRecoveryRecord =
             AllowRecoveryEntry(_wireToGateCanSubmitHardwareRecoveryRecord?.Invoke() == true);
+        NeedsForcedCargoHandoff = _wireToGateForcedConfirmationNeedsCargoHandoff?.Invoke() == true;
+        ForcedCargoHandoffOnFileText = _wireToGateForcedCargoHandoffOnFile?.Invoke() is { } onFile
+                ? $"货物交接记录已登记：子批号 {onFile.Sublot}，接收人 {onFile.ReceiverName}；再次确认会重发这一份。"
+                : string.Empty;
         IReadOnlyList<int> unknown = _wireToGatePhysicallyUnknownSlots?.Invoke() ?? [];
         HasPhysicallyUnknownSlots = unknown.Count > 0;
         PhysicallyUnknownSlotsText = unknown.Count > 0

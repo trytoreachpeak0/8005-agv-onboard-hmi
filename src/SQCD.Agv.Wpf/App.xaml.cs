@@ -296,13 +296,18 @@ public partial class App : System.Windows.Application, IDisposable
                         _wireToGateBusiness.CanRequestLoadCancellationBeforeAnySublot);
                 viewModel.ConfigureForcedIsolation(
                     () => _wireToGateBusiness.CanConfirmForcedMechanicalRecovery,
-                    cancellationToken => _wireToGateBusiness.ConfirmForcedMechanicalRecoveryAsync(
+                    (sublot, receiverName, cancellationToken) => _wireToGateBusiness.ConfirmForcedMechanicalRecoveryAsync(
+                        sublot,
+                        receiverName,
                         cancellationToken),
                     () => _wireToGateBusiness.PhysicallyUnknownSlots,
                     () => _wireToGateBusiness.CanSubmitHardwareRecoveryRecord,
                     (observations, cancellationToken) => _wireToGateBusiness.SubmitHardwareRecoveryRecordAsync(
                         observations,
-                        cancellationToken));
+                        cancellationToken),
+                    // 货物交接记录（8005-agv-onboard-hmi#216）：要不要填、已登记的是哪一份。
+                    needsCargoHandoff: () => _wireToGateBusiness.ForcedConfirmationNeedsCargoHandoff,
+                    cargoHandoffOnFile: () => _wireToGateBusiness.ForcedCargoHandoffOnFile);
                 viewModel.StationDepartureCountdownTextOverride =
                     _wireToGateBusiness.DescribeExpiredStationDeadline;
                 _wireToGateBusiness.Start();

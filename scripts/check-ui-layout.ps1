@@ -54,6 +54,9 @@ $checks = [ordered]@{
     loadCorrectionTarget = ($xaml -match 'AutomationProperties\.AutomationId="LoadCorrectionTarget"') -and ($xaml -match 'Text="\{Binding LoadCorrectionTargetText\}"')
     # 回落到「上次完成的装货」的三个入口也标出目标子批（批次7-14，onboard-hmi#135）。
     recoveryFallbackTarget = ($xaml -match 'AutomationProperties\.AutomationId="RecoveryFallbackTarget"') -and ($xaml -match 'Text="\{Binding RecoveryFallbackTargetText\}"') -and ($xaml -match 'Binding HasRecoveryFallbackTarget, Converter')
+    # 强制取出的货物交接记录（批次8-14，onboard-hmi#216）：两个输入框、缺项说明与已登记记录，UIA 按 AutomationId 找它们；
+    # 确认按钮的可用绑到「记录已齐」，可见仍绑确认这一步本身，免得填着填着按钮消失。
+    forcedCargoHandoffInput = ($xaml -match '<TextBox[^>]*AutomationProperties\.AutomationId="ForcedHandoffSublot"[^>]*Text="\{Binding ForcedHandoffSublot, UpdateSourceTrigger=PropertyChanged\}"[^>]*Binding NeedsForcedCargoHandoff, Converter') -and ($xaml -match '<TextBox[^>]*AutomationProperties\.AutomationId="ForcedHandoffReceiverName"[^>]*Text="\{Binding ForcedHandoffReceiverName, UpdateSourceTrigger=PropertyChanged\}"[^>]*Binding NeedsForcedCargoHandoff, Converter') -and ($xaml -match 'AutomationProperties\.AutomationId="ForcedCargoHandoffMissing"[^>]*Text="\{Binding ForcedCargoHandoffMissingText\}"') -and ($xaml -match 'AutomationProperties\.AutomationId="ForcedCargoHandoffOnFile"[^>]*Text="\{Binding ForcedCargoHandoffOnFileText\}"[^>]*Binding HasForcedCargoHandoffOnFile, Converter') -and ($xaml -match 'IsEnabled="\{Binding CanSubmitForcedMechanicalRecoveryConfirmation\}"[^>]*Visibility="\{Binding CanConfirmForcedMechanicalRecovery, Converter[^>]*Content="已隔离并完成机械取出"')
     # 判故障只在服务端（REQ-0359）：本机界面不得出现判故障的按钮或绑定。
     noFaultDeclarationEntry = ($xaml -notmatch 'Content="[^"]*(判故障|判定故障|故障判定|人工判)') -and ($xaml -notmatch 'FaultDeclaration')
     dangerStyle = ($xaml -match 'Background="\{StaticResource DangerBrush\}"')

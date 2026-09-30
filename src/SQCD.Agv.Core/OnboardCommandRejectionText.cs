@@ -93,7 +93,7 @@ public static class OnboardCommandRejectionText
         ["HARDWARE_RECOVERY_NOT_REQUIRED"] = "当前不需要填写硬件恢复记录。",
         ["HARDWARE_RECOVERY_OBSERVATIONS_REQUIRED"] = "请先逐仓填写现场确认结果，再提交。",
         ["HARDWARE_RECOVERY_RECORD_REQUIRED"] = "请先提交硬件恢复记录，再继续。",
-        ["FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED"] = "强制机械取出结果需要货物交接记录，本版本尚不能登记，结果暂不上报。",
+        ["FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED"] = "请先填写货物交接记录（子批号、接收人），再确认强制机械取出。",
         ["SLOT_STATE_UNKNOWN"] = "部分仓位状态暂时读不到，请等待恢复后再试。"
     };
 
