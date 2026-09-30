@@ -39,8 +39,13 @@ public sealed partial class MultiDemandJourneyG2Tests
                 };
             },
             token);
+        // Each wait below ends on the field the view model writes last for that line (the Has* flag goes
+        // first, the text and code after it), so the assertions never read a line half applied.
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.HasCargoHoldingCountdown && harness.ViewModel.HasStationDepartureCountdown,
+            () => harness.ViewModel.HasCargoHoldingCountdown
+                && harness.ViewModel.CargoHoldingCountdownStatus.Length > 0
+                && harness.ViewModel.HasStationDepartureCountdown
+                && harness.ViewModel.StationDepartureCountdownTier == StationDepartureCountdownTier.Normal,
             "the cargo holding line and the station countdown",
             token);
 
@@ -60,14 +65,20 @@ public sealed partial class MultiDemandJourneyG2Tests
         await harness.Server.SendJourneySnapshotAsync(
             "VehicleBusinessStateSnapshot",
             Payloads.BusinessState(2, Payloads.LoadingPhase("VEHICLE_FULL")));
-        await harness.WaitUntilAsync(() => harness.ViewModel.HasVehicleFullNotice, "the vehicle-full line", token);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.HasVehicleFullNotice && harness.ViewModel.VehicleFullNoticeText.Length > 0,
+            "the vehicle-full line",
+            token);
         Assert.False(harness.ViewModel.HasCargoHoldingCountdown);
         Assert.Equal("已装满，装完已承诺的任务后离站", harness.ViewModel.VehicleFullNoticeText);
 
         await harness.Server.SendJourneySnapshotAsync(
             "VehicleBusinessStateSnapshot",
             Payloads.BusinessState(3, Payloads.LoadingPhase("CLOSED", closedReason: "WAITING_STATION_YIELD")));
-        await harness.WaitUntilAsync(() => harness.ViewModel.HasLoadingClosedReason, "the closed-reason line", token);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.HasLoadingClosedReason && harness.ViewModel.LoadingClosedReasonCode.Length > 0,
+            "the closed-reason line",
+            token);
         Assert.Equal("WAITING_STATION_YIELD", harness.ViewModel.LoadingClosedReasonCode);
         Assert.Equal("另一辆车需要本站，本车结束等单，前往卸货", harness.ViewModel.LoadingClosedReasonText);
         Assert.False(harness.ViewModel.HasVehicleFullNotice);
@@ -75,14 +86,20 @@ public sealed partial class MultiDemandJourneyG2Tests
         await harness.Server.SendJourneySnapshotAsync(
             "VehicleBusinessStateSnapshot",
             Payloads.BusinessState(4, loadingPhase: null));
+        // The session takes revision 4 before JourneyChanged reaches the view model, so waiting on the
+        // session alone would let a view-model read still see revision 3. Two waits, so a timeout says
+        // which layer did not move: the session first (it was revision 4 that arrived), then the lines.
         await harness.WaitUntilAsync(
             () => harness.Session.CurrentJourney.VehicleBusinessState?.Revision == 4,
-            "the fourth business state",
+            "session took revision 4",
+            token);
+        await harness.WaitUntilAsync(
+            () => !harness.ViewModel.HasLoadingClosedReason
+                && harness.ViewModel.LoadingClosedReasonCode.Length == 0
+                && !harness.ViewModel.HasCargoHoldingCountdown,
+            "view model cleared the closed-reason line",
             token);
 
-        Assert.False(harness.ViewModel.HasLoadingClosedReason);
-        Assert.Equal(string.Empty, harness.ViewModel.LoadingClosedReasonCode);
-        Assert.False(harness.ViewModel.HasCargoHoldingCountdown);
         Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "ProtocolProblem");
         Assert.Empty(harness.UiErrors);
     }
