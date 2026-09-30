@@ -282,6 +282,7 @@ public sealed class ProtocolPayloadShapeArchitectureTests
             RespondToRecoveryRequests = true,
             RespondToManualChargingReturnToServiceRequests = true,
             ManualChargingReturnToServiceVehicleBusinessStateRevision = 4,
+            RespondToManualStationClearanceConfirmations = true,
             // 协议 v2 消息 7 的下发，把消息 8 的 payload 形状也拉进这次会话里检查。
             SendSlotConfigurationActivationAfterRecovery = true,
             // 恢复会话快照也要进这次检查：替身的快照漏过 2.0.0 新增的必填字段，而车载端反序列化时
@@ -391,6 +392,18 @@ public sealed class ProtocolPayloadShapeArchitectureTests
                     "MAINTENANCE_ADMINISTRATOR",
                     "manual charging completed",
                     86.5),
+                token);
+
+            // onboard-hmi#221: a charger has no publicStationFunction value, so the property goes out as null.
+            await client.ConfirmManualStationClearanceAsync(
+                "22222222-2222-4222-8222-222222222228",
+                new ManualStationClearanceConfirmationRequestedPayload(
+                    "22222222-2222-4222-8222-222222222228",
+                    "CH-01",
+                    null,
+                    "STATION_EMPTY",
+                    operatorContext,
+                    DateTimeOffset.UtcNow),
                 token);
 
             // onboard-hmi#107: the device half of a forced mechanical recovery, and the server's answer.

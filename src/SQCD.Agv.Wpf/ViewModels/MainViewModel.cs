@@ -136,6 +136,9 @@ public sealed class MainViewModel : ViewModelBase
     private string _sublotRejectionText = string.Empty;
     private string _sublotRejectionReasonCode = string.Empty;
     private Func<CancellationToken, Task<bool>>? _wireToGateManualChargingReturnRequester;
+    private StationClearanceDisplay _stationClearance = StationClearanceDisplay.Empty;
+    private Func<WireToGateStationClearanceView>? _stationClearanceView;
+    private Func<WireToGateStationClearancePrompt, CancellationToken, Task<bool>>? _stationClearanceConfirmer;
 
     /// <param name="slotConfiguration">
     /// 本机生效仓位配置，仓位区按它的 <c>SlotPosition</c> 分前后两组。启动时读一次就够：激活只改版本名，
@@ -699,6 +702,8 @@ public sealed class MainViewModel : ViewModelBase
         RefreshRecoveryReasonLockCore();
         // 回落目标随入口一起重算：主体是否已经回落，与入口开关来自同一份恢复状态。
         RefreshLoadCorrectionTargetCore();
+        // 人工清桩确认不在那九个恢复入口里，不看锁存（见 RefreshStationClearanceCore）。
+        RefreshStationClearanceCore();
     }
 
     /// <summary>
@@ -1577,6 +1582,85 @@ public sealed class MainViewModel : ViewModelBase
             ? Task.FromResult(false)
             : _wireToGateManualChargingReturnRequester(cancellationToken);
 
+    // ---- 人工清桩确认入口（批次9-16，8005-agv-onboard-hmi#221） ----
+
+    public StationClearanceDisplay StationClearance
+    {
+        get => _stationClearance;
+        private set => SetProperty(ref _stationClearance, value);
+    }
+
+    /// <remarks>
+    /// 两个委托都只带一个值：业务服务的入口视图整份读回来，操作员确认的内容整份交回去。没有并排的两个 string 参数，
+    /// 也就没有写反的可能（8005-agv-onboard-hmi#216 审查的那一类）。接线本身在 <c>StationClearanceWiring</c>。
+    /// </remarks>
+    internal void ConfigureStationClearance(
+        Func<WireToGateStationClearanceView> view,
+        Func<WireToGateStationClearancePrompt, CancellationToken, Task<bool>> confirmer)
+    {
+        _stationClearanceView = view ?? throw new ArgumentNullException(nameof(view));
+        _stationClearanceConfirmer = confirmer ?? throw new ArgumentNullException(nameof(confirmer));
+        RunOnUiThread(RefreshStationClearanceCore);
+    }
+
+    /// <summary>
+    /// 操作员在对话框里确认之后调用，<paramref name="shown"/> 是对话框当时依据的那一份
+    /// <see cref="StationClearanceDisplay.Prompt"/>。业务服务核对它仍是当前这一份才发；不是就拒绝，不发。
+    /// </summary>
+    public async Task<bool> ConfirmStationClearanceAsync(
+        WireToGateStationClearancePrompt shown,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(shown);
+        if (_stationClearanceConfirmer is null)
+        {
+            return false;
+        }
+
+        Task<bool> confirmation = _stationClearanceConfirmer(shown, cancellationToken);
+        // 业务服务在第一次 await 之前就把「正在等应答」记下了，所以这一次读会立刻把入口收起来，不必等任何事件。
+        RunOnUiThread(RefreshStationClearanceCore);
+        try
+        {
+            return await confirmation.ConfigureAwait(true);
+        }
+        finally
+        {
+            RunOnUiThread(RefreshStationClearanceCore);
+        }
+    }
+
+    /// <summary>
+    /// 入口、对话框正文、说明与结果四样出自同一份业务视图，一次替换。
+    /// </summary>
+    /// <remarks>
+    /// <b>它不经 <see cref="AllowRecoveryEntry"/>，严重安全故障锁存期间照常开着，是有意的。</b>那九个恢复入口锁存时
+    /// 关闭，是因为其中三个会经恢复向量执行器真的开门，锁存在执行层拦不住。这个入口只发一条请求、显示服务端的结果，
+    /// 不碰 IO、不开门、不写恢复状态（<c>WireToGateStationClearanceTests</c> 里有一条结构守卫钉着），而
+    /// <c>REQ-0180</c> 说人工清桩不自动恢复也不阻断车辆：一辆故障后被推离充电桩的车，不该等它自己的故障清掉才能把
+    /// 桩还回去。行为由 <c>ManualStationClearanceG2Tests.ALatchLeavesTheClearanceEntryOpenAndOpensNoDoor</c> 钉住。
+    /// </remarks>
+    private void RefreshStationClearanceCore()
+    {
+        if (_stationClearanceView?.Invoke() is not { } view)
+        {
+            StationClearance = StationClearanceDisplay.Empty;
+            return;
+        }
+
+        string notice = WireToGateStationClearanceText.NoticeText(view);
+        string statusText = WireToGateStationClearanceText.StatusText(view.LastOutcome);
+        StationClearance = new StationClearanceDisplay(
+            view.Prompt is not null,
+            view.Prompt,
+            view.Prompt is null ? string.Empty : WireToGateStationClearanceText.ConfirmationText(view.Prompt),
+            notice.Length > 0,
+            notice,
+            statusText.Length > 0,
+            statusText,
+            WireToGateStationClearanceText.Status(view.LastOutcome));
+    }
+
     private void OnStateChanged(object? sender, ValueChangedEventArgs<OnboardSnapshot> args)
     {
         RunOnUiThread(() => ApplySnapshot(args.Value));
@@ -1772,6 +1856,9 @@ public sealed class MainViewModel : ViewModelBase
         CanRequestLoadCancellation = AllowLoadCancellationEntry(
             _wireToGateCanRequestLoadCancellation?.Invoke() == true,
             _wireToGateCanRequestLoadCancellationBeforeAnySublot?.Invoke() == true);
+        // 人工清桩确认同样写在锁存守卫之前：它不在那九个恢复入口里、锁存期间照常开着（见 RefreshStationClearanceCore），
+        // 放到守卫之后，锁存期间这条路径就不再刷新它，入口会停在锁存那一刻的样子。
+        RefreshStationClearanceCore();
         if (RecoveryEntriesBlockedByFatalFault)
         {
             CanRequestWireToGateRecovery = false;

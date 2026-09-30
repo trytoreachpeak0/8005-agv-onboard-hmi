@@ -117,17 +117,16 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Four entries since batch 9-15 bound <c>CV-AUTOMATIC-CHARGING-CYCLE</c> (<c>FP-IS-13</c>,
-    /// <c>8005-agv-onboard-hmi#220</c>), after batch 8-22 bound <c>CV-WAITING-POINT-IDLE-RETURN</c>
+    /// Three entries since batch 9-16 bound <c>CV-MANUAL-STATION-CLEARANCE</c> (<c>FP-IS-13</c>,
+    /// <c>8005-agv-onboard-hmi#221</c>), after batch 9-15 bound <c>CV-AUTOMATIC-CHARGING-CYCLE</c> (<c>FP-IS-13</c>,
+    /// <c>8005-agv-onboard-hmi#220</c>), batch 8-22 bound <c>CV-WAITING-POINT-IDLE-RETURN</c>
     /// (<c>FP-IS-12</c>, <c>8005-agv-onboard-hmi#217</c>) and batch 7-13 bound
     /// <c>CV-MULTI-STOP-PLAN-NINE-LEGS</c> (<c>FP-IS-08</c>, <c>8005-agv-onboard-hmi#134</c>); each was
     /// checked here rather than transferred from the control server. <c>FP-IS-13</c> itself is not in
-    /// <see cref="SlicesThisLineImplements"/> yet: its two other vectors below have no test, so the slice is
-    /// flipped by the last of the three onboard batch-9 tickets, not by the first.
-    /// The wire messages these slices are defined in terms of -- <c>DemandSelectionRequested</c>,
-    /// <c>SlotConfigurationActivationCommand</c>, <c>OnboardAlarmSnapshot</c>,
-    /// <c>UnableToChargeFieldConfirmationRequested</c> and
-    /// <c>ManualStationClearanceConfirmationRequested</c> -- are the same eleven
+    /// <see cref="SlicesThisLineImplements"/> yet: its field-confirmation vector below has no test, so the slice is
+    /// flipped by the last of the three onboard batch-9 tickets, not by the first two.
+    /// The wire messages the remaining vectors are defined in terms of -- <c>DemandSelectionRequested</c> and
+    /// <c>UnableToChargeFieldConfirmationRequested</c>, with their results -- are the same four
     /// <see cref="ProtocolMessageSurfaceArchitectureTests"/> pins as unimplemented in <c>src/</c> on
     /// this end. There is no test to bind because there is no implementation to test.
     /// </para>
@@ -147,7 +146,6 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     private static readonly IReadOnlyDictionary<string, string> VectorsAwaitingTheirSlice =
         new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
-            ["CV-MANUAL-STATION-CLEARANCE"] = "FP-IS-13, batch 9",
             ["CV-UNABLE-TO-CHARGE-FIELD-CONFIRMATION"] = "FP-IS-13, batch 9",
             ["CV-WORKLIST-SELECTION-ACCEPTED"] = "FP-IS-09, batch 11",
             ["CV-WORKLIST-SELECTION-STALE-REVISION"] = "FP-IS-09, batch 11"

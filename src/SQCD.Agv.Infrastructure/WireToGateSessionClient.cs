@@ -1097,6 +1097,16 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         }
     }
 
+    // ---- CV-MANUAL-STATION-CLEARANCE (batch 9-16, 8005-agv-onboard-hmi#221): kept in one block ----
+
+    public Task<ManualStationClearanceConfirmationResultPayload> ConfirmManualStationClearanceAsync(
+        string messageId,
+        ManualStationClearanceConfirmationRequestedPayload payload,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException("ManualStationClearanceConfirmationRequested has no send path yet.");
+
+    // ---- end of CV-MANUAL-STATION-CLEARANCE ----
+
     /// <summary>
     /// Persists a business message before writing it to the socket and keeps the
     /// same message identity/content until the server durably acknowledges it.

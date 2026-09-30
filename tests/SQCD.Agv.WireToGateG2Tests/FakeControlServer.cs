@@ -919,6 +919,43 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     public int ManualChargingReturnToServiceResponseCopies { get; set; } = 1;
 
+    /// <summary>
+    /// Answers each <c>ManualStationClearanceConfirmationRequested</c> (batch 9-16, onboard-hmi#221). Left false,
+    /// the request is received and nothing comes back: the vehicle's wait runs out, and a test sends the answer
+    /// itself with <see cref="SendManualStationClearanceResultAsync"/> when it wants a late or a repeated one.
+    /// </summary>
+    public bool RespondToManualStationClearanceConfirmations { get; set; }
+
+    public string ManualStationClearanceOutcome { get; set; } = "CONFIRMED";
+
+    public WireToGateProblemPayload? ManualStationClearanceProblem { get; set; }
+
+    public bool ManualStationClearanceStationReleased { get; set; } = true;
+
+    public int ManualStationClearanceResponseCopies { get; set; } = 1;
+
+    /// <summary>
+    /// A <c>ManualStationClearanceConfirmationResult</c> the test composes, correlated to the request messageId it
+    /// names, on the latest session.
+    /// </summary>
+    public Task SendManualStationClearanceResultAsync(
+        string requestMessageId,
+        string confirmationRequestId,
+        string outcome = "CONFIRMED",
+        bool stationReleased = true,
+        WireToGateProblemPayload? problem = null) =>
+        SendCommandAsync(
+            "ManualStationClearanceConfirmationResult",
+            Guid.NewGuid().ToString("D"),
+            new
+            {
+                confirmationRequestId,
+                outcome,
+                problem,
+                stationReleased
+            },
+            requestMessageId);
+
     public bool SendResumeCommandAfterRecoveryAction { get; set; }
 
     /// <summary>
@@ -1688,6 +1725,11 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "ManualChargingReturnToServiceRequested"
                         when RespondToManualChargingReturnToServiceRequests:
                         await HandleManualChargingReturnToServiceRequestedAsync(context, root)
+                            .ConfigureAwait(false);
+                        break;
+                    case "ManualStationClearanceConfirmationRequested"
+                        when RespondToManualStationClearanceConfirmations:
+                        await HandleManualStationClearanceConfirmationRequestedAsync(context, root)
                             .ConfigureAwait(false);
                         break;
                     case "SafetyStateChanged" when AnswerSafetyStateChanged:
@@ -2535,6 +2577,33 @@ public sealed class FakeControlServer : IAsyncDisposable
                         outcome = ManualChargingReturnToServiceOutcome,
                         problem = ManualChargingReturnToServiceProblem,
                         vehicleBusinessStateRevision = ManualChargingReturnToServiceVehicleBusinessStateRevision
+                    }))
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async Task HandleManualStationClearanceConfirmationRequestedAsync(
+        ConnectionContext context,
+        JsonElement request)
+    {
+        string messageId = request.GetProperty("messageId").GetString()!;
+        string confirmationRequestId =
+            request.GetProperty("payload").GetProperty("confirmationRequestId").GetString()!;
+        int responseCopies = Math.Max(0, ManualStationClearanceResponseCopies);
+        for (int index = 0; index < responseCopies; index++)
+        {
+            await WriteEnvelopeAsync(
+                context,
+                CreateEnvelope(
+                    context,
+                    "ManualStationClearanceConfirmationResult",
+                    messageId,
+                    new
+                    {
+                        confirmationRequestId,
+                        outcome = ManualStationClearanceOutcome,
+                        problem = ManualStationClearanceProblem,
+                        stationReleased = ManualStationClearanceStationReleased
                     }))
                 .ConfigureAwait(false);
         }

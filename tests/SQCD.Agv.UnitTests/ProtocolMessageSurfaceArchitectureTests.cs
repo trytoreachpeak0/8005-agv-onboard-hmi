@@ -46,10 +46,12 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Two kinds of entry, and they are not the same kind of debt.</b> Nine are messages v2
+    /// <b>Two kinds of entry, and they are not the same kind of debt.</b> Nine were messages v2
     /// added, and each belongs to a slice section 7.2 of the full-product scope specification
-    /// schedules into a later batch; those empty as their batches land. Until onboard-hmi#107 one
-    /// more predated v2 and was pinned as a finding rather than a schedule.
+    /// schedules into a later batch; those empty as their batches land. Four of the nine are left:
+    /// the slot configuration activation pair, <c>OnboardAlarmSnapshot</c> and, with batch 9-16
+    /// (<c>8005-agv-onboard-hmi#221</c>), the manual station clearance pair have been implemented. Until
+    /// onboard-hmi#107 one more predated v2 and was pinned as a finding rather than a schedule.
     /// </para>
     /// <para>
     /// That one was checked rather than assumed on 2026-09-09, and it was the result half of a pair
@@ -88,8 +90,6 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
         {
             ["DemandSelectionRequested"] = "FP-IS-09, batch 11",
             ["DemandSelectionResult"] = "FP-IS-09, batch 11",
-            ["ManualStationClearanceConfirmationRequested"] = "FP-IS-13, batch 8",
-            ["ManualStationClearanceConfirmationResult"] = "FP-IS-13, batch 8",
             ["UnableToChargeFieldConfirmationRequested"] = "FP-IS-13, batch 8",
             ["UnableToChargeFieldConfirmationResult"] = "FP-IS-13, batch 8"
         };

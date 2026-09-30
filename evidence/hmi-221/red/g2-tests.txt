@@ -1,0 +1,238 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:01.74]     SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.TheSessionDrivesEveryImplementedOnboardToServerMessageType [FAIL]
+[xUnit.net 00:00:01.90]     SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.EveryMessageTheClientSendsMatchesItsFrozenSchema [FAIL]
+[xUnit.net 00:00:02.10]     SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.EveryMessageTheFakeServerSendsMatchesItsFrozenSchema [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.TheSessionDrivesEveryImplementedOnboardToServerMessageType [572 ms]
+  Error Message:
+   System.NotSupportedException : ManualStationClearanceConfirmationRequested has no send path yet.
+  Stack Trace:
+     at SQCD.Agv.Infrastructure.WireToGateSessionClient.ConfirmManualStationClearanceAsync(String messageId, ManualStationClearanceConfirmationRequestedPayload payload, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1106
+   at SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.DriveAFullSessionAsync() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ProtocolPayloadShapeArchitectureTests.cs:line 398
+   at SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.DriveAFullSessionAsync() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ProtocolPayloadShapeArchitectureTests.cs:line 484
+   at SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.DriveAFullSessionAsync() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ProtocolPayloadShapeArchitectureTests.cs:line 489
+   at SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.TheSessionDrivesEveryImplementedOnboardToServerMessageType() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ProtocolPayloadShapeArchitectureTests.cs:line 146
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.EveryMessageTheClientSendsMatchesItsFrozenSchema [156 ms]
+  Error Message:
+   System.NotSupportedException : ManualStationClearanceConfirmationRequested has no send path yet.
+  Stack Trace:
+     at SQCD.Agv.Infrastructure.WireToGateSessionClient.ConfirmManualStationClearanceAsync(String messageId, ManualStationClearanceConfirmationRequestedPayload payload, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1106
+   at SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.DriveAFullSessionAsync() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ProtocolPayloadShapeArchitectureTests.cs:line 398
+   at SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.DriveAFullSessionAsync() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ProtocolPayloadShapeArchitectureTests.cs:line 484
+   at SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.DriveAFullSessionAsync() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ProtocolPayloadShapeArchitectureTests.cs:line 489
+   at SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.EveryMessageTheClientSendsMatchesItsFrozenSchema() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ProtocolPayloadShapeArchitectureTests.cs:line 116
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.EveryMessageTheFakeServerSendsMatchesItsFrozenSchema [197 ms]
+  Error Message:
+   System.NotSupportedException : ManualStationClearanceConfirmationRequested has no send path yet.
+  Stack Trace:
+     at SQCD.Agv.Infrastructure.WireToGateSessionClient.ConfirmManualStationClearanceAsync(String messageId, ManualStationClearanceConfirmationRequestedPayload payload, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1106
+   at SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.DriveAFullSessionAsync() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ProtocolPayloadShapeArchitectureTests.cs:line 398
+   at SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.DriveAFullSessionAsync() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ProtocolPayloadShapeArchitectureTests.cs:line 484
+   at SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.DriveAFullSessionAsync() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ProtocolPayloadShapeArchitectureTests.cs:line 489
+   at SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.EveryMessageTheFakeServerSendsMatchesItsFrozenSchema() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ProtocolPayloadShapeArchitectureTests.cs:line 193
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:06.55]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "stationId") [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "stationId") [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(String broken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 695
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(String broken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 712
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:11.70]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "observedAt") [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "observedAt") [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(String broken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 695
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(String broken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 712
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:16.86]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "verificationMethod") [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "verificationMethod") [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(String broken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 695
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(String broken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 712
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:22.01]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "operatorId") [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "operatorId") [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(String broken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 695
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(String broken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 712
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:27.14]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "publicStationFunction") [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "publicStationFunction") [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(String broken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 695
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(String broken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 712
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:32.23]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "clearedCondition") [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "clearedCondition") [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(String broken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 695
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(String broken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 712
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:37.33]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ARestartOffersTheEntryFromTheRestoredStateAndAsksTheOperatorAfresh [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ARestartOffersTheEntryFromTheRestoredStateAndAsksTheOperatorAfresh [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ARestartOffersTheEntryFromTheRestoredStateAndAsksTheOperatorAfresh() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 601
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ARestartOffersTheEntryFromTheRestoredStateAndAsksTheOperatorAfresh() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 623
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:42.43]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APressMadeAsAResubmissionIsRefusedOnceTheResultHasArrived [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APressMadeAsAResubmissionIsRefusedOnceTheResultHasArrived [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APressMadeAsAResubmissionIsRefusedOnceTheResultHasArrived() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 572
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APressMadeAsAResubmissionIsRefusedOnceTheResultHasArrived() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 587
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:47.54]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AResultThatArrivesAfterTheTimeoutSettlesTheUnknownOnce [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AResultThatArrivesAfterTheTimeoutSettlesTheUnknownOnce [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AResultThatArrivesAfterTheTimeoutSettlesTheUnknownOnce() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 440
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AResultThatArrivesAfterTheTimeoutSettlesTheUnknownOnce() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 468
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:54.85]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ARepeatedResultIsHandledOnce [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ARepeatedResultIsHandledOnce [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ARepeatedResultIsHandledOnce() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 400
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ARepeatedResultIsHandledOnce() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 427
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:59.92]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AConfirmedClearanceChangesNothingOnTheVehicleUntilTheServersNextSnapshot [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AConfirmedClearanceChangesNothingOnTheVehicleUntilTheServersNextSnapshot [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AConfirmedClearanceChangesNothingOnTheVehicleUntilTheServersNextSnapshot() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 137
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AConfirmedClearanceChangesNothingOnTheVehicleUntilTheServersNextSnapshot() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 178
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:04.98]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AnUnansweredClearanceIsShownAsUnknownAndAResubmissionCarriesTheSameConfirmationRequestId [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AnUnansweredClearanceIsShownAsUnknownAndAResubmissionCarriesTheSameConfirmationRequestId [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AnUnansweredClearanceIsShownAsUnknownAndAResubmissionCarriesTheSameConfirmationRequestId() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 318
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AnUnansweredClearanceIsShownAsUnknownAndAResubmissionCarriesTheSameConfirmationRequestId() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 346
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:10.05]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ASecondPressWhileTheFirstIsUnansweredSendsNothing [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ASecondPressWhileTheFirstIsUnansweredSendsNothing [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ASecondPressWhileTheFirstIsUnansweredSendsNothing() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 363
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ASecondPressWhileTheFirstIsUnansweredSendsNothing() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 382
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:18.41]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedWithoutOneChargerInThePlanAndTheScreenSaysWhy(twoChargers: True) [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedWithoutOneChargerInThePlanAndTheScreenSaysWhy(twoChargers: True) [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the reason the entry is not offered. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedWithoutOneChargerInThePlanAndTheScreenSaysWhy(Boolean twoChargers) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 245
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedWithoutOneChargerInThePlanAndTheScreenSaysWhy(Boolean twoChargers) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 256
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:23.49]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedWithoutOneChargerInThePlanAndTheScreenSaysWhy(twoChargers: False) [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedWithoutOneChargerInThePlanAndTheScreenSaysWhy(twoChargers: False) [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the reason the entry is not offered. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedWithoutOneChargerInThePlanAndTheScreenSaysWhy(Boolean twoChargers) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 245
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedWithoutOneChargerInThePlanAndTheScreenSaysWhy(Boolean twoChargers) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 256
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:28.57]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ADroppedSessionLeavesAnUnknownThatIsResubmittedUnderTheSameIdAfterReconnecting [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ADroppedSessionLeavesAnUnknownThatIsResubmittedUnderTheSameIdAfterReconnecting [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ADroppedSessionLeavesAnUnknownThatIsResubmittedUnderTheSameIdAfterReconnecting() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 482
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ADroppedSessionLeavesAnUnknownThatIsResubmittedUnderTheSameIdAfterReconnecting() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 521
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:33.65]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheConfirmationCarriesTheOperatorTheChargerAndTheConditionAndIsShownConfirmed [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheConfirmationCarriesTheOperatorTheChargerAndTheConditionAndIsShownConfirmed [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheConfirmationCarriesTheOperatorTheChargerAndTheConditionAndIsShownConfirmed() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 85
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheConfirmationCarriesTheOperatorTheChargerAndTheConditionAndIsShownConfirmed() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 120
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:38.72]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ALatchLeavesTheClearanceEntryOpenAndOpensNoDoor [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ALatchLeavesTheClearanceEntryOpenAndOpensNoDoor [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ALatchLeavesTheClearanceEntryOpenAndOpensNoDoor() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 652
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ALatchLeavesTheClearanceEntryOpenAndOpensNoDoor() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 676
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:43.78]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APressMadeForOneChargerDoesNotConfirmAnother [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APressMadeForOneChargerDoesNotConfirmAnother [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APressMadeForOneChargerDoesNotConfirmAnother() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 538
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APressMadeForOneChargerDoesNotConfirmAnother() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 559
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:48.87]     SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ARejectedClearanceShowsTheServersReasonAndTheNextPressIsANewConfirmation [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ARejectedClearanceShowsTheServersReasonAndTheNextPressIsANewConfirmation [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the clearance entry to be offered on the view model. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 607
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.WaitForEntryAsync(Harness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 779
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ARejectedClearanceShowsTheServersReasonAndTheNextPressIsANewConfirmation() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 278
+   at SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ARejectedClearanceShowsTheServersReasonAndTheNextPressIsANewConfirmation() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:line 293
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:    23, Passed:     6, Skipped:     0, Total:    29, Duration: 1 m 47 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
