@@ -110,6 +110,14 @@ public sealed partial class RecoveryVectorG2Tests
         await AssertNoForcedResultForAWhileAsync(harness, token);
         Assert.Null((await harness.ReadRecoveryStateAsync(token)).RecoveryVector!.CargoHandoff);
 
+        // The second press counts only for the same SUBLOT: changing it in between -- even back to the one
+        // already warned about -- starts from the warning again.
+        Assert.False(await harness.Business.ConfirmForcedMechanicalRecoveryAsync(
+            "SUBLOT-OTHER-8", "收货员李二", token));
+        Assert.False(await harness.Business.ConfirmForcedMechanicalRecoveryAsync(
+            "SUBLOT-OTHER-9", "收货员李二", token));
+        await AssertNoForcedResultForAWhileAsync(harness, token);
+
         Assert.True(await harness.Business.ConfirmForcedMechanicalRecoveryAsync(
             "SUBLOT-OTHER-9", "收货员李二", token));
         JsonElement result = await harness.WaitForResultAsync("ForcedMechanicalRecoveryResult", token);
@@ -331,6 +339,130 @@ public sealed partial class RecoveryVectorG2Tests
             "the CLOSED snapshot to forget the unconfirmed forced recovery",
             token);
         Assert.Null((await harness.ReadRecoveryStateAsync(token)).ExceptionRecoverySessionId);
+    }
+
+    /// <summary>
+    /// A warning given before a restart is not carried over: after the restart the same SUBLOT is warned
+    /// about again rather than sent on the first press. Losing it costs one more press and never skips the
+    /// check (coordinator on 8005-agv-onboard-hmi#216).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task AWarningLostToARestartIsGivenAgainAndNeverSkipped()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Path.Combine(
+            Path.GetTempPath(), "w2g-vector", Guid.NewGuid().ToString("N"), "journal.db");
+        await using FakeControlServer server = RecoveryVectorHarness.NewServer();
+
+        await using (RecoveryVectorHarness beforeRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: server,
+            journalPath: journalPath,
+            cargoInTargetSlots: true))
+        {
+            await AuthorizeForcedRecoveryAsync(beforeRestart, token);
+            await beforeRestart.NameTheDemandOnTheWorklistAsync(DemandId, "SUBLOT-DEMAND-1", token);
+            Assert.False(await beforeRestart.Business.ConfirmForcedMechanicalRecoveryAsync(
+                "SUBLOT-OTHER-9", "收货员李二", token));
+            Assert.Empty(beforeRestart.ResultsOfType("ForcedMechanicalRecoveryResult"));
+        }
+
+        await using FakeControlServer serverAfterRestart = RecoveryVectorHarness.NewServer();
+        serverAfterRestart.AdoptDurableRecoveryMemoryFrom(server);
+        await using RecoveryVectorHarness afterRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: serverAfterRestart,
+            journalPath: journalPath,
+            baselineRevision: 2,
+            restart: true,
+            cargoInTargetSlots: true);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => afterRestart.Business.CanConfirmForcedMechanicalRecovery,
+            "the confirmation to be on offer again after the restart",
+            token);
+        await afterRestart.NameTheDemandOnTheWorklistAsync(DemandId, "SUBLOT-DEMAND-1", token);
+
+        Assert.False(await afterRestart.Business.ConfirmForcedMechanicalRecoveryAsync(
+            "SUBLOT-OTHER-9", "收货员李二", token));
+        Assert.Contains("不一致", afterRestart.Business.CurrentOperationSnapshot!.Guidance, StringComparison.Ordinal);
+        await AssertNoForcedResultForAWhileAsync(afterRestart, token);
+        Assert.Null((await afterRestart.ReadRecoveryStateAsync(token)).RecoveryVector!.CargoHandoff);
+
+        Assert.True(await afterRestart.Business.ConfirmForcedMechanicalRecoveryAsync(
+            "SUBLOT-OTHER-9", "收货员李二", token));
+        JsonElement result = await afterRestart.WaitForResultAsync("ForcedMechanicalRecoveryResult", token);
+        Assert.Equal("SUBLOT-OTHER-9", result.GetProperty("cargoHandoff").GetProperty("sublot").GetString());
+        Assert.DoesNotContain(server.ReceivedEnvelopes, envelope => envelope.MessageType == "ForcedMechanicalRecoveryResult");
+    }
+
+    /// <summary>
+    /// <c>handedOverAt</c> is the moment the record was first written, and a resend after a restart keeps
+    /// it: read back from the journal, not reset to the resend's now.
+    /// </summary>
+    /// <remarks>
+    /// The clock is made to move first: the harness runs on the system clock, and the resend is pressed
+    /// only once it reads at least two seconds past the stored time. Without that gap a reset to "now"
+    /// could land on the same instant and this assertion would hold whatever the code did.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task TheHandoverTimeOnFileIsNotResetByAResendAfterARestart()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Path.Combine(
+            Path.GetTempPath(), "w2g-vector", Guid.NewGuid().ToString("N"), "journal.db");
+        await using FakeControlServer server = RecoveryVectorHarness.NewServer();
+        server.WithholdForcedMechanicalRecoveryResultAck = true;
+        DateTimeOffset handedOverAt;
+
+        await using (RecoveryVectorHarness beforeRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: server,
+            journalPath: journalPath,
+            cargoInTargetSlots: true))
+        {
+            await AuthorizeForcedRecoveryAsync(beforeRestart, token);
+            await beforeRestart.NameTheDemandOnTheWorklistAsync(DemandId, "SUBLOT-001", token);
+            Assert.False(await beforeRestart.Business.ConfirmForcedMechanicalRecoveryAsync(
+                "SUBLOT-001", "收货员李二", token));
+            handedOverAt = (await beforeRestart.ReadRecoveryStateAsync(token)).RecoveryVector!.CargoHandoff!.HandedOverAt;
+        }
+
+        await using FakeControlServer serverAfterRestart = RecoveryVectorHarness.NewServer();
+        serverAfterRestart.AdoptDurableRecoveryMemoryFrom(server);
+        await using RecoveryVectorHarness afterRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: serverAfterRestart,
+            journalPath: journalPath,
+            baselineRevision: 2,
+            restart: true,
+            cargoInTargetSlots: true);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => afterRestart.Business.CanConfirmForcedMechanicalRecovery,
+            "the confirmation to be on offer again after the restart",
+            token);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => DateTimeOffset.UtcNow - handedOverAt >= TimeSpan.FromSeconds(2),
+            "the clock to move at least two seconds past the stored handover time",
+            token);
+
+        Assert.Equal(handedOverAt, afterRestart.Business.ForcedCargoHandoffOnFile!.HandedOverAt);
+        Assert.True(await afterRestart.Business.ConfirmForcedMechanicalRecoveryAsync(token));
+        DateTimeOffset pressedAt = DateTimeOffset.UtcNow;
+
+        IReadOnlyList<string> resent = afterRestart.ResultsOfType("ForcedMechanicalRecoveryResult");
+        Assert.NotEmpty(resent);
+        Assert.All(resent, line =>
+        {
+            using JsonDocument document = JsonDocument.Parse(line);
+            DateTimeOffset onTheWire = document.RootElement
+                .GetProperty("payload").GetProperty("cargoHandoff").GetProperty("handedOverAt").GetDateTimeOffset();
+            Assert.Equal(handedOverAt, onTheWire);
+            Assert.True(pressedAt - onTheWire >= TimeSpan.FromSeconds(2), $"{onTheWire:o} vs press {pressedAt:o}");
+        });
     }
 
     private static async Task AuthorizeForcedRecoveryAsync(RecoveryVectorHarness harness, CancellationToken token)

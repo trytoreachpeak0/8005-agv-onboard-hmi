@@ -42,6 +42,13 @@ public sealed partial class RecoveryVectorG2Tests
             Assert.Single(ClosedEvents(events)).Message);
         // Not read as recovered: the attempt is still unsettled and the vehicle still needs recovery.
         Assert.NotEqual(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
+        // The entry itself is offered again -- the property the button binds to -- not only a request made
+        // through the service behind the button's back.
+        harness.VehicleStopped();
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCompensation,
+            "the compensation entry to be offered again after the reasoned close",
+            token);
         await AssertANewSessionCanBeOpenedAsync(harness, token);
     }
 
