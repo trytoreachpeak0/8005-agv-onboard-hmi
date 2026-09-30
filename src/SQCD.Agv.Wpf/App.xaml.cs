@@ -294,20 +294,7 @@ public partial class App : System.Windows.Application, IDisposable
                     // 不接这一条，视图模型按 false 处理，锁存期间取消装货整个关着——安全，但操作员又只能干等站点超时。
                     canRequestLoadCancellationBeforeAnySublot: () =>
                         _wireToGateBusiness.CanRequestLoadCancellationBeforeAnySublot);
-                viewModel.ConfigureForcedIsolation(
-                    () => _wireToGateBusiness.CanConfirmForcedMechanicalRecovery,
-                    (sublot, receiverName, cancellationToken) => _wireToGateBusiness.ConfirmForcedMechanicalRecoveryAsync(
-                        sublot,
-                        receiverName,
-                        cancellationToken),
-                    () => _wireToGateBusiness.PhysicallyUnknownSlots,
-                    () => _wireToGateBusiness.CanSubmitHardwareRecoveryRecord,
-                    (observations, cancellationToken) => _wireToGateBusiness.SubmitHardwareRecoveryRecordAsync(
-                        observations,
-                        cancellationToken),
-                    // 货物交接记录（8005-agv-onboard-hmi#216）：要不要填、已登记的是哪一份。
-                    needsCargoHandoff: () => _wireToGateBusiness.ForcedConfirmationNeedsCargoHandoff,
-                    cargoHandoffOnFile: () => _wireToGateBusiness.ForcedCargoHandoffOnFile);
+                ForcedIsolationWiring.Configure(viewModel, _wireToGateBusiness);
                 viewModel.StationDepartureCountdownTextOverride =
                     _wireToGateBusiness.DescribeExpiredStationDeadline;
                 _wireToGateBusiness.Start();

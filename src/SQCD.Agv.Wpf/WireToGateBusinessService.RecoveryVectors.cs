@@ -3027,12 +3027,21 @@ public sealed partial class WireToGateBusinessService
     /// <summary>
     /// CONFIRM_SUBLOT_AGAINST_DEMAND_BEFORE_SENDING: <c>true</c> when <paramref name="sublot"/> is the one
     /// the current stop's worklist names for this demand, or the operator already saw the warning for this
-    /// recovery and this SUBLOT and pressed again. Otherwise warns, remembers what it warned about, and
-    /// answers <c>false</c>: nothing is written and nothing sent.
+    /// recovery, this SUBLOT and this comparison, and pressed again. Otherwise warns, remembers what it
+    /// warned about, and answers <c>false</c>: nothing is written and nothing sent.
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// The second press confirms what the operator was shown, so the warning is keyed on everything the
+    /// sentence named: the recovery, the SUBLOT typed, and what it was compared with -- the demand's SUBLOT,
+    /// or none when the worklist did not name the demand. A warning that said "cannot be checked" does not
+    /// cover a worklist that has since arrived naming another SUBLOT: that mismatch is a new sentence the
+    /// operator has not read yet (independent review of 8005-agv-onboard-hmi#216, M1).
+    /// </para>
+    /// <para>
     /// The warning is remembered in memory only, so a restart asks again; that errs towards one more
     /// press, never towards sending unchecked. A different SUBLOT on the second press is a new warning.
+    /// </para>
     /// </remarks>
     private bool SublotConfirmedAgainstDemand(WireToGateRecoveryVectorContext context, string sublot)
     {
@@ -3044,7 +3053,7 @@ public sealed partial class WireToGateBusinessService
             return true;
         }
 
-        string warnedFor = string.Join('|', context.PrimaryId, sublot);
+        string warnedFor = string.Join('|', context.PrimaryId, sublot, expected ?? "<none>");
         if (string.Equals(_forcedSublotWarnedFor, warnedFor, StringComparison.Ordinal))
         {
             _logger.Write(

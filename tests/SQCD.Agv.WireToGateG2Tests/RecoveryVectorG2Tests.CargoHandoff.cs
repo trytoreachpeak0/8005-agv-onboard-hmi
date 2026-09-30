@@ -1,5 +1,7 @@
 using System.Text.Json;
+using SQCD.Agv.Application;
 using SQCD.Agv.Core;
+using SQCD.Agv.Wpf.ViewModels;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
@@ -313,6 +315,28 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(JsonSerializer.Serialize(confirmed.RecoveryVector), JsonSerializer.Serialize(after.RecoveryVector));
         Assert.Equal(confirmed.RecoveryResultObservedAt, after.RecoveryResultObservedAt);
         Assert.Equal(confirmed.ExceptionRecoverySessionId, after.ExceptionRecoverySessionId);
+
+        // CLOSED before the acknowledgement is the ordinary order -- the server closes the session on the
+        // first result it takes -- so keeping the vector is only half; the loop has to close from here. The
+        // acknowledgement is let through and the same press settles the isolation from what was kept.
+        harness.Server.WithholdForcedMechanicalRecoveryResultAck = false;
+        Assert.True(await harness.Business.ConfirmForcedMechanicalRecoveryAsync(token));
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Business.PhysicallyUnknownSlots.Count > 0,
+            "the acknowledged isolation to leave its slots physically unknown",
+            token);
+        WireToGateRecoveryState settled = await harness.ReadRecoveryStateAsync(token);
+        Assert.Null(settled.RecoveryVector);
+        Assert.Equal([1, 2], settled.ForcedIsolation!.PhysicallyUnknownSlots);
+        Assert.Equal(confirmed.ExceptionRecoverySessionId, settled.ForcedIsolation.ExceptionRecoverySessionId);
+        Assert.Equal([1, 2], harness.Business.PhysicallyUnknownSlots);
+        Assert.All(
+            harness.ResultsOfType("ForcedMechanicalRecoveryResult"),
+            line => Assert.Equal(
+                "SUBLOT-001",
+                JsonDocument.Parse(line).RootElement.GetProperty("payload").GetProperty("cargoHandoff")
+                    .GetProperty("sublot").GetString()));
+        Assert.Equal(0, harness.Io.UnlockCount);
     }
 
     /// <summary>
@@ -339,6 +363,104 @@ public sealed partial class RecoveryVectorG2Tests
             "the CLOSED snapshot to forget the unconfirmed forced recovery",
             token);
         Assert.Null((await harness.ReadRecoveryStateAsync(token)).ExceptionRecoverySessionId);
+    }
+
+    /// <summary>
+    /// A "cannot be checked" warning does not cover the mismatch that follows it: the worklist arrives
+    /// naming another SUBLOT, and the same SUBLOT pressed again is warned about as a mismatch -- a sentence
+    /// the operator has not read yet -- not sent (independent review of 8005-agv-onboard-hmi#216, M1).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task AWarningThatTheSublotCouldNotBeCheckedDoesNotCoverTheMismatchFoundLater()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            cargoInTargetSlots: true);
+        await AuthorizeForcedRecoveryAsync(harness, token);
+        Assert.Null(harness.Session.CurrentJourney.CurrentStopWorklist);
+
+        Assert.False(await harness.Business.ConfirmForcedMechanicalRecoveryAsync("SUBLOT-X", "收货员李二", token));
+        Assert.Contains("无法核对子批号", harness.Business.CurrentOperationSnapshot!.Guidance, StringComparison.Ordinal);
+
+        await harness.NameTheDemandOnTheWorklistAsync(DemandId, "SUBLOT-Y", token);
+        Assert.False(await harness.Business.ConfirmForcedMechanicalRecoveryAsync("SUBLOT-X", "收货员李二", token));
+        Assert.Contains(
+            "子批号 SUBLOT-X 与需求的子批号 SUBLOT-Y 不一致",
+            harness.Business.CurrentOperationSnapshot!.Guidance,
+            StringComparison.Ordinal);
+        await AssertNoForcedResultForAWhileAsync(harness, token);
+        Assert.Null((await harness.ReadRecoveryStateAsync(token)).RecoveryVector!.CargoHandoff);
+
+        Assert.True(await harness.Business.ConfirmForcedMechanicalRecoveryAsync("SUBLOT-X", "收货员李二", token));
+        JsonElement result = await harness.WaitForResultAsync("ForcedMechanicalRecoveryResult", token);
+        Assert.Equal("SUBLOT-X", result.GetProperty("cargoHandoff").GetProperty("sublot").GetString());
+    }
+
+    /// <summary>
+    /// The other direction of the same key: the worklist names another SUBLOT from the start and does not
+    /// change, so the warning the operator read still describes the comparison, and the second press with the
+    /// same SUBLOT sends.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task AMismatchWarnedAboutOnceIsSentOnTheSecondPressWhileTheWorklistStaysTheSame()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            cargoInTargetSlots: true);
+        await AuthorizeForcedRecoveryAsync(harness, token);
+        await harness.NameTheDemandOnTheWorklistAsync(DemandId, "SUBLOT-Y", token);
+        long revision = harness.Session.CurrentJourney.CurrentStopWorklist!.Revision;
+
+        Assert.False(await harness.Business.ConfirmForcedMechanicalRecoveryAsync("SUBLOT-X", "收货员李二", token));
+        await AssertNoForcedResultForAWhileAsync(harness, token);
+        Assert.Equal(revision, harness.Session.CurrentJourney.CurrentStopWorklist!.Revision);
+
+        Assert.True(await harness.Business.ConfirmForcedMechanicalRecoveryAsync("SUBLOT-X", "收货员李二", token));
+        JsonElement result = await harness.WaitForResultAsync("ForcedMechanicalRecoveryResult", token);
+        Assert.Equal("SUBLOT-X", result.GetProperty("cargoHandoff").GetProperty("sublot").GetString());
+        Assert.Single(harness.ResultsOfType("ForcedMechanicalRecoveryResult"));
+    }
+
+    /// <summary>
+    /// The real wiring of the main window (<see cref="SQCD.Agv.Wpf.ForcedIsolationWiring"/>, what <c>App</c>
+    /// calls) carries the two fields the operator typed into the view model to the business service in the
+    /// right order: the SUBLOT box reaches <c>cargoHandoff.sublot</c> and the receiver box
+    /// <c>cargoHandoff.receiverName</c>. Both are <c>string?</c>, so swapping them would compile.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task TheMainWindowsTwoHandoffFieldsReachTheWireInTheirOwnPlaces()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            cargoInTargetSlots: true);
+        await using OnboardController controller = MultiDemandViewModelTests.Controller();
+        MainViewModel viewModel = await MultiDemandViewModelTests.ViewModel(controller);
+        viewModel.ConfigureWireToGate((_, _, _) => Task.CompletedTask, () => false);
+        SQCD.Agv.Wpf.ForcedIsolationWiring.Configure(viewModel, harness.Business);
+        await AuthorizeForcedRecoveryAsync(harness, token);
+        await harness.NameTheDemandOnTheWorklistAsync(DemandId, "SUBLOT-SEAM-1", token);
+        viewModel.UpdateWireToGateStatus(harness.Session.Current);
+        viewModel.RefreshWireToGateInputState();
+        Assert.True(viewModel.NeedsForcedCargoHandoff);
+
+        viewModel.ForcedHandoffSublot = "SUBLOT-SEAM-1";
+        viewModel.ForcedHandoffReceiverName = "收货员赵三";
+        Assert.True(viewModel.CanSubmitForcedMechanicalRecoveryConfirmation);
+        Assert.True(await viewModel.ConfirmForcedMechanicalRecoveryAsync(token));
+
+        JsonElement handoff = (await harness.WaitForResultAsync("ForcedMechanicalRecoveryResult", token))
+            .GetProperty("cargoHandoff");
+        Assert.Equal("SUBLOT-SEAM-1", handoff.GetProperty("sublot").GetString());
+        Assert.Equal("收货员赵三", handoff.GetProperty("receiverName").GetString());
     }
 
     /// <summary>

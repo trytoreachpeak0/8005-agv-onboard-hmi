@@ -42,8 +42,12 @@ public sealed partial class RecoveryVectorG2Tests
             Assert.Single(ClosedEvents(events)).Message);
         // Not read as recovered: the attempt is still unsettled and the vehicle still needs recovery.
         Assert.NotEqual(WireToGateSessionReadiness.Ready, harness.Session.Current.Readiness);
-        // The entry itself is offered again -- the property the button binds to -- not only a request made
-        // through the service behind the button's back.
+        // The entry is offered again by the business-layer property the HMI reads to show the button
+        // (CanRequestLoadCompensation; the view model's own copy is covered by the view-model tests), not only
+        // proven by a request made through the service. And the reason box is not left locked on the closed
+        // session: RecoveryReasonAlreadyGiven reads the snapshot field too (independent review of
+        // 8005-agv-onboard-hmi#216, combined mutation M9c).
+        Assert.False(harness.Business.RecoveryReasonAlreadyGiven);
         harness.VehicleStopped();
         await RecoveryVectorHarness.WaitUntilAsync(
             () => harness.Business.CanRequestLoadCompensation,
