@@ -1,0 +1,12 @@
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index 1d10f75..cc6582b 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -3188,6 +3188,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+             _expectedActionWait.Observe(operation, activeSlots);
+         }
+ 
++        Thread.Sleep(100); // HMI228-INJECT
+         if (!_operatorEventDeduplicator.ShouldPublish(deduplicationKey))
+         {
+             return;

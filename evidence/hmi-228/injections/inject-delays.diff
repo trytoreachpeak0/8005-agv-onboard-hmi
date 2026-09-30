@@ -1,0 +1,78 @@
+diff --git a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+index 281d994..5445b7c 100644
+--- a/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
++++ b/src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+@@ -336,6 +336,7 @@ public sealed class MainViewModel : ViewModelBase
+         // 到等待点或充电桩不发清单或发空清单都行，两种都不是「旅程未同步」或「无待处理任务」；之后来了业务计划，这一格
+         // 在同一份快照上回到下面三种写法。哪一种非业务停靠由 WireToGateNonBusinessStop 一处分类，两个文案类只有一个说话。
+         IdleReturnStatus = WireToGateIdleReturnText.Status(snapshot);
++        if (IdleReturnStatus == WireToGateIdleReturnText.AtWaitingPointStatus) { Thread.Sleep(300); } // HMI228-INJECT
+         VisitText = snapshot.IsNonBusinessStop
+             ? WireToGateChargingText.VisitText(snapshot) is { Length: > 0 } chargingVisit
+                 ? chargingVisit
+@@ -355,6 +356,7 @@ public sealed class MainViewModel : ViewModelBase
+         ReplaceWorklistItemsCore(snapshot.CurrentStopWorklist?.Items ?? []);
+         ReplaceJourneyPlanLegsCore(snapshot.UpcomingStopPlan?.Legs ?? []);
+         // 持货那一行也是整值：新快照的 loadingPhase 变了或变为空（含断线清投影），这一行跟着变或消失。
++        if (snapshot.VehicleBusinessState?.LoadingPhase?.State == "CLOSED") { Thread.Sleep(500); } // HMI228-INJECT
+         _loadingPhase = snapshot.VehicleBusinessState?.LoadingPhase;
+         RefreshLoadingPhaseCore();
+         SyncCargoHoldingTimerCore();
+@@ -567,6 +569,7 @@ public sealed class MainViewModel : ViewModelBase
+                 operatorEvent.Message));
+             ClearLogsCommand.RaiseCanExecuteChanged();
+             TrimLogs();
++            if (operatorEvent.Kind == "SUBLOT_REJECTED") { Thread.Sleep(300); } // HMI228-INJECT
+             // 又有事发生了，上一条拒绝回执到此为止——不等那 8 秒走完。操作员扫错一次、随即扫对，
+             // 界面不该继续显示他扫错的那一句（8005-agv-onboard-hmi#171 审查，产品路发现 1）。
+             ClearOperatorNotice();
+@@ -680,6 +683,7 @@ public sealed class MainViewModel : ViewModelBase
+     private void RefreshWireToGateInputStateCore()
+     {
+         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? CanSubmit;
++        if (!CanSubmit && CanRequestLoadCancellation) { Thread.Sleep(300); } // HMI228-INJECT
+         // 这条路径上的七个恢复入口，六个各自过 AllowRecoveryEntry，取消装货过 AllowLoadCancellationEntry
+         // （锁存期间只剩扫码之前那一半，onboard-hmi#174）；另外两个（强制机械取出的确认、硬件恢复
+         // 记录）在下面的 RefreshForcedIsolationCore 里，写法相同。**另一条刷新路径
+@@ -1688,6 +1692,7 @@ public sealed class MainViewModel : ViewModelBase
+         // 控制器这一侧 hasBlockingError 是真的会变 true 的（故障态、阻断错误码）。
+         bool noticeHeld = PublishGuidance(snapshot.Guidance, hasBlockingError);
+         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? snapshot.State == OnboardState.ReadyToScan;
++        if (!CanSubmit && CanRequestLoadCancellation) { Thread.Sleep(300); } // HMI228-INJECT
+         HasWarning = hasWarning || noticeHeld;
+         HasError = hasBlockingError;
+         CanSafetyReview = snapshot.State == OnboardState.Faulted
+@@ -1777,6 +1782,7 @@ public sealed class MainViewModel : ViewModelBase
+             Logs.Add(new LogLineViewModel(Clock.Now, OperatorRecordKind.Warning, message));
+             ClearLogsCommand.RaiseCanExecuteChanged();
+             TrimLogs();
++            Thread.Sleep(300); // HMI228-INJECT
+             _operatorNotice = message;
+             _operatorNoticeUntil = Clock.Now + OperatorNoticeHold;
+             Guidance = message;
+diff --git a/tests/SQCD.Agv.WireToGateG2Tests/FakeControlServer.cs b/tests/SQCD.Agv.WireToGateG2Tests/FakeControlServer.cs
+index d8f3494..f3bb612 100644
+--- a/tests/SQCD.Agv.WireToGateG2Tests/FakeControlServer.cs
++++ b/tests/SQCD.Agv.WireToGateG2Tests/FakeControlServer.cs
+@@ -1479,6 +1479,8 @@ public sealed class FakeControlServer : IAsyncDisposable
+         return matches;
+     }
+ 
++    private int _hmi228SafetyChanges; // HMI228-INJECT
++
+     private async Task HandleConnectionAsync(
+         int connectionIndex,
+         ConnectionContext context,
+@@ -1499,6 +1501,12 @@ public sealed class FakeControlServer : IAsyncDisposable
+                 string messageType = root.GetProperty("messageType").GetString()!;
+                 string messageId = root.GetProperty("messageId").GetString()!;
+                 RecordMessage(connectionIndex, context.ReceivedOrder, messageType, messageId, line);
++                if (messageType == "SafetyStateSnapshot"
++                    || (messageType == "SnapshotAppliedAck" && line.Contains("EXCEPTION_RECOVERY_SESSION", StringComparison.Ordinal))
++                    || (messageType == "SafetyStateChanged" && Interlocked.Increment(ref _hmi228SafetyChanges) == 4))
++                {
++                    await Task.Delay(300, stoppingToken).ConfigureAwait(false); // HMI228-INJECT
++                }
+ 
+                 if (!string.Equals(messageType, "SessionHello", StringComparison.Ordinal)
+                     && !HasCurrentSessionGeneration(context, root, connectionIndex, messageType, messageId))

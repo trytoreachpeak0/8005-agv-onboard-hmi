@@ -1,0 +1,38 @@
+diff --git a/src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs b/src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+index 4c9fb86..4f74733 100644
+--- a/src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
++++ b/src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+@@ -2812,6 +2812,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
+         long generation,
+         CancellationToken cancellationToken)
+     {
++        if (snapshotKind == "UPCOMING_STOP_PLAN") { return; } // HMI228-INJECT
+         WireToGateEnvelope ack = WireToGateProtocolSerializer.Create(
+             "SnapshotAppliedAck",
+             Guid.NewGuid().ToString("D"),
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+index e26819e..c06aa6e 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+@@ -573,7 +573,7 @@ public sealed partial class WireToGateBusinessService
+             Volatile.Read(ref _recoverySessionSnapshot);
+         if (snapshot is null || snapshot.State == "CLOSED")
+         {
+-            return _session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired;
++            return Environment.TickCount64 >= 0; // HMI228-INJECT
+         }
+ 
+         // The subject is #80's and only #80's; the server's attempt id is an extra condition on it,
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index 1d10f75..21a4bf9 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -979,7 +979,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+         ForgetStationClearanceOnceTheServerSaysItIsOver(args.Value);
+         if (args.Value.CurrentStopWorklist is not { } worklist
+             || Volatile.Read(ref _currentEntryRequest) is not { } request
+-            || !EndsStopOf(worklist, request)
++            || worklist.Revision <= request.WorklistRevision // HMI228-INJECT
+             || Interlocked.CompareExchange(ref _currentEntryRequest, null, request) != request)
+         {
+             return;

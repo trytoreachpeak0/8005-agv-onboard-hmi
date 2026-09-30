@@ -1,0 +1,24 @@
+diff --git a/src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs b/src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+index 4c9fb86..c44df2c 100644
+--- a/src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
++++ b/src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+@@ -4304,6 +4304,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
+             + $"generation={generation?.ToString(CultureInfo.InvariantCulture) ?? "null"}，"
+             + $"readiness={readiness}，reasonCodes=[{string.Join(",", reasonCodes)}]，"
+             + $"safetyStateVersion={snapshot.SafetyStateVersion.ToString(CultureInfo.InvariantCulture)}。");
++        Thread.Sleep(100); // HMI228-INJECT
+         StateChanged?.Invoke(this, new ValueChangedEventArgs<WireToGateSessionSnapshot>(snapshot));
+     }
+ 
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index 1d10f75..cc6582b 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -3188,6 +3188,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+             _expectedActionWait.Observe(operation, activeSlots);
+         }
+ 
++        Thread.Sleep(100); // HMI228-INJECT
+         if (!_operatorEventDeduplicator.ShouldPublish(deduplicationKey))
+         {
+             return;
