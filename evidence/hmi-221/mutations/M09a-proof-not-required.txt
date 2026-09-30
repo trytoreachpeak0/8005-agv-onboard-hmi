@@ -1,0 +1,16 @@
+# M09a-proof-not-required
+不要求管理员认证凭据
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.StationClearance.cs
+
+--- replaced ---
+if (!CanUseRecoveryOperator(requireProof: true)
+--- with ---
+if (!CanUseRecoveryOperator(requireProof: false)
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedWithoutAVerifiedMaintainer(maintenanceSwitch: True, proofVariable: "W2G_G2_STATION_CLEARANCE_PROOF_UNSET") [65 ms]
+Failed!  - Failed:     1, Passed:    26, Skipped:     0, Total:    27, Duration: 29 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheEntryIsNotOfferedWithoutAVerifiedMaintainer(maintenanceSwitch: True
+missing: none

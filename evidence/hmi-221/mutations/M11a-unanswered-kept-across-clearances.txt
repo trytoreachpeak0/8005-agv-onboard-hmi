@@ -1,0 +1,19 @@
+# M11a-unanswered-kept-across-clearances
+服务端说清桩结束后不清掉未应答的请求
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.StationClearance.cs
+
+--- replaced ---
+            _stationClearanceUnanswered = null;
+            _stationClearanceOutcome = null;
+
+--- with ---
+            _stationClearanceOutcome = null;
+
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ALaterClearanceOfTheSameChargerStartsFromNothing [2 s]
+Failed!  - Failed:     1, Passed:    26, Skipped:     0, Total:    27, Duration: 30 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: ALaterClearanceOfTheSameChargerStartsFromNothing
+missing: none

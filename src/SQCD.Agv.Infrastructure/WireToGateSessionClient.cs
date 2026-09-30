@@ -1097,6 +1097,254 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         }
     }
 
+    // ---- CV-MANUAL-STATION-CLEARANCE (batch 9-16, 8005-agv-onboard-hmi#221): kept in one block ----
+    //
+    // The send path, its check before sending, the inbound check and the dispatch of the result, together, so a
+    // later merge meets them in one place. The only lines outside this block are the ones in
+    // ReceiveJourneyMessagesAsync that hand a ManualStationClearanceConfirmationResult to
+    // DispatchManualStationClearanceResult.
+
+    /// <summary>
+    /// The payload hash of each <c>ManualStationClearanceConfirmationResult</c> seen, by confirmation request id
+    /// -- the message's business dedup key in the release manifest.
+    /// </summary>
+    /// <remarks>
+    /// Not cleared when a connection closes, unlike <see cref="_completedManualChargingResultFingerprints"/>: the
+    /// id and what the server answered for it do not depend on which connection carried the answer, and an answer
+    /// the server replays into the next session is exactly the repeat this exists to recognise.
+    /// </remarks>
+    private readonly ConcurrentDictionary<string, string> _manualStationClearanceResultFingerprints = [];
+
+    /// <summary>
+    /// Sends a manual station clearance confirmation and returns the server's answer. <c>REJECTED</c> is an
+    /// answer, not a failure: it comes back as the result. Nothing on this end changes for either outcome
+    /// (<c>NEVER_RELEASE_STATION_LOCALLY</c>).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The request is not written to the outbox: the release manifest gives it <c>durableBeforeSend: false</c>,
+    /// and an outbox row is replayed on reconnect, which is the automatic resend this entry must not make. A
+    /// wait that runs out throws <see cref="TimeoutException"/> and leaves the caller to say the result is
+    /// unknown.
+    /// </para>
+    /// <para>
+    /// <b>A resubmission needs a new <paramref name="messageId"/> and the same payload.</b> The control server's
+    /// inbox answers a repeated messageId from its first response only for an identical line; with another
+    /// <c>sentAt</c> or session generation it is a content conflict. What makes two sends one confirmation is
+    /// <c>confirmationRequestId</c>.
+    /// </para>
+    /// </remarks>
+    public async Task<ManualStationClearanceConfirmationResultPayload> ConfirmManualStationClearanceAsync(
+        string messageId,
+        ManualStationClearanceConfirmationRequestedPayload payload,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        RequireUuid(messageId, nameof(messageId));
+        ValidateManualStationClearanceRequest(payload);
+        // Read before the snapshot, as in SendDurableCoreAsync (8005-agv-onboard-hmi#204).
+        long connectionEpoch = CurrentConnectionEpoch;
+        WireToGateSessionSnapshot current = Current;
+        if (!current.Connected
+            || current.SessionGeneration is null
+            || current.Readiness is not (WireToGateSessionReadiness.Ready
+                or WireToGateSessionReadiness.RecoveryRequired))
+        {
+            throw new InvalidOperationException("WIRE_TO_GATE_NOT_READY");
+        }
+
+        WireToGateEnvelope request = WireToGateProtocolSerializer.Create(
+            "ManualStationClearanceConfirmationRequested",
+            messageId,
+            null,
+            _options.AgvId,
+            current.SessionGeneration,
+            _clock.Now.ToUniversalTime(),
+            payload);
+        TaskCompletionSource<WireToGateEnvelope> response = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_responseWaiters.TryAdd(messageId, response))
+        {
+            throw new InvalidOperationException("重复的人工清桩确认messageId。");
+        }
+
+        try
+        {
+            await SendEnvelopeAsync(request, connectionEpoch, cancellationToken).ConfigureAwait(false);
+            WireToGateEnvelope responseEnvelope = await response.Task
+                .WaitAsync(_options.MessageTimeout, cancellationToken)
+                .ConfigureAwait(false);
+            if (string.Equals(responseEnvelope.MessageType, "ProtocolProblem", StringComparison.Ordinal))
+            {
+                // It reached this waiter by its correlationId, so it is the server's answer to this request: read and
+                // not taken. Told apart from a wait that ran out, because the caller ends the id on this one.
+                throw new WireToGateRequestNotAcceptedException(
+                    WireToGateProtocolSerializer
+                        .DeserializePayload<ProtocolProblemPayload>(responseEnvelope).Problem.ReasonCode);
+            }
+
+            WireToGateProtocolSerializer.RequireMessage(
+                responseEnvelope,
+                "ManualStationClearanceConfirmationResult",
+                messageId);
+            ManualStationClearanceConfirmationResultPayload result =
+                DeserializeManualStationClearanceResult(responseEnvelope);
+            if (!string.Equals(
+                result.ConfirmationRequestId, payload.ConfirmationRequestId, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException("CORRELATION_INVALID");
+            }
+
+            return result;
+        }
+        finally
+        {
+            _responseWaiters.TryRemove(messageId, out _);
+        }
+    }
+
+    private static void ValidateManualStationClearanceRequest(
+        ManualStationClearanceConfirmationRequestedPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        RequireUuid(payload.ConfirmationRequestId, nameof(payload.ConfirmationRequestId));
+        ValidateOperatorContext(payload.Operator);
+        if (string.IsNullOrWhiteSpace(payload.StationId)
+            || payload.PublicStationFunction is not (null
+                or "WIRE_STAGING" or "OVEN" or "GATE" or "OPTICAL" or "NITROGEN")
+            || payload.ClearedCondition is not ("STATION_EMPTY" or "OBSTRUCTION_REMOVED" or "CARGO_RELOCATED")
+            || payload.ObservedAt == default)
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+    }
+
+    private static ManualStationClearanceConfirmationResultPayload DeserializeManualStationClearanceResult(
+        WireToGateEnvelope envelope)
+    {
+        if (envelope.CorrelationId is null
+            || !Guid.TryParseExact(envelope.CorrelationId, "D", out _))
+        {
+            throw new InvalidDataException("CORRELATION_INVALID");
+        }
+
+        // Each property's JSON kind is checked here, before the typed read: a number where a string belongs would
+        // otherwise surface as a JsonException, which is not what a malformed message is reported as anywhere else.
+        if (!envelope.Payload.TryGetProperty("confirmationRequestId", out JsonElement confirmationRequestId)
+            || confirmationRequestId.ValueKind is not JsonValueKind.String
+            || !envelope.Payload.TryGetProperty("outcome", out JsonElement outcome)
+            || outcome.ValueKind is not JsonValueKind.String
+            || !envelope.Payload.TryGetProperty("problem", out JsonElement problem)
+            || problem.ValueKind is not (JsonValueKind.Object or JsonValueKind.Null)
+            || !envelope.Payload.TryGetProperty("stationReleased", out JsonElement stationReleased)
+            || stationReleased.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        ManualStationClearanceConfirmationResultPayload payload;
+        try
+        {
+            payload = WireToGateProtocolSerializer
+                .DeserializePayload<ManualStationClearanceConfirmationResultPayload>(envelope);
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID", exception);
+        }
+
+        RequireUuid(payload.ConfirmationRequestId, nameof(payload.ConfirmationRequestId));
+        // The two combinations that contradict themselves are refused rather than shown: a rejection that says the
+        // station was released, and a confirmation that carries a problem. The screen would have to pick one half
+        // of the message to believe (8005-agv-onboard-hmi#221 review, S4).
+        if (payload.Outcome is not ("CONFIRMED" or "REJECTED")
+            || payload.Outcome == "REJECTED" && payload.StationReleased
+            || payload.Outcome == "CONFIRMED" && payload.Problem is not null)
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        if (payload.Problem is not null)
+        {
+            ValidateProblem(payload.Problem);
+        }
+
+        return payload;
+    }
+
+    /// <summary>
+    /// The receive loop's handling of a <c>ManualStationClearanceConfirmationResult</c>: to the request waiting
+    /// for it, or -- when nothing waits and this answer has not been seen -- to the business service, once.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Nothing waits for a result that arrives after its request's wait ran out or after the session it was sent
+    /// in dropped. That answer is what settles a confirmation the screen shows as unknown, so it is raised rather
+    /// than dropped; the same answer arriving again is recognised by its confirmation request id and payload, and
+    /// raised no second time.
+    /// </para>
+    /// <para>
+    /// The repeat is judged before the waiter is taken, so a conflicting answer fails the session with the
+    /// waiter still registered and the waiting request fails with it instead of running out its timeout.
+    /// </para>
+    /// </remarks>
+    private void DispatchManualStationClearanceResult(WireToGateEnvelope envelope)
+    {
+        ManualStationClearanceConfirmationResultPayload result = DeserializeManualStationClearanceResult(envelope);
+        bool repeated = IsRepeatedManualStationClearanceResult(envelope, result);
+        if (_responseWaiters.TryRemove(
+            envelope.CorrelationId!,
+            out TaskCompletionSource<WireToGateEnvelope>? waiting))
+        {
+            waiting.TrySetResult(envelope);
+            return;
+        }
+
+        if (repeated)
+        {
+            return;
+        }
+
+        ServerCommandReceived?.Invoke(
+            this,
+            new ValueChangedEventArgs<WireToGateServerCommand>(
+                new WireToGateRecoveryCommand(
+                    envelope.MessageType,
+                    envelope.MessageId,
+                    envelope.CorrelationId,
+                    envelope.SessionGeneration!.Value,
+                    envelope.SentAt,
+                    envelope.Payload.GetRawText())));
+    }
+
+    /// <summary>
+    /// Whether this answer has been seen for its confirmation request id. A different answer under an id already
+    /// answered is <c>BUSINESS_ID_CONTENT_CONFLICT</c>, as it is for a manual charging return: the id is the
+    /// message's business dedup key, and two answers to one confirmation are the server's contradiction.
+    /// </summary>
+    private bool IsRepeatedManualStationClearanceResult(
+        WireToGateEnvelope envelope,
+        ManualStationClearanceConfirmationResultPayload result)
+    {
+        string fingerprint = WireToGateProtocolSerializer.ComputePayloadContentSha256(envelope);
+        if (_manualStationClearanceResultFingerprints.TryAdd(result.ConfirmationRequestId, fingerprint))
+        {
+            return false;
+        }
+
+        if (!string.Equals(
+            _manualStationClearanceResultFingerprints[result.ConfirmationRequestId],
+            fingerprint,
+            StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("BUSINESS_ID_CONTENT_CONFLICT");
+        }
+
+        return true;
+    }
+
+    // ---- end of CV-MANUAL-STATION-CLEARANCE ----
+
     /// <summary>
     /// Persists a business message before writing it to the socket and keeps the
     /// same message identity/content until the server durably acknowledges it.
@@ -2215,6 +2463,15 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     ServerCommandReceived?.Invoke(
                         this,
                         new ValueChangedEventArgs<WireToGateServerCommand>(manualCommand));
+                    continue;
+                }
+
+                if (string.Equals(
+                    envelope.MessageType,
+                    "ManualStationClearanceConfirmationResult",
+                    StringComparison.Ordinal))
+                {
+                    DispatchManualStationClearanceResult(envelope);
                     continue;
                 }
 

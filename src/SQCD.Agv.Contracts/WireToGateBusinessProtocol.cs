@@ -245,6 +245,36 @@ public sealed record ManualChargingReturnToServiceResultPayload(
     long VehicleBusinessStateRevision);
 
 /// <summary>
+/// The O_TO_C manual station clearance confirmation, shaped by 2.0.0's
+/// <c>ManualStationClearanceConfirmationRequested.schema.json</c> (batch 9-16,
+/// <c>8005-agv-onboard-hmi#221</c>; <c>REQ-0179</c>).
+/// </summary>
+/// <remarks>
+/// <b><c>PublicStationFunction</c> is required and nullable.</b> Its enumeration has no value for a
+/// charger, so a charger clearance sends <c>null</c> -- on the wire as <c>null</c>, never left out.
+/// There is no role field: who may confirm is the control server's to decide from
+/// <see cref="WireToGateOperatorContextPayload.OperatorId"/>.
+/// </remarks>
+public sealed record ManualStationClearanceConfirmationRequestedPayload(
+    string ConfirmationRequestId,
+    string StationId,
+    string? PublicStationFunction,
+    string ClearedCondition,
+    WireToGateOperatorContextPayload Operator,
+    DateTimeOffset ObservedAt);
+
+/// <summary>
+/// The C_TO_O answer to <see cref="ManualStationClearanceConfirmationRequestedPayload"/>, a RESPONSE
+/// correlated to the request's messageId. <c>StationReleased</c> is the server's fact; nothing on the
+/// vehicle is released for it (<c>NEVER_RELEASE_STATION_LOCALLY</c>).
+/// </summary>
+public sealed record ManualStationClearanceConfirmationResultPayload(
+    string ConfirmationRequestId,
+    string Outcome,
+    WireToGateProblemPayload? Problem,
+    bool StationReleased);
+
+/// <summary>
 /// The C_TO_O recovery session snapshot, shaped by the 2.0.0 candidate's
 /// <c>ExceptionRecoverySessionSnapshot.schema.json</c>.
 /// </summary>

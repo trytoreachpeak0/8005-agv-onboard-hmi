@@ -1,0 +1,29 @@
+# R4-malformed-result-surfaces-as-json-exception
+审查 S3：畸形应答不在类型化读取之前拒收，JsonException 原样冒出
+file: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+
+--- replaced ---
+            || outcome.ValueKind is not JsonValueKind.String
+ |||         catch (JsonException exception)
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID", exception);
+        }
+
+        RequireUuid(payload.ConfirmationRequestId, nameof(payload.ConfirmationRequestId));
+        // The two combinations
+--- with ---
+ |||         catch (JsonException)
+        {
+            throw;
+        }
+
+        RequireUuid(payload.ConfirmationRequestId, nameof(payload.ConfirmationRequestId));
+        // The two combinations
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable [104 ms]
+Failed!  - Failed:     1, Passed:    34, Skipped:     0, Total:    35, Duration: 34 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable
+missing: none

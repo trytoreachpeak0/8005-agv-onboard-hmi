@@ -303,6 +303,8 @@ public partial class App : System.Windows.Application, IDisposable
                     (observations, cancellationToken) => _wireToGateBusiness.SubmitHardwareRecoveryRecordAsync(
                         observations,
                         cancellationToken));
+                // 人工清桩确认入口（8005-agv-onboard-hmi#221）。接线在 StationClearanceWiring 里，G2 夹具调的是同一个方法。
+                StationClearanceWiring.Configure(viewModel, _wireToGateBusiness);
                 viewModel.StationDepartureCountdownTextOverride =
                     _wireToGateBusiness.DescribeExpiredStationDeadline;
                 _wireToGateBusiness.Start();

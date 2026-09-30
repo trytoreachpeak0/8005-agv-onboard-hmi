@@ -1,0 +1,18 @@
+# R1-protocol-problem-treated-as-unknown
+审查 S1：与请求关联的 ProtocolProblem 不单独认，照旧当成普通失败
+file: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+
+--- replaced ---
+                throw new WireToGateRequestNotAcceptedException(
+
+--- with ---
+                throw new InvalidDataException(
+
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AProtocolProblemToTheRequestEndsItsIdAndEachLaterPressIsANewConfirmation [5 s]
+Failed!  - Failed:     1, Passed:    34, Skipped:     0, Total:    35, Duration: 40 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AProtocolProblemToTheRequestEndsItsIdAndEachLaterPressIsANewConfirmation
+missing: none

@@ -1,0 +1,16 @@
+# M03-no-gate-on-a-second-press
+第一次应答之前不挡第二次按下
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.StationClearance.cs
+
+--- replaced ---
+if (Interlocked.CompareExchange(ref _stationClearanceAwaitingAnswer, 1, 0) != 0)
+--- with ---
+if (Interlocked.Exchange(ref _stationClearanceAwaitingAnswer, 1) < 0)
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ASecondPressWhileTheFirstIsUnansweredSendsNothing [2 s]
+Failed!  - Failed:     1, Passed:    26, Skipped:     0, Total:    27, Duration: 32 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: ASecondPressWhileTheFirstIsUnansweredSendsNothing
+missing: none

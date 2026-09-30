@@ -976,6 +976,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// </remarks>
     private void OnJourneyChanged(object? sender, ValueChangedEventArgs<WireToGateJourneySnapshot> args)
     {
+        ForgetStationClearanceOnceTheServerSaysItIsOver(args.Value);
         if (args.Value.CurrentStopWorklist is not { } worklist
             || Volatile.Read(ref _currentEntryRequest) is not { } request
             || !EndsStopOf(worklist, request)
@@ -2307,6 +2308,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     break;
                 case WireToGateRecoveryCommand { MessageType: "SafetyStateSnapshotRequested" }:
                     await AnswerSafetyStateSnapshotRequestAsync(cancellationToken).ConfigureAwait(false);
+                    break;
+                // An answer its request had stopped waiting for. A business answer like SublotRejected, so the
+                // recovery safety policy below is never consulted for it (8005-agv-onboard-hmi#221).
+                case WireToGateRecoveryCommand { MessageType: "ManualStationClearanceConfirmationResult" } clearance:
+                    HandleLateStationClearanceResult(clearance);
                     break;
                 case WireToGateRecoveryCommand recovery:
                     if (recovery.MessageType is "LoadCorrectionRejected"

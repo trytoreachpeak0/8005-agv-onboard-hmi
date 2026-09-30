@@ -1,0 +1,3 @@
+Status: FAIL
+[31;1mException: [0mC:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi221-8005-agv-onboard-hmi\scripts\check-ui-layout.ps1:87[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mstationClearanceEntry[0m
