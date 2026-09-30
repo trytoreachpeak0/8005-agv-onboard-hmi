@@ -1,3 +1,9 @@
-Schema conformance (protocol-v2.0.0 APPROVED_RELEASE): 10707 lines, 10636 distinct, 53 message types; 0 distinct violations, 1 on file; schema compilation 79920 ms, validation 6859 ms.
+Schema conformance (protocol-v2.0.0 APPROVED_RELEASE): 11186 lines, 11118 distinct, 53 message types; 0 distinct violations, 3 on file; schema compilation 75594 ms, validation 6349 ms.
+DELIBERATE SCHEMA VIOLATION (ManualStationClearanceG2Tests.ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown, ManualStationClearanceG2Tests.ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown) x1: ManualChargingReturnToServiceResult sent by synthetic-peer FakeControlServer.SendCommandAsync
+  #/payload/outcome [type] Validation type - should have been 'string' but was 'Number'. actual: 5
+  #/payload/outcome [enum] Validation enum - did not validate against the enumeration. actual: 5
+DELIBERATE SCHEMA VIOLATION (ManualStationClearanceG2Tests.AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable, ManualStationClearanceG2Tests.AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable) x1: ManualStationClearanceConfirmationResult sent by synthetic-peer FakeControlServer.SendCommandAsync
+  #/payload/outcome [type] Validation type - should have been 'string' but was 'Number'. actual: 5
+  #/payload/outcome [enum] Validation enum - did not validate against the enumeration. actual: 5
 DELIBERATE SCHEMA VIOLATION (MultiDemandJourneyG2Tests.AClosedLoadingPhaseWithoutAReasonIsStillRefusedAndLeavesNoHalfState) x1: VehicleBusinessStateSnapshot sent by synthetic-peer FakeControlServer.CreateJourneyEnvelope <- FakeControlServer.SendJourneySnapshotAsync
   #/payload/loadingPhase [anyOf] Validation anyOf - did not validate against the schema. actual: {"state":"CLOSED","cargoHoldingDeadlineAt":null,"closedReason":null}

@@ -2,14 +2,14 @@
   "schemaVersion": "1.2.0",
   "evidenceType": "ONBOARD_HMI_LOCAL_G2",
   "status": "PASS",
-  "generatedAtUtc": "2026-09-30T11:56:50.3896430Z",
-  "runId": "20260930T115650389Z",
+  "generatedAtUtc": "2026-09-30T15:27:54.5379495Z",
+  "runId": "20260930T152754537Z",
   "integrationSliceId": "",
   "selectedTestCount": null,
   "recordedTestCount": null,
   "integrationSliceIndexSha256": null,
   "hmi": {
-    "commit": "e38cb25892e910ec2cce73b408de20ee8f0bd662",
+    "commit": "290d4f02818c3bf8661eb770c8edba8cf004359e",
     "branch": "w2g/hmi221-station-clearance-entry",
     "workingTreeStatus": [],
     "protocolIdentity": {
@@ -58,10 +58,10 @@
     }
   },
   "schemaConformance": {
-    "linesChecked": 10707,
+    "linesChecked": 11186,
     "linesInViolation": 0,
-    "linesInKnownViolation": 1,
-    "schemaCompilationMilliseconds": 79920,
+    "linesInKnownViolation": 3,
+    "schemaCompilationMilliseconds": 75594,
     "coverage": "test-results/schema-coverage.json"
   },
   "slices": [
