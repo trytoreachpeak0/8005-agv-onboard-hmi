@@ -2431,7 +2431,17 @@ public sealed partial class WireToGateG2Tests
         await WaitUntilAsync(() => ReceivedCount(server, "SafetyStateChanged") == 4, testToken);
         // 受理计数单独等（onboard-hmi#228）：假服务端先把一行记进 Received、再判它受不受理，第四条「收到」的那一刻
         // 它还没被判。等的是「至少 3」，下面断的是「恰好 3」，多受理一条照样红。
-        await WaitUntilAsync(() => server.AcceptedSafetyStateChangedCount >= 3, testToken);
+        try
+        {
+            await WaitUntilAsync(() => server.AcceptedSafetyStateChangedCount >= 3, testToken);
+        }
+        catch (OperationCanceledException) when (!testToken.IsCancellationRequested)
+        {
+            // The shared helper only says "a G2 condition"; this says which one, and where it stopped.
+            Assert.Fail(
+                "Timed out waiting for the fake server to judge the fourth SafetyStateChanged: accepted "
+                + $"{server.AcceptedSafetyStateChangedCount} of {ReceivedCount(server, "SafetyStateChanged")} received.");
+        }
 
         var changed = server.ReceivedEnvelopes
             .Where(item => item.MessageType == "SafetyStateChanged")
