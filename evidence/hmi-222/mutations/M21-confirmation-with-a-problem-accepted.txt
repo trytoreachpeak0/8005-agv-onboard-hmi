@@ -1,0 +1,17 @@
+# M21-confirmation-with-a-problem-accepted
+不拒收带 problem 的 CONFIRMED
+files: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+
+--- replaced ---
+            || payload.Outcome == "CONFIRMED" && payload.Problem is not null
+            || payload.ChargingPolicyDecision
+--- with ---
+            || payload.ChargingPolicyDecision
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AResultThatContradictsItselfOrTheSchemaIsRefusedAndThePressEndsAsUnknown(outcome: "CONFIRMED", withProblem: True, decision: "REASSIGN_CHARGER") [100 ms]
+Failed!  - Failed:     1, Passed:    40, Skipped:     0, Total:    41, Duration: 35 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AResultThatContradictsItselfOrTheSchemaIsRefusedAndThePressEndsAsUnknown
+missing: none

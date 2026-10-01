@@ -1,0 +1,18 @@
+# M15-observed-condition-not-validated
+发送前不校验 observedCondition 的取值
+files: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+
+--- replaced ---
+            || payload.ObservedCondition is not ("CHARGER_UNREACHABLE" or "CHARGER_OCCUPIED" or "CONNECTION_FAILED"
+                or "CHARGER_FAULT")
+
+--- with ---
+
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "observedCondition") [294 ms]
+Failed!  - Failed:     1, Passed:    40, Skipped:     0, Total:    41, Duration: 39 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent
+missing: none

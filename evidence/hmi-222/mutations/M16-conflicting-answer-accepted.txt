@@ -1,0 +1,28 @@
+# M16-conflicting-answer-accepted
+同一确认号下内容不同的第二份应答不报内容冲突
+files: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+
+--- replaced ---
+            throw new InvalidDataException("BUSINESS_ID_CONTENT_CONFLICT");
+        }
+
+        return true;
+    }
+
+    // ---- end of CV-UNABLE-TO-CHARGE-FIELD-CONFIRMATION ----
+--- with ---
+            return true;
+        }
+
+        return true;
+    }
+
+    // ---- end of CV-UNABLE-TO-CHARGE-FIELD-CONFIRMATION ----
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ADifferentAnswerUnderAnAnsweredIdFailsTheSessionAndDoesNotRewriteTheResult [5 s]
+Failed!  - Failed:     1, Passed:    40, Skipped:     0, Total:    41, Duration: 41 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: ADifferentAnswerUnderAnAnsweredIdFailsTheSessionAndDoesNotRewriteTheResult
+missing: none

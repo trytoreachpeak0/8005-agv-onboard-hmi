@@ -1,0 +1,22 @@
+# M10-charger-guessed-from-any-leg
+当前腿不是充电桩时，从计划里任一条充电桩腿猜站点
+files: src/SQCD.Agv.Core/WireToGateUnableToCharge.cs
+
+--- replaced ---
+        return journey.CurrentLeg is { StopPurposeCategory: "CHARGER" } leg
+
+--- with ---
+        return journey.UpcomingStopPlan?.Legs.LastOrDefault(item => item.StopPurposeCategory == "CHARGER") is { } leg
+
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsNotOfferedUnlessTheCurrentLegIsAChargerAndTheScreenSaysWhy(allCompleted: True) [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsNotOfferedUnlessTheCurrentLegIsAChargerAndTheScreenSaysWhy(allCompleted: False) [5 s]
+Failed!  - Failed:     2, Passed:    39, Skipped:     0, Total:    41, Duration: 45 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+--- dotnet test tests/SQCD.Agv.UnitTests --filter FullyQualifiedName~WireToGateUnableToChargeTests (exit 1) ---
+  Failed SQCD.Agv.UnitTests.WireToGateUnableToChargeTests.WithoutACurrentChargerLegNoStationIsNamed [12 ms]
+Failed!  - Failed:     1, Passed:    14, Skipped:     0, Total:    15, Duration: 304 ms - SQCD.Agv.UnitTests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheEntryIsNotOfferedUnlessTheCurrentLegIsAChargerAndTheScreenSaysWhy; WithoutACurrentChargerLegNoStationIsNamed
+missing: none

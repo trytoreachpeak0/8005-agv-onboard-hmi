@@ -1,0 +1,16 @@
+# M13b-resubmission-reuses-the-message-id
+重新提交沿用第一次的 messageId
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+firstSend ? request.ConfirmationRequestId : Guid.NewGuid().ToString("D"),
+--- with ---
+request.ConfirmationRequestId,
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AnUnansweredConfirmationIsShownAsUnknownAndAResubmissionCarriesTheSameIdAndCondition [3 s]
+Failed!  - Failed:     1, Passed:    40, Skipped:     0, Total:    41, Duration: 38 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AnUnansweredConfirmationIsShownAsUnknownAndAResubmissionCarriesTheSameIdAndCondition
+missing: none

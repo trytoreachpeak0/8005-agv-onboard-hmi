@@ -1,0 +1,26 @@
+# M19-decision-not-shown
+结果一行不写服务端的决定
+files: src/SQCD.Agv.Application/WireToGateUnableToChargeText.cs
+
+--- replaced ---
+string decisionSentence = decision.Length == 0 ? string.Empty : $"服务端决定：{decision}。";
+--- with ---
+string decisionSentence = string.Empty;
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AResultThatArrivesAfterTheTimeoutSettlesTheUnknownOnce [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheServersDecisionChangesNothingOnTheVehicleUntilItsNextBusinessState(decision: "MANUAL_CHARGING_HOLD", decisionText: "转人工充电") [522 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheServersDecisionChangesNothingOnTheVehicleUntilItsNextBusinessState(decision: "RETRY_LATER", decisionText: "稍后重试") [543 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheServersDecisionChangesNothingOnTheVehicleUntilItsNextBusinessState(decision: "REASSIGN_CHARGER", decisionText: "改派其它充电桩") [620 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ARejectedConfirmationShowsTheServersReasonAndDecisionAndTheNextPressIsANewConfirmation [150 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheReportCarriesTheOperatorTheChargerAndTheConditionAndTheVectorRunsInOrder [495 ms]
+Failed!  - Failed:     6, Passed:    35, Skipped:     0, Total:    41, Duration: 35 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+--- dotnet test tests/SQCD.Agv.UnitTests --filter FullyQualifiedName~WireToGateUnableToChargeTests (exit 1) ---
+  Failed SQCD.Agv.UnitTests.WireToGateUnableToChargeTests.TheResultLineSaysWhatTheServerSaidAndDecided(decision: "MANUAL_CHARGING_HOLD", decisionText: "转人工充电") [5 ms]
+  Failed SQCD.Agv.UnitTests.WireToGateUnableToChargeTests.TheResultLineSaysWhatTheServerSaidAndDecided(decision: "RETRY_LATER", decisionText: "稍后重试") [< 1 ms]
+  Failed SQCD.Agv.UnitTests.WireToGateUnableToChargeTests.TheResultLineSaysWhatTheServerSaidAndDecided(decision: "REASSIGN_CHARGER", decisionText: "改派其它充电桩") [< 1 ms]
+Failed!  - Failed:     3, Passed:    12, Skipped:     0, Total:    15, Duration: 167 ms - SQCD.Agv.UnitTests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheServersDecisionChangesNothingOnTheVehicleUntilItsNextBusinessState; ARejectedConfirmationShowsTheServersReasonAndDecisionAndTheNextPressIsANewConfirmation; TheResultLineSaysWhatTheServerSaidAndDecided
+missing: none

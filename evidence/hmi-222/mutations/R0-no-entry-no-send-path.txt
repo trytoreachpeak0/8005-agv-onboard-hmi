@@ -1,0 +1,67 @@
+# R0-no-entry-no-send-path
+红证据：拿掉入口与发送路径，回到本票之前（入口永远不出现，会话层没有发送路径）
+files: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs, src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+        if (!WireToGateUnableToCharge.IsCharging(journey))
+ |||         ThrowIfDisposed();
+        RequireUuid(messageId, nameof(messageId));
+        ValidateUnableToChargeRequest(payload);
+
+--- with ---
+        if (DateTimeOffset.UtcNow.Year > 0)
+ |||         ThrowIfDisposed();
+        if (DateTimeOffset.UtcNow.Year > 0)
+        {
+            throw new NotSupportedException("UnableToChargeFieldConfirmationRequested has no send path yet.");
+        }
+
+        RequireUuid(messageId, nameof(messageId));
+        ValidateUnableToChargeRequest(payload);
+
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests|FullyQualifiedName~ProtocolPayloadShapeArchitectureTests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.EveryMessageTheClientSendsMatchesItsFrozenSchema [609 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.EveryMessageTheFakeServerSendsMatchesItsFrozenSchema [183 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.ProtocolPayloadShapeArchitectureTests.TheSessionDrivesEveryImplementedOnboardToServerMessageType [176 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsOfferedWhateverTheLegAndTheCycleSay(legState: "ARRIVED", cycleState: "UNABLE_TO_CHARGE") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsOfferedWhateverTheLegAndTheCycleSay(legState: "ACTIVE", cycleState: "EN_ROUTE") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsOfferedWhateverTheLegAndTheCycleSay(legState: "ARRIVED", cycleState: "CHARGING") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsOfferedWhateverTheLegAndTheCycleSay(legState: "ARRIVED", cycleState: "UNKNOWN") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsOfferedWhateverTheLegAndTheCycleSay(legState: "ARRIVED", cycleState: "COMPLETE") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.EveryObservedConditionIsOfferedAndGoesOutAsChosen(condition: "CHARGER_OCCUPIED", label: "充电桩被占用") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.EveryObservedConditionIsOfferedAndGoesOutAsChosen(condition: "CHARGER_UNREACHABLE", label: "车到不了充电桩") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.EveryObservedConditionIsOfferedAndGoesOutAsChosen(condition: "CONNECTION_FAILED", label: "接不上充电") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.EveryObservedConditionIsOfferedAndGoesOutAsChosen(condition: "CHARGER_FAULT", label: "充电桩故障") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ASecondPressWhileTheFirstIsUnansweredSendsNothing [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AResultThatArrivesAfterTheTimeoutSettlesTheUnknownOnce [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "operatorId") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "verificationMethod") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "chargerStationId") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "observedCondition") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.APayloadTheSchemaDoesNotAllowIsRefusedBeforeItIsSent(broken: "observedAt") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AResultThatContradictsItselfOrTheSchemaIsRefusedAndThePressEndsAsUnknown(outcome: "CONFIRMED", withProblem: True, decision: "REASSIGN_CHARGER") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AResultThatContradictsItselfOrTheSchemaIsRefusedAndThePressEndsAsUnknown(outcome: "CONFIRMED", withProblem: False, decision: "CHARGE_ELSEWHERE") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsNotOfferedUnlessTheCurrentLegIsAChargerAndTheScreenSaysWhy(allCompleted: True) [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsNotOfferedUnlessTheCurrentLegIsAChargerAndTheScreenSaysWhy(allCompleted: False) [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheServersDecisionChangesNothingOnTheVehicleUntilItsNextBusinessState(decision: "MANUAL_CHARGING_HOLD", decisionText: "转人工充电") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheServersDecisionChangesNothingOnTheVehicleUntilItsNextBusinessState(decision: "RETRY_LATER", decisionText: "稍后重试") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheServersDecisionChangesNothingOnTheVehicleUntilItsNextBusinessState(decision: "REASSIGN_CHARGER", decisionText: "改派其它充电桩") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ARepeatedResultIsHandledOnce [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.APressMadeForOneChargerDoesNotConfirmAnother [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ARejectedConfirmationShowsTheServersReasonAndDecisionAndTheNextPressIsANewConfirmation [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheReportCarriesTheOperatorTheChargerAndTheConditionAndTheVectorRunsInOrder [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ALatchLeavesTheEntryOpenAndOpensNoDoor [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AConfirmationWithoutADecisionShowsNoDecision [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AnUnansweredConfirmationIsShownAsUnknownAndAResubmissionCarriesTheSameIdAndCondition [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ALaterChargingAttemptStartsFromNothing [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ADifferentAnswerUnderAnAnsweredIdFailsTheSessionAndDoesNotRewriteTheResult [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AnotherConditionIsRefusedWhileAConfirmationIsUnknown [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ARestartOffersTheEntryFromTheRestoredStateAndAsksTheOperatorAfresh [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AProtocolProblemToTheRequestIsShownAsNotAcceptedAndEndsItsId [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ADroppedSessionLeavesAnUnknownThatIsResubmittedUnderTheSameIdAfterReconnecting [5 s]
+Failed!  - Failed:    39, Passed:     6, Skipped:     0, Total:    45, Duration: 3 m 9 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheReportCarriesTheOperatorTheChargerAndTheConditionAndTheVectorRunsInOrder; TheServersDecisionChangesNothingOnTheVehicleUntilItsNextBusinessState; EveryObservedConditionIsOfferedAndGoesOutAsChosen; TheEntryIsOfferedWhateverTheLegAndTheCycleSay; TheSessionDrivesEveryImplementedOnboardToServerMessageType
+missing: none
