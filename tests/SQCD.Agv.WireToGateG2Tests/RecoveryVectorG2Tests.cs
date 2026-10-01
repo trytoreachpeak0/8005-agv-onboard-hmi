@@ -1546,6 +1546,7 @@ public sealed partial class RecoveryVectorG2Tests
                         loadAlreadySettled,
                         armedUnloadOverSettledLoad,
                         nothingOnFile,
+                        restart,
                         cancellationToken);
                 }
 
@@ -1592,6 +1593,7 @@ public sealed partial class RecoveryVectorG2Tests
                     loadAlreadySettled,
                     armedUnloadOverSettledLoad,
                     nothingOnFile,
+                    restart,
                     cancellationToken);
             }
             catch
@@ -1617,6 +1619,7 @@ public sealed partial class RecoveryVectorG2Tests
             bool loadAlreadySettled,
             bool armedUnloadOverSettledLoad,
             bool nothingOnFile,
+            bool restart,
             CancellationToken cancellationToken)
         {
             // The readiness has to be RECOVERY_REQUIRED when the action is submitted -- with no
@@ -1636,6 +1639,14 @@ public sealed partial class RecoveryVectorG2Tests
 
             safety.SetStopped();
 
+            // A fresh journal seeds an armed attempt that no process has settled, so the pump's first
+            // pass settles it: the interrupted settlement in TrySettleInterruptedOperationAsync.
+            // A restart finds that settlement's result already on file and settles nothing.
+            string? settledAtStart = restart || loadAlreadySettled || nothingOnFile
+                ? null
+                : armedUnloadOverSettledLoad ? UnloadAttemptId : AttemptId;
+            int startSettlementConcluded = 0;
+
             // Subscribed before the pump starts, so no refusal can be published into the gap.
             List<WireToGateOperatorEvent> blocked = [];
             business.OperatorEventPublished += (_, args) =>
@@ -1646,6 +1657,11 @@ public sealed partial class RecoveryVectorG2Tests
                     {
                         blocked.Add(args.Value);
                     }
+                }
+
+                if (settledAtStart is not null && ConcludesStartSettlement(args.Value, settledAtStart))
+                {
+                    Interlocked.Exchange(ref startSettlementConcluded, 1);
                 }
             };
             business.Start();
@@ -1686,9 +1702,38 @@ public sealed partial class RecoveryVectorG2Tests
                     business.CurrentOperationSnapshot!.SlotOperationAttemptId);
             }
 
+            // The RecoveryRequired snapshot above is not the end of the start: the settlement writes
+            // it first and only then records its pending result and sends its OperationResult. A
+            // test that starts there counts the settlement's result as its own, snapshots a journal
+            // the settlement is still writing, and sends a resume the vehicle drops because the
+            // settlement still holds the attempt (onboard-hmi#230). The settlement's last event is
+            // published after the result is acknowledged, and nothing awaits between it and the
+            // claim's release.
+            if (settledAtStart is not null)
+            {
+                await WaitUntilAsync(
+                    () => Volatile.Read(ref startSettlementConcluded) == 1,
+                    "the interrupted settlement of the seeded attempt to report and conclude",
+                    cancellationToken);
+            }
+
             return new RecoveryVectorHarness(
                 server, ownsServer, io, session, business, journal, blocked, logger, safety);
         }
+
+        /// <summary>
+        /// The event the interrupted settlement of <paramref name="attemptId"/> ends on: its reported
+        /// outcome, or the pending-ack notice when the result's DurableAck did not come back. The
+        /// settlement's own OPERATION_PROGRESS snapshot comes before the result and does not count.
+        /// </summary>
+        private static bool ConcludesStartSettlement(WireToGateOperatorEvent operatorEvent, string attemptId) =>
+            operatorEvent.Kind switch
+            {
+                "OPERATION_RECOVERY_REQUIRED" or "OPERATION_COMPLETED" =>
+                    operatorEvent.Operation?.SlotOperationAttemptId == attemptId,
+                "RESULT_ACK_PENDING" => true,
+                _ => false
+            };
 
         /// <summary>The vehicle's motion is unknown again, the way it was across the handshake.</summary>
         public void VehicleMotionUnknown() => _safety.SetUnknown();
