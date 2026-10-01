@@ -1399,7 +1399,10 @@ public sealed partial class RecoveryVectorG2Tests
             bool lockerWaitTimesOut = false,
             Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
             Func<bool>? fatalFaultLatched = null,
-            IClock? sessionClock = null)
+            IClock? sessionClock = null,
+            TimeSpan? messageTimeout = null,
+            bool awaitStartSettlement = true,
+            TimeSpan? resumeSettlementWaitLimit = null)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -1439,7 +1442,7 @@ public sealed partial class RecoveryVectorG2Tests
                         new string('a', 40),
                         CredentialVariable,
                         G2SessionTimeouts.Connect,
-                        TimeSpan.FromSeconds(2),
+                        messageTimeout ?? TimeSpan.FromSeconds(2),
                         baselineRevision,
                         baselineRevision,
                         "eight-slot-v1",
@@ -1480,7 +1483,8 @@ public sealed partial class RecoveryVectorG2Tests
                         ProofVariable,
                         "MAINTENANCE_ADMINISTRATOR",
                         "CONFIGURED_PROOF"),
-                    fatalFaultLatched: fatalFaultLatched);
+                    fatalFaultLatched: fatalFaultLatched,
+                    resumeSettlementWaitLimit: resumeSettlementWaitLimit);
 
                 WireToGateRecoveryOperationContext loadContext = new(
                     CommandMessageId,
@@ -1547,6 +1551,7 @@ public sealed partial class RecoveryVectorG2Tests
                         armedUnloadOverSettledLoad,
                         nothingOnFile,
                         restart,
+                        awaitStartSettlement,
                         cancellationToken);
                 }
 
@@ -1594,6 +1599,7 @@ public sealed partial class RecoveryVectorG2Tests
                     armedUnloadOverSettledLoad,
                     nothingOnFile,
                     restart,
+                    awaitStartSettlement,
                     cancellationToken);
             }
             catch
@@ -1620,6 +1626,7 @@ public sealed partial class RecoveryVectorG2Tests
             bool armedUnloadOverSettledLoad,
             bool nothingOnFile,
             bool restart,
+            bool awaitStartSettlement,
             CancellationToken cancellationToken)
         {
             // The readiness has to be RECOVERY_REQUIRED when the action is submitted -- with no
@@ -1717,7 +1724,10 @@ public sealed partial class RecoveryVectorG2Tests
             // NotSettled). The settlement's own result, under messageId = the attempt id, is what
             // only a settlement that ran sends. RESULT_ACK_PENDING is the one ending where that
             // result's arrival is not the point.
-            if (settledAtStart is not null)
+            //
+            // A test that delivers something into the settlement itself (onboard-hmi#233) says
+            // awaitStartSettlement: false and waits for the moment it needs on its own.
+            if (settledAtStart is not null && awaitStartSettlement)
             {
                 await WaitUntilAsync(
                     () => Volatile.Read(ref startSettlementConcluded) switch

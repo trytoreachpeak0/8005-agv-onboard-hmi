@@ -193,6 +193,23 @@ public sealed class FakeControlServer : IAsyncDisposable
     public int OperationResultAcksToDrop { get; set; }
 
     /// <summary>
+    /// When set and not yet complete, an <c>OperationResult</c> is taken and its <c>DurableAck</c> (and verdict) written
+    /// only once this task completes, while the connection goes on reading and answering everything else. The vehicle
+    /// meanwhile sits in its send, holding whatever it holds across it -- for the interrupted settlement, the attempt's
+    /// claim (onboard-hmi#233). Set the session's message timeout above the hold, or the wait ends on its own.
+    /// </summary>
+    public Task? OperationResultAckHold { get; set; }
+
+    private int _operationResultsHeld;
+
+    /// <summary>
+    /// How many <c>OperationResult</c>s have been taken under <see cref="OperationResultAckHold"/> so far. A test that
+    /// needs the vehicle sitting in such a send waits for this rather than for a count of results received, which
+    /// cannot tell a send that got its ack from one that is held (onboard-hmi#233, second incremental review).
+    /// </summary>
+    public int OperationResultsHeld => Volatile.Read(ref _operationResultsHeld);
+
+    /// <summary>
     /// Answers every <c>OperationResult</c> that is not dropped by <see cref="OperationResultAcksToDrop"/> with a
     /// <c>ProtocolProblem</c>, the connection left open: the vehicle's resend of an unacknowledged result then fails
     /// with <c>InvalidDataException</c> rather than a timeout (onboard-hmi#127 review).
@@ -1175,6 +1192,17 @@ public sealed class FakeControlServer : IAsyncDisposable
         set => Volatile.Write(ref _midSessionSafetySnapshotAcksToDrop, value);
     }
 
+    /// <summary>
+    /// Closes the latest session's connection from the server's side, mid-session: the vehicle sees the link
+    /// drop and reconnects with a new generation (onboard-hmi#233).
+    /// </summary>
+    public void CloseLatestConnection()
+    {
+        ConnectionContext context = Volatile.Read(ref _latestSession)
+            ?? throw new InvalidOperationException("No session has been accepted yet.");
+        context.Client.Close();
+    }
+
     public async Task RequestSafetyStateSnapshotAsync()
     {
         ConnectionContext context = Volatile.Read(ref _latestSession)
@@ -1608,30 +1636,25 @@ public sealed class FakeControlServer : IAsyncDisposable
                             return;
                         }
 
-                        await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
-
-                        // OnboardMessageProcessor.cs, OperationResult: ReconcileReportedPendingResultAsync takes the
-                        // result off the reported pending list whatever the verdict. ApplyOperationResultAsync commits
-                        // the operation only for a result it accepts as COMPLETED, which SettleReportedAttemptsAsync then
-                        // takes off; any other result puts it into RecoveryRequired, unless a reconciled recovery has
-                        // already cancelled it (then the late result is kept as HistoricalOnly and changes nothing).
-                        JsonElement resultPayload = root.GetProperty("payload");
-                        bool accepted = resultPayload.GetProperty("overallOutcome").GetString() == "COMPLETED"
-                            && !SendRecoveryRequiredReadinessAfterOperationResultAck;
-                        string resultAttempt = resultPayload.GetProperty("slotOperationAttemptId").GetString()!;
-                        await ReconcileAsync(context, pending =>
+                        if (OperationResultAckHold is { IsCompleted: false } resultHold)
                         {
-                            pending.PendingResultIds.Remove(messageId);
-                            if (accepted)
-                            {
-                                _settledAttempts.Add(resultAttempt);
-                                _operationsNeedingRecovery.Remove(resultAttempt);
-                            }
-                            else if (!_settledAttempts.Contains(resultAttempt))
-                            {
-                                _operationsNeedingRecovery.Add(resultAttempt);
-                            }
-                        }).ConfigureAwait(false);
+                            // Answered off the read loop, so everything the vehicle sends meanwhile -- the
+                            // recovery request a held settlement must not keep out -- is still answered.
+                            JsonElement held = root.Clone();
+                            string heldMessageId = messageId;
+                            Interlocked.Increment(ref _operationResultsHeld);
+                            _ = Task.Run(
+                                async () =>
+                                {
+                                    await resultHold.ConfigureAwait(false);
+                                    await AnswerOperationResultAsync(context, held, heldMessageId)
+                                        .ConfigureAwait(false);
+                                },
+                                stoppingToken);
+                            break;
+                        }
+
+                        await AnswerOperationResultAsync(context, root, messageId).ConfigureAwait(false);
                         break;
                     case "SublotSubmitted" when DropBeforeSublotSubmittedAck:
                         BindSublotSubmission(messageId, root);
@@ -2148,6 +2171,45 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
 
         await SendGatedAfterRecoveryAsync(context).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Acknowledges an <c>OperationResult</c> and applies its verdict. A connection the vehicle has closed since a
+    /// held result was taken (<see cref="OperationResultAckHold"/>) gets nothing; the next handshake replays it.
+    /// </summary>
+    private async Task AnswerOperationResultAsync(ConnectionContext context, JsonElement root, string messageId)
+    {
+        try
+        {
+            await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or ObjectDisposedException)
+        {
+            return;
+        }
+
+        // OnboardMessageProcessor.cs, OperationResult: ReconcileReportedPendingResultAsync takes the
+        // result off the reported pending list whatever the verdict. ApplyOperationResultAsync commits
+        // the operation only for a result it accepts as COMPLETED, which SettleReportedAttemptsAsync then
+        // takes off; any other result puts it into RecoveryRequired, unless a reconciled recovery has
+        // already cancelled it (then the late result is kept as HistoricalOnly and changes nothing).
+        JsonElement resultPayload = root.GetProperty("payload");
+        bool accepted = resultPayload.GetProperty("overallOutcome").GetString() == "COMPLETED"
+            && !SendRecoveryRequiredReadinessAfterOperationResultAck;
+        string resultAttempt = resultPayload.GetProperty("slotOperationAttemptId").GetString()!;
+        await ReconcileAsync(context, pending =>
+        {
+            pending.PendingResultIds.Remove(messageId);
+            if (accepted)
+            {
+                _settledAttempts.Add(resultAttempt);
+                _operationsNeedingRecovery.Remove(resultAttempt);
+            }
+            else if (!_settledAttempts.Contains(resultAttempt))
+            {
+                _operationsNeedingRecovery.Add(resultAttempt);
+            }
+        }).ConfigureAwait(false);
     }
 
     /// <summary>

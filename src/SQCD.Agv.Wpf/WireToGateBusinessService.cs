@@ -45,7 +45,22 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private readonly object _taskGate = new();
     private readonly object _operationAttemptGate = new();
     private readonly HashSet<Task> _tasks = [];
-    private readonly HashSet<string> _operationAttempts = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, AttemptClaim> _operationAttempts = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Completed, and replaced, every time a claim on <see cref="_operationAttempts"/> is given up -- under
+    /// <see cref="_operationAttemptGate"/>, so a waiter that read it while the claim it waits on was still held is
+    /// woken by that claim's release (onboard-hmi#233).
+    /// </summary>
+    private TaskCompletionSource _attemptClaimReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    /// <summary>
+    /// How long a resume waits for the interrupted settlement to let its attempt go before it is refused instead
+    /// (onboard-hmi#233). Twice the session's message timeout by default: the settlement's longest hold is a resend
+    /// of an unacknowledged result followed by the recording that comes after it, each send bounded by that timeout.
+    /// This is the backstop that keeps an unforeseen hang there from becoming a resume nobody answers.
+    /// </summary>
+    private readonly TimeSpan _resumeSettlementWaitLimit;
 
     /// <summary>
     /// The attempt this process <b>executed</b> and gave a conclusion to -- its result is on file, acknowledged or
@@ -152,9 +167,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         TimeSpan? vehicleSafetyMaxAge = null,
         TimeSpan? vehicleSafetyClockSkewTolerance = null,
         WireToGateRecoveryOptions? recoveryOptions = null,
-        Func<bool>? fatalFaultLatched = null)
+        Func<bool>? fatalFaultLatched = null,
+        TimeSpan? resumeSettlementWaitLimit = null)
     {
         _session = session;
+        _resumeSettlementWaitLimit = resumeSettlementWaitLimit ?? 2 * session.Client.MessageTimeout;
+        if (_resumeSettlementWaitLimit <= TimeSpan.Zero)
+        {
+            throw new ArgumentOutOfRangeException(nameof(resumeSettlementWaitLimit));
+        }
+
         // 严重安全故障锁存的查询。默认「没有锁存」，因为本服务的测试夹具与自动化宿主都不带控制器；
         // 产品里由 App 接上 OnboardController.IsFatalFaultLatched（8005-agv-onboard-hmi#171）。
         _fatalFaultLatched = fatalFaultLatched ?? (() => false);
@@ -1415,6 +1437,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         lock (_operationAttemptGate)
         {
             _operationAttempts.Remove(attemptId);
+            // Woken under the same lock as the removal: a resume waiting on this claim (onboard-hmi#233) reads the
+            // signal under it too, so it either sees the claim gone or holds the signal this completes.
+            _attemptClaimReleased.TrySetResult();
+            _attemptClaimReleased = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         }
 
         PublishOwedRecoveryEntry();
@@ -1694,7 +1720,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         string attemptId = context.SlotOperationAttemptId;
         lock (_operationAttemptGate)
         {
-            if (!_operationAttempts.Add(attemptId))
+            if (!_operationAttempts.TryAdd(attemptId, AttemptClaim.Settlement))
             {
                 return InterruptedOperationSettlement.InFlight;
             }
@@ -2438,10 +2464,15 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     cancellationToken)
                 .ConfigureAwait(false);
         }
-        // Everything else stays local, as before onboard-hmi#119: an IOException or TimeoutException
-        // may come from after the first pulse, and so may an InvalidDataException the executor did not
-        // classify as "not started". Where the refusal cannot be placed before the door IO, the server
-        // hears about the operation through the existing interrupted-settlement result instead.
+        // Only what escapes before the attempt is claimed reaches here -- a journal read of the checks in
+        // front of the claim, most likely -- so no door was touched, and the server is told so with a
+        // rejection (onboard-hmi#233). Everything from the claim on answers inside
+        // HandleBlockedResumeCoreAsync while the claim is still held: a result the executor returns, an
+        // UNKNOWN read off the live IO when it throws instead, or WireToGateResumeNotStartedException's
+        // rejection above. Until onboard-hmi#233 this catch also took what the executor threw after its
+        // first journal write, told the operator only, and said the server would hear through the
+        // interrupted settlement's result. It would not: that result is keyed operation-result:{attempt},
+        // already on file from the start settlement, so every later settlement read it and sent nothing.
         catch (Exception exception) when (
             exception is IOException
                 or TimeoutException
@@ -2457,6 +2488,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 $"resume-command-failed:{command.MessageId}",
                 "RECOVERY_BLOCKED",
                 $"恢复命令被阻断：{exception.Message}。未执行仓门IO。 ");
+            await SendResumeRejectedAsync(command, "VEHICLE_NOT_READY", cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -2464,119 +2496,168 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         WireToGateSlotOperationResumeCommand command,
         CancellationToken cancellationToken)
     {
-        // A resume this vehicle has already refused stays refused: the server may have closed the
-        // resume workflow on that rejection, so running the same command later, because the gate
-        // would pass now, would open doors for a workflow nobody is waiting on. The answer is the
-        // rejection on file, unchanged (8005-agv-onboard-hmi#119).
-        WireToGateDurableMessage? refused = await _session.Journal
-            .ReadOutgoingByDeduplicationKeyAsync(ResumeRejectedKey(command), cancellationToken)
-            .ConfigureAwait(false);
-        if (refused is not null)
-        {
-            _logger.Write(
-                LogSeverity.Warning,
-                nameof(WireToGateBusinessService),
-                $"收到已拒绝过的SlotOperationResumeCommand：attempt={command.SlotOperationAttemptId}，messageId={command.MessageId}，重发原拒绝，未执行物理动作。");
-            PublishOperatorEvent(
-                $"resume-command:{command.MessageId}",
-                "RECOVERY_BLOCKED",
-                "恢复命令此前已被拒绝，已重发原拒绝，未执行仓门IO。");
-            using JsonDocument wire = JsonDocument.Parse(refused.WireLine);
-            SlotOperationCommandRejectedPayload payload =
-                wire.RootElement.GetProperty("payload").Deserialize<SlotOperationCommandRejectedPayload>(JsonOptions)
-                ?? throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
-            await SendResumeRejectedCoreAsync(command, payload, cancellationToken).ConfigureAwait(false);
-            // Idempotent. A journal still naming this session is one a stop, or a failed write,
-            // left behind after the rejection was already on file.
-            await ReleaseRefusedResumeSessionAsync(command, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        WireToGateRecoveryState state = await _session.Journal
-            .ReadRecoveryStateAsync(cancellationToken)
-            .ConfigureAwait(false);
-        IoSnapshot snapshot = _ioModule.CurrentSnapshot;
-        VehicleSafetySignal vehicle = ReadVehicleSafety();
-        DateTimeOffset now = _clock.Now;
-        bool fresh = snapshot.IsConnected
-            && SafetyRules.IsSnapshotFresh(snapshot, now, _ioSnapshotMaxAge)
-            && vehicle.IsFresh(
-                now,
-                _vehicleSafetyMaxAge,
-                _vehicleSafetyClockSkewTolerance);
-        bool targetsKnown = fresh
-            && command.Slots.All(slot =>
-                TryGetLocker(snapshot, slot, out LockerSnapshot? locker)
-                && locker is { IsKnown: true });
-        bool targetsLocked = targetsKnown
-            && command.Slots.All(slot =>
-                TryGetLocker(snapshot, slot, out LockerSnapshot? locker)
-                && locker is { IsLocked: true });
-        bool outputsReset = targetsKnown
-            && command.Slots.All(slot =>
-                TryGetLocker(snapshot, slot, out LockerSnapshot? locker)
-                && locker is { UnlockOutputRaw: false });
-        bool recoverySessionAuthorized =
-            _recoveryOptions.ResumeAfterRepairEnabled
-            && string.Equals(
-                state.ExceptionRecoverySessionId,
-                command.ExceptionRecoverySessionId,
-                StringComparison.Ordinal)
-            && string.Equals(
-                state.RecoveryActionId,
-                command.RecoveryActionId,
-                StringComparison.Ordinal)
-            && state.OperationContext is not null
-            && string.Equals(
-                state.OperationContext.DemandId,
-                command.DemandId,
-                StringComparison.Ordinal)
-            && state.OperationContext.Slots.SequenceEqual(command.Slots);
-        WireToGateRecoverySafetyDecision decision =
-            WireToGateRecoverySafetyPolicy.Evaluate(
-                new WireToGateRecoverySafetyFacts(
-                    RecoverySessionAuthorized: recoverySessionAuthorized,
-                    RecoveryStatePersisted: WireToGateRecoverySafetyPolicy.MatchesPersistedResumeState(
-                        state,
-                        command.SlotOperationAttemptId,
-                        command.ProvenRecoveryCheckpoint),
-                    VehicleStopped: vehicle.MotionState == VehicleMotionState.Stopped,
-                    VehicleSignalFresh: fresh,
-                    AllTargetSlotsKnown: targetsKnown,
-                    AllTargetSlotsLocked: targetsLocked,
-                    AllUnlockOutputsReset: outputsReset));
-        if (!decision.Allowed)
-        {
-            _logger.Write(
-                LogSeverity.Warning,
-                nameof(WireToGateBusinessService),
-                $"收到SlotOperationResumeCommand但未执行物理动作：attempt={command.SlotOperationAttemptId}，reason={decision.ReasonCode}。");
-            PublishOperatorEvent(
-                $"resume-command:{command.MessageId}",
-                "RECOVERY_BLOCKED",
-                $"恢复命令被安全门禁阻断：{decision.ReasonCode}。");
-            await SendResumeRejectedAsync(command, decision.ReasonCode, cancellationToken)
-                .ConfigureAwait(false);
-            return;
-        }
-
+        // Started at the first wait on the settlement, so the limit is on the whole of the waiting however
+        // many readiness re-entries take the attempt in turn (onboard-hmi#233).
+        Stopwatch? settlementWait = null;
+        WireToGateRecoveryState state;
         string recoveryResultKey =
             $"recovery-operation-result:{command.SlotOperationAttemptId}:{command.RecoveryActionId}";
-        WireToGateDurableMessage? existingResult = await _session.Journal
-            .ReadOutgoingByDeduplicationKeyAsync(recoveryResultKey, cancellationToken)
-            .ConfigureAwait(false);
-        if (existingResult is not null)
+        while (true)
         {
-            PublishOperatorEvent(
-                $"recovery-result-replay:{command.RecoveryActionId}",
-                "OPERATION_REPLAY",
-                "恢复结果已存在，保持原恢复结果重放，未再次执行仓门IO。");
-            return;
-        }
+            // Before anything is judged: a copy of this very command already executing answers for both
+            // (onboard-hmi#233, review O2). Judged first, a resend that lands mid-execution fails the gate --
+            // the first copy has moved the persisted checkpoint on, so RecoveryStatePersisted no longer holds --
+            // and is refused under this command's messageId, which the server reads as this command refused and
+            // closes the session on while the door is open. The check at the claim below stays for the copy that
+            // claims between this look and that one.
+            if (HeldBySameResume(command))
+            {
+                LogResumeLeftToTheCopyExecuting(command);
+                return;
+            }
 
-        lock (_operationAttemptGate)
-        {
-            if (!_operationAttempts.Add(command.SlotOperationAttemptId))
+            // A resume this vehicle has already refused stays refused: the server may have closed the
+            // resume workflow on that rejection, so running the same command later, because the gate
+            // would pass now, would open doors for a workflow nobody is waiting on. The answer is the
+            // rejection on file, unchanged (8005-agv-onboard-hmi#119).
+            WireToGateDurableMessage? refused = await _session.Journal
+                .ReadOutgoingByDeduplicationKeyAsync(ResumeRejectedKey(command), cancellationToken)
+                .ConfigureAwait(false);
+            if (refused is not null)
+            {
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    $"收到已拒绝过的SlotOperationResumeCommand：attempt={command.SlotOperationAttemptId}，messageId={command.MessageId}，重发原拒绝，未执行物理动作。");
+                PublishOperatorEvent(
+                    $"resume-command:{command.MessageId}",
+                    "RECOVERY_BLOCKED",
+                    "恢复命令此前已被拒绝，已重发原拒绝，未执行仓门IO。");
+                using JsonDocument wire = JsonDocument.Parse(refused.WireLine);
+                SlotOperationCommandRejectedPayload payload =
+                    wire.RootElement.GetProperty("payload").Deserialize<SlotOperationCommandRejectedPayload>(JsonOptions)
+                    ?? throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+                await SendResumeRejectedCoreAsync(command, payload, cancellationToken).ConfigureAwait(false);
+                // Idempotent. A journal still naming this session is one a stop, or a failed write,
+                // left behind after the rejection was already on file.
+                await ReleaseRefusedResumeSessionAsync(command, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            state = await _session.Journal
+                .ReadRecoveryStateAsync(cancellationToken)
+                .ConfigureAwait(false);
+            IoSnapshot snapshot = _ioModule.CurrentSnapshot;
+            VehicleSafetySignal vehicle = ReadVehicleSafety();
+            DateTimeOffset now = _clock.Now;
+            bool fresh = snapshot.IsConnected
+                && SafetyRules.IsSnapshotFresh(snapshot, now, _ioSnapshotMaxAge)
+                && vehicle.IsFresh(
+                    now,
+                    _vehicleSafetyMaxAge,
+                    _vehicleSafetyClockSkewTolerance);
+            bool targetsKnown = fresh
+                && command.Slots.All(slot =>
+                    TryGetLocker(snapshot, slot, out LockerSnapshot? locker)
+                    && locker is { IsKnown: true });
+            bool targetsLocked = targetsKnown
+                && command.Slots.All(slot =>
+                    TryGetLocker(snapshot, slot, out LockerSnapshot? locker)
+                    && locker is { IsLocked: true });
+            bool outputsReset = targetsKnown
+                && command.Slots.All(slot =>
+                    TryGetLocker(snapshot, slot, out LockerSnapshot? locker)
+                    && locker is { UnlockOutputRaw: false });
+            bool recoverySessionAuthorized =
+                _recoveryOptions.ResumeAfterRepairEnabled
+                && string.Equals(
+                    state.ExceptionRecoverySessionId,
+                    command.ExceptionRecoverySessionId,
+                    StringComparison.Ordinal)
+                && string.Equals(
+                    state.RecoveryActionId,
+                    command.RecoveryActionId,
+                    StringComparison.Ordinal)
+                && state.OperationContext is not null
+                && string.Equals(
+                    state.OperationContext.DemandId,
+                    command.DemandId,
+                    StringComparison.Ordinal)
+                && state.OperationContext.Slots.SequenceEqual(command.Slots);
+            WireToGateRecoverySafetyDecision decision =
+                WireToGateRecoverySafetyPolicy.Evaluate(
+                    new WireToGateRecoverySafetyFacts(
+                        RecoverySessionAuthorized: recoverySessionAuthorized,
+                        RecoveryStatePersisted: WireToGateRecoverySafetyPolicy.MatchesPersistedResumeState(
+                            state,
+                            command.SlotOperationAttemptId,
+                            command.ProvenRecoveryCheckpoint),
+                        VehicleStopped: vehicle.MotionState == VehicleMotionState.Stopped,
+                        VehicleSignalFresh: fresh,
+                        AllTargetSlotsKnown: targetsKnown,
+                        AllTargetSlotsLocked: targetsLocked,
+                        AllUnlockOutputsReset: outputsReset));
+            if (!decision.Allowed)
+            {
+                // Looked at again before the refusal goes out: a copy of this command may have claimed the attempt
+                // since the check at the top -- woken from its own wait on the settlement and gone on on the thread
+                // pool, say -- and its execution is what moved the persisted checkpoint the gate just refused on. A
+                // refusal sent now carries this command's messageId, and the server would close the session on it
+                // with that copy's doors open (onboard-hmi#233, second incremental review).
+                if (HeldBySameResume(command))
+                {
+                    LogResumeLeftToTheCopyExecuting(command);
+                    return;
+                }
+
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    $"收到SlotOperationResumeCommand但未执行物理动作：attempt={command.SlotOperationAttemptId}，reason={decision.ReasonCode}。");
+                PublishOperatorEvent(
+                    $"resume-command:{command.MessageId}",
+                    "RECOVERY_BLOCKED",
+                    $"恢复命令被安全门禁阻断：{decision.ReasonCode}。");
+                await SendResumeRejectedAsync(command, decision.ReasonCode, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            WireToGateDurableMessage? existingResult = await _session.Journal
+                .ReadOutgoingByDeduplicationKeyAsync(recoveryResultKey, cancellationToken)
+                .ConfigureAwait(false);
+            if (existingResult is not null)
+            {
+                PublishOperatorEvent(
+                    $"recovery-result-replay:{command.RecoveryActionId}",
+                    "OPERATION_REPLAY",
+                    "恢复结果已存在，保持原恢复结果重放，未再次执行仓门IO。");
+                return;
+            }
+
+            // Everything above is judged again on every pass: a settlement that held the attempt may have
+            // written the journal, refused nothing, or put the very result on file this resume would send.
+            AttemptClaim? holder = null;
+            Task holderReleased = Task.CompletedTask;
+            lock (_operationAttemptGate)
+            {
+                if (!_operationAttempts.TryAdd(
+                        command.SlotOperationAttemptId,
+                        AttemptClaim.Resume(command.MessageId)))
+                {
+                    holder = _operationAttempts[command.SlotOperationAttemptId];
+                    holderReleased = _attemptClaimReleased.Task;
+                }
+            }
+
+            if (holder is null)
+            {
+                break;
+            }
+
+            settlementWait ??= holder.Holder == AttemptClaimHolder.Settlement ? Stopwatch.StartNew() : null;
+            if (!await AwaitAttemptHeldFromResumeAsync(command, holder, holderReleased, settlementWait, cancellationToken)
+                    .ConfigureAwait(false))
             {
                 return;
             }
@@ -2608,11 +2689,30 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     progressToken).ConfigureAwait(false);
             }
 
-            WireToGateOperationExecutionResult execution = await _executor
-                .ResumeAsync(command, SendProgress, cancellationToken)
-                .ConfigureAwait(false);
-            WireToGateOperationResultPayload payload = CreateOperationResultPayload(execution);
-            string resultMessageId = StableUuid(recoveryResultKey);
+            WireToGateOperationExecutionResult execution;
+            try
+            {
+                execution = await _executor
+                    .ResumeAsync(command, SendProgress, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            // Out of the executor without a result -- the journal failing under a checkpoint write, most
+            // likely. The doors may have moved and the vehicle cannot say how far it got, so the server is
+            // answered UNKNOWN, read off the live IO, under this resume's own key (onboard-hmi#233). Before,
+            // this reached HandleBlockedResumeAsync's last catch, which told the operator and nobody else, and
+            // the server's resume workflow waited for good. WireToGateResumeNotStartedException is not among
+            // these: it is the executor saying nothing was touched, and it is answered with a rejection there.
+            catch (Exception exception) when (
+                exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
+            {
+                _logger.Write(
+                    LogSeverity.Error,
+                    nameof(WireToGateBusinessService),
+                    $"恢复命令执行中断，无法确定执行到哪一步，按实时IO以UNKNOWN上报：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。",
+                    exception);
+                execution = _executor.CreateUnknownResultFromLiveIo(original);
+            }
+
             bool completedSuccessfully = execution.OverallOutcome == "COMPLETED";
             PublishOperation(
                 original,
@@ -2623,59 +2723,367 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     ? "恢复后的仓位操作已完成，正在上报替换结果。"
                     : "恢复后的仓位操作仍未完成，需要继续人工恢复。",
                 $"recovery:{command.RecoveryActionId}:final");
-            try
-            {
-                if (!completedSuccessfully && execution.JournalCheckpoint != "NONE")
-                {
-                    await _executor.RecordPendingResultAsync(
-                        command.SlotOperationAttemptId,
-                        new WireToGatePendingResult(
-                            "OperationResult",
-                            resultMessageId,
-                            command.SlotOperationAttemptId,
-                            payload.ResultContentSha256),
-                        cancellationToken).ConfigureAwait(false);
-                }
-
-                await _session.SendRecoveryOperationResultAsync(
-                    recoveryResultKey,
-                    resultMessageId,
-                    payload,
-                    cancellationToken).ConfigureAwait(false);
-                if (completedSuccessfully && execution.JournalCheckpoint != "NONE")
-                {
-                    await _executor.MarkResultRecordedAsync(
-                        command.SlotOperationAttemptId,
-                        cancellationToken).ConfigureAwait(false);
-                    // Same refresh as the formal load path: a resumed load that completes is the
-                    // last completed load, and the correction entry must see it now.
-                    await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
-                }
-
-                PublishOperatorEvent(
-                    $"recovery-result:{command.RecoveryActionId}:{execution.OverallOutcome}",
-                    completedSuccessfully ? "OPERATION_COMPLETED" : "OPERATION_RECOVERY_REQUIRED",
-                    completedSuccessfully
-                        ? "恢复后的原操作结果已上报。"
-                        : "恢复后的原操作仍未完成，结果已上报并保持故障安全。");
-            }
-            catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
-            {
-                _logger.Write(
-                    LogSeverity.Warning,
-                    nameof(WireToGateBusinessService),
-                    $"恢复OperationResult暂未收到DurableAck：attempt={command.SlotOperationAttemptId}。",
-                    exception);
-                PublishOperatorEvent(
-                    $"recovery-result-pending:{command.RecoveryActionId}",
-                    "RESULT_ACK_PENDING",
-                    "恢复结果已持久化，等待服务端确认；不会重复执行仓门IO。");
-            }
+            await ReportResumeResultAsync(command, execution, recoveryResultKey, cancellationToken)
+                .ConfigureAwait(false);
         }
         finally
         {
             ReleaseInFlightAttempt(command.SlotOperationAttemptId);
         }
+    }
+
+    /// <summary>
+    /// Puts a resume's replacement <c>OperationResult</c> on file and sends it, under
+    /// <c>recovery-operation-result:{attempt}:{action}</c> -- never the attempt's own <c>operation-result:{attempt}</c>,
+    /// which the interrupted settlement has usually written already -- and records a completed one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The answer comes first</b> (onboard-hmi#233). A pending-result entry the journal will not take is logged and
+    /// the result is sent anyway: that entry only lets the next RecoveryStateReport name it, and the outbox row the
+    /// send writes is replayed by the handshake regardless. Recording a completed result after it has gone out is
+    /// bookkeeping too, and its failure is logged rather than reported as an answer still owed.
+    /// </para>
+    /// <para>
+    /// A send that fails is told apart by whether its row reached the outbox. On file, it is the server's
+    /// acknowledgement that is outstanding -- RESULT_ACK_PENDING, as before. Not on file, nothing will replay it, so
+    /// the send is tried once more; until this ticket that case was reported as RESULT_ACK_PENDING too, which said
+    /// "persisted" about a result that was never written. A second failure is the end of the road: every answer is
+    /// written before it is sent, and a journal that takes nothing leaves nothing to send. That is logged as an
+    /// error, and the operator is told.
+    /// </para>
+    /// </remarks>
+    private async Task ReportResumeResultAsync(
+        WireToGateSlotOperationResumeCommand command,
+        WireToGateOperationExecutionResult execution,
+        string recoveryResultKey,
+        CancellationToken cancellationToken)
+    {
+        WireToGateOperationResultPayload payload = CreateOperationResultPayload(execution);
+        string resultMessageId = StableUuid(recoveryResultKey);
+        bool completedSuccessfully = execution.OverallOutcome == "COMPLETED";
+        if (!completedSuccessfully && execution.JournalCheckpoint != "NONE")
+        {
+            try
+            {
+                await _executor.RecordPendingResultAsync(
+                    command.SlotOperationAttemptId,
+                    new WireToGatePendingResult(
+                        "OperationResult",
+                        resultMessageId,
+                        command.SlotOperationAttemptId,
+                        payload.ResultContentSha256),
+                    cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (
+                exception is IOException or InvalidOperationException or InvalidDataException)
+            {
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    $"恢复结果未能记为待报结果，仍照常发送：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。",
+                    exception);
+            }
+        }
+
+        for (int attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await _session.SendRecoveryOperationResultAsync(
+                    recoveryResultKey,
+                    resultMessageId,
+                    payload,
+                    cancellationToken).ConfigureAwait(false);
+                break;
+            }
+            catch (Exception exception) when (
+                exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
+            {
+                if (await ResultIsOnFileAsync(recoveryResultKey, cancellationToken).ConfigureAwait(false))
+                {
+                    // On file is not sent. A row written and then not put on the wire -- the send broke between
+                    // the two -- waits for the next handshake's replay, which on a link that stays up is the
+                    // server waiting until it drops. So it is sent once more now, exactly as stored, as the
+                    // interrupted settlement does for its own result (onboard-hmi#127). A row that did go out
+                    // and lost its ack goes out again under the same messageId, which the server's inbox answers
+                    // as the resend it is. Only a session that can take it: one that cannot replays at its
+                    // handshake anyway.
+                    if (_session.Current.Readiness is WireToGateSessionReadiness.Ready
+                            or WireToGateSessionReadiness.RecoveryRequired
+                        && await TryResendResumeResultAsync(command, recoveryResultKey, cancellationToken)
+                            .ConfigureAwait(false))
+                    {
+                        break;
+                    }
+
+                    _logger.Write(
+                        LogSeverity.Warning,
+                        nameof(WireToGateBusinessService),
+                        $"恢复OperationResult暂未收到DurableAck：attempt={command.SlotOperationAttemptId}。",
+                        exception);
+                    PublishOperatorEvent(
+                        $"recovery-result-pending:{command.RecoveryActionId}",
+                        "RESULT_ACK_PENDING",
+                        "恢复结果已持久化，等待服务端确认；不会重复执行仓门IO。");
+                    return;
+                }
+
+                if (attempt >= 2)
+                {
+                    _logger.Write(
+                        LogSeverity.Error,
+                        nameof(WireToGateBusinessService),
+                        $"恢复OperationResult两次都未能写入发件箱，无法回答服务端：attempt={command.SlotOperationAttemptId}，outcome={execution.OverallOutcome}。",
+                        exception);
+                    PublishOperatorEvent(
+                        $"recovery-result-unsaved:{command.RecoveryActionId}",
+                        "RECOVERY_BLOCKED",
+                        "恢复结果未能保存，服务端尚未得到回答；请检查车载端日志库后重新申请恢复。");
+                    return;
+                }
+
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    $"恢复OperationResult未能写入发件箱，重试一次：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。",
+                    exception);
+            }
+        }
+
+        if (completedSuccessfully && execution.JournalCheckpoint != "NONE")
+        {
+            try
+            {
+                await _executor.MarkResultRecordedAsync(
+                    command.SlotOperationAttemptId,
+                    cancellationToken).ConfigureAwait(false);
+                // Same refresh as the formal load path: a resumed load that completes is the
+                // last completed load, and the correction entry must see it now.
+                await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (Exception exception) when (
+                exception is IOException or InvalidOperationException or InvalidDataException)
+            {
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    $"恢复结果已上报，但本地记录完成失败：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。",
+                    exception);
+            }
+        }
+
+        PublishOperatorEvent(
+            $"recovery-result:{command.RecoveryActionId}:{execution.OverallOutcome}",
+            completedSuccessfully ? "OPERATION_COMPLETED" : "OPERATION_RECOVERY_REQUIRED",
+            completedSuccessfully
+                ? "恢复后的原操作结果已上报。"
+                : "恢复后的原操作仍未完成，结果已上报并保持故障安全。");
+    }
+
+    /// <summary>
+    /// Sends the resume result on file under <paramref name="recoveryResultKey"/> once more, as stored; true once it
+    /// is acknowledged (onboard-hmi#233).
+    /// </summary>
+    private async Task<bool> TryResendResumeResultAsync(
+        WireToGateSlotOperationResumeCommand command,
+        string recoveryResultKey,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _session.ResendOperationResultAsync(recoveryResultKey, cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+        catch (Exception exception) when (
+            exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"恢复OperationResult已在发件箱，当前会话重发一次仍未收到DurableAck：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。",
+                exception);
+            return false;
+        }
+    }
+
+    /// <summary>Whether the outbox holds a row under <paramref name="key"/>; false when the journal cannot say.</summary>
+    private async Task<bool> ResultIsOnFileAsync(string key, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _session.Journal
+                .ReadOutgoingByDeduplicationKeyAsync(key, cancellationToken)
+                .ConfigureAwait(false) is not null;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// What a resume does about an attempt somebody else holds (onboard-hmi#233): true to judge the resume
+    /// again from the start, false once it has been answered -- or is being answered by whoever holds it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Never silence.</b> The server's resume workflow waits for this command's replacement result or for
+    /// its rejection and has no timeout of its own; a resume that returns without either leaves the recovery
+    /// session <c>EXECUTING</c>, which refuses a second action and a new session on this vehicle, for good. Every
+    /// branch below ends in one of the two, or names the claim that will give it.
+    /// </para>
+    /// <para>
+    /// <b>The interrupted settlement is waited for.</b> It holds the attempt across its own result's send and
+    /// across the resend of an unacknowledged one, and it re-enters on every <c>SessionReadiness</c> -- which the
+    /// server sends after every safety change, so the operator's resume arriving inside one is ordinary, not a
+    /// fault. Refusing there would close a session that would have succeeded and send the operator back to
+    /// request it again for nothing. The settlement's waits are bounded by the message timeout; once it lets go
+    /// the resume is judged afresh against the journal it left, gate included, so waiting opens no door the gate
+    /// would not open now. <see cref="_resumeSettlementWaitLimit"/> is the backstop: past it, refused.
+    /// </para>
+    /// <para>
+    /// <b>The same resume, resent, is left to the copy that holds the attempt.</b> The vehicle does not
+    /// deduplicate inbound commands, so a resend can land while the first copy executes; that copy answers under
+    /// the same keys. A rejection here would be correlated to the same command, and the server would close the
+    /// session on it while the doors are moving.
+    /// </para>
+    /// <para>
+    /// <b>Anything else is refused</b>, with <c>SLOT_OPERATION_CONFLICT</c> and no door IO: the original
+    /// operation still executing, or another resume of the attempt. The server closes the session on the
+    /// rejection (control-server#187) and the administrator opens a new one once the attempt is free.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> AwaitAttemptHeldFromResumeAsync(
+        WireToGateSlotOperationResumeCommand command,
+        AttemptClaim holder,
+        Task holderReleased,
+        Stopwatch? settlementWait,
+        CancellationToken cancellationToken)
+    {
+        if (holder.Holder == AttemptClaimHolder.Resume
+            && string.Equals(holder.MessageId, command.MessageId, StringComparison.Ordinal))
+        {
+            LogResumeLeftToTheCopyExecuting(command);
+            return false;
+        }
+
+        if (holder.Holder == AttemptClaimHolder.Settlement && settlementWait is not null)
+        {
+            TimeSpan remaining = _resumeSettlementWaitLimit - settlementWait.Elapsed;
+            if (remaining > TimeSpan.Zero)
+            {
+                _logger.Write(
+                    LogSeverity.Information,
+                    nameof(WireToGateBusinessService),
+                    $"续行命令到达时attempt正被中断结算占用，等结算结束后再处理：attempt={command.SlotOperationAttemptId}，messageId={command.MessageId}。");
+                try
+                {
+                    // Not on the receive loop: commands are handled fire-and-forget (OnServerCommandReceived), so
+                    // this await hands the loop back, and the DurableAck the settlement is waiting for gets in. A
+                    // stop cancels it; a dropped link ends the settlement's send, which releases the claim.
+                    await holderReleased.WaitAsync(remaining, cancellationToken).ConfigureAwait(false);
+                    return !AbandonedWithItsSession(command);
+                }
+                catch (TimeoutException)
+                {
+                }
+            }
+        }
+
+        if (AbandonedWithItsSession(command))
+        {
+            return false;
+        }
+
+        string reason = holder.Holder == AttemptClaimHolder.Settlement
+            ? $"中断结算在{_resumeSettlementWaitLimit.TotalSeconds:0}秒内未结束"
+            : holder.Holder == AttemptClaimHolder.SlotOperation
+                ? "原仓位操作仍在执行"
+                : "同一仓位操作的另一条恢复命令正在执行";
+        _logger.Write(
+            LogSeverity.Warning,
+            nameof(WireToGateBusinessService),
+            $"收到SlotOperationResumeCommand但attempt被占用，拒绝且未执行物理动作：attempt={command.SlotOperationAttemptId}，messageId={command.MessageId}，reason={reason}。");
+        PublishOperatorEvent(
+            $"resume-command:{command.MessageId}",
+            "RECOVERY_BLOCKED",
+            $"恢复命令被阻断：{reason}（SLOT_OPERATION_CONFLICT）。未执行仓门IO，请待操作结束后重新申请恢复。");
+        await SendResumeRejectedAsync(command, "SLOT_OPERATION_CONFLICT", cancellationToken).ConfigureAwait(false);
+        return false;
+    }
+
+    /// <summary>
+    /// Whether the session <paramref name="command"/> came on is gone, and with it the resume: true after logging
+    /// it. A resume that waited out a reconnect is not run, or refused, in the new session on the old command's
+    /// strength; the server replays every recovery command still without a result after the new session's
+    /// <c>RecoveryStateReport</c> (control-server <c>ReplayPendingCommandsAsync</c>), under the same messageId, and
+    /// that copy is judged afresh (onboard-hmi#233).
+    /// </summary>
+    private bool AbandonedWithItsSession(WireToGateSlotOperationResumeCommand command)
+    {
+        WireToGateSessionSnapshot current = _session.Current;
+        if (current.Connected && current.SessionGeneration == command.SessionGeneration)
+        {
+            return false;
+        }
+
+        _logger.Write(
+            LogSeverity.Information,
+            nameof(WireToGateBusinessService),
+            $"续行命令等待中断结算期间会话已断开或换代，放弃本次处理，等服务端在新会话重放：attempt={command.SlotOperationAttemptId}，messageId={command.MessageId}，commandGeneration={command.SessionGeneration}，currentGeneration={current.SessionGeneration?.ToString(CultureInfo.InvariantCulture) ?? "无"}。");
+        return true;
+    }
+
+    /// <summary>Whether a copy of <paramref name="command"/> -- same messageId -- holds its attempt right now.</summary>
+    private bool HeldBySameResume(WireToGateSlotOperationResumeCommand command)
+    {
+        lock (_operationAttemptGate)
+        {
+            return _operationAttempts.TryGetValue(command.SlotOperationAttemptId, out AttemptClaim? claim)
+                && claim.Holder == AttemptClaimHolder.Resume
+                && string.Equals(claim.MessageId, command.MessageId, StringComparison.Ordinal);
+        }
+    }
+
+    private void LogResumeLeftToTheCopyExecuting(WireToGateSlotOperationResumeCommand command) =>
+        _logger.Write(
+            LogSeverity.Information,
+            nameof(WireToGateBusinessService),
+            $"收到正在执行的SlotOperationResumeCommand的重发：attempt={command.SlotOperationAttemptId}，messageId={command.MessageId}，由正在执行的那次作答，未再次执行仓门IO。");
+
+    /// <summary>Who holds a claim on <see cref="_operationAttempts"/>.</summary>
+    private enum AttemptClaimHolder
+    {
+        /// <summary>The interrupted settlement, <see cref="TrySettleInterruptedOperationAsync"/>.</summary>
+        Settlement,
+
+        /// <summary>The original <c>SlotOperationCommand</c>, <see cref="HandleSlotOperationAsync"/>.</summary>
+        SlotOperation,
+
+        /// <summary>A <c>SlotOperationResumeCommand</c>, <see cref="HandleBlockedResumeCoreAsync"/>.</summary>
+        Resume,
+
+        /// <summary>
+        /// A recovery vector's execution. Its key is <c>recovery-vector:{type}:{id}</c>, never an attempt id, so a
+        /// resume never finds it.
+        /// </summary>
+        RecoveryVector
+    }
+
+    /// <summary>
+    /// A claim on <see cref="_operationAttempts"/>: who took it, and for a resume which command, so that a
+    /// resume finding it held can tell a resend of itself from anything else (onboard-hmi#233).
+    /// </summary>
+    private sealed record AttemptClaim(AttemptClaimHolder Holder, string? MessageId)
+    {
+        public static readonly AttemptClaim Settlement = new(AttemptClaimHolder.Settlement, null);
+
+        public static readonly AttemptClaim SlotOperation = new(AttemptClaimHolder.SlotOperation, null);
+
+        public static readonly AttemptClaim RecoveryVector = new(AttemptClaimHolder.RecoveryVector, null);
+
+        public static AttemptClaim Resume(string messageId) => new(AttemptClaimHolder.Resume, messageId);
     }
 
     private static bool TryGetLocker(
@@ -2718,7 +3126,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
         lock (_operationAttemptGate)
         {
-            if (!_operationAttempts.Add(command.SlotOperationAttemptId))
+            if (!_operationAttempts.TryAdd(command.SlotOperationAttemptId, AttemptClaim.SlotOperation))
             {
                 _logger.Write(
                     LogSeverity.Information,

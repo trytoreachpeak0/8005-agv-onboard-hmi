@@ -180,6 +180,12 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     public event EventHandler<ValueChangedEventArgs<WireToGateServerCommand>>? ServerCommandReceived;
 
     /// <summary>
+    /// How long one send waits for its answer. The business service bounds a resume's wait on the interrupted
+    /// settlement by it, since that settlement's own waits are sends (onboard-hmi#233).
+    /// </summary>
+    public TimeSpan MessageTimeout => _options.MessageTimeout;
+
+    /// <summary>
     /// Runs the vehicle's own fallback for a recovery session the server closed, before that CLOSED
     /// snapshot is published or acknowledged. <c>true</c> once the fallback is done -- its journal write
     /// made, or not needed; <c>false</c>, or an exception, when it could not be done, and then the
