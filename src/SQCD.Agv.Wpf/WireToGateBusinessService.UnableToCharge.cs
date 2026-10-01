@@ -377,7 +377,7 @@ public sealed partial class WireToGateBusinessService
             if (ReferenceEquals(_unableToChargeForgotten, request))
             {
                 _unableToChargeForgotten = null;
-                return outcome;
+                return outcome with { ChargingEnded = true };
             }
 
             return null;

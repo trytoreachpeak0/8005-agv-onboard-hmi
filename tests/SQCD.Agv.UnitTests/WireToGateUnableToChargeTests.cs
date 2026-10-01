@@ -187,6 +187,31 @@ public sealed class WireToGateUnableToChargeTests
     }
 
     /// <summary>
+    /// A press whose charging claim the server ended while it waited cannot be resubmitted -- the entry is gone -- so
+    /// its unknown and not-accepted lines say the claim is over and never ask for a resubmission (incremental review,
+    /// item 1). The same outcomes without the flag keep their sentences.
+    /// </summary>
+    [Fact]
+    public void AnEndedChargingClaimIsSaidAndNoResubmissionIsAskedFor()
+    {
+        string unknown = WireToGateUnableToChargeText.StatusText(
+            Outcome(WireToGateUnableToChargeOutcomeKind.Unknown, null, null) with { ChargingEnded = true });
+        string notAccepted = WireToGateUnableToChargeText.StatusText(
+            Outcome(WireToGateUnableToChargeOutcomeKind.NotAccepted, null, "PROTOCOL_SCHEMA_INVALID") with { ChargingEnded = true });
+
+        Assert.Contains("服务端已结束这次充电用途，入口已关闭", unknown, StringComparison.Ordinal);
+        Assert.Contains("结果未知", unknown, StringComparison.Ordinal);
+        Assert.DoesNotContain("重新提交", unknown, StringComparison.Ordinal);
+        Assert.Contains(WireToGateUnableToChargeText.ChargingEndedSentence, notAccepted, StringComparison.Ordinal);
+        Assert.Contains("PROTOCOL_SCHEMA_INVALID", notAccepted, StringComparison.Ordinal);
+        Assert.DoesNotContain("再次提交", notAccepted, StringComparison.Ordinal);
+        Assert.Contains(
+            "请查看车辆状态后再决定是否重新提交",
+            WireToGateUnableToChargeText.StatusText(Outcome(WireToGateUnableToChargeOutcomeKind.Unknown, null, null)),
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The entry's business code reaches no door, no IO and no recovery state, and none of the vehicle's own charging
     /// or loading state -- by construction, not by the fatal-fault latch.
     /// </summary>

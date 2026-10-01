@@ -44,13 +44,18 @@ public enum WireToGateUnableToChargeOutcomeKind
 /// request itself with a <c>ProtocolProblem</c>, which ends that confirmation request id as a result does.
 /// <see cref="ChargingPolicyDecision"/> is the server's, as sent, and is only ever shown.
 /// </summary>
+/// <param name="ChargingEnded">
+/// The server ended the charging claim while this press was waiting: the entry is gone, so an unknown or refused
+/// press cannot be resubmitted, and the operator is not told to (8005-agv-onboard-hmi#222 incremental review, item 1).
+/// </param>
 public sealed record WireToGateUnableToChargeOutcome(
     WireToGateUnableToChargeOutcomeKind Kind,
     string ConfirmationRequestId,
     string ChargerStationId,
     string ObservedCondition,
     string? ChargingPolicyDecision,
-    string? ReasonCode);
+    string? ReasonCode,
+    bool ChargingEnded = false);
 
 /// <summary>
 /// The unable-to-charge entry as the business service offers it: one prompt per condition the operator may

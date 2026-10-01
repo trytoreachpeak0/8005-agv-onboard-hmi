@@ -370,7 +370,7 @@ public sealed partial class WireToGateBusinessService
             if (ReferenceEquals(_stationClearanceForgotten, request))
             {
                 _stationClearanceForgotten = null;
-                return outcome;
+                return outcome with { ClearanceEnded = true };
             }
 
             return null;

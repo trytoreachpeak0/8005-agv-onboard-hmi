@@ -160,6 +160,28 @@ public sealed class WireToGateStationClearanceTests
     }
 
     /// <summary>
+    /// A press whose clearance the server ended while it waited cannot be resubmitted -- the entry is gone -- so its
+    /// unknown and not-accepted lines say the clearance is over and never ask for a resubmission
+    /// (8005-agv-onboard-hmi#222 incremental review, item 1).
+    /// </summary>
+    [Fact]
+    public void AnEndedClearanceIsSaidAndNoResubmissionIsAskedFor()
+    {
+        string unknown = WireToGateStationClearanceText.StatusText(
+            Outcome(WireToGateStationClearanceOutcomeKind.Unknown, false, null) with { ClearanceEnded = true });
+        string notAccepted = WireToGateStationClearanceText.StatusText(
+            Outcome(WireToGateStationClearanceOutcomeKind.NotAccepted, false, "BUSINESS_ID_CONTENT_CONFLICT")
+                with { ClearanceEnded = true });
+
+        Assert.Contains("服务端已结束这次清桩，入口已关闭", unknown, StringComparison.Ordinal);
+        Assert.Contains("结果未知", unknown, StringComparison.Ordinal);
+        Assert.DoesNotContain("重新提交", unknown, StringComparison.Ordinal);
+        Assert.Contains(WireToGateStationClearanceText.ClearanceEndedSentence, notAccepted, StringComparison.Ordinal);
+        Assert.Contains("BUSINESS_ID_CONTENT_CONFLICT", notAccepted, StringComparison.Ordinal);
+        Assert.DoesNotContain("再次提交", notAccepted, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The entry's business code reaches no door, no IO and no recovery state -- by construction, not by the
     /// fatal-fault latch.
     /// </summary>

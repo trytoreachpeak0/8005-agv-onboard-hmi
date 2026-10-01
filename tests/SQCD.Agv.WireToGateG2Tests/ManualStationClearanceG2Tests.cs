@@ -220,6 +220,74 @@ public sealed class ManualStationClearanceG2Tests
     }
 
     /// <summary>
+    /// The server ends the clearance while the press waits, and no answer comes: the press ends as unknown, and the
+    /// operator record says the clearance is over and the entry closed -- not to resubmit, which the gone entry no
+    /// longer allows (8005-agv-onboard-hmi#222 incremental review, item 1).
+    /// </summary>
+    [Fact]
+    public async Task AnUnknownPressWhoseClearanceTheServerEndedDoesNotAskForAResubmission()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(token);
+        StationClearanceDisplay shown = await WaitForEntryAsync(harness, token);
+
+        Task<bool> press = harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt!, token);
+        await harness.WaitUntilAsync(() => Requests(harness).Length == 1, "the request to reach the server", token);
+        await harness.Server.SendJourneySnapshotAsync("VehicleBusinessStateSnapshot", BusinessState(2, "IDLE_RETURN"));
+        Assert.False(await press);
+
+        LogLineViewModel? record = null;
+        await harness.WaitUntilAsync(
+            () => (record = harness.ViewModel.Logs.LastOrDefault(line =>
+                line.Kind == OperatorRecordKind.Warning && line.Message.Contains("结果未知", StringComparison.Ordinal))) is not null,
+            "the operator record that the press's result is unknown",
+            token);
+        Assert.Contains(WireToGateStationClearanceText.ClearanceEndedSentence[..^1], record!.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("重新提交", record.Message, StringComparison.Ordinal);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.StationClearance == StationClearanceDisplay.Empty,
+            "the entry and the result line to be gone with the clearance",
+            token);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// An answer correlated to the request's messageId but naming another confirmation request id is refused as
+    /// <c>CORRELATION_INVALID</c>: the press ends as unknown, and nothing the answer says is shown as this press's
+    /// result (8005-agv-onboard-hmi#222 incremental review, Y6).
+    /// </summary>
+    [Fact]
+    public async Task AnAnswerNamingAnotherConfirmationIsNotTakenAsThisPresssResult()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(token);
+        StationClearanceDisplay shown = await WaitForEntryAsync(harness, token);
+
+        Task<bool> press = harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt!, token);
+        await harness.WaitUntilAsync(() => Requests(harness).Length == 1, "the request to reach the server", token);
+        SentRequest request = Assert.Single(Requests(harness));
+        await harness.Server.SendManualStationClearanceResultAsync(request.MessageId, Guid.NewGuid().ToString("D"));
+        Assert.False(await press);
+
+        // Unknown, and the same confirmation offered again: the answer did not settle it.
+        await WaitForDisplayAsync(
+            harness,
+            display => display.Status == WireToGateStationClearanceText.UnknownStatus
+                && display.Prompt?.ResubmittedConfirmationRequestId == request.ConfirmationRequestId,
+            "the press to end as unknown with the same confirmation offered again",
+            token);
+        await AssertWhileAsync(
+            () => Assert.DoesNotContain(
+                harness.Events, item => item.Kind is "STATION_CLEARANCE_CONFIRMED" or "STATION_CLEARANCE_REJECTED"),
+            token);
+        Assert.Contains(
+            harness.Logger.Exceptions,
+            entry => entry.Exception is InvalidDataException { Message: "CORRELATION_INVALID" }
+                && entry.Message.StartsWith("人工清桩确认未完成", StringComparison.Ordinal));
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
     /// The first of the three conditions: the server has to say the vehicle is clearing. A verified maintainer
     /// and a charger leg under any other purpose offer nothing, and a press that reaches the business service
     /// anyway sends nothing.

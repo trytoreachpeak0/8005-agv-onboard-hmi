@@ -761,6 +761,74 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
     }
 
     /// <summary>
+    /// The server ends the charging claim while the press waits, and no answer comes: the press ends as unknown, and
+    /// the operator record says the claim is over and the entry closed -- not to resubmit, which the gone entry no
+    /// longer allows (8005-agv-onboard-hmi#222 incremental review, item 1).
+    /// </summary>
+    [Fact]
+    public async Task AnUnknownPressWhoseChargingTheServerEndedDoesNotAskForAResubmission()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(token);
+        UnableToChargeDisplay shown = await WaitForEntryAsync(harness, token);
+
+        Task<bool> press = harness.ViewModel.ConfirmUnableToChargeAsync(Option(shown, "CONNECTION_FAILED").Prompt, token);
+        await harness.WaitUntilAsync(() => Requests(harness).Length == 1, "the request to reach the server", token);
+        await harness.Server.SendJourneySnapshotAsync("VehicleBusinessStateSnapshot", BusinessState(2, "TRANSPORT", "NOT_CHARGING"));
+        Assert.False(await press);
+
+        LogLineViewModel record = await WaitForLogAsync(
+            harness,
+            line => line.Kind == OperatorRecordKind.Warning && line.Message.Contains("结果未知", StringComparison.Ordinal),
+            "the operator record that the press's result is unknown",
+            token);
+        Assert.Contains(WireToGateUnableToChargeText.ChargingEndedSentence[..^1], record.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("重新提交", record.Message, StringComparison.Ordinal);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.UnableToCharge == UnableToChargeDisplay.Empty,
+            "the entry and the result line to be gone with the charging claim",
+            token);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// An answer correlated to the request's messageId but naming another confirmation request id is refused as
+    /// <c>CORRELATION_INVALID</c>: the press ends as unknown, and nothing the answer says is shown as this press's
+    /// result (8005-agv-onboard-hmi#222 incremental review, Y6).
+    /// </summary>
+    [Fact]
+    public async Task AnAnswerNamingAnotherConfirmationIsNotTakenAsThisPresssResult()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(token);
+        UnableToChargeDisplay shown = await WaitForEntryAsync(harness, token);
+
+        Task<bool> press = harness.ViewModel.ConfirmUnableToChargeAsync(Option(shown, "CONNECTION_FAILED").Prompt, token);
+        await harness.WaitUntilAsync(() => Requests(harness).Length == 1, "the request to reach the server", token);
+        SentRequest request = Assert.Single(Requests(harness));
+        await harness.Server.SendUnableToChargeResultAsync(request.MessageId, Guid.NewGuid().ToString("D"));
+        Assert.False(await press);
+
+        // Unknown, and the same confirmation offered again: the answer did not settle it.
+        await WaitForDisplayAsync(
+            harness,
+            display => display.Status == WireToGateUnableToChargeText.UnknownStatus
+                && display.Options.Count == 1
+                && display.Options[0].Prompt.ResubmittedConfirmationRequestId == request.ConfirmationRequestId,
+            "the press to end as unknown with the same confirmation offered again",
+            token);
+        await AssertWhileAsync(
+            () => Assert.DoesNotContain(
+                harness.Events, item => item.Kind is "UNABLE_TO_CHARGE_CONFIRMED" or "UNABLE_TO_CHARGE_REJECTED"),
+            token);
+        Assert.Contains(
+            harness.Logger.Exceptions,
+            entry => entry.Exception is InvalidDataException { Message: "CORRELATION_INVALID" }
+                && entry.Message.StartsWith("现场确认充不上未完成", StringComparison.Ordinal));
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
     /// A second, different answer under a confirmation request id already answered is the server contradicting
     /// itself: the session is failed closed with <c>BUSINESS_ID_CONTENT_CONFLICT</c>, and the answer on screen is not
     /// rewritten by the second one.
@@ -1284,6 +1352,21 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
     private static string Describe(UnableToChargeDisplay display) =>
         $"options=[{string.Join(",", display.Options.Select(item => item.Prompt))}], notice={display.NoticeText}, "
         + $"status={display.Status}, statusText={display.StatusText}";
+
+    /// <summary>Waits for an operator record on the view model and returns the one that satisfied it.</summary>
+    private static async Task<LogLineViewModel> WaitForLogAsync(
+        Harness harness,
+        Func<LogLineViewModel, bool> predicate,
+        string expectation,
+        CancellationToken token)
+    {
+        LogLineViewModel? found = null;
+        await harness.WaitUntilAsync(
+            () => (found = harness.ViewModel.Logs.LastOrDefault(predicate)) is not null,
+            expectation,
+            token);
+        return found!;
+    }
 
     private static Task<UnableToChargeDisplay> WaitForEntryAsync(Harness harness, CancellationToken token) =>
         WaitForDisplayAsync(

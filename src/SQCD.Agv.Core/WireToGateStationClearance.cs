@@ -41,12 +41,17 @@ public enum WireToGateStationClearanceOutcomeKind
 /// server answering the request itself with a <c>ProtocolProblem</c>: it read it and did not take it,
 /// which ends that confirmation request id as surely as a result does.
 /// </summary>
+/// <param name="ClearanceEnded">
+/// The server ended the clearance while this press was waiting: the entry is gone, so an unknown or refused press
+/// cannot be resubmitted, and the operator is not told to (8005-agv-onboard-hmi#222 incremental review, item 1).
+/// </param>
 public sealed record WireToGateStationClearanceOutcome(
     WireToGateStationClearanceOutcomeKind Kind,
     string ConfirmationRequestId,
     string StationId,
     bool StationReleased,
-    string? ReasonCode);
+    string? ReasonCode,
+    bool ClearanceEnded = false);
 
 /// <summary>
 /// The clearance entry as the business service offers it: a prompt when it can be pressed, why not
