@@ -2504,6 +2504,18 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             $"recovery-operation-result:{command.SlotOperationAttemptId}:{command.RecoveryActionId}";
         while (true)
         {
+            // Before anything is judged: a copy of this very command already executing answers for both
+            // (onboard-hmi#233, review O2). Judged first, a resend that lands mid-execution fails the gate --
+            // the first copy has moved the persisted checkpoint on, so RecoveryStatePersisted no longer holds --
+            // and is refused under this command's messageId, which the server reads as this command refused and
+            // closes the session on while the door is open. The check at the claim below stays for the copy that
+            // claims between this look and that one.
+            if (HeldBySameResume(command))
+            {
+                LogResumeLeftToTheCopyExecuting(command);
+                return;
+            }
+
             // A resume this vehicle has already refused stays refused: the server may have closed the
             // resume workflow on that rejection, so running the same command later, because the gate
             // would pass now, would open doors for a workflow nobody is waiting on. The answer is the
@@ -2941,10 +2953,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         if (holder.Holder == AttemptClaimHolder.Resume
             && string.Equals(holder.MessageId, command.MessageId, StringComparison.Ordinal))
         {
-            _logger.Write(
-                LogSeverity.Information,
-                nameof(WireToGateBusinessService),
-                $"收到正在执行的SlotOperationResumeCommand的重发：attempt={command.SlotOperationAttemptId}，messageId={command.MessageId}，由正在执行的那次作答，未再次执行仓门IO。");
+            LogResumeLeftToTheCopyExecuting(command);
             return false;
         }
 
@@ -3014,6 +3023,23 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             $"续行命令等待中断结算期间会话已断开或换代，放弃本次处理，等服务端在新会话重放：attempt={command.SlotOperationAttemptId}，messageId={command.MessageId}，commandGeneration={command.SessionGeneration}，currentGeneration={current.SessionGeneration?.ToString(CultureInfo.InvariantCulture) ?? "无"}。");
         return true;
     }
+
+    /// <summary>Whether a copy of <paramref name="command"/> -- same messageId -- holds its attempt right now.</summary>
+    private bool HeldBySameResume(WireToGateSlotOperationResumeCommand command)
+    {
+        lock (_operationAttemptGate)
+        {
+            return _operationAttempts.TryGetValue(command.SlotOperationAttemptId, out AttemptClaim? claim)
+                && claim.Holder == AttemptClaimHolder.Resume
+                && string.Equals(claim.MessageId, command.MessageId, StringComparison.Ordinal);
+        }
+    }
+
+    private void LogResumeLeftToTheCopyExecuting(WireToGateSlotOperationResumeCommand command) =>
+        _logger.Write(
+            LogSeverity.Information,
+            nameof(WireToGateBusinessService),
+            $"收到正在执行的SlotOperationResumeCommand的重发：attempt={command.SlotOperationAttemptId}，messageId={command.MessageId}，由正在执行的那次作答，未再次执行仓门IO。");
 
     /// <summary>Who holds a claim on <see cref="_operationAttempts"/>.</summary>
     private enum AttemptClaimHolder

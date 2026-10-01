@@ -22,17 +22,21 @@ public sealed partial class RecoveryVectorG2Tests
     /// The resume pulses slot 1, the door never comes back, and the journal fails under the checkpoint the
     /// executor writes for that failure: the exception leaves the executor with the door IO behind it.
     /// </summary>
-    [Fact]
+    [Theory]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
-    public async Task AJournalFailureAfterTheFirstPulseIsAnsweredUnknown()
+    [InlineData(JournalFault.Injected)]
+    [InlineData(JournalFault.ReadOnlyDatabase)]
+    public async Task AJournalFailureAfterTheFirstPulseIsAnsweredUnknown(JournalFault kind)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         FaultInjectingJournal? faults = null;
+        string journalPath = NewJournalPath();
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
             token,
             lockerWaitTimesOut: true,
-            wrapJournal: inner => faults = new FaultInjectingJournal(inner));
+            journalPath: journalPath,
+            wrapJournal: inner => faults = new FaultInjectingJournal(inner, kind, journalPath));
         WireToGateRecoveryState state = await OpenResumeActionAsync(harness, token);
         // Every checkpoint write of the executor's slot loop fails once a door has been pulsed. The write in
         // front of the first pulse goes through; the one after the pulse is in the executor's own catch, and
@@ -61,6 +65,10 @@ public sealed partial class RecoveryVectorG2Tests
             TimeSpan.FromSeconds(20),
             token);
         Assert.True(faults.Fired, "The journal fault never fired: this run did not test the escape.");
+        // The answer came from the escape path, not from an executor that wrote its failure checkpoint after all.
+        Assert.Contains(
+            harness.Logger.Entries,
+            entry => entry.Message.StartsWith("恢复命令执行中断，无法确定执行到哪一步", StringComparison.Ordinal));
         Assert.Empty(Rejections(harness));
         using JsonDocument result = JsonDocument.Parse(harness.Server.ReceivedEnvelopes.Single(envelope =>
             envelope.MessageType == "OperationResult" && envelope.MessageId == resumeResultId).WireLine);
@@ -120,17 +128,21 @@ public sealed partial class RecoveryVectorG2Tests
     /// result is still written on the second try and reaches the server; until onboard-hmi#233 both failures
     /// ended in RESULT_ACK_PENDING, "persisted", with nothing persisted and nothing sent.
     /// </summary>
-    [Fact]
+    [Theory]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
-    public async Task AResumeResultWhoseFirstWriteFailsStillReachesTheServer()
+    [InlineData(JournalFault.Injected)]
+    [InlineData(JournalFault.ReadOnlyDatabase)]
+    public async Task AResumeResultWhoseFirstWriteFailsStillReachesTheServer(JournalFault kind)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         FaultInjectingJournal? faults = null;
+        string journalPath = NewJournalPath();
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
             token,
             lockerWaitTimesOut: true,
-            wrapJournal: inner => faults = new FaultInjectingJournal(inner));
+            journalPath: journalPath,
+            wrapJournal: inner => faults = new FaultInjectingJournal(inner, kind, journalPath));
         WireToGateRecoveryState state = await OpenResumeActionAsync(harness, token);
         string resultKey = $"recovery-operation-result:{AttemptId}:{state.RecoveryActionId}";
         int pendingOnce = 0;
@@ -155,6 +167,13 @@ public sealed partial class RecoveryVectorG2Tests
             token);
         Assert.Equal(1, Volatile.Read(ref pendingOnce));
         Assert.Equal(1, Volatile.Read(ref saveOnce));
+        // Both writes did fail, whichever way: the result reached the server through the paths under test.
+        Assert.Contains(
+            harness.Logger.Entries,
+            entry => entry.Message.StartsWith("恢复结果未能记为待报结果，仍照常发送", StringComparison.Ordinal));
+        Assert.Contains(
+            harness.Logger.Entries,
+            entry => entry.Message.StartsWith("恢复OperationResult未能写入发件箱，重试一次", StringComparison.Ordinal));
         Assert.Empty(Rejections(harness));
         Assert.Equal(1, harness.Io.UnlockCount);
     }
@@ -204,16 +223,47 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Empty(Rejections(harness));
     }
 
+    /// <summary>How a picked journal call fails.</summary>
+    public enum JournalFault
+    {
+        /// <summary>The wrapper throws <see cref="IOException"/> itself, before the real journal is reached.</summary>
+        Injected,
+
+        /// <summary>
+        /// The real database file is made read-only for that one call, so SQLite itself fails (Error 8) and the
+        /// production journal's own conversion is what the caller sees (review of PR #234: P4, T1).
+        /// </summary>
+        ReadOnlyDatabase
+    }
+
+    private static string NewJournalPath()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "w2g-vector", Guid.NewGuid().ToString("N"), "journal.db");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        return path;
+    }
+
     /// <summary>
-    /// Passes everything through to the real journal, except a write or read a test has picked, which throws
-    /// <see cref="IOException"/> instead of reaching it -- the journal failing under the caller.
+    /// Passes everything through to the real journal, except a write or read a test has picked, which fails --
+    /// the journal failing under the caller. A write fails either way <see cref="JournalFault"/> names; a read,
+    /// and a failure after the outbox write, only as <see cref="JournalFault.Injected"/>, since a read-only file
+    /// does not fail a read and cannot fail after a write that went through.
     /// </summary>
-    private sealed class FaultInjectingJournal(IWireToGateJournal inner) : IWireToGateJournal
+    private sealed class FaultInjectingJournal(
+        IWireToGateJournal inner,
+        JournalFault kind = JournalFault.Injected,
+        string? databasePath = null) : IWireToGateJournal
     {
         private int _fired;
 
         /// <summary>Asked before every recovery-state write; true fails that write.</summary>
         public Func<bool>? UpdateFault { get; set; }
+
+        /// <summary>
+        /// Asked before every recovery-state write; a task returned holds that write -- and whoever is making it --
+        /// until it completes. Taken before the real journal's lock, so nothing else waits on it.
+        /// </summary>
+        public Func<Task?>? UpdateHold { get; set; }
 
         /// <summary>Asked before every outbox read by key; true fails that read.</summary>
         public Func<string, bool>? ReadOutgoingFault { get; set; }
@@ -235,6 +285,30 @@ public sealed partial class RecoveryVectorG2Tests
             throw new IOException($"injected journal failure: {what}");
         }
 
+        /// <summary>
+        /// Runs a picked write so that it fails: thrown here, or by SQLite against a file made read-only for the
+        /// length of the call and writable again after it.
+        /// </summary>
+        private async Task<T> FailingWriteAsync<T>(string what, Func<Task<T>> write)
+        {
+            if (kind == JournalFault.Injected)
+            {
+                Fail(what);
+            }
+
+            string path = databasePath ?? throw new InvalidOperationException("A read-only fault needs the database path.");
+            Volatile.Write(ref _fired, 1);
+            File.SetAttributes(path, FileAttributes.ReadOnly);
+            try
+            {
+                return await write();
+            }
+            finally
+            {
+                File.SetAttributes(path, FileAttributes.Normal);
+            }
+        }
+
         public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
             Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
             CancellationToken cancellationToken = default) =>
@@ -243,15 +317,30 @@ public sealed partial class RecoveryVectorG2Tests
         public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
             Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
             Action<WireToGateRecoveryState> settled,
-            CancellationToken cancellationToken = default)
-        {
-            if (UpdateFault?.Invoke() == true)
-            {
-                Fail("recovery state write");
-            }
+            CancellationToken cancellationToken = default) =>
+            UpdateHold?.Invoke() is { } hold
+                ? HeldUpdateAsync(hold, change, settled, cancellationToken)
+                : UpdateOrFailAsync(change, settled, cancellationToken);
 
-            return inner.UpdateRecoveryStateAsync(change, settled, cancellationToken);
+        private async Task<WireToGateRecoveryState?> HeldUpdateAsync(
+            Task hold,
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            Action<WireToGateRecoveryState> settled,
+            CancellationToken cancellationToken)
+        {
+            await hold.WaitAsync(cancellationToken);
+            return await UpdateOrFailAsync(change, settled, cancellationToken);
         }
+
+        private Task<WireToGateRecoveryState?> UpdateOrFailAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            Action<WireToGateRecoveryState> settled,
+            CancellationToken cancellationToken) =>
+            UpdateFault?.Invoke() == true
+                ? FailingWriteAsync(
+                    "recovery state write",
+                    () => inner.UpdateRecoveryStateAsync(change, settled, cancellationToken))
+                : inner.UpdateRecoveryStateAsync(change, settled, cancellationToken);
 
         public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(CancellationToken cancellationToken = default) =>
             inner.ReadRecoveryStateAsync(cancellationToken);
@@ -268,7 +357,9 @@ public sealed partial class RecoveryVectorG2Tests
         {
             if (SaveOutgoingFault?.Invoke(message) == true)
             {
-                Fail("outbox write");
+                return FailingWriteAsync(
+                    "outbox write",
+                    () => inner.SaveOutgoingBeforeSendAsync(message, cancellationToken));
             }
 
             return SaveThenMaybeFailAsync(message, cancellationToken);
