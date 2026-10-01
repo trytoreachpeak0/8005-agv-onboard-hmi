@@ -3512,7 +3512,7 @@ public sealed partial class WireToGateBusinessService
     {
         lock (_operationAttemptGate)
         {
-            return _operationAttempts.Add(key);
+            return _operationAttempts.TryAdd(key, AttemptClaim.RecoveryVector);
         }
     }
 
