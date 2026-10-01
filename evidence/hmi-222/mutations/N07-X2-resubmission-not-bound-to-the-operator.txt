@@ -1,0 +1,17 @@
+# N07-X2-resubmission-not-bound-to-the-operator
+审查第 3 条（X2）：重提不要求确认人是同一个
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+            && string.Equals(unanswered.ChargerStationId, chargerStationId, StringComparison.Ordinal)
+            && string.Equals(unanswered.Operator.OperatorId, operatorId, StringComparison.Ordinal);
+--- with ---
+            && string.Equals(unanswered.ChargerStationId, chargerStationId, StringComparison.Ordinal);
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AnotherMaintainerIsAskedAfreshInsteadOfResubmittingSomeoneElsesConfirmation [7 s]
+Failed!  - Failed:     1, Passed:    43, Skipped:     0, Total:    44, Duration: 45 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AnotherMaintainerIsAskedAfreshInsteadOfResubmittingSomeoneElsesConfirmation
+missing: none

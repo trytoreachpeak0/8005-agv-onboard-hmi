@@ -23,3 +23,13 @@ G2 `Passed: 18`。构成：`CV-AUTOMATIC-CHARGING-CYCLE` 5、`CV-MANUAL-STATION-
 
 - `dotnet format SQCD_8005AGV.sln --verify-no-changes` 退出码 0
 - `scripts/check-ui-layout.ps1`：`Status: PASS`
+
+## 审查修改之后：`2f61ecc`，一次通过
+
+- 证据目录 `evidence/g2/protocol-v2.0.0/20261001T183835063Z-2f61ecce78b4`，`Status: PASS`
+- `SQCD.Agv.UnitTests`：`Passed! - Failed: 0, Passed: 669, Skipped: 0, Total: 669`
+- `SQCD.Agv.WireToGateG2Tests`：`Passed! - Failed: 0, Passed: 568, Skipped: 0, Total: 568`
+- 出站 schema 校验：12698 行，0 条意外违约，登记在案 4 条（与上一轮相同）
+- `-Slice FP-IS-13 -SkipProtocolG1`：`evidence/g2/protocol-v2.0.0/FP-IS-13/20261001T184346064Z-2f61ecce78b4`，`PASS`，选中 18、记录 18
+  （本轮新用例都不带向量标记，切片条数不变）
+- `dotnet format --verify-no-changes` 退出码 0；`check-ui-layout.ps1` PASS

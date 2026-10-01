@@ -1,0 +1,17 @@
+# N04-X1-with-the-fix-station-clearance
+X1 用在清桩入口（等待路径前加 300 ms），修复保留：应保持绿
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.StationClearance.cs
+
+--- replaced ---
+            // Settled against this press's own request, not against the shared field a snapshot may have cleared.
+            WireToGateStationClearanceOutcome? settled
+--- with ---
+            await Task.Delay(300, CancellationToken.None).ConfigureAwait(false);
+            WireToGateStationClearanceOutcome? settled
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests.AResultFollowedAtOnceByTheSnapshotThatEndsTheClearanceIsStillShownToTheOperator (exit 0) ---
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 915 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: GREEN AS EXPECTED
+expected red: 
+missing: none
