@@ -84,6 +84,102 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// Two copies of the same resume handled at once, and the second one gets past the early same-command check
+    /// before the first claims the attempt. By the time the second reaches the safety gate the first is executing and
+    /// has moved the persisted checkpoint on, so the gate refuses it -- under the shared messageId, which the server
+    /// would read as this command refused and close the session on, doors open. The refusal is looked at once more
+    /// before it is sent, and finding the first copy executing, leaves it the answer (second incremental review of
+    /// PR #234). A first copy woken from a wait on the settlement and going on on the thread pool is the field shape
+    /// of this interleaving; here it is pinned with holds on journal calls instead.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task ASecondCopyRefusedByTheGateWhileTheFirstExecutesIsLeftToTheFirst()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        TaskCompletionSource firstCopyRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource secondCopyRead = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource firstCopyExecuting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        FaultInjectingJournal? journal = null;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            lockerWaitTimesOut: true,
+            wrapJournal: inner => journal = new FaultInjectingJournal(inner));
+        WireToGateRecoveryState state = await OpenResumeActionAsync(harness, token);
+        // The "refused before?" read is the first journal call after the early same-command check: the first copy
+        // is held there, then the second, each after it has passed that check.
+        int reads = 0;
+        journal!.ReadOutgoingHold = key =>
+            key.StartsWith("slot-operation-resume-rejected:", StringComparison.Ordinal)
+                ? Interlocked.Increment(ref reads) switch
+                {
+                    1 => firstCopyRead.Task,
+                    2 => secondCopyRead.Task,
+                    _ => null
+                }
+                : null;
+        // And the first copy is held again once it has pulsed, mid-execution, its claim taken.
+        int executing = 0;
+        journal.UpdateHold = () =>
+            harness.Io.UnlockCount > 0
+            && Environment.StackTrace.Contains("ExecuteRemainingSlotsAsync", StringComparison.Ordinal)
+            && Interlocked.Exchange(ref executing, 1) == 0
+                ? firstCopyExecuting.Task
+                : null;
+        try
+        {
+            await harness.Server.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, ResumePayload(state));
+            await RecoveryVectorHarness.WaitUntilAsync(
+                () => Volatile.Read(ref reads) >= 1,
+                "the first copy to pass the early check and reach its first journal read",
+                token);
+            await harness.Server.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, ResumePayload(state));
+            await RecoveryVectorHarness.WaitUntilAsync(
+                () => Volatile.Read(ref reads) >= 2,
+                "the second copy to pass the early check too, before the first has claimed",
+                token);
+
+            firstCopyRead.TrySetResult();
+            await RecoveryVectorHarness.WaitUntilAsync(
+                () => Volatile.Read(ref executing) == 1,
+                "the first copy to claim, pulse and be held mid-execution",
+                token);
+
+            secondCopyRead.TrySetResult();
+            await RecoveryVectorHarness.WaitUntilAsync(
+                () => harness.Logger.Entries.Any(entry => entry.Message.StartsWith(
+                        "收到正在执行的SlotOperationResumeCommand的重发", StringComparison.Ordinal))
+                    || Rejections(harness).Count > 0,
+                "the second copy to be judged against the moved checkpoint",
+                token);
+            Assert.Empty(Rejections(harness));
+        }
+        finally
+        {
+            firstCopyRead.TrySetResult();
+            secondCopyRead.TrySetResult();
+            firstCopyExecuting.TrySetResult();
+        }
+
+        string resumeResultId = FakeControlServerIdentifiers.StableUuid(
+            $"recovery-operation-result:{AttemptId}:{state.RecoveryActionId}");
+        await WaitLongAsync(
+            () => harness.Server.ReceivedEnvelopes.Any(envelope =>
+                envelope.MessageType == "OperationResult" && envelope.MessageId == resumeResultId),
+            "the first copy to answer once it goes on",
+            TimeSpan.FromSeconds(20),
+            token);
+        System.Diagnostics.Stopwatch watch = System.Diagnostics.Stopwatch.StartNew();
+        while (watch.Elapsed < TimeSpan.FromSeconds(1))
+        {
+            Assert.Empty(Rejections(harness));
+            Assert.Equal(1, harness.Io.UnlockCount);
+            await Task.Delay(20, token);
+        }
+    }
+
+    /// <summary>
     /// What held while the resume waited need not hold when it wakes. The vehicle's motion goes unknown during
     /// the wait; the resume is judged again from the start and the service's own safety gate refuses it with
     /// <c>ACTION_NOT_ALLOWED_IN_STATE</c> -- not the executor, further in, and not a door (review O1).

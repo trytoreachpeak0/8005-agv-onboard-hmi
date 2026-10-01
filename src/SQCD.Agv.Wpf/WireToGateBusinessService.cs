@@ -2599,6 +2599,17 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         AllUnlockOutputsReset: outputsReset));
             if (!decision.Allowed)
             {
+                // Looked at again before the refusal goes out: a copy of this command may have claimed the attempt
+                // since the check at the top -- woken from its own wait on the settlement and gone on on the thread
+                // pool, say -- and its execution is what moved the persisted checkpoint the gate just refused on. A
+                // refusal sent now carries this command's messageId, and the server would close the session on it
+                // with that copy's doors open (onboard-hmi#233, second incremental review).
+                if (HeldBySameResume(command))
+                {
+                    LogResumeLeftToTheCopyExecuting(command);
+                    return;
+                }
+
                 _logger.Write(
                     LogSeverity.Warning,
                     nameof(WireToGateBusinessService),

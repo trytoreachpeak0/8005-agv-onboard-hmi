@@ -217,9 +217,14 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.All(
             harness.Server.ReceivedEnvelopes.Where(envelope => envelope.MessageId == resumeResultId),
             envelope => Assert.Equal(connection, envelope.Connection));
-        Assert.True(
-            await harness.IsOutgoingAcknowledgedAsync(resumeResultId, token),
-            "The resent result was not acknowledged in the session it was resent in.");
+        // Waited for, not read once: the vehicle records the ack after it has arrived, so the server holding the
+        // result says nothing yet about the vehicle's outbox (second incremental review of PR #234: red 2 runs in 3
+        // of the full suite, always with a 300 ms gap between the two).
+        await WaitLongAsync(
+            () => harness.IsOutgoingAcknowledgedAsync(resumeResultId, token).GetAwaiter().GetResult(),
+            "the resent result to be recorded as acknowledged in the session it was resent in",
+            TimeSpan.FromSeconds(10),
+            token);
         Assert.Empty(Rejections(harness));
     }
 
@@ -267,6 +272,12 @@ public sealed partial class RecoveryVectorG2Tests
 
         /// <summary>Asked before every outbox read by key; true fails that read.</summary>
         public Func<string, bool>? ReadOutgoingFault { get; set; }
+
+        /// <summary>
+        /// Asked before every outbox read by key; a task returned holds that read -- and whoever is making it --
+        /// until it completes.
+        /// </summary>
+        public Func<string, Task?>? ReadOutgoingHold { get; set; }
 
         /// <summary>Asked before every outbox write; true fails that write.</summary>
         public Func<WireToGateDurableMessage, bool>? SaveOutgoingFault { get; set; }
@@ -393,7 +404,18 @@ public sealed partial class RecoveryVectorG2Tests
                 Fail("outbox read");
             }
 
-            return inner.ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken);
+            return ReadOutgoingHold?.Invoke(deduplicationKey) is { } hold
+                ? HeldReadAsync(hold, deduplicationKey, cancellationToken)
+                : inner.ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken);
+        }
+
+        private async Task<WireToGateDurableMessage?> HeldReadAsync(
+            Task hold,
+            string deduplicationKey,
+            CancellationToken cancellationToken)
+        {
+            await hold.WaitAsync(cancellationToken);
+            return await inner.ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken);
         }
 
         public Task<WireToGateDurableMessage?> ReadOutgoingByMessageIdAsync(

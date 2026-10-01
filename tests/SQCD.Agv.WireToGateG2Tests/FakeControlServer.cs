@@ -200,6 +200,15 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </summary>
     public Task? OperationResultAckHold { get; set; }
 
+    private int _operationResultsHeld;
+
+    /// <summary>
+    /// How many <c>OperationResult</c>s have been taken under <see cref="OperationResultAckHold"/> so far. A test that
+    /// needs the vehicle sitting in such a send waits for this rather than for a count of results received, which
+    /// cannot tell a send that got its ack from one that is held (onboard-hmi#233, second incremental review).
+    /// </summary>
+    public int OperationResultsHeld => Volatile.Read(ref _operationResultsHeld);
+
     /// <summary>
     /// Answers every <c>OperationResult</c> that is not dropped by <see cref="OperationResultAcksToDrop"/> with a
     /// <c>ProtocolProblem</c>, the connection left open: the vehicle's resend of an unacknowledged result then fails
@@ -1633,6 +1642,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                             // recovery request a held settlement must not keep out -- is still answered.
                             JsonElement held = root.Clone();
                             string heldMessageId = messageId;
+                            Interlocked.Increment(ref _operationResultsHeld);
                             _ = Task.Run(
                                 async () =>
                                 {

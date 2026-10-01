@@ -249,36 +249,56 @@ public sealed partial class RecoveryVectorG2Tests
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         TaskCompletionSource ackHold = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        // Both from the start: the drop is matched first, so the start settlement's own result loses its ack and
+        // stays on file unacknowledged; every later send of it -- a readiness re-entry's resend, whatever readiness
+        // set it off -- is held. Putting the hold on later, after the resume action is open, left a gap a re-entry
+        // could use to resend unheld and get its ack, after which no re-entry resends anything and the window this
+        // test is about never opens (second incremental review of PR #234: red under a 100 ms delay, also with the
+        // product code of 89cfaa8).
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
             token,
-            server => server.OperationResultAcksToDrop = 1,
+            server =>
+            {
+                server.OperationResultAcksToDrop = 1;
+                server.OperationResultAckHold = ackHold.Task;
+            },
             lockerWaitTimesOut: true,
-            messageTimeout: TimeSpan.FromSeconds(5),
+            messageTimeout: TimeSpan.FromSeconds(15),
             awaitStartSettlement: false);
-
-        // The start settlement's ack is lost: the result stays on file unacknowledged, which is what every
-        // later readiness resends.
-        await WaitLongAsync(
-            () => harness.Logger.Entries.Any(entry =>
-                entry.Message.StartsWith("中断操作的结算结果暂未收到DurableAck", StringComparison.Ordinal)),
-            "the start settlement to give up on its dropped ack",
-            TimeSpan.FromSeconds(30),
-            token);
-        WireToGateRecoveryState state = await OpenResumeActionAsync(harness, token);
-        int resultsBefore = harness.Server.ReceivedEnvelopes.Count(envelope =>
-            envelope.MessageType == "OperationResult" && envelope.MessageId == AttemptId);
-
-        harness.Server.OperationResultAckHold = ackHold.Task;
+        WireToGateRecoveryState state;
         try
         {
-            // A readiness after a requested safety snapshot, as the server sends one after every safety
-            // change: the re-entry resends the unacknowledged result and waits on the held ack.
-            await harness.Server.RequestSafetyStateSnapshotAsync();
-            await RecoveryVectorHarness.WaitUntilAsync(
-                () => harness.Server.ReceivedEnvelopes.Count(envelope =>
-                    envelope.MessageType == "OperationResult" && envelope.MessageId == AttemptId) > resultsBefore,
-                "a readiness re-entry to resend the unacknowledged settlement result and wait for the held ack",
+            await WaitLongAsync(
+                () => harness.Logger.Entries.Any(entry =>
+                    entry.Message.StartsWith("中断操作的结算结果暂未收到DurableAck", StringComparison.Ordinal)),
+                "the start settlement to give up on its dropped ack",
+                TimeSpan.FromSeconds(40),
                 token);
+            state = await OpenResumeActionAsync(harness, token);
+
+            // A readiness after a requested safety snapshot, as the server sends one after every safety
+            // change: the re-entry resends the unacknowledged result and waits on the held ack. Waited for as a
+            // held send, not as a count of results: a re-entry the resume action's own readiness set off is just
+            // as good, and is held too.
+            //
+            // Asked again until one is held: the log line above is written before the start settlement publishes
+            // its RESULT_ACK_PENDING event and gives the attempt up, and a readiness landing in that gap finds the
+            // attempt claimed and leaves it alone (InFlight), as designed -- after which nothing resends until the
+            // next readiness. The real server sends one after every safety change; one request was red 1 in 4
+            // under a 100 ms delay in PublishOperatorEvent (third round of PR #234).
+            for (int request = 0; request < 20 && harness.Server.OperationResultsHeld == 0; request++)
+            {
+                await harness.Server.RequestSafetyStateSnapshotAsync();
+                Stopwatch waited = Stopwatch.StartNew();
+                while (harness.Server.OperationResultsHeld == 0 && waited.Elapsed < TimeSpan.FromSeconds(1))
+                {
+                    await Task.Delay(20, token);
+                }
+            }
+
+            Assert.True(
+                harness.Server.OperationResultsHeld > 0,
+                "No readiness re-entry resent the unacknowledged settlement result to wait for the held ack.");
 
             await harness.Server.SendCommandAsync(
                 "SlotOperationResumeCommand",

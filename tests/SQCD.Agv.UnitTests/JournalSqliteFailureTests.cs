@@ -95,6 +95,30 @@ public sealed class JournalSqliteFailureTests
         }
     }
 
+    /// <summary>
+    /// SQLite's constraint failure (Error 19) on an outbox insert is a business conflict, not the journal failing:
+    /// it stays <see cref="InvalidDataException"/> <c>MESSAGE_ID_CONTENT_CONFLICT</c> and is not turned into an
+    /// <see cref="IOException"/> by the catch every member has. Callers tell "refuse this message" from "the journal is
+    /// down" by exactly that difference (second incremental review of PR #234: B19).
+    /// </summary>
+    [Fact]
+    public async Task AMessageIdConflictOnTheOutboxStaysABusinessConflict()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string path = await CreateInitializedJournalFileAsync(token);
+        await using SqliteWireToGateJournal journal = new(path);
+        await journal.SaveOutgoingBeforeSendAsync(AnyMessage, token);
+
+        InvalidDataException conflict = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            journal.SaveOutgoingBeforeSendAsync(
+                AnyMessage with { DeduplicationKey = "operation-result:another-key" },
+                token));
+
+        Assert.Equal("MESSAGE_ID_CONTENT_CONFLICT", conflict.Message);
+        SqliteException cause = Assert.IsType<SqliteException>(conflict.InnerException);
+        Assert.Equal(19, cause.SqliteErrorCode);
+    }
+
     [Fact]
     public void EveryMemberThatTakesTheJournalLockConvertsSqliteFailures()
     {
