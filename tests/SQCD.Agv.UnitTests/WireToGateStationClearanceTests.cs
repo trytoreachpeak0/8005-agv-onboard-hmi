@@ -169,9 +169,9 @@ public sealed class WireToGateStationClearanceTests
     {
         string unknown = WireToGateStationClearanceText.StatusText(
             Outcome(WireToGateStationClearanceOutcomeKind.Unknown, false, null) with { ClearanceEnded = true });
-        string notAccepted = WireToGateStationClearanceText.StatusText(
-            Outcome(WireToGateStationClearanceOutcomeKind.NotAccepted, false, "BUSINESS_ID_CONTENT_CONFLICT")
-                with { ClearanceEnded = true });
+        WireToGateStationClearanceOutcome refused = Outcome(
+            WireToGateStationClearanceOutcomeKind.NotAccepted, false, "BUSINESS_ID_CONTENT_CONFLICT");
+        string notAccepted = WireToGateStationClearanceText.StatusText(refused with { ClearanceEnded = true });
 
         Assert.Contains("服务端已结束这次清桩，入口已关闭", unknown, StringComparison.Ordinal);
         Assert.Contains("结果未知", unknown, StringComparison.Ordinal);
