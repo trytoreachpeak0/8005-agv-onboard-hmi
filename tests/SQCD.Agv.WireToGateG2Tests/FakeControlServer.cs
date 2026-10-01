@@ -992,6 +992,55 @@ public sealed class FakeControlServer : IAsyncDisposable
             },
             requestMessageId);
 
+    /// <summary>
+    /// Answers each <c>UnableToChargeFieldConfirmationRequested</c> (batch 9-17, onboard-hmi#222). Left false, the
+    /// request is received and nothing comes back, as for the station clearance; a test sends the answer itself with
+    /// <see cref="SendUnableToChargeResultAsync"/> when it wants a late or a repeated one.
+    /// </summary>
+    public bool RespondToUnableToChargeConfirmations { get; set; }
+
+    public string UnableToChargeOutcome { get; set; } = "CONFIRMED";
+
+    public WireToGateProblemPayload? UnableToChargeProblem { get; set; }
+
+    public string? UnableToChargePolicyDecision { get; set; } = "REASSIGN_CHARGER";
+
+    public int UnableToChargeResponseCopies { get; set; } = 1;
+
+    /// <summary>
+    /// Set, each <c>UnableToChargeFieldConfirmationRequested</c> is answered with a <c>ProtocolProblem</c> carrying
+    /// this reason and correlated to the request, instead of a result.
+    /// </summary>
+    public string? UnableToChargeProtocolProblem { get; set; }
+
+    /// <summary>
+    /// A business state snapshot to send right after each answered <c>UnableToChargeFieldConfirmationResult</c>:
+    /// the vector's third message, which the vehicle acknowledges with <c>SnapshotAppliedAck</c>. Null sends none.
+    /// </summary>
+    public object? VehicleBusinessStateAfterUnableToChargeResult { get; set; }
+
+    /// <summary>
+    /// An <c>UnableToChargeFieldConfirmationResult</c> the test composes, correlated to the request messageId it
+    /// names, on the latest session.
+    /// </summary>
+    public Task SendUnableToChargeResultAsync(
+        string requestMessageId,
+        string confirmationRequestId,
+        string outcome = "CONFIRMED",
+        string? chargingPolicyDecision = "REASSIGN_CHARGER",
+        WireToGateProblemPayload? problem = null) =>
+        SendCommandAsync(
+            "UnableToChargeFieldConfirmationResult",
+            Guid.NewGuid().ToString("D"),
+            new
+            {
+                confirmationRequestId,
+                outcome,
+                problem,
+                chargingPolicyDecision
+            },
+            requestMessageId);
+
     public bool SendResumeCommandAfterRecoveryAction { get; set; }
 
     /// <summary>
@@ -1773,6 +1822,12 @@ public sealed class FakeControlServer : IAsyncDisposable
                         when RespondToManualStationClearanceConfirmations
                             || ManualStationClearanceProtocolProblem is not null:
                         await HandleManualStationClearanceConfirmationRequestedAsync(context, root)
+                            .ConfigureAwait(false);
+                        break;
+                    case "UnableToChargeFieldConfirmationRequested"
+                        when RespondToUnableToChargeConfirmations
+                            || UnableToChargeProtocolProblem is not null:
+                        await HandleUnableToChargeFieldConfirmationRequestedAsync(context, root)
                             .ConfigureAwait(false);
                         break;
                     case "SafetyStateChanged" when AnswerSafetyStateChanged:
@@ -2660,6 +2715,51 @@ public sealed class FakeControlServer : IAsyncDisposable
                         problem = ManualChargingReturnToServiceProblem,
                         vehicleBusinessStateRevision = ManualChargingReturnToServiceVehicleBusinessStateRevision
                     }))
+                .ConfigureAwait(false);
+        }
+    }
+
+    private async Task HandleUnableToChargeFieldConfirmationRequestedAsync(
+        ConnectionContext context,
+        JsonElement request)
+    {
+        string messageId = request.GetProperty("messageId").GetString()!;
+        string confirmationRequestId =
+            request.GetProperty("payload").GetProperty("confirmationRequestId").GetString()!;
+        if (UnableToChargeProtocolProblem is { } reasonCode)
+        {
+            await WriteEnvelopeAsync(
+                context,
+                CreateProtocolProblem(
+                    context, messageId, "UnableToChargeFieldConfirmationRequested", reasonCode))
+                .ConfigureAwait(false);
+            return;
+        }
+
+        int responseCopies = Math.Max(0, UnableToChargeResponseCopies);
+        for (int index = 0; index < responseCopies; index++)
+        {
+            await WriteEnvelopeAsync(
+                context,
+                CreateEnvelope(
+                    context,
+                    "UnableToChargeFieldConfirmationResult",
+                    messageId,
+                    new
+                    {
+                        confirmationRequestId,
+                        outcome = UnableToChargeOutcome,
+                        problem = UnableToChargeProblem,
+                        chargingPolicyDecision = UnableToChargePolicyDecision
+                    }))
+                .ConfigureAwait(false);
+        }
+
+        if (VehicleBusinessStateAfterUnableToChargeResult is { } businessState)
+        {
+            await WriteJourneyEnvelopeAsync(
+                context,
+                CreateJourneyEnvelope(context, "VehicleBusinessStateSnapshot", businessState))
                 .ConfigureAwait(false);
         }
     }

@@ -1351,6 +1351,229 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
     // ---- end of CV-MANUAL-STATION-CLEARANCE ----
 
+    // ---- CV-UNABLE-TO-CHARGE-FIELD-CONFIRMATION (batch 9-17, 8005-agv-onboard-hmi#222): kept in one block ----
+    //
+    // Built the way the manual station clearance block above is, for the same reasons; the two differ in their
+    // payloads and in nothing else. The only lines outside this block are the ones in ReceiveJourneyMessagesAsync
+    // that hand an UnableToChargeFieldConfirmationResult to DispatchUnableToChargeResult.
+
+    /// <summary>
+    /// The payload hash of each <c>UnableToChargeFieldConfirmationResult</c> seen, by confirmation request id -- the
+    /// message's business dedup key in the release manifest. Not cleared when a connection closes, as
+    /// <see cref="_manualStationClearanceResultFingerprints"/> is not.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, string> _unableToChargeResultFingerprints = [];
+
+    /// <summary>
+    /// Sends a field confirmation that the vehicle could not charge and returns the server's answer.
+    /// <c>REJECTED</c> is an answer, not a failure: it comes back as the result. Nothing on this end changes for
+    /// either outcome or for any <c>chargingPolicyDecision</c> (<c>NEVER_DECIDE_CHARGING_POLICY_LOCALLY</c>).
+    /// </summary>
+    /// <remarks>
+    /// Not written to the outbox (the release manifest gives it <c>durableBeforeSend: false</c>, and an outbox row
+    /// is replayed on reconnect, which is the automatic resend this entry must not make). A wait that runs out
+    /// throws <see cref="TimeoutException"/>; a <c>ProtocolProblem</c> correlated to the request throws
+    /// <see cref="WireToGateRequestNotAcceptedException"/>. A resubmission needs a new
+    /// <paramref name="messageId"/> and the same payload, as <see cref="ConfirmManualStationClearanceAsync"/> says.
+    /// </remarks>
+    public async Task<UnableToChargeFieldConfirmationResultPayload> ConfirmUnableToChargeAsync(
+        string messageId,
+        UnableToChargeFieldConfirmationRequestedPayload payload,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        RequireUuid(messageId, nameof(messageId));
+        ValidateUnableToChargeRequest(payload);
+        // Read before the snapshot, as in SendDurableCoreAsync (8005-agv-onboard-hmi#204).
+        long connectionEpoch = CurrentConnectionEpoch;
+        WireToGateSessionSnapshot current = Current;
+        if (!current.Connected
+            || current.SessionGeneration is null
+            || current.Readiness is not (WireToGateSessionReadiness.Ready
+                or WireToGateSessionReadiness.RecoveryRequired))
+        {
+            throw new InvalidOperationException("WIRE_TO_GATE_NOT_READY");
+        }
+
+        WireToGateEnvelope request = WireToGateProtocolSerializer.Create(
+            "UnableToChargeFieldConfirmationRequested",
+            messageId,
+            null,
+            _options.AgvId,
+            current.SessionGeneration,
+            _clock.Now.ToUniversalTime(),
+            payload);
+        TaskCompletionSource<WireToGateEnvelope> response = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_responseWaiters.TryAdd(messageId, response))
+        {
+            throw new InvalidOperationException("重复的现场确认充不上messageId。");
+        }
+
+        try
+        {
+            await SendEnvelopeAsync(request, connectionEpoch, cancellationToken).ConfigureAwait(false);
+            WireToGateEnvelope responseEnvelope = await response.Task
+                .WaitAsync(_options.MessageTimeout, cancellationToken)
+                .ConfigureAwait(false);
+            if (string.Equals(responseEnvelope.MessageType, "ProtocolProblem", StringComparison.Ordinal))
+            {
+                // Correlated to this request: the server read it and did not take it. Told apart from a wait that ran
+                // out, because the caller ends the id on this one.
+                throw new WireToGateRequestNotAcceptedException(
+                    WireToGateProtocolSerializer
+                        .DeserializePayload<ProtocolProblemPayload>(responseEnvelope).Problem.ReasonCode);
+            }
+
+            WireToGateProtocolSerializer.RequireMessage(
+                responseEnvelope,
+                "UnableToChargeFieldConfirmationResult",
+                messageId);
+            UnableToChargeFieldConfirmationResultPayload result = DeserializeUnableToChargeResult(responseEnvelope);
+            if (!string.Equals(
+                result.ConfirmationRequestId, payload.ConfirmationRequestId, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException("CORRELATION_INVALID");
+            }
+
+            return result;
+        }
+        finally
+        {
+            _responseWaiters.TryRemove(messageId, out _);
+        }
+    }
+
+    private static void ValidateUnableToChargeRequest(UnableToChargeFieldConfirmationRequestedPayload payload)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        RequireUuid(payload.ConfirmationRequestId, nameof(payload.ConfirmationRequestId));
+        ValidateOperatorContext(payload.Operator);
+        if (string.IsNullOrWhiteSpace(payload.ChargerStationId)
+            || payload.ObservedCondition is not ("CHARGER_UNREACHABLE" or "CHARGER_OCCUPIED" or "CONNECTION_FAILED"
+                or "CHARGER_FAULT")
+            || payload.ObservedAt == default)
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+    }
+
+    private static UnableToChargeFieldConfirmationResultPayload DeserializeUnableToChargeResult(
+        WireToGateEnvelope envelope)
+    {
+        if (envelope.CorrelationId is null
+            || !Guid.TryParseExact(envelope.CorrelationId, "D", out _))
+        {
+            throw new InvalidDataException("CORRELATION_INVALID");
+        }
+
+        // Each property's JSON kind is checked before the typed read, so a malformed line is refused as
+        // PROTOCOL_SCHEMA_INVALID and never surfaces as a JsonException (8005-agv-onboard-hmi#221 review, S3).
+        if (!envelope.Payload.TryGetProperty("confirmationRequestId", out JsonElement confirmationRequestId)
+            || confirmationRequestId.ValueKind is not JsonValueKind.String
+            || !envelope.Payload.TryGetProperty("outcome", out JsonElement outcome)
+            || outcome.ValueKind is not JsonValueKind.String
+            || !envelope.Payload.TryGetProperty("problem", out JsonElement problem)
+            || problem.ValueKind is not (JsonValueKind.Object or JsonValueKind.Null)
+            || !envelope.Payload.TryGetProperty("chargingPolicyDecision", out JsonElement decision)
+            || decision.ValueKind is not (JsonValueKind.String or JsonValueKind.Null))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        UnableToChargeFieldConfirmationResultPayload payload;
+        try
+        {
+            payload = WireToGateProtocolSerializer
+                .DeserializePayload<UnableToChargeFieldConfirmationResultPayload>(envelope);
+        }
+        catch (JsonException exception)
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID", exception);
+        }
+
+        RequireUuid(payload.ConfirmationRequestId, nameof(payload.ConfirmationRequestId));
+        // A confirmation that carries a problem contradicts itself and is refused rather than shown, as for the
+        // station clearance. A rejection that carries a decision does not: the server may reject an observation as
+        // a confirmation and still say what it decided (8005-agv-control-server#410 item 4).
+        if (payload.Outcome is not ("CONFIRMED" or "REJECTED")
+            || payload.Outcome == "CONFIRMED" && payload.Problem is not null
+            || payload.ChargingPolicyDecision is not (null or "RETRY_LATER" or "MANUAL_CHARGING_HOLD"
+                or "REASSIGN_CHARGER"))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        if (payload.Problem is not null)
+        {
+            ValidateProblem(payload.Problem);
+        }
+
+        return payload;
+    }
+
+    /// <summary>
+    /// The receive loop's handling of an <c>UnableToChargeFieldConfirmationResult</c>: to the request waiting for
+    /// it, or -- when nothing waits and this answer has not been seen -- to the business service, once. The repeat
+    /// is judged before the waiter is taken, as in <see cref="DispatchManualStationClearanceResult"/>.
+    /// </summary>
+    private void DispatchUnableToChargeResult(WireToGateEnvelope envelope)
+    {
+        UnableToChargeFieldConfirmationResultPayload result = DeserializeUnableToChargeResult(envelope);
+        bool repeated = IsRepeatedUnableToChargeResult(envelope, result);
+        if (_responseWaiters.TryRemove(
+            envelope.CorrelationId!,
+            out TaskCompletionSource<WireToGateEnvelope>? waiting))
+        {
+            waiting.TrySetResult(envelope);
+            return;
+        }
+
+        if (repeated)
+        {
+            return;
+        }
+
+        ServerCommandReceived?.Invoke(
+            this,
+            new ValueChangedEventArgs<WireToGateServerCommand>(
+                new WireToGateRecoveryCommand(
+                    envelope.MessageType,
+                    envelope.MessageId,
+                    envelope.CorrelationId,
+                    envelope.SessionGeneration!.Value,
+                    envelope.SentAt,
+                    envelope.Payload.GetRawText())));
+    }
+
+    /// <summary>
+    /// Whether this answer has been seen for its confirmation request id. A different answer under an id already
+    /// answered is <c>BUSINESS_ID_CONTENT_CONFLICT</c>: two answers to one confirmation are the server's
+    /// contradiction.
+    /// </summary>
+    private bool IsRepeatedUnableToChargeResult(
+        WireToGateEnvelope envelope,
+        UnableToChargeFieldConfirmationResultPayload result)
+    {
+        string fingerprint = WireToGateProtocolSerializer.ComputePayloadContentSha256(envelope);
+        if (_unableToChargeResultFingerprints.TryAdd(result.ConfirmationRequestId, fingerprint))
+        {
+            return false;
+        }
+
+        if (!string.Equals(
+            _unableToChargeResultFingerprints[result.ConfirmationRequestId],
+            fingerprint,
+            StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("BUSINESS_ID_CONTENT_CONFLICT");
+        }
+
+        return true;
+    }
+
+    // ---- end of CV-UNABLE-TO-CHARGE-FIELD-CONFIRMATION ----
+
     /// <summary>
     /// Persists a business message before writing it to the socket and keeps the
     /// same message identity/content until the server durably acknowledges it.
@@ -2478,6 +2701,15 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     StringComparison.Ordinal))
                 {
                     DispatchManualStationClearanceResult(envelope);
+                    continue;
+                }
+
+                if (string.Equals(
+                    envelope.MessageType,
+                    "UnableToChargeFieldConfirmationResult",
+                    StringComparison.Ordinal))
+                {
+                    DispatchUnableToChargeResult(envelope);
                     continue;
                 }
 

@@ -275,6 +275,35 @@ public sealed record ManualStationClearanceConfirmationResultPayload(
     bool StationReleased);
 
 /// <summary>
+/// The O_TO_C field confirmation that a vehicle could not charge, shaped by 2.0.0's
+/// <c>UnableToChargeFieldConfirmationRequested.schema.json</c> (batch 9-17, <c>8005-agv-onboard-hmi#222</c>;
+/// <c>REQ-0176</c>).
+/// </summary>
+/// <remarks>
+/// <c>ObservedCondition</c> is what the operator saw, sent as chosen from the schema's four values; whether it
+/// is enough to confirm that charging failed is the control server's to judge (<c>REQ-0175</c>). There is no
+/// role field: whether this is a confirmation or a report is decided by the server from
+/// <see cref="WireToGateOperatorContextPayload.OperatorId"/>.
+/// </remarks>
+public sealed record UnableToChargeFieldConfirmationRequestedPayload(
+    string ConfirmationRequestId,
+    string ChargerStationId,
+    string ObservedCondition,
+    WireToGateOperatorContextPayload Operator,
+    DateTimeOffset ObservedAt);
+
+/// <summary>
+/// The C_TO_O answer to <see cref="UnableToChargeFieldConfirmationRequestedPayload"/>, a RESPONSE correlated to
+/// the request's messageId. <c>ChargingPolicyDecision</c> is the server's decision, shown and never acted on here
+/// (<c>NEVER_DECIDE_CHARGING_POLICY_LOCALLY</c>).
+/// </summary>
+public sealed record UnableToChargeFieldConfirmationResultPayload(
+    string ConfirmationRequestId,
+    string Outcome,
+    WireToGateProblemPayload? Problem,
+    string? ChargingPolicyDecision);
+
+/// <summary>
 /// The C_TO_O recovery session snapshot, shaped by the 2.0.0 candidate's
 /// <c>ExceptionRecoverySessionSnapshot.schema.json</c>.
 /// </summary>

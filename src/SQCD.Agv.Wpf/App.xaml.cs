@@ -305,6 +305,8 @@ public partial class App : System.Windows.Application, IDisposable
                         cancellationToken));
                 // 人工清桩确认入口（8005-agv-onboard-hmi#221）。接线在 StationClearanceWiring 里，G2 夹具调的是同一个方法。
                 StationClearanceWiring.Configure(viewModel, _wireToGateBusiness);
+                // 现场确认充不上入口（8005-agv-onboard-hmi#222）。接线在 UnableToChargeWiring 里，G2 夹具调的是同一个方法。
+                UnableToChargeWiring.Configure(viewModel, _wireToGateBusiness);
                 viewModel.StationDepartureCountdownTextOverride =
                     _wireToGateBusiness.DescribeExpiredStationDeadline;
                 _wireToGateBusiness.Start();

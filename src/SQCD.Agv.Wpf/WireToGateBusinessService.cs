@@ -999,6 +999,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private void OnJourneyChanged(object? sender, ValueChangedEventArgs<WireToGateJourneySnapshot> args)
     {
         ForgetStationClearanceOnceTheServerSaysItIsOver(args.Value);
+        ForgetUnableToChargeOnceTheServerSaysItIsOver(args.Value);
         if (args.Value.CurrentStopWorklist is not { } worklist
             || Volatile.Read(ref _currentEntryRequest) is not { } request
             || !EndsStopOf(worklist, request)
@@ -2339,6 +2340,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 // recovery safety policy below is never consulted for it (8005-agv-onboard-hmi#221).
                 case WireToGateRecoveryCommand { MessageType: "ManualStationClearanceConfirmationResult" } clearance:
                     HandleLateStationClearanceResult(clearance);
+                    break;
+                // The same for the field confirmation that the vehicle could not charge (8005-agv-onboard-hmi#222).
+                case WireToGateRecoveryCommand { MessageType: "UnableToChargeFieldConfirmationResult" } unableToCharge:
+                    HandleLateUnableToChargeResult(unableToCharge);
                     break;
                 case WireToGateRecoveryCommand recovery:
                     if (recovery.MessageType is "LoadCorrectionRejected"

@@ -176,6 +176,7 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -538,6 +539,58 @@
                                Text="{Binding StationClearance.StatusText}"
                                TextWrapping="Wrap"
                                Visibility="{Binding StationClearance.HasStatus, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                </StackPanel>
+                <!--
+                    现场确认充不上（批次9-17，8005-agv-onboard-hmi#222）：服务端说车在充电用途上、计划当前腿是充电桩、面前是已验证的
+                    维护人员时，出现四个按钮，每个是操作员在现场看到的一种情况（协议 observedCondition 的四个值，车载端不挑）。
+                    重新提交结果未知的那一次时只剩那一个。它只发一条请求、显示服务端的结果与充电决定，不碰 IO、不开门、不在本地
+                    改任何充电或装货状态，所以与人工清桩确认一样不在那九个恢复入口里，锁存期间照常开着。说明与结果各占一行，
+                    结果那一行的 ItemStatus 是原始值（CONFIRMED／REJECTED／UNKNOWN／NOT_ACCEPTED），UIA 按 AutomationId 找它。
+                    几样都绑同一个 UnableToCharge，整值替换。
+                -->
+                <StackPanel Grid.Row="7"
+                            Grid.Column="0"
+                            Grid.ColumnSpan="3">
+                    <WrapPanel Margin="0,6,0,0"
+                               Visibility="{Binding UnableToCharge.CanConfirm, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <TextBlock Margin="0,0,8,0"
+                                   VerticalAlignment="Center"
+                                   FontSize="13"
+                                   Text="现场确认充不上：" />
+                        <ItemsControl AutomationProperties.AutomationId="UnableToChargeOptions"
+                                      ItemsSource="{Binding UnableToCharge.Options}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Margin="0,0,8,0"
+                                            Padding="12,6"
+                                            FontSize="13"
+                                            AutomationProperties.AutomationId="{Binding AutomationId}"
+                                            Content="{Binding Label}"
+                                            Click="OnConfirmUnableToChargeClick" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </WrapPanel>
+                    <TextBlock Margin="0,6,0,0"
+                               FontSize="13"
+                               Foreground="{StaticResource MutedBrush}"
+                               AutomationProperties.AutomationId="UnableToChargeNotice"
+                               Text="{Binding UnableToCharge.NoticeText}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding UnableToCharge.HasNotice, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock Margin="0,6,0,0"
+                               FontSize="13"
+                               FontWeight="Bold"
+                               AutomationProperties.AutomationId="UnableToChargeStatus"
+                               AutomationProperties.ItemStatus="{Binding UnableToCharge.Status}"
+                               Text="{Binding UnableToCharge.StatusText}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding UnableToCharge.HasStatus, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </StackPanel>
             </Grid>
         </Border>

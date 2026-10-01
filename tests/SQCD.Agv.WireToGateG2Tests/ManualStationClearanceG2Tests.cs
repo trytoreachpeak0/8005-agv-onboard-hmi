@@ -30,9 +30,8 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// rather than read once.
 /// </para>
 /// <para>
-/// <b>No <c>IntegrationSlice</c> trait, on purpose.</b> The vector belongs to <c>FP-IS-13</c> alone, and that
-/// slice is not one this line implements yet; it is flipped, and these tests given the trait, by
-/// <c>8005-agv-onboard-hmi#222</c>.
+/// <b>The two vector tests carry <c>FP-IS-13</c></b>, the slice the vector belongs to. They carried none until
+/// <c>8005-agv-onboard-hmi#222</c> flipped that slice to implemented on this end.
 /// </para>
 /// </remarks>
 public sealed class ManualStationClearanceG2Tests
@@ -77,6 +76,7 @@ public sealed class ManualStationClearanceG2Tests
     /// </remarks>
     [Fact]
     [Trait("ProtocolVector", "CV-MANUAL-STATION-CLEARANCE")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
     public async Task TheConfirmationCarriesTheOperatorTheChargerAndTheConditionAndIsShownConfirmed()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
@@ -129,6 +129,7 @@ public sealed class ManualStationClearanceG2Tests
     /// </summary>
     [Fact]
     [Trait("ProtocolVector", "CV-MANUAL-STATION-CLEARANCE")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
     public async Task AConfirmedClearanceChangesNothingOnTheVehicleUntilTheServersNextSnapshot()
     {
         CancellationToken token = TestContext.Current.CancellationToken;

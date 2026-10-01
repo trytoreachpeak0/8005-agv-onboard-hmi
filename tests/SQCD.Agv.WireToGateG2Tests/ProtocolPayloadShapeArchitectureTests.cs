@@ -283,6 +283,7 @@ public sealed class ProtocolPayloadShapeArchitectureTests
             RespondToManualChargingReturnToServiceRequests = true,
             ManualChargingReturnToServiceVehicleBusinessStateRevision = 4,
             RespondToManualStationClearanceConfirmations = true,
+            RespondToUnableToChargeConfirmations = true,
             // 协议 v2 消息 7 的下发，把消息 8 的 payload 形状也拉进这次会话里检查。
             SendSlotConfigurationActivationAfterRecovery = true,
             // 恢复会话快照也要进这次检查：替身的快照漏过 2.0.0 新增的必填字段，而车载端反序列化时
@@ -405,6 +406,22 @@ public sealed class ProtocolPayloadShapeArchitectureTests
                     operatorContext,
                     DateTimeOffset.UtcNow),
                 token);
+
+            // onboard-hmi#222: every observed condition the schema has goes out and passes the outbound check.
+            int unableToChargeIndex = 0;
+            foreach (string condition in WireToGateUnableToCharge.ObservedConditions)
+            {
+                string unableToChargeId = FormattableString.Invariant($"33333333-3333-4333-8333-33333333333{unableToChargeIndex++}");
+                await client.ConfirmUnableToChargeAsync(
+                    unableToChargeId,
+                    new UnableToChargeFieldConfirmationRequestedPayload(
+                        unableToChargeId,
+                        "CH-01",
+                        condition,
+                        operatorContext,
+                        DateTimeOffset.UtcNow),
+                    token);
+            }
 
             // onboard-hmi#107: the device half of a forced mechanical recovery, and the server's answer.
             await client.SubmitHardwareRecoveryRecordAsync(

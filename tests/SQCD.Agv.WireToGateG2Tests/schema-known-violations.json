@@ -33,5 +33,12 @@
     "keyword": "enum",
     "actual": "5",
     "deliberate": "ManualStationClearanceG2Tests.AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable"
+  },
+  {
+    "messageType": "UnableToChargeFieldConfirmationResult",
+    "pointer": "#/payload/chargingPolicyDecision",
+    "keyword": "anyOf",
+    "actual": "\"CHARGE_ELSEWHERE\"",
+    "deliberate": "UnableToChargeFieldConfirmationG2Tests.AResultThatContradictsItselfOrTheSchemaIsRefusedAndThePressEndsAsUnknown"
   }
 ]

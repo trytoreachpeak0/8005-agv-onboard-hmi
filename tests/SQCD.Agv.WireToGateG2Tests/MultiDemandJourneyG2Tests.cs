@@ -477,6 +477,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                 () => business.RecoveryFallbackDemandId);
             // The same method App.xaml.cs calls, not a copy of its lines (8005-agv-onboard-hmi#221).
             StationClearanceWiring.Configure(viewModel, business);
+            UnableToChargeWiring.Configure(viewModel, business);
             await viewModel.InitializeAsync();
 
             try

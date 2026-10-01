@@ -347,6 +347,7 @@ public sealed partial class WireToGateG2Tests
 
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
     [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
     public async Task ManualChargingReturnToServiceAcceptedResultIsCorrelatedToRequestedMessage()
     {
@@ -406,6 +407,7 @@ public sealed partial class WireToGateG2Tests
     /// </remarks>
     [Theory]
     [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
     [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
     [InlineData("RETURNED_TO_ELIGIBILITY_EVALUATION", true)]
     [InlineData("REJECTED", false)]
@@ -481,6 +483,7 @@ public sealed partial class WireToGateG2Tests
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
     [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
     public async Task TheManualChargingReturnEntryIsNotOfferedWithoutAVerifiedAdministrator()
     {
@@ -551,6 +554,7 @@ public sealed partial class WireToGateG2Tests
 
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
     [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
     public async Task ManualChargingReturnToServiceRejectedResultPreservesRegisteredProblem()
     {
@@ -593,6 +597,7 @@ public sealed partial class WireToGateG2Tests
 
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
     [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
     public async Task DuplicateManualChargingReturnToServiceResultDoesNotRaiseSecondCommand()
     {
@@ -642,6 +647,7 @@ public sealed partial class WireToGateG2Tests
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-06")]
     [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
     [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
     [Trait("ProtocolVector", "CV-REQUEST-FIRST-RESULT-REPLAY")]
     public async Task MissingManualChargingReturnToServiceResultTimesOutExplicitly()

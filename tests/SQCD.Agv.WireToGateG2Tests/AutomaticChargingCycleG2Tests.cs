@@ -24,10 +24,10 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// <c>SnapshotAppliedAck</c>, not on the payload's shape.
 /// </para>
 /// <para>
-/// <b>No <c>IntegrationSlice</c> trait, on purpose.</b> The trait is the projection of a test's vectors onto the
-/// slices this line implements (<c>IntegrationSliceTraitArchitectureTests</c>), and <c>FP-IS-13</c> is not one of
-/// them yet: its field-confirmation and station-clearance vectors are other tickets'. It is flipped, and these
-/// tests given the trait, by the last of the three onboard batch-9 tickets (<c>8005-agv-onboard-hmi#222</c>).
+/// <b>The vector tests carry <c>FP-IS-13</c></b>, the projection of their vector onto the slices this line
+/// implements (<c>IntegrationSliceTraitArchitectureTests</c>). They carried no slice until the last of the three
+/// onboard batch-9 tickets (<c>8005-agv-onboard-hmi#222</c>) flipped <c>FP-IS-13</c> to implemented, once its
+/// field-confirmation and station-clearance vectors had their tests too.
 /// </para>
 /// <para>
 /// The tests without a vector trait are the ones the vector does not speak to -- the battery at a business stop,
@@ -60,6 +60,7 @@ public sealed class AutomaticChargingCycleG2Tests
     /// </remarks>
     [Fact]
     [Trait("ProtocolVector", "CV-AUTOMATIC-CHARGING-CYCLE")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
     public async Task AChargeIsShownOnTheWayAtTheChargerAndWhenFull()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
@@ -142,6 +143,7 @@ public sealed class AutomaticChargingCycleG2Tests
     /// </remarks>
     [Fact]
     [Trait("ProtocolVector", "CV-AUTOMATIC-CHARGING-CYCLE")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
     public async Task NoEntryIsOfferedAtAChargerEvenWithAWorklistItemAndAnEntryRequest()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
@@ -165,6 +167,7 @@ public sealed class AutomaticChargingCycleG2Tests
     /// </summary>
     [Fact]
     [Trait("ProtocolVector", "CV-AUTOMATIC-CHARGING-CYCLE")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
     public async Task ADirectSubmitAtAChargerIsRefusedAndSendsNothing()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
@@ -187,6 +190,7 @@ public sealed class AutomaticChargingCycleG2Tests
     /// </summary>
     [Fact]
     [Trait("ProtocolVector", "CV-AUTOMATIC-CHARGING-CYCLE")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
     public async Task TheCancellationBeforeAnySublotIsNotOfferedAtACharger()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
@@ -216,6 +220,7 @@ public sealed class AutomaticChargingCycleG2Tests
     /// </summary>
     [Fact]
     [Trait("ProtocolVector", "CV-AUTOMATIC-CHARGING-CYCLE")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
     public async Task AChargingPurposeOverABusinessLegStillOffersNoEntry()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
