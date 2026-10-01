@@ -1,0 +1,4 @@
+  Error Message:
+   These tests are not filed under exactly the slices their own ProtocolVector traits project onto, so a slice gate would run the wrong set: ManualChargingReturnToServiceAcceptedResultIsCorrelatedToRequestedMessage (tests/SQCD.Agv.WireToGateG2Tests/WireToGateG2Tests.cs:348) is missing FP-IS-13
+  Stack Trace:
+     at SQCD.Agv.UnitTests.IntegrationSliceTraitArchitectureTests.EverySliceTraitIsExactlyTheProjectionOfTheTestsOwnVectors() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi222-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\IntegrationSliceTraitArchitectureTests.cs:line 113
