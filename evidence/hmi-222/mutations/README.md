@@ -39,3 +39,16 @@
 
 N09：修复之后不加注入，`TheReportCarries...` 与清桩那条新用例一起连跑 30 遍，30 遍全过（`N09-thirty-runs-after-the-fix.txt`）。
 审查员在修复前同样连跑 30 遍，红 2 遍。
+
+## 增量审查之后（P01～P05）
+
+在 `c9784ae` 上跑，`summary.tsv` 末尾。P03、P04 第一次的注入写法自己编译不过（`result is null` 对非空类型是恒假警告），
+改成另一个恒假条件后单独重跑，两行都留在 `summary.tsv` 里。
+
+| 注入 | 改坏了什么 | 红 |
+| --- | --- | --- |
+| P01 | 快照已结束充电用途的那次按下不打标记 | `AnUnknownPressWhoseChargingTheServerEndedDoesNotAskForAResubmission` |
+| P02 | 清桩入口同上 | `AnUnknownPressWhoseClearanceTheServerEndedDoesNotAskForAResubmission` |
+| P03 | 不核对应答里的 confirmationRequestId（审查员的 Y6） | 现场确认 `AnAnswerNamingAnotherConfirmationIsNotTakenAsThisPresssResult` |
+| P04 | 清桩入口同上 | 清桩 `AnAnswerNamingAnotherConfirmationIsNotTakenAsThisPresssResult` |
+| P05 | 文案不认标记 | 单元 `AnEndedChargingClaimIsSaidAndNoResubmissionIsAskedFor` |

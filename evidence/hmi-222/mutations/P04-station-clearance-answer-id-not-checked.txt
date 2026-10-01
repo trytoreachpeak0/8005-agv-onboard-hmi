@@ -1,0 +1,18 @@
+# P04-station-clearance-answer-id-not-checked
+增量审查 Y6：清桩入口不核对应答里的 confirmationRequestId
+files: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+
+--- replaced ---
+                DeserializeManualStationClearanceResult(responseEnvelope);
+            if (!string.Equals(
+--- with ---
+                DeserializeManualStationClearanceResult(responseEnvelope);
+            if (result.Outcome.Length < 0 && !string.Equals(
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AnAnswerNamingAnotherConfirmationIsNotTakenAsThisPresssResult [92 ms]
+Failed!  - Failed:     1, Passed:    37, Skipped:     0, Total:    38, Duration: 38 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AnAnswerNamingAnotherConfirmationIsNotTakenAsThisPresssResult
+missing: none

@@ -1,0 +1,16 @@
+# P05-ended-sentence-dropped-from-the-text
+增量审查第 1 条：文案不认标记，结束后的「结果未知」仍叫操作员重新提交
+files: src/SQCD.Agv.Application/WireToGateUnableToChargeText.cs
+
+--- replaced ---
+            _ when outcome.ChargingEnded =>
+--- with ---
+            _ when outcome.ChargingEnded && outcome.ReasonCode == "never" =>
+
+--- dotnet test tests/SQCD.Agv.UnitTests --filter FullyQualifiedName~WireToGateUnableToChargeTests (exit 1) ---
+  Failed SQCD.Agv.UnitTests.WireToGateUnableToChargeTests.AnEndedChargingClaimIsSaidAndNoResubmissionIsAskedFor [5 ms]
+Failed!  - Failed:     1, Passed:    15, Skipped:     0, Total:    16, Duration: 88 ms - SQCD.Agv.UnitTests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AnEndedChargingClaimIsSaidAndNoResubmissionIsAskedFor
+missing: none
