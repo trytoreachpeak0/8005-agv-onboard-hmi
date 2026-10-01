@@ -398,6 +398,35 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// 现场确认充不上（8005-agv-onboard-hmi#222）。对话框依据的是被按下那个按钮自己的选项，确认之后原样交回它的
+    /// <c>Prompt</c>。
+    /// </summary>
+    /// <remarks>
+    /// 按钮的 DataContext 就是那一个 <c>UnableToChargeOption</c>：正文与交回去的 <c>Prompt</c> 出自同一个对象，对话框开着时
+    /// 视图模型照常刷新也换不掉它；业务服务发现它已经不是当前的一份就拒绝，不发。这里不去读视图模型的
+    /// <c>UnableToCharge</c>（<c>WireToGateUnableToChargeTests</c> 有一条结构守卫）。
+    /// </remarks>
+    private async void OnConfirmUnableToChargeClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null
+            || (sender as FrameworkElement)?.DataContext is not UnableToChargeOption { Prompt: var prompt, ConfirmationText: var confirmationText }
+            || MessageBox.Show(
+                confirmationText,
+                "现场确认充不上",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.ConfirmUnableToChargeAsync(prompt))
+        {
+            ShowRecoveryFailure("现场确认充不上没有得到服务端的确认。原因见入口下方的结果一行和操作记录；车辆接下来怎么走以服务端为准。", "现场确认未完成");
+        }
+    }
+
     private static void ShowRecoveryFailure(string message, string title) =>
         MessageBox.Show(
             message,

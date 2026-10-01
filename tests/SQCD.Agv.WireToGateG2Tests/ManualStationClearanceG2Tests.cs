@@ -30,9 +30,8 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// rather than read once.
 /// </para>
 /// <para>
-/// <b>No <c>IntegrationSlice</c> trait, on purpose.</b> The vector belongs to <c>FP-IS-13</c> alone, and that
-/// slice is not one this line implements yet; it is flipped, and these tests given the trait, by
-/// <c>8005-agv-onboard-hmi#222</c>.
+/// <b>The two vector tests carry <c>FP-IS-13</c></b>, the slice the vector belongs to. They carried none until
+/// <c>8005-agv-onboard-hmi#222</c> flipped that slice to implemented on this end.
 /// </para>
 /// </remarks>
 public sealed class ManualStationClearanceG2Tests
@@ -77,6 +76,7 @@ public sealed class ManualStationClearanceG2Tests
     /// </remarks>
     [Fact]
     [Trait("ProtocolVector", "CV-MANUAL-STATION-CLEARANCE")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
     public async Task TheConfirmationCarriesTheOperatorTheChargerAndTheConditionAndIsShownConfirmed()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
@@ -129,6 +129,7 @@ public sealed class ManualStationClearanceG2Tests
     /// </summary>
     [Fact]
     [Trait("ProtocolVector", "CV-MANUAL-STATION-CLEARANCE")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
     public async Task AConfirmedClearanceChangesNothingOnTheVehicleUntilTheServersNextSnapshot()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
@@ -175,6 +176,114 @@ public sealed class ManualStationClearanceG2Tests
             "the entry and the result line to go with the server's next business state",
             token);
         Assert.Equal(WireToGateIdleReturnText.EnRouteStatus, harness.ViewModel.IdleReturnStatus);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// The server ends the clearance in the snapshot it sends right after the result, on the same connection: the
+    /// operator is still told what the server answered, in the operator record the view model shows.
+    /// </summary>
+    /// <remarks>
+    /// The receive loop hands the result to the waiting press and goes straight on to the snapshot; the snapshot's
+    /// journey handler forgets the clearance before the press has read its own result. Until
+    /// <c>8005-agv-onboard-hmi#222</c>'s review (item 4) the press then found nothing to settle and told the operator
+    /// nothing. Asserted on <see cref="MainViewModel.Logs"/>, the layer the operator reads; the result line itself is
+    /// rightly gone with the clearance.
+    /// </remarks>
+    [Fact]
+    public async Task AResultFollowedAtOnceByTheSnapshotThatEndsTheClearanceIsStillShownToTheOperator()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(
+            token,
+            server =>
+            {
+                server.RespondToManualStationClearanceConfirmations = true;
+                server.VehicleBusinessStateAfterManualStationClearanceResult = BusinessState(2, "IDLE_RETURN");
+            });
+        StationClearanceDisplay shown = await WaitForEntryAsync(harness, token);
+
+        Assert.True(await harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt!, token));
+
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.Logs.Any(line =>
+                line.Kind == OperatorRecordKind.Success
+                && line.Message.Contains("服务端已确认清桩", StringComparison.Ordinal)),
+            "the operator record of the confirmed clearance on the view model",
+            token);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.StationClearance == StationClearanceDisplay.Empty,
+            "the entry to go with the snapshot that ended the clearance",
+            token);
+        Assert.Single(harness.Events, item => item.Kind == "STATION_CLEARANCE_CONFIRMED");
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// The server ends the clearance while the press waits, and no answer comes: the press ends as unknown, and the
+    /// operator record says the clearance is over and the entry closed -- not to resubmit, which the gone entry no
+    /// longer allows (8005-agv-onboard-hmi#222 incremental review, item 1).
+    /// </summary>
+    [Fact]
+    public async Task AnUnknownPressWhoseClearanceTheServerEndedDoesNotAskForAResubmission()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(token);
+        StationClearanceDisplay shown = await WaitForEntryAsync(harness, token);
+
+        Task<bool> press = harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt!, token);
+        await harness.WaitUntilAsync(() => Requests(harness).Length == 1, "the request to reach the server", token);
+        await harness.Server.SendJourneySnapshotAsync("VehicleBusinessStateSnapshot", BusinessState(2, "IDLE_RETURN"));
+        Assert.False(await press);
+
+        LogLineViewModel? record = null;
+        await harness.WaitUntilAsync(
+            () => (record = harness.ViewModel.Logs.LastOrDefault(line =>
+                line.Kind == OperatorRecordKind.Warning && line.Message.Contains("结果未知", StringComparison.Ordinal))) is not null,
+            "the operator record that the press's result is unknown",
+            token);
+        Assert.Contains(WireToGateStationClearanceText.ClearanceEndedSentence[..^1], record!.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("重新提交", record.Message, StringComparison.Ordinal);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.StationClearance == StationClearanceDisplay.Empty,
+            "the entry and the result line to be gone with the clearance",
+            token);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// An answer correlated to the request's messageId but naming another confirmation request id is refused as
+    /// <c>CORRELATION_INVALID</c>: the press ends as unknown, and nothing the answer says is shown as this press's
+    /// result (8005-agv-onboard-hmi#222 incremental review, Y6).
+    /// </summary>
+    [Fact]
+    public async Task AnAnswerNamingAnotherConfirmationIsNotTakenAsThisPresssResult()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(token);
+        StationClearanceDisplay shown = await WaitForEntryAsync(harness, token);
+
+        Task<bool> press = harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt!, token);
+        await harness.WaitUntilAsync(() => Requests(harness).Length == 1, "the request to reach the server", token);
+        SentRequest request = Assert.Single(Requests(harness));
+        await harness.Server.SendManualStationClearanceResultAsync(request.MessageId, Guid.NewGuid().ToString("D"));
+        Assert.False(await press);
+
+        // Unknown, and the same confirmation offered again: the answer did not settle it.
+        await WaitForDisplayAsync(
+            harness,
+            display => display.Status == WireToGateStationClearanceText.UnknownStatus
+                && display.Prompt?.ResubmittedConfirmationRequestId == request.ConfirmationRequestId,
+            "the press to end as unknown with the same confirmation offered again",
+            token);
+        await AssertWhileAsync(
+            () => Assert.DoesNotContain(
+                harness.Events, item => item.Kind is "STATION_CLEARANCE_CONFIRMED" or "STATION_CLEARANCE_REJECTED"),
+            token);
+        Assert.Contains(
+            harness.Logger.Exceptions,
+            entry => entry.Exception is InvalidDataException { Message: "CORRELATION_INVALID" }
+                && entry.Message.StartsWith("人工清桩确认未完成", StringComparison.Ordinal));
         Assert.Empty(harness.UiErrors);
     }
 

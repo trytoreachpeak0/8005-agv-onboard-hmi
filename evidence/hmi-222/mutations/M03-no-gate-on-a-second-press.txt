@@ -1,0 +1,16 @@
+# M03-no-gate-on-a-second-press
+第一次应答之前不挡第二次按下
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+if (Interlocked.CompareExchange(ref _unableToChargeAwaitingAnswer, 1, 0) != 0)
+--- with ---
+if (Interlocked.Exchange(ref _unableToChargeAwaitingAnswer, 1) < 0)
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ASecondPressWhileTheFirstIsUnansweredSendsNothing [2 s]
+Failed!  - Failed:     1, Passed:    40, Skipped:     0, Total:    41, Duration: 39 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: ASecondPressWhileTheFirstIsUnansweredSendsNothing
+missing: none

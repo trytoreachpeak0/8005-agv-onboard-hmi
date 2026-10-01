@@ -319,6 +319,12 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         _client.ConfirmManualStationClearanceAsync(messageId, payload, cancellationToken);
 
+    public Task<UnableToChargeFieldConfirmationResultPayload> ConfirmUnableToChargeAsync(
+        string messageId,
+        UnableToChargeFieldConfirmationRequestedPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.ConfirmUnableToChargeAsync(messageId, payload, cancellationToken);
+
     public Task<string> SendPreDepartureSafetyCheckResultAsync(
         string preDepartureSafetyCheckId,
         string outcome,

@@ -60,6 +60,18 @@ public sealed partial class WireToGateBusinessService
     /// <summary>What the last confirmation came to. Guarded by the gate.</summary>
     private WireToGateStationClearanceOutcome? _stationClearanceOutcome;
 
+    /// <summary>
+    /// The unanswered request the server's snapshot ended while its press was still waiting. Guarded by the gate.
+    /// </summary>
+    /// <remarks>
+    /// The receive loop hands a result to the waiting press and goes straight on to the next line; when that line is
+    /// a snapshot that ends the clearance, its journey handler forgets the request before the press has read its own
+    /// result. The press still tells the operator what the server answered: it settles against this reference, and
+    /// writes nothing to the result line, which belongs to a clearance that is over (8005-agv-onboard-hmi#222
+    /// review, item 4).
+    /// </remarks>
+    private ManualStationClearanceConfirmationRequestedPayload? _stationClearanceForgotten;
+
     /// <summary>1 while a confirmation is waiting for its answer: a second press sends nothing.</summary>
     private int _stationClearanceAwaitingAnswer;
 
@@ -161,7 +173,18 @@ public sealed partial class WireToGateBusinessService
                     request,
                     cancellationToken)
                 .ConfigureAwait(false);
-            WireToGateStationClearanceOutcome? settled = SettleStationClearance(result);
+            // Settled against this press's own request, not against the shared field a snapshot may have cleared.
+            WireToGateStationClearanceOutcome? settled = ApplyOwnStationClearanceOutcome(
+                request,
+                new WireToGateStationClearanceOutcome(
+                    result.Outcome == StationClearanceConfirmed
+                        ? WireToGateStationClearanceOutcomeKind.Confirmed
+                        : WireToGateStationClearanceOutcomeKind.Rejected,
+                    request.ConfirmationRequestId,
+                    request.StationId,
+                    result.StationReleased,
+                    result.Problem?.ReasonCode),
+                endsTheRequest: true);
             return settled is null
                 ? new StationClearancePress(result.Outcome == StationClearanceConfirmed, null, string.Empty)
                 : DescribeSettledStationClearance(settled);
@@ -311,8 +334,46 @@ public sealed partial class WireToGateBusinessService
 
         lock (_stationClearanceGate)
         {
+            if (_stationClearanceUnanswered is not null)
+            {
+                _stationClearanceForgotten = _stationClearanceUnanswered;
+            }
+
             _stationClearanceUnanswered = null;
             _stationClearanceOutcome = null;
+        }
+    }
+
+    /// <summary>
+    /// Applies what this press's own request came to. <c>null</c> when another path has already told the operator --
+    /// a result that arrived through the late path after this press's wait ran out. A request the server's snapshot
+    /// ended meanwhile is still told to the operator, and nothing is written to the result line.
+    /// </summary>
+    private WireToGateStationClearanceOutcome? ApplyOwnStationClearanceOutcome(
+        ManualStationClearanceConfirmationRequestedPayload request,
+        WireToGateStationClearanceOutcome outcome,
+        bool endsTheRequest)
+    {
+        lock (_stationClearanceGate)
+        {
+            if (ReferenceEquals(_stationClearanceUnanswered, request))
+            {
+                if (endsTheRequest)
+                {
+                    _stationClearanceUnanswered = null;
+                }
+
+                _stationClearanceOutcome = outcome;
+                return outcome;
+            }
+
+            if (ReferenceEquals(_stationClearanceForgotten, request))
+            {
+                _stationClearanceForgotten = null;
+                return outcome with { ClearanceEnded = true };
+            }
+
+            return null;
         }
     }
 
@@ -350,45 +411,34 @@ public sealed partial class WireToGateBusinessService
         ManualStationClearanceConfirmationRequestedPayload request,
         string reasonCode)
     {
-        lock (_stationClearanceGate)
-        {
-            // Not if a result got here first through the late path: that one stands.
-            if (!ReferenceEquals(_stationClearanceUnanswered, request))
-            {
-                return null;
-            }
-
-            _stationClearanceUnanswered = null;
-            _stationClearanceOutcome = new WireToGateStationClearanceOutcome(
+        // Not if a result got here first through the late path: that one stands.
+        return ApplyOwnStationClearanceOutcome(
+            request,
+            new WireToGateStationClearanceOutcome(
                 WireToGateStationClearanceOutcomeKind.NotAccepted,
                 request.ConfirmationRequestId,
                 request.StationId,
                 false,
-                reasonCode);
-            return _stationClearanceOutcome;
-        }
+                reasonCode),
+            endsTheRequest: true);
     }
 
     private WireToGateStationClearanceOutcome? MarkStationClearanceUnknown(
         ManualStationClearanceConfirmationRequestedPayload? request,
         string? reason)
     {
-        lock (_stationClearanceGate)
-        {
-            // Not if an answer got here first through the late path: that one stands.
-            if (request is null || !ReferenceEquals(_stationClearanceUnanswered, request))
-            {
-                return null;
-            }
-
-            _stationClearanceOutcome = new WireToGateStationClearanceOutcome(
-                WireToGateStationClearanceOutcomeKind.Unknown,
-                request.ConfirmationRequestId,
-                request.StationId,
-                false,
-                reason);
-            return _stationClearanceOutcome;
-        }
+        // Not if an answer got here first through the late path: that one stands. The request stays unanswered.
+        return request is null
+            ? null
+            : ApplyOwnStationClearanceOutcome(
+                request,
+                new WireToGateStationClearanceOutcome(
+                    WireToGateStationClearanceOutcomeKind.Unknown,
+                    request.ConfirmationRequestId,
+                    request.StationId,
+                    false,
+                    reason),
+                endsTheRequest: false);
     }
 
     /// <summary>

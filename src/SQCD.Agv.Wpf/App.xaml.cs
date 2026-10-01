@@ -225,7 +225,8 @@ public partial class App : System.Windows.Application, IDisposable
                         settings.WireToGate.RecoveryResumeEnabled,
                         settings.WireToGate.RecoveryAuthenticationProofEnvironmentVariable,
                         settings.WireToGate.RecoveryAdministratorRole,
-                        settings.WireToGate.RecoveryVerificationMethod),
+                        settings.WireToGate.RecoveryVerificationMethod,
+                        settings.WireToGate.UnableToChargeEntryEnabled),
                     // 让「本界面已禁止扫码开门」成为真的：v2 的扫码不经过控制器，所以业务服务
                     // 自己读锁存（8005-agv-onboard-hmi#171）。
                     () => _controller?.IsFatalFaultLatched == true);
@@ -305,6 +306,8 @@ public partial class App : System.Windows.Application, IDisposable
                         cancellationToken));
                 // 人工清桩确认入口（8005-agv-onboard-hmi#221）。接线在 StationClearanceWiring 里，G2 夹具调的是同一个方法。
                 StationClearanceWiring.Configure(viewModel, _wireToGateBusiness);
+                // 现场确认充不上入口（8005-agv-onboard-hmi#222）。接线在 UnableToChargeWiring 里，G2 夹具调的是同一个方法。
+                UnableToChargeWiring.Configure(viewModel, _wireToGateBusiness);
                 viewModel.StationDepartureCountdownTextOverride =
                     _wireToGateBusiness.DescribeExpiredStationDeadline;
                 _wireToGateBusiness.Start();

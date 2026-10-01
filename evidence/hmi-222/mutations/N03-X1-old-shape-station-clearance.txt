@@ -1,0 +1,24 @@
+# N03-X1-old-shape-station-clearance
+审查第 4 条，清桩入口修复前的形状：加 300 ms，等待路径不按本次请求结算
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.StationClearance.cs
+
+--- replaced ---
+            // Settled against this press's own request, not against the shared field a snapshot may have cleared.
+            WireToGateStationClearanceOutcome? settled |||             if (ReferenceEquals(_stationClearanceForgotten, request))
+            {
+                _stationClearanceForgotten = null;
+                return outcome;
+--- with ---
+            await Task.Delay(300, CancellationToken.None).ConfigureAwait(false);
+            WireToGateStationClearanceOutcome? settled |||             if (ReferenceEquals(_stationClearanceForgotten, request))
+            {
+                _stationClearanceForgotten = null;
+                return null;
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests.AResultFollowedAtOnceByTheSnapshotThatEndsTheClearanceIsStillShownToTheOperator (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AResultFollowedAtOnceByTheSnapshotThatEndsTheClearanceIsStillShownToTheOperator [5 s]
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AResultFollowedAtOnceByTheSnapshotThatEndsTheClearanceIsStillShownToTheOperator
+missing: none

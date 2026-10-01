@@ -1,0 +1,16 @@
+# P02-ended-clearance-not-marked
+增量审查第 1 条：清桩入口同上
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.StationClearance.cs
+
+--- replaced ---
+                return outcome with { ClearanceEnded = true };
+--- with ---
+                return outcome;
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AnUnknownPressWhoseClearanceTheServerEndedDoesNotAskForAResubmission [2 s]
+Failed!  - Failed:     1, Passed:    37, Skipped:     0, Total:    38, Duration: 37 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AnUnknownPressWhoseClearanceTheServerEndedDoesNotAskForAResubmission
+missing: none

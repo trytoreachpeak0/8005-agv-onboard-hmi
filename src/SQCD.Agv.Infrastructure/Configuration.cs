@@ -316,6 +316,16 @@ public sealed class WireToGateSettings
 
     public bool RecoveryResumeEnabled { get; init; }
 
+    /// <summary>
+    /// 现场确认充不上入口（8005-agv-onboard-hmi#222）开不开，出厂为关。
+    /// </summary>
+    /// <remarks>
+    /// 服务端在 8005-agv-control-server#410 之前不处理 <c>UnableToChargeFieldConfirmationRequested</c>：消息处理的
+    /// default 分支抛异常，连接被关掉，不回 <c>ProtocolProblem</c>。那样的服务端前面按一次入口就断一次会话，
+    /// 所以入口要等服务端支持之后在现场配置里打开；协议里没有服务端声明自己支持哪些消息的字段，车载端判断不了。
+    /// </remarks>
+    public bool UnableToChargeEntryEnabled { get; init; }
+
     public string RecoveryAuthenticationProofEnvironmentVariable { get; init; } =
         "CONTROL_SERVER_RECOVERY_PROOF";
 

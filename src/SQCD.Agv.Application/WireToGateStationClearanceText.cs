@@ -75,11 +75,21 @@ public static class WireToGateStationClearanceText
             $"服务端已确认清桩（充电桩 {outcome.StationId}），站点尚未释放。车辆与站点状态以服务端下发的为准。",
         { Kind: WireToGateStationClearanceOutcomeKind.Rejected } =>
             $"服务端拒绝清桩确认（充电桩 {outcome.StationId}）：{outcome.ReasonCode ?? "未给出原因"}。站点保持原状态。",
+        { Kind: WireToGateStationClearanceOutcomeKind.NotAccepted, ClearanceEnded: true } =>
+            $"服务端没有受理清桩确认（充电桩 {outcome.StationId}）：{outcome.ReasonCode ?? "未给出原因"}。{ClearanceEndedSentence}",
         { Kind: WireToGateStationClearanceOutcomeKind.NotAccepted } =>
             $"服务端没有受理清桩确认（充电桩 {outcome.StationId}）：{outcome.ReasonCode ?? "未给出原因"}。站点保持原状态，再次提交会是一次新的确认。",
+        { ClearanceEnded: true } =>
+            $"服务端已结束这次清桩，入口已关闭，这次清桩确认（充电桩 {outcome.StationId}）的结果未知。"
+            + (outcome.ReasonCode is null ? string.Empty : $"原因：{outcome.ReasonCode}。"),
         _ => $"清桩确认（充电桩 {outcome.StationId}）结果未知，请查看车辆状态后再决定是否重新提交。"
             + (outcome.ReasonCode is null ? string.Empty : $"原因：{outcome.ReasonCode}。")
     };
+
+    /// <summary>
+    /// 等应答期间服务端已结束这次清桩时的那一句：入口已关闭，没法重新提交，所以不叫操作员去重新提交。
+    /// </summary>
+    public const string ClearanceEndedSentence = "服务端已结束这次清桩，入口已关闭。";
 
     /// <summary>结果那一行给 UIA 的 ItemStatus（AutomationId <c>StationClearanceStatus</c>）；没有时是空串。</summary>
     public static string Status(WireToGateStationClearanceOutcome? outcome) => outcome switch
