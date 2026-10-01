@@ -102,8 +102,9 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
         // reversed-direction journey.
         // Batch 7-13 (8005-agv-onboard-hmi#134): the onboard half of the multi-stop journey plan.
         // Batch 8-22 (8005-agv-onboard-hmi#217): the onboard half of the waiting-point idle return.
-        // Batch 9-17 (8005-agv-onboard-hmi#222): the onboard half of the charging cycle and clearance, flipped by the
-        // last of the three onboard batch-9 tickets once all four of its vectors had named tests here.
+        // Batch 9-17 (8005-agv-onboard-hmi#222): the onboard half of the charging cycle, the field confirmation that a
+        // vehicle could not charge, the station clearance and the manual charging return -- flipped by the last of the
+        // three onboard batch-9 tickets once all four of its vectors had named tests here.
         "FP-IS-08",
         "FP-IS-10",
         "FP-IS-11",

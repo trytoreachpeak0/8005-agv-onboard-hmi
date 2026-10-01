@@ -22,6 +22,8 @@ public sealed record WireToGateUnableToChargePrompt(
 public enum WireToGateUnableToChargeUnavailability
 {
     None,
+    /// <summary><c>wireToGate.unableToChargeEntryEnabled</c> is off.</summary>
+    Disabled,
     NotCharging,
     NoVerifiedMaintainer,
     StationUnknown,

@@ -952,6 +952,13 @@ public sealed class FakeControlServer : IAsyncDisposable
     public int ManualStationClearanceResponseCopies { get; set; } = 1;
 
     /// <summary>
+    /// A business state snapshot to send right after each answered <c>ManualStationClearanceConfirmationResult</c>,
+    /// on the same connection: the server ending the clearance as soon as it is confirmed (8005-agv-onboard-hmi#222
+    /// review, item 4). Null sends none.
+    /// </summary>
+    public object? VehicleBusinessStateAfterManualStationClearanceResult { get; set; }
+
+    /// <summary>
     /// Set, each <c>ManualStationClearanceConfirmationRequested</c> is answered with a <c>ProtocolProblem</c>
     /// carrying this reason and correlated to the request, instead of a result: the server read the request and
     /// did not take it.
@@ -1012,6 +1019,15 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// this reason and correlated to the request, instead of a result.
     /// </summary>
     public string? UnableToChargeProtocolProblem { get; set; }
+
+    /// <summary>
+    /// What a control server without the <c>8005-agv-control-server#410</c> handling does with
+    /// <c>UnableToChargeFieldConfirmationRequested</c>: its <c>OnboardMessageProcessor</c> has no case for the
+    /// message, the default branch throws, <c>OnboardTcpServer</c> ends the connection, and nothing is written to the
+    /// inbox and no <c>ProtocolProblem</c> is sent. Set, the fake closes the connection on the request, after recording
+    /// it, and answers nothing.
+    /// </summary>
+    public bool CloseConnectionOnUnableToChargeConfirmation { get; set; }
 
     /// <summary>
     /// A business state snapshot to send right after each answered <c>UnableToChargeFieldConfirmationResult</c>:
@@ -1824,6 +1840,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                         await HandleManualStationClearanceConfirmationRequestedAsync(context, root)
                             .ConfigureAwait(false);
                         break;
+                    case "UnableToChargeFieldConfirmationRequested" when CloseConnectionOnUnableToChargeConfirmation:
+                        context.Client.Close();
+                        return;
                     case "UnableToChargeFieldConfirmationRequested"
                         when RespondToUnableToChargeConfirmations
                             || UnableToChargeProtocolProblem is not null:
@@ -2797,6 +2816,14 @@ public sealed class FakeControlServer : IAsyncDisposable
                         problem = ManualStationClearanceProblem,
                         stationReleased = ManualStationClearanceStationReleased
                     }))
+                .ConfigureAwait(false);
+        }
+
+        if (VehicleBusinessStateAfterManualStationClearanceResult is { } businessState)
+        {
+            await WriteJourneyEnvelopeAsync(
+                context,
+                CreateJourneyEnvelope(context, "VehicleBusinessStateSnapshot", businessState))
                 .ConfigureAwait(false);
         }
     }

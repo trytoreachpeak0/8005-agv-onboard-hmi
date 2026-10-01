@@ -24,12 +24,19 @@ TEXT = "src/SQCD.Agv.Application/WireToGateUnableToChargeText.cs"
 WIRING = "src/SQCD.Agv.Wpf/UnableToChargeWiring.cs"
 WINDOW = "src/SQCD.Agv.Wpf/MainWindow.xaml.cs"
 LEGACY_G2 = "tests/SQCD.Agv.WireToGateG2Tests/WireToGateG2Tests.cs"
+CLEARANCE = "src/SQCD.Agv.Wpf/WireToGateBusinessService.StationClearance.cs"
+APPSETTINGS = "src/SQCD.Agv.Wpf/appsettings.json"
 BINDING = "tests/SQCD.Agv.UnitTests/ProtocolVectorTestBindingArchitectureTests.cs"
 
 G2 = ("tests/SQCD.Agv.WireToGateG2Tests", "FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests")
 G2_SHAPE = ("tests/SQCD.Agv.WireToGateG2Tests",
             "FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests|FullyQualifiedName~ProtocolPayloadShapeArchitectureTests")
 UNIT = ("tests/SQCD.Agv.UnitTests", "FullyQualifiedName~WireToGateUnableToChargeTests")
+G2_CLEARANCE = ("tests/SQCD.Agv.WireToGateG2Tests",
+                "FullyQualifiedName~ManualStationClearanceG2Tests.AResultFollowedAtOnceByTheSnapshotThatEndsTheClearanceIsStillShownToTheOperator")
+G2_VECTOR = ("tests/SQCD.Agv.WireToGateG2Tests",
+             "FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests.TheReportCarriesTheOperatorTheChargerAndTheConditionAndTheVectorRunsInOrder")
+CONFIG = ("tests/SQCD.Agv.UnitTests", "FullyQualifiedName~ConfigurationTests")
 SLICES = ("tests/SQCD.Agv.UnitTests",
           "FullyQualifiedName~IntegrationSliceTraitArchitectureTests|FullyQualifiedName~ProtocolVectorTestBindingArchitectureTests")
 
@@ -246,6 +253,67 @@ MUTATIONS = [
      "            [\"CV-UNABLE-TO-CHARGE-FIELD-CONFIRMATION\"] = \"FP-IS-13, batch 9\",\n            [\"CV-WORKLIST-SELECTION-ACCEPTED\"] = \"FP-IS-09, batch 11\",",
      [SLICES],
      ["ProtocolVectorTestBindingArchitectureTests"]),
+    # ---- review round (8005-agv-onboard-hmi#222 independent review) ----
+    ("N01-X1-old-shape-unable-to-charge",
+     "审查第 2 条，修复前的形状：结果交给等待者后紧跟的快照先把请求忘掉（等待路径前加 300 ms），等待路径不按本次请求结算",
+     [BUSINESS, BUSINESS],
+     ["            // Settled against this press's own request, not against the shared field a snapshot may have cleared.\n            WireToGateUnableToChargeOutcome? settled",
+      "            if (ReferenceEquals(_unableToChargeForgotten, request))\n            {\n                _unableToChargeForgotten = null;\n                return outcome;"],
+     ["            await Task.Delay(300, CancellationToken.None).ConfigureAwait(false);\n            WireToGateUnableToChargeOutcome? settled",
+      "            if (ReferenceEquals(_unableToChargeForgotten, request))\n            {\n                _unableToChargeForgotten = null;\n                return null;"],
+     [G2_VECTOR],
+     ["TheReportCarriesTheOperatorTheChargerAndTheConditionAndTheVectorRunsInOrder"]),
+    ("N02-X1-with-the-fix-unable-to-charge",
+     "审查员的 X1 原样（等待路径前加 300 ms），修复保留：应保持绿",
+     BUSINESS,
+     "            // Settled against this press's own request, not against the shared field a snapshot may have cleared.\n            WireToGateUnableToChargeOutcome? settled",
+     "            await Task.Delay(300, CancellationToken.None).ConfigureAwait(false);\n            WireToGateUnableToChargeOutcome? settled",
+     [G2_VECTOR],
+     []),
+    ("N03-X1-old-shape-station-clearance",
+     "审查第 4 条，清桩入口修复前的形状：加 300 ms，等待路径不按本次请求结算",
+     [CLEARANCE, CLEARANCE],
+     ["            // Settled against this press's own request, not against the shared field a snapshot may have cleared.\n            WireToGateStationClearanceOutcome? settled",
+      "            if (ReferenceEquals(_stationClearanceForgotten, request))\n            {\n                _stationClearanceForgotten = null;\n                return outcome;"],
+     ["            await Task.Delay(300, CancellationToken.None).ConfigureAwait(false);\n            WireToGateStationClearanceOutcome? settled",
+      "            if (ReferenceEquals(_stationClearanceForgotten, request))\n            {\n                _stationClearanceForgotten = null;\n                return null;"],
+     [G2_CLEARANCE],
+     ["AResultFollowedAtOnceByTheSnapshotThatEndsTheClearanceIsStillShownToTheOperator"]),
+    ("N04-X1-with-the-fix-station-clearance",
+     "X1 用在清桩入口（等待路径前加 300 ms），修复保留：应保持绿",
+     CLEARANCE,
+     "            // Settled against this press's own request, not against the shared field a snapshot may have cleared.\n            WireToGateStationClearanceOutcome? settled",
+     "            await Task.Delay(300, CancellationToken.None).ConfigureAwait(false);\n            WireToGateStationClearanceOutcome? settled",
+     [G2_CLEARANCE],
+     []),
+    ("N05-switch-ignored",
+     "审查第 1 条：不看 unableToChargeEntryEnabled",
+     BUSINESS,
+     "        if (!_recoveryOptions.UnableToChargeEntryEnabled)\n",
+     "        if (_recoveryOptions.UnableToChargeEntryEnabled && false)\n",
+     [G2],
+     ["TheEntryIsNotOfferedWhileTheSwitchIsOff"]),
+    ("N06-switch-ships-on",
+     "审查第 1 条：出厂配置把开关写成 true",
+     APPSETTINGS,
+     '    "unableToChargeEntryEnabled": false,\n',
+     '    "unableToChargeEntryEnabled": true,\n',
+     [CONFIG],
+     ["TheUnableToChargeEntryShipsSwitchedOff"]),
+    ("N07-X2-resubmission-not-bound-to-the-operator",
+     "审查第 3 条（X2）：重提不要求确认人是同一个",
+     BUSINESS,
+     "            && string.Equals(unanswered.ChargerStationId, chargerStationId, StringComparison.Ordinal)\n            && string.Equals(unanswered.Operator.OperatorId, operatorId, StringComparison.Ordinal);",
+     "            && string.Equals(unanswered.ChargerStationId, chargerStationId, StringComparison.Ordinal);",
+     [G2],
+     ["AnotherMaintainerIsAskedAfreshInsteadOfResubmittingSomeoneElsesConfirmation"]),
+    ("N08-dropped-session-reported-as-not-sent",
+     "审查第 1 条：今天的服务端断连时，把这次按下说成「未发送」而不是结果未知",
+     BUSINESS,
+     "            if (request is null)\n            {\n                return UnableToChargePress.Blocked($\"现场确认充不上未发送：{exception.Message}。\");",
+     "            if (request is not null)\n            {\n                return UnableToChargePress.Blocked($\"现场确认充不上未发送：{exception.Message}。\");",
+     [G2],
+     ["TodaysServerEndsTheSessionAndThePressIsShownAsUnknownWithoutAReplay"]),
 ]
 
 FAILED = re.compile(r"^\s+Failed (\S.*?) \[[^\]]*\]\s*$")
@@ -331,7 +399,12 @@ def main():
             for path, text in originals.items():
                 write(path, text)
         missing = [item for item in expected if not any(item in test for test in failed)]
-        verdict = status if status != "ran" else ("RED AS EXPECTED" if failed and not missing else "NOT RED AS EXPECTED")
+        if status != "ran":
+            verdict = status
+        elif not expected:
+            verdict = "GREEN AS EXPECTED" if not failed else "NOT GREEN AS EXPECTED"
+        else:
+            verdict = "RED AS EXPECTED" if failed and not missing else "NOT RED AS EXPECTED"
         log += ["", f"verdict: {verdict}", "expected red: " + "; ".join(expected), "missing: " + ("; ".join(missing) or "none")]
         write(os.path.join(OUT, name + ".txt"), "\n".join(log) + "\n")
         summary.append((name, what, verdict, failed, expected))

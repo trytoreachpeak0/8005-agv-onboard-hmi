@@ -133,9 +133,17 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
             harness.Server.SentEnvelopes.Skip(receivedBefore).Select(envelope => envelope.MessageType).ToArray());
         Assert.Equal("CLEARING_MAINTENANCE", harness.Session.CurrentJourney.VehicleBusinessState!.ActivePurpose);
 
-        WireToGateOperatorEvent confirmed = Assert.Single(harness.Events, item => item.Kind == "UNABLE_TO_CHARGE_CONFIRMED");
-        Assert.Contains("服务端已记录现场确认", confirmed.Message, StringComparison.Ordinal);
-        Assert.Contains("改派其它充电桩", confirmed.Message, StringComparison.Ordinal);
+        // What the server recorded and decided reaches the operator, at the layer the operator reads. The snapshot
+        // right behind the result ends the charging claim and with it the result line, so this is the operator
+        // record; until the review's item 2 the press could lose the race to that snapshot and tell nobody.
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.Logs.Any(line =>
+                line.Kind == OperatorRecordKind.Success
+                && line.Message.Contains("服务端已记录现场确认", StringComparison.Ordinal)
+                && line.Message.Contains("改派其它充电桩", StringComparison.Ordinal)),
+            "the operator record of what the server recorded and decided on the view model",
+            token);
+        Assert.Single(harness.Events, item => item.Kind == "UNABLE_TO_CHARGE_CONFIRMED");
         Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "ProtocolProblem");
         Assert.Empty(harness.UiErrors);
     }
@@ -342,6 +350,70 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
     }
 
     /// <summary>
+    /// <c>wireToGate.unableToChargeEntryEnabled</c> off -- the factory setting: with everything else in place the entry
+    /// is not offered, nothing explains it, and a press that reaches the business service is refused and sends nothing.
+    /// </summary>
+    /// <remarks>
+    /// Off by default because a control server without <c>8005-agv-control-server#410</c> ends the session on this
+    /// message (<see cref="TodaysServerEndsTheSessionAndThePressIsShownAsUnknownWithoutAReplay"/>), and nothing on the
+    /// wire says which kind of server the vehicle is talking to (8005-agv-onboard-hmi#222 review, item 1).
+    /// </remarks>
+    [Fact]
+    public async Task TheEntryIsNotOfferedWhileTheSwitchIsOff()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(
+            token,
+            server => server.RespondToUnableToChargeConfirmations = true,
+            recoveryOptions: VerifiedMaintainer() with { UnableToChargeEntryEnabled = false });
+        await WaitForThePlanOnTheViewModelAsync(harness, token);
+
+        await AssertTheEntryStaysShutAsync(harness, token);
+        Assert.Equal(UnableToChargeDisplay.Empty, harness.ViewModel.UnableToCharge);
+        Assert.False(await harness.Business.ConfirmUnableToChargeAsync(Prompt("CONNECTION_FAILED"), token));
+        await AssertNothingIsSentAsync(harness, 0, token);
+        WireToGateOperatorEvent refused = Assert.Single(harness.Events, item => item.Kind == "UNABLE_TO_CHARGE_BLOCKED");
+        Assert.Contains("unableToChargeEntryEnabled", refused.Message, StringComparison.Ordinal);
+        // The control: the same maintainer is offered 「充电后返回服务」, so the switch is what shut this entry.
+        Assert.True(harness.ViewModel.CanRequestManualChargingReturn);
+    }
+
+    /// <summary>
+    /// What today's control server does with the message, as the review's probe against a real listener measured
+    /// it: no case for it, the connection is closed, nothing comes back. The press ends as unknown and says so to the
+    /// operator, and after the reconnect nothing is replayed -- the request was never written to the journal.
+    /// </summary>
+    [Fact]
+    public async Task TodaysServerEndsTheSessionAndThePressIsShownAsUnknownWithoutAReplay()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(
+            token, server => server.CloseConnectionOnUnableToChargeConfirmation = true);
+        UnableToChargeDisplay shown = await WaitForEntryAsync(harness, token);
+        int connection = harness.Server.ReceivedEnvelopes[^1].Connection;
+
+        Assert.False(await harness.ViewModel.ConfirmUnableToChargeAsync(Option(shown, "CONNECTION_FAILED").Prompt, token));
+
+        UnableToChargeDisplay unknown = await WaitForStatusAsync(harness, WireToGateUnableToChargeText.UnknownStatus, token);
+        Assert.Contains("结果未知", unknown.StatusText, StringComparison.Ordinal);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.Logs.Any(line =>
+                line.Kind == OperatorRecordKind.Warning && line.Message.Contains("结果未知", StringComparison.Ordinal)),
+            "the operator record that the result is unknown on the view model",
+            token);
+        SentRequest request = Assert.Single(Requests(harness));
+        Assert.Equal(connection, request.Connection);
+        Assert.DoesNotContain(harness.Server.SentEnvelopes, item => item.MessageType is ResultType or "ProtocolProblem");
+
+        await harness.Session.Client.ConnectAndRecoverAsync(token);
+        await WaitForTheWireToGoQuietAsync(harness, token);
+        Assert.Contains(harness.Server.ReceivedEnvelopes, item => item.Connection > connection);
+        await AssertNothingIsSentAsync(harness, 1, token);
+        Assert.False(harness.Controller.IsFatalFaultLatched);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
     /// The second condition: a verified maintainer -- the maintenance switch on and the administrator proof
     /// configured, the check 「充电后返回服务」 makes. Without either the entry is not offered, nothing explains it to
     /// an operator it is not for, and a press sends nothing.
@@ -356,7 +428,11 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
             token,
             server => server.RespondToUnableToChargeConfirmations = true,
             recoveryOptions: new WireToGateRecoveryOptions(
-                maintenanceSwitch, proofVariable, "MAINTENANCE_ADMINISTRATOR", "CONFIGURED_PROOF"));
+                maintenanceSwitch,
+                proofVariable,
+                "MAINTENANCE_ADMINISTRATOR",
+                "CONFIGURED_PROOF",
+                UnableToChargeEntryEnabled: true));
         await WaitForThePlanOnTheViewModelAsync(harness, token);
 
         await AssertTheEntryStaysShutAsync(harness, token);
@@ -475,6 +551,62 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
         UnableToChargeDisplay confirmed = await WaitForStatusAsync(harness, WireToGateUnableToChargeText.ConfirmedStatus, token);
         Assert.Equal(4, confirmed.Options.Count);
         Assert.All(confirmed.Options, item => Assert.Null(item.Prompt.ResubmittedConfirmationRequestId));
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// A resubmission is offered only to the maintainer who made the unknown confirmation. Another maintainer at the
+    /// vehicle is asked afresh -- four conditions, no resubmission -- their press is a new confirmation under their own
+    /// name, and the resubmission prompt the first maintainer was shown is refused.
+    /// </summary>
+    /// <remarks>
+    /// The other half of what a resubmission is bound to, beside the charger (hmi#216 M1): without it the second
+    /// maintainer would confirm the first one's observation, sent under the first one's operator id. The review's
+    /// mutation X2 dropped that comparison and every test stayed green (8005-agv-onboard-hmi#222 review, item 3).
+    /// The operator id is read from a variable only this test uses, so changing who is at the vehicle touches no
+    /// other test running beside it.
+    /// </remarks>
+    [Fact]
+    public async Task AnotherMaintainerIsAskedAfreshInsteadOfResubmittingSomeoneElsesConfirmation()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        const string OperatorVariable = "W2G_G2_UNABLE_TO_CHARGE_OPERATOR";
+        Environment.SetEnvironmentVariable(OperatorVariable, "maintainer-a");
+        await using Harness harness = await StartAsync(token, operatorIdEnvironmentVariable: OperatorVariable);
+        UnableToChargeDisplay shown = await WaitForEntryAsync(harness, token);
+        Assert.False(await harness.ViewModel.ConfirmUnableToChargeAsync(Option(shown, "CHARGER_FAULT").Prompt, token));
+        await WaitForStatusAsync(harness, WireToGateUnableToChargeText.UnknownStatus, token);
+        SentRequest first = Assert.Single(Requests(harness));
+        UnableToChargeDisplay resubmission = await WaitForDisplayAsync(
+            harness,
+            display => display.Options.Count == 1
+                && display.Options[0].Prompt.ResubmittedConfirmationRequestId == first.ConfirmationRequestId,
+            "the entry to offer maintainer A the same confirmation again",
+            token);
+
+        Environment.SetEnvironmentVariable(OperatorVariable, "maintainer-b");
+        harness.ViewModel.RefreshWireToGateInputState();
+        UnableToChargeDisplay afresh = await WaitForDisplayAsync(
+            harness,
+            display => display.Options.Count == 4,
+            "the entry to ask maintainer B afresh",
+            token);
+        Assert.All(afresh.Options, item =>
+        {
+            Assert.Equal("maintainer-b", item.Prompt.OperatorId);
+            Assert.Null(item.Prompt.ResubmittedConfirmationRequestId);
+        });
+
+        harness.Server.RespondToUnableToChargeConfirmations = true;
+        Assert.False(await harness.Business.ConfirmUnableToChargeAsync(resubmission.Options[0].Prompt, token));
+        await AssertNothingIsSentAsync(harness, 1, token);
+        Assert.True(await harness.ViewModel.ConfirmUnableToChargeAsync(Option(afresh, "CHARGER_FAULT").Prompt, token));
+
+        SentRequest[] requests = Requests(harness);
+        Assert.Equal(2, requests.Length);
+        Assert.NotEqual(first.ConfirmationRequestId, requests[1].ConfirmationRequestId);
+        Assert.Equal("maintainer-a", first.Payload.GetProperty("operator").GetProperty("operatorId").GetString());
+        Assert.Equal("maintainer-b", requests[1].Payload.GetProperty("operator").GetProperty("operatorId").GetString());
         Assert.Empty(harness.UiErrors);
     }
 
@@ -1053,8 +1185,9 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
 
     private static WireToGateUnableToChargePrompt Prompt(string condition) => new(Charger, Maintainer, condition, null);
 
+    /// <summary>A verified maintainer, with <c>wireToGate.unableToChargeEntryEnabled</c> on.</summary>
     private static WireToGateRecoveryOptions VerifiedMaintainer() =>
-        new(true, ProofVariable, "MAINTENANCE_ADMINISTRATOR", "CONFIGURED_PROOF");
+        new(true, ProofVariable, "MAINTENANCE_ADMINISTRATOR", "CONFIGURED_PROOF", UnableToChargeEntryEnabled: true);
 
     /// <summary>
     /// A vehicle the server says is charging at <see cref="Charger"/>, arrived, with a verified maintainer at it,
@@ -1067,7 +1200,8 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
         IReadOnlyList<object>? legs = null,
         string purpose = Charging,
         string cycleState = "CHARGING",
-        WireToGateRecoveryOptions? recoveryOptions = null)
+        WireToGateRecoveryOptions? recoveryOptions = null,
+        string? operatorIdEnvironmentVariable = null)
     {
         Harness harness = await Harness.StartAsync(
             server =>
@@ -1081,7 +1215,8 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
                 configure?.Invoke(server);
             },
             token,
-            recoveryOptions: recoveryOptions ?? VerifiedMaintainer());
+            recoveryOptions: recoveryOptions ?? VerifiedMaintainer(),
+            operatorIdEnvironmentVariable: operatorIdEnvironmentVariable);
         List<string> diagnostics = [];
         SessionDiagnostics.Add(harness, diagnostics);
         harness.Session.Client.DiagnosticRecorded += (_, args) =>

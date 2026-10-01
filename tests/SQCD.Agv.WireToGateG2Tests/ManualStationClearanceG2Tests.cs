@@ -180,6 +180,46 @@ public sealed class ManualStationClearanceG2Tests
     }
 
     /// <summary>
+    /// The server ends the clearance in the snapshot it sends right after the result, on the same connection: the
+    /// operator is still told what the server answered, in the operator record the view model shows.
+    /// </summary>
+    /// <remarks>
+    /// The receive loop hands the result to the waiting press and goes straight on to the snapshot; the snapshot's
+    /// journey handler forgets the clearance before the press has read its own result. Until
+    /// <c>8005-agv-onboard-hmi#222</c>'s review (item 4) the press then found nothing to settle and told the operator
+    /// nothing. Asserted on <see cref="MainViewModel.Logs"/>, the layer the operator reads; the result line itself is
+    /// rightly gone with the clearance.
+    /// </remarks>
+    [Fact]
+    public async Task AResultFollowedAtOnceByTheSnapshotThatEndsTheClearanceIsStillShownToTheOperator()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(
+            token,
+            server =>
+            {
+                server.RespondToManualStationClearanceConfirmations = true;
+                server.VehicleBusinessStateAfterManualStationClearanceResult = BusinessState(2, "IDLE_RETURN");
+            });
+        StationClearanceDisplay shown = await WaitForEntryAsync(harness, token);
+
+        Assert.True(await harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt!, token));
+
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.Logs.Any(line =>
+                line.Kind == OperatorRecordKind.Success
+                && line.Message.Contains("服务端已确认清桩", StringComparison.Ordinal)),
+            "the operator record of the confirmed clearance on the view model",
+            token);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.StationClearance == StationClearanceDisplay.Empty,
+            "the entry to go with the snapshot that ended the clearance",
+            token);
+        Assert.Single(harness.Events, item => item.Kind == "STATION_CLEARANCE_CONFIRMED");
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
     /// The first of the three conditions: the server has to say the vehicle is clearing. A verified maintainer
     /// and a charger leg under any other purpose offer nothing, and a press that reaches the business service
     /// anyway sends nothing.

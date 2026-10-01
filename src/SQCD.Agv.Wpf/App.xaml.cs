@@ -225,7 +225,8 @@ public partial class App : System.Windows.Application, IDisposable
                         settings.WireToGate.RecoveryResumeEnabled,
                         settings.WireToGate.RecoveryAuthenticationProofEnvironmentVariable,
                         settings.WireToGate.RecoveryAdministratorRole,
-                        settings.WireToGate.RecoveryVerificationMethod),
+                        settings.WireToGate.RecoveryVerificationMethod,
+                        settings.WireToGate.UnableToChargeEntryEnabled),
                     // 让「本界面已禁止扫码开门」成为真的：v2 的扫码不经过控制器，所以业务服务
                     // 自己读锁存（8005-agv-onboard-hmi#171）。
                     () => _controller?.IsFatalFaultLatched == true);

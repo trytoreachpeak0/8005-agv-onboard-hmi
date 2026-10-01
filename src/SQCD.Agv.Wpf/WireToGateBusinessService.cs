@@ -11,11 +11,16 @@ using SQCD.Agv.Infrastructure;
 
 namespace SQCD.Agv.Wpf;
 
+/// <param name="UnableToChargeEntryEnabled">
+/// <c>wireToGate.unableToChargeEntryEnabled</c>, off unless configured: the unable-to-charge field confirmation entry
+/// is offered only on a vehicle whose control server handles the message (8005-agv-onboard-hmi#222).
+/// </param>
 public sealed record WireToGateRecoveryOptions(
     bool ResumeAfterRepairEnabled,
     string AuthenticationProofEnvironmentVariable,
     string AdministratorRole,
-    string VerificationMethod);
+    string VerificationMethod,
+    bool UnableToChargeEntryEnabled = false);
 
 /// <summary>
 /// Wires formal server commands to the safe physical executor.  The legacy rule

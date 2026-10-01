@@ -45,6 +45,36 @@ public sealed class ConfigurationTests
     /// 顺带盯住 <c>ruleGateway.heartbeatIntervalMs</c>——那是旧规则网关的心跳，与 WIRE_TO_GATE
     /// 会话无关，本票不动它，两者写在同一份文件里，容易被一起改错。
     /// </remarks>
+    /// <summary>
+    /// 现场确认充不上入口出厂为关：两份出厂配置都写 <c>false</c>，代码默认值也是 <c>false</c>（8005-agv-onboard-hmi#222 审查第 1 条）。
+    /// </summary>
+    /// <remarks>
+    /// 8005-agv-control-server#410 之前的服务端收到这条消息会关掉连接，协议里又没有服务端声明自己支持哪些消息的字段，
+    /// 所以只能由现场在服务端支持之后打开。出厂文件里少了这一项，读出来的仍是代码默认值，所以两边一起钉。
+    /// </remarks>
+    [Theory]
+    [InlineData("src/SQCD.Agv.Wpf/appsettings.json")]
+    [InlineData("src/SQCD.Agv.Wpf/appsettings.Production.example.json")]
+    public void TheUnableToChargeEntryShipsSwitchedOff(string relativePath)
+    {
+        string path = FindRepositoryFile(relativePath);
+        using JsonDocument document = JsonDocument.Parse(
+            File.ReadAllText(path),
+            new JsonDocumentOptions
+            {
+                CommentHandling = JsonCommentHandling.Skip,
+                AllowTrailingCommas = true
+            });
+
+        JsonElement wireToGate = document.RootElement.GetProperty("wireToGate");
+
+        Assert.True(
+            wireToGate.TryGetProperty("unableToChargeEntryEnabled", out JsonElement configured),
+            $"{relativePath} 的 wireToGate 节没有 unableToChargeEntryEnabled。");
+        Assert.Equal(JsonValueKind.False, configured.ValueKind);
+        Assert.False(new WireToGateSettings().UnableToChargeEntryEnabled);
+    }
+
     [Theory]
     [InlineData("src/SQCD.Agv.Wpf/appsettings.json")]
     [InlineData("src/SQCD.Agv.Wpf/appsettings.Production.example.json")]

@@ -23,7 +23,12 @@ namespace SQCD.Agv.Wpf;
 /// (<c>8005-agv-onboard-hmi#221</c>).
 /// </para>
 /// <para>
-/// <b>Three conditions, all read from what the server sent or from the maintainer check 「充电后返回服务」 makes.</b>
+/// <b>Off unless <c>wireToGate.unableToChargeEntryEnabled</c> is on</b> (8005-agv-onboard-hmi#222 review, item 1): a
+/// control server without <c>8005-agv-control-server#410</c> has no case for this message and closes the connection on
+/// it, and nothing on the wire says which kind of server the vehicle is talking to.
+/// </para>
+/// <para>
+/// <b>Then three conditions, all read from what the server sent or from the maintainer check 「充电后返回服务」 makes.</b>
 /// The business state's <c>activePurpose</c> is <c>CHARGING</c>; the maintenance switch is on, the session can carry
 /// a request, an operator id and the administrator proof are configured (<c>CanUseRecoveryOperator(requireProof:
 /// true)</c> -- the proof is checked to be configured and not sent, the message has no field for it, and no role is
@@ -55,6 +60,18 @@ public sealed partial class WireToGateBusinessService
 
     /// <summary>What the last confirmation came to. Guarded by the gate.</summary>
     private WireToGateUnableToChargeOutcome? _unableToChargeOutcome;
+
+    /// <summary>
+    /// The unanswered request the server's snapshot ended while its press was still waiting. Guarded by the gate.
+    /// </summary>
+    /// <remarks>
+    /// The vector itself sends the result and then a business state snapshot, and the receive loop hands the result
+    /// to the waiting press and goes straight on to the snapshot, whose journey handler forgets the request before the
+    /// press has read its own result. The press still tells the operator what the server recorded and decided: it
+    /// settles against this reference, and writes nothing to the result line, which belongs to a charging claim that
+    /// is over (8005-agv-onboard-hmi#222 review, item 2).
+    /// </remarks>
+    private UnableToChargeFieldConfirmationRequestedPayload? _unableToChargeForgotten;
 
     /// <summary>1 while a confirmation is waiting for its answer: a second press sends nothing.</summary>
     private int _unableToChargeAwaitingAnswer;
@@ -158,7 +175,19 @@ public sealed partial class WireToGateBusinessService
                     request,
                     cancellationToken)
                 .ConfigureAwait(false);
-            WireToGateUnableToChargeOutcome? settled = SettleUnableToCharge(result);
+            // Settled against this press's own request, not against the shared field a snapshot may have cleared.
+            WireToGateUnableToChargeOutcome? settled = ApplyOwnUnableToChargeOutcome(
+                request,
+                new WireToGateUnableToChargeOutcome(
+                    result.Outcome == UnableToChargeConfirmed
+                        ? WireToGateUnableToChargeOutcomeKind.Confirmed
+                        : WireToGateUnableToChargeOutcomeKind.Rejected,
+                    request.ConfirmationRequestId,
+                    request.ChargerStationId,
+                    request.ObservedCondition,
+                    result.ChargingPolicyDecision,
+                    result.Problem?.ReasonCode),
+                endsTheRequest: true);
             return settled is null
                 ? new UnableToChargePress(result.Outcome == UnableToChargeConfirmed, null, string.Empty)
                 : DescribeSettledUnableToCharge(settled);
@@ -249,6 +278,13 @@ public sealed partial class WireToGateBusinessService
             outcome = null;
         }
 
+        // Off unless configured: a control server without 8005-agv-control-server#410 ends the session on this
+        // message, and nothing on the wire says which kind of server this is.
+        if (!_recoveryOptions.UnableToChargeEntryEnabled)
+        {
+            return new([], WireToGateUnableToChargeUnavailability.Disabled, null);
+        }
+
         if (awaitingAnswer)
         {
             return new([], WireToGateUnableToChargeUnavailability.AwaitingAnswer, outcome);
@@ -305,8 +341,46 @@ public sealed partial class WireToGateBusinessService
 
         lock (_unableToChargeGate)
         {
+            if (_unableToChargeUnanswered is not null)
+            {
+                _unableToChargeForgotten = _unableToChargeUnanswered;
+            }
+
             _unableToChargeUnanswered = null;
             _unableToChargeOutcome = null;
+        }
+    }
+
+    /// <summary>
+    /// Applies what this press's own request came to. <c>null</c> when another path has already told the operator --
+    /// a result that arrived through the late path after this press's wait ran out. A request the server's snapshot
+    /// ended meanwhile is still told to the operator, and nothing is written to the result line.
+    /// </summary>
+    private WireToGateUnableToChargeOutcome? ApplyOwnUnableToChargeOutcome(
+        UnableToChargeFieldConfirmationRequestedPayload request,
+        WireToGateUnableToChargeOutcome outcome,
+        bool endsTheRequest)
+    {
+        lock (_unableToChargeGate)
+        {
+            if (ReferenceEquals(_unableToChargeUnanswered, request))
+            {
+                if (endsTheRequest)
+                {
+                    _unableToChargeUnanswered = null;
+                }
+
+                _unableToChargeOutcome = outcome;
+                return outcome;
+            }
+
+            if (ReferenceEquals(_unableToChargeForgotten, request))
+            {
+                _unableToChargeForgotten = null;
+                return outcome;
+            }
+
+            return null;
         }
     }
 
@@ -348,47 +422,36 @@ public sealed partial class WireToGateBusinessService
         UnableToChargeFieldConfirmationRequestedPayload request,
         string reasonCode)
     {
-        lock (_unableToChargeGate)
-        {
-            // Not if a result got here first through the late path: that one stands.
-            if (!ReferenceEquals(_unableToChargeUnanswered, request))
-            {
-                return null;
-            }
-
-            _unableToChargeUnanswered = null;
-            _unableToChargeOutcome = new WireToGateUnableToChargeOutcome(
+        // Not if a result got here first through the late path: that one stands.
+        return ApplyOwnUnableToChargeOutcome(
+            request,
+            new WireToGateUnableToChargeOutcome(
                 WireToGateUnableToChargeOutcomeKind.NotAccepted,
                 request.ConfirmationRequestId,
                 request.ChargerStationId,
                 request.ObservedCondition,
                 null,
-                reasonCode);
-            return _unableToChargeOutcome;
-        }
+                reasonCode),
+            endsTheRequest: true);
     }
 
     private WireToGateUnableToChargeOutcome? MarkUnableToChargeUnknown(
         UnableToChargeFieldConfirmationRequestedPayload? request,
         string? reason)
     {
-        lock (_unableToChargeGate)
-        {
-            // Not if an answer got here first through the late path: that one stands.
-            if (request is null || !ReferenceEquals(_unableToChargeUnanswered, request))
-            {
-                return null;
-            }
-
-            _unableToChargeOutcome = new WireToGateUnableToChargeOutcome(
-                WireToGateUnableToChargeOutcomeKind.Unknown,
-                request.ConfirmationRequestId,
-                request.ChargerStationId,
-                request.ObservedCondition,
-                null,
-                reason);
-            return _unableToChargeOutcome;
-        }
+        // Not if an answer got here first through the late path: that one stands. The request stays unanswered.
+        return request is null
+            ? null
+            : ApplyOwnUnableToChargeOutcome(
+                request,
+                new WireToGateUnableToChargeOutcome(
+                    WireToGateUnableToChargeOutcomeKind.Unknown,
+                    request.ConfirmationRequestId,
+                    request.ChargerStationId,
+                    request.ObservedCondition,
+                    null,
+                    reason),
+                endsTheRequest: false);
     }
 
     /// <summary>
@@ -436,6 +499,8 @@ public sealed partial class WireToGateBusinessService
                 WireToGateUnableToChargeText.NoticeText(view) + "本次未发送。",
             WireToGateUnableToChargeUnavailability.NoVerifiedMaintainer =>
                 "现场确认充不上需要已验证的维护人员和在线会话，本次未发送。",
+            WireToGateUnableToChargeUnavailability.Disabled =>
+                "现场确认充不上入口未启用（wireToGate.unableToChargeEntryEnabled），本次未发送。",
             _ => "服务端没有说明车辆在充电用途上，现场确认充不上未发送。"
         };
 }
