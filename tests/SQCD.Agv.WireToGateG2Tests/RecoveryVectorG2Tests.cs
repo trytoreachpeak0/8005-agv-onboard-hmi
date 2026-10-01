@@ -1659,9 +1659,10 @@ public sealed partial class RecoveryVectorG2Tests
                     }
                 }
 
-                if (settledAtStart is not null && ConcludesStartSettlement(args.Value, settledAtStart))
+                if (settledAtStart is not null
+                    && StartSettlementConclusion(args.Value, settledAtStart) is var conclusion and > 0)
                 {
-                    Interlocked.Exchange(ref startSettlementConcluded, 1);
+                    Interlocked.Exchange(ref startSettlementConcluded, conclusion);
                 }
             };
             business.Start();
@@ -1709,11 +1710,24 @@ public sealed partial class RecoveryVectorG2Tests
             // settlement still holds the attempt (onboard-hmi#230). The settlement's last event is
             // published after the result is acknowledged, and nothing awaits between it and the
             // claim's release.
+            //
+            // The event alone is not enough: the restore projection publishes the same kind for the
+            // same attempt when the settlement settled nothing (WireToGateBusinessService.cs, the
+            // OPERATION_RECOVERY_REQUIRED after TrySettleInterruptedOperationAsync returns
+            // NotSettled). The settlement's own result, under messageId = the attempt id, is what
+            // only a settlement that ran sends. RESULT_ACK_PENDING is the one ending where that
+            // result's arrival is not the point.
             if (settledAtStart is not null)
             {
                 await WaitUntilAsync(
-                    () => Volatile.Read(ref startSettlementConcluded) == 1,
-                    "the interrupted settlement of the seeded attempt to report and conclude",
+                    () => Volatile.Read(ref startSettlementConcluded) switch
+                    {
+                        StartSettlementReported => server.ReceivedEnvelopes.Any(envelope =>
+                            envelope.MessageType == "OperationResult" && envelope.MessageId == settledAtStart),
+                        StartSettlementAckPending => true,
+                        _ => false
+                    },
+                    "the interrupted settlement of the seeded attempt to send its OperationResult and conclude",
                     cancellationToken);
             }
 
@@ -1721,18 +1735,23 @@ public sealed partial class RecoveryVectorG2Tests
                 server, ownsServer, io, session, business, journal, blocked, logger, safety);
         }
 
+        private const int StartSettlementReported = 1;
+
+        private const int StartSettlementAckPending = 2;
+
         /// <summary>
-        /// The event the interrupted settlement of <paramref name="attemptId"/> ends on: its reported
-        /// outcome, or the pending-ack notice when the result's DurableAck did not come back. The
-        /// settlement's own OPERATION_PROGRESS snapshot comes before the result and does not count.
+        /// Which ending of the interrupted settlement of <paramref name="attemptId"/> this event is, or
+        /// 0: its reported outcome, or the pending-ack notice when the result's DurableAck did not
+        /// come back. The settlement's own OPERATION_PROGRESS snapshot comes before the result and does
+        /// not count. A reported outcome is necessary, not sufficient -- see the wait that reads it.
         /// </summary>
-        private static bool ConcludesStartSettlement(WireToGateOperatorEvent operatorEvent, string attemptId) =>
+        private static int StartSettlementConclusion(WireToGateOperatorEvent operatorEvent, string attemptId) =>
             operatorEvent.Kind switch
             {
-                "OPERATION_RECOVERY_REQUIRED" or "OPERATION_COMPLETED" =>
-                    operatorEvent.Operation?.SlotOperationAttemptId == attemptId,
-                "RESULT_ACK_PENDING" => true,
-                _ => false
+                "OPERATION_RECOVERY_REQUIRED" or "OPERATION_COMPLETED"
+                    when operatorEvent.Operation?.SlotOperationAttemptId == attemptId => StartSettlementReported,
+                "RESULT_ACK_PENDING" => StartSettlementAckPending,
+                _ => 0
             };
 
         /// <summary>The vehicle's motion is unknown again, the way it was across the handshake.</summary>
