@@ -64,6 +64,8 @@ public sealed partial class RecoveryVectorG2Tests
         WireToGateOperatorEvent shown = harness.OperatorEvents.First(item => item.Kind == "RECOVERY_AUTHORIZATION_UNKNOWN");
         Assert.Contains("超过 5 分钟", shown.Message, StringComparison.Ordinal);
         Assert.Contains("请先确认仓门附近安全", shown.Message, StringComparison.Ordinal);
+        // A command the server may have authorized is held when it arrives, and the prompt says so (onboard-hmi#239).
+        Assert.Contains("命令到车后会先扣住、不会自动开锁", shown.Message, StringComparison.Ordinal);
         Assert.Single(harness.ResultsOfType("LoadCompensationRequested"));
         Assert.Equal(0, harness.Io.UnlockCount);
     }

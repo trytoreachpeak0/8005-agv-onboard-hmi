@@ -26,3 +26,16 @@ public sealed record HeldRecoveryCommandDisplay(
 {
     public static HeldRecoveryCommandDisplay Empty { get; } = new(false, false, null, false, string.Empty, false);
 }
+
+/// <summary>按下「不执行」之后的结局，窗口据此决定要不要弹失败提示（<c>8005-agv-onboard-hmi#239</c>）。</summary>
+public enum HeldRecoveryDeclineOutcome
+{
+    /// <summary>已向服务端回复，扣住结束。</summary>
+    Answered,
+
+    /// <summary>装货修正的第一次按下：只把后果写进说明，等第二次按下。不是失败。</summary>
+    AwaitingSecondPress,
+
+    /// <summary>没有回复服务端：命令已不再扣住，或者结果没能写入发件箱。</summary>
+    NotAnswered
+}

@@ -1704,11 +1704,26 @@ public sealed class MainViewModel : ViewModelBase
         CancellationToken cancellationToken = default) =>
         DecideHeldRecoveryCommandAsync(shown, _heldRecoveryCommandConfirmer, cancellationToken);
 
-    /// <summary>操作员在对话框里选择不执行之后调用，其余同 <see cref="ConfirmHeldRecoveryCommandAsync"/>。</summary>
-    public Task<bool> DeclineHeldRecoveryCommandAsync(
+    /// <summary>
+    /// 操作员在对话框里选择不执行之后调用，其余同 <see cref="ConfirmHeldRecoveryCommandAsync"/>。装货修正要按两次：第一次
+    /// 业务服务只把后果写进说明、答 false，这里据说明是否已「等第二次按下」把它与真正的失败分开。
+    /// </summary>
+    public async Task<HeldRecoveryDeclineOutcome> DeclineHeldRecoveryCommandAsync(
         WireToGateHeldRecoveryCommandPrompt shown,
-        CancellationToken cancellationToken = default) =>
-        DecideHeldRecoveryCommandAsync(shown, _heldRecoveryCommandDecliner, cancellationToken);
+        CancellationToken cancellationToken = default)
+    {
+        if (await DecideHeldRecoveryCommandAsync(shown, _heldRecoveryCommandDecliner, cancellationToken)
+                .ConfigureAwait(true))
+        {
+            return HeldRecoveryDeclineOutcome.Answered;
+        }
+
+        return _heldRecoveryCommandView?.Invoke() is { DeclineArmed: true, Prompt: { } now }
+            && now.CommandMessageId == shown.CommandMessageId
+            && now.PrimaryId == shown.PrimaryId
+                ? HeldRecoveryDeclineOutcome.AwaitingSecondPress
+                : HeldRecoveryDeclineOutcome.NotAnswered;
+    }
 
     private async Task<bool> DecideHeldRecoveryCommandAsync(
         WireToGateHeldRecoveryCommandPrompt shown,

@@ -169,7 +169,7 @@ public sealed partial class WireToGateBusinessService
         CancellationToken cancellationToken) =>
         RunRecoveryRequestAsync(
             WireToGateRecoveryVectorTypes.LoadCancellation,
-            () => RequestLoadCancellationCoreAsync(reason, selectedDemandId, cancellationToken),
+            () => RequestLoadCancellationCoreAsync(reason, selectedDemandId, pressedByOperator: true, cancellationToken),
             cancellationToken);
 
     /// <param name="reason">
@@ -185,6 +185,7 @@ public sealed partial class WireToGateBusinessService
                 CompensateLoadAction,
                 WireToGateRecoveryVectorTypes.LoadCompensation,
                 ReasonOrDefault(reason, "现场确认装货无法继续，申请补偿清空目标仓位。"),
+                pressedByOperator: true,
                 cancellationToken),
             cancellationToken);
 
@@ -193,7 +194,7 @@ public sealed partial class WireToGateBusinessService
         CancellationToken cancellationToken = default) =>
         RunRecoveryRequestAsync(
             WireToGateRecoveryVectorTypes.LoadCorrection,
-            () => RequestLoadCorrectionCoreAsync(reason, cancellationToken),
+            () => RequestLoadCorrectionCoreAsync(reason, pressedByOperator: true, cancellationToken),
             cancellationToken);
 
     /// <param name="reason">As for <see cref="RequestLoadCompensationAsync"/>.</param>
@@ -206,6 +207,7 @@ public sealed partial class WireToGateBusinessService
                 FaultCargoHandoffAction,
                 WireToGateRecoveryVectorTypes.FaultCargoHandoff,
                 ReasonOrDefault(reason, "现场确认故障仓货物需要交接处理。"),
+                pressedByOperator: true,
                 cancellationToken),
             cancellationToken);
 
@@ -219,6 +221,7 @@ public sealed partial class WireToGateBusinessService
                 ForcedMechanicalRecoveryAction,
                 WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery,
                 ReasonOrDefault(reason, "现场确认仓门无法电动解锁，申请强制机械恢复。"),
+                pressedByOperator: true,
                 cancellationToken),
             cancellationToken);
 
@@ -587,9 +590,15 @@ public sealed partial class WireToGateBusinessService
             && IsSameSlotOperationAttempt(snapshot.SlotOperationAttemptId, context);
     }
 
+    /// <param name="pressedByOperator">
+    /// Whether a person pressed for this. Only a person's press moves the window a later automatic resend runs on; the
+    /// restart settlement's resend passes <c>false</c> (onboard-hmi#239 review M1). No default, on purpose: every caller
+    /// has to say which it is.
+    /// </param>
     private async Task<bool> RequestLoadCancellationCoreAsync(
         string reason,
         string? selectedDemandId,
+        bool pressedByOperator,
         CancellationToken cancellationToken)
     {
         WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
@@ -633,9 +642,13 @@ public sealed partial class WireToGateBusinessService
         RefuseDoorOpeningCancellationWhileLatched();
         WireToGateRecoveryOperationContext operation = RequireUnsettledLoadOperation(state);
         string cancellationId = InFlightLoadCancellationId(operation.DemandId, operation.SlotOperationAttemptId);
-        // The press the restart settlement's resend asks for (onboard-hmi#239). Recorded by the resend too, which only
-        // gets here on one this process holds.
-        MarkOperatorPress(cancellationId);
+        // The press the restart settlement's resend runs on (onboard-hmi#239). A resend does not move it: a link that keeps
+        // dropping would otherwise carry the press forward for as long as it dropped, and an authorization long after the
+        // last person pressed would open doors (review M1, probe: 306 s after the press, resent, authorized, unlocked).
+        if (pressedByOperator)
+        {
+            MarkOperatorPress(cancellationId);
+        }
 
         if (await AskForLoadCancellationAsync(
                 state,
@@ -1173,13 +1186,15 @@ public sealed partial class WireToGateBusinessService
             "上次按下的装货取消没有收到服务端答复，已按首次内容重新申请；不会再执行原装货。 ");
         await RunRecoveryRequestAsync(
                 WireToGateRecoveryVectorTypes.LoadCancellation,
-                () => RequestLoadCancellationCoreAsync(pending.Reason, null, cancellationToken),
+                () => RequestLoadCancellationCoreAsync(pending.Reason, null, pressedByOperator: false, cancellationToken),
                 cancellationToken)
             .ConfigureAwait(false);
     }
 
+    /// <param name="pressedByOperator">As for <see cref="RequestLoadCancellationCoreAsync"/>.</param>
     private async Task<bool> RequestLoadCorrectionCoreAsync(
         string reason,
+        bool pressedByOperator,
         CancellationToken cancellationToken)
     {
         WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
@@ -1238,7 +1253,7 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
         }
 
-        await SendLoadCorrectionRequestAsync(vector, correctionReason, cancellationToken)
+        await SendLoadCorrectionRequestAsync(vector, correctionReason, pressedByOperator, cancellationToken)
             .ConfigureAwait(false);
         PublishOperatorResponse(
             "RECOVERY_VECTOR_REQUESTED",
@@ -1250,11 +1265,12 @@ public sealed partial class WireToGateBusinessService
     /// Sent again on every press while the correction command is on its way, and after a reconnect by
     /// <see cref="ResendAuthorizationRequestAsync"/>; the server compares each with the request it accepted.
     /// </summary>
+    /// <param name="pressedByOperator">As for <see cref="RequestLoadCancellationCoreAsync"/>.</param>
     private async Task SendLoadCorrectionRequestAsync(
         WireToGateRecoveryVectorContext vector,
         string correctionReason,
-        CancellationToken cancellationToken,
-        bool pressedByOperator = true)
+        bool pressedByOperator,
+        CancellationToken cancellationToken)
     {
         WireToGateOperatorContextPayload context = RequirePersistedOperator(vector);
         if (pressedByOperator)
@@ -1278,10 +1294,12 @@ public sealed partial class WireToGateBusinessService
             .ConfigureAwait(false);
     }
 
+    /// <param name="pressedByOperator">As for <see cref="RequestLoadCancellationCoreAsync"/>.</param>
     private async Task<bool> RequestRecoveryActionVectorCoreAsync(
         string action,
         string vectorType,
         string reason,
+        bool pressedByOperator,
         CancellationToken cancellationToken)
     {
         WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
@@ -1314,7 +1332,7 @@ public sealed partial class WireToGateBusinessService
             // nothing (onboard-hmi#236 review M1). Only this state passes without a snapshot; every other press still
             // needs one. The operator is the one pressing now: the server does not compare it, and keeps who asked
             // again (control-server event 2129).
-            await SendLoadCompensationRequestAsync(awaiting, cancellationToken, ReadOperatorContext())
+            await SendLoadCompensationRequestAsync(awaiting, pressedByOperator, cancellationToken, ReadOperatorContext())
                 .ConfigureAwait(false);
             PublishOperatorResponse(
                 "RECOVERY_VECTOR_REQUESTED",
@@ -1483,13 +1501,17 @@ public sealed partial class WireToGateBusinessService
         // A person's press for this action, which a command for it replayed within the window may run on
         // (onboard-hmi#239). The fault cargo handoff's command comes straight back for this action; compensation
         // records it again when it asks for its authorization.
-        MarkOperatorPress(actionId);
+        if (pressedByOperator)
+        {
+            MarkOperatorPress(actionId);
+        }
+
         if (snapshot is not null
             && string.Equals(snapshot.SelectedAction, action, StringComparison.Ordinal))
         {
             if (action == CompensateLoadAction)
             {
-                await SendLoadCompensationRequestAsync(vector, cancellationToken)
+                await SendLoadCompensationRequestAsync(vector, pressedByOperator, cancellationToken)
                     .ConfigureAwait(false);
             }
 
@@ -1540,7 +1562,7 @@ public sealed partial class WireToGateBusinessService
 
         if (action == CompensateLoadAction)
         {
-            await SendLoadCompensationRequestAsync(vector, cancellationToken)
+            await SendLoadCompensationRequestAsync(vector, pressedByOperator, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -1599,11 +1621,12 @@ public sealed partial class WireToGateBusinessService
     /// The server authorizes by recoveryActionId and binds its compensation command only once;
     /// another request simply re-sends the persisted command.
     /// </summary>
+    /// <param name="pressedByOperator">As for <see cref="RequestLoadCancellationCoreAsync"/>.</param>
     private async Task SendLoadCompensationRequestAsync(
         WireToGateRecoveryVectorContext vector,
+        bool pressedByOperator,
         CancellationToken cancellationToken,
-        WireToGateOperatorContextPayload? operatorContext = null,
-        bool pressedByOperator = true)
+        WireToGateOperatorContextPayload? operatorContext = null)
     {
         if (pressedByOperator)
         {

@@ -226,6 +226,78 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(HeldRecoveryCommandDisplay.Empty, viewModel.HeldRecoveryCommand);
     }
 
+    /// <summary>
+    /// A latched severe safety fault hides 「确认执行」 -- it would open doors -- and leaves 「不执行」: it opens nothing, and
+    /// is then the only way the server's session can end (onboard-hmi#239 review).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ALatchHidesConfirmAndLeavesDeclineForTheHeldCommand()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RestartedVehicle vehicle = await RestartAfterALostCompensationCommandAsync(token);
+        RecoveryVectorHarness afterRestart = vehicle.Harness;
+        await WaitForHeldAsync(afterRestart, token);
+        await using OnboardController controller = MultiDemandViewModelTests.Controller();
+        MainViewModel viewModel = await MultiDemandViewModelTests.ViewModel(controller);
+        HeldRecoveryCommandWiring.Configure(viewModel, afterRestart.Business);
+        Assert.True(viewModel.HeldRecoveryCommand.CanConfirm);
+
+        controller.EnterFatalFault("UI_COMMAND_FAILED", OnboardFatalFaultBanner.UiCommandFailed);
+        viewModel.RefreshWireToGateInputState();
+
+        HeldRecoveryCommandDisplay shown = viewModel.HeldRecoveryCommand;
+        Assert.False(shown.CanConfirm);
+        Assert.True(shown.CanDecline);
+        Assert.True(shown.HasNotice);
+
+        Assert.Equal(
+            HeldRecoveryDeclineOutcome.Answered,
+            await viewModel.DeclineHeldRecoveryCommandAsync(shown.Prompt!, token));
+        JsonElement result = await afterRestart.WaitForResultAsync("LoadCompensationResult", token);
+        Assert.Equal("FAILED", result.GetProperty("overallOutcome").GetString());
+        Assert.Equal(0, afterRestart.Io.UnlockCount);
+        Assert.Equal(HeldRecoveryCommandDisplay.Empty, viewModel.HeldRecoveryCommand);
+    }
+
+    /// <summary>
+    /// A decline whose answer cannot be written to the outbox keeps the command held: the server is still waiting, so
+    /// the buttons stay and the screen says why. Pressed again once the journal takes it, it is answered.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ADeclineWhoseAnswerCannotBeWrittenKeepsTheCommandHeld()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FailingResultWriteJournal? journal = null;
+        await using RestartedVehicle vehicle = await RestartAfterALostCompensationCommandAsync(
+            token,
+            wrapJournal: inner => journal = new FailingResultWriteJournal(inner));
+        RecoveryVectorHarness afterRestart = vehicle.Harness;
+        WireToGateHeldRecoveryCommandPrompt held = await WaitForHeldAsync(afterRestart, token);
+        journal!.FailTheNextResultWrite();
+
+        Assert.False(await afterRestart.Business.DeclineHeldRecoveryCommandAsync(held, token));
+
+        Assert.Equal(1, journal.FailedWrites);
+        Assert.Equal(held, afterRestart.Business.HeldRecoveryCommand);
+        Assert.True(afterRestart.Business.CanDeclineHeldRecoveryCommand);
+        Assert.Contains(afterRestart.OperatorEvents, item =>
+            item.Kind == "RECOVERY_BLOCKED" && item.Message.Contains("没能写入发件箱", StringComparison.Ordinal));
+        Assert.DoesNotContain(afterRestart.OperatorEvents, item => item.Kind == "RECOVERY_COMMAND_DECLINED");
+        Assert.DoesNotContain(
+            vehicle.After.ReceivedEnvelopes,
+            envelope => envelope.MessageType == "LoadCompensationResult");
+
+        Assert.True(await afterRestart.Business.DeclineHeldRecoveryCommandAsync(held, token));
+        JsonElement result = await afterRestart.WaitForResultAsync("LoadCompensationResult", token);
+        Assert.Equal("FAILED", result.GetProperty("overallOutcome").GetString());
+        Assert.Null(afterRestart.Business.HeldRecoveryCommand);
+        Assert.Equal(0, afterRestart.Io.UnlockCount);
+    }
+
     /// <summary>Confirming does not skip the motion check: a vehicle whose motion is unknown still opens nothing.</summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
@@ -289,7 +361,8 @@ public sealed partial class RecoveryVectorG2Tests
         // signal and IO readings are stamped with the real time, and a business clock left five minutes ahead of them
         // refuses the command as stale (VEHICLE_NOT_READY) whether it is held or not -- which made this test green on
         // the base for the wrong reason.
-        BehindRealTimeClock clock = new(WireToGateBusinessService.AuthorizationResendWindow + TimeSpan.FromSeconds(1));
+        TimeSpan lag = WireToGateBusinessService.AuthorizationResendWindow + TimeSpan.FromSeconds(1);
+        RealTimeLaggingClock clock = new(lag);
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
             token,
             server =>
@@ -309,7 +382,7 @@ public sealed partial class RecoveryVectorG2Tests
             () => !harness.Session.Current.Connected,
             "the vehicle to see the connection the command went down with drop",
             token);
-        clock.CatchUp();
+        clock.Advance(lag);
         await harness.Session.Client.ConnectAndRecoverAsync(token);
 
         await WaitForHeldOrExecutedAsync(harness, "LoadCompensationResult", token);
@@ -661,10 +734,12 @@ public sealed partial class RecoveryVectorG2Tests
     /// Off, the restarted server does not replay the command by itself, and the test sends it where the replay would
     /// come.
     /// </param>
+    /// <param name="wrapJournal">Wraps the restarted vehicle's journal.</param>
     private static async Task<RestartedVehicle> RestartAfterALostCompensationCommandAsync(
         CancellationToken token,
         Func<WireToGateRecoveryState, WireToGateRecoveryState>? beforeRestart = null,
-        bool replayInHandshake = true)
+        bool replayInHandshake = true,
+        Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null)
     {
         string journalPath = NewRestartJournalPath();
         FakeControlServer server = RecoveryVectorHarness.NewServer();
@@ -698,18 +773,97 @@ public sealed partial class RecoveryVectorG2Tests
             journalPath: journalPath,
             restart: true,
             cargoInTargetSlots: true,
-            lockerWaitTimesOut: true);
+            lockerWaitTimesOut: true,
+            wrapJournal: wrapJournal);
         return new RestartedVehicle(server, serverAfterRestart, afterRestart);
     }
 
-    /// <summary>The real time less a lag, until <see cref="CatchUp"/> drops the lag.</summary>
-    private sealed class BehindRealTimeClock(TimeSpan lag) : IClock
+    /// <summary>
+    /// Fails the next write of a recovery vector result to the outbox, once armed, with an <see cref="IOException"/>,
+    /// and lets every other call through.
+    /// </summary>
+    private sealed class FailingResultWriteJournal(IWireToGateJournal inner) : IWireToGateJournal
     {
-        private long _lagTicks = lag.Ticks;
+        private int _armed;
+        private int _failed;
 
-        public DateTimeOffset Now => DateTimeOffset.UtcNow - TimeSpan.FromTicks(Interlocked.Read(ref _lagTicks));
+        public int FailedWrites => Volatile.Read(ref _failed);
 
-        public void CatchUp() => Interlocked.Exchange(ref _lagTicks, 0);
+        public void FailTheNextResultWrite() => Volatile.Write(ref _armed, 1);
+
+        public Task<WireToGateDurableMessage> SaveOutgoingBeforeSendAsync(
+            WireToGateDurableMessage message,
+            CancellationToken cancellationToken = default)
+        {
+            if (message.DeduplicationKey.StartsWith("recovery-vector-result:", StringComparison.Ordinal)
+                && Interlocked.Exchange(ref _armed, 0) == 1)
+            {
+                Interlocked.Increment(ref _failed);
+                throw new IOException("injected: the outbox could not be written");
+            }
+
+            return inner.SaveOutgoingBeforeSendAsync(message, cancellationToken);
+        }
+
+        public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(CancellationToken cancellationToken = default) =>
+            inner.ReadRecoveryStateAsync(cancellationToken);
+
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            CancellationToken cancellationToken = default) =>
+            inner.UpdateRecoveryStateAsync(change, cancellationToken);
+
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            Action<WireToGateRecoveryState> settled,
+            CancellationToken cancellationToken = default) =>
+            inner.UpdateRecoveryStateAsync(change, settled, cancellationToken);
+
+        public Task InitializeAsync(CancellationToken cancellationToken = default) =>
+            inner.InitializeAsync(cancellationToken);
+
+        public Task<string> ReadJournalEpochAsync(CancellationToken cancellationToken = default) =>
+            inner.ReadJournalEpochAsync(cancellationToken);
+
+        public Task<WireToGateDurableMessage> ReplaceOutgoingForReplayAsync(
+            WireToGateDurableMessage expected,
+            WireToGateDurableMessage replacement,
+            CancellationToken cancellationToken = default) =>
+            inner.ReplaceOutgoingForReplayAsync(expected, replacement, cancellationToken);
+
+        public Task<WireToGateDurableMessage?> ReadOutgoingByDeduplicationKeyAsync(
+            string deduplicationKey,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken);
+
+        public Task<WireToGateDurableMessage?> ReadOutgoingByMessageIdAsync(
+            string messageId,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadOutgoingByMessageIdAsync(messageId, cancellationToken);
+
+        public Task MarkOutgoingAcknowledgedAsync(
+            string messageId,
+            string acceptedContentSha256,
+            CancellationToken cancellationToken = default) =>
+            inner.MarkOutgoingAcknowledgedAsync(messageId, acceptedContentSha256, cancellationToken);
+
+        public Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ReadUnacknowledgedOutgoingAsync(cancellationToken);
+
+        public Task<IReadOnlyList<WireToGateAppliedJourneySnapshot>> ReadAppliedJourneySnapshotsAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ReadAppliedJourneySnapshotsAsync(cancellationToken);
+
+        public Task<WireToGateAppliedJourneySnapshot> SaveAppliedJourneySnapshotAsync(
+            WireToGateAppliedJourneySnapshot snapshot,
+            CancellationToken cancellationToken = default) =>
+            inner.SaveAppliedJourneySnapshotAsync(snapshot, cancellationToken);
+
+        public Task<string> ComputeContentSha256Async(CancellationToken cancellationToken = default) =>
+            inner.ComputeContentSha256Async(cancellationToken);
+
+        public ValueTask DisposeAsync() => inner.DisposeAsync();
     }
 
     private sealed record RestartedVehicle(

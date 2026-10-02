@@ -228,12 +228,14 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// 取消请求，拿到授权后照常清空。
     /// </summary>
     /// <remarks>
+    /// <para>
     /// onboard-hmi#239 起重启后不再自动重发：授权一到车就开锁清空，而首次按下可能已是很久以前、车旁未必有人。
     /// 所以这里先断言车辆没有自己重发、也没有报 UNKNOWN，再由人按一次。
-    /// </remarks>
-    /// <remarks>
+    /// </para>
+    /// <para>
     /// 先红：当前代码会话一就绪就走中断结算，发出 <c>OperationResult</c> <c>UNKNOWN</c>／
     /// <c>RECOVERY_CHECKPOINT_NOT_UNIQUE</c>，服务端据此判 RecoveryRequired，而它那边可能早已授权了取消。
+    /// </para>
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-03")]
@@ -429,7 +431,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
             long baselineRevision = 1,
             Action<WireToGateBusinessService>? observe = null,
             Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
-            Action<WireToGateSessionService>? observeSession = null)
+            Action<WireToGateSessionService>? observeSession = null,
+            IClock? businessClock = null)
         {
             FakeControlServer server = NewServer();
             configure?.Invoke(server);
@@ -477,7 +480,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 session,
                 io,
                 logger,
-                new SystemClock(),
+                businessClock ?? new SystemClock(),
                 () => true,
                 new WireToGateSlotOperationExecutorOptions(
                     TimeSpan.FromSeconds(1),

@@ -172,8 +172,9 @@ public sealed partial class WireToGateBusinessService
     /// <summary>
     /// What the operator is shown when the vehicle will not ask again by itself. It says what the vehicle does not
     /// know, and both ways it can turn out: if the server did authorize, its command may still arrive on its own --
-    /// the server replays a bound command into every new session -- and open doors; if it did not, nothing happens
-    /// until someone presses (onboard-hmi#236 review S1).
+    /// the server replays a bound command into every new session -- and is held for the operator to confirm, since
+    /// this process holds no press within the window for it (onboard-hmi#239); if it did not, nothing happens until
+    /// someone presses (onboard-hmi#236 review S1).
     /// </summary>
     private void PublishAuthorizationUnknown(WireToGateRecoveryVectorContext? vector, string why)
     {
@@ -184,8 +185,8 @@ public sealed partial class WireToGateBusinessService
             $"recovery-authorization-unknown:{vector?.PrimaryId ?? "review"}:{why}",
             "RECOVERY_AUTHORIZATION_UNKNOWN",
             $"车辆 {_session.Client.AgvId} 的{subject}授权状态无法确认：{why}。"
-            + "如果服务端此前已经授权，重连后命令可能自动下发并开锁，请先确认仓门附近安全；"
-            + "如果仓门一直没有开始动作，请确认现场后再按一次。 ");
+            + "如果服务端此前已经授权，命令到车后会先扣住、不会自动开锁，屏上会出现「确认执行」「不执行」，"
+            + "请先确认仓门附近安全再决定；如果一直没有出现，请确认现场后再按一次。 ");
     }
 
     /// <summary>
@@ -225,7 +226,7 @@ public sealed partial class WireToGateBusinessService
                 return true;
             }
 
-            await SendLoadCompensationRequestAsync(vector, cancellationToken, pressedByOperator: false)
+            await SendLoadCompensationRequestAsync(vector, pressedByOperator: false, cancellationToken)
                 .ConfigureAwait(false);
         }
         else
@@ -237,7 +238,7 @@ public sealed partial class WireToGateBusinessService
                 throw new InvalidDataException("RECOVERY_REASON_REQUIRED");
             }
 
-            await SendLoadCorrectionRequestAsync(vector, reason, cancellationToken, pressedByOperator: false)
+            await SendLoadCorrectionRequestAsync(vector, reason, pressedByOperator: false, cancellationToken)
                 .ConfigureAwait(false);
         }
 

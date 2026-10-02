@@ -2688,6 +2688,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     LogSeverity.Warning,
                     nameof(WireToGateBusinessService),
                     $"操作员选择不执行修复后续行命令：attempt={command.SlotOperationAttemptId}，action={command.RecoveryActionId}，以VEHICLE_NOT_READY拒绝。");
+                // Ended before the rejection: it forgets the session first, and that would read as the hold voided.
+                ForgetHeldCommandFor(command.RecoveryActionId, "操作员选择不执行，以 VEHICLE_NOT_READY 拒绝");
                 await SendResumeRejectedAsync(command, "VEHICLE_NOT_READY", cancellationToken).ConfigureAwait(false);
                 PublishOperatorEvent(
                     $"recovery-command-declined:{ResumeAfterRepairKind}:{command.RecoveryActionId}",

@@ -427,7 +427,8 @@ public partial class MainWindow : Window
     /// </summary>
     /// <remarks>
     /// 装货修正的「不执行」由业务服务要求按两次：第一次只把后果写进说明、不回复服务端，第二次才回复，而且只对第一次
-    /// 显示的那条命令有效。对话框正文里带着同一句后果，所以第一次按下后返回 false 不是失败，屏上说明会请人再按一次。
+    /// 显示的那条命令有效。对话框正文里带着同一句后果。第一次按下的结局是「等第二次按下」，不弹失败；第二次按下没能
+    /// 回复服务端时照常弹出（onboard-hmi#239 审查备注）。
     /// </remarks>
     private async void OnDeclineHeldRecoveryCommandClick(object sender, RoutedEventArgs e)
     {
@@ -444,10 +445,11 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!await _viewModel.DeclineHeldRecoveryCommandAsync(prompt)
-            && prompt.DeclineConsequence.Length == 0)
+        if (await _viewModel.DeclineHeldRecoveryCommandAsync(prompt) == HeldRecoveryDeclineOutcome.NotAnswered)
         {
-            ShowRecoveryFailure("这条命令已不再等待确认，没有向服务端回复。原因见操作记录。", "未回复");
+            ShowRecoveryFailure(
+                "没有向服务端回复：命令已不再等待确认，或者结果没能写入发件箱。原因见入口下方说明和操作记录。",
+                "未回复");
         }
     }
 

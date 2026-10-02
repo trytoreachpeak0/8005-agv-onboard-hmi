@@ -221,7 +221,11 @@ public sealed partial class WireToGateBusinessService
     /// A copy of the held command carries on by itself -- a press within the window has earned it again -- so the
     /// held one is no longer the operator's to decide.
     /// </summary>
-    private void ReleaseHeldCommandFor(string primaryId)
+    private void ReleaseHeldCommandFor(string primaryId) =>
+        ForgetHeldCommandFor(primaryId, "已由本进程内的新按键接手执行");
+
+    /// <summary>Ends the hold on <paramref name="primaryId"/>'s command without showing anything: the caller does.</summary>
+    private void ForgetHeldCommandFor(string primaryId, string why)
     {
         if (Volatile.Read(ref _heldRecoveryCommand) is { } held
             && held.Prompt.PrimaryId == primaryId
@@ -230,7 +234,7 @@ public sealed partial class WireToGateBusinessService
             _logger.Write(
                 LogSeverity.Information,
                 nameof(WireToGateBusinessService),
-                $"扣住的服务端恢复命令已由本进程内的新按键接手执行：type={held.Prompt.VectorType}，primaryId={primaryId}。");
+                $"扣住的服务端恢复命令结束扣住：type={held.Prompt.VectorType}，primaryId={primaryId}，原因={why}。");
         }
     }
 
@@ -363,7 +367,13 @@ public sealed partial class WireToGateBusinessService
             return false;
         }
 
-        if (Interlocked.CompareExchange(ref _heldRecoveryCommand, null, held) != held)
+        // A confirmed command is no longer the operator's to decide the moment it goes. A declined one stays held until
+        // its answer is in the outbox: should the answer not be written, the server is still waiting, and the two buttons
+        // are the only way on from here (onboard-hmi#239 review).
+        bool stillHeld = decision == HeldRecoveryDecision.Confirmed
+            ? Interlocked.CompareExchange(ref _heldRecoveryCommand, null, held) == held
+            : Volatile.Read(ref _heldRecoveryCommand) == held;
+        if (!stillHeld)
         {
             PublishOperatorResponse(
                 "RECOVERY_BLOCKED",
@@ -396,7 +406,9 @@ public sealed partial class WireToGateBusinessService
                 HandleBlockedResumeAsync(resume, cancellationToken, decision),
             _ => throw new InvalidOperationException("RECOVERY_COMMAND_INVALID")
         }).ConfigureAwait(false);
-        return true;
+        // A decline has answered the server exactly when it ended the hold: an answer that could not be written leaves the
+        // command held, and that press answered nothing.
+        return decision == HeldRecoveryDecision.Confirmed || Volatile.Read(ref _heldRecoveryCommand) != held;
     }
 
     /// <summary>
@@ -442,9 +454,11 @@ public sealed partial class WireToGateBusinessService
                 exception);
             if (!onFile)
             {
+                // The hold stays: the server is still waiting, and pressing again is the way on.
                 PublishOperatorResponse(
                     "RECOVERY_BLOCKED",
-                    "「不执行」的结果没能记下，服务端仍在等待；命令下次到达时会再次请你确认。未开任何仓门。 ");
+                    $"「不执行」的结果没能写入发件箱（{exception.Message}），服务端仍在等待，扣住的命令保留；"
+                    + "未开任何仓门，可以再按一次「不执行」。 ");
                 return;
             }
 
@@ -454,6 +468,9 @@ public sealed partial class WireToGateBusinessService
                 "恢复结果已持久化，等待服务端确认；不会重复执行仓门IO。 ");
         }
 
+        // On file now, so the server will hear it: the operator has nothing left to decide. Ended before the vector is
+        // forgotten, so the forgetting does not read as the hold being voided.
+        ForgetHeldCommandFor(context.PrimaryId, "操作员选择不执行，结果已写入发件箱");
         if (refused is not null)
         {
             if (context.ExceptionRecoverySessionId is null)
@@ -484,8 +501,11 @@ public sealed partial class WireToGateBusinessService
             refused is not null
                 ? $"已按操作员选择不执行{subject}{FormatSlots(context.Slots)}，未开任何仓门；已向服务端报告未执行（FAILED），"
                     + "服务端将结束本次恢复，如仍需处理请重新发起。 "
-                : $"已按操作员选择不再继续{subject}；部分仓门已开过：{FormatSlots(opened)}。"
-                    + "已按日志如实向服务端报告结果未知（UNKNOWN），服务端将结束本次恢复，请现场核对这些仓位后重新发起。 ");
+                : result.OverallOutcome == "COMPLETED"
+                    ? $"已按操作员选择不再继续{subject}；按日志这条恢复在重启前已执行完毕"
+                        + $"（{FormatSlots(opened)}），已如实向服务端报告完成，车辆没有再开任何仓门。 "
+                    : $"已按操作员选择不再继续{subject}；部分仓门已开过：{FormatSlots(opened)}。"
+                        + "已按日志如实向服务端报告结果未知（UNKNOWN），服务端将结束本次恢复，请现场核对这些仓位后重新发起。 ");
     }
 
     /// <summary>The slots the journal shows <paramref name="primaryId"/>'s vector opened, or may have.</summary>
