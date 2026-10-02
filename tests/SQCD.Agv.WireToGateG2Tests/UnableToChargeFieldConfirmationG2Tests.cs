@@ -56,6 +56,9 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
 
     private static readonly TimeSpan HoldWindow = TimeSpan.FromMilliseconds(500);
 
+    /// <summary>The schema's three <c>chargingPolicyDecision</c> values.</summary>
+    private static readonly string[] Decisions = ["RETRY_LATER", "MANUAL_CHARGING_HOLD", "REASSIGN_CHARGER"];
+
     static UnableToChargeFieldConfirmationG2Tests()
     {
         // The harness is MultiDemandJourneyG2Tests'; its credential and operator variables are set by that class's
@@ -118,11 +121,14 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
         Assert.InRange(sentOperator.GetProperty("verifiedAt").GetDateTimeOffset(), before, after);
         Assert.InRange(request.Payload.GetProperty("observedAt").GetDateTimeOffset(), before, after);
 
-        // The business state that follows the result ends the charging purpose on this vehicle, and is acknowledged.
+        // The business state that follows the result takes the vehicle into the clearing, and is acknowledged. That
+        // closes the entry and leaves the result line (8005-agv-onboard-hmi#242).
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.UnableToCharge == UnableToChargeDisplay.Empty
+            () => !harness.ViewModel.UnableToCharge.CanConfirm
+                && harness.ViewModel.UnableToCharge.Status == WireToGateUnableToChargeText.ConfirmedStatus
+                && harness.Session.CurrentJourney.VehicleBusinessState?.ActivePurpose == "CLEARING_MAINTENANCE"
                 && AcknowledgedKinds(harness.Server, sentBefore).Length == 1,
-            "the business state after the result to be applied, acknowledged and to end the entry",
+            "the business state after the result to be applied, acknowledged and to close the entry",
             token);
         Assert.Equal(
             [RequestType, "SnapshotAppliedAck"],
@@ -133,14 +139,18 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
             harness.Server.SentEnvelopes.Skip(receivedBefore).Select(envelope => envelope.MessageType).ToArray());
         Assert.Equal("CLEARING_MAINTENANCE", harness.Session.CurrentJourney.VehicleBusinessState!.ActivePurpose);
 
-        // What the server recorded and decided reaches the operator, at the layer the operator reads. The snapshot
-        // right behind the result ends the charging claim and with it the result line, so this is the operator
-        // record; until the review's item 2 the press could lose the race to that snapshot and tell nobody.
+        // What the server recorded and decided reaches the operator, at the layer the operator reads: the result line,
+        // kept through the clearing, and the operator record. Until the review's item 2 the press could lose the race
+        // to the snapshot right behind the result and tell nobody.
+        Assert.Contains(
+            WireToGateUnableToChargeText.DecisionText("REASSIGN_CHARGER"),
+            harness.ViewModel.UnableToCharge.StatusText,
+            StringComparison.Ordinal);
         await harness.WaitUntilAsync(
             () => harness.ViewModel.Logs.Any(line =>
                 line.Kind == OperatorRecordKind.Success
                 && line.Message.Contains("服务端已记录现场确认", StringComparison.Ordinal)
-                && line.Message.Contains("改派其它充电桩", StringComparison.Ordinal)),
+                && line.Message.Contains(WireToGateUnableToChargeText.DecisionText("REASSIGN_CHARGER"), StringComparison.Ordinal)),
             "the operator record of what the server recorded and decided on the view model",
             token);
         Assert.Single(harness.Events, item => item.Kind == "UNABLE_TO_CHARGE_CONFIRMED");
@@ -159,9 +169,9 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
     [Theory]
     [Trait("ProtocolVector", "CV-UNABLE-TO-CHARGE-FIELD-CONFIRMATION")]
     [Trait("IntegrationSlice", "FP-IS-13")]
-    [InlineData("RETRY_LATER", "稍后重试")]
-    [InlineData("MANUAL_CHARGING_HOLD", "转人工充电")]
-    [InlineData("REASSIGN_CHARGER", "改派其它充电桩")]
+    [InlineData("RETRY_LATER", "清桩后回充电队列等待，暂无其它可用充电桩")]
+    [InlineData("MANUAL_CHARGING_HOLD", "转人工充电等待，人工充电后由「充电后返回服务」解除")]
+    [InlineData("REASSIGN_CHARGER", "清桩后回充电队列，由服务端重新分配充电桩")]
     public async Task TheServersDecisionChangesNothingOnTheVehicleUntilItsNextBusinessState(
         string decision,
         string decisionText)
@@ -214,10 +224,13 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
         // The server's next business state is what moves the vehicle on, and it is acknowledged.
         await harness.Server.SendJourneySnapshotAsync(
             "VehicleBusinessStateSnapshot", BusinessState(2, "CLEARING_MAINTENANCE", "UNABLE_TO_CHARGE"));
+        // The clearing closes the entry; the result line and the decision stay (8005-agv-onboard-hmi#242).
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.UnableToCharge == UnableToChargeDisplay.Empty
+            () => !harness.ViewModel.UnableToCharge.CanConfirm
+                && harness.ViewModel.UnableToCharge.Status == WireToGateUnableToChargeText.ConfirmedStatus
+                && harness.ViewModel.UnableToCharge.StatusText.Contains($"服务端决定：{decisionText}", StringComparison.Ordinal)
                 && harness.ViewModel.ChargingStatus == "UNABLE_TO_CHARGE",
-            "the entry and the result line to go, and the charging cell to change, with the server's next business state",
+            "the entry to go, the result line to stay, and the charging cell to change, with the server's next business state",
             token);
         await harness.WaitUntilAsync(
             () => AcknowledgedKinds(harness.Server, sentBefore).Length == 1,
@@ -250,9 +263,10 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
         UnableToChargeDisplay confirmed = await WaitForStatusAsync(harness, WireToGateUnableToChargeText.ConfirmedStatus, token);
         Assert.Contains("服务端已记录现场确认", confirmed.StatusText, StringComparison.Ordinal);
         Assert.DoesNotContain("服务端决定", confirmed.StatusText, StringComparison.Ordinal);
-        foreach (string decision in new[] { "稍后重试", "转人工充电", "改派其它充电桩" })
+        foreach (string decision in Decisions)
         {
-            Assert.DoesNotContain(decision, confirmed.StatusText, StringComparison.Ordinal);
+            Assert.DoesNotContain(
+                WireToGateUnableToChargeText.DecisionText(decision), confirmed.StatusText, StringComparison.Ordinal);
         }
 
         Assert.Single(harness.Events, item => item.Kind == "UNABLE_TO_CHARGE_CONFIRMED");
@@ -495,7 +509,7 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
 
         UnableToChargeDisplay rejected = await WaitForStatusAsync(harness, WireToGateUnableToChargeText.RejectedStatus, token);
         Assert.Contains("ACTION_NOT_ALLOWED_IN_STATE", rejected.StatusText, StringComparison.Ordinal);
-        Assert.Contains("服务端决定：稍后重试", rejected.StatusText, StringComparison.Ordinal);
+        Assert.Contains($"服务端决定：{WireToGateUnableToChargeText.DecisionText("RETRY_LATER")}", rejected.StatusText, StringComparison.Ordinal);
         Assert.Equal(4, rejected.Options.Count);
         Assert.All(rejected.Options, item => Assert.Null(item.Prompt.ResubmittedConfirmationRequestId));
         Assert.Single(harness.Events, item => item.Kind == "UNABLE_TO_CHARGE_REJECTED");
@@ -743,7 +757,7 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
         await harness.Server.SendUnableToChargeResultAsync(
             request.MessageId, request.ConfirmationRequestId, chargingPolicyDecision: "RETRY_LATER");
         UnableToChargeDisplay confirmed = await WaitForStatusAsync(harness, WireToGateUnableToChargeText.ConfirmedStatus, token);
-        Assert.Contains("服务端决定：稍后重试", confirmed.StatusText, StringComparison.Ordinal);
+        Assert.Contains($"服务端决定：{WireToGateUnableToChargeText.DecisionText("RETRY_LATER")}", confirmed.StatusText, StringComparison.Ordinal);
         Assert.All(confirmed.Options, item => Assert.Null(item.Prompt.ResubmittedConfirmationRequestId));
 
         await harness.Server.SendUnableToChargeResultAsync(
@@ -865,7 +879,7 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
             () =>
             {
                 Assert.Equal(confirmed.StatusText, harness.ViewModel.UnableToCharge.StatusText);
-                Assert.DoesNotContain("转人工充电", harness.ViewModel.UnableToCharge.StatusText, StringComparison.Ordinal);
+                Assert.DoesNotContain(WireToGateUnableToChargeText.DecisionText("MANUAL_CHARGING_HOLD"), harness.ViewModel.UnableToCharge.StatusText, StringComparison.Ordinal);
                 Assert.Single(harness.Events, item => item.Kind.StartsWith("UNABLE_TO_CHARGE_", StringComparison.Ordinal));
             },
             token);
@@ -1084,6 +1098,120 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
         Assert.Equal(2, requests.Length);
         Assert.NotEqual(unanswered.ConfirmationRequestId, requests[1].ConfirmationRequestId);
         Assert.Equal(requests[1].ConfirmationRequestId, requests[1].MessageId);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// A confirmation the server takes moves the vehicle from <c>CHARGING</c> to <c>CLEARING_MAINTENANCE</c>
+    /// (<c>chargingCycleState=UNABLE_TO_CHARGE</c>), the business state arriving right behind the result, as
+    /// <c>8005-agv-control-server#410</c> does. That is the same charging claim going on into its clearing, not its
+    /// end: the result line -- that the server recorded it, and its decision -- stays on screen through it, while the
+    /// entry itself closes with the charging purpose.
+    /// </summary>
+    /// <remarks>
+    /// Red before <c>8005-agv-onboard-hmi#242</c>: any purpose other than <c>CHARGING</c> counted as the claim being
+    /// over, and the line went within a second of the result (cs#410 G3, <c>G3-13-23</c>/<c>G3-13-27</c>).
+    /// </remarks>
+    [Fact]
+    public async Task AConfirmedResultStaysOnTheLineThroughTheClearingItLeadsTo()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(
+            token,
+            server =>
+            {
+                server.RespondToUnableToChargeConfirmations = true;
+                server.UnableToChargePolicyDecision = "MANUAL_CHARGING_HOLD";
+                server.VehicleBusinessStateAfterUnableToChargeResult =
+                    BusinessState(2, "CLEARING_MAINTENANCE", "UNABLE_TO_CHARGE");
+            });
+        UnableToChargeDisplay shown = await WaitForEntryAsync(harness, token);
+        await WaitForTheWireToGoQuietAsync(harness, token);
+        int sentBefore = harness.Server.ReceivedEnvelopes.Count;
+
+        Assert.True(await harness.ViewModel.ConfirmUnableToChargeAsync(Option(shown, "CONNECTION_FAILED").Prompt, token));
+        await harness.WaitUntilAsync(
+            () => harness.Session.CurrentJourney.VehicleBusinessState?.ActivePurpose == "CLEARING_MAINTENANCE"
+                && AcknowledgedKinds(harness.Server, sentBefore).Length == 1
+                && harness.ViewModel.ChargingStatus == "UNABLE_TO_CHARGE",
+            "the clearing business state behind the result to be applied and acknowledged",
+            token);
+
+        await AssertWhileAsync(
+            () =>
+            {
+                UnableToChargeDisplay display = harness.ViewModel.UnableToCharge;
+                Assert.False(display.CanConfirm);
+                Assert.True(display.HasStatus);
+                Assert.Equal(WireToGateUnableToChargeText.ConfirmedStatus, display.Status);
+                Assert.Contains("服务端已记录现场确认", display.StatusText, StringComparison.Ordinal);
+                Assert.Contains(
+                    $"服务端决定：{WireToGateUnableToChargeText.DecisionText("MANUAL_CHARGING_HOLD")}",
+                    display.StatusText,
+                    StringComparison.Ordinal);
+                Assert.Equal(WireToGateUnableToChargeText.ConfirmedStatus, WireToGateUnableToChargeText.Status(harness.Business.UnableToCharge.LastOutcome));
+            },
+            token,
+            TimeSpan.FromSeconds(1.5));
+        Assert.Single(harness.Events, item => item.Kind == "UNABLE_TO_CHARGE_CONFIRMED");
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// What ends the line kept through the clearing: a purpose that is neither <c>CHARGING</c> nor
+    /// <c>CLEARING_MAINTENANCE</c>, a clearing whose charging cycle is no longer <c>UNABLE_TO_CHARGE</c> (the cycle
+    /// closed), or a <c>CHARGING</c> purpose after the clearing -- a new attempt, which starts from nothing, as
+    /// <see cref="ALaterChargingAttemptStartsFromNothing"/> says.
+    /// </summary>
+    [Theory]
+    [InlineData("IDLE_RETURN", "NOT_CHARGING")]
+    [InlineData("TRANSPORT", "NOT_CHARGING")]
+    [InlineData("CLEARING_MAINTENANCE", "NOT_CHARGING")]
+    [InlineData("CLEARING_MAINTENANCE", "COMPLETE")]
+    [InlineData(Charging, "ALLOCATED")]
+    public async Task TheLineKeptThroughTheClearingGoesWhenTheClaimOrItsCycleEnds(string purpose, string cycleState)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAsync(
+            token,
+            server =>
+            {
+                server.RespondToUnableToChargeConfirmations = true;
+                server.UnableToChargePolicyDecision = "REASSIGN_CHARGER";
+                server.VehicleBusinessStateAfterUnableToChargeResult =
+                    BusinessState(2, "CLEARING_MAINTENANCE", "UNABLE_TO_CHARGE");
+            });
+        UnableToChargeDisplay shown = await WaitForEntryAsync(harness, token);
+        Assert.True(await harness.ViewModel.ConfirmUnableToChargeAsync(Option(shown, "CHARGER_FAULT").Prompt, token));
+        await WaitForDisplayAsync(
+            harness,
+            display => !display.CanConfirm
+                && display.Status == WireToGateUnableToChargeText.ConfirmedStatus
+                && harness.Session.CurrentJourney.VehicleBusinessState?.ActivePurpose == "CLEARING_MAINTENANCE",
+            "the confirmed line to stand in the clearing",
+            token);
+
+        await harness.Server.SendJourneySnapshotAsync("VehicleBusinessStateSnapshot", BusinessState(3, purpose, cycleState));
+        UnableToChargeDisplay after = await WaitForDisplayAsync(
+            harness,
+            display => !display.HasStatus
+                && harness.Session.CurrentJourney.VehicleBusinessState?.Revision == 3,
+            "the result line to go with the claim or its cycle",
+            token);
+        Assert.Equal(string.Empty, after.Status);
+        if (purpose == Charging)
+        {
+            // A new attempt: asked afresh, with all four conditions and no resubmission.
+            UnableToChargeDisplay fresh = await WaitForEntryAsync(harness, token);
+            Assert.Equal(4, fresh.Options.Count);
+            Assert.All(fresh.Options, item => Assert.Null(item.Prompt.ResubmittedConfirmationRequestId));
+            Assert.False(fresh.HasStatus);
+        }
+        else
+        {
+            Assert.Equal(UnableToChargeDisplay.Empty, after);
+        }
+
         Assert.Empty(harness.UiErrors);
     }
 

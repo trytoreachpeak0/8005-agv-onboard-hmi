@@ -146,9 +146,9 @@ public sealed class WireToGateUnableToChargeTests
     /// and the decision beside it, unknown with the sentence the ticket fixes, and not accepted as its own line.
     /// </summary>
     [Theory]
-    [InlineData("RETRY_LATER", "稍后重试")]
-    [InlineData("MANUAL_CHARGING_HOLD", "转人工充电")]
-    [InlineData("REASSIGN_CHARGER", "改派其它充电桩")]
+    [InlineData("RETRY_LATER", "清桩后回充电队列等待，暂无其它可用充电桩")]
+    [InlineData("MANUAL_CHARGING_HOLD", "转人工充电等待，人工充电后由「充电后返回服务」解除")]
+    [InlineData("REASSIGN_CHARGER", "清桩后回充电队列，由服务端重新分配充电桩")]
     public void TheResultLineSaysWhatTheServerSaidAndDecided(string decision, string decisionText)
     {
         WireToGateUnableToChargeOutcome confirmed = Outcome(WireToGateUnableToChargeOutcomeKind.Confirmed, decision, null);
@@ -163,6 +163,24 @@ public sealed class WireToGateUnableToChargeTests
         Assert.Contains(Charger, WireToGateUnableToChargeText.StatusText(confirmed), StringComparison.Ordinal);
         Assert.Contains("ACTION_NOT_ALLOWED_IN_STATE", WireToGateUnableToChargeText.StatusText(rejected), StringComparison.Ordinal);
         Assert.Contains($"服务端决定：{decisionText}", WireToGateUnableToChargeText.StatusText(rejected), StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// None of the three decisions reads as the vehicle already having been sent somewhere
+    /// (8005-agv-onboard-hmi#242): <c>REASSIGN_CHARGER</c> puts the vehicle back in the charging queue after the
+    /// clearing for the server to assign a charger again, not at another charger now (8005-agv-control-server#410).
+    /// </summary>
+    [Theory]
+    [InlineData("RETRY_LATER")]
+    [InlineData("MANUAL_CHARGING_HOLD")]
+    [InlineData("REASSIGN_CHARGER")]
+    public void NoDecisionSaysTheVehicleWasAlreadySentToAnotherCharger(string decision)
+    {
+        string text = WireToGateUnableToChargeText.DecisionText(decision);
+
+        Assert.DoesNotContain("改派", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("其它充电桩", text.Replace("暂无其它可用充电桩", string.Empty, StringComparison.Ordinal), StringComparison.Ordinal);
+        Assert.NotEqual(decision, text);
     }
 
     [Fact]

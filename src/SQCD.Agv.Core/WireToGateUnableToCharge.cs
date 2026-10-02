@@ -60,7 +60,8 @@ public sealed record WireToGateUnableToChargeOutcome(
 /// <summary>
 /// The unable-to-charge entry as the business service offers it: one prompt per condition the operator may
 /// report when it can be pressed -- the four of the schema, or the single one a resubmission is bound to -- why
-/// not otherwise, and the last confirmation's outcome while the server still says the vehicle is charging.
+/// not otherwise, and the last confirmation's outcome while the server still says the vehicle is charging,
+/// or in the clearing that charging went on into (8005-agv-onboard-hmi#242).
 /// </summary>
 public sealed record WireToGateUnableToChargeView(
     IReadOnlyList<WireToGateUnableToChargePrompt> Prompts,
