@@ -283,10 +283,7 @@ public sealed partial class WireToGateBusinessService
 
         // Read against the journey at this instant, not against a field some handler cleared: the view model's
         // journey handler runs before this service's (the station clearance's reasoning).
-        if (ServerSaysTheChargingIsOver(journey, clearingSeen))
-        {
-            outcome = null;
-        }
+        outcome = ServerSaysTheChargingIsOver(journey, clearingSeen) ? null : AsShownNow(outcome, journey);
 
         // Off unless configured: a control server without 8005-agv-control-server#410 ends the session on this
         // message, and nothing on the wire says which kind of server this is.
@@ -360,6 +357,48 @@ public sealed partial class WireToGateBusinessService
     private static bool IsTheClearingOfAnUnableToCharge(WireToGateVehicleBusinessState state) =>
         state is { ActivePurpose: "CLEARING_MAINTENANCE", ChargingCycleState: "UNABLE_TO_CHARGE" };
 
+    private static bool IsTheClearingOfAnUnableToCharge(WireToGateJourneySnapshot journey) =>
+        journey.VehicleBusinessState is { } state && IsTheClearingOfAnUnableToCharge(state);
+
+    /// <summary>
+    /// The last outcome as it may be shown against this journey, within a claim the server has not ended;
+    /// <c>null</c> when it no longer belongs on screen.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Another charger is another attempt</b>: an outcome about a charger other than the plan's current one is not
+    /// shown, whatever the purpose says (8005-agv-onboard-hmi#242 review, N1). A plan that names no charger says
+    /// nothing either way.
+    /// </para>
+    /// <para>
+    /// <b>Into the clearing go only a confirmation and an unknown</b> (8005-agv-onboard-hmi#242 review, S2, S3). A
+    /// rejection or a refusal shown there would contradict the clearing the server has since entered on its own
+    /// confirmation -- 「服务端未确认充不上」 beside a charging cell that reads 充不上电. An unknown stays, for a late
+    /// result can still settle it, and is marked so its line does not ask for a resubmission the closed entry no
+    /// longer allows.
+    /// </para>
+    /// </remarks>
+    private static WireToGateUnableToChargeOutcome? AsShownNow(
+        WireToGateUnableToChargeOutcome? outcome,
+        WireToGateJourneySnapshot journey)
+    {
+        if (outcome is null
+            || (WireToGateUnableToCharge.ResolveCharger(journey) is { } charger
+                && !string.Equals(charger, outcome.ChargerStationId, StringComparison.Ordinal)))
+        {
+            return null;
+        }
+
+        return !IsTheClearingOfAnUnableToCharge(journey)
+            ? outcome
+            : outcome.Kind switch
+            {
+                WireToGateUnableToChargeOutcomeKind.Confirmed => outcome,
+                WireToGateUnableToChargeOutcomeKind.Unknown => outcome with { InClearing = true },
+                _ => null
+            };
+    }
+
     /// <summary>
     /// Forgets the unanswered request and the last outcome once the server says the charging claim is over, so a
     /// later charging attempt at the same charger starts from nothing.
@@ -370,9 +409,16 @@ public sealed partial class WireToGateBusinessService
         {
             if (!ServerSaysTheChargingIsOver(journey, _unableToChargeClearingSeen))
             {
-                if (journey.VehicleBusinessState is { } state && IsTheClearingOfAnUnableToCharge(state))
+                if (IsTheClearingOfAnUnableToCharge(journey))
                 {
                     _unableToChargeClearingSeen = true;
+                }
+
+                // What no longer belongs on screen is not kept either, so a plan that comes back to the old charger
+                // does not bring a rejection back with it.
+                if (AsShownNow(_unableToChargeOutcome, journey) is null)
+                {
+                    _unableToChargeOutcome = null;
                 }
 
                 return;
@@ -478,7 +524,7 @@ public sealed partial class WireToGateBusinessService
         string? reason)
     {
         // Not if an answer got here first through the late path: that one stands. The request stays unanswered.
-        return request is null
+        WireToGateUnableToChargeOutcome? unknown = request is null
             ? null
             : ApplyOwnUnableToChargeOutcome(
                 request,
@@ -490,6 +536,11 @@ public sealed partial class WireToGateBusinessService
                     null,
                     reason),
                 endsTheRequest: false);
+
+        // The operator record says what the line says: in the clearing, nothing about resubmitting.
+        return unknown is not null && IsTheClearingOfAnUnableToCharge(_session.CurrentJourney)
+            ? unknown with { InClearing = true }
+            : unknown;
     }
 
     /// <summary>

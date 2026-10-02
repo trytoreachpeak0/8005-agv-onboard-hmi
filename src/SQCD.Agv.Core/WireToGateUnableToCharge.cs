@@ -48,6 +48,11 @@ public enum WireToGateUnableToChargeOutcomeKind
 /// The server ended the charging claim while this press was waiting: the entry is gone, so an unknown or refused
 /// press cannot be resubmitted, and the operator is not told to (8005-agv-onboard-hmi#222 incremental review, item 1).
 /// </param>
+/// <param name="InClearing">
+/// An unknown shown while the server has the vehicle in the clearing of an unable-to-charge: the claim goes on, but
+/// the entry is closed, so the operator is not told to resubmit; a late result still settles it
+/// (8005-agv-onboard-hmi#242 review, S3).
+/// </param>
 public sealed record WireToGateUnableToChargeOutcome(
     WireToGateUnableToChargeOutcomeKind Kind,
     string ConfirmationRequestId,
@@ -55,7 +60,8 @@ public sealed record WireToGateUnableToChargeOutcome(
     string ObservedCondition,
     string? ChargingPolicyDecision,
     string? ReasonCode,
-    bool ChargingEnded = false);
+    bool ChargingEnded = false,
+    bool InClearing = false);
 
 /// <summary>
 /// The unable-to-charge entry as the business service offers it: one prompt per condition the operator may

@@ -146,7 +146,7 @@ public sealed class WireToGateUnableToChargeTests
     /// and the decision beside it, unknown with the sentence the ticket fixes, and not accepted as its own line.
     /// </summary>
     [Theory]
-    [InlineData("RETRY_LATER", "清桩后回充电队列等待，暂无其它可用充电桩")]
+    [InlineData("RETRY_LATER", "清桩后回充电队列等待")]
     [InlineData("MANUAL_CHARGING_HOLD", "转人工充电等待，人工充电后由「充电后返回服务」解除")]
     [InlineData("REASSIGN_CHARGER", "清桩后回充电队列，由服务端重新分配充电桩")]
     public void TheResultLineSaysWhatTheServerSaidAndDecided(string decision, string decisionText)
@@ -179,8 +179,26 @@ public sealed class WireToGateUnableToChargeTests
         string text = WireToGateUnableToChargeText.DecisionText(decision);
 
         Assert.DoesNotContain("改派", text, StringComparison.Ordinal);
-        Assert.DoesNotContain("其它充电桩", text.Replace("暂无其它可用充电桩", string.Empty, StringComparison.Ordinal), StringComparison.Ordinal);
+        Assert.DoesNotContain("其它充电桩", text, StringComparison.Ordinal);
         Assert.NotEqual(decision, text);
+    }
+
+    /// <summary>
+    /// An unknown shown in the clearing does not ask for a resubmission: the entry is closed there
+    /// (8005-agv-onboard-hmi#242 review, S3). It still says the result is unknown, and that a late one shows here.
+    /// </summary>
+    [Fact]
+    public void AnUnknownInTheClearingDoesNotAskForAResubmission()
+    {
+        WireToGateUnableToChargeOutcome unknown =
+            Outcome(WireToGateUnableToChargeOutcomeKind.Unknown, null, null) with { InClearing = true };
+
+        string text = WireToGateUnableToChargeText.StatusText(unknown);
+        Assert.Equal(WireToGateUnableToChargeText.UnknownStatus, WireToGateUnableToChargeText.Status(unknown));
+        Assert.Contains("结果未知", text, StringComparison.Ordinal);
+        Assert.Contains(WireToGateUnableToChargeText.InClearingSentence, text, StringComparison.Ordinal);
+        Assert.DoesNotContain("重新提交", text, StringComparison.Ordinal);
+        Assert.Contains(Charger, text, StringComparison.Ordinal);
     }
 
     [Fact]
