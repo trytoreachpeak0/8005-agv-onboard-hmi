@@ -739,6 +739,44 @@ public sealed class FakeControlServer : IAsyncDisposable
     public int LoadCompensationResultAcksToDrop { get; set; }
 
     /// <summary>
+    /// 补偿命令只在收到 <c>LoadCompensationRequested</c> 之后才发，与真服务端同形：control-server 的
+    /// <c>OnboardRecoveryCoordinator.SubmitActionAsync</c> 对 <c>COMPENSATE_LOAD_ALL_EMPTY</c> 只建流程
+    /// （AwaitingAuthorization），命令由 <c>AuthorizeLoadCompensationAsync</c> 排出。不设时沿用旧行为：受理动作后
+    /// 立刻发命令，补偿请求丢没丢在 G2 里看不出来（onboard-hmi#236）。
+    /// </summary>
+    public bool SendLoadCompensationCommandOnRequest { get; set; }
+
+    /// <summary>
+    /// 这么多条 <c>LoadCompensationRequested</c> 记下之后不处理，直接断开连接：请求在服务端处理之前随连接丢失，
+    /// 服务端没有建立任何授权（onboard-hmi#236）。
+    /// </summary>
+    public int LoadCompensationRequestsToLose
+    {
+        get => Volatile.Read(ref _loadCompensationRequestsToLose);
+        set => Volatile.Write(ref _loadCompensationRequestsToLose, value);
+    }
+
+    private int _loadCompensationRequestsToLose;
+
+    private static bool TryConsume(ref int remaining)
+    {
+        int seen;
+        do
+        {
+            seen = Volatile.Read(ref remaining);
+            if (seen <= 0)
+            {
+                return false;
+            }
+        }
+        while (Interlocked.CompareExchange(ref remaining, seen - 1, seen) != seen);
+
+        return true;
+    }
+
+    private readonly ConcurrentDictionary<string, JsonElement> _submittedRecoveryActions = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// 这么多条 <c>SlotOperationCommandRejected</c> 收下了却不回 <c>DurableAck</c>：拒绝留在车的日志里
     /// 未确认，同一条续行命令再到时车要把它原样再发一次（onboard-hmi#119）。
     /// </summary>
@@ -1840,6 +1878,13 @@ public sealed class FakeControlServer : IAsyncDisposable
                         await HandleManualStationClearanceConfirmationRequestedAsync(context, root)
                             .ConfigureAwait(false);
                         break;
+                    case "LoadCompensationRequested"
+                        when TryConsume(ref _loadCompensationRequestsToLose):
+                        context.Client.Close();
+                        return;
+                    case "LoadCompensationRequested" when SendLoadCompensationCommandOnRequest:
+                        await HandleLoadCompensationRequestedAsync(context, root).ConfigureAwait(false);
+                        break;
                     case "UnableToChargeFieldConfirmationRequested" when CloseConnectionOnUnableToChargeConfirmation:
                         context.Client.Close();
                         return;
@@ -2591,7 +2636,10 @@ public sealed class FakeControlServer : IAsyncDisposable
                 }))
             .ConfigureAwait(false);
 
-        if (SendRecoveryVectorCommandAfterRecoveryAction)
+        _submittedRecoveryActions[actionId] = payload.Clone();
+        if (SendRecoveryVectorCommandAfterRecoveryAction
+            && !(SendLoadCompensationCommandOnRequest
+                && payload.GetProperty("action").GetString() == "COMPENSATE_LOAD_ALL_EMPTY"))
         {
             BeforeRecoveryVectorCommand?.Invoke();
             for (int copy = 0; copy < Math.Max(1, RecoveryVectorCommandCopies); copy++)
@@ -2600,6 +2648,28 @@ public sealed class FakeControlServer : IAsyncDisposable
                     .ConfigureAwait(false);
             }
         }
+    }
+
+    /// <summary>
+    /// <c>AuthorizeLoadCompensationAsync</c>'s shape: the compensation is authorized by its recovery action id, and
+    /// every request for an action the server accepted earns the command -- a second request re-sends it rather
+    /// than being refused, as the real server re-sends the persisted command.
+    /// </summary>
+    private async Task HandleLoadCompensationRequestedAsync(ConnectionContext context, JsonElement request)
+    {
+        JsonElement payload = request.GetProperty("payload");
+        string actionId = payload.GetProperty("recoveryActionId").GetString()!;
+        if (!_submittedRecoveryActions.TryGetValue(actionId, out JsonElement submitted))
+        {
+            return;
+        }
+
+        await SendRecoveryVectorCommandAsync(
+                context,
+                submitted,
+                submitted.GetProperty("exceptionRecoverySessionId").GetString()!,
+                actionId)
+            .ConfigureAwait(false);
     }
 
     /// <summary>
