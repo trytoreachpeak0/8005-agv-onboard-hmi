@@ -66,12 +66,20 @@ public sealed partial class WireToGateBusinessService
     /// </summary>
     /// <remarks>
     /// The vector itself sends the result and then a business state snapshot, and the receive loop hands the result
-    /// to the waiting press and goes straight on to the snapshot, whose journey handler forgets the request before the
-    /// press has read its own result. The press still tells the operator what the server recorded and decided: it
-    /// settles against this reference, and writes nothing to the result line, which belongs to a charging claim that
-    /// is over (8005-agv-onboard-hmi#222 review, item 2).
+    /// to the waiting press and goes straight on to the snapshot. When that snapshot ends the charging claim, its
+    /// journey handler forgets the request before the press has read its own result. The press still tells the
+    /// operator what the server recorded and decided: it settles against this reference, and writes nothing to the
+    /// result line, which belongs to a charging claim that is over (8005-agv-onboard-hmi#222 review, item 2). The
+    /// clearing a confirmation leads to does not end the claim (8005-agv-onboard-hmi#242), so there the press settles
+    /// the request as usual and the line stays.
     /// </remarks>
     private UnableToChargeFieldConfirmationRequestedPayload? _unableToChargeForgotten;
+
+    /// <summary>
+    /// The server has said this charging claim went on into the clearing of an unable-to-charge, so a
+    /// <c>CHARGING</c> purpose after it is a new attempt. Guarded by the gate.
+    /// </summary>
+    private bool _unableToChargeClearingSeen;
 
     /// <summary>1 while a confirmation is waiting for its answer: a second press sends nothing.</summary>
     private int _unableToChargeAwaitingAnswer;
@@ -265,18 +273,17 @@ public sealed partial class WireToGateBusinessService
         WireToGateJourneySnapshot journey = _session.CurrentJourney;
         UnableToChargeFieldConfirmationRequestedPayload? unanswered;
         WireToGateUnableToChargeOutcome? outcome;
+        bool clearingSeen;
         lock (_unableToChargeGate)
         {
             unanswered = _unableToChargeUnanswered;
             outcome = _unableToChargeOutcome;
+            clearingSeen = _unableToChargeClearingSeen;
         }
 
         // Read against the journey at this instant, not against a field some handler cleared: the view model's
         // journey handler runs before this service's (the station clearance's reasoning).
-        if (ServerSaysTheChargingIsOver(journey))
-        {
-            outcome = null;
-        }
+        outcome = ServerSaysTheChargingIsOver(journey, clearingSeen) ? null : AsShownNow(outcome, journey);
 
         // Off unless configured: a control server without 8005-agv-control-server#410 ends the session on this
         // message, and nothing on the wire says which kind of server this is.
@@ -321,26 +328,102 @@ public sealed partial class WireToGateBusinessService
     }
 
     /// <summary>
-    /// A business state that names another purpose. A projection with no business state at all -- a dropped
-    /// session -- says nothing either way, and must not be read as the charging having ended: that is when an
-    /// unknown result most needs to stay on screen and keep its id.
+    /// The server says the charging claim this confirmation belongs to is over. A projection with no business state
+    /// at all -- a dropped session -- says nothing either way, and must not be read as the charging having ended:
+    /// that is when an unknown result most needs to stay on screen and keep its id.
     /// </summary>
-    private static bool ServerSaysTheChargingIsOver(WireToGateJourneySnapshot journey) =>
-        journey.VehicleBusinessState is not null && !WireToGateUnableToCharge.IsCharging(journey);
+    /// <remarks>
+    /// <para>
+    /// <b><c>CHARGING</c> going on to <c>CLEARING_MAINTENANCE</c> is the same claim, not its end</b>
+    /// (8005-agv-onboard-hmi#242). A confirmation the server takes moves the vehicle into the clearing at once
+    /// (<c>chargingCycleState=UNABLE_TO_CHARGE</c>, the same path as the system's own confirmation,
+    /// 8005-agv-control-server#410), and the business state saying so arrives right behind the result; read as the
+    /// end, it took the result line -- that the server recorded it, and its decision -- off the screen within a
+    /// second. The claim ends when the purpose leaves both, or when the clearing's charging cycle is no longer
+    /// <c>UNABLE_TO_CHARGE</c>.
+    /// </para>
+    /// <para>
+    /// <b>A <c>CHARGING</c> purpose after the clearing is a new attempt</b>, which starts from nothing:
+    /// <paramref name="clearingSeen"/> says a clearing of this claim was seen. A session that dropped through the
+    /// end of the clearing would otherwise carry the old result into the next charging.
+    /// </para>
+    /// </remarks>
+    private static bool ServerSaysTheChargingIsOver(WireToGateJourneySnapshot journey, bool clearingSeen) =>
+        journey.VehicleBusinessState is { } state
+        && (state.ActivePurpose == "CHARGING"
+            ? clearingSeen
+            : !IsTheClearingOfAnUnableToCharge(state));
+
+    private static bool IsTheClearingOfAnUnableToCharge(WireToGateVehicleBusinessState state) =>
+        state is { ActivePurpose: "CLEARING_MAINTENANCE", ChargingCycleState: "UNABLE_TO_CHARGE" };
+
+    private static bool IsTheClearingOfAnUnableToCharge(WireToGateJourneySnapshot journey) =>
+        journey.VehicleBusinessState is { } state && IsTheClearingOfAnUnableToCharge(state);
 
     /// <summary>
-    /// Forgets the unanswered request and the last outcome once the server says the vehicle is no longer charging,
-    /// so a later charging attempt at the same charger starts from nothing.
+    /// The last outcome as it may be shown against this journey, within a claim the server has not ended;
+    /// <c>null</c> when it no longer belongs on screen.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Another charger is another attempt</b>: an outcome about a charger other than the plan's current one is not
+    /// shown, whatever the purpose says (8005-agv-onboard-hmi#242 review, N1). A plan that names no charger says
+    /// nothing either way.
+    /// </para>
+    /// <para>
+    /// <b>Into the clearing go only a confirmation and an unknown</b> (8005-agv-onboard-hmi#242 review, S2, S3). A
+    /// rejection or a refusal shown there would contradict the clearing the server has since entered on its own
+    /// confirmation -- 「服务端未确认充不上」 beside a charging cell that reads 充不上电. An unknown stays, for a late
+    /// result can still settle it, and is marked so its line does not ask for a resubmission the closed entry no
+    /// longer allows.
+    /// </para>
+    /// </remarks>
+    private static WireToGateUnableToChargeOutcome? AsShownNow(
+        WireToGateUnableToChargeOutcome? outcome,
+        WireToGateJourneySnapshot journey)
+    {
+        if (outcome is null
+            || (WireToGateUnableToCharge.ResolveCharger(journey) is { } charger
+                && !string.Equals(charger, outcome.ChargerStationId, StringComparison.Ordinal)))
+        {
+            return null;
+        }
+
+        return !IsTheClearingOfAnUnableToCharge(journey)
+            ? outcome
+            : outcome.Kind switch
+            {
+                WireToGateUnableToChargeOutcomeKind.Confirmed => outcome,
+                WireToGateUnableToChargeOutcomeKind.Unknown => outcome with { InClearing = true },
+                _ => null
+            };
+    }
+
+    /// <summary>
+    /// Forgets the unanswered request and the last outcome once the server says the charging claim is over, so a
+    /// later charging attempt at the same charger starts from nothing.
     /// </summary>
     private void ForgetUnableToChargeOnceTheServerSaysItIsOver(WireToGateJourneySnapshot journey)
     {
-        if (!ServerSaysTheChargingIsOver(journey))
-        {
-            return;
-        }
-
         lock (_unableToChargeGate)
         {
+            if (!ServerSaysTheChargingIsOver(journey, _unableToChargeClearingSeen))
+            {
+                if (IsTheClearingOfAnUnableToCharge(journey))
+                {
+                    _unableToChargeClearingSeen = true;
+                }
+
+                // What no longer belongs on screen is not kept either, so a plan that comes back to the old charger
+                // does not bring a rejection back with it.
+                if (AsShownNow(_unableToChargeOutcome, journey) is null)
+                {
+                    _unableToChargeOutcome = null;
+                }
+
+                return;
+            }
+
             if (_unableToChargeUnanswered is not null)
             {
                 _unableToChargeForgotten = _unableToChargeUnanswered;
@@ -348,6 +431,7 @@ public sealed partial class WireToGateBusinessService
 
             _unableToChargeUnanswered = null;
             _unableToChargeOutcome = null;
+            _unableToChargeClearingSeen = false;
         }
     }
 
@@ -440,7 +524,7 @@ public sealed partial class WireToGateBusinessService
         string? reason)
     {
         // Not if an answer got here first through the late path: that one stands. The request stays unanswered.
-        return request is null
+        WireToGateUnableToChargeOutcome? unknown = request is null
             ? null
             : ApplyOwnUnableToChargeOutcome(
                 request,
@@ -452,6 +536,11 @@ public sealed partial class WireToGateBusinessService
                     null,
                     reason),
                 endsTheRequest: false);
+
+        // The operator record says what the line says: in the clearing, nothing about resubmitting.
+        return unknown is not null && IsTheClearingOfAnUnableToCharge(_session.CurrentJourney)
+            ? unknown with { InClearing = true }
+            : unknown;
     }
 
     /// <summary>

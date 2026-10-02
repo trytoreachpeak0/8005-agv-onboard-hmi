@@ -52,12 +52,19 @@ public static class WireToGateUnableToChargeText
     };
 
     /// <summary>服务端决定的中文；<c>null</c> 时是空串（不显示决定）。</summary>
+    /// <remarks>
+    /// 口径照服务端 <c>8005-agv-control-server#410</c> 的定义写（<c>8005-agv-onboard-hmi#242</c>）。三种决定都发生在清桩
+    /// 之后，都不是「车已经被派去了某处」：<c>REASSIGN_CHARGER</c> 是还有别的桩可给这辆车，清桩后回统一电量队列由服务端
+    /// 重新分配，不是立刻改派；<c>RETRY_LATER</c> 是清桩后在队列里等——不写「暂无其它可用充电桩」，因为服务端在「系统已确认、
+    /// 又读不到新鲜读数」那条分支上不查名册就直接给它（审查 S1）；<c>MANUAL_CHARGING_HOLD</c> 是电量
+    /// 等不起桩恢复，服务端置人工充电等待，只由「充电后返回服务」解除。
+    /// </remarks>
     public static string DecisionText(string? chargingPolicyDecision) => chargingPolicyDecision switch
     {
         null => string.Empty,
-        "RETRY_LATER" => "稍后重试",
-        "MANUAL_CHARGING_HOLD" => "转人工充电",
-        "REASSIGN_CHARGER" => "改派其它充电桩",
+        "RETRY_LATER" => "清桩后回充电队列等待",
+        "MANUAL_CHARGING_HOLD" => "转人工充电等待，人工充电后由「充电后返回服务」解除",
+        "REASSIGN_CHARGER" => "清桩后回充电队列，由服务端重新分配充电桩",
         _ => chargingPolicyDecision
     };
 
@@ -121,6 +128,9 @@ public static class WireToGateUnableToChargeText
             _ when outcome.ChargingEnded =>
                 $"服务端已结束这次充电用途，入口已关闭，这次现场确认（{subject}）的结果未知。"
                 + (outcome.ReasonCode is null ? string.Empty : $"原因：{outcome.ReasonCode}。"),
+            _ when outcome.InClearing =>
+                $"现场确认（{subject}）结果未知。{InClearingSentence}"
+                + (outcome.ReasonCode is null ? string.Empty : $"原因：{outcome.ReasonCode}。"),
             _ => $"现场确认（{subject}）结果未知，请查看车辆状态后再决定是否重新提交。"
                 + (outcome.ReasonCode is null ? string.Empty : $"原因：{outcome.ReasonCode}。")
         };
@@ -130,6 +140,12 @@ public static class WireToGateUnableToChargeText
     /// 等应答期间服务端已结束这次充电用途时的那一句：入口已关闭，没法重新提交，所以不叫操作员去重新提交。
     /// </summary>
     public const string ChargingEndedSentence = "服务端已结束这次充电用途，入口已关闭。";
+
+    /// <summary>
+    /// 结果未知、而服务端已把车转入清桩时的那一句：入口已关闭，没法重新提交；服务端的结果迟到时仍会显示在这一行
+    /// （<c>8005-agv-onboard-hmi#242</c> 审查 S3）。
+    /// </summary>
+    public const string InClearingSentence = "车辆已转入清桩，入口已关闭；服务端的结果稍后到达时会显示在这里。";
 
     /// <summary>结果那一行给 UIA 的 ItemStatus（AutomationId <c>UnableToChargeStatus</c>）；没有时是空串。</summary>
     public static string Status(WireToGateUnableToChargeOutcome? outcome) => outcome?.Kind switch
