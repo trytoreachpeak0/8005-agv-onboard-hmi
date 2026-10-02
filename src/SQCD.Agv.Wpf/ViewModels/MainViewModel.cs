@@ -1752,7 +1752,10 @@ public sealed class MainViewModel : ViewModelBase
             view.CanDecline,
             prompt,
             true,
-            prompt.Text.Trim());
+            view.DeclineArmed
+                ? $"{prompt.Text.Trim()}\n{prompt.DeclineConsequence}确定不执行请再按一次「不执行」。"
+                : prompt.Text.Trim(),
+            view.DeclineArmed);
     }
 
     // ---- 现场确认充不上入口（批次9-17，8005-agv-onboard-hmi#222） ----

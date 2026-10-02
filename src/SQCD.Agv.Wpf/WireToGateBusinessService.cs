@@ -2673,6 +2673,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         ResumeAfterRepairKind,
                         command.RecoveryActionId,
                         command.ExceptionRecoverySessionId,
+                        command.DemandId,
                         command.Slots,
                         [],
                         canDecline: true);

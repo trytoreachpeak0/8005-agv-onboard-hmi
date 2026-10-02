@@ -2090,6 +2090,7 @@ public sealed partial class WireToGateBusinessService
                         vectorType,
                         primaryId,
                         exceptionRecoverySessionId,
+                        demandId,
                         slots,
                         OpenedSlotsOf(state, vectorType, primaryId),
                         canDecline: true);

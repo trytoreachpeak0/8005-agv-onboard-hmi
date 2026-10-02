@@ -425,11 +425,16 @@ public partial class MainWindow : Window
     /// <summary>
     /// 扣住的服务端恢复命令，不执行（8005-agv-onboard-hmi#239）。与 <see cref="OnConfirmHeldRecoveryCommandClick"/> 同形。
     /// </summary>
+    /// <remarks>
+    /// 装货修正的「不执行」由业务服务要求按两次：第一次只把后果写进说明、不回复服务端，第二次才回复，而且只对第一次
+    /// 显示的那条命令有效。对话框正文里带着同一句后果，所以第一次按下后返回 false 不是失败，屏上说明会请人再按一次。
+    /// </remarks>
     private async void OnDeclineHeldRecoveryCommandClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel?.HeldRecoveryCommand is not { Prompt: { } prompt }
             || MessageBox.Show(
                 prompt.Text.Trim()
+                    + (prompt.DeclineConsequence.Length > 0 ? "\n\n" + prompt.DeclineConsequence : string.Empty)
                     + "\n\n确定不执行这条命令？车辆不会开锁，并向服务端报告未执行；服务端将结束本次恢复，如仍需处理要重新发起。",
                 "不执行服务端恢复命令",
                 MessageBoxButton.YesNo,
@@ -439,7 +444,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!await _viewModel.DeclineHeldRecoveryCommandAsync(prompt))
+        if (!await _viewModel.DeclineHeldRecoveryCommandAsync(prompt)
+            && prompt.DeclineConsequence.Length == 0)
         {
             ShowRecoveryFailure("这条命令已不再等待确认，没有向服务端回复。原因见操作记录。", "未回复");
         }

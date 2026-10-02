@@ -17,24 +17,35 @@ namespace SQCD.Agv.Wpf;
 /// <param name="Trigger">Why it was held: the restart, or the press being past the window.</param>
 /// <param name="Text">What the screen says.</param>
 /// <param name="CanDecline">Whether "do not execute" is offered for it.</param>
+/// <param name="DemandId">The demand the command is about.</param>
+/// <param name="DeclineConsequence">
+/// For a decline that costs more than the session -- a load correction's -- what it costs, in the words the second
+/// press is asked under; empty when one press decides.
+/// </param>
 public sealed record WireToGateHeldRecoveryCommandPrompt(
     string CommandMessageId,
     string VectorType,
     string PrimaryId,
+    string? DemandId,
     IReadOnlyList<int> Slots,
     IReadOnlyList<int> OpenedSlots,
     string Trigger,
     string Text,
-    bool CanDecline);
+    bool CanDecline,
+    string DeclineConsequence);
 
 /// <summary>
 /// The held-command entry as the screen reads it, all from one moment (onboard-hmi#239): what is held, and which of
 /// the two buttons is offered.
 /// </summary>
+/// <param name="DeclineArmed">
+/// "Do not execute" was pressed once for this very command and its consequence shown: the next press decides.
+/// </param>
 public sealed record WireToGateHeldRecoveryCommandView(
     WireToGateHeldRecoveryCommandPrompt? Prompt,
     bool CanConfirm,
-    bool CanDecline);
+    bool CanDecline,
+    bool DeclineArmed);
 
 /// <summary>
 /// The server recovery commands that open doors, held after a restart until someone at the vehicle confirms them
@@ -72,6 +83,12 @@ public sealed partial class WireToGateBusinessService
 
     private HeldCommand? _heldRecoveryCommand;
 
+    /// <summary>
+    /// The held command whose "do not execute" was pressed once and its consequence shown, as
+    /// <see cref="DeclineKey"/>: the second press decides only for that.
+    /// </summary>
+    private string? _declineArmedFor;
+
     /// <summary>The command held for confirmation, while it still is; <c>null</c> otherwise.</summary>
     public WireToGateHeldRecoveryCommandPrompt? HeldRecoveryCommand =>
         Volatile.Read(ref _heldRecoveryCommand) is { } held
@@ -90,11 +107,12 @@ public sealed partial class WireToGateBusinessService
     /// <summary>The entry as the screen reads it, read once.</summary>
     public WireToGateHeldRecoveryCommandView HeldRecoveryCommandView =>
         HeldRecoveryCommand is not { } prompt
-            ? new(null, false, false)
+            ? new(null, false, false, false)
             : new(
                 prompt,
                 CanConfirmHeldRecoveryCommand,
-                CanDeclineHeldRecoveryCommand);
+                CanDeclineHeldRecoveryCommand,
+                Volatile.Read(ref _declineArmedFor) == DeclineKey(prompt));
 
     /// <summary>Whether "do not execute" is offered for the held command.</summary>
     public bool CanDeclineHeldRecoveryCommand =>
@@ -143,6 +161,7 @@ public sealed partial class WireToGateBusinessService
         string vectorType,
         string primaryId,
         string? exceptionRecoverySessionId,
+        string? demandId,
         IReadOnlyList<int> slots,
         IReadOnlyList<int> openedSlots,
         bool canDecline)
@@ -158,15 +177,27 @@ public sealed partial class WireToGateBusinessService
         string text = $"服务端下发了车辆 {_session.Client.AgvId} 的{subject}（{vectorType}）{FormatSlots(slots)}命令。"
             + $"{trigger}，车辆不会自动开锁。{opened}"
             + $"请到车旁确认仓门附近安全后按「确认执行」。{decline} ";
+        // A correction declined is not just a session closed: the server keeps the demand blocked on the FAILED result
+        // and never authorizes that load's correction again (control-server ApplyCurrentResultAsync,
+        // KeepDemandAndJourneyBlockedAsync), so an administrator has to open a recovery session. Asked twice, with the
+        // cost spelled out (decided by the coordinator on onboard-hmi#239).
+        string consequence = canDecline && vectorType == WireToGateRecoveryVectorTypes.LoadCorrection
+            ? $"车辆 {_session.Client.AgvId} 需求 {demandId} 的装货修正{FormatSlots(slots)}选择不执行后，"
+                + "这条装货的修正将作废，需求进入恢复，需要管理员开恢复会话处理。"
+            : string.Empty;
         WireToGateHeldRecoveryCommandPrompt prompt = new(
             command.MessageId,
             vectorType,
             primaryId,
+            demandId,
             [.. slots],
             [.. openedSlots],
             trigger,
             text,
-            canDecline);
+            canDecline,
+            consequence);
+        // A decline armed for anything before is not one for this: the second press is bound to what the first showed.
+        Volatile.Write(ref _declineArmedFor, null);
         HeldCommand? previous = Interlocked.Exchange(
             ref _heldRecoveryCommand,
             new HeldCommand(command, prompt, exceptionRecoverySessionId));
@@ -288,6 +319,24 @@ public sealed partial class WireToGateBusinessService
             return false;
         }
 
+        if (decision == HeldRecoveryDecision.Declined
+            && held.Prompt.DeclineConsequence.Length > 0
+            && Interlocked.Exchange(ref _declineArmedFor, DeclineKey(held.Prompt)) != DeclineKey(held.Prompt))
+        {
+            // The first press only shows what declining costs. The key holds every fact the sentence names, so a second
+            // press counts only for the command the operator read it about.
+            _logger.Write(
+                LogSeverity.Information,
+                nameof(WireToGateBusinessService),
+                $"扣住的服务端恢复命令第一次按「不执行」，等待第二次确认：type={held.Prompt.VectorType}，"
+                + $"primaryId={held.Prompt.PrimaryId}，message={held.Prompt.CommandMessageId}。");
+            PublishOperatorEvent(
+                $"recovery-command-decline-armed:{DeclineKey(held.Prompt)}:{_clock.Now:O}",
+                "RECOVERY_COMMAND_DECLINE_CONFIRMATION",
+                held.Prompt.DeclineConsequence + "确定不执行请再按一次「不执行」。 ");
+            return false;
+        }
+
         WireToGateOperatorContextPayload pressing;
         WireToGateRecoveryState state;
         try
@@ -321,6 +370,8 @@ public sealed partial class WireToGateBusinessService
                 "这条服务端恢复命令已不再等待确认，未执行任何操作。 ");
             return false;
         }
+
+        Volatile.Write(ref _declineArmedFor, null);
 
         _logger.Write(
             LogSeverity.Information,
@@ -442,6 +493,11 @@ public sealed partial class WireToGateBusinessService
         state.RecoveryVector is { } vector && vector.VectorType == vectorType && vector.PrimaryId == primaryId
             ? [.. state.ActiveUnlockSlots.Concat(state.CompletedSlots).Where(vector.Slots.Contains).Distinct().Order()]
             : [];
+
+    /// <summary>Everything a decline's consequence names, and the command it is about.</summary>
+    private string DeclineKey(WireToGateHeldRecoveryCommandPrompt prompt) =>
+        $"{_session.Client.AgvId}|{prompt.VectorType}|{prompt.PrimaryId}|{prompt.CommandMessageId}|{prompt.DemandId}|"
+        + string.Join(',', prompt.Slots);
 
     private static string HeldCommandSubject(string vectorType) => vectorType switch
     {

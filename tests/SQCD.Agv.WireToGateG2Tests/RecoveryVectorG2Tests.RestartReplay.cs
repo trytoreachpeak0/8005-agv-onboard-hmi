@@ -323,54 +323,13 @@ public sealed partial class RecoveryVectorG2Tests
     public async Task ALoadCorrectionCommandReplayedAfterARestartOpensNothingUntilConfirmed()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
-        string journalPath = NewRestartJournalPath();
-        await using FakeControlServer server = RecoveryVectorHarness.NewServer();
-        server.LoadCorrectionRequestsToLose = 1;
-        await using (RecoveryVectorHarness beforeRestart = await RecoveryVectorHarness.StartAsync(
-            token,
-            existingServer: server,
-            journalPath: journalPath,
-            loadAlreadySettled: true))
-        {
-            await RecoveryVectorHarness.WaitUntilAsync(
-                () => beforeRestart.Business.CanRequestLoadCorrection,
-                "the load correction entry to be offered",
-                token);
-            Assert.True(await beforeRestart.Business.RequestLoadCorrectionAsync(
-                "现场确认需要修正已完成的装货结果。", token));
-            await RecoveryVectorHarness.WaitUntilAsync(
-                () => !beforeRestart.Session.Current.Connected,
-                "the vehicle to see the connection the correction request went down with drop",
-                token);
-        }
-
-        await using FakeControlServer serverAfterRestart = RecoveryVectorHarness.NewServer();
-        serverAfterRestart.AdoptDurableRecoveryMemoryFrom(server);
-        await using RecoveryVectorHarness afterRestart = await RecoveryVectorHarness.StartAsync(
-            token,
-            existingServer: serverAfterRestart,
-            journalPath: journalPath,
-            restart: true,
-            cargoInTargetSlots: true,
-            lockerWaitTimesOut: true);
-        await WaitForSessionToCarryCommandsAsync(afterRestart, token);
+        await using RestartedVehicle vehicle = await RestartAfterALostCorrectionRequestAsync(token);
+        RecoveryVectorHarness afterRestart = vehicle.Harness;
         WireToGateRecoveryVectorContext vector = (await afterRestart.ReadRecoveryStateAsync(token)).RecoveryVector!;
         Assert.Equal(WireToGateRecoveryVectorTypes.LoadCorrection, vector.VectorType);
 
         // Where the server's replay of the correction command it authorized before the restart would come.
-        await serverAfterRestart.SendCommandAsync(
-            "LoadCorrectionCommand",
-            Guid.NewGuid().ToString("D"),
-            new
-            {
-                correctionId = vector.PrimaryId,
-                demandId = vector.DemandId,
-                slotOperationAttemptId = vector.SlotOperationAttemptId,
-                slots = vector.Slots,
-                expectedSequence = CorrectionSequence,
-                commandContentSha256 = WireToGateRecoveryCommandHash.ForLoadCorrection(
-                    vector.PrimaryId, vector.DemandId, vector.SlotOperationAttemptId!, vector.Slots)
-            });
+        await SendCorrectionCommandAsync(vehicle.After, vector, Guid.NewGuid().ToString("D"));
 
         await WaitForHeldOrExecutedAsync(afterRestart, "LoadCorrectionResult", token);
         Assert.Equal(0, afterRestart.Io.UnlockCount);
@@ -505,6 +464,87 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(0, afterRestart.Io.UnlockCount);
     }
 
+    /// <summary>
+    /// Declining a held correction costs more than the session -- the server keeps the demand blocked and never
+    /// corrects that load again -- so it takes two presses: the first only shows the cost, the second answers
+    /// <c>FAILED</c>, every slot <c>VEHICLE_NOT_READY</c>, and opens nothing.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CORRECTION")]
+    public async Task ADeclinedHeldCorrectionShowsWhatItCostsAndIsAnsweredFailedOnTheSecondPress()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RestartedVehicle vehicle = await RestartAfterALostCorrectionRequestAsync(token);
+        RecoveryVectorHarness afterRestart = vehicle.Harness;
+        WireToGateRecoveryVectorContext vector = (await afterRestart.ReadRecoveryStateAsync(token)).RecoveryVector!;
+        await SendCorrectionCommandAsync(vehicle.After, vector, Guid.NewGuid().ToString("D"));
+        WireToGateHeldRecoveryCommandPrompt held = await WaitForHeldAsync(afterRestart, token);
+        Assert.False(afterRestart.Business.HeldRecoveryCommandView.DeclineArmed);
+
+        Assert.False(await afterRestart.Business.DeclineHeldRecoveryCommandAsync(held, token));
+
+        WireToGateOperatorEvent cost = await WaitForEventAsync(
+            afterRestart, "RECOVERY_COMMAND_DECLINE_CONFIRMATION", token);
+        Assert.Contains("这条装货的修正将作废，需求进入恢复，需要管理员开恢复会话处理", cost.Message, StringComparison.Ordinal);
+        Assert.Contains("AGV-8005-01", cost.Message, StringComparison.Ordinal);
+        Assert.Contains(vector.DemandId, cost.Message, StringComparison.Ordinal);
+        Assert.Contains("1、2号仓", cost.Message, StringComparison.Ordinal);
+        Assert.True(afterRestart.Business.HeldRecoveryCommandView.DeclineArmed);
+        Assert.Empty(afterRestart.ResultsOfType("LoadCorrectionResult"));
+
+        Assert.True(await afterRestart.Business.DeclineHeldRecoveryCommandAsync(held, token));
+
+        JsonElement result = await afterRestart.WaitForResultAsync("LoadCorrectionResult", token);
+        Assert.Equal("FAILED", result.GetProperty("overallOutcome").GetString());
+        Assert.All(result.GetProperty("slotResults").EnumerateArray(), slot =>
+        {
+            Assert.Equal("NOT_STARTED", slot.GetProperty("outcome").GetString());
+            Assert.Contains(
+                "VEHICLE_NOT_READY",
+                slot.GetProperty("reasonCodes").EnumerateArray().Select(code => code.GetString()));
+        });
+        Assert.Equal(0, afterRestart.Io.UnlockCount);
+        await WaitForEventAsync(afterRestart, "RECOVERY_COMMAND_DECLINED", token);
+        Assert.Null((await afterRestart.ReadRecoveryStateAsync(token)).RecoveryVector);
+    }
+
+    /// <summary>
+    /// The second press counts only for the command the first one showed the cost of: a newer copy held in between
+    /// starts over, and the press the operator made for the old one answers nothing.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CORRECTION")]
+    public async Task AHeldCorrectionReplacedBetweenTheTwoDeclinePressesHasToBeConfirmedAgain()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RestartedVehicle vehicle = await RestartAfterALostCorrectionRequestAsync(token);
+        RecoveryVectorHarness afterRestart = vehicle.Harness;
+        WireToGateRecoveryVectorContext vector = (await afterRestart.ReadRecoveryStateAsync(token)).RecoveryVector!;
+        await SendCorrectionCommandAsync(vehicle.After, vector, Guid.NewGuid().ToString("D"));
+        WireToGateHeldRecoveryCommandPrompt first = await WaitForHeldAsync(afterRestart, token);
+        Assert.False(await afterRestart.Business.DeclineHeldRecoveryCommandAsync(first, token));
+        Assert.True(afterRestart.Business.HeldRecoveryCommandView.DeclineArmed);
+
+        // The server sends the command again under a messageId of its own: held afresh, armed for nothing.
+        await SendCorrectionCommandAsync(vehicle.After, vector, Guid.NewGuid().ToString("D"));
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => afterRestart.Business.HeldRecoveryCommand is { } now
+                && now.CommandMessageId != first.CommandMessageId,
+            "the newer copy of the correction command to be held",
+            token);
+        WireToGateHeldRecoveryCommandPrompt second = afterRestart.Business.HeldRecoveryCommand!;
+        Assert.False(afterRestart.Business.HeldRecoveryCommandView.DeclineArmed);
+
+        Assert.False(await afterRestart.Business.DeclineHeldRecoveryCommandAsync(first, token));
+        Assert.False(await afterRestart.Business.DeclineHeldRecoveryCommandAsync(second, token));
+
+        Assert.True(afterRestart.Business.HeldRecoveryCommandView.DeclineArmed);
+        Assert.Empty(afterRestart.ResultsOfType("LoadCorrectionResult"));
+        Assert.Equal(0, afterRestart.Io.UnlockCount);
+    }
+
     private static async Task WaitForHeldOrExecutedAsync(
         RecoveryVectorHarness harness,
         string resultType,
@@ -552,6 +592,65 @@ public sealed partial class RecoveryVectorG2Tests
 
     private static string NewRestartJournalPath() =>
         Path.Combine(Path.GetTempPath(), "w2g-vector", Guid.NewGuid().ToString("N"), "journal.db");
+
+    /// <summary>
+    /// A load correction pressed, its request lost with the link, and the vehicle restarted: the restarted vehicle has
+    /// the correction prepared, no command bound, and cargo in the slots -- a correction's precheck refuses empty ones
+    /// before any pulse. The test sends the command itself, where the server's replay would come.
+    /// </summary>
+    private static async Task<RestartedVehicle> RestartAfterALostCorrectionRequestAsync(CancellationToken token)
+    {
+        string journalPath = NewRestartJournalPath();
+        FakeControlServer server = RecoveryVectorHarness.NewServer();
+        server.LoadCorrectionRequestsToLose = 1;
+        await using (RecoveryVectorHarness first = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: server,
+            journalPath: journalPath,
+            loadAlreadySettled: true))
+        {
+            await RecoveryVectorHarness.WaitUntilAsync(
+                () => first.Business.CanRequestLoadCorrection,
+                "the load correction entry to be offered",
+                token);
+            Assert.True(await first.Business.RequestLoadCorrectionAsync(
+                "现场确认需要修正已完成的装货结果。", token));
+            await RecoveryVectorHarness.WaitUntilAsync(
+                () => !first.Session.Current.Connected,
+                "the vehicle to see the connection the correction request went down with drop",
+                token);
+        }
+
+        FakeControlServer serverAfterRestart = RecoveryVectorHarness.NewServer();
+        serverAfterRestart.AdoptDurableRecoveryMemoryFrom(server);
+        RecoveryVectorHarness afterRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: serverAfterRestart,
+            journalPath: journalPath,
+            restart: true,
+            cargoInTargetSlots: true,
+            lockerWaitTimesOut: true);
+        await WaitForSessionToCarryCommandsAsync(afterRestart, token);
+        return new RestartedVehicle(server, serverAfterRestart, afterRestart);
+    }
+
+    private static Task SendCorrectionCommandAsync(
+        FakeControlServer server,
+        WireToGateRecoveryVectorContext vector,
+        string messageId) =>
+        server.SendCommandAsync(
+            "LoadCorrectionCommand",
+            messageId,
+            new
+            {
+                correctionId = vector.PrimaryId,
+                demandId = vector.DemandId,
+                slotOperationAttemptId = vector.SlotOperationAttemptId,
+                slots = vector.Slots,
+                expectedSequence = CorrectionSequence,
+                commandContentSha256 = WireToGateRecoveryCommandHash.ForLoadCorrection(
+                    vector.PrimaryId, vector.DemandId, vector.SlotOperationAttemptId!, vector.Slots)
+            });
 
     /// <summary>
     /// A compensation pressed and authorized, its command lost on the way back, and the vehicle restarted before the

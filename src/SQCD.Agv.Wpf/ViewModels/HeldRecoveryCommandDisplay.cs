@@ -12,13 +12,17 @@ namespace SQCD.Agv.Wpf.ViewModels;
 /// <see cref="Prompt"/> 就是操作员读到的那一份；按下时原样交回去，业务服务核对它仍是扣住的那一条才执行或回复。
 /// 「确认执行」会开门，严重安全故障锁存期间关着；「不执行」不碰 IO，锁存期间照常开着。
 /// </para>
+/// <para>
+/// <see cref="DeclineArmed"/>：装货修正的「不执行」要按两次，第一次只把后果写进说明；为真时下一次按下才生效。
+/// </para>
 /// </remarks>
 public sealed record HeldRecoveryCommandDisplay(
     bool CanConfirm,
     bool CanDecline,
     WireToGateHeldRecoveryCommandPrompt? Prompt,
     bool HasNotice,
-    string NoticeText)
+    string NoticeText,
+    bool DeclineArmed)
 {
-    public static HeldRecoveryCommandDisplay Empty { get; } = new(false, false, null, false, string.Empty);
+    public static HeldRecoveryCommandDisplay Empty { get; } = new(false, false, null, false, string.Empty, false);
 }
