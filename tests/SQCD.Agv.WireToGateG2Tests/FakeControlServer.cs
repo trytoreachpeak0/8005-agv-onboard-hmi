@@ -739,6 +739,107 @@ public sealed class FakeControlServer : IAsyncDisposable
     public int LoadCompensationResultAcksToDrop { get; set; }
 
     /// <summary>
+    /// 补偿命令只在收到 <c>LoadCompensationRequested</c> 之后才发，与真服务端同形：control-server 的
+    /// <c>OnboardRecoveryCoordinator.SubmitActionAsync</c> 对 <c>COMPENSATE_LOAD_ALL_EMPTY</c> 只建流程
+    /// （AwaitingAuthorization），命令由 <c>AuthorizeLoadCompensationAsync</c> 排出。不设时沿用旧行为：受理动作后
+    /// 立刻发命令，补偿请求丢没丢在 G2 里看不出来（onboard-hmi#236）。
+    /// </summary>
+    public bool SendLoadCompensationCommandOnRequest { get; set; }
+
+    /// <summary>
+    /// 这么多条 <c>LoadCompensationRequested</c> 记下之后不处理，直接断开连接：请求在服务端处理之前随连接丢失，
+    /// 服务端没有建立任何授权（onboard-hmi#236）。
+    /// </summary>
+    public int LoadCompensationRequestsToLose
+    {
+        get => Volatile.Read(ref _loadCompensationRequestsToLose);
+        set => Volatile.Write(ref _loadCompensationRequestsToLose, value);
+    }
+
+    private int _loadCompensationRequestsToLose;
+
+    /// <summary>
+    /// <see cref="LoadCompensationRequestsToLose"/> for <c>LoadCorrectionRequested</c>: recorded, then the connection
+    /// closes before the request is judged, so no correction is bound or authorized (onboard-hmi#236).
+    /// </summary>
+    public int LoadCorrectionRequestsToLose
+    {
+        get => Volatile.Read(ref _loadCorrectionRequestsToLose);
+        set => Volatile.Write(ref _loadCorrectionRequestsToLose, value);
+    }
+
+    private int _loadCorrectionRequestsToLose;
+
+    /// <summary>
+    /// This many times the connection closes right after <c>RecoveryActionAccepted</c> is written: the action is
+    /// accepted, and the link is gone before the vehicle's next request can reach the server (onboard-hmi#236).
+    /// </summary>
+    public int CloseConnectionsAfterRecoveryActionAccepted
+    {
+        get => Volatile.Read(ref _closeConnectionsAfterRecoveryActionAccepted);
+        set => Volatile.Write(ref _closeConnectionsAfterRecoveryActionAccepted, value);
+    }
+
+    private int _closeConnectionsAfterRecoveryActionAccepted;
+
+    /// <summary>
+    /// This many compensation commands the server authorizes and then loses: the request is handled and the
+    /// compensation bound, and the connection closes before the command is written -- the command lost on its way
+    /// to the vehicle (onboard-hmi#236). A later request for the same compensation is a repeat and re-sends it.
+    /// </summary>
+    public int LoadCompensationCommandsToLose
+    {
+        get => Volatile.Read(ref _loadCompensationCommandsToLose);
+        set => Volatile.Write(ref _loadCompensationCommandsToLose, value);
+    }
+
+    private int _loadCompensationCommandsToLose;
+
+    /// <summary>
+    /// The compensation commands this server authorized, persisted the way <c>ProtocolOutbox</c> keeps them: one
+    /// messageId, one sentAt, one payload, re-sent as they are. A compensation whose result arrived is in
+    /// <see cref="_settledCompensations"/>: the result settles the command (<c>SettleAnsweredCommandAsync</c>), and a
+    /// settled command is not replayed.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, PersistedCompensationCommand> _authorizedCompensations =
+        new(StringComparer.Ordinal);
+
+    private readonly ConcurrentDictionary<string, byte> _settledCompensations = new(StringComparer.Ordinal);
+
+    private sealed record PersistedCompensationCommand(string MessageId, DateTimeOffset SentAt, object Payload);
+
+    /// <summary>
+    /// How many <c>LoadCompensationCommand</c> lines this server wrote: first sends, re-sends and handshake replays
+    /// together.
+    /// </summary>
+    public int LoadCompensationCommandsWritten => Volatile.Read(ref _loadCompensationCommandsWritten);
+
+    private int _loadCompensationCommandsWritten;
+
+    /// <summary>How many compensation requests were answered as a repeat of one already authorized.</summary>
+    public int RepeatedCompensationRequests => Volatile.Read(ref _repeatedCompensationRequests);
+
+    private int _repeatedCompensationRequests;
+
+    private static bool TryConsume(ref int remaining)
+    {
+        int seen;
+        do
+        {
+            seen = Volatile.Read(ref remaining);
+            if (seen <= 0)
+            {
+                return false;
+            }
+        }
+        while (Interlocked.CompareExchange(ref remaining, seen - 1, seen) != seen);
+
+        return true;
+    }
+
+    private readonly ConcurrentDictionary<string, JsonElement> _submittedRecoveryActions = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// 这么多条 <c>SlotOperationCommandRejected</c> 收下了却不回 <c>DurableAck</c>：拒绝留在车的日志里
     /// 未确认，同一条续行命令再到时车要把它原样再发一次（onboard-hmi#119）。
     /// </summary>
@@ -810,6 +911,23 @@ public sealed class FakeControlServer : IAsyncDisposable
                 foreach ((string messageId, object payload) in previous._unacknowledgedClosedRecoverySnapshots)
                 {
                     _unacknowledgedClosedRecoverySnapshots[messageId] = payload;
+                }
+
+                // RecoveryWorkflows again: the accepted actions, the compensations authorized with their persisted
+                // commands, and which of them a result settled (onboard-hmi#236 review M1, S3).
+                foreach ((string actionId, JsonElement submitted) in previous._submittedRecoveryActions)
+                {
+                    _submittedRecoveryActions[actionId] = submitted;
+                }
+
+                foreach ((string actionId, PersistedCompensationCommand command) in previous._authorizedCompensations)
+                {
+                    _authorizedCompensations[actionId] = command;
+                }
+
+                foreach (string actionId in previous._settledCompensations.Keys)
+                {
+                    _settledCompensations[actionId] = 0;
                 }
             }
         }
@@ -1604,6 +1722,15 @@ public sealed class FakeControlServer : IAsyncDisposable
                     continue;
                 }
 
+                if ((messageType == "LoadCompensationRequested"
+                        && TryConsume(ref _loadCompensationRequestsToLose))
+                    || (messageType == "LoadCorrectionRequested"
+                        && TryConsume(ref _loadCorrectionRequestsToLose)))
+                {
+                    context.Client.Close();
+                    return;
+                }
+
                 if (messageType is "ExceptionRecoverySessionRequested" or "RecoveryActionSubmitted"
                         or "LoadCancellationStartRequested" or "LoadCorrectionRequested"
                     && !JudgeRecoveryRequest(messageType, messageId, line, root))
@@ -1786,6 +1913,11 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "FaultCargoRecoveryResult":
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
                         JsonElement recoveryPayload = root.GetProperty("payload");
+                        if (messageType == "LoadCompensationResult")
+                        {
+                            _settledCompensations[recoveryPayload.GetProperty("recoveryActionId").GetString()!] = 0;
+                        }
+
                         string? settledAttempt = messageType switch
                         {
                             "FaultCargoRecoveryResult" when recoveryPayload.GetProperty("overallOutcome").GetString()
@@ -1839,6 +1971,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                             || ManualStationClearanceProtocolProblem is not null:
                         await HandleManualStationClearanceConfirmationRequestedAsync(context, root)
                             .ConfigureAwait(false);
+                        break;
+                    case "LoadCompensationRequested" when SendLoadCompensationCommandOnRequest:
+                        await HandleLoadCompensationRequestedAsync(context, root).ConfigureAwait(false);
                         break;
                     case "UnableToChargeFieldConfirmationRequested" when CloseConnectionOnUnableToChargeConfirmation:
                         context.Client.Close();
@@ -2163,6 +2298,11 @@ public sealed class FakeControlServer : IAsyncDisposable
         if (ReplayUnacknowledgedClosedRecoverySnapshots && !drop)
         {
             await ReplayUnacknowledgedRecoverySnapshotsAsync(context).ConfigureAwait(false);
+        }
+
+        if (SendLoadCompensationCommandOnRequest && !drop)
+        {
+            await ReplayPendingCompensationCommandsAsync(context).ConfigureAwait(false);
         }
 
         if (drop)
@@ -2591,7 +2731,16 @@ public sealed class FakeControlServer : IAsyncDisposable
                 }))
             .ConfigureAwait(false);
 
-        if (SendRecoveryVectorCommandAfterRecoveryAction)
+        _submittedRecoveryActions[actionId] = payload.Clone();
+        if (TryConsume(ref _closeConnectionsAfterRecoveryActionAccepted))
+        {
+            context.Client.Close();
+            return;
+        }
+
+        if (SendRecoveryVectorCommandAfterRecoveryAction
+            && !(SendLoadCompensationCommandOnRequest
+                && payload.GetProperty("action").GetString() == "COMPENSATE_LOAD_ALL_EMPTY"))
         {
             BeforeRecoveryVectorCommand?.Invoke();
             for (int copy = 0; copy < Math.Max(1, RecoveryVectorCommandCopies); copy++)
@@ -2600,6 +2749,165 @@ public sealed class FakeControlServer : IAsyncDisposable
                     .ConfigureAwait(false);
             }
         }
+    }
+
+    /// <summary>
+    /// <c>AuthorizeLoadCompensationAsync</c>'s shape since onboard-hmi#236: the compensation is authorized by its
+    /// recovery action id, and a request for an action the server accepted, naming the same session, demand and
+    /// attempt, earns the command -- the first one by authorizing it, a repeat by an empty answer and the persisted
+    /// command re-sent. Any other request is refused with <c>ACTION_NOT_ALLOWED_IN_STATE</c>.
+    /// </summary>
+    /// <remarks>
+    /// Aligned with control-server <c>RecoveryStateMachineG2Tests</c>:
+    /// <c>ARepeatedCompensationRequestResendsTheCommandItEarnedAndAuthorizesNothingAgain</c> for the repeat, and the
+    /// <c>unknown-action</c>, <c>other-demand</c>, <c>other-attempt</c> and <c>other-session</c> rows of
+    /// <c>ARepeatedCompensationRequestOutsideTheSameOpenBoundCompensationIsStillRefused</c> for the refusals. The
+    /// server's other refusals -- a session closed, a result already in, a second compensation in flight -- this
+    /// double never reaches, since it keeps no session or result state of its own.
+    /// </remarks>
+    private async Task HandleLoadCompensationRequestedAsync(ConnectionContext context, JsonElement request)
+    {
+        JsonElement payload = request.GetProperty("payload");
+        string actionId = payload.GetProperty("recoveryActionId").GetString()!;
+        if (!_submittedRecoveryActions.TryGetValue(actionId, out JsonElement submitted)
+            || !SameCompensationScope(payload, submitted))
+        {
+            await WriteEnvelopeAsync(
+                    context,
+                    CreateEnvelope(
+                        context,
+                        "LoadCompensationRejected",
+                        request.GetProperty("messageId").GetString(),
+                        new
+                        {
+                            recoveryActionId = actionId,
+                            problem = new
+                            {
+                                reasonCode = "ACTION_NOT_ALLOWED_IN_STATE",
+                                fieldPath = "payload",
+                                displayMessage = "Load compensation is not authorized."
+                            }
+                        }))
+                .ConfigureAwait(false);
+            return;
+        }
+
+        if (_settledCompensations.ContainsKey(actionId))
+        {
+            // AuthorizeLoadCompensationAsync: a workflow with its result is past AwaitingResult and refused.
+            await WriteEnvelopeAsync(
+                    context,
+                    CreateEnvelope(
+                        context,
+                        "LoadCompensationRejected",
+                        request.GetProperty("messageId").GetString(),
+                        new
+                        {
+                            recoveryActionId = actionId,
+                            problem = new
+                            {
+                                reasonCode = "ACTION_NOT_ALLOWED_IN_STATE",
+                                fieldPath = "payload",
+                                displayMessage = "Load compensation is not authorized."
+                            }
+                        }))
+                .ConfigureAwait(false);
+            return;
+        }
+
+        PersistedCompensationCommand command = new(
+            Guid.NewGuid().ToString("D"),
+            DateTimeOffset.UtcNow,
+            CompensationCommandPayload(
+                submitted,
+                submitted.GetProperty("exceptionRecoverySessionId").GetString()!,
+                actionId));
+        if (!_authorizedCompensations.TryAdd(actionId, command))
+        {
+            Interlocked.Increment(ref _repeatedCompensationRequests);
+            command = _authorizedCompensations[actionId];
+        }
+        else if (TryConsume(ref _loadCompensationCommandsToLose))
+        {
+            context.Client.Close();
+            return;
+        }
+
+        await WritePersistedCompensationCommandAsync(context, command).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// <c>OnboardJourneyPublisher</c>'s re-send: the persisted line, messageId and sentAt kept. Only the session
+    /// generation moves when it goes into a later session, which is what <c>ReplayPendingForSessionAsync</c> rebinds.
+    /// </summary>
+    private async Task WritePersistedCompensationCommandAsync(
+        ConnectionContext context,
+        PersistedCompensationCommand command)
+    {
+        Interlocked.Increment(ref _loadCompensationCommandsWritten);
+        await WriteEnvelopeAsync(
+                context,
+                WireToGateProtocolSerializer.Create(
+                    "LoadCompensationCommand",
+                    command.MessageId,
+                    null,
+                    context.AgvId,
+                    context.Generation,
+                    command.SentAt,
+                    command.Payload))
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// <c>ReplayPendingCommandsAsync</c> after a <c>RecoveryStateReport</c>: every authorized compensation command
+    /// whose result has not arrived goes out again into the new session.
+    /// </summary>
+    private async Task ReplayPendingCompensationCommandsAsync(ConnectionContext context)
+    {
+        foreach ((string actionId, PersistedCompensationCommand command) in _authorizedCompensations)
+        {
+            if (!_settledCompensations.ContainsKey(actionId))
+            {
+                await WritePersistedCompensationCommandAsync(context, command).ConfigureAwait(false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// The business keys the server checks a compensation request against the workflow it accepted: session, demand,
+    /// and the attempt the workflow holds -- the one its command carries, <see cref="RecoveryVectorSlotOperationAttemptId"/>.
+    /// </summary>
+    private bool SameCompensationScope(JsonElement requested, JsonElement submitted) =>
+        requested.GetProperty("exceptionRecoverySessionId").GetString()
+            == submitted.GetProperty("exceptionRecoverySessionId").GetString()
+        && requested.GetProperty("demandId").GetString() == submitted.GetProperty("demandId").GetString()
+        && requested.GetProperty("slotOperationAttemptId").GetString() == (RecoveryVectorSlotOperationAttemptId ?? string.Empty);
+
+    private object CompensationCommandPayload(JsonElement submitted, string sessionId, string actionId)
+    {
+        string? demandId = submitted.TryGetProperty("demandId", out JsonElement demand)
+            && demand.ValueKind == JsonValueKind.String
+                ? demand.GetString()
+                : null;
+        int[] slots = RecoveryVectorSlotsOverride is { } overridden
+            ? [.. overridden]
+            : [.. submitted.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32())];
+        string attemptId = RecoveryVectorSlotOperationAttemptId ?? string.Empty;
+        return new
+        {
+            recoveryActionId = actionId,
+            exceptionRecoverySessionId = sessionId,
+            demandId,
+            slotOperationAttemptId = attemptId,
+            slots,
+            expectedFinalPhysicalState = "EMPTY",
+            commandContentSha256 =
+                FakeControlServerIdentifiers.LoadCompensationContentSha256(
+                    actionId,
+                    demandId ?? string.Empty,
+                    attemptId,
+                    slots)
+        };
     }
 
     /// <summary>
@@ -2661,27 +2969,14 @@ public sealed class FakeControlServer : IAsyncDisposable
                     .ConfigureAwait(false);
                 break;
             case "COMPENSATE_LOAD_ALL_EMPTY":
+                Interlocked.Increment(ref _loadCompensationCommandsWritten);
                 await WriteEnvelopeAsync(
                     context,
                     CreateEnvelope(
                         context,
                         "LoadCompensationCommand",
                         null,
-                        new
-                        {
-                            recoveryActionId = actionId,
-                            exceptionRecoverySessionId = sessionId,
-                            demandId,
-                            slotOperationAttemptId = attemptId,
-                            slots,
-                            expectedFinalPhysicalState = "EMPTY",
-                            commandContentSha256 =
-                                FakeControlServerIdentifiers.LoadCompensationContentSha256(
-                                    actionId,
-                                    demandId ?? string.Empty,
-                                    attemptId,
-                                    slots)
-                        }))
+                        CompensationCommandPayload(submitted, sessionId, actionId)))
                     .ConfigureAwait(false);
                 break;
             case "FORCED_MECHANICAL_RECOVERY":

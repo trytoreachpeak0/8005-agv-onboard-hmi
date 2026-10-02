@@ -141,6 +141,9 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
     public WireToGateSessionSnapshot Current => Volatile.Read(ref _current);
 
+    /// <summary>The vehicle this session speaks for, as configured.</summary>
+    public string AgvId => _options.AgvId;
+
     public bool IsConnected => Current.Connected;
 
     public bool IsReady => Current.Readiness == WireToGateSessionReadiness.Ready;

@@ -1297,6 +1297,7 @@ public sealed partial class RecoveryVectorG2Tests
         private readonly WireToGateSessionService _session;
         private readonly SqliteWireToGateJournal _journal;
         private readonly List<WireToGateOperatorEvent> _recoveryBlockedEvents;
+        private readonly List<WireToGateOperatorEvent> _operatorEvents;
         private readonly bool _ownsServer;
         private readonly MutableSafetySignalProvider _safety;
 
@@ -1308,6 +1309,7 @@ public sealed partial class RecoveryVectorG2Tests
             WireToGateBusinessService business,
             SqliteWireToGateJournal journal,
             List<WireToGateOperatorEvent> recoveryBlockedEvents,
+            List<WireToGateOperatorEvent> operatorEvents,
             RecordingLogger logger,
             MutableSafetySignalProvider safety)
         {
@@ -1320,6 +1322,7 @@ public sealed partial class RecoveryVectorG2Tests
             Business = business;
             _journal = journal;
             _recoveryBlockedEvents = recoveryBlockedEvents;
+            _operatorEvents = operatorEvents;
         }
 
         public FakeControlServer Server { get; }
@@ -1402,7 +1405,8 @@ public sealed partial class RecoveryVectorG2Tests
             IClock? sessionClock = null,
             TimeSpan? messageTimeout = null,
             bool awaitStartSettlement = true,
-            TimeSpan? resumeSettlementWaitLimit = null)
+            TimeSpan? resumeSettlementWaitLimit = null,
+            IClock? businessClock = null)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -1466,7 +1470,7 @@ public sealed partial class RecoveryVectorG2Tests
                     session,
                     io,
                     logger,
-                    new SystemClock(),
+                    businessClock ?? new SystemClock(),
                     () => safety.Read().MotionState == VehicleMotionState.Stopped,
                     new WireToGateSlotOperationExecutorOptions(
                         TimeSpan.FromSeconds(1),
@@ -1656,8 +1660,14 @@ public sealed partial class RecoveryVectorG2Tests
 
             // Subscribed before the pump starts, so no refusal can be published into the gap.
             List<WireToGateOperatorEvent> blocked = [];
+            List<WireToGateOperatorEvent> published = [];
             business.OperatorEventPublished += (_, args) =>
             {
+                lock (published)
+                {
+                    published.Add(args.Value);
+                }
+
                 if (args.Value.Kind == "RECOVERY_BLOCKED")
                 {
                     lock (blocked)
@@ -1742,7 +1752,7 @@ public sealed partial class RecoveryVectorG2Tests
             }
 
             return new RecoveryVectorHarness(
-                server, ownsServer, io, session, business, journal, blocked, logger, safety);
+                server, ownsServer, io, session, business, journal, blocked, published, logger, safety);
         }
 
         private const int StartSettlementReported = 1;
@@ -1892,6 +1902,18 @@ public sealed partial class RecoveryVectorG2Tests
         /// RECOVERY_BLOCKED event is published by the guard itself, so waiting on it is waiting for
         /// the refusal to have actually been decided.
         /// </remarks>
+        /// <summary>Every operator event the business service published, from before its pump started.</summary>
+        public IReadOnlyList<WireToGateOperatorEvent> OperatorEvents
+        {
+            get
+            {
+                lock (_operatorEvents)
+                {
+                    return [.. _operatorEvents];
+                }
+            }
+        }
+
         public int RecoveryBlockedCount
         {
             get
