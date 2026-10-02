@@ -139,6 +139,10 @@ public sealed class MainViewModel : ViewModelBase
     private StationClearanceDisplay _stationClearance = StationClearanceDisplay.Empty;
     private Func<WireToGateStationClearanceView>? _stationClearanceView;
     private Func<WireToGateStationClearancePrompt, CancellationToken, Task<bool>>? _stationClearanceConfirmer;
+    private HeldRecoveryCommandDisplay _heldRecoveryCommand = HeldRecoveryCommandDisplay.Empty;
+    private Func<WireToGateHeldRecoveryCommandView>? _heldRecoveryCommandView;
+    private Func<WireToGateHeldRecoveryCommandPrompt, CancellationToken, Task<bool>>? _heldRecoveryCommandConfirmer;
+    private Func<WireToGateHeldRecoveryCommandPrompt, CancellationToken, Task<bool>>? _heldRecoveryCommandDecliner;
     private UnableToChargeDisplay _unableToCharge = UnableToChargeDisplay.Empty;
     private Func<WireToGateUnableToChargeView>? _unableToChargeView;
     private Func<WireToGateUnableToChargePrompt, CancellationToken, Task<bool>>? _unableToChargeConfirmer;
@@ -707,6 +711,8 @@ public sealed class MainViewModel : ViewModelBase
         RefreshLoadCorrectionTargetCore();
         // 人工清桩确认不在那九个恢复入口里，不看锁存（见 RefreshStationClearanceCore）。
         RefreshStationClearanceCore();
+        // 扣住的服务端恢复命令自己看锁存：「确认执行」锁存时关，「不执行」照常开（见 RefreshHeldRecoveryCommandCore）。
+        RefreshHeldRecoveryCommandCore();
         // 现场确认充不上同样不在那九个里，不看锁存（见 RefreshUnableToChargeCore）。
         RefreshUnableToChargeCore();
     }
@@ -1666,6 +1672,107 @@ public sealed class MainViewModel : ViewModelBase
             WireToGateStationClearanceText.Status(view.LastOutcome));
     }
 
+    // ---- 扣住等待现场确认的服务端恢复命令（8005-agv-onboard-hmi#239） ----
+
+    public HeldRecoveryCommandDisplay HeldRecoveryCommand
+    {
+        get => _heldRecoveryCommand;
+        private set => SetProperty(ref _heldRecoveryCommand, value);
+    }
+
+    /// <remarks>
+    /// 与 <see cref="ConfigureStationClearance"/> 同形：业务服务的入口视图整份读回来，操作员确认或拒绝的那一份整份交回去。
+    /// 接线本身在 <c>HeldRecoveryCommandWiring</c>。
+    /// </remarks>
+    internal void ConfigureHeldRecoveryCommand(
+        Func<WireToGateHeldRecoveryCommandView> view,
+        Func<WireToGateHeldRecoveryCommandPrompt, CancellationToken, Task<bool>> confirmer,
+        Func<WireToGateHeldRecoveryCommandPrompt, CancellationToken, Task<bool>> decliner)
+    {
+        _heldRecoveryCommandView = view ?? throw new ArgumentNullException(nameof(view));
+        _heldRecoveryCommandConfirmer = confirmer ?? throw new ArgumentNullException(nameof(confirmer));
+        _heldRecoveryCommandDecliner = decliner ?? throw new ArgumentNullException(nameof(decliner));
+        RunOnUiThread(RefreshHeldRecoveryCommandCore);
+    }
+
+    /// <summary>
+    /// 操作员在对话框里确认执行之后调用，<paramref name="shown"/> 是对话框依据的那一份
+    /// <see cref="HeldRecoveryCommandDisplay.Prompt"/>。业务服务核对它仍是扣住的那一条才执行。
+    /// </summary>
+    public Task<bool> ConfirmHeldRecoveryCommandAsync(
+        WireToGateHeldRecoveryCommandPrompt shown,
+        CancellationToken cancellationToken = default) =>
+        DecideHeldRecoveryCommandAsync(shown, _heldRecoveryCommandConfirmer, cancellationToken);
+
+    /// <summary>
+    /// 操作员在对话框里选择不执行之后调用，其余同 <see cref="ConfirmHeldRecoveryCommandAsync"/>。装货修正要按两次：第一次
+    /// 业务服务只把后果写进说明、答 false，这里据说明是否已「等第二次按下」把它与真正的失败分开。
+    /// </summary>
+    public async Task<HeldRecoveryDeclineOutcome> DeclineHeldRecoveryCommandAsync(
+        WireToGateHeldRecoveryCommandPrompt shown,
+        CancellationToken cancellationToken = default)
+    {
+        if (await DecideHeldRecoveryCommandAsync(shown, _heldRecoveryCommandDecliner, cancellationToken)
+                .ConfigureAwait(true))
+        {
+            return HeldRecoveryDeclineOutcome.Answered;
+        }
+
+        return _heldRecoveryCommandView?.Invoke() is { DeclineArmed: true, Prompt: { } now }
+            && now.CommandMessageId == shown.CommandMessageId
+            && now.PrimaryId == shown.PrimaryId
+                ? HeldRecoveryDeclineOutcome.AwaitingSecondPress
+                : HeldRecoveryDeclineOutcome.NotAnswered;
+    }
+
+    private async Task<bool> DecideHeldRecoveryCommandAsync(
+        WireToGateHeldRecoveryCommandPrompt shown,
+        Func<WireToGateHeldRecoveryCommandPrompt, CancellationToken, Task<bool>>? decide,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(shown);
+        if (decide is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            return await decide(shown, cancellationToken).ConfigureAwait(true);
+        }
+        finally
+        {
+            RunOnUiThread(RefreshHeldRecoveryCommandCore);
+        }
+    }
+
+    /// <summary>
+    /// 两个按钮与说明出自同一份业务视图，一次替换。
+    /// </summary>
+    /// <remarks>
+    /// <b>「确认执行」看锁存，「不执行」不看，是有意的。</b>前者沿命令自己的路径执行，会经恢复向量执行器开门；锁存在
+    /// 执行器的开锁前一刻也会拦住，这里只是不让操作员按一个注定被拦的按钮。后者只向服务端回一个不开门的结果，锁存期间
+    /// 它是唯一能让服务端结束这次恢复的出口，关掉它就把扣住的状态变成没有出口。
+    /// </remarks>
+    private void RefreshHeldRecoveryCommandCore()
+    {
+        if (_heldRecoveryCommandView?.Invoke() is not { Prompt: { } prompt } view)
+        {
+            HeldRecoveryCommand = HeldRecoveryCommandDisplay.Empty;
+            return;
+        }
+
+        HeldRecoveryCommand = new HeldRecoveryCommandDisplay(
+            view.CanConfirm && !RecoveryEntriesBlockedByFatalFault,
+            view.CanDecline,
+            prompt,
+            true,
+            view.DeclineArmed
+                ? $"{prompt.Text.Trim()}\n{prompt.DeclineConsequence}确定不执行请再按一次「不执行」。"
+                : prompt.Text.Trim(),
+            view.DeclineArmed);
+    }
+
     // ---- 现场确认充不上入口（批次9-17，8005-agv-onboard-hmi#222） ----
 
     public UnableToChargeDisplay UnableToCharge
@@ -1949,6 +2056,8 @@ public sealed class MainViewModel : ViewModelBase
         // 人工清桩确认同样写在锁存守卫之前：它不在那九个恢复入口里、锁存期间照常开着（见 RefreshStationClearanceCore），
         // 放到守卫之后，锁存期间这条路径就不再刷新它，入口会停在锁存那一刻的样子。
         RefreshStationClearanceCore();
+        // 扣住的服务端恢复命令同理写在守卫之前，锁存与否由它自己判（见 RefreshHeldRecoveryCommandCore）。
+        RefreshHeldRecoveryCommandCore();
         if (RecoveryEntriesBlockedByFatalFault)
         {
             CanRequestWireToGateRecovery = false;

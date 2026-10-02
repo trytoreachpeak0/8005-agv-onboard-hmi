@@ -473,6 +473,28 @@
                             Visibility="{Binding StationClearance.CanConfirm, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnConfirmStationClearanceClick"
                             Content="确认清桩" />
+                    <!--
+                        扣住等待现场确认的服务端恢复命令（8005-agv-onboard-hmi#239）：车载端重启后（或离上次按下超过 5 分钟）
+                        服务端补发的补偿、修正、故障仓交接、续行命令不自动开锁，在这里等人决定。「确认执行」会开门，锁存期间关；
+                        「不执行」只向服务端回一个不开门的结果，锁存期间照常开。说明在下面单独一行。
+                    -->
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            Background="#D6A32A"
+                            AutomationProperties.AutomationId="ConfirmHeldRecoveryCommand"
+                            IsEnabled="{Binding HeldRecoveryCommand.CanConfirm}"
+                            Visibility="{Binding HeldRecoveryCommand.CanConfirm, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnConfirmHeldRecoveryCommandClick"
+                            Content="确认执行" />
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            AutomationProperties.AutomationId="DeclineHeldRecoveryCommand"
+                            IsEnabled="{Binding HeldRecoveryCommand.CanDecline}"
+                            Visibility="{Binding HeldRecoveryCommand.CanDecline, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnDeclineHeldRecoveryCommandClick"
+                            Content="不执行" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"
@@ -524,6 +546,14 @@
                 <StackPanel Grid.Row="6"
                             Grid.Column="0"
                             Grid.ColumnSpan="3">
+                    <TextBlock Margin="0,6,0,0"
+                               FontSize="13"
+                               FontWeight="Bold"
+                               Foreground="{StaticResource DangerBrush}"
+                               AutomationProperties.AutomationId="HeldRecoveryCommandNotice"
+                               Text="{Binding HeldRecoveryCommand.NoticeText}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding HeldRecoveryCommand.HasNotice, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <TextBlock Margin="0,6,0,0"
                                FontSize="13"
                                Foreground="{StaticResource MutedBrush}"

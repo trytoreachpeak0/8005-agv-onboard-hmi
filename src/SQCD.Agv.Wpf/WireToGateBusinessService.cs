@@ -632,6 +632,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             // nothing when it refuses -- but every send is a message of its own.
             string actionId = state.RecoveryActionId ?? Guid.NewGuid().ToString("D");
             string actionMessageId = Guid.NewGuid().ToString("D");
+            // The press the resume command it earns may run on (onboard-hmi#239).
+            MarkOperatorPress(actionId);
             // The widest window on this path: the request above went out and came back over the
             // network, and the CLOSED snapshot for this very session can arrive while it is out. This
             // write owns the session id and the two action ids; everything else is what the journal
@@ -2303,6 +2305,15 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     Volatile.Write(
                         ref _recoverySessionSnapshot,
                         recoverySnapshot.State == "CLOSED" ? null : recoverySnapshot);
+                    if (recoverySnapshot.State == "CLOSED"
+                        && Volatile.Read(ref _heldRecoveryCommand) is { } held
+                        && held.ExceptionRecoverySessionId == recoverySnapshot.ExceptionRecoverySessionId
+                        && Interlocked.CompareExchange(ref _heldRecoveryCommand, null, held) == held)
+                    {
+                        // The session a held command belonged to is over: nothing is left for the operator to decide
+                        // on it (onboard-hmi#239).
+                        PublishHeldCommandVoided(held, "服务端恢复会话已关闭");
+                    }
 
                     PublishOperatorEvent(
                         $"recovery-session-snapshot:{recoverySnapshot.ExceptionRecoverySessionId}:{recoverySnapshot.RecoverySessionRevision}",
@@ -2449,11 +2460,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
     private async Task HandleBlockedResumeAsync(
         WireToGateSlotOperationResumeCommand command,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        HeldRecoveryDecision decision = HeldRecoveryDecision.None)
     {
         try
         {
-            await HandleBlockedResumeCoreAsync(command, cancellationToken).ConfigureAwait(false);
+            await HandleBlockedResumeCoreAsync(command, decision, cancellationToken).ConfigureAwait(false);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -2506,6 +2518,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
     private async Task HandleBlockedResumeCoreAsync(
         WireToGateSlotOperationResumeCommand command,
+        HeldRecoveryDecision heldDecision,
         CancellationToken cancellationToken)
     {
         // Started at the first wait on the settlement, so the limit is on the whole of the waiting however
@@ -2553,6 +2566,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 // Idempotent. A journal still naming this session is one a stop, or a failed write,
                 // left behind after the rejection was already on file.
                 await ReleaseRefusedResumeSessionAsync(command, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
+            // onboard-hmi#239: a held resume the operator declines is rejected here, ahead of the gate. The rejection opens
+            // nothing, so nothing the gate judges applies to it; and a decline pressed again after one whose rejection
+            // could not be written finds the session already forgotten, which the gate would refuse under another reason
+            // while the command stayed held.
+            if (heldDecision == HeldRecoveryDecision.Declined)
+            {
+                await DeclineHeldResumeAsync(command, cancellationToken).ConfigureAwait(false);
                 return;
             }
 
@@ -2645,6 +2668,29 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     "OPERATION_REPLAY",
                     "恢复结果已存在，保持原恢复结果重放，未再次执行仓门IO。");
                 return;
+            }
+
+            // onboard-hmi#239: the resume opens the doors it resumes, so it runs by itself only on a press this process
+            // holds within the window; any other is held for someone at the vehicle. Past the gate above, so every
+            // refusal the gate makes is still made. A resume the vehicle had begun before a restart does not get here:
+            // its persisted checkpoint has moved on, and the gate refuses it without touching IO.
+            if (heldDecision == HeldRecoveryDecision.None)
+            {
+                if (!PressedWithinWindow(command.RecoveryActionId))
+                {
+                    HoldRecoveryCommand(
+                        command,
+                        ResumeAfterRepairKind,
+                        command.RecoveryActionId,
+                        command.ExceptionRecoverySessionId,
+                        command.DemandId,
+                        command.Slots,
+                        [],
+                        canDecline: true);
+                    return;
+                }
+
+                ReleaseHeldCommandFor(command.RecoveryActionId);
             }
 
             // Everything above is judged again on every pass: a settlement that held the attempt may have
