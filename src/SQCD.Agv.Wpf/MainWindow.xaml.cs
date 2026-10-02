@@ -399,6 +399,53 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// 扣住的服务端恢复命令，确认执行（8005-agv-onboard-hmi#239）。对话框之前读一次视图模型的入口，确认之后原样交回
+    /// 那一次读到的 <c>Prompt</c>：对话框开着时视图模型照常刷新，换掉的只是屏幕，不是这里要确认的那一条。
+    /// </summary>
+    private async void OnConfirmHeldRecoveryCommandClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel?.HeldRecoveryCommand is not { Prompt: { } prompt }
+            || MessageBox.Show(
+                prompt.Text.Trim()
+                    + "\n\n确认人已在车旁、仓门附近安全，现在执行这条命令？车辆会给上述仓门发开锁信号。",
+                "确认执行服务端恢复命令",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.ConfirmHeldRecoveryCommandAsync(prompt))
+        {
+            ShowRecoveryFailure("这条命令已不再等待确认，没有执行。原因见操作记录。", "未执行");
+        }
+    }
+
+    /// <summary>
+    /// 扣住的服务端恢复命令，不执行（8005-agv-onboard-hmi#239）。与 <see cref="OnConfirmHeldRecoveryCommandClick"/> 同形。
+    /// </summary>
+    private async void OnDeclineHeldRecoveryCommandClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel?.HeldRecoveryCommand is not { Prompt: { } prompt }
+            || MessageBox.Show(
+                prompt.Text.Trim()
+                    + "\n\n确定不执行这条命令？车辆不会开锁，并向服务端报告未执行；服务端将结束本次恢复，如仍需处理要重新发起。",
+                "不执行服务端恢复命令",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.DeclineHeldRecoveryCommandAsync(prompt))
+        {
+            ShowRecoveryFailure("这条命令已不再等待确认，没有向服务端回复。原因见操作记录。", "未回复");
+        }
+    }
+
+    /// <summary>
     /// 现场确认充不上（8005-agv-onboard-hmi#222）。对话框依据的是被按下那个按钮自己的选项，确认之后原样交回它的
     /// <c>Prompt</c>。
     /// </summary>

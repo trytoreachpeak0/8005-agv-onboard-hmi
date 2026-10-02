@@ -28,6 +28,15 @@ public sealed record WireToGateHeldRecoveryCommandPrompt(
     bool CanDecline);
 
 /// <summary>
+/// The held-command entry as the screen reads it, all from one moment (onboard-hmi#239): what is held, and which of
+/// the two buttons is offered.
+/// </summary>
+public sealed record WireToGateHeldRecoveryCommandView(
+    WireToGateHeldRecoveryCommandPrompt? Prompt,
+    bool CanConfirm,
+    bool CanDecline);
+
+/// <summary>
 /// The server recovery commands that open doors, held after a restart until someone at the vehicle confirms them
 /// (onboard-hmi#239).
 /// </summary>
@@ -77,6 +86,15 @@ public sealed partial class WireToGateBusinessService
     public bool CanConfirmHeldRecoveryCommand =>
         HeldRecoveryCommand is { } prompt
         && CanUseRecoveryOperator(requireProof: prompt.VectorType != WireToGateRecoveryVectorTypes.LoadCorrection);
+
+    /// <summary>The entry as the screen reads it, read once.</summary>
+    public WireToGateHeldRecoveryCommandView HeldRecoveryCommandView =>
+        HeldRecoveryCommand is not { } prompt
+            ? new(null, false, false)
+            : new(
+                prompt,
+                CanConfirmHeldRecoveryCommand,
+                CanDeclineHeldRecoveryCommand);
 
     /// <summary>Whether "do not execute" is offered for the held command.</summary>
     public bool CanDeclineHeldRecoveryCommand =>

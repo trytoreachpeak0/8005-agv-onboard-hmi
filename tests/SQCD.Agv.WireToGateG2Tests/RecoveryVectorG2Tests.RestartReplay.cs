@@ -1,6 +1,8 @@
 using System.Text.Json;
+using SQCD.Agv.Application;
 using SQCD.Agv.Core;
 using SQCD.Agv.Wpf;
+using SQCD.Agv.Wpf.ViewModels;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
@@ -189,6 +191,39 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(0, afterRestart.Io.UnlockCount);
         WireToGateOperatorEvent declined = await WaitForEventAsync(afterRestart, "RECOVERY_COMMAND_DECLINED", token);
         Assert.Contains("部分仓门已开过", declined.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The entry on the screen: the view model, wired the way the App wires it, shows both buttons and the notice for
+    /// the held command, and its confirm runs the command.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task TheScreenOffersBothButtonsForTheHeldCommandAndItsConfirmRunsIt()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RestartedVehicle vehicle = await RestartAfterALostCompensationCommandAsync(token);
+        RecoveryVectorHarness afterRestart = vehicle.Harness;
+        await WaitForHeldAsync(afterRestart, token);
+        await using OnboardController controller = MultiDemandViewModelTests.Controller();
+        MainViewModel viewModel = await MultiDemandViewModelTests.ViewModel(controller);
+
+        // The same method App.xaml.cs calls, not a copy of its lines.
+        HeldRecoveryCommandWiring.Configure(viewModel, afterRestart.Business);
+
+        HeldRecoveryCommandDisplay shown = viewModel.HeldRecoveryCommand;
+        Assert.True(shown.CanConfirm);
+        Assert.True(shown.CanDecline);
+        Assert.True(shown.HasNotice);
+        Assert.Contains("补偿清空", shown.NoticeText, StringComparison.Ordinal);
+        Assert.Contains("确认执行", shown.NoticeText, StringComparison.Ordinal);
+
+        Assert.True(await viewModel.ConfirmHeldRecoveryCommandAsync(shown.Prompt!, token));
+
+        await afterRestart.WaitForResultAsync("LoadCompensationResult", token);
+        Assert.True(afterRestart.Io.UnlockCount > 0, "the confirmed compensation has to pulse the slots holding cargo");
+        Assert.Equal(HeldRecoveryCommandDisplay.Empty, viewModel.HeldRecoveryCommand);
     }
 
     /// <summary>Confirming does not skip the motion check: a vehicle whose motion is unknown still opens nothing.</summary>
