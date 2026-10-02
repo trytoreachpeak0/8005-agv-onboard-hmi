@@ -1177,6 +1177,15 @@ public sealed partial class WireToGateBusinessService
             // the operator already comes from the journaled vector.
             vector = existingVector;
             correctionReason = state.RecoveryReason ?? RequireReason(reason);
+            // Who pressed this time, and when, is not what goes to the server -- the request has to be the first
+            // press's byte for byte -- so it is kept here instead (onboard-hmi#236 review S-B). After a restart this
+            // is the only record that someone looked at the slots and pressed again.
+            WireToGateOperatorContextPayload pressing = ReadOperatorContext();
+            _logger.Write(
+                LogSeverity.Information,
+                nameof(WireToGateBusinessService),
+                $"装货修正再次按下：correction={vector.PrimaryId}，当前操作员={pressing.OperatorId}，"
+                + $"按下时间={_clock.Now:O}，请求沿用首次操作员={vector.OperatorId}。");
         }
         else
         {
@@ -1221,10 +1230,15 @@ public sealed partial class WireToGateBusinessService
     private async Task SendLoadCorrectionRequestAsync(
         WireToGateRecoveryVectorContext vector,
         string correctionReason,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool pressedByOperator = true)
     {
         WireToGateOperatorContextPayload context = RequirePersistedOperator(vector);
-        MarkAuthorizationRequested(vector);
+        if (pressedByOperator)
+        {
+            MarkAuthorizationRequested(vector);
+        }
+
         // A messageId of its own for every send, as in RequestRecoveryActionVectorCoreAsync: the
         // identity the server keeps is correctionId.
         await _session.RequestLoadCorrectionAsync(
@@ -1561,9 +1575,14 @@ public sealed partial class WireToGateBusinessService
     private async Task SendLoadCompensationRequestAsync(
         WireToGateRecoveryVectorContext vector,
         CancellationToken cancellationToken,
-        WireToGateOperatorContextPayload? operatorContext = null)
+        WireToGateOperatorContextPayload? operatorContext = null,
+        bool pressedByOperator = true)
     {
-        MarkAuthorizationRequested(vector);
+        if (pressedByOperator)
+        {
+            MarkAuthorizationRequested(vector);
+        }
+
         await _session.RequestLoadCompensationAsync(
                 Guid.NewGuid().ToString("D"),
                 new LoadCompensationRequestedPayload(

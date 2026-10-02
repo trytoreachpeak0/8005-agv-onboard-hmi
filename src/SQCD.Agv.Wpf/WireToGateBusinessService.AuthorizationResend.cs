@@ -53,8 +53,11 @@ public sealed partial class WireToGateBusinessService
     private long _authorizationReviewedGeneration = long.MinValue;
 
     /// <summary>
-    /// Recorded before the send, so a send that fails on a link already down is still asked again. A press -- or a
-    /// resend -- moves the time on: the window runs from the last time anyone asked.
+    /// Recorded before the send, so a send that fails on a link already down is still asked again. Only a press moves
+    /// the time on; a resend does not. The window runs from the last time a person asked: a resend moving it would let
+    /// a link that keeps dropping carry the press forward indefinitely, and a compensation pressed long ago would open
+    /// doors with nobody shown anything (onboard-hmi#236 review S-A, probe: 8 minutes after the press, three requests,
+    /// the compensation ran, no prompt).
     /// </summary>
     private void MarkAuthorizationRequested(WireToGateRecoveryVectorContext vector) =>
         _authorizationRequestedInThisProcess[vector.PrimaryId] = _clock.Now;
@@ -98,12 +101,9 @@ public sealed partial class WireToGateBusinessService
                 return;
             }
 
-            if (_clock.Now - requestedAt > AuthorizationResendWindow)
+            if (PastResendWindow(vector, requestedAt))
             {
-                PublishAuthorizationUnknown(
-                    vector,
-                    $"授权请求可能已在断线时丢失，而离上次申请已超过 {AuthorizationResendWindow.TotalMinutes:0} 分钟，车辆不再自动重新申请");
-                LogAuthorizationReview(generation, vector, $"上次申请于 {requestedAt:O}，已超时限，已提示操作员");
+                LogAuthorizationReview(generation, vector, $"上次按下于 {requestedAt:O}，已超时限，已提示操作员");
                 return;
             }
 
@@ -140,6 +140,22 @@ public sealed partial class WireToGateBusinessService
                 exception);
             PublishAuthorizationUnknown(reviewed, $"重连后检查授权状态时出错（{exception.Message}）");
         }
+    }
+
+    /// <summary>
+    /// Whether the last press is more than <see cref="AuthorizationResendWindow"/> ago, and if so, shows the operator.
+    /// </summary>
+    private bool PastResendWindow(WireToGateRecoveryVectorContext vector, DateTimeOffset requestedAt)
+    {
+        if (_clock.Now - requestedAt <= AuthorizationResendWindow)
+        {
+            return false;
+        }
+
+        PublishAuthorizationUnknown(
+            vector,
+            $"授权请求可能已在断线时丢失，而离上次按下已超过 {AuthorizationResendWindow.TotalMinutes:0} 分钟，车辆不再自动重新申请");
+        return true;
     }
 
     /// <summary>
@@ -191,6 +207,14 @@ public sealed partial class WireToGateBusinessService
             return true;
         }
 
+        // Asked again here, just before the send: the wait for the gate can itself run past the window, and the
+        // premise the review checked has to hold when the request leaves, not when it queued (review S-A).
+        if (!_authorizationRequestedInThisProcess.TryGetValue(vector.PrimaryId, out DateTimeOffset requestedAt)
+            || PastResendWindow(vector, requestedAt))
+        {
+            return true;
+        }
+
         if (vector.VectorType == WireToGateRecoveryVectorTypes.LoadCompensation)
         {
             // A session the server already closed takes no authorization; it would be refused, and the journal
@@ -201,7 +225,8 @@ public sealed partial class WireToGateBusinessService
                 return true;
             }
 
-            await SendLoadCompensationRequestAsync(vector, cancellationToken).ConfigureAwait(false);
+            await SendLoadCompensationRequestAsync(vector, cancellationToken, pressedByOperator: false)
+                .ConfigureAwait(false);
         }
         else
         {
@@ -212,7 +237,8 @@ public sealed partial class WireToGateBusinessService
                 throw new InvalidDataException("RECOVERY_REASON_REQUIRED");
             }
 
-            await SendLoadCorrectionRequestAsync(vector, reason, cancellationToken).ConfigureAwait(false);
+            await SendLoadCorrectionRequestAsync(vector, reason, cancellationToken, pressedByOperator: false)
+                .ConfigureAwait(false);
         }
 
         PublishOperatorEvent(

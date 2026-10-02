@@ -69,6 +69,67 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// A resend does not move the window on: two drops whose reconnects together come more than five minutes after
+    /// the press are asked again once, inside the window, and shown -- not asked -- the second time (onboard-hmi#236
+    /// review S-A).
+    /// </summary>
+    /// <remarks>
+    /// The review's probe had every resend refresh the press time, so a link that kept dropping carried the press
+    /// forward for as long as it dropped: 8 minutes after the press, three requests, the compensation ran and nothing
+    /// was shown. The window runs from the last time a person pressed.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task AResendDoesNotCarryThePressPastTheWindow()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        MultiDemandViewModelTests.ManualClock clock = new(DateTimeOffset.UtcNow);
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server =>
+            {
+                server.RecoverySlotOperationAttemptId = AttemptId;
+                server.SendLoadCompensationCommandOnRequest = true;
+                server.LoadCompensationRequestsToLose = 2;
+            },
+            loadAlreadySettled: true,
+            businessClock: clock);
+        TimeSpan step = WireToGateBusinessService.AuthorizationResendWindow / 2 + TimeSpan.FromSeconds(1);
+
+        Assert.True(await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token));
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => !harness.Session.Current.Connected,
+            "the press's request to go down with the link",
+            token);
+
+        // First reconnect, inside the window: asked again -- and lost again.
+        clock.Advance(step);
+        await harness.Session.Client.ConnectAndRecoverAsync(token);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.ResultsOfType("LoadCompensationRequested").Count == 2 && !harness.Session.Current.Connected,
+            "the resend to go out and down with the link again",
+            token);
+        Assert.DoesNotContain(harness.OperatorEvents, item => item.Kind == "RECOVERY_AUTHORIZATION_UNKNOWN");
+
+        // Second reconnect: past the window counted from the press, though within it counted from the resend.
+        clock.Advance(step);
+        await harness.Session.Client.ConnectAndRecoverAsync(token);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.OperatorEvents.Any(item => item.Kind == "RECOVERY_AUTHORIZATION_UNKNOWN"),
+            "the operator to be shown the authorization may be lost",
+            token);
+        Assert.Contains(
+            "超过 5 分钟",
+            harness.OperatorEvents.First(item => item.Kind == "RECOVERY_AUTHORIZATION_UNKNOWN").Message,
+            StringComparison.Ordinal);
+        Assert.Equal(2, harness.ResultsOfType("LoadCompensationRequested").Count);
+        Assert.Empty(harness.ResultsOfType("LoadCompensationResult"));
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
     /// A compensation whose command is already bound is not asked for again after a reconnect, and nothing is shown:
     /// the command is on its way through the server's replay, not lost (onboard-hmi#236 review N2).
     /// </summary>

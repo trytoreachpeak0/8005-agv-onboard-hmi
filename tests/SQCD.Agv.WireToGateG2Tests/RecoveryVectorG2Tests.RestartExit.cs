@@ -144,5 +144,11 @@ public sealed partial class RecoveryVectorG2Tests
         using JsonDocument again = JsonDocument.Parse(Assert.Single(afterRestart.ResultsOfType("LoadCorrectionRequested")));
         Assert.Equal(firstPayload, again.RootElement.GetProperty("payload").GetRawText());
         Assert.Empty(serverAfterRestart.RecoveryRequestConflicts);
+
+        // Who pressed this time is not in the request, so it is in the log (review S-B).
+        Assert.Contains(afterRestart.Logger.Entries, entry =>
+            entry.Message.StartsWith("装货修正再次按下：", StringComparison.Ordinal)
+            && entry.Message.Contains(
+                $"当前操作员={Environment.GetEnvironmentVariable(OperatorVariable)}", StringComparison.Ordinal));
     }
 }
