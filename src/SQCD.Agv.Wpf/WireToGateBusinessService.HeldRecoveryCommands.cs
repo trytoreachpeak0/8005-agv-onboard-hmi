@@ -261,7 +261,8 @@ public sealed partial class WireToGateBusinessService
     {
         if (held.Prompt.VectorType == ResumeAfterRepairKind)
         {
-            return state.RecoveryActionId == held.Prompt.PrimaryId
+            return held.SessionReleasedByDecline
+                || state.RecoveryActionId == held.Prompt.PrimaryId
                 && state.ExceptionRecoverySessionId == held.ExceptionRecoverySessionId
                     ? null
                     : "本车的恢复会话记录已清除";
@@ -407,8 +408,12 @@ public sealed partial class WireToGateBusinessService
             _ => throw new InvalidOperationException("RECOVERY_COMMAND_INVALID")
         }).ConfigureAwait(false);
         // A decline has answered the server exactly when it ended the hold: an answer that could not be written leaves the
-        // command held, and that press answered nothing.
-        return decision == HeldRecoveryDecision.Confirmed || Volatile.Read(ref _heldRecoveryCommand) != held;
+        // command held, and that press answered nothing. Compared by the command, not the record: a resume's decline
+        // replaces the record to mark its session released.
+        return decision == HeldRecoveryDecision.Confirmed
+            || Volatile.Read(ref _heldRecoveryCommand) is not { } still
+            || still.Prompt.CommandMessageId != held.Prompt.CommandMessageId
+            || still.Prompt.PrimaryId != held.Prompt.PrimaryId;
     }
 
     /// <summary>
@@ -508,6 +513,57 @@ public sealed partial class WireToGateBusinessService
                         + "已按日志如实向服务端报告结果未知（UNKNOWN），服务端将结束本次恢复，请现场核对这些仓位后重新发起。 ");
     }
 
+    /// <summary>
+    /// Rejects a held resume the operator chose not to carry out, opening nothing, and ends the hold only once the
+    /// rejection is in the outbox (onboard-hmi#239 incremental review S-1, the resume's half of the vector decline).
+    /// </summary>
+    /// <remarks>
+    /// The rejection forgets the vehicle's recovery session first and then writes itself
+    /// (<see cref="SendResumeRejectedAsync"/>, for its own reasons), and a failed write is only logged there. So the hold
+    /// is marked before -- that forgetting must not void it -- and judged after, by the rejection being on file. Not on
+    /// file, the server is still waiting: the hold stays, the screen says why, and the decline can be pressed again.
+    /// </remarks>
+    private async Task DeclineHeldResumeAsync(
+        WireToGateSlotOperationResumeCommand command,
+        CancellationToken cancellationToken)
+    {
+        MarkHeldResumeSessionReleased(command.RecoveryActionId);
+        _logger.Write(
+            LogSeverity.Warning,
+            nameof(WireToGateBusinessService),
+            $"操作员选择不执行修复后续行命令：attempt={command.SlotOperationAttemptId}，action={command.RecoveryActionId}，"
+            + "以VEHICLE_NOT_READY拒绝。");
+        await SendResumeRejectedAsync(command, "VEHICLE_NOT_READY", cancellationToken).ConfigureAwait(false);
+        if (await _session.Journal
+                .ReadOutgoingByDeduplicationKeyAsync(ResumeRejectedKey(command), cancellationToken)
+                .ConfigureAwait(false) is null)
+        {
+            PublishOperatorResponse(
+                "RECOVERY_BLOCKED",
+                "「不执行」的拒绝没能写入发件箱，服务端仍在等待，扣住的命令保留；未开任何仓门，可以再按一次「不执行」。 ");
+            return;
+        }
+
+        ForgetHeldCommandFor(command.RecoveryActionId, "操作员选择不执行，拒绝已写入发件箱");
+        PublishOperatorEvent(
+            $"recovery-command-declined:{ResumeAfterRepairKind}:{command.RecoveryActionId}",
+            "RECOVERY_COMMAND_DECLINED",
+            $"已按操作员选择不执行修复后续行原仓位操作{FormatSlots(command.Slots)}，未开任何仓门；已向服务端拒绝该命令，"
+            + "服务端将结束本次恢复，如仍需处理请重新发起。 ");
+    }
+
+    private void MarkHeldResumeSessionReleased(string primaryId)
+    {
+        while (Volatile.Read(ref _heldRecoveryCommand) is { SessionReleasedByDecline: false } held
+            && held.Prompt.PrimaryId == primaryId
+            && Interlocked.CompareExchange(
+                ref _heldRecoveryCommand,
+                held with { SessionReleasedByDecline = true },
+                held) != held)
+        {
+        }
+    }
+
     /// <summary>The slots the journal shows <paramref name="primaryId"/>'s vector opened, or may have.</summary>
     private static int[] OpenedSlotsOf(WireToGateRecoveryState state, string vectorType, string primaryId) =>
         state.RecoveryVector is { } vector && vector.VectorType == vectorType && vector.PrimaryId == primaryId
@@ -531,10 +587,15 @@ public sealed partial class WireToGateBusinessService
     private static string FormatSlotList(IReadOnlyList<int> slots) =>
         slots.Count == 0 ? "无" : string.Join(",", slots);
 
+    /// <param name="SessionReleasedByDecline">
+    /// A resume's decline has started: its rejection forgets the vehicle's recovery session before it is written, so the
+    /// session going is the decline's own doing, not a reason to void the hold.
+    /// </param>
     private sealed record HeldCommand(
         WireToGateServerCommand Command,
         WireToGateHeldRecoveryCommandPrompt Prompt,
-        string? ExceptionRecoverySessionId);
+        string? ExceptionRecoverySessionId,
+        bool SessionReleasedByDecline = false);
 }
 
 /// <summary>How a recovery command reaches its handler: arriving from the server, or a held one a person decided on.</summary>

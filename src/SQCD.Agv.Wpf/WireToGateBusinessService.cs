@@ -2569,6 +2569,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return;
             }
 
+            // onboard-hmi#239: a held resume the operator declines is rejected here, ahead of the gate. The rejection opens
+            // nothing, so nothing the gate judges applies to it; and a decline pressed again after one whose rejection
+            // could not be written finds the session already forgotten, which the gate would refuse under another reason
+            // while the command stayed held.
+            if (heldDecision == HeldRecoveryDecision.Declined)
+            {
+                await DeclineHeldResumeAsync(command, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
             state = await _session.Journal
                 .ReadRecoveryStateAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -2681,22 +2691,6 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 }
 
                 ReleaseHeldCommandFor(command.RecoveryActionId);
-            }
-            else if (heldDecision == HeldRecoveryDecision.Declined)
-            {
-                _logger.Write(
-                    LogSeverity.Warning,
-                    nameof(WireToGateBusinessService),
-                    $"操作员选择不执行修复后续行命令：attempt={command.SlotOperationAttemptId}，action={command.RecoveryActionId}，以VEHICLE_NOT_READY拒绝。");
-                // Ended before the rejection: it forgets the session first, and that would read as the hold voided.
-                ForgetHeldCommandFor(command.RecoveryActionId, "操作员选择不执行，以 VEHICLE_NOT_READY 拒绝");
-                await SendResumeRejectedAsync(command, "VEHICLE_NOT_READY", cancellationToken).ConfigureAwait(false);
-                PublishOperatorEvent(
-                    $"recovery-command-declined:{ResumeAfterRepairKind}:{command.RecoveryActionId}",
-                    "RECOVERY_COMMAND_DECLINED",
-                    $"已按操作员选择不执行修复后续行原仓位操作{FormatSlots(command.Slots)}，未开任何仓门；已向服务端拒绝该命令，"
-                    + "服务端将结束本次恢复，如仍需处理请重新发起。 ");
-                return;
             }
 
             // Everything above is judged again on every pass: a settlement that held the attempt may have

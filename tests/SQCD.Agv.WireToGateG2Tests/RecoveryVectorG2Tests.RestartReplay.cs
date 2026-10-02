@@ -618,6 +618,69 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(0, afterRestart.Io.UnlockCount);
     }
 
+    /// <summary>
+    /// The same for a resume: a decline whose rejection cannot be written to the outbox keeps the command held, and says
+    /// so, instead of reporting an answer the server never got (onboard-hmi#239 incremental review S-1).
+    /// </summary>
+    /// <remarks>
+    /// The rejection forgets the vehicle's recovery session before it writes the rejection, on purpose
+    /// (<c>SendResumeRejectedAsync</c>), so the hold cannot be judged by the session still being on file: that change is
+    /// the decline's own. The review's probe on the head before this: answered=True, rejectionsAtServer=0.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task ADeclinedResumeWhoseRejectionCannotBeWrittenKeepsTheCommandHeld()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = NewRestartJournalPath();
+        await using FakeControlServer server = RecoveryVectorHarness.NewServer();
+        await using (RecoveryVectorHarness beforeRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: server,
+            journalPath: journalPath))
+        {
+            await OpenResumeActionAsync(beforeRestart, token);
+        }
+
+        FailingResultWriteJournal? journal = null;
+        await using FakeControlServer serverAfterRestart = RecoveryVectorHarness.NewServer();
+        serverAfterRestart.AdoptDurableRecoveryMemoryFrom(server);
+        await using RecoveryVectorHarness afterRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: serverAfterRestart,
+            journalPath: journalPath,
+            restart: true,
+            lockerWaitTimesOut: true,
+            wrapJournal: inner => journal = new FailingResultWriteJournal(inner, "slot-operation-resume-rejected:"));
+        await WaitForSessionToCarryCommandsAsync(afterRestart, token);
+        WireToGateRecoveryState state = await afterRestart.ReadRecoveryStateAsync(token);
+        await serverAfterRestart.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, ResumePayload(state));
+        WireToGateHeldRecoveryCommandPrompt held = await WaitForHeldAsync(afterRestart, token);
+        journal!.FailTheNextResultWrite();
+
+        Assert.False(await afterRestart.Business.DeclineHeldRecoveryCommandAsync(held, token));
+
+        Assert.Equal(1, journal.FailedWrites);
+        Assert.Empty(Rejections(afterRestart));
+        Assert.Equal(held.CommandMessageId, afterRestart.Business.HeldRecoveryCommand?.CommandMessageId);
+        Assert.True(afterRestart.Business.CanDeclineHeldRecoveryCommand);
+        Assert.Contains(afterRestart.OperatorEvents, item =>
+            item.Kind == "RECOVERY_BLOCKED" && item.Message.Contains("没能写入发件箱", StringComparison.Ordinal));
+        Assert.DoesNotContain(afterRestart.OperatorEvents, item => item.Kind == "RECOVERY_COMMAND_DECLINED");
+        Assert.DoesNotContain(afterRestart.OperatorEvents, item => item.Kind == "RECOVERY_COMMAND_HELD_VOIDED");
+
+        Assert.True(await afterRestart.Business.DeclineHeldRecoveryCommandAsync(
+            afterRestart.Business.HeldRecoveryCommand!, token));
+        JsonElement rejection = await WaitForSingleRejectionAsync(afterRestart, token);
+        Assert.Equal(ResumeMessageId, rejection.GetProperty("correlationId").GetString());
+        Assert.Equal(
+            "VEHICLE_NOT_READY",
+            rejection.GetProperty("payload").GetProperty("problem").GetProperty("reasonCode").GetString());
+        Assert.Null(afterRestart.Business.HeldRecoveryCommand);
+        Assert.Equal(0, afterRestart.Io.UnlockCount);
+    }
+
     private static async Task WaitForHeldOrExecutedAsync(
         RecoveryVectorHarness harness,
         string resultType,
@@ -779,10 +842,11 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
-    /// Fails the next write of a recovery vector result to the outbox, once armed, with an <see cref="IOException"/>,
-    /// and lets every other call through.
+    /// Fails the next outbox write whose deduplication key starts with <paramref name="keyPrefix"/>, once armed, with an
+    /// <see cref="IOException"/>, and lets every other call through.
     /// </summary>
-    private sealed class FailingResultWriteJournal(IWireToGateJournal inner) : IWireToGateJournal
+    private sealed class FailingResultWriteJournal(IWireToGateJournal inner, string keyPrefix = "recovery-vector-result:")
+        : IWireToGateJournal
     {
         private int _armed;
         private int _failed;
@@ -795,7 +859,7 @@ public sealed partial class RecoveryVectorG2Tests
             WireToGateDurableMessage message,
             CancellationToken cancellationToken = default)
         {
-            if (message.DeduplicationKey.StartsWith("recovery-vector-result:", StringComparison.Ordinal)
+            if (message.DeduplicationKey.StartsWith(keyPrefix, StringComparison.Ordinal)
                 && Interlocked.Exchange(ref _armed, 0) == 1)
             {
                 Interlocked.Increment(ref _failed);
