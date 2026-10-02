@@ -681,6 +681,64 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(0, afterRestart.Io.UnlockCount);
     }
 
+    /// <summary>
+    /// Confirm pressed after a decline whose rejection could not be written still answers as the decline did: the
+    /// rejection reads <c>VEHICLE_NOT_READY</c>, and nothing opens (onboard-hmi#239, coordinator after S-1).
+    /// </summary>
+    /// <remarks>
+    /// The decline has already forgotten the vehicle's recovery session, so carried out as a confirm the resume fails the
+    /// gate as <c>RECOVERY_AUTHENTICATION_FAILED</c> -- which the server's audit would keep as an authentication failure
+    /// nobody had. Probe on <c>bc49f45</c>: reason=RECOVERY_AUTHENTICATION_FAILED unlocks=0 held=False.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task AConfirmAfterADeclinedResumeWhoseRejectionFailedStillAnswersAsTheDecline()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = NewRestartJournalPath();
+        await using FakeControlServer server = RecoveryVectorHarness.NewServer();
+        await using (RecoveryVectorHarness beforeRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: server,
+            journalPath: journalPath))
+        {
+            await OpenResumeActionAsync(beforeRestart, token);
+        }
+
+        FailingResultWriteJournal? journal = null;
+        await using FakeControlServer serverAfterRestart = RecoveryVectorHarness.NewServer();
+        serverAfterRestart.AdoptDurableRecoveryMemoryFrom(server);
+        await using RecoveryVectorHarness afterRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: serverAfterRestart,
+            journalPath: journalPath,
+            restart: true,
+            lockerWaitTimesOut: true,
+            wrapJournal: inner => journal = new FailingResultWriteJournal(inner, "slot-operation-resume-rejected:"));
+        await WaitForSessionToCarryCommandsAsync(afterRestart, token);
+        WireToGateRecoveryState state = await afterRestart.ReadRecoveryStateAsync(token);
+        await serverAfterRestart.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, ResumePayload(state));
+        WireToGateHeldRecoveryCommandPrompt held = await WaitForHeldAsync(afterRestart, token);
+        journal!.FailTheNextResultWrite();
+        Assert.False(await afterRestart.Business.DeclineHeldRecoveryCommandAsync(held, token));
+        Assert.True(afterRestart.Business.CanConfirmHeldRecoveryCommand);
+
+        Assert.True(await afterRestart.Business.ConfirmHeldRecoveryCommandAsync(
+            afterRestart.Business.HeldRecoveryCommand!, token));
+
+        JsonElement rejection = await WaitForSingleRejectionAsync(afterRestart, token);
+        Assert.Equal(ResumeMessageId, rejection.GetProperty("correlationId").GetString());
+        Assert.Equal(
+            "VEHICLE_NOT_READY",
+            rejection.GetProperty("payload").GetProperty("problem").GetProperty("reasonCode").GetString());
+        Assert.Equal(0, afterRestart.Io.UnlockCount);
+        Assert.Null(afterRestart.Business.HeldRecoveryCommand);
+        Assert.Contains(afterRestart.OperatorEvents, item =>
+            item.Kind == "RECOVERY_BLOCKED" && item.Message.Contains("之前已经选择了不执行", StringComparison.Ordinal));
+        Assert.Contains(afterRestart.OperatorEvents, item => item.Kind == "RECOVERY_COMMAND_DECLINED");
+    }
+
     private static async Task WaitForHeldOrExecutedAsync(
         RecoveryVectorHarness harness,
         string resultType,

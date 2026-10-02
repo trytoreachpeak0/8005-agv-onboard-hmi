@@ -316,6 +316,22 @@ public sealed partial class WireToGateBusinessService
             return false;
         }
 
+        if (decision == HeldRecoveryDecision.Confirmed && held.SessionReleasedByDecline)
+        {
+            // A decline already began on this resume and forgot its session; only its rejection failed to be written.
+            // Carried out now, the gate would refuse it as RECOVERY_AUTHENTICATION_FAILED, and the server's audit would
+            // record an authentication failure nobody had. The operator's earlier choice stands, and is answered as such.
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"扣住的修复后续行命令此前已选择不执行，本次「确认执行」按不执行回复：primaryId={held.Prompt.PrimaryId}，"
+                + $"message={held.Prompt.CommandMessageId}。");
+            PublishOperatorResponse(
+                "RECOVERY_BLOCKED",
+                "之前已经选择了不执行，恢复会话已经释放，这次按照不执行回复服务端；未开任何仓门。 ");
+            decision = HeldRecoveryDecision.Declined;
+        }
+
         if (decision == HeldRecoveryDecision.Declined && !held.Prompt.CanDecline)
         {
             PublishOperatorResponse(
