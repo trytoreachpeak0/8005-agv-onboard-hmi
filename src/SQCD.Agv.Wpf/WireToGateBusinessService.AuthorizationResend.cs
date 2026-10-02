@@ -60,7 +60,7 @@ public sealed partial class WireToGateBusinessService
     /// the compensation ran, no prompt).
     /// </summary>
     private void MarkAuthorizationRequested(WireToGateRecoveryVectorContext vector) =>
-        _authorizationRequestedInThisProcess[vector.PrimaryId] = _clock.Now;
+        MarkOperatorPress(vector.PrimaryId);
 
     /// <summary>Once per session generation, when it can carry a request.</summary>
     private void ReviewUnauthorizedRecoveryVector(WireToGateSessionSnapshot session)
