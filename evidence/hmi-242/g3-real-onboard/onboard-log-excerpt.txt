@@ -1,0 +1,2 @@
+2026-10-02T17:50:25.9544999+08:00	Information	WireToGateBusinessService	提交现场确认充不上：confirmationRequestId=eb56b07d-875a-4376-9b30-e74fdcacbe82，charger=充电点1，observedCondition=CONNECTION_FAILED，operator=L2-OPERATOR，resubmission=False。
+2026-10-02T17:50:26.6052582+08:00	Information	WireToGateBusinessService	现场确认充不上结果：confirmationRequestId=eb56b07d-875a-4376-9b30-e74fdcacbe82，charger=充电点1，outcome=Confirmed，chargingPolicyDecision=MANUAL_CHARGING_HOLD，reason=无。
