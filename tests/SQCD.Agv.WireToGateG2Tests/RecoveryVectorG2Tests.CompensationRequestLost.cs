@@ -92,6 +92,119 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// The request reached the server and was authorized, and the command was lost on its way back: the vehicle,
+    /// which cannot tell the two losses apart, asks again after the reconnect, and the server's answer to that repeat
+    /// is the command -- not a refusal that would make the vehicle drop the compensation (onboard-hmi#236).
+    /// </summary>
+    /// <remarks>
+    /// Before control-server took a repeated request as idempotent, this repeat was refused with
+    /// <c>ACTION_NOT_ALLOWED_IN_STATE</c>, and the vehicle's handling of that refusal clears the vector and tells the
+    /// operator the server refused. The double answers the way the server does now; the server side of it is pinned
+    /// by <c>ARepeatedCompensationRequestResendsTheCommandItEarnedAndAuthorizesNothingAgain</c>. Which is also why the
+    /// vehicle's resend and the server's change have to ship together.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ACompensationCommandLostOnItsWayBackIsCarriedOutOnceAfterTheVehicleAsksAgain()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server =>
+            {
+                server.RecoverySlotOperationAttemptId = AttemptId;
+                server.SendLoadCompensationCommandOnRequest = true;
+                server.LoadCompensationCommandsToLose = 1;
+            },
+            loadAlreadySettled: true);
+        long lostGeneration = harness.Session.Current.SessionGeneration
+            ?? throw new InvalidOperationException("The harness started without a session.");
+
+        Assert.True(await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token));
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => !harness.Session.Current.Connected,
+            "the vehicle to see the connection the command went down with drop",
+            token);
+        WireToGateSessionSnapshot reconnected = await harness.Session.Client.ConnectAndRecoverAsync(token);
+        Assert.True(reconnected.SessionGeneration > lostGeneration);
+
+        JsonElement result = await harness.WaitForResultAsync("LoadCompensationResult", token);
+        Assert.Equal("ALL_EMPTY", result.GetProperty("overallOutcome").GetString());
+        Assert.Equal(1, harness.Server.RepeatedCompensationRequests);
+        Assert.Single(harness.ResultsOfType("LoadCompensationResult"));
+        Assert.Equal(0, harness.RecoveryBlockedCount);
+    }
+
+    /// <summary>
+    /// The same compensation command delivered twice pulses the slots once: the second copy is answered as a
+    /// replay of the result already on file (onboard-hmi#236).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The resend after a reconnect makes this ordinary rather than rare. The server replays an unacknowledged
+    /// command in the handshake, and a repeated authorization request re-sends the same command again, so the
+    /// vehicle can be handed one <c>LoadCompensationCommand</c> twice. The command opens doors with nobody asked,
+    /// so a second execution would be a second unlock.
+    /// </para>
+    /// <para>
+    /// What stops it: the whole command path runs under the recovery request gate, so the second copy waits for
+    /// the first to finish, and then finds the first's result under the action-scoped result key and touches no IO.
+    /// <c>ACompensationIssuedAgainAfterTheRefusalGetsTheSameSingleResult</c> pins the same for a refused command,
+    /// which pulses nothing either way; this one pins it for a command that does pulse. The count is measured
+    /// against a single delivery rather than written down, so it says "once" whatever the executor's per-slot
+    /// pulsing is.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task TheSameCompensationCommandDeliveredTwicePulsesTheSlotsOnce()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        int pulsedByOne = await PulsesForCompensationCommandCopiesAsync(1, token);
+        int pulsedByTwo = await PulsesForCompensationCommandCopiesAsync(2, token);
+
+        Assert.True(pulsedByOne > 0, "a single delivery has to pulse something, or the comparison proves nothing");
+        Assert.Equal(pulsedByOne, pulsedByTwo);
+    }
+
+    private static async Task<int> PulsesForCompensationCommandCopiesAsync(int copies, CancellationToken token)
+    {
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.RecoveryVectorCommandCopies = copies,
+            cargoInTargetSlots: true,
+            // The pulse goes out and nobody empties the slot: the wait after it times out and the attempt is
+            // reported as not completed. How it ends does not matter here; that the doors were pulsed does.
+            lockerWaitTimesOut: true);
+        int replays = 0;
+        harness.Business.OperatorEventPublished += (_, args) =>
+        {
+            if (args.Value.Kind == "OPERATION_REPLAY")
+            {
+                Interlocked.Increment(ref replays);
+            }
+        };
+
+        Assert.True(await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token));
+        await harness.WaitForResultAsync("LoadCompensationResult", token);
+        int pulsedByTheFirst = harness.Io.UnlockCount;
+        // Either way a later copy ends this wait: answered as a replay, or executed again -- which shows as more
+        // pulses, and is what the comparison in the caller is there to catch.
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => Volatile.Read(ref replays) + harness.RecoveryBlockedCount >= copies - 1
+                || harness.Io.UnlockCount > pulsedByTheFirst,
+            "every later copy of the command to be answered: as a replay, refused, or executed again",
+            token);
+
+        Assert.Single(harness.ResultsOfType("LoadCompensationResult"));
+        return harness.Io.UnlockCount;
+    }
+
+    /// <summary>
     /// The link goes down right after the server accepts the compensation, before the authorization request can
     /// reach it: the press does not end silently, and the request goes out once the session is back
     /// (onboard-hmi#236).

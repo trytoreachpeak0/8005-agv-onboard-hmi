@@ -782,6 +782,26 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     private int _closeConnectionsAfterRecoveryActionAccepted;
 
+    /// <summary>
+    /// This many compensation commands the server authorizes and then loses: the request is handled and the
+    /// compensation bound, and the connection closes before the command is written -- the command lost on its way
+    /// to the vehicle (onboard-hmi#236). A later request for the same compensation is a repeat and re-sends it.
+    /// </summary>
+    public int LoadCompensationCommandsToLose
+    {
+        get => Volatile.Read(ref _loadCompensationCommandsToLose);
+        set => Volatile.Write(ref _loadCompensationCommandsToLose, value);
+    }
+
+    private int _loadCompensationCommandsToLose;
+
+    private readonly ConcurrentDictionary<string, byte> _authorizedCompensations = new(StringComparer.Ordinal);
+
+    /// <summary>How many compensation requests were answered as a repeat of one already authorized.</summary>
+    public int RepeatedCompensationRequests => Volatile.Read(ref _repeatedCompensationRequests);
+
+    private int _repeatedCompensationRequests;
+
     private static bool TryConsume(ref int remaining)
     {
         int seen;
@@ -2686,16 +2706,53 @@ public sealed class FakeControlServer : IAsyncDisposable
     }
 
     /// <summary>
-    /// <c>AuthorizeLoadCompensationAsync</c>'s shape: the compensation is authorized by its recovery action id, and
-    /// every request for an action the server accepted earns the command -- a second request re-sends it rather
-    /// than being refused, as the real server re-sends the persisted command.
+    /// <c>AuthorizeLoadCompensationAsync</c>'s shape since onboard-hmi#236: the compensation is authorized by its
+    /// recovery action id, and a request for an action the server accepted, naming the same session, demand and
+    /// attempt, earns the command -- the first one by authorizing it, a repeat by an empty answer and the persisted
+    /// command re-sent. Any other request is refused with <c>ACTION_NOT_ALLOWED_IN_STATE</c>.
     /// </summary>
+    /// <remarks>
+    /// Aligned with control-server <c>RecoveryStateMachineG2Tests</c>:
+    /// <c>ARepeatedCompensationRequestResendsTheCommandItEarnedAndAuthorizesNothingAgain</c> for the repeat, and the
+    /// <c>unknown-action</c>, <c>other-demand</c>, <c>other-attempt</c> and <c>other-session</c> rows of
+    /// <c>ARepeatedCompensationRequestOutsideTheSameOpenBoundCompensationIsStillRefused</c> for the refusals. The
+    /// server's other refusals -- a session closed, a result already in, a second compensation in flight -- this
+    /// double never reaches, since it keeps no session or result state of its own.
+    /// </remarks>
     private async Task HandleLoadCompensationRequestedAsync(ConnectionContext context, JsonElement request)
     {
         JsonElement payload = request.GetProperty("payload");
         string actionId = payload.GetProperty("recoveryActionId").GetString()!;
-        if (!_submittedRecoveryActions.TryGetValue(actionId, out JsonElement submitted))
+        if (!_submittedRecoveryActions.TryGetValue(actionId, out JsonElement submitted)
+            || !SameCompensationScope(payload, submitted))
         {
+            await WriteEnvelopeAsync(
+                    context,
+                    CreateEnvelope(
+                        context,
+                        "LoadCompensationRejected",
+                        request.GetProperty("messageId").GetString(),
+                        new
+                        {
+                            recoveryActionId = actionId,
+                            problem = new
+                            {
+                                reasonCode = "ACTION_NOT_ALLOWED_IN_STATE",
+                                fieldPath = "payload",
+                                displayMessage = "Load compensation is not authorized."
+                            }
+                        }))
+                .ConfigureAwait(false);
+            return;
+        }
+
+        if (!_authorizedCompensations.TryAdd(actionId, 0))
+        {
+            Interlocked.Increment(ref _repeatedCompensationRequests);
+        }
+        else if (TryConsume(ref _loadCompensationCommandsToLose))
+        {
+            context.Client.Close();
             return;
         }
 
@@ -2706,6 +2763,16 @@ public sealed class FakeControlServer : IAsyncDisposable
                 actionId)
             .ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// The business keys the server checks a compensation request against the workflow it accepted: session, demand,
+    /// and the attempt it named on <c>RecoveryActionAccepted</c>.
+    /// </summary>
+    private bool SameCompensationScope(JsonElement requested, JsonElement submitted) =>
+        requested.GetProperty("exceptionRecoverySessionId").GetString()
+            == submitted.GetProperty("exceptionRecoverySessionId").GetString()
+        && requested.GetProperty("demandId").GetString() == submitted.GetProperty("demandId").GetString()
+        && requested.GetProperty("slotOperationAttemptId").GetString() == RecoveryAttemptIdFor("RecoveryActionAccepted");
 
     /// <summary>
     /// Issues the command the accepted recovery action authorizes.
