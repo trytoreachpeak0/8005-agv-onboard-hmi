@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.IO;
 using SQCD.Agv.Core;
 
 namespace SQCD.Agv.Wpf;
@@ -32,16 +33,31 @@ namespace SQCD.Agv.Wpf;
 public sealed partial class WireToGateBusinessService
 {
     /// <summary>
-    /// The vectors whose authorization request this process got as far as sending. In memory on purpose: a restart
-    /// is exactly what must forget them.
+    /// How long after the press this process still asks again by itself. Past it the vehicle treats the press as one
+    /// a restart would have lost: it shows the operator, and asks nobody (onboard-hmi#236 review S1).
     /// </summary>
-    private readonly ConcurrentDictionary<string, byte> _authorizationRequestedInThisProcess = new(StringComparer.Ordinal);
+    /// <remarks>
+    /// The same reason as the restart rule: the command this earns opens doors with nobody asked. A link that comes
+    /// back within minutes of the press finds the operator still at the vehicle; one that comes back much later may
+    /// not, and then a person who has looked at the slots presses again.
+    /// </remarks>
+    internal static readonly TimeSpan AuthorizationResendWindow = TimeSpan.FromMinutes(5);
+
+    /// <summary>
+    /// The vectors whose authorization request this process got as far as sending, with when. In memory on purpose:
+    /// a restart is exactly what must forget them.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, DateTimeOffset> _authorizationRequestedInThisProcess =
+        new(StringComparer.Ordinal);
 
     private long _authorizationReviewedGeneration = long.MinValue;
 
-    /// <summary>Recorded before the send, so a send that fails on a link already down is still asked again.</summary>
+    /// <summary>
+    /// Recorded before the send, so a send that fails on a link already down is still asked again. A press -- or a
+    /// resend -- moves the time on: the window runs from the last time anyone asked.
+    /// </summary>
     private void MarkAuthorizationRequested(WireToGateRecoveryVectorContext vector) =>
-        _authorizationRequestedInThisProcess[vector.PrimaryId] = 0;
+        _authorizationRequestedInThisProcess[vector.PrimaryId] = _clock.Now;
 
     /// <summary>Once per session generation, when it can carry a request.</summary>
     private void ReviewUnauthorizedRecoveryVector(WireToGateSessionSnapshot session)
@@ -60,6 +76,7 @@ public sealed partial class WireToGateBusinessService
 
     private async Task ReviewUnauthorizedRecoveryVectorAsync(long generation, CancellationToken cancellationToken)
     {
+        WireToGateRecoveryVectorContext? reviewed = null;
         try
         {
             // Read past the cache on purpose: this runs on every new session, and refreshing the cache here would
@@ -69,28 +86,90 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
             if (AwaitingAuthorization(state) is not { } vector)
             {
+                LogAuthorizationReview(generation, state.RecoveryVector, "无待授权的补偿或修正");
                 return;
             }
 
-            if (!_authorizationRequestedInThisProcess.ContainsKey(vector.PrimaryId))
+            reviewed = vector;
+            if (!_authorizationRequestedInThisProcess.TryGetValue(vector.PrimaryId, out DateTimeOffset requestedAt))
             {
-                PublishOperatorEvent(
-                    $"recovery-authorization-unknown:{vector.PrimaryId}",
-                    "RECOVERY_AUTHORIZATION_UNKNOWN",
-                    $"车辆 {_session.Client.AgvId} 的{AuthorizationSubject(vector)}（{vector.VectorType}）{FormatSlots(vector.Slots)}授权请求可能已在断线或重启时丢失，服务端尚未下发对应命令。"
-                    + "车辆不会自动重新申请；如果仓门没有开始动作，请确认现场后再按一次。 ");
+                PublishAuthorizationUnknown(vector, "授权请求可能已在断线或重启时丢失，服务端尚未下发对应命令");
+                LogAuthorizationReview(generation, vector, "本进程未申请过，已提示操作员");
                 return;
             }
 
-            await RunRecoveryRequestAsync(
+            if (_clock.Now - requestedAt > AuthorizationResendWindow)
+            {
+                PublishAuthorizationUnknown(
+                    vector,
+                    $"授权请求可能已在断线时丢失，而离上次申请已超过 {AuthorizationResendWindow.TotalMinutes:0} 分钟，车辆不再自动重新申请");
+                LogAuthorizationReview(generation, vector, $"上次申请于 {requestedAt:O}，已超时限，已提示操作员");
+                return;
+            }
+
+            // RunRecoveryRequestAsync answers a failure with RECOVERY_BLOCKED and false; the resend itself answers true
+            // whenever there was nothing to do, so false here is a failure and is shown the same way as below.
+            if (!await RunRecoveryRequestAsync(
                     vector.VectorType,
                     () => ResendAuthorizationRequestAsync(vector.PrimaryId, generation, cancellationToken),
                     cancellationToken)
-                .ConfigureAwait(false);
+                .ConfigureAwait(false))
+            {
+                PublishAuthorizationUnknown(vector, "重连后自动重新申请没有成功");
+                LogAuthorizationReview(generation, vector, "重新申请失败，已提示操作员");
+                return;
+            }
+
+            LogAuthorizationReview(generation, vector, "已重新申请或已无需申请");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
+        catch (Exception exception) when (
+            exception is IOException
+                or TimeoutException
+                or InvalidOperationException
+                or InvalidDataException)
+        {
+            // The review itself failed -- the journal could not be read, say. A log line alone would leave the operator
+            // where this ticket started, so the screen says it too (onboard-hmi#236 review N4).
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"重连后检查授权请求未完成：generation={generation}，reason={exception.Message}。",
+                exception);
+            PublishAuthorizationUnknown(reviewed, $"重连后检查授权状态时出错（{exception.Message}）");
+        }
+    }
+
+    /// <summary>
+    /// One line per session generation saying what the review concluded, so a field log answers "did it ask again,
+    /// and why not" without anyone reading the code.
+    /// </summary>
+    private void LogAuthorizationReview(long generation, WireToGateRecoveryVectorContext? vector, string outcome) =>
+        _logger.Write(
+            LogSeverity.Information,
+            nameof(WireToGateBusinessService),
+            $"重连后检查授权请求：generation={generation}，vector={vector?.VectorType ?? "none"}/{vector?.PrimaryId ?? "none"}，"
+            + $"commandBound={vector?.CommandContentSha256 is not null}，结论={outcome}。");
+
+    /// <summary>
+    /// What the operator is shown when the vehicle will not ask again by itself. It says what the vehicle does not
+    /// know, and both ways it can turn out: if the server did authorize, its command may still arrive on its own --
+    /// the server replays a bound command into every new session -- and open doors; if it did not, nothing happens
+    /// until someone presses (onboard-hmi#236 review S1).
+    /// </summary>
+    private void PublishAuthorizationUnknown(WireToGateRecoveryVectorContext? vector, string why)
+    {
+        string subject = vector is null
+            ? "补偿清空或装货修正"
+            : $"{AuthorizationSubject(vector)}（{vector.VectorType}）{FormatSlots(vector.Slots)}";
+        PublishOperatorEvent(
+            $"recovery-authorization-unknown:{vector?.PrimaryId ?? "review"}:{why}",
+            "RECOVERY_AUTHORIZATION_UNKNOWN",
+            $"车辆 {_session.Client.AgvId} 的{subject}授权状态无法确认：{why}。"
+            + "如果服务端此前已经授权，重连后命令可能自动下发并开锁，请先确认仓门附近安全；"
+            + "如果仓门一直没有开始动作，请确认现场后再按一次。 ");
     }
 
     /// <summary>
@@ -109,7 +188,7 @@ public sealed partial class WireToGateBusinessService
             || _session.Current.SessionGeneration != generation)
         {
             // Answered meanwhile, or the session moved on and its own review asks.
-            return false;
+            return true;
         }
 
         if (vector.VectorType == WireToGateRecoveryVectorTypes.LoadCompensation)
@@ -119,7 +198,7 @@ public sealed partial class WireToGateBusinessService
             if (Volatile.Read(ref _recoverySessionSnapshot) is { State: "CLOSED" } closed
                 && closed.ExceptionRecoverySessionId == vector.ExceptionRecoverySessionId)
             {
-                return false;
+                return true;
             }
 
             await SendLoadCompensationRequestAsync(vector, cancellationToken).ConfigureAwait(false);
@@ -130,7 +209,7 @@ public sealed partial class WireToGateBusinessService
             {
                 // The server compares the whole request with the one it may have accepted; without the first
                 // press's reason this one cannot be that request.
-                return false;
+                throw new InvalidDataException("RECOVERY_REASON_REQUIRED");
             }
 
             await SendLoadCorrectionRequestAsync(vector, reason, cancellationToken).ConfigureAwait(false);

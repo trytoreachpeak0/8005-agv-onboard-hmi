@@ -132,7 +132,10 @@ public sealed partial class RecoveryVectorG2Tests
 
         JsonElement result = await harness.WaitForResultAsync("LoadCompensationResult", token);
         Assert.Equal("ALL_EMPTY", result.GetProperty("overallOutcome").GetString());
-        Assert.Equal(1, harness.Server.RepeatedCompensationRequests);
+        // Two roads reach the command, and which arrives first is a race: the server replays the persisted command
+        // in the handshake, and the vehicle's review asks again unless the replayed command is bound by then. Either
+        // way the request is asked at most once more and the compensation runs once.
+        Assert.InRange(harness.Server.RepeatedCompensationRequests, 0, 1);
         Assert.Single(harness.ResultsOfType("LoadCompensationResult"));
         Assert.Equal(0, harness.RecoveryBlockedCount);
     }

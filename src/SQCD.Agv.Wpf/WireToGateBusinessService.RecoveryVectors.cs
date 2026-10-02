@@ -1265,6 +1265,26 @@ public sealed partial class WireToGateBusinessService
 
         WireToGateExceptionRecoverySessionSnapshot? snapshot =
             Volatile.Read(ref _recoverySessionSnapshot);
+        if (snapshot is null
+            && action == CompensateLoadAction
+            && AwaitingAuthorization(state) is { } awaiting
+            && ReferenceEquals(awaiting, vector))
+        {
+            // A compensation prepared with no command bound, and no recovery session snapshot to go by: what a
+            // restart leaves, since the server does not send an acknowledged snapshot again. The press asks for the
+            // authorization straight from the vector -- session, demand and attempt are on it, and the server checks
+            // all three -- instead of refusing for the snapshot, which left the entry lit and every press sending
+            // nothing (onboard-hmi#236 review M1). Only this state passes without a snapshot; every other press still
+            // needs one. The operator is the one pressing now: the server does not compare it, and keeps who asked
+            // again (control-server event 2129).
+            await SendLoadCompensationRequestAsync(awaiting, cancellationToken, ReadOperatorContext())
+                .ConfigureAwait(false);
+            PublishOperatorResponse(
+                "RECOVERY_VECTOR_REQUESTED",
+                $"已按日志中的补偿清空{FormatSlots(awaiting.Slots)}重新申请授权，由服务端核对会话、需求与装货作业，等待服务端下发补偿命令。 ");
+            return true;
+        }
+
         if (vector is not null)
         {
             if (snapshot is null || snapshot.State == "CLOSED")
@@ -1540,7 +1560,8 @@ public sealed partial class WireToGateBusinessService
     /// </summary>
     private async Task SendLoadCompensationRequestAsync(
         WireToGateRecoveryVectorContext vector,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        WireToGateOperatorContextPayload? operatorContext = null)
     {
         MarkAuthorizationRequested(vector);
         await _session.RequestLoadCompensationAsync(
@@ -1552,7 +1573,7 @@ public sealed partial class WireToGateBusinessService
                     vector.DemandId,
                     vector.SlotOperationAttemptId
                         ?? throw new InvalidDataException("RECOVERY_COMMAND_INVALID"),
-                    RequirePersistedOperator(vector)),
+                    operatorContext ?? RequirePersistedOperator(vector)),
                 cancellationToken)
             .ConfigureAwait(false);
     }

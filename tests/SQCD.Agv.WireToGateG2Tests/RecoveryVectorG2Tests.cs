@@ -1405,7 +1405,8 @@ public sealed partial class RecoveryVectorG2Tests
             IClock? sessionClock = null,
             TimeSpan? messageTimeout = null,
             bool awaitStartSettlement = true,
-            TimeSpan? resumeSettlementWaitLimit = null)
+            TimeSpan? resumeSettlementWaitLimit = null,
+            IClock? businessClock = null)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -1469,7 +1470,7 @@ public sealed partial class RecoveryVectorG2Tests
                     session,
                     io,
                     logger,
-                    new SystemClock(),
+                    businessClock ?? new SystemClock(),
                     () => safety.Read().MotionState == VehicleMotionState.Stopped,
                     new WireToGateSlotOperationExecutorOptions(
                         TimeSpan.FromSeconds(1),
