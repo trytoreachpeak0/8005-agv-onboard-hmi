@@ -1206,7 +1206,25 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
         }
 
+        await SendLoadCorrectionRequestAsync(vector, correctionReason, cancellationToken)
+            .ConfigureAwait(false);
+        PublishOperatorResponse(
+            "RECOVERY_VECTOR_REQUESTED",
+            $"已提交{FormatSlots(vector.Slots)}装货修正请求，等待服务端下发修正命令。 ");
+        return true;
+    }
+
+    /// <summary>
+    /// Sent again on every press while the correction command is on its way, and after a reconnect by
+    /// <see cref="ResendAuthorizationRequestAsync"/>; the server compares each with the request it accepted.
+    /// </summary>
+    private async Task SendLoadCorrectionRequestAsync(
+        WireToGateRecoveryVectorContext vector,
+        string correctionReason,
+        CancellationToken cancellationToken)
+    {
         WireToGateOperatorContextPayload context = RequirePersistedOperator(vector);
+        MarkAuthorizationRequested(vector);
         // A messageId of its own for every send, as in RequestRecoveryActionVectorCoreAsync: the
         // identity the server keeps is correctionId.
         await _session.RequestLoadCorrectionAsync(
@@ -1221,10 +1239,6 @@ public sealed partial class WireToGateBusinessService
                     correctionReason),
                 cancellationToken)
             .ConfigureAwait(false);
-        PublishOperatorResponse(
-            "RECOVERY_VECTOR_REQUESTED",
-            $"已提交{FormatSlots(vector.Slots)}装货修正请求，等待服务端下发修正命令。 ");
-        return true;
     }
 
     private async Task<bool> RequestRecoveryActionVectorCoreAsync(
@@ -1418,9 +1432,7 @@ public sealed partial class WireToGateBusinessService
                     .ConfigureAwait(false);
             }
 
-            PublishOperatorResponse(
-                "RECOVERY_ACTION_SUBMITTED",
-                $"恢复动作 {action} 已被服务端接受，等待车载端收到对应命令。 ");
+            PublishOperatorResponse("RECOVERY_ACTION_SUBMITTED", DescribeSubmittedAction(action));
             return true;
         }
 
@@ -1471,11 +1483,20 @@ public sealed partial class WireToGateBusinessService
                 .ConfigureAwait(false);
         }
 
-        PublishOperatorResponse(
-            "RECOVERY_ACTION_SUBMITTED",
-            $"恢复动作 {action} 已通过服务端授权，等待车载端收到对应命令。 ");
+        PublishOperatorResponse("RECOVERY_ACTION_SUBMITTED", DescribeSubmittedAction(action));
         return true;
     }
+
+    /// <summary>
+    /// What the operator is told once the server accepted the action. A compensation is not authorized by that:
+    /// the server authorizes it on <c>LoadCompensationRequested</c>, which nothing answers, so the vehicle cannot
+    /// know it was. Until onboard-hmi#236 this said it had been, and a request lost with the link left the operator
+    /// believing it.
+    /// </summary>
+    private static string DescribeSubmittedAction(string action) =>
+        action == CompensateLoadAction
+            ? $"服务端已接受恢复动作 {action}，已申请补偿授权，等待服务端下发补偿命令。 "
+            : $"恢复动作 {action} 已被服务端接受，等待车载端收到对应命令。 ";
 
     private async Task ClearRejectedRecoveryActionVectorAsync(
         string actionId,
@@ -1521,6 +1542,7 @@ public sealed partial class WireToGateBusinessService
         WireToGateRecoveryVectorContext vector,
         CancellationToken cancellationToken)
     {
+        MarkAuthorizationRequested(vector);
         await _session.RequestLoadCompensationAsync(
                 Guid.NewGuid().ToString("D"),
                 new LoadCompensationRequestedPayload(

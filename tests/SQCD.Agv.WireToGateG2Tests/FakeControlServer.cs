@@ -758,6 +758,30 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     private int _loadCompensationRequestsToLose;
 
+    /// <summary>
+    /// <see cref="LoadCompensationRequestsToLose"/> for <c>LoadCorrectionRequested</c>: recorded, then the connection
+    /// closes before the request is judged, so no correction is bound or authorized (onboard-hmi#236).
+    /// </summary>
+    public int LoadCorrectionRequestsToLose
+    {
+        get => Volatile.Read(ref _loadCorrectionRequestsToLose);
+        set => Volatile.Write(ref _loadCorrectionRequestsToLose, value);
+    }
+
+    private int _loadCorrectionRequestsToLose;
+
+    /// <summary>
+    /// This many times the connection closes right after <c>RecoveryActionAccepted</c> is written: the action is
+    /// accepted, and the link is gone before the vehicle's next request can reach the server (onboard-hmi#236).
+    /// </summary>
+    public int CloseConnectionsAfterRecoveryActionAccepted
+    {
+        get => Volatile.Read(ref _closeConnectionsAfterRecoveryActionAccepted);
+        set => Volatile.Write(ref _closeConnectionsAfterRecoveryActionAccepted, value);
+    }
+
+    private int _closeConnectionsAfterRecoveryActionAccepted;
+
     private static bool TryConsume(ref int remaining)
     {
         int seen;
@@ -1642,6 +1666,15 @@ public sealed class FakeControlServer : IAsyncDisposable
                     continue;
                 }
 
+                if ((messageType == "LoadCompensationRequested"
+                        && TryConsume(ref _loadCompensationRequestsToLose))
+                    || (messageType == "LoadCorrectionRequested"
+                        && TryConsume(ref _loadCorrectionRequestsToLose)))
+                {
+                    context.Client.Close();
+                    return;
+                }
+
                 if (messageType is "ExceptionRecoverySessionRequested" or "RecoveryActionSubmitted"
                         or "LoadCancellationStartRequested" or "LoadCorrectionRequested"
                     && !JudgeRecoveryRequest(messageType, messageId, line, root))
@@ -1878,10 +1911,6 @@ public sealed class FakeControlServer : IAsyncDisposable
                         await HandleManualStationClearanceConfirmationRequestedAsync(context, root)
                             .ConfigureAwait(false);
                         break;
-                    case "LoadCompensationRequested"
-                        when TryConsume(ref _loadCompensationRequestsToLose):
-                        context.Client.Close();
-                        return;
                     case "LoadCompensationRequested" when SendLoadCompensationCommandOnRequest:
                         await HandleLoadCompensationRequestedAsync(context, root).ConfigureAwait(false);
                         break;
@@ -2637,6 +2666,12 @@ public sealed class FakeControlServer : IAsyncDisposable
             .ConfigureAwait(false);
 
         _submittedRecoveryActions[actionId] = payload.Clone();
+        if (TryConsume(ref _closeConnectionsAfterRecoveryActionAccepted))
+        {
+            context.Client.Close();
+            return;
+        }
+
         if (SendRecoveryVectorCommandAfterRecoveryAction
             && !(SendLoadCompensationCommandOnRequest
                 && payload.GetProperty("action").GetString() == "COMPENSATE_LOAD_ALL_EMPTY"))

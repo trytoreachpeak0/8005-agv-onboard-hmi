@@ -949,6 +949,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             TrackTask(RestorePendingRecoveryOperationProjectionAsync(_stopping.Token));
         }
 
+        ReviewUnauthorizedRecoveryVector(args.Value);
+
         if (CanPublishSafetyRevision(args.Value))
         {
             RequestSafetyStateChange();
