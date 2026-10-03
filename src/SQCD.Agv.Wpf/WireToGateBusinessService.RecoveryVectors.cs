@@ -707,8 +707,8 @@ public sealed partial class WireToGateBusinessService
         // review S1 of PR #247): the declared slot is UNKNOWN and its OperationResult is the attempt's conclusion, and no
         // door of this operation may be opened again. Taken over here, the cancellation would drive the declared slot and
         // then open the next one. Read from the journal, not the cached copy: the declaration is written by the executor,
-        // which never refreshes that copy. The pending entry goes, as it does on either answer; the server refuses such
-        // an authorization on its own side too (8005-agv-control-server#384).
+        // which never refreshes that copy. The pending entry goes, as it does on either answer. The server does not refuse
+        // such an authorization yet, and is not told of this refusal: both are 8005-agv-control-server#384's to add.
         if ((await _session.Journal.ReadRecoveryStateAsync(cancellationToken).ConfigureAwait(false))
                 .SlotFaultDeclaration is { } declared
             && string.Equals(
