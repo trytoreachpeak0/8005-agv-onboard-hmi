@@ -307,6 +307,16 @@ public sealed class WireToGateSessionService : IAsyncDisposable
             payload,
             cancellationToken);
 
+    public Task<string> SendSlotFaultDeclarationResultAsync(
+        SlotFaultDeclarationResultPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.SendSlotFaultDeclarationResultAsync(payload, cancellationToken);
+
+    public Task<string> ResendSlotFaultDeclarationResultAsync(
+        string declarationId,
+        CancellationToken cancellationToken = default) =>
+        _client.ResendSlotFaultDeclarationResultAsync(declarationId, cancellationToken);
+
     public Task<ManualChargingReturnToServiceResultPayload> RequestManualChargingReturnToServiceAsync(
         string messageId,
         ManualChargingReturnToServiceRequestedPayload payload,

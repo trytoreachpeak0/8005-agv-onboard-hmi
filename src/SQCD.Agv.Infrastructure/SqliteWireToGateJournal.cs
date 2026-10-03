@@ -926,6 +926,17 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             }
         }
 
+        if (state.SlotFaultDeclaration is { } declaration)
+        {
+            RequireUuid(declaration.DeclarationId, nameof(declaration.DeclarationId));
+            RequireUuid(declaration.SlotOperationAttemptId, nameof(declaration.SlotOperationAttemptId));
+            ArgumentException.ThrowIfNullOrWhiteSpace(declaration.FaultCategory);
+            if (declaration.SlotNo is < 1 or > 8)
+            {
+                throw new InvalidDataException("WIRE_TO_GATE slot fault declaration字段无效。");
+            }
+        }
+
         foreach (WireToGatePendingResult pending in state.PendingResults)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(pending.MessageType);

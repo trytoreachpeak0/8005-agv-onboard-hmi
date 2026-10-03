@@ -52,7 +52,8 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
     /// <c>FP-IS-09</c> demand selection pair: the slot configuration activation pair,
     /// <c>OnboardAlarmSnapshot</c>, with batch 9-16 (<c>8005-agv-onboard-hmi#221</c>) the manual station
     /// clearance pair and with batch 9-17 (<c>8005-agv-onboard-hmi#222</c>) the unable-to-charge field
-    /// confirmation pair have been implemented. Until
+    /// confirmation pair have been implemented. The 3.0.0 candidate's slot fault declaration pair was pinned
+    /// here by <c>8005-agv-onboard-hmi#214</c> and left with batch 8-13 (<c>8005-agv-onboard-hmi#215</c>). Until
     /// onboard-hmi#107 one more predated v2 and was pinned as a finding rather than a schedule.
     /// </para>
     /// <para>
@@ -91,9 +92,7 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
         new(StringComparer.Ordinal)
         {
             ["DemandSelectionRequested"] = "FP-IS-09, batch 11",
-            ["DemandSelectionResult"] = "FP-IS-09, batch 11",
-            ["SlotFaultDeclarationCommand"] = "FP-IS-07, 8005-agv-onboard-hmi#215",
-            ["SlotFaultDeclarationResult"] = "FP-IS-07, 8005-agv-onboard-hmi#215"
+            ["DemandSelectionResult"] = "FP-IS-09, batch 11"
         };
 
     /// <summary>

@@ -482,3 +482,28 @@ public sealed record WireToGateCargoHandoffPayload(
     string Sublot,
     string ReceiverName,
     DateTimeOffset HandedOverAt);
+
+/// <summary>
+/// The C_TO_O administrator's slot fault declaration, shaped by the 3.0.0 candidate's
+/// <c>SlotFaultDeclarationCommand.schema.json</c> (REQ-0359, 8005-agv-onboard-hmi#215).
+/// </summary>
+public sealed record SlotFaultDeclarationCommandPayload(
+    string DeclarationId,
+    string DemandId,
+    string SlotOperationAttemptId,
+    int SlotNo,
+    WireToGateOperatorContextPayload Administrator,
+    string AdministratorRole,
+    string FaultCategory,
+    string Note,
+    DateTimeOffset DeclaredAt);
+
+/// <summary>
+/// The O_TO_C answer to a slot fault declaration. <see cref="Problem"/> is required and nullable: it says why
+/// a <c>NOT_APPLICABLE</c> declaration was refused, and is <c>null</c> for <c>APPLIED</c>.
+/// </summary>
+public sealed record SlotFaultDeclarationResultPayload(
+    string DeclarationId,
+    string SlotOperationAttemptId,
+    string Outcome,
+    WireToGateProblemPayload? Problem);

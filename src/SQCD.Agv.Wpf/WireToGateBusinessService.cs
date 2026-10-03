@@ -1813,6 +1813,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return InterruptedOperationSettlement.TakenOver;
             }
 
+            // A slot fault declaration journaled before the process went away: its APPLIED goes out first, as it
+            // would have, and the settlement below reports the declared slot UNKNOWN from the same journal entry
+            // (8005-agv-onboard-hmi#215).
+            await ReplayJournaledSlotFaultDeclarationAsync(context, cancellationToken).ConfigureAwait(false);
             WireToGateOperationExecutionResult execution = await _executor
                 .SettleInterruptedAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -2377,6 +2381,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 case WireToGateForcedMechanicalRecoveryCommand forcedRecovery:
                     await HandleForcedMechanicalRecoveryCommandAsync(forcedRecovery, cancellationToken)
                         .ConfigureAwait(false);
+                    break;
+                case WireToGateSlotFaultDeclarationCommand declaration:
+                    await HandleSlotFaultDeclarationAsync(declaration, cancellationToken).ConfigureAwait(false);
                     break;
                 case WireToGateRecoveryCommand { MessageType: "SublotRejected" } rejection:
                     HandleSublotRejected(rejection);

@@ -499,6 +499,35 @@ public sealed class ProtocolPayloadShapeArchitectureTests
                     DemandId: null, CargoHandoff: null),
                 token);
 
+            // onboard-hmi#215: an administrator's slot fault declaration, the double's command and both shapes of the
+            // vehicle's answer -- problem null for APPLIED, a Problem object for NOT_APPLICABLE (the schema's if/then).
+            await server.SendCommandAsync(
+                "SlotFaultDeclarationCommand",
+                "dddddddd-dddd-4ddd-8ddd-ddddddddddd0",
+                new
+                {
+                    declarationId = "dddddddd-dddd-4ddd-8ddd-ddddddddddd1",
+                    demandId,
+                    slotOperationAttemptId = attemptId,
+                    slotNo = 1,
+                    administrator = operatorContext,
+                    administratorRole = "MAINTENANCE_ADMINISTRATOR",
+                    faultCategory = "DOOR_MECHANISM",
+                    note = "door frame bent",
+                    declaredAt = DateTimeOffset.UtcNow
+                });
+            await client.SendSlotFaultDeclarationResultAsync(
+                new SlotFaultDeclarationResultPayload(
+                    "dddddddd-dddd-4ddd-8ddd-ddddddddddd1", attemptId, "APPLIED", null),
+                token);
+            await client.SendSlotFaultDeclarationResultAsync(
+                new SlotFaultDeclarationResultPayload(
+                    "dddddddd-dddd-4ddd-8ddd-ddddddddddd2",
+                    attemptId,
+                    "NOT_APPLICABLE",
+                    new WireToGateProblemPayload("ACTION_NOT_ALLOWED_IN_STATE", "payload.slotNo", "slot closed")),
+                token);
+
             return server;
         }
         catch

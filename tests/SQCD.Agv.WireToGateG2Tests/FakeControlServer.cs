@@ -106,6 +106,12 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </summary>
     public bool WithholdForcedMechanicalRecoveryResultAck { get; set; }
 
+    /// <summary>
+    /// How many <c>SlotFaultDeclarationResult</c> acknowledgements to leave unsent: the answer reached the server,
+    /// its ack did not reach the vehicle (8005-agv-onboard-hmi#215).
+    /// </summary>
+    public int SlotFaultDeclarationResultAcksToDrop { get; set; }
+
     public bool DropBeforeRecoveryAck { get; set; }
 
     public bool DropBeforeSafetyStateChangedAck { get; set; }
@@ -1945,6 +1951,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                         break;
                     case "ForcedMechanicalRecoveryResult" when WithholdForcedMechanicalRecoveryResultAck:
                         break;
+                    case "SlotFaultDeclarationResult" when SlotFaultDeclarationResultAcksToDrop > 0:
+                        SlotFaultDeclarationResultAcksToDrop--;
+                        break;
                     case "SublotSubmitted":
                     case "OperationProgress":
                     case "PreDepartureSafetyCheckResult":
@@ -1954,6 +1963,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                     // rather than only the part an earlier test happened to need.
                     case "LoadCorrectionResult":
                     case "ForcedMechanicalRecoveryResult":
+                    // The answer to a slot fault declaration (8005-agv-onboard-hmi#215); the server half that acts on
+                    // it is 8005-agv-control-server#383, not this double.
+                    case "SlotFaultDeclarationResult":
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
                         break;
                     case "ExceptionRecoverySessionRequested" when RespondToRecoveryRequests:
