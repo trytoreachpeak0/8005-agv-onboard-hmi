@@ -165,7 +165,12 @@ public static class OnboardFailureClassification
         // A forced recovery on a demand confirmed without its cargo handoff record (SUBLOT and receiver,
         // 8005-agv-onboard-hmi#216): an incomplete press, refused before anything is written. The operator
         // fills in the record and presses again; latching the vehicle over it would add nothing.
-        "FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED"
+        "FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED",
+
+        // A load cancellation authorized after an administrator's slot fault declaration was applied to the same
+        // attempt (8005-agv-onboard-hmi#215): the declaration's UNKNOWN is the attempt's conclusion and the recovery
+        // goes through the exception recovery session. Nothing was opened; the vehicle itself is fine.
+        "LOAD_CANCELLATION_AFTER_SLOT_FAULT_DECLARATION"
     };
 
     /// <summary>

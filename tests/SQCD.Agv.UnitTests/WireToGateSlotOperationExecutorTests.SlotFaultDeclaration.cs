@@ -215,6 +215,122 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     }
 
     /// <summary>
+    /// A completed slot is reported as the live IO reads it when the declaration settles the run, not as it read when
+    /// it closed: slot 1 was loaded, then its basket was taken out again. It is UNKNOWN, as the interrupted settlement
+    /// would have it, not COMPLETED (review S2 of PR #247).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-SLOT-FAULT-DECLARATION-APPLIED")]
+    public async Task ACompletedSlotThatNoLongerReadsFinalIsReportedUnknownWhenTheDeclarationSettles()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1, 2, 3], expectedOccupied: true);
+        AwaitedSlots awaited = new();
+        Task<WireToGateOperationExecutionResult> run = fixture.Executor.ExecuteAsync(command, awaited.Report, token);
+        await awaited.WaitForAsync(1, token);
+        fixture.Io.CloseDoor(0, cargo: true);
+        await awaited.WaitForAsync(2, token);
+        fixture.Io.CloseDoor(0, cargo: false);
+
+        await fixture.Executor.DeclareSlotFaultAsync(Declaration(command, 2), () => Task.CompletedTask, token);
+        WireToGateOperationExecutionResult result = await run.WaitAsync(TimeSpan.FromSeconds(10), token);
+
+        WireToGateSlotExecutionResult first = AssertSlot(result, 1, "UNKNOWN", ["RECOVERY_CHECKPOINT_NOT_UNIQUE"]);
+        Assert.Equal("EMPTY", first.FinalPhysicalState);
+        AssertSlot(result, 2, "UNKNOWN", [WireToGateSlotOperationExecutor.SlotFaultDeclaredReason]);
+        Assert.DoesNotContain(1, (await fixture.Journal.ReadRecoveryStateAsync(token)).CompletedSlots);
+    }
+
+    /// <summary>
+    /// The executor's half of the guard against a load cancellation (review S1 of PR #247): the operator's
+    /// cancellation of this attempt is waiting for its answer when the declaration comes. It is refused in the journal
+    /// step that would have written it, nothing is journaled, nothing is announced, and the run keeps going.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-SLOT-FAULT-DECLARATION-NOT-APPLICABLE")]
+    public async Task ADeclarationOnAnAttemptWithACancellationPendingIsRefusedInTheJournalStep()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using ScriptedFixture fixture = await ScriptedFixture.CreateAsync(token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1, 2], expectedOccupied: true);
+        AwaitedSlots awaited = new();
+        Task<WireToGateOperationExecutionResult> run = fixture.Executor.ExecuteAsync(command, awaited.Report, token);
+        await awaited.WaitForAsync(1, token);
+        await fixture.Journal.UpdateRecoveryStateAsync(
+            state => state with { PendingLoadCancellation = PendingCancellation(command) },
+            token);
+
+        WireToGateSlotFaultDeclarationOutcome outcome = await fixture.Executor.DeclareSlotFaultAsync(
+            Declaration(command, 1),
+            NotAnnounced,
+            token);
+
+        Assert.Equal(WireToGateSlotFaultDeclarationOutcome.TakenOverByLoadCancellation, outcome);
+        Assert.Null((await fixture.Journal.ReadRecoveryStateAsync(token)).SlotFaultDeclaration);
+        Assert.False(run.IsCompleted);
+        Assert.True(await fixture.Executor.AbortOperationAsync(command.SlotOperationAttemptId, token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+    }
+
+    /// <summary>
+    /// The moment between one slot closing its loop and the next one being waited on (review N1 of PR #247). The run is
+    /// held at the journal write that records slot 2 COMPLETED; a declaration naming slot 2, just closed, or slot 3,
+    /// not yet opened, is refused, and once the write goes through the run opens slot 3 as usual.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-SLOT-FAULT-DECLARATION-NOT-APPLICABLE")]
+    public async Task BetweenOneSlotClosingAndTheNextBeingAwaitedNoSlotCanBeDeclared()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string directory = Path.Combine(Path.GetTempPath(), "w2g-executor", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        await using SqliteWireToGateJournal journal = new(Path.Combine(directory, "journal.db"));
+        await journal.InitializeAsync(token);
+        HoldingJournal holding = new(
+            journal,
+            state => state.CompletedSlots.Contains(2) && state.ActiveUnlockSlots.Count == 0);
+        ScriptedIo io = new();
+        await using WireToGateSlotOperationExecutor executor = new(
+            io,
+            holding,
+            new SystemClock(),
+            new WireToGateSlotOperationExecutorOptions(
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(1),
+                TimeSpan.FromSeconds(30)),
+            () => true);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1, 2, 3], expectedOccupied: true);
+        AwaitedSlots awaited = new();
+        Task<WireToGateOperationExecutionResult> run = executor.ExecuteAsync(command, awaited.Report, token);
+        await awaited.WaitForAsync(1, token);
+        io.CloseDoor(0, cargo: true);
+        await awaited.WaitForAsync(2, token);
+        io.CloseDoor(1, cargo: true);
+        await holding.Held.WaitAsync(TimeSpan.FromSeconds(10), token);
+
+        Assert.Equal(
+            WireToGateSlotFaultDeclarationOutcome.SlotNotAwaiting,
+            await executor.DeclareSlotFaultAsync(Declaration(command, 2), NotAnnounced, token));
+        Assert.Equal(
+            WireToGateSlotFaultDeclarationOutcome.SlotNotAwaiting,
+            await executor.DeclareSlotFaultAsync(Declaration(command, 3), NotAnnounced, token));
+        Assert.Equal(0, io.UnlockCount(2));
+
+        holding.Release();
+        await awaited.WaitForAsync(3, token);
+        io.CloseDoor(2, cargo: true);
+        WireToGateOperationExecutionResult result = await run.WaitAsync(TimeSpan.FromSeconds(10), token);
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        Assert.Null((await journal.ReadRecoveryStateAsync(token)).SlotFaultDeclaration);
+    }
+
+    /// <summary>
     /// The other order: the operator shut slot 2 over its basket and the run moved on before the declaration
     /// came. It is refused as no longer waiting -- not applied to slot 3, which is the slot waiting now -- and the
     /// run goes on to finish the load.
@@ -392,6 +508,98 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         Assert.Equal(outcome, slot.Outcome);
         Assert.Equal(reasonCodes, slot.ReasonCodes);
         return slot;
+    }
+
+    /// <summary>
+    /// A journal that holds the first recovery-state write whose result matches <c>hold</c> until the test releases it.
+    /// </summary>
+    private sealed class HoldingJournal(IWireToGateJournal inner, Func<WireToGateRecoveryState, bool> hold)
+        : IWireToGateJournal
+    {
+        private readonly TaskCompletionSource _held = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource _released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _armed = 1;
+
+        public Task Held => _held.Task;
+
+        public void Release() => _released.TrySetResult();
+
+        public async Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            CancellationToken cancellationToken = default)
+        {
+            if (Volatile.Read(ref _armed) == 1
+                && change(await inner.ReadRecoveryStateAsync(CancellationToken.None)) is { } preview
+                && hold(preview)
+                && Interlocked.Exchange(ref _armed, 0) == 1)
+            {
+                _held.TrySetResult();
+                await _released.Task;
+            }
+
+            return await inner.UpdateRecoveryStateAsync(change, cancellationToken);
+        }
+
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            Action<WireToGateRecoveryState> settled,
+            CancellationToken cancellationToken = default) =>
+            inner.UpdateRecoveryStateAsync(change, settled, cancellationToken);
+
+        public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(CancellationToken cancellationToken = default) =>
+            inner.ReadRecoveryStateAsync(cancellationToken);
+
+        public Task InitializeAsync(CancellationToken cancellationToken = default) =>
+            inner.InitializeAsync(cancellationToken);
+
+        public Task<string> ReadJournalEpochAsync(CancellationToken cancellationToken = default) =>
+            inner.ReadJournalEpochAsync(cancellationToken);
+
+        public Task<WireToGateDurableMessage> SaveOutgoingBeforeSendAsync(
+            WireToGateDurableMessage message,
+            CancellationToken cancellationToken = default) =>
+            inner.SaveOutgoingBeforeSendAsync(message, cancellationToken);
+
+        public Task<WireToGateDurableMessage> ReplaceOutgoingForReplayAsync(
+            WireToGateDurableMessage expected,
+            WireToGateDurableMessage replacement,
+            CancellationToken cancellationToken = default) =>
+            inner.ReplaceOutgoingForReplayAsync(expected, replacement, cancellationToken);
+
+        public Task<WireToGateDurableMessage?> ReadOutgoingByDeduplicationKeyAsync(
+            string deduplicationKey,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken);
+
+        public Task<WireToGateDurableMessage?> ReadOutgoingByMessageIdAsync(
+            string messageId,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadOutgoingByMessageIdAsync(messageId, cancellationToken);
+
+        public Task MarkOutgoingAcknowledgedAsync(
+            string messageId,
+            string acceptedContentSha256,
+            CancellationToken cancellationToken = default) =>
+            inner.MarkOutgoingAcknowledgedAsync(messageId, acceptedContentSha256, cancellationToken);
+
+        public Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ReadUnacknowledgedOutgoingAsync(cancellationToken);
+
+        public Task<IReadOnlyList<WireToGateAppliedJourneySnapshot>> ReadAppliedJourneySnapshotsAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ReadAppliedJourneySnapshotsAsync(cancellationToken);
+
+        public Task<WireToGateAppliedJourneySnapshot> SaveAppliedJourneySnapshotAsync(
+            WireToGateAppliedJourneySnapshot snapshot,
+            CancellationToken cancellationToken = default) =>
+            inner.SaveAppliedJourneySnapshotAsync(snapshot, cancellationToken);
+
+        public Task<string> ComputeContentSha256Async(CancellationToken cancellationToken = default) =>
+            inner.ComputeContentSha256Async(cancellationToken);
+
+        // The test owns the inner journal.
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
     /// <summary>A journal whose recovery-state writes never observe a cancellation token.</summary>

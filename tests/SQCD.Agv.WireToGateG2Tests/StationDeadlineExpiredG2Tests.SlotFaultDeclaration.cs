@@ -336,6 +336,60 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// 反方向（PR #247 审查 S1）：判定已生效，替身服务端扣下 APPLIED 的 ack、把窗口拉宽，此时操作员按「取消装货」，服务端也授权了。
+    /// 车载端在中止执行器之前看到日志里本 attempt 的判定，拒绝这次取消：不出 <c>LoadCancellationResult</c>，不再驱动被判的仓，
+    /// 不开任何别的仓；同一个 attempt 只有判定那一个结论（<c>OperationResult</c> UNKNOWN＋<c>SLOT_FAULT_DECLARED</c>），
+    /// 待答取消记录清掉，操作员看到为什么。
+    /// </summary>
+    /// <remarks>
+    /// 先红：去掉取消授权后、中止前那一道检查，服务端收到 <c>LoadCancellationResult</c>，同一 attempt 出了两个结论（审查的探针）。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-SLOT-FAULT-DECLARATION-APPLIED")]
+    public async Task ALoadCancellationAuthorizedAfterTheDeclarationIsRefusedBeforeItTakesTheSlotsOver()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartForDeclarationAsync(
+            token,
+            configure: server =>
+            {
+                server.SlotFaultDeclarationResultAcksToDrop = 1;
+                server.RespondToLoadCancellationRequests = true;
+                server.LoadCancellationAuthorizedSlots = [1, 2, 3];
+            });
+        await StartThreeSlotLoadAtSlotTwoAsync(harness, token);
+        int unlocksBeforeDeclaration = harness.Io.UnlockCount;
+
+        await harness.Server.SendCommandAsync(
+            "SlotFaultDeclarationCommand",
+            Guid.NewGuid().ToString("D"),
+            DeclarationPayload(FirstDeclarationId, DeclaredAttemptId, 2));
+        // The APPLIED is on the wire and its ack withheld: the declaration is journaled and the run not yet stopped.
+        await harness.WaitForInboundAsync("SlotFaultDeclarationResult", token);
+        Assert.Equal(FirstDeclarationId, harness.ReadRecoveryState(token).SlotFaultDeclaration?.DeclarationId);
+
+        Assert.False(await harness.Business.RequestLoadCancellationAsync("现场不装了。", token));
+        await harness.WaitForInboundAsync("OperationResult", token);
+        await Task.Delay(300, token);
+
+        Assert.Contains(harness.Server.Received, item => item.MessageType == "LoadCancellationStartRequested");
+        Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "LoadCancellationResult");
+        JsonElement result = harness.SingleResult("OperationResult");
+        Assert.Equal("UNKNOWN", result.GetProperty("overallOutcome").GetString());
+        AssertWireSlot(result, 2, "UNKNOWN", ["SLOT_FAULT_DECLARED"]);
+        Assert.Equal(unlocksBeforeDeclaration, harness.Io.UnlockCount);
+        WireToGateRecoveryState state = harness.ReadRecoveryState(token);
+        Assert.Null(state.PendingLoadCancellation);
+        Assert.Null(state.RecoveryVector);
+        Assert.Contains(
+            OnboardCommandRejectionText.DescribeRecoveryBlocked("LOAD_CANCELLATION_AFTER_SLOT_FAULT_DECLARATION"),
+            harness.DescribeEvents(),
+            StringComparison.Ordinal);
+        Assert.False(harness.HasEvent("RECOVERY_VECTOR_AUTHORIZED"));
+    }
+
+    /// <summary>
     /// 判定不生效之六：该仓在判定到达前已因 IO 读不出来被执行器判为 UNKNOWN、结果已在发件箱。回 <c>NOT_APPLICABLE</c>，
     /// 原来那份 <c>SLOT_STATE_UNKNOWN</c> 的结果不变，没有第二条 <c>OperationResult</c>。
     /// </summary>
@@ -413,6 +467,16 @@ public sealed partial class StationDeadlineExpiredG2Tests
         AssertWireSlot(result, 2, "UNKNOWN", ["SLOT_FAULT_DECLARED"]);
         AssertWireSlot(result, 3, "NOT_STARTED", []);
         Assert.Equal(0, harness.Io.UnlockCount);
+        // The operator is told again after the restart, and the warning says which slot was not settled from the live IO
+        // (review N2 of PR #247).
+        await harness.WaitForEventAsync("SLOT_FAULT_DECLARED", token);
+        Assert.Contains(
+            "管理员已判定2号仓故障：锁，本次操作转人工恢复。",
+            harness.DescribeEvents(),
+            StringComparison.Ordinal);
+        Assert.Contains(
+            harness.Logger.Entries,
+            entry => entry.Message.Contains("2号仓按日志里已生效的管理员判定", StringComparison.Ordinal));
 
         await WaitForAckedAsync(harness, FirstDeclarationId, token);
         await harness.Server.SendCommandAsync(

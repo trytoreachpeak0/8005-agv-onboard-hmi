@@ -71,7 +71,13 @@ public enum WireToGateSlotFaultDeclarationOutcome
     SlotNotAwaiting,
 
     /// <summary>Another declaration has already been applied to this attempt.</summary>
-    AlreadyDeclared
+    AlreadyDeclared,
+
+    /// <summary>
+    /// A load cancellation over this attempt is waiting for its answer or already running: the attempt's conclusion
+    /// is that cancellation's.
+    /// </summary>
+    TakenOverByLoadCancellation
 }
 
 public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
@@ -300,23 +306,46 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
             // CancellationToken.None: from the check above to the write the gate keeps the run from moving on, and
             // a declaration abandoned halfway would leave the operator's slot in neither state.
+            //
+            // A load cancellation over this attempt -- pressed and waiting for its answer, or already authorized and
+            // running -- owns the attempt's conclusion, and the declaration is refused in the same journal step that
+            // would have written it (review S1 of PR #247). The cancellation refuses the other order itself, before
+            // it stops this run: WireToGateBusinessService.RequestLoadCancellationCoreAsync. Its pending entry is
+            // journaled before its request goes out, so one of the two always sees the other.
+            WireToGateSlotFaultDeclarationOutcome refusal = WireToGateSlotFaultDeclarationOutcome.AlreadyDeclared;
             WireToGateRecoveryState? written = await _journal.UpdateRecoveryStateAsync(
-                state => string.Equals(
-                        state.UnsettledSlotOperationAttemptId,
-                        declaration.SlotOperationAttemptId,
-                        StringComparison.Ordinal)
-                    && !string.Equals(
-                        state.SlotFaultDeclaration?.SlotOperationAttemptId,
-                        declaration.SlotOperationAttemptId,
-                        StringComparison.Ordinal)
-                    ? state with { SlotFaultDeclaration = declaration }
-                    : null,
+                state =>
+                {
+                    if (string.Equals(
+                            state.PendingLoadCancellation?.SlotOperationAttemptId,
+                            declaration.SlotOperationAttemptId,
+                            StringComparison.Ordinal)
+                        || string.Equals(
+                            state.RecoveryVector?.SlotOperationAttemptId,
+                            declaration.SlotOperationAttemptId,
+                            StringComparison.Ordinal))
+                    {
+                        refusal = WireToGateSlotFaultDeclarationOutcome.TakenOverByLoadCancellation;
+                        return null;
+                    }
+
+                    return string.Equals(
+                            state.UnsettledSlotOperationAttemptId,
+                            declaration.SlotOperationAttemptId,
+                            StringComparison.Ordinal)
+                        && !string.Equals(
+                            state.SlotFaultDeclaration?.SlotOperationAttemptId,
+                            declaration.SlotOperationAttemptId,
+                            StringComparison.Ordinal)
+                        ? state with { SlotFaultDeclaration = declaration }
+                        : null;
+                },
                 CancellationToken.None).ConfigureAwait(false);
             if (written is null)
             {
-                // The journal no longer names this attempt as the one in progress, or names a declaration on it:
-                // not this run's to decide any more.
-                return WireToGateSlotFaultDeclarationOutcome.AlreadyDeclared;
+                // A load cancellation owns the attempt, or the journal no longer names this attempt as the one in
+                // progress, or already names a declaration on it: not this run's to decide any more.
+                return refusal;
             }
 
             active.DeclaredSlot = declaration.SlotNo;

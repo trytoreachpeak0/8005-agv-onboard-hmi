@@ -221,6 +221,11 @@ public sealed partial class WireToGateBusinessService
             return ("payload.slotNo", $"{command.SlotNo}号仓此刻不在等待操作员：已闭环、已判为UNKNOWN，或本次操作正在别的仓。");
         }
 
+        if (outcome == WireToGateSlotFaultDeclarationOutcome.TakenOverByLoadCancellation)
+        {
+            return ("payload.slotOperationAttemptId", "本次装货已由装货取消接手。");
+        }
+
         if (outcome == WireToGateSlotFaultDeclarationOutcome.AlreadyDeclared)
         {
             return ("payload.slotNo", "本次仓位操作已有一项判定生效。");
@@ -300,9 +305,13 @@ public sealed partial class WireToGateBusinessService
     /// <summary>
     /// After a restart, sends the <c>APPLIED</c> answer of a declaration the journal holds and the outbox does not,
     /// ahead of the interrupted settlement's result, which reports the declared slot UNKNOWN from the same journal
-    /// entry (8005-agv-onboard-hmi#215).
+    /// entry (8005-agv-onboard-hmi#215). Returns that declaration, or null when the journal holds none for the attempt.
     /// </summary>
-    private async Task ReplayJournaledSlotFaultDeclarationAsync(
+    /// <remarks>
+    /// The operator is told again, as when the declaration first arrived: the process that told them is gone, and the
+    /// screen after a restart otherwise says only that the interrupted operation needs recovery (review N2 of PR #247).
+    /// </remarks>
+    private async Task<WireToGateSlotFaultDeclaration?> ReplayJournaledSlotFaultDeclarationAsync(
         WireToGateRecoveryOperationContext context,
         CancellationToken cancellationToken)
     {
@@ -313,24 +322,32 @@ public sealed partial class WireToGateBusinessService
             || !string.Equals(
                 declaration.SlotOperationAttemptId,
                 context.SlotOperationAttemptId,
-                StringComparison.Ordinal)
-            || await _session.Journal
+                StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        if (await _session.Journal
                 .ReadOutgoingByDeduplicationKeyAsync(
                     WireToGateSessionClient.SlotFaultDeclarationResultKey(declaration.DeclarationId),
                     cancellationToken)
-                .ConfigureAwait(false) is not null)
+                .ConfigureAwait(false) is null)
         {
-            return;
+            await SendSlotFaultDeclarationAnswerAsync(
+                declaration.DeclarationId,
+                () => _session.SendSlotFaultDeclarationResultAsync(
+                    new SlotFaultDeclarationResultPayload(
+                        declaration.DeclarationId,
+                        declaration.SlotOperationAttemptId,
+                        SlotFaultDeclarationApplied,
+                        null),
+                    cancellationToken)).ConfigureAwait(false);
         }
 
-        await SendSlotFaultDeclarationAnswerAsync(
-            declaration.DeclarationId,
-            () => _session.SendSlotFaultDeclarationResultAsync(
-                new SlotFaultDeclarationResultPayload(
-                    declaration.DeclarationId,
-                    declaration.SlotOperationAttemptId,
-                    SlotFaultDeclarationApplied,
-                    null),
-                cancellationToken)).ConfigureAwait(false);
+        PublishOperatorEvent(
+            $"slot-fault-declared:{declaration.DeclarationId}",
+            "SLOT_FAULT_DECLARED",
+            WireToGateSlotFaultDeclarationText.Applied(declaration.SlotNo, declaration.FaultCategory));
+        return declaration;
     }
 }
