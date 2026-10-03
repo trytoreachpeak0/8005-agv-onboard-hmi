@@ -1,0 +1,17 @@
+# M02-press-not-bound-to-the-prompt
+不核对操作员当时看到的那一份，只要入口在就发
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.StationClearance.cs
+
+--- replaced ---
+if (view.Prompt != shown)
+--- with ---
+if (view.Prompt is null)
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APressMadeAsAResubmissionIsRefusedOnceTheResultHasArrived [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APressMadeForOneChargerDoesNotConfirmAnother [107 ms]
+Failed!  - Failed:     2, Passed:    25, Skipped:     0, Total:    27, Duration: 29 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: APressMadeForOneChargerDoesNotConfirmAnother; APressMadeAsAResubmissionIsRefusedOnceTheResultHasArrived
+missing: none

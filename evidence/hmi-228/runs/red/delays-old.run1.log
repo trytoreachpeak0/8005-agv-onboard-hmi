@@ -1,0 +1,61 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:02.16]     SQCD.Agv.WireToGateG2Tests.WaitingPointIdleReturnG2Tests.AnIdleReturnIsShownAsANonBusinessStopOnTheWayAndAtThePoint [FAIL]
+[xUnit.net 00:00:02.27]     SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AfterAMidSessionSnapshotAckIsLostTheNextSafetyStateTakesAHigherVersion [FAIL]
+[xUnit.net 00:00:02.49]     SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.BusinessSafetySendFailureDisconnectsAndReplaysPendingRevision [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.WaitingPointIdleReturnG2Tests.AnIdleReturnIsShownAsANonBusinessStopOnTheWayAndAtThePoint [809 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+           ↓ (pos 0)
+Expected: "在等待点 ST-01 待命"
+Actual:   "空闲返回：前往等待点 ST-01"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.WaitingPointIdleReturnG2Tests.AnIdleReturnIsShownAsANonBusinessStopOnTheWayAndAtThePoint() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\WaitingPointIdleReturnG2Tests.cs:line 89
+   at SQCD.Agv.WireToGateG2Tests.WaitingPointIdleReturnG2Tests.AnIdleReturnIsShownAsANonBusinessStopOnTheWayAndAtThePoint() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\WaitingPointIdleReturnG2Tests.cs:line 91
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AfterAMidSessionSnapshotAckIsLostTheNextSafetyStateTakesAHigherVersion [958 ms]
+  Error Message:
+   Assert.Contains() Failure: Item not found in collection
+Collection: [Tuple ("CapabilitySnapshot", 1), Tuple ("SafetyStateSnapshot", 1), Tuple ("OnboardAlarmSnapshot", 1)]
+Not found:  Tuple ("SafetyStateSnapshot", 3)
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AfterAMidSessionSnapshotAckIsLostTheNextSafetyStateTakesAHigherVersion() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ExpectedActionOverdue.cs:line 213
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AfterAMidSessionSnapshotAckIsLostTheNextSafetyStateTakesAHigherVersion() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.ExpectedActionOverdue.cs:line 229
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.BusinessSafetySendFailureDisconnectsAndReplaysPendingRevision [1 s]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: 3
+Actual:   2
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.BusinessSafetySendFailureDisconnectsAndReplaysPendingRevision() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\WireToGateG2Tests.cs:line 2439
+   at SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.BusinessSafetySendFailureDisconnectsAndReplaysPendingRevision() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\WireToGateG2Tests.cs:line 2442
+   at SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.BusinessSafetySendFailureDisconnectsAndReplaysPendingRevision() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\WireToGateG2Tests.cs:line 2442
+   at SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.BusinessSafetySendFailureDisconnectsAndReplaysPendingRevision() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\WireToGateG2Tests.cs:line 2442
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:03.97]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AClosedSnapshotWhoseFallbackFailedIsReplayedUntilItForgetsTheRefusedVector [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AClosedSnapshotWhoseFallbackFailedIsReplayedUntilItForgetsTheRefusedVector [738 ms]
+  Error Message:
+   Assert.Empty() Failure: Collection was not empty
+Collection: ["abcdabcd-0000-4000-8000-000000000123"]
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AssertTheReplayedClosedSnapshotForgetsTheSessionAsync(RecoveryVectorHarness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ClosedSnapshotRetry.cs:line 274
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AClosedSnapshotWhoseFallbackFailedIsReplayedUntilItForgetsTheRefusedVector() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ClosedSnapshotRetry.cs:line 58
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AClosedSnapshotWhoseFallbackFailedIsReplayedUntilItForgetsTheRefusedVector() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ClosedSnapshotRetry.cs:line 59
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:06.11]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AClosedSnapshotWhoseFallbackFailedIsReplayedUntilItForgetsTheRefusedResume [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AClosedSnapshotWhoseFallbackFailedIsReplayedUntilItForgetsTheRefusedResume [738 ms]
+  Error Message:
+   Assert.Empty() Failure: Collection was not empty
+Collection: ["abcdabcd-0000-4000-8000-000000000123"]
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AssertTheReplayedClosedSnapshotForgetsTheSessionAsync(RecoveryVectorHarness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ClosedSnapshotRetry.cs:line 274
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AClosedSnapshotWhoseFallbackFailedIsReplayedUntilItForgetsTheRefusedResume() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ClosedSnapshotRetry.cs:line 98
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AClosedSnapshotWhoseFallbackFailedIsReplayedUntilItForgetsTheRefusedResume() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ClosedSnapshotRetry.cs:line 99
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     5, Passed:     7, Skipped:     0, Total:    12, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

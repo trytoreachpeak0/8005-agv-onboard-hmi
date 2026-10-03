@@ -1,0 +1,20 @@
+# M10-station-guessed-from-the-current-leg
+计划里没有恰好一个充电桩时拿当前腿的站点号顶上
+file: src/SQCD.Agv.Core/WireToGateStationClearance.cs
+
+--- replaced ---
+return chargers.Length == 1 ? chargers[0] : null;
+--- with ---
+return chargers.Length == 1 ? chargers[0] : journey.CurrentLeg?.StationId;
+
+--- dotnet test tests/SQCD.Agv.UnitTests --filter FullyQualifiedName~WireToGateStationClearanceTests (exit 1) ---
+  Failed SQCD.Agv.UnitTests.WireToGateStationClearanceTests.WithoutExactlyOneChargerInThePlanNoStationIsNamed [6 ms]
+Failed!  - Failed:     1, Passed:    10, Skipped:     0, Total:    11, Duration: 66 ms - SQCD.Agv.UnitTests.dll (net8.0)
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedWithoutOneChargerInThePlanAndTheScreenSaysWhy(twoChargers: True) [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedWithoutOneChargerInThePlanAndTheScreenSaysWhy(twoChargers: False) [5 s]
+Failed!  - Failed:     2, Passed:    25, Skipped:     0, Total:    27, Duration: 38 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: WithoutExactlyOneChargerInThePlanNoStationIsNamed; TheEntryIsNotOfferedWithoutOneChargerInThePlanAndTheScreenSaysWhy
+missing: none

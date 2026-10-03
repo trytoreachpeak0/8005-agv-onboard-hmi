@@ -175,6 +175,8 @@
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
                     <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
@@ -506,6 +508,41 @@
                             Visibility="{Binding CanRequestManualChargingReturn, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnManualChargingReturnClick"
                             Content="充电后返回服务" />
+                    <!--
+                        人工清桩确认（批次9-16，8005-agv-onboard-hmi#221）：服务端说车在清桩中、面前是已验证的维护人员、计划里说得出
+                        原充电桩时出现。它不在那九个恢复入口里，严重安全故障锁存期间照常开着：只发一条请求、显示服务端的结果，
+                        不碰 IO、不开门，也不在本地释放站点。说明与结果两行在下面单独一行。
+                    -->
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            AutomationProperties.AutomationId="ConfirmStationClearance"
+                            IsEnabled="{Binding StationClearance.CanConfirm}"
+                            Visibility="{Binding StationClearance.CanConfirm, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnConfirmStationClearanceClick"
+                            Content="确认清桩" />
+                    <!--
+                        扣住等待现场确认的服务端恢复命令（8005-agv-onboard-hmi#239）：车载端重启后（或离上次按下超过 5 分钟）
+                        服务端补发的补偿、修正、故障仓交接、续行命令不自动开锁，在这里等人决定。「确认执行」会开门，锁存期间关；
+                        「不执行」只向服务端回一个不开门的结果，锁存期间照常开。说明在下面单独一行。
+                    -->
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            Background="#D6A32A"
+                            AutomationProperties.AutomationId="ConfirmHeldRecoveryCommand"
+                            IsEnabled="{Binding HeldRecoveryCommand.CanConfirm}"
+                            Visibility="{Binding HeldRecoveryCommand.CanConfirm, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnConfirmHeldRecoveryCommandClick"
+                            Content="确认执行" />
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            AutomationProperties.AutomationId="DeclineHeldRecoveryCommand"
+                            IsEnabled="{Binding HeldRecoveryCommand.CanDecline}"
+                            Visibility="{Binding HeldRecoveryCommand.CanDecline, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnDeclineHeldRecoveryCommandClick"
+                            Content="不执行" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"
@@ -548,6 +585,91 @@
                             Click="OnClearFatalFaultClick"
                             Content="复位严重安全故障" />
                 </WrapPanel>
+                <!--
+                    人工清桩确认的说明与结果（8005-agv-onboard-hmi#221），各占一行、没有时 Collapsed。说明只有两种：清桩中却说不出
+                    原充电桩，和已提交正在等应答。结果那一行的 ItemStatus 是原始值（CONFIRMED_STATION_RELEASED／
+                    CONFIRMED_STATION_NOT_RELEASED／REJECTED／UNKNOWN），UIA 按 AutomationId 找它。三样绑同一个
+                    StationClearance，整值替换。
+                -->
+                <StackPanel Grid.Row="6"
+                            Grid.Column="0"
+                            Grid.ColumnSpan="3">
+                    <TextBlock Margin="0,6,0,0"
+                               FontSize="13"
+                               FontWeight="Bold"
+                               Foreground="{StaticResource DangerBrush}"
+                               AutomationProperties.AutomationId="HeldRecoveryCommandNotice"
+                               Text="{Binding HeldRecoveryCommand.NoticeText}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding HeldRecoveryCommand.HasNotice, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock Margin="0,6,0,0"
+                               FontSize="13"
+                               Foreground="{StaticResource MutedBrush}"
+                               AutomationProperties.AutomationId="StationClearanceNotice"
+                               Text="{Binding StationClearance.NoticeText}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding StationClearance.HasNotice, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock Margin="0,6,0,0"
+                               FontSize="13"
+                               FontWeight="Bold"
+                               AutomationProperties.AutomationId="StationClearanceStatus"
+                               AutomationProperties.ItemStatus="{Binding StationClearance.Status}"
+                               Text="{Binding StationClearance.StatusText}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding StationClearance.HasStatus, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                </StackPanel>
+                <!--
+                    现场确认充不上（批次9-17，8005-agv-onboard-hmi#222）：服务端说车在充电用途上、计划当前腿是充电桩、面前是已验证的
+                    维护人员时，出现四个按钮，每个是操作员在现场看到的一种情况（协议 observedCondition 的四个值，车载端不挑）。
+                    重新提交结果未知的那一次时只剩那一个。它只发一条请求、显示服务端的结果与充电决定，不碰 IO、不开门、不在本地
+                    改任何充电或装货状态，所以与人工清桩确认一样不在那九个恢复入口里，锁存期间照常开着。说明与结果各占一行，
+                    结果那一行的 ItemStatus 是原始值（CONFIRMED／REJECTED／UNKNOWN／NOT_ACCEPTED），UIA 按 AutomationId 找它。
+                    几样都绑同一个 UnableToCharge，整值替换。
+                -->
+                <StackPanel Grid.Row="7"
+                            Grid.Column="0"
+                            Grid.ColumnSpan="3">
+                    <WrapPanel Margin="0,6,0,0"
+                               Visibility="{Binding UnableToCharge.CanConfirm, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <TextBlock Margin="0,0,8,0"
+                                   VerticalAlignment="Center"
+                                   FontSize="13"
+                                   Text="现场确认充不上：" />
+                        <ItemsControl AutomationProperties.AutomationId="UnableToChargeOptions"
+                                      ItemsSource="{Binding UnableToCharge.Options}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Margin="0,0,8,0"
+                                            Padding="12,6"
+                                            FontSize="13"
+                                            AutomationProperties.AutomationId="{Binding AutomationId}"
+                                            Content="{Binding Label}"
+                                            Click="OnConfirmUnableToChargeClick" />
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </WrapPanel>
+                    <TextBlock Margin="0,6,0,0"
+                               FontSize="13"
+                               Foreground="{StaticResource MutedBrush}"
+                               AutomationProperties.AutomationId="UnableToChargeNotice"
+                               Text="{Binding UnableToCharge.NoticeText}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding UnableToCharge.HasNotice, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <TextBlock Margin="0,6,0,0"
+                               FontSize="13"
+                               FontWeight="Bold"
+                               AutomationProperties.AutomationId="UnableToChargeStatus"
+                               AutomationProperties.ItemStatus="{Binding UnableToCharge.Status}"
+                               Text="{Binding UnableToCharge.StatusText}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding UnableToCharge.HasStatus, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                </StackPanel>
             </Grid>
         </Border>
 

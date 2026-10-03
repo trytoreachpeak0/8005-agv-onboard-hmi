@@ -1,0 +1,31 @@
+# M05-conditions-filtered-locally
+本地只给出 CONNECTION_FAILED 与 CHARGER_FAULT 两种（替服务端判哪些算充不上）
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+                .. WireToGateUnableToCharge.ObservedConditions
+
+--- with ---
+                .. WireToGateUnableToCharge.ObservedConditions.Where(condition => condition is "CONNECTION_FAILED" or "CHARGER_FAULT")
+
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsOfferedWhateverTheLegAndTheCycleSay(legState: "ARRIVED", cycleState: "UNABLE_TO_CHARGE") [970 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsOfferedWhateverTheLegAndTheCycleSay(legState: "ACTIVE", cycleState: "EN_ROUTE") [143 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsOfferedWhateverTheLegAndTheCycleSay(legState: "ARRIVED", cycleState: "CHARGING") [148 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsOfferedWhateverTheLegAndTheCycleSay(legState: "ARRIVED", cycleState: "UNKNOWN") [123 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsOfferedWhateverTheLegAndTheCycleSay(legState: "ARRIVED", cycleState: "COMPLETE") [107 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.EveryObservedConditionIsOfferedAndGoesOutAsChosen(condition: "CHARGER_OCCUPIED", label: "充电桩被占用") [166 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.EveryObservedConditionIsOfferedAndGoesOutAsChosen(condition: "CHARGER_UNREACHABLE", label: "车到不了充电桩") [155 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.EveryObservedConditionIsOfferedAndGoesOutAsChosen(condition: "CONNECTION_FAILED", label: "接不上充电") [152 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.EveryObservedConditionIsOfferedAndGoesOutAsChosen(condition: "CHARGER_FAULT", label: "充电桩故障") [120 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ARejectedConfirmationShowsTheServersReasonAndDecisionAndTheNextPressIsANewConfirmation [123 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AnUnansweredConfirmationIsShownAsUnknownAndAResubmissionCarriesTheSameIdAndCondition [3 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ALaterChargingAttemptStartsFromNothing [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ARestartOffersTheEntryFromTheRestoredStateAndAsksTheOperatorAfresh [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AProtocolProblemToTheRequestIsShownAsNotAcceptedAndEndsItsId [173 ms]
+Failed!  - Failed:    14, Passed:    27, Skipped:     0, Total:    41, Duration: 37 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: EveryObservedConditionIsOfferedAndGoesOutAsChosen; TheEntryIsOfferedWhateverTheLegAndTheCycleSay
+missing: none

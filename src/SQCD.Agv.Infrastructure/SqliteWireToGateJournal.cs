@@ -97,6 +97,10 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             seed.Parameters.AddWithValue("$updatedAt", DateTimeOffset.UnixEpoch.ToString("O"));
             await seed.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
+        catch (SqliteException exception)
+        {
+            throw JournalFailure(exception);
+        }
         finally
         {
             _gate.Release();
@@ -121,6 +125,10 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
 
             return journalEpoch;
         }
+        catch (SqliteException exception)
+        {
+            throw JournalFailure(exception);
+        }
         finally
         {
             _gate.Release();
@@ -136,6 +144,10 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
         {
             await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
             return await ReadRecoveryStateCoreAsync(connection, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SqliteException exception)
+        {
+            throw JournalFailure(exception);
         }
         finally
         {
@@ -172,6 +184,10 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
                 .ConfigureAwait(false);
             settled(changed);
             return changed;
+        }
+        catch (SqliteException exception)
+        {
+            throw JournalFailure(exception);
         }
         finally
         {
@@ -264,6 +280,10 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
 
             return message with { Acknowledged = false };
         }
+        catch (SqliteException exception)
+        {
+            throw JournalFailure(exception);
+        }
         finally
         {
             _gate.Release();
@@ -347,6 +367,10 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
                 Acknowledged = false
             };
         }
+        catch (SqliteException exception)
+        {
+            throw JournalFailure(exception);
+        }
         finally
         {
             _gate.Release();
@@ -365,6 +389,10 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
             return await ReadByDeduplicationKeyAsync(connection, deduplicationKey, cancellationToken)
                 .ConfigureAwait(false);
+        }
+        catch (SqliteException exception)
+        {
+            throw JournalFailure(exception);
         }
         finally
         {
@@ -387,6 +415,10 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             command.Parameters.AddWithValue("$messageId", messageId);
             await using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? ReadMessage(reader) : null;
+        }
+        catch (SqliteException exception)
+        {
+            throw JournalFailure(exception);
         }
         finally
         {
@@ -442,6 +474,10 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
 
             throw new InvalidDataException("CONTENT_HASH_MISMATCH");
         }
+        catch (SqliteException exception)
+        {
+            throw JournalFailure(exception);
+        }
         finally
         {
             _gate.Release();
@@ -457,6 +493,10 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
         {
             await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
             return await ReadUnacknowledgedCoreAsync(connection, cancellationToken).ConfigureAwait(false);
+        }
+        catch (SqliteException exception)
+        {
+            throw JournalFailure(exception);
         }
         finally
         {
@@ -488,6 +528,10 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             }
 
             return snapshots;
+        }
+        catch (SqliteException exception)
+        {
+            throw JournalFailure(exception);
         }
         finally
         {
@@ -555,6 +599,10 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
             return snapshot;
         }
+        catch (SqliteException exception)
+        {
+            throw JournalFailure(exception);
+        }
         finally
         {
             _gate.Release();
@@ -591,6 +639,10 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(content, SerializerOptions);
             return Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
         }
+        catch (SqliteException exception)
+        {
+            throw JournalFailure(exception);
+        }
         finally
         {
             _gate.Release();
@@ -607,6 +659,32 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
 
         return ValueTask.CompletedTask;
     }
+
+    /// <summary>
+    /// What every public member throws when SQLite itself fails -- a full disk, an I/O error, a read-only or locked
+    /// file: an <see cref="IOException"/> carrying the SQLite error, never the provider's own
+    /// <see cref="SqliteException"/> (8005-agv-onboard-hmi#233).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The journal's contract is IOException for "the journal failed", and this is the one place that holds it.</b>
+    /// Every caller that must answer the server when the journal fails -- the resume's escape path, its result
+    /// send, the interrupted settlement -- filters on <see cref="IOException"/> and its three neighbours, as the
+    /// executor and the session client do. A <see cref="SqliteException"/> derives from none of them, so before
+    /// this it went past every one of those filters: a resume that had pulsed a door and then hit a read-only or
+    /// full journal (SQLite Error 8, measured in the review of PR #234) answered nobody.
+    /// </para>
+    /// <para>
+    /// Error 19 on the outbox insert is not this: it is a business conflict, and
+    /// <see cref="SaveOutgoingBeforeSendAsync"/> turns it into <see cref="InvalidDataException"/> before it gets
+    /// here. Every member's catch is identical, and a new member must have it too:
+    /// <c>JournalSqliteFailureTests</c> breaks the database under each one.
+    /// </para>
+    /// </remarks>
+    private static IOException JournalFailure(SqliteException exception) =>
+        new(
+            $"WIRE_TO_GATE journal的SQLite操作失败：SQLite Error {exception.SqliteErrorCode}（扩展码 {exception.SqliteExtendedErrorCode}）：{exception.Message}",
+            exception);
 
     private async Task<SqliteConnection> OpenAsync(CancellationToken cancellationToken)
     {

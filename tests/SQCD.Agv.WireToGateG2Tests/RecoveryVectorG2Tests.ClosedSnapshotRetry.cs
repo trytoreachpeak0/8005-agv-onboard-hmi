@@ -271,7 +271,13 @@ public sealed partial class RecoveryVectorG2Tests
             () => AcknowledgedRecoverySnapshots(harness).Contains(ClosedSnapshotMessageId),
             "the replayed CLOSED snapshot to be acknowledged",
             token);
-        Assert.Empty(harness.Server.UnacknowledgedClosedRecoverySnapshots);
+        // Waited for, not read once (onboard-hmi#228): the fake server lists a line as received before it
+        // handles it, so the ack is among the received messages a moment before the snapshot comes off the
+        // unacknowledged list. A timeout is the list still holding a snapshot the vehicle has acknowledged.
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Server.UnacknowledgedClosedRecoverySnapshots.Count == 0,
+            "the fake server to take the acknowledged CLOSED snapshot off its unacknowledged list",
+            token);
     }
 
     /// <summary>

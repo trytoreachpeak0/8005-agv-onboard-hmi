@@ -1378,6 +1378,29 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         return CreateResult(command, "FAILED", results, WireToGateRecoveryCheckpoint.None, observedAt);
     }
 
+    /// <summary>
+    /// An UNKNOWN result for <paramref name="command"/> read off the live IO alone, for a caller whose execution
+    /// broke off where it cannot tell what was done -- an exception out of the journal, say -- and that still owes
+    /// the server an answer (onboard-hmi#233). Reads no journal and writes nothing: the journal may be the very
+    /// thing that failed.
+    /// </summary>
+    /// <remarks>
+    /// Every target slot is UNKNOWN with <c>SLOT_STATE_UNKNOWN</c>, and the checkpoint is
+    /// <c>ACTIVE_UNLOCK_SET</c>: a door of this attempt may be open, which is the most a caller that does not know
+    /// how far it got can say. The three physical fields are what the IO reads, or UNKNOWN when it cannot be read.
+    /// </remarks>
+    public WireToGateOperationExecutionResult CreateUnknownResultFromLiveIo(WireToGateSlotOperationCommand command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+        IoSnapshot snapshot = _ioModule.CurrentSnapshot;
+        WireToGateSlotExecutionResult[] results =
+        [
+            .. command.Slots.Select(slot =>
+                CreateSlotResult(ReadLocker(snapshot, slot - 1), "UNKNOWN", ["SLOT_STATE_UNKNOWN"]))
+        ];
+        return CreateResult(command, "UNKNOWN", results, WireToGateRecoveryCheckpoint.ActiveUnlockSet);
+    }
+
     private WireToGateOperationExecutionResult CreateResult(
         WireToGateSlotOperationCommand command,
         string outcome,

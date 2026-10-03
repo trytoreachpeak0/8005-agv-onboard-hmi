@@ -5,5 +5,40 @@
     "keyword": "anyOf",
     "actual": "{\"state\":\"CLOSED\",\"cargoHoldingDeadlineAt\":null,\"closedReason\":null}",
     "deliberate": "MultiDemandJourneyG2Tests.AClosedLoadingPhaseWithoutAReasonIsStillRefusedAndLeavesNoHalfState"
+  },
+  {
+    "messageType": "ManualChargingReturnToServiceResult",
+    "pointer": "#/payload/outcome",
+    "keyword": "type",
+    "actual": "5",
+    "deliberate": "ManualStationClearanceG2Tests.ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown"
+  },
+  {
+    "messageType": "ManualChargingReturnToServiceResult",
+    "pointer": "#/payload/outcome",
+    "keyword": "enum",
+    "actual": "5",
+    "deliberate": "ManualStationClearanceG2Tests.ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown"
+  },
+  {
+    "messageType": "ManualStationClearanceConfirmationResult",
+    "pointer": "#/payload/outcome",
+    "keyword": "type",
+    "actual": "5",
+    "deliberate": "ManualStationClearanceG2Tests.AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable"
+  },
+  {
+    "messageType": "ManualStationClearanceConfirmationResult",
+    "pointer": "#/payload/outcome",
+    "keyword": "enum",
+    "actual": "5",
+    "deliberate": "ManualStationClearanceG2Tests.AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable"
+  },
+  {
+    "messageType": "UnableToChargeFieldConfirmationResult",
+    "pointer": "#/payload/chargingPolicyDecision",
+    "keyword": "anyOf",
+    "actual": "\"CHARGE_ELSEWHERE\"",
+    "deliberate": "UnableToChargeFieldConfirmationG2Tests.AResultThatContradictsItselfOrTheSchemaIsRefusedAndThePressEndsAsUnknown"
   }
 ]

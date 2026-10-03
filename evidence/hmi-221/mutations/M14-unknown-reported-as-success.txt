@@ -1,0 +1,25 @@
+# M14-unknown-reported-as-success
+超时或断线后按下返回 true（unknown-as-success）
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.StationClearance.cs
+
+--- replaced ---
+                : new StationClearancePress(
+                    false,
+                    "STATION_CLEARANCE_UNKNOWN",
+--- with ---
+                : new StationClearancePress(
+                    true,
+                    "STATION_CLEARANCE_UNKNOWN",
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ARestartOffersTheEntryFromTheRestoredStateAndAsksTheOperatorAfresh [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.APressMadeAsAResubmissionIsRefusedOnceTheResultHasArrived [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AResultThatArrivesAfterTheTimeoutSettlesTheUnknownOnce [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AnUnansweredClearanceIsShownAsUnknownAndAResubmissionCarriesTheSameConfirmationRequestId [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ADroppedSessionLeavesAnUnknownThatIsResubmittedUnderTheSameIdAfterReconnecting [50 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ALaterClearanceOfTheSameChargerStartsFromNothing [2 s]
+Failed!  - Failed:     6, Passed:    21, Skipped:     0, Total:    27, Duration: 25 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AnUnansweredClearanceIsShownAsUnknownAndAResubmissionCarriesTheSameConfirmationRequestId; ADroppedSessionLeavesAnUnknownThatIsResubmittedUnderTheSameIdAfterReconnecting
+missing: none

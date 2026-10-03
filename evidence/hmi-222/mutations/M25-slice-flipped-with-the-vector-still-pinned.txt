@@ -1,0 +1,18 @@
+# M25-slice-flipped-with-the-vector-still-pinned
+翻面时把本票的向量留在待建钉位里
+files: tests/SQCD.Agv.UnitTests/ProtocolVectorTestBindingArchitectureTests.cs
+
+--- replaced ---
+            ["CV-WORKLIST-SELECTION-ACCEPTED"] = "FP-IS-09, batch 11",
+--- with ---
+            ["CV-UNABLE-TO-CHARGE-FIELD-CONFIRMATION"] = "FP-IS-13, batch 9",
+            ["CV-WORKLIST-SELECTION-ACCEPTED"] = "FP-IS-09, batch 11",
+
+--- dotnet test tests/SQCD.Agv.UnitTests --filter FullyQualifiedName~IntegrationSliceTraitArchitectureTests|FullyQualifiedName~ProtocolVectorTestBindingArchitectureTests (exit 1) ---
+  Failed SQCD.Agv.UnitTests.ProtocolVectorTestBindingArchitectureTests.EveryFrozenVectorIsBoundToANamedTestOrPinned [254 ms]
+  Failed SQCD.Agv.UnitTests.ProtocolVectorTestBindingArchitectureTests.EveryScheduledPinBelongsOnlyToSlicesThisBatchDoesNotImplement [3 ms]
+Failed!  - Failed:     2, Passed:    27, Skipped:     0, Total:    29, Duration: 5 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: ProtocolVectorTestBindingArchitectureTests
+missing: none

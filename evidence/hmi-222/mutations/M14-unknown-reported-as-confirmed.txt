@@ -1,0 +1,25 @@
+# M14-unknown-reported-as-confirmed
+超时与断线报成已确认
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+                WireToGateUnableToChargeOutcomeKind.Unknown,
+
+--- with ---
+                WireToGateUnableToChargeOutcomeKind.Confirmed,
+
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AResultThatArrivesAfterTheTimeoutSettlesTheUnknownOnce [7 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AResultThatContradictsItselfOrTheSchemaIsRefusedAndThePressEndsAsUnknown(outcome: "CONFIRMED", withProblem: True, decision: "REASSIGN_CHARGER") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AResultThatContradictsItselfOrTheSchemaIsRefusedAndThePressEndsAsUnknown(outcome: "CONFIRMED", withProblem: False, decision: "CHARGE_ELSEWHERE") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AnUnansweredConfirmationIsShownAsUnknownAndAResubmissionCarriesTheSameIdAndCondition [7 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ALaterChargingAttemptStartsFromNothing [7 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AnotherConditionIsRefusedWhileAConfirmationIsUnknown [7 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ARestartOffersTheEntryFromTheRestoredStateAndAsksTheOperatorAfresh [7 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ADroppedSessionLeavesAnUnknownThatIsResubmittedUnderTheSameIdAfterReconnecting [5 s]
+Failed!  - Failed:     8, Passed:    33, Skipped:     0, Total:    41, Duration: 1 m 16 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AnUnansweredConfirmationIsShownAsUnknownAndAResubmissionCarriesTheSameIdAndCondition; AResultThatArrivesAfterTheTimeoutSettlesTheUnknownOnce
+missing: none

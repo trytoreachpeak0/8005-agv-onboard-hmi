@@ -49,7 +49,9 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(
             "RECOVERY_SESSION_NOT_OPEN",
             payload.GetProperty("problem").GetProperty("reasonCode").GetString());
-        Assert.Equal(0, harness.Io.UnlockCount);
+        // Over a stretch after the rejection, not one read: an unlock written after the rejection is
+        // sent lands after a single read often enough to pass it (onboard-hmi#233, the review's R1b).
+        await AssertNoUnlockOverAsync(harness, TimeSpan.FromSeconds(1), token);
         Assert.Equal(resultsBefore, harness.ResultsOfType("OperationResult").Count);
     }
 
@@ -80,7 +82,7 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(
             "RECOVERY_AUTHENTICATION_FAILED",
             payload.GetProperty("problem").GetProperty("reasonCode").GetString());
-        Assert.Equal(0, harness.Io.UnlockCount);
+        await AssertNoUnlockOverAsync(harness, TimeSpan.FromSeconds(1), token);
     }
 
     /// <summary>
@@ -113,7 +115,7 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(
             "RECOVERY_SCOPE_MISMATCH",
             payload.GetProperty("problem").GetProperty("reasonCode").GetString());
-        Assert.Equal(0, harness.Io.UnlockCount);
+        await AssertNoUnlockOverAsync(harness, TimeSpan.FromSeconds(1), token);
     }
 
     /// <summary>
@@ -167,7 +169,7 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(
             rejections[0].GetProperty("payload").GetRawText(),
             rejections[1].GetProperty("payload").GetRawText());
-        Assert.Equal(0, harness.Io.UnlockCount);
+        await AssertNoUnlockOverAsync(harness, TimeSpan.FromSeconds(1), token);
     }
 
     /// <summary>
@@ -199,7 +201,7 @@ public sealed partial class RecoveryVectorG2Tests
                     "收到已拒绝过的SlotOperationResumeCommand", StringComparison.Ordinal)),
             "the resent resume to be either run or refused on the rejection on file",
             token);
-        Assert.Equal(0, harness.Io.UnlockCount);
+        await AssertNoUnlockOverAsync(harness, TimeSpan.FromSeconds(1), token);
         Assert.Single(Rejections(harness)
             .Select(item => item.GetProperty("messageId").GetString())
             .Distinct());
@@ -257,7 +259,7 @@ public sealed partial class RecoveryVectorG2Tests
             Assert.Equal(AttemptId, payload.GetProperty("slotOperationAttemptId").GetString());
             Assert.Equal(reasonCode, payload.GetProperty("problem").GetProperty("reasonCode").GetString());
         });
-        Assert.Equal(0, harness.Io.UnlockCount);
+        await AssertNoUnlockOverAsync(harness, TimeSpan.FromSeconds(1), token);
     }
 
     /// <summary>
@@ -318,7 +320,7 @@ public sealed partial class RecoveryVectorG2Tests
             () => harness.ResultsOfType("ExceptionRecoverySessionRequested").Count == 2,
             "a second recovery session request for the same vehicle",
             token);
-        Assert.Equal(0, harness.Io.UnlockCount);
+        await AssertNoUnlockOverAsync(harness, TimeSpan.FromSeconds(1), token);
     }
 
     /// <summary>
@@ -361,7 +363,7 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(state.RecoveryActionId, after.RecoveryActionId);
         Assert.Equal(state.RecoverySessionRequestId, after.RecoverySessionRequestId);
         Assert.Equal(state.RecoveryOperatorId, after.RecoveryOperatorId);
-        Assert.Equal(0, harness.Io.UnlockCount);
+        await AssertNoUnlockOverAsync(harness, TimeSpan.FromSeconds(1), token);
     }
 
     /// <summary>
@@ -445,7 +447,7 @@ public sealed partial class RecoveryVectorG2Tests
             token);
         WireToGateRecoveryState after = await afterRestart.ReadRecoveryStateAsync(token);
         Assert.Equal(AttemptId, after.UnsettledSlotOperationAttemptId);
-        Assert.Equal(0, afterRestart.Io.UnlockCount);
+        await AssertNoUnlockOverAsync(afterRestart, TimeSpan.FromSeconds(1), token);
     }
 
     /// <summary>
@@ -502,7 +504,7 @@ public sealed partial class RecoveryVectorG2Tests
 
         Assert.Single(server.ReceivedEnvelopes, item => item.MessageType == "SlotOperationCommandRejected");
         Assert.Empty(Rejections(afterRestart));
-        Assert.Equal(0, afterRestart.Io.UnlockCount);
+        await AssertNoUnlockOverAsync(afterRestart, TimeSpan.FromSeconds(1), token);
     }
 
     /// <summary>

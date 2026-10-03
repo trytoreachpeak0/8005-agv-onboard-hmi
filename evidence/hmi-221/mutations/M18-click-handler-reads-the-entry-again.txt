@@ -1,0 +1,16 @@
+# M18-click-handler-reads-the-entry-again
+点击处理在对话框之后重新读一次入口再交回去
+file: src/SQCD.Agv.Wpf/MainWindow.xaml.cs
+
+--- replaced ---
+_viewModel.ConfirmStationClearanceAsync(prompt)
+--- with ---
+_viewModel.ConfirmStationClearanceAsync(_viewModel.StationClearance.Prompt!)
+
+--- dotnet test tests/SQCD.Agv.UnitTests --filter FullyQualifiedName~WireToGateStationClearanceTests (exit 1) ---
+  Failed SQCD.Agv.UnitTests.WireToGateStationClearanceTests.TheClickHandlerConfirmsThePromptItBuiltTheDialogFrom [8 ms]
+Failed!  - Failed:     1, Passed:    10, Skipped:     0, Total:    11, Duration: 72 ms - SQCD.Agv.UnitTests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheClickHandlerConfirmsThePromptItBuiltTheDialogFrom
+missing: none

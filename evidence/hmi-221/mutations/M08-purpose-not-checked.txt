@@ -1,0 +1,24 @@
+# M08-purpose-not-checked
+不看 activePurpose，只要有业务状态就给入口
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.StationClearance.cs
+
+--- replaced ---
+        if (!journey.IsClearingStop)
+        {
+            return new(null, WireToGateStationClearanceUnavailability.NotClearing, outcome);
+--- with ---
+        if (journey.VehicleBusinessState is null)
+        {
+            return new(null, WireToGateStationClearanceUnavailability.NotClearing, outcome);
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AConfirmedClearanceChangesNothingOnTheVehicleUntilTheServersNextSnapshot [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedUnlessTheServerSaysTheVehicleIsClearing(purpose: "TRANSPORT") [63 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedUnlessTheServerSaysTheVehicleIsClearing(purpose: "IDLE_RETURN") [61 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheEntryIsNotOfferedUnlessTheServerSaysTheVehicleIsClearing(purpose: "CHARGING") [59 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ALaterClearanceOfTheSameChargerStartsFromNothing [7 s]
+Failed!  - Failed:     5, Passed:    22, Skipped:     0, Total:    27, Duration: 37 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheEntryIsNotOfferedUnlessTheServerSaysTheVehicleIsClearing
+missing: none

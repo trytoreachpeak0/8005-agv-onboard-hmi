@@ -224,11 +224,18 @@ public sealed partial class StationDeadlineExpiredG2Tests
 
     /// <summary>
     /// 验收第 6 条（<c>1acb018</c>）：按了取消、授权应答没到，车载端重启。重启后日志里是一次开过锁、没结算的装货，
-    /// 带着待答取消记录。中断结算不把它报成 <c>UNKNOWN</c>，而是沿用首发内容重发取消请求，拿到授权后照常清空。
+    /// 带着待答取消记录。中断结算不把它报成 <c>UNKNOWN</c>，而是留着待答取消；有人确认现场再按一次时沿用首发内容重发
+    /// 取消请求，拿到授权后照常清空。
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// onboard-hmi#239 起重启后不再自动重发：授权一到车就开锁清空，而首次按下可能已是很久以前、车旁未必有人。
+    /// 所以这里先断言车辆没有自己重发、也没有报 UNKNOWN，再由人按一次。
+    /// </para>
+    /// <para>
     /// 先红：当前代码会话一就绪就走中断结算，发出 <c>OperationResult</c> <c>UNKNOWN</c>／
     /// <c>RECOVERY_CHECKPOINT_NOT_UNIQUE</c>，服务端据此判 RecoveryRequired，而它那边可能早已授权了取消。
+    /// </para>
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-03")]
@@ -278,6 +285,21 @@ public sealed partial class StationDeadlineExpiredG2Tests
             journalPath: journalPath,
             baselineRevision: 2);
 
+        await Harness.WaitUntilAsync(
+            () => afterRestart.Logger.Entries.Any(entry =>
+                    entry.Message.StartsWith("未收到答复的装货取消不自动重新申请", StringComparison.Ordinal))
+                || afterRestart.Server.ReceivedEnvelopes.Any(envelope =>
+                    envelope.MessageType == "LoadCancellationStartRequested"),
+            "the restarted vehicle to settle the unanswered cancellation one way or the other",
+            token);
+        Assert.DoesNotContain(
+            afterRestart.Server.ReceivedEnvelopes,
+            envelope => envelope.MessageType == "LoadCancellationStartRequested");
+        await Harness.WaitUntilAsync(
+            () => afterRestart.Business.CanRequestLoadCancellation,
+            "the in-flight load cancellation entry to be offered after the restart",
+            token);
+        Assert.True(await afterRestart.Business.RequestLoadCancellationAsync("重启后确认现场，再按一次取消。", token));
         await afterRestart.WaitForInboundAsync("LoadCancellationResult", token);
 
         Assert.DoesNotContain(afterRestart.Server.Received, item => item.MessageType == "OperationResult");
@@ -409,7 +431,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
             long baselineRevision = 1,
             Action<WireToGateBusinessService>? observe = null,
             Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
-            Action<WireToGateSessionService>? observeSession = null)
+            Action<WireToGateSessionService>? observeSession = null,
+            IClock? businessClock = null)
         {
             FakeControlServer server = NewServer();
             configure?.Invoke(server);
@@ -456,7 +479,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 session,
                 io,
                 logger,
-                new SystemClock(),
+                businessClock ?? new SystemClock(),
                 () => true,
                 new WireToGateSlotOperationExecutorOptions(
                     TimeSpan.FromSeconds(1),

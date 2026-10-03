@@ -41,8 +41,13 @@ public sealed partial class MultiDemandJourneyG2Tests
                 };
             },
             token);
+        // Each wait below ends on the field the view model writes last for that line (the Has* flag goes
+        // first, the text and code after it), so the assertions never read a line half applied.
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.HasCargoHoldingCountdown && harness.ViewModel.HasStationDepartureCountdown,
+            () => harness.ViewModel.HasCargoHoldingCountdown
+                && harness.ViewModel.CargoHoldingCountdownStatus.Length > 0
+                && harness.ViewModel.HasStationDepartureCountdown
+                && harness.ViewModel.StationDepartureCountdownTier == StationDepartureCountdownTier.Normal,
             "the cargo holding line and the station countdown",
             token);
 
@@ -62,14 +67,20 @@ public sealed partial class MultiDemandJourneyG2Tests
         await harness.Server.SendJourneySnapshotAsync(
             "VehicleBusinessStateSnapshot",
             Payloads.BusinessState(2, Payloads.LoadingPhase("VEHICLE_FULL")));
-        await harness.WaitUntilAsync(() => harness.ViewModel.HasVehicleFullNotice, "the vehicle-full line", token);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.HasVehicleFullNotice && harness.ViewModel.VehicleFullNoticeText.Length > 0,
+            "the vehicle-full line",
+            token);
         Assert.False(harness.ViewModel.HasCargoHoldingCountdown);
         Assert.Equal("已装满，装完已承诺的任务后离站", harness.ViewModel.VehicleFullNoticeText);
 
         await harness.Server.SendJourneySnapshotAsync(
             "VehicleBusinessStateSnapshot",
             Payloads.BusinessState(3, Payloads.LoadingPhase("CLOSED", closedReason: "WAITING_STATION_YIELD")));
-        await harness.WaitUntilAsync(() => harness.ViewModel.HasLoadingClosedReason, "the closed-reason line", token);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.HasLoadingClosedReason && harness.ViewModel.LoadingClosedReasonCode.Length > 0,
+            "the closed-reason line",
+            token);
         Assert.Equal("WAITING_STATION_YIELD", harness.ViewModel.LoadingClosedReasonCode);
         Assert.Equal("另一辆车需要本站，本车结束等单，前往卸货", harness.ViewModel.LoadingClosedReasonText);
         Assert.False(harness.ViewModel.HasVehicleFullNotice);
@@ -77,14 +88,20 @@ public sealed partial class MultiDemandJourneyG2Tests
         await harness.Server.SendJourneySnapshotAsync(
             "VehicleBusinessStateSnapshot",
             Payloads.BusinessState(4, loadingPhase: null));
+        // The session takes revision 4 before JourneyChanged reaches the view model, so waiting on the
+        // session alone would let a view-model read still see revision 3. Two waits, so a timeout says
+        // which layer did not move: the session first (it was revision 4 that arrived), then the lines.
         await harness.WaitUntilAsync(
             () => harness.Session.CurrentJourney.VehicleBusinessState?.Revision == 4,
-            "the fourth business state",
+            "session took revision 4",
+            token);
+        await harness.WaitUntilAsync(
+            () => !harness.ViewModel.HasLoadingClosedReason
+                && harness.ViewModel.LoadingClosedReasonCode.Length == 0
+                && !harness.ViewModel.HasCargoHoldingCountdown,
+            "view model cleared the closed-reason line",
             token);
 
-        Assert.False(harness.ViewModel.HasLoadingClosedReason);
-        Assert.Equal(string.Empty, harness.ViewModel.LoadingClosedReasonCode);
-        Assert.False(harness.ViewModel.HasCargoHoldingCountdown);
         Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "ProtocolProblem");
         Assert.Empty(harness.UiErrors);
     }
@@ -486,10 +503,20 @@ public sealed partial class MultiDemandJourneyG2Tests
         await harness.Server.SendJourneySnapshotAsync("CurrentStopWorklistSnapshot", Payloads.Worklist(2, Payloads.ItemB));
         await harness.WaitUntilAsync(
             () => harness.Session.CurrentJourney.CurrentStopWorklist?.Revision == 2,
-            "worklist revision 2",
+            "session took worklist revision 2",
             token);
         // 录入框还在（CanSubmitSublot 不查清单版本），操作员照样扫得下去 -- 这正是 243aa66 的残留。
-        Assert.True(harness.ViewModel.CanSubmit);
+        //
+        // 等到视图模型也吃下第 2 版再读，并且持续读（onboard-hmi#228）：会话先存快照、后发 JourneyChanged，只等会话层
+        // 的话，这一条读到的还是第 1 版下的入口——那时它本来就开着，第 2 版把它关掉的实现在这一行照样绿。
+        await harness.WaitUntilAsync(
+            () => harness.WorklistRows() is [("SUBLOT-B", _)],
+            "view model showed worklist revision 2",
+            token);
+        await AssertWhileAsync(
+            DisplaySettleWindow,
+            () => Assert.True(harness.ViewModel.CanSubmit, "worklist revision 2 shut the scan entry"),
+            token);
 
         // 扫的是已离站的 A。PR #200（hmi#199）之前扫的是仍在站上的 B，靠「请求落后清单一版」被拒；
         // 那条规则已取消，B 现在会按第 1 版请求送达服务端。这条要守的是「本地拒绝是提示、不锁存」，

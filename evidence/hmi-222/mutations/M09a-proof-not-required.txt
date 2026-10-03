@@ -1,0 +1,18 @@
+# M09a-proof-not-required
+不要求管理员凭据已配置
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+CanUseRecoveryOperator(requireProof: true)
+
+--- with ---
+CanUseRecoveryOperator(requireProof: false)
+
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsNotOfferedWithoutAVerifiedMaintainer(maintenanceSwitch: True, proofVariable: "W2G_G2_UNABLE_TO_CHARGE_PROOF_UNSET") [158 ms]
+Failed!  - Failed:     1, Passed:    40, Skipped:     0, Total:    41, Duration: 37 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheEntryIsNotOfferedWithoutAVerifiedMaintainer
+missing: none

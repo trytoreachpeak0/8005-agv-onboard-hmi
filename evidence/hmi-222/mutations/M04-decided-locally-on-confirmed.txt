@@ -1,0 +1,22 @@
+# M04-decided-locally-on-confirmed
+CONFIRMED 之后本地就把入口收起（当作服务端的决定已经生效）
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+        if (!WireToGateUnableToCharge.IsCharging(journey))
+
+--- with ---
+        if (!WireToGateUnableToCharge.IsCharging(journey)
+            || outcome is { Kind: WireToGateUnableToChargeOutcomeKind.Confirmed })
+
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheServersDecisionChangesNothingOnTheVehicleUntilItsNextBusinessState(decision: "MANUAL_CHARGING_HOLD", decisionText: "转人工充电") [600 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheServersDecisionChangesNothingOnTheVehicleUntilItsNextBusinessState(decision: "RETRY_LATER", decisionText: "稍后重试") [527 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheServersDecisionChangesNothingOnTheVehicleUntilItsNextBusinessState(decision: "REASSIGN_CHARGER", decisionText: "改派其它充电桩") [504 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AnUnansweredConfirmationIsShownAsUnknownAndAResubmissionCarriesTheSameIdAndCondition [3 s]
+Failed!  - Failed:     4, Passed:    37, Skipped:     0, Total:    41, Duration: 38 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheServersDecisionChangesNothingOnTheVehicleUntilItsNextBusinessState
+missing: none

@@ -1,0 +1,22 @@
+# R3-contradictory-result-accepted
+审查 S4：不拒收自相矛盾的应答
+file: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+
+--- replaced ---
+            || payload.Outcome == "REJECTED" && payload.StationReleased
+            || payload.Outcome == "CONFIRMED" && payload.Problem is not null)
+
+--- with ---
+)
+
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AResultThatContradictsItselfIsRefusedAndThePressEndsAsUnknown(outcome: "CONFIRMED", stationReleased: True, withProblem: True) [86 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AResultThatContradictsItselfIsRefusedAndThePressEndsAsUnknown(outcome: "REJECTED", stationReleased: True, withProblem: False) [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AResultThatContradictsItselfIsRefusedAndThePressEndsAsUnknown(outcome: "CONFIRMED", stationReleased: False, withProblem: True) [84 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AResultThatContradictsItselfIsRefusedAndThePressEndsAsUnknown(outcome: "REJECTED", stationReleased: True, withProblem: True) [5 s]
+Failed!  - Failed:     4, Passed:    31, Skipped:     0, Total:    35, Duration: 43 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AResultThatContradictsItselfIsRefusedAndThePressEndsAsUnknown
+missing: none

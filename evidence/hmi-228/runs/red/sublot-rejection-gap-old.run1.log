@@ -1,0 +1,35 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:01.70]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusalAtANewerRevisionWhileTheWorklistIsAnotherStationDoesNotKeepTheRequest [FAIL]
+[xUnit.net 00:00:01.85]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AServerRefusalAfterASameStopRevisionAdvanceKeepsTheEntryOpenForARescan [FAIL]
+[xUnit.net 00:00:01.98]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AStaleWorklistRefusalWithdrawsTheRequestEvenBeforeTheClosureSnapshot [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusalAtANewerRevisionWhileTheWorklistIsAnotherStationDoesNotKeepTheRequest [509 ms]
+  Error Message:
+   Assert.Contains() Failure: Filter not matched in collection
+Collection: ["车载端正在启动。", "正在连接仓门控制设备和任务系统。", "收到子批录入请求：SUBLOT-A。", "收到子批录入请求：SUBLOT-GATE。"]
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusalAtANewerRevisionWhileTheWorklistIsAnotherStationDoesNotKeepTheRequest() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.EntryRequestExpiry.cs:line 403
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusalAtANewerRevisionWhileTheWorklistIsAnotherStationDoesNotKeepTheRequest() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.EntryRequestExpiry.cs:line 406
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AServerRefusalAfterASameStopRevisionAdvanceKeepsTheEntryOpenForARescan [148 ms]
+  Error Message:
+   Assert.Contains() Failure: Filter not matched in collection
+Collection: ["车载端正在启动。", "正在连接仓门控制设备和任务系统。", "收到子批录入请求：SUBLOT-A、SUBLOT-B。", "子批 SUBLOT-A 已提交，等待服务端下发仓位操作。"]
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AServerRefusalAfterASameStopRevisionAdvanceKeepsTheEntryOpenForARescan() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.EntryRequestExpiry.cs:line 328
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AServerRefusalAfterASameStopRevisionAdvanceKeepsTheEntryOpenForARescan() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.EntryRequestExpiry.cs:line 337
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AStaleWorklistRefusalWithdrawsTheRequestEvenBeforeTheClosureSnapshot [122 ms]
+  Error Message:
+   Assert.Single() Failure: The collection did not contain any matching items
+Expected:   (predicate expression)
+Collection: ["车载端正在启动。", "正在连接仓门控制设备和任务系统。", "收到子批录入请求：SUBLOT-A。", "子批 SUBLOT-A 已提交，等待服务端下发仓位操作。"]
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AStaleWorklistRefusalWithdrawsTheRequestEvenBeforeTheClosureSnapshot() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.EntryRequestExpiry.cs:line 437
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AStaleWorklistRefusalWithdrawsTheRequestEvenBeforeTheClosureSnapshot() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.EntryRequestExpiry.cs:line 445
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     3, Passed:     0, Skipped:     0, Total:     3, Duration: 827 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

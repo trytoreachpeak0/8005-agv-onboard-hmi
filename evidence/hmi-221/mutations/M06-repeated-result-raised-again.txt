@@ -1,0 +1,26 @@
+# M06-repeated-result-raised-again
+重复到达的同一应答不认作重复，再投递一次
+file: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+
+--- replaced ---
+        if (repeated)
+        {
+            return;
+        }
+
+        ServerCommandReceived?.Invoke(
+--- with ---
+        if (repeated && envelope.MessageId.Length == 0)
+        {
+            return;
+        }
+
+        ServerCommandReceived?.Invoke(
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ARepeatedResultIsHandledOnce [126 ms]
+Failed!  - Failed:     1, Passed:    26, Skipped:     0, Total:    27, Duration: 30 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: ARepeatedResultIsHandledOnce
+missing: none

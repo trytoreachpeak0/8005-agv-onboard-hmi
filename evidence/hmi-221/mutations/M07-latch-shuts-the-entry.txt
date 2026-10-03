@@ -1,0 +1,16 @@
+# M07-latch-shuts-the-entry
+严重安全故障锁存期间把清桩入口也关掉
+file: src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+
+--- replaced ---
+        if (_stationClearanceView?.Invoke() is not { } view)
+--- with ---
+        if (RecoveryEntriesBlockedByFatalFault || _stationClearanceView?.Invoke() is not { } view)
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ALatchLeavesTheClearanceEntryOpenAndOpensNoDoor [80 ms]
+Failed!  - Failed:     1, Passed:    26, Skipped:     0, Total:    27, Duration: 30 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: ALatchLeavesTheClearanceEntryOpenAndOpensNoDoor
+missing: none

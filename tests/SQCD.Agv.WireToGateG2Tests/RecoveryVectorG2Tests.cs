@@ -1310,6 +1310,7 @@ public sealed partial class RecoveryVectorG2Tests
         private readonly WireToGateSessionService _session;
         private readonly SqliteWireToGateJournal _journal;
         private readonly List<WireToGateOperatorEvent> _recoveryBlockedEvents;
+        private readonly List<WireToGateOperatorEvent> _operatorEvents;
         private readonly bool _ownsServer;
         private readonly MutableSafetySignalProvider _safety;
 
@@ -1321,6 +1322,7 @@ public sealed partial class RecoveryVectorG2Tests
             WireToGateBusinessService business,
             SqliteWireToGateJournal journal,
             List<WireToGateOperatorEvent> recoveryBlockedEvents,
+            List<WireToGateOperatorEvent> operatorEvents,
             RecordingLogger logger,
             MutableSafetySignalProvider safety)
         {
@@ -1333,6 +1335,7 @@ public sealed partial class RecoveryVectorG2Tests
             Business = business;
             _journal = journal;
             _recoveryBlockedEvents = recoveryBlockedEvents;
+            _operatorEvents = operatorEvents;
         }
 
         public FakeControlServer Server { get; }
@@ -1412,7 +1415,11 @@ public sealed partial class RecoveryVectorG2Tests
             bool lockerWaitTimesOut = false,
             Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
             Func<bool>? fatalFaultLatched = null,
-            IClock? sessionClock = null)
+            IClock? sessionClock = null,
+            TimeSpan? messageTimeout = null,
+            bool awaitStartSettlement = true,
+            TimeSpan? resumeSettlementWaitLimit = null,
+            IClock? businessClock = null)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -1452,7 +1459,7 @@ public sealed partial class RecoveryVectorG2Tests
                         new string('a', 40),
                         CredentialVariable,
                         G2SessionTimeouts.Connect,
-                        TimeSpan.FromSeconds(2),
+                        messageTimeout ?? TimeSpan.FromSeconds(2),
                         baselineRevision,
                         baselineRevision,
                         "eight-slot-v1",
@@ -1475,7 +1482,7 @@ public sealed partial class RecoveryVectorG2Tests
                     session,
                     io,
                     logger,
-                    new SystemClock(),
+                    businessClock ?? new SystemClock(),
                     () => safety.Read().MotionState == VehicleMotionState.Stopped,
                     new WireToGateSlotOperationExecutorOptions(
                         TimeSpan.FromSeconds(1),
@@ -1492,7 +1499,8 @@ public sealed partial class RecoveryVectorG2Tests
                         ProofVariable,
                         "MAINTENANCE_ADMINISTRATOR",
                         "CONFIGURED_PROOF"),
-                    fatalFaultLatched: fatalFaultLatched);
+                    fatalFaultLatched: fatalFaultLatched,
+                    resumeSettlementWaitLimit: resumeSettlementWaitLimit);
 
                 WireToGateRecoveryOperationContext loadContext = new(
                     CommandMessageId,
@@ -1558,6 +1566,8 @@ public sealed partial class RecoveryVectorG2Tests
                         loadAlreadySettled,
                         armedUnloadOverSettledLoad,
                         nothingOnFile,
+                        restart,
+                        awaitStartSettlement,
                         cancellationToken);
                 }
 
@@ -1604,6 +1614,8 @@ public sealed partial class RecoveryVectorG2Tests
                     loadAlreadySettled,
                     armedUnloadOverSettledLoad,
                     nothingOnFile,
+                    restart,
+                    awaitStartSettlement,
                     cancellationToken);
             }
             catch
@@ -1629,6 +1641,8 @@ public sealed partial class RecoveryVectorG2Tests
             bool loadAlreadySettled,
             bool armedUnloadOverSettledLoad,
             bool nothingOnFile,
+            bool restart,
+            bool awaitStartSettlement,
             CancellationToken cancellationToken)
         {
             // The readiness has to be RECOVERY_REQUIRED when the action is submitted -- with no
@@ -1648,16 +1662,36 @@ public sealed partial class RecoveryVectorG2Tests
 
             safety.SetStopped();
 
+            // A fresh journal seeds an armed attempt that no process has settled, so the pump's first
+            // pass settles it: the interrupted settlement in TrySettleInterruptedOperationAsync.
+            // A restart finds that settlement's result already on file and settles nothing.
+            string? settledAtStart = restart || loadAlreadySettled || nothingOnFile
+                ? null
+                : armedUnloadOverSettledLoad ? UnloadAttemptId : AttemptId;
+            int startSettlementConcluded = 0;
+
             // Subscribed before the pump starts, so no refusal can be published into the gap.
             List<WireToGateOperatorEvent> blocked = [];
+            List<WireToGateOperatorEvent> published = [];
             business.OperatorEventPublished += (_, args) =>
             {
+                lock (published)
+                {
+                    published.Add(args.Value);
+                }
+
                 if (args.Value.Kind == "RECOVERY_BLOCKED")
                 {
                     lock (blocked)
                     {
                         blocked.Add(args.Value);
                     }
+                }
+
+                if (settledAtStart is not null
+                    && StartSettlementConclusion(args.Value, settledAtStart) is var conclusion and > 0)
+                {
+                    Interlocked.Exchange(ref startSettlementConcluded, conclusion);
                 }
             };
             business.Start();
@@ -1698,9 +1732,59 @@ public sealed partial class RecoveryVectorG2Tests
                     business.CurrentOperationSnapshot!.SlotOperationAttemptId);
             }
 
+            // The RecoveryRequired snapshot above is not the end of the start: the settlement writes
+            // it first and only then records its pending result and sends its OperationResult. A
+            // test that starts there counts the settlement's result as its own, snapshots a journal
+            // the settlement is still writing, and sends a resume the vehicle drops because the
+            // settlement still holds the attempt (onboard-hmi#230). The settlement's last event is
+            // published after the result is acknowledged, and nothing awaits between it and the
+            // claim's release.
+            //
+            // The event alone is not enough: the restore projection publishes the same kind for the
+            // same attempt when the settlement settled nothing (WireToGateBusinessService.cs, the
+            // OPERATION_RECOVERY_REQUIRED after TrySettleInterruptedOperationAsync returns
+            // NotSettled). The settlement's own result, under messageId = the attempt id, is what
+            // only a settlement that ran sends. RESULT_ACK_PENDING is the one ending where that
+            // result's arrival is not the point.
+            //
+            // A test that delivers something into the settlement itself (onboard-hmi#233) says
+            // awaitStartSettlement: false and waits for the moment it needs on its own.
+            if (settledAtStart is not null && awaitStartSettlement)
+            {
+                await WaitUntilAsync(
+                    () => Volatile.Read(ref startSettlementConcluded) switch
+                    {
+                        StartSettlementReported => server.ReceivedEnvelopes.Any(envelope =>
+                            envelope.MessageType == "OperationResult" && envelope.MessageId == settledAtStart),
+                        StartSettlementAckPending => true,
+                        _ => false
+                    },
+                    "the interrupted settlement of the seeded attempt to send its OperationResult and conclude",
+                    cancellationToken);
+            }
+
             return new RecoveryVectorHarness(
-                server, ownsServer, io, session, business, journal, blocked, logger, safety);
+                server, ownsServer, io, session, business, journal, blocked, published, logger, safety);
         }
+
+        private const int StartSettlementReported = 1;
+
+        private const int StartSettlementAckPending = 2;
+
+        /// <summary>
+        /// Which ending of the interrupted settlement of <paramref name="attemptId"/> this event is, or
+        /// 0: its reported outcome, or the pending-ack notice when the result's DurableAck did not
+        /// come back. The settlement's own OPERATION_PROGRESS snapshot comes before the result and does
+        /// not count. A reported outcome is necessary, not sufficient -- see the wait that reads it.
+        /// </summary>
+        private static int StartSettlementConclusion(WireToGateOperatorEvent operatorEvent, string attemptId) =>
+            operatorEvent.Kind switch
+            {
+                "OPERATION_RECOVERY_REQUIRED" or "OPERATION_COMPLETED"
+                    when operatorEvent.Operation?.SlotOperationAttemptId == attemptId => StartSettlementReported,
+                "RESULT_ACK_PENDING" => StartSettlementAckPending,
+                _ => 0
+            };
 
         /// <summary>The vehicle's motion is unknown again, the way it was across the handshake.</summary>
         public void VehicleMotionUnknown() => _safety.SetUnknown();
@@ -1891,6 +1975,18 @@ public sealed partial class RecoveryVectorG2Tests
         /// RECOVERY_BLOCKED event is published by the guard itself, so waiting on it is waiting for
         /// the refusal to have actually been decided.
         /// </remarks>
+        /// <summary>Every operator event the business service published, from before its pump started.</summary>
+        public IReadOnlyList<WireToGateOperatorEvent> OperatorEvents
+        {
+            get
+            {
+                lock (_operatorEvents)
+                {
+                    return [.. _operatorEvents];
+                }
+            }
+        }
+
         public int RecoveryBlockedCount
         {
             get

@@ -1,0 +1,20 @@
+# M22-decision-value-not-validated
+不校验 chargingPolicyDecision 的取值
+files: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+
+--- replaced ---
+
+            || payload.ChargingPolicyDecision is not (null or "RETRY_LATER" or "MANUAL_CHARGING_HOLD"
+                or "REASSIGN_CHARGER"))
+
+--- with ---
+)
+
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AResultThatContradictsItselfOrTheSchemaIsRefusedAndThePressEndsAsUnknown(outcome: "CONFIRMED", withProblem: False, decision: "CHARGE_ELSEWHERE") [71 ms]
+Failed!  - Failed:     1, Passed:    40, Skipped:     0, Total:    41, Duration: 34 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AResultThatContradictsItselfOrTheSchemaIsRefusedAndThePressEndsAsUnknown
+missing: none

@@ -1,0 +1,17 @@
+# M13a-first-message-id-not-the-request-id
+第一次发送的 messageId 不等于 confirmationRequestId
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+firstSend ? request.ConfirmationRequestId : Guid.NewGuid().ToString("D"),
+--- with ---
+Guid.NewGuid().ToString("D"),
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheReportCarriesTheOperatorTheChargerAndTheConditionAndTheVectorRunsInOrder [507 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ALaterChargingAttemptStartsFromNothing [2 s]
+Failed!  - Failed:     2, Passed:    39, Skipped:     0, Total:    41, Duration: 42 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheReportCarriesTheOperatorTheChargerAndTheConditionAndTheVectorRunsInOrder; ALaterChargingAttemptStartsFromNothing
+missing: none

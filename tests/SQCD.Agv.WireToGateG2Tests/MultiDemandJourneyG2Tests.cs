@@ -288,7 +288,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             string? journalPath = null,
             FakeIoModuleClient? io = null,
             Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
-            WireToGateRecoveryOptions? recoveryOptions = null)
+            WireToGateRecoveryOptions? recoveryOptions = null,
+            string? operatorIdEnvironmentVariable = null)
         {
             FakeControlServer server = new(IPAddress.Loopback)
             {
@@ -304,7 +305,8 @@ public sealed partial class MultiDemandJourneyG2Tests
                     journalPath,
                     io,
                     wrapJournal,
-                    recoveryOptions);
+                    recoveryOptions,
+                    operatorIdEnvironmentVariable);
                 started._ownsServer = true;
                 return started;
             }
@@ -327,13 +329,19 @@ public sealed partial class MultiDemandJourneyG2Tests
         /// The recovery switch and administrator proof, for a test that drives a recovery entry. Left
         /// null, the recovery entries stay shut, as on a vehicle shipped with the switch off.
         /// </param>
+        /// <param name="operatorIdEnvironmentVariable">
+        /// The variable the business service reads the operator id from. Left null, the one this class's static
+        /// constructor sets; a test that changes who is at the vehicle names a variable of its own, so the tests of
+        /// other classes running beside it keep theirs (8005-agv-onboard-hmi#222).
+        /// </param>
         public static async Task<Harness> StartAgainstAsync(
             FakeControlServer server,
             CancellationToken cancellationToken,
             string? journalPath = null,
             FakeIoModuleClient? io = null,
             Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
-            WireToGateRecoveryOptions? recoveryOptions = null)
+            WireToGateRecoveryOptions? recoveryOptions = null,
+            string? operatorIdEnvironmentVariable = null)
         {
             io ??= new FakeIoModuleClient();
             RecordingLogger logger = new();
@@ -408,7 +416,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                     TimeSpan.FromSeconds(2),
                     TimeSpan.FromMilliseconds(10),
                     TimeSpan.FromSeconds(30)),
-                OperatorVariable,
+                operatorIdEnvironmentVariable ?? OperatorVariable,
                 safety,
                 TimeSpan.FromSeconds(30),
                 TimeSpan.FromMilliseconds(500),
@@ -476,6 +484,10 @@ public sealed partial class MultiDemandJourneyG2Tests
                 () => business.CurrentSublotRejection,
                 () => business.RecoveryReasonAlreadyGiven,
                 () => business.RecoveryFallbackDemandId);
+            // The same method App.xaml.cs calls, not a copy of its lines (8005-agv-onboard-hmi#221).
+            StationClearanceWiring.Configure(viewModel, business);
+            UnableToChargeWiring.Configure(viewModel, business);
+            HeldRecoveryCommandWiring.Configure(viewModel, business);
             await viewModel.InitializeAsync();
 
             try

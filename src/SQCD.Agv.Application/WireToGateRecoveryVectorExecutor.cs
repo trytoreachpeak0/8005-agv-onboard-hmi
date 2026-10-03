@@ -155,6 +155,84 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Records and returns the result of a vector the operator chose not to carry on with, touching no IO
+    /// (onboard-hmi#239): what the journal shows was done, and <c>UNKNOWN</c> for what it cannot show.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// For the vector <see cref="RefuseBeforeUnlockAsync"/> answers <c>null</c> for: one the journal shows may
+    /// have acted -- a process that died mid-execution, its command replayed after the restart and held for
+    /// someone at the vehicle. Carrying it on would pulse the slots it had not reached yet; declining it has to
+    /// answer the server all the same, or its workflow waits for good, since only a result closes the session.
+    /// </para>
+    /// <para>
+    /// Slots counted complete keep their recorded results. Slots in the active unlock set may have been pulsed
+    /// and are <c>UNKNOWN</c>, as the replay path reports them when it cannot prove them safe. The rest were never
+    /// reached and are <c>NOT_STARTED</c> with what the IO reads. The overall outcome is <c>COMPLETED</c> only when
+    /// the journal already shows the safe finish, and <c>UNKNOWN</c> otherwise: the vehicle does not claim a
+    /// failure over doors that may have opened. A result already recorded is returned as recorded.
+    /// </para>
+    /// </remarks>
+    public async Task<WireToGateRecoveryVectorExecutionResult> SettleWithoutUnlockAsync(
+        WireToGateRecoveryVectorContext context,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+        await _operationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            WireToGateRecoveryState state = await _journal
+                .ReadRecoveryStateAsync(cancellationToken)
+                .ConfigureAwait(false);
+            if (state.RecoveryVector is not { } persisted || !SameContext(persisted, context))
+            {
+                throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
+            }
+
+            string outcome = state.ProvenRecoveryCheckpoint switch
+            {
+                WireToGateRecoveryCheckpoint.SafeFinishReached
+                    or WireToGateRecoveryCheckpoint.ResultRecorded => "COMPLETED",
+                WireToGateRecoveryCheckpoint.Prepared
+                    when state.RecoveryResultObservedAt is not null => "FAILED",
+                _ => "UNKNOWN"
+            };
+            if (state.RecoveryResultObservedAt is { } recordedAt)
+            {
+                return CreateResult(
+                    context,
+                    outcome,
+                    state.SlotResults.Where(result => context.Slots.Contains(result.SlotNo)).ToArray(),
+                    state.ProvenRecoveryCheckpoint,
+                    recordedAt);
+            }
+
+            List<WireToGateSlotExecutionResult> results = state.SlotResults
+                .Where(result => context.Slots.Contains(result.SlotNo))
+                .GroupBy(result => result.SlotNo)
+                .Select(group => group.Last())
+                .OrderBy(result => result.SlotNo)
+                .ToList();
+            AddUnknownResults(_ioModule.CurrentSnapshot, context.Slots, state.ActiveUnlockSlots, results);
+            await WriteVectorStateAsync(
+                context,
+                state.ProvenRecoveryCheckpoint,
+                state.ActiveUnlockSlots,
+                state.CompletedSlots.Where(context.Slots.Contains).ToArray(),
+                results,
+                CancellationToken.None).ConfigureAwait(false);
+            DateTimeOffset observedAt = await EnsureResultObservedAtAsync(
+                context,
+                CancellationToken.None).ConfigureAwait(false);
+            return CreateResult(context, outcome, results, state.ProvenRecoveryCheckpoint, observedAt);
+        }
+        finally
+        {
+            _operationGate.Release();
+        }
+    }
+
     public ValueTask DisposeAsync()
     {
         _operationGate.Dispose();
