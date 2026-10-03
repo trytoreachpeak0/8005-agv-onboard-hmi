@@ -1,0 +1,28 @@
+# M16-conflicting-answer-accepted
+同一确认号下不同的应答不判冲突
+file: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+
+--- replaced ---
+            throw new InvalidDataException("BUSINESS_ID_CONTENT_CONFLICT");
+        }
+
+        return true;
+    }
+
+    // ---- end of CV-MANUAL-STATION-CLEARANCE ----
+--- with ---
+            return true;
+        }
+
+        return true;
+    }
+
+    // ---- end of CV-MANUAL-STATION-CLEARANCE ----
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ADifferentAnswerUnderAnAnsweredIdFailsTheSessionAndDoesNotRewriteTheResult [5 s]
+Failed!  - Failed:     1, Passed:    26, Skipped:     0, Total:    27, Duration: 34 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: ADifferentAnswerUnderAnAnsweredIdFailsTheSessionAndDoesNotRewriteTheResult
+missing: none

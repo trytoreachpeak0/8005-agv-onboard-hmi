@@ -35,14 +35,16 @@ scripts/run-w2g-g2.ps1 为每次本机验证创建一个不可复用的证据目
 时都是 `null`）。让不带 `-Slice` 的那条留在 `1.0.0` 反而更糟：字段已经多了，版本号却说没多。
 
 **选不中任何测试的切片会被拒绝，且是在建目录之前拒绝。** `dotnet test --filter` 选中 0 条时退出
-码是 0（2026-09-09 本仓实测，`-Slice FP-IS-13`），不拒绝就会给一个没建的切片写出一份绿证据。
+码是 0（2026-09-09 本仓实测，`-Slice FP-IS-13`；那时它还没建，onboard-hmi#222 翻面之后它能选中测试，今天还没建的是
+`FP-IS-09`），不拒绝就会给一个没建的切片写出一份绿证据。
 
 哪些测试属于哪一片，由测试上的 `[Trait("IntegrationSlice", ...)]` 决定，而那是每个测试自己的
 `[Trait("ProtocolVector", ...)]` 按协议切片索引的投影——`IntegrationSliceTraitArchitectureTests`
 钉住这条等式，投影只到本条线已实现的切片。哪些切片算已实现，以
 `ProtocolVectorTestBindingArchitectureTests.SlicesThisLineImplements` 为准（`IntegrationSliceTraitArchitectureTests`
-经 `ImplementedSlices()` 读它，并断言片数），当前是 `FP-IS-00`～`08`、`FP-IS-10`～`12`、`FP-IS-14`、
-`FP-IS-15`，共 14 片（`FP-IS-08` 于批次 7 由 onboard-hmi#134 加入，`FP-IS-12` 于批次 8 由 onboard-hmi#217 加入）。
+经 `ImplementedSlices()` 读它，并断言片数），当前是 `FP-IS-00`～`08`、`FP-IS-10`～`15`，共 15 片（`FP-IS-08` 于批次 7
+由 onboard-hmi#134 加入，`FP-IS-12` 于批次 8 由 onboard-hmi#217 加入，`FP-IS-13` 于批次 9 由 onboard-hmi#222 加入——三张
+车载端充电票的最后一张，它的四条向量在本端都有了具名测试之后才翻面）。
 
 ## 出站报文 schema 校验（`schemaConformance`）
 

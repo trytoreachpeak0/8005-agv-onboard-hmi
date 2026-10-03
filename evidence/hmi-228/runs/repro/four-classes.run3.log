@@ -1,0 +1,19 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:01:10.26]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASecondSlotCommandQueuesBehindTheFirstAndItsOverdueClockStartsAtItsOwnUnlock [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASecondSlotCommandQueuesBehindTheFirstAndItsOverdueClockStartsAtItsOwnUnlock [2 s]
+  Error Message:
+   System.ObjectDisposedException : Cannot access a disposed object.
+Object name: 'System.Threading.SemaphoreSlim'.
+  Stack Trace:
+     at System.Threading.SemaphoreSlim.WaitAsync(Int32 millisecondsTimeout, CancellationToken cancellationToken)
+   at SQCD.Agv.WireToGateG2Tests.FakeControlServer.WriteLineAsync(ConnectionContext context, String wireLine) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\FakeControlServer.cs:line 3265
+   at SQCD.Agv.WireToGateG2Tests.FakeControlServer.WriteEnvelopeAsync(ConnectionContext context, WireToGateEnvelope envelope) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\FakeControlServer.cs:line 3279
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASecondSlotCommandQueuesBehindTheFirstAndItsOverdueClockStartsAtItsOwnUnlock() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.Paths.cs:line 432
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ASecondSlotCommandQueuesBehindTheFirstAndItsOverdueClockStartsAtItsOwnUnlock() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.Paths.cs:line 462
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:   256, Skipped:     0, Total:   257, Duration: 1 m 22 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

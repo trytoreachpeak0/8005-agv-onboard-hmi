@@ -27,12 +27,14 @@ namespace SQCD.Agv.UnitTests;
 /// </para>
 /// <para>
 /// <b>The batch bound is load-bearing, and <c>CV-MANUAL-CHARGING-RETURN</c> is why.</b> That vector
-/// belongs to <c>FP-IS-07</c> and to <c>FP-IS-13</c>, and several tests here prove it (six when batch 9-15
-/// counted them; batch 9-15 also added the <c>CV-AUTOMATIC-CHARGING-CYCLE</c> tests, which carry no slice yet
-/// for the same reason). Projecting it onto <c>FP-IS-13</c> would let <c>-Slice FP-IS-13</c> select those
-/// tests and write
-/// <c>"status": "PASS"</c> for a slice whose other vectors are not all built on either end -- a green
-/// gate over a part-built slice. Ticket 14 closed the zero-test form of that hole
+/// belongs to <c>FP-IS-07</c> and to <c>FP-IS-13</c>, and six tests here prove it. Until batch 9-17
+/// (<c>8005-agv-onboard-hmi#222</c>) they carried <c>FP-IS-07</c> alone, as the
+/// <c>CV-AUTOMATIC-CHARGING-CYCLE</c> and <c>CV-MANUAL-STATION-CLEARANCE</c> tests carried no slice: projecting
+/// them onto <c>FP-IS-13</c> would have let <c>-Slice FP-IS-13</c> select them and write
+/// <c>"status": "PASS"</c> for a slice whose field-confirmation vector had no test on this end -- a green
+/// gate over a part-built slice. That half of the reasoning still holds for every slice not yet implemented;
+/// for <c>FP-IS-13</c> it ended when #222 gave its last vector a test and flipped it, and all four of its
+/// vectors' tests carry it now. Ticket 14 closed the zero-test form of that hole
 /// on the control server by refusing a filter that selects nothing; a filter that selects
 /// <i>some</i> tests cannot be caught that way, so it is closed here instead, at the trait.
 /// <see cref="NoTestCarriesASliceThisBatchDoesNotImplement"/> states it on its own rather than
@@ -130,8 +132,9 @@ public sealed class IntegrationSliceTraitArchitectureTests
         HashSet<string> implemented = new(SlicesThisBatchImplements(), StringComparer.Ordinal);
         // 八条重证的（FP-IS-00～07）加上批次 3 新落的两条（FP-IS-14、FP-IS-15）、批次 6 的两条
         // （FP-IS-10、FP-IS-11）、批次 7 的一条（FP-IS-08，onboard-hmi#134）、批次 8 的一条（FP-IS-12，
-        // onboard-hmi#217）。数字写在这里而不是算出来，是为了让「这条线到底建了几个切片」在改的时候必须被看见一次。
-        Assert.Equal(14, implemented.Count);
+        // onboard-hmi#217）、批次 9 的一条（FP-IS-13，onboard-hmi#222 在三张充电票的最后一张翻面）。数字写在这里而不是
+        // 算出来，是为了让「这条线到底建了几个切片」在改的时候必须被看见一次。
+        Assert.Equal(15, implemented.Count);
 
         string[] offences =
         [

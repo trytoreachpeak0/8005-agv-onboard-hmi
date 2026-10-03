@@ -1,0 +1,651 @@
+CROSS AutomaticChargingCycleG2Tests.cs:78-97 AChargeIsShownOnTheWayAtTheChargerAndWhenFull
+      waits:   WaitUntilAsync VM[ChargingStatus]
+      asserts: SES[CurrentJourney.CurrentStopWorklist,CurrentJourney.UpcomingStopPlan] SRV[Received] VM[BatteryStatus,BatteryStatusText,ChargingStatusText,IdleReturnStatus,Jo]
+CROSS AutomaticChargingCycleG2Tests.cs:258-268 ATransportUnderWayIsOfferedTheEntryWhateverItsBattery
+      waits:   WaitUntilAsync VM[CanRequestLoadCancellation,CanSubmit]
+      asserts: BUS[CanSubmitSublot] SES[CurrentJourney.CanAcceptSublot] VM[BatteryStatus,BatteryStatusText,StopDirectionText,VisitText]
+CROSS AutomaticChargingCycleG2Tests.cs:311-323 LeavingTheChargerForATransportBringsTheEntryBackAtOnce
+      waits:   WaitUntilAsync SES[CurrentJourney.UpcomingStopPlan,CurrentJourney.VehicleBusinessState] VM[CanSubmit]
+      asserts: BUS[CanSubmitSublot] VM[ChargingStatus,ChargingStatusText,StopDirectionText,TaskTypeText,Visit]
+CROSS FatalFaultLatchViewModelTests.cs:41-45 ATechnicalFailureStillLatchesTheVehicle
+      waits:   WaitUntilAsync CTL[Current]
+      asserts: CTL[Current] VM[Guidance,HasError]
+CROSS FatalFaultLatchViewModelTests.cs:62-80 ABusinessRefusalIsShownAndTheVehicleKeepsRunning
+      waits:   WaitUntilAsync VM[Logs]
+      asserts: CTL[Current] VM[Guidance,HasError,Logs]
+CROSS FatalFaultLatchViewModelTests.cs:294-306 ARefusalStopsHoldingTheBannerOnceItHasExpired
+      waits:   WaitUntilAsync VM[Logs]
+      asserts: CTL[Current] VM[Guidance]
+CROSS LoadCancellationBeforeSublotG2Tests.FatalFaultLatch.cs:90-92 ALatchRefusesACancellationThatTurnedIntoALoadInFlightBeforeThePress
+      waits:   WaitForRecoveryBlockedAsync -
+      asserts: IO[UnlockCount]
+CROSS LoadCancellationBeforeSublotG2Tests.FatalFaultLatch.cs:151-158 ALatchRefusesToExecuteAnInFlightCancellationVectorAlreadyOnFile
+      waits:   WaitUntilAsync BUS[CanRequestLoadCancellation]
+      asserts: IO[UnlockCount]
+CROSS LoadCancellationBeforeSublotG2Tests.cs:148-150 TheEntryIsNotOfferedWhileAnotherCancellationIsOpen
+      waits:   WaitForRecoveryBlockedAsync -
+      asserts: BUS[CanRequestLoadCancellation]
+CROSS LoadCancellationBeforeSublotG2Tests.cs:210-213 ARefusalShowsItsReasonAndLeavesTheEntryRequestInPlace
+      waits:   WaitForRecoveryBlockedAsync -
+      asserts: BUS[CanRequestLoadCancellation,CanSubmitSublot]
+CROSS LoadCancellationBeforeSublotG2Tests.cs:378-390 AResultAcknowledgedOnReconnectSettlesTheCancellation
+      waits:   WaitUntilAsync JRN[ReadRecoveryStateAsync]
+      asserts: IO[UnlockCount]
+CROSS LoadCancellationBeforeSublotG2Tests.cs:427-430 PastTheDeadlineTheCountdownLineSaysTheLoadIsBeingCancelledOnlyWhileTheCancellationIsOpen
+      waits:   WaitForRecoveryBlockedAsync -
+      asserts: BUS[CanSubmitSublot,DescribeExpiredStationDeadline]
+CROSS LoadCancellationBeforeSublotG2Tests.cs:471-474 SublotEntryClosesWhileTheCancellationIsOutAndReopensOnceItIsRefused
+      waits:   WaitForRecoveryBlockedAsync -
+      asserts: BUS[CanSubmitSublot,IsLoadCancellationBeforeSublotOpen]
+CROSS ManualStationClearanceG2Tests.cs:113-120 TheConfirmationCarriesTheOperatorTheChargerAndTheConditionAndIsShownConfirmed
+      waits:   WaitForStatusAsync VM[Status]
+      asserts: EVT[Events] SRV[Received]
+CROSS HELD ManualStationClearanceG2Tests.cs:149-165 AConfirmedClearanceChangesNothingOnTheVehicleUntilTheServersNextSnapshot
+      waits:   WaitForStatusAsync VM[Status]
+      asserts: BUS[CanSubmitSublot,CurrentOperationSnapshot] IO[UnlockCount] SES[CurrentJourney] VM[CanSubmit,IdleReturnStatus,PlanLegStatuses,StationClearance,VisitText]
+CROSS ManualStationClearanceG2Tests.cs:279-286 ARejectedClearanceShowsTheServersReasonAndTheNextPressIsANewConfirmation
+      waits:   WaitForStatusAsync VM[Status]
+      asserts: EVT[Events]
+CROSS ManualStationClearanceG2Tests.cs:319-322 AnUnansweredClearanceIsShownAsUnknownAndAResubmissionCarriesTheSameConfirmationRequestId
+      waits:   WaitForStatusAsync VM[Status]
+      asserts: SRV[Requests]
+CROSS ManualStationClearanceG2Tests.cs:377-385 ASecondPressWhileTheFirstIsUnansweredSendsNothing
+      waits:   WaitForDisplayAsync -
+      asserts: SRV[Requests]
+CROSS HELD ManualStationClearanceG2Tests.cs:431-443 ARepeatedResultIsHandledOnce
+      waits:   WaitUntilAsync SRV[SentEnvelopes]
+      asserts: EVT[Events] SES[Current.Connected]
+CROSS ManualStationClearanceG2Tests.cs:461-462 AResultThatArrivesAfterTheTimeoutSettlesTheUnknownOnce
+      waits:   WaitForStatusAsync VM[Status]
+      asserts: SRV[Requests]
+CROSS ManualStationClearanceG2Tests.cs:507-516 ADifferentAnswerUnderAnAnsweredIdFailsTheSessionAndDoesNotRewriteTheResult
+      waits:   WaitForStatusAsync VM[Status]
+      asserts: SRV[Requests]
+CROSS HELD ManualStationClearanceG2Tests.cs:521-534 ADifferentAnswerUnderAnAnsweredIdFailsTheSessionAndDoesNotRewriteTheResult
+      waits:   WaitUntilAsync SES[Current.Connected]
+      asserts: EVT[Events] VM[StationClearance]
+CROSS ManualStationClearanceG2Tests.cs:557-570 AProtocolProblemToTheRequestEndsItsIdAndEachLaterPressIsANewConfirmation
+      waits:   WaitForDisplayAsync VM[CanConfirm,Status]
+      asserts: EVT[Events] SES[Current.Connected]
+CROSS ManualStationClearanceG2Tests.cs:600-601 AProtocolProblemAboutAnotherMessageLeavesTheRequestUnknownUnderTheSameId
+      waits:   WaitForStatusAsync VM[Status]
+      asserts: EVT[Events]
+CROSS ManualStationClearanceG2Tests.cs:642-650 AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable
+      waits:   WaitForStatusAsync VM[Status]
+      asserts: CTL[IsFatalFaultLatched] LOG[Exceptions]
+CROSS ManualStationClearanceG2Tests.cs:689-697 ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown
+      waits:   WaitForStatusAsync VM[Status]
+      asserts: CTL[IsFatalFaultLatched] LOG[Exceptions]
+CROSS HELD ManualStationClearanceG2Tests.cs:731-740 AResultThatContradictsItselfIsRefusedAndThePressEndsAsUnknown
+      waits:   WaitForStatusAsync VM[Status]
+      asserts: EVT[Events] VM[StationClearance]
+CROSS ManualStationClearanceG2Tests.cs:767-772 ADroppedSessionLeavesAnUnknownThatIsResubmittedUnderTheSameIdAfterReconnecting
+      waits:   WaitForStatusAsync VM[Status]
+      asserts: SRV[Requests]
+CROSS ManualStationClearanceG2Tests.cs:852-854 APressMadeAsAResubmissionIsRefusedOnceTheResultHasArrived
+      waits:   WaitForStatusAsync VM[Status]
+      asserts: SRV[Requests]
+CROSS ManualStationClearanceG2Tests.cs:889-890 ALaterClearanceOfTheSameChargerStartsFromNothing
+      waits:   WaitForStatusAsync VM[Status]
+      asserts: SRV[Requests]
+CROSS ManualStationClearanceG2Tests.cs:930-931 ARestartOffersTheEntryFromTheRestoredStateAndAsksTheOperatorAfresh
+      waits:   WaitForStatusAsync VM[Status]
+      asserts: SRV[Requests]
+CROSS ManualStationClearanceG2Tests.cs:940-943 ARestartOffersTheEntryFromTheRestoredStateAndAsksTheOperatorAfresh
+      waits:   WaitForEntryAsync VM[CanConfirm]
+      asserts: SES[CurrentJourney.VehicleBusinessState]
+CROSS ManualStationClearanceG2Tests.cs:1000-1003 ALatchLeavesTheClearanceEntryOpenAndOpensNoDoor
+      waits:   WaitForStatusAsync VM[Status]
+      asserts: CTL[IsFatalFaultLatched] IO[UnlockCount] SRV[Requests]
+CROSS HELD MultiDemandJourneyG2Tests.EntryRequestExpiry.cs:191-204 AnAdvancingRevisionUnderTheSameOperationSessionDoesNotWithdrawTheEntryRequest
+      waits:   WaitUntilAsync SES[CurrentJourney.CurrentStopWorklist]
+      asserts: BUS[ExpectedSublots] VM[CanSubmit]
+CROSS HELD MultiDemandJourneyG2Tests.EntryRequestExpiry.cs:221-234 AnAdvancingRevisionUnderTheSameOperationSessionDoesNotWithdrawTheEntryRequest
+      waits:   WaitUntilAsync BUS[ExpectedSublots]
+      asserts: BUS[ExpectedSublots] VM[CanSubmit]
+CROSS HELD MultiDemandJourneyG2Tests.EntryRequestExpiry.cs:322-336 AServerRefusalAfterASameStopRevisionAdvanceKeepsTheEntryOpenForARescan
+      waits:   WaitUntilAsync BUS[CurrentSublotRejection]
+      asserts: BUS[CurrentSublotRejection,ExpectedSublots] VM[CanSubmit,OperatorLog]
+CROSS MultiDemandJourneyG2Tests.EntryRequestExpiry.cs:396-406 ARefusalAtANewerRevisionWhileTheWorklistIsAnotherStationDoesNotKeepTheRequest
+      waits:   WaitUntilAsync BUS[CurrentSublotRejection]
+      asserts: BUS[CanSubmitSublot,CurrentSublotRejection] VM[OperatorLog]
+CROSS HELD MultiDemandJourneyG2Tests.EntryRequestExpiry.cs:430-444 AStaleWorklistRefusalWithdrawsTheRequestEvenBeforeTheClosureSnapshot
+      waits:   WaitUntilAsync BUS[CurrentSublotRejection]
+      asserts: BUS[CanSubmitSublot,CurrentSublotRejection] VM[CanSubmit,OperatorLog]
+CROSS HELD MultiDemandJourneyG2Tests.EntryRequestExpiry.cs:498-511 AnEntryRequestArrivingAfterItsStopHasEndedIsNotTaken
+      waits:   WaitUntilAsync SRV[SentEnvelopes]
+      asserts: BUS[ExpectedSublots] VM[CanSubmit]
+CROSS MultiDemandJourneyG2Tests.EntryRequestExpiry.cs:545-552 TheLoadCommandThatAnswersTheEntryRequestWithdrawsItThroughTheCargoHoldingWait
+      waits:   WaitUntilAsync BUS[CurrentOperationSnapshot] IO[UnlockCount]
+      asserts: VM[CanSubmit]
+CROSS MultiDemandJourneyG2Tests.EntryRequestExpiry.cs:596-604 ACancellationRefusedAsStaleTellsTheOperatorTheStopHasEnded
+      waits:   WaitUntilAsync VM[OperatorLog]
+      asserts: IO[UnlockCount] VM[OperatorLog]
+CROSS MultiDemandJourneyG2Tests.FatalFaultLatch.cs:48-67 ALatchedVehicleOpensNoDoorForASlotCommandAndReportsItFailedNotStarted
+      waits:   WaitForResultOrPulseAsync IO[UnlockCount]
+      asserts: IO[UnlockCount] JRN[ActiveUnlockSlots,ProvenRecoveryCheckpoint,UnsettledSlotOperationAttem]
+CROSS MultiDemandJourneyG2Tests.FatalFaultLatch.cs:120-122 ALatchWhileTheDoorIsAlreadyOpenLetsTheOperatorFinishTheLoadWithoutAnotherPulse
+      waits:   WaitForOperationResultAsync -
+      asserts: IO[UnlockCount]
+CROSS MultiDemandJourneyG2Tests.FatalFaultLatch.cs:143-155 ALatchRefusesTheReopenAfterADoorShutEmptyAndReportsTheSlotFailed
+      waits:   WaitForResultOrPulseAsync IO[UnlockCount]
+      asserts: IO[UnlockCount] JRN[ReadJournal]
+CROSS MultiDemandJourneyG2Tests.FatalFaultLatch.cs:196-197 ALatchArrivingWhileTheInFlightCancellationIsAskedOpensNoFurtherDoor
+      waits:   WaitForDoorOpenAsync BUS[CurrentOperationSnapshot] IO[UnlockCount]
+      asserts: CTL[IsFatalFaultLatched]
+CROSS MultiDemandJourneyG2Tests.FatalFaultLatch.cs:204-210 ALatchArrivingWhileTheInFlightCancellationIsAskedOpensNoFurtherDoor
+      waits:   WaitUntilAsync JRN[ReadJournal]
+      asserts: CTL[IsFatalFaultLatched]
+CROSS MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:455-461 ASafetyReportJudgedWhileTheConnectionIsClosingIsNotWrittenIntoIt
+      waits:   WaitUntilAsync JRN[ReadOutgoingByMessageIdAsync]
+      asserts: SES[Current.Readiness]
+CROSS MultiDemandJourneyG2Tests.HandshakeWindowIntrusion.cs:494-504 ASafetyReportUnansweredOnALiveConnectionStillDisconnectsTheSession
+      waits:   WaitUntilAsync SES[Current.Readiness]
+      asserts: SRV[ReceivedEnvelopes]
+CROSS MultiDemandJourneyG2Tests.LoadCancellationAfterRecoveryRequired.cs:81-92 TheLoadCancellationEntryClosesOnceTheLoadsNonCompletedResultIsOnItsWay
+      waits:   WaitUntilAsync SES[Current.Readiness] VM[CanRequestLoadCompensation]
+      asserts: BUS[CanRequestLoadCancellation] JRN[ReadJournal] VM[CanRequestLoadCancellation]
+CROSS MultiDemandJourneyG2Tests.NineLegPlan.cs:49-75 ANineLegPlanIsAcknowledgedAndShownInFullInSequenceOrder
+      waits:   WaitUntilAsync -
+      asserts: SRV[Received] VM[JourneyPlanLegs,PlanLegStatuses,WorklistRows]
+CROSS MultiDemandJourneyG2Tests.NineLegPlan.cs:118-131 AnAddedDemandReplacesThePlanAndItsNewOrderIsShown
+      waits:   WaitUntilAsync -
+      asserts: SES[CurrentJourney.UpcomingStopPlan] SRV[Received] VM[JourneyPlanLegs,PlanLegStatuses]
+CROSS MultiDemandJourneyG2Tests.OccupancyConflictRecovery.cs:93-101 ALoadRefusedOverAnOccupiedSlotOffersCompensationForThatDemandNotTheLastCompletedOne
+      waits:   WaitUntilAsync JRN[ReadJournal] SES[Current.Readiness]
+      asserts: VM[CanRequestLoadCompensation]
+CROSS MultiDemandJourneyG2Tests.OccupancyConflictRecovery.cs:121-129 RefuseBAndPressCompensationAsync
+      waits:   WaitForOperationResultAsync -
+      asserts: IO[UnlockCount]
+CROSS MultiDemandJourneyG2Tests.OccupancyConflictRecovery.cs:143-152 RefuseBAndPressCompensationAsync
+      waits:   WaitUntilAsync -
+      asserts: VM[HasRecoveryFallbackTarget,RecoveryFallbackTargetText]
+CROSS MultiDemandJourneyG2Tests.OperatorSelectedCancellation.cs:172-190 AcrossARestartTheRetryStillNamesThePickedDemandWithNothingPicked
+      waits:   WaitUntilAsync BUS[IsLoadCancellationBeforeSublotOpen]
+      asserts: VM[CanPressLoadCancellation,HasLoadCancellationSelectionHint,SelectedWork]
+CROSS MultiDemandJourneyG2Tests.Paths.cs:96-104 TheLoadingPhaseLinesFollowTheServersBusinessStateSnapshots
+      waits:   WaitUntilAsync VM[HasCargoHoldingCountdown,HasLoadingClosedReason,LoadingClosedReasonCod]
+      asserts: SRV[Received]
+CROSS MultiDemandJourneyG2Tests.Paths.cs:138-146 ADroppedConnectionClearsThePlanTheWorklistAndTheCargoHoldingCountdown
+      waits:   WaitUntilAsync SES[Current.Connected]
+      asserts: VM[CargoHoldingCountdownText,HasCargoHoldingCountdown,HasLoadingClosedRea]
+CROSS MultiDemandJourneyG2Tests.Paths.cs:305-318 WhileAFatalFaultIsLatchedTheScanEntryIsClosedAndTheSubmitPathRefuses
+      waits:   WaitUntilAsync CTL[Current]
+      asserts: BUS[CanSubmitSublot] VM[CanSubmit,ScannerSubmitCommand]
+CROSS MultiDemandJourneyG2Tests.Paths.cs:364-375 AnEntryRefusedLocallyIsAMessageToTheOperatorAndNotALatchedVehicle
+      waits:   WaitUntilAsync SES[CurrentJourney.CurrentStopWorklist]
+      asserts: VM[CanSubmit]
+CROSS MultiDemandJourneyG2Tests.Paths.cs:377-392 AnEntryRefusedLocallyIsAMessageToTheOperatorAndNotALatchedVehicle
+      waits:   WaitUntilAsync VM[Logs]
+      asserts: CTL[CanClearFatalFault,Current] SRV[Submissions] VM[CanSubmit,Guidance,HasError]
+CROSS MultiDemandJourneyG2Tests.Paths.cs:447-457 ASecondSlotCommandQueuesBehindTheFirstAndItsOverdueClockStartsAtItsOwnUnlock
+      waits:   WaitUntilAsync BUS[CurrentExpectedActionWait] IO[UnlockCount]
+      asserts: IO[UnlockCount] SRV[ReceivedEnvelopes]
+CROSS MultiDemandJourneyG2Tests.Paths.cs:537-545 APreDepartureCheckNamingTheFirstDemandIsAnsweredAsForOneItem
+      waits:   WaitForPayloadAsync SRV[ReceivedEnvelopes]
+      asserts: SES[Current.Connected] SRV[Received] VM[WorklistRows]
+CROSS MultiDemandJourneyG2Tests.Paths.cs:629-634 AClosedLoadingPhaseWithoutAReasonIsStillRefusedAndLeavesNoHalfState
+      waits:   WaitUntilAsync SES[Current.Connected]
+      asserts: VM[HasLoadingClosedReason,LoadingClosedReasonCode,PlanLegStatuses,Worklis]
+CROSS HELD MultiDemandJourneyG2Tests.QueuedSlotCommandDisplay.cs:62-75 AQueuedSlotCommandLeavesTheCurrentOperationAndTheTargetHighlightOnTheRunningOne
+      waits:   WaitForBothCommandsToReachTheVehicleAsync VM[WorklistRows]
+      asserts: BUS[CurrentOperationSnapshot] IO[UnlockCount] VM[AssertHighlighted]
+CROSS HELD MultiDemandJourneyG2Tests.QueuedSlotCommandDisplay.cs:80-94 AQueuedSlotCommandLeavesTheCurrentOperationAndTheTargetHighlightOnTheRunningOne
+      waits:   WaitUntilAsync BUS[CurrentOperationSnapshot] IO[UnlockCount]
+      asserts: BUS[CurrentOperationSnapshot] VM[AssertHighlighted]
+CROSS HELD MultiDemandJourneyG2Tests.QueuedSlotCommandDisplay.cs:185-198 ARefusedDemandWhoseResultAckIsLostDoesNotTakeTheDisplayBackFromTheNextCommand
+      waits:   WaitUntilAsync VM[OperatorLog]
+      asserts: BUS[CurrentOperationSnapshot] VM[AssertHighlighted]
+CROSS HELD MultiDemandJourneyG2Tests.QueuedSlotCommandDisplay.cs:221-244 OnlyTheCommandThatTakesTheExecutorBecomesTheCurrentOperationWhenBothArriveAtOnce
+      waits:   WaitUntilAsync BUS[CurrentExpectedActionWait] IO[UnlockCount]
+      asserts: BUS[CurrentOperationSnapshot] IO[UnlockCount] VM[AssertHighlighted]
+CROSS HELD MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:144-160 AShownRecoveryEntryIsNotShownAgainWhenTheDoorsComeFreeASecondTime
+      waits:   WaitUntilAsync VM[OperatorLog]
+      asserts: BUS[CurrentOperationSnapshot]
+CROSS HELD MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:209-225 AWithheldRecoveryEntryDoesNotTakeTheScreenOffTheCommandThatNeedsRecoveryItself
+      waits:   WaitUntilAsync VM[OperatorLog]
+      asserts: BUS[CurrentOperationSnapshot]
+CROSS MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:281-285 DriveAOwedWhileBHoldsTheDoorsAsync
+      waits:   WaitUntilAsync VM[OperatorLog]
+      asserts: EVT[Events]
+CROSS HELD MultiDemandJourneyG2Tests.RecoveryProjectionDisplay.cs:132-158 ARestoredRecoveryProjectionLeavesTheRunningCommandsDisplayAndClockAlone
+      waits:   WaitUntilAsync VM[OperatorLog]
+      asserts: BUS[CurrentExpectedActionWait,CurrentOperationSnapshot] EVT[Events] VM[AssertHighlighted]
+CROSS MultiDemandJourneyG2Tests.RecoveryProjectionDisplay.cs:225-235 AnOverdueIsStillRaisedOnTheRunningCommandsOwnUnlockAfterARestoredRecoveryProjection
+      waits:   WaitUntilAsync -
+      asserts: BUS[CurrentExpectedActionWait] EVT[Events]
+CROSS MultiDemandJourneyG2Tests.RecoveryProjectionDisplay.cs:384-397 TheRestoredRecoveryProjectionStillCarriesItsSnapshotWhenNothingOwnsTheDisplay
+      waits:   WaitUntilAsync EVT[Events]
+      asserts: BUS[CurrentOperationSnapshot]
+CROSS MultiDemandJourneyG2Tests.SelectedCancellationBranches.cs:38-52 ARefusalOfThePickedDemandLeavesTheOtherDemandUntouched
+      waits:   WaitUntilAsync EVT[Events]
+      asserts: BUS[CanSubmitSublot,IsLoadCancellationBeforeSublotOpen] IO[UnlockCount] SRV[Received]
+CROSS MultiDemandJourneyG2Tests.SelectedCancellationBranches.cs:107-112 ADemandLoadedEarlierButNotLastIsAskedAboutAndRefusedByTheServer
+      waits:   WaitUntilAsync EVT[Events]
+      asserts: IO[UnlockCount]
+CROSS MultiDemandJourneyG2Tests.SelectedCancellationBranches.cs:409-422 TheFallbackTargetIsTheSettledLoadOnlyWhileNothingIsArmed
+      waits:   WaitUntilAsync BUS[CachedRecoveryStateForTest]
+      asserts: BUS[RecoveryFallbackDemandId] VM[HasRecoveryFallbackTarget,RecoveryFallbackTargetText]
+CROSS MultiDemandJourneyG2Tests.StaleDurableResend.cs:132-149 ADurableMessageRefusedAcrossAReconnectIsDeliveredOnTheNextSession
+      waits:   WaitUntilAsync JRN[ReadOutgoingByMessageIdAsync]
+      asserts: SES[Current.Readiness] SRV[ReceivedEnvelopes]
+CROSS MultiDemandJourneyG2Tests.cs:68-82 TwoWorklistItemsPassTheViewModelTheJourneyGateAndEntryWithoutAnUnhandledUiError
+      waits:   WaitUntilAsync BUS[CanSubmitSublot] SES[CurrentJourney.CurrentStopWorklist,CurrentJourney.UpcomingStopPlan]
+      asserts: CTL[Current] SES[CurrentJourney.CanAcceptSublotAt,CurrentJourney.CurrentStopWorklist]
+CROSS MultiDemandJourneyG2Tests.cs:85-89 TwoWorklistItemsPassTheViewModelTheJourneyGateAndEntryWithoutAnUnhandledUiError
+      waits:   WaitForSubmissionAsync SRV[Submissions]
+      asserts: CTL[Current]
+CROSS RecoveryVectorG2Tests.BindRefusalResult.cs:73-75 ACompensationCommandWithNoVectorPreparedIsAnsweredWithFailed
+      waits:   WaitForResultAsync SRV[ResultsOfType]
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.BindRefusalResult.cs:105-110 ACompensationCommandNamingAnotherScopeIsAnsweredWithFailed
+      waits:   WaitForResultAsync SRV[ResultsOfType]
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.BindRefusalResult.cs:159-161 ACompensationCommandWithAnotherContentHashIsAnsweredWithFailed
+      waits:   WaitForResultAsync SRV[ResultsOfType]
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.BindRefusalResult.cs:205-221 AnUnbindableCompensationCommandArrivingTwiceIsAnsweredOnce
+      waits:   WaitUntilAsync -
+      asserts: IO[UnlockCount] SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.BindRefusalResult.cs:265-267 AFaultCargoCommandWithNoVectorPreparedStaysSilent
+      waits:   WaitForRecoveryBlockedAsync -
+      asserts: IO[UnlockCount] SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.BlockedBeforeUnlock.cs:45-51 ACompensationRefusedBeforeAnyUnlockIsReportedFailedWithTheSlotsAsRead
+      waits:   WaitForResultAsync SRV[ResultsOfType]
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.BlockedBeforeUnlock.cs:77-81 ACompensationThatStartsMovingBetweenItsTwoMotionChecksIsStillReportedFailed
+      waits:   WaitForResultAsync SRV[ResultsOfType]
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.BlockedBeforeUnlock.cs:113-116 AFaultCargoHandoffThatStartsMovingBetweenItsTwoMotionChecksIsStillReportedFailed
+      waits:   WaitForResultAsync SRV[ResultsOfType]
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.BlockedBeforeUnlock.cs:134-140 AFaultCargoHandoffRefusedBeforeAnyUnlockIsReportedFailedWithTheSlotsAsRead
+      waits:   WaitForResultAsync SRV[ResultsOfType]
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.BlockedBeforeUnlock.cs:176-182 ACompensationIssuedAgainAfterTheRefusalGetsTheSameSingleResult
+      waits:   WaitUntilAsync -
+      asserts: SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.BlockedBeforeUnlock.cs:310-314 AForcedRecoveryIsNotRefusedOnVehicleMotionAndStillReportsOnConfirmation
+      waits:   WaitForResultAsync SRV[ResultsOfType]
+      asserts: EVT[RecoveryBlockedCount] IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.ClosedSnapshotRetry.cs:270-274 AssertTheReplayedClosedSnapshotForgetsTheSessionAsync
+      waits:   WaitUntilAsync -
+      asserts: SRV[UnacknowledgedClosedRecoverySnapshots]
+CROSS RecoveryVectorG2Tests.FatalFaultLatch.cs:105-110 ALatchedVehicleRejectsAResumeBeforeAnyDoorIo
+      waits:   WaitForSingleRejectionAsync -
+      asserts: SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.RefusedSessionRelease.cs:280-284 AssertANewSessionCanBeOpenedAsync
+      waits:   WaitUntilAsync SRV[ResultsOfType]
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.ResumeRejected.cs:45-53 AResumeWhosePersistedStateDoesNotMatchIsRejectedBeforeAnyDoorIo
+      waits:   WaitForSingleRejectionAsync -
+      asserts: IO[UnlockCount] SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.ResumeRejected.cs:76-83 AResumeWhoseOperationContextIsGoneIsRejectedBeforeAnyDoorIo
+      waits:   WaitForSingleRejectionAsync -
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.ResumeRejected.cs:109-116 AResumeTheExecutorRefusesBeforeItsFirstPulseIsRejected
+      waits:   WaitForSingleRejectionAsync -
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.ResumeRejected.cs:154-170 AResentResumeIsAnsweredWithTheSameRejection
+      waits:   WaitUntilAsync -
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.ResumeRejected.cs:245-260 TheOriginalCommandsRejectionAndTheResumesRejectionDoNotShareAKey
+      waits:   WaitUntilAsync -
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.ResumeRejected.cs:316-320 AfterARejectedResumeClosesItsSessionTheVehicleCanOpenAnother
+      waits:   WaitUntilAsync SRV[ResultsOfType]
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.ResumeRejected.cs:497-504 ARestartSendsNoFurtherRejectionForAResumeAlreadyRejected
+      waits:   WaitUntilAsync EVT[RecoveryBlockedCount]
+      asserts: IO[UnlockCount] SRV[ReceivedEnvelopes]
+CROSS RecoveryVectorG2Tests.ResumeRejected.cs:529-538 AResumeThatFailsAfterItsFirstPulseIsSettledNotRejected
+      waits:   WaitUntilAsync SRV[ResultsOfType]
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.SettledVectorRelease.cs:67-71 AnUnknownCompensationResultIsForgottenOnceTheServerAcknowledgesIt
+      waits:   WaitForCompensationResultAcknowledgedAsync JRN[ReadOutgoingAsync]
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.SettledVectorRelease.cs:104-106 AFailedCompensationResultIsForgottenOnceTheServerAcknowledgesIt
+      waits:   WaitForCompensationResultAcknowledgedAsync JRN[ReadOutgoingAsync]
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.SettledVectorRelease.cs:203-209 AnUnacknowledgedCompensationResultIsReplayedOnceOnTheNextSession
+      waits:   WaitUntilAsync LOG[Entries]
+      asserts: SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.SettledVectorRelease.cs:233-238 AnUnacknowledgedCompensationResultIsReplayedOnceOnTheNextSession
+      waits:   WaitUntilAsync JRN[ReadOutgoingAsync]
+      asserts: SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.StaleReadinessRepublish.cs:208-213 AReplacedReceiveLoopDoesNotPublishItsOldSessionsReadinessOverTheNewOne
+      waits:   WaitAsync LOG[HoldEntered]
+      asserts: SES[Current.Readiness]
+CROSS RecoveryVectorG2Tests.StaleReadinessRepublish.cs:396-403 RunGatedInterleavingAsync
+      waits:   WaitUntilEnteredAsync -
+      asserts: SES[Current.Readiness]
+CROSS RecoveryVectorG2Tests.cs:210-233 AuthorizedFaultCargoCommandIsExecutedAndItsOutcomeIsReported
+      waits:   WaitForResultAsync SRV[ResultsOfType]
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.cs:271-282 FaultCargoCommandNamingADifferentHandoffIsRefusedWithAFailedResult
+      waits:   WaitForResultAsync SRV[ResultsOfType]
+      asserts: IO[UnlockCount] SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.cs:361-372 ForcedMechanicalRecoverySendsNoUnlockAndReportsOnlyAfterTheOperatorConfirms
+      waits:   WaitUntilAsync BUS[CanConfirmForcedMechanicalRecovery]
+      asserts: IO[UnlockCount] SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.cs:373-381 ForcedMechanicalRecoverySendsNoUnlockAndReportsOnlyAfterTheOperatorConfirms
+      waits:   WaitForResultAsync SRV[ResultsOfType]
+      asserts: BUS[CanConfirmForcedMechanicalRecovery] IO[UnlockCount] SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.cs:415-420 AForcedRecoveryAwaitingConfirmationIsStillAwaitingItAfterARestart
+      waits:   WaitUntilAsync BUS[CanConfirmForcedMechanicalRecovery]
+      asserts: IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.cs:437-444 AForcedRecoveryAwaitingConfirmationIsStillAwaitingItAfterARestart
+      waits:   WaitForResultAsync SRV[ResultsOfType]
+      asserts: IO[UnlockCount] SRV[ReceivedEnvelopes]
+CROSS RecoveryVectorG2Tests.cs:541-545 NoHardwareRecoveryRecordIsSentWhileAnIsolatedSlotCannotBeRead
+      waits:   WaitForRecoveryBlockedAsync EVT[_recoveryBlockedEvents]
+      asserts: SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.cs:613-620 AnUnknownUnloadOffersTheForcedMechanicalRecoveryWithoutAnyUnlock
+      waits:   WaitForResultAsync SRV[ResultsOfType]
+      asserts: BUS[PhysicallyUnknownSlots] IO[UnlockCount]
+CROSS RecoveryVectorG2Tests.cs:648-651 ASecondForcedRecoveryIsRefusedWhileAnIsolationIsUncleared
+      waits:   WaitForRecoveryBlockedAsync EVT[_recoveryBlockedEvents]
+      asserts: SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.cs:680-690 AnInterruptedOperationOnOtherSlotsIsStillSettledWhileAnIsolationStands
+      waits:   WaitForInboundAsync SRV[Received]
+      asserts: BUS[CurrentOperationSnapshot,PhysicallyUnknownSlots] SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.cs:762-768 StaleForcedRecoveryGenerationIsRefusedWithoutSlotIoOrResult
+      waits:   WaitForRecoveryBlockedAsync EVT[_recoveryBlockedEvents]
+      asserts: IO[UnlockCount] SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.cs:814-826 ForcedRecoveryGenerationIsNotRaisedByACommandRefusedOnScope
+      waits:   WaitForResultAsync SRV[ResultsOfType]
+      asserts: IO[UnlockCount] SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.cs:1020-1022 ARecoveryResponseNamingAnotherAttemptIsRefusedWhole
+      waits:   WaitForRecoveryBlockedAsync EVT[_recoveryBlockedEvents]
+      asserts: IO[UnlockCount] SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.cs:1071-1073 ANamedAttemptWithNoLocalContextStaysHardBlocked
+      waits:   WaitForRecoveryBlockedAsync EVT[_recoveryBlockedEvents]
+      asserts: IO[UnlockCount] SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.cs:1101-1103 AServerNamingTheSettledLoadDoesNotReopenCompensationOverAnArmedUnload
+      waits:   WaitForRecoveryBlockedAsync EVT[_recoveryBlockedEvents]
+      asserts: SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.cs:1143-1145 ARecoverySessionThatNamesAnAttemptAndThenNullIsRefusedWhole
+      waits:   WaitForRecoveryBlockedAsync EVT[_recoveryBlockedEvents]
+      asserts: IO[UnlockCount] SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.cs:1173-1175 ARecoverySessionThatNamesNullAndThenAnAttemptIsRefusedWhole
+      waits:   WaitForRecoveryBlockedAsync EVT[_recoveryBlockedEvents]
+      asserts: IO[UnlockCount] SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.cs:1233-1240 ARecoverySessionSnapshotNamingAnotherAttemptIsRefusedOnTheSnapshotPath
+      waits:   WaitForRecoveryBlockedAsync EVT[_recoveryBlockedEvents]
+      asserts: EVT[RecoveryBlockedCount] IO[UnlockCount] SRV[ResultsOfType]
+CROSS RecoveryVectorG2Tests.cs:1259-1260 ResumeAfterRepairRefusesARecoveryResponseNamingAnotherAttempt
+      waits:   WaitForRecoveryBlockedAsync EVT[_recoveryBlockedEvents]
+      asserts: IO[UnlockCount]
+CROSS SessionHeartbeatPacingG2Tests.cs:119-128 TheCadenceHoldsWhileASlotOperationIsInFlight
+      waits:   WaitForAsync SRV[HeartbeatArrivals]
+      asserts: IO[UnlockCount] SRV[ReceivedEnvelopes]
+CROSS StationDeadlineExpiredG2Tests.AckPendingNotUnfinished.cs:40-47 ACompletedLoadWhoseResultAckIsLateIsNotRestoredAsUnfinished
+      waits:   WaitForEventAsync EVT[HasEvent]
+      asserts: SRV[ReceivedEnvelopes]
+CROSS StationDeadlineExpiredG2Tests.AckPendingNotUnfinished.cs:82-96 AResultWhoseAckIsLostMidSessionIsSentOnceMoreAndSettles
+      waits:   WaitUntilAsync JRN[ReadRecoveryState]
+      asserts: BUS[CurrentOperationSnapshot] IO[UnlockCount] JRN[ReadRecoveryState] SRV[Received]
+CROSS StationDeadlineExpiredG2Tests.AckPendingNotUnfinished.cs:121-135 AnUnfinishedResultWhoseAckIsLostIsSentOnceMore
+      waits:   WaitUntilAsync JRN[ReadOutgoingByDeduplicationKeyAsync]
+      asserts: JRN[ReadRecoveryState] SRV[Received]
+CROSS StationDeadlineExpiredG2Tests.AckPendingNotUnfinished.cs:174-185 AResendRefusedWithAProtocolProblemStillRestoresTheRecoveryEntry
+      waits:   WaitUntilAsync -
+      asserts: BUS[CurrentOperationSnapshot] JRN[ReadRecoveryState]
+CROSS StationDeadlineExpiredG2Tests.AckPendingNotUnfinished.cs:209-214 ACompletedLoadIsSettledOnceItsLateResultIsAcknowledged
+      waits:   WaitForEventAsync EVT[HasEvent]
+      asserts: JRN[ReadRecoveryState]
+CROSS StationDeadlineExpiredG2Tests.AckPendingNotUnfinished.cs:218-233 ACompletedLoadIsSettledOnceItsLateResultIsAcknowledged
+      waits:   WaitUntilAsync JRN[ReadRecoveryState]
+      asserts: EVT[HasEvent] IO[UnlockCount]
+CROSS StationDeadlineExpiredG2Tests.AckPendingNotUnfinished.cs:278-289 ALoadThatEndedWhileDisconnectedPutsItsResultOnFileAndTheHandshakeReplaysIt
+      waits:   WaitUntilAsync JRN[ReadRecoveryState]
+      asserts: IO[UnlockCount] JRN[ReadRecoveryState] SRV[ReceivedEnvelopes]
+CROSS StationDeadlineExpiredG2Tests.ExpectedActionOverdue.cs:39-42 AWaitPastTheThresholdIsReportedAsASlotAlarmAndWithdrawnOnceTheSlotCloses
+      waits:   WaitForStageAsync EVT[ProgressMessages]
+      asserts: BUS[CurrentExpectedActionWait]
+CROSS StationDeadlineExpiredG2Tests.ExpectedActionOverdue.cs:103-116 ReopeningOverTheOppositeOccupancyDoesNotRestartTheWaitClock
+      waits:   WaitForEventAsync EVT[HasEvent]
+      asserts: BUS[CurrentExpectedActionWait] IO[UnlockCount]
+CROSS StationDeadlineExpiredG2Tests.ExpectedActionOverdue.cs:152-161 AMidSessionSafetySnapshotRequestIsAnsweredFromTheLiveIo
+      waits:   WaitUntilAsync -
+      asserts: SRV[AppliedSnapshots,SentEnvelopes]
+CROSS StationDeadlineExpiredG2Tests.ExpectedActionOverdue.cs:170-182 AMidSessionSafetySnapshotRequestIsAnsweredFromTheLiveIo
+      waits:   WaitUntilAsync -
+      asserts: EVT[HasEvent] SES[Current]
+CROSS StationDeadlineExpiredG2Tests.ExpectedActionOverdue.cs:208-213 AfterAMidSessionSnapshotAckIsLostTheNextSafetyStateTakesAHigherVersion
+      waits:   WaitUntilAsync -
+      asserts: SRV[AppliedSnapshots]
+CROSS StationDeadlineExpiredG2Tests.ExpectedActionOverdue.cs:225-229 AfterAMidSessionSnapshotAckIsLostTheNextSafetyStateTakesAHigherVersion
+      waits:   WaitUntilAsync SRV[AppliedSnapshots]
+      asserts: SES[Current]
+CROSS StationDeadlineExpiredG2Tests.FakeServerReadinessGate.cs:161-169 AnAttemptTheDoubleSettledBeforeItsAckWasLostIsAnsweredReadyOnTheNextHandshake
+      waits:   WaitUntilAsync SES[Current] SRV[ReceivedEnvelopes]
+      asserts: JRN[ReadRecoveryState]
+CROSS StationDeadlineExpiredG2Tests.InflightResultAfterReconnect.cs:45-58 ALoadThatEndsWhileTheSessionAwaitsItsResultSendsTheResultAndTheSessionComesBackReady
+      waits:   WaitUntilAsync JRN[ReadRecoveryState] SES[Current]
+      asserts: IO[UnlockCount] JRN[ReadRecoveryState] SRV[ReceivedEnvelopes]
+CROSS StationDeadlineExpiredG2Tests.InflightResultAfterReconnect.cs:83-96 ProgressIsStillNotSentWhileTheSessionIsRecoveryRequired
+      waits:   WaitUntilAsync EVT[HasEvent]
+      asserts: EVT[ProgressMessages] SRV[ReceivedEnvelopes]
+CROSS StationDeadlineExpiredG2Tests.InflightResultAfterReconnect.cs:173-185 ASlotOperationCommandRefusedWhileRecoveryRequiredStillGetsItsRejectionOut
+      waits:   WaitForInboundAsync SRV[Received]
+      asserts: IO[UnlockCount] SES[Current] SRV[ReceivedEnvelopes,SentEnvelopes]
+CROSS StationDeadlineExpiredG2Tests.InflightResultAfterReconnect.cs:209-210 AnAttemptRefusedWhileRecoveryRequiredStillGetsItsResultOutWhenReissued
+      waits:   WaitForInboundAsync SRV[Received]
+      asserts: IO[UnlockCount]
+CROSS StationDeadlineExpiredG2Tests.InflightResultAfterReconnect.cs:215-227 AnAttemptRefusedWhileRecoveryRequiredStillGetsItsResultOutWhenReissued
+      waits:   WaitUntilAsync JRN[ReadRecoveryState] SRV[ReceivedEnvelopes]
+      asserts: IO[UnlockCount] SRV[ReceivedEnvelopes]
+CROSS StationDeadlineExpiredG2Tests.LiveAttemptNotLegacy.cs:32-36 SessionReadinessDuringALiveLoadDoesNotRestoreItAsAnUnfinishedOperation
+      waits:   WaitForStageAsync EVT[ProgressMessages]
+      asserts: BUS[CurrentExpectedActionWait]
+CROSS StationDeadlineExpiredG2Tests.LiveAttemptNotLegacy.cs:62-67 TheExpectedActionOverdueAlarmSurvivesSessionReadinessDuringTheWait
+      waits:   WaitForStageAsync EVT[ProgressMessages]
+      asserts: BUS[CurrentExpectedActionWait]
+CROSS StationDeadlineExpiredG2Tests.LiveAttemptNotLegacy.cs:124-130 AnOperationLeftByThePreviousProcessIsStillRestoredAsRecoveryRequiredAndSettled
+      waits:   WaitForEventAsync EVT[HasEvent]
+      asserts: BUS[CurrentOperationSnapshot] IO[UnlockCount]
+CROSS StationDeadlineExpiredG2Tests.LiveAttemptNotLegacy.cs:138-142 AnOperationLeftByThePreviousProcessIsStillRestoredAsRecoveryRequiredAndSettled
+      waits:   WaitForEventAsync EVT[HasEvent]
+      asserts: BUS[CurrentOperationSnapshot] IO[UnlockCount]
+CROSS StationDeadlineExpiredG2Tests.LiveAttemptNotLegacy.cs:155-177 AnOperationLeftByThePreviousProcessIsStillRestoredAsRecoveryRequiredAndSettled
+      waits:   WaitUntilAsync SRV[SentEnvelopes]
+      asserts: EVT[_events]
+CROSS StationDeadlineExpiredG2Tests.RecordConflict.cs:34-47 ALateAckForAnAttemptTheJournalHasMovedPastIsLoggedForWhatItIs
+      waits:   WaitUntilAsync LOG[Entries]
+      asserts: EVT[HasEvent] JRN[ReadRecoveryState] LOG[Entries]
+CROSS StationDeadlineExpiredG2Tests.RefusedResultOverwritten.cs:42-70 ARefusedLoadWhoseJournalIsOverwrittenBeforeItIsRecordedPendingStillSendsItsResult
+      waits:   WaitUntilAsync LOG[Entries] SRV[ReceivedEnvelopes]
+      asserts: IO[UnlockCount] JRN[ReadRecoveryState] LOG[Entries]
+CROSS StationDeadlineExpiredG2Tests.ResultInHandshakeWindow.cs:73-87 AResultPutOnFileInsideTheHandshakeWindowIsSentAfterTheReadinessAndSettledOnce
+      waits:   WaitUntilAsync EVT[HasEvent]
+      asserts: SES[Current]
+CROSS StationDeadlineExpiredG2Tests.ResultRefusedAcrossReconnect.cs:98-114 AResultRefusedAcrossAReconnectIsDeliveredOnTheNextSessionAndSettledOnce
+      waits:   WaitUntilAsync EVT[HasEvent]
+      asserts: SRV[ReceivedEnvelopes]
+CROSS StationDeadlineExpiredG2Tests.UnfinishedResultOnReadySession.cs:262-269 ALeftoverWhoseSettlementResultCouldNotBeSentIsStillRestoredAsLastTimes
+      waits:   WaitForEventAsync EVT[HasEvent]
+      asserts: BUS[CurrentOperationSnapshot] IO[UnlockCount]
+CROSS StationDeadlineExpiredG2Tests.cs:62-76 PastTheDeadlineEveryEmptyCloseIsReopenedAndPromptedWithTheWayOut
+      waits:   WaitForEventAsync EVT[HasEvent]
+      asserts: IO[UnlockCount] SRV[ReceivedEnvelopes]
+CROSS StationDeadlineExpiredG2Tests.cs:95-97 PastTheDeadlineTheCountdownLineNamesTheOpenDoorUntilTheLoadIsDone
+      waits:   WaitForStageAsync EVT[ProgressMessages]
+      asserts: BUS[DescribeExpiredStationDeadline]
+CROSS StationDeadlineExpiredG2Tests.cs:101-110 PastTheDeadlineTheCountdownLineNamesTheOpenDoorUntilTheLoadIsDone
+      waits:   WaitUntilAsync EVT[ProgressMessages]
+      asserts: IO[UnlockCount]
+CROSS StationDeadlineExpiredG2Tests.cs:111-113 PastTheDeadlineTheCountdownLineNamesTheOpenDoorUntilTheLoadIsDone
+      waits:   WaitForEventAsync EVT[HasEvent]
+      asserts: BUS[DescribeExpiredStationDeadline]
+CROSS StationDeadlineExpiredG2Tests.cs:158-160 WithoutAnOperatorIdTheInFlightCancellationIsNotOffered
+      waits:   WaitForStageAsync EVT[ProgressMessages]
+      asserts: BUS[CanRequestLoadCancellation]
+CROSS StationDeadlineExpiredG2Tests.cs:218-222 AnAuthorizedCancellationStopsTheLoadAndClearsTheDoorItLeftOpen
+      waits:   WaitForEventCountAsync EVT[_events]
+      asserts: IO[UnlockCount] SRV[Received]
+CROSS StationDeadlineExpiredG2Tests.cs:281-305 AfterARestartAnUnansweredCancellationIsSentAgainInsteadOfSettlingUnknown
+      waits:   WaitForInboundAsync SRV[Received]
+      asserts: IO[UnlockCount] SRV[Received,ReceivedEnvelopes,RecoveryRequestConflicts]
+CROSS SublotEntryScopeG2Tests.cs:158-164 AnOutOfScopeRejectionIsAcceptedFromTheWire
+      waits:   WaitUntilAsync BUS[CurrentSublotRejection]
+      asserts: BUS[CurrentSublotRejection] SES[Current.Connected]
+CROSS SublotEntryScopeG2Tests.cs:192-197 AWhitespaceRejectedSublotIsAcceptedBecauseTheSchemaAllowsIt
+      waits:   WaitUntilAsync BUS[CurrentSublotRejection]
+      asserts: BUS[CurrentSublotRejection] SES[Current.Connected]
+CROSS SublotEntryScopeG2Tests.cs:246-265 TheSameSublotScannedAgainAfterARejectionIsANewSubmission
+      waits:   WaitUntilAsync SRV[Submissions]
+      asserts: SES[Current.Connected] SRV[SentEnvelopes,SublotSubmissionConflicts]
+CROSS SublotRejectedAfterEntryG2Tests.cs:56-65 ARejectionAfterEntryIsShownAsItsReasonAndNotAsABlockedRecovery
+      waits:   WaitUntilAsync EVT[Events]
+      asserts: EVT[Events] SES[Current.Connected]
+CROSS SublotRejectedAfterEntryG2Tests.cs:91-94 ARejectionAtTheSameRevisionKeepsTheEntryRequestSoTheOperatorCanEnterAgain
+      waits:   WaitForEventAsync EVT[_events]
+      asserts: BUS[CanSubmitSublot,CurrentSublotRejection]
+CROSS SublotRejectedAfterEntryG2Tests.cs:96-102 ARejectionAtTheSameRevisionKeepsTheEntryRequestSoTheOperatorCanEnterAgain
+      waits:   WaitUntilAsync -
+      asserts: SRV[SentEnvelopes]
+CROSS SublotRejectedAfterEntryG2Tests.cs:116-120 EnteringAgainWithdrawsThePreviousRejection
+      waits:   WaitForEventAsync EVT[_events]
+      asserts: BUS[CurrentSublotRejection]
+CROSS SublotRejectedAfterEntryG2Tests.cs:144-150 AnEntryRequestForAnotherOperationSessionWithdrawsTheRejection
+      waits:   WaitUntilAsync EVT[Events]
+      asserts: BUS[CurrentSublotRejection]
+CROSS SublotRejectedAfterEntryG2Tests.cs:152-157 AnEntryRequestForAnotherOperationSessionWithdrawsTheRejection
+      waits:   WaitUntilAsync EVT[Events]
+      asserts: BUS[CurrentSublotRejection]
+CROSS SublotRejectedAfterEntryG2Tests.cs:186-194 ARejectionAtANewerRevisionOfTheSameStopKeepsTheEntryRequest
+      waits:   WaitForEventAsync EVT[_events]
+      asserts: BUS[CanSubmitSublot,CurrentSublotRejection]
+CROSS SublotRejectedAfterEntryG2Tests.cs:240-250 ALoadStartingAfterARejectionWithdrawsItFromThePromptArea
+      waits:   WaitUntilAsync -
+      asserts: BUS[CurrentSublotRejection] VM[HasSublotRejection]
+CROSS TaskTypeAndDirectionVectorG2Tests.cs:60-76 AReversedJourneyShowsTheDirectionAsPlanned
+      waits:   WaitUntilAsync -
+      asserts: SRV[Received] VM[VisitText]
+CROSS TaskTypeAndDirectionVectorG2Tests.cs:109-124 AnUnboundTaskTypeIsNeverInferredFromThePlanOrTheBlockingFacts
+      waits:   WaitUntilAsync -
+      asserts: SRV[Received] VM[TaskTypeText,VisitText]
+CROSS WaitingPointIdleReturnG2Tests.cs:64-79 AnIdleReturnIsShownAsANonBusinessStopOnTheWayAndAtThePoint
+      waits:   WaitUntilAsync VM[IdleReturnStatus]
+      asserts: SES[CurrentJourney.CurrentStopWorklist,CurrentJourney.UpcomingStopPlan] SRV[Received] VM[JourneyPlanLegs,VisitText]
+CROSS WaitingPointIdleReturnG2Tests.cs:233-242 AnOrdinaryBusinessStopOffersTheEntryAndSendsIt
+      waits:   WaitUntilAsync VM[CanRequestLoadCancellation,CanSubmit]
+      asserts: BUS[CanRequestLoadCancellation,CanSubmitSublot] VM[IdleReturnStatus,StopDirectionText,VisitText]
+CROSS WaitingPointIdleReturnG2Tests.cs:275-291 AnEmptyWorklistAtTheWaitingPointReadsAsStandingByNotAsNothingToDo
+      waits:   WaitUntilAsync SES[CurrentJourney.CurrentStopWorklist] VM[IdleReturnStatus]
+      asserts: LOG[Entries] SES[CurrentJourney.CurrentStopWorklist] VM[VisitText]
+CROSS WaitingPointIdleReturnG2Tests.cs:328-339 ReleasingTheIdleReturnBringsTheEntryBackAtOnce
+      waits:   WaitUntilAsync SES[CurrentJourney.UpcomingStopPlan,CurrentJourney.VehicleBusinessState] VM[CanSubmit]
+      asserts: BUS[CanSubmitSublot] VM[IdleReturnStatus,StopDirectionText,TaskTypeText,VisitText]
+CROSS WireToGateG2Tests.ActivationResultAck.cs:41-50 JourneySnapshotsRightBehindTheActivationAreAcknowledgedAndTheSessionStaysUp
+      waits:   WaitBrieflyUntilAsync SRV[Received]
+      asserts: SES[Current] SRV[Received,ReceivedActivationResults]
+CROSS WireToGateG2Tests.ActivationResultAck.cs:92-100 MessagesBetweenTheActivationResultAndItsAckAreHandledAndTheSessionStaysUp
+      waits:   WaitBrieflyUntilAsync -
+      asserts: SES[Current] SRV[Received,ReceivedActivationResults]
+CROSS WireToGateG2Tests.ActivationResultAck.cs:134-146 ARejectedActivationResultIsAcknowledgedWithTheJourneyRightBehindIt
+      waits:   WaitBrieflyUntilAsync SRV[Received]
+      asserts: SES[Current] SRV[Received,ReceivedActivationResults]
+CROSS WireToGateG2Tests.ActivationResultAck.cs:190-199 AnActivationResultAckThatNeverComesFailsTheSessionAndTheReplayIsSettledOnce
+      waits:   WaitBrieflyUntilAsync SRV[Received]
+      asserts: SES[Current] SRV[Received,ReceivedActivationResults]
+CROSS WireToGateG2Tests.ActivationResultAck.cs:225-233 AConnectionLostBeforeTheActivationResultAckIsSettledOnceByTheNextHandshake
+      waits:   WaitAtMostUntilAsync SES[Current]
+      asserts: SES[Current] SRV[ReceivedActivationResults]
+CROSS WireToGateG2Tests.ActivationResultAck.cs:267-277 ADuplicatedActivationResultAckReportsNothingTwiceAndTheReplayIsSettledOnce
+      waits:   WaitBrieflyUntilAsync SRV[Received]
+      asserts: SES[Current] SRV[Received,ReceivedActivationResults]
+CROSS WireToGateG2Tests.cs:450-456 TheManualChargingReturnEntrySendsTheAdministratorAndLeavesTheHoldToTheServer
+      waits:   WaitUntilAsync SES[Client]
+      asserts: BUS[CanRequestManualChargingReturnToService]
+CROSS WireToGateG2Tests.cs:784-826 BusinessBootstrapsRecoveryRequestBeforeServerSnapshot
+      waits:   WaitUntilAsync SRV[Received]
+      asserts: IO[UnlockCount]
+CROSS WireToGateG2Tests.cs:935-948 RecoveryRequiredAnnouncedOnAResultAckOpensTheRecoveryEntry
+      waits:   WaitUntilAsync SES[Current]
+      asserts: BUS[CanRequestResumeAfterRepair] IO[UnlockCount] SES[Current]
+CROSS WireToGateG2Tests.cs:1018-1040 EveryReopenRoundReachesTheOperatorAsItsOwnPrompt
+      waits:   WaitUntilAsync -
+      asserts: IO[UnlockCount]
+CROSS WireToGateG2Tests.cs:1122-1123 ACompletedLoadOffersTheCorrectionEntryAsSoonAsItsResultIsRecorded
+      waits:   WaitUntilAsync -
+      asserts: IO[UnlockCount]
+CROSS WireToGateG2Tests.cs:1197-1210 ACheckAskedAboutAnOlderSafetyStateIsRefusedAsExpiredWithoutEndingTheSession
+      waits:   WaitUntilAsync SRV[Received]
+      asserts: SES[Current] SRV[Received]
+CROSS WireToGateG2Tests.cs:1299-1339 AnUnknownResultIsReportedAsPendingAfterARestartAndReplayedOnceTheReportIsAcknowledged
+      waits:   WaitUntilAsync SRV[ReceivedEnvelopes]
+      asserts: IO[UnlockCount] SES[Current]
+CROSS WireToGateG2Tests.cs:1369-1388 DropoffStopSnapshotsAreProjectedRatherThanRefused
+      waits:   WaitUntilAsync SES[CurrentJourney]
+      asserts: IO[UnlockCount] SRV[Received]
+CROSS WireToGateG2Tests.cs:1422-1425 JourneySnapshotsAreProjectedAndHeartbeatDoesNotStealAsyncMessages
+      waits:   WaitUntilAsync -
+      asserts: SRV[Received]
+CROSS WireToGateG2Tests.cs:1467-1529 SameJourneyRevisionsWithStablePayloadAreAcceptedAcrossSessionGenerations
+      waits:   WaitUntilAsync SRV[Received]
+      asserts: IO[UnlockCount] SRV[Received,SentJourneyEnvelopes,StaleGenerationRejections]
+CROSS WireToGateG2Tests.cs:1603-1611 DemandAcceptanceSnapshotsArePersistedBeforeAcknowledgement
+      waits:   WaitUntilAsync SRV[Received]
+      asserts: SES[CurrentJourney]
+CROSS WireToGateG2Tests.cs:1733-1738 FormalSlotOperationCommandIsValidatedAndRaisedWithoutPhysicalSideEffect
+      waits:   WaitUntilAsync -
+      asserts: IO[UnlockCount]
+CROSS WireToGateG2Tests.cs:1927-1944 SlotConfigurationActivationVerifiesTheFingerprintAndReportsTheOutcome
+      waits:   WaitUntilAsync SRV[ReceivedActivationResults]
+      asserts: IO[UnlockCount] SRV[ReceivedActivationResults]
+CROSS WireToGateG2Tests.cs:1970-1981 SlotConfigurationActivationIsRejectedWithTheStableCodeWhenTheFingerprintDisagrees
+      waits:   WaitUntilAsync SRV[ReceivedActivationResults]
+      asserts: IO[UnlockCount]
+CROSS WireToGateG2Tests.cs:2239-2247 DelayedStoppedSafetyRevisionRecoversSessionToReadyWithoutIoSideEffects
+      waits:   WaitUntilAsync SES[Current]
+      asserts: IO[UnlockCount] SES[Current] SRV[AcceptedSafetyStateChangedCount,StaleGenerationRejections]
+CROSS WireToGateG2Tests.cs:2340-2359 FailedThenStoppedProviderRefreshFlowsThroughBusinessServiceToReady
+      waits:   WaitUntilAsync SES[Current]
+      asserts: IO[UnlockCount] SES[Current] SRV[AcceptedSafetyStateChangedCount,StaleGenerationRejections]
+CROSS WireToGateG2Tests.cs:2431-2442 BusinessSafetySendFailureDisconnectsAndReplaysPendingRevision
+      waits:   WaitUntilAsync -
+      asserts: IO[UnlockCount] SRV[AcceptedSafetyStateChangedCount,StaleGenerationRejections]
+CROSS WireToGateG2Tests.cs:2617-2630 BusinessResendsSafetyStateAfterSessionGenerationChangeWhileVehicleIdle
+      waits:   WaitUntilAsync SRV[AcceptedSafetyStateChangedCount]
+      asserts: IO[UnlockCount] SRV[AcceptedSafetyStateChangedCount,StaleGenerationRejections]
+CROSS WireToGateG2Tests.cs:2750-2769 AnOperationInterruptedWhileWaitingForTheOperatorIsSettledFromLiveIoOnTheNextSession
+      waits:   WaitUntilAsync -
+      asserts: IO[UnlockCount]
+CROSS WireToGateG2Tests.cs:2775-2796 AnOperationInterruptedWhileWaitingForTheOperatorIsSettledFromLiveIoOnTheNextSession
+      waits:   WaitUntilAsync SRV[ReceivedEnvelopes]
+      asserts: IO[UnlockCount]
+
+TOTAL waits=709 followed-by-assertions=367 cross-layer=206
+  missing IO: 44
+  missing SRV: 28
+  missing BUS: 24
+  missing IO+SRV: 19
+  missing SES: 16
+  missing VM: 15
+  missing BUS+IO: 8
+  missing CTL: 6
+  missing EVT: 5
+  missing SES+SRV: 4
+  missing BUS+VM: 4
+  missing JRN: 4
+  missing EVT+SES: 3
+  missing SRV+VM: 3
+  missing CTL+LOG: 2
+  missing BUS+JRN: 2
+  missing BUS+EVT: 2
+  missing BUS+IO+SRV: 2
+  missing EVT+IO: 2
+  missing IO+SES: 2
+  missing BUS+SES: 1
+  missing EVT+SRV: 1
+  missing BUS+IO+SES: 1
+  missing EVT+VM: 1
+  missing CTL+IO+SRV: 1
+  missing SES+SRV+VM: 1
+  missing CTL+SRV: 1
+  missing SES+VM: 1
+  missing EVT+JRN: 1
+  missing IO+JRN: 1
+  missing LOG: 1

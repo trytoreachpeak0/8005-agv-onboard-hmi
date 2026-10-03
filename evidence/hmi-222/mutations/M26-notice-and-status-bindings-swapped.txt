@@ -1,0 +1,7 @@
+UI layout audit: C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi222-8005-agv-onboard-hmi\evidence\audits\ui-layout-20261001T164417977Z.json
+Status: FAIL
+Exception: C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi222-8005-agv-onboard-hmi\scripts\check-ui-layout.ps1:90
+Line |
+  90 |      throw ($failed.Name -join [Environment]::NewLine)
+     |      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | unableToChargeEntry

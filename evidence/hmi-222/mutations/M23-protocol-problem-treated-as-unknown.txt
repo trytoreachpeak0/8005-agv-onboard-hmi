@@ -1,0 +1,32 @@
+# M23-protocol-problem-treated-as-unknown
+与请求关联的 ProtocolProblem 不单独认，当成普通失败（结果未知、沿用号）
+files: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+
+--- replaced ---
+                // out, because the caller ends the id on this one.
+                throw new WireToGateRequestNotAcceptedException(
+                    WireToGateProtocolSerializer
+                        .DeserializePayload<ProtocolProblemPayload>(responseEnvelope).Problem.ReasonCode);
+            }
+
+            WireToGateProtocolSerializer.RequireMessage(
+                responseEnvelope,
+                "UnableToChargeFieldConfirmationResult",
+--- with ---
+                // out, because the caller ends the id on this one.
+                throw new InvalidDataException(
+                    WireToGateProtocolSerializer
+                        .DeserializePayload<ProtocolProblemPayload>(responseEnvelope).Problem.ReasonCode);
+            }
+
+            WireToGateProtocolSerializer.RequireMessage(
+                responseEnvelope,
+                "UnableToChargeFieldConfirmationResult",
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AProtocolProblemToTheRequestIsShownAsNotAcceptedAndEndsItsId [5 s]
+Failed!  - Failed:     1, Passed:    40, Skipped:     0, Total:    41, Duration: 40 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AProtocolProblemToTheRequestIsShownAsNotAcceptedAndEndsItsId
+missing: none

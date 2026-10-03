@@ -1,0 +1,24 @@
+# N01-X1-old-shape-unable-to-charge
+审查第 2 条，修复前的形状：结果交给等待者后紧跟的快照先把请求忘掉（等待路径前加 300 ms），等待路径不按本次请求结算
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+            // Settled against this press's own request, not against the shared field a snapshot may have cleared.
+            WireToGateUnableToChargeOutcome? settled |||             if (ReferenceEquals(_unableToChargeForgotten, request))
+            {
+                _unableToChargeForgotten = null;
+                return outcome;
+--- with ---
+            await Task.Delay(300, CancellationToken.None).ConfigureAwait(false);
+            WireToGateUnableToChargeOutcome? settled |||             if (ReferenceEquals(_unableToChargeForgotten, request))
+            {
+                _unableToChargeForgotten = null;
+                return null;
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests.TheReportCarriesTheOperatorTheChargerAndTheConditionAndTheVectorRunsInOrder (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheReportCarriesTheOperatorTheChargerAndTheConditionAndTheVectorRunsInOrder [6 s]
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheReportCarriesTheOperatorTheChargerAndTheConditionAndTheVectorRunsInOrder
+missing: none

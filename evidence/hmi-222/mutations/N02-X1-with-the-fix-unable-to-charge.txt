@@ -1,0 +1,17 @@
+# N02-X1-with-the-fix-unable-to-charge
+审查员的 X1 原样（等待路径前加 300 ms），修复保留：应保持绿
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+            // Settled against this press's own request, not against the shared field a snapshot may have cleared.
+            WireToGateUnableToChargeOutcome? settled
+--- with ---
+            await Task.Delay(300, CancellationToken.None).ConfigureAwait(false);
+            WireToGateUnableToChargeOutcome? settled
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests.TheReportCarriesTheOperatorTheChargerAndTheConditionAndTheVectorRunsInOrder (exit 0) ---
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: GREEN AS EXPECTED
+expected red: 
+missing: none

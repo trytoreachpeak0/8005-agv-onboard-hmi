@@ -95,7 +95,20 @@ public sealed partial class MultiDemandJourneyG2Tests
                 && harness.Session.Current.Readiness == WireToGateSessionReadiness.Ready,
             "A to complete and be recorded",
             token);
-        Assert.False(harness.ViewModel.CanRequestLoadCompensation);
+        // The control for what follows: with A settled and nothing refused, no compensation entry. Read once
+        // the screen has taken A's acknowledged result, and held (onboard-hmi#228): the journal names A as the
+        // last completed load before the event that makes the view model read its entry gates again, so a
+        // single read here was of the gates as they stood while A was still running.
+        await harness.WaitUntilAsync(
+            () => OperatorLog(harness).Contains("5号仓操作结果已被服务端确认。"),
+            "view model showed A's acknowledged result",
+            token);
+        await AssertWhileAsync(
+            DisplaySettleWindow,
+            () => Assert.False(
+                harness.ViewModel.CanRequestLoadCompensation,
+                "a completed load with nothing refused opened the compensation entry"),
+            token);
         held!.HoldRestores();
         try
         {

@@ -1,0 +1,18 @@
+# N05-switch-ignored
+审查第 1 条：不看 unableToChargeEntryEnabled
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+        if (!_recoveryOptions.UnableToChargeEntryEnabled)
+
+--- with ---
+        if (_recoveryOptions.UnableToChargeEntryEnabled && false)
+
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsNotOfferedWhileTheSwitchIsOff [121 ms]
+Failed!  - Failed:     1, Passed:    43, Skipped:     0, Total:    44, Duration: 40 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheEntryIsNotOfferedWhileTheSwitchIsOff
+missing: none

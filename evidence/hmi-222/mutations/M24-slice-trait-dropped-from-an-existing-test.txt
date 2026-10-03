@@ -1,0 +1,21 @@
+# M24-slice-trait-dropped-from-an-existing-test
+反向验证：去掉 6 条既有「充电后返回服务」测试里第一条的 FP-IS-13 标记
+files: tests/SQCD.Agv.WireToGateG2Tests/WireToGateG2Tests.cs
+
+--- replaced ---
+    [Trait("IntegrationSlice", "FP-IS-13")]
+    [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
+    public async Task ManualChargingReturnToServiceAcceptedResultIsCorrelatedToRequestedMessage()
+--- with ---
+    [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
+    public async Task ManualChargingReturnToServiceAcceptedResultIsCorrelatedToRequestedMessage()
+
+--- dotnet test tests/SQCD.Agv.UnitTests --filter FullyQualifiedName~IntegrationSliceTraitArchitectureTests|FullyQualifiedName~ProtocolVectorTestBindingArchitectureTests (exit 1) ---
+  Failed SQCD.Agv.UnitTests.IntegrationSliceTraitArchitectureTests.TheProjectionCheckCatchesATestThatLostItsSliceTrait [507 ms]
+  Failed SQCD.Agv.UnitTests.IntegrationSliceTraitArchitectureTests.TheProjectionCheckCatchesASliceTraitTheTestsVectorsDoNotJustify [543 ms]
+  Failed SQCD.Agv.UnitTests.IntegrationSliceTraitArchitectureTests.EverySliceTraitIsExactlyTheProjectionOfTheTestsOwnVectors [484 ms]
+Failed!  - Failed:     3, Passed:    26, Skipped:     0, Total:    29, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: EverySliceTraitIsExactlyTheProjectionOfTheTestsOwnVectors
+missing: none

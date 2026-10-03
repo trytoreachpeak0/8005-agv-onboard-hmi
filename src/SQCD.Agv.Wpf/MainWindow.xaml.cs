@@ -375,6 +375,117 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// 人工清桩确认（8005-agv-onboard-hmi#221）。对话框依据的那一份在弹出之前取定，确认之后原样交回。
+    /// </summary>
+    /// <remarks>
+    /// 对话框开着的时候界面照常刷新：服务端可能换了原充电桩，上一次提交的结果也可能回来。这里只读一次
+    /// <c>StationClearance</c>，正文与交回去的 <c>Prompt</c> 出自同一份记录；业务服务发现它已经不是当前这一份就拒绝，不发。
+    /// 确认之后再去读一次，就成了「对话框写的是甲、发出去的是乙」（<c>WireToGateStationClearanceTests</c> 有一条结构守卫）。
+    /// </remarks>
+    private async void OnConfirmStationClearanceClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel?.StationClearance is not { Prompt: { } prompt, ConfirmationText: var confirmationText }
+            || MessageBox.Show(
+                confirmationText,
+                "确认清桩",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.ConfirmStationClearanceAsync(prompt))
+        {
+            ShowRecoveryFailure("清桩确认没有得到服务端的确认。原因见入口下方的结果一行和操作记录；站点状态以服务端为准。", "清桩确认未完成");
+        }
+    }
+
+    /// <summary>
+    /// 扣住的服务端恢复命令，确认执行（8005-agv-onboard-hmi#239）。对话框之前读一次视图模型的入口，确认之后原样交回
+    /// 那一次读到的 <c>Prompt</c>：对话框开着时视图模型照常刷新，换掉的只是屏幕，不是这里要确认的那一条。
+    /// </summary>
+    private async void OnConfirmHeldRecoveryCommandClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel?.HeldRecoveryCommand is not { Prompt: { } prompt }
+            || MessageBox.Show(
+                prompt.Text.Trim()
+                    + "\n\n确认人已在车旁、仓门附近安全，现在执行这条命令？车辆会给上述仓门发开锁信号。",
+                "确认执行服务端恢复命令",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.ConfirmHeldRecoveryCommandAsync(prompt))
+        {
+            ShowRecoveryFailure("这条命令已不再等待确认，没有执行。原因见操作记录。", "未执行");
+        }
+    }
+
+    /// <summary>
+    /// 扣住的服务端恢复命令，不执行（8005-agv-onboard-hmi#239）。与 <see cref="OnConfirmHeldRecoveryCommandClick"/> 同形。
+    /// </summary>
+    /// <remarks>
+    /// 装货修正的「不执行」由业务服务要求按两次：第一次只把后果写进说明、不回复服务端，第二次才回复，而且只对第一次
+    /// 显示的那条命令有效。对话框正文里带着同一句后果。第一次按下的结局是「等第二次按下」，不弹失败；第二次按下没能
+    /// 回复服务端时照常弹出（onboard-hmi#239 审查备注）。
+    /// </remarks>
+    private async void OnDeclineHeldRecoveryCommandClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel?.HeldRecoveryCommand is not { Prompt: { } prompt }
+            || MessageBox.Show(
+                prompt.Text.Trim()
+                    + (prompt.DeclineConsequence.Length > 0 ? "\n\n" + prompt.DeclineConsequence : string.Empty)
+                    + "\n\n确定不执行这条命令？车辆不会开锁，并向服务端报告未执行；服务端将结束本次恢复，如仍需处理要重新发起。",
+                "不执行服务端恢复命令",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (await _viewModel.DeclineHeldRecoveryCommandAsync(prompt) == HeldRecoveryDeclineOutcome.NotAnswered)
+        {
+            ShowRecoveryFailure(
+                "没有向服务端回复：命令已不再等待确认，或者结果没能写入发件箱。原因见入口下方说明和操作记录。",
+                "未回复");
+        }
+    }
+
+    /// <summary>
+    /// 现场确认充不上（8005-agv-onboard-hmi#222）。对话框依据的是被按下那个按钮自己的选项，确认之后原样交回它的
+    /// <c>Prompt</c>。
+    /// </summary>
+    /// <remarks>
+    /// 按钮的 DataContext 就是那一个 <c>UnableToChargeOption</c>：正文与交回去的 <c>Prompt</c> 出自同一个对象，对话框开着时
+    /// 视图模型照常刷新也换不掉它；业务服务发现它已经不是当前的一份就拒绝，不发。这里不去读视图模型的
+    /// <c>UnableToCharge</c>（<c>WireToGateUnableToChargeTests</c> 有一条结构守卫）。
+    /// </remarks>
+    private async void OnConfirmUnableToChargeClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null
+            || (sender as FrameworkElement)?.DataContext is not UnableToChargeOption { Prompt: var prompt, ConfirmationText: var confirmationText }
+            || MessageBox.Show(
+                confirmationText,
+                "现场确认充不上",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.ConfirmUnableToChargeAsync(prompt))
+        {
+            ShowRecoveryFailure("现场确认充不上没有得到服务端的确认。原因见入口下方的结果一行和操作记录；车辆接下来怎么走以服务端为准。", "现场确认未完成");
+        }
+    }
+
     private static void ShowRecoveryFailure(string message, string title) =>
         MessageBox.Show(
             message,

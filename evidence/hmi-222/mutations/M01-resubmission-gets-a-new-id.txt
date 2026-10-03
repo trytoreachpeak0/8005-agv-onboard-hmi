@@ -1,0 +1,17 @@
+# M01-resubmission-gets-a-new-id
+重提时不沿用未应答的请求，每按一次生成新的 confirmationRequestId
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+firstSend = shown.ResubmittedConfirmationRequestId is null;
+--- with ---
+firstSend = true;
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AnUnansweredConfirmationIsShownAsUnknownAndAResubmissionCarriesTheSameIdAndCondition [3 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ADroppedSessionLeavesAnUnknownThatIsResubmittedUnderTheSameIdAfterReconnecting [1 s]
+Failed!  - Failed:     2, Passed:    39, Skipped:     0, Total:    41, Duration: 37 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AnUnansweredConfirmationIsShownAsUnknownAndAResubmissionCarriesTheSameIdAndCondition; ADroppedSessionLeavesAnUnknownThatIsResubmittedUnderTheSameIdAfterReconnecting
+missing: none

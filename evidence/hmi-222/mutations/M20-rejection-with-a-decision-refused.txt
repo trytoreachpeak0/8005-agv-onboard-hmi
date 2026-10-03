@@ -1,0 +1,19 @@
+# M20-rejection-with-a-decision-refused
+把带决定的 REJECTED 当成自相矛盾拒收
+files: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+
+--- replaced ---
+            || payload.Outcome == "CONFIRMED" && payload.Problem is not null
+            || payload.ChargingPolicyDecision
+--- with ---
+            || payload.Outcome == "CONFIRMED" && payload.Problem is not null
+            || payload.Outcome == "REJECTED" && payload.ChargingPolicyDecision is not null
+            || payload.ChargingPolicyDecision
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ARejectedConfirmationShowsTheServersReasonAndDecisionAndTheNextPressIsANewConfirmation [5 s]
+Failed!  - Failed:     1, Passed:    40, Skipped:     0, Total:    41, Duration: 40 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: ARejectedConfirmationShowsTheServersReasonAndDecisionAndTheNextPressIsANewConfirmation
+missing: none

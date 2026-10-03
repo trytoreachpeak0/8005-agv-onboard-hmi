@@ -1,0 +1,96 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:13.40]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeWhosePersistedStateDoesNotMatchIsRejectedBeforeAnyDoorIo [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeWhosePersistedStateDoesNotMatchIsRejectedBeforeAnyDoorIo [423 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: 0
+Actual:   1
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeWhosePersistedStateDoesNotMatchIsRejectedBeforeAnyDoorIo() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 53
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeWhosePersistedStateDoesNotMatchIsRejectedBeforeAnyDoorIo() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 53
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:43.99]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnotherSessionsClosedSnapshotLeavesAnOpenResumeAloneAndIsAcknowledged [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnotherSessionsClosedSnapshotLeavesAnOpenResumeAloneAndIsAcknowledged [465 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+                                       ↓ (pos 173)
+Expected: ···"ion":0,"PendingResults":[],"OperationContext":{"Me"···
+Actual:   ···"ion":0,"PendingResults":[{"MessageType":"Operation"···
+                                       ↑ (pos 173)
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AssertAnotherSessionsClosedChangesNothingAsync(RecoveryVectorHarness harness, WireToGateRecoveryState onFile, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.OtherSessionClosed.cs:line 96
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnotherSessionsClosedSnapshotLeavesAnOpenResumeAloneAndIsAcknowledged() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.OtherSessionClosed.cs:line 56
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnotherSessionsClosedSnapshotLeavesAnOpenResumeAloneAndIsAcknowledged() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.OtherSessionClosed.cs:line 56
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:53.68]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ForcedMechanicalRecoverySendsNoUnlockAndReportsOnlyAfterTheOperatorConfirms [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ForcedMechanicalRecoverySendsNoUnlockAndReportsOnlyAfterTheOperatorConfirms [468 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: 0
+Actual:   1
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ForcedMechanicalRecoverySendsNoUnlockAndReportsOnlyAfterTheOperatorConfirms() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.cs:line 378
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ForcedMechanicalRecoverySendsNoUnlockAndReportsOnlyAfterTheOperatorConfirms() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.cs:line 390
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:07.49]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ALatchedVehicleRejectsAResumeBeforeAnyDoorIo [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ALatchedVehicleRejectsAResumeBeforeAnyDoorIo [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the control server to receive SlotOperationCommandRejected
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.RecoveryVectorHarness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.cs:line 1794
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.RecoveryVectorHarness.WaitForInboundAsync(String messageType, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.cs:line 1805
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.WaitForSingleRejectionAsync(RecoveryVectorHarness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 643
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ALatchedVehicleRejectsAResumeBeforeAnyDoorIo() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.FatalFaultLatch.cs:line 105
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ALatchedVehicleRejectsAResumeBeforeAnyDoorIo() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.FatalFaultLatch.cs:line 111
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:11.14]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.PreparingAVectorNeverDropsAPendingResultRecordedBeforeIt [FAIL]
+[xUnit.net 00:01:11.66]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnotherSessionsClosedSnapshotLeavesAPreparedVectorAloneAndIsAcknowledged [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.PreparingAVectorNeverDropsAPendingResultRecordedBeforeIt [800 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ at index 0
+           ↓ (pos 0)
+Expected: "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+Actual:   "33333333-3333-4333-8333-333333333333"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.PreparingAVectorNeverDropsAPendingResultRecordedBeforeIt() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.WriteFunnelRace.cs:line 225
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.PreparingAVectorNeverDropsAPendingResultRecordedBeforeIt() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.WriteFunnelRace.cs:line 225
+--- End of stack trace from previous location ---
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnotherSessionsClosedSnapshotLeavesAPreparedVectorAloneAndIsAcknowledged [329 ms]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+                                       ↓ (pos 173)
+Expected: ···"ion":0,"PendingResults":[],"OperationContext":{"Me"···
+Actual:   ···"ion":0,"PendingResults":[{"MessageType":"Operation"···
+                                       ↑ (pos 173)
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AssertAnotherSessionsClosedChangesNothingAsync(RecoveryVectorHarness harness, WireToGateRecoveryState onFile, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.OtherSessionClosed.cs:line 96
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnotherSessionsClosedSnapshotLeavesAPreparedVectorAloneAndIsAcknowledged() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.OtherSessionClosed.cs:line 41
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnotherSessionsClosedSnapshotLeavesAPreparedVectorAloneAndIsAcknowledged() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.OtherSessionClosed.cs:line 41
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:13.49]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeThatFailsAfterItsFirstPulseIsSettledNotRejected [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeThatFailsAfterItsFirstPulseIsSettledNotRejected [329 ms]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: 1
+Actual:   0
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeThatFailsAfterItsFirstPulseIsSettledNotRejected() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 537
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeThatFailsAfterItsFirstPulseIsSettledNotRejected() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 538
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:19.12]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeTheExecutorRefusesBeforeItsFirstPulseIsRejected [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeTheExecutorRefusesBeforeItsFirstPulseIsRejected [5 s]
+  Error Message:
+   Timed out after 5s waiting for: a guard to refuse with RECOVERY_STATE_MISMATCH
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.RecoveryVectorHarness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.cs:line 1794
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.RecoveryVectorHarness.WaitForRecoveryBlockedAsync(String reasonCode, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.cs:line 1858
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeTheExecutorRefusesBeforeItsFirstPulseIsRejected() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 108
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AResumeTheExecutorRefusesBeforeItsFirstPulseIsRejected() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi228-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.ResumeRejected.cs:line 116
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     8, Passed:    85, Skipped:     0, Total:    93, Duration: 1 m 19 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

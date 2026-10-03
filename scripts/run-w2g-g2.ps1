@@ -58,7 +58,8 @@ $shortHmiCommit = if ($hmiCommit.Length -ge 12) { $hmiCommit.Substring(0, 12) } 
 # The slice preflight runs before any directory exists, and before the Release build the run would
 # otherwise pay for. A filter that selects nothing exits 0 -- measured on this solution, 2026-09-09,
 # `--filter "IntegrationSlice=FP-IS-13"` returned exit code 0 over zero executed tests -- so without
-# this a slice nobody has built here would be written out as PASS. That is the defect ticket 14
+# this a slice nobody has built here would be written out as PASS. (FP-IS-13 was such a slice then; it
+# selects its tests since 8005-agv-onboard-hmi#222 flipped it, and FP-IS-09 is the one left today.) That is the defect ticket 14
 # closed on the control server side (docs/defects/20260908-empty-slice-filter-mints-a-green-g2.md);
 # this is the same hole on this end.
 #

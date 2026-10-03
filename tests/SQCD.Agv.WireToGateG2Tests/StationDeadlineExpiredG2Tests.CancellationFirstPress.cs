@@ -26,14 +26,11 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// </summary>
     /// <remarks>
     /// 重启之后日志里是一次开过锁、没结算的装货，带着待答取消记录。中断结算对这种状态拒绝（<c>RECOVERY_STATE_MISMATCH</c>），
-    /// 不发 UNKNOWN，所以服务端那边仍是在途、会授权；车载端照待答记录自动重发。原先那一版在重启后由另一个操作员再按一次，
-    /// 现在重发是自动的——断的仍然是「重发带的是谁的内容」。
+    /// 不发 UNKNOWN，所以服务端那边仍是在途、会授权。onboard-hmi#239 起车载端重启后不再自动重发，只在屏上提示，
+    /// 由重启之后在岗的另一个操作员确认现场后再按一次——断的仍然是「重发带的是谁的内容」。
     /// <para>
-    /// <b>这条守得住的是操作员与 <c>verifiedAt</c>，守不住理由。</b>自动重发（<c>ResendUnansweredLoadCancellationAsync</c>）
-    /// 传进去的本来就是待答记录里的理由，所以把 <c>AskForLoadCancellationAsync</c> 里的 <c>pending.Reason</c> 换成这一次的
-    /// <c>reason</c>，这里照样绿（PR #189 审查低项 1）。理由这一项由扫码前的两条
-    /// <c>LoadCancellationBeforeSublotG2Tests.ALostAuthorizationIsAskedForAgainWithTheFirstPressContent*</c> 承担，它们是人再按一次。
-    /// 在途这一侧「重启后由第二个人手动再按一次」这一格，没有单独的用例。
+    /// 重启后的那一次按下带着另一个理由，而断言要求重试的 payload 与首次逐字节相同，所以这条现在也守住理由
+    /// （此前是自动重发，传进去的本来就是待答记录里的理由，守不住，PR #189 审查低项 1）。
     /// </para>
     /// </remarks>
     [Fact]
@@ -71,10 +68,13 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 Assert.NotNull(beforeRestart.ReadRecoveryState(token).PendingLoadCancellation);
             }
 
-            // 重启之后在岗的是另一个人；门在停机期间被空着关上。
+            // 重启之后在岗的是另一个人；门在停机期间被关上，仓里有货。有货，取消的授权一到就得开锁清空：空仓会被直接判为
+            // 已清空、不发脉冲，那样「重启后不经确认就开门」在这条用例里根本看不出来（onboard-hmi#239）。
             Environment.SetEnvironmentVariable(OperatorVariable, "maintenance-002");
+            FakeIoModuleClient restartedIo = new() { LockerWaitTimesOut = true };
+            restartedIo.CloseDoor(0, cargo: true);
             await using Harness afterRestart = await Harness.StartAsync(
-                new FakeIoModuleClient(),
+                restartedIo,
                 token,
                 server =>
                 {
@@ -85,7 +85,32 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 },
                 journalPath: journalPath,
                 baselineRevision: 2);
+
+            // onboard-hmi#239：重启之后不再自动重发。授权一到车就开锁清空，而首次按下可能已是很久以前、车旁未必有人，
+            // 所以车辆只在屏上说明取消没有答复，等人确认现场后再按。
+            // 两种结局都结束这次等待：车辆决定不自动重发，或者已经重发出去。
+            await Harness.WaitUntilAsync(
+                () => afterRestart.Logger.Entries.Any(entry =>
+                        entry.Message.StartsWith("未收到答复的装货取消不自动重新申请", StringComparison.Ordinal))
+                    || afterRestart.Server.ReceivedEnvelopes.Any(envelope =>
+                        envelope.MessageType == "LoadCancellationStartRequested"),
+                "the restarted vehicle to settle the unanswered cancellation one way or the other",
+                token);
+            Assert.DoesNotContain(
+                afterRestart.Server.ReceivedEnvelopes,
+                envelope => envelope.MessageType == "LoadCancellationStartRequested");
+            Assert.Equal(0, afterRestart.Io.UnlockCount);
+            await Harness.WaitUntilAsync(
+                () => afterRestart.Business.CanRequestLoadCancellation,
+                "the in-flight load cancellation entry to be offered after the restart",
+                token);
+
+            // 重启之后在岗的人确认现场后再按：发出去的仍是首次按下的内容。按下的返回值不看——仓里的货没人取，清空不会
+            // 完成；要看的是请求发出、仓门真的开了。
+            _ = await afterRestart.Business.RequestLoadCancellationAsync(
+                "重启后确认现场，再按一次取消。", token);
             await afterRestart.WaitForInboundAsync("LoadCancellationResult", token);
+            Assert.True(afterRestart.Io.UnlockCount > 0, "the confirmed cancellation has to open the slot holding cargo");
 
             Assert.Empty(before.RecoveryRequestConflicts);
             Assert.Empty(afterRestart.Server.RecoveryRequestConflicts);

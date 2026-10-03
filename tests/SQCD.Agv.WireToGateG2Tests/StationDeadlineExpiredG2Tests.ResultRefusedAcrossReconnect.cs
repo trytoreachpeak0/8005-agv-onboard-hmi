@@ -113,12 +113,22 @@ public sealed partial class StationDeadlineExpiredG2Tests
 
             window.Release();
             await reconnect;
+            // Two waits, so a timeout names the half that did not come, and each says what the session and the
+            // wire looked like (onboard-hmi#228). It was one wait on both, and the one red seen so far -- "Timed
+            // out after 10s waiting for: the result delivered and the load settled" with OPERATION_COMPLETED
+            // already among the events -- could not say which half was missing or what the server had announced.
+            // Settled is monotonic, so waiting for it first and for Ready second asks for nothing the single
+            // wait did not.
             await Harness.WaitUntilAsync(
-                () => harness.Client.Current.Readiness == WireToGateSessionReadiness.Ready
-                    && harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId is null,
-                "the result delivered and the load settled",
+                () => harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId is null,
+                "journal settled the load once its result was delivered",
                 token,
-                harness.DescribeEvents);
+                () => DescribeSessionAndWire(harness));
+            await Harness.WaitUntilAsync(
+                () => harness.Client.Current.Readiness == WireToGateSessionReadiness.Ready,
+                "session back to Ready after the load settled",
+                token,
+                () => DescribeSessionAndWire(harness));
             // Room for a late second settlement to show itself.
             await Task.Delay(TimeSpan.FromMilliseconds(500), token);
 
@@ -147,6 +157,32 @@ public sealed partial class StationDeadlineExpiredG2Tests
             window.ReleaseResultSave();
             window.Release();
         }
+    }
+
+    /// <summary>
+    /// What a timeout of the two waits above needs beside the operator events: the session as the vehicle holds
+    /// it, every <c>SessionReadiness</c> the server sent, and every <c>OperationResult</c> it received, each with
+    /// its connection.
+    /// </summary>
+    private static string DescribeSessionAndWire(Harness harness)
+    {
+        WireToGateSessionSnapshot session = harness.Client.Current;
+        string readiness = string.Join(
+            Environment.NewLine,
+            harness.Server.SentEnvelopes
+                .Where(item => item.MessageType == "SessionReadiness")
+                .Select(item => $"  sent on connection {item.Connection}: {item.WireLine}"));
+        string results = string.Join(
+            Environment.NewLine,
+            harness.Server.ReceivedEnvelopes
+                .Where(item => item.MessageType == "OperationResult")
+                .Select(item => $"  received on connection {item.Connection}: messageId={item.MessageId}, "
+                    + $"sessionGeneration={SessionGenerationOf(item.WireLine)}"));
+        return $"Session: readiness={session.Readiness}, connected={session.Connected}, "
+            + $"generation={session.SessionGeneration}, reasons=[{string.Join(",", session.ReasonCodes)}]."
+            + $"{Environment.NewLine}SessionReadiness sent by the server:{Environment.NewLine}{readiness}"
+            + $"{Environment.NewLine}OperationResult received by the server:{Environment.NewLine}{results}"
+            + $"{Environment.NewLine}Operator events:{Environment.NewLine}{harness.DescribeEvents()}";
     }
 
     private static long? SessionGenerationOf(string wireLine)

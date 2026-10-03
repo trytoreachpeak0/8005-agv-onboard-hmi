@@ -46,10 +46,14 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Two kinds of entry, and they are not the same kind of debt.</b> Nine are messages v2
+    /// <b>Two kinds of entry, and they are not the same kind of debt.</b> Nine were messages v2
     /// added, and each belongs to a slice section 7.2 of the full-product scope specification
-    /// schedules into a later batch; those empty as their batches land. Until onboard-hmi#107 one
-    /// more predated v2 and was pinned as a finding rather than a schedule.
+    /// schedules into a later batch; those empty as their batches land. Two of the nine are left, the
+    /// <c>FP-IS-09</c> demand selection pair: the slot configuration activation pair,
+    /// <c>OnboardAlarmSnapshot</c>, with batch 9-16 (<c>8005-agv-onboard-hmi#221</c>) the manual station
+    /// clearance pair and with batch 9-17 (<c>8005-agv-onboard-hmi#222</c>) the unable-to-charge field
+    /// confirmation pair have been implemented. Until
+    /// onboard-hmi#107 one more predated v2 and was pinned as a finding rather than a schedule.
     /// </para>
     /// <para>
     /// That one was checked rather than assumed on 2026-09-09, and it was the result half of a pair
@@ -88,12 +92,8 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
         {
             ["DemandSelectionRequested"] = "FP-IS-09, batch 11",
             ["DemandSelectionResult"] = "FP-IS-09, batch 11",
-            ["ManualStationClearanceConfirmationRequested"] = "FP-IS-13, batch 8",
-            ["ManualStationClearanceConfirmationResult"] = "FP-IS-13, batch 8",
             ["SlotFaultDeclarationCommand"] = "FP-IS-07, 8005-agv-onboard-hmi#215",
-            ["SlotFaultDeclarationResult"] = "FP-IS-07, 8005-agv-onboard-hmi#215",
-            ["UnableToChargeFieldConfirmationRequested"] = "FP-IS-13, batch 8",
-            ["UnableToChargeFieldConfirmationResult"] = "FP-IS-13, batch 8"
+            ["SlotFaultDeclarationResult"] = "FP-IS-07, 8005-agv-onboard-hmi#215"
         };
 
     /// <summary>

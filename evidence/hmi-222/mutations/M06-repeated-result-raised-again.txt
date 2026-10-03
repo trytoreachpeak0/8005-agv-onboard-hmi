@@ -1,0 +1,17 @@
+# M06-repeated-result-raised-again
+重复到达的同一应答不认作重复，再投递一次
+files: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+
+--- replaced ---
+bool repeated = IsRepeatedUnableToChargeResult(envelope, result);
+--- with ---
+bool repeated = IsRepeatedUnableToChargeResult(envelope, result) && envelope.MessageId.Length == 0;
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ARepeatedResultIsHandledOnce [307 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheReportCarriesTheOperatorTheChargerAndTheConditionAndTheVectorRunsInOrder [531 ms]
+Failed!  - Failed:     2, Passed:    39, Skipped:     0, Total:    41, Duration: 39 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: ARepeatedResultIsHandledOnce
+missing: none

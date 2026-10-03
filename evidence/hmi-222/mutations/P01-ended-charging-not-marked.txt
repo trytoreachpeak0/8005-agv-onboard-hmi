@@ -1,0 +1,16 @@
+# P01-ended-charging-not-marked
+增量审查第 1 条：快照已结束充电用途的那次按下不标记，文案仍叫操作员重新提交
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+                return outcome with { ChargingEnded = true };
+--- with ---
+                return outcome;
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AnUnknownPressWhoseChargingTheServerEndedDoesNotAskForAResubmission [2 s]
+Failed!  - Failed:     1, Passed:    45, Skipped:     0, Total:    46, Duration: 45 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AnUnknownPressWhoseChargingTheServerEndedDoesNotAskForAResubmission
+missing: none

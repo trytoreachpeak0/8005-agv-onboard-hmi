@@ -1,0 +1,16 @@
+# M07-latch-shuts-the-entry
+严重安全故障锁存期间把这个入口也关掉
+files: src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+
+--- replaced ---
+        if (_unableToChargeView?.Invoke() is not { } view)
+--- with ---
+        if (RecoveryEntriesBlockedByFatalFault || _unableToChargeView?.Invoke() is not { } view)
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ALatchLeavesTheEntryOpenAndOpensNoDoor [149 ms]
+Failed!  - Failed:     1, Passed:    40, Skipped:     0, Total:    41, Duration: 39 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: ALatchLeavesTheEntryOpenAndOpensNoDoor
+missing: none

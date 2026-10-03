@@ -1,0 +1,16 @@
+# M13b-resubmission-reuses-the-message-id
+重提沿用第一次的 messageId（服务端入站去重会判内容冲突）
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.StationClearance.cs
+
+--- replaced ---
+firstSend ? request.ConfirmationRequestId : Guid.NewGuid().ToString("D"),
+--- with ---
+request.ConfirmationRequestId,
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.AnUnansweredClearanceIsShownAsUnknownAndAResubmissionCarriesTheSameConfirmationRequestId [3 s]
+Failed!  - Failed:     1, Passed:    26, Skipped:     0, Total:    27, Duration: 30 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AnUnansweredClearanceIsShownAsUnknownAndAResubmissionCarriesTheSameConfirmationRequestId
+missing: none

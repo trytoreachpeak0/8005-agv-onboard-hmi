@@ -1,0 +1,25 @@
+# M11-unanswered-kept-across-attempts
+服务端说不在充电后不忘掉未应答的请求
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+        lock (_unableToChargeGate)
+        {
+            _unableToChargeUnanswered = null;
+            _unableToChargeOutcome = null;
+        }
+
+--- with ---
+        lock (_unableToChargeGate)
+        {
+            _unableToChargeOutcome = null;
+        }
+
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ALaterChargingAttemptStartsFromNothing [2 s]
+Failed!  - Failed:     1, Passed:    40, Skipped:     0, Total:    41, Duration: 38 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: ALaterChargingAttemptStartsFromNothing
+missing: none

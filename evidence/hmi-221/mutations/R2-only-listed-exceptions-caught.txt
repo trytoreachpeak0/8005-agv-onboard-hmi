@@ -1,0 +1,20 @@
+# R2-only-listed-exceptions-caught
+审查 S3：按下只接列表里的四种异常
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.StationClearance.cs
+
+--- replaced ---
+        catch (Exception exception)
+        {
+            // Every failure, not a list of them.
+--- with ---
+        catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
+        {
+            // Every failure, not a list of them.
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown [100 ms]
+Failed!  - Failed:     1, Passed:    34, Skipped:     0, Total:    35, Duration: 35 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown
+missing: none

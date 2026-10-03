@@ -1,0 +1,18 @@
+# M12-late-result-dropped
+迟到的应答不处理
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+
+--- replaced ---
+                    HandleLateUnableToChargeResult(unableToCharge);
+
+--- with ---
+                    _ = unableToCharge;
+
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AResultThatArrivesAfterTheTimeoutSettlesTheUnknownOnce [7 s]
+Failed!  - Failed:     1, Passed:    40, Skipped:     0, Total:    41, Duration: 42 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AResultThatArrivesAfterTheTimeoutSettlesTheUnknownOnce
+missing: none

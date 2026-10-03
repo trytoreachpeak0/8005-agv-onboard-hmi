@@ -1,0 +1,18 @@
+# N06-switch-ships-on
+审查第 1 条：出厂配置把开关写成 true
+files: src/SQCD.Agv.Wpf/appsettings.json
+
+--- replaced ---
+    "unableToChargeEntryEnabled": false,
+
+--- with ---
+    "unableToChargeEntryEnabled": true,
+
+
+--- dotnet test tests/SQCD.Agv.UnitTests --filter FullyQualifiedName~ConfigurationTests (exit 1) ---
+  Failed SQCD.Agv.UnitTests.ConfigurationTests.TheUnableToChargeEntryShipsSwitchedOff(relativePath: "src/SQCD.Agv.Wpf/appsettings.json") [6 ms]
+Failed!  - Failed:     1, Passed:    31, Skipped:     0, Total:    32, Duration: 274 ms - SQCD.Agv.UnitTests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheUnableToChargeEntryShipsSwitchedOff
+missing: none

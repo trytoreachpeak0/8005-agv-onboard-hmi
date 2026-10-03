@@ -320,10 +320,7 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         harness.ViewModel.ScanText = "SUBLOT-A";
         harness.ViewModel.ScannerSubmitCommand.Execute(null);
-        await harness.WaitUntilAsync(
-            () => harness.Business.CurrentSublotRejection is not null,
-            "the server's refusal to reach the vehicle",
-            token);
+        await WaitForRefusalOnScreenAsync(harness, "SUBLOT-A", token);
 
         Assert.True(harness.Business.CurrentSublotRejection!.EntryRequestKept);
         Assert.Contains(OperatorLog(harness), line => line.Contains("请核对物料后重新扫码", StringComparison.Ordinal));
@@ -394,10 +391,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                 rejectedSublot = "SUBLOT-GATE"
             },
             Guid.NewGuid().ToString("D"));
-        await harness.WaitUntilAsync(
-            () => harness.Business.CurrentSublotRejection is not null,
-            "the refusal to reach the vehicle",
-            token);
+        await WaitForRefusalOnScreenAsync(harness, "SUBLOT-GATE", token);
 
         Assert.False(harness.Business.CurrentSublotRejection!.EntryRequestKept);
         Assert.False(harness.Business.CanSubmitSublot);
@@ -428,10 +422,7 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         harness.ViewModel.ScanText = "SUBLOT-A";
         harness.ViewModel.ScannerSubmitCommand.Execute(null);
-        await harness.WaitUntilAsync(
-            () => harness.Business.CurrentSublotRejection is not null,
-            "the stale refusal to reach the vehicle",
-            token);
+        await WaitForRefusalOnScreenAsync(harness, "SUBLOT-A", token);
 
         Assert.False(harness.Business.CurrentSublotRejection!.EntryRequestKept);
         Assert.False(harness.Business.CanSubmitSublot);
@@ -439,6 +430,14 @@ public sealed partial class MultiDemandJourneyG2Tests
             OperatorLog(harness),
             line => line.Contains("本站作业已结束，不再接收扫码", StringComparison.Ordinal));
         Assert.DoesNotContain("请核对物料后重新扫码", refusal, StringComparison.Ordinal);
+        // The view model adds the line first and reads the entry gates after it, so the line being there
+        // does not yet say the entry is shut. Waited for on its own, then held. (The controller's periodic
+        // refresh also rewrites the gate, which is why a read in that gap was only sometimes wrong: one in
+        // three under a fixed 300 ms gap after the line, onboard-hmi#228.)
+        await harness.WaitUntilAsync(
+            () => !harness.ViewModel.CanSubmit,
+            "view model shut the scan entry after the stale refusal",
+            token);
         await AssertWhileAsync(
             DisplaySettleWindow,
             () => Assert.False(harness.ViewModel.CanSubmit, "a stale refusal left the scan entry open"),
@@ -615,6 +614,30 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => !harness.ViewModel.CanSubmit && OperatorLog(harness).Contains(EntryWithdrawnLine),
             "the scan entry to be shut on screen and the withdrawal announced",
             token);
+
+    /// <summary>
+    /// The server's refusal of <paramref name="sublot"/> has reached the business service and then the
+    /// screen -- two waits, so a timeout names the layer that did not move.
+    /// </summary>
+    /// <remarks>
+    /// <c>HandleSublotRejected</c> stores <c>CurrentSublotRejection</c>, writes a log entry, and only then
+    /// publishes the operator event the view model turns into a line. Waiting on the field alone let the
+    /// assertions read the operator log between those steps, where the line is not there yet
+    /// (onboard-hmi#228; red twice in six full runs of onboard-hmi#221, and once on CI). The wait is on
+    /// the refusal line being shown at all; which next step it names is left to the caller's assertion.
+    /// </remarks>
+    private static async Task WaitForRefusalOnScreenAsync(Harness harness, string sublot, CancellationToken token)
+    {
+        await harness.WaitUntilAsync(
+            () => harness.Business.CurrentSublotRejection is not null,
+            $"business service took the refusal of {sublot}",
+            token);
+        string refused = $"子批 {sublot} 被服务端拒收";
+        await harness.WaitUntilAsync(
+            () => OperatorLog(harness).Any(line => line.Contains(refused, StringComparison.Ordinal)),
+            $"view model showed the refusal of {sublot}",
+            token);
+    }
 
     /// <summary>The closure worklist of control-server#323's shape at <paramref name="revision"/>.</summary>
     private static object ClosureWorklist(long revision) =>

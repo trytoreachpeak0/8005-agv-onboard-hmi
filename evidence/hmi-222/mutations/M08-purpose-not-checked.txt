@@ -1,0 +1,25 @@
+# M08-purpose-not-checked
+不看 activePurpose，有业务状态就算在充电
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+        if (!WireToGateUnableToCharge.IsCharging(journey))
+
+--- with ---
+        if (journey.VehicleBusinessState is null)
+
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheServersDecisionChangesNothingOnTheVehicleUntilItsNextBusinessState(decision: "MANUAL_CHARGING_HOLD", decisionText: "转人工充电") [6 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheServersDecisionChangesNothingOnTheVehicleUntilItsNextBusinessState(decision: "RETRY_LATER", decisionText: "稍后重试") [6 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheServersDecisionChangesNothingOnTheVehicleUntilItsNextBusinessState(decision: "REASSIGN_CHARGER", decisionText: "改派其它充电桩") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheReportCarriesTheOperatorTheChargerAndTheConditionAndTheVectorRunsInOrder [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsNotOfferedUnlessTheServerSaysTheVehicleIsCharging(purpose: "TRANSPORT") [105 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsNotOfferedUnlessTheServerSaysTheVehicleIsCharging(purpose: "CLEARING_MAINTENANCE") [113 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsNotOfferedUnlessTheServerSaysTheVehicleIsCharging(purpose: "IDLE_RETURN") [117 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ALaterChargingAttemptStartsFromNothing [7 s]
+Failed!  - Failed:     8, Passed:    33, Skipped:     0, Total:    41, Duration: 1 m - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheEntryIsNotOfferedUnlessTheServerSaysTheVehicleIsCharging
+missing: none

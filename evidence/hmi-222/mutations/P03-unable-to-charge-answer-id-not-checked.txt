@@ -1,0 +1,18 @@
+# P03-unable-to-charge-answer-id-not-checked
+增量审查 Y6：不核对应答里的 confirmationRequestId
+files: src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+
+--- replaced ---
+            UnableToChargeFieldConfirmationResultPayload result = DeserializeUnableToChargeResult(responseEnvelope);
+            if (!string.Equals(
+--- with ---
+            UnableToChargeFieldConfirmationResultPayload result = DeserializeUnableToChargeResult(responseEnvelope);
+            if (result.Outcome.Length < 0 && !string.Equals(
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AnAnswerNamingAnotherConfirmationIsNotTakenAsThisPresssResult [71 ms]
+Failed!  - Failed:     1, Passed:    45, Skipped:     0, Total:    46, Duration: 42 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: AnAnswerNamingAnotherConfirmationIsNotTakenAsThisPresssResult
+missing: none

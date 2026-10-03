@@ -1,0 +1,16 @@
+# M18-click-handler-reads-the-entry-again
+点击处理在对话框之后重新读视图模型的入口
+files: src/SQCD.Agv.Wpf/MainWindow.xaml.cs
+
+--- replaced ---
+_viewModel.ConfirmUnableToChargeAsync(prompt)
+--- with ---
+_viewModel.ConfirmUnableToChargeAsync(_viewModel.UnableToCharge.Options[0].Prompt)
+
+--- dotnet test tests/SQCD.Agv.UnitTests --filter FullyQualifiedName~WireToGateUnableToChargeTests (exit 1) ---
+  Failed SQCD.Agv.UnitTests.WireToGateUnableToChargeTests.TheClickHandlerConfirmsThePromptOfThePressedButton [10 ms]
+Failed!  - Failed:     1, Passed:    14, Skipped:     0, Total:    15, Duration: 149 ms - SQCD.Agv.UnitTests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheClickHandlerConfirmsThePromptOfThePressedButton
+missing: none

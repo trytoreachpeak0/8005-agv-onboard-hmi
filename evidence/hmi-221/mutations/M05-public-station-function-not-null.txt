@@ -1,0 +1,18 @@
+# M05-public-station-function-not-null
+publicStationFunction 发 GATE 而不是 null
+file: src/SQCD.Agv.Wpf/WireToGateBusinessService.StationClearance.cs
+
+--- replaced ---
+                        null,
+                        "STATION_EMPTY",
+--- with ---
+                        "GATE",
+                        "STATION_EMPTY",
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~ManualStationClearanceG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests.TheConfirmationCarriesTheOperatorTheChargerAndTheConditionAndIsShownConfirmed [74 ms]
+Failed!  - Failed:     1, Passed:    26, Skipped:     0, Total:    27, Duration: 30 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheConfirmationCarriesTheOperatorTheChargerAndTheConditionAndIsShownConfirmed
+missing: none

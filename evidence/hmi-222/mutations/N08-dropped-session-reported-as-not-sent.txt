@@ -1,0 +1,29 @@
+# N08-dropped-session-reported-as-not-sent
+审查第 1 条：今天的服务端断连时，把这次按下说成「未发送」而不是结果未知
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+            if (request is null)
+            {
+                return UnableToChargePress.Blocked($"现场确认充不上未发送：{exception.Message}。");
+--- with ---
+            if (request is not null)
+            {
+                return UnableToChargePress.Blocked($"现场确认充不上未发送：{exception.Message}。");
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AResultThatArrivesAfterTheTimeoutSettlesTheUnknownOnce [7 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AResultThatContradictsItselfOrTheSchemaIsRefusedAndThePressEndsAsUnknown(outcome: "CONFIRMED", withProblem: True, decision: "REASSIGN_CHARGER") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AResultThatContradictsItselfOrTheSchemaIsRefusedAndThePressEndsAsUnknown(outcome: "CONFIRMED", withProblem: False, decision: "CHARGE_ELSEWHERE") [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TodaysServerEndsTheSessionAndThePressIsShownAsUnknownWithoutAReplay [5 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AnUnansweredConfirmationIsShownAsUnknownAndAResubmissionCarriesTheSameIdAndCondition [7 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ALaterChargingAttemptStartsFromNothing [7 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AnotherConditionIsRefusedWhileAConfirmationIsUnknown [7 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ARestartOffersTheEntryFromTheRestoredStateAndAsksTheOperatorAfresh [7 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.AnotherMaintainerIsAskedAfreshInsteadOfResubmittingSomeoneElsesConfirmation [7 s]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.ADroppedSessionLeavesAnUnknownThatIsResubmittedUnderTheSameIdAfterReconnecting [5 s]
+Failed!  - Failed:    10, Passed:    34, Skipped:     0, Total:    44, Duration: 1 m 22 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TodaysServerEndsTheSessionAndThePressIsShownAsUnknownWithoutAReplay
+missing: none

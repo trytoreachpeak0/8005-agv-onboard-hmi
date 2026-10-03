@@ -142,6 +142,16 @@ public sealed class MainViewModel : ViewModelBase
     private string _sublotRejectionText = string.Empty;
     private string _sublotRejectionReasonCode = string.Empty;
     private Func<CancellationToken, Task<bool>>? _wireToGateManualChargingReturnRequester;
+    private StationClearanceDisplay _stationClearance = StationClearanceDisplay.Empty;
+    private Func<WireToGateStationClearanceView>? _stationClearanceView;
+    private Func<WireToGateStationClearancePrompt, CancellationToken, Task<bool>>? _stationClearanceConfirmer;
+    private HeldRecoveryCommandDisplay _heldRecoveryCommand = HeldRecoveryCommandDisplay.Empty;
+    private Func<WireToGateHeldRecoveryCommandView>? _heldRecoveryCommandView;
+    private Func<WireToGateHeldRecoveryCommandPrompt, CancellationToken, Task<bool>>? _heldRecoveryCommandConfirmer;
+    private Func<WireToGateHeldRecoveryCommandPrompt, CancellationToken, Task<bool>>? _heldRecoveryCommandDecliner;
+    private UnableToChargeDisplay _unableToCharge = UnableToChargeDisplay.Empty;
+    private Func<WireToGateUnableToChargeView>? _unableToChargeView;
+    private Func<WireToGateUnableToChargePrompt, CancellationToken, Task<bool>>? _unableToChargeConfirmer;
 
     /// <param name="slotConfiguration">
     /// 本机生效仓位配置，仓位区按它的 <c>SlotPosition</c> 分前后两组。启动时读一次就够：激活只改版本名，
@@ -715,6 +725,12 @@ public sealed class MainViewModel : ViewModelBase
         RefreshRecoveryReasonLockCore();
         // 回落目标随入口一起重算：主体是否已经回落，与入口开关来自同一份恢复状态。
         RefreshLoadCorrectionTargetCore();
+        // 人工清桩确认不在那九个恢复入口里，不看锁存（见 RefreshStationClearanceCore）。
+        RefreshStationClearanceCore();
+        // 扣住的服务端恢复命令自己看锁存：「确认执行」锁存时关，「不执行」照常开（见 RefreshHeldRecoveryCommandCore）。
+        RefreshHeldRecoveryCommandCore();
+        // 现场确认充不上同样不在那九个里，不看锁存（见 RefreshUnableToChargeCore）。
+        RefreshUnableToChargeCore();
     }
 
     /// <summary>
@@ -1710,6 +1726,269 @@ public sealed class MainViewModel : ViewModelBase
             ? Task.FromResult(false)
             : _wireToGateManualChargingReturnRequester(cancellationToken);
 
+    // ---- 人工清桩确认入口（批次9-16，8005-agv-onboard-hmi#221） ----
+
+    public StationClearanceDisplay StationClearance
+    {
+        get => _stationClearance;
+        private set => SetProperty(ref _stationClearance, value);
+    }
+
+    /// <remarks>
+    /// 两个委托都只带一个值：业务服务的入口视图整份读回来，操作员确认的内容整份交回去。没有并排的两个 string 参数，
+    /// 也就没有写反的可能（8005-agv-onboard-hmi#216 审查的那一类）。接线本身在 <c>StationClearanceWiring</c>。
+    /// </remarks>
+    internal void ConfigureStationClearance(
+        Func<WireToGateStationClearanceView> view,
+        Func<WireToGateStationClearancePrompt, CancellationToken, Task<bool>> confirmer)
+    {
+        _stationClearanceView = view ?? throw new ArgumentNullException(nameof(view));
+        _stationClearanceConfirmer = confirmer ?? throw new ArgumentNullException(nameof(confirmer));
+        RunOnUiThread(RefreshStationClearanceCore);
+    }
+
+    /// <summary>
+    /// 操作员在对话框里确认之后调用，<paramref name="shown"/> 是对话框当时依据的那一份
+    /// <see cref="StationClearanceDisplay.Prompt"/>。业务服务核对它仍是当前这一份才发；不是就拒绝，不发。
+    /// </summary>
+    public async Task<bool> ConfirmStationClearanceAsync(
+        WireToGateStationClearancePrompt shown,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(shown);
+        if (_stationClearanceConfirmer is null)
+        {
+            return false;
+        }
+
+        Task<bool> confirmation = _stationClearanceConfirmer(shown, cancellationToken);
+        // 业务服务在第一次 await 之前就把「正在等应答」记下了，所以这一次读会立刻把入口收起来，不必等任何事件。
+        RunOnUiThread(RefreshStationClearanceCore);
+        try
+        {
+            return await confirmation.ConfigureAwait(true);
+        }
+        finally
+        {
+            RunOnUiThread(RefreshStationClearanceCore);
+        }
+    }
+
+    /// <summary>
+    /// 入口、对话框正文、说明与结果四样出自同一份业务视图，一次替换。
+    /// </summary>
+    /// <remarks>
+    /// <b>它不经 <see cref="AllowRecoveryEntry"/>，严重安全故障锁存期间照常开着，是有意的。</b>那九个恢复入口锁存时
+    /// 关闭，是因为其中三个会经恢复向量执行器真的开门，锁存在执行层拦不住。这个入口只发一条请求、显示服务端的结果，
+    /// 不碰 IO、不开门、不写恢复状态（<c>WireToGateStationClearanceTests</c> 里有一条结构守卫钉着），而
+    /// <c>REQ-0180</c> 说人工清桩不自动恢复也不阻断车辆：一辆故障后被推离充电桩的车，不该等它自己的故障清掉才能把
+    /// 桩还回去。行为由 <c>ManualStationClearanceG2Tests.ALatchLeavesTheClearanceEntryOpenAndOpensNoDoor</c> 钉住。
+    /// </remarks>
+    private void RefreshStationClearanceCore()
+    {
+        if (_stationClearanceView?.Invoke() is not { } view)
+        {
+            StationClearance = StationClearanceDisplay.Empty;
+            return;
+        }
+
+        string notice = WireToGateStationClearanceText.NoticeText(view);
+        string statusText = WireToGateStationClearanceText.StatusText(view.LastOutcome);
+        StationClearance = new StationClearanceDisplay(
+            view.Prompt is not null,
+            view.Prompt,
+            view.Prompt is null ? string.Empty : WireToGateStationClearanceText.ConfirmationText(view.Prompt),
+            notice.Length > 0,
+            notice,
+            statusText.Length > 0,
+            statusText,
+            WireToGateStationClearanceText.Status(view.LastOutcome));
+    }
+
+    // ---- 扣住等待现场确认的服务端恢复命令（8005-agv-onboard-hmi#239） ----
+
+    public HeldRecoveryCommandDisplay HeldRecoveryCommand
+    {
+        get => _heldRecoveryCommand;
+        private set => SetProperty(ref _heldRecoveryCommand, value);
+    }
+
+    /// <remarks>
+    /// 与 <see cref="ConfigureStationClearance"/> 同形：业务服务的入口视图整份读回来，操作员确认或拒绝的那一份整份交回去。
+    /// 接线本身在 <c>HeldRecoveryCommandWiring</c>。
+    /// </remarks>
+    internal void ConfigureHeldRecoveryCommand(
+        Func<WireToGateHeldRecoveryCommandView> view,
+        Func<WireToGateHeldRecoveryCommandPrompt, CancellationToken, Task<bool>> confirmer,
+        Func<WireToGateHeldRecoveryCommandPrompt, CancellationToken, Task<bool>> decliner)
+    {
+        _heldRecoveryCommandView = view ?? throw new ArgumentNullException(nameof(view));
+        _heldRecoveryCommandConfirmer = confirmer ?? throw new ArgumentNullException(nameof(confirmer));
+        _heldRecoveryCommandDecliner = decliner ?? throw new ArgumentNullException(nameof(decliner));
+        RunOnUiThread(RefreshHeldRecoveryCommandCore);
+    }
+
+    /// <summary>
+    /// 操作员在对话框里确认执行之后调用，<paramref name="shown"/> 是对话框依据的那一份
+    /// <see cref="HeldRecoveryCommandDisplay.Prompt"/>。业务服务核对它仍是扣住的那一条才执行。
+    /// </summary>
+    public Task<bool> ConfirmHeldRecoveryCommandAsync(
+        WireToGateHeldRecoveryCommandPrompt shown,
+        CancellationToken cancellationToken = default) =>
+        DecideHeldRecoveryCommandAsync(shown, _heldRecoveryCommandConfirmer, cancellationToken);
+
+    /// <summary>
+    /// 操作员在对话框里选择不执行之后调用，其余同 <see cref="ConfirmHeldRecoveryCommandAsync"/>。装货修正要按两次：第一次
+    /// 业务服务只把后果写进说明、答 false，这里据说明是否已「等第二次按下」把它与真正的失败分开。
+    /// </summary>
+    public async Task<HeldRecoveryDeclineOutcome> DeclineHeldRecoveryCommandAsync(
+        WireToGateHeldRecoveryCommandPrompt shown,
+        CancellationToken cancellationToken = default)
+    {
+        if (await DecideHeldRecoveryCommandAsync(shown, _heldRecoveryCommandDecliner, cancellationToken)
+                .ConfigureAwait(true))
+        {
+            return HeldRecoveryDeclineOutcome.Answered;
+        }
+
+        return _heldRecoveryCommandView?.Invoke() is { DeclineArmed: true, Prompt: { } now }
+            && now.CommandMessageId == shown.CommandMessageId
+            && now.PrimaryId == shown.PrimaryId
+                ? HeldRecoveryDeclineOutcome.AwaitingSecondPress
+                : HeldRecoveryDeclineOutcome.NotAnswered;
+    }
+
+    private async Task<bool> DecideHeldRecoveryCommandAsync(
+        WireToGateHeldRecoveryCommandPrompt shown,
+        Func<WireToGateHeldRecoveryCommandPrompt, CancellationToken, Task<bool>>? decide,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(shown);
+        if (decide is null)
+        {
+            return false;
+        }
+
+        try
+        {
+            return await decide(shown, cancellationToken).ConfigureAwait(true);
+        }
+        finally
+        {
+            RunOnUiThread(RefreshHeldRecoveryCommandCore);
+        }
+    }
+
+    /// <summary>
+    /// 两个按钮与说明出自同一份业务视图，一次替换。
+    /// </summary>
+    /// <remarks>
+    /// <b>「确认执行」看锁存，「不执行」不看，是有意的。</b>前者沿命令自己的路径执行，会经恢复向量执行器开门；锁存在
+    /// 执行器的开锁前一刻也会拦住，这里只是不让操作员按一个注定被拦的按钮。后者只向服务端回一个不开门的结果，锁存期间
+    /// 它是唯一能让服务端结束这次恢复的出口，关掉它就把扣住的状态变成没有出口。
+    /// </remarks>
+    private void RefreshHeldRecoveryCommandCore()
+    {
+        if (_heldRecoveryCommandView?.Invoke() is not { Prompt: { } prompt } view)
+        {
+            HeldRecoveryCommand = HeldRecoveryCommandDisplay.Empty;
+            return;
+        }
+
+        HeldRecoveryCommand = new HeldRecoveryCommandDisplay(
+            view.CanConfirm && !RecoveryEntriesBlockedByFatalFault,
+            view.CanDecline,
+            prompt,
+            true,
+            view.DeclineArmed
+                ? $"{prompt.Text.Trim()}\n{prompt.DeclineConsequence}确定不执行请再按一次「不执行」。"
+                : prompt.Text.Trim(),
+            view.DeclineArmed);
+    }
+
+    // ---- 现场确认充不上入口（批次9-17，8005-agv-onboard-hmi#222） ----
+
+    public UnableToChargeDisplay UnableToCharge
+    {
+        get => _unableToCharge;
+        private set => SetProperty(ref _unableToCharge, value);
+    }
+
+    /// <remarks>
+    /// 与 <see cref="ConfigureStationClearance"/> 同形：业务服务的入口视图整份读回来，操作员确认的内容整份交回去。接线本身在
+    /// <c>UnableToChargeWiring</c>。
+    /// </remarks>
+    internal void ConfigureUnableToCharge(
+        Func<WireToGateUnableToChargeView> view,
+        Func<WireToGateUnableToChargePrompt, CancellationToken, Task<bool>> confirmer)
+    {
+        _unableToChargeView = view ?? throw new ArgumentNullException(nameof(view));
+        _unableToChargeConfirmer = confirmer ?? throw new ArgumentNullException(nameof(confirmer));
+        RunOnUiThread(RefreshUnableToChargeCore);
+    }
+
+    /// <summary>
+    /// 操作员在对话框里确认之后调用，<paramref name="shown"/> 是那个按钮的 <see cref="UnableToChargeOption.Prompt"/>，也就是
+    /// 对话框当时依据的那一份。业务服务核对它仍是当前的一份才发；不是就拒绝，不发。
+    /// </summary>
+    public async Task<bool> ConfirmUnableToChargeAsync(
+        WireToGateUnableToChargePrompt shown,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(shown);
+        if (_unableToChargeConfirmer is null)
+        {
+            return false;
+        }
+
+        Task<bool> confirmation = _unableToChargeConfirmer(shown, cancellationToken);
+        // 业务服务在第一次 await 之前就把「正在等应答」记下了，所以这一次读会立刻把入口收起来，不必等任何事件。
+        RunOnUiThread(RefreshUnableToChargeCore);
+        try
+        {
+            return await confirmation.ConfigureAwait(true);
+        }
+        finally
+        {
+            RunOnUiThread(RefreshUnableToChargeCore);
+        }
+    }
+
+    /// <summary>
+    /// 按钮、对话框正文、说明与结果出自同一份业务视图，一次替换；内容没变时 <see cref="UnableToChargeDisplay"/> 按内容相等，
+    /// 不触发属性变更。
+    /// </summary>
+    /// <remarks>
+    /// <b>它不经 <see cref="AllowRecoveryEntry"/>，严重安全故障锁存期间照常开着</b>，理由与人工清桩确认相同
+    /// （<see cref="RefreshStationClearanceCore"/>）：只发一条请求、显示服务端的结果，不碰 IO、不开门、不写恢复状态
+    /// （<c>WireToGateUnableToChargeTests</c> 有一条结构守卫钉着）。行为由
+    /// <c>UnableToChargeFieldConfirmationG2Tests.ALatchLeavesTheEntryOpenAndOpensNoDoor</c> 钉住。
+    /// </remarks>
+    private void RefreshUnableToChargeCore()
+    {
+        if (_unableToChargeView?.Invoke() is not { } view)
+        {
+            UnableToCharge = UnableToChargeDisplay.Empty;
+            return;
+        }
+
+        string notice = WireToGateUnableToChargeText.NoticeText(view);
+        string statusText = WireToGateUnableToChargeText.StatusText(view.LastOutcome);
+        UnableToCharge = new UnableToChargeDisplay(
+            [
+                .. view.Prompts.Select(prompt => new UnableToChargeOption(
+                    prompt,
+                    WireToGateUnableToChargeText.ConditionLabel(prompt.ObservedCondition),
+                    WireToGateUnableToChargeText.ConfirmationText(prompt),
+                    "ConfirmUnableToCharge_" + prompt.ObservedCondition))
+            ],
+            notice.Length > 0,
+            notice,
+            statusText.Length > 0,
+            statusText,
+            WireToGateUnableToChargeText.Status(view.LastOutcome));
+    }
+
     private void OnStateChanged(object? sender, ValueChangedEventArgs<OnboardSnapshot> args)
     {
         RunOnUiThread(() => ApplySnapshot(args.Value));
@@ -1905,6 +2184,13 @@ public sealed class MainViewModel : ViewModelBase
         CanRequestLoadCancellation = AllowLoadCancellationEntry(
             _wireToGateCanRequestLoadCancellation?.Invoke() == true,
             _wireToGateCanRequestLoadCancellationBeforeAnySublot?.Invoke() == true);
+        // 现场确认充不上与它同理（见 RefreshUnableToChargeCore）。
+        RefreshUnableToChargeCore();
+        // 人工清桩确认同样写在锁存守卫之前：它不在那九个恢复入口里、锁存期间照常开着（见 RefreshStationClearanceCore），
+        // 放到守卫之后，锁存期间这条路径就不再刷新它，入口会停在锁存那一刻的样子。
+        RefreshStationClearanceCore();
+        // 扣住的服务端恢复命令同理写在守卫之前，锁存与否由它自己判（见 RefreshHeldRecoveryCommandCore）。
+        RefreshHeldRecoveryCommandCore();
         if (RecoveryEntriesBlockedByFatalFault)
         {
             CanRequestWireToGateRecovery = false;
@@ -2013,9 +2299,15 @@ public sealed class MainViewModel : ViewModelBase
 
     private static OperatorRecordKind MapOperatorEventKind(string kind) => kind switch
     {
-        "OPERATION_COMPLETED" or "MANUAL_CHARGING_RETURN_ACCEPTED" => OperatorRecordKind.Success,
-        "OPERATION_RECOVERY_REQUIRED" or "RECOVERY_BLOCKED" => OperatorRecordKind.Error,
-        "RESULT_ACK_PENDING" or "RECOVERY_AUTHORIZED" or "SUBLOT_REJECTED" => OperatorRecordKind.Warning,
+        "OPERATION_COMPLETED" or "MANUAL_CHARGING_RETURN_ACCEPTED" or "STATION_CLEARANCE_CONFIRMED"
+            or "UNABLE_TO_CHARGE_CONFIRMED" =>
+            OperatorRecordKind.Success,
+        "OPERATION_RECOVERY_REQUIRED" or "RECOVERY_BLOCKED" or "STATION_CLEARANCE_REJECTED"
+            or "STATION_CLEARANCE_NOT_ACCEPTED" or "UNABLE_TO_CHARGE_REJECTED" or "UNABLE_TO_CHARGE_NOT_ACCEPTED" =>
+            OperatorRecordKind.Error,
+        "RESULT_ACK_PENDING" or "RECOVERY_AUTHORIZED" or "RECOVERY_AUTHORIZATION_UNKNOWN" or "SUBLOT_REJECTED" or "STATION_CLEARANCE_UNKNOWN"
+            or "STATION_CLEARANCE_BLOCKED" or "UNABLE_TO_CHARGE_UNKNOWN" or "UNABLE_TO_CHARGE_BLOCKED" =>
+            OperatorRecordKind.Warning,
         "SUBLOT_ENTRY_REQUESTED" or "SUBLOT_ENTRY_WITHDRAWN" or "SUBLOT_SUBMITTED" or "OPERATION_PROGRESS"
             or "OPERATION_REPLAY" =>
             OperatorRecordKind.Operation,

@@ -1,0 +1,3 @@
+{"at":"2026-10-02T09:50:27.1158429+00:00","criterion":"unable-to-charge-answered","value":"@{Request=; Result=}"}
+{"at":"2026-10-02T09:50:27.2735996+00:00","criterion":"hmi-unable-to-charge-status","value":"CONFIRMED"}
+{"at":"2026-10-02T09:50:27.3935149+00:00","criterion":"clearing-state-acknowledged","value":"@{MessageId=8beba9de-d300-f05e-893f-3a96ff9e4723; MessageType=VehicleBusinessStateSnapshot; At=10/02/2026 09:50:26 +00:00; Payload=; Acknowledged=True; Fenced=False}"}

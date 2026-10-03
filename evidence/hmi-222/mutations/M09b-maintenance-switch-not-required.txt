@@ -1,0 +1,19 @@
+# M09b-maintenance-switch-not-required
+不要求维护开关，只要有操作员号
+files: src/SQCD.Agv.Wpf/WireToGateBusinessService.UnableToCharge.cs
+
+--- replaced ---
+!CanUseRecoveryOperator(requireProof: true)
+
+--- with ---
+!CanUseStationOperator()
+
+
+--- dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter FullyQualifiedName~UnableToChargeFieldConfirmationG2Tests (exit 1) ---
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsNotOfferedWithoutAVerifiedMaintainer(maintenanceSwitch: True, proofVariable: "W2G_G2_UNABLE_TO_CHARGE_PROOF_UNSET") [143 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests.TheEntryIsNotOfferedWithoutAVerifiedMaintainer(maintenanceSwitch: False, proofVariable: "W2G_G2_UNABLE_TO_CHARGE_PROOF") [122 ms]
+Failed!  - Failed:     2, Passed:    39, Skipped:     0, Total:    41, Duration: 36 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+verdict: RED AS EXPECTED
+expected red: TheEntryIsNotOfferedWithoutAVerifiedMaintainer
+missing: none

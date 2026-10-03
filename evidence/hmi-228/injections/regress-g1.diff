@@ -1,0 +1,39 @@
+diff --git a/src/SQCD.Agv.Application/WireToGateIdleReturnText.cs b/src/SQCD.Agv.Application/WireToGateIdleReturnText.cs
+index fac039c..de70922 100644
+--- a/src/SQCD.Agv.Application/WireToGateIdleReturnText.cs
++++ b/src/SQCD.Agv.Application/WireToGateIdleReturnText.cs
+@@ -90,9 +90,7 @@ public static class WireToGateIdleReturnText
+             return "空闲返回：前往等待点";
+         }
+ 
+-        return leg.State == "ARRIVED"
+-            ? $"在等待点 {leg.StationId} 待命"
+-            : $"空闲返回：前往等待点 {leg.StationId}";
++        return $"空闲返回：前往等待点 {leg.StationId}"; // HMI228-INJECT
+     }
+ 
+     private static WireToGateMovementLeg? WaitingPointLeg(WireToGateJourneySnapshot journey) =>
+diff --git a/src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs b/src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+index 4c9fb86..9387aa5 100644
+--- a/src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
++++ b/src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+@@ -1993,6 +1993,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
+         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(
+             safetyStateVersion,
+             Volatile.Read(ref _acceptedSafetyStateVersion));
++        if (Environment.TickCount64 >= 0) { return false; } // HMI228-INJECT
+         long? generation = await PublishMidSessionSnapshotAsync(
+             "SafetyStateSnapshot",
+             "SAFETY_STATE",
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+index 1d10f75..74e3496 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+@@ -2402,6 +2402,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
+             LogSeverity.Warning,
+             nameof(WireToGateBusinessService),
+             $"子批被服务端拒收：sublot={payload.RejectedSublot}，reason={payload.Problem.ReasonCode}，demandId={payload.DemandId ?? "null"}，currentWorklistRevision={payload.CurrentWorklistRevision}。");
++        if (Environment.TickCount64 >= 0) { return; } // HMI228-INJECT
+         PublishOperatorEvent(
+             $"sublot-rejected:{command.MessageId}",
+             "SUBLOT_REJECTED",
