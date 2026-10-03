@@ -201,7 +201,9 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// slices this line implements -- five on <c>FP-IS-07</c>, one on <c>FP-IS-02</c> -- and all
     /// describing behaviour that ticket does not build: it carries the candidate's shapes only. Each
     /// note names the ticket that owes the test; <c>CV-VEHICLE-HOLD-DOOR-REPAIR-RELEASE</c> has no
-    /// onboard ticket yet, and its note says so rather than guessing one.
+    /// onboard ticket yet, and its note says so rather than guessing one. The two slot fault declaration
+    /// vectors left when batch 8-13 (<c>8005-agv-onboard-hmi#215</c>) built the declaration;
+    /// the <c>StationDeadlineExpiredG2Tests</c> declaration cases and the executor's own tests bind them.
     /// </para>
     /// <para>
     /// <b>They are pinned here rather than in <see cref="VectorsAwaitingTheirSlice"/>.</b> The
@@ -220,10 +222,6 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
                 "FP-IS-02, 3.0.0 candidate; the cancellation clearing path, 8005-agv-onboard-hmi#219",
             ["CV-LOAD-COMPENSATION-EMPTY-DOOR-UNPROVEN"] =
                 "FP-IS-07, 3.0.0 candidate; the compensation clearing path, 8005-agv-onboard-hmi#219",
-            ["CV-SLOT-FAULT-DECLARATION-APPLIED"] =
-                "FP-IS-07, 3.0.0 candidate; the administrator's slot fault declaration, 8005-agv-onboard-hmi#215",
-            ["CV-SLOT-FAULT-DECLARATION-NOT-APPLICABLE"] =
-                "FP-IS-07, 3.0.0 candidate; the administrator's slot fault declaration, 8005-agv-onboard-hmi#215",
             ["CV-VEHICLE-HOLD-DOOR-REPAIR-RELEASE"] =
                 "FP-IS-07, 3.0.0 candidate; HARDWARE_REPAIR_RELEASE and the HOLD_RELEASE check, no onboard "
                 + "ticket yet (reported on 8005-agv-onboard-hmi#214)"

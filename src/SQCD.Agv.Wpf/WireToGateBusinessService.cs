@@ -1813,6 +1813,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return InterruptedOperationSettlement.TakenOver;
             }
 
+            // A slot fault declaration journaled before the process went away: its APPLIED goes out first, as it
+            // would have, and the settlement below reports the declared slot UNKNOWN from the same journal entry
+            // (8005-agv-onboard-hmi#215).
+            WireToGateSlotFaultDeclaration? declared = await ReplayJournaledSlotFaultDeclarationAsync(
+                context,
+                cancellationToken).ConfigureAwait(false);
             WireToGateOperationExecutionResult execution = await _executor
                 .SettleInterruptedAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -1825,7 +1831,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _logger.Write(
                 LogSeverity.Warning,
                 nameof(WireToGateBusinessService),
-                $"上次仓位操作在执行中中断，未再输出开锁，按实时IO结算：attempt={attemptId}，outcome={execution.OverallOutcome}，checkpoint={execution.JournalCheckpoint}。");
+                declared is null
+                    ? $"上次仓位操作在执行中中断，未再输出开锁，按实时IO结算：attempt={attemptId}，outcome={execution.OverallOutcome}，checkpoint={execution.JournalCheckpoint}。"
+                    : $"上次仓位操作在执行中中断，未再输出开锁；{declared.SlotNo}号仓按日志里已生效的管理员判定（declarationId={declared.DeclarationId}）报UNKNOWN，其余按实时IO结算：attempt={attemptId}，outcome={execution.OverallOutcome}，checkpoint={execution.JournalCheckpoint}。");
             WireToGateHmiOperationStage finalStage = completedSuccessfully
                 ? WireToGateHmiOperationStage.Completed
                 : WireToGateHmiOperationStage.RecoveryRequired;
@@ -2377,6 +2385,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 case WireToGateForcedMechanicalRecoveryCommand forcedRecovery:
                     await HandleForcedMechanicalRecoveryCommandAsync(forcedRecovery, cancellationToken)
                         .ConfigureAwait(false);
+                    break;
+                case WireToGateSlotFaultDeclarationCommand declaration:
+                    await HandleSlotFaultDeclarationAsync(declaration, cancellationToken).ConfigureAwait(false);
                     break;
                 case WireToGateRecoveryCommand { MessageType: "SublotRejected" } rejection:
                     HandleSublotRejected(rejection);

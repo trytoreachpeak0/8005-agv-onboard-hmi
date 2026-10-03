@@ -94,6 +94,7 @@ public static class OnboardCommandRejectionText
         ["HARDWARE_RECOVERY_OBSERVATIONS_REQUIRED"] = "请先逐仓填写现场确认结果，再提交。",
         ["HARDWARE_RECOVERY_RECORD_REQUIRED"] = "请先提交硬件恢复记录，再继续。",
         ["FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED"] = "请先填写货物交接记录（子批号、接收人），再确认强制机械取出。",
+        ["LOAD_CANCELLATION_AFTER_SLOT_FAULT_DECLARATION"] = "管理员已判定本次装货的仓位故障，装货取消不再执行，未开任何仓门；请等管理员在异常处置会话里处理。",
         ["SLOT_STATE_UNKNOWN"] = "部分仓位状态暂时读不到，请等待恢复后再试。"
     };
 

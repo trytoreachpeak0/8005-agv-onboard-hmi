@@ -295,6 +295,14 @@ public sealed record WireToGateRecoveryState(
     /// </summary>
     public WireToGateForcedIsolation? ForcedIsolation { get; init; }
 
+    /// <summary>
+    /// An administrator's slot fault declaration this vehicle applied to the unsettled attempt (REQ-0359,
+    /// 8005-agv-onboard-hmi#215). Written before the vehicle answers <c>APPLIED</c> and before the executor is
+    /// stopped, so a restart in between still reports the declared slot UNKNOWN rather than judging it again
+    /// from the live IO. It belongs to its attempt: whatever settles or replaces the attempt drops it.
+    /// </summary>
+    public WireToGateSlotFaultDeclaration? SlotFaultDeclaration { get; init; }
+
     public static WireToGateRecoveryState Empty { get; } = new(
         null,
         WireToGateRecoveryCheckpoint.None,
@@ -336,6 +344,16 @@ public sealed record WireToGatePendingHardwareRecoveryRecord(
     string AdministratorRole,
     string Observations,
     DateTimeOffset ObservedAt);
+
+/// <summary>
+/// The journal's record of an applied slot fault declaration: which declaration, on which attempt and slot,
+/// and the category the operator is told.
+/// </summary>
+public sealed record WireToGateSlotFaultDeclaration(
+    string DeclarationId,
+    string SlotOperationAttemptId,
+    int SlotNo,
+    string FaultCategory);
 
 public sealed record WireToGatePendingLoadCancellation(
     string CancellationId,

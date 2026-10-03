@@ -703,6 +703,23 @@ public sealed partial class WireToGateBusinessService
             throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
         }
 
+        // An administrator's slot fault declaration applied to this attempt since the press (8005-agv-onboard-hmi#215,
+        // review S1 of PR #247): the declared slot is UNKNOWN and its OperationResult is the attempt's conclusion, and no
+        // door of this operation may be opened again. Taken over here, the cancellation would drive the declared slot and
+        // then open the next one. Read from the journal, not the cached copy: the declaration is written by the executor,
+        // which never refreshes that copy. The pending entry goes, as it does on either answer. The server does not refuse
+        // such an authorization yet, and is not told of this refusal: both are 8005-agv-control-server#384's to add.
+        if ((await _session.Journal.ReadRecoveryStateAsync(cancellationToken).ConfigureAwait(false))
+                .SlotFaultDeclaration is { } declared
+            && string.Equals(
+                declared.SlotOperationAttemptId,
+                operation.SlotOperationAttemptId,
+                StringComparison.Ordinal))
+        {
+            await ForgetLoadCancellationRequestAsync(cancellationId, cancellationToken).ConfigureAwait(false);
+            throw new InvalidDataException("LOAD_CANCELLATION_AFTER_SLOT_FAULT_DECLARATION");
+        }
+
         // The abort channel (onboard-hmi#78): the load's closed loop stops before the cancellation
         // takes its slots over, so no two executors drive one lock. Only after the authorization: a
         // refused cancellation leaves the load running, and the operator can still finish it.

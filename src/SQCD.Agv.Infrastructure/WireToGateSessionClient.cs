@@ -605,6 +605,96 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             cancellationToken);
     }
 
+    /// <summary>
+    /// The outbox key of the answer to the slot fault declaration <paramref name="declarationId"/>: the business
+    /// deduplication key the protocol gives the message, and the one source of its messageId.
+    /// </summary>
+    public static string SlotFaultDeclarationResultKey(string declarationId) =>
+        $"slot-fault-declaration-result:{declarationId}";
+
+    /// <summary>
+    /// Answers a slot fault declaration (REQ-0359, 8005-agv-onboard-hmi#215). The messageId is
+    /// <c>StableUuid</c> of the declaration's outbox key, never anything about the attempt, so every answer to one
+    /// declaration -- a resend, the answer rebuilt from the journal after a restart -- is the same message. Sendable
+    /// while RECOVERY_REQUIRED, like every other result.
+    /// </summary>
+    public Task<string> SendSlotFaultDeclarationResultAsync(
+        SlotFaultDeclarationResultPayload payload,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        RequireUuid(payload.DeclarationId, nameof(payload.DeclarationId));
+        RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
+        if (payload.Outcome switch
+        {
+            "APPLIED" => payload.Problem is not null,
+            "NOT_APPLICABLE" => payload.Problem is null || !IsProtocolErrorCode(payload.Problem.ReasonCode),
+            _ => true
+        })
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        string deduplicationKey = SlotFaultDeclarationResultKey(payload.DeclarationId);
+        return SendDurableCoreAsync(
+            "SlotFaultDeclarationResult",
+            deduplicationKey,
+            StableUuid(deduplicationKey),
+            null,
+            payload,
+            allowRecoveryRequired: true,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends the answer to <paramref name="declarationId"/> already on file once more, exactly as stored -- same
+    /// messageId and payload -- and waits for its <c>DurableAck</c>. A declaration the server sends again is
+    /// answered with what the first one got, never judged a second time. Returns at once when the stored answer
+    /// is already acknowledged.
+    /// </summary>
+    public async Task<string> ResendSlotFaultDeclarationResultAsync(
+        string declarationId,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        string deduplicationKey = SlotFaultDeclarationResultKey(declarationId);
+        WireToGateDurableMessage stored = await _journal
+            .ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidDataException("DURABLE_OUTBOX_ROW_MISSING");
+        WireToGateEnvelope envelope = WireToGateProtocolSerializer.DeserializeAndValidate(
+            stored.WireLine.TrimEnd('\r', '\n'),
+            _options.AgvId);
+        if (!string.Equals(stored.MessageType, "SlotFaultDeclarationResult", StringComparison.Ordinal)
+            || !string.Equals(envelope.MessageType, "SlotFaultDeclarationResult", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("DURABLE_OUTBOX_CONTENT_MISMATCH");
+        }
+
+        if (stored.Acknowledged)
+        {
+            // The server has it on file and asked again anyway -- its own outbox, resending until it sees an
+            // answer. The answer goes out once more as stored; the durable send below would return without a word.
+            WireToGateSessionSnapshot current = Current;
+            if (!current.Connected || current.SessionGeneration is not long generation)
+            {
+                throw new InvalidOperationException("WIRE_TO_GATE_NOT_READY");
+            }
+
+            await ReplayAcknowledgedResultAsync(stored, generation, cancellationToken).ConfigureAwait(false);
+            return stored.MessageId;
+        }
+
+        return await SendDurableCoreAsync(
+            "SlotFaultDeclarationResult",
+            deduplicationKey,
+            stored.MessageId,
+            envelope.CorrelationId,
+            envelope.Payload,
+            allowRecoveryRequired: true,
+            cancellationToken).ConfigureAwait(false);
+    }
+
     public Task<ManualChargingReturnToServiceResultPayload> RequestManualChargingReturnToServiceAsync(
         string messageId,
         ManualChargingReturnToServiceRequestedPayload payload,
@@ -1629,8 +1719,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             // ends while the session is down or mid-handshake is replayed by the next handshake under the same
             // messageId (ADR-cross-0029 step 4), instead of being lost and settled again from the live IO
             // (onboard-hmi#127). Only OperationResult: SafetyStateChanged and the other durable messages keep
-            // their own replay behaviour.
-            if (string.Equals(messageType, "OperationResult", StringComparison.Ordinal))
+            // their own replay behaviour. And the answer to a slot fault declaration, for the same reason and
+            // because it has to reach the server ahead of the OperationResult the declaration produces: on
+            // file in the order they were written, the next handshake replays them in that order
+            // (8005-agv-onboard-hmi#215).
+            if (messageType is "OperationResult" or "SlotFaultDeclarationResult")
             {
                 await StoreDurableAsync(
                     messageType,
@@ -3669,6 +3762,45 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         payload.ForcedRecoveryGeneration,
                         payload.Slots,
                         payload.CommandContentSha256);
+                    return true;
+                }
+            case "SlotFaultDeclarationCommand":
+                {
+                    if (envelope.CorrelationId is not null)
+                    {
+                        throw new InvalidDataException("CORRELATION_INVALID");
+                    }
+
+                    SlotFaultDeclarationCommandPayload payload =
+                        WireToGateProtocolSerializer.DeserializePayload<SlotFaultDeclarationCommandPayload>(envelope);
+                    RequireUuid(payload.DeclarationId, nameof(payload.DeclarationId));
+                    RequireUuid(payload.DemandId, nameof(payload.DemandId));
+                    RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
+                    // Every constraint the 3.0.0 candidate schema puts on the payload, and nothing narrower.
+                    if (payload.SlotNo is < 1 or > 8
+                        || payload.Administrator is null
+                        || string.IsNullOrEmpty(payload.Administrator.OperatorId)
+                        || payload.Administrator.VerificationMethod is not ("BADGE" or "SESSION")
+                        || payload.AdministratorRole is not ("MAINTENANCE_ADMINISTRATOR" or "SYSTEM_ADMINISTRATOR")
+                        || payload.FaultCategory is not ("LOCK" or "LIGHT_CURTAIN" or "DOOR_MECHANISM" or "IO_MODULE")
+                        || string.IsNullOrEmpty(payload.Note))
+                    {
+                        throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+                    }
+
+                    command = new WireToGateSlotFaultDeclarationCommand(
+                        envelope.MessageId,
+                        envelope.SessionGeneration!.Value,
+                        envelope.SentAt,
+                        payload.DeclarationId,
+                        payload.DemandId,
+                        payload.SlotOperationAttemptId,
+                        payload.SlotNo,
+                        payload.Administrator.OperatorId,
+                        payload.AdministratorRole,
+                        payload.FaultCategory,
+                        payload.Note,
+                        payload.DeclaredAt);
                     return true;
                 }
             case "CapabilitySnapshotRequested":

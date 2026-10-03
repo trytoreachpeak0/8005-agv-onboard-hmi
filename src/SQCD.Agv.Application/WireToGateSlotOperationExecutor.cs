@@ -50,8 +50,44 @@ public sealed record WireToGateOperationProgress(
     int PromptRound = 0,
     WireToGatePromptCause Cause = WireToGatePromptCause.None);
 
+/// <summary>
+/// What <see cref="WireToGateSlotOperationExecutor.DeclareSlotFaultAsync"/> did with a slot fault declaration.
+/// </summary>
+public enum WireToGateSlotFaultDeclarationOutcome
+{
+    /// <summary>
+    /// Journaled and applied: no unlock pulse of the attempt follows, and the run ends in an UNKNOWN result
+    /// its own caller reports.
+    /// </summary>
+    Applied,
+
+    /// <summary>The declared attempt is not the one running here -- none is, or another one is.</summary>
+    AttemptNotExecuting,
+
+    /// <summary>
+    /// The attempt is running, but the declared slot is not the one it is waiting on the operator for: the
+    /// slot has closed its loop, ended UNKNOWN, or the run is at another slot.
+    /// </summary>
+    SlotNotAwaiting,
+
+    /// <summary>Another declaration has already been applied to this attempt.</summary>
+    AlreadyDeclared,
+
+    /// <summary>
+    /// A load cancellation over this attempt is waiting for its answer or already running: the attempt's conclusion
+    /// is that cancellation's.
+    /// </summary>
+    TakenOverByLoadCancellation
+}
+
 public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 {
+    /// <summary>
+    /// The code a slot fault declaration puts in the declared slot's <c>reasonCodes</c> (REQ-0359, ADR-cross-0062):
+    /// the UNKNOWN says by itself that a person declared it, not that a reading failed.
+    /// </summary>
+    public const string SlotFaultDeclaredReason = "SLOT_FAULT_DECLARED";
+
     private readonly IIoModuleClient _ioModule;
     private readonly IWireToGateJournal _journal;
     private readonly IClock _clock;
@@ -61,6 +97,14 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     private readonly Func<bool> _reopenPermitted;
     private readonly Func<bool> _fatalFaultLatched;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
+
+    /// <summary>
+    /// Serialises a slot fault declaration against the three moments of a run it must not interleave with: an
+    /// unlock pulse, a slot closing its loop, and a slot ending in a failure (8005-agv-onboard-hmi#215). Whichever
+    /// takes it first decides, so a declaration is never applied to a slot already counted COMPLETED, and no
+    /// pulse follows one that was applied.
+    /// </summary>
+    private readonly SemaphoreSlim _declarationGate = new(1, 1);
     private ActiveOperation? _activeOperation;
 
     /// <param name="reopenPermitted">
@@ -179,8 +223,212 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         }
     }
 
-    /// <summary>The run <see cref="AbortOperationAsync"/> can stop.</summary>
-    private sealed record ActiveOperation(string SlotOperationAttemptId, CancellationTokenSource Abort);
+    /// <summary>
+    /// The run <see cref="AbortOperationAsync"/> can stop, and where it stands for a slot fault declaration.
+    /// </summary>
+    private sealed class ActiveOperation(string slotOperationAttemptId, CancellationTokenSource abort)
+    {
+        public string SlotOperationAttemptId { get; } = slotOperationAttemptId;
+
+        public CancellationTokenSource Abort { get; } = abort;
+
+        /// <summary>
+        /// The slot this run is driving and has not yet closed or failed -- the one a declaration may name.
+        /// Read and written only under <see cref="_declarationGate"/>.
+        /// </summary>
+        public int? AwaitingSlot { get; set; }
+
+        /// <summary>The slot a declaration was applied to. Written only under <see cref="_declarationGate"/>.</summary>
+        public int? DeclaredSlot { get; set; }
+    }
+
+    /// <summary>
+    /// Applies an administrator's slot fault declaration to the run in progress, if it names that run's attempt
+    /// and the slot the run is waiting on the operator for (REQ-0359, CP-0005 item 4.2, 8005-agv-onboard-hmi#215).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Not the load cancellation's abort.</b> <see cref="AbortOperationAsync"/> ends its run in silence because
+    /// the cancellation reports the attempt's conclusion itself. Nobody reports for a declaration, so the run this
+    /// stops does not end in <see cref="OperationCanceledException"/>: it settles the attempt -- the declared slot
+    /// UNKNOWN with <see cref="SlotFaultDeclaredReason"/>, the slots after it NOT_STARTED, the completed ones as
+    /// the live IO reads them -- and returns that result to the caller of <see cref="ExecuteAsync"/> or
+    /// <see cref="ResumeAsync"/>, which reports it as it reports any other. The run tells the two cancellations
+    /// apart by <see cref="ActiveOperation.DeclaredSlot"/>, which only this method sets.
+    /// </para>
+    /// <para>
+    /// <b>Order.</b> Checked and journaled under <see cref="_declarationGate"/>, which the run also takes before
+    /// every pulse, when a slot closes its loop and when it fails: whichever comes first decides. The journal
+    /// write comes before anything is said, so a restart after it reports the declared slot UNKNOWN rather than
+    /// judging it again from the live IO. <paramref name="announceApplied"/> runs next, still under the gate, so
+    /// the <c>APPLIED</c> answer is on its way before the run is stopped and its <c>OperationResult</c> can
+    /// follow; if it throws, the run is still stopped and the exception reaches the caller. Returns once the run
+    /// has stopped.
+    /// </para>
+    /// <para>
+    /// The precondition "not yet UNKNOWN" is this run's own: a slot that failed has been taken off
+    /// <see cref="ActiveOperation.AwaitingSlot"/> under the gate before its UNKNOWN is written.
+    /// </para>
+    /// </remarks>
+    public async Task<WireToGateSlotFaultDeclarationOutcome> DeclareSlotFaultAsync(
+        WireToGateSlotFaultDeclaration declaration,
+        Func<Task> announceApplied,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(declaration);
+        ArgumentNullException.ThrowIfNull(announceApplied);
+        RequireUuid(declaration.DeclarationId, nameof(declaration.DeclarationId));
+        RequireUuid(declaration.SlotOperationAttemptId, nameof(declaration.SlotOperationAttemptId));
+
+        ActiveOperation? active;
+        await _declarationGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            active = Volatile.Read(ref _activeOperation);
+            if (active is null
+                || !string.Equals(
+                    active.SlotOperationAttemptId,
+                    declaration.SlotOperationAttemptId,
+                    StringComparison.Ordinal))
+            {
+                return WireToGateSlotFaultDeclarationOutcome.AttemptNotExecuting;
+            }
+
+            if (active.DeclaredSlot is not null)
+            {
+                return WireToGateSlotFaultDeclarationOutcome.AlreadyDeclared;
+            }
+
+            if (active.AwaitingSlot != declaration.SlotNo)
+            {
+                return WireToGateSlotFaultDeclarationOutcome.SlotNotAwaiting;
+            }
+
+            // CancellationToken.None: from the check above to the write the gate keeps the run from moving on, and
+            // a declaration abandoned halfway would leave the operator's slot in neither state.
+            //
+            // A load cancellation over this attempt -- pressed and waiting for its answer, or already authorized and
+            // running -- owns the attempt's conclusion, and the declaration is refused in the same journal step that
+            // would have written it (review S1 of PR #247). The cancellation refuses the other order itself, before
+            // it stops this run: WireToGateBusinessService.RequestLoadCancellationCoreAsync. Its pending entry is
+            // journaled before its request goes out, so one of the two always sees the other.
+            WireToGateSlotFaultDeclarationOutcome refusal = WireToGateSlotFaultDeclarationOutcome.AlreadyDeclared;
+            WireToGateRecoveryState? written = await _journal.UpdateRecoveryStateAsync(
+                state =>
+                {
+                    if (string.Equals(
+                            state.PendingLoadCancellation?.SlotOperationAttemptId,
+                            declaration.SlotOperationAttemptId,
+                            StringComparison.Ordinal)
+                        || string.Equals(
+                            state.RecoveryVector?.SlotOperationAttemptId,
+                            declaration.SlotOperationAttemptId,
+                            StringComparison.Ordinal))
+                    {
+                        refusal = WireToGateSlotFaultDeclarationOutcome.TakenOverByLoadCancellation;
+                        return null;
+                    }
+
+                    return string.Equals(
+                            state.UnsettledSlotOperationAttemptId,
+                            declaration.SlotOperationAttemptId,
+                            StringComparison.Ordinal)
+                        && !string.Equals(
+                            state.SlotFaultDeclaration?.SlotOperationAttemptId,
+                            declaration.SlotOperationAttemptId,
+                            StringComparison.Ordinal)
+                        ? state with { SlotFaultDeclaration = declaration }
+                        : null;
+                },
+                CancellationToken.None).ConfigureAwait(false);
+            if (written is null)
+            {
+                // A load cancellation owns the attempt, or the journal no longer names this attempt as the one in
+                // progress, or already names a declaration on it: not this run's to decide any more.
+                return refusal;
+            }
+
+            active.DeclaredSlot = declaration.SlotNo;
+            try
+            {
+                await announceApplied().ConfigureAwait(false);
+            }
+            finally
+            {
+                // Journaled means applied, whatever became of the announcement: the run is stopped either way.
+                // Still under the gate, so a run waiting for it at a pulse or at a closing step finds the declaration
+                // and its own token already cancelled, and nothing it does after the gate gets ahead of the stop.
+                try
+                {
+                    await active.Abort.CancelAsync().ConfigureAwait(false);
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Only a shutdown ends the run on this slot without the gate; there is nothing left to stop.
+                }
+            }
+        }
+        finally
+        {
+            _declarationGate.Release();
+        }
+
+        await _operationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        _operationGate.Release();
+        return WireToGateSlotFaultDeclarationOutcome.Applied;
+    }
+
+    /// <summary>
+    /// Marks <paramref name="physicalSlot"/> as the slot <paramref name="active"/> is waiting on the operator for.
+    /// </summary>
+    private async Task BeginAwaitingAsync(ActiveOperation? active, int physicalSlot)
+    {
+        if (active is null)
+        {
+            return;
+        }
+
+        await _declarationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            active.AwaitingSlot = physicalSlot;
+        }
+        finally
+        {
+            _declarationGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Ends the wait on <paramref name="physicalSlot"/> -- it closed its loop, or failed -- unless a declaration got
+    /// there first. Returns true when one did: the slot is then the declaration's, whatever the run saw.
+    /// </summary>
+    private async Task<bool> EndAwaitingAsync(ActiveOperation? active, int physicalSlot)
+    {
+        if (active is null)
+        {
+            return false;
+        }
+
+        await _declarationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        try
+        {
+            if (active.DeclaredSlot == physicalSlot)
+            {
+                return true;
+            }
+
+            active.AwaitingSlot = null;
+            return false;
+        }
+        finally
+        {
+            _declarationGate.Release();
+        }
+    }
+
+    private static bool IsDeclared(ActiveOperation? active, int physicalSlot) =>
+        active is not null && active.DeclaredSlot == physicalSlot;
 
     /// <summary>
     /// Resumes the persisted operation context after an authenticated
@@ -368,6 +616,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             RecoveryVector = null,
             RecoveryResultObservedAt = null,
             PendingLoadCancellation = null,
+            SlotFaultDeclaration = null,
             LastCompletedLoadOperationContext = state.OperationContext?.OperationType == OperationType.Load
                 ? state.OperationContext
                 : state.LastCompletedLoadOperationContext
@@ -511,12 +760,32 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         List<int> stillActive = [];
         bool unsafeSlot = false;
         List<WireToGateSlotExecutionResult> results = [];
+        // A slot fault declaration applied to this attempt and journaled before the process went away
+        // (8005-agv-onboard-hmi#215). Its slot is UNKNOWN for the declaration's reason whatever it reads now:
+        // judged from the live IO it could come out COMPLETED -- a reading stuck at the target state is one of
+        // the faults an administrator declares -- and the APPLIED the server may already hold would then be
+        // contradicted by the result.
+        int? declaredSlot = string.Equals(
+            state.SlotFaultDeclaration?.SlotOperationAttemptId,
+            context.SlotOperationAttemptId,
+            StringComparison.Ordinal)
+            ? state.SlotFaultDeclaration!.SlotNo
+            : null;
         foreach (int physicalSlot in command.Slots)
         {
             LockerSnapshot locker = fresh
                 ? TryGetLocker(snapshot, physicalSlot - 1)
                 : LockerSnapshot.Unknown(physicalSlot - 1, snapshot.ObservedAt);
-            if (!OpenedByThisAttempt(state, physicalSlot))
+            if (physicalSlot == declaredSlot)
+            {
+                UpsertResult(results, CreateSlotResult(locker, "UNKNOWN", [SlotFaultDeclaredReason]));
+                if (!fresh || !IsSafeFinish(snapshot, physicalSlot - 1))
+                {
+                    unsafeSlot = true;
+                    stillActive.Add(physicalSlot);
+                }
+            }
+            else if (!OpenedByThisAttempt(state, physicalSlot))
             {
                 // Never opened: the door is shut and the lock closed, so report what is read (decision 6).
                 // The reason is the one the journal holds for this slot, which is empty unless this slot
@@ -786,6 +1055,8 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         bool firstRun,
         CancellationToken cancellationToken)
     {
+        // Both callers publish the run before they get here.
+        ActiveOperation? active = Volatile.Read(ref _activeOperation);
         foreach (int physicalSlot in command.Slots)
         {
             if (completed.Contains(physicalSlot))
@@ -809,12 +1080,27 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
             try
             {
+                await BeginAwaitingAsync(active, physicalSlot).ConfigureAwait(false);
                 LockerSnapshot completedLocker = await DriveSlotToTargetStateAsync(
                     command,
                     physicalSlot,
                     completed,
                     progress,
+                    active,
                     cancellationToken).ConfigureAwait(false);
+                if (await EndAwaitingAsync(active, physicalSlot).ConfigureAwait(false))
+                {
+                    // The door closed on the target state, but a declaration was applied to this slot first and
+                    // its APPLIED is already on its way: the slot is the declaration's (8005-agv-onboard-hmi#215).
+                    return await SettleDeclaredAsync(
+                        command,
+                        context,
+                        existingState,
+                        completed,
+                        results,
+                        progress,
+                        physicalSlot).ConfigureAwait(false);
+                }
 
                 WireToGateSlotExecutionResult result = CreateSlotResult(
                     completedLocker,
@@ -833,12 +1119,38 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 await SendProgressAsync(progress, new("VERIFYING", [], completed), cancellationToken)
                     .ConfigureAwait(false);
             }
+            catch (OperationCanceledException) when (IsDeclared(active, physicalSlot))
+            {
+                // Stopped by a slot fault declaration, not by a load cancellation taking the slots over: nobody
+                // else reports this attempt, so the run settles it and returns the result (8005-agv-onboard-hmi#215).
+                // The load cancellation's abort, and a shutdown, still end in silence below.
+                return await SettleDeclaredAsync(
+                    command,
+                    context,
+                    existingState,
+                    completed,
+                    results,
+                    progress,
+                    physicalSlot).ConfigureAwait(false);
+            }
             catch (OperationCanceledException)
             {
                 throw;
             }
             catch (FatalFaultLatchedException latched)
             {
+                if (await EndAwaitingAsync(active, physicalSlot).ConfigureAwait(false))
+                {
+                    return await SettleDeclaredAsync(
+                        command,
+                        context,
+                        existingState,
+                        completed,
+                        results,
+                        progress,
+                        physicalSlot).ConfigureAwait(false);
+                }
+
                 return await SettleRefusedByLatchAsync(
                     command,
                     context,
@@ -861,6 +1173,23 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 // operator who has not loaded, unloaded or shut the door is still inside
                 // DriveSlotToTargetStateAsync. One snapshot serves the failed slot and the slots never
                 // started, so the two cannot disagree about what was read.
+                //
+                // A declaration applied to this slot before the failure was decided owns it: its APPLIED is
+                // already on its way, and the OperationResult has to say the same (8005-agv-onboard-hmi#215).
+                // Otherwise the slot leaves the awaiting state here, before its UNKNOWN is written, so a
+                // declaration arriving from now on finds it no longer waiting.
+                if (await EndAwaitingAsync(active, physicalSlot).ConfigureAwait(false))
+                {
+                    return await SettleDeclaredAsync(
+                        command,
+                        context,
+                        existingState,
+                        completed,
+                        results,
+                        progress,
+                        physicalSlot).ConfigureAwait(false);
+                }
+
                 IoSnapshot failureSnapshot = _ioModule.CurrentSnapshot;
                 string reason = MapFailureReason(exception);
                 // Refused by another door before this attempt ever pulsed this slot: it was never opened,
@@ -997,6 +1326,97 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     }
 
     /// <summary>
+    /// Ends the run on the slot a fault declaration was applied to (REQ-0359, 8005-agv-onboard-hmi#215): that slot
+    /// UNKNOWN with <see cref="SlotFaultDeclaredReason"/>, every slot not reached NOT_STARTED, and each completed slot
+    /// as the live IO reads it now.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The declared slot is never judged from its reading.</b> A reading that looks final -- a light curtain stuck
+    /// at "empty" on an unload, say -- would make the interrupted settlement call it COMPLETED, which is exactly what
+    /// an administrator declared it faulty to prevent. Its physical fields still carry the live readings
+    /// (ADR-cross-0058 decision 6).
+    /// </para>
+    /// <para>
+    /// A completed slot that no longer reads final is UNKNOWN, as the interrupted settlement would have it; one that
+    /// does stays COMPLETED. The journal keeps the attempt unsettled, with the declared slot in the active set while
+    /// its door may be open -- the shape every UNKNOWN decided mid-execution leaves for the recovery entries. Written
+    /// with <see cref="CancellationToken.None"/>: the run was cancelled to get here.
+    /// </para>
+    /// </remarks>
+    private async Task<WireToGateOperationExecutionResult> SettleDeclaredAsync(
+        WireToGateSlotOperationCommand command,
+        WireToGateRecoveryOperationContext context,
+        WireToGateRecoveryState existingState,
+        List<int> completed,
+        List<WireToGateSlotExecutionResult> results,
+        Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
+        int declaredSlot)
+    {
+        IoSnapshot snapshot = _ioModule.CurrentSnapshot;
+        bool fresh = IsFresh(snapshot);
+        List<int> stillCompleted = [];
+        foreach (int physicalSlot in command.Slots)
+        {
+            LockerSnapshot locker = ReadLocker(snapshot, physicalSlot - 1);
+            if (physicalSlot == declaredSlot)
+            {
+                UpsertResult(results, CreateSlotResult(locker, "UNKNOWN", [SlotFaultDeclaredReason]));
+            }
+            else if (!completed.Contains(physicalSlot))
+            {
+                UpsertResult(results, CreateSlotResult(locker, "NOT_STARTED", []));
+            }
+            else if (IsFinalState(locker, command.ExpectedOccupied))
+            {
+                UpsertResult(results, CreateSlotResult(locker, "COMPLETED", []));
+                stillCompleted.Add(physicalSlot);
+            }
+            else
+            {
+                UpsertResult(
+                    results,
+                    CreateSlotResult(
+                        locker,
+                        "UNKNOWN",
+                        [fresh ? "RECOVERY_CHECKPOINT_NOT_UNIQUE" : "SLOT_STATE_UNKNOWN"]));
+            }
+        }
+
+        bool safeFinish = IsSafeFinish(snapshot, declaredSlot - 1);
+        WireToGateRecoveryCheckpoint checkpoint = safeFinish
+            ? WireToGateRecoveryCheckpoint.SafeFinishReached
+            : WireToGateRecoveryCheckpoint.ActiveUnlockSet;
+        IReadOnlyList<int> activeSlots = safeFinish ? [] : [declaredSlot];
+        await WriteCheckpointAsync(
+            context,
+            checkpoint,
+            activeSlots,
+            stillCompleted,
+            results,
+            existingState,
+            CancellationToken.None).ConfigureAwait(false);
+        await SendProgressAsync(
+                progress,
+                new(safeFinish ? "SAFE_FINISH" : "PAUSED", activeSlots, stillCompleted),
+                CancellationToken.None)
+            .ConfigureAwait(false);
+        return CreateResult(command, "UNKNOWN", results, checkpoint);
+    }
+
+    /// <summary>
+    /// Refuses the pulse about to go out on a slot a fault declaration was applied to. Called under
+    /// <see cref="_declarationGate"/>; the cancellation it throws is the one the run settles as declared.
+    /// </summary>
+    private static void ThrowIfDeclared(ActiveOperation? active, int physicalSlot)
+    {
+        if (IsDeclared(active, physicalSlot))
+        {
+            throw new OperationCanceledException();
+        }
+    }
+
+    /// <summary>
     /// Drives one slot to its target state (ADR-cross-0058 decision 1). A door shut over the opposite
     /// occupancy -- loading without putting a basket in, unloading without taking it out -- gets a
     /// fresh unlock pulse and another prompt: not a failure, not recovery, and no retry limit
@@ -1015,6 +1435,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         int physicalSlot,
         IReadOnlyList<int> completed,
         Func<WireToGateOperationProgress, CancellationToken, Task>? progress,
+        ActiveOperation? active,
         CancellationToken cancellationToken)
     {
         int slotIndex = physicalSlot - 1;
@@ -1057,12 +1478,23 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     progress,
                     new("UNLOCKING", [physicalSlot], completed, promptRound, cause),
                     cancellationToken).ConfigureAwait(false);
-                // After the progress send, not before it: that send waits on the network, and a latch
-                // arriving during it is exactly the window this check exists for. Nothing is awaited
-                // between here and the pulse.
-                ThrowIfFatalFaultLatched(reopen: pulseRequested);
-                pulseRequested = true;
-                await _ioModule.PulseUnlockAsync(slotIndex, cancellationToken).ConfigureAwait(false);
+                // The pulse is taken under the declaration gate, so a slot fault declaration is applied either
+                // before it -- and then none goes out -- or after it, never beside it (8005-agv-onboard-hmi#215).
+                await _declarationGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+                try
+                {
+                    ThrowIfDeclared(active, physicalSlot);
+                    // After the progress send, not before it: that send waits on the network, and a latch
+                    // arriving during it is exactly the window this check exists for. Nothing is awaited
+                    // between here and the pulse.
+                    ThrowIfFatalFaultLatched(reopen: pulseRequested);
+                    pulseRequested = true;
+                    await _ioModule.PulseUnlockAsync(slotIndex, cancellationToken).ConfigureAwait(false);
+                }
+                finally
+                {
+                    _declarationGate.Release();
+                }
                 // Both are hardware responses in milliseconds. Missing either one means the lock
                 // feedback or the unlock output cannot be trusted -- decision 2, not the operator.
                 LockerSnapshot unlocked = await _ioModule.WaitForLockerAsync(
@@ -1289,7 +1721,15 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     StringComparison.Ordinal)
                     ? current.PendingLoadCancellation
                     : existingState.PendingLoadCancellation,
-                ForcedIsolation = current.ForcedIsolation
+                ForcedIsolation = current.ForcedIsolation,
+                // A declaration belongs to its attempt: kept while this attempt is the one checkpointed, never
+                // carried into another (8005-agv-onboard-hmi#215).
+                SlotFaultDeclaration = string.Equals(
+                    current.SlotFaultDeclaration?.SlotOperationAttemptId,
+                    context.SlotOperationAttemptId,
+                    StringComparison.Ordinal)
+                    ? current.SlotFaultDeclaration
+                    : null
             },
             cancellationToken).ConfigureAwait(false);
     }
