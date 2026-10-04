@@ -28,6 +28,7 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
     [InlineData("lock-open", "UNLOCKED", "RESET")]
     [InlineData("output-active", "LOCKED", "ACTIVE")]
     [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-LOAD-COMPENSATION-EMPTY-DOOR-UNPROVEN")]
     public async Task ACompensationOverASlotAlreadyEmptyWithItsDoorUnprovenOpensNoDoorAndSettlesAllEmptyDoorUnproven(
         string condition,
         string lockState,
@@ -139,6 +140,7 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-LOAD-COMPENSATION-EMPTY-DOOR-UNPROVEN")]
     public async Task ASlotEmptiedWhoseLockNeverClosesStopsTheClearBeforeALoadedSlotOpens()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
@@ -163,6 +165,7 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-LOAD-COMPENSATION-EMPTY-DOOR-UNPROVEN")]
     public async Task AnUnprovenEmptyDoorAtTheStartRefusesAClearThatStillHasALoadedSlot()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
@@ -187,6 +190,7 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
     [InlineData(true)]
     [InlineData(false)]
     [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-LOAD-COMPENSATION-EMPTY-DOOR-UNPROVEN")]
     public async Task ALightCurtainThatCannotBeReadNeverSettlesAsDoorUnproven(bool atStart)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
@@ -220,7 +224,10 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
     [Theory]
     [InlineData(WireToGateRecoveryVectorTypes.LoadCancellation)]
     [InlineData(WireToGateRecoveryVectorTypes.LoadCompensation)]
+    [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-EMPTY-DOOR-UNPROVEN")]
+    [Trait("ProtocolVector", "CV-LOAD-COMPENSATION-EMPTY-DOOR-UNPROVEN")]
     public async Task AClearWhoseDoorsAllRelockIsStillCompleted(string vectorType)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
@@ -245,7 +252,6 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
     /// never closes is still UNKNOWN there.
     /// </summary>
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-07")]
     public async Task AFaultCargoHandoffKeepsAnUnprovenEmptyDoorUnknown()
     {
         CancellationToken token = TestContext.Current.CancellationToken;

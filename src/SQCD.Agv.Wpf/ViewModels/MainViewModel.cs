@@ -30,6 +30,8 @@ public sealed class MainViewModel : ViewModelBase
     private string _batteryStatusText = string.Empty;
     private string _batteryStatus = string.Empty;
     private string _chargingStatusText = string.Empty;
+    private string _doorHoldNotice = string.Empty;
+    private string _doorHoldSlots = string.Empty;
     private string _chargingStatus = string.Empty;
     private string? _loggedNonBusinessStopContradiction;
     private bool _hasWorklistItems;
@@ -364,6 +366,9 @@ public sealed class MainViewModel : ViewModelBase
         BatteryStatusText = WireToGateChargingText.BatteryText(snapshot);
         BatteryStatus = WireToGateChargingText.BatteryStatus(snapshot);
         ChargingStatusText = WireToGateChargingText.StatusText(snapshot);
+        // 门未证明扣车也整值跟随业务状态（onboard-hmi#219）：扣着就显示，服务端解除或断线清投影时一起消失。
+        DoorHoldNotice = WireToGateDoorHoldText.Notice(snapshot);
+        DoorHoldSlots = string.Join(",", WireToGateDoorHoldText.HeldSlots(snapshot));
         ChargingStatus = WireToGateChargingText.CycleStatus(snapshot);
         _worklistOperationSessionId = snapshot.CurrentStopWorklist?.OperationSessionId;
         ReplaceWorklistItemsCore(snapshot.CurrentStopWorklist?.Items ?? []);
@@ -1093,6 +1098,32 @@ public sealed class MainViewModel : ViewModelBase
     {
         get => _batteryStatus;
         private set => SetProperty(ref _batteryStatus, value);
+    }
+
+    /// <summary>
+    /// 门未证明扣车的提示：「仓已确认无货，门锁未锁闭，本车需维修后才能继续。」前面带被扣仓号；没有扣车时是空串
+    /// （CP-0009，onboard-hmi#219）。只照服务端车辆业务快照的 <c>blockingFacts</c>，车载端不自己判。
+    /// </summary>
+    public string DoorHoldNotice
+    {
+        get => _doorHoldNotice;
+        private set
+        {
+            if (SetProperty(ref _doorHoldNotice, value))
+            {
+                OnPropertyChanged(nameof(HasDoorHold));
+            }
+        }
+    }
+
+    /// <summary>是否有门未证明扣车。</summary>
+    public bool HasDoorHold => _doorHoldNotice.Length > 0;
+
+    /// <summary>扣车那一行给 UIA 的 ItemStatus（AutomationId <c>DoorHoldNotice</c>）：被扣仓号，逗号分隔，升序。</summary>
+    public string DoorHoldSlots
+    {
+        get => _doorHoldSlots;
+        private set => SetProperty(ref _doorHoldSlots, value);
     }
 
     /// <summary>车辆那一格的充电状态文字：充电周期状态与「需人工充电：服务端保持」（批次9-15，onboard-hmi#220）。</summary>

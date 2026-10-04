@@ -218,10 +218,6 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     private static readonly IReadOnlyDictionary<string, string> VectorsThisBatchOwesANamedTest =
         new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
-            ["CV-LOAD-CANCELLATION-EMPTY-DOOR-UNPROVEN"] =
-                "FP-IS-02, 3.0.0 candidate; the cancellation clearing path, 8005-agv-onboard-hmi#219",
-            ["CV-LOAD-COMPENSATION-EMPTY-DOOR-UNPROVEN"] =
-                "FP-IS-07, 3.0.0 candidate; the compensation clearing path, 8005-agv-onboard-hmi#219",
             ["CV-VEHICLE-HOLD-DOOR-REPAIR-RELEASE"] =
                 "FP-IS-07, 3.0.0 candidate; HARDWARE_REPAIR_RELEASE and the HOLD_RELEASE check, no onboard "
                 + "ticket yet (reported on 8005-agv-onboard-hmi#214)"

@@ -302,17 +302,32 @@
                     强制机械取出之后物理状态未知的仓位（REQ-0241，8005-agv-onboard-hmi#107）。这些仓在提交硬件恢复记录前
                     禁止任何仓位操作；没有时整行 Collapsed。UIA 按 AutomationId 找它。
                 -->
-                <TextBlock Grid.Row="4"
-                           Grid.Column="0"
-                           Grid.ColumnSpan="3"
-                           Margin="0,8,0,0"
-                           FontSize="14"
-                           FontWeight="Bold"
-                           Foreground="{StaticResource DangerBrush}"
-                           AutomationProperties.AutomationId="PhysicallyUnknownSlots"
-                           Text="{Binding PhysicallyUnknownSlotsText}"
-                           TextWrapping="Wrap"
-                           Visibility="{Binding HasPhysicallyUnknownSlots, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <StackPanel Grid.Row="4"
+                            Grid.Column="0"
+                            Grid.ColumnSpan="3">
+                    <TextBlock Margin="0,8,0,0"
+                               FontSize="14"
+                               FontWeight="Bold"
+                               Foreground="{StaticResource DangerBrush}"
+                               AutomationProperties.AutomationId="PhysicallyUnknownSlots"
+                               Text="{Binding PhysicallyUnknownSlotsText}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding HasPhysicallyUnknownSlots, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <!--
+                        门未证明扣车（CP-0009、REQ-0364，8005-agv-onboard-hmi#219）：光幕已证明仓空、门锁或开锁输出没证明，服务端
+                        结清需求并扣车。这一行只照服务端车辆业务快照里的 blockingFacts 显示，扣着就一直在，解除了就消失；没有时
+                        Collapsed。UIA 按 AutomationId DoorHoldNotice 找它，ItemStatus 给被扣仓号（逗号分隔）。
+                    -->
+                    <TextBlock Margin="0,8,0,0"
+                               FontSize="14"
+                               FontWeight="Bold"
+                               Foreground="{StaticResource DangerBrush}"
+                               AutomationProperties.AutomationId="DoorHoldNotice"
+                               AutomationProperties.ItemStatus="{Binding DoorHoldSlots}"
+                               Text="{Binding DoorHoldNotice}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding HasDoorHold, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                </StackPanel>
                 <WrapPanel Grid.Row="5"
                            Grid.Column="0"
                            Grid.ColumnSpan="3"
