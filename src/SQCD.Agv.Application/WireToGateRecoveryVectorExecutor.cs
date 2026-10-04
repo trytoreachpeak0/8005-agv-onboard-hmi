@@ -542,22 +542,16 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 : ValidateInitialSnapshot(beforePulse, [physicalSlot], correction);
             if (slotPrecheckFailure is not null)
             {
+                // Refused before this slot's unlock was written, so no door is in doubt: recorded at
+                // Prepared, which a replay reads back as FAILED (8005-agv-onboard-hmi#249).
                 AddRejectedResults(beforePulse, context.Slots, completed, results, correction);
-                await WriteVectorStateAsync(
-                    context,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                    [],
-                    completed,
-                    results,
-                    CancellationToken.None).ConfigureAwait(false);
-                DateTimeOffset observedAt = await EnsureResultObservedAtAsync(
-                    context,
-                    CancellationToken.None).ConfigureAwait(false);
+                DateTimeOffset observedAt = await RecordFailedResultAsync(context, completed, results)
+                    .ConfigureAwait(false);
                 return CreateResult(
                     context,
                     "FAILED",
                     results,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                    WireToGateRecoveryCheckpoint.Prepared,
                     observedAt);
             }
 
@@ -674,23 +668,17 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                         CreateSlotResult(ReadPhysicalSlot(refusalSnapshot, notStarted), "NOT_STARTED", []));
                 }
 
-                await WriteVectorStateAsync(
-                    context,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                    [],
-                    completed,
-                    results,
-                    CancellationToken.None).ConfigureAwait(false);
+                // Recorded at Prepared, as the precheck refusals are, and before the progress goes out
+                // (8005-agv-onboard-hmi#249).
+                DateTimeOffset refusedAt = await RecordFailedResultAsync(context, completed, results)
+                    .ConfigureAwait(false);
                 await SendProgressAsync(progress, "PAUSED", [], completed, CancellationToken.None)
                     .ConfigureAwait(false);
-                DateTimeOffset refusedAt = await EnsureResultObservedAtAsync(
-                    context,
-                    CancellationToken.None).ConfigureAwait(false);
                 return CreateResult(
                     context,
                     "FAILED",
                     results,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                    WireToGateRecoveryCheckpoint.Prepared,
                     refusedAt);
             }
             catch (Exception exception) when (
@@ -848,31 +836,81 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         // existingState held when the vector started, which is how a checkpoint used to drop a pending
         // result recorded between two of them (onboard-hmi#136 point 4).
         await _journal.UpdateRecoveryStateAsync(
-            current => current with
-            {
-                UnsettledSlotOperationAttemptId = context.SlotOperationAttemptId,
-                ProvenRecoveryCheckpoint = checkpoint,
-                ActiveUnlockSlots = activeSlots.Order().ToArray(),
-                CompletedSlots = completedSlots.Distinct().Order().ToArray(),
-                SlotResults = results
-                    .GroupBy(result => result.SlotNo)
-                    .Select(group => group.Last())
-                    .OrderBy(result => result.SlotNo)
-                    .ToArray(),
-                RecoveryVector = context,
-                ExceptionRecoverySessionId = context.ExceptionRecoverySessionId
-                    ?? current.ExceptionRecoverySessionId,
-                RecoveryActionId = context.VectorType is
-                    WireToGateRecoveryVectorTypes.LoadCompensation
-                    or WireToGateRecoveryVectorTypes.FaultCargoHandoff
-                    ? context.PrimaryId
-                    : current.RecoveryActionId,
-                RecoveryOperatorId = context.OperatorId ?? current.RecoveryOperatorId,
-                RecoveryOperatorVerifiedAt = context.OperatorVerifiedAt
-                    ?? current.RecoveryOperatorVerifiedAt
-            },
+            current => WithVectorState(current, context, checkpoint, activeSlots, completedSlots, results),
             cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Records a vector that stopped <c>FAILED</c> with no door in doubt, and its observation stamp, in one journal
+    /// write, and returns the stamp.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The checkpoint is <see cref="WireToGateRecoveryCheckpoint.Prepared"/> with an empty active unlock set: the
+    /// one checkpoint whose stamped result <see cref="ExecuteExclusiveAsync"/> and
+    /// <see cref="SettleWithoutUnlockAsync"/> replay as <c>FAILED</c>. Written at
+    /// <see cref="WireToGateRecoveryCheckpoint.ActiveUnlockSet"/>, the same result came back <c>UNKNOWN</c> when it was
+    /// asked for again, to go out under the deduplication key and messageId the first answer already holds
+    /// (8005-agv-onboard-hmi#249). Slots the vector finished stay counted complete, so
+    /// <see cref="RefuseBeforeUnlockAsync"/> still sees that it acted.
+    /// </para>
+    /// <para>
+    /// One write, not a checkpoint and then a stamp: a process that died between the two would come back to an
+    /// unstamped vector and run it again instead of answering what it had already decided. A stamp already on file
+    /// is kept.
+    /// </para>
+    /// </remarks>
+    private async Task<DateTimeOffset> RecordFailedResultAsync(
+        WireToGateRecoveryVectorContext context,
+        IReadOnlyList<int> completedSlots,
+        IReadOnlyList<WireToGateSlotExecutionResult> results)
+    {
+        WireToGateRecoveryState? written = await _journal.UpdateRecoveryStateAsync(
+            current => WithVectorState(
+                current,
+                context,
+                WireToGateRecoveryCheckpoint.Prepared,
+                [],
+                completedSlots,
+                results) with
+            {
+                RecoveryResultObservedAt = current.RecoveryResultObservedAt ?? _clock.Now.ToUniversalTime()
+            },
+            CancellationToken.None).ConfigureAwait(false);
+        // The change function never returns null, so neither does the journal.
+        return written?.RecoveryResultObservedAt ?? throw new UnreachableException();
+    }
+
+    private static WireToGateRecoveryState WithVectorState(
+        WireToGateRecoveryState current,
+        WireToGateRecoveryVectorContext context,
+        WireToGateRecoveryCheckpoint checkpoint,
+        IReadOnlyList<int> activeSlots,
+        IReadOnlyList<int> completedSlots,
+        IReadOnlyList<WireToGateSlotExecutionResult> results) =>
+        current with
+        {
+            UnsettledSlotOperationAttemptId = context.SlotOperationAttemptId,
+            ProvenRecoveryCheckpoint = checkpoint,
+            ActiveUnlockSlots = activeSlots.Order().ToArray(),
+            CompletedSlots = completedSlots.Distinct().Order().ToArray(),
+            SlotResults = results
+                .GroupBy(result => result.SlotNo)
+                .Select(group => group.Last())
+                .OrderBy(result => result.SlotNo)
+                .ToArray(),
+            RecoveryVector = context,
+            ExceptionRecoverySessionId = context.ExceptionRecoverySessionId
+                ?? current.ExceptionRecoverySessionId,
+            RecoveryActionId = context.VectorType is
+                WireToGateRecoveryVectorTypes.LoadCompensation
+                or WireToGateRecoveryVectorTypes.FaultCargoHandoff
+                ? context.PrimaryId
+                : current.RecoveryActionId,
+            RecoveryOperatorId = context.OperatorId ?? current.RecoveryOperatorId,
+            RecoveryOperatorVerifiedAt = context.OperatorVerifiedAt
+                ?? current.RecoveryOperatorVerifiedAt
+        };
 
     private static WireToGateRecoveryVectorExecutionResult CreateResult(
         WireToGateRecoveryVectorContext context,
