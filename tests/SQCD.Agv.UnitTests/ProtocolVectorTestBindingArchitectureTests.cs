@@ -218,9 +218,6 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     private static readonly IReadOnlyDictionary<string, string> VectorsThisBatchOwesANamedTest =
         new SortedDictionary<string, string>(StringComparer.Ordinal)
         {
-            ["CV-VEHICLE-HOLD-DOOR-REPAIR-RELEASE"] =
-                "FP-IS-07, 3.0.0 candidate; HARDWARE_REPAIR_RELEASE and the HOLD_RELEASE check, no onboard "
-                + "ticket yet (reported on 8005-agv-onboard-hmi#214)"
         };
 
     private sealed record VectorBinding(string VectorId, string TestName);

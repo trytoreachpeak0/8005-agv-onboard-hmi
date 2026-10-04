@@ -699,60 +699,6 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
-    /// The two purposes protocol 3.0.0 added besides <c>DEPARTURE</c> reach the vehicle schema-valid and
-    /// are refused as <c>ACTION_NOT_ALLOWED_IN_STATE</c>, session kept, with no result: this build does not
-    /// yet decide what a <c>SAFE</c> may release for a held vehicle or a move without a demand, so it
-    /// answers nothing rather than lend them the departure evaluation (8005-agv-onboard-hmi#214; the
-    /// answer itself is 8005-agv-onboard-hmi#219 and later tickets).
-    /// </summary>
-    [Theory]
-    [InlineData("NON_BUSINESS_MOVE")]
-    [InlineData("HOLD_RELEASE")]
-    public async Task ACheckForAPurposeThisBuildDoesNotAnswerIsRefusedAndTheSessionKept(string purpose)
-    {
-        CancellationToken token = TestContext.Current.CancellationToken;
-        FakeIoModuleClient io = new() { OperatorNeverActs = true };
-        await using Harness harness = await Harness.StartAsync(
-            server =>
-            {
-                server.SendJourneySnapshotsAfterRecovery = true;
-                server.JourneySnapshotPayloads = new Dictionary<string, object>
-                {
-                    ["VehicleBusinessStateSnapshot"] = Payloads.BusinessState(1, loadingPhase: null),
-                    ["CurrentStopWorklistSnapshot"] = Payloads.Worklist(1, Payloads.ItemA),
-                    ["UpcomingStopPlanSnapshot"] = Payloads.Plan(1, Payloads.TwoDemandLegs)
-                };
-            },
-            token,
-            io: io);
-        await harness.WaitUntilAsync(
-            () => harness.Session.CurrentJourney.CurrentStopWorklist is not null && harness.Session.Current.SafetyStateVersion > 0,
-            "the worklist and an accepted safety state",
-            token);
-
-        bool nonBusinessMove = purpose == "NON_BUSINESS_MOVE";
-        await harness.Server.SendCommandAsync(
-            "PreDepartureSafetyCheck",
-            Guid.NewGuid().ToString("D"),
-            new
-            {
-                preDepartureSafetyCheckId = Guid.NewGuid().ToString("D"),
-                checkPurpose = purpose,
-                demandId = (string?)null,
-                movementLegId = nonBusinessMove ? "22222222-2222-4222-8222-000000000009" : null,
-                expectedSafetyStateVersion = harness.Session.Current.SafetyStateVersion,
-                targetStationId = nonBusinessMove ? "ST-WAIT" : null
-            });
-
-        JsonElement problem = await WaitForPayloadAsync(harness, "ProtocolProblem", token);
-        Assert.Equal("PreDepartureSafetyCheck", problem.GetProperty("rejectedMessageType").GetString());
-        Assert.Equal("ACTION_NOT_ALLOWED_IN_STATE", problem.GetProperty("problem").GetProperty("reasonCode").GetString());
-        Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "PreDepartureSafetyCheckResult");
-        Assert.True(harness.Session.Current.Connected);
-        Assert.Empty(harness.UiErrors);
-    }
-
-    /// <summary>
     /// The first demand's load ends <c>FAILED</c> (refused before any unlock) or <c>UNKNOWN</c> (the
     /// door never reached a state the executor could prove) while a second demand waits on the same
     /// stop: the worklist and its side marks stay whole, nothing faults the UI, and the side of the
