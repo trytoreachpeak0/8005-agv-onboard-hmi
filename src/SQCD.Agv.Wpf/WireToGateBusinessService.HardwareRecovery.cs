@@ -22,12 +22,14 @@ public sealed partial class WireToGateBusinessService
     internal const string HardwareRecoveryActionPerformed = "ADMINISTRATOR_CONFIRMED_HARDWARE_REPAIRED";
 
     /// <summary>
-    /// Whether an administrator can submit the hardware recovery record for the slots a forced
-    /// mechanical recovery left physically unknown.
+    /// Whether an administrator can submit the hardware recovery record: for the slots a forced mechanical recovery
+    /// left physically unknown, or -- with no isolation standing -- on an accepted repair release over the slots held
+    /// for an unproven door (8005-agv-onboard-hmi#219). One form, two subjects; the isolation goes first.
     /// </summary>
     public bool CanSubmitHardwareRecoveryRecord =>
         CanUseRecoveryOperator(requireProof: true)
-        && Volatile.Read(ref _lastRecoveryState).ForcedIsolation is not null;
+        && Volatile.Read(ref _lastRecoveryState) is var state
+        && (state.ForcedIsolation is not null || state.RepairRelease is { Accepted: true });
 
     /// <summary>
     /// Submits the hardware recovery record for the forced recovery's whole slot set, and clears the
@@ -66,11 +68,18 @@ public sealed partial class WireToGateBusinessService
     {
         WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
             .ConfigureAwait(false);
+        if (state.ForcedIsolation is null && state.RepairRelease is { Accepted: true } release)
+        {
+            return await SubmitRepairReleaseRecordCoreAsync(release, observations, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
         WireToGateForcedIsolation isolation = state.ForcedIsolation
             ?? throw new InvalidOperationException("HARDWARE_RECOVERY_NOT_REQUIRED");
         RequireValidLiveSignals(isolation.PhysicallyUnknownSlots);
 
-        WireToGatePendingHardwareRecoveryRecord record = isolation.PendingRecord ?? NewRecord();
+        WireToGatePendingHardwareRecoveryRecord record =
+            isolation.PendingRecord ?? NewHardwareRecoveryRecord(observations);
         if (isolation.PendingRecord is null)
         {
             // This write owns ForcedIsolation and nothing else, so every other field is what the
@@ -143,24 +152,27 @@ public sealed partial class WireToGateBusinessService
             "HARDWARE_RECOVERY_RECORDED",
             $"硬件恢复记录已由服务端记录，{FormatSlots(isolation.PhysicallyUnknownSlots)}已解除物理状态未知；不会自动续作任何操作。 ");
         return true;
+    }
 
-        WireToGatePendingHardwareRecoveryRecord NewRecord()
+    /// <summary>
+    /// A new hardware recovery record by the administrator at the vehicle, with what they typed; refused blank.
+    /// </summary>
+    private WireToGatePendingHardwareRecoveryRecord NewHardwareRecoveryRecord(string observations)
+    {
+        if (string.IsNullOrWhiteSpace(observations))
         {
-            if (string.IsNullOrWhiteSpace(observations))
-            {
-                throw new InvalidOperationException("HARDWARE_RECOVERY_OBSERVATIONS_REQUIRED");
-            }
-
-            WireToGateOperatorContextPayload administrator = ReadOperatorContext();
-            return new(
-                Guid.NewGuid().ToString("D"),
-                administrator.OperatorId,
-                administrator.VerificationMethod,
-                administrator.VerifiedAt,
-                _recoveryOptions.AdministratorRole,
-                observations.Trim(),
-                _clock.Now.ToUniversalTime());
+            throw new InvalidOperationException("HARDWARE_RECOVERY_OBSERVATIONS_REQUIRED");
         }
+
+        WireToGateOperatorContextPayload administrator = ReadOperatorContext();
+        return new(
+            Guid.NewGuid().ToString("D"),
+            administrator.OperatorId,
+            administrator.VerificationMethod,
+            administrator.VerifiedAt,
+            _recoveryOptions.AdministratorRole,
+            observations.Trim(),
+            _clock.Now.ToUniversalTime());
     }
 
     /// <summary>

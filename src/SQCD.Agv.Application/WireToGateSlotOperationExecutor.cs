@@ -904,7 +904,8 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         // every operation.
         WireToGateRecoveryState fresh = WireToGateRecoveryState.Empty with
         {
-            ForcedIsolation = journaled.ForcedIsolation
+            ForcedIsolation = journaled.ForcedIsolation,
+            RepairRelease = journaled.RepairRelease
         };
         WireToGateRecoveryOperationContext context =
             WireToGateRecoveryOperationContext.FromCommand(command);
@@ -1722,6 +1723,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     ? current.PendingLoadCancellation
                     : existingState.PendingLoadCancellation,
                 ForcedIsolation = current.ForcedIsolation,
+                RepairRelease = current.RepairRelease,
                 // A declaration belongs to its attempt: kept while this attempt is the one checkpointed, never
                 // carried into another (8005-agv-onboard-hmi#215).
                 SlotFaultDeclaration = string.Equals(

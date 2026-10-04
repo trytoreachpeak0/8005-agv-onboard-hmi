@@ -162,6 +162,10 @@ public static class OnboardFailureClassification
         "HARDWARE_RECOVERY_RECORD_REQUIRED",
         "SLOT_STATE_UNKNOWN",
 
+        // The repair release was pressed with no hold for an unproven door on record (8005-agv-onboard-hmi#219).
+        // The press did nothing; the hold, when there is one, is the server's to publish.
+        "REPAIR_RELEASE_NOT_REQUIRED",
+
         // A forced recovery on a demand confirmed without its cargo handoff record (SUBLOT and receiver,
         // 8005-agv-onboard-hmi#216): an incomplete press, refused before anything is written. The operator
         // fills in the record and presses again; latching the vehicle over it would add nothing.

@@ -204,6 +204,9 @@ public sealed class ProtocolVectorTestBindingArchitectureTests
     /// onboard ticket yet, and its note says so rather than guessing one. The two slot fault declaration
     /// vectors left when batch 8-13 (<c>8005-agv-onboard-hmi#215</c>) built the declaration;
     /// the <c>StationDeadlineExpiredG2Tests</c> declaration cases and the executor's own tests bind them.
+    /// The last three left when 8005-agv-onboard-hmi#219 built the door-unproven settlement and the repair release:
+    /// <c>RecoveryVectorG2Tests</c> (compensation, release) and <c>MultiDemandJourneyG2Tests</c> (cancellation) bind
+    /// them, beside the clearing executor's own tests. The set is empty again.
     /// </para>
     /// <para>
     /// <b>They are pinned here rather than in <see cref="VectorsAwaitingTheirSlice"/>.</b> The

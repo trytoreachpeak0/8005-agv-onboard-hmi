@@ -2338,6 +2338,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         $"recovery-session-snapshot:{recoverySnapshot.ExceptionRecoverySessionId}:{recoverySnapshot.RecoverySessionRevision}";
                     if (recoverySnapshot.State == "CLOSED")
                     {
+                        // A repair release's session is over, whatever it ended on (8005-agv-onboard-hmi#219).
+                        await ForgetRepairReleaseOfClosedSessionAsync(
+                                recoverySnapshot.ExceptionRecoverySessionId,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+
                         // The reason is said once per closed session and revision, in this process: the
                         // server resends a CLOSED it has no acknowledgement for on the next session, and
                         // the event deduplicator is cleared on every new generation. Kept in its own field,

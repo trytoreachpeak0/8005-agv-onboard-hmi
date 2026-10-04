@@ -341,7 +341,9 @@ public partial class MainWindow : Window
     {
         if (_viewModel is null
             || MessageBox.Show(
-                "请确认强制机械取出涉及的全部仓位已修复，锁反馈、光幕和开锁输出信号正常。\n\n提交后服务端记录硬件恢复；车载端复核实时信号有效后解除这些仓位的「物理状态未知」，不会自动续作任何操作。是否提交？",
+                "请确认需要恢复的全部仓位（强制机械取出的仓位，或因门锁未证明被扣的仓位）已修复，锁反馈、光幕和开锁输出信号正常。\n\n"
+                    + "提交后服务端记录硬件恢复：强制机械取出的仓位由车载端复核实时信号有效后解除「物理状态未知」；被扣的仓位由服务端"
+                    + "核对新读数、做一次扣车解除检查后决定是否解除扣车。不会自动续作任何操作。是否提交？",
                 "提交硬件恢复记录",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question,
@@ -353,6 +355,29 @@ public partial class MainWindow : Window
         if (!await _viewModel.SubmitHardwareRecoveryRecordAsync())
         {
             ShowRecoveryFailure("硬件恢复记录未生效。请填写说明、确认仓位信号有效后再提交。", "硬件恢复记录失败");
+        }
+    }
+
+    /// <summary>
+    /// 维修放行（onboard-hmi#219）：申请解除门锁未证明的扣车。只开会话、选放行动作，不开任何仓门。
+    /// </summary>
+    private async void OnHardwareRepairReleaseClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null
+            || MessageBox.Show(
+                "请由授权维护人员确认：被扣仓位的门锁已经修好，仓内无货。\n\n申请维修放行不会开任何仓门；获准后请填写维修记录并提交，"
+                    + "服务端核对新读数、做一次扣车解除检查后决定是否解除扣车。是否继续？",
+                "维修放行",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.RequestHardwareRepairReleaseAsync())
+        {
+            ShowRecoveryFailure("维修放行未获服务端授权。请查看日志中的原因，车辆保持扣车。", "维修放行未受理");
         }
     }
 

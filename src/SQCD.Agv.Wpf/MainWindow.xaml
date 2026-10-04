@@ -516,6 +516,20 @@
                             Visibility="{Binding CanSubmitHardwareRecoveryRecord, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnSubmitHardwareRecoveryRecordClick"
                             Content="提交硬件恢复记录" />
+                    <!--
+                        维修放行（CP-0009、REQ-0364，8005-agv-onboard-hmi#219）：服务端因门锁未证明扣着本车时出现，只给带认证的维护
+                        管理员。按下去开一个无需求的恢复会话并选 HARDWARE_REPAIR_RELEASE，不开任何仓门；获准后上面的「提交硬件恢复记录」
+                        出现，记录挂在放行动作上。解除扣车由服务端在核对新读数、做完一次 HOLD_RELEASE 检查之后决定。
+                    -->
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            Background="#D6A32A"
+                            AutomationProperties.AutomationId="HardwareRepairRelease"
+                            IsEnabled="{Binding CanRequestHardwareRepairRelease}"
+                            Visibility="{Binding CanRequestHardwareRepairRelease, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnHardwareRepairReleaseClick"
+                            Content="维修放行" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"

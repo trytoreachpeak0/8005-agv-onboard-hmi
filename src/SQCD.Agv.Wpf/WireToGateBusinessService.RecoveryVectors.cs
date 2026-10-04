@@ -3095,7 +3095,7 @@ public sealed partial class WireToGateBusinessService
             PublishOperatorEvent(
                 $"recovery-vector-door-unproven:{context.VectorType}:{context.PrimaryId}",
                 "RECOVERY_VECTOR_DOOR_UNPROVEN",
-                $"{FormatSlots(DoorUnprovenSlots(result.SlotResults))}{DoorUnprovenRepairNotice}");
+                $"{FormatSlots(DoorUnprovenSlots(result.SlotResults))}：{DoorUnprovenRepairNotice}");
             return false;
         }
 
