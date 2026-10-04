@@ -1,10 +1,12 @@
 == M3_PAUSED_BEFORE_WRITE: exit=1 KILLED
-Failed!  - Failed:     3, Passed:    41, Skipped:     0, Total:    44, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     3, Passed:    44, Skipped:     0, Total:    47, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
 == M6_DROP_COMPLETED: exit=1 KILLED
-Failed!  - Failed:     4, Passed:    40, Skipped:     0, Total:    44, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     4, Passed:    43, Skipped:     0, Total:    47, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
 == M10_PREPARED_FAILED_EVEN_WITH_ACTIVE: exit=1 KILLED
-Failed!  - Failed:     2, Passed:    42, Skipped:     0, Total:    44, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     5, Passed:    42, Skipped:     0, Total:    47, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
 == M11_REFUSAL_DROPS_HANDED_OVER_DOOR: exit=1 KILLED
-Failed!  - Failed:     1, Passed:    43, Skipped:     0, Total:    44, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     4, Passed:    43, Skipped:     0, Total:    47, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
 == M12_SHUT_HANDED_OVER_DOOR_STILL_IN_DOUBT: exit=1 KILLED
-Failed!  - Failed:     1, Passed:    43, Skipped:     0, Total:    44, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)
+Failed!  - Failed:     1, Passed:    46, Skipped:     0, Total:    47, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
+== M13_STALE_SHUT_READING_PROVES_SHUT: exit=1 KILLED
+Failed!  - Failed:     1, Passed:    46, Skipped:     0, Total:    47, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
