@@ -300,6 +300,188 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// <c>release-session-stuck-after-onboard-restart</c>, the lost answer (PR #248 review, must-fix 1): the release's
+    /// session opens on the server but its <c>ExceptionRecoverySessionOpened</c> never arrives, and the server then
+    /// shows the session OPEN. The next press asks again under the same <c>requestId</c> with the same payload, so the
+    /// server answers with the session it already holds, and the release goes through. Each send is a message of its own.
+    /// </summary>
+    /// <remarks>
+    /// Red before the fix: the second press minted a new <c>requestId</c>, the server refused a second session while the
+    /// first stood (<c>ACTION_NOT_ALLOWED_IN_STATE</c>), and the entry went grey on the OPEN snapshot -- the server's
+    /// session has no timeout, so the vehicle stayed held for good.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-VEHICLE-HOLD-DOOR-REPAIR-RELEASE")]
+    public async Task ARepairReleaseWhoseOpenedAnswerWasLostIsAskedAgainUnderTheSameRequest()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            loadAlreadySettled: true);
+        await HoldBothSlotsAsync(harness, token);
+        harness.Server.ModelOneOpenRecoverySession = true;
+        harness.Server.RecoverySessionOpenedRepliesToLose = 1;
+
+        Assert.False(await harness.Business.RequestHardwareRepairReleaseAsync("1号仓锁体已更换。", token));
+        await ShowTheReleaseSessionOpenAsync(harness, harness.Server, harness.ResultsOfType("ExceptionRecoverySessionRequested")[0]);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Business.CanRequestHardwareRepairRelease,
+            "the entry to stay open over the release's own OPEN session",
+            token);
+
+        Assert.True(await harness.Business.RequestHardwareRepairReleaseAsync("另一段理由，不应被发出。", token));
+
+        AssertTheSameRequestWasRepeated(harness.Server, harness.Server);
+        Assert.True((await harness.ReadRecoveryStateAsync(token)).RepairRelease?.Accepted);
+        Assert.True(harness.Business.CanSubmitHardwareRecoveryRecord);
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>
+    /// The same, across a restart between the two journal writes of the request (PR #248 review, must-fix 1): the
+    /// release is on file with no session id, the server holds the session, and the vehicle comes back up. The press
+    /// after the restart repeats the request on file and the release goes through.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-VEHICLE-HOLD-DOOR-REPAIR-RELEASE")]
+    public async Task ARepairReleaseInterruptedBetweenItsTwoJournalWritesGoesThroughAfterARestart()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = NewRestartJournalPath();
+        await using FakeControlServer server = RecoveryVectorHarness.NewServer();
+        await using (RecoveryVectorHarness first = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: server,
+            journalPath: journalPath,
+            loadAlreadySettled: true))
+        {
+            await HoldBothSlotsAsync(first, token);
+            server.ModelOneOpenRecoverySession = true;
+            server.RecoverySessionOpenedRepliesToLose = 1;
+            Assert.False(await first.Business.RequestHardwareRepairReleaseAsync("1号仓锁体已更换。", token));
+            WireToGateRecoveryState interrupted = await first.ReadRecoveryStateAsync(token);
+            Assert.NotNull(interrupted.RepairRelease);
+            Assert.Null(interrupted.RepairRelease!.ExceptionRecoverySessionId);
+        }
+
+        await using FakeControlServer serverAfterRestart = RecoveryVectorHarness.NewServer();
+        serverAfterRestart.AdoptDurableRecoveryMemoryFrom(server);
+        serverAfterRestart.ModelOneOpenRecoverySession = true;
+        await using RecoveryVectorHarness afterRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: serverAfterRestart,
+            journalPath: journalPath,
+            restart: true,
+            loadAlreadySettled: true);
+        await serverAfterRestart.PublishDoorHoldAsync([1, 2]);
+        await ShowTheReleaseSessionOpenAsync(
+            afterRestart,
+            serverAfterRestart,
+            server.ReceivedEnvelopes.First(item => item.MessageType == "ExceptionRecoverySessionRequested").WireLine);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => afterRestart.Business.CanRequestHardwareRepairRelease,
+            "the entry over the release on file after the restart",
+            token);
+
+        Assert.True(await afterRestart.Business.RequestHardwareRepairReleaseAsync("另一段理由，不应被发出。", token));
+
+        AssertTheSameRequestWasRepeated(server, serverAfterRestart);
+        Assert.True((await afterRestart.ReadRecoveryStateAsync(token)).RepairRelease?.Accepted);
+        Assert.Equal(0, afterRestart.Io.UnlockCount);
+    }
+
+    /// <summary>Compensates over an unreadable lock, waits for the hold, and repairs the lock.</summary>
+    private static async Task HoldBothSlotsAsync(RecoveryVectorHarness harness, CancellationToken token)
+    {
+        await CompensateOverAnUnreadableLockAsync(harness, token);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Business.CanRequestHardwareRepairRelease,
+            "the repair release entry over the held slots",
+            token);
+        harness.Io.CloseDoor(0, cargo: false);
+    }
+
+    /// <summary>
+    /// What the server publishes once the release's session is open: OPEN, no demand, the held slots. Returns once the
+    /// vehicle has stored it -- the OPEN revision is not acknowledged, so the operator event published after the store
+    /// is the signal -- and an entry read afterwards is read over that snapshot.
+    /// </summary>
+    private static async Task ShowTheReleaseSessionOpenAsync(
+        RecoveryVectorHarness harness,
+        FakeControlServer server,
+        string requestLine)
+    {
+        using JsonDocument request = JsonDocument.Parse(requestLine);
+        JsonElement payload = request.RootElement.GetProperty("payload");
+        int shownBefore = OpenSessionsShown(harness);
+        await server.SendCommandAsync(
+            "ExceptionRecoverySessionSnapshot",
+            Guid.NewGuid().ToString("D"),
+            new
+            {
+                exceptionRecoverySessionId = RecoverySessionId,
+                recoverySessionRevision = 1,
+                state = "OPEN",
+                administratorId = "maintenance-001",
+                administratorRole = "MAINTENANCE_ADMINISTRATOR",
+                eventId = payload.GetProperty("eventId").GetString(),
+                demandId = (string?)null,
+                slotOperationAttemptId = (string?)null,
+                slots = HeldSlotsOneAndTwo,
+                selectedAction = (string?)null,
+                allowedActions = ReleaseActions,
+                blockingFacts = Array.Empty<object>(),
+                closedReason = (string?)null
+            });
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => OpenSessionsShown(harness) > shownBefore,
+            "the vehicle to take the release's OPEN session snapshot",
+            CancellationToken.None);
+    }
+
+    private static int OpenSessionsShown(RecoveryVectorHarness harness) =>
+        harness.OperatorEvents.Count(item => item.Kind == "RECOVERY_SESSION_UPDATED"
+            && item.Message.Contains("OPEN", StringComparison.Ordinal));
+
+    private static readonly string[] ReleaseActions = ["FORCED_MECHANICAL_RECOVERY", "HARDWARE_REPAIR_RELEASE"];
+
+    /// <summary>
+    /// The two session requests carry one requestId and one payload byte for byte, under two messageIds, and the server
+    /// refused none of them.
+    /// </summary>
+    private static void AssertTheSameRequestWasRepeated(FakeControlServer first, FakeControlServer second)
+    {
+        string[] requests =
+        [
+            .. first.ReceivedEnvelopes
+                .Where(item => item.MessageType == "ExceptionRecoverySessionRequested")
+                .Select(item => item.WireLine),
+            .. ReferenceEquals(first, second)
+                ? []
+                : second.ReceivedEnvelopes
+                    .Where(item => item.MessageType == "ExceptionRecoverySessionRequested")
+                    .Select(item => item.WireLine)
+        ];
+        Assert.Equal(2, requests.Length);
+        Assert.NotEqual(MessageIdOf(requests[0]), MessageIdOf(requests[1]));
+        Assert.Equal(PayloadText(requests[0]), PayloadText(requests[1]));
+        Assert.Empty(first.RejectedRecoverySessionRequests);
+        Assert.Empty(second.RejectedRecoverySessionRequests);
+        Assert.Contains(
+            second.ReceivedEnvelopes,
+            item => item.MessageType == "RecoveryActionSubmitted"
+                && item.WireLine.Contains("HARDWARE_REPAIR_RELEASE", StringComparison.Ordinal));
+    }
+
+    private static string? MessageIdOf(string wireLine)
+    {
+        using JsonDocument document = JsonDocument.Parse(wireLine);
+        return document.RootElement.GetProperty("messageId").GetString();
+    }
+
+    /// <summary>
     /// Asks for the compensation of the seeded settled load with slot 1's lock feedback unreadable and its light
     /// curtain EMPTY, and returns the result's payload.
     /// </summary>

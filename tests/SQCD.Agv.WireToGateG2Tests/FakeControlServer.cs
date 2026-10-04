@@ -734,6 +734,31 @@ public sealed class FakeControlServer : IAsyncDisposable
     public string? RecoverySessionRejectionReasonCode { get; set; }
 
     /// <summary>
+    /// Models the real server's one open recovery session per vehicle (control-server
+    /// <c>OnboardRecoveryCoordinator.OpenSessionAsync</c>, 8005-agv-onboard-hmi#219 review): a request whose
+    /// <c>requestId</c> opened the standing session is answered with that session again when its payload is the same
+    /// (a different payload under the same id drops the connection, as the server's content conflict does); any other
+    /// request while it stands is rejected with <c>ACTION_NOT_ALLOWED_IN_STATE</c>. A recorded hardware record closes
+    /// it, as the repair release's session closes on <c>RECORDED</c>. Off by default: the older tests here open a
+    /// session per request.
+    /// </summary>
+    public bool ModelOneOpenRecoverySession { get; set; }
+
+    /// <summary>How many <c>ExceptionRecoverySessionOpened</c> answers to lose after the session has opened.</summary>
+    public int RecoverySessionOpenedRepliesToLose
+    {
+        get => Volatile.Read(ref _recoverySessionOpenedRepliesToLose);
+        set => Volatile.Write(ref _recoverySessionOpenedRepliesToLose, value);
+    }
+
+    private int _recoverySessionOpenedRepliesToLose;
+
+    private (string RequestId, string Payload)? _openRecoverySession;
+
+    /// <summary>The requestIds whose session request this double answered with a rejection, oldest first.</summary>
+    public IReadOnlyList<string> RejectedRecoverySessionRequests { get; private set; } = [];
+
+    /// <summary>
     /// 带着别的字节重复到达的恢复请求 messageId。真服务端的 <c>ProtocolInbox</c> 把 messageId 绑死在
     /// 它第一次带来的整行字节上（<c>WireContentHash.Sha256(line)</c>），之后内容不同就抛
     /// <c>ProtocolContentConflictException</c> 并掐掉连接。替身照做——不照做的话，车辆复用一个
@@ -965,6 +990,7 @@ public sealed class FakeControlServer : IAsyncDisposable
 
                 _settledAttempts.UnionWith(previous._settledAttempts);
                 _operationsNeedingRecovery.UnionWith(previous._operationsNeedingRecovery);
+                _openRecoverySession = previous._openRecoverySession;
                 // The hold and the business state revision it was published under: a later push has to advance it.
                 DoorHeldSlots = previous.DoorHeldSlots;
                 _doorHoldBusinessStateRevision = Interlocked.Read(ref previous._doorHoldBusinessStateRevision);
@@ -2595,7 +2621,45 @@ public sealed class FakeControlServer : IAsyncDisposable
         JsonElement request)
     {
         JsonElement payload = request.GetProperty("payload");
-        if (RecoverySessionRejectionReasonCode is { } rejectionReasonCode)
+        string? standingRejection = null;
+        if (ModelOneOpenRecoverySession)
+        {
+            string requestId = payload.GetProperty("requestId").GetString()!;
+            string content = payload.GetRawText();
+            bool conflict = false;
+            lock (_sync)
+            {
+                if (_openRecoverySession is { } open)
+                {
+                    if (open.RequestId != requestId)
+                    {
+                        standingRejection = "ACTION_NOT_ALLOWED_IN_STATE";
+                        RejectedRecoverySessionRequests = [.. RejectedRecoverySessionRequests, requestId];
+                    }
+                    else if (open.Payload != content)
+                    {
+                        conflict = true;
+                    }
+                }
+                else
+                {
+                    _openRecoverySession = (requestId, content);
+                }
+            }
+
+            if (conflict)
+            {
+                context.Client.Close();
+                return;
+            }
+
+            if (standingRejection is null && TryConsume(ref _recoverySessionOpenedRepliesToLose))
+            {
+                return;
+            }
+        }
+
+        if ((standingRejection ?? RecoverySessionRejectionReasonCode) is { } rejectionReasonCode)
         {
             await WriteEnvelopeAsync(
                 context,
@@ -2770,6 +2834,14 @@ public sealed class FakeControlServer : IAsyncDisposable
     {
         BeforeHardwareRecoveryRecordResult?.Invoke();
         bool recorded = HardwareRecoveryRecordOutcome == "RECORDED";
+        if (recorded)
+        {
+            lock (_sync)
+            {
+                _openRecoverySession = null;
+            }
+        }
+
         await WriteEnvelopeAsync(
             context,
             CreateEnvelope(
