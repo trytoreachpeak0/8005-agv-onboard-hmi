@@ -230,20 +230,25 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
     /// </summary>
     /// <remarks>
     /// The open door's result is UNKNOWN with what the IO reads and its own precheck reason, as a handed-over door that
-    /// ends uncertain mid-vector reports it. A handed-over door the snapshot proves shut is in no doubt: it leaves the
-    /// set, and with nothing left in it the refusal is the FAILED it always was.
+    /// ends uncertain mid-vector reports it. A handed-over door the snapshot proves shut is in no doubt -- shut again
+    /// empty or over a basket, since shut is what proves a door is not open, whatever it holds: it leaves the set, and
+    /// with nothing left in it the refusal is the FAILED it always was.
     /// </remarks>
     [Theory]
-    [InlineData(true, "UNKNOWN")]
-    [InlineData(false, "FAILED")]
+    [InlineData(true, false, "UNKNOWN")]
+    [InlineData(false, false, "FAILED")]
+    [InlineData(false, true, "FAILED")]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
     public async Task APrecheckRefusalKeepsAHandedOverDoorThatMayStandOpenInTheActiveSet(
         bool doorStillOpen,
+        bool basketBehindDoor,
         string expected)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
-        await using TestFixture fixture = await TestFixture.CreateAsync([true, false], cancellationToken: token);
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            [true, basketBehindDoor],
+            cancellationToken: token);
         if (doorStillOpen)
         {
             fixture.Io.OpenDoor(1);
@@ -283,6 +288,7 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
         {
             Assert.Equal("NOT_STARTED", handedOver.Outcome);
             Assert.Equal("LOCKED", handedOver.LockState);
+            Assert.Equal(basketBehindDoor ? "OCCUPIED" : "EMPTY", handedOver.FinalPhysicalState);
             Assert.Empty(handedOver.ReasonCodes);
         }
 
@@ -380,6 +386,13 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
         WireToGateSlotExecutionResult handedOver = first.SlotResults.Single(slot => slot.SlotNo == door);
         Assert.Equal("UNKNOWN", handedOver.Outcome);
         Assert.Equal(["SLOT_STATE_UNKNOWN"], handedOver.ReasonCodes);
+        if (trigger != "handed-over-unreadable")
+        {
+            // The reading is stale: what it last said about the door is not stated as the door's state.
+            Assert.Equal(
+                ("UNKNOWN", "UNKNOWN", "UNKNOWN"),
+                (handedOver.FinalPhysicalState, handedOver.LockState, handedOver.UnlockOutputState));
+        }
         if (trigger == "handed-over-unreadable")
         {
             WireToGateSlotExecutionResult other = first.SlotResults.Single(slot => slot.SlotNo == 1);
@@ -394,6 +407,188 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
         await using WireToGateRecoveryVectorExecutor restarted = RestartedExecutor(fixture);
         AssertSameAnswer(first, await restarted.ExecuteClearAsync(context, null, token));
         Assert.Empty(fixture.Io.Pulses);
+    }
+
+    /// <summary>
+    /// A resumed cancellation whose completed slot 1 no longer reads final, while the door the aborted load handed over
+    /// may still stand open: the active unlock set names that door, the answer is UNKNOWN, and every entry answers the
+    /// same (8005-agv-onboard-hmi#249 review round 3, S1).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The journal is the one a process leaves that died after the prepared checkpoint and before the handed-over door's
+    /// own unlock set: Prepared, slot 2 active, slot 1 complete. The set holds one door at most (REQ-0357), and the
+    /// handed-over door -- known to have been open -- is the one it holds.
+    /// </para>
+    /// <para>
+    /// <c>basket-appeared</c>: slot 1 is locked and reset but reads a basket. The whole-vector precheck passes and the
+    /// resume path's own check stops the vector at the active unlock set, slot 1 UNKNOWN. That early return used to write
+    /// slot 1 alone, so the next handshake no longer named slot 2.
+    /// </para>
+    /// <para>
+    /// <c>door-reads-open</c>: slot 1's door reads open. The whole-vector precheck refuses before the resume path's check
+    /// is reached, so this is the refusal of <see cref="RecordRefusalAsync"/>, recorded at the prepared checkpoint; the
+    /// open door is also in the safety summary as <c>LOCK_NOT_CLOSED</c>.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("basket-appeared", WireToGateRecoveryCheckpoint.ActiveUnlockSet)]
+    [InlineData("door-reads-open", WireToGateRecoveryCheckpoint.Prepared)]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task AResumeThatFindsACompletedSlotChangedKeepsTheHandedOverDoorInTheActiveSet(
+        string change,
+        WireToGateRecoveryCheckpoint expectedCheckpoint)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        // Slot 2 is empty with its door open. Slot 1 reads a basket behind a locked door, or is empty with its door open.
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            [change == "basket-appeared", false],
+            cancellationToken: token);
+        fixture.Io.OpenDoor(1);
+        if (change == "door-reads-open")
+        {
+            fixture.Io.OpenDoor(0);
+        }
+
+        WireToGateRecoveryVectorContext context = CreateContext(
+            WireToGateRecoveryVectorTypes.LoadCancellation,
+            "b4b4b4b4-b4b4-4b4b-8b4b-b4b4b4b4b4f1",
+            [1, 2]);
+        await fixture.Journal.UpdateRecoveryStateAsync(
+            _ => new WireToGateRecoveryState(
+                context.SlotOperationAttemptId,
+                WireToGateRecoveryCheckpoint.Prepared,
+                [2],
+                0,
+                [])
+            {
+                RecoveryVector = context,
+                CompletedSlots = [1],
+                SlotResults = [new WireToGateSlotExecutionResult(1, "COMPLETED", "EMPTY", "LOCKED", "RESET", [])]
+            },
+            token);
+
+        WireToGateRecoveryVectorExecutionResult first = await fixture.Executor.ExecuteClearAsync(context, null, token);
+
+        Assert.Equal("UNKNOWN", first.OverallOutcome);
+        WireToGateRecoveryState recorded = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal(expectedCheckpoint, recorded.ProvenRecoveryCheckpoint);
+        Assert.Equal([2], recorded.ActiveUnlockSlots);
+        Assert.Equal(first.ObservedAt, recorded.RecoveryResultObservedAt);
+        WireToGateSlotExecutionResult door = first.SlotResults.Single(slot => slot.SlotNo == 2);
+        Assert.Equal("UNKNOWN", door.Outcome);
+        Assert.Equal("UNLOCKED", door.LockState);
+        Assert.Equal(["LOCK_NOT_CLOSED"], door.ReasonCodes);
+        if (change == "basket-appeared")
+        {
+            Assert.Equal("UNKNOWN", first.SlotResults.Single(slot => slot.SlotNo == 1).Outcome);
+        }
+
+        fixture.Clock.Advance(TimeSpan.FromSeconds(5));
+        Assert.Null(await fixture.Executor.RefuseBeforeUnlockAsync(context, "VEHICLE_NOT_READY", token));
+        AssertSameAnswer(first, await fixture.Executor.SettleWithoutUnlockAsync(context, token));
+        AssertSameAnswer(first, await fixture.Executor.ExecuteClearAsync(context, null, token));
+        await using WireToGateRecoveryVectorExecutor restarted = RestartedExecutor(fixture);
+        AssertSameAnswer(first, await restarted.ExecuteClearAsync(context, null, token));
+        Assert.Empty(fixture.Io.Pulses);
+    }
+
+    /// <summary>
+    /// The latch refuses the pulse of a handed-over door that was shut again over a basket, after its lock feedback was
+    /// lost: the door stays in the active unlock set, the PAUSED progress names it, the answer is UNKNOWN -- and the
+    /// latch's reason code stays on the slot beside the precheck's, so the operator is still told the vehicle is latched
+    /// and the server still hears it (8005-agv-onboard-hmi#249 review round 3, S2).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ALatchRefusalOverAHandedOverDoorItCannotProveShutKeepsTheDoorAndTheLatchReason()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        bool latched = false;
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            [true, true],
+            fatalFaultLatched: () => Volatile.Read(ref latched),
+            cancellationToken: token);
+        // Slot 2 was handed over and shut again over its basket: an ordinary target, unlocked to be emptied.
+        WireToGateRecoveryVectorContext context = await HandOverAsync(
+            fixture,
+            "b4b4b4b4-b4b4-4b4b-8b4b-b4b4b4b4b4f2",
+            [1, 2],
+            [2],
+            token);
+        List<(string Phase, int[] Active)> phases = [];
+
+        WireToGateRecoveryVectorExecutionResult first = await fixture.Executor.ExecuteClearAsync(
+            context,
+            (phase, active, _, _) =>
+            {
+                phases.Add((phase, [.. active]));
+                if (phase == "UNLOCKING")
+                {
+                    // Between the slot's own precheck and the latch check before its pulse.
+                    Volatile.Write(ref latched, true);
+                    fixture.Io.LoseLockFeedback(1);
+                }
+
+                return Task.CompletedTask;
+            },
+            token);
+
+        Assert.Equal("UNKNOWN", first.OverallOutcome);
+        Assert.Empty(fixture.Io.Pulses);
+        WireToGateRecoveryState recorded = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal([2], recorded.ActiveUnlockSlots);
+        Assert.Equal([2], phases.Last(item => item.Phase == "PAUSED").Active);
+        WireToGateSlotExecutionResult door = first.SlotResults.Single(slot => slot.SlotNo == 2);
+        Assert.Equal("UNKNOWN", door.Outcome);
+        Assert.Equal(
+            [WireToGateSlotOperationExecutor.FatalFaultLatchedReason, "SLOT_STATE_UNKNOWN"],
+            door.ReasonCodes);
+    }
+
+    /// <summary>
+    /// A handed-over door this vector already finished is not in doubt, whatever a later reading says: the clear empties
+    /// and shuts the handed-over slot 1, the reading goes stale before slot 2's turn, slot 2's precheck refuses, and the
+    /// answer is the FAILED of a refusal with nothing open -- slot 1 COMPLETED, nothing in the active unlock set.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task AHandedOverDoorThisVectorFinishedIsNotKeptByALaterStaleRefusal()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([true, true], cancellationToken: token);
+        fixture.Io.OpenDoor(0);
+        WireToGateRecoveryVectorContext context = await HandOverAsync(
+            fixture,
+            "b4b4b4b4-b4b4-4b4b-8b4b-b4b4b4b4b4f4",
+            [1, 2],
+            [1],
+            token);
+
+        WireToGateRecoveryVectorExecutionResult first = await fixture.Executor.ExecuteClearAsync(
+            context,
+            (phase, _, completed, _) =>
+            {
+                if (phase == "VERIFYING" && completed.Contains(1))
+                {
+                    // The operator emptied and shut slot 1; nothing is read again before slot 2's turn.
+                    fixture.Clock.Advance(TimeSpan.FromSeconds(2));
+                }
+
+                return Task.CompletedTask;
+            },
+            token);
+
+        Assert.Equal("FAILED", first.OverallOutcome);
+        Assert.Empty(fixture.Io.Pulses);
+        WireToGateRecoveryState recorded = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Empty(recorded.ActiveUnlockSlots);
+        Assert.Equal([1], recorded.CompletedSlots);
+        Assert.Equal("COMPLETED", first.SlotResults.Single(slot => slot.SlotNo == 1).Outcome);
+        Assert.Equal("NOT_STARTED", first.SlotResults.Single(slot => slot.SlotNo == 2).Outcome);
     }
 
     private static Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>

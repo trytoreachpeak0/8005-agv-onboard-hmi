@@ -436,10 +436,17 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 if (!IsFinalState(locker, correction))
                 {
                     AddUnknownResults(initial, context.Slots, [slot], results);
+                    // One door at a time (REQ-0357): the set holds the one door that may be standing open. A door the
+                    // aborted load handed over open and this vector has not finished is that door -- it is known to
+                    // have been open -- so it takes the set; the changed slot is UNKNOWN in its result either way, and
+                    // one that reads open is also reported by the safety summary (LOCK_NOT_CLOSED, departure
+                    // unsafe). Without such a door the changed slot is the fence, as before
+                    // (8005-agv-onboard-hmi#249 review round 3).
+                    int[] doorsInDoubt = MarkHandedOverDoorsInDoubt(initial, handedOver, completed, results, correction);
                     await WriteVectorStateAsync(
                         context,
                         WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                        [slot],
+                        doorsInDoubt.Length > 0 ? doorsInDoubt : [slot],
                         completed,
                         results,
                         CancellationToken.None).ConfigureAwait(false);
@@ -862,17 +869,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             List<WireToGateSlotExecutionResult> results,
             bool correction)
     {
-        int[] stillActive = HandedOverDoorsInDoubt(snapshot, handedOver, completedSlots);
-        foreach (int slot in stillActive)
-        {
-            UpsertResult(
-                results,
-                CreateSlotResult(
-                    ReadPhysicalSlot(snapshot, slot),
-                    "UNKNOWN",
-                    [ValidateInitialSnapshot(snapshot, [slot], correction) ?? "SLOT_STATE_UNKNOWN"]));
-        }
-
+        int[] stillActive = MarkHandedOverDoorsInDoubt(snapshot, handedOver, completedSlots, results, correction);
         WireToGateRecoveryState? written = await _journal.UpdateRecoveryStateAsync(
             current => WithVectorState(
                 current,
@@ -899,6 +896,39 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 WireToGateRecoveryCheckpoint.Prepared,
                 observedAt),
             stillActive);
+    }
+
+    /// <summary>
+    /// Finds the handed-over doors in doubt (<see cref="HandedOverDoorsInDoubt"/>) and records each as <c>UNKNOWN</c>
+    /// with what the IO reads, returning them for the active unlock set.
+    /// </summary>
+    /// <remarks>
+    /// The reason codes are merged, not replaced: the slot keeps the codes already on its result and gains its own
+    /// precheck reason. A latch refusal has already put the latch's code on the slot whose pulse it refused, and that
+    /// code is how the operator is told the vehicle is latched (<c>RefusedByFatalFaultLatch</c>) and how the server
+    /// hears it; the precheck reason alone would drop both (8005-agv-onboard-hmi#249 review round 3).
+    /// </remarks>
+    private int[] MarkHandedOverDoorsInDoubt(
+        IoSnapshot snapshot,
+        int[] handedOver,
+        IReadOnlyList<int> completedSlots,
+        List<WireToGateSlotExecutionResult> results,
+        bool correction)
+    {
+        int[] inDoubt = HandedOverDoorsInDoubt(snapshot, handedOver, completedSlots);
+        foreach (int slot in inDoubt)
+        {
+            IReadOnlyList<string> earlier = results.FirstOrDefault(result => result.SlotNo == slot)?.ReasonCodes ?? [];
+            UpsertResult(
+                results,
+                CreateSlotResult(
+                    ReadPhysicalSlot(snapshot, slot),
+                    "UNKNOWN",
+                    [.. earlier.Append(ValidateInitialSnapshot(snapshot, [slot], correction) ?? "SLOT_STATE_UNKNOWN")
+                        .Distinct(StringComparer.Ordinal)]));
+        }
+
+        return inDoubt;
     }
 
     /// <summary>
@@ -961,8 +991,16 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
     /// asked for again, a fresh executor after a restart -- go through it, so they cannot drift apart
     /// (8005-agv-onboard-hmi#249). The prepared checkpoint is <c>FAILED</c> only while no slot is in the active unlock
     /// set: a door a cancelled load handed over open sits there at that checkpoint and may still stand open, so a
-    /// vector settled over it is <c>UNKNOWN</c>. Every writer of the prepared checkpoint keeps such a door in the set
-    /// (<see cref="RecordRefusalAsync"/> among them), so an empty set there does mean no door is in doubt.
+    /// vector settled over it is <c>UNKNOWN</c>. Every write of this executor keeps such a door in the set until the
+    /// vector has finished it (<see cref="RecordRefusalAsync"/>, the resume path's early return, the prepared checkpoint
+    /// it writes back), so for a load cancellation an empty set at the prepared checkpoint does mean no door is in
+    /// doubt. That covers this executor only: the business service writes a fresh vector's prepared checkpoint itself.
+    /// <para>
+    /// The set holds one door at most (REQ-0357; the journal refuses a wider one on write). Where two may stand open --
+    /// a handed-over door not yet finished and a completed slot that no longer reads shut -- the set takes the
+    /// handed-over door, which is known to have been open, and the other is reported UNKNOWN in its slot result and by
+    /// the safety summary's <c>LOCK_NOT_CLOSED</c>.
+    /// </para>
     /// <para>
     /// The reading is by checkpoint, not by physics, and it errs one way only. A vector that died at the active unlock
     /// set with the set already empty -- its last door finished, the next not yet fenced -- has no door in doubt either,
