@@ -1,0 +1,6 @@
+== M3_PAUSED_BEFORE_WRITE: exit=1 KILLED
+Failed!  - Failed:     3, Passed:    55, Skipped:     0, Total:    58, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)
+== M6_DROP_COMPLETED: exit=1 KILLED
+Failed!  - Failed:     4, Passed:    54, Skipped:     0, Total:    58, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)
+== M10_PREPARED_FAILED_EVEN_WITH_ACTIVE: exit=1 KILLED
+Failed!  - Failed:     1, Passed:    57, Skipped:     0, Total:    58, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)
