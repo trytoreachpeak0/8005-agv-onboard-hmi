@@ -594,22 +594,16 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 : ValidateInitialSnapshot(beforePulse, [physicalSlot], correction);
             if (slotPrecheckFailure is not null)
             {
+                // Refused before this slot's unlock was written, so no door is in doubt: recorded at
+                // Prepared, which a replay reads back as FAILED (8005-agv-onboard-hmi#249).
                 AddRejectedResults(beforePulse, context.Slots, completed, results, correction);
-                await WriteVectorStateAsync(
-                    context,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                    [],
-                    completed,
-                    results,
-                    CancellationToken.None).ConfigureAwait(false);
-                DateTimeOffset observedAt = await EnsureResultObservedAtAsync(
-                    context,
-                    CancellationToken.None).ConfigureAwait(false);
+                DateTimeOffset observedAt = await RecordFailedResultAsync(context, completed, results)
+                    .ConfigureAwait(false);
                 return CreateResult(
                     context,
                     "FAILED",
                     results,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                    WireToGateRecoveryCheckpoint.Prepared,
                     observedAt);
             }
 
@@ -731,23 +725,17 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                         CreateSlotResult(ReadPhysicalSlot(refusalSnapshot, notStarted), "NOT_STARTED", []));
                 }
 
-                await WriteVectorStateAsync(
-                    context,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                    [],
-                    completed,
-                    results,
-                    CancellationToken.None).ConfigureAwait(false);
+                // Recorded at Prepared, as the precheck refusals are, and before the progress goes out
+                // (8005-agv-onboard-hmi#249).
+                DateTimeOffset refusedAt = await RecordFailedResultAsync(context, completed, results)
+                    .ConfigureAwait(false);
                 await SendProgressAsync(progress, "PAUSED", [], completed, CancellationToken.None)
                     .ConfigureAwait(false);
-                DateTimeOffset refusedAt = await EnsureResultObservedAtAsync(
-                    context,
-                    CancellationToken.None).ConfigureAwait(false);
                 return CreateResult(
                     context,
                     "FAILED",
                     results,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                    WireToGateRecoveryCheckpoint.Prepared,
                     refusedAt);
             }
             catch (Exception exception) when (
@@ -943,7 +931,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
     /// stamp.
     /// </summary>
     /// <remarks>
-    /// Every other result is written as a checkpoint and then stamped in a second write
+    /// The UNKNOWN and COMPLETED results are written as a checkpoint and then stamped in a second write
     /// (<see cref="EnsureResultObservedAtAsync"/>). Here the pair must not be split: a process that died
     /// between them would come back to an unstamped vector whose active slot no fresh reading proves safe,
     /// and the replay fence would report UNKNOWN over a slot the light curtain had already settled. In one
@@ -962,6 +950,47 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 context,
                 WireToGateRecoveryCheckpoint.ActiveUnlockSet,
                 activeSlots,
+                completedSlots,
+                results) with
+            {
+                RecoveryResultObservedAt = current.RecoveryResultObservedAt ?? _clock.Now.ToUniversalTime()
+            },
+            CancellationToken.None).ConfigureAwait(false);
+        // The change function never returns null, so neither does the journal.
+        return written?.RecoveryResultObservedAt ?? throw new UnreachableException();
+    }
+
+    /// <summary>
+    /// Records a vector that stopped <c>FAILED</c> with no door in doubt, and its observation stamp, in one journal
+    /// write, and returns the stamp.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The checkpoint is <see cref="WireToGateRecoveryCheckpoint.Prepared"/> with an empty active unlock set: the
+    /// one checkpoint whose stamped result <see cref="ExecuteExclusiveAsync"/> and
+    /// <see cref="SettleWithoutUnlockAsync"/> replay as <c>FAILED</c>. Written at
+    /// <see cref="WireToGateRecoveryCheckpoint.ActiveUnlockSet"/>, the same result came back <c>UNKNOWN</c> when it was
+    /// asked for again, to go out under the deduplication key and messageId the first answer already holds
+    /// (8005-agv-onboard-hmi#249). Slots the vector finished stay counted complete, so
+    /// <see cref="RefuseBeforeUnlockAsync"/> still sees that it acted.
+    /// </para>
+    /// <para>
+    /// One write, not a checkpoint and then a stamp: a process that died between the two would come back to an
+    /// unstamped vector and run it again instead of answering what it had already decided. A stamp already on file
+    /// is kept.
+    /// </para>
+    /// </remarks>
+    private async Task<DateTimeOffset> RecordFailedResultAsync(
+        WireToGateRecoveryVectorContext context,
+        IReadOnlyList<int> completedSlots,
+        IReadOnlyList<WireToGateSlotExecutionResult> results)
+    {
+        WireToGateRecoveryState? written = await _journal.UpdateRecoveryStateAsync(
+            current => WithVectorState(
+                current,
+                context,
+                WireToGateRecoveryCheckpoint.Prepared,
+                [],
                 completedSlots,
                 results) with
             {
