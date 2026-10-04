@@ -3960,11 +3960,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
         }
 
-        if (payload.OverallOutcome is not ("ALL_EMPTY" or "FAILED" or "UNKNOWN"))
-        {
-            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
-        }
-
+        ValidateClearOutcome(payload.OverallOutcome, payload.SlotResults);
         ValidateSlotResults(payload.SlotResults, minimumCount: 0);
     }
 
@@ -3975,12 +3971,28 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         RequireUuid(payload.RecoveryActionId, nameof(payload.RecoveryActionId));
         RequireUuid(payload.DemandId, nameof(payload.DemandId));
         RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
-        if (payload.OverallOutcome is not ("ALL_EMPTY" or "FAILED" or "UNKNOWN"))
+        ValidateClearOutcome(payload.OverallOutcome, payload.SlotResults);
+        ValidateSlotResults(payload.SlotResults);
+    }
+
+    /// <summary>
+    /// The <c>overallOutcome</c> of a load cancellation or compensation result, with the schema's
+    /// <c>if/then</c> on the 3.0.0 value: <c>ALL_EMPTY_DOOR_UNPROVEN</c> carries at least one slot result and
+    /// every one of them <c>EMPTY</c> (CP-0009, 8005-agv-onboard-hmi#219). <c>ALL_EMPTY</c> keeps its meaning
+    /// and is not touched here.
+    /// </summary>
+    private static void ValidateClearOutcome(
+        string overallOutcome,
+        IReadOnlyList<WireToGateSlotResultPayload> slotResults)
+    {
+        if (overallOutcome is not ("ALL_EMPTY" or "FAILED" or "UNKNOWN" or "ALL_EMPTY_DOOR_UNPROVEN")
+            || overallOutcome == "ALL_EMPTY_DOOR_UNPROVEN"
+                && (slotResults is null
+                    || slotResults.Count == 0
+                    || slotResults.Any(result => result.FinalPhysicalState != "EMPTY")))
         {
             throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
         }
-
-        ValidateSlotResults(payload.SlotResults);
     }
 
     private static void ValidateLoadCorrectionResult(

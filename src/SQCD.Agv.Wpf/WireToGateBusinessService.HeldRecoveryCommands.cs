@@ -525,6 +525,10 @@ public sealed partial class WireToGateBusinessService
                 : result.OverallOutcome == "COMPLETED"
                     ? $"已按操作员选择不再继续{subject}；按日志这条恢复在重启前已执行完毕"
                         + $"（{FormatSlots(opened)}），已如实向服务端报告完成，车辆没有再开任何仓门。 "
+                : result.OverallOutcome == WireToGateRecoveryVectorExecutor.AllEmptyDoorUnprovenOutcome
+                    ? $"已按操作员选择不再继续{subject}；按日志这条恢复在重启前已按光幕结清为无货，"
+                        + $"{FormatSlots(DoorUnprovenSlots(result.SlotResults))}门锁未证明锁闭，已如实上报，车辆没有再开任何仓门。"
+                        + $"{DoorUnprovenRepairNotice} "
                     : $"已按操作员选择不再继续{subject}；部分仓门已开过：{FormatSlots(opened)}。"
                         + "已按日志如实向服务端报告结果未知（UNKNOWN），服务端将结束本次恢复，请现场核对这些仓位后重新发起。 ");
     }

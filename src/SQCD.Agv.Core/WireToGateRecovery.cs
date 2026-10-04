@@ -303,6 +303,16 @@ public sealed record WireToGateRecoveryState(
     /// </summary>
     public WireToGateSlotFaultDeclaration? SlotFaultDeclaration { get; init; }
 
+    /// <summary>
+    /// A <c>HARDWARE_REPAIR_RELEASE</c> this vehicle asked for over the slots the server holds for an unproven door
+    /// (CP-0009, REQ-0364, 8005-agv-onboard-hmi#219). Written before the session request and the action leave
+    /// (<c>JOURNAL_RELEASE_ACTION_BEFORE_SUBMITTING</c>), so a restart repeats the same ids and, once the action is
+    /// accepted, offers the repair record form again (<c>RESTORE_REPAIR_RECORD_FORM_AFTER_RESTART</c>). Like
+    /// <see cref="ForcedIsolation"/> it outlives every attempt: a hold is about the vehicle, not an operation.
+    /// Cleared when the server records the repair record, refuses it, or closes the session.
+    /// </summary>
+    public WireToGateRepairRelease? RepairRelease { get; init; }
+
     public static WireToGateRecoveryState Empty { get; } = new(
         null,
         WireToGateRecoveryCheckpoint.None,
@@ -333,6 +343,33 @@ public sealed record WireToGateForcedIsolation(
     /// field for field under a new messageId, for the reason <see cref="WireToGatePendingLoadCancellation"/>
     /// does: the server keeps the first content under the recordId.
     /// </summary>
+    public WireToGatePendingHardwareRecoveryRecord? PendingRecord { get; init; }
+}
+
+/// <summary>
+/// The journal's record of a repair release in progress (see <see cref="WireToGateRecoveryState.RepairRelease"/>).
+/// </summary>
+/// <param name="RequestId">The <c>ExceptionRecoverySessionRequested</c> that opens the release's session.</param>
+/// <param name="EventId">The event the session and the action are about; the request's own id.</param>
+/// <param name="RecoveryActionId">The release action, kept across presses: the server deduplicates by it.</param>
+/// <param name="Slots">The held slots, ascending, as the server named them when the release was asked for.</param>
+public sealed record WireToGateRepairRelease(
+    string RequestId,
+    string EventId,
+    string RecoveryActionId,
+    IReadOnlyList<int> Slots,
+    string OperatorId,
+    string OperatorVerificationMethod,
+    DateTimeOffset OperatorVerifiedAt,
+    string Reason)
+{
+    /// <summary>The session the server opened for the release, once it has answered.</summary>
+    public string? ExceptionRecoverySessionId { get; init; }
+
+    /// <summary>Whether the server accepted the release action; the repair record form is offered from then on.</summary>
+    public bool Accepted { get; init; }
+
+    /// <summary>The repair record that went out and has had no answer yet, repeated field for field on a retry.</summary>
     public WireToGatePendingHardwareRecoveryRecord? PendingRecord { get; init; }
 }
 

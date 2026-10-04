@@ -2338,6 +2338,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         $"recovery-session-snapshot:{recoverySnapshot.ExceptionRecoverySessionId}:{recoverySnapshot.RecoverySessionRevision}";
                     if (recoverySnapshot.State == "CLOSED")
                     {
+                        // A repair release's session is over, whatever it ended on (8005-agv-onboard-hmi#219).
+                        await ForgetRepairReleaseOfClosedSessionAsync(
+                                recoverySnapshot.ExceptionRecoverySessionId,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+
                         // The reason is said once per closed session and revision, in this process: the
                         // server resends a CLOSED it has no acknowledgement for on the next session, and
                         // the event deduplicator is cleared on every new generation. Kept in its own field,
@@ -3818,18 +3824,17 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         WireToGatePreDepartureSafetyCheck command,
         CancellationToken cancellationToken)
     {
-        // Protocol 3.0.0 added checkPurpose. This line answers DEPARTURE, the one purpose it has always
-        // answered. NON_BUSINESS_MOVE and HOLD_RELEASE reach here schema-valid, but what a SAFE answer
-        // may release for them (a held vehicle, a move with no demand) is not decided on this side yet
-        // (8005-agv-onboard-hmi#219 and later tickets). Until it is, they are refused rather than
-        // answered with the departure evaluation: a SAFE this build cannot stand behind is worse than
-        // no answer, and the control server keeps the vehicle where it is (8005-agv-onboard-hmi#214).
-        if (command.CheckPurpose != "DEPARTURE")
+        // Protocol 3.0.0 added checkPurpose (8005-agv-onboard-hmi#214), and all three are answered since
+        // 8005-agv-onboard-hmi#219. DEPARTURE and NON_BUSINESS_MOVE are the same question about the vehicle -- may
+        // it move now -- one with a demand and one without, so both take the departure evaluation. HOLD_RELEASE
+        // is a different question and never takes the departure verdict as its answer: see
+        // EvaluateHoldRelease.
+        if (command.CheckPurpose is not ("DEPARTURE" or "NON_BUSINESS_MOVE" or "HOLD_RELEASE"))
         {
             _logger.Write(
                 LogSeverity.Warning,
                 nameof(WireToGateBusinessService),
-                $"出发前安全检查的用途本版本尚不作答：check={command.PreDepartureSafetyCheckId}，" +
+                $"出发前安全检查的用途无法识别：check={command.PreDepartureSafetyCheckId}，" +
                 $"checkPurpose={command.CheckPurpose}。回ACTION_NOT_ALLOWED_IN_STATE，不作答。");
             await _session.RejectServerCommandAsync(command, "ACTION_NOT_ALLOWED_IN_STATE", cancellationToken)
                 .ConfigureAwait(false);
@@ -3855,18 +3860,67 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             return;
         }
 
-        SafetyEvaluation evaluation = EvaluateSafety(_ioModule.CurrentSnapshot);
-        bool safe = evaluation.Safety.DepartureSafe;
+        IoSnapshot snapshot = _ioModule.CurrentSnapshot;
+        SafetyEvaluation evaluation = EvaluateSafety(snapshot);
+        string outcome = command.CheckPurpose == "HOLD_RELEASE"
+            ? EvaluateHoldRelease(snapshot, evaluation, command.PreDepartureSafetyCheckId)
+            : evaluation.Safety.DepartureSafe ? "SAFE" : evaluation.Safety.UnknownPresent ? "UNKNOWN" : "UNSAFE";
         long safetyStateVersion = _session.Current.SafetyStateVersion;
         await _session.SendPreDepartureSafetyCheckResultAsync(
             command.PreDepartureSafetyCheckId,
             command.CheckPurpose,
-            safe ? "SAFE" : evaluation.Safety.UnknownPresent ? "UNKNOWN" : "UNSAFE",
+            outcome,
             evaluation.ObservedAt,
             safetyStateVersion,
             evaluation.ObservedAt.AddSeconds(2),
             evaluation.Safety,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The answer to a <c>HOLD_RELEASE</c> check (CP-0009, REQ-0364, 8005-agv-onboard-hmi#219;
+    /// <c>ANSWER_HOLD_RELEASE_CHECK_WITHOUT_DEMAND_OR_LEG</c>): <c>SAFE</c> exactly when every slot the server holds
+    /// for an unproven door reads EMPTY, LOCKED and RESET in a fresh snapshot, and nothing else blocks the vehicle
+    /// -- the departure evaluation is safe (every door locked and reset, the vehicle stopped, no fatal fault
+    /// latched) and no slot is left physically unknown by a forced recovery.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The departure verdict is one of the conditions and never the answer by itself: it says nothing about
+    /// whether a held slot is empty, and a held slot with a basket in it is not a repaired door over an empty slot.
+    /// </para>
+    /// <para>
+    /// The held slots are the server's, read from the vehicle business state's <c>blockingFacts</c>
+    /// (<see cref="WireToGateDoorHoldText.HeldSlots"/>). Asked with no hold on record here -- the business state not
+    /// yet received, or the hold not in it -- the vehicle cannot say which slots the question is about, so the
+    /// answer is <c>UNKNOWN</c>, never a <c>SAFE</c> over slots nobody named. A held slot that cannot be read is
+    /// <c>UNKNOWN</c> too; one that reads but is not EMPTY, LOCKED and RESET is <c>UNSAFE</c>.
+    /// </para>
+    /// </remarks>
+    private string EvaluateHoldRelease(IoSnapshot snapshot, SafetyEvaluation evaluation, string checkId)
+    {
+        IReadOnlyList<int> held = WireToGateDoorHoldText.HeldSlots(_session.CurrentJourney);
+        bool fresh = snapshot.IsConnected && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _ioSnapshotMaxAge);
+        bool heldUnknown = !fresh || held.Any(slot => !snapshot.GetLocker(slot - 1).IsKnown);
+        bool heldProven = !heldUnknown && held.All(slot => snapshot.GetLocker(slot - 1) is
+        {
+            LightCurtainRaw: true,
+            LockFeedbackRaw: true,
+            UnlockOutputRaw: false
+        });
+        bool isolated = Volatile.Read(ref _lastRecoveryState).ForcedIsolation is not null;
+        string outcome = held.Count == 0 || heldUnknown || evaluation.Safety.UnknownPresent
+            ? "UNKNOWN"
+            : heldProven && evaluation.Safety.DepartureSafe && !isolated
+                ? "SAFE"
+                : "UNSAFE";
+        _logger.Write(
+            outcome == "SAFE" ? LogSeverity.Information : LogSeverity.Warning,
+            nameof(WireToGateBusinessService),
+            $"扣车解除检查：check={checkId}，被扣仓位={(held.Count == 0 ? "（未收到）" : string.Join(",", held))}，"
+                + $"被扣仓位已证空锁闭复位={heldProven}，出发判定安全={evaluation.Safety.DepartureSafe}，"
+                + $"强制取出隔离={isolated}，结论={outcome}。");
+        return outcome;
     }
 
     /// <summary>

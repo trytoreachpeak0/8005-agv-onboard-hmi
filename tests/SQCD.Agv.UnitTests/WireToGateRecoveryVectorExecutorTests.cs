@@ -4,7 +4,7 @@ using SQCD.Agv.Infrastructure;
 
 namespace SQCD.Agv.UnitTests;
 
-public sealed class WireToGateRecoveryVectorExecutorTests
+public sealed partial class WireToGateRecoveryVectorExecutorTests
 {
     /// <summary>
     /// A local line behind the entries (review of onboard-hmi#110): a clear over a slot a forced
@@ -1094,6 +1094,21 @@ public sealed class WireToGateRecoveryVectorExecutorTests
         public HashSet<int> NeverEmptiedSlots { get; } = [];
 
         /// <summary>
+        /// Physical slots the operator empties whose lock never reports closed again: the light curtain
+        /// reads EMPTY and the lock feedback stays UNLOCKED (8005-agv-onboard-hmi#219).
+        /// </summary>
+        public HashSet<int> LockNeverClosesSlots { get; } = [];
+
+        /// <summary>Physical slots the operator empties whose lock feedback input stops reading.</summary>
+        public HashSet<int> LockFeedbackLostOnEmptySlots { get; } = [];
+
+        /// <summary>Physical slots whose light curtain stops reading while the door stands open.</summary>
+        public HashSet<int> LightCurtainLostSlots { get; } = [];
+
+        /// <summary>How many times a wait was asked for; a replay that reads no IO leaves it unchanged.</summary>
+        public int WaitCount => _waitCallCount;
+
+        /// <summary>
         /// How long the operator takes to empty a door and shut it; the clock moves on by this much each
         /// time, so a deadline the executor keeps is measured against the operator, not the test.
         /// </summary>
@@ -1161,6 +1176,22 @@ public sealed class WireToGateRecoveryVectorExecutorTests
                     {
                         UpdateLocker(slotIndex, current => current with { LockFeedbackRaw = true });
                     }
+                    else if (LockNeverClosesSlots.Contains(slotIndex + 1))
+                    {
+                        UpdateLocker(slotIndex, current => current with { LightCurtainRaw = true });
+                    }
+                    else if (LockFeedbackLostOnEmptySlots.Contains(slotIndex + 1))
+                    {
+                        UpdateLocker(slotIndex, current => current with
+                        {
+                            LightCurtainRaw = true,
+                            LockFeedbackRaw = null
+                        });
+                    }
+                    else if (LightCurtainLostSlots.Contains(slotIndex + 1))
+                    {
+                        UpdateLocker(slotIndex, current => current with { LightCurtainRaw = null });
+                    }
                     else if (_correction && locker.HasCargo)
                     {
                         UpdateLocker(slotIndex, current => current with { LightCurtainRaw = true });
@@ -1192,6 +1223,14 @@ public sealed class WireToGateRecoveryVectorExecutorTests
         /// <summary>The door is shut again and the lock closed, with the unlock output left as it reads.</summary>
         public void CloseDoorKeepingOutput(int slotIndex) =>
             UpdateLocker(slotIndex, current => current with { LockFeedbackRaw = true });
+
+        /// <summary>The light curtain input stops reading while the bus stays up.</summary>
+        public void LoseLightCurtain(int slotIndex) =>
+            UpdateLocker(slotIndex, current => current with { LightCurtainRaw = null });
+
+        /// <summary>The unlock output reads energised while the door stays shut and locked.</summary>
+        public void RaiseOutput(int slotIndex) =>
+            UpdateLocker(slotIndex, current => current with { UnlockOutputRaw = true });
 
         /// <summary>The lock feedback input stops reading while the bus stays up.</summary>
         public void LoseLockFeedback(int slotIndex) =>

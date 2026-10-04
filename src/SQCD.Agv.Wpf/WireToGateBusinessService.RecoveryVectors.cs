@@ -13,6 +13,21 @@ public sealed partial class WireToGateBusinessService
     private const string FaultCargoHandoffAction = "FAULT_CARGO_HANDOFF";
     private const string ForcedMechanicalRecoveryAction = "FORCED_MECHANICAL_RECOVERY";
 
+    /// <summary>
+    /// What the operator is told when a clear settles <c>ALL_EMPTY_DOOR_UNPROVEN</c> (CP-0009,
+    /// 8005-agv-onboard-hmi#219): the same sentence the view keeps showing from the server's hold.
+    /// </summary>
+    private const string DoorUnprovenRepairNotice = WireToGateDoorHoldText.RepairRequiredNotice;
+
+    /// <summary>The slots of a door-unproven settlement whose door is the one not proven.</summary>
+    private static IReadOnlyList<int> DoorUnprovenSlots(IReadOnlyList<WireToGateSlotExecutionResult> slotResults) =>
+        [.. slotResults
+            .Where(slot => slot.ReasonCodes.Contains(
+                WireToGateRecoveryVectorExecutor.DoorLockUnprovenAfterEmptyReason,
+                StringComparer.Ordinal))
+            .Select(slot => slot.SlotNo)
+            .Order()];
+
     private readonly WireToGateRecoveryVectorExecutor _vectorExecutor;
     private WireToGateRecoveryState _lastRecoveryState = WireToGateRecoveryState.Empty;
 
@@ -3013,6 +3028,7 @@ public sealed partial class WireToGateBusinessService
             : await _vectorExecutor.ExecuteClearAsync(context, SendProgress, cancellationToken)
                 .ConfigureAwait(false);
         bool success = result.OverallOutcome == "COMPLETED";
+        bool doorUnproven = result.OverallOutcome == WireToGateRecoveryVectorExecutor.AllEmptyDoorUnprovenOutcome;
         PublishRecoveryVectorOperation(
             context,
             success
@@ -3020,6 +3036,8 @@ public sealed partial class WireToGateBusinessService
                 : WireToGateHmiOperationStage.RecoveryRequired,
             success
                 ? "物理状态已达到安全收尾条件，正在上报恢复结果。"
+                : doorUnproven
+                    ? DoorUnprovenRepairNotice
                 : RefusedByFatalFaultLatch(result.SlotResults)
                     ? $"本机已锁存严重安全故障，{FormatSlots(NotCompletedSlots(result.SlotResults))}停止开门；复核并复位后可再次申请恢复。"
                     : "恢复向量未完成，已保持故障安全并准备上报未知/失败结果。",
@@ -3060,6 +3078,25 @@ public sealed partial class WireToGateBusinessService
                 "RECOVERY_VECTOR_COMPLETED",
                 $"恢复向量 {context.VectorType} 已完成并收到服务端确认。 ");
             return true;
+        }
+
+        // The demand is settled EMPTY on the server's side -- terminated, the vehicle held for repair -- so the
+        // business side is cleared here as a completed clear's is: no attempt, no operation context, no session.
+        // What stays is the server's hold, which it publishes in the vehicle business state and the view shows
+        // from there (DISPLAY_REPAIR_REQUIRED_NOTICE); nothing on this side has to remember the door.
+        if (doorUnproven)
+        {
+            await CompleteRecoveryVectorStateAsync(context, cancellationToken).ConfigureAwait(false);
+            PublishRecoveryVectorOperation(
+                context,
+                WireToGateHmiOperationStage.RecoveryRequired,
+                DoorUnprovenRepairNotice,
+                "door-unproven");
+            PublishOperatorEvent(
+                $"recovery-vector-door-unproven:{context.VectorType}:{context.PrimaryId}",
+                "RECOVERY_VECTOR_DOOR_UNPROVEN",
+                $"{FormatSlots(DoorUnprovenSlots(result.SlotResults))}：{DoorUnprovenRepairNotice}");
+            return false;
         }
 
         // Forgotten before the operator is told, so the entry the message sends them to is already

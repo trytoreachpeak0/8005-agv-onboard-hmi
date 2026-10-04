@@ -416,6 +416,51 @@ public sealed class FakeControlServer : IAsyncDisposable
     private object JourneyPayload(string messageType, object built) =>
         JourneySnapshotPayloads?.GetValueOrDefault(messageType) ?? built;
 
+    private long _doorHoldBusinessStateRevision = 500;
+
+    /// <summary>The slots this double holds for an unproven door, ascending; empty when none.</summary>
+    public IReadOnlyList<int> DoorHeldSlots { get; private set; } = [];
+
+    /// <summary>
+    /// Publishes the vehicle business state holding <paramref name="heldSlots"/> for an unproven door, the way the
+    /// control server does after settling an <c>ALL_EMPTY_DOOR_UNPROVEN</c> (cs#385, <c>WireToGateStore</c>): one
+    /// <c>SLOT_DOOR_LOCK_UNPROVEN_AFTER_EMPTY</c> fact per held slot, subject <c>SLOT</c>, the slot number as its id,
+    /// and readiness <c>RECOVERY_REQUIRED</c> while any is held. An empty set publishes the hold lifted.
+    /// </summary>
+    public Task PublishDoorHoldAsync(IReadOnlyList<int> heldSlots)
+    {
+        ConnectionContext context = Volatile.Read(ref _latestSession)
+            ?? throw new InvalidOperationException("No session has been accepted yet.");
+        return PublishDoorHoldAsync(context, heldSlots);
+    }
+
+    private Task PublishDoorHoldAsync(ConnectionContext context, IReadOnlyList<int> heldSlots)
+    {
+        DoorHeldSlots = [.. heldSlots.Order()];
+        return WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(
+            context,
+            "VehicleBusinessStateSnapshot",
+            new
+            {
+                vehicleBusinessStateRevision = Interlocked.Increment(ref _doorHoldBusinessStateRevision),
+                readiness = heldSlots.Count == 0 ? "READY" : "RECOVERY_REQUIRED",
+                activePurpose = (string?)null,
+                manualChargingHold = false,
+                batteryState = "SUFFICIENT",
+                chargingCycleState = "NOT_CHARGING",
+                loadingPhase = (object?)null,
+                blockingFacts = DoorHeldSlots
+                    .Select(slot => new
+                    {
+                        reasonCode = "SLOT_DOOR_LOCK_UNPROVEN_AFTER_EMPTY",
+                        subjectType = "SLOT",
+                        subjectId = slot.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    })
+                    .ToArray(),
+                observedAt = DateTimeOffset.UtcNow
+            }));
+    }
+
     /// <summary>
     /// Sends one journey snapshot the test composes, on the latest session and under a new messageId: a
     /// revision advancing mid-session, the way the real server replaces a worklist or a plan (onboard-hmi#134).
@@ -920,6 +965,9 @@ public sealed class FakeControlServer : IAsyncDisposable
 
                 _settledAttempts.UnionWith(previous._settledAttempts);
                 _operationsNeedingRecovery.UnionWith(previous._operationsNeedingRecovery);
+                // The hold and the business state revision it was published under: a later push has to advance it.
+                DoorHeldSlots = previous.DoorHeldSlots;
+                _doorHoldBusinessStateRevision = Interlocked.Read(ref previous._doorHoldBusinessStateRevision);
 
                 foreach ((string messageId, object payload) in previous._unacknowledgedClosedRecoverySnapshots)
                 {
@@ -1931,12 +1979,16 @@ public sealed class FakeControlServer : IAsyncDisposable
                             _settledCompensations[recoveryPayload.GetProperty("recoveryActionId").GetString()!] = 0;
                         }
 
+                        // ALL_EMPTY_DOOR_UNPROVEN settles the demand as ALL_EMPTY does, and holds the vehicle on every
+                        // target slot (control-server OnboardRecoveryCoordinator, cs#385; 8005-agv-onboard-hmi#219).
+                        bool doorUnproven = messageType != "FaultCargoRecoveryResult"
+                            && recoveryPayload.GetProperty("overallOutcome").GetString() == "ALL_EMPTY_DOOR_UNPROVEN";
                         string? settledAttempt = messageType switch
                         {
                             "FaultCargoRecoveryResult" when recoveryPayload.GetProperty("overallOutcome").GetString()
                                 == "HANDED_OFF" => RecoveryVectorSlotOperationAttemptId,
                             "FaultCargoRecoveryResult" => null,
-                            _ when recoveryPayload.GetProperty("overallOutcome").GetString() == "ALL_EMPTY" =>
+                            _ when recoveryPayload.GetProperty("overallOutcome").GetString() == "ALL_EMPTY" || doorUnproven =>
                                 recoveryPayload.GetProperty("slotOperationAttemptId").GetString(),
                             _ => null
                         };
@@ -1948,6 +2000,17 @@ public sealed class FakeControlServer : IAsyncDisposable
                                 _operationsNeedingRecovery.Remove(settledAttempt);
                             }
                         }).ConfigureAwait(false);
+                        // Published once the session is past its handshake: a result resent inside the handshake window
+                        // would otherwise put a journey push between a snapshot and its ack. A test that needs the hold
+                        // on such a session publishes it itself (PublishDoorHoldAsync).
+                        if (doorUnproven && context.AnnouncedReadiness is not null)
+                        {
+                            int[] held = [.. recoveryPayload.GetProperty("slotResults").EnumerateArray()
+                                .Select(slot => slot.GetProperty("slotNo").GetInt32())
+                                .Order()];
+                            await PublishDoorHoldAsync(context, held).ConfigureAwait(false);
+                        }
+
                         break;
                     case "ForcedMechanicalRecoveryResult" when WithholdForcedMechanicalRecoveryResultAck:
                         break;
