@@ -1,7 +1,7 @@
   Determining projects to restore...
   All projects are up-to-date for restore.
-  SQCD.Agv.Contracts -> <worktree>\src\SQCD.Agv.Contracts\bin\Debug\net8.0\win-x64\SQCD.Agv.Contracts.dll
   SQCD.Agv.Core -> <worktree>\src\SQCD.Agv.Core\bin\Debug\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Contracts -> <worktree>\src\SQCD.Agv.Contracts\bin\Debug\net8.0\win-x64\SQCD.Agv.Contracts.dll
   SQCD.Agv.Infrastructure -> <worktree>\src\SQCD.Agv.Infrastructure\bin\Debug\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
   SQCD.Agv.Application -> <worktree>\src\SQCD.Agv.Application\bin\Debug\net8.0\win-x64\SQCD.Agv.Application.dll
   SQCD.Agv.AutomationHost -> <worktree>\src\SQCD.Agv.AutomationHost\bin\Debug\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
@@ -14,4 +14,4 @@ VSTest version 17.11.1 (x64)
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
 
-Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2, Duration: 751 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

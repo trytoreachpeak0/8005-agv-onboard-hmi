@@ -13,4 +13,4 @@ VSTest version 17.11.1 (x64)
 Starting test execution, please wait...
 A total of 1 test files matched the specified pattern.
 
-Passed!  - Failed:     0, Passed:    44, Skipped:     0, Total:    44, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)
+Passed!  - Failed:     0, Passed:    47, Skipped:     0, Total:    47, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)

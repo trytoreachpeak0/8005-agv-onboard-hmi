@@ -527,8 +527,9 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 : ValidateInitialSnapshot(beforePulse, [physicalSlot], correction);
             if (slotPrecheckFailure is not null)
             {
-                // Refused before this slot's unlock was written, so no door is in doubt: recorded at
-                // Prepared, which a replay reads back as FAILED (8005-agv-onboard-hmi#249).
+                // Refused before this slot's unlock was written, so nothing this vector opened is in doubt: recorded
+                // at Prepared. A handed-over door the reading cannot prove shut stays in the active unlock set and the
+                // answer is UNKNOWN; otherwise it is FAILED (8005-agv-onboard-hmi#249).
                 AddRejectedResults(beforePulse, context.Slots, completed, results, correction);
                 (WireToGateRecoveryVectorExecutionResult refusal, _) = await RecordRefusalAsync(
                     context,
@@ -960,7 +961,14 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
     /// asked for again, a fresh executor after a restart -- go through it, so they cannot drift apart
     /// (8005-agv-onboard-hmi#249). The prepared checkpoint is <c>FAILED</c> only while no slot is in the active unlock
     /// set: a door a cancelled load handed over open sits there at that checkpoint and may still stand open, so a
-    /// vector settled over it is <c>UNKNOWN</c>.
+    /// vector settled over it is <c>UNKNOWN</c>. Every writer of the prepared checkpoint keeps such a door in the set
+    /// (<see cref="RecordRefusalAsync"/> among them), so an empty set there does mean no door is in doubt.
+    /// <para>
+    /// The reading is by checkpoint, not by physics, and it errs one way only. A vector that died at the active unlock
+    /// set with the set already empty -- its last door finished, the next not yet fenced -- has no door in doubt either,
+    /// yet is <c>UNKNOWN</c>; one that died at the prepared checkpoint the resume path writes back, with the same empty
+    /// set, is <c>FAILED</c>. The server takes both the same way: anything but a clean finish is RecoveryRequired.
+    /// </para>
     /// </remarks>
     private static string RecordedOutcome(
         WireToGateRecoveryState state,
