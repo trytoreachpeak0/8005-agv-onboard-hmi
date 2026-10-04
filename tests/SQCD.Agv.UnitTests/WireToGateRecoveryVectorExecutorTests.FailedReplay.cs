@@ -430,22 +430,34 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
     /// is reached, so this is the refusal of <see cref="RecordRefusalAsync"/>, recorded at the prepared checkpoint; the
     /// open door is also in the safety summary as <c>LOCK_NOT_CLOSED</c>.
     /// </para>
+    /// <para>
+    /// With the handed-over door proven shut there is no door in doubt but the changed slot, and the set is the changed
+    /// slot, as before this ticket.
+    /// </para>
     /// </remarks>
     [Theory]
-    [InlineData("basket-appeared", WireToGateRecoveryCheckpoint.ActiveUnlockSet)]
-    [InlineData("door-reads-open", WireToGateRecoveryCheckpoint.Prepared)]
+    [InlineData("basket-appeared", true, WireToGateRecoveryCheckpoint.ActiveUnlockSet, 2)]
+    [InlineData("door-reads-open", true, WireToGateRecoveryCheckpoint.Prepared, 2)]
+    [InlineData("basket-appeared", false, WireToGateRecoveryCheckpoint.ActiveUnlockSet, 1)]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
     public async Task AResumeThatFindsACompletedSlotChangedKeepsTheHandedOverDoorInTheActiveSet(
         string change,
-        WireToGateRecoveryCheckpoint expectedCheckpoint)
+        bool handedOverDoorOpen,
+        WireToGateRecoveryCheckpoint expectedCheckpoint,
+        int expectedActiveSlot)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
-        // Slot 2 is empty with its door open. Slot 1 reads a basket behind a locked door, or is empty with its door open.
+        // Slot 2 is empty, its door open or shut again. Slot 1 reads a basket behind a locked door, or is empty with its
+        // door open.
         await using TestFixture fixture = await TestFixture.CreateAsync(
             [change == "basket-appeared", false],
             cancellationToken: token);
-        fixture.Io.OpenDoor(1);
+        if (handedOverDoorOpen)
+        {
+            fixture.Io.OpenDoor(1);
+        }
+
         if (change == "door-reads-open")
         {
             fixture.Io.OpenDoor(0);
@@ -474,12 +486,20 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
         Assert.Equal("UNKNOWN", first.OverallOutcome);
         WireToGateRecoveryState recorded = await fixture.Journal.ReadRecoveryStateAsync(token);
         Assert.Equal(expectedCheckpoint, recorded.ProvenRecoveryCheckpoint);
-        Assert.Equal([2], recorded.ActiveUnlockSlots);
+        Assert.Equal([expectedActiveSlot], recorded.ActiveUnlockSlots);
         Assert.Equal(first.ObservedAt, recorded.RecoveryResultObservedAt);
         WireToGateSlotExecutionResult door = first.SlotResults.Single(slot => slot.SlotNo == 2);
-        Assert.Equal("UNKNOWN", door.Outcome);
-        Assert.Equal("UNLOCKED", door.LockState);
-        Assert.Equal(["LOCK_NOT_CLOSED"], door.ReasonCodes);
+        if (handedOverDoorOpen)
+        {
+            Assert.Equal("UNKNOWN", door.Outcome);
+            Assert.Equal("UNLOCKED", door.LockState);
+            Assert.Equal(["LOCK_NOT_CLOSED"], door.ReasonCodes);
+        }
+        else
+        {
+            Assert.Equal("NOT_STARTED", door.Outcome);
+            Assert.Equal("LOCKED", door.LockState);
+        }
         if (change == "basket-appeared")
         {
             Assert.Equal("UNKNOWN", first.SlotResults.Single(slot => slot.SlotNo == 1).Outcome);
@@ -546,6 +566,14 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
         Assert.Equal(
             [WireToGateSlotOperationExecutor.FatalFaultLatchedReason, "SLOT_STATE_UNKNOWN"],
             door.ReasonCodes);
+
+        fixture.Clock.Advance(TimeSpan.FromSeconds(5));
+        Assert.Null(await fixture.Executor.RefuseBeforeUnlockAsync(context, "VEHICLE_NOT_READY", token));
+        AssertSameAnswer(first, await fixture.Executor.SettleWithoutUnlockAsync(context, token));
+        AssertSameAnswer(first, await fixture.Executor.ExecuteClearAsync(context, null, token));
+        await using WireToGateRecoveryVectorExecutor restarted = RestartedExecutor(fixture);
+        AssertSameAnswer(first, await restarted.ExecuteClearAsync(context, null, token));
+        Assert.Empty(fixture.Io.Pulses);
     }
 
     /// <summary>
