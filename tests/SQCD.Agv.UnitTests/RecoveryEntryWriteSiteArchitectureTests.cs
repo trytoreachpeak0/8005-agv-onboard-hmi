@@ -62,7 +62,7 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
 
     /// <summary>
     /// 真实源码里 setter 以外的写入点条数（7 + 1 + 9 + 6 + 3：输入刷新路径七个；展示路径守卫之前的取消装货一个、
-    /// 守卫块十个、正常分支六个；强制隔离三个）。onboard-hmi#219 加了第十个入口维修放行，两处写：守卫块里的 false，
+    /// 守卫块九个（十个入口里取消装货不在块内）、正常分支六个；强制隔离三个）。onboard-hmi#219 加了第十个入口维修放行，两处写：守卫块里的 false，
     /// 与 <c>RefreshForcedIsolationCore</c> 里的 <c>AllowRecoveryEntry(...)</c>，所以从 24 变成 26。onboard-hmi#174 把展示路径里取消装货的两处写（守卫块的 false 与正常分支
     /// 的业务值）合成守卫之前的一处 <c>AllowLoadCancellationEntry(...)</c>，所以从 25 变成 24。**写死是有意的**：这条数字是
     /// <see cref="TheScannerStillSeesTheRealWriteSites"/> 判断「扫描器还睁着眼」的判据之一，而扫描器变瞎时的
@@ -95,7 +95,7 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
 
     /// <summary>
     /// 今天真的写这十个属性的三个成员。**「两条刷新路径」是从操作员那一侧数的，赋值点落在三个方法里**：
-    /// <c>RefreshForcedIsolationCore</c> 是另外两条共用的子过程，最后两个入口只在它里面写。
+    /// <c>RefreshForcedIsolationCore</c> 是另外两条共用的子过程，最后三个入口只在它里面写。
     /// </summary>
     private static readonly string[] WritingMembers =
     [

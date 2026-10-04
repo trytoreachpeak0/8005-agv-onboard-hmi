@@ -755,6 +755,19 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     private (string RequestId, string Payload)? _openRecoverySession;
 
+    /// <summary>
+    /// A session some other request opened stands on the server before this vehicle asks for anything: with
+    /// <see cref="ModelOneOpenRecoverySession"/> on, every request but <paramref name="requestId"/> is rejected until a
+    /// recorded hardware record closes it.
+    /// </summary>
+    public void StandOpenRecoverySession(string requestId)
+    {
+        lock (_sync)
+        {
+            _openRecoverySession = (requestId, string.Empty);
+        }
+    }
+
     /// <summary>The requestIds whose session request this double answered with a rejection, oldest first.</summary>
     public IReadOnlyList<string> RejectedRecoverySessionRequests { get; private set; } = [];
 

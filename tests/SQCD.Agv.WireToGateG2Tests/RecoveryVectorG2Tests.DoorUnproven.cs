@@ -443,6 +443,60 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(0, harness.Io.UnlockCount);
     }
 
+    /// <summary>
+    /// Another session is open on the server, not the release's (PR #248 review): the first press goes out before the
+    /// vehicle has seen it, the server refuses it, and the refusal is shown as the server gave it. Once that session is
+    /// on the screen it is not taken for the release's -- its event is not the release's -- so the entry shuts and a
+    /// press sends nothing. The release on file stays exactly as the refused request left it: no session id is borrowed
+    /// from the other session, nothing is accepted, and the request it carries is the one the server refused.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-VEHICLE-HOLD-DOOR-REPAIR-RELEASE")]
+    public async Task AnUnrelatedOpenSessionIsNeverTakenForTheRepairReleasesOwn()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            loadAlreadySettled: true);
+        await HoldBothSlotsAsync(harness, token);
+        harness.Server.ModelOneOpenRecoverySession = true;
+        harness.Server.StandOpenRecoverySession(UnrelatedRequestId);
+
+        Assert.False(await harness.Business.RequestHardwareRepairReleaseAsync("1号仓锁体已更换。", token));
+        await harness.WaitForRecoveryBlockedAsync("ACTION_NOT_ALLOWED_IN_STATE", token);
+        WireToGateRepairRelease refused = (await harness.ReadRecoveryStateAsync(token)).RepairRelease!;
+        Assert.Equal([refused.RequestId], harness.Server.RejectedRecoverySessionRequests);
+        Assert.Null(refused.ExceptionRecoverySessionId);
+        Assert.False(refused.Accepted);
+
+        await ShowAnOpenSessionAsync(harness, harness.Server, UnrelatedSessionId, UnrelatedEventId);
+        Assert.False(harness.Business.CanRequestHardwareRepairRelease);
+        int requestsBefore = ReleaseSessionRequests(harness.Server);
+        Assert.False(await harness.Business.RequestHardwareRepairReleaseAsync("另一段理由，不应被发出。", token));
+        await harness.WaitForRecoveryBlockedAsync("RECOVERY_SESSION_NOT_READY", token);
+
+        Assert.Equal(requestsBefore, ReleaseSessionRequests(harness.Server));
+        Assert.DoesNotContain(harness.Server.ReceivedEnvelopes, item => item.MessageType == "RecoveryActionSubmitted"
+            && item.WireLine.Contains("HARDWARE_REPAIR_RELEASE", StringComparison.Ordinal));
+        WireToGateRepairRelease after = (await harness.ReadRecoveryStateAsync(token)).RepairRelease!;
+        Assert.Equal(
+            (refused.RequestId, refused.EventId, refused.RecoveryActionId, refused.Reason, (string?)null, false),
+            (after.RequestId, after.EventId, after.RecoveryActionId, after.Reason, after.ExceptionRecoverySessionId,
+                after.Accepted));
+        Assert.Equal(refused.Slots, after.Slots);
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    private const string UnrelatedRequestId = "abababab-1111-4111-8111-abababababab";
+
+    private const string UnrelatedSessionId = "abababab-2222-4222-8222-abababababab";
+
+    private const string UnrelatedEventId = "abababab-3333-4333-8333-abababababab";
+
+    private static int ReleaseSessionRequests(FakeControlServer server) =>
+        server.ReceivedEnvelopes.Count(item => IsReleaseSessionRequest(item.MessageType, item.WireLine));
+
     /// <summary>Compensates over an unreadable lock, waits for the hold, and repairs the lock.</summary>
     private static async Task HoldBothSlotsAsync(RecoveryVectorHarness harness, CancellationToken token)
     {
@@ -465,19 +519,32 @@ public sealed partial class RecoveryVectorG2Tests
         string requestLine)
     {
         using JsonDocument request = JsonDocument.Parse(requestLine);
-        JsonElement payload = request.RootElement.GetProperty("payload");
+        await ShowAnOpenSessionAsync(
+            harness,
+            server,
+            RecoverySessionId,
+            request.RootElement.GetProperty("payload").GetProperty("eventId").GetString()!);
+    }
+
+    /// <summary>An OPEN session with no demand over the held slots, under the given session and event.</summary>
+    private static async Task ShowAnOpenSessionAsync(
+        RecoveryVectorHarness harness,
+        FakeControlServer server,
+        string sessionId,
+        string eventId)
+    {
         int shownBefore = OpenSessionsShown(harness);
         await server.SendCommandAsync(
             "ExceptionRecoverySessionSnapshot",
             Guid.NewGuid().ToString("D"),
             new
             {
-                exceptionRecoverySessionId = RecoverySessionId,
+                exceptionRecoverySessionId = sessionId,
                 recoverySessionRevision = 1,
                 state = "OPEN",
                 administratorId = "maintenance-001",
                 administratorRole = "MAINTENANCE_ADMINISTRATOR",
-                eventId = payload.GetProperty("eventId").GetString(),
+                eventId,
                 demandId = (string?)null,
                 slotOperationAttemptId = (string?)null,
                 slots = HeldSlotsOneAndTwo,
@@ -488,7 +555,7 @@ public sealed partial class RecoveryVectorG2Tests
             });
         await RecoveryVectorHarness.WaitUntilAsync(
             () => OpenSessionsShown(harness) > shownBefore,
-            "the vehicle to take the release's OPEN session snapshot",
+            "the vehicle to take the OPEN session snapshot",
             CancellationToken.None);
     }
 
