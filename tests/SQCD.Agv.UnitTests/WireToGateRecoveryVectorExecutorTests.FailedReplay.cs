@@ -23,10 +23,17 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
     /// checkpoint and observedAt -- and no door is opened.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The business service sends both answers under the same deduplication key and messageId. The outbox refuses a
     /// second, different line under that key (<c>BUSINESS_ID_CONTENT_CONFLICT</c>); had the first never reached the
     /// outbox, the server would get UNKNOWN for a vector that had told the vehicle FAILED. Before the fix both paths
     /// checkpointed <c>ACTIVE_UNLOCK_SET</c>, which the replay reads as UNKNOWN.
+    /// </para>
+    /// <para>
+    /// The journal is read where it matters: when the latch path's PAUSED progress goes out the result is already on
+    /// file, and the slot the vector finished stays counted complete, so the vector is never mistaken for one that
+    /// did nothing.
+    /// </para>
     /// </remarks>
     [Theory]
     [MemberData(nameof(FailedMidVectorPaths))]
@@ -65,24 +72,187 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
             "b4b4b4b4-b4b4-4b4b-8b4b-b4b4b4b4b4b4",
             [1, 2],
             token);
+        List<(string Phase, WireToGateRecoveryState State)> progress = [];
 
         WireToGateRecoveryVectorExecutionResult first = await fixture.Executor.ExecuteClearAsync(
             context,
-            null,
+            RecordJournalAtEachPhase(fixture, progress),
             token);
+
         Assert.Equal("FAILED", first.OverallOutcome);
         Assert.Equal([1], fixture.Io.Pulses.Select(pulse => pulse.Slot));
-        Assert.Empty((await fixture.Journal.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
+        WireToGateRecoveryState recorded = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal(WireToGateRecoveryCheckpoint.Prepared, recorded.ProvenRecoveryCheckpoint);
+        Assert.Empty(recorded.ActiveUnlockSlots);
+        Assert.Equal([1], recorded.CompletedSlots);
+        Assert.Equal(first.ObservedAt, recorded.RecoveryResultObservedAt);
+        if (path == "latch")
+        {
+            WireToGateRecoveryState atPaused = Assert.Single(progress, item => item.Phase == "PAUSED").State;
+            Assert.Equal(WireToGateRecoveryCheckpoint.Prepared, atPaused.ProvenRecoveryCheckpoint);
+            Assert.Equal(first.ObservedAt, atPaused.RecoveryResultObservedAt);
+        }
+
+        // Slot 1 was opened and finished: the vector acted, so it is never answered as refused before an unlock.
+        Assert.Null(await fixture.Executor.RefuseBeforeUnlockAsync(context, "VEHICLE_NOT_READY", token));
 
         fixture.Clock.Advance(TimeSpan.FromSeconds(5));
-        WireToGateRecoveryVectorExecutionResult again = replay == "execute"
-            ? await fixture.Executor.ExecuteClearAsync(context, null, token)
-            : await fixture.Executor.SettleWithoutUnlockAsync(context, token);
+        Volatile.Write(ref latched, false);
+        AssertSameAnswer(
+            first,
+            replay == "execute"
+                ? await fixture.Executor.ExecuteClearAsync(context, null, token)
+                : await fixture.Executor.SettleWithoutUnlockAsync(context, token));
+        await using WireToGateRecoveryVectorExecutor restarted = RestartedExecutor(fixture);
+        AssertSameAnswer(first, await restarted.ExecuteClearAsync(context, null, token));
+        Assert.Equal([1], fixture.Io.Pulses.Select(pulse => pulse.Slot));
+    }
 
+    /// <summary>
+    /// The latch refuses the very first pulse: nothing was opened, so the journal is the shape a refusal before any
+    /// unlock leaves -- prepared, nothing active, nothing complete, stamped -- and every entry that can be asked for
+    /// the answer gives the first one back, including one on a fresh executor, without a pulse.
+    /// </summary>
+    /// <remarks>
+    /// This is the one vector the change of 8005-agv-onboard-hmi#249 makes forgettable: the CLOSED snapshot's
+    /// <c>ForgetRefusedVector</c> now lets it go, which is right for a vector that opened no door.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ALatchBeforeTheFirstUnlockIsAnsweredTheSameFromEveryEntry()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync(
+            [true, true],
+            cancellationToken: token,
+            fatalFaultLatched: () => true);
+        WireToGateRecoveryVectorContext context = await PrepareAsync(
+            fixture,
+            WireToGateRecoveryVectorTypes.LoadCompensation,
+            "b4b4b4b4-b4b4-4b4b-8b4b-b4b4b4b4b4b5",
+            [1, 2],
+            token);
+        List<(string Phase, WireToGateRecoveryState State)> progress = [];
+
+        WireToGateRecoveryVectorExecutionResult first = await fixture.Executor.ExecuteClearAsync(
+            context,
+            RecordJournalAtEachPhase(fixture, progress),
+            token);
+
+        Assert.Equal("FAILED", first.OverallOutcome);
+        Assert.Empty(fixture.Io.Pulses);
+        WireToGateRecoveryState recorded = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal(WireToGateRecoveryCheckpoint.Prepared, recorded.ProvenRecoveryCheckpoint);
+        Assert.Empty(recorded.ActiveUnlockSlots);
+        Assert.Empty(recorded.CompletedSlots);
+        Assert.Equal(first.ObservedAt, recorded.RecoveryResultObservedAt);
+        WireToGateRecoveryState atPaused = Assert.Single(progress, item => item.Phase == "PAUSED").State;
+        Assert.Equal(WireToGateRecoveryCheckpoint.Prepared, atPaused.ProvenRecoveryCheckpoint);
+        Assert.Equal(first.ObservedAt, atPaused.RecoveryResultObservedAt);
+
+        fixture.Clock.Advance(TimeSpan.FromSeconds(5));
+        AssertSameAnswer(first, await fixture.Executor.RefuseBeforeUnlockAsync(context, "VEHICLE_NOT_READY", token));
+        AssertSameAnswer(first, await fixture.Executor.SettleWithoutUnlockAsync(context, token));
+        AssertSameAnswer(first, await fixture.Executor.ExecuteClearAsync(context, null, token));
+        await using WireToGateRecoveryVectorExecutor restarted = RestartedExecutor(fixture);
+        AssertSameAnswer(first, await restarted.ExecuteClearAsync(context, null, token));
+        Assert.Empty(fixture.Io.Pulses);
+    }
+
+    /// <summary>
+    /// A vector left at Prepared with no stamp -- the process died after the executor's prepared checkpoint and
+    /// before its first unlock -- is settled by the operator, then asked for again by a settle and by the replayed
+    /// command. All three give the same answer (8005-agv-onboard-hmi#249). The first settle used to say UNKNOWN and
+    /// stamp the Prepared checkpoint, which both later readings took for FAILED.
+    /// </summary>
+    /// <remarks>
+    /// With nothing in the active unlock set no door is in doubt, so the answer is FAILED. A door a cancelled load
+    /// handed over open is in that set at Prepared, may still stand open, and is UNKNOWN throughout.
+    /// </remarks>
+    [Theory]
+    [InlineData("slot-already-empty", "FAILED")]
+    [InlineData("door-handed-over-open", "UNKNOWN")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task AVectorSettledAtPreparedIsAnsweredTheSameWhenAskedAgain(string left, string expected)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([false, true], cancellationToken: token);
+        WireToGateRecoveryVectorContext context;
+        if (left == "slot-already-empty")
+        {
+            context = await PrepareAsync(
+                fixture,
+                WireToGateRecoveryVectorTypes.LoadCompensation,
+                "b4b4b4b4-b4b4-4b4b-8b4b-b4b4b4b4b4b7",
+                [1, 2],
+                token);
+            // Slot 1 is already empty and counted complete in the executor's prepared checkpoint; the process dies
+            // before the first unlock is written.
+            await Assert.ThrowsAsync<InvalidOperationException>(() => fixture.Executor.ExecuteClearAsync(
+                context,
+                (phase, _, _, _) => phase == "PREPARING"
+                    ? throw new InvalidOperationException("simulated crash")
+                    : Task.CompletedTask,
+                token));
+            WireToGateRecoveryState crashed = await fixture.Journal.ReadRecoveryStateAsync(token);
+            Assert.Equal(WireToGateRecoveryCheckpoint.Prepared, crashed.ProvenRecoveryCheckpoint);
+            Assert.Empty(crashed.ActiveUnlockSlots);
+            Assert.Equal([1], crashed.CompletedSlots);
+            Assert.Null(crashed.RecoveryResultObservedAt);
+        }
+        else
+        {
+            fixture.Io.OpenDoor(1);
+            context = await HandOverAsync(fixture, "b4b4b4b4-b4b4-4b4b-8b4b-b4b4b4b4b4b8", [1, 2], [2], token);
+        }
+
+        Assert.Null(await fixture.Executor.RefuseBeforeUnlockAsync(context, "VEHICLE_NOT_READY", token));
+
+        WireToGateRecoveryVectorExecutionResult first = await fixture.Executor.SettleWithoutUnlockAsync(context, token);
+        fixture.Clock.Advance(TimeSpan.FromSeconds(5));
+        WireToGateRecoveryVectorExecutionResult settledAgain =
+            await fixture.Executor.SettleWithoutUnlockAsync(context, token);
+        WireToGateRecoveryVectorExecutionResult replayed = await fixture.Executor.ExecuteClearAsync(context, null, token);
+
+        Assert.Equal(expected, first.OverallOutcome);
+        AssertSameAnswer(first, settledAgain);
+        AssertSameAnswer(first, replayed);
+        Assert.Empty(fixture.Io.Pulses);
+    }
+
+    private static Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>
+        RecordJournalAtEachPhase(TestFixture fixture, List<(string Phase, WireToGateRecoveryState State)> progress) =>
+        async (phase, _, _, cancellationToken) =>
+            progress.Add((phase, await fixture.Journal.ReadRecoveryStateAsync(cancellationToken)));
+
+    /// <summary>A second executor over the same journal and IO, as after a restart.</summary>
+    private static WireToGateRecoveryVectorExecutor RestartedExecutor(TestFixture fixture) =>
+        new(
+            fixture.Io,
+            fixture.Journal,
+            fixture.Clock,
+            new WireToGateSlotOperationExecutorOptions(
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(1),
+                TimeSpan.FromSeconds(5),
+                TimeSpan.FromMilliseconds(1),
+                TimeSpan.FromSeconds(1)),
+            () => false);
+
+    /// <summary>Everything the business service puts on the wire, plus the checkpoint it logs.</summary>
+    private static void AssertSameAnswer(
+        WireToGateRecoveryVectorExecutionResult first,
+        WireToGateRecoveryVectorExecutionResult? again)
+    {
+        Assert.NotNull(again);
+        Assert.Equal(first.VectorType, again.VectorType);
+        Assert.Equal(first.PrimaryId, again.PrimaryId);
         Assert.Equal(first.OverallOutcome, again.OverallOutcome);
         Assert.Equal(first.JournalCheckpoint, again.JournalCheckpoint);
         Assert.Equal(first.ObservedAt, again.ObservedAt);
+        Assert.Equal(first.ObservedAt.Offset, again.ObservedAt.Offset);
         Assert.Equal(first.SlotResults, again.SlotResults, SlotResultComparer.Instance);
-        Assert.Equal([1], fixture.Io.Pulses.Select(pulse => pulse.Slot));
     }
 }

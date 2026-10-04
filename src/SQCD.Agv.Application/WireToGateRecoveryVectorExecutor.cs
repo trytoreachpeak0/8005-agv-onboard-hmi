@@ -169,9 +169,13 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
     /// <para>
     /// Slots counted complete keep their recorded results. Slots in the active unlock set may have been pulsed
     /// and are <c>UNKNOWN</c>, as the replay path reports them when it cannot prove them safe. The rest were never
-    /// reached and are <c>NOT_STARTED</c> with what the IO reads. The overall outcome is <c>COMPLETED</c> only when
-    /// the journal already shows the safe finish, and <c>UNKNOWN</c> otherwise: the vehicle does not claim a
-    /// failure over doors that may have opened. A result already recorded is returned as recorded.
+    /// reached and are <c>NOT_STARTED</c> with what the IO reads. The overall outcome is what
+    /// <see cref="RecordedOutcome"/> reads from the journal: <c>COMPLETED</c> only when it already shows the safe
+    /// finish, <c>FAILED</c> at the prepared checkpoint with nothing in the active unlock set -- no door is in
+    /// doubt -- and <c>UNKNOWN</c> otherwise: the vehicle does not claim a failure over doors that may have opened.
+    /// It is the same reading every later answer makes of the journal this writes, so a settlement asked for again
+    /// is answered as it was the first time (8005-agv-onboard-hmi#249). A result already recorded is returned as
+    /// recorded.
     /// </para>
     /// </remarks>
     public async Task<WireToGateRecoveryVectorExecutionResult> SettleWithoutUnlockAsync(
@@ -190,14 +194,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
             }
 
-            string outcome = state.ProvenRecoveryCheckpoint switch
-            {
-                WireToGateRecoveryCheckpoint.SafeFinishReached
-                    or WireToGateRecoveryCheckpoint.ResultRecorded => "COMPLETED",
-                WireToGateRecoveryCheckpoint.Prepared
-                    when state.RecoveryResultObservedAt is not null => "FAILED",
-                _ => "UNKNOWN"
-            };
+            string outcome = RecordedOutcome(state, context);
             if (state.RecoveryResultObservedAt is { } recordedAt)
             {
                 return CreateResult(
@@ -290,13 +287,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         if (state.RecoveryResultObservedAt is { } recordedAt
             && persistedVector is not null)
         {
-            string recordedOutcome = state.ProvenRecoveryCheckpoint switch
-            {
-                WireToGateRecoveryCheckpoint.SafeFinishReached
-                    or WireToGateRecoveryCheckpoint.ResultRecorded => "COMPLETED",
-                WireToGateRecoveryCheckpoint.Prepared => "FAILED",
-                _ => "UNKNOWN"
-            };
+            string recordedOutcome = RecordedOutcome(state, context);
             return CreateResult(
                 context,
                 recordedOutcome,
@@ -910,6 +901,29 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             RecoveryOperatorId = context.OperatorId ?? current.RecoveryOperatorId,
             RecoveryOperatorVerifiedAt = context.OperatorVerifiedAt
                 ?? current.RecoveryOperatorVerifiedAt
+        };
+
+    /// <summary>
+    /// The overall outcome the journal shows for <paramref name="context"/>: <c>COMPLETED</c> at the safe finish,
+    /// <c>FAILED</c> at the prepared checkpoint with nothing in the active unlock set,
+    /// and <c>UNKNOWN</c> for everything else.
+    /// </summary>
+    /// <remarks>
+    /// The one reading of a vector's result: the first answer and every later one -- a replayed command, a settlement
+    /// asked for again, a fresh executor after a restart -- go through it, so they cannot drift apart
+    /// (8005-agv-onboard-hmi#249). The prepared checkpoint is <c>FAILED</c> only while no slot is in the active unlock
+    /// set: a door a cancelled load handed over open sits there at that checkpoint and may still stand open, so a
+    /// vector settled over it is <c>UNKNOWN</c>.
+    /// </remarks>
+    private static string RecordedOutcome(
+        WireToGateRecoveryState state,
+        WireToGateRecoveryVectorContext context) =>
+        state.ProvenRecoveryCheckpoint switch
+        {
+            WireToGateRecoveryCheckpoint.SafeFinishReached
+                or WireToGateRecoveryCheckpoint.ResultRecorded => "COMPLETED",
+            WireToGateRecoveryCheckpoint.Prepared when state.ActiveUnlockSlots.Count == 0 => "FAILED",
+            _ => "UNKNOWN"
         };
 
     private static WireToGateRecoveryVectorExecutionResult CreateResult(
