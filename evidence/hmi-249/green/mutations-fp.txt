@@ -26,3 +26,6 @@ Failed!  - Failed:     1, Passed:    52, Skipped:     0, Total:    53, Duration:
 Failed!  - Failed:     1, Passed:    52, Skipped:     0, Total:    53, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
 == RV4_M2_RESUME_WRITES_ONLY_DOORS_IN_DOUBT: exit=1 KILLED
 Failed!  - Failed:     1, Passed:    52, Skipped:     0, Total:    53, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)
+== R12_SETTLED_SLOTS_DROPPED_FROM_TEXT (G2)
+[xUnit.net 00:00:01.66]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACompensationHeldAtPreparedIsDeclinedAsFailedAndTheOperatorIsToldSo [FAIL]
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 592 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
