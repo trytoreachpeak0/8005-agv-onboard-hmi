@@ -218,6 +218,30 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
     }
 
     /// <summary>
+    /// A reading that proved the slot empty but is no longer fresh proves nothing at the timeout: the slot is UNKNOWN and
+    /// the clear stays UNKNOWN (PR #248 review, D2 -- the freshness of the timeout branch was not pinned).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-LOAD-COMPENSATION-EMPTY-DOOR-UNPROVEN")]
+    public async Task AStaleReadingAtTheTimeoutNeverSettlesAsDoorUnproven()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([true], cancellationToken: token);
+        fixture.Io.IoGoesSilentAfterEmptySlots.Add(1);
+
+        WireToGateRecoveryVectorExecutionResult result = await fixture.Executor.ExecuteClearAsync(
+            CreateContext(WireToGateRecoveryVectorTypes.LoadCompensation, "21921921-9219-4219-8219-219219219010", [1]),
+            null,
+            token);
+
+        Assert.Equal("UNKNOWN", result.OverallOutcome);
+        WireToGateSlotExecutionResult slot = Assert.Single(result.SlotResults);
+        Assert.DoesNotContain(DoorUnprovenReason, slot.ReasonCodes);
+        Assert.Equal("UNKNOWN", slot.FinalPhysicalState);
+    }
+
+    /// <summary>
     /// The old success is untouched: every door relocks with its output reset, and the clear is COMPLETED --
     /// which the business service reports as ALL_EMPTY -- with no slot carrying the new reason.
     /// </summary>

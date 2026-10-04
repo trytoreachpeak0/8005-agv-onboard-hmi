@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SQCD.Agv.Core;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
@@ -42,13 +43,17 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// the vehicle could depart. The departure verdict is never the answer by itself: with a basket in the held slot
     /// every door is still locked and reset and the departure evaluation is safe, and the answer is
     /// <c>UNSAFE</c>. A held slot that cannot be read is <c>UNKNOWN</c>, and so is a check about a hold this vehicle
-    /// has no record of -- it cannot say which slots are meant.
+    /// has no record of -- it cannot say which slots are meant. With every held slot proven, the answer is still
+    /// <c>UNSAFE</c> when another door is left unlocked (the departure evaluation is not safe) or a forced recovery
+    /// left slots physically unknown (PR #248 review: neither condition was pinned).
     /// </summary>
     [Theory]
     [InlineData("proven", "SAFE")]
     [InlineData("basket-in-held-slot", "UNSAFE")]
     [InlineData("held-slot-unreadable", "UNKNOWN")]
     [InlineData("no-hold-on-record", "UNKNOWN")]
+    [InlineData("other-door-unlocked", "UNSAFE")]
+    [InlineData("forced-isolation-standing", "UNSAFE")]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-VEHICLE-HOLD-DOOR-REPAIR-RELEASE")]
     public async Task AHoldReleaseCheckIsSafeOnlyWhenEveryHeldSlotIsProvenEmptyLockedAndReset(
@@ -67,22 +72,67 @@ public sealed partial class MultiDemandJourneyG2Tests
             case "held-slot-unreadable":
                 io.SetUnreadable(0);
                 break;
+            case "other-door-unlocked":
+                io.LeaveDoorUnlocked(4);
+                break;
+            case "forced-isolation-standing":
+                // Slot 6, outside the held set: the held slots themselves are proven, and the vehicle is still not
+                // releasable while a forced recovery's slots stay physically unknown.
+                await harness.Session.Journal.UpdateRecoveryStateAsync(
+                    current => current with
+                    {
+                        ForcedIsolation = new WireToGateForcedIsolation(
+                            "99999999-9999-4999-8999-999999999999",
+                            "abababab-abab-4bab-8bab-abababababab",
+                            [6])
+                    },
+                    token);
+                break;
         }
 
         JsonElement result = await AskAsync(harness, io, "HOLD_RELEASE", token);
 
         Assert.Equal(expected, result.GetProperty("outcome").GetString());
         Assert.Equal("HOLD_RELEASE", result.GetProperty("checkPurpose").GetString());
-        if (condition == "basket-in-held-slot")
+        if (condition is "basket-in-held-slot" or "forced-isolation-standing")
         {
             // The departure evaluation alone would have said yes.
             Assert.True(result.GetProperty("safety").GetProperty("departureSafe").GetBoolean());
+        }
+        else if (condition == "other-door-unlocked")
+        {
+            Assert.False(result.GetProperty("safety").GetProperty("departureSafe").GetBoolean());
         }
 
         Assert.Equal(0, io.UnlockCount);
         Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "ProtocolProblem");
         Assert.True(harness.Session.Current.Connected);
         Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// Who may ask for the repair release (PR #248 review): the hold is on the screen, but this vehicle has the recovery
+    /// switch off and no administrator proof. The entry stays shut on the view model and on the business service, and a
+    /// press made anyway -- a caller that never asked the entry -- sends nothing.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-VEHICLE-HOLD-DOOR-REPAIR-RELEASE")]
+    public async Task TheRepairReleaseIsShutToAVehicleWithNoRecoveryAdministrator()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await StartWithBusinessStateAsync(io, [1, 3], token);
+        await harness.WaitUntilAsync(() => harness.ViewModel.HasDoorHold, "the hold to be shown", token);
+
+        Assert.Equal([1, 3], harness.Business.DoorHeldSlots);
+        Assert.False(harness.Business.CanRequestHardwareRepairRelease);
+        Assert.False(harness.ViewModel.CanRequestHardwareRepairRelease);
+        Assert.False(await harness.Business.RequestHardwareRepairReleaseAsync("无凭据的按下。", token));
+        Assert.DoesNotContain(
+            harness.Server.Received,
+            item => item.MessageType is "ExceptionRecoverySessionRequested" or "RecoveryActionSubmitted");
+        Assert.Null((await harness.Session.Journal.ReadRecoveryStateAsync(token)).RepairRelease);
     }
 
     private static async Task<Harness> StartWithBusinessStateAsync(

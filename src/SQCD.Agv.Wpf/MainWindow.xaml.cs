@@ -339,11 +339,16 @@ public partial class MainWindow : Window
 
     private async void OnSubmitHardwareRecoveryRecordClick(object sender, RoutedEventArgs e)
     {
+        // 有一份上次没送达的记录时，这一按重发的是那一份，不是框里现在的文字（PR #248 审查）：对话框把要重发的内容写出来。
+        string? pending = _viewModel?.PendingHardwareRecoveryRecordObservations;
+        string resend = pending is null
+            ? string.Empty
+            : $"\n\n将重发上次未送达的记录，说明为：「{pending}」。本次框里新填的文字不会发出；服务端只认这份记录的原内容。";
         if (_viewModel is null
             || MessageBox.Show(
                 "请确认需要恢复的全部仓位（强制机械取出的仓位，或因门锁未证明被扣的仓位）已修复，锁反馈、光幕和开锁输出信号正常。\n\n"
                     + "提交后服务端记录硬件恢复：强制机械取出的仓位由车载端复核实时信号有效后解除「物理状态未知」；被扣的仓位由服务端"
-                    + "核对新读数、做一次扣车解除检查后决定是否解除扣车。不会自动续作任何操作。是否提交？",
+                    + "核对新读数、做一次扣车解除检查后决定是否解除扣车。不会自动续作任何操作。" + resend + "\n\n是否提交？",
                 "提交硬件恢复记录",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question,

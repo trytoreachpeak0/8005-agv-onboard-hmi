@@ -36,6 +36,7 @@ internal static class ForcedIsolationWiring
         // 管理员入口同一个写法。
         viewModel.ConfigureRepairRelease(
             () => business.CanRequestHardwareRepairRelease,
-            (reason, cancellationToken) => business.RequestHardwareRepairReleaseAsync(reason, cancellationToken));
+            (reason, cancellationToken) => business.RequestHardwareRepairReleaseAsync(reason, cancellationToken),
+            () => business.PendingHardwareRecoveryRecordObservations);
     }
 }

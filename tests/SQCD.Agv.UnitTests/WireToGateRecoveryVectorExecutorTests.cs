@@ -1102,6 +1102,12 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
         /// <summary>Physical slots the operator empties whose lock feedback input stops reading.</summary>
         public HashSet<int> LockFeedbackLostOnEmptySlots { get; } = [];
 
+        /// <summary>
+        /// Physical slots the operator empties after which the IO stops publishing: the reading that proves the slot
+        /// empty grows older than the snapshot age the executor trusts (PR #248 review, D2).
+        /// </summary>
+        public HashSet<int> IoGoesSilentAfterEmptySlots { get; } = [];
+
         /// <summary>Physical slots whose light curtain stops reading while the door stands open.</summary>
         public HashSet<int> LightCurtainLostSlots { get; } = [];
 
@@ -1175,6 +1181,15 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
                     if (NeverEmptiedSlots.Contains(slotIndex + 1))
                     {
                         UpdateLocker(slotIndex, current => current with { LockFeedbackRaw = true });
+                    }
+                    else if (IoGoesSilentAfterEmptySlots.Contains(slotIndex + 1))
+                    {
+                        if (locker.LightCurtainRaw is not true)
+                        {
+                            UpdateLocker(slotIndex, current => current with { LightCurtainRaw = true });
+                        }
+
+                        _clock.Advance(TimeSpan.FromSeconds(2));
                     }
                     else if (LockNeverClosesSlots.Contains(slotIndex + 1))
                     {

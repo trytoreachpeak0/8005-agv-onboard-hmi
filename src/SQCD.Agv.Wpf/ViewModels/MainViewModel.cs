@@ -103,6 +103,7 @@ public sealed class MainViewModel : ViewModelBase
     private Func<string, CancellationToken, Task<bool>>? _wireToGateHardwareRecoveryRecordSubmitter;
     private Func<bool>? _wireToGateCanRequestHardwareRepairRelease;
     private Func<string?, CancellationToken, Task<bool>>? _wireToGateHardwareRepairReleaseRequester;
+    private Func<string?>? _wireToGatePendingHardwareRecoveryRecord;
     private bool _canRequestManualChargingReturn;
     private bool _canRequestHardwareRepairRelease;
     private bool _hasWireToGateJourney;
@@ -585,12 +586,18 @@ public sealed class MainViewModel : ViewModelBase
     /// The repair release of a hold for an unproven door (CP-0009, REQ-0364, 8005-agv-onboard-hmi#219): the entry that
     /// asks for it. The record it earns is submitted through the hardware recovery record form configured above.
     /// </summary>
+    /// <param name="pendingRecordObservations">
+    /// The observations of a hardware recovery record that went out unanswered and that the next submit resends as
+    /// it was, or <c>null</c>; the confirmation dialog shows them instead of what is typed.
+    /// </param>
     internal void ConfigureRepairRelease(
         Func<bool> canRequest,
-        Func<string?, CancellationToken, Task<bool>> requester)
+        Func<string?, CancellationToken, Task<bool>> requester,
+        Func<string?>? pendingRecordObservations = null)
     {
         _wireToGateCanRequestHardwareRepairRelease = canRequest;
         _wireToGateHardwareRepairReleaseRequester = requester;
+        _wireToGatePendingHardwareRecoveryRecord = pendingRecordObservations;
         RefreshWireToGateInputStateCore();
     }
 
@@ -1772,6 +1779,12 @@ public sealed class MainViewModel : ViewModelBase
 
         return reported;
     }
+
+    /// <summary>
+    /// The observations a submit would resend because an earlier record went out unanswered, or <c>null</c> when it
+    /// sends what is typed. Read when the confirmation is shown, so the dialog names the record the press will send.
+    /// </summary>
+    public string? PendingHardwareRecoveryRecordObservations => _wireToGatePendingHardwareRecoveryRecord?.Invoke();
 
     public Task<bool> SubmitHardwareRecoveryRecordAsync(CancellationToken cancellationToken = default) =>
         _wireToGateHardwareRecoveryRecordSubmitter is null

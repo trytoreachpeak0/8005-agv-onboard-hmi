@@ -3860,10 +3860,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             return;
         }
 
+        bool isolated = command.CheckPurpose == "HOLD_RELEASE"
+            && (await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false)).ForcedIsolation is not null;
         IoSnapshot snapshot = _ioModule.CurrentSnapshot;
         SafetyEvaluation evaluation = EvaluateSafety(snapshot);
         string outcome = command.CheckPurpose == "HOLD_RELEASE"
-            ? EvaluateHoldRelease(snapshot, evaluation, command.PreDepartureSafetyCheckId)
+            ? EvaluateHoldRelease(snapshot, evaluation, isolated, command.PreDepartureSafetyCheckId)
             : evaluation.Safety.DepartureSafe ? "SAFE" : evaluation.Safety.UnknownPresent ? "UNKNOWN" : "UNSAFE";
         long safetyStateVersion = _session.Current.SafetyStateVersion;
         await _session.SendPreDepartureSafetyCheckResultAsync(
@@ -3897,7 +3899,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// <c>UNKNOWN</c> too; one that reads but is not EMPTY, LOCKED and RESET is <c>UNSAFE</c>.
     /// </para>
     /// </remarks>
-    private string EvaluateHoldRelease(IoSnapshot snapshot, SafetyEvaluation evaluation, string checkId)
+    private string EvaluateHoldRelease(
+        IoSnapshot snapshot,
+        SafetyEvaluation evaluation,
+        bool isolated,
+        string checkId)
     {
         IReadOnlyList<int> held = WireToGateDoorHoldText.HeldSlots(_session.CurrentJourney);
         bool fresh = snapshot.IsConnected && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _ioSnapshotMaxAge);
@@ -3908,7 +3914,6 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             LockFeedbackRaw: true,
             UnlockOutputRaw: false
         });
-        bool isolated = Volatile.Read(ref _lastRecoveryState).ForcedIsolation is not null;
         string outcome = held.Count == 0 || heldUnknown || evaluation.Safety.UnknownPresent
             ? "UNKNOWN"
             : heldProven && evaluation.Safety.DepartureSafe && !isolated

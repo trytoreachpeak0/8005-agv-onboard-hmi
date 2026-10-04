@@ -3981,7 +3981,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// every one of them <c>EMPTY</c> (CP-0009, 8005-agv-onboard-hmi#219). <c>ALL_EMPTY</c> keeps its meaning
     /// and is not touched here.
     /// </summary>
-    private static void ValidateClearOutcome(
+    internal static void ValidateClearOutcome(
         string overallOutcome,
         IReadOnlyList<WireToGateSlotResultPayload> slotResults)
     {

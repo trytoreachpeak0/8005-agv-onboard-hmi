@@ -32,6 +32,22 @@ public sealed partial class WireToGateBusinessService
         && (state.ForcedIsolation is not null || state.RepairRelease is { Accepted: true });
 
     /// <summary>
+    /// The observations of the hardware recovery record that went out unanswered and that the next press sends again
+    /// field for field -- the isolation's, or with none standing the repair release's -- or <c>null</c> when the next
+    /// press makes a new record from what is typed (PR #248 review: the second press is bound to what is shown).
+    /// </summary>
+    public string? PendingHardwareRecoveryRecordObservations
+    {
+        get
+        {
+            WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+            return state.ForcedIsolation is { } isolation
+                ? isolation.PendingRecord?.Observations
+                : state.RepairRelease?.PendingRecord?.Observations;
+        }
+    }
+
+    /// <summary>
     /// Submits the hardware recovery record for the forced recovery's whole slot set, and clears the
     /// set only when the server records it and the live readings of every slot are still valid.
     /// Nothing resumes on its own afterwards.

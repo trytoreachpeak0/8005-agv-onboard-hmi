@@ -88,6 +88,13 @@ public sealed partial class WireToGateBusinessService
         string reason,
         CancellationToken cancellationToken)
     {
+        // The entry and the press ask the same question: an authenticated recovery administrator at a vehicle whose
+        // session can carry the request. The entry being shut does not stop a caller that never asked it.
+        if (!CanUseRecoveryOperator(requireProof: true))
+        {
+            throw new InvalidOperationException("RECOVERY_AUTHENTICATION_REQUIRED");
+        }
+
         IReadOnlyList<int> held = DoorHeldSlots;
         if (held.Count == 0)
         {

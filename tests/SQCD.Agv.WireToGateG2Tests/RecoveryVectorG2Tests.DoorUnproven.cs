@@ -403,6 +403,46 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(0, afterRestart.Io.UnlockCount);
     }
 
+    /// <summary>
+    /// The second press is bound to what is shown (PR #248 review): the repair record went out and no answer came, so
+    /// the next press resends that record field for field. What the vehicle offers to show for the confirmation is that
+    /// record's text, not what was typed since, and what goes out is exactly that record.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-VEHICLE-HOLD-DOOR-REPAIR-RELEASE")]
+    public async Task AnUnansweredRepairRecordIsWhatTheNextPressShowsAndSendsAgain()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            loadAlreadySettled: true);
+        await HoldBothSlotsAsync(harness, token);
+        Assert.True(await harness.Business.RequestHardwareRepairReleaseAsync("1号仓锁体已更换。", token));
+        Assert.Null(harness.Business.PendingHardwareRecoveryRecordObservations);
+
+        harness.Server.RespondToRecoveryRequests = false;
+        Assert.False(await harness.Business.SubmitHardwareRecoveryRecordAsync("第一次填写：更换锁体。", token));
+        Assert.Equal("第一次填写：更换锁体。", harness.Business.PendingHardwareRecoveryRecordObservations);
+
+        harness.Server.RespondToRecoveryRequests = true;
+        Assert.True(await harness.Business.SubmitHardwareRecoveryRecordAsync("第二次填写，不应被发出。", token));
+
+        string[] records = [.. harness.ResultsOfType("HardwareRecoveryRecordSubmitted")];
+        Assert.Equal(2, records.Length);
+        Assert.Equal(PayloadText(records[0]), PayloadText(records[1]));
+        using (JsonDocument resent = JsonDocument.Parse(records[1]))
+        {
+            Assert.Equal(
+                ["第一次填写：更换锁体。"],
+                resent.RootElement.GetProperty("payload").GetProperty("observations").EnumerateArray()
+                    .Select(item => item.GetString()));
+        }
+
+        Assert.Null(harness.Business.PendingHardwareRecoveryRecordObservations);
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
     /// <summary>Compensates over an unreadable lock, waits for the hold, and repairs the lock.</summary>
     private static async Task HoldBothSlotsAsync(RecoveryVectorHarness harness, CancellationToken token)
     {
