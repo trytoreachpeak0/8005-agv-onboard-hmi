@@ -222,6 +222,90 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
         Assert.Empty(fixture.Io.Pulses);
     }
 
+    /// <summary>
+    /// A cancellation whose whole-vector precheck refuses -- slot 1's unlock output reads active -- while the door the
+    /// aborted load handed over is still open keeps that door in the active unlock set and answers UNKNOWN, the same
+    /// from every entry (8005-agv-onboard-hmi#249). It used to write an empty set and answer FAILED, so the next
+    /// handshake told the server no door was open while slot 2 stood open.
+    /// </summary>
+    /// <remarks>
+    /// The open door's result is UNKNOWN with what the IO reads and its own precheck reason, as a handed-over door that
+    /// ends uncertain mid-vector reports it. A handed-over door the snapshot proves shut is in no doubt: it leaves the
+    /// set, and with nothing left in it the refusal is the FAILED it always was.
+    /// </remarks>
+    [Theory]
+    [InlineData(true, "UNKNOWN")]
+    [InlineData(false, "FAILED")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task APrecheckRefusalKeepsAHandedOverDoorThatMayStandOpenInTheActiveSet(
+        bool doorStillOpen,
+        string expected)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([true, false], cancellationToken: token);
+        if (doorStillOpen)
+        {
+            fixture.Io.OpenDoor(1);
+        }
+
+        WireToGateRecoveryVectorContext context = await HandOverAsync(
+            fixture,
+            "b4b4b4b4-b4b4-4b4b-8b4b-b4b4b4b4b4c1",
+            [1, 2],
+            [2],
+            token);
+        // Slot 1 is shut and locked, but its unlock output still reads active: it fails its own precheck.
+        fixture.Io.OpenDoorWithOutputActive(0);
+        fixture.Io.CloseDoorKeepingOutput(0);
+
+        WireToGateRecoveryVectorExecutionResult first = await fixture.Executor.ExecuteClearAsync(context, null, token);
+
+        Assert.Equal(expected, first.OverallOutcome);
+        Assert.Equal("PREPARED", first.JournalCheckpoint);
+        WireToGateRecoveryState recorded = await fixture.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal(WireToGateRecoveryCheckpoint.Prepared, recorded.ProvenRecoveryCheckpoint);
+        Assert.Equal(doorStillOpen ? [2] : [], recorded.ActiveUnlockSlots);
+        Assert.Empty(recorded.CompletedSlots);
+        Assert.Equal(first.ObservedAt, recorded.RecoveryResultObservedAt);
+        WireToGateSlotExecutionResult refused = first.SlotResults.Single(slot => slot.SlotNo == 1);
+        Assert.Equal("NOT_STARTED", refused.Outcome);
+        Assert.Equal(["UNLOCK_OUTPUT_NOT_RESET"], refused.ReasonCodes);
+        WireToGateSlotExecutionResult handedOver = first.SlotResults.Single(slot => slot.SlotNo == 2);
+        if (doorStillOpen)
+        {
+            Assert.Equal("UNKNOWN", handedOver.Outcome);
+            Assert.Equal("UNLOCKED", handedOver.LockState);
+            Assert.Equal("EMPTY", handedOver.FinalPhysicalState);
+            Assert.Equal(["LOCK_NOT_CLOSED"], handedOver.ReasonCodes);
+        }
+        else
+        {
+            Assert.Equal("NOT_STARTED", handedOver.Outcome);
+            Assert.Equal("LOCKED", handedOver.LockState);
+            Assert.Empty(handedOver.ReasonCodes);
+        }
+
+        fixture.Clock.Advance(TimeSpan.FromSeconds(5));
+        WireToGateRecoveryVectorExecutionResult? refusedAgain =
+            await fixture.Executor.RefuseBeforeUnlockAsync(context, "VEHICLE_NOT_READY", token);
+        if (doorStillOpen)
+        {
+            // A door in the active set means the vector may have acted: never answered as refused before an unlock.
+            Assert.Null(refusedAgain);
+        }
+        else
+        {
+            AssertSameAnswer(first, refusedAgain);
+        }
+
+        AssertSameAnswer(first, await fixture.Executor.SettleWithoutUnlockAsync(context, token));
+        AssertSameAnswer(first, await fixture.Executor.ExecuteClearAsync(context, null, token));
+        await using WireToGateRecoveryVectorExecutor restarted = RestartedExecutor(fixture);
+        AssertSameAnswer(first, await restarted.ExecuteClearAsync(context, null, token));
+        Assert.Empty(fixture.Io.Pulses);
+    }
+
     private static Func<string, IReadOnlyList<int>, IReadOnlyList<int>, CancellationToken, Task>
         RecordJournalAtEachPhase(TestFixture fixture, List<(string Phase, WireToGateRecoveryState State)> progress) =>
         async (phase, _, _, cancellationToken) =>
