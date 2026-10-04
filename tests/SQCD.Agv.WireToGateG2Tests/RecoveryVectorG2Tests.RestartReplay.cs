@@ -199,8 +199,8 @@ public sealed partial class RecoveryVectorG2Tests
     /// operator is told that, not that doors were opened and UNKNOWN was reported (8005-agv-onboard-hmi#249).
     /// </summary>
     /// <remarks>
-    /// Slot 1 may only ever have been empty when the vector started: being counted complete at Prepared does not say a
-    /// door opened, so the message names it as settled by the journal, not as opened.
+    /// Counted complete, slot 1 was either found empty or opened, emptied and shut again; the journal does not say
+    /// which, so the message names it as settled, not as opened.
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
@@ -250,6 +250,7 @@ public sealed partial class RecoveryVectorG2Tests
         WireToGateOperatorEvent declined = await WaitForEventAsync(afterRestart, "RECOVERY_COMMAND_DECLINED", token);
         Assert.Contains("已向服务端报告未完成（FAILED）", declined.Message, StringComparison.Ordinal);
         Assert.Contains("未再开任何仓门", declined.Message, StringComparison.Ordinal);
+        Assert.Contains("已结清的仓位：1号仓", declined.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("UNKNOWN", declined.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("已开过", declined.Message, StringComparison.Ordinal);
     }

@@ -530,8 +530,9 @@ public sealed partial class WireToGateBusinessService
                     ? $"已按操作员选择不再继续{subject}；按日志这条恢复在重启前已按光幕结清为无货，"
                         + $"{FormatSlots(DoorUnprovenSlots(result.SlotResults))}门锁未证明锁闭，已如实上报，车辆没有再开任何仓门。"
                         + $"{DoorUnprovenRepairNotice} "
-                // Nothing in the active unlock set (8005-agv-onboard-hmi#249): no door is in doubt, and the slots the
-                // journal counts complete may only ever have been empty, so they are named as settled, not as opened.
+                // Nothing in the active unlock set (8005-agv-onboard-hmi#249): no door is in doubt. A slot the journal
+                // counts complete was either found empty or opened, emptied and shut again -- which of the two the
+                // journal does not say -- so it is named as settled, not as opened.
                 : result.OverallOutcome == "FAILED"
                     ? $"已按操作员选择不再继续{subject}；按日志没有仓门处于可能开着的状态，"
                         + (opened.Length > 0 ? $"已结清的仓位：{FormatSlots(opened)}，" : "")
