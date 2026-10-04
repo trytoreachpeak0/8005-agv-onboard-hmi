@@ -42,7 +42,7 @@ public sealed partial class WireToGateBusinessService
 
     /// <summary>
     /// Whether an administrator can ask for the repair release: the server holds slots for an unproven door, no
-    /// release is accepted yet, and no other recovery session stands open in its way.
+    /// release is accepted yet, and no recovery session other than the release's own stands open in its way.
     /// </summary>
     public bool CanRequestHardwareRepairRelease
     {
@@ -56,12 +56,22 @@ public sealed partial class WireToGateBusinessService
             WireToGateRepairRelease? release = Volatile.Read(ref _lastRecoveryState).RepairRelease;
             return release is not { Accepted: true }
                 && (Volatile.Read(ref _recoverySessionSnapshot) is not { State: not "CLOSED" } open
-                    || string.Equals(
-                        open.ExceptionRecoverySessionId,
-                        release?.ExceptionRecoverySessionId,
-                        StringComparison.Ordinal));
+                    || IsReleaseSession(open, release));
         }
     }
+
+    /// <summary>
+    /// Whether <paramref name="open"/> is the session <paramref name="release"/> asked for: the one on file, or -- while
+    /// the session's id is not on file yet, because its <c>Opened</c> answer was lost or the process died before writing
+    /// it -- the one the server opened for the release's event (PR #248 review, must-fix 1).
+    /// </summary>
+    private static bool IsReleaseSession(
+        WireToGateExceptionRecoverySessionSnapshot open,
+        WireToGateRepairRelease? release) =>
+        release is not null
+        && (release.ExceptionRecoverySessionId is { } onFile
+            ? string.Equals(open.ExceptionRecoverySessionId, onFile, StringComparison.Ordinal)
+            : string.Equals(open.EventId, release.EventId, StringComparison.Ordinal));
 
     /// <param name="reason">The administrator's reason for the session and the action; blank sends the default.</param>
     public Task<bool> RequestHardwareRepairReleaseAsync(
@@ -105,41 +115,57 @@ public sealed partial class WireToGateBusinessService
 
         if (release?.ExceptionRecoverySessionId is null)
         {
-            // No session of the release's own on file: another one standing open is in the way, and the server would
-            // refuse a second session anyway.
-            if (open is not null)
+            // A session standing open that is not the release's own is in the way: the server refuses a second session
+            // while one stands.
+            if (open is not null && !IsReleaseSession(open, release))
             {
                 throw new InvalidOperationException("RECOVERY_SESSION_NOT_READY");
             }
 
-            WireToGateOperatorContextPayload administrator = ReadOperatorContext();
-            string requestId = Guid.NewGuid().ToString("D");
-            release = new WireToGateRepairRelease(
-                requestId,
-                requestId,
-                release?.RecoveryActionId ?? Guid.NewGuid().ToString("D"),
-                held.ToArray(),
-                administrator.OperatorId,
-                administrator.VerificationMethod,
-                administrator.VerifiedAt,
-                reason);
-            WireToGateRepairRelease journaled = release;
-            await UpdateRecoveryStateCachedAsync(
-                    current => current with { RepairRelease = journaled },
-                    cancellationToken)
-                .ConfigureAwait(false);
+            // A release on file whose session id never reached the journal -- the Opened answer was lost, or the process
+            // died between the two writes -- is asked again exactly as it was first asked: same requestId, administrator,
+            // verifiedAt, reason, event and slots. The server answers a requestId it already holds with that session when
+            // the payload is the same (OnboardRecoveryCoordinator.OpenSessionAsync) and refuses any other request while
+            // it stands, so a new requestId here left the vehicle held for good (PR #248 review, must-fix 1). What this
+            // press typed is not sent; the request on file is. The authentication proof is not journaled, by design: a
+            // proof changed in between makes the server's content check refuse the repeat, which is the server's call.
+            if (release is null)
+            {
+                WireToGateOperatorContextPayload administrator = ReadOperatorContext();
+                string newRequestId = Guid.NewGuid().ToString("D");
+                release = new WireToGateRepairRelease(
+                    newRequestId,
+                    newRequestId,
+                    Guid.NewGuid().ToString("D"),
+                    held.ToArray(),
+                    administrator.OperatorId,
+                    administrator.VerificationMethod,
+                    administrator.VerifiedAt,
+                    reason);
+                WireToGateRepairRelease journaled = release;
+                await UpdateRecoveryStateCachedAsync(
+                        current => current with { RepairRelease = journaled },
+                        cancellationToken)
+                    .ConfigureAwait(false);
+            }
 
+            string requestId = release.RequestId;
+            // A message of its own for every send: the server's inbox compares a repeated messageId's whole line, and a
+            // repeat sent later is a different line.
             ExceptionRecoverySessionOpenedPayload opened = await _session
                 .RequestExceptionRecoverySessionAsync(
-                    requestId,
+                    Guid.NewGuid().ToString("D"),
                     new ExceptionRecoverySessionRequestedPayload(
                         requestId,
-                        administrator,
+                        new WireToGateOperatorContextPayload(
+                            release.OperatorId,
+                            release.OperatorVerificationMethod,
+                            release.OperatorVerifiedAt),
                         _recoveryOptions.AdministratorRole,
                         release.EventId,
                         null,
                         release.Slots,
-                        reason,
+                        release.Reason,
                         proof),
                     cancellationToken)
                 .ConfigureAwait(false);

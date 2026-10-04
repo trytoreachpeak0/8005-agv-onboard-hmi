@@ -91,8 +91,19 @@ public sealed partial class RecoveryVectorG2Tests
             "the vehicle to acknowledge the business state carrying the hold",
             token);
 
-        WireToGateRecoveryState settled = await harness.ReadRecoveryStateAsync(token);
-        Assert.Null(settled.RecoveryVector);
+        // The business side is settled after the result's DurableAck, not with it: waited for, never assumed
+        // (PR #248 review, must-fix 2 -- asserted at once, it was red 2 in 27 runs, and 3 in 3 with 400 ms injected
+        // before the settle).
+        WireToGateRecoveryState settled = WireToGateRecoveryState.Empty;
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () =>
+            {
+                settled = harness.ReadRecoveryStateAsync(token).GetAwaiter().GetResult();
+                return settled.RecoveryVector is null
+                    && harness.OperatorEvents.Any(item => item.Kind == "RECOVERY_VECTOR_DOOR_UNPROVEN");
+            },
+            "the business side to be settled and the operator told after the result's DurableAck",
+            token);
         Assert.Null(settled.UnsettledSlotOperationAttemptId);
         Assert.Null(settled.ExceptionRecoverySessionId);
         WireToGateOperatorEvent told = Assert.Single(
@@ -324,7 +335,7 @@ public sealed partial class RecoveryVectorG2Tests
         harness.Server.RecoverySessionOpenedRepliesToLose = 1;
 
         Assert.False(await harness.Business.RequestHardwareRepairReleaseAsync("1号仓锁体已更换。", token));
-        await ShowTheReleaseSessionOpenAsync(harness, harness.Server, harness.ResultsOfType("ExceptionRecoverySessionRequested")[0]);
+        await ShowTheReleaseSessionOpenAsync(harness, harness.Server, harness.ResultsOfType("ExceptionRecoverySessionRequested")[^1]);
         await RecoveryVectorHarness.WaitUntilAsync(
             () => harness.Business.CanRequestHardwareRepairRelease,
             "the entry to stay open over the release's own OPEN session",
@@ -379,7 +390,7 @@ public sealed partial class RecoveryVectorG2Tests
         await ShowTheReleaseSessionOpenAsync(
             afterRestart,
             serverAfterRestart,
-            server.ReceivedEnvelopes.First(item => item.MessageType == "ExceptionRecoverySessionRequested").WireLine);
+            server.ReceivedEnvelopes.Last(item => item.MessageType == "ExceptionRecoverySessionRequested").WireLine);
         await RecoveryVectorHarness.WaitUntilAsync(
             () => afterRestart.Business.CanRequestHardwareRepairRelease,
             "the entry over the release on file after the restart",
@@ -456,12 +467,12 @@ public sealed partial class RecoveryVectorG2Tests
         string[] requests =
         [
             .. first.ReceivedEnvelopes
-                .Where(item => item.MessageType == "ExceptionRecoverySessionRequested")
+                .Where(item => IsReleaseSessionRequest(item.MessageType, item.WireLine))
                 .Select(item => item.WireLine),
             .. ReferenceEquals(first, second)
                 ? []
                 : second.ReceivedEnvelopes
-                    .Where(item => item.MessageType == "ExceptionRecoverySessionRequested")
+                    .Where(item => IsReleaseSessionRequest(item.MessageType, item.WireLine))
                     .Select(item => item.WireLine)
         ];
         Assert.Equal(2, requests.Length);
@@ -473,6 +484,18 @@ public sealed partial class RecoveryVectorG2Tests
             second.ReceivedEnvelopes,
             item => item.MessageType == "RecoveryActionSubmitted"
                 && item.WireLine.Contains("HARDWARE_REPAIR_RELEASE", StringComparison.Ordinal));
+    }
+
+    /// <summary>A session request with no demand: the release's, not the compensation's that came before it.</summary>
+    private static bool IsReleaseSessionRequest(string messageType, string wireLine)
+    {
+        if (messageType != "ExceptionRecoverySessionRequested")
+        {
+            return false;
+        }
+
+        using JsonDocument document = JsonDocument.Parse(wireLine);
+        return document.RootElement.GetProperty("payload").GetProperty("demandId").ValueKind == JsonValueKind.Null;
     }
 
     private static string? MessageIdOf(string wireLine)

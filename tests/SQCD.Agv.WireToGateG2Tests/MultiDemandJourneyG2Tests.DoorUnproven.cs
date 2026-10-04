@@ -66,12 +66,22 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
         Assert.Equal("1号仓：仓已确认无货，门锁未锁闭，本车需维修后才能继续。", harness.ViewModel.DoorHoldNotice);
         Assert.Equal("1", harness.ViewModel.DoorHoldSlots);
+        // Settled after the result's DurableAck, as on the compensation path: waited for, never assumed (PR #248
+        // review, must-fix 2).
+        WireToGateRecoveryState settled = WireToGateRecoveryState.Empty;
+        await harness.WaitUntilAsync(
+            () =>
+            {
+                settled = ReadJournal(harness, token);
+                return settled.RecoveryVector is null
+                    && harness.Events.Any(item => item.Kind == "RECOVERY_VECTOR_DOOR_UNPROVEN");
+            },
+            "the business side to be settled and the operator told after the result's DurableAck",
+            token);
         Assert.Contains(
             harness.Events,
             item => item.Kind == "RECOVERY_VECTOR_DOOR_UNPROVEN"
                 && item.Message == "1号仓：仓已确认无货，门锁未锁闭，本车需维修后才能继续。");
-        WireToGateRecoveryState settled = ReadJournal(harness, token);
-        Assert.Null(settled.RecoveryVector);
         Assert.Null(settled.UnsettledSlotOperationAttemptId);
         // Still one pulse: nothing was opened after the unproven door, and nothing is pulsed to "prove" it.
         Assert.Equal(1, io.UnlockCount);
