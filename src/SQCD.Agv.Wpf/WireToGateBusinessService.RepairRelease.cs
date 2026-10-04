@@ -95,10 +95,8 @@ public sealed partial class WireToGateBusinessService
             return false;
         }
 
-        WireToGateExceptionRecoverySessionSnapshot? open = Volatile.Read(ref _recoverySessionSnapshot) is
-            { State: not "CLOSED" } snapshot
-                ? snapshot
-                : null;
+        WireToGateExceptionRecoverySessionSnapshot? snapshot = Volatile.Read(ref _recoverySessionSnapshot);
+        WireToGateExceptionRecoverySessionSnapshot? open = snapshot is { State: not "CLOSED" } ? snapshot : null;
         // A release on file for other slots is about a hold that has since changed; it is asked again from the start.
         if (release is not null && !release.Slots.SequenceEqual(held))
         {
