@@ -1,0 +1,7 @@
+Test run for <worktree>\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+
+Passed!  - Failed:     0, Passed:    53, Skipped:     0, Total:    53, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)

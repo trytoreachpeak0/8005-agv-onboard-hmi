@@ -1,0 +1,59 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  SQCD.Agv.Core -> <worktree>\src\SQCD.Agv.Core\bin\Debug\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Contracts -> <worktree>\src\SQCD.Agv.Contracts\bin\Debug\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.RuleMock -> <worktree>\tools\SQCD.Agv.RuleMock\bin\Debug\net8.0\win-x64\SQCD.Agv.RuleMock.dll
+  SQCD.Agv.Infrastructure -> <worktree>\src\SQCD.Agv.Infrastructure\bin\Debug\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.AutomationHost -> <worktree>\src\SQCD.Agv.AutomationHost\bin\Debug\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Application -> <worktree>\src\SQCD.Agv.Application\bin\Debug\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.UnitTests -> <worktree>\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll
+Test run for <worktree>\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:02.01]     SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AResumeThatFindsACompletedSlotChangedKeepsTheHandedOverDoorInTheActiveSet(change: "basket-appeared", expectedCheckpoint: ActiveUnlockSet) [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AResumeThatFindsACompletedSlotChangedKeepsTheHandedOverDoorInTheActiveSet(change: "basket-appeared", expectedCheckpoint: ActiveUnlockSet) [83 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ
+                                               ↓ (pos 0)
+Expected: <>z__ReadOnlySingleElementList<int> [2]
+Actual:   List<int>                           [1]
+                                               ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AResumeThatFindsACompletedSlotChangedKeepsTheHandedOverDoorInTheActiveSet(String change, WireToGateRecoveryCheckpoint expectedCheckpoint) in <worktree>\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 477
+   at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AResumeThatFindsACompletedSlotChangedKeepsTheHandedOverDoorInTheActiveSet(String change, WireToGateRecoveryCheckpoint expectedCheckpoint) in <worktree>\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 494
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:02.54]     SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ZzProbeResumeChangedCompletedSlotKeepsHandedOverDoor [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ZzProbeResumeChangedCompletedSlotKeepsHandedOverDoor [54 ms]
+  Error Message:
+   Assert.Contains() Failure: Item not found in collection
+Collection: [1]
+Not found:  2
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ZzProbeResumeChangedCompletedSlotKeepsHandedOverDoor() in <worktree>\tests\SQCD.Agv.UnitTests\ZzReviewProbe249r3.cs:line 41
+   at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ZzProbeResumeChangedCompletedSlotKeepsHandedOverDoor() in <worktree>\tests\SQCD.Agv.UnitTests\ZzReviewProbe249r3.cs:line 41
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:05.33]     SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ZzProbeLatchRefusalPausesWithHandedOverDoorInDoubt [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ZzProbeLatchRefusalPausesWithHandedOverDoorInDoubt [65 ms]
+  Error Message:
+   Assert.Contains() Failure: Filter not matched in collection
+Collection: [WireToGateSlotExecutionResult { SlotNo = 1, Outcome = NOT_STARTED, FinalPhysicalState = OCCUPIED, LockState = LOCKED, UnlockOutputState = RESET, ReasonCodes = System.String[] }, WireToGateSlotExecutionResult { SlotNo = 2, Outcome = UNKNOWN, FinalPhysicalState = UNKNOWN, LockState = UNKNOWN, UnlockOutputState = UNKNOWN, ReasonCodes = <>z__ReadOnlySingleElementList`1[System.String] }]
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ZzProbeLatchRefusalPausesWithHandedOverDoorInDoubt() in <worktree>\tests\SQCD.Agv.UnitTests\ZzReviewProbe249r3.cs:line 84
+   at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ZzProbeLatchRefusalPausesWithHandedOverDoorInDoubt() in <worktree>\tests\SQCD.Agv.UnitTests\ZzReviewProbe249r3.cs:line 84
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:05.51]     SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ALatchRefusalOverAHandedOverDoorItCannotProveShutKeepsTheDoorAndTheLatchReason [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ALatchRefusalOverAHandedOverDoorItCannotProveShutKeepsTheDoorAndTheLatchReason [60 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ at index 0
+           ↓ (pos 0)
+Expected: "VEHICLE_NOT_READY"
+Actual:   "SLOT_STATE_UNKNOWN"
+           ↑ (pos 0)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ALatchRefusalOverAHandedOverDoorItCannotProveShutKeepsTheDoorAndTheLatchReason() in <worktree>\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 546
+   at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ALatchRefusalOverAHandedOverDoorItCannotProveShutKeepsTheDoorAndTheLatchReason() in <worktree>\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 546
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     4, Passed:    51, Skipped:     0, Total:    55, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)

@@ -194,6 +194,68 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// The same compensation, but the process died after the executor's prepared checkpoint -- slot 1 counted complete,
+    /// nothing in the active unlock set -- so no door is in doubt: declined, it is answered <c>FAILED</c>, and the
+    /// operator is told that, not that doors were opened and UNKNOWN was reported (8005-agv-onboard-hmi#249).
+    /// </summary>
+    /// <remarks>
+    /// Counted complete, slot 1 was either found empty or opened, emptied and shut again; the journal does not say
+    /// which, so the message names it as settled, not as opened.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ACompensationHeldAtPreparedIsDeclinedAsFailedAndTheOperatorIsToldSo()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        WireToGateSlotExecutionResult slotOneDone = new(1, "COMPLETED", "EMPTY", "LOCKED", "RESET", []);
+        await using RestartedVehicle vehicle = await RestartAfterALostCompensationCommandAsync(
+            token,
+            state => state with
+            {
+                ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.Prepared,
+                ActiveUnlockSlots = [],
+                CompletedSlots = [1],
+                SlotResults = [slotOneDone]
+            },
+            replayInHandshake: false);
+        RecoveryVectorHarness afterRestart = vehicle.Harness;
+        afterRestart.Io.SetCargoPresent(0, false);
+        await WaitForSessionToCarryCommandsAsync(afterRestart, token);
+        WireToGateRecoveryVectorContext vector = (await afterRestart.ReadRecoveryStateAsync(token)).RecoveryVector!;
+        await vehicle.After.SendCommandAsync(
+            "LoadCompensationCommand",
+            Guid.NewGuid().ToString("D"),
+            new
+            {
+                recoveryActionId = vector.PrimaryId,
+                exceptionRecoverySessionId = vector.ExceptionRecoverySessionId,
+                demandId = vector.DemandId,
+                slotOperationAttemptId = vector.SlotOperationAttemptId,
+                slots = vector.Slots,
+                expectedFinalPhysicalState = "EMPTY",
+                commandContentSha256 = FakeControlServerIdentifiers.LoadCompensationContentSha256(
+                    vector.PrimaryId, vector.DemandId, vector.SlotOperationAttemptId!, [.. vector.Slots])
+            });
+
+        await WaitForHeldOrExecutedAsync(afterRestart, "LoadCompensationResult", token);
+        WireToGateHeldRecoveryCommandPrompt held = Assert.IsType<WireToGateHeldRecoveryCommandPrompt>(
+            afterRestart.Business.HeldRecoveryCommand);
+
+        Assert.True(await afterRestart.Business.DeclineHeldRecoveryCommandAsync(held, token));
+
+        JsonElement result = await afterRestart.WaitForResultAsync("LoadCompensationResult", token);
+        Assert.Equal("FAILED", result.GetProperty("overallOutcome").GetString());
+        Assert.Equal(0, afterRestart.Io.UnlockCount);
+        WireToGateOperatorEvent declined = await WaitForEventAsync(afterRestart, "RECOVERY_COMMAND_DECLINED", token);
+        Assert.Contains("已向服务端报告未完成（FAILED）", declined.Message, StringComparison.Ordinal);
+        Assert.Contains("未再开任何仓门", declined.Message, StringComparison.Ordinal);
+        Assert.Contains("已结清的仓位：1号仓", declined.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("UNKNOWN", declined.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("已开过", declined.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// The entry on the screen: the view model, wired the way the App wires it, shows both buttons and the notice for
     /// the held command, and its confirm runs the command.
     /// </summary>

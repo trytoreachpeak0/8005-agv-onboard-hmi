@@ -1,0 +1,31 @@
+== M3_PAUSED_BEFORE_WRITE: exit=1 KILLED
+Failed!  - Failed:     4, Passed:    49, Skipped:     0, Total:    53, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
+== M6_DROP_COMPLETED: exit=1 KILLED
+Failed!  - Failed:     5, Passed:    48, Skipped:     0, Total:    53, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
+== M10_PREPARED_FAILED_EVEN_WITH_ACTIVE: exit=1 KILLED
+Failed!  - Failed:     7, Passed:    46, Skipped:     0, Total:    53, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
+== M11_REFUSAL_DROPS_HANDED_OVER_DOOR: exit=1 KILLED
+Failed!  - Failed:     6, Passed:    47, Skipped:     0, Total:    53, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
+== M12_SHUT_HANDED_OVER_DOOR_STILL_IN_DOUBT: exit=1 KILLED
+Failed!  - Failed:     3, Passed:    50, Skipped:     0, Total:    53, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
+== M13_STALE_SHUT_READING_PROVES_SHUT: exit=1 KILLED
+Failed!  - Failed:     1, Passed:    52, Skipped:     0, Total:    53, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
+== R4_PAUSED_WITHOUT_DOOR: exit=1 KILLED
+Failed!  - Failed:     1, Passed:    52, Skipped:     0, Total:    53, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
+== R10C_LATCH_IGNORES_HANDED_OVER: exit=1 KILLED
+Failed!  - Failed:     1, Passed:    52, Skipped:     0, Total:    53, Duration: 4 s - SQCD.Agv.UnitTests.dll (net8.0)
+== R2_STALE_READING_STATED: exit=1 KILLED
+Failed!  - Failed:     2, Passed:    51, Skipped:     0, Total:    53, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
+== R5_FINISHED_DOOR_STILL_IN_DOUBT: exit=1 KILLED
+Failed!  - Failed:     1, Passed:    52, Skipped:     0, Total:    53, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)
+== R6_SHUT_OVER_BASKET_IN_DOUBT: exit=1 KILLED
+Failed!  - Failed:     1, Passed:    52, Skipped:     0, Total:    53, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)
+== M14_RESUME_DROPS_HANDED_OVER_DOOR: exit=1 KILLED
+Failed!  - Failed:     1, Passed:    52, Skipped:     0, Total:    53, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)
+== M15_REASONS_REPLACED_NOT_MERGED: exit=1 KILLED
+Failed!  - Failed:     1, Passed:    52, Skipped:     0, Total:    53, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)
+== RV4_M2_RESUME_WRITES_ONLY_DOORS_IN_DOUBT: exit=1 KILLED
+Failed!  - Failed:     1, Passed:    52, Skipped:     0, Total:    53, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)
+== R12_SETTLED_SLOTS_DROPPED_FROM_TEXT (G2)
+[xUnit.net 00:00:01.66]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACompensationHeldAtPreparedIsDeclinedAsFailedAndTheOperatorIsToldSo [FAIL]
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 592 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
