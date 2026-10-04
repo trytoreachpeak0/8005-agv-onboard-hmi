@@ -416,6 +416,51 @@ public sealed class FakeControlServer : IAsyncDisposable
     private object JourneyPayload(string messageType, object built) =>
         JourneySnapshotPayloads?.GetValueOrDefault(messageType) ?? built;
 
+    private long _doorHoldBusinessStateRevision = 500;
+
+    /// <summary>The slots this double holds for an unproven door, ascending; empty when none.</summary>
+    public IReadOnlyList<int> DoorHeldSlots { get; private set; } = [];
+
+    /// <summary>
+    /// Publishes the vehicle business state holding <paramref name="heldSlots"/> for an unproven door, the way the
+    /// control server does after settling an <c>ALL_EMPTY_DOOR_UNPROVEN</c> (cs#385, <c>WireToGateStore</c>): one
+    /// <c>SLOT_DOOR_LOCK_UNPROVEN_AFTER_EMPTY</c> fact per held slot, subject <c>SLOT</c>, the slot number as its id,
+    /// and readiness <c>RECOVERY_REQUIRED</c> while any is held. An empty set publishes the hold lifted.
+    /// </summary>
+    public Task PublishDoorHoldAsync(IReadOnlyList<int> heldSlots)
+    {
+        ConnectionContext context = Volatile.Read(ref _latestSession)
+            ?? throw new InvalidOperationException("No session has been accepted yet.");
+        return PublishDoorHoldAsync(context, heldSlots);
+    }
+
+    private Task PublishDoorHoldAsync(ConnectionContext context, IReadOnlyList<int> heldSlots)
+    {
+        DoorHeldSlots = [.. heldSlots.Order()];
+        return WriteJourneyEnvelopeAsync(context, CreateJourneyEnvelope(
+            context,
+            "VehicleBusinessStateSnapshot",
+            new
+            {
+                vehicleBusinessStateRevision = Interlocked.Increment(ref _doorHoldBusinessStateRevision),
+                readiness = heldSlots.Count == 0 ? "READY" : "RECOVERY_REQUIRED",
+                activePurpose = (string?)null,
+                manualChargingHold = false,
+                batteryState = "SUFFICIENT",
+                chargingCycleState = "NOT_CHARGING",
+                loadingPhase = (object?)null,
+                blockingFacts = DoorHeldSlots
+                    .Select(slot => new
+                    {
+                        reasonCode = "SLOT_DOOR_LOCK_UNPROVEN_AFTER_EMPTY",
+                        subjectType = "SLOT",
+                        subjectId = slot.ToString(System.Globalization.CultureInfo.InvariantCulture)
+                    })
+                    .ToArray(),
+                observedAt = DateTimeOffset.UtcNow
+            }));
+    }
+
     /// <summary>
     /// Sends one journey snapshot the test composes, on the latest session and under a new messageId: a
     /// revision advancing mid-session, the way the real server replaces a worklist or a plan (onboard-hmi#134).
@@ -689,6 +734,44 @@ public sealed class FakeControlServer : IAsyncDisposable
     public string? RecoverySessionRejectionReasonCode { get; set; }
 
     /// <summary>
+    /// Models the real server's one open recovery session per vehicle (control-server
+    /// <c>OnboardRecoveryCoordinator.OpenSessionAsync</c>, 8005-agv-onboard-hmi#219 review): a request whose
+    /// <c>requestId</c> opened the standing session is answered with that session again when its payload is the same
+    /// (a different payload under the same id drops the connection, as the server's content conflict does); any other
+    /// request while it stands is rejected with <c>ACTION_NOT_ALLOWED_IN_STATE</c>. A recorded hardware record closes
+    /// it, as the repair release's session closes on <c>RECORDED</c>. Off by default: the older tests here open a
+    /// session per request.
+    /// </summary>
+    public bool ModelOneOpenRecoverySession { get; set; }
+
+    /// <summary>How many <c>ExceptionRecoverySessionOpened</c> answers to lose after the session has opened.</summary>
+    public int RecoverySessionOpenedRepliesToLose
+    {
+        get => Volatile.Read(ref _recoverySessionOpenedRepliesToLose);
+        set => Volatile.Write(ref _recoverySessionOpenedRepliesToLose, value);
+    }
+
+    private int _recoverySessionOpenedRepliesToLose;
+
+    private (string RequestId, string Payload)? _openRecoverySession;
+
+    /// <summary>
+    /// A session some other request opened stands on the server before this vehicle asks for anything: with
+    /// <see cref="ModelOneOpenRecoverySession"/> on, every request but <paramref name="requestId"/> is rejected until a
+    /// recorded hardware record closes it.
+    /// </summary>
+    public void StandOpenRecoverySession(string requestId)
+    {
+        lock (_sync)
+        {
+            _openRecoverySession = (requestId, string.Empty);
+        }
+    }
+
+    /// <summary>The requestIds whose session request this double answered with a rejection, oldest first.</summary>
+    public IReadOnlyList<string> RejectedRecoverySessionRequests { get; private set; } = [];
+
+    /// <summary>
     /// 带着别的字节重复到达的恢复请求 messageId。真服务端的 <c>ProtocolInbox</c> 把 messageId 绑死在
     /// 它第一次带来的整行字节上（<c>WireContentHash.Sha256(line)</c>），之后内容不同就抛
     /// <c>ProtocolContentConflictException</c> 并掐掉连接。替身照做——不照做的话，车辆复用一个
@@ -920,6 +1003,10 @@ public sealed class FakeControlServer : IAsyncDisposable
 
                 _settledAttempts.UnionWith(previous._settledAttempts);
                 _operationsNeedingRecovery.UnionWith(previous._operationsNeedingRecovery);
+                _openRecoverySession = previous._openRecoverySession;
+                // The hold and the business state revision it was published under: a later push has to advance it.
+                DoorHeldSlots = previous.DoorHeldSlots;
+                _doorHoldBusinessStateRevision = Interlocked.Read(ref previous._doorHoldBusinessStateRevision);
 
                 foreach ((string messageId, object payload) in previous._unacknowledgedClosedRecoverySnapshots)
                 {
@@ -1931,12 +2018,16 @@ public sealed class FakeControlServer : IAsyncDisposable
                             _settledCompensations[recoveryPayload.GetProperty("recoveryActionId").GetString()!] = 0;
                         }
 
+                        // ALL_EMPTY_DOOR_UNPROVEN settles the demand as ALL_EMPTY does, and holds the vehicle on every
+                        // target slot (control-server OnboardRecoveryCoordinator, cs#385; 8005-agv-onboard-hmi#219).
+                        bool doorUnproven = messageType != "FaultCargoRecoveryResult"
+                            && recoveryPayload.GetProperty("overallOutcome").GetString() == "ALL_EMPTY_DOOR_UNPROVEN";
                         string? settledAttempt = messageType switch
                         {
                             "FaultCargoRecoveryResult" when recoveryPayload.GetProperty("overallOutcome").GetString()
                                 == "HANDED_OFF" => RecoveryVectorSlotOperationAttemptId,
                             "FaultCargoRecoveryResult" => null,
-                            _ when recoveryPayload.GetProperty("overallOutcome").GetString() == "ALL_EMPTY" =>
+                            _ when recoveryPayload.GetProperty("overallOutcome").GetString() == "ALL_EMPTY" || doorUnproven =>
                                 recoveryPayload.GetProperty("slotOperationAttemptId").GetString(),
                             _ => null
                         };
@@ -1948,6 +2039,17 @@ public sealed class FakeControlServer : IAsyncDisposable
                                 _operationsNeedingRecovery.Remove(settledAttempt);
                             }
                         }).ConfigureAwait(false);
+                        // Published once the session is past its handshake: a result resent inside the handshake window
+                        // would otherwise put a journey push between a snapshot and its ack. A test that needs the hold
+                        // on such a session publishes it itself (PublishDoorHoldAsync).
+                        if (doorUnproven && context.AnnouncedReadiness is not null)
+                        {
+                            int[] held = [.. recoveryPayload.GetProperty("slotResults").EnumerateArray()
+                                .Select(slot => slot.GetProperty("slotNo").GetInt32())
+                                .Order()];
+                            await PublishDoorHoldAsync(context, held).ConfigureAwait(false);
+                        }
+
                         break;
                     case "ForcedMechanicalRecoveryResult" when WithholdForcedMechanicalRecoveryResultAck:
                         break;
@@ -2532,7 +2634,45 @@ public sealed class FakeControlServer : IAsyncDisposable
         JsonElement request)
     {
         JsonElement payload = request.GetProperty("payload");
-        if (RecoverySessionRejectionReasonCode is { } rejectionReasonCode)
+        string? standingRejection = null;
+        if (ModelOneOpenRecoverySession)
+        {
+            string requestId = payload.GetProperty("requestId").GetString()!;
+            string content = payload.GetRawText();
+            bool conflict = false;
+            lock (_sync)
+            {
+                if (_openRecoverySession is { } open)
+                {
+                    if (open.RequestId != requestId)
+                    {
+                        standingRejection = "ACTION_NOT_ALLOWED_IN_STATE";
+                        RejectedRecoverySessionRequests = [.. RejectedRecoverySessionRequests, requestId];
+                    }
+                    else if (open.Payload != content)
+                    {
+                        conflict = true;
+                    }
+                }
+                else
+                {
+                    _openRecoverySession = (requestId, content);
+                }
+            }
+
+            if (conflict)
+            {
+                context.Client.Close();
+                return;
+            }
+
+            if (standingRejection is null && TryConsume(ref _recoverySessionOpenedRepliesToLose))
+            {
+                return;
+            }
+        }
+
+        if ((standingRejection ?? RecoverySessionRejectionReasonCode) is { } rejectionReasonCode)
         {
             await WriteEnvelopeAsync(
                 context,
@@ -2707,6 +2847,14 @@ public sealed class FakeControlServer : IAsyncDisposable
     {
         BeforeHardwareRecoveryRecordResult?.Invoke();
         bool recorded = HardwareRecoveryRecordOutcome == "RECORDED";
+        if (recorded)
+        {
+            lock (_sync)
+            {
+                _openRecoverySession = null;
+            }
+        }
+
         await WriteEnvelopeAsync(
             context,
             CreateEnvelope(

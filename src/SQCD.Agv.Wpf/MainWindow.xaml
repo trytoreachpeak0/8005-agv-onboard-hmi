@@ -302,17 +302,32 @@
                     强制机械取出之后物理状态未知的仓位（REQ-0241，8005-agv-onboard-hmi#107）。这些仓在提交硬件恢复记录前
                     禁止任何仓位操作；没有时整行 Collapsed。UIA 按 AutomationId 找它。
                 -->
-                <TextBlock Grid.Row="4"
-                           Grid.Column="0"
-                           Grid.ColumnSpan="3"
-                           Margin="0,8,0,0"
-                           FontSize="14"
-                           FontWeight="Bold"
-                           Foreground="{StaticResource DangerBrush}"
-                           AutomationProperties.AutomationId="PhysicallyUnknownSlots"
-                           Text="{Binding PhysicallyUnknownSlotsText}"
-                           TextWrapping="Wrap"
-                           Visibility="{Binding HasPhysicallyUnknownSlots, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                <StackPanel Grid.Row="4"
+                            Grid.Column="0"
+                            Grid.ColumnSpan="3">
+                    <TextBlock Margin="0,8,0,0"
+                               FontSize="14"
+                               FontWeight="Bold"
+                               Foreground="{StaticResource DangerBrush}"
+                               AutomationProperties.AutomationId="PhysicallyUnknownSlots"
+                               Text="{Binding PhysicallyUnknownSlotsText}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding HasPhysicallyUnknownSlots, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <!--
+                        门未证明扣车（CP-0009、REQ-0364，8005-agv-onboard-hmi#219）：光幕已证明仓空、门锁或开锁输出没证明，服务端
+                        结清需求并扣车。这一行只照服务端车辆业务快照里的 blockingFacts 显示，扣着就一直在，解除了就消失；没有时
+                        Collapsed。UIA 按 AutomationId DoorHoldNotice 找它，ItemStatus 给被扣仓号（逗号分隔）。
+                    -->
+                    <TextBlock Margin="0,8,0,0"
+                               FontSize="14"
+                               FontWeight="Bold"
+                               Foreground="{StaticResource DangerBrush}"
+                               AutomationProperties.AutomationId="DoorHoldNotice"
+                               AutomationProperties.ItemStatus="{Binding DoorHoldSlots}"
+                               Text="{Binding DoorHoldNotice}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding HasDoorHold, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                </StackPanel>
                 <WrapPanel Grid.Row="5"
                            Grid.Column="0"
                            Grid.ColumnSpan="3"
@@ -501,6 +516,20 @@
                             Visibility="{Binding CanSubmitHardwareRecoveryRecord, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnSubmitHardwareRecoveryRecordClick"
                             Content="提交硬件恢复记录" />
+                    <!--
+                        维修放行（CP-0009、REQ-0364，8005-agv-onboard-hmi#219）：服务端因门锁未证明扣着本车时出现，只给带认证的维护
+                        管理员。按下去开一个无需求的恢复会话并选 HARDWARE_REPAIR_RELEASE，不开任何仓门；获准后上面的「提交硬件恢复记录」
+                        出现，记录挂在放行动作上。解除扣车由服务端在核对新读数、做完一次 HOLD_RELEASE 检查之后决定。
+                    -->
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            Background="#D6A32A"
+                            AutomationProperties.AutomationId="HardwareRepairRelease"
+                            IsEnabled="{Binding CanRequestHardwareRepairRelease}"
+                            Visibility="{Binding CanRequestHardwareRepairRelease, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Click="OnHardwareRepairReleaseClick"
+                            Content="维修放行" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"

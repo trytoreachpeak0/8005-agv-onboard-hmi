@@ -32,5 +32,11 @@ internal static class ForcedIsolationWiring
             // 货物交接记录（8005-agv-onboard-hmi#216）：要不要填、已登记的是哪一份。
             needsCargoHandoff: () => business.ForcedConfirmationNeedsCargoHandoff,
             cargoHandoffOnFile: () => business.ForcedCargoHandoffOnFile);
+        // 维修放行（8005-agv-onboard-hmi#219）：同一张硬件恢复记录表单，记录挂在放行动作上。入口按理由发，与其他
+        // 管理员入口同一个写法。
+        viewModel.ConfigureRepairRelease(
+            () => business.CanRequestHardwareRepairRelease,
+            (reason, cancellationToken) => business.RequestHardwareRepairReleaseAsync(reason, cancellationToken),
+            () => business.PendingHardwareRecoveryRecordObservations);
     }
 }

@@ -121,8 +121,8 @@ public sealed class FatalFaultLatchViewModelTests
     /// </summary>
     /// <remarks>
     /// <para>
-    /// onboard-hmi#174 之后九个里有一个例外：扫码之前的取消装货锁存期间开着，因为它不碰 IO。这里没接那一半
-    /// （<c>canRequestLoadCancellationBeforeAnySublot</c> 不传，视图模型按 false 处理），所以九个照旧全关；例外本身由
+    /// onboard-hmi#174 之后十个里有一个例外：扫码之前的取消装货锁存期间开着，因为它不碰 IO。这里没接那一半
+    /// （<c>canRequestLoadCancellationBeforeAnySublot</c> 不传，视图模型按 false 处理），所以十个照旧全关；例外本身由
     /// <see cref="ALatchKeepsTheInFlightCancellationShutAndOpensOnlyTheOneBeforeAnySublot"/> 钉住。
     /// </para>
     /// </remarks>
@@ -154,6 +154,8 @@ public sealed class FatalFaultLatchViewModelTests
             canRequestFaultCargoHandoff: () => true,
             canRequestForcedMechanicalRecovery: () => true,
             canRequestManualChargingReturn: () => true);
+        // 维修放行（onboard-hmi#219）的业务侧也说「可以」，锁存时它关上才有意义。
+        viewModel.ConfigureRepairRelease(() => true, (_, _) => Task.FromResult(true));
         // 会话必须先建立：ApplyWireToGatePresentationCore 开头就 `_wireToGateSession is null` 直接
         // return，没有会话时那条路径根本不跑——两条路径要比，就得让两条都真的跑。
         viewModel.UpdateWireToGateStatus(new WireToGateSessionSnapshot(
@@ -167,13 +169,14 @@ public sealed class FatalFaultLatchViewModelTests
         viewModel.RefreshWireToGateInputState();
         Assert.True(viewModel.CanRequestLoadCompensation);
         Assert.True(viewModel.CanRequestForcedMechanicalRecovery);
+        Assert.True(viewModel.CanRequestHardwareRepairRelease);
 
         // 一、快照那条路径关掉它们。
         controller.EnterFatalFault("UI_COMMAND_FAILED", OnboardFatalFaultBanner.UiCommandFailed);
         Assert.False(viewModel.CanRequestLoadCompensation);
 
         // 二、**这一步是判据的核心**：服务端重发录入请求走的正是这条平行路径，业务侧仍然说「可以」，
-        // 而锁存必须让它们保持关闭。第一版在这里会把九个入口全部放回来。
+        // 而锁存必须让它们保持关闭。第一版在这里会把十个入口全部放回来。
         viewModel.RefreshWireToGateInputState();
 
         Assert.False(viewModel.CanRequestWireToGateRecovery);
@@ -185,6 +188,7 @@ public sealed class FatalFaultLatchViewModelTests
         Assert.False(viewModel.CanRequestManualChargingReturn);
         Assert.False(viewModel.CanConfirmForcedMechanicalRecovery);
         Assert.False(viewModel.CanSubmitHardwareRecoveryRecord);
+        Assert.False(viewModel.CanRequestHardwareRepairRelease);
     }
 
     /// <summary>
@@ -254,7 +258,7 @@ public sealed class FatalFaultLatchViewModelTests
             UpdatedAt: Now));
         Assert.True(viewModel.CanRequestLoadCancellation);
 
-        // 其余八个照旧关着。
+        // 其余九个照旧关着。
         Assert.False(viewModel.CanRequestWireToGateRecovery);
         Assert.False(viewModel.CanRequestLoadCompensation);
         Assert.False(viewModel.CanRequestLoadCorrection);
@@ -263,6 +267,7 @@ public sealed class FatalFaultLatchViewModelTests
         Assert.False(viewModel.CanRequestManualChargingReturn);
         Assert.False(viewModel.CanConfirmForcedMechanicalRecovery);
         Assert.False(viewModel.CanSubmitHardwareRecoveryRecord);
+        Assert.False(viewModel.CanRequestHardwareRepairRelease);
 
         // 三、扫码之前那一半走了（例如一条仓位命令到了）：又关上。
         beforeAnySublot = false;

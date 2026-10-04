@@ -91,6 +91,7 @@ public static class OnboardCommandRejectionText
 
         // The hardware-recovery record is incomplete, unnecessary, or cannot be judged yet.
         ["HARDWARE_RECOVERY_NOT_REQUIRED"] = "当前不需要填写硬件恢复记录。",
+        ["REPAIR_RELEASE_NOT_REQUIRED"] = "本车当前没有因门锁未证明而被扣，不需要维修放行。",
         ["HARDWARE_RECOVERY_OBSERVATIONS_REQUIRED"] = "请先逐仓填写现场确认结果，再提交。",
         ["HARDWARE_RECOVERY_RECORD_REQUIRED"] = "请先提交硬件恢复记录，再继续。",
         ["FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED"] = "请先填写货物交接记录（子批号、接收人），再确认强制机械取出。",

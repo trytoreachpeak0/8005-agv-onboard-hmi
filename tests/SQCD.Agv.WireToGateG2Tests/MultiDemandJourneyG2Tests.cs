@@ -488,6 +488,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             StationClearanceWiring.Configure(viewModel, business);
             UnableToChargeWiring.Configure(viewModel, business);
             HeldRecoveryCommandWiring.Configure(viewModel, business);
+            // The forced isolation's record form and the repair release share one wiring (8005-agv-onboard-hmi#219).
+            ForcedIsolationWiring.Configure(viewModel, business);
             await viewModel.InitializeAsync();
 
             try

@@ -132,6 +132,23 @@ public sealed class FakeIoModuleClient : IIoModuleClient
     }
 
     /// <summary>
+    /// The slot's door stands open with its output reset and its light curtain as it was: unlocked by hand, not by a
+    /// pulse this vehicle sent (8005-agv-onboard-hmi#219 review: a door outside the held set left unlocked).
+    /// </summary>
+    public void LeaveDoorUnlocked(int slotIndex)
+    {
+        lock (_sync)
+        {
+            Update(slotIndex, locker => locker with
+            {
+                LockFeedbackRaw = false,
+                UnlockOutputRaw = false,
+                ObservedAt = DateTimeOffset.UtcNow
+            });
+        }
+    }
+
+    /// <summary>
     /// What the vehicle finds when it comes back: the operator shut the door at some point while
     /// nothing was running, and whether a basket went in is visible only from the light curtain.
     /// </summary>
