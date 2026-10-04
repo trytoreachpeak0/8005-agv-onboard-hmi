@@ -1,19 +1,19 @@
   Determining projects to restore...
-  Restored C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\SQCD.Agv.Contracts.csproj (in 134 ms).
-  Restored C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\src\SQCD.Agv.Application\SQCD.Agv.Application.csproj (in 135 ms).
-  Restored C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\tools\SQCD.Agv.RuleMock\SQCD.Agv.RuleMock.csproj (in 135 ms).
-  Restored C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\src\SQCD.Agv.Core\SQCD.Agv.Core.csproj (in 134 ms).
-  Restored C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\SQCD.Agv.AutomationHost.csproj (in 135 ms).
-  Restored C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\SQCD.Agv.Infrastructure.csproj (in 339 ms).
-  Restored C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\SQCD.Agv.UnitTests.csproj (in 441 ms).
-  SQCD.Agv.Contracts -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Debug\net8.0\win-x64\SQCD.Agv.Contracts.dll
-  SQCD.Agv.Core -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\src\SQCD.Agv.Core\bin\Debug\net8.0\win-x64\SQCD.Agv.Core.dll
-  SQCD.Agv.AutomationHost -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Debug\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
-  SQCD.Agv.Application -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Debug\net8.0\win-x64\SQCD.Agv.Application.dll
-  SQCD.Agv.RuleMock -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\tools\SQCD.Agv.RuleMock\bin\Debug\net8.0\win-x64\SQCD.Agv.RuleMock.dll
-  SQCD.Agv.Infrastructure -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Debug\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
-  SQCD.Agv.UnitTests -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll
-Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+  Restored <worktree>\src\SQCD.Agv.Contracts\SQCD.Agv.Contracts.csproj (in 134 ms).
+  Restored <worktree>\src\SQCD.Agv.Application\SQCD.Agv.Application.csproj (in 135 ms).
+  Restored <worktree>\tools\SQCD.Agv.RuleMock\SQCD.Agv.RuleMock.csproj (in 135 ms).
+  Restored <worktree>\src\SQCD.Agv.Core\SQCD.Agv.Core.csproj (in 134 ms).
+  Restored <worktree>\src\SQCD.Agv.AutomationHost\SQCD.Agv.AutomationHost.csproj (in 135 ms).
+  Restored <worktree>\src\SQCD.Agv.Infrastructure\SQCD.Agv.Infrastructure.csproj (in 339 ms).
+  Restored <worktree>\tests\SQCD.Agv.UnitTests\SQCD.Agv.UnitTests.csproj (in 441 ms).
+  SQCD.Agv.Contracts -> <worktree>\src\SQCD.Agv.Contracts\bin\Debug\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Core -> <worktree>\src\SQCD.Agv.Core\bin\Debug\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.AutomationHost -> <worktree>\src\SQCD.Agv.AutomationHost\bin\Debug\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Application -> <worktree>\src\SQCD.Agv.Application\bin\Debug\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.RuleMock -> <worktree>\tools\SQCD.Agv.RuleMock\bin\Debug\net8.0\win-x64\SQCD.Agv.RuleMock.dll
+  SQCD.Agv.Infrastructure -> <worktree>\src\SQCD.Agv.Infrastructure\bin\Debug\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.UnitTests -> <worktree>\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll
+Test run for <worktree>\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
 VSTest version 17.11.1 (x64)
 
 Starting test execution, please wait...
@@ -30,8 +30,8 @@ Expected: "FAILED"
 Actual:   "UNKNOWN"
            ↑ (pos 0)
   Stack Trace:
-     at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(String path, String replay) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 82
-   at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(String path, String replay) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 86
+     at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(String path, String replay) in <worktree>\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 82
+   at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(String path, String replay) in <worktree>\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 86
 --- End of stack trace from previous location ---
   Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(path: "slot-precheck", replay: "execute") [89 ms]
   Error Message:
@@ -41,8 +41,8 @@ Expected: "FAILED"
 Actual:   "UNKNOWN"
            ↑ (pos 0)
   Stack Trace:
-     at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(String path, String replay) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 82
-   at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(String path, String replay) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 86
+     at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(String path, String replay) in <worktree>\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 82
+   at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(String path, String replay) in <worktree>\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 86
 --- End of stack trace from previous location ---
   Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(path: "slot-precheck", replay: "settle") [79 ms]
   Error Message:
@@ -52,8 +52,8 @@ Expected: "FAILED"
 Actual:   "UNKNOWN"
            ↑ (pos 0)
   Stack Trace:
-     at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(String path, String replay) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 82
-   at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(String path, String replay) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 86
+     at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(String path, String replay) in <worktree>\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 82
+   at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(String path, String replay) in <worktree>\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 86
 --- End of stack trace from previous location ---
   Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(path: "latch", replay: "settle") [89 ms]
   Error Message:
@@ -63,8 +63,8 @@ Expected: "FAILED"
 Actual:   "UNKNOWN"
            ↑ (pos 0)
   Stack Trace:
-     at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(String path, String replay) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 82
-   at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(String path, String replay) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi249-sync-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 86
+     at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(String path, String replay) in <worktree>\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 82
+   at SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AVectorThatStoppedFailedPartWayIsAnsweredFailedAgainWithTheRecordedResult(String path, String replay) in <worktree>\tests\SQCD.Agv.UnitTests\WireToGateRecoveryVectorExecutorTests.FailedReplay.cs:line 86
 --- End of stack trace from previous location ---
 
 Failed!  - Failed:     4, Passed:     0, Skipped:     0, Total:     4, Duration: 745 ms - SQCD.Agv.UnitTests.dll (net8.0)
