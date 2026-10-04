@@ -434,7 +434,8 @@ public sealed partial class WireToGateBusinessService
 
     /// <summary>
     /// Answers a held recovery vector the operator chose not to carry out, opening nothing: <c>FAILED</c> for one that
-    /// did nothing, the journal's account as <c>UNKNOWN</c> for one that had opened doors before the restart.
+    /// did nothing, and for one that acted the journal's account -- <c>FAILED</c> when no door is in doubt,
+    /// <c>UNKNOWN</c> when one may stand open (8005-agv-onboard-hmi#249).
     /// </summary>
     /// <remarks>
     /// Bound first, by the caller, exactly as an execution would be: the answer names the vector the command
@@ -525,6 +526,14 @@ public sealed partial class WireToGateBusinessService
                 : result.OverallOutcome == "COMPLETED"
                     ? $"已按操作员选择不再继续{subject}；按日志这条恢复在重启前已执行完毕"
                         + $"（{FormatSlots(opened)}），已如实向服务端报告完成，车辆没有再开任何仓门。 "
+                // Nothing in the active unlock set (8005-agv-onboard-hmi#249): no door is in doubt. A slot the journal
+                // counts complete was either found empty or opened, emptied and shut again -- which of the two the
+                // journal does not say -- so it is named as settled, not as opened.
+                : result.OverallOutcome == "FAILED"
+                    ? $"已按操作员选择不再继续{subject}；按日志没有仓门处于可能开着的状态，"
+                        + (opened.Length > 0 ? $"已结清的仓位：{FormatSlots(opened)}，" : "")
+                        + "未再开任何仓门；已向服务端报告未完成（FAILED），"
+                        + "服务端将结束本次恢复，如仍需处理请重新发起。 "
                     : $"已按操作员选择不再继续{subject}；部分仓门已开过：{FormatSlots(opened)}。"
                         + "已按日志如实向服务端报告结果未知（UNKNOWN），服务端将结束本次恢复，请现场核对这些仓位后重新发起。 ");
     }

@@ -169,9 +169,13 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
     /// <para>
     /// Slots counted complete keep their recorded results. Slots in the active unlock set may have been pulsed
     /// and are <c>UNKNOWN</c>, as the replay path reports them when it cannot prove them safe. The rest were never
-    /// reached and are <c>NOT_STARTED</c> with what the IO reads. The overall outcome is <c>COMPLETED</c> only when
-    /// the journal already shows the safe finish, and <c>UNKNOWN</c> otherwise: the vehicle does not claim a
-    /// failure over doors that may have opened. A result already recorded is returned as recorded.
+    /// reached and are <c>NOT_STARTED</c> with what the IO reads. The overall outcome is what
+    /// <see cref="RecordedOutcome"/> reads from the journal: <c>COMPLETED</c> only when it already shows the safe
+    /// finish, <c>FAILED</c> at the prepared checkpoint with nothing in the active unlock set -- no door is in
+    /// doubt -- and <c>UNKNOWN</c> otherwise: the vehicle does not claim a failure over doors that may have opened.
+    /// It is the same reading every later answer makes of the journal this writes, so a settlement asked for again
+    /// is answered as it was the first time (8005-agv-onboard-hmi#249). A result already recorded is returned as
+    /// recorded.
     /// </para>
     /// </remarks>
     public async Task<WireToGateRecoveryVectorExecutionResult> SettleWithoutUnlockAsync(
@@ -190,14 +194,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 throw new InvalidDataException("RECOVERY_STATE_MISMATCH");
             }
 
-            string outcome = state.ProvenRecoveryCheckpoint switch
-            {
-                WireToGateRecoveryCheckpoint.SafeFinishReached
-                    or WireToGateRecoveryCheckpoint.ResultRecorded => "COMPLETED",
-                WireToGateRecoveryCheckpoint.Prepared
-                    when state.RecoveryResultObservedAt is not null => "FAILED",
-                _ => "UNKNOWN"
-            };
+            string outcome = RecordedOutcome(state, context);
             if (state.RecoveryResultObservedAt is { } recordedAt)
             {
                 return CreateResult(
@@ -290,13 +287,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         if (state.RecoveryResultObservedAt is { } recordedAt
             && persistedVector is not null)
         {
-            string recordedOutcome = state.ProvenRecoveryCheckpoint switch
-            {
-                WireToGateRecoveryCheckpoint.SafeFinishReached
-                    or WireToGateRecoveryCheckpoint.ResultRecorded => "COMPLETED",
-                WireToGateRecoveryCheckpoint.Prepared => "FAILED",
-                _ => "UNKNOWN"
-            };
+            string recordedOutcome = RecordedOutcome(state, context);
             return CreateResult(
                 context,
                 recordedOutcome,
@@ -399,23 +390,17 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             ?? (handedOver.Any(slot => !GetLocker(initial, slot).IsKnown) ? "SLOT_STATE_UNKNOWN" : null);
         if (precheckFailure is not null)
         {
+            // A door the aborted load handed over open may still stand open: it stays in the active unlock set and
+            // the answer is UNKNOWN, never FAILED over an empty set (8005-agv-onboard-hmi#249).
             AddRejectedResults(initial, context.Slots, completed, results, correction);
-            await WriteVectorStateAsync(
+            (WireToGateRecoveryVectorExecutionResult refusal, _) = await RecordRefusalAsync(
                 context,
-                WireToGateRecoveryCheckpoint.Prepared,
-                [],
+                initial,
+                handedOver,
                 completed,
                 results,
-                CancellationToken.None).ConfigureAwait(false);
-            DateTimeOffset observedAt = await EnsureResultObservedAtAsync(
-                context,
-                CancellationToken.None).ConfigureAwait(false);
-            return CreateResult(
-                context,
-                "FAILED",
-                results,
-                WireToGateRecoveryCheckpoint.Prepared,
-                observedAt);
+                correction).ConfigureAwait(false);
+            return refusal;
         }
 
         if (!resuming)
@@ -451,10 +436,17 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 if (!IsFinalState(locker, correction))
                 {
                     AddUnknownResults(initial, context.Slots, [slot], results);
+                    // One door at a time (REQ-0357): the set holds the one door that may be standing open. A door the
+                    // aborted load handed over open and this vector has not finished is that door -- it is known to
+                    // have been open -- so it takes the set; the changed slot is UNKNOWN in its result either way, and
+                    // one that reads open is also reported by the safety summary (LOCK_NOT_CLOSED, departure
+                    // unsafe). Without such a door the changed slot is the fence, as before
+                    // (8005-agv-onboard-hmi#249 review round 3).
+                    int[] doorsInDoubt = MarkHandedOverDoorsInDoubt(initial, handedOver, completed, results, correction);
                     await WriteVectorStateAsync(
                         context,
                         WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                        [slot],
+                        doorsInDoubt.Length > 0 ? doorsInDoubt : [slot],
                         completed,
                         results,
                         CancellationToken.None).ConfigureAwait(false);
@@ -542,23 +534,18 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 : ValidateInitialSnapshot(beforePulse, [physicalSlot], correction);
             if (slotPrecheckFailure is not null)
             {
+                // Refused before this slot's unlock was written, so nothing this vector opened is in doubt: recorded
+                // at Prepared. A handed-over door the reading cannot prove shut stays in the active unlock set and the
+                // answer is UNKNOWN; otherwise it is FAILED (8005-agv-onboard-hmi#249).
                 AddRejectedResults(beforePulse, context.Slots, completed, results, correction);
-                await WriteVectorStateAsync(
+                (WireToGateRecoveryVectorExecutionResult refusal, _) = await RecordRefusalAsync(
                     context,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                    [],
+                    beforePulse,
+                    handedOver,
                     completed,
                     results,
-                    CancellationToken.None).ConfigureAwait(false);
-                DateTimeOffset observedAt = await EnsureResultObservedAtAsync(
-                    context,
-                    CancellationToken.None).ConfigureAwait(false);
-                return CreateResult(
-                    context,
-                    "FAILED",
-                    results,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                    observedAt);
+                    correction).ConfigureAwait(false);
+                return refusal;
             }
 
             await WriteVectorStateAsync(
@@ -674,24 +661,19 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                         CreateSlotResult(ReadPhysicalSlot(refusalSnapshot, notStarted), "NOT_STARTED", []));
                 }
 
-                await WriteVectorStateAsync(
-                    context,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                    [],
-                    completed,
-                    results,
-                    CancellationToken.None).ConfigureAwait(false);
-                await SendProgressAsync(progress, "PAUSED", [], completed, CancellationToken.None)
+                // Recorded at Prepared, as the precheck refusals are, and before the progress goes out
+                // (8005-agv-onboard-hmi#249).
+                (WireToGateRecoveryVectorExecutionResult refusal, IReadOnlyList<int> stillActive) =
+                    await RecordRefusalAsync(
+                        context,
+                        refusalSnapshot,
+                        handedOver,
+                        completed,
+                        results,
+                        correction).ConfigureAwait(false);
+                await SendProgressAsync(progress, "PAUSED", stillActive, completed, CancellationToken.None)
                     .ConfigureAwait(false);
-                DateTimeOffset refusedAt = await EnsureResultObservedAtAsync(
-                    context,
-                    CancellationToken.None).ConfigureAwait(false);
-                return CreateResult(
-                    context,
-                    "FAILED",
-                    results,
-                    WireToGateRecoveryCheckpoint.ActiveUnlockSet,
-                    refusedAt);
+                return refusal;
             }
             catch (Exception exception) when (
                 exception is IOException or TimeoutException or InvalidDataException)
@@ -848,31 +830,194 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         // existingState held when the vector started, which is how a checkpoint used to drop a pending
         // result recorded between two of them (onboard-hmi#136 point 4).
         await _journal.UpdateRecoveryStateAsync(
-            current => current with
-            {
-                UnsettledSlotOperationAttemptId = context.SlotOperationAttemptId,
-                ProvenRecoveryCheckpoint = checkpoint,
-                ActiveUnlockSlots = activeSlots.Order().ToArray(),
-                CompletedSlots = completedSlots.Distinct().Order().ToArray(),
-                SlotResults = results
-                    .GroupBy(result => result.SlotNo)
-                    .Select(group => group.Last())
-                    .OrderBy(result => result.SlotNo)
-                    .ToArray(),
-                RecoveryVector = context,
-                ExceptionRecoverySessionId = context.ExceptionRecoverySessionId
-                    ?? current.ExceptionRecoverySessionId,
-                RecoveryActionId = context.VectorType is
-                    WireToGateRecoveryVectorTypes.LoadCompensation
-                    or WireToGateRecoveryVectorTypes.FaultCargoHandoff
-                    ? context.PrimaryId
-                    : current.RecoveryActionId,
-                RecoveryOperatorId = context.OperatorId ?? current.RecoveryOperatorId,
-                RecoveryOperatorVerifiedAt = context.OperatorVerifiedAt
-                    ?? current.RecoveryOperatorVerifiedAt
-            },
+            current => WithVectorState(current, context, checkpoint, activeSlots, completedSlots, results),
             cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Records a vector the executor refused to carry on with, and its observation stamp, in one journal write, and
+    /// returns the result with the slots left in the active unlock set.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The checkpoint is <see cref="WireToGateRecoveryCheckpoint.Prepared"/>: nothing this vector unlocked is in
+    /// doubt. Written at <see cref="WireToGateRecoveryCheckpoint.ActiveUnlockSet"/>, the same result came back
+    /// <c>UNKNOWN</c> when it was asked for again, to go out under the deduplication key and messageId the first
+    /// answer already holds (8005-agv-onboard-hmi#249). Slots the vector finished stay counted complete, so
+    /// <see cref="RefuseBeforeUnlockAsync"/> still sees that it acted.
+    /// </para>
+    /// <para>
+    /// What may be in doubt is a door the aborted load handed over open (<see cref="HandedOverDoorsInDoubt"/>). It
+    /// stays in the active unlock set -- the set the next handshake reports as the doors that may be open -- and its
+    /// result is <c>UNKNOWN</c> with what the IO reads and its own precheck reason, as a handed-over door that ends
+    /// uncertain mid-vector reports it. Written as an empty set, the vehicle told the server no door was open while
+    /// one stood open. The outcome is read back through <see cref="RecordedOutcome"/>: <c>FAILED</c> with the set
+    /// empty, <c>UNKNOWN</c> with a door in it, and every later answer reads the same.
+    /// </para>
+    /// <para>
+    /// One write, not a checkpoint and then a stamp: a process that died between the two would come back to an
+    /// unstamped vector and run it again instead of answering what it had already decided. A stamp already on file
+    /// is kept.
+    /// </para>
+    /// </remarks>
+    private async Task<(WireToGateRecoveryVectorExecutionResult Result, IReadOnlyList<int> StillActive)>
+        RecordRefusalAsync(
+            WireToGateRecoveryVectorContext context,
+            IoSnapshot snapshot,
+            int[] handedOver,
+            IReadOnlyList<int> completedSlots,
+            List<WireToGateSlotExecutionResult> results,
+            bool correction)
+    {
+        int[] stillActive = MarkHandedOverDoorsInDoubt(snapshot, handedOver, completedSlots, results, correction);
+        WireToGateRecoveryState? written = await _journal.UpdateRecoveryStateAsync(
+            current => WithVectorState(
+                current,
+                context,
+                WireToGateRecoveryCheckpoint.Prepared,
+                stillActive,
+                completedSlots,
+                results) with
+            {
+                RecoveryResultObservedAt = current.RecoveryResultObservedAt ?? _clock.Now.ToUniversalTime()
+            },
+            CancellationToken.None).ConfigureAwait(false);
+        // The change function never returns null, so neither does the journal.
+        if (written?.RecoveryResultObservedAt is not { } observedAt)
+        {
+            throw new UnreachableException();
+        }
+
+        return (
+            CreateResult(
+                context,
+                RecordedOutcome(written, context),
+                results,
+                WireToGateRecoveryCheckpoint.Prepared,
+                observedAt),
+            stillActive);
+    }
+
+    /// <summary>
+    /// Finds the handed-over doors in doubt (<see cref="HandedOverDoorsInDoubt"/>) and records each as <c>UNKNOWN</c>
+    /// with what the IO reads, returning them for the active unlock set.
+    /// </summary>
+    /// <remarks>
+    /// The reason codes are merged, not replaced: the slot keeps the codes already on its result and gains its own
+    /// precheck reason. A latch refusal has already put the latch's code on the slot whose pulse it refused, and that
+    /// code is how the operator is told the vehicle is latched (<c>RefusedByFatalFaultLatch</c>) and how the server
+    /// hears it; the precheck reason alone would drop both (8005-agv-onboard-hmi#249 review round 3).
+    /// </remarks>
+    private int[] MarkHandedOverDoorsInDoubt(
+        IoSnapshot snapshot,
+        int[] handedOver,
+        IReadOnlyList<int> completedSlots,
+        List<WireToGateSlotExecutionResult> results,
+        bool correction)
+    {
+        int[] inDoubt = HandedOverDoorsInDoubt(snapshot, handedOver, completedSlots);
+        foreach (int slot in inDoubt)
+        {
+            IReadOnlyList<string> earlier = results.FirstOrDefault(result => result.SlotNo == slot)?.ReasonCodes ?? [];
+            UpsertResult(
+                results,
+                CreateSlotResult(
+                    ReadPhysicalSlot(snapshot, slot),
+                    "UNKNOWN",
+                    [.. earlier.Append(ValidateInitialSnapshot(snapshot, [slot], correction) ?? "SLOT_STATE_UNKNOWN")
+                        .Distinct(StringComparer.Ordinal)]));
+        }
+
+        return inDoubt;
+    }
+
+    /// <summary>
+    /// The doors an aborted load handed over open that a refusal leaves in doubt: not yet finished by this vector, and
+    /// not proven shut -- known, locked and output reset -- by a fresh snapshot.
+    /// </summary>
+    /// <remarks>
+    /// A handed-over door the snapshot proves shut is in no doubt: nothing of it is open, and it leaves the set like
+    /// any slot never opened. One the snapshot cannot prove shut, because it reads open or because the snapshot is
+    /// stale, may still stand open.
+    /// </remarks>
+    private int[] HandedOverDoorsInDoubt(
+        IoSnapshot snapshot,
+        int[] handedOver,
+        IReadOnlyList<int> completedSlots) =>
+        handedOver
+            .Where(slot => !completedSlots.Contains(slot)
+                && !(IsFresh(snapshot) && IsShut(GetLocker(snapshot, slot))))
+            .Order()
+            .ToArray();
+
+    private static WireToGateRecoveryState WithVectorState(
+        WireToGateRecoveryState current,
+        WireToGateRecoveryVectorContext context,
+        WireToGateRecoveryCheckpoint checkpoint,
+        IReadOnlyList<int> activeSlots,
+        IReadOnlyList<int> completedSlots,
+        IReadOnlyList<WireToGateSlotExecutionResult> results) =>
+        current with
+        {
+            UnsettledSlotOperationAttemptId = context.SlotOperationAttemptId,
+            ProvenRecoveryCheckpoint = checkpoint,
+            ActiveUnlockSlots = activeSlots.Order().ToArray(),
+            CompletedSlots = completedSlots.Distinct().Order().ToArray(),
+            SlotResults = results
+                .GroupBy(result => result.SlotNo)
+                .Select(group => group.Last())
+                .OrderBy(result => result.SlotNo)
+                .ToArray(),
+            RecoveryVector = context,
+            ExceptionRecoverySessionId = context.ExceptionRecoverySessionId
+                ?? current.ExceptionRecoverySessionId,
+            RecoveryActionId = context.VectorType is
+                WireToGateRecoveryVectorTypes.LoadCompensation
+                or WireToGateRecoveryVectorTypes.FaultCargoHandoff
+                ? context.PrimaryId
+                : current.RecoveryActionId,
+            RecoveryOperatorId = context.OperatorId ?? current.RecoveryOperatorId,
+            RecoveryOperatorVerifiedAt = context.OperatorVerifiedAt
+                ?? current.RecoveryOperatorVerifiedAt
+        };
+
+    /// <summary>
+    /// The overall outcome the journal shows for <paramref name="context"/>: <c>COMPLETED</c> at the safe finish,
+    /// <c>FAILED</c> at the prepared checkpoint with nothing in the active unlock set,
+    /// and <c>UNKNOWN</c> for everything else.
+    /// </summary>
+    /// <remarks>
+    /// The one reading of a vector's result: the first answer and every later one -- a replayed command, a settlement
+    /// asked for again, a fresh executor after a restart -- go through it, so they cannot drift apart
+    /// (8005-agv-onboard-hmi#249). The prepared checkpoint is <c>FAILED</c> only while no slot is in the active unlock
+    /// set: a door a cancelled load handed over open sits there at that checkpoint and may still stand open, so a
+    /// vector settled over it is <c>UNKNOWN</c>. Every write of this executor keeps such a door in the set until the
+    /// vector has finished it (<see cref="RecordRefusalAsync"/>, the resume path's early return, the prepared checkpoint
+    /// it writes back), so for a load cancellation an empty set at the prepared checkpoint does mean no door is in
+    /// doubt. That covers this executor only: the business service writes a fresh vector's prepared checkpoint itself.
+    /// <para>
+    /// The set holds one door at most (REQ-0357; the journal refuses a wider one on write). Where two may stand open --
+    /// a handed-over door not yet finished and a completed slot that no longer reads shut -- the set takes the
+    /// handed-over door, which is known to have been open, and the other is reported UNKNOWN in its slot result and by
+    /// the safety summary's <c>LOCK_NOT_CLOSED</c>.
+    /// </para>
+    /// <para>
+    /// The reading is by checkpoint, not by physics, and it errs one way only. A vector that died at the active unlock
+    /// set with the set already empty -- its last door finished, the next not yet fenced -- has no door in doubt either,
+    /// yet is <c>UNKNOWN</c>; one that died at the prepared checkpoint the resume path writes back, with the same empty
+    /// set, is <c>FAILED</c>. The server takes both the same way: anything but a clean finish is RecoveryRequired.
+    /// </para>
+    /// </remarks>
+    private static string RecordedOutcome(
+        WireToGateRecoveryState state,
+        WireToGateRecoveryVectorContext context) =>
+        state.ProvenRecoveryCheckpoint switch
+        {
+            WireToGateRecoveryCheckpoint.SafeFinishReached
+                or WireToGateRecoveryCheckpoint.ResultRecorded => "COMPLETED",
+            WireToGateRecoveryCheckpoint.Prepared when state.ActiveUnlockSlots.Count == 0 => "FAILED",
+            _ => "UNKNOWN"
+        };
 
     private static WireToGateRecoveryVectorExecutionResult CreateResult(
         WireToGateRecoveryVectorContext context,

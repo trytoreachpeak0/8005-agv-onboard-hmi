@@ -4,7 +4,7 @@ using SQCD.Agv.Infrastructure;
 
 namespace SQCD.Agv.UnitTests;
 
-public sealed class WireToGateRecoveryVectorExecutorTests
+public sealed partial class WireToGateRecoveryVectorExecutorTests
 {
     /// <summary>
     /// A local line behind the entries (review of onboard-hmi#110): a clear over a slot a forced
