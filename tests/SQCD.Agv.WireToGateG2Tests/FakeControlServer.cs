@@ -1028,6 +1028,14 @@ public sealed class FakeControlServer : IAsyncDisposable
     public TimeSpan OperationProgressAckDelay { get; set; }
 
     /// <summary>
+    /// While set, the <c>DurableAck</c> of every <c>OperationProgress</c> is written only once this task completes, off the
+    /// read loop (8005-agv-onboard-hmi#264, the review of PR #265). Where <see cref="OperationProgressAckDelay"/> lets the
+    /// clock decide when the ack lands, this lets the test: it releases the ack once the vehicle has said what has to have
+    /// happened first. Read when the progress arrives; clearing it afterwards leaves the acks already held waiting.
+    /// </summary>
+    public Task? OperationProgressAckHold { get; set; }
+
+    /// <summary>
     /// Writes the <c>DurableAck</c> of every accepted <c>SafetyStateChanged</c> this much later, off the read loop, as
     /// <see cref="OperationProgressAckDelay"/> does for progress (8005-agv-onboard-hmi#250, review S1 of #260). The
     /// double still accepts the change at once; only the vehicle hears of it late.
@@ -2167,6 +2175,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                         break;
                     case "SlotFaultDeclarationResult" when SlotFaultDeclarationResultAcksToDrop > 0:
                         SlotFaultDeclarationResultAcksToDrop--;
+                        break;
+                    case "OperationProgress" when OperationProgressAckHold is { } hold:
+                        DelayDurableAck(context, CreateDurableAck(context, root), () => hold);
                         break;
                     case "OperationProgress" when OperationProgressAckDelay > TimeSpan.Zero:
                         DelayDurableAck(context, CreateDurableAck(context, root), OperationProgressAckDelay);
@@ -4084,10 +4095,17 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// connection gone by then takes the ack with it, as a real one would.
     /// </summary>
     private void DelayDurableAck(ConnectionContext context, WireToGateEnvelope ack, TimeSpan delay) =>
+        DelayDurableAck(context, ack, () => Task.Delay(delay));
+
+    /// <summary>
+    /// Writes <paramref name="ack"/> once <paramref name="release"/> completes, without holding up the connection's read
+    /// loop. A connection gone by then takes the ack with it, as a real one would.
+    /// </summary>
+    private void DelayDurableAck(ConnectionContext context, WireToGateEnvelope ack, Func<Task> release) =>
         _ = Task.Run(
             async () =>
             {
-                await Task.Delay(delay).ConfigureAwait(false);
+                await release().ConfigureAwait(false);
                 try
                 {
                     await WriteEnvelopeAsync(context, ack).ConfigureAwait(false);

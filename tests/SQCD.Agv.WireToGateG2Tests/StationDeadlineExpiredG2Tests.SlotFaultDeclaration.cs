@@ -180,8 +180,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// <remarks>
     /// <para>
     /// 这是 <see cref="TheSameDeclarationAgainIsAnsweredWithTheFirstAnswerAndNothingIsStoppedTwice"/> 偶发超时的机理：那条用例扣下
-    /// 判定应答的 ack，执行器在判定约 2 秒后才被中止，恰好与 2 秒一次的重新提示撞在一起。这里不靠撞，替身把重新提示的 ack
-    /// 延后 1 秒（不到 2 秒的超时），等服务端收到重新提示后立刻发判定，中止必然落在等 ack 的那一秒里。
+    /// 判定应答的 ack，执行器在判定约 2 秒后才被中止，恰好与 2 秒一次的重新提示撞在一起。这里不靠撞，也不靠时钟：替身扣住重新
+    /// 提示的 ack，等车载端写出「已执行服务端的人工判故障」再放行。那句日志在执行器停下之后才写（<c>DeclareSlotFaultAsync</c>
+    /// 等到运行结束才返回），此时这次进度的等待已随中止撤掉，ack 必然是迟到的（PR #265 审查）。
     /// </para>
     /// <para>
     /// 先红：去掉接收循环里迟到 ack 的那一支，迟到的 ack 被当成未处理消息断开会话（这个夹具不重连），
@@ -197,11 +198,35 @@ public sealed partial class StationDeadlineExpiredG2Tests
         await using Harness harness = await StartForDeclarationAsync(token);
         await StartThreeSlotLoadAtSlotTwoAsync(harness, token);
 
-        string late = await DelayTheNextProgressAckAsync(harness, TimeSpan.FromSeconds(1), token);
+        // Hold the ack of the next re-prompt only: later progress -- the settlement's own -- is answered at once.
+        TaskCompletionSource releaseAck = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int progressBefore = ProgressCount(harness);
+        harness.Server.OperationProgressAckHold = releaseAck.Task;
+        await Harness.WaitUntilAsync(
+            () => ProgressCount(harness) > progressBefore,
+            "the executor's next re-prompt",
+            token,
+            harness.DescribeEvents);
+        harness.Server.OperationProgressAckHold = null;
+        string late = harness.Server.ReceivedEnvelopes
+            .Where(envelope => envelope.MessageType == "OperationProgress")
+            .ElementAt(progressBefore)
+            .MessageId;
+
         await harness.Server.SendCommandAsync(
             "SlotFaultDeclarationCommand",
             Guid.NewGuid().ToString("D"),
             DeclarationPayload(FirstDeclarationId, DeclaredAttemptId, 2));
+        await Harness.WaitUntilAsync(
+            () => harness.Logger.Entries.Any(entry =>
+                entry.Message.StartsWith("已执行服务端的人工判故障", StringComparison.Ordinal)),
+            "the declaration to have stopped the run",
+            token);
+        Assert.False(
+            harness.Server.SentEnvelopes.Any(envelope =>
+                envelope.MessageType == "DurableAck" && envelope.WireLine.Contains(late, StringComparison.Ordinal)),
+            "the re-prompt's ack must still be held when the run has stopped");
+        releaseAck.SetResult();
 
         await WaitForLateAckAsync(harness, late, token);
         await WaitForAcknowledgedOnFileAsync(harness, late, token);

@@ -1,7 +1,0 @@
-RED build     0 Error(s)
-== 修复前（去掉接收循环里迟到 ack 的那一支）
-[xUnit.net 00:00:14.50]       Timed out after 10s waiting for: the late ack to mark 4e774d9c-70f7-2153-85e0-e77134548cad acknowledged on file
-[xUnit.net 00:00:14.50]       Information 接收循环失败收尾：generation=1，InvalidDataException：收到未处理的WIRE_TO_GATE消息：DurableAck。
-  Failed AnAckArrivingAfterTheDeclarationAbortedItsProgressIsTakenAndTheResultStillGoesOut [13 s]
-   Timed out after 10s waiting for: the late ack to mark 4e774d9c-70f7-2153-85e0-e77134548cad acknowledged on file
-Information 接收循环失败收尾：generation=1，InvalidDataException：收到未处理的WIRE_TO_GATE消息：DurableAck。
