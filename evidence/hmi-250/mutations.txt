@@ -1,0 +1,33 @@
+M1 build     0 Error(s)
+== M1
+  Failed ALateAckOfARowGivenUpLeavesItGivenUpAndTheSessionGoesOn [15 s]
+  Failed AnAckArrivingAfterALoadCancellationAbortedItsSendIsTakenAndTheSessionGoesOn [12 s]
+  Failed AnAckArrivingAfterItsSendTimedOutIsTakenAndTheSessionGoesOn [13 s]
+  Failed AFurtherAckOfARowAlreadyAcknowledgedChangesNothingAndTheSessionGoesOn [10 s]
+M2 build     0 Error(s)
+== M2
+  Failed AnAckMatchingNoRowOnFileStillEndsTheSession(mismatch: "content") [10 s]
+M3 build     1 Error(s)
+== M3
+  Failed AnAckMatchingNoRowOnFileStillEndsTheSession(mismatch: "content") [10 s]
+M4 build     0 Error(s)
+== M4
+  Failed AnAckMatchingNoRowOnFileStillEndsTheSession(mismatch: "type") [10 s]
+4762:        if (row.Abandoned && row.MessageId.Length < 0)
+M3 build     0 Error(s)
+== M3
+  Failed ALateAckOfARowGivenUpLeavesItGivenUpAndTheSessionGoesOn [15 s]
+
+M5 build     0 Error(s)
+== M5（删掉 correlationId 与 acceptedMessageId 的核对）
+  Failed AnAckMatchingNoRowOnFileStillEndsTheSession(mismatch: "correlation") [10 s]
+
+M6 build     0 Error(s)
+== M6（删掉迟到 ack 结清 SafetyStateChanged 时推进并发布已接受安全版本号的两步）
+[xUnit.net 00:00:17.94]       Assert.Equal() Failure: Values differ
+[xUnit.net 00:00:17.94]       Expected: 12
+[xUnit.net 00:00:17.94]       Actual:   2
+  Failed ALateAckOfASafetyStateChangeMovesTheAcceptedSafetyStateVersionOn [3 s]
+   Assert.Equal() Failure: Values differ
+Expected: 12
+Actual:   2
