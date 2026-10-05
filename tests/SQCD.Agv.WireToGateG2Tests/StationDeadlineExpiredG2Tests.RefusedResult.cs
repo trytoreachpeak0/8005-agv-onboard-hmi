@@ -16,7 +16,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// never sent again, not by the restore's resend, not by the next handshake, and not named pending in its report.
     /// </summary>
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("IntegrationSlice", "FP-IS-06")]
     [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
     public async Task ARefusedResultIsGivenUpAndTheRecoveryEntryComesUp()
@@ -72,6 +71,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-03")]
     [Trait("IntegrationSlice", "FP-IS-06")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-OPERATION-RESULT-UNKNOWN-RECONCILE")]
     [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
     public async Task AnAcknowledgedResultRefusedOnItsReplayIsGivenUpAndTheHandshakeCompletes()

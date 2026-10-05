@@ -232,14 +232,6 @@ public sealed class FakeControlServer : IAsyncDisposable
     public IReadOnlySet<string> UnansweredMessageTypes { get; set; } = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>
-    /// With <see cref="ProtocolProblemByMessageType"/>, a refused recovery result settles the attempt it is about, as an
-    /// accepted one does. Models what <c>BUSINESS_ID_CONTENT_CONFLICT</c> on a recovery result means at the real server:
-    /// the workflow already holds another first result, and that result reconciled the operation
-    /// (control-server <c>OnboardRecoveryCoordinator.ProcessResultAsync</c>, onboard-hmi#254).
-    /// </summary>
-    public bool RefusedRecoveryResultsWereReconciledByAnother { get; set; }
-
-    /// <summary>
     /// Whether a mid-session <c>SafetyStateChanged</c> is answered at all. Off, it is taken and left unanswered with
     /// the connection open: the vehicle republishes its session state only once such a change is acknowledged, so
     /// this keeps every session state change after the handshake's readiness out of a test that must not lean on
@@ -1752,25 +1744,6 @@ public sealed class FakeControlServer : IAsyncDisposable
                         messageId,
                         messageType,
                         refusalCode)).ConfigureAwait(false);
-                    if (RefusedRecoveryResultsWereReconciledByAnother
-                        && messageType is "LoadCancellationResult" or "LoadCompensationResult" or "LoadCorrectionResult"
-                            or "FaultCargoRecoveryResult" or "ForcedMechanicalRecoveryResult")
-                    {
-                        string? reconciledAttempt =
-                            root.GetProperty("payload").TryGetProperty("slotOperationAttemptId", out JsonElement attempt)
-                            && attempt.ValueKind == JsonValueKind.String
-                                ? attempt.GetString()
-                                : RecoveryVectorSlotOperationAttemptId;
-                        await ReconcileAsync(context, _ =>
-                        {
-                            if (reconciledAttempt is not null)
-                            {
-                                _settledAttempts.Add(reconciledAttempt);
-                                _operationsNeedingRecovery.Remove(reconciledAttempt);
-                            }
-                        }).ConfigureAwait(false);
-                    }
-
                     continue;
                 }
 

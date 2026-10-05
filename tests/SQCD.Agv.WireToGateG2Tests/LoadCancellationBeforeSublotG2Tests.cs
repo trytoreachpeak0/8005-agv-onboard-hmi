@@ -687,8 +687,7 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
             long baselineRevision = 1,
             bool awaitEntryRequest = true,
             IVehicleSafetySignalProvider? vehicle = null,
-            Func<bool>? fatalFaultLatched = null,
-            WireToGateRecoveryOptions? recoveryOptions = null)
+            Func<bool>? fatalFaultLatched = null)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -741,7 +740,7 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
                     TimeSpan.FromSeconds(30),
                     TimeSpan.FromSeconds(5),
                     TimeSpan.FromMilliseconds(500));
-                // 默认不传 WireToGateRecoveryOptions：出厂默认 ResumeAfterRepairEnabled=false。
+                // 不传 WireToGateRecoveryOptions：出厂默认 ResumeAfterRepairEnabled=false。
                 WireToGateBusinessService business = new(
                     session,
                     io,
@@ -758,7 +757,6 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
                     safety,
                     TimeSpan.FromSeconds(30),
                     TimeSpan.FromMilliseconds(500),
-                    recoveryOptions: recoveryOptions,
                     fatalFaultLatched: fatalFaultLatched);
 
                 List<WireToGateOperatorEvent> blocked = [];

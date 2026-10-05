@@ -951,8 +951,6 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             or WireToGateSessionReadiness.RecoveryRequired)
         {
             TrackTask(RestorePendingRecoveryOperationProjectionAsync(_stopping.Token));
-            // A recovery result given up by an earlier run, or by this session's handshake (onboard-hmi#254).
-            TrackTask(RestoreAbandonedRecoveryResultAsync(_stopping.Token));
         }
 
         ReviewUnauthorizedRecoveryVector(args.Value);
