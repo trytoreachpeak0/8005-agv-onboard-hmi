@@ -90,6 +90,7 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         _client.JourneyChanged += OnClientJourneyChanged;
         _client.ServerCommandReceived += OnClientServerCommandReceived;
         _client.DurableMessageAbandoned += OnClientDurableMessageAbandoned;
+        _client.LateDurableAckReceived += OnClientLateDurableAckReceived;
     }
 
     public WireToGateSessionSnapshot Current => _client.Current;
@@ -410,6 +411,7 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         _client.JourneyChanged -= OnClientJourneyChanged;
         _client.ServerCommandReceived -= OnClientServerCommandReceived;
         _client.DurableMessageAbandoned -= OnClientDurableMessageAbandoned;
+        _client.LateDurableAckReceived -= OnClientLateDurableAckReceived;
         _stopping.Cancel();
         if (_runLoop is not null)
         {
@@ -445,6 +447,21 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         object? sender,
         ValueChangedEventArgs<WireToGateDurableMessageAbandonment> args) =>
         DurableMessageAbandoned?.Invoke(this, args);
+
+    private void OnClientLateDurableAckReceived(object? sender, ValueChangedEventArgs<WireToGateLateDurableAck> args)
+    {
+        WireToGateLateDurableAck ack = args.Value;
+        string subject = $"收到迟到的DurableAck：messageType={ack.MessageType}，messageId={ack.MessageId}，key={ack.DeduplicationKey}，contentSha256={ack.ContentSha256}，";
+        _logger.Write(
+            ack.Outcome == WireToGateLateDurableAckOutcome.Abandoned ? LogSeverity.Warning : LogSeverity.Information,
+            nameof(WireToGateSessionService),
+            ack.Outcome switch
+            {
+                WireToGateLateDurableAckOutcome.Acknowledged => subject + "这条消息的等待已经结束（超时或随执行中止），现记为已确认，会话继续。",
+                WireToGateLateDurableAckOutcome.AlreadyAcknowledged => subject + "这条消息早已确认，不做改动，会话继续。",
+                _ => subject + "这条消息此前已因服务端拒收而放弃，但服务端此后以相同内容哈希确认收到，这次放弃很可能是误报，核对 MES 时不要重复补录。这一行保持放弃、不记为已确认，会话继续。"
+            });
+    }
 
     private async Task RunAsync(CancellationToken stoppingToken)
     {

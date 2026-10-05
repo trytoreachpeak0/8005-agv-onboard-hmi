@@ -920,6 +920,24 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </remarks>
     public TimeSpan HeartbeatAckDelay { get; set; }
 
+    /// <summary>
+    /// Writes the <c>DurableAck</c> of every <c>OperationProgress</c> this much later, off the read loop, so the double
+    /// keeps reading what the vehicle sends meanwhile (8005-agv-onboard-hmi#250).
+    /// </summary>
+    /// <remarks>
+    /// What it builds is an acknowledgement that reaches the vehicle after the send it answers stopped waiting for it:
+    /// past the vehicle's message timeout, or after the run that sent the progress was aborted under it. Read when the
+    /// progress arrives, so a test can switch it on at the moment it needs.
+    /// </remarks>
+    public TimeSpan OperationProgressAckDelay { get; set; }
+
+    /// <summary>
+    /// Writes the <c>DurableAck</c> of every accepted <c>SafetyStateChanged</c> this much later, off the read loop, as
+    /// <see cref="OperationProgressAckDelay"/> does for progress (8005-agv-onboard-hmi#250, review S1 of #260). The
+    /// double still accepts the change at once; only the vehicle hears of it late.
+    /// </summary>
+    public TimeSpan SafetyStateChangedAckDelay { get; set; }
+
     private int _judgedRecoveryRequests;
 
     /// <summary>
@@ -1432,6 +1450,33 @@ public sealed class FakeControlServer : IAsyncDisposable
         ConnectionContext context = Volatile.Read(ref _latestSession)
             ?? throw new InvalidOperationException("No session has been accepted yet.");
         context.Client.Close();
+    }
+
+    /// <summary>
+    /// Sends a <c>DurableAck</c> nobody asked for on the latest session, for whatever message, type and content hash the
+    /// test names: a second ack of a row, an ack of a row the vehicle gave up, an ack that does not match the row on file
+    /// (8005-agv-onboard-hmi#250). The envelope's correlationId is <paramref name="acceptedMessageId"/>, as on every ack
+    /// this double sends, unless <paramref name="correlationId"/> names another.
+    /// </summary>
+    public async Task SendDurableAckAsync(
+        string acceptedMessageId,
+        string acceptedMessageType,
+        string acceptedContentSha256,
+        string? correlationId = null)
+    {
+        ConnectionContext context = Volatile.Read(ref _latestSession)
+            ?? throw new InvalidOperationException("No session has been accepted yet.");
+        await WriteEnvelopeAsync(context, CreateEnvelope(
+            context,
+            "DurableAck",
+            correlationId ?? acceptedMessageId,
+            new
+            {
+                acceptedMessageId,
+                acceptedMessageType,
+                acceptedContentSha256,
+                durablyAcceptedAt = DateTimeOffset.UtcNow
+            })).ConfigureAwait(false);
     }
 
     public async Task RequestSafetyStateSnapshotAsync()
@@ -2002,6 +2047,9 @@ public sealed class FakeControlServer : IAsyncDisposable
                                 _operationsNeedingRecovery.Remove(settledAttempt);
                             }
                         }).ConfigureAwait(false);
+                        break;
+                    case "OperationProgress" when OperationProgressAckDelay > TimeSpan.Zero:
+                        DelayDurableAck(context, CreateDurableAck(context, root), OperationProgressAckDelay);
                         break;
                     case "SublotSubmitted":
                     case "OperationProgress":
@@ -3345,7 +3393,15 @@ public sealed class FakeControlServer : IAsyncDisposable
             return;
         }
 
-        await WriteEnvelopeAsync(context, CreateDurableAck(context, message)).ConfigureAwait(false);
+        if (SafetyStateChangedAckDelay > TimeSpan.Zero)
+        {
+            DelayDurableAck(context, CreateDurableAck(context, message), SafetyStateChangedAckDelay);
+        }
+        else
+        {
+            await WriteEnvelopeAsync(context, CreateDurableAck(context, message)).ConfigureAwait(false);
+        }
+
         // 真服务端对「补发进后一个会话」的报文按首次受理作答（RebindDurableAckAsync）：只回 ack，
         // 因为一个还没走完握手的世代没有任何就绪变化可宣告（8005-agv-control-server#33）。
         if (SendReadinessAfterSafetyStateChangedAck && !replayedIntoLaterSession)
@@ -3848,6 +3904,26 @@ public sealed class FakeControlServer : IAsyncDisposable
             context.WriteGate.Release();
         }
     }
+    /// <summary>
+    /// Writes <paramref name="ack"/> after <paramref name="delay"/> without holding up the connection's read loop. A
+    /// connection gone by then takes the ack with it, as a real one would.
+    /// </summary>
+    private void DelayDurableAck(ConnectionContext context, WireToGateEnvelope ack, TimeSpan delay) =>
+        _ = Task.Run(
+            async () =>
+            {
+                await Task.Delay(delay).ConfigureAwait(false);
+                try
+                {
+                    await WriteEnvelopeAsync(context, ack).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is IOException or ObjectDisposedException
+                    or InvalidOperationException)
+                {
+                }
+            },
+            CancellationToken.None);
+
     private async Task WriteEnvelopeAsync(ConnectionContext context, WireToGateEnvelope envelope)
     {
         string wireLine = WireToGateProtocolSerializer.Serialize(envelope);

@@ -1,0 +1,7 @@
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAckArrivingAfterALoadCancellationAbortedItsSendIsTakenAndTheSessionGoesOn [15 s]
+   Timed out after 10s waiting for: the late ack to mark b50d8722-fdb4-e45e-9569-b2dcd118008d acknowledged on file
+Information 接收循环失败收尾：generation=1，InvalidDataException：收到未处理的WIRE_TO_GATE消息：DurableAck。
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAckArrivingAfterItsSendTimedOutIsTakenAndTheSessionGoesOn [13 s]
+   Timed out after 10s waiting for: the late ack to mark 5b37aa17-2032-2a58-a50e-c9addc44b94d acknowledged on file
+Information 接收循环失败收尾：generation=1，InvalidDataException：收到未处理的WIRE_TO_GATE消息：DurableAck。
+Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2, Duration: 29 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
