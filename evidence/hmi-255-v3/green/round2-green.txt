@@ -1,3 +1,4 @@
+# 已由 green-round3.txt 取代：本文件只记了汇总行，没有记退出码与程序集收尾结果（hmi#255 增量审查第 3 条）。
 # 第二轮：产品代码为本分支修复版（v3）
 Passed!  - Failed:     0, Passed:   845, Skipped:     0, Total:   845 - SQCD.Agv.UnitTests.dll（单测全量，本轮在 v3 修复版上跑出）
 Passed!  - Failed:     0, Passed:   239, Skipped:     0, Total:   239 - SQCD.Agv.WireToGateG2Tests.dll（恢复相关定向 G2，非全量）
