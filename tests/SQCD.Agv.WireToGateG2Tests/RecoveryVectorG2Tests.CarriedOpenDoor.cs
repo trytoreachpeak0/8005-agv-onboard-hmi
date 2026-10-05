@@ -208,8 +208,16 @@ public sealed partial class RecoveryVectorG2Tests
             },
             cargoInTargetSlots: true);
         WireToGateRecoveryState prepared = await PrepareCompensationAsync(harness, token);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Server.ReceivedEnvelopes.Any(item => item.MessageType == "LoadCompensationRequested"),
+            "the vehicle's request for the compensation's authorization",
+            token);
+        string requestMessageId = harness.Server.ReceivedEnvelopes
+            .First(item => item.MessageType == "LoadCompensationRequested").MessageId;
         await harness.RewriteRecoveryStateAsync(state => state with { ActiveUnlockSlots = [3] }, token);
 
+        // Shaped as the double's own refusal of a compensation request: an answer to the vehicle's request, so the
+        // correlationId the schema requires names it.
         await harness.Server.SendCommandAsync(
             "LoadCompensationRejected",
             "5e5e5e5e-5e5e-4e5e-8e5e-5e5e5e5e5e5e",
@@ -222,7 +230,8 @@ public sealed partial class RecoveryVectorG2Tests
                     fieldPath = "payload",
                     displayMessage = "Load compensation is not authorized."
                 }
-            });
+            },
+            requestMessageId);
         await RecoveryVectorHarness.WaitUntilAsync(
             () => harness.ReadRecoveryStateAsync(token).GetAwaiter().GetResult().RecoveryVector is null,
             "the rejection to clear the prepared compensation",
