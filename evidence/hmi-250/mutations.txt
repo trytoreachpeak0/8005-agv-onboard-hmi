@@ -17,3 +17,7 @@ M4 build     0 Error(s)
 M3 build     0 Error(s)
 == M3
   Failed ALateAckOfARowGivenUpLeavesItGivenUpAndTheSessionGoesOn [15 s]
+
+M5 build     0 Error(s)
+== M5（删掉 correlationId 与 acceptedMessageId 的核对）
+  Failed AnAckMatchingNoRowOnFileStillEndsTheSession(mismatch: "correlation") [10 s]

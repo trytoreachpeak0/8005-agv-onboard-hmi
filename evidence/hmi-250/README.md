@@ -21,7 +21,7 @@
 
 ## 修复后
 
-`StationDeadlineExpiredG2Tests` 全类 57/57 通过（基线 50 条，加新增 7 条）。UnitTests 中的 `ArchitectureTests` 98/98 通过。`dotnet format --verify-no-changes` 通过。
+`StationDeadlineExpiredG2Tests` 全类 58/58 通过（基线 50 条，加新增 8 条）。UnitTests 中的 `ArchitectureTests` 98/98 通过。`dotnet format --verify-no-changes` 通过。
 
 ## 变异（`mutations.txt`）
 
@@ -31,7 +31,8 @@
 | M2 | 去掉内容哈希核对 | 对不上 `content` |
 | M3 | 不看「已放弃」，直接记为已确认 | 已放弃 |
 | M4 | 去掉消息类型核对 | 对不上 `type` |
+| M5 | 去掉 `correlationId` 与 `acceptedMessageId` 必须相同的核对 | 对不上 `correlation` |
 
-`mutations.txt` 中第一段 M3 作废：它写成 `if (false)`，编译时被当成不可达代码报错（`M3 build 1 Error(s)`），测试实际跑的是上一次构建留下的 M2 程序。文件末尾那段 M3 改用能编译通过的写法重做，结果有效。
+`mutations.txt` 中第一段 M3 作废：它写成 `if (false)`，编译时被当成不可达代码报错（`M3 build 1 Error(s)`），测试实际跑的是上一次构建留下的 M2 程序。后一段 M3 改用能编译通过的写法重做，结果有效。
 
-未覆盖的一处：要求 ack 的 `correlationId` 与 `acceptedMessageId` 相同的那条检查，没有用例会因为删掉它而变红，因为替身推送的 ack 这两个字段总是一致的。
+M5 是审查开始后按调度要求补的。第一版提交里这条核对没有用例覆盖：替身推送的 ack 这两个字段总是一致，删掉核对也不会有用例变红。现在替身可以推送两者不一致的 ack，新加的 `correlation` 用例断言车载端照旧断开。

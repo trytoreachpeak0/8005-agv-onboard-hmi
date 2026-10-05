@@ -1429,19 +1429,21 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// <summary>
     /// Sends a <c>DurableAck</c> nobody asked for on the latest session, for whatever message, type and content hash the
     /// test names: a second ack of a row, an ack of a row the vehicle gave up, an ack that does not match the row on file
-    /// (8005-agv-onboard-hmi#250).
+    /// (8005-agv-onboard-hmi#250). The envelope's correlationId is <paramref name="acceptedMessageId"/>, as on every ack
+    /// this double sends, unless <paramref name="correlationId"/> names another.
     /// </summary>
     public async Task SendDurableAckAsync(
         string acceptedMessageId,
         string acceptedMessageType,
-        string acceptedContentSha256)
+        string acceptedContentSha256,
+        string? correlationId = null)
     {
         ConnectionContext context = Volatile.Read(ref _latestSession)
             ?? throw new InvalidOperationException("No session has been accepted yet.");
         await WriteEnvelopeAsync(context, CreateEnvelope(
             context,
             "DurableAck",
-            acceptedMessageId,
+            correlationId ?? acceptedMessageId,
             new
             {
                 acceptedMessageId,

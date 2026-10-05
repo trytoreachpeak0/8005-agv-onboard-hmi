@@ -159,14 +159,16 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
-    /// An ack that is not a late answer to anything on file -- another content hash or message type than the row's, or
-    /// a messageId the outbox has never held -- still ends the session as an unhandled message, as every such ack did
-    /// before onboard-hmi#250, and changes no row.
+    /// An ack that is not a late answer to anything on file -- another content hash or message type than the row's, a
+    /// messageId the outbox has never held, or an envelope correlated to another message than the one its payload
+    /// accepts -- still ends the session as an unhandled message, as every such ack did before onboard-hmi#250, and
+    /// changes no row.
     /// </summary>
     [Theory]
     [InlineData("content")]
     [InlineData("type")]
     [InlineData("unknown")]
+    [InlineData("correlation")]
     public async Task AnAckMatchingNoRowOnFileStillEndsTheSession(string mismatch)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
@@ -180,6 +182,11 @@ public sealed partial class StationDeadlineExpiredG2Tests
         {
             "content" => harness.Server.SendDurableAckAsync(row.MessageId, row.MessageType, new string('0', 64)),
             "type" => harness.Server.SendDurableAckAsync(row.MessageId, "SafetyStateChanged", row.ContentSha256),
+            "correlation" => harness.Server.SendDurableAckAsync(
+                row.MessageId,
+                row.MessageType,
+                row.ContentSha256,
+                correlationId: Guid.NewGuid().ToString("D")),
             _ => harness.Server.SendDurableAckAsync(Guid.NewGuid().ToString("D"), row.MessageType, row.ContentSha256)
         });
         await Harness.WaitUntilAsync(
