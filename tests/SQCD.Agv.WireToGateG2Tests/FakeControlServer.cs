@@ -217,6 +217,21 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool AnswerOperationResultsWithProtocolProblem { get; set; }
 
     /// <summary>
+    /// Answers every message of a listed type with a <c>ProtocolProblem</c> carrying the listed reason code, correlated
+    /// to it, the connection left open and nothing of the message kept -- what the real server does since
+    /// control-server#478 when it refuses an inbound message (<c>OnboardMessageProcessor</c>'s inbound boundary).
+    /// Checked before every other handling of the type (onboard-hmi#254).
+    /// </summary>
+    public IReadOnlyDictionary<string, string> ProtocolProblemByMessageType { get; set; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Takes every message of a listed type and answers nothing, the connection left open: the vehicle's send times out
+    /// and its outbox row stays unacknowledged for the next handshake to replay (onboard-hmi#254).
+    /// </summary>
+    public IReadOnlySet<string> UnansweredMessageTypes { get; set; } = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
     /// Whether a mid-session <c>SafetyStateChanged</c> is answered at all. Off, it is taken and left unanswered with
     /// the connection open: the vehicle republishes its session state only once such a change is acknowledged, so
     /// this keeps every session state change after the handshake's readiness out of a test that must not lean on
@@ -1719,6 +1734,21 @@ public sealed class FakeControlServer : IAsyncDisposable
                         messageId,
                         messageType,
                         "STALE_SESSION_GENERATION")).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (ProtocolProblemByMessageType.TryGetValue(messageType, out string? refusalCode))
+                {
+                    await WriteEnvelopeAsync(context, CreateProtocolProblem(
+                        context,
+                        messageId,
+                        messageType,
+                        refusalCode)).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (UnansweredMessageTypes.Contains(messageType))
+                {
                     continue;
                 }
 
