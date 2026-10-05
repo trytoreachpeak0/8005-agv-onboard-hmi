@@ -582,6 +582,13 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             CancellationToken cancellationToken = default) =>
             inner.MarkOutgoingAcknowledgedAsync(messageId, acceptedContentSha256, cancellationToken);
 
+        public Task<WireToGateDurableMessage> MarkOutgoingAbandonedAsync(
+            string messageId,
+            string contentSha256,
+            string reasonCode,
+            CancellationToken cancellationToken = default) =>
+            inner.MarkOutgoingAbandonedAsync(messageId, contentSha256, reasonCode, cancellationToken);
+
         public Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
             CancellationToken cancellationToken = default) =>
             inner.ReadUnacknowledgedOutgoingAsync(cancellationToken);
@@ -651,6 +658,13 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             string acceptedContentSha256,
             CancellationToken cancellationToken = default) =>
             inner.MarkOutgoingAcknowledgedAsync(messageId, acceptedContentSha256, cancellationToken);
+
+        public Task<WireToGateDurableMessage> MarkOutgoingAbandonedAsync(
+            string messageId,
+            string contentSha256,
+            string reasonCode,
+            CancellationToken cancellationToken = default) =>
+            inner.MarkOutgoingAbandonedAsync(messageId, contentSha256, reasonCode, cancellationToken);
 
         public Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
             CancellationToken cancellationToken = default) =>
