@@ -63,6 +63,42 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// A <c>COMPLETED</c> result refused for good is no finished work waiting for its ack: the server holds another
+    /// conclusion for the attempt. It comes up as an operation for the administrator to recover, not as
+    /// <c>RESULT_ACK_PENDING</c> for good.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-06")]
+    [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
+    public async Task ARefusedCompletedResultComesUpForRecoveryNotAsAwaitingItsAck()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { SimulateOperatorLoad = true },
+            token,
+            server =>
+            {
+                server.StationDepartureDeadlineAt = null;
+                server.ProtocolProblemByMessageType = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["OperationResult"] = "MESSAGE_ID_CONTENT_CONFLICT"
+                };
+            });
+
+        await harness.WaitForEventAsync("DURABLE_MESSAGE_ABANDONED", token);
+        Assert.Equal("COMPLETED", harness.FirstResult("OperationResult").GetProperty("overallOutcome").GetString());
+        await Harness.WaitUntilAsync(
+            () => harness.Business.CurrentOperationSnapshot?.Stage == WireToGateHmiOperationStage.RecoveryRequired,
+            "the refused completed result to come up for recovery",
+            token,
+            harness.DescribeEvents);
+
+        Assert.DoesNotContain("RESULT_ACK_PENDING", harness.DescribeEvents(), StringComparison.Ordinal);
+        Assert.Equal(AttemptId, harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId);
+        Assert.Single(harness.Server.ReceivedEnvelopes, item => item.MessageType == "OperationResult");
+    }
+
+    /// <summary>
     /// An acknowledged result the next handshake names as pending and replays (<c>CV-OPERATION-RESULT-UNKNOWN-RECONCILE</c>)
     /// is refused for good: the handshake still completes, the result is given up and stays acknowledged, and later
     /// handshakes neither name it as pending nor replay it. With its store intact the server answers such a replay from
