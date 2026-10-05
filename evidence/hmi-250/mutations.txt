@@ -1,0 +1,19 @@
+M1 build     0 Error(s)
+== M1
+  Failed ALateAckOfARowGivenUpLeavesItGivenUpAndTheSessionGoesOn [15 s]
+  Failed AnAckArrivingAfterALoadCancellationAbortedItsSendIsTakenAndTheSessionGoesOn [12 s]
+  Failed AnAckArrivingAfterItsSendTimedOutIsTakenAndTheSessionGoesOn [13 s]
+  Failed AFurtherAckOfARowAlreadyAcknowledgedChangesNothingAndTheSessionGoesOn [10 s]
+M2 build     0 Error(s)
+== M2
+  Failed AnAckMatchingNoRowOnFileStillEndsTheSession(mismatch: "content") [10 s]
+M3 build     1 Error(s)
+== M3
+  Failed AnAckMatchingNoRowOnFileStillEndsTheSession(mismatch: "content") [10 s]
+M4 build     0 Error(s)
+== M4
+  Failed AnAckMatchingNoRowOnFileStillEndsTheSession(mismatch: "type") [10 s]
+4762:        if (row.Abandoned && row.MessageId.Length < 0)
+M3 build     0 Error(s)
+== M3
+  Failed ALateAckOfARowGivenUpLeavesItGivenUpAndTheSessionGoesOn [15 s]

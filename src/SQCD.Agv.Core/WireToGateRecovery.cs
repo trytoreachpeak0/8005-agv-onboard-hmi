@@ -499,3 +499,32 @@ public sealed record WireToGateDurableMessageAbandonment(
     string ReasonCode,
     string? ServerDisplayMessage,
     string WireLine);
+
+/// <summary>
+/// What a <c>DurableAck</c> that arrived after its send had stopped waiting for it did to its outbox row
+/// (onboard-hmi#250). An ack that matches no row on file -- or not its type or content -- is none of these: the session
+/// still ends on it as an unhandled message.
+/// </summary>
+public enum WireToGateLateDurableAckOutcome
+{
+    /// <summary>The row was still owed, and is acknowledged now.</summary>
+    Acknowledged,
+
+    /// <summary>The row was acknowledged already; nothing changed.</summary>
+    AlreadyAcknowledged,
+
+    /// <summary>
+    /// The row was given up (<see cref="WireToGateDurableMessage.Abandoned"/>) and stays given up: what the server
+    /// took under this identity is not what the vehicle has on file, whatever this ack says.
+    /// </summary>
+    Abandoned
+}
+
+/// <summary>
+/// A late <c>DurableAck</c> the session client settled against its outbox row (onboard-hmi#250), as it reports it.
+/// </summary>
+public sealed record WireToGateLateDurableAck(
+    string DeduplicationKey,
+    string MessageType,
+    string MessageId,
+    WireToGateLateDurableAckOutcome Outcome);

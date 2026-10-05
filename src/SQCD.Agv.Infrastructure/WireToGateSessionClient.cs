@@ -183,6 +183,12 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     public event EventHandler<ValueChangedEventArgs<WireToGateDurableMessageAbandonment>>? DurableMessageAbandoned;
 
     /// <summary>
+    /// A <c>DurableAck</c> arrived after its send had stopped waiting for it, and was settled against its outbox row
+    /// (onboard-hmi#250). Raised on the receive loop's thread.
+    /// </summary>
+    public event EventHandler<ValueChangedEventArgs<WireToGateLateDurableAck>>? LateDurableAckReceived;
+
+    /// <summary>
     /// Formal WIRE_TO_GATE business messages received after session recovery.
     /// Handlers must treat the command as untrusted input and perform their own
     /// physical-state checks before causing side effects.
@@ -2772,6 +2778,15 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     continue;
                 }
 
+                // An ack its send stopped waiting for -- timed out, or cancelled with the run that sent it -- is still
+                // the server's word that it holds the row: settled against the outbox, not taken for an unhandled
+                // message that ends the session (onboard-hmi#250). One that matches no row falls through to that.
+                if (string.Equals(envelope.MessageType, "DurableAck", StringComparison.Ordinal)
+                    && await TrySettleLateDurableAckAsync(envelope, stopping.Token).ConfigureAwait(false))
+                {
+                    continue;
+                }
+
                 // 协议 v2 消息 7。整条链路都在这一层里走完：收命令、核指纹、发结果，不经过应用层，
                 // 因为 REQ-0265 说得很清楚——一次激活动作已经包含重新投运意图，中间没有第二道人工
                 // 审批关卡，也就没有任何要交给界面去等的东西。
@@ -4704,6 +4719,67 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             ref _acceptedSafetyStateVersion,
             safetyStateVersion,
             current) != current);
+    }
+
+    /// <summary>
+    /// Settles a <c>DurableAck</c> no send is waiting for against the outbox row it names (onboard-hmi#250). Returns false,
+    /// and changes nothing, when it names no row on file, or a row of another type or content: that is not a late answer
+    /// to anything this vehicle sent, and the caller treats it as before.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Why an ack can arrive with nobody waiting.</b> <see cref="SendDurableCoreAsync"/> removes its waiter when its
+    /// wait ends, whether the ack came, the wait ran out (<c>MessageTimeout</c>), or its token was cancelled -- and the
+    /// executor's progress reports wait with the run's own token, which an authorized load cancellation (and on the
+    /// batch-p3 line a slot fault declaration) cancels to stop the run. The server answers anyway. Before #250 that
+    /// answer reached the end of the receive loop and ended the session as an unhandled message.
+    /// </para>
+    /// <para>
+    /// <b>The same checks a waiting send makes</b>: correlation, message id, type and content hash must all be the
+    /// row's. A row already acknowledged is left as it is. A row given up (onboard-hmi#254) is left given up -- an ack
+    /// arriving after the server refused it does not make the vehicle's content the one the server holds.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> TrySettleLateDurableAckAsync(WireToGateEnvelope envelope, CancellationToken cancellationToken)
+    {
+        DurableAckPayload ack = WireToGateProtocolSerializer.DeserializePayload<DurableAckPayload>(envelope);
+        if (!string.Equals(envelope.CorrelationId, ack.AcceptedMessageId, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        WireToGateDurableMessage? row = await _journal
+            .ReadOutgoingByMessageIdAsync(ack.AcceptedMessageId, cancellationToken)
+            .ConfigureAwait(false);
+        if (row is null
+            || !string.Equals(row.MessageType, ack.AcceptedMessageType, StringComparison.Ordinal)
+            || !string.Equals(row.ContentSha256, ack.AcceptedContentSha256, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        WireToGateLateDurableAckOutcome outcome;
+        if (row.Abandoned)
+        {
+            outcome = WireToGateLateDurableAckOutcome.Abandoned;
+        }
+        else if (row.Acknowledged)
+        {
+            outcome = WireToGateLateDurableAckOutcome.AlreadyAcknowledged;
+        }
+        else
+        {
+            await _journal
+                .MarkOutgoingAcknowledgedAsync(row.MessageId, row.ContentSha256, cancellationToken)
+                .ConfigureAwait(false);
+            outcome = WireToGateLateDurableAckOutcome.Acknowledged;
+        }
+
+        LateDurableAckReceived?.Invoke(
+            this,
+            new ValueChangedEventArgs<WireToGateLateDurableAck>(
+                new WireToGateLateDurableAck(row.DeduplicationKey, row.MessageType, row.MessageId, outcome)));
+        return true;
     }
 
     /// <summary>
