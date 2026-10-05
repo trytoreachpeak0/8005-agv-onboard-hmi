@@ -173,6 +173,50 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// 判定中止执行器时，执行器正在等一次重新提示（<c>OperationProgress</c>）的 ack：中止撤掉这次等待，ack 随后才到。
+    /// 车载端按发件箱把它记为已确认，会话不断开，<c>OperationResult</c> 照常送达，2 号仓是 UNKNOWN＋<c>SLOT_FAULT_DECLARED</c>
+    /// （<c>trytoreachpeak0/8005-agv-onboard-hmi#250</c>，同步进 v3 时补，hmi#264）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 这是 <see cref="TheSameDeclarationAgainIsAnsweredWithTheFirstAnswerAndNothingIsStoppedTwice"/> 偶发超时的机理：那条用例扣下
+    /// 判定应答的 ack，执行器在判定约 2 秒后才被中止，恰好与 2 秒一次的重新提示撞在一起。这里不靠撞，替身把重新提示的 ack
+    /// 延后 1 秒（不到 2 秒的超时），等服务端收到重新提示后立刻发判定，中止必然落在等 ack 的那一秒里。
+    /// </para>
+    /// <para>
+    /// 先红：去掉接收循环里迟到 ack 的那一支，迟到的 ack 被当成未处理消息断开会话（这个夹具不重连），
+    /// 等发件箱记为已确认那一步超时。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-SLOT-FAULT-DECLARATION-APPLIED")]
+    public async Task AnAckArrivingAfterTheDeclarationAbortedItsProgressIsTakenAndTheResultStillGoesOut()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartForDeclarationAsync(token);
+        await StartThreeSlotLoadAtSlotTwoAsync(harness, token);
+
+        string late = await DelayTheNextProgressAckAsync(harness, TimeSpan.FromSeconds(1), token);
+        await harness.Server.SendCommandAsync(
+            "SlotFaultDeclarationCommand",
+            Guid.NewGuid().ToString("D"),
+            DeclarationPayload(FirstDeclarationId, DeclaredAttemptId, 2));
+
+        await WaitForLateAckAsync(harness, late, token);
+        await WaitForAcknowledgedOnFileAsync(harness, late, token);
+        await WaitForLateAckLogAsync(harness, late, LogSeverity.Information, "现记为已确认", token);
+        Assert.True(harness.Client.Current.Connected, "the late ack must not end the session");
+
+        await harness.WaitForInboundAsync("OperationResult", token);
+        Assert.Equal("APPLIED", harness.SingleResult("SlotFaultDeclarationResult").GetProperty("outcome").GetString());
+        JsonElement result = harness.SingleResult("OperationResult");
+        Assert.Equal("UNKNOWN", result.GetProperty("overallOutcome").GetString());
+        AssertWireSlot(result, 2, "UNKNOWN", ["SLOT_FAULT_DECLARED"]);
+        Assert.DoesNotContain(harness.Server.Received, item => item.Connection != 1);
+    }
+
+    /// <summary>
     /// 判定不生效之一，「操作员恰好关门闭环」（<c>CV-SLOT-FAULT-DECLARATION-NOT-APPLICABLE</c>）：闭环结果已经写进发件箱
     /// （服务端已收到 <c>OperationResult</c> COMPLETED）之后判定才到，回 <c>NOT_APPLICABLE</c>，不中止、不再结算，
     /// 发件箱里除了这份应答没有别的新东西。用真实时序构造：等服务端收到闭环结果，再发判定。
