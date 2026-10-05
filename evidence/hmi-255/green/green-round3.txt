@@ -1,0 +1,9 @@
+# 第三轮绿色证据：产品代码为本分支 7541718 加本轮未提交改动（提交后即为新 head）。每步记 dotnet test 退出码与程序集收尾的 schema 一致性结论。
+unit build exit=0
+unit test exit=0
+Passed!  - Failed:     0, Passed:   704, Skipped:     0, Total:   704, Duration: 21 s - SQCD.Agv.UnitTests.dll (net8.0)
+G2 build exit=0
+G2 targeted (恢复相关，非全量) test exit=0
+Passed!  - Failed:     0, Passed:   205, Skipped:     0, Total:   205, Duration: 2 m 32 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+schema: Schema conformance (protocol-v2.0.0 APPROVED_RELEASE): 5420 lines, 5378 distinct, 48 message types; 0 distinct violations, 0 on file; schema compilation 179629 ms, validation 13433 ms.
+schema-violations.json absent (no violations)

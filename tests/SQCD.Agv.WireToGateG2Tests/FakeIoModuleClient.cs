@@ -149,6 +149,55 @@ public sealed class FakeIoModuleClient : IIoModuleClient
         }
     }
 
+    /// <summary>
+    /// The door reads open -- lock feedback released, unlock output reset -- as a door left standing open
+    /// after a vector that could not confirm it reads (8005-agv-onboard-hmi#255).
+    /// </summary>
+    public void OpenDoor(int slotIndex)
+    {
+        lock (_sync)
+        {
+            Update(slotIndex, locker => locker with
+            {
+                LockFeedbackRaw = false,
+                UnlockOutputRaw = false,
+                ObservedAt = DateTimeOffset.UtcNow
+            });
+        }
+    }
+
+    /// <summary>
+    /// The door reads shut and locked, but the unlock output still reads energised: a lock that is not proven locked.
+    /// </summary>
+    public void SetUnlockOutputActive(int slotIndex)
+    {
+        lock (_sync)
+        {
+            Update(slotIndex, locker => locker with
+            {
+                LockFeedbackRaw = true,
+                UnlockOutputRaw = true,
+                ObservedAt = DateTimeOffset.UtcNow
+            });
+        }
+    }
+
+    /// <summary>
+    /// The readings stay as they are and stop being refreshed: the snapshot is stamped <paramref name="age"/> in the past,
+    /// as when the module has not been polled for that long. Any later change stamps it fresh again.
+    /// </summary>
+    public void MakeStale(TimeSpan age)
+    {
+        lock (_sync)
+        {
+            DateTimeOffset then = DateTimeOffset.UtcNow - age;
+            CurrentSnapshot = new IoSnapshot(
+                true,
+                _lockers.Select(locker => locker with { ObservedAt = then }).ToArray(),
+                then);
+        }
+    }
+
     public Task StartAsync(CancellationToken applicationStopping) => Task.CompletedTask;
 
     public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;

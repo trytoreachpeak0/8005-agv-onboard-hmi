@@ -1,0 +1,39 @@
+E1 recheck never demotes: Failed!  - Failed:     5, Passed:    54, Skipped:     0, Total:    59, Duration: 5 s - SQCD.Agv.UnitTests.dll (net8.0)
+    Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.APrecheckRefusalDoesNotReportACompletedSlotWhoseDoorReadsOpenAsCompleted [75 ms]
+    Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ALatchRefusalDoesNotReportACompletedSlotWhoseDoorReadsOpenAsCompleted [111 ms]
+    Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ACompletedSlotOpenedBeforeTheSafeFinishIsNotReportedCompleted(path: "after-pulse") [112 ms]
+    Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ACompletedSlotOpenedBeforeTheSafeFinishIsNotReportedCompleted(path: "handed-over") [115 ms]
+    Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AnIoFailureDoesNotReportACompletedSlotWhoseDoorReadsOpenAsCompleted [130 ms]
+E2 recheck ignores freshness: Failed!  - Failed:     1, Passed:    58, Skipped:     0, Total:    59, Duration: 8 s - SQCD.Agv.UnitTests.dll (net8.0)
+    Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AReadingTheVehicleCannotTrustDoesNotTakeACompletedSlotBack [114 ms]
+E3 no door chosen for the set: Failed!  - Failed:     5, Passed:    54, Skipped:     0, Total:    59, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)
+    Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.APrecheckRefusalDoesNotReportACompletedSlotWhoseDoorReadsOpenAsCompleted [32 ms]
+    Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ALatchRefusalDoesNotReportACompletedSlotWhoseDoorReadsOpenAsCompleted [56 ms]
+    Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ACompletedSlotOpenedBeforeTheSafeFinishIsNotReportedCompleted(path: "after-pulse") [59 ms]
+    Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ACompletedSlotOpenedBeforeTheSafeFinishIsNotReportedCompleted(path: "handed-over") [65 ms]
+    Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AnIoFailureDoesNotReportACompletedSlotWhoseDoorReadsOpenAsCompleted [72 ms]
+E4 safe-finish recheck removed: Failed!  - Failed:     2, Passed:    57, Skipped:     0, Total:    59, Duration: 4 s - SQCD.Agv.UnitTests.dll (net8.0)
+    Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ACompletedSlotOpenedBeforeTheSafeFinishIsNotReportedCompleted(path: "after-pulse") [73 ms]
+    Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ACompletedSlotOpenedBeforeTheSafeFinishIsNotReportedCompleted(path: "handed-over") [79 ms]
+E5 io-failure keeps empty set: Failed!  - Failed:     1, Passed:    58, Skipped:     0, Total:    59, Duration: 4 s - SQCD.Agv.UnitTests.dll (net8.0)
+    Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AnIoFailureDoesNotReportACompletedSlotWhoseDoorReadsOpenAsCompleted [84 ms]
+E6 refusal ignores completed doors for set: Failed!  - Failed:     2, Passed:    57, Skipped:     0, Total:    59, Duration: 5 s - SQCD.Agv.UnitTests.dll (net8.0)
+    Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.APrecheckRefusalDoesNotReportACompletedSlotWhoseDoorReadsOpenAsCompleted [50 ms]
+    Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ALatchRefusalDoesNotReportACompletedSlotWhoseDoorReadsOpenAsCompleted [124 ms]
+B1 press gate never refuses: Failed!  - Failed:     3, Passed:     2, Skipped:     0, Total:     5, Duration: 12 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ADoorLeftInDoubtByAnAcknowledgedUnknownVectorIsNotDroppedByTheNextPress [851 ms]
+    Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AForcedMechanicalRecoveryIsStillOfferedOverADoorLeftInDoubtAndCarriesIt [5 s]
+    Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AStaleReadingOfAShutDoorLeftInDoubtDoesNotProveItShut [5 s]
+B2 prepare check removed: Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 2 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ADoorLeftInDoubtThatOpensAgainWhileTheSessionIsRequestedRefusesThePreparation [284 ms]
+B3 forced prepare drops the door: Failed!  - Failed:     2, Passed:     3, Skipped:     0, Total:     5, Duration: 2 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ARefusedForcedMechanicalRecoveryLeavesTheDoorItCarriedInTheActiveSet [295 ms]
+    Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AForcedMechanicalRecoveryIsStillOfferedOverADoorLeftInDoubtAndCarriesIt [300 ms]
+B4 forced press is gated too: Failed!  - Failed:     2, Passed:     3, Skipped:     0, Total:     5, Duration: 7 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ARefusedForcedMechanicalRecoveryLeavesTheDoorItCarriedInTheActiveSet [5 s]
+    Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AForcedMechanicalRecoveryIsStillOfferedOverADoorLeftInDoubtAndCarriesIt [264 ms]
+B5 refused action clears the set: Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ARefusedForcedMechanicalRecoveryLeavesTheDoorItCarriedInTheActiveSet [247 ms]
+B6 gate ignores freshness: Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 2 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AStaleReadingOfAShutDoorLeftInDoubtDoesNotProveItShut [380 ms]
+restore build: ok

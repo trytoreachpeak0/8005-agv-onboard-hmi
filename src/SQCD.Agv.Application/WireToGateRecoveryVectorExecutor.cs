@@ -695,8 +695,13 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 }
 
                 // The slot stays the active unlock set only if its door may be open: pulsed (or the
-                // pulse was attempted), or handed over open. Refused before the pulse, it never opened.
-                IReadOnlyList<int> stillActive = pulseSent || openHandedOver ? [physicalSlot] : [];
+                // pulse was attempted), or handed over open. Refused before the pulse, it never opened;
+                // then a slot this vector finished whose door no longer reads shut is the one door in
+                // doubt (8005-agv-onboard-hmi#255).
+                int[] completedInDoubt = MarkCompletedSlotsInDoubt(failureSnapshot, completed, results, correction);
+                IReadOnlyList<int> stillActive = pulseSent || openHandedOver
+                    ? [physicalSlot]
+                    : FirstDoorNotShut(failureSnapshot, completedInDoubt);
                 await WriteVectorStateAsync(
                     context,
                     WireToGateRecoveryCheckpoint.ActiveUnlockSet,
@@ -721,6 +726,35 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                     WireToGateRecoveryCheckpoint.ActiveUnlockSet,
                     observedAt);
             }
+        }
+
+        // Every slot was proven at its own end, and the check before a pulse looked at the other doors; nothing
+        // looked again after the last of them. A slot finished earlier whose door was opened since -- while the
+        // operator emptied a later slot, or while a handed-over door that is never pulsed was waited on -- would
+        // otherwise be reported COMPLETED over a reading of an open door (8005-agv-onboard-hmi#255).
+        IoSnapshot atFinish = _ioModule.CurrentSnapshot;
+        int[] finishedInDoubt = MarkCompletedSlotsInDoubt(atFinish, completed, results, correction);
+        if (finishedInDoubt.Length > 0)
+        {
+            IReadOnlyList<int> doorInDoubt = FirstDoorNotShut(atFinish, finishedInDoubt);
+            await WriteVectorStateAsync(
+                context,
+                WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                doorInDoubt,
+                completed,
+                results,
+                CancellationToken.None).ConfigureAwait(false);
+            await SendProgressAsync(progress, "PAUSED", doorInDoubt, completed, CancellationToken.None)
+                .ConfigureAwait(false);
+            DateTimeOffset inDoubtObservedAt = await EnsureResultObservedAtAsync(
+                context,
+                CancellationToken.None).ConfigureAwait(false);
+            return CreateResult(
+                context,
+                "UNKNOWN",
+                results,
+                WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                inDoubtObservedAt);
         }
 
         await WriteVectorStateAsync(
@@ -855,6 +889,13 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
     /// empty, <c>UNKNOWN</c> with a door in it, and every later answer reads the same.
     /// </para>
     /// <para>
+    /// A slot this vector finished is rechecked against the same snapshot (<see cref="MarkCompletedSlotsInDoubt"/>):
+    /// one a fresh reading no longer shows in its final state is <c>UNKNOWN</c> with what the IO reads, never
+    /// <c>COMPLETED</c> over an open door. With no handed-over door in doubt, the first such slot whose door does not
+    /// read shut takes the active unlock set -- one door at most (REQ-0357) -- and the outcome reads back
+    /// <c>UNKNOWN</c> (8005-agv-onboard-hmi#255).
+    /// </para>
+    /// <para>
     /// One write, not a checkpoint and then a stamp: a process that died between the two would come back to an
     /// unstamped vector and run it again instead of answering what it had already decided. A stamp already on file
     /// is kept.
@@ -869,7 +910,11 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             List<WireToGateSlotExecutionResult> results,
             bool correction)
     {
-        int[] stillActive = MarkHandedOverDoorsInDoubt(snapshot, handedOver, completedSlots, results, correction);
+        int[] handedOverInDoubt = MarkHandedOverDoorsInDoubt(snapshot, handedOver, completedSlots, results, correction);
+        int[] completedInDoubt = MarkCompletedSlotsInDoubt(snapshot, completedSlots, results, correction);
+        int[] stillActive = handedOverInDoubt.Length > 0
+            ? handedOverInDoubt
+            : FirstDoorNotShut(snapshot, completedInDoubt);
         WireToGateRecoveryState? written = await _journal.UpdateRecoveryStateAsync(
             current => WithVectorState(
                 current,
@@ -949,6 +994,69 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 && !(IsFresh(snapshot) && IsShut(GetLocker(snapshot, slot))))
             .Order()
             .ToArray();
+
+    /// <summary>
+    /// Rechecks the slots this vector counted complete against <paramref name="snapshot"/> and records each one the
+    /// reading no longer shows in its final state as <c>UNKNOWN</c> with what the IO reads and its precheck reason,
+    /// returning them in ascending order (8005-agv-onboard-hmi#255).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only a fresh reading changes a result. Each slot was proven final when it was counted complete; a stale
+    /// snapshot shows nothing new about it, and taking it for a change would turn every finished slot UNKNOWN the
+    /// moment a reading lagged (<c>AHandedOverDoorThisVectorFinishedIsNotKeptByALaterStaleRefusal</c>).
+    /// </para>
+    /// <para>
+    /// The slot stays counted complete: this vector did act on it, which is what <see cref="RefuseBeforeUnlockAsync"/>
+    /// reads the completed set for. A slot already UNKNOWN keeps its result, so a recheck never drops the reason an
+    /// earlier step put there.
+    /// </para>
+    /// </remarks>
+    private int[] MarkCompletedSlotsInDoubt(
+        IoSnapshot snapshot,
+        IReadOnlyList<int> completedSlots,
+        List<WireToGateSlotExecutionResult> results,
+        bool correction)
+    {
+        if (!IsFresh(snapshot))
+        {
+            return [];
+        }
+
+        int[] inDoubt = completedSlots
+            .Distinct()
+            .Where(slot => !IsFinalState(GetLocker(snapshot, slot), correction))
+            .Order()
+            .ToArray();
+        foreach (int slot in inDoubt)
+        {
+            if (results.FirstOrDefault(result => result.SlotNo == slot) is { Outcome: "UNKNOWN" })
+            {
+                continue;
+            }
+
+            // The precheck's reason where the door, the lock or the output is what changed; otherwise the slot reads
+            // shut and only what it holds no longer matches what the vector left -- a basket back in a cleared slot --
+            // which is SLOT_OPERATION_CONFLICT, as a correction reports a basket missing (8005-agv-onboard-hmi#255
+            // review nit 1).
+            UpsertResult(
+                results,
+                CreateSlotResult(
+                    GetLocker(snapshot, slot),
+                    "UNKNOWN",
+                    [ValidateInitialSnapshot(snapshot, [slot], correction) ?? "SLOT_OPERATION_CONFLICT"]));
+        }
+
+        return inDoubt;
+    }
+
+    /// <summary>
+    /// The first of <paramref name="slots"/> whose door <paramref name="snapshot"/> does not read shut, as the active
+    /// unlock set: the set holds the door that may be open, one at most (REQ-0357). A slot that reads shut and changed
+    /// only in what it holds is no open door; it is reported UNKNOWN in its result and stays out of the set.
+    /// </summary>
+    private static int[] FirstDoorNotShut(IoSnapshot snapshot, IReadOnlyList<int> slots) =>
+        slots.Where(slot => !IsShut(GetLocker(snapshot, slot))).Order().Take(1).ToArray();
 
     private static WireToGateRecoveryState WithVectorState(
         WireToGateRecoveryState current,
@@ -1104,11 +1212,19 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
     /// (ADR-cross-0046, onboard-hmi#78).
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The business service writes them as the prepared vector's active unlock set once it has aborted
-    /// the load: an active set at <see cref="WireToGateRecoveryCheckpoint.Prepared"/> has no other
-    /// source, because this executor only fences a slot at
-    /// <see cref="WireToGateRecoveryCheckpoint.ActiveUnlockSet"/>. Nothing but a load cancellation hands
-    /// doors over, so for any other vector the same shape stays a fence.
+    /// the load. Read only for a load cancellation, and only before the vector's result is stamped: nothing
+    /// but a load cancellation hands doors over, so for any other vector the same shape stays a fence.
+    /// </para>
+    /// <para>
+    /// It is not the only source of a set at <see cref="WireToGateRecoveryCheckpoint.Prepared"/> any more.
+    /// <see cref="RecordRefusalAsync"/> writes one there -- a handed-over door in doubt, or a finished slot that
+    /// no longer reads shut -- together with the result's stamp, so every later entry answers from the record and
+    /// never reaches this. A forced mechanical recovery is prepared over the door it is asked for
+    /// (8005-agv-onboard-hmi#255), and this executor never runs it. Every other vector is prepared over an empty
+    /// set: the business service refuses to prepare one over a door not proven shut.
+    /// </para>
     /// </remarks>
     private static int[] HandedOverOpenSlots(
         WireToGateRecoveryState state,

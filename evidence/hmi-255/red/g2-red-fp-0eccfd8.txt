@@ -1,0 +1,20 @@
+# 产品代码为 0eccfd8（w2g/fp-v2-impl 顶端），测试为本分支
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ADoorLeftInDoubtByAnAcknowledgedUnknownVectorIsNotDroppedByTheNextPress [563 ms]
+   requested=True vector=LOAD_COMPENSATION/bfd3a029-4348-de5d-a6c6-4c4ec1abc5a8 checkpoint=Prepared active=[] sessionRequests=2
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ARefusedForcedMechanicalRecoveryLeavesTheDoorItCarriedInTheActiveSet [251 ms]
+   Assert.Equal() Failure: Collections differ
+Expected: <>z__ReadOnlySingleElementList<int> [1]
+Actual:   List<int>                           []
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AForcedMechanicalRecoveryIsStillOfferedOverADoorLeftInDoubtAndCarriesIt [219 ms]
+   Assert.False() Failure
+Expected: False
+Actual:   True
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AStaleReadingOfAShutDoorLeftInDoubtDoesNotProveItShut [254 ms]
+   Assert.False() Failure
+Expected: False
+Actual:   True
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ADoorLeftInDoubtThatOpensAgainWhileTheSessionIsRequestedRefusesThePreparation [231 ms]
+   Assert.False() Failure
+Expected: False
+Actual:   True
+Failed!  - Failed:     5, Passed:     0, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

@@ -1,0 +1,12 @@
+# 第二轮：产品代码为 0eccfd8（w2g/fp-v2-impl 顶端），测试为本分支 e474e68
+  Failed SQCD.Agv.WireToGateG2Tests.LoadCancellationBeforeSublotG2Tests.ACancellationBeforeAnySublotIsRefusedOverADoorLeftInDoubtUntilItIsShut [605 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ALockedDoorWithItsUnlockOutputStillEnergisedIsNotProvenShut [752 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ADoorLeftInDoubtByAnAcknowledgedUnknownVectorIsNotDroppedByTheNextPress [408 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ARefusedForcedMechanicalRecoveryLeavesTheDoorItCarriedInTheActiveSet [361 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AForcedMechanicalRecoveryIsStillOfferedOverADoorLeftInDoubtAndCarriesIt [454 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ARejectedCompensationKeepsTheDoorInTheActiveSet [282 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ALoadCorrectionPressIsRefusedOverADoorLeftInDoubtUntilItIsShut [141 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AStaleReadingOfAShutDoorLeftInDoubtDoesNotProveItShut [593 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AForcedIsolationKeepsADoorInDoubtItDoesNotCover [426 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ADoorLeftInDoubtThatOpensAgainWhileTheSessionIsRequestedRefusesThePreparation [494 ms]
+Failed!  - Failed:    10, Passed:     0, Skipped:     0, Total:    10, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

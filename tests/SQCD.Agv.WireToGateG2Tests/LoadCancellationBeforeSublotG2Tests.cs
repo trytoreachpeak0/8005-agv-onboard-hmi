@@ -628,6 +628,35 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
     private static string NewJournalPath() =>
         Path.Combine(Path.GetTempPath(), "w2g-before-sublot", Guid.NewGuid().ToString("N"), "journal.db");
 
+    /// <summary>
+    /// A cancellation before any sublot opens no door, but it rewrites the active unlock set all the same, so it is held
+    /// to the same rule as every other press that prepares a vector: a door left in doubt and reading open refuses it with
+    /// the way out named, and nothing goes to the server; shut, the press goes through (8005-agv-onboard-hmi#255 review
+    /// S2 B2).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task ACancellationBeforeAnySublotIsRefusedOverADoorLeftInDoubtUntilItIsShut()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using BeforeSublotHarness harness = await BeforeSublotHarness.StartAsync(token);
+        await harness.RewriteRecoveryStateAsync(state => state with { ActiveUnlockSlots = [1] }, token);
+        harness.Io.OpenDoor(0);
+
+        Assert.False(await harness.Business.RequestLoadCancellationAsync("到站后现场确认本站没有要装的货。", token));
+
+        await harness.WaitForRecoveryBlockedAsync("请先关好1号仓的门", token);
+        Assert.Empty(harness.PayloadsReceived("LoadCancellationStartRequested"));
+        Assert.Equal([1], (await harness.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
+
+        harness.Io.CloseDoor(0, cargo: false);
+        Assert.True(await harness.Business.RequestLoadCancellationAsync("到站后现场确认本站没有要装的货。", token));
+        (_, JsonElement result) = Assert.Single(harness.ResultsReceived());
+        Assert.Equal("ALL_EMPTY", result.GetProperty("overallOutcome").GetString());
+        Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
     private sealed class BeforeSublotHarness : IAsyncDisposable
     {
         private readonly WireToGateSessionService _session;
@@ -820,6 +849,15 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
         public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(
             CancellationToken cancellationToken) =>
             _journal.ReadRecoveryStateAsync(cancellationToken);
+
+        /// <summary>Puts the journal in the state <paramref name="change"/> makes of it, as a test's premise.</summary>
+        public async Task RewriteRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState> change,
+            CancellationToken cancellationToken)
+        {
+            WireToGateRecoveryState state = await _journal.ReadRecoveryStateAsync(cancellationToken);
+            await _journal.UpdateRecoveryStateAsync(_ => change(state), cancellationToken);
+        }
 
         public IReadOnlyList<JsonElement> PayloadsReceived(string messageType) =>
             Payloads(Server.ReceivedEnvelopes, messageType);
