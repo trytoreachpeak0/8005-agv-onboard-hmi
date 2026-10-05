@@ -1,0 +1,8 @@
+# 产品代码为 b5a44d6（w2g/batch-p3/v3 顶端），测试为本分支
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ADoorLeftInDoubtThatOpensAgainWhileTheSessionIsRequestedRefusesThePreparation [1 s]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ADoorLeftInDoubtByAnAcknowledgedUnknownVectorIsNotDroppedByTheNextPress [566 ms]
+   requested=True vector=LOAD_COMPENSATION/bfd3a029-4348-de5d-a6c6-4c4ec1abc5a8 checkpoint=Prepared active=[] sessionRequests=2
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AStaleReadingOfAShutDoorLeftInDoubtDoesNotProveItShut [633 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AForcedMechanicalRecoveryIsStillOfferedOverADoorLeftInDoubtAndCarriesIt [566 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ARefusedForcedMechanicalRecoveryLeavesTheDoorItCarriedInTheActiveSet [733 ms]
+Failed!  - Failed:     5, Passed:     0, Skipped:     0, Total:     5, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
