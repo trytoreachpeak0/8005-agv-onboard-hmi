@@ -88,7 +88,6 @@ public static class OnboardCommandRejectionText
         ["RECOVERY_REASON_REQUIRED"] = "请先填写恢复原因，再提交。",
         ["RECOVERY_OPERATION_CONTEXT_MISSING"] = "找不到本次恢复对应的仓位操作，请等待服务端同步，或联系维护人员。",
         ["LOAD_CORRECTION_OPERATION_NOT_AVAILABLE"] = "当前没有可以修正的装货操作。",
-        ["RECOVERY_DOOR_NOT_PROVEN_SHUT"] = "有仓门可能还开着，系统未能确认已关好；请先关好仓门，再按一次。",
 
         // The hardware-recovery record is incomplete, unnecessary, or cannot be judged yet.
         ["HARDWARE_RECOVERY_NOT_REQUIRED"] = "当前不需要填写硬件恢复记录。",

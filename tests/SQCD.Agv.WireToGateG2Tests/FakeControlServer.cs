@@ -720,6 +720,13 @@ public sealed class FakeControlServer : IAsyncDisposable
     public IReadOnlyList<string> RecoverySessionSnapshotStatesAfterOpened { get; set; } = [];
 
     /// <summary>
+    /// The actions an OPEN snapshot from <see cref="RecoverySessionSnapshotStatesAfterOpened"/> offers. The default is
+    /// what this double always sent; the real server offers <c>COMPENSATE_LOAD_ALL_EMPTY</c> and <c>FAULT_CARGO_HANDOFF</c>
+    /// as well for a load in RecoveryRequired (control-server <c>OnboardRecoveryCoordinator.AllowedActions</c>).
+    /// </summary>
+    public IReadOnlyList<string> OpenSnapshotAllowedActions { get; set; } = OpenRecoverySessionAllowedActions;
+
+    /// <summary>
     /// The recovery session snapshots this server wrote, exactly as they went on the wire.
     /// </summary>
     public IReadOnlyList<(string MessageId, string WireLine)> SentRecoverySessionSnapshots
@@ -2760,7 +2767,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                         .Select(item => item.GetInt32())
                         .ToArray(),
                     selectedAction = closed ? "COMPENSATE_LOAD_ALL_EMPTY" : null,
-                    allowedActions = closed ? Array.Empty<string>() : OpenRecoverySessionAllowedActions,
+                    allowedActions = closed ? Array.Empty<string>() : OpenSnapshotAllowedActions,
                     closedReason = (string?)null,
                     blockingFacts = closed
                         ? []
