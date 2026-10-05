@@ -186,10 +186,12 @@ public sealed partial class RecoveryVectorG2Tests
             "SLOT_OPERATION_CONFLICT",
             payload.GetProperty("problem").GetProperty("reasonCode").GetString());
         Assert.Equal(reasonCode, (await harness.ReadOutgoingAsync(resultKey, token))?.AbandonedReasonCode);
-        Assert.Contains(
-            harness.OperatorEvents,
-            item => item.Kind == "OPERATION_RECOVERY_REQUIRED"
-                && item.Message.Contains("已通知服务端结束这次恢复", StringComparison.Ordinal));
+        // Told after the rejection is on file and sent, so waited for.
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.OperatorEvents.Any(item => item.Kind == "OPERATION_RECOVERY_REQUIRED"
+                && item.Message.Contains("已通知服务端结束这次恢复", StringComparison.Ordinal)),
+            "the operator to be told the server has been told",
+            token);
         await AssertNoUnlockOverAsync(harness, TimeSpan.FromSeconds(1), token);
 
         WireToGateRecoveryState after = await harness.ReadRecoveryStateAsync(token);
@@ -218,9 +220,10 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
-    /// The rejection sent when the result was given up never reached the outbox, so the server's next send of the command
-    /// is what gets answered -- ahead of the safety gate, whichever checkpoint the command was sent at (review of PR #258,
-    /// S-3). Behind the gate it was refused there instead: the session is already forgotten, and a resume sent at
+    /// The rejection sent when the result was given up never reached the outbox -- written twice, failed twice -- so the
+    /// operator is told the server has not been told (review of PR #258, item 1), and the server's next send of the
+    /// command is what gets answered: ahead of the safety gate, whichever checkpoint the command was sent at (review S-3).
+    /// Behind the gate it was refused there instead: the session is already forgotten, and a resume sent at
     /// ACTIVE_UNLOCK_SET no longer matches the SAFE_FINISH_REACHED its run left on file.
     /// </summary>
     [Theory]
@@ -240,8 +243,9 @@ public sealed partial class RecoveryVectorG2Tests
             cargoInTargetSlots: true,
             wrapJournal: inner => new FaultInjectingJournal(inner)
             {
+                // The write and its one retry when the result is given up, and again for the first resend.
                 SaveOutgoingFault = message => message.MessageType == "SlotOperationCommandRejected"
-                    && Interlocked.Exchange(ref failed, 1) == 0
+                    && Interlocked.Increment(ref failed) <= 4
             });
         WireToGateRecoveryState state = await OpenResumeOverFinishedSlotsAsync(harness, token, sentAt);
         Assert.Equal(sentAt, state.ProvenRecoveryCheckpoint);
@@ -251,12 +255,33 @@ public sealed partial class RecoveryVectorG2Tests
             [FakeControlServerIdentifiers.StableUuid(resultKey)] = "RECOVERY_SCOPE_MISMATCH"
         };
         await harness.Server.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, ResumePayload(state));
-        await RecoveryVectorHarness.WaitUntilAsync(
-            () => harness.Logger.Entries.Any(entry =>
-                entry.Message.StartsWith("续行命令的拒绝未能写入发件箱", StringComparison.Ordinal)),
-            "the rejection sent on giving the result up to fail its outbox write",
+        await WaitLongAsync(
+            () => harness.OperatorEvents.Any(item => item.Kind == "OPERATION_RECOVERY_REQUIRED"
+                && item.Message.Contains("拒收并已放弃", StringComparison.Ordinal)),
+            "the result to be given up and the operator told",
+            TimeSpan.FromSeconds(20),
             token);
+        Assert.Equal(2, Volatile.Read(ref failed));
         Assert.Empty(Rejections(harness));
+        // Not "the server has been told" -- it has not, and only a reconnect brings the command back.
+        WireToGateOperatorEvent givenUp = Assert.Single(
+            harness.OperatorEvents,
+            item => item.Kind == "OPERATION_RECOVERY_REQUIRED" && item.Message.Contains("拒收并已放弃", StringComparison.Ordinal));
+        Assert.Contains("未能通知服务端结束这次恢复，需重新连接（或重启车载程序）后才会结束", givenUp.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("已通知服务端结束这次恢复", givenUp.Message, StringComparison.Ordinal);
+
+        // The first resend cannot be answered either: the operator is told so, not that the server has been told.
+        await harness.Server.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, ResumePayload(state));
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.OperatorEvents.Any(item => item.Kind == "RECOVERY_BLOCKED"
+                && item.Message.Contains("未能通知服务端结束这次恢复", StringComparison.Ordinal)),
+            "the operator to be told the resent resume could not be answered",
+            token);
+        Assert.Equal(4, Volatile.Read(ref failed));
+        Assert.Empty(Rejections(harness));
+        Assert.DoesNotContain(
+            harness.OperatorEvents,
+            item => item.Kind == "RECOVERY_BLOCKED" && item.Message.Contains("已通知服务端结束这次恢复", StringComparison.Ordinal));
 
         await harness.Server.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, ResumePayload(state));
 
@@ -265,14 +290,124 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(
             "SLOT_OPERATION_CONFLICT",
             rejection.GetProperty("payload").GetProperty("problem").GetProperty("reasonCode").GetString());
-        // The operator is told what this command met (review K), not the gate's text.
-        Assert.Contains(
-            harness.OperatorEvents,
-            item => item.Kind == "RECOVERY_BLOCKED"
-                && item.Message.Contains("恢复结果已被服务端拒收并放弃", StringComparison.Ordinal));
+        // The operator is told what this command met (review K) -- and that the server has been told now. Told after
+        // the rejection is on file, so waited for.
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.OperatorEvents.Any(item => item.Kind == "RECOVERY_BLOCKED"
+                && item.Message.Contains("恢复结果已被服务端拒收并放弃", StringComparison.Ordinal)
+                && item.Message.Contains("已通知服务端结束这次恢复", StringComparison.Ordinal)),
+            "the operator to be told the resent resume was refused and the server told",
+            token);
+        // The gate never judged it: its own log line is written on every refusal it makes (review detail 1).
+        Assert.DoesNotContain(
+            harness.Logger.Entries,
+            entry => entry.Message.StartsWith("收到SlotOperationResumeCommand但未执行物理动作", StringComparison.Ordinal));
+        await AssertNoUnlockOverAsync(harness, TimeSpan.FromSeconds(1), token);
+    }
+
+    /// <summary>
+    /// The rejection sent when the result is given up fails its first outbox write and goes out on the retry, there and
+    /// then: on a link that stays up nothing else would bring the command back to answer (review of PR #258, item 2).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-06")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
+    public async Task ARejectionWhoseFirstWriteFailsIsWrittenAgainAndSentThereAndThen()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        int failed = 0;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            cargoInTargetSlots: true,
+            wrapJournal: inner => new FaultInjectingJournal(inner)
+            {
+                SaveOutgoingFault = message => message.MessageType == "SlotOperationCommandRejected"
+                    && Interlocked.Increment(ref failed) == 1
+            });
+        WireToGateRecoveryState state = await OpenResumeOverFinishedSlotsAsync(harness, token);
+        string resultKey = $"recovery-operation-result:{AttemptId}:{state.RecoveryActionId}";
+        harness.Server.ProtocolProblemByMessageId = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [FakeControlServerIdentifiers.StableUuid(resultKey)] = "RECOVERY_SCOPE_MISMATCH"
+        };
+        await harness.Server.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, ResumePayload(state));
+
+        JsonElement rejection = await WaitForSingleRejectionAsync(harness, token);
+        Assert.Equal(ResumeMessageId, rejection.GetProperty("correlationId").GetString());
+        Assert.True(Volatile.Read(ref failed) >= 2, "The first write did not fail: this run did not test the retry.");
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.OperatorEvents.Any(item => item.Kind == "OPERATION_RECOVERY_REQUIRED"
+                && item.Message.Contains("已通知服务端结束这次恢复", StringComparison.Ordinal)),
+            "the operator to be told the server has been told",
+            token);
+        await AssertNoUnlockOverAsync(harness, TimeSpan.FromSeconds(1), token);
+    }
+
+    /// <summary>
+    /// The read ahead of the gate cannot say the result was given up -- it fails -- and the one behind the gate can: the
+    /// resume is refused there too, never taken for a result to replay (review of PR #258, detail 2). The session is
+    /// still on file here because forgetting it failed both times, which is what lets the command through the gate.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-06")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
+    public async Task AGivenUpResultTheGateFrontReadMissesIsRefusedBehindTheGateNotReplayed()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        int releasesFailed = 0;
+        int writesFailed = 0;
+        int readsFailed = 0;
+        string? resultKey = null;
+        bool failTheNextResultRead = false;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            cargoInTargetSlots: true,
+            wrapJournal: inner => new FaultInjectingJournal(inner)
+            {
+                // Forgetting the session fails and is only logged; the rejection's write fails too. Both, for the
+                // write and its retry: what is left is a session still on file and no rejection of it.
+                UpdateFault = () => Environment.StackTrace.Contains(
+                        "ForgetRecoverySessionAsync", StringComparison.Ordinal)
+                    && Interlocked.Increment(ref releasesFailed) <= 2,
+                SaveOutgoingFault = message => message.MessageType == "SlotOperationCommandRejected"
+                    && Interlocked.Increment(ref writesFailed) <= 2,
+                ReadOutgoingFault = key => Volatile.Read(ref failTheNextResultRead)
+                    && key == resultKey
+                    && Interlocked.Increment(ref readsFailed) == 1
+            });
+        WireToGateRecoveryState state = await OpenResumeOverFinishedSlotsAsync(harness, token);
+        resultKey = $"recovery-operation-result:{AttemptId}:{state.RecoveryActionId}";
+        harness.Server.ProtocolProblemByMessageId = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            [FakeControlServerIdentifiers.StableUuid(resultKey)] = "RECOVERY_SCOPE_MISMATCH"
+        };
+        await harness.Server.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, ResumePayload(state));
+        await WaitLongAsync(
+            () => harness.OperatorEvents.Any(item => item.Kind == "OPERATION_RECOVERY_REQUIRED"
+                && item.Message.Contains("未能通知服务端结束这次恢复", StringComparison.Ordinal)),
+            "the result to be given up with its rejection unwritten",
+            TimeSpan.FromSeconds(20),
+            token);
+        Assert.Empty(Rejections(harness));
+        Assert.Equal(state.ExceptionRecoverySessionId, (await harness.ReadRecoveryStateAsync(token)).ExceptionRecoverySessionId);
+
+        Volatile.Write(ref failTheNextResultRead, true);
+        await harness.Server.SendCommandAsync("SlotOperationResumeCommand", ResumeMessageId, ResumePayload(state));
+
+        JsonElement rejection = await WaitForSingleRejectionAsync(harness, token);
+        // Counted on every read of the result's key once armed, failing only the first: the read ahead of the gate,
+        // which failed, and the one behind it, which found the result given up.
+        Assert.Equal(2, Volatile.Read(ref readsFailed));
+        Assert.Equal(
+            "SLOT_OPERATION_CONFLICT",
+            rejection.GetProperty("payload").GetProperty("problem").GetProperty("reasonCode").GetString());
         Assert.DoesNotContain(
             harness.OperatorEvents,
-            item => item.Message.StartsWith("恢复命令被安全门禁阻断", StringComparison.Ordinal));
+            item => item.Message.Contains("保持原恢复结果重放", StringComparison.Ordinal));
         await AssertNoUnlockOverAsync(harness, TimeSpan.FromSeconds(1), token);
     }
 
