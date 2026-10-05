@@ -42,4 +42,6 @@ M6 对应审查 S1。这条用例直接调用会话客户端的 `SendSafetyState
 
 ## 全量 ONBOARD_HMI_G2
 
-`7b94a14`（审查前的 head）跑过一轮，结果 FAIL：UnitTests 704/704，G2 657/658，schema 收尾 0 处新违约。红的是 `WireToGateG2Tests.AnUnknownResultIsReportedAsPendingAfterARestartAndReplayedOnceTheReportIsAcknowledged`，在一个 2 秒等待上超时，不是本票新增的用例。当时审查子代理在同一台机器上跑定向测试，有负载。静态分析的结论（推断）：这条用例走不进本票改的分支，除非某条 ack 已经晚到 2 秒以上，而这 2 秒本身就用完了它的预算。那一轮的证据目录没有入库。审查修改之后要重跑一轮。
+`7b94a14`（审查前的 head）跑过一轮，结果 FAIL：UnitTests 704/704，G2 657/658，schema 收尾 0 处新违约。红的是 `WireToGateG2Tests.AnUnknownResultIsReportedAsPendingAfterARestartAndReplayedOnceTheReportIsAcknowledged`，在一个 2 秒等待上超时，不是本票新增的用例。当时审查子代理在同一台机器上跑定向测试，有负载。静态分析的结论（推断）：这条用例走不进本票改的分支，除非某条 ack 已经晚到 2 秒以上，而这 2 秒本身就用完了它的预算。那一轮的证据目录没有入库。
+
+审查修改之后，在 `6aa0389` 上重跑了一轮（`g2-full-6aa0389/`，目录原样保留）：PASS，脚本退出码 0。build、test、format 的退出码都是 0，protocol g1 PASS。UnitTests 704/704，G2 659/659（基线 650 条，加新增 9 条）。schema 收尾检查了 17457 行，0 处新违约，已知违约 4 处。上一轮红的那条这一轮通过了；这一轮机器上没有别的任务并行。
