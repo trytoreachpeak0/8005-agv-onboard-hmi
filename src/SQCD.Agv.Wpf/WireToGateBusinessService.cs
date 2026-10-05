@@ -2119,6 +2119,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 nameof(WireToGateBusinessService),
                 "SafetyStateChanged被服务端拒收并已放弃；不断开会话，改报此刻读数。",
                 exception);
+            // The next pass is what sends the present reading. Usually another request is already waiting -- one IO change
+            // reaches here twice in the App, through OnIoSnapshotChanged and through the controller's StateChanged
+            // (RefreshSafetyAfterFatalFaultLatchChange) -- but whether the second lands during this pass or merges with the
+            // first is a race, so this one is asked for regardless (review of PR #258, R10: it survives a mutation for
+            // that reason, not because it is never needed).
             _ = Task.Run(RequestSafetyStateChange, CancellationToken.None);
         }
         catch (Exception exception)

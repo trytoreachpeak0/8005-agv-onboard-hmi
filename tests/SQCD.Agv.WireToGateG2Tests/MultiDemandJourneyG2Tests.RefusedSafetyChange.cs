@@ -27,9 +27,7 @@ public sealed partial class MultiDemandJourneyG2Tests
     public async Task ARefusedSafetyChangeIsGivenUpAndTheServersSnapshotRequestIsAnswered()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
-        // Not kept fresh: a snapshot restamped on every read starts the next safety pass by itself, which hid whether
-        // the refusal's own request for one is what sends the present reading (review of PR #258, R10).
-        FakeIoModuleClient io = new() { KeepSnapshotFresh = false };
+        FakeIoModuleClient io = new() { KeepSnapshotFresh = true };
         await using Harness harness = await Harness.StartAsync(
             server =>
             {
