@@ -1035,12 +1035,16 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 continue;
             }
 
+            // The precheck's reason where the door, the lock or the output is what changed; otherwise the slot reads
+            // shut and only what it holds no longer matches what the vector left -- a basket back in a cleared slot --
+            // which is SLOT_OPERATION_CONFLICT, as a correction reports a basket missing (8005-agv-onboard-hmi#255
+            // review nit 1).
             UpsertResult(
                 results,
                 CreateSlotResult(
                     GetLocker(snapshot, slot),
                     "UNKNOWN",
-                    [ValidateInitialSnapshot(snapshot, [slot], correction) ?? "SLOT_STATE_UNKNOWN"]));
+                    [ValidateInitialSnapshot(snapshot, [slot], correction) ?? "SLOT_OPERATION_CONFLICT"]));
         }
 
         return inDoubt;
@@ -1208,11 +1212,19 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
     /// (ADR-cross-0046, onboard-hmi#78).
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The business service writes them as the prepared vector's active unlock set once it has aborted
-    /// the load: an active set at <see cref="WireToGateRecoveryCheckpoint.Prepared"/> has no other
-    /// source, because this executor only fences a slot at
-    /// <see cref="WireToGateRecoveryCheckpoint.ActiveUnlockSet"/>. Nothing but a load cancellation hands
-    /// doors over, so for any other vector the same shape stays a fence.
+    /// the load. Read only for a load cancellation, and only before the vector's result is stamped: nothing
+    /// but a load cancellation hands doors over, so for any other vector the same shape stays a fence.
+    /// </para>
+    /// <para>
+    /// It is not the only source of a set at <see cref="WireToGateRecoveryCheckpoint.Prepared"/> any more.
+    /// <see cref="RecordRefusalAsync"/> writes one there -- a handed-over door in doubt, or a finished slot that
+    /// no longer reads shut -- together with the result's stamp, so every later entry answers from the record and
+    /// never reaches this. A forced mechanical recovery is prepared over the door it is asked for
+    /// (8005-agv-onboard-hmi#255), and this executor never runs it. Every other vector is prepared over an empty
+    /// set: the business service refuses to prepare one over a door not proven shut.
+    /// </para>
     /// </remarks>
     private static int[] HandedOverOpenSlots(
         WireToGateRecoveryState state,

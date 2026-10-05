@@ -279,6 +279,104 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
         await AssertRecordedAsync(fixture, first, WireToGateRecoveryCheckpoint.Prepared, [], [1], token);
     }
 
+    /// <summary>
+    /// Two finished slots read open by the time the vector would reach its safe finish: both are UNKNOWN, and only the
+    /// first takes the active unlock set -- the journal refuses a wider set (<c>ACTIVE_UNLOCK_SET_MORE_THAN_ONE_SLOT</c>,
+    /// REQ-0357), and a refusal there would latch the vehicle instead of answering (8005-agv-onboard-hmi#255 review S1).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task TwoFinishedDoorsOpenAtTheSafeFinishPutOneDoorInTheSet()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([false, false, true], cancellationToken: token);
+        WireToGateRecoveryVectorContext context = await PrepareAsync(
+            fixture,
+            WireToGateRecoveryVectorTypes.LoadCompensation,
+            "c5c5c5c5-c5c5-4c5c-8c5c-c5c5c5c5c5c7",
+            [1, 2, 3],
+            token);
+
+        WireToGateRecoveryVectorExecutionResult first = await fixture.Executor.ExecuteClearAsync(
+            context,
+            (phase, active, _, _) =>
+            {
+                if (phase == "WAITING_OPERATOR" && active.Contains(3))
+                {
+                    fixture.Io.OpenDoor(0);
+                    fixture.Io.OpenDoor(1);
+                }
+
+                return Task.CompletedTask;
+            },
+            token);
+
+        Assert.Equal([3], fixture.Io.Pulses.Select(pulse => pulse.Slot));
+        AssertCompletedSlotInDoubt(first, 1);
+        AssertCompletedSlotInDoubt(first, 2);
+        Assert.Equal("COMPLETED", first.SlotResults.Single(slot => slot.SlotNo == 3).Outcome);
+        Assert.Equal(("UNKNOWN", "ACTIVE_UNLOCK_SET"), (first.OverallOutcome, first.JournalCheckpoint));
+        await AssertRecordedAsync(fixture, first, WireToGateRecoveryCheckpoint.ActiveUnlockSet, [1], [1, 2, 3], token);
+
+        await AssertEveryEntryAnswersTheSameAsync(fixture, context, first, token);
+        Assert.Equal([3], fixture.Io.Pulses.Select(pulse => pulse.Slot));
+    }
+
+    /// <summary>
+    /// A cleared slot's door stays shut and locked, but a basket is back behind it before the safe finish. The slot is
+    /// UNKNOWN with <c>SLOT_OPERATION_CONFLICT</c> -- the reading is fresh and known, so not <c>SLOT_STATE_UNKNOWN</c> --
+    /// and stays out of the active unlock set: no door of it is open. The answer is UNKNOWN at the active unlock set
+    /// (8005-agv-onboard-hmi#255 review E2, nit 1).
+    /// </summary>
+    /// <remarks>
+    /// The same slot found by a refusal is FAILED overall at the prepared checkpoint, with the slot UNKNOWN in its result
+    /// (<c>RecordRefusalAsync</c> writes Prepared; nothing in the set). The two differ by where the vector stops,
+    /// not by what it says of the slot: a vector stopped short of its finish by a refusal has always been FAILED with no
+    /// door in doubt, and one that ran every slot and then found a finished one changed can no longer claim COMPLETED, so
+    /// it stops at the active unlock set, which reads UNKNOWN. The server takes both to RecoveryRequired.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task AShutSlotWithABasketBackIsNotADoorInTheSetAndCarriesTheConflictReason()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([false, true], cancellationToken: token);
+        WireToGateRecoveryVectorContext context = await PrepareAsync(
+            fixture,
+            WireToGateRecoveryVectorTypes.LoadCompensation,
+            "c5c5c5c5-c5c5-4c5c-8c5c-c5c5c5c5c5c8",
+            [1, 2],
+            token);
+        List<(string Phase, int[] Active)> phases = [];
+
+        WireToGateRecoveryVectorExecutionResult first = await fixture.Executor.ExecuteClearAsync(
+            context,
+            (phase, active, _, _) =>
+            {
+                phases.Add((phase, [.. active]));
+                if (phase == "WAITING_OPERATOR" && active.Contains(2))
+                {
+                    fixture.Io.PutBasket(0);
+                }
+
+                return Task.CompletedTask;
+            },
+            token);
+
+        WireToGateSlotExecutionResult slot1 = first.SlotResults.Single(slot => slot.SlotNo == 1);
+        Assert.Equal(
+            ("UNKNOWN", "OCCUPIED", "LOCKED", "RESET"),
+            (slot1.Outcome, slot1.FinalPhysicalState, slot1.LockState, slot1.UnlockOutputState));
+        Assert.Equal(["SLOT_OPERATION_CONFLICT"], slot1.ReasonCodes);
+        Assert.Equal(("UNKNOWN", "ACTIVE_UNLOCK_SET"), (first.OverallOutcome, first.JournalCheckpoint));
+        Assert.Empty(phases.Last().Active);
+        await AssertRecordedAsync(fixture, first, WireToGateRecoveryCheckpoint.ActiveUnlockSet, [], [1, 2], token);
+
+        await AssertEveryEntryAnswersTheSameAsync(fixture, context, first, token);
+    }
+
     /// <summary>Slot <paramref name="slotNo"/> is UNKNOWN with the open door the IO reads and the precheck's reason.</summary>
     private static void AssertCompletedSlotInDoubt(WireToGateRecoveryVectorExecutionResult result, int slotNo)
     {

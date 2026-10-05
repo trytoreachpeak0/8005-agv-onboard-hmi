@@ -167,6 +167,22 @@ public sealed class FakeIoModuleClient : IIoModuleClient
     }
 
     /// <summary>
+    /// The door reads shut and locked, but the unlock output still reads energised: a lock that is not proven locked.
+    /// </summary>
+    public void SetUnlockOutputActive(int slotIndex)
+    {
+        lock (_sync)
+        {
+            Update(slotIndex, locker => locker with
+            {
+                LockFeedbackRaw = true,
+                UnlockOutputRaw = true,
+                ObservedAt = DateTimeOffset.UtcNow
+            });
+        }
+    }
+
+    /// <summary>
     /// The readings stay as they are and stop being refreshed: the snapshot is stamped <paramref name="age"/> in the past,
     /// as when the module has not been polled for that long. Any later change stamps it fresh again.
     /// </summary>

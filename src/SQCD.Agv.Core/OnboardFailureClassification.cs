@@ -152,10 +152,6 @@ public static class OnboardFailureClassification
         "RECOVERY_REASON_REQUIRED",
         "RECOVERY_OPERATION_CONTEXT_MISSING",
         "LOAD_CORRECTION_OPERATION_NOT_AVAILABLE",
-        // A door an earlier vector left in doubt reads open again between the press's own check and the write that
-        // prepares the vector (8005-agv-onboard-hmi#255). Nothing was written; shutting the door and pressing again
-        // goes on.
-        "RECOVERY_DOOR_NOT_PROVEN_SHUT",
 
         // The hardware-recovery record is incomplete, not required, or cannot be judged because slot
         // state is unreadable right now. Unreadable IO has its own alarm path (IO_STATE_UNKNOWN,

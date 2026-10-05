@@ -113,7 +113,10 @@ public sealed partial class RecoveryVectorG2Tests
 
         Assert.False(await harness.Business.RequestLoadCompensationAsync(
             "现场确认装货无法继续，申请补偿清空目标仓位。", token));
-        await harness.WaitForRecoveryBlockedAsync("请先关好1号仓的门", token);
+        // The door reads shut: the reading is what is wrong, and the operator is told so (review S4).
+        WireToGateOperatorEvent refused = await harness.WaitForRecoveryBlockedAsync("IO 读数过期或已断开", token);
+        Assert.Contains("无法确认1号仓的门已关好", refused.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("请先关好", refused.Message, StringComparison.Ordinal);
         Assert.Single(harness.ResultsOfType("ExceptionRecoverySessionRequested"));
         Assert.Equal([1], (await harness.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
 
@@ -121,6 +124,135 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.True(await harness.Business.RequestLoadCompensationAsync(
             "现场确认装货无法继续，申请补偿清空目标仓位。", token));
         Assert.Empty((await harness.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
+    }
+
+    /// <summary>
+    /// Slot 1's door reads shut and locked, but its unlock output is still energised: not proven locked, so the press is
+    /// refused, and the operator is told it is the output, not the door (review S2 B5, S4).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ALockedDoorWithItsUnlockOutputStillEnergisedIsNotProvenShut()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await StartWithDoorLeftInDoubtAsync(token);
+        harness.Io.SetUnlockOutputActive(0);
+
+        Assert.False(await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token));
+
+        WireToGateOperatorEvent refused = await harness.WaitForRecoveryBlockedAsync("开锁输出没有复位", token);
+        Assert.Contains("1号仓", refused.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("请先关好", refused.Message, StringComparison.Ordinal);
+        Assert.Single(harness.ResultsOfType("ExceptionRecoverySessionRequested"));
+        Assert.Equal([1], (await harness.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
+    }
+
+    /// <summary>
+    /// The correction press is held to the same rule: slot 1 left in the active unlock set and reading open refuses it,
+    /// with the way out named; shut, the press goes through and the door leaves the set (review S2 B1).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CORRECTION")]
+    public async Task ALoadCorrectionPressIsRefusedOverADoorLeftInDoubtUntilItIsShut()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            loadAlreadySettled: true);
+        await harness.RewriteRecoveryStateAsync(state => state with { ActiveUnlockSlots = [1] }, token);
+        harness.Io.OpenDoor(0);
+
+        Assert.False(await harness.Business.RequestLoadCorrectionAsync("现场确认需要修正已完成的装货结果。", token));
+
+        WireToGateOperatorEvent refused = await harness.WaitForRecoveryBlockedAsync("请先关好1号仓的门", token);
+        Assert.Contains("联系维护人员", refused.Message, StringComparison.Ordinal);
+        Assert.Empty(harness.ResultsOfType("LoadCorrectionRequested"));
+        WireToGateRecoveryState after = await harness.ReadRecoveryStateAsync(token);
+        Assert.Null(after.RecoveryVector);
+        Assert.Equal([1], after.ActiveUnlockSlots);
+
+        harness.Io.CloseDoor(0, cargo: true);
+        Assert.True(await harness.Business.RequestLoadCorrectionAsync("现场确认需要修正已完成的装货结果。", token));
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.ResultsOfType("LoadCorrectionRequested").Count == 1,
+            "the correction request once the door is shut",
+            token);
+        Assert.Empty((await harness.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
+    }
+
+    /// <summary>
+    /// A compensation rejected after it was prepared keeps whatever the active unlock set holds: nothing of the rejected
+    /// vector was opened (review S2 B3).
+    /// </summary>
+    /// <remarks>
+    /// The set is put there by hand. With the press's own check it is empty when a compensation is prepared, and nothing
+    /// writes it between the preparation and a rejection -- a rejected vector never gets a command -- so the rule only
+    /// shows on a journal some other path leaves. This test pins the rule for those, the way hmi#254's manual end of a
+    /// recovery may leave one.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ARejectedCompensationKeepsTheDoorInTheActiveSet()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server =>
+            {
+                server.SendRecoveryVectorCommandAfterRecoveryAction = false;
+                server.RecoverySlotOperationAttemptId = AttemptId;
+            },
+            cargoInTargetSlots: true);
+        WireToGateRecoveryState prepared = await PrepareCompensationAsync(harness, token);
+        await harness.RewriteRecoveryStateAsync(state => state with { ActiveUnlockSlots = [3] }, token);
+
+        await harness.Server.SendCommandAsync(
+            "LoadCompensationRejected",
+            "5e5e5e5e-5e5e-4e5e-8e5e-5e5e5e5e5e5e",
+            new
+            {
+                recoveryActionId = prepared.RecoveryVector!.PrimaryId,
+                problem = new
+                {
+                    reasonCode = "ACTION_NOT_ALLOWED_IN_STATE",
+                    fieldPath = "payload",
+                    displayMessage = "Load compensation is not authorized."
+                }
+            });
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.ReadRecoveryStateAsync(token).GetAwaiter().GetResult().RecoveryVector is null,
+            "the rejection to clear the prepared compensation",
+            token);
+
+        Assert.Equal([3], (await harness.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
+    }
+
+    /// <summary>
+    /// An acknowledged forced mechanical recovery turns the slots it covers into physically unknown slots; a door in
+    /// doubt it does not cover stays in the active unlock set (review S2 B4).
+    /// </summary>
+    /// <remarks>
+    /// Slot 3 is outside the operation's slots 1 and 2, put in the set by hand: the door a forced recovery is asked for is
+    /// normally one of its own slots, and then the set ends empty either way.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task AForcedIsolationKeepsADoorInDoubtItDoesNotCover()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(token);
+        await harness.RewriteRecoveryStateAsync(state => state with { ActiveUnlockSlots = [3] }, token);
+
+        await harness.IsolateByForcedRecoveryAsync(token);
+
+        WireToGateRecoveryState after = await harness.ReadRecoveryStateAsync(token);
+        Assert.Equal([1, 2], after.ForcedIsolation?.PhysicallyUnknownSlots);
+        Assert.Equal([3], after.ActiveUnlockSlots);
     }
 
     /// <summary>
@@ -159,6 +291,10 @@ public sealed partial class RecoveryVectorG2Tests
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using RecoveryVectorHarness harness = await StartWithDoorLeftInDoubtAsync(token);
+        harness.Server.RecoverySessionSnapshotStatesAfterOpened = ["OPEN"];
+        // What the real server offers for a load in RecoveryRequired (OnboardRecoveryCoordinator.AllowedActions).
+        harness.Server.OpenSnapshotAllowedActions =
+            ["RESUME_AFTER_REPAIR", "COMPENSATE_LOAD_ALL_EMPTY", "FAULT_CARGO_HANDOFF", "FORCED_MECHANICAL_RECOVERY"];
         harness.Server.BeforeRecoverySessionAnswer = () => harness.Io.OpenDoor(0);
 
         Assert.False(await harness.Business.RequestLoadCompensationAsync(
@@ -168,7 +304,29 @@ public sealed partial class RecoveryVectorG2Tests
         WireToGateRecoveryState after = await harness.ReadRecoveryStateAsync(token);
         Assert.Null(after.RecoveryVector);
         Assert.Equal([1], after.ActiveUnlockSlots);
-        await harness.WaitForRecoveryBlockedAsync("请先关好仓门", token);
+        WireToGateOperatorEvent refused = await harness.WaitForRecoveryBlockedAsync("请先关好1号仓的门", token);
+        Assert.Contains("强制机械恢复", refused.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("不要仅凭本提示重试", refused.Message, StringComparison.Ordinal);
+
+        // The way out: the session the refused press opened stays open, and the server already queued its OPEN snapshot
+        // when it opened it (control-server ca327799, OnboardRecoveryCoordinator.cs:455). With the door shut, the next
+        // press goes through on that session -- no third session request (review S3).
+        harness.Server.BeforeRecoverySessionAnswer = null;
+        harness.Io.CloseDoor(0, cargo: false);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            // An OPEN snapshot is not acknowledged (only CLOSED is); the vehicle says it applied one with this event.
+            () => harness.OperatorEvents.Any(item =>
+                item.Kind == "RECOVERY_SESSION_UPDATED" && item.Message.Contains("OPEN", StringComparison.Ordinal)),
+            "the vehicle to apply the OPEN snapshot of the session the refused press opened",
+            token);
+        Assert.True(harness.Business.CanRequestLoadCompensation);
+        Assert.True(await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token));
+        Assert.Equal(2, harness.ResultsOfType("ExceptionRecoverySessionRequested").Count);
+        WireToGateRecoveryState prepared = await harness.ReadRecoveryStateAsync(token);
+        Assert.Equal(WireToGateRecoveryVectorTypes.LoadCompensation, prepared.RecoveryVector?.VectorType);
+        Assert.Equal(RecoverySessionId, prepared.RecoveryVector?.ExceptionRecoverySessionId);
+        Assert.Empty(prepared.ActiveUnlockSlots);
     }
 
     /// <summary>
