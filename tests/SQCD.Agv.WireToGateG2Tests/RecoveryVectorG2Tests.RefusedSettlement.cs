@@ -43,4 +43,53 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.DoesNotContain(harness.Logger.Entries, entry => entry.Message.StartsWith(
             "WIRE_TO_GATE后台任务异常", StringComparison.Ordinal));
     }
+
+    /// <summary>
+    /// The replacement result a resume reports is refused for good: the operator is told it was given up and that no
+    /// acknowledgement is coming, not to wait for one (review of PR #258, S2), and it is not sent again.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-06")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
+    public async Task AResumeResultRefusedForGoodIsNotAwaitedAsAnAck()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            lockerWaitTimesOut: true);
+        WireToGateRecoveryState state = await OpenResumeActionAsync(harness, token);
+        string resultKey = $"recovery-operation-result:{AttemptId}:{state.RecoveryActionId}";
+        string resumeResultId = FakeControlServerIdentifiers.StableUuid(resultKey);
+        harness.Server.ProtocolProblemByMessageId = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            // What the server answers a replacement result outside its resume authorization with: it keeps nothing.
+            [resumeResultId] = "RECOVERY_SCOPE_MISMATCH"
+        };
+
+        await harness.Server.SendCommandAsync(
+            "SlotOperationResumeCommand",
+            ResumeMessageId,
+            ResumePayload(state));
+
+        await WaitLongAsync(
+            () => harness.OperatorEvents.Any(item => item.Kind == "OPERATION_RECOVERY_REQUIRED"
+                && item.Message.Contains("拒收并已放弃", StringComparison.Ordinal)),
+            "the refused resume result to be reported as given up",
+            TimeSpan.FromSeconds(20),
+            token);
+
+        Assert.DoesNotContain(harness.OperatorEvents, item => item.Kind == "RESULT_ACK_PENDING"
+            && item.Message.Contains("恢复结果已持久化", StringComparison.Ordinal));
+        Assert.Equal(
+            "RECOVERY_SCOPE_MISMATCH",
+            (await harness.ReadOutgoingAsync(resultKey, token))?.AbandonedReasonCode);
+        // Worded for what the server did -- kept nothing -- not as "it kept another copy" (review of PR #258, S1).
+        WireToGateOperatorEvent reported = Assert.Single(
+            harness.OperatorEvents, item => item.Kind == "DURABLE_MESSAGE_ABANDONED");
+        Assert.Contains("服务端没有收下这条结果", reported.Message, StringComparison.Ordinal);
+        Assert.DoesNotContain("已收下另一份内容", reported.Message, StringComparison.Ordinal);
+        Assert.Single(harness.Server.ReceivedEnvelopes, envelope => envelope.MessageId == resumeResultId);
+    }
 }

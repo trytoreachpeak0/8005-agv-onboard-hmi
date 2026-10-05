@@ -2702,7 +2702,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 PublishOperatorEvent(
                     $"recovery-result-replay:{command.RecoveryActionId}",
                     "OPERATION_REPLAY",
-                    "恢复结果已存在，保持原恢复结果重放，未再次执行仓门IO。");
+                    existingResult.Abandoned
+                        // Given up (onboard-hmi#254): it is never sent again, so "replayed" would be untrue (review N3).
+                        ? "恢复结果已被服务端拒收并放弃，不会重放，也未再次执行仓门IO；请维护人员核对。"
+                        : "恢复结果已存在，保持原恢复结果重放，未再次执行仓门IO。");
                 return;
             }
 
@@ -2891,6 +2894,24 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     cancellationToken).ConfigureAwait(false);
                 break;
             }
+            catch (InvalidDataException exception) when (
+                WasGivenUp(resultMessageId) || exception.Message == "DURABLE_MESSAGE_ABANDONED")
+            {
+                // Refused for good and given up (onboard-hmi#254), now or by an earlier run: nothing will acknowledge it,
+                // so the operator is not told to wait for one (review of PR #258, S2). The server keeps its RESUME
+                // workflow in AwaitingResult; what moves it is a forced mechanical recovery advancing the forced recovery
+                // generation, which turns it HistoricalOnly (control-server WireToGateStore.AdvanceForcedRecoveryGenerationAsync).
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    $"恢复后的OperationResult被服务端拒收并已放弃，不再等待确认：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。",
+                    exception);
+                PublishOperatorEvent(
+                    $"recovery-result-abandoned:{command.RecoveryActionId}",
+                    "OPERATION_RECOVERY_REQUIRED",
+                    "恢复后的原操作结果被服务端拒收并已放弃，不会再等待确认，也不会重复执行仓门IO；两端结论不一致，请维护人员核对。");
+                return;
+            }
             catch (Exception exception) when (
                 exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
             {
@@ -2909,6 +2930,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                             .ConfigureAwait(false))
                     {
                         break;
+                    }
+
+                    if (WasGivenUp(resultMessageId))
+                    {
+                        // The resend just now was refused for good (onboard-hmi#254, review of PR #258, S2).
+                        PublishOperatorEvent(
+                            $"recovery-result-abandoned:{command.RecoveryActionId}",
+                            "OPERATION_RECOVERY_REQUIRED",
+                            "恢复后的原操作结果被服务端拒收并已放弃，不会再等待确认，也不会重复执行仓门IO；两端结论不一致，请维护人员核对。");
+                        return;
                     }
 
                     _logger.Write(
@@ -3210,11 +3241,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _logger.Write(
                 LogSeverity.Information,
                 nameof(WireToGateBusinessService),
-                $"忽略重复SlotOperationCommand：attempt={command.SlotOperationAttemptId}，保留原OperationResult重放。");
+                existingResult.Abandoned
+                    ? $"忽略重复SlotOperationCommand：attempt={command.SlotOperationAttemptId}，原OperationResult已被服务端拒收并放弃，不重放。"
+                    : $"忽略重复SlotOperationCommand：attempt={command.SlotOperationAttemptId}，保留原OperationResult重放。");
             PublishOperatorEvent(
                 $"operation-replay:{command.SlotOperationAttemptId}",
                 "OPERATION_REPLAY",
-                "收到重复仓位命令，已保持原结果重放，未再次执行仓门IO。");
+                existingResult.Abandoned
+                    // Given up (onboard-hmi#254): it is never sent again, so "replayed" would be untrue (review N3).
+                    ? "收到重复仓位命令；这次操作的结果已被服务端拒收并放弃，不会重放，也未再次执行仓门IO，请维护人员核对。"
+                    : "收到重复仓位命令，已保持原结果重放，未再次执行仓门IO。");
             return;
         }
 

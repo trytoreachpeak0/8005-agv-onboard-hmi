@@ -1671,15 +1671,6 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             return stored.MessageId;
         }
 
-        // Given up already (onboard-hmi#254): the server refused this very content for good, so it is not sent again --
-        // not by a retry, not by a resend of the row by its key, not under a new session. Refused here as the server
-        // refused it, with the exception type every caller already handles a refusal by; the business layer was told
-        // what was given up when it happened (DurableMessageAbandoned).
-        if (stored.Abandoned)
-        {
-            throw new InvalidDataException("DURABLE_MESSAGE_ABANDONED");
-        }
-
         TaskCompletionSource<WireToGateEnvelope> response = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
         if (!_responseWaiters.TryAdd(stored.MessageId, response))
@@ -1829,21 +1820,30 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     continue;
                 }
 
-                await SendDurableCoreAsync(
-                    row.MessageType,
-                    row.DeduplicationKey,
-                    row.MessageId,
-                    envelope.CorrelationId,
-                    envelope.Payload,
-                    allowRecoveryRequired: true,
-                    CancellationToken.None).ConfigureAwait(false);
+                try
+                {
+                    await SendDurableCoreAsync(
+                        row.MessageType,
+                        row.DeduplicationKey,
+                        row.MessageId,
+                        envelope.CorrelationId,
+                        envelope.Payload,
+                        allowRecoveryRequired: true,
+                        CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (InvalidDataException)
+                {
+                    // About this row alone -- refused, or given up as a content conflict and reported (onboard-hmi#254)
+                    // -- so the rows after it still go out. Until the review of PR #258 a row given up here ended the
+                    // whole pass, and the rows behind it waited for the next handshake.
+                }
             }
         }
         catch (Exception exception) when (
             exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
         {
-            // Left for the next handshake. A connection gone mid-pass has asked for another pass already. A row refused
-            // here with a MANUAL_REVIEW code has been given up and reported instead (onboard-hmi#254).
+            // Left for the next handshake: the connection or the session failed, not a row. A connection gone mid-pass
+            // has asked for another pass already.
         }
     }
 
@@ -1896,6 +1896,15 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     JsonNode.Parse(candidateEnvelope.Payload.GetRawText())))
             {
                 throw new InvalidDataException("BUSINESS_ID_CONTENT_CONFLICT");
+            }
+
+            // Given up already (onboard-hmi#254): the server refused this very content for good, so it is not sent again
+            // -- not by a retry, not by a resend of the row by its key, not under a new session -- and it is refused
+            // before the rebind below, so the row stays word for word what was refused. Refused with the exception type
+            // every caller already handles a refusal by; the business layer was told what was given up when it was.
+            if (existing.Abandoned)
+            {
+                throw new InvalidDataException("DURABLE_MESSAGE_ABANDONED");
             }
 
             return rebind && generation is long current
@@ -4694,15 +4703,16 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     }
 
     /// <summary>
-    /// When <paramref name="answer"/> is a <c>ProtocolProblem</c> about <paramref name="row"/> whose code the protocol
-    /// marks <c>MANUAL_REVIEW</c>, gives the row up on file, reports it, and returns what was given up; otherwise null,
-    /// and nothing changes (onboard-hmi#254).
+    /// When <paramref name="answer"/> is a <c>ProtocolProblem</c> about <paramref name="row"/> with one of the content
+    /// conflict codes <see cref="IsAbandonableContentConflictCode"/> lists, gives the row up on file, reports it, and
+    /// returns what was given up; otherwise null, and nothing changes (onboard-hmi#254).
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Keyed on the registry's <c>retryDisposition</c>, not on a list of conflict codes</b> (the coordinator's ruling
-    /// on onboard-hmi#254): <c>MANUAL_REVIEW</c> is the protocol saying a message refused with this code is not to be
-    /// retried as it is. Every other code keeps the behaviour it had: the caller throws, and the row stays owed.
+    /// <b>Only a refusal of this message's content</b>: four <c>MANUAL_REVIEW</c> codes, listed and why in
+    /// <see cref="IsAbandonableContentConflictCode"/>. Every other code keeps the behaviour it had: the caller throws, and
+    /// the row stays owed. And only a refusal of this row: a <c>ProtocolProblem</c> naming another message changes
+    /// nothing here.
     /// </para>
     /// <para>
     /// The row keeps its content and its messageId, and nothing is sent in its place: the protocol forbids silently
@@ -4723,7 +4733,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
         ProtocolProblemPayload problem = WireToGateProtocolSerializer.DeserializePayload<ProtocolProblemPayload>(answer);
         if (!string.Equals(problem.RejectedMessageId, row.MessageId, StringComparison.Ordinal)
-            || !IsManualReviewProtocolErrorCode(problem.Problem.ReasonCode))
+            || !IsAbandonableContentConflictCode(problem.Problem.ReasonCode))
         {
             return null;
         }
@@ -4746,25 +4756,29 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     }
 
     /// <summary>
-    /// The codes the protocol registry gives <c>retryDisposition</c> <c>MANUAL_REVIEW</c>: a durable message refused
-    /// with one of them is given up rather than replayed (onboard-hmi#254). A second copy of part of the registry, held
-    /// equal to it by <c>ReasonCodeRegistryArchitectureTests</c>.
+    /// The refusals that give a durable message up rather than leave it owed (onboard-hmi#254): the four
+    /// <c>MANUAL_REVIEW</c> codes that are about this one message's content -- its messageId or business id already
+    /// holds other content, its snapshot revision already holds other content, or it reaches outside the slots its
+    /// resume was authorized for.
     /// </summary>
-    private static bool IsManualReviewProtocolErrorCode(string value) => value is
+    /// <remarks>
+    /// <para>
+    /// <b>Not every <c>MANUAL_REVIEW</c> code, on purpose</b> (the coordinator's narrowing after the review of PR #258,
+    /// N5). The others -- <c>VEHICLE_CREDENTIAL_INVALID</c>, <c>AGV_ID_MISMATCH</c> and their like -- are about the
+    /// session or the vehicle's identity, not about this message: given up on one of them, a vehicle with a credential
+    /// problem would give up its whole outbox, results still owed to MES among them. They keep today's behaviour -- the
+    /// refusal is thrown and the row stays owed -- and a person deals with the credential.
+    /// </para>
+    /// <para>
+    /// Each listed code is <c>MANUAL_REVIEW</c> in the vendored registry, and the list is exactly these four:
+    /// <c>ReasonCodeRegistryArchitectureTests</c> holds both.
+    /// </para>
+    /// </remarks>
+    private static bool IsAbandonableContentConflictCode(string value) => value is
         "MESSAGE_ID_CONTENT_CONFLICT"
-        or "VEHICLE_CREDENTIAL_INVALID"
-        or "AGV_ID_MISMATCH"
-        or "SNAPSHOT_REVISION_CONTENT_CONFLICT"
         or "BUSINESS_ID_CONTENT_CONFLICT"
-        or "SLOT_OPERATION_CONFLICT"
-        or "RECOVERY_SCOPE_MISMATCH"
-        or "RECOVERY_CHECKPOINT_NOT_UNIQUE"
-        or "RECOVERY_AUTHENTICATION_FAILED"
-        or "SLOT_CONFIGURATION_FINGERPRINT_MISMATCH"
-        or "RECOVERY_EVENT_MISMATCH"
-        or "RECOVERY_DEMAND_MISMATCH"
-        or "RECOVERY_OPERATOR_MISMATCH"
-        or "RECOVERY_OPERATION_NOT_FOUND";
+        or "SNAPSHOT_REVISION_CONTENT_CONFLICT"
+        or "RECOVERY_SCOPE_MISMATCH";
 
     private static void ThrowIfProtocolProblem(WireToGateEnvelope envelope)
     {

@@ -45,8 +45,21 @@ public sealed partial class StationDeadlineExpiredG2Tests
         WireToGateDurableMessage row = await harness.Journal.ReadOutgoingByDeduplicationKeyAsync(
             $"operation-result:{AttemptId}", token) ?? throw new InvalidOperationException("No result on file.");
         Assert.Equal("MESSAGE_ID_CONTENT_CONFLICT", row.AbandonedReasonCode);
+        Assert.Contains("服务端在同一 messageId 下已收下另一份内容", harness.DescribeEvents(), StringComparison.Ordinal);
         Assert.Equal(WireToGateHmiOperationStage.RecoveryRequired, harness.Business.CurrentOperationSnapshot?.Stage);
         Assert.Equal(AttemptId, harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId);
+
+        // The server's outbox sends the command again until it has a result it takes: the vehicle neither runs it again
+        // nor claims to replay a result it has given up (review of PR #258, N3).
+        await harness.Server.ResendSlotOperationCommandAsync();
+        await Harness.WaitUntilAsync(
+            () => harness.DescribeEvents().Split(Environment.NewLine).Any(line =>
+                line.StartsWith("OPERATION_REPLAY:", StringComparison.Ordinal)
+                && line.Contains("不会重放", StringComparison.Ordinal)),
+            "the repeated command to be answered as a result given up, not replayed",
+            token,
+            harness.DescribeEvents);
+        Assert.DoesNotContain("已保持原结果重放", harness.DescribeEvents(), StringComparison.Ordinal);
 
         harness.Server.ProtocolProblemByMessageType = new Dictionary<string, string>(StringComparer.Ordinal);
         // The resend by key the restore uses for a result whose ack was lost (ResendOperationResultAsync) is refused here.
@@ -136,6 +149,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
             $"operation-result:{AttemptId}", token) ?? throw new InvalidOperationException("No result on file.");
         Assert.True(row.Acknowledged);
         Assert.Equal("BUSINESS_ID_CONTENT_CONFLICT", row.AbandonedReasonCode);
+        Assert.Contains("服务端对同一业务号已有另一份记录", harness.DescribeEvents(), StringComparison.Ordinal);
         int sent = harness.Server.ReceivedEnvelopes.Count(item => item.MessageType == "OperationResult");
         Assert.Equal(2, sent);
 

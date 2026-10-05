@@ -232,6 +232,20 @@ public sealed class FakeControlServer : IAsyncDisposable
     public IReadOnlySet<string> UnansweredMessageTypes { get; set; } = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>
+    /// As <see cref="ProtocolProblemByMessageType"/>, for the one message whose messageId is listed: a test that refuses
+    /// a single row and lets every other message of its type through (onboard-hmi#254, review of PR #258).
+    /// </summary>
+    public IReadOnlyDictionary<string, string> ProtocolProblemByMessageId { get; set; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The refusals <see cref="ProtocolProblemByMessageType"/> and <see cref="ProtocolProblemByMessageId"/> send name
+    /// another message as the one rejected, and are correlated to it: a <c>ProtocolProblem</c> that is not about the line
+    /// the vehicle just sent (onboard-hmi#254, review of PR #258, S3).
+    /// </summary>
+    public bool ProtocolProblemNamesAnotherMessage { get; set; }
+
+    /// <summary>
     /// Whether a mid-session <c>SafetyStateChanged</c> is answered at all. Off, it is taken and left unanswered with
     /// the connection open: the vehicle republishes its session state only once such a change is acknowledged, so
     /// this keeps every session state change after the handshake's readiness out of a test that must not lean on
@@ -1737,11 +1751,12 @@ public sealed class FakeControlServer : IAsyncDisposable
                     continue;
                 }
 
-                if (ProtocolProblemByMessageType.TryGetValue(messageType, out string? refusalCode))
+                if (ProtocolProblemByMessageId.TryGetValue(messageId, out string? refusalCode)
+                    || ProtocolProblemByMessageType.TryGetValue(messageType, out refusalCode))
                 {
                     await WriteEnvelopeAsync(context, CreateProtocolProblem(
                         context,
-                        messageId,
+                        ProtocolProblemNamesAnotherMessage ? Guid.NewGuid().ToString("D") : messageId,
                         messageType,
                         refusalCode)).ConfigureAwait(false);
                     continue;

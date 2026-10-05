@@ -69,20 +69,44 @@ public sealed partial class WireToGateBusinessService
     /// </summary>
     private void ReportAbandonment(WireToGateDurableMessageAbandonment abandoned)
     {
+        (string what, string whereToLook) = DescribeRefusal(abandoned.ReasonCode);
         _logger.Write(
             LogSeverity.Error,
             nameof(WireToGateBusinessService),
-            $"服务端以{abandoned.ReasonCode}拒收本车的持久报文，已放弃该发件箱行、不再重发，需人工核对："
+            $"服务端以{abandoned.ReasonCode}拒收本车的持久报文，已放弃该发件箱行、不再重发，需人工核对：{what}"
             + $"messageType={abandoned.MessageType}，messageId={abandoned.MessageId}，key={abandoned.DeduplicationKey}，"
             + $"本车内容sha256={abandoned.ContentSha256}，服务端说明={abandoned.ServerDisplayMessage ?? "(无)"}。"
-            + "服务端收下的那一份不随拒绝回传，请在服务端收件箱按同一messageId或业务号查看。"
-            + $"本车内容：{abandoned.WireLine.TrimEnd('\r', '\n')}");
+            + $"{whereToLook}本车内容：{abandoned.WireLine.TrimEnd('\r', '\n')}");
         PublishOperatorEvent(
             $"durable-message-abandoned:{abandoned.MessageId}",
             "DURABLE_MESSAGE_ABANDONED",
-            $"服务端以 {abandoned.ReasonCode} 拒收本车的 {abandoned.MessageType}（messageId {abandoned.MessageId}）："
-            + "服务端已收下另一份内容，两端不一致。本车已放弃这条报文、不再重发，请联系维护人员核对。 ");
+            $"服务端以 {abandoned.ReasonCode} 拒收本车的 {abandoned.MessageType}（messageId {abandoned.MessageId}）：{what}"
+            + "本车已放弃这条报文、不再重发，请联系维护人员核对。 ");
     }
+
+    /// <summary>
+    /// What a refusal says happened at the server, and where a person checks it -- per code, because they do not all
+    /// mean that the server kept something (review of PR #258, S1). The server's reasons: <c>WireToGateStore</c>
+    /// <c>CaptureFirstResponseAsync</c> (messageId), <c>ApplyOperationResultAsync</c> and the recovery coordinator
+    /// (business id, including a result whose identity does not match the operation on file),
+    /// <c>ApplyRevision</c> (snapshot revision) and <c>RequireResumeAuthorizationAsync</c> (resume scope, nothing kept).
+    /// </summary>
+    private static (string What, string WhereToLook) DescribeRefusal(string reasonCode) => reasonCode switch
+    {
+        "MESSAGE_ID_CONTENT_CONFLICT" => (
+            "服务端在同一 messageId 下已收下另一份内容，两端不一致。",
+            "服务端收下的那一份不随拒绝回传，请在服务端收件箱按同一messageId查看。"),
+        "BUSINESS_ID_CONTENT_CONFLICT" => (
+            "服务端对同一业务号已有另一份记录，或这条报文与服务端登记的操作身份不符，两端不一致。",
+            "请在服务端按报文里的业务号（需求、仓位操作attempt、恢复工作流或结果号）查看它登记的记录。"),
+        "SNAPSHOT_REVISION_CONTENT_CONFLICT" => (
+            "服务端在同一安全状态版本号下已收下另一份内容。",
+            "本车已跳过该版本并改报此刻读数；请在服务端查看本会话的安全状态版本。"),
+        "RECOVERY_SCOPE_MISMATCH" => (
+            "服务端没有收下这条结果：它超出续作授权的范围（需求、仓位或续作的命令不一致）。",
+            "请核对服务端的续作授权与本车实际操作的仓位。"),
+        _ => ("服务端拒收了这条报文。", "请在服务端按同一messageId查看拒收原因。")
+    };
 
     /// <summary>
     /// Drops the pending safety change when it is the one given up, skipping its version, and reports whether it did.

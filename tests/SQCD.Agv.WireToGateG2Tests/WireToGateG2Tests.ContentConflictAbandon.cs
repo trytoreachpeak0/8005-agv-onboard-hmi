@@ -27,9 +27,9 @@ public sealed partial class WireToGateG2Tests
     private const string ConflictAttemptId = "25425425-4254-4254-8254-254254254254";
 
     /// <summary>
-    /// The three content conflicts the ticket names, and <c>RECOVERY_SCOPE_MISMATCH</c>, the one other
-    /// <c>MANUAL_REVIEW</c> code the server's inbound boundary sends (control-server#479): the coordinator ruled that
-    /// the protocol's <c>retryDisposition</c> decides, not the code's name.
+    /// The four refusals that give a row up: the three content conflicts the ticket names, and
+    /// <c>RECOVERY_SCOPE_MISMATCH</c>, the one other <c>MANUAL_REVIEW</c> code about a message's content that the server's
+    /// inbound boundary sends (control-server#479).
     /// </summary>
     public static TheoryData<string> ManualReviewContentConflictCodes =>
     [
@@ -40,28 +40,32 @@ public sealed partial class WireToGateG2Tests
     ];
 
     /// <summary>
-    /// Codes the server's inbound boundary sends whose <c>retryDisposition</c> is not <c>MANUAL_REVIEW</c>
-    /// (control-server#479): <c>AFTER_STATE_CHANGE</c>, <c>NEW_MESSAGE_ID</c> and <c>NEVER</c>. Their behaviour is
-    /// what it was before onboard-hmi#254.
+    /// Refusal codes that leave a row owed. Those the server's inbound boundary sends whose <c>retryDisposition</c> is not
+    /// <c>MANUAL_REVIEW</c> (control-server#479: <c>AFTER_STATE_CHANGE</c>, <c>NEW_MESSAGE_ID</c>, <c>NEVER</c>), and two
+    /// <c>MANUAL_REVIEW</c> codes about the session or the vehicle's identity rather than a message's content: given up on
+    /// those, a vehicle with a credential problem would give up its whole outbox, results owed to MES among them (review
+    /// of PR #258, N5).
     /// </summary>
-    public static TheoryData<string> RetriedRefusalCodes =>
+    public static TheoryData<string> RefusalCodesThatLeaveTheRowOwed =>
     [
         "ACTION_NOT_ALLOWED_IN_STATE",
         "SNAPSHOT_REVISION_REGRESSION",
         "FORCED_RECOVERY_GENERATION_STALE",
         "SLOT_SET_INVALID",
-        "CONTENT_HASH_MISMATCH"
+        "CONTENT_HASH_MISMATCH",
+        "VEHICLE_CREDENTIAL_INVALID",
+        "AGV_ID_MISMATCH"
     ];
 
     /// <summary>
-    /// Any other refusal code keeps today's behaviour: the handshake that replays the row fails on it, and the row stays
-    /// owed, so the next handshake replays it again. Pins that only <c>MANUAL_REVIEW</c> takes the new path.
+    /// Any refusal but the four content conflicts keeps today's behaviour: the handshake that replays the row fails on
+    /// it, and the row stays owed, so the next handshake replays it again.
     /// </summary>
     [Theory]
-    [MemberData(nameof(RetriedRefusalCodes))]
+    [MemberData(nameof(RefusalCodesThatLeaveTheRowOwed))]
     [Trait("IntegrationSlice", "FP-IS-06")]
     [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
-    public async Task ARowRefusedWithACodeThatIsNotManualReviewIsStillOwed(string reasonCode)
+    public async Task ARowRefusedWithACodeThatIsNotAContentConflictIsStillOwed(string reasonCode)
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
         await using FakeControlServer server = new(IPAddress.Loopback)
@@ -95,6 +99,48 @@ public sealed partial class WireToGateG2Tests
         Assert.Single(
             await journal.ReadUnacknowledgedOutgoingAsync(testToken),
             row => row.MessageType == "OperationProgress");
+    }
+
+    /// <summary>
+    /// A content conflict that names another message is not a refusal of this row: the handshake fails on it as it did
+    /// before onboard-hmi#254, and the row stays owed (review of PR #258, S3).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-06")]
+    [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
+    public async Task AConflictNamingAnotherMessageDoesNotGiveTheRowUp()
+    {
+        CancellationToken testToken = TestContext.Current.CancellationToken;
+        await using FakeControlServer server = new(IPAddress.Loopback)
+        {
+            SendReadinessAfterRecoveryAck = true,
+            UnansweredMessageTypes = new HashSet<string>(StringComparer.Ordinal) { "OperationProgress" }
+        };
+        string journalPath = NewJournalPath();
+        await using WireToGateSessionClient client = CreateClient(server, new FakeIoModuleClient(), journalPath);
+        int abandonments = 0;
+        client.DurableMessageAbandoned += (_, _) => Interlocked.Increment(ref abandonments);
+        await client.ConnectAndRecoverAsync(testToken);
+        await Assert.ThrowsAnyAsync<TimeoutException>(() => client.SendOperationProgressAsync(
+            ConflictAttemptId, "UNLOCKING", [1], [], cancellationToken: testToken));
+
+        server.UnansweredMessageTypes = new HashSet<string>(StringComparer.Ordinal);
+        server.ProtocolProblemNamesAnotherMessage = true;
+        server.ProtocolProblemByMessageType = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["OperationProgress"] = "MESSAGE_ID_CONTENT_CONFLICT"
+        };
+        await client.DisconnectAsync();
+        InvalidDataException refused = await Assert.ThrowsAsync<InvalidDataException>(
+            () => client.ConnectAndRecoverAsync(testToken));
+
+        Assert.Equal("MESSAGE_ID_CONTENT_CONFLICT", refused.Message);
+        Assert.Equal(0, abandonments);
+        await using SqliteWireToGateJournal journal = new(journalPath);
+        WireToGateDurableMessage row = Assert.Single(
+            await journal.ReadUnacknowledgedOutgoingAsync(testToken),
+            item => item.MessageType == "OperationProgress");
+        Assert.False(row.Abandoned);
     }
 
     /// <summary>
@@ -136,6 +182,14 @@ public sealed partial class WireToGateG2Tests
         InvalidDataException again = await Assert.ThrowsAsync<InvalidDataException>(() => client.SendOperationProgressAsync(
             ConflictAttemptId, "UNLOCKING", [1], [], observedAt, testToken));
         Assert.Equal("DURABLE_MESSAGE_ABANDONED", again.Message);
+
+        // And under a new session: refused before it is rebound, so the row stays word for word what was refused
+        // (review of PR #258, N1).
+        await client.DisconnectAsync();
+        await client.ConnectAndRecoverAsync(testToken);
+        InvalidDataException underANewSession = await Assert.ThrowsAsync<InvalidDataException>(
+            () => client.SendOperationProgressAsync(ConflictAttemptId, "UNLOCKING", [1], [], observedAt, testToken));
+        Assert.Equal("DURABLE_MESSAGE_ABANDONED", underANewSession.Message);
 
         var sent = server.ReceivedEnvelopes.Single(item => item.MessageType == "OperationProgress");
         WireToGateDurableMessageAbandonment abandonment = Assert.Single(reported);

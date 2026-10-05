@@ -40,10 +40,22 @@ public sealed class ReasonCodeRegistryArchitectureTests
     private const string ProtocolErrorCodePredicate = "IsProtocolErrorCode";
 
     /// <summary>
-    /// Predicate whose whole purpose is "does the registry give this code retryDisposition MANUAL_REVIEW"
-    /// (onboard-hmi#254). A second copy of part of the registry, held equal to it.
+    /// Predicate whose whole purpose is "does this refusal give a durable message up rather than leave it owed"
+    /// (onboard-hmi#254): four MANUAL_REVIEW content conflict codes, pinned as a whitelist.
     /// </summary>
-    private const string ManualReviewCodePredicate = "IsManualReviewProtocolErrorCode";
+    private const string AbandonableCodePredicate = "IsAbandonableContentConflictCode";
+
+    /// <summary>
+    /// The coordinator's whitelist after the review of PR #258 (N5): the MANUAL_REVIEW codes about one message's
+    /// content. A session or identity code here would give a whole outbox up -- results owed to MES among them.
+    /// </summary>
+    private static readonly string[] AbandonableContentConflictCodes =
+    [
+        "BUSINESS_ID_CONTENT_CONFLICT",
+        "MESSAGE_ID_CONTENT_CONFLICT",
+        "RECOVERY_SCOPE_MISMATCH",
+        "SNAPSHOT_REVISION_CONTENT_CONFLICT"
+    ];
 
     /// <summary>Returns the slot precondition reason code, or null.</summary>
     private const string SlotPreconditionMethod = "ValidateBeforeOperation";
@@ -269,12 +281,12 @@ public sealed class ReasonCodeRegistryArchitectureTests
 
     /// <summary>
     /// The inline predicate that decides whether a refused durable message is given up rather than replayed
-    /// (onboard-hmi#254) must list exactly the registry's codes with <c>retryDisposition</c> <c>MANUAL_REVIEW</c>.
-    /// A registry code missing from it keeps a vehicle replaying a message the protocol says not to retry; one listed
-    /// that the registry retries makes the vehicle give up a message the server would take later.
+    /// (onboard-hmi#254) lists exactly the whitelist, and every code on it is MANUAL_REVIEW in the vendored registry.
+    /// A code added inline without being added here fails, and so does a code the registry stops calling MANUAL_REVIEW:
+    /// giving a message up is only right for a refusal the protocol says not to retry.
     /// </summary>
     [Fact]
-    public void InlineManualReviewCodeSetMatchesVendoredRegistry()
+    public void InlineAbandonableCodeSetIsTheWhitelistAndAllManualReview()
     {
         string repositoryRoot = FindRepositoryRoot();
         string registryPath = Path.Combine(
@@ -286,30 +298,29 @@ public sealed class ReasonCodeRegistryArchitectureTests
             .Where(entry => entry.GetProperty("retryDisposition").GetString() == "MANUAL_REVIEW")
             .Select(entry => entry.GetProperty("code").GetString()!)
             .ToHashSet(StringComparer.Ordinal);
-        Assert.NotEmpty(manualReview);
 
         string source = File.ReadAllText(Path.Combine(
             repositoryRoot,
             "src",
             "SQCD.Agv.Infrastructure",
             "WireToGateSessionClient.cs"));
-        string body = ExtractExpressionBody(source, ManualReviewCodePredicate);
+        string body = ExtractExpressionBody(source, AbandonableCodePredicate);
         Assert.False(
             string.IsNullOrEmpty(body),
-            $"'{ManualReviewCodePredicate}' no longer exists in WireToGateSessionClient.cs. "
+            $"'{AbandonableCodePredicate}' no longer exists in WireToGateSessionClient.cs. "
             + "This gate anchors on it; update the anchor rather than deleting the check.");
-        HashSet<string> inline = StringLiteralRegex
+        string[] inline = StringLiteralRegex
             .Matches(body)
             .Select(match => match.Groups["code"].Value)
-            .ToHashSet(StringComparer.Ordinal);
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
 
-        string[] notManualReview = inline.Except(manualReview, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
-        string[] notInline = manualReview.Except(inline, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        Assert.Equal(AbandonableContentConflictCodes, inline);
+        string[] notManualReview = inline.Where(code => !manualReview.Contains(code)).ToArray();
         Assert.True(
-            notManualReview.Length == 0 && notInline.Length == 0,
-            $"'{ManualReviewCodePredicate}' is a second copy of the registry's MANUAL_REVIEW codes and has drifted."
-            + $"{Environment.NewLine}Listed inline but not MANUAL_REVIEW in the registry: {FormatCodes(notManualReview)}"
-            + $"{Environment.NewLine}MANUAL_REVIEW in the registry but not listed inline: {FormatCodes(notInline)}");
+            notManualReview.Length == 0,
+            $"Given up on refusal but not MANUAL_REVIEW in the registry: {FormatCodes(notManualReview)}");
     }
 
     /// <summary>
