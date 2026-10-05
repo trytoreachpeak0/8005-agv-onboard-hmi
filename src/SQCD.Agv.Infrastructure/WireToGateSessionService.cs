@@ -89,6 +89,7 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         _client.DiagnosticRecorded += OnClientDiagnosticRecorded;
         _client.JourneyChanged += OnClientJourneyChanged;
         _client.ServerCommandReceived += OnClientServerCommandReceived;
+        _client.DurableMessageAbandoned += OnClientDurableMessageAbandoned;
     }
 
     public WireToGateSessionSnapshot Current => _client.Current;
@@ -104,6 +105,9 @@ public sealed class WireToGateSessionService : IAsyncDisposable
     public event EventHandler<ValueChangedEventArgs<WireToGateJourneySnapshot>>? JourneyChanged;
 
     public event EventHandler<ValueChangedEventArgs<WireToGateServerCommand>>? ServerCommandReceived;
+
+    /// <inheritdoc cref="WireToGateSessionClient.DurableMessageAbandoned"/>
+    public event EventHandler<ValueChangedEventArgs<WireToGateDurableMessageAbandonment>>? DurableMessageAbandoned;
 
     /// <inheritdoc cref="WireToGateSessionClient.ClosedRecoverySessionHandler"/>
     public Func<WireToGateExceptionRecoverySessionSnapshot, CancellationToken, Task<bool>>?
@@ -417,6 +421,7 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         _client.DiagnosticRecorded -= OnClientDiagnosticRecorded;
         _client.JourneyChanged -= OnClientJourneyChanged;
         _client.ServerCommandReceived -= OnClientServerCommandReceived;
+        _client.DurableMessageAbandoned -= OnClientDurableMessageAbandoned;
         _stopping.Cancel();
         if (_runLoop is not null)
         {
@@ -447,6 +452,11 @@ public sealed class WireToGateSessionService : IAsyncDisposable
 
     private void OnClientServerCommandReceived(object? sender, ValueChangedEventArgs<WireToGateServerCommand> args) =>
         ServerCommandReceived?.Invoke(this, args);
+
+    private void OnClientDurableMessageAbandoned(
+        object? sender,
+        ValueChangedEventArgs<WireToGateDurableMessageAbandonment> args) =>
+        DurableMessageAbandoned?.Invoke(this, args);
 
     private async Task RunAsync(CancellationToken stoppingToken)
     {

@@ -66,7 +66,8 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
                     ContentSha256 TEXT NOT NULL,
                     WireLine TEXT NOT NULL,
                     CreatedAt TEXT NOT NULL,
-                    Acknowledged INTEGER NOT NULL CHECK (Acknowledged IN (0, 1))
+                    Acknowledged INTEGER NOT NULL CHECK (Acknowledged IN (0, 1)),
+                    AbandonedReasonCode TEXT NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS WireToGateAppliedJourneySnapshots (
@@ -79,6 +80,7 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
                 );
                 """;
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            await AddAbandonedReasonCodeColumnAsync(connection, cancellationToken).ConfigureAwait(false);
 
             await using SqliteCommand metadataSeed = connection.CreateCommand();
             metadataSeed.CommandText = """
@@ -484,6 +486,54 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
         }
     }
 
+    public async Task<WireToGateDurableMessage> MarkOutgoingAbandonedAsync(
+        string messageId,
+        string contentSha256,
+        string reasonCode,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        RequireUuid(messageId, nameof(messageId));
+        RequireSha256(contentSha256, nameof(contentSha256));
+        ArgumentException.ThrowIfNullOrWhiteSpace(reasonCode);
+
+        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await using SqliteConnection connection = await OpenAsync(cancellationToken).ConfigureAwait(false);
+            // A row already given up keeps its first reason: what the operator was told is the record.
+            await using SqliteCommand command = connection.CreateCommand();
+            command.CommandText = """
+                UPDATE WireToGateDurableOutbox
+                SET AbandonedReasonCode = $reasonCode
+                WHERE MessageId = $messageId AND ContentSha256 = $hash AND AbandonedReasonCode IS NULL
+                """;
+            command.Parameters.AddWithValue("$reasonCode", reasonCode);
+            command.Parameters.AddWithValue("$messageId", messageId);
+            command.Parameters.AddWithValue("$hash", contentSha256);
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+
+            await using SqliteCommand read = connection.CreateCommand();
+            read.CommandText = """
+                SELECT * FROM WireToGateDurableOutbox WHERE MessageId = $messageId AND ContentSha256 = $hash
+                """;
+            read.Parameters.AddWithValue("$messageId", messageId);
+            read.Parameters.AddWithValue("$hash", contentSha256);
+            await using SqliteDataReader reader = await read.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            return await reader.ReadAsync(cancellationToken).ConfigureAwait(false)
+                ? ReadMessage(reader)
+                : throw new InvalidDataException("DURABLE_OUTBOX_ROW_MISSING");
+        }
+        catch (SqliteException exception)
+        {
+            throw JournalFailure(exception);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     public async Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
         CancellationToken cancellationToken = default)
     {
@@ -760,7 +810,7 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
         await using SqliteCommand command = connection.CreateCommand();
         command.CommandText = """
             SELECT * FROM WireToGateDurableOutbox
-            WHERE Acknowledged = 0
+            WHERE Acknowledged = 0 AND AbandonedReasonCode IS NULL
             ORDER BY CreatedAt, DeduplicationKey
             """;
         await using SqliteDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
@@ -782,7 +832,61 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             reader.GetString(reader.GetOrdinal("CreatedAt")),
             CultureInfo.InvariantCulture,
             DateTimeStyles.RoundtripKind),
-        reader.GetInt32(reader.GetOrdinal("Acknowledged")) == 1);
+        reader.GetInt32(reader.GetOrdinal("Acknowledged")) == 1,
+        ReadAbandonedReasonCode(reader));
+
+    /// <summary>
+    /// The row's <c>AbandonedReasonCode</c>, or null when the column is not there yet: a journal written before
+    /// onboard-hmi#254 gains it in <see cref="InitializeAsync"/>, which only the handshake calls, and the business
+    /// service reads the outbox from startup on (onboard-hmi#254).
+    /// </summary>
+    private static string? ReadAbandonedReasonCode(SqliteDataReader reader)
+    {
+        for (int ordinal = 0; ordinal < reader.FieldCount; ordinal++)
+        {
+            if (string.Equals(reader.GetName(ordinal), "AbandonedReasonCode", StringComparison.Ordinal))
+            {
+                return reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Adds <c>AbandonedReasonCode</c> to an outbox created before onboard-hmi#254. A nullable column with no default:
+    /// every row already on file reads as not given up, which is what it was.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// SQLite has no <c>ADD COLUMN IF NOT EXISTS</c>, so the column list is read first. Run inside
+    /// <see cref="InitializeAsync"/>, under the journal's gate, before anything else reads the table.
+    /// </para>
+    /// <para>
+    /// <b>Going back to a build without this column.</b> That build lists its own columns on insert and reads rows by
+    /// column name, so the extra column is ignored and nothing it does fails. What it does not know is the mark: it
+    /// reads a given-up row as still owed, replays it in its handshake, and is refused again -- the loop onboard-hmi#254
+    /// removed, for those rows only. No row's content changes either way, and moving forward again finds the marks
+    /// where they were.
+    /// </para>
+    /// </remarks>
+    private static async Task AddAbandonedReasonCodeColumnAsync(
+        SqliteConnection connection,
+        CancellationToken cancellationToken)
+    {
+        await using SqliteCommand columns = connection.CreateCommand();
+        columns.CommandText = "SELECT COUNT(*) FROM pragma_table_info('WireToGateDurableOutbox') WHERE name = 'AbandonedReasonCode'";
+        if (Convert.ToInt64(
+                await columns.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false),
+                CultureInfo.InvariantCulture) > 0)
+        {
+            return;
+        }
+
+        await using SqliteCommand alter = connection.CreateCommand();
+        alter.CommandText = "ALTER TABLE WireToGateDurableOutbox ADD COLUMN AbandonedReasonCode TEXT NULL";
+        await alter.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+    }
 
     private static WireToGateAppliedJourneySnapshot ReadAppliedJourneySnapshot(
         SqliteDataReader reader) => new(
