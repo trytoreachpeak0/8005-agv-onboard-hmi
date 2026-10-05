@@ -1,4 +1,4 @@
-using System.Globalization;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Text.Json;
 using SQCD.Agv.Application;
@@ -41,6 +41,12 @@ public sealed partial class WireToGateBusinessService
 {
     private const string RecoveryVectorResultKeyPrefix = "recovery-vector-result:";
     private const string SafetyStateChangedKeyPrefix = "safety-state-changed:";
+
+    /// <summary>
+    /// The messageIds given up in this process, for the sends that catch the refusal by its exception and must tell a
+    /// row given up from one still owed. A restart forgets them, and the outbox still knows.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, string> _abandonedMessageIds = new(StringComparer.Ordinal);
 
     /// <summary>The <c>SafetyStateChanged</c> given up last, until the safety work drops it as pending.</summary>
     private AbandonedSafetyChange? _abandonedSafetyChange;
@@ -128,6 +134,7 @@ public sealed partial class WireToGateBusinessService
         ValueChangedEventArgs<WireToGateDurableMessageAbandonment> args)
     {
         WireToGateDurableMessageAbandonment abandoned = args.Value;
+        _abandonedMessageIds[abandoned.MessageId] = abandoned.ReasonCode;
         ReportAbandonment(abandoned);
         if (abandoned.DeduplicationKey.StartsWith(SafetyStateChangedKeyPrefix, StringComparison.Ordinal)
             && SafetyChangeOf(abandoned.WireLine) is { } change)
@@ -178,7 +185,11 @@ public sealed partial class WireToGateBusinessService
     /// </summary>
     private async Task RestoreAbandonedRecoveryResultAsync(CancellationToken cancellationToken)
     {
-        WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
+        // Read from the journal, not through the cache: this runs on every session coming up, and a cache refresh at that
+        // moment is a change of what every entry gate reads -- one this lookup has no business making when it finds
+        // nothing given up. The settlement below refreshes the cache itself when it writes.
+        WireToGateRecoveryState state = await _session.Journal.ReadRecoveryStateAsync(cancellationToken)
+            .ConfigureAwait(false);
         if (state.RecoveryVector is not { } vector)
         {
             Volatile.Write(ref _conflictedRecovery, null);
@@ -251,6 +262,9 @@ public sealed partial class WireToGateBusinessService
             $"SafetyStateChanged（版本{pending.Version}）被服务端拒收并已放弃；跳过该版本，改报此刻读数，并回应服务端的快照请求。");
         return true;
     }
+
+    /// <summary>Whether the durable message sent under <paramref name="messageId"/> was given up in this process.</summary>
+    private bool WasGivenUp(string messageId) => _abandonedMessageIds.ContainsKey(messageId);
 
     private static AbandonedSafetyChange? SafetyChangeOf(string wireLine)
     {

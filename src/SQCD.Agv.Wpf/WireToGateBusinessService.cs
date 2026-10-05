@@ -1883,6 +1883,17 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         guidance,
                         _clock.Now.ToUniversalTime()));
             }
+            catch (InvalidDataException exception) when (WasGivenUp(attemptId))
+            {
+                // Refused for good and given up (onboard-hmi#254): settled nothing, so it is not taken over. The caller
+                // puts the recovery entry up as for any attempt left unsettled.
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    $"中断操作的结算结果被服务端拒收并已放弃，转由管理员恢复：attempt={attemptId}，reason={exception.Message}。",
+                    exception);
+                return InterruptedOperationSettlement.NotSettled;
+            }
             catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
             {
                 _logger.Write(
@@ -3452,6 +3463,20 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                             completedSuccessfully ? "操作完成。" : "操作需要管理员恢复。",
                             execution.ObservedAt)
                         : null);
+            }
+            catch (InvalidDataException exception) when (WasGivenUp(command.SlotOperationAttemptId))
+            {
+                // Refused for good and given up (onboard-hmi#254); the operator was told by OnDurableMessageAbandoned. Not
+                // pending: nothing will acknowledge it. The server holds another conclusion for this attempt, and the
+                // restore below finds the given-up result and puts the recovery entry up -- the way the two are
+                // reconciled. Before onboard-hmi#254 this refusal escaped this method, and no entry was put up.
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    $"OperationResult被服务端拒收并已放弃，转由管理员恢复：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。",
+                    exception);
+                resultUnacknowledged = true;
+                MarkConcludedHere(command.SlotOperationAttemptId);
             }
             catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
             {

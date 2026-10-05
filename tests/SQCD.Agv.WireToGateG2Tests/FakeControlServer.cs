@@ -232,6 +232,14 @@ public sealed class FakeControlServer : IAsyncDisposable
     public IReadOnlySet<string> UnansweredMessageTypes { get; set; } = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>
+    /// With <see cref="ProtocolProblemByMessageType"/>, a refused recovery result settles the attempt it is about, as an
+    /// accepted one does. Models what <c>BUSINESS_ID_CONTENT_CONFLICT</c> on a recovery result means at the real server:
+    /// the workflow already holds another first result, and that result reconciled the operation
+    /// (control-server <c>OnboardRecoveryCoordinator.ProcessResultAsync</c>, onboard-hmi#254).
+    /// </summary>
+    public bool RefusedRecoveryResultsWereReconciledByAnother { get; set; }
+
+    /// <summary>
     /// Whether a mid-session <c>SafetyStateChanged</c> is answered at all. Off, it is taken and left unanswered with
     /// the connection open: the vehicle republishes its session state only once such a change is acknowledged, so
     /// this keeps every session state change after the handshake's readiness out of a test that must not lean on
@@ -1744,6 +1752,25 @@ public sealed class FakeControlServer : IAsyncDisposable
                         messageId,
                         messageType,
                         refusalCode)).ConfigureAwait(false);
+                    if (RefusedRecoveryResultsWereReconciledByAnother
+                        && messageType is "LoadCancellationResult" or "LoadCompensationResult" or "LoadCorrectionResult"
+                            or "FaultCargoRecoveryResult" or "ForcedMechanicalRecoveryResult")
+                    {
+                        string? reconciledAttempt =
+                            root.GetProperty("payload").TryGetProperty("slotOperationAttemptId", out JsonElement attempt)
+                            && attempt.ValueKind == JsonValueKind.String
+                                ? attempt.GetString()
+                                : RecoveryVectorSlotOperationAttemptId;
+                        await ReconcileAsync(context, _ =>
+                        {
+                            if (reconciledAttempt is not null)
+                            {
+                                _settledAttempts.Add(reconciledAttempt);
+                                _operationsNeedingRecovery.Remove(reconciledAttempt);
+                            }
+                        }).ConfigureAwait(false);
+                    }
+
                     continue;
                 }
 
@@ -1844,12 +1871,15 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "OperationResult" when OperationResultAcksToDrop > 0:
                         OperationResultAcksToDrop--;
                         break;
+                    // A code the vehicle retries (AFTER_STATE_CHANGE). It was MESSAGE_ID_CONTENT_CONFLICT until onboard-hmi#254,
+                    // which made a MANUAL_REVIEW code give the result up instead of leaving it owed: a test of "refused, and
+                    // still owed" needs a code that is retried. Giving up is ProtocolProblemByMessageType's.
                     case "OperationResult" when AnswerOperationResultsWithProtocolProblem:
                         await WriteEnvelopeAsync(context, CreateProtocolProblem(
                             context,
                             messageId,
                             messageType,
-                            "MESSAGE_ID_CONTENT_CONFLICT")).ConfigureAwait(false);
+                            "ACTION_NOT_ALLOWED_IN_STATE")).ConfigureAwait(false);
                         break;
                     case "OperationResult":
                         if (DropBeforeOperationResultAck)
