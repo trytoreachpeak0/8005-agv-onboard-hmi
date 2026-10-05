@@ -1231,6 +1231,10 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
         public void OpenDoor(int slotIndex) =>
             UpdateLocker(slotIndex, current => current with { LockFeedbackRaw = false });
 
+        /// <summary>A basket is back behind a door that stays shut and locked.</summary>
+        public void PutBasket(int slotIndex) =>
+            UpdateLocker(slotIndex, current => current with { LightCurtainRaw = false });
+
         /// <summary>The door is open and the unlock output still reads energised, as right after a pulse.</summary>
         public void OpenDoorWithOutputActive(int slotIndex) =>
             UpdateLocker(slotIndex, current => current with { LockFeedbackRaw = false, UnlockOutputRaw = true });

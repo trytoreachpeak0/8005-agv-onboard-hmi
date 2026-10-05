@@ -764,6 +764,7 @@ public sealed partial class WireToGateBusinessService
             operatorContext.OperatorId,
             operatorContext.VerificationMethod,
             operatorContext.VerifiedAt);
+        // Never refused: a load cancellation is prepared over the doors it hands over, not checked against them.
         await WriteRecoveryVectorPreparedAsync(
                 vector,
                 cancellationToken,
@@ -917,6 +918,11 @@ public sealed partial class WireToGateBusinessService
             throw new InvalidDataException("RECOVERY_VECTOR_CONFLICT");
         }
 
+        if (RefusePressOverDoorInDoubt(state, allowForcedRecovery: false))
+        {
+            return false;
+        }
+
         LoadCancellationBeforeSublotOutcome outcome =
             FindLoadCancellationBeforeSublot(state, selectedDemandId);
         // Three of the four "no subject" cases are the operator's to resolve, not faults: they are
@@ -1013,8 +1019,11 @@ public sealed partial class WireToGateBusinessService
         // reads. The write below takes its own base from inside the journal step, so no copy of the
         // state is needed here any more (onboard-hmi#136).
         await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
-        await WriteRecoveryVectorPreparedAsync(vector, cancellationToken)
-            .ConfigureAwait(false);
+        if (!await WriteRecoveryVectorPreparedAsync(vector, cancellationToken).ConfigureAwait(false))
+        {
+            return false;
+        }
+
         PublishOperatorResponse(
             "RECOVERY_VECTOR_AUTHORIZED",
             "装货取消已获服务端授权。本站尚未录入子批、没有要清空的仓位，不会打开仓门，正在上报结果。 ");
@@ -1294,6 +1303,11 @@ public sealed partial class WireToGateBusinessService
         }
         else
         {
+            if (RefusePressOverDoorInDoubt(state, allowForcedRecovery: false))
+            {
+                return false;
+            }
+
             WireToGateRecoveryOperationContext operation =
                 state.LastCompletedLoadOperationContext
                 ?? throw new InvalidOperationException("LOAD_CORRECTION_OPERATION_NOT_AVAILABLE");
@@ -1313,11 +1327,14 @@ public sealed partial class WireToGateBusinessService
                 operatorContext.OperatorId,
                 operatorContext.VerificationMethod,
                 operatorContext.VerifiedAt);
-            await WriteRecoveryVectorPreparedAsync(
+            if (!await WriteRecoveryVectorPreparedAsync(
                     vector,
                     cancellationToken,
                     recoveryReason: correctionReason)
-                .ConfigureAwait(false);
+                .ConfigureAwait(false))
+            {
+                return false;
+            }
         }
 
         await SendLoadCorrectionRequestAsync(vector, correctionReason, pressedByOperator, cancellationToken)
@@ -1466,6 +1483,14 @@ public sealed partial class WireToGateBusinessService
         }
         else
         {
+            // A door an earlier vector left in doubt is not dropped by preparing this one (8005-agv-onboard-hmi#255).
+            // A forced mechanical recovery opens nothing and is the way out when the door will not shut, so it is not
+            // held back; it carries the door instead (WriteRecoveryVectorPreparedAsync).
+            if (action != ForcedMechanicalRecoveryAction && RefusePressOverDoorInDoubt(state, allowForcedRecovery: true))
+            {
+                return false;
+            }
+
             operatorContext = ReadOperatorContext();
             actionReason = RequireReason(reason);
             proof = ReadRecoveryProof();
@@ -1556,13 +1581,16 @@ public sealed partial class WireToGateBusinessService
             // The four fields the vector's context carries -- the session, the action, the operator
             // and the verification time -- are taken from it inside the write. These three it does not
             // carry, and on this branch nothing else writes them, so they are passed.
-            await WriteRecoveryVectorPreparedAsync(
+            if (!await WriteRecoveryVectorPreparedAsync(
                     vector,
                     cancellationToken,
                     recoveryReason: actionReason,
                     recoverySessionRequestId: requestId,
                     recoveryActionRequestId: actionMessageId)
-                .ConfigureAwait(false);
+                .ConfigureAwait(false))
+            {
+                return false;
+            }
         }
 
         // A person's press for this action, which a command for it replayed within the window may run on
@@ -1670,7 +1698,9 @@ public sealed partial class WireToGateBusinessService
                     {
                         RecoveryVector = null,
                         ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.Prepared,
-                        ActiveUnlockSlots = [],
+                        // Kept: a refused vector opened nothing, so whatever the set holds is a door that was in doubt
+                        // before it -- carried by a forced recovery -- and still is (8005-agv-onboard-hmi#255).
+                        ActiveUnlockSlots = current.ActiveUnlockSlots,
                         CompletedSlots = [],
                         SlotResults = [],
                         RecoveryActionId = null,
@@ -2108,7 +2138,9 @@ public sealed partial class WireToGateBusinessService
                             ProvenRecoveryCheckpoint = compensation
                             ? WireToGateRecoveryCheckpoint.Prepared
                             : WireToGateRecoveryCheckpoint.ResultRecorded,
-                            ActiveUnlockSlots = [],
+                            // Kept, as on a refused action: nothing of the rejected vector was opened, so the set is a
+                            // door in doubt from before it (8005-agv-onboard-hmi#255).
+                            ActiveUnlockSlots = current.ActiveUnlockSlots,
                             CompletedSlots = [],
                             SlotResults = [],
                             UnsettledSlotOperationAttemptId = compensation
@@ -3376,7 +3408,12 @@ public sealed partial class WireToGateBusinessService
                     {
                         UnsettledSlotOperationAttemptId = null,
                         ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ResultRecorded,
-                        ActiveUnlockSlots = [],
+                        // A completed vector reached its safe finish with the set empty. An isolation turns the doors
+                        // it covers into physically unknown slots; a door in doubt it does not cover stays in the set
+                        // (8005-agv-onboard-hmi#255).
+                        ActiveUnlockSlots = isolation is null
+                            ? []
+                            : [.. journalled.ActiveUnlockSlots.Except(isolation.PhysicallyUnknownSlots)],
                         CompletedSlots = [],
                         SlotResults = [],
                         OperationContext = null,
@@ -3433,7 +3470,7 @@ public sealed partial class WireToGateBusinessService
     /// onboard-hmi#136, and leaving them out cost the operator the retry --
     /// <c>RECOVERY_SESSION_REQUEST_MISSING</c> on the second press, with no way back.
     /// </remarks>
-    private async Task WriteRecoveryVectorPreparedAsync(
+    private async Task<bool> WriteRecoveryVectorPreparedAsync(
         WireToGateRecoveryVectorContext context,
         CancellationToken cancellationToken,
         IReadOnlyList<int>? handedOverOpenSlots = null,
@@ -3447,38 +3484,178 @@ public sealed partial class WireToGateBusinessService
         // between -- an executor checkpoint, a released session, a pending result
         // (onboard-hmi#136 point 7). The three fields the vector's context fills fall back to the
         // journal's own values, not to that copy's.
+        //
+        // The active unlock set (8005-agv-onboard-hmi#255): a load cancellation writes the doors the aborted load
+        // handed over; a forced mechanical recovery keeps what the set holds, the door it is asked for because it will
+        // not shut; every other vector is prepared only over doors a fresh reading proves shut, which leave the set. The
+        // press refused already when one was not; asked again here against the journal of the moment, a door left in
+        // doubt since refuses the write instead of being dropped by it: the operator is told, and the answer is false.
+        IoSnapshot reading = _ioModule.CurrentSnapshot;
+        int[] stillInDoubt = [];
         await UpdateRecoveryStateCachedAsync(
-                current => current with
+                current =>
                 {
-                    UnsettledSlotOperationAttemptId = context.SlotOperationAttemptId,
-                    ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.Prepared,
-                    ActiveUnlockSlots = handedOverOpenSlots?.ToArray() ?? [],
-                    CompletedSlots = [],
-                    SlotResults = [],
-                    RecoveryVector = context,
-                    ExceptionRecoverySessionId = context.ExceptionRecoverySessionId
-                        ?? current.ExceptionRecoverySessionId,
-                    RecoveryActionId = context.VectorType is
-                        WireToGateRecoveryVectorTypes.LoadCompensation
-                        or WireToGateRecoveryVectorTypes.FaultCargoHandoff
-                        or WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery
-                        ? context.PrimaryId
-                        : current.RecoveryActionId,
-                    RecoveryOperatorId = context.OperatorId ?? current.RecoveryOperatorId,
-                    RecoveryOperatorVerifiedAt = context.OperatorVerifiedAt
-                        ?? current.RecoveryOperatorVerifiedAt,
-                    RecoveryResultObservedAt = null,
-                    RecoveryReason = recoveryReason ?? current.RecoveryReason,
-                    RecoverySessionRequestId = recoverySessionRequestId
-                        ?? current.RecoverySessionRequestId,
-                    RecoveryActionRequestId = recoveryActionRequestId
-                        ?? current.RecoveryActionRequestId,
-                    PendingLoadCancellation = clearPendingLoadCancellation
-                        ? null
-                        : current.PendingLoadCancellation
+                    stillInDoubt = handedOverOpenSlots is null
+                        && context.VectorType != WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery
+                            ? DoorsNotProvenShut(reading, current.ActiveUnlockSlots)
+                            : [];
+                    if (stillInDoubt.Length > 0)
+                    {
+                        return null;
+                    }
+
+                    return current with
+                    {
+                        UnsettledSlotOperationAttemptId = context.SlotOperationAttemptId,
+                        ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.Prepared,
+                        ActiveUnlockSlots = handedOverOpenSlots?.ToArray()
+                            ?? (context.VectorType == WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery
+                                ? current.ActiveUnlockSlots
+                                : []),
+                        CompletedSlots = [],
+                        SlotResults = [],
+                        RecoveryVector = context,
+                        ExceptionRecoverySessionId = context.ExceptionRecoverySessionId
+                            ?? current.ExceptionRecoverySessionId,
+                        RecoveryActionId = context.VectorType is
+                            WireToGateRecoveryVectorTypes.LoadCompensation
+                            or WireToGateRecoveryVectorTypes.FaultCargoHandoff
+                            or WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery
+                            ? context.PrimaryId
+                            : current.RecoveryActionId,
+                        RecoveryOperatorId = context.OperatorId ?? current.RecoveryOperatorId,
+                        RecoveryOperatorVerifiedAt = context.OperatorVerifiedAt
+                            ?? current.RecoveryOperatorVerifiedAt,
+                        RecoveryResultObservedAt = null,
+                        RecoveryReason = recoveryReason ?? current.RecoveryReason,
+                        RecoverySessionRequestId = recoverySessionRequestId
+                            ?? current.RecoverySessionRequestId,
+                        RecoveryActionRequestId = recoveryActionRequestId
+                            ?? current.RecoveryActionRequestId,
+                        PendingLoadCancellation = clearPendingLoadCancellation
+                            ? null
+                            : current.PendingLoadCancellation
+                    };
                 },
                 cancellationToken)
             .ConfigureAwait(false);
+        if (stillInDoubt.Length > 0)
+        {
+            // Told as the press's own check tells it -- the same sentence for the same reading -- and answered with
+            // false, not thrown: a code through the request path's catch would come out with its closing line, "do not
+            // retry on this alone", against a sentence that says to shut the door and press again (review S4).
+            PublishDoorsNotProvenShut(
+                reading,
+                stillInDoubt,
+                allowForcedRecovery: context.VectorType is WireToGateRecoveryVectorTypes.LoadCompensation
+                    or WireToGateRecoveryVectorTypes.FaultCargoHandoff);
+            return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Refuses a press that would prepare a new vector while the active unlock set holds a door a fresh reading does not
+    /// prove shut, telling the operator which door to shut; <c>false</c> when there is none and the press may go on
+    /// (8005-agv-onboard-hmi#255).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The set is what a vector that ended <c>UNKNOWN</c> leaves behind once the server has its result
+    /// (<see cref="ForgetSettledVector"/> keeps it on purpose: the next handshake reports it). Preparing a new vector
+    /// rewrites the set, so a press here used to drop the door from the journal and from every later handshake with
+    /// nothing at the vehicle proving it shut. Refused rather than carried into the new vector: at the prepared
+    /// checkpoint the executor reads a non-empty set as doors handed over or as a write-ahead fence, never as a door
+    /// another vector left.
+    /// </para>
+    /// <para>
+    /// Asked before anything is sent, so a refusal leaves no session request behind. Every caller is a person's press;
+    /// no automatic path prepares a new vector here (the restart resend of an unanswered load cancellation goes through
+    /// the in-flight branch, which carries the aborted load's doors as handed over).
+    /// </para>
+    /// </remarks>
+    private bool RefusePressOverDoorInDoubt(WireToGateRecoveryState state, bool allowForcedRecovery)
+    {
+        // One reading for the decision and for what the operator is told about it, as the prepare write does: two reads
+        // could refuse on a stale reading and then describe a fresh one.
+        IoSnapshot reading = _ioModule.CurrentSnapshot;
+        int[] doors = DoorsNotProvenShut(reading, state.ActiveUnlockSlots);
+        if (doors.Length == 0)
+        {
+            return false;
+        }
+
+        PublishDoorsNotProvenShut(reading, doors, allowForcedRecovery);
+        return true;
+    }
+
+    /// <summary>
+    /// Tells the operator why a press over <paramref name="doors"/> was refused and how to get past it, by what the
+    /// reading shows of each door (8005-agv-onboard-hmi#255 review S4): a reading too old or a module disconnected
+    /// says nothing about the doors, and a lock that reads shut with its output still energised is not a door to
+    /// shut. Each says what to do next; the way out when the door will not shut is the forced mechanical recovery,
+    /// pressed here directly where <paramref name="allowForcedRecovery"/> and asked for through maintenance
+    /// otherwise.
+    /// </summary>
+    private void PublishDoorsNotProvenShut(IoSnapshot reading, IReadOnlyList<int> doors, bool allowForcedRecovery)
+    {
+        string text;
+        if (!(reading.IsConnected && SafetyRules.IsSnapshotFresh(reading, _clock.Now, _ioSnapshotMaxAge)))
+        {
+            text = $"IO 读数过期或已断开，无法确认{FormatSlots(doors)}的门已关好；请等 IO 读数恢复后再按一次。";
+        }
+        else
+        {
+            List<string> sentences = [];
+            int[] unreadable = [.. doors.Where(slot => !reading.GetLocker(slot - 1).IsKnown)];
+            int[] open = [.. doors.Where(slot => reading.GetLocker(slot - 1) is { IsKnown: true, IsLocked: false })];
+            int[] outputActive = [.. doors.Where(slot =>
+                reading.GetLocker(slot - 1) is { IsKnown: true, IsLocked: true, UnlockOutputRaw: not false })];
+            if (open.Length > 0)
+            {
+                sentences.Add($"{FormatSlots(open)}的门可能还开着，系统未能确认已关好；请先关好{FormatSlots(open)}的门，再按一次。");
+            }
+
+            if (unreadable.Length > 0)
+            {
+                sentences.Add($"{FormatSlots(unreadable)}的门锁状态读不到，无法确认已关好；请检查门锁反馈恢复后再按一次。");
+            }
+
+            if (outputActive.Length > 0)
+            {
+                sentences.Add($"{FormatSlots(outputActive)}的门已锁上但开锁输出没有复位，无法确认已锁好；请联系维护人员检查开锁输出后再按一次。");
+            }
+
+            text = string.Concat(sentences);
+        }
+
+        _logger.Write(
+            LogSeverity.Warning,
+            nameof(WireToGateBusinessService),
+            $"活动开锁集里的仓门未能确认已关好，拒绝准备新的恢复向量：slots={string.Join(",", doors)}。");
+        PublishOperatorResponse(
+            "RECOVERY_BLOCKED",
+            text
+            + (allowForcedRecovery
+                ? "如果锁已损坏、门关不上，请改用「强制机械恢复」。 "
+                : "如果锁已损坏、门关不上，请联系维护人员按强制机械恢复处理。 "));
+    }
+
+    /// <summary>
+    /// The slots of <paramref name="activeSlots"/> whose door <paramref name="reading"/> does not prove shut -- known,
+    /// locked and output reset in a fresh reading -- in ascending order.
+    /// </summary>
+    private int[] DoorsNotProvenShut(IoSnapshot reading, IReadOnlyList<int> activeSlots)
+    {
+        bool fresh = reading.IsConnected
+            && SafetyRules.IsSnapshotFresh(reading, _clock.Now, _ioSnapshotMaxAge);
+        return activeSlots
+            .Where(slot => !fresh
+                || reading.GetLocker(slot - 1) is not { IsKnown: true, IsLocked: true, UnlockOutputRaw: false })
+            .Distinct()
+            .Order()
+            .ToArray();
     }
 
     /// <summary>Test seam: the cached recovery state every entry gate reads (onboard-hmi#129).</summary>

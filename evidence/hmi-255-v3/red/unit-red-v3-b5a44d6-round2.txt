@@ -1,0 +1,15 @@
+# 第二轮：产品代码为 b5a44d6（w2g/batch-p3/v3 顶端），测试为本分支 872f9cc
+  Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AShutSlotWithABasketBackIsNotADoorInTheSetAndCarriesTheConflictReason [94 ms]
+  Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ACompletedSlotOpenedBeforeTheSafeFinishIsNotReportedCompleted(path: "after-pulse") [85 ms]
+   outcome=COMPLETED checkpoint=SAFE_FINISH_REACHED slot1=COMPLETED/LOCKED
+  Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ACompletedSlotOpenedBeforeTheSafeFinishIsNotReportedCompleted(path: "handed-over") [80 ms]
+   outcome=COMPLETED checkpoint=SAFE_FINISH_REACHED slot1=COMPLETED/LOCKED
+  Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AnIoFailureDoesNotReportACompletedSlotWhoseDoorReadsOpenAsCompleted [83 ms]
+   outcome=UNKNOWN checkpoint=ACTIVE_UNLOCK_SET slot1=COMPLETED/LOCKED
+  Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.APrecheckRefusalDoesNotReportACompletedSlotWhoseDoorReadsOpenAsCompleted [38 ms]
+   outcome=FAILED checkpoint=PREPARED slot1=COMPLETED/LOCKED
+  Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ALatchRefusalDoesNotReportACompletedSlotWhoseDoorReadsOpenAsCompleted [87 ms]
+   outcome=FAILED checkpoint=PREPARED slot1=COMPLETED/LOCKED
+  Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.TwoFinishedDoorsOpenAtTheSafeFinishPutOneDoorInTheSet [84 ms]
+   outcome=COMPLETED checkpoint=SAFE_FINISH_REACHED slot1=COMPLETED/LOCKED
+Failed!  - Failed:     7, Passed:    70, Skipped:     0, Total:    77, Duration: 7 s - SQCD.Agv.UnitTests.dll (net8.0)
