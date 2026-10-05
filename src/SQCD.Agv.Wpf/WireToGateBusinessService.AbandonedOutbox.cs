@@ -54,13 +54,10 @@ public sealed partial class WireToGateBusinessService
             && SafetyChangeOf(abandoned.WireLine) is { } change)
         {
             // Set here, on the thread that read the refusal and before it is thrown, so the safety work that sent it
-            // finds it in its catch; dropped as pending under the safety gate, never here. Inside a handshake this is the
-            // handshake's thread, which waits for it, so the next safety pass is only asked for.
+            // finds it in its catch; dropped as pending under the safety gate, never here. No safety pass is asked for
+            // here: a refusal mid-session is caught by that work, which asks for one, and one in a handshake is followed
+            // by the readiness that asks for one (review of PR #258, N2: an extra request here was never needed).
             Volatile.Write(ref _abandonedSafetyChange, change);
-            if (!_disposed)
-            {
-                _ = Task.Run(RequestSafetyStateChange, CancellationToken.None);
-            }
         }
     }
 

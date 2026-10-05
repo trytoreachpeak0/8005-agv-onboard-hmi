@@ -2894,24 +2894,6 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     cancellationToken).ConfigureAwait(false);
                 break;
             }
-            catch (InvalidDataException exception) when (
-                WasGivenUp(resultMessageId) || exception.Message == "DURABLE_MESSAGE_ABANDONED")
-            {
-                // Refused for good and given up (onboard-hmi#254), now or by an earlier run: nothing will acknowledge it,
-                // so the operator is not told to wait for one (review of PR #258, S2). The server keeps its RESUME
-                // workflow in AwaitingResult; what moves it is a forced mechanical recovery advancing the forced recovery
-                // generation, which turns it HistoricalOnly (control-server WireToGateStore.AdvanceForcedRecoveryGenerationAsync).
-                _logger.Write(
-                    LogSeverity.Warning,
-                    nameof(WireToGateBusinessService),
-                    $"恢复后的OperationResult被服务端拒收并已放弃，不再等待确认：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。",
-                    exception);
-                PublishOperatorEvent(
-                    $"recovery-result-abandoned:{command.RecoveryActionId}",
-                    "OPERATION_RECOVERY_REQUIRED",
-                    "恢复后的原操作结果被服务端拒收并已放弃，不会再等待确认，也不会重复执行仓门IO；两端结论不一致，请维护人员核对。");
-                return;
-            }
             catch (Exception exception) when (
                 exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
             {
@@ -2932,9 +2914,19 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         break;
                     }
 
-                    if (WasGivenUp(resultMessageId))
+                    if (await ResultIsGivenUpAsync(recoveryResultKey, cancellationToken).ConfigureAwait(false))
                     {
-                        // The resend just now was refused for good (onboard-hmi#254, review of PR #258, S2).
+                        // Refused for good and given up (onboard-hmi#254) -- by the send above, by the resend just now,
+                        // or by an earlier run, whose row a send now refuses before it goes out. Nothing will
+                        // acknowledge it, so the operator is not told to wait for one (review of PR #258, S2). The server
+                        // keeps its RESUME workflow in AwaitingResult; what moves it is a forced mechanical recovery
+                        // advancing the forced recovery generation, which turns it HistoricalOnly (control-server
+                        // WireToGateStore.AdvanceForcedRecoveryGenerationAsync).
+                        _logger.Write(
+                            LogSeverity.Warning,
+                            nameof(WireToGateBusinessService),
+                            $"恢复后的OperationResult被服务端拒收并已放弃，不再等待确认：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。",
+                            exception);
                         PublishOperatorEvent(
                             $"recovery-result-abandoned:{command.RecoveryActionId}",
                             "OPERATION_RECOVERY_REQUIRED",
@@ -3028,6 +3020,24 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 nameof(WireToGateBusinessService),
                 $"恢复OperationResult已在发件箱，当前会话重发一次仍未收到DurableAck：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。",
                 exception);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Whether the outbox row under <paramref name="key"/> was given up as a content conflict (onboard-hmi#254); false when
+    /// there is none or the journal cannot say.
+    /// </summary>
+    private async Task<bool> ResultIsGivenUpAsync(string key, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return (await _session.Journal
+                    .ReadOutgoingByDeduplicationKeyAsync(key, cancellationToken)
+                    .ConfigureAwait(false))?.Abandoned == true;
+        }
+        catch (IOException)
+        {
             return false;
         }
     }
