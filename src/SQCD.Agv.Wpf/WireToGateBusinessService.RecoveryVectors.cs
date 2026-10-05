@@ -3335,13 +3335,16 @@ public sealed partial class WireToGateBusinessService
     /// </remarks>
     private bool RefusePressOverDoorInDoubt(WireToGateRecoveryState state, bool allowForcedRecovery)
     {
-        int[] doors = DoorsNotProvenShut(_ioModule.CurrentSnapshot, state.ActiveUnlockSlots);
+        // One reading for the decision and for what the operator is told about it, as the prepare write does: two reads
+        // could refuse on a stale reading and then describe a fresh one.
+        IoSnapshot reading = _ioModule.CurrentSnapshot;
+        int[] doors = DoorsNotProvenShut(reading, state.ActiveUnlockSlots);
         if (doors.Length == 0)
         {
             return false;
         }
 
-        PublishDoorsNotProvenShut(_ioModule.CurrentSnapshot, doors, allowForcedRecovery);
+        PublishDoorsNotProvenShut(reading, doors, allowForcedRecovery);
         return true;
     }
 

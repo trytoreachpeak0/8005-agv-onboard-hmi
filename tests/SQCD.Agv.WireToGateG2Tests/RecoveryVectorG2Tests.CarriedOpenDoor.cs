@@ -51,7 +51,7 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Null(after.RecoveryVector);
         Assert.Single(harness.ResultsOfType("ExceptionRecoverySessionRequested"));
         WireToGateOperatorEvent refused = await harness.WaitForRecoveryBlockedAsync("请先关好1号仓的门", token);
-        Assert.Contains("强制机械恢复", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("改用「强制机械恢复」", refused.Message, StringComparison.Ordinal);
 
         // The way out: the operator shuts the door and presses again.
         harness.Io.CloseDoor(0, cargo: false);
@@ -80,7 +80,9 @@ public sealed partial class RecoveryVectorG2Tests
         await using RecoveryVectorHarness harness = await StartWithDoorLeftInDoubtAsync(token);
         harness.Io.OpenDoor(0);
         Assert.False(await harness.Business.RequestFaultCargoHandoffAsync("现场确认故障仓货物需要交接处理。", token));
-        await harness.WaitForRecoveryBlockedAsync("请先关好1号仓的门", token);
+        WireToGateOperatorEvent refused = await harness.WaitForRecoveryBlockedAsync("请先关好1号仓的门", token);
+        // The way out named for this press is the entry pressed next, not maintenance (review S1).
+        Assert.Contains("改用「强制机械恢复」", refused.Message, StringComparison.Ordinal);
 
         Assert.True(harness.Business.CanRequestForcedMechanicalRecovery);
         Assert.True(await harness.Business.RequestForcedMechanicalRecoveryAsync(
@@ -314,7 +316,7 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Null(after.RecoveryVector);
         Assert.Equal([1], after.ActiveUnlockSlots);
         WireToGateOperatorEvent refused = await harness.WaitForRecoveryBlockedAsync("请先关好1号仓的门", token);
-        Assert.Contains("强制机械恢复", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("改用「强制机械恢复」", refused.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("不要仅凭本提示重试", refused.Message, StringComparison.Ordinal);
 
         // The way out: the session the refused press opened stays open, and the server already queued its OPEN snapshot

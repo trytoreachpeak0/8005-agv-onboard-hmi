@@ -1,0 +1,11 @@
+# 第三轮：出口文案变异（F1–F3）。产品代码为本分支修复版加本轮未提交改动；每个变异重写文件还原后 --no-incremental 重编；记录退出码与收尾结果
+F1 press gate names maintenance for compensation and fault handoff: exit=1 cleanupFailure=False Failed!  - Failed:     2, Passed:     8, Skipped:     0, Total:    10, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ADoorLeftInDoubtByAnAcknowledgedUnknownVectorIsNotDroppedByTheNextPress [808 ms]
+    Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AForcedMechanicalRecoveryIsStillOfferedOverADoorLeftInDoubtAndCarriesIt [538 ms]
+F2 prepare fallback always names maintenance: exit=1 cleanupFailure=False Failed!  - Failed:     1, Passed:     9, Skipped:     0, Total:    10, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ADoorLeftInDoubtThatOpensAgainWhileTheSessionIsRequestedRefusesThePreparation [487 ms]
+F3 the exit sentence is always the maintenance one: exit=1 cleanupFailure=False Failed!  - Failed:     3, Passed:     7, Skipped:     0, Total:    10, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ADoorLeftInDoubtByAnAcknowledgedUnknownVectorIsNotDroppedByTheNextPress [619 ms]
+    Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AForcedMechanicalRecoveryIsStillOfferedOverADoorLeftInDoubtAndCarriesIt [679 ms]
+    Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ADoorLeftInDoubtThatOpensAgainWhileTheSessionIsRequestedRefusesThePreparation [733 ms]
+restore build exit= 0
