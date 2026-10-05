@@ -93,12 +93,12 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Contains("服务端没有收下这条结果", reported.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("已收下另一份内容", reported.Message, StringComparison.Ordinal);
         Assert.Single(harness.Server.ReceivedEnvelopes, envelope => envelope.MessageId == resumeResultId);
-        // No way out exists on the vehicle or the server until control-server#483: the operator is told so, not sent
-        // to look for an entry, and the log names where the way out is being built.
+        // The way out is the next connection, where the server sends the resume again and the vehicle refuses it: the
+        // operator is told that, and the log names control-server#483 for a vehicle that never comes back.
         Assert.Contains(
             harness.OperatorEvents,
             item => item.Kind == "OPERATION_RECOVERY_REQUIRED"
-                && item.Message.Contains("车上目前没有可结束这次恢复的入口", StringComparison.Ordinal));
+                && item.Message.Contains("重新连上服务端后会自动结束这次恢复", StringComparison.Ordinal));
         Assert.Contains(
             harness.Logger.Entries,
             entry => entry.Message.Contains("control-server#483", StringComparison.Ordinal));

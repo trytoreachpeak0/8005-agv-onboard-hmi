@@ -2939,20 +2939,20 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         // Refused for good and given up (onboard-hmi#254) -- by the send above, by the resend just now,
                         // or by an earlier run, whose row a send now refuses before it goes out. Nothing will
                         // acknowledge it, so the operator is not told to wait for one (review of PR #258, S2).
-                        // Nothing closes the server's side today: its session stays EXECUTING with RESUME selected and
-                        // its workflow AwaitingResult, which refuses a second action -- a forced recovery included --
-                        // and a new session on the vehicle, and only a result closes it. The way out is
-                        // control-server#483; the operator is told there is none on the vehicle rather than sent to
-                        // look for one.
+                        // The server's session stays EXECUTING with RESUME selected and its workflow AwaitingResult,
+                        // which refuses a second action -- a forced recovery included -- and a new session; only an
+                        // answer to the resume closes it. That answer is the refusal the vehicle sends when the server
+                        // sends the resume command again on the next connection (HandleBlockedResumeCoreAsync). A
+                        // vehicle that never comes back gets no such replay; that way out is control-server#483.
                         _logger.Write(
                             LogSeverity.Error,
                             nameof(WireToGateBusinessService),
-                            $"恢复后的OperationResult被服务端拒收并已放弃，不再等待确认：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。服务端的恢复会话仍停在执行中，车上与服务端目前都没有收尾入口（出口见 control-server#483）；上线前请联系调度处理。",
+                            $"恢复后的OperationResult被服务端拒收并已放弃，不再等待确认：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。服务端的恢复会话仍停在执行中；本车重连后服务端补发这条续作命令时，本车回复拒绝以关掉该会话。本车一直离线、服务端补发不到时没有出口（见 control-server#483），请联系调度处理。",
                             exception);
                         PublishOperatorEvent(
                             $"recovery-result-abandoned:{command.RecoveryActionId}",
                             "OPERATION_RECOVERY_REQUIRED",
-                            "恢复后的原操作结果被服务端拒收并已放弃，不会再等待确认，也不会重复执行仓门IO；两端结论不一致，请维护人员核对。车上目前没有可结束这次恢复的入口，请联系系统维护人员。");
+                            "恢复后的原操作结果被服务端拒收并已放弃，不会再等待确认，也不会重复执行仓门IO；两端结论不一致，请维护人员核对。本车重新连上服务端后会自动结束这次恢复，之后可重新申请恢复；若一直未结束，请联系系统维护人员。");
                         return;
                     }
 
