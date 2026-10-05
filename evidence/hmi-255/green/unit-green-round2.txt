@@ -1,0 +1,2 @@
+# 第二轮：产品代码为本分支修复版 e474e68
+Passed!  - Failed:     0, Passed:   704, Skipped:     0, Total:   704, Duration: 18 s - SQCD.Agv.UnitTests.dll (net8.0)

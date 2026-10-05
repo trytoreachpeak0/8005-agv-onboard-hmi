@@ -1,0 +1,2 @@
+# 第二轮：产品代码为本分支修复版 e474e68；恢复相关定向 G2（非全量）
+Passed!  - Failed:     0, Passed:   205, Skipped:     0, Total:   205, Duration: 1 m 53 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
