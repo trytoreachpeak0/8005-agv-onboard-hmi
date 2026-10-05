@@ -99,6 +99,31 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
+    /// Slot 1's door reads shut, but the reading is older than the vehicle trusts: that proves nothing, so the press is
+    /// refused and the door stays in the set. A fresh reading of the same shut door lets the next press through.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task AStaleReadingOfAShutDoorLeftInDoubtDoesNotProveItShut()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await StartWithDoorLeftInDoubtAsync(token);
+        harness.Io.MakeStale(TimeSpan.FromMinutes(5));
+
+        Assert.False(await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token));
+        await harness.WaitForRecoveryBlockedAsync("请先关好1号仓的门", token);
+        Assert.Single(harness.ResultsOfType("ExceptionRecoverySessionRequested"));
+        Assert.Equal([1], (await harness.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
+
+        harness.Io.CloseDoor(0, cargo: false);
+        Assert.True(await harness.Business.RequestLoadCompensationAsync(
+            "现场确认装货无法继续，申请补偿清空目标仓位。", token));
+        Assert.Empty((await harness.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
+    }
+
+    /// <summary>
     /// The server refuses the forced mechanical recovery the operator asked for over the door left in doubt. The refused
     /// vector is cleared, and the door it carried stays in the active unlock set: nothing of the vector was opened, so the
     /// door is as much in doubt as before it.

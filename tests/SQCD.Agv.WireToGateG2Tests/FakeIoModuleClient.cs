@@ -183,6 +183,22 @@ public sealed class FakeIoModuleClient : IIoModuleClient
         }
     }
 
+    /// <summary>
+    /// The readings stay as they are and stop being refreshed: the snapshot is stamped <paramref name="age"/> in the past,
+    /// as when the module has not been polled for that long. Any later change stamps it fresh again.
+    /// </summary>
+    public void MakeStale(TimeSpan age)
+    {
+        lock (_sync)
+        {
+            DateTimeOffset then = DateTimeOffset.UtcNow - age;
+            CurrentSnapshot = new IoSnapshot(
+                true,
+                _lockers.Select(locker => locker with { ObservedAt = then }).ToArray(),
+                then);
+        }
+    }
+
     public Task StartAsync(CancellationToken applicationStopping) => Task.CompletedTask;
 
     public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;

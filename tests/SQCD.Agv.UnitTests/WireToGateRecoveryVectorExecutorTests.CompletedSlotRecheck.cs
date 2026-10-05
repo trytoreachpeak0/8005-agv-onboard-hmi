@@ -238,6 +238,47 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
         Assert.Equal([1], fixture.Io.Pulses.Select(pulse => pulse.Slot));
     }
 
+    /// <summary>
+    /// The IO module drops out after slot 1 was opened, emptied and shut, and slot 2's own precheck refuses for it. A
+    /// reading the vehicle cannot trust shows nothing new about slot 1, which was proven final when it was counted
+    /// complete: it stays COMPLETED, nothing is left in the active unlock set, and the answer is the FAILED of a refusal
+    /// (8005-agv-onboard-hmi#255).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task AReadingTheVehicleCannotTrustDoesNotTakeACompletedSlotBack()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync([true, true], cancellationToken: token);
+        WireToGateRecoveryVectorContext context = await PrepareAsync(
+            fixture,
+            WireToGateRecoveryVectorTypes.LoadCompensation,
+            "c5c5c5c5-c5c5-4c5c-8c5c-c5c5c5c5c5c6",
+            [1, 2],
+            token);
+
+        WireToGateRecoveryVectorExecutionResult first = await fixture.Executor.ExecuteClearAsync(
+            context,
+            (phase, _, completed, _) =>
+            {
+                if (phase == "VERIFYING" && completed.Contains(1))
+                {
+                    fixture.Io.SetUnknown();
+                }
+
+                return Task.CompletedTask;
+            },
+            token);
+
+        Assert.Equal("FAILED", first.OverallOutcome);
+        Assert.Equal([1], fixture.Io.Pulses.Select(pulse => pulse.Slot));
+        WireToGateSlotExecutionResult slot1 = first.SlotResults.Single(slot => slot.SlotNo == 1);
+        Assert.Equal(("COMPLETED", "LOCKED"), (slot1.Outcome, slot1.LockState));
+        Assert.Equal("NOT_STARTED", first.SlotResults.Single(slot => slot.SlotNo == 2).Outcome);
+        await AssertRecordedAsync(fixture, first, WireToGateRecoveryCheckpoint.Prepared, [], [1], token);
+    }
+
     /// <summary>Slot <paramref name="slotNo"/> is UNKNOWN with the open door the IO reads and the precheck's reason.</summary>
     private static void AssertCompletedSlotInDoubt(WireToGateRecoveryVectorExecutionResult result, int slotNo)
     {
