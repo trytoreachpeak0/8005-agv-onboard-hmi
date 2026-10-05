@@ -166,6 +166,23 @@ public sealed class FakeIoModuleClient : IIoModuleClient
         }
     }
 
+    /// <summary>
+    /// The door reads open -- lock feedback released, unlock output reset -- as a door left standing open
+    /// after a vector that could not confirm it reads (8005-agv-onboard-hmi#255).
+    /// </summary>
+    public void OpenDoor(int slotIndex)
+    {
+        lock (_sync)
+        {
+            Update(slotIndex, locker => locker with
+            {
+                LockFeedbackRaw = false,
+                UnlockOutputRaw = false,
+                ObservedAt = DateTimeOffset.UtcNow
+            });
+        }
+    }
+
     public Task StartAsync(CancellationToken applicationStopping) => Task.CompletedTask;
 
     public Task StopAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
