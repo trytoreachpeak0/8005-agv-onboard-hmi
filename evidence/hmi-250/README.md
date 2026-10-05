@@ -21,7 +21,7 @@
 
 ## 修复后
 
-`StationDeadlineExpiredG2Tests` 全类 58/58 通过（基线 50 条，加新增 8 条）。UnitTests 中的 `ArchitectureTests` 98/98 通过。`dotnet format --verify-no-changes` 通过。
+`StationDeadlineExpiredG2Tests` 全类 59/59 通过（基线 50 条，加新增 9 条）。UnitTests 中的 `ArchitectureTests` 98/98 通过。`dotnet format --verify-no-changes` 通过。
 
 ## 变异（`mutations.txt`）
 
@@ -32,7 +32,14 @@
 | M3 | 不看「已放弃」，直接记为已确认 | 已放弃 |
 | M4 | 去掉消息类型核对 | 对不上 `type` |
 | M5 | 去掉 `correlationId` 与 `acceptedMessageId` 必须相同的核对 | 对不上 `correlation` |
+| M6 | 迟到 ack 结清 `SafetyStateChanged` 时，不推进、不发布已接受的安全版本号 | 安全版本那一条（期望 12，实际 2） |
 
 `mutations.txt` 中第一段 M3 作废：它写成 `if (false)`，编译时被当成不可达代码报错（`M3 build 1 Error(s)`），测试实际跑的是上一次构建留下的 M2 程序。后一段 M3 改用能编译通过的写法重做，结果有效。
 
 M5 是审查开始后按调度要求补的。第一版提交里这条核对没有用例覆盖：替身推送的 ack 这两个字段总是一致，删掉核对也不会有用例变红。现在替身可以推送两者不一致的 ack，新加的 `correlation` 用例断言车载端照旧断开。
+
+M6 对应审查 S1。这条用例直接调用会话客户端的 `SendSafetyStateChangedAsync`，没有经过业务层。原因是业务层在 `SafetyStateChanged` 发送失败时会主动断开会话（日志原文「SafetyStateChanged发送失败，正在断开会话；待发项留着，重连后按此刻读数决定原样重发还是放弃。」）。走业务层时，迟到的 ack 只能落在「等待刚超时、业务层还没断开」的几毫秒里，没法据此写出稳定的用例。第一次照着业务层写的版本，修复后也是红的，那次的 M6 结果不算数，没有记入。
+
+## 全量 ONBOARD_HMI_G2
+
+`7b94a14`（审查前的 head）跑过一轮，结果 FAIL：UnitTests 704/704，G2 657/658，schema 收尾 0 处新违约。红的是 `WireToGateG2Tests.AnUnknownResultIsReportedAsPendingAfterARestartAndReplayedOnceTheReportIsAcknowledged`，在一个 2 秒等待上超时，不是本票新增的用例。当时审查子代理在同一台机器上跑定向测试，有负载。静态分析的结论（推断）：这条用例走不进本票改的分支，除非某条 ack 已经晚到 2 秒以上，而这 2 秒本身就用完了它的预算。那一轮的证据目录没有入库。审查修改之后要重跑一轮。

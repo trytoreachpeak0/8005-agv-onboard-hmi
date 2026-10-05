@@ -514,8 +514,8 @@ public enum WireToGateLateDurableAckOutcome
     AlreadyAcknowledged,
 
     /// <summary>
-    /// The row was given up (<see cref="WireToGateDurableMessage.Abandoned"/>) and stays given up: what the server
-    /// took under this identity is not what the vehicle has on file, whatever this ack says.
+    /// The row was given up (<see cref="WireToGateDurableMessage.Abandoned"/>) and stays given up: giving a row up is a
+    /// record the operator has already been told of, and an ack that contradicts it does not undo it.
     /// </summary>
     Abandoned
 }
@@ -523,8 +523,11 @@ public enum WireToGateLateDurableAckOutcome
 /// <summary>
 /// A late <c>DurableAck</c> the session client settled against its outbox row (onboard-hmi#250), as it reports it.
 /// </summary>
+/// <param name="ContentSha256">The content hash the ack accepted, which is the row's: an ack naming another is never
+/// settled.</param>
 public sealed record WireToGateLateDurableAck(
     string DeduplicationKey,
     string MessageType,
     string MessageId,
+    string ContentSha256,
     WireToGateLateDurableAckOutcome Outcome);

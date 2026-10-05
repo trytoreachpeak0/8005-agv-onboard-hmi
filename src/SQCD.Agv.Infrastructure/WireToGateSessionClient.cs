@@ -4736,8 +4736,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// </para>
     /// <para>
     /// <b>The same checks a waiting send makes</b>: correlation, message id, type and content hash must all be the
-    /// row's. A row already acknowledged is left as it is. A row given up (onboard-hmi#254) is left given up -- an ack
-    /// arriving after the server refused it does not make the vehicle's content the one the server holds.
+    /// row's. A row already acknowledged is left as it is. A row given up (onboard-hmi#254) is left given up: giving it
+    /// up is a record the operator has already been told of, and an ack that contradicts it does not undo it.
+    /// </para>
+    /// <para>
+    /// <b>And what a waiting send does after the ack.</b> A <c>SafetyStateChanged</c> it acknowledges moves the accepted
+    /// safety state version on and publishes it, as <see cref="SendSafetyStateChangedAsync"/> and the handshake's replay
+    /// do: otherwise the version this vehicle reports stays behind the one the server holds (review S1 of #260).
     /// </para>
     /// </remarks>
     private async Task<bool> TrySettleLateDurableAckAsync(WireToGateEnvelope envelope, CancellationToken cancellationToken)
@@ -4773,12 +4778,26 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 .MarkOutgoingAcknowledgedAsync(row.MessageId, row.ContentSha256, cancellationToken)
                 .ConfigureAwait(false);
             outcome = WireToGateLateDurableAckOutcome.Acknowledged;
+            if (string.Equals(row.MessageType, "SafetyStateChanged", StringComparison.Ordinal))
+            {
+                SafetyStateChangedPayload payload = WireToGateProtocolSerializer
+                    .DeserializePayload<SafetyStateChangedPayload>(WireToGateProtocolSerializer.DeserializeAndValidate(
+                        row.WireLine.TrimEnd('\r', '\n'),
+                        _options.AgvId));
+                AdvanceSafetyStateVersion(payload.SafetyStateVersion);
+                PublishAcceptedVersions("SafetyStateChanged-late-ack");
+            }
         }
 
         LateDurableAckReceived?.Invoke(
             this,
             new ValueChangedEventArgs<WireToGateLateDurableAck>(
-                new WireToGateLateDurableAck(row.DeduplicationKey, row.MessageType, row.MessageId, outcome)));
+                new WireToGateLateDurableAck(
+                    row.DeduplicationKey,
+                    row.MessageType,
+                    row.MessageId,
+                    row.ContentSha256,
+                    outcome)));
         return true;
     }
 

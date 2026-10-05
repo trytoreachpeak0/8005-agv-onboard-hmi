@@ -1,3 +1,4 @@
+using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
 using Xunit;
 
@@ -94,9 +95,55 @@ public sealed partial class StationDeadlineExpiredG2Tests
         await WaitForLateAckAsync(harness, late, token);
         await WaitForAcknowledgedOnFileAsync(harness, late, token);
         Assert.True(harness.Client.Current.Connected, "the late ack must not end the session");
+        await WaitForLateAckLogAsync(harness, late, LogSeverity.Information, "现记为已确认", token);
         await harness.WaitForInboundAsync("LoadCancellationResult", token);
         Assert.DoesNotContain(harness.Server.Received, item => item.Connection != 1);
         Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "OperationResult");
+    }
+
+    /// <summary>
+    /// A <c>SafetyStateChanged</c> whose ack arrives after the send's wait for it ran out: settling the row also moves
+    /// the accepted safety state version on to the change's and publishes it, as an ack in time does (review S1 of #260).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Sent through the session client directly. The business service, the one caller in the product, ends the session
+    /// itself when a safety change fails to send, so through it a late ack only lands in the few milliseconds between the
+    /// wait running out and that disconnect -- too narrow to build a test on, and the client owes every caller the same
+    /// bookkeeping either way. The version is well past the business service's own, so its reports cannot collide.
+    /// </para>
+    /// <para>
+    /// The double sends no readiness after a safety ack in this harness, so nothing but the late ack can move the version
+    /// on.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ALateAckOfASafetyStateChangeMovesTheAcceptedSafetyStateVersionOn()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            new FakeIoModuleClient { OperatorNeverActs = true, KeepSnapshotFresh = true },
+            token);
+        await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
+        long changed = harness.Client.Current.SafetyStateVersion + 10;
+        harness.Server.SafetyStateChangedAckDelay = harness.Client.MessageTimeout + TimeSpan.FromSeconds(1);
+
+        await Assert.ThrowsAsync<TimeoutException>(() => harness.Client.SendSafetyStateChangedAsync(
+            changed,
+            DateTimeOffset.UtcNow,
+            new WireToGateSafetySummaryPayload(true, true, true, true, false, []),
+            [1],
+            token));
+        Assert.True(harness.Client.Current.SafetyStateVersion < changed, "nothing has acknowledged the change yet");
+        string late = harness.Server.ReceivedEnvelopes
+            .Last(envelope => envelope.MessageType == "SafetyStateChanged")
+            .MessageId;
+
+        await WaitForLateAckAsync(harness, late, token);
+        await WaitForLateAckLogAsync(harness, late, LogSeverity.Information, "现记为已确认", token);
+
+        Assert.True(harness.Client.Current.Connected, "the late ack must not end the session");
+        Assert.Equal(changed, harness.Client.Current.SafetyStateVersion);
     }
 
     /// <summary>
@@ -150,6 +197,10 @@ public sealed partial class StationDeadlineExpiredG2Tests
 
         await WaitForLateAckAsync(harness, late, token);
         await WaitForLateAckLogAsync(harness, late, LogSeverity.Warning, "保持放弃", token);
+        Assert.Contains(harness.Logger.Entries, entry =>
+            entry.Severity == LogSeverity.Warning
+            && entry.Message.Contains($"contentSha256={row.ContentSha256}", StringComparison.Ordinal)
+            && entry.Message.Contains("这次放弃很可能是误报，核对 MES 时不要重复补录", StringComparison.Ordinal));
 
         Assert.True(harness.Client.Current.Connected, "a late ack of a row given up must not end the session");
         WireToGateDurableMessage after = Assert.IsType<WireToGateDurableMessage>(
@@ -227,7 +278,10 @@ public sealed partial class StationDeadlineExpiredG2Tests
                 && entry.Message.Contains(messageId, StringComparison.Ordinal)
                 && entry.Message.Contains(outcome, StringComparison.Ordinal)),
             $"the late ack of {messageId} to be logged ({severity}, {outcome})",
-            cancellationToken);
+            cancellationToken,
+            () => string.Join(
+                Environment.NewLine,
+                harness.Logger.Entries.Select(entry => $"{entry.Severity} {entry.Message}")));
 
     /// <summary>
     /// Holds back the ack of the next <c>OperationProgress</c> the vehicle sends -- the executor's next re-prompt -- by

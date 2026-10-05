@@ -918,6 +918,13 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </remarks>
     public TimeSpan OperationProgressAckDelay { get; set; }
 
+    /// <summary>
+    /// Writes the <c>DurableAck</c> of every accepted <c>SafetyStateChanged</c> this much later, off the read loop, as
+    /// <see cref="OperationProgressAckDelay"/> does for progress (8005-agv-onboard-hmi#250, review S1 of #260). The
+    /// double still accepts the change at once; only the vehicle hears of it late.
+    /// </summary>
+    public TimeSpan SafetyStateChangedAckDelay { get; set; }
+
     private int _judgedRecoveryRequests;
 
     /// <summary>
@@ -3342,7 +3349,15 @@ public sealed class FakeControlServer : IAsyncDisposable
             return;
         }
 
-        await WriteEnvelopeAsync(context, CreateDurableAck(context, message)).ConfigureAwait(false);
+        if (SafetyStateChangedAckDelay > TimeSpan.Zero)
+        {
+            DelayDurableAck(context, CreateDurableAck(context, message), SafetyStateChangedAckDelay);
+        }
+        else
+        {
+            await WriteEnvelopeAsync(context, CreateDurableAck(context, message)).ConfigureAwait(false);
+        }
+
         // 真服务端对「补发进后一个会话」的报文按首次受理作答（RebindDurableAckAsync）：只回 ack，
         // 因为一个还没走完握手的世代没有任何就绪变化可宣告（8005-agv-control-server#33）。
         if (SendReadinessAfterSafetyStateChangedAck && !replayedIntoLaterSession)
