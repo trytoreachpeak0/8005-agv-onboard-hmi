@@ -1837,8 +1837,9 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     // any other ProtocolProblem or answer that does not check out, which leaves the row owed. The rows
                     // after it still go out. That includes a refusal about the session rather than the row -- a
                     // credential, the agv id -- in which case they are likely refused too, each staying owed for the
-                    // next handshake as before: a few sends wasted, nothing lost. Until the review of PR #258 a row given
-                    // up here ended the whole pass, and the rows behind it waited for the next handshake.
+                    // next handshake as before: a few sends wasted, nothing lost. Until the review of PR #258 any
+                    // InvalidDataException here -- a row given up, or any other refusal or bad answer -- ended the whole
+                    // pass in the catch below, and the rows behind it waited for the next handshake.
                 }
             }
         }
