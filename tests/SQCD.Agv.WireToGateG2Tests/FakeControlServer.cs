@@ -772,6 +772,12 @@ public sealed class FakeControlServer : IAsyncDisposable
     public IReadOnlyList<string> RejectedRecoverySessionRequests { get; private set; } = [];
 
     /// <summary>
+    /// When set, every <c>RecoveryActionSubmitted</c> is answered with a <c>RecoveryActionRejected</c> carrying this
+    /// reason code (8005-agv-onboard-hmi#255).
+    /// </summary>
+    public string? RecoveryActionRejectionReasonCode { get; set; }
+
+    /// <summary>
     /// 带着别的字节重复到达的恢复请求 messageId。真服务端的 <c>ProtocolInbox</c> 把 messageId 绑死在
     /// 它第一次带来的整行字节上（<c>WireContentHash.Sha256(line)</c>），之后内容不同就抛
     /// <c>ProtocolContentConflictException</c> 并掐掉连接。替身照做——不照做的话，车辆复用一个
@@ -1323,6 +1329,12 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// window between the operator's request and the command arriving (8005-agv-onboard-hmi#191).
     /// </summary>
     public Action? BeforeRecoveryVectorCommand { get; set; }
+
+    /// <summary>
+    /// Runs after an <c>ExceptionRecoverySessionRequested</c> arrives and before it is answered: the window between the
+    /// press's own checks and the vector it prepares once the session opens (8005-agv-onboard-hmi#255).
+    /// </summary>
+    public Action? BeforeRecoverySessionAnswer { get; set; }
 
     /// <summary>
     /// The <c>slotOperationAttemptId</c> the <c>commandContentSha256</c> is computed over.
@@ -2633,6 +2645,7 @@ public sealed class FakeControlServer : IAsyncDisposable
         ConnectionContext context,
         JsonElement request)
     {
+        BeforeRecoverySessionAnswer?.Invoke();
         JsonElement payload = request.GetProperty("payload");
         string? standingRejection = null;
         if (ModelOneOpenRecoverySession)
@@ -2885,6 +2898,30 @@ public sealed class FakeControlServer : IAsyncDisposable
         JsonElement payload = request.GetProperty("payload");
         string sessionId = payload.GetProperty("exceptionRecoverySessionId").GetString()!;
         string actionId = payload.GetProperty("recoveryActionId").GetString()!;
+        if (RecoveryActionRejectionReasonCode is { } actionRejectionReasonCode)
+        {
+            await WriteEnvelopeAsync(
+                    context,
+                    CreateEnvelope(
+                        context,
+                        "RecoveryActionRejected",
+                        request.GetProperty("messageId").GetString(),
+                        new
+                        {
+                            recoveryActionId = actionId,
+                            exceptionRecoverySessionId = sessionId,
+                            problem = new
+                            {
+                                reasonCode = actionRejectionReasonCode,
+                                fieldPath = "payload",
+                                displayMessage = "The recovery action was refused."
+                            },
+                            recoverySessionRevision = 2
+                        }))
+                .ConfigureAwait(false);
+            return;
+        }
+
         await WriteEnvelopeAsync(
             context,
             CreateEnvelope(
