@@ -85,6 +85,58 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
+    /// Refused mid-session and then nothing changes on the vehicle: the server's request for a new baseline is still
+    /// answered. Nothing but the refusal itself asks for a safety pass here, so this holds only if giving the change up
+    /// leaves the snapshot answer free -- the case review of PR #258 asked about after the handler's extra request went.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("IntegrationSlice", "FP-IS-06")]
+    [Trait("ProtocolVector", "CV-SNAPSHOT-SAME-REVISION-CONFLICT")]
+    [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
+    public async Task ARefusedSafetyChangeWithNothingAfterItStillAnswersTheServersSnapshotRequest()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { KeepSnapshotFresh = true };
+        await using Harness harness = await Harness.StartAsync(
+            server =>
+            {
+                server.RequireSafeSafetyForReadiness = true;
+                server.SendReadinessAfterSafetyStateChangedAck = true;
+            },
+            token,
+            io: io);
+        await WaitForSafetyReportsToSettleAsync(harness, token);
+        int connection = harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection);
+        int changesBefore = RefusalSafetyChangesOn(harness, connection).Length;
+
+        harness.Server.ProtocolProblemByMessageType = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["SafetyStateChanged"] = "SNAPSHOT_REVISION_CONTENT_CONFLICT"
+        };
+        io.SetUnreadable(0);
+        io.PublishSnapshot();
+        await harness.WaitUntilAsync(
+            () => harness.Events.Any(item => item.Kind == "DURABLE_MESSAGE_ABANDONED"),
+            "the refused safety change to be given up and reported",
+            token);
+        harness.Server.ProtocolProblemByMessageType = new Dictionary<string, string>(StringComparer.Ordinal);
+        long refusedVersion = SafetyStateVersionOf(RefusalSafetyChangesOn(harness, connection)[changesBefore].WireLine);
+
+        // No IO change from here on: the reading stays what it was when the change was refused.
+        await harness.Server.RequestSafetyStateSnapshotAsync();
+        await harness.WaitUntilAsync(
+            () => harness.Server.ReceivedEnvelopes.Any(envelope =>
+                envelope.Connection == connection
+                && envelope.MessageType == "SafetyStateSnapshot"
+                && SafetyStateVersionOf(envelope.WireLine) > refusedVersion),
+            "the vehicle to answer the server's snapshot request with nothing changed after the refusal",
+            token);
+
+        Assert.Equal(connection, harness.Server.ReceivedEnvelopes.Max(envelope => envelope.Connection));
+    }
+
+    /// <summary>
     /// Refused where the next handshake replays it: a change whose connection dropped before the server took it is still
     /// pending at the business service and on file; the handshake's replay is refused, given up, and the handshake goes
     /// on. The pending change is dropped rather than sent again under its key, the server's snapshot request is answered,
