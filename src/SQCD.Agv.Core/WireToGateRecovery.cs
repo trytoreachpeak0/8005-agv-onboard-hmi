@@ -329,7 +329,17 @@ public sealed record WireToGateDurableMessage(
     string ContentSha256,
     string WireLine,
     DateTimeOffset CreatedAt,
-    bool Acknowledged);
+    bool Acknowledged,
+    string? AbandonedReasonCode = null)
+{
+    /// <summary>
+    /// Given up because the server refused it with a <c>MANUAL_REVIEW</c> code (onboard-hmi#254): it is owed to nobody
+    /// any more and is never sent again, by any path. Not the same as <see cref="Acknowledged"/>: the server took
+    /// something else under this identity, not this content, so nothing that waits for this message's acknowledgement
+    /// may read it as delivered.
+    /// </summary>
+    public bool Abandoned => AbandonedReasonCode is not null;
+}
 
 /// <summary>
 /// Durable adoption record for a server-owned journey snapshot.  The raw payload
@@ -434,6 +444,24 @@ public interface IWireToGateJournal : IAsyncDisposable
         string acceptedContentSha256,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Marks the row on file under <paramref name="messageId"/> with this content as given up for
+    /// <paramref name="reasonCode"/>, a protocol code whose <c>retryDisposition</c> is <c>MANUAL_REVIEW</c>
+    /// (onboard-hmi#254). Nothing else in the row changes: not its content, not its messageId, not whether it was
+    /// acknowledged. A row already given up keeps its first reason. Returns the row as it now stands.
+    /// </summary>
+    /// <remarks>
+    /// Throws <c>InvalidDataException("DURABLE_OUTBOX_ROW_MISSING")</c> when no row has this messageId and content.
+    /// </remarks>
+    public Task<WireToGateDurableMessage> MarkOutgoingAbandonedAsync(
+        string messageId,
+        string contentSha256,
+        string reasonCode,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// The rows still owed to the server: not acknowledged and not given up (<see cref="MarkOutgoingAbandonedAsync"/>).
+    /// </summary>
     public Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
         CancellationToken cancellationToken = default);
 
@@ -455,3 +483,19 @@ public sealed record WireToGateSessionSnapshot(
     long CapabilityVersion,
     long SafetyStateVersion,
     DateTimeOffset UpdatedAt);
+
+/// <summary>
+/// A durable outbox row given up because the control server refused it with a <c>MANUAL_REVIEW</c> code
+/// (onboard-hmi#254), as the session client reports it to the business layer.
+/// </summary>
+/// <param name="DeduplicationKey">The row's business key: what the business layer finds its own state by.</param>
+/// <param name="WireLine">The line as it stands on file -- what this vehicle holds, for the operator log.</param>
+/// <param name="ServerDisplayMessage">The refusal's <c>displayMessage</c>, when the server gave one.</param>
+public sealed record WireToGateDurableMessageAbandonment(
+    string DeduplicationKey,
+    string MessageType,
+    string MessageId,
+    string ContentSha256,
+    string ReasonCode,
+    string? ServerDisplayMessage,
+    string WireLine);

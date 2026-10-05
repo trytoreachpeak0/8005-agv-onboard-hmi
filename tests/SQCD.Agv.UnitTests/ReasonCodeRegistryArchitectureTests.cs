@@ -39,6 +39,12 @@ public sealed class ReasonCodeRegistryArchitectureTests
     /// </summary>
     private const string ProtocolErrorCodePredicate = "IsProtocolErrorCode";
 
+    /// <summary>
+    /// Predicate whose whole purpose is "does the registry give this code retryDisposition MANUAL_REVIEW"
+    /// (onboard-hmi#254). A second copy of part of the registry, held equal to it.
+    /// </summary>
+    private const string ManualReviewCodePredicate = "IsManualReviewProtocolErrorCode";
+
     /// <summary>Returns the slot precondition reason code, or null.</summary>
     private const string SlotPreconditionMethod = "ValidateBeforeOperation";
 
@@ -259,6 +265,51 @@ public sealed class ReasonCodeRegistryArchitectureTests
             $"'{ProtocolErrorCodePredicate}' is a second copy of the error-code registry and has drifted."
             + $"{Environment.NewLine}Listed inline but absent from the registry: {FormatCodes(notInRegistry)}"
             + $"{Environment.NewLine}In the registry but not listed inline: {FormatCodes(notInline)}");
+    }
+
+    /// <summary>
+    /// The inline predicate that decides whether a refused durable message is given up rather than replayed
+    /// (onboard-hmi#254) must list exactly the registry's codes with <c>retryDisposition</c> <c>MANUAL_REVIEW</c>.
+    /// A registry code missing from it keeps a vehicle replaying a message the protocol says not to retry; one listed
+    /// that the registry retries makes the vehicle give up a message the server would take later.
+    /// </summary>
+    [Fact]
+    public void InlineManualReviewCodeSetMatchesVendoredRegistry()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string registryPath = Path.Combine(
+            repositoryRoot,
+            RegistryRelativePath.Replace('/', Path.DirectorySeparatorChar));
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(registryPath));
+        HashSet<string> manualReview = document.RootElement.GetProperty("codes")
+            .EnumerateArray()
+            .Where(entry => entry.GetProperty("retryDisposition").GetString() == "MANUAL_REVIEW")
+            .Select(entry => entry.GetProperty("code").GetString()!)
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.NotEmpty(manualReview);
+
+        string source = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "SQCD.Agv.Infrastructure",
+            "WireToGateSessionClient.cs"));
+        string body = ExtractExpressionBody(source, ManualReviewCodePredicate);
+        Assert.False(
+            string.IsNullOrEmpty(body),
+            $"'{ManualReviewCodePredicate}' no longer exists in WireToGateSessionClient.cs. "
+            + "This gate anchors on it; update the anchor rather than deleting the check.");
+        HashSet<string> inline = StringLiteralRegex
+            .Matches(body)
+            .Select(match => match.Groups["code"].Value)
+            .ToHashSet(StringComparer.Ordinal);
+
+        string[] notManualReview = inline.Except(manualReview, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        string[] notInline = manualReview.Except(inline, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToArray();
+        Assert.True(
+            notManualReview.Length == 0 && notInline.Length == 0,
+            $"'{ManualReviewCodePredicate}' is a second copy of the registry's MANUAL_REVIEW codes and has drifted."
+            + $"{Environment.NewLine}Listed inline but not MANUAL_REVIEW in the registry: {FormatCodes(notManualReview)}"
+            + $"{Environment.NewLine}MANUAL_REVIEW in the registry but not listed inline: {FormatCodes(notInline)}");
     }
 
     /// <summary>

@@ -39,7 +39,7 @@ public sealed partial class WireToGateG2Tests
     /// </summary>
     [Theory]
     [MemberData(nameof(ManualReviewContentConflictCodes))]
-    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("IntegrationSlice", "FP-IS-06")]
     [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
     public async Task ARowRefusedAsAContentConflictInTheHandshakeIsGivenUpAndTheSessionComesUpReady(string reasonCode)
     {
@@ -88,7 +88,7 @@ public sealed partial class WireToGateG2Tests
     /// </summary>
     [Theory]
     [MemberData(nameof(ManualReviewContentConflictCodes))]
-    [Trait("IntegrationSlice", "FP-IS-00")]
+    [Trait("IntegrationSlice", "FP-IS-06")]
     [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
     public async Task ARowRefusedAsAContentConflictMidSessionIsNotReplayedByTheNextHandshake(string reasonCode)
     {

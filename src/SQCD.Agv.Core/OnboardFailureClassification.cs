@@ -158,6 +158,9 @@ public static class OnboardFailureClassification
         // IO_SNAPSHOT_STALE) which already blocks scanning and departure; refusing this press does
         // not need a second, permanent one.
         "HARDWARE_RECOVERY_NOT_REQUIRED",
+        // The manual close of a recovery whose result the server refused for good, pressed when there is none
+        // (onboard-hmi#254). Nothing was written.
+        "CONFLICTED_RECOVERY_NOT_PENDING",
         "HARDWARE_RECOVERY_OBSERVATIONS_REQUIRED",
         "HARDWARE_RECOVERY_RECORD_REQUIRED",
         "SLOT_STATE_UNKNOWN"
@@ -198,6 +201,9 @@ public static class OnboardFailureClassification
         "BUSINESS_ID_CONTENT_CONFLICT",
         "CONTENT_HASH_MISMATCH",
         "CORRELATION_INVALID",
+        // A send of an outbox row the server refused for good earlier (onboard-hmi#254). The scan's own message never
+        // carries it -- each scan goes out under a new messageId, so its row cannot be one given up before.
+        "DURABLE_MESSAGE_ABANDONED",
         "DURABLE_OUTBOX_CONTENT_MISMATCH",
         "DURABLE_OUTBOX_MISSING",
         "DURABLE_OUTBOX_REBIND_CONFLICT",

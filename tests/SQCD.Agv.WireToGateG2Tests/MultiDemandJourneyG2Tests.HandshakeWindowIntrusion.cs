@@ -644,6 +644,13 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         private int _stalePassReads;
 
+        public Task<WireToGateDurableMessage> MarkOutgoingAbandonedAsync(
+            string messageId,
+            string contentSha256,
+            string reasonCode,
+            CancellationToken cancellationToken = default) =>
+            inner.MarkOutgoingAbandonedAsync(messageId, contentSha256, reasonCode, cancellationToken);
+
         public async Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
             CancellationToken cancellationToken = default)
         {

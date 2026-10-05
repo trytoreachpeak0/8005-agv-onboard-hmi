@@ -847,6 +847,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         _session.ServerCommandReceived += OnServerCommandReceived;
         _session.StateChanged += OnSessionStateChanged;
         _session.JourneyChanged += OnJourneyChanged;
+        _session.DurableMessageAbandoned += OnDurableMessageAbandoned;
         _ioModule.SnapshotChanged += OnIoSnapshotChanged;
         if (_observableVehicleSafetySignalProvider is not null)
         {
@@ -873,6 +874,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _session.ServerCommandReceived -= OnServerCommandReceived;
             _session.StateChanged -= OnSessionStateChanged;
             _session.JourneyChanged -= OnJourneyChanged;
+            _session.DurableMessageAbandoned -= OnDurableMessageAbandoned;
             _ioModule.SnapshotChanged -= OnIoSnapshotChanged;
             if (_observableVehicleSafetySignalProvider is not null)
             {
@@ -949,6 +951,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             or WireToGateSessionReadiness.RecoveryRequired)
         {
             TrackTask(RestorePendingRecoveryOperationProjectionAsync(_stopping.Token));
+            // A recovery result given up by an earlier run, or by this session's handshake (onboard-hmi#254).
+            TrackTask(RestoreAbandonedRecoveryResultAsync(_stopping.Token));
         }
 
         ReviewUnauthorizedRecoveryVector(args.Value);
@@ -1750,9 +1754,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 // FAILED and UNKNOWN stay unfinished until an administrator recovers them. One the server has not
                 // acknowledged yet is still sent once more, as below: it is what the server waits for to reconcile
                 // the session, and one put on file mid-handshake missed that handshake's replay (onboard-hmi#127).
-                if (!IsCompletedOperationResult(sent))
+                //
+                // A result the server refused for good is unfinished whatever it says (onboard-hmi#254): the server
+                // holds another conclusion for this attempt, and the two are reconciled by an administrator through the
+                // recovery entry, never by sending this one again.
+                if (!IsCompletedOperationResult(sent) || sent.Abandoned)
                 {
-                    if (!sent.Acknowledged)
+                    if (!sent.Acknowledged && !sent.Abandoned)
                     {
                         _ = await TryResendUnacknowledgedResultAsync(context, resultKey, cancellationToken)
                             .ConfigureAwait(false);
@@ -2004,6 +2012,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 _lastSafetySignature = _pendingSafetyChange.Signature;
                 _pendingSafetyChange = null;
             }
+
+            // Refused for good and given up (onboard-hmi#254): never resent, its version skipped.
+            ForgetAbandonedSafetyChange();
             // 换代必须重新全量上报一次安全快照（ADR-cross-0022「连接时全量同步，变化时可靠增量」
             // 的前半句，它在重连时同样适用）。签名去重是进程内状态而会话不是：服务端重启后新会话
             // 手上没有上一代的快照，车载端进程没重启、签名照旧，那份快照就永远不会重发，服务端的
@@ -2089,6 +2100,18 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
+        catch (Exception exception) when (ForgetAbandonedSafetyChange())
+        {
+            // The server refused this change for good and the session client gave it up (onboard-hmi#254). Nothing to
+            // disconnect for: the connection is fine, the server asks for a fresh snapshot (control-server#478), and the
+            // present reading goes out next as a change of its own.
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                "SafetyStateChanged被服务端拒收并已放弃；不断开会话，改报此刻读数。",
+                exception);
+            _ = Task.Run(RequestSafetyStateChange, CancellationToken.None);
+        }
         catch (Exception exception)
         {
             // 这一份所在的连接已经不在了（被关掉，或已换成下一条）：失败属于那条连接，没有东西可断——关掉它的那一方
@@ -2170,6 +2193,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 _lastSafetySignature = _pendingSafetyChange.Signature;
                 _pendingSafetyChange = null;
             }
+
+            // A change refused for good is not waiting to be resent (onboard-hmi#254). Kept, it left this request -- the
+            // one the server makes after refusing a safety message -- unanswered for as long as it stayed.
+            ForgetAbandonedSafetyChange();
 
             // A change still unacknowledged is waiting to be resent, under its own version and content, on
             // the session its failure is tearing down. A snapshot with a higher version now would make that

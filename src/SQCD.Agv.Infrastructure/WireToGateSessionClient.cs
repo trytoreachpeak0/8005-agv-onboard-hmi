@@ -176,6 +176,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     public event EventHandler<ValueChangedEventArgs<WireToGateJourneySnapshot>>? JourneyChanged;
 
     /// <summary>
+    /// A durable outbox row was given up because the server refused it with a <c>MANUAL_REVIEW</c> code
+    /// (onboard-hmi#254). Raised once per row, on the thread that read the refusal -- inside the handshake for a
+    /// replayed row -- after the row is marked on file. Handlers must not block: the handshake waits for them.
+    /// </summary>
+    public event EventHandler<ValueChangedEventArgs<WireToGateDurableMessageAbandonment>>? DurableMessageAbandoned;
+
+    /// <summary>
     /// Formal WIRE_TO_GATE business messages received after session recovery.
     /// Handlers must treat the command as untrusted input and perform their own
     /// physical-state checks before causing side effects.
@@ -689,7 +696,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 SafetyStateChangedDeduplicationKey(safetyStateVersion, observedAt),
                 cancellationToken)
             .ConfigureAwait(false);
-        if (row is null || row.Acknowledged)
+        if (row is null || row.Acknowledged || row.Abandoned)
         {
             return false;
         }
@@ -1664,6 +1671,15 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             return stored.MessageId;
         }
 
+        // Given up already (onboard-hmi#254): the server refused this very content for good, so it is not sent again --
+        // not by a retry, not by a resend of the row by its key, not under a new session. Refused here as the server
+        // refused it, with the exception type every caller already handles a refusal by; the business layer was told
+        // what was given up when it happened (DurableMessageAbandoned).
+        if (stored.Abandoned)
+        {
+            throw new InvalidDataException("DURABLE_MESSAGE_ABANDONED");
+        }
+
         TaskCompletionSource<WireToGateEnvelope> response = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
         if (!_responseWaiters.TryAdd(stored.MessageId, response))
@@ -1688,6 +1704,9 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             WireToGateEnvelope ackEnvelope = await response.Task
                 .WaitAsync(_options.MessageTimeout, cancellationToken)
                 .ConfigureAwait(false);
+            // A MANUAL_REVIEW refusal gives the row up before the refusal is thrown as it always was: the caller sees what
+            // it saw before onboard-hmi#254, and the next handshake no longer replays the row.
+            await AbandonIfManualReviewAsync(stored, ackEnvelope, cancellationToken).ConfigureAwait(false);
             ThrowIfProtocolProblem(ackEnvelope);
             WireToGateProtocolSerializer.RequireMessage(ackEnvelope, "DurableAck", stored.MessageId);
             DurableAckPayload ack = WireToGateProtocolSerializer
@@ -1823,7 +1842,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         catch (Exception exception) when (
             exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
         {
-            // Left for the next handshake. A connection gone mid-pass has asked for another pass already.
+            // Left for the next handshake. A connection gone mid-pass has asked for another pass already. A row refused
+            // here with a MANUAL_REVIEW code has been given up and reported instead (onboard-hmi#254).
         }
     }
 
@@ -2399,7 +2419,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             WireToGateDurableMessage? message = await _journal
                 .ReadOutgoingByMessageIdAsync(pending.MessageId, cancellationToken)
                 .ConfigureAwait(false);
-            if (message is { Acknowledged: true }
+            if (message is { Acknowledged: true, Abandoned: false }
                 && string.Equals(message.MessageType, pending.MessageType, StringComparison.Ordinal))
             {
                 replayable.Add((pending, message));
@@ -2513,6 +2533,15 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             WireToGateEnvelope ackEnvelope = await response.Task
                 .WaitAsync(_options.MessageTimeout, cancellationToken)
                 .ConfigureAwait(false);
+            // The server took this result once and now refuses it for good. With its store intact that does not happen --
+            // it answers the replay from the result it holds (control-server WireToGateStore.ApplyOperationResultAsync) --
+            // so this is a store that no longer holds what it acknowledged, such as a replaced one. Given up like an
+            // unacknowledged row, and no later report names it as pending (onboard-hmi#254).
+            if (await AbandonIfManualReviewAsync(result, ackEnvelope, cancellationToken).ConfigureAwait(false) is not null)
+            {
+                return;
+            }
+
             ThrowIfProtocolProblem(ackEnvelope);
             WireToGateProtocolSerializer.RequireMessage(ackEnvelope, "DurableAck", rebound.MessageId);
             DurableAckPayload ack = WireToGateProtocolSerializer.DeserializePayload<DurableAckPayload>(ackEnvelope);
@@ -2557,6 +2586,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
         await SendLineAsync(rebound.WireLine, CurrentConnectionEpoch, cancellationToken).ConfigureAwait(false);
         WireToGateEnvelope ackEnvelope = await ReadEnvelopeAsync(generation, cancellationToken).ConfigureAwait(false);
+        // Refused for good: given up on file and reported, and the handshake goes on to the next row (onboard-hmi#254).
+        // Thrown, it closed the connection with the row still owed, and every later handshake ended on it.
+        if (await AbandonIfManualReviewAsync(rebound, ackEnvelope, cancellationToken).ConfigureAwait(false) is not null)
+        {
+            return;
+        }
+
         ThrowIfProtocolProblem(ackEnvelope);
         WireToGateProtocolSerializer.RequireMessage(ackEnvelope, "DurableAck", rebound.MessageId);
         DurableAckPayload ack = WireToGateProtocolSerializer.DeserializePayload<DurableAckPayload>(ackEnvelope);
@@ -4656,6 +4692,79 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             safetyStateVersion,
             current) != current);
     }
+
+    /// <summary>
+    /// When <paramref name="answer"/> is a <c>ProtocolProblem</c> about <paramref name="row"/> whose code the protocol
+    /// marks <c>MANUAL_REVIEW</c>, gives the row up on file, reports it, and returns what was given up; otherwise null,
+    /// and nothing changes (onboard-hmi#254).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Keyed on the registry's <c>retryDisposition</c>, not on a list of conflict codes</b> (the coordinator's ruling
+    /// on onboard-hmi#254): <c>MANUAL_REVIEW</c> is the protocol saying a message refused with this code is not to be
+    /// retried as it is. Every other code keeps the behaviour it had: the caller throws, and the row stays owed.
+    /// </para>
+    /// <para>
+    /// The row keeps its content and its messageId, and nothing is sent in its place: the protocol forbids silently
+    /// replacing content (<c>CV-RELIABLE-RETRY-DIFFERENT-CONTENT</c>, <c>NEVER_SILENTLY_REPLACE_CONTENT</c>), and what
+    /// the server holds under this identity is the server's to keep. Marked before it is reported, so a handler that
+    /// reads the outbox already sees the mark.
+    /// </para>
+    /// </remarks>
+    private async Task<WireToGateDurableMessageAbandonment?> AbandonIfManualReviewAsync(
+        WireToGateDurableMessage row,
+        WireToGateEnvelope answer,
+        CancellationToken cancellationToken)
+    {
+        if (!string.Equals(answer.MessageType, "ProtocolProblem", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        ProtocolProblemPayload problem = WireToGateProtocolSerializer.DeserializePayload<ProtocolProblemPayload>(answer);
+        if (!string.Equals(problem.RejectedMessageId, row.MessageId, StringComparison.Ordinal)
+            || !IsManualReviewProtocolErrorCode(problem.Problem.ReasonCode))
+        {
+            return null;
+        }
+
+        WireToGateDurableMessage marked = await _journal
+            .MarkOutgoingAbandonedAsync(row.MessageId, row.ContentSha256, problem.Problem.ReasonCode, cancellationToken)
+            .ConfigureAwait(false);
+        WireToGateDurableMessageAbandonment abandonment = new(
+            marked.DeduplicationKey,
+            marked.MessageType,
+            marked.MessageId,
+            marked.ContentSha256,
+            marked.AbandonedReasonCode ?? problem.Problem.ReasonCode,
+            problem.Problem.DisplayMessage,
+            marked.WireLine);
+        DurableMessageAbandoned?.Invoke(
+            this,
+            new ValueChangedEventArgs<WireToGateDurableMessageAbandonment>(abandonment));
+        return abandonment;
+    }
+
+    /// <summary>
+    /// The codes the protocol registry gives <c>retryDisposition</c> <c>MANUAL_REVIEW</c>: a durable message refused
+    /// with one of them is given up rather than replayed (onboard-hmi#254). A second copy of part of the registry, held
+    /// equal to it by <c>ReasonCodeRegistryArchitectureTests</c>.
+    /// </summary>
+    private static bool IsManualReviewProtocolErrorCode(string value) => value is
+        "MESSAGE_ID_CONTENT_CONFLICT"
+        or "VEHICLE_CREDENTIAL_INVALID"
+        or "AGV_ID_MISMATCH"
+        or "SNAPSHOT_REVISION_CONTENT_CONFLICT"
+        or "BUSINESS_ID_CONTENT_CONFLICT"
+        or "SLOT_OPERATION_CONFLICT"
+        or "RECOVERY_SCOPE_MISMATCH"
+        or "RECOVERY_CHECKPOINT_NOT_UNIQUE"
+        or "RECOVERY_AUTHENTICATION_FAILED"
+        or "SLOT_CONFIGURATION_FINGERPRINT_MISMATCH"
+        or "RECOVERY_EVENT_MISMATCH"
+        or "RECOVERY_DEMAND_MISMATCH"
+        or "RECOVERY_OPERATOR_MISMATCH"
+        or "RECOVERY_OPERATION_NOT_FOUND";
 
     private static void ThrowIfProtocolProblem(WireToGateEnvelope envelope)
     {
