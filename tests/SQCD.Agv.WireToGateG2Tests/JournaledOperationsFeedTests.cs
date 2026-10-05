@@ -195,6 +195,13 @@ public sealed class JournaledOperationsFeedTests
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<WireToGateDurableMessage> MarkOutgoingAbandonedAsync(
+            string messageId,
+            string contentSha256,
+            string reasonCode,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
