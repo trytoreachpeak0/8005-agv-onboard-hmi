@@ -173,6 +173,75 @@ public sealed partial class StationDeadlineExpiredG2Tests
     }
 
     /// <summary>
+    /// 判定中止执行器时，执行器正在等一次重新提示（<c>OperationProgress</c>）的 ack：中止撤掉这次等待，ack 随后才到。
+    /// 车载端按发件箱把它记为已确认，会话不断开，<c>OperationResult</c> 照常送达，2 号仓是 UNKNOWN＋<c>SLOT_FAULT_DECLARED</c>
+    /// （<c>trytoreachpeak0/8005-agv-onboard-hmi#250</c>，同步进 v3 时补，hmi#264）。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 这是 <see cref="TheSameDeclarationAgainIsAnsweredWithTheFirstAnswerAndNothingIsStoppedTwice"/> 偶发超时的机理：那条用例扣下
+    /// 判定应答的 ack，执行器在判定约 2 秒后才被中止，恰好与 2 秒一次的重新提示撞在一起。这里不靠撞，也不靠时钟：替身扣住重新
+    /// 提示的 ack，等车载端写出「已执行服务端的人工判故障」再放行。那句日志在执行器停下之后才写（<c>DeclareSlotFaultAsync</c>
+    /// 等到运行结束才返回），此时这次进度的等待已随中止撤掉，ack 必然是迟到的（PR #265 审查）。
+    /// </para>
+    /// <para>
+    /// 先红：去掉接收循环里迟到 ack 的那一支，迟到的 ack 被当成未处理消息断开会话（这个夹具不重连），
+    /// 等发件箱记为已确认那一步超时。
+    /// </para>
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-SLOT-FAULT-DECLARATION-APPLIED")]
+    public async Task AnAckArrivingAfterTheDeclarationAbortedItsProgressIsTakenAndTheResultStillGoesOut()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartForDeclarationAsync(token);
+        await StartThreeSlotLoadAtSlotTwoAsync(harness, token);
+
+        // Hold the ack of the next re-prompt only: later progress -- the settlement's own -- is answered at once.
+        TaskCompletionSource releaseAck = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int progressBefore = ProgressCount(harness);
+        harness.Server.OperationProgressAckHold = releaseAck.Task;
+        await Harness.WaitUntilAsync(
+            () => ProgressCount(harness) > progressBefore,
+            "the executor's next re-prompt",
+            token,
+            harness.DescribeEvents);
+        harness.Server.OperationProgressAckHold = null;
+        string late = harness.Server.ReceivedEnvelopes
+            .Where(envelope => envelope.MessageType == "OperationProgress")
+            .ElementAt(progressBefore)
+            .MessageId;
+
+        await harness.Server.SendCommandAsync(
+            "SlotFaultDeclarationCommand",
+            Guid.NewGuid().ToString("D"),
+            DeclarationPayload(FirstDeclarationId, DeclaredAttemptId, 2));
+        await Harness.WaitUntilAsync(
+            () => harness.Logger.Entries.Any(entry =>
+                entry.Message.StartsWith("已执行服务端的人工判故障", StringComparison.Ordinal)),
+            "the declaration to have stopped the run",
+            token);
+        Assert.False(
+            harness.Server.SentEnvelopes.Any(envelope =>
+                envelope.MessageType == "DurableAck" && envelope.WireLine.Contains(late, StringComparison.Ordinal)),
+            "the re-prompt's ack must still be held when the run has stopped");
+        releaseAck.SetResult();
+
+        await WaitForLateAckAsync(harness, late, token);
+        await WaitForAcknowledgedOnFileAsync(harness, late, token);
+        await WaitForLateAckLogAsync(harness, late, LogSeverity.Information, "现记为已确认", token);
+        Assert.True(harness.Client.Current.Connected, "the late ack must not end the session");
+
+        await harness.WaitForInboundAsync("OperationResult", token);
+        Assert.Equal("APPLIED", harness.SingleResult("SlotFaultDeclarationResult").GetProperty("outcome").GetString());
+        JsonElement result = harness.SingleResult("OperationResult");
+        Assert.Equal("UNKNOWN", result.GetProperty("overallOutcome").GetString());
+        AssertWireSlot(result, 2, "UNKNOWN", ["SLOT_FAULT_DECLARED"]);
+        Assert.DoesNotContain(harness.Server.Received, item => item.Connection != 1);
+    }
+
+    /// <summary>
     /// 判定不生效之一，「操作员恰好关门闭环」（<c>CV-SLOT-FAULT-DECLARATION-NOT-APPLICABLE</c>）：闭环结果已经写进发件箱
     /// （服务端已收到 <c>OperationResult</c> COMPLETED）之后判定才到，回 <c>NOT_APPLICABLE</c>，不中止、不再结算，
     /// 发件箱里除了这份应答没有别的新东西。用真实时序构造：等服务端收到闭环结果，再发判定。
@@ -793,6 +862,13 @@ public sealed partial class StationDeadlineExpiredG2Tests
             string acceptedContentSha256,
             CancellationToken cancellationToken = default) =>
             inner.MarkOutgoingAcknowledgedAsync(messageId, acceptedContentSha256, cancellationToken);
+
+        public Task<WireToGateDurableMessage> MarkOutgoingAbandonedAsync(
+            string messageId,
+            string contentSha256,
+            string reasonCode,
+            CancellationToken cancellationToken = default) =>
+            inner.MarkOutgoingAbandonedAsync(messageId, contentSha256, reasonCode, cancellationToken);
 
         public Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
             CancellationToken cancellationToken = default) =>

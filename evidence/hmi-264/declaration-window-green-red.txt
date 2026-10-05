@@ -1,0 +1,9 @@
+== 修复后（head 之上只改了测试；替身扣住重新提示的 ack，等「已执行服务端的人工判故障」后放行）
+  Passed AnAckArrivingAfterTheDeclarationAbortedItsProgressIsTakenAndTheResultStillGoesOut [3 s]
+RED build     0 Error(s)
+== 修复前（临时去掉接收循环里迟到 ack 的那一支）
+   Timed out after 10s waiting for: the late ack to mark d8e5703e-ce35-5d5e-a32f-97be70c35063 acknowledged on file
+  Failed AnAckArrivingAfterTheDeclarationAbortedItsProgressIsTakenAndTheResultStillGoesOut [12 s]
+Information 接收循环失败收尾：generation=1，InvalidDataException：收到未处理的WIRE_TO_GATE消息：DurableAck。
+[xUnit.net 00:00:13.55]       Information 接收循环失败收尾：generation=1，InvalidDataException：收到未处理的WIRE_TO_GATE消息：DurableAck。
+[xUnit.net 00:00:13.55]       Timed out after 10s waiting for: the late ack to mark d8e5703e-ce35-5d5e-a32f-97be70c35063 acknowledged on file

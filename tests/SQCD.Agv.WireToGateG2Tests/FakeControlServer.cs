@@ -230,6 +230,35 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool AnswerOperationResultsWithProtocolProblem { get; set; }
 
     /// <summary>
+    /// Answers every message of a listed type with a <c>ProtocolProblem</c> carrying the listed reason code, correlated
+    /// to it, the connection left open and nothing of the message kept -- what the real server does since
+    /// control-server#478 when it refuses an inbound message (<c>OnboardMessageProcessor</c>'s inbound boundary).
+    /// Checked before every other handling of the type (onboard-hmi#254).
+    /// </summary>
+    public IReadOnlyDictionary<string, string> ProtocolProblemByMessageType { get; set; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Takes every message of a listed type and answers nothing, the connection left open: the vehicle's send times out
+    /// and its outbox row stays unacknowledged for the next handshake to replay (onboard-hmi#254).
+    /// </summary>
+    public IReadOnlySet<string> UnansweredMessageTypes { get; set; } = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// As <see cref="ProtocolProblemByMessageType"/>, for the one message whose messageId is listed: a test that refuses
+    /// a single row and lets every other message of its type through (onboard-hmi#254, review of PR #258).
+    /// </summary>
+    public IReadOnlyDictionary<string, string> ProtocolProblemByMessageId { get; set; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The refusals <see cref="ProtocolProblemByMessageType"/> and <see cref="ProtocolProblemByMessageId"/> send name
+    /// another message as the one rejected, and are correlated to it: a <c>ProtocolProblem</c> that is not about the line
+    /// the vehicle just sent (onboard-hmi#254, review of PR #258, S3).
+    /// </summary>
+    public bool ProtocolProblemNamesAnotherMessage { get; set; }
+
+    /// <summary>
     /// Whether a mid-session <c>SafetyStateChanged</c> is answered at all. Off, it is taken and left unanswered with
     /// the connection open: the vehicle republishes its session state only once such a change is acknowledged, so
     /// this keeps every session state change after the handshake's readiness out of a test that must not lean on
@@ -987,6 +1016,32 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </remarks>
     public TimeSpan HeartbeatAckDelay { get; set; }
 
+    /// <summary>
+    /// Writes the <c>DurableAck</c> of every <c>OperationProgress</c> this much later, off the read loop, so the double
+    /// keeps reading what the vehicle sends meanwhile (8005-agv-onboard-hmi#250).
+    /// </summary>
+    /// <remarks>
+    /// What it builds is an acknowledgement that reaches the vehicle after the send it answers stopped waiting for it:
+    /// past the vehicle's message timeout, or after the run that sent the progress was aborted under it. Read when the
+    /// progress arrives, so a test can switch it on at the moment it needs.
+    /// </remarks>
+    public TimeSpan OperationProgressAckDelay { get; set; }
+
+    /// <summary>
+    /// While set, the <c>DurableAck</c> of every <c>OperationProgress</c> is written only once this task completes, off the
+    /// read loop (8005-agv-onboard-hmi#264, the review of PR #265). Where <see cref="OperationProgressAckDelay"/> lets the
+    /// clock decide when the ack lands, this lets the test: it releases the ack once the vehicle has said what has to have
+    /// happened first. Read when the progress arrives; clearing it afterwards leaves the acks already held waiting.
+    /// </summary>
+    public Task? OperationProgressAckHold { get; set; }
+
+    /// <summary>
+    /// Writes the <c>DurableAck</c> of every accepted <c>SafetyStateChanged</c> this much later, off the read loop, as
+    /// <see cref="OperationProgressAckDelay"/> does for progress (8005-agv-onboard-hmi#250, review S1 of #260). The
+    /// double still accepts the change at once; only the vehicle hears of it late.
+    /// </summary>
+    public TimeSpan SafetyStateChangedAckDelay { get; set; }
+
     private int _judgedRecoveryRequests;
 
     /// <summary>
@@ -1505,6 +1560,33 @@ public sealed class FakeControlServer : IAsyncDisposable
         context.Client.Close();
     }
 
+    /// <summary>
+    /// Sends a <c>DurableAck</c> nobody asked for on the latest session, for whatever message, type and content hash the
+    /// test names: a second ack of a row, an ack of a row the vehicle gave up, an ack that does not match the row on file
+    /// (8005-agv-onboard-hmi#250). The envelope's correlationId is <paramref name="acceptedMessageId"/>, as on every ack
+    /// this double sends, unless <paramref name="correlationId"/> names another.
+    /// </summary>
+    public async Task SendDurableAckAsync(
+        string acceptedMessageId,
+        string acceptedMessageType,
+        string acceptedContentSha256,
+        string? correlationId = null)
+    {
+        ConnectionContext context = Volatile.Read(ref _latestSession)
+            ?? throw new InvalidOperationException("No session has been accepted yet.");
+        await WriteEnvelopeAsync(context, CreateEnvelope(
+            context,
+            "DurableAck",
+            correlationId ?? acceptedMessageId,
+            new
+            {
+                acceptedMessageId,
+                acceptedMessageType,
+                acceptedContentSha256,
+                durablyAcceptedAt = DateTimeOffset.UtcNow
+            })).ConfigureAwait(false);
+    }
+
     public async Task RequestSafetyStateSnapshotAsync()
     {
         ConnectionContext context = Volatile.Read(ref _latestSession)
@@ -1841,6 +1923,22 @@ public sealed class FakeControlServer : IAsyncDisposable
                     continue;
                 }
 
+                if (ProtocolProblemByMessageId.TryGetValue(messageId, out string? refusalCode)
+                    || ProtocolProblemByMessageType.TryGetValue(messageType, out refusalCode))
+                {
+                    await WriteEnvelopeAsync(context, CreateProtocolProblem(
+                        context,
+                        ProtocolProblemNamesAnotherMessage ? Guid.NewGuid().ToString("D") : messageId,
+                        messageType,
+                        refusalCode)).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (UnansweredMessageTypes.Contains(messageType))
+                {
+                    continue;
+                }
+
                 if ((messageType == "LoadCompensationRequested"
                         && TryConsume(ref _loadCompensationRequestsToLose))
                     || (messageType == "LoadCorrectionRequested"
@@ -1933,12 +2031,15 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "OperationResult" when OperationResultAcksToDrop > 0:
                         OperationResultAcksToDrop--;
                         break;
+                    // A code the vehicle retries (AFTER_STATE_CHANGE). It was MESSAGE_ID_CONTENT_CONFLICT until onboard-hmi#254,
+                    // which made a MANUAL_REVIEW code give the result up instead of leaving it owed: a test of "refused, and
+                    // still owed" needs a code that is retried. Giving up is ProtocolProblemByMessageType's.
                     case "OperationResult" when AnswerOperationResultsWithProtocolProblem:
                         await WriteEnvelopeAsync(context, CreateProtocolProblem(
                             context,
                             messageId,
                             messageType,
-                            "MESSAGE_ID_CONTENT_CONFLICT")).ConfigureAwait(false);
+                            "ACTION_NOT_ALLOWED_IN_STATE")).ConfigureAwait(false);
                         break;
                     case "OperationResult":
                         if (DropBeforeOperationResultAck)
@@ -2074,6 +2175,12 @@ public sealed class FakeControlServer : IAsyncDisposable
                         break;
                     case "SlotFaultDeclarationResult" when SlotFaultDeclarationResultAcksToDrop > 0:
                         SlotFaultDeclarationResultAcksToDrop--;
+                        break;
+                    case "OperationProgress" when OperationProgressAckHold is { } hold:
+                        DelayDurableAck(context, CreateDurableAck(context, root), () => hold);
+                        break;
+                    case "OperationProgress" when OperationProgressAckDelay > TimeSpan.Zero:
+                        DelayDurableAck(context, CreateDurableAck(context, root), OperationProgressAckDelay);
                         break;
                     case "SublotSubmitted":
                     case "OperationProgress":
@@ -3468,7 +3575,15 @@ public sealed class FakeControlServer : IAsyncDisposable
             return;
         }
 
-        await WriteEnvelopeAsync(context, CreateDurableAck(context, message)).ConfigureAwait(false);
+        if (SafetyStateChangedAckDelay > TimeSpan.Zero)
+        {
+            DelayDurableAck(context, CreateDurableAck(context, message), SafetyStateChangedAckDelay);
+        }
+        else
+        {
+            await WriteEnvelopeAsync(context, CreateDurableAck(context, message)).ConfigureAwait(false);
+        }
+
         // 真服务端对「补发进后一个会话」的报文按首次受理作答（RebindDurableAckAsync）：只回 ack，
         // 因为一个还没走完握手的世代没有任何就绪变化可宣告（8005-agv-control-server#33）。
         if (SendReadinessAfterSafetyStateChangedAck && !replayedIntoLaterSession)
@@ -3975,6 +4090,33 @@ public sealed class FakeControlServer : IAsyncDisposable
             context.WriteGate.Release();
         }
     }
+    /// <summary>
+    /// Writes <paramref name="ack"/> after <paramref name="delay"/> without holding up the connection's read loop. A
+    /// connection gone by then takes the ack with it, as a real one would.
+    /// </summary>
+    private void DelayDurableAck(ConnectionContext context, WireToGateEnvelope ack, TimeSpan delay) =>
+        DelayDurableAck(context, ack, () => Task.Delay(delay));
+
+    /// <summary>
+    /// Writes <paramref name="ack"/> once <paramref name="release"/> completes, without holding up the connection's read
+    /// loop. A connection gone by then takes the ack with it, as a real one would.
+    /// </summary>
+    private void DelayDurableAck(ConnectionContext context, WireToGateEnvelope ack, Func<Task> release) =>
+        _ = Task.Run(
+            async () =>
+            {
+                await release().ConfigureAwait(false);
+                try
+                {
+                    await WriteEnvelopeAsync(context, ack).ConfigureAwait(false);
+                }
+                catch (Exception exception) when (exception is IOException or ObjectDisposedException
+                    or InvalidOperationException)
+                {
+                }
+            },
+            CancellationToken.None);
+
     private async Task WriteEnvelopeAsync(ConnectionContext context, WireToGateEnvelope envelope)
     {
         string wireLine = WireToGateProtocolSerializer.Serialize(envelope);

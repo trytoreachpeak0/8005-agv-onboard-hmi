@@ -47,6 +47,7 @@ public sealed class JournalSqliteFailureTests
         "ReadOutgoingByDeduplicationKeyAsync",
         "ReadOutgoingByMessageIdAsync",
         "MarkOutgoingAcknowledgedAsync",
+        "MarkOutgoingAbandonedAsync",
         "ReadUnacknowledgedOutgoingAsync",
         "ReadAppliedJourneySnapshotsAsync",
         "SaveAppliedJourneySnapshotAsync",
@@ -170,6 +171,11 @@ public sealed class JournalSqliteFailureTests
         "ReadOutgoingByDeduplicationKeyAsync" => journal.ReadOutgoingByDeduplicationKeyAsync(AnyMessage.DeduplicationKey, token),
         "ReadOutgoingByMessageIdAsync" => journal.ReadOutgoingByMessageIdAsync(AnyMessageId, token),
         "MarkOutgoingAcknowledgedAsync" => journal.MarkOutgoingAcknowledgedAsync(AnyMessageId, AnyMessage.ContentSha256, token),
+        "MarkOutgoingAbandonedAsync" => journal.MarkOutgoingAbandonedAsync(
+            AnyMessageId,
+            AnyMessage.ContentSha256,
+            "MESSAGE_ID_CONTENT_CONFLICT",
+            token),
         "ReadUnacknowledgedOutgoingAsync" => journal.ReadUnacknowledgedOutgoingAsync(token),
         "ReadAppliedJourneySnapshotsAsync" => journal.ReadAppliedJourneySnapshotsAsync(token),
         "SaveAppliedJourneySnapshotAsync" => journal.SaveAppliedJourneySnapshotAsync(
