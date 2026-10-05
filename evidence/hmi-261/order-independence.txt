@@ -1,0 +1,27 @@
+# hmi#261：修复前（去掉 SqliteProviderAssemblyFixture），两个用到 SQLite 的测试类逐个用例各自独立进程单跑；记 dotnet test 退出码
+JournalAbandonedOutboxTests.AGivenUpRowIsNoLongerOwedAndKeepsItsContent exit=0 Passed!  - Failed:     0, Passed:     1
+JournalAbandonedOutboxTests.AGivenUpRowKeepsItsFirstReason exit=0 Passed!  - Failed:     0, Passed:     1
+JournalAbandonedOutboxTests.AnAcknowledgedRowGivenUpStaysAcknowledged exit=0 Passed!  - Failed:     0, Passed:     1
+JournalAbandonedOutboxTests.GivingUpARowThatIsNotOnFileIsRefused exit=0 Passed!  - Failed:     0, Passed:     1
+JournalAbandonedOutboxTests.AJournalFromBeforeTheMarkIsReadAndThenGainsIt exit=1 Failed!  - Failed:     1, Passed:     0
+JournalAbandonedOutboxTests.ABuildWithoutTheMarkReadsAGivenUpRowAsOwed exit=0 Passed!  - Failed:     0, Passed:     1
+JournalSqliteFailureTests.EveryMemberReportsAFileThatIsNotADatabaseAsIOException exit=0 Passed!  - Failed:     0, Passed:    14
+JournalSqliteFailureTests.AWriteToAReadOnlyJournalIsReportedAsIOException exit=0 Passed!  - Failed:     0, Passed:     1
+JournalSqliteFailureTests.AMessageIdConflictOnTheOutboxStaysABusinessConflict exit=0 Passed!  - Failed:     0, Passed:     1
+JournalSqliteFailureTests.EveryMemberThatTakesTheJournalLockConvertsSqliteFailures exit=0 Passed!  - Failed:     0, Passed:     1
+
+# 修复后，同样逐个单跑
+JournalAbandonedOutboxTests.AGivenUpRowIsNoLongerOwedAndKeepsItsContent exit=0 Passed!  - Failed:     0, Passed:     1
+JournalAbandonedOutboxTests.AGivenUpRowKeepsItsFirstReason exit=0 Passed!  - Failed:     0, Passed:     1
+JournalAbandonedOutboxTests.AnAcknowledgedRowGivenUpStaysAcknowledged exit=0 Passed!  - Failed:     0, Passed:     1
+JournalAbandonedOutboxTests.GivingUpARowThatIsNotOnFileIsRefused exit=0 Passed!  - Failed:     0, Passed:     1
+JournalAbandonedOutboxTests.AJournalFromBeforeTheMarkIsReadAndThenGainsIt exit=0 Passed!  - Failed:     0, Passed:     1
+JournalAbandonedOutboxTests.ABuildWithoutTheMarkReadsAGivenUpRowAsOwed exit=0 Passed!  - Failed:     0, Passed:     1
+JournalSqliteFailureTests.EveryMemberReportsAFileThatIsNotADatabaseAsIOException exit=0 Passed!  - Failed:     0, Passed:    14
+JournalSqliteFailureTests.AWriteToAReadOnlyJournalIsReportedAsIOException exit=0 Passed!  - Failed:     0, Passed:     1
+JournalSqliteFailureTests.AMessageIdConflictOnTheOutboxStaysABusinessConflict exit=0 Passed!  - Failed:     0, Passed:     1
+JournalSqliteFailureTests.EveryMemberThatTakesTheJournalLockConvertsSqliteFailures exit=0 Passed!  - Failed:     0, Passed:     1
+
+# 修复后单测全量（基于 0d857753，不含 hmi#255 的用例）
+unit full exit=0
+Passed!  - Failed:     0, Passed:   704, Skipped:     0, Total:   704, Duration: 19 s - SQCD.Agv.UnitTests.dll (net8.0)
