@@ -2697,15 +2697,35 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             WireToGateDurableMessage? existingResult = await _session.Journal
                 .ReadOutgoingByDeduplicationKeyAsync(recoveryResultKey, cancellationToken)
                 .ConfigureAwait(false);
+            if (existingResult is { Abandoned: true })
+            {
+                // Its result was refused for good and given up (onboard-hmi#254), so the server's resume waits for an
+                // answer that will never come: its session stays EXECUTING, which refuses a second action and a new
+                // session. The vehicle never acks a command, so the server sends this one again on every reconnect,
+                // and this is where it is answered: refused, correlated to the command, which the server takes as the
+                // resume's end and closes the session on (control-server ObserveCommandRejectedAsync, #187), leaving
+                // the demand and the operation where the failed resume left them, for a new session. Nothing is run
+                // and the result is not resent. SLOT_OPERATION_CONFLICT, MANUAL_REVIEW: the two ends disagree on how
+                // this operation ended; the server does not read the code (review of PR #258).
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    $"收到SlotOperationResumeCommand，但这次恢复的结果已被服务端拒收并放弃，回复拒绝以结束这次恢复，未执行仓门IO：attempt={command.SlotOperationAttemptId}，messageId={command.MessageId}，reason={existingResult.AbandonedReasonCode}。");
+                PublishOperatorEvent(
+                    $"recovery-result-replay:{command.RecoveryActionId}",
+                    "OPERATION_REPLAY",
+                    "恢复结果已被服务端拒收并放弃，不会重放，也未再次执行仓门IO；已回复服务端结束这次恢复，请管理员核对后重新发起恢复。");
+                await SendResumeRejectedAsync(command, "SLOT_OPERATION_CONFLICT", cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+
             if (existingResult is not null)
             {
                 PublishOperatorEvent(
                     $"recovery-result-replay:{command.RecoveryActionId}",
                     "OPERATION_REPLAY",
-                    existingResult.Abandoned
-                        // Given up (onboard-hmi#254): it is never sent again, so "replayed" would be untrue (review N3).
-                        ? "恢复结果已被服务端拒收并放弃，不会重放，也未再次执行仓门IO；请维护人员核对。"
-                        : "恢复结果已存在，保持原恢复结果重放，未再次执行仓门IO。");
+                    "恢复结果已存在，保持原恢复结果重放，未再次执行仓门IO。");
                 return;
             }
 

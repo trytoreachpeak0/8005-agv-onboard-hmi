@@ -27,7 +27,9 @@ public sealed partial class MultiDemandJourneyG2Tests
     public async Task ARefusedSafetyChangeIsGivenUpAndTheServersSnapshotRequestIsAnswered()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
-        FakeIoModuleClient io = new() { KeepSnapshotFresh = true };
+        // Not kept fresh: a snapshot restamped on every read starts the next safety pass by itself, which hid whether
+        // the refusal's own request for one is what sends the present reading (review of PR #258, R10).
+        FakeIoModuleClient io = new() { KeepSnapshotFresh = false };
         await using Harness harness = await Harness.StartAsync(
             server =>
             {
@@ -53,6 +55,11 @@ public sealed partial class MultiDemandJourneyG2Tests
         harness.Server.ProtocolProblemByMessageType = new Dictionary<string, string>(StringComparer.Ordinal);
         var refused = RefusalSafetyChangesOn(harness, connection)[changesBefore];
         long refusedVersion = SafetyStateVersionOf(refused.WireLine);
+        // Worded for this code: the server kept another reading under this version (review of PR #258, R4s).
+        Assert.Contains(
+            harness.Events,
+            item => item.Kind == "DURABLE_MESSAGE_ABANDONED"
+                && item.Message.Contains("同一安全状态版本号下已收下另一份内容", StringComparison.Ordinal));
 
         // The present reading goes out as a change of its own, above the given-up version: never the refused one again.
         await harness.WaitUntilAsync(

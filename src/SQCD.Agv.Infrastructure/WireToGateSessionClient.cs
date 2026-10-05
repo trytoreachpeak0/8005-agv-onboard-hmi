@@ -1833,9 +1833,12 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 }
                 catch (InvalidDataException)
                 {
-                    // About this row alone -- refused, or given up as a content conflict and reported (onboard-hmi#254)
-                    // -- so the rows after it still go out. Until the review of PR #258 a row given up here ended the
-                    // whole pass, and the rows behind it waited for the next handshake.
+                    // A refusal answered to this row: given up as a content conflict and reported (onboard-hmi#254), or
+                    // any other ProtocolProblem or answer that does not check out, which leaves the row owed. The rows
+                    // after it still go out. That includes a refusal about the session rather than the row -- a
+                    // credential, the agv id -- in which case they are likely refused too, each staying owed for the
+                    // next handshake as before: a few sends wasted, nothing lost. Until the review of PR #258 a row given
+                    // up here ended the whole pass, and the rows behind it waited for the next handshake.
                 }
             }
         }

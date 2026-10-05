@@ -85,7 +85,8 @@ public sealed partial class WireToGateBusinessService
     /// What a refusal says happened at the server, and where a person checks it -- per code, because they do not all
     /// mean that the server kept something (review of PR #258, S1). The server's reasons: <c>WireToGateStore</c>
     /// <c>CaptureFirstResponseAsync</c> (messageId), <c>ApplyOperationResultAsync</c> and the recovery coordinator
-    /// (business id, including a result whose identity does not match the operation on file),
+    /// (business id, including a result whose identity does not match the operation on file, and an unload whose
+    /// transport demand already has another completion on file),
     /// <c>ApplyRevision</c> (snapshot revision) and <c>RequireResumeAuthorizationAsync</c> (resume scope, nothing kept).
     /// </summary>
     private static (string What, string WhereToLook) DescribeRefusal(string reasonCode) => reasonCode switch
@@ -95,7 +96,8 @@ public sealed partial class WireToGateBusinessService
             "服务端收下的那一份不随拒绝回传，请在服务端收件箱按同一messageId查看。"),
         "BUSINESS_ID_CONTENT_CONFLICT" => (
             "服务端对同一业务号已有另一份记录，或这条报文与服务端登记的操作身份不符，两端不一致。",
-            "请在服务端按报文里的业务号（需求、仓位操作attempt、恢复工作流或结果号）查看它登记的记录。"),
+            "请在服务端按报文里的业务号（需求、仓位操作attempt、恢复工作流或结果号）查看它登记的记录；"
+            + "卸货结果还要查同一运输需求（TransportDemandKey）是否已有另一份完成记录。"),
         "SNAPSHOT_REVISION_CONTENT_CONFLICT" => (
             "服务端在同一安全状态版本号下已收下另一份内容。",
             "本车已跳过该版本并改报此刻读数；请在服务端查看本会话的安全状态版本。"),

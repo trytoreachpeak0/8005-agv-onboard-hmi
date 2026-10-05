@@ -1,4 +1,5 @@
 using System.Text.Json;
+using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
 using Xunit;
@@ -161,5 +162,23 @@ public sealed partial class StationDeadlineExpiredG2Tests
         using JsonDocument report = JsonDocument.Parse(harness.Server.ReceivedEnvelopes
             .Last(item => item.MessageType == "RecoveryStateReport").WireLine);
         Assert.Equal(0, report.RootElement.GetProperty("payload").GetProperty("pendingResults").GetArrayLength());
+
+        // Sent again by its key, the row is refused here, not answered as done (review of PR #258, R9): what made it
+        // "done" was the old server's ack, and the server now refuses that content. Before onboard-hmi#254 an
+        // acknowledged row returned at once.
+        string agvId = JsonDocument.Parse(row.WireLine).RootElement.GetProperty("agvId").GetString()!;
+        WireToGateOperationResultPayload payload = WireToGateProtocolSerializer
+            .DeserializePayload<WireToGateOperationResultPayload>(
+                WireToGateProtocolSerializer.DeserializeAndValidate(row.WireLine.TrimEnd('\r', '\n'), agvId));
+        InvalidDataException connected = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            harness.Client.SendRecoveryOperationResultAsync($"operation-result:{AttemptId}", row.MessageId, payload, token));
+        Assert.Equal("DURABLE_MESSAGE_ABANDONED", connected.Message);
+        // And with no session to send on, it is refused the same way, not taken as "on file, the next handshake sends
+        // it" (WIRE_TO_GATE_NOT_READY), which a row given up never is (review of PR #258, R8).
+        await harness.Client.DisconnectAsync();
+        InvalidDataException offline = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            harness.Client.SendRecoveryOperationResultAsync($"operation-result:{AttemptId}", row.MessageId, payload, token));
+        Assert.Equal("DURABLE_MESSAGE_ABANDONED", offline.Message);
+        Assert.Equal(sent, harness.Server.ReceivedEnvelopes.Count(item => item.MessageType == "OperationResult"));
     }
 }
