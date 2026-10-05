@@ -1,0 +1,2 @@
+# 产品代码为本分支修复版；恢复相关定向 G2（非全量）
+Passed!  - Failed:     0, Passed:   200, Skipped:     0, Total:   200, Duration: 1 m 52 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
