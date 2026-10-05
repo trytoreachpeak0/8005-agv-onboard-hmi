@@ -1,0 +1,3 @@
+# 第二轮：产品代码为本分支修复版（v3）
+Passed!  - Failed:     0, Passed:   845, Skipped:     0, Total:   845 - SQCD.Agv.UnitTests.dll（单测全量，本轮在 v3 修复版上跑出）
+Passed!  - Failed:     0, Passed:   239, Skipped:     0, Total:   239 - SQCD.Agv.WireToGateG2Tests.dll（恢复相关定向 G2，非全量）
