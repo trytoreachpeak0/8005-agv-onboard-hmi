@@ -39,6 +39,24 @@ public sealed class ReasonCodeRegistryArchitectureTests
     /// </summary>
     private const string ProtocolErrorCodePredicate = "IsProtocolErrorCode";
 
+    /// <summary>
+    /// Predicate whose whole purpose is "does this refusal give a durable message up rather than leave it owed"
+    /// (onboard-hmi#254): four MANUAL_REVIEW content conflict codes, pinned as a whitelist.
+    /// </summary>
+    private const string AbandonableCodePredicate = "IsAbandonableContentConflictCode";
+
+    /// <summary>
+    /// The coordinator's whitelist after the review of PR #258 (N5): the MANUAL_REVIEW codes about one message's
+    /// content. A session or identity code here would give a whole outbox up -- results owed to MES among them.
+    /// </summary>
+    private static readonly string[] AbandonableContentConflictCodes =
+    [
+        "BUSINESS_ID_CONTENT_CONFLICT",
+        "MESSAGE_ID_CONTENT_CONFLICT",
+        "RECOVERY_SCOPE_MISMATCH",
+        "SNAPSHOT_REVISION_CONTENT_CONFLICT"
+    ];
+
     /// <summary>Returns the slot precondition reason code, or null.</summary>
     private const string SlotPreconditionMethod = "ValidateBeforeOperation";
 
@@ -259,6 +277,50 @@ public sealed class ReasonCodeRegistryArchitectureTests
             $"'{ProtocolErrorCodePredicate}' is a second copy of the error-code registry and has drifted."
             + $"{Environment.NewLine}Listed inline but absent from the registry: {FormatCodes(notInRegistry)}"
             + $"{Environment.NewLine}In the registry but not listed inline: {FormatCodes(notInline)}");
+    }
+
+    /// <summary>
+    /// The inline predicate that decides whether a refused durable message is given up rather than replayed
+    /// (onboard-hmi#254) lists exactly the whitelist, and every code on it is MANUAL_REVIEW in the vendored registry.
+    /// A code added inline without being added here fails, and so does a code the registry stops calling MANUAL_REVIEW:
+    /// giving a message up is only right for a refusal the protocol says not to retry.
+    /// </summary>
+    [Fact]
+    public void InlineAbandonableCodeSetIsTheWhitelistAndAllManualReview()
+    {
+        string repositoryRoot = FindRepositoryRoot();
+        string registryPath = Path.Combine(
+            repositoryRoot,
+            RegistryRelativePath.Replace('/', Path.DirectorySeparatorChar));
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(registryPath));
+        HashSet<string> manualReview = document.RootElement.GetProperty("codes")
+            .EnumerateArray()
+            .Where(entry => entry.GetProperty("retryDisposition").GetString() == "MANUAL_REVIEW")
+            .Select(entry => entry.GetProperty("code").GetString()!)
+            .ToHashSet(StringComparer.Ordinal);
+
+        string source = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "SQCD.Agv.Infrastructure",
+            "WireToGateSessionClient.cs"));
+        string body = ExtractExpressionBody(source, AbandonableCodePredicate);
+        Assert.False(
+            string.IsNullOrEmpty(body),
+            $"'{AbandonableCodePredicate}' no longer exists in WireToGateSessionClient.cs. "
+            + "This gate anchors on it; update the anchor rather than deleting the check.");
+        string[] inline = StringLiteralRegex
+            .Matches(body)
+            .Select(match => match.Groups["code"].Value)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.Equal(AbandonableContentConflictCodes, inline);
+        string[] notManualReview = inline.Where(code => !manualReview.Contains(code)).ToArray();
+        Assert.True(
+            notManualReview.Length == 0,
+            $"Given up on refusal but not MANUAL_REVIEW in the registry: {FormatCodes(notManualReview)}");
     }
 
     /// <summary>

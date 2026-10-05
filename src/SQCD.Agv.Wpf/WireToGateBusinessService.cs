@@ -847,6 +847,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         _session.ServerCommandReceived += OnServerCommandReceived;
         _session.StateChanged += OnSessionStateChanged;
         _session.JourneyChanged += OnJourneyChanged;
+        _session.DurableMessageAbandoned += OnDurableMessageAbandoned;
         _ioModule.SnapshotChanged += OnIoSnapshotChanged;
         if (_observableVehicleSafetySignalProvider is not null)
         {
@@ -873,6 +874,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _session.ServerCommandReceived -= OnServerCommandReceived;
             _session.StateChanged -= OnSessionStateChanged;
             _session.JourneyChanged -= OnJourneyChanged;
+            _session.DurableMessageAbandoned -= OnDurableMessageAbandoned;
             _ioModule.SnapshotChanged -= OnIoSnapshotChanged;
             if (_observableVehicleSafetySignalProvider is not null)
             {
@@ -1750,9 +1752,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 // FAILED and UNKNOWN stay unfinished until an administrator recovers them. One the server has not
                 // acknowledged yet is still sent once more, as below: it is what the server waits for to reconcile
                 // the session, and one put on file mid-handshake missed that handshake's replay (onboard-hmi#127).
-                if (!IsCompletedOperationResult(sent))
+                //
+                // A result the server refused for good is unfinished whatever it says (onboard-hmi#254): the server
+                // holds another conclusion for this attempt, and the two are reconciled by an administrator through the
+                // recovery entry, never by sending this one again.
+                if (!IsCompletedOperationResult(sent) || sent.Abandoned)
                 {
-                    if (!sent.Acknowledged)
+                    if (!sent.Acknowledged && !sent.Abandoned)
                     {
                         _ = await TryResendUnacknowledgedResultAsync(context, resultKey, cancellationToken)
                             .ConfigureAwait(false);
@@ -1874,6 +1880,17 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         finalStage,
                         guidance,
                         _clock.Now.ToUniversalTime()));
+            }
+            catch (InvalidDataException exception) when (WasGivenUp(attemptId))
+            {
+                // Refused for good and given up (onboard-hmi#254): settled nothing, so it is not taken over. The caller
+                // puts the recovery entry up as for any attempt left unsettled.
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    $"中断操作的结算结果被服务端拒收并已放弃，转由管理员恢复：attempt={attemptId}，reason={exception.Message}。",
+                    exception);
+                return InterruptedOperationSettlement.NotSettled;
             }
             catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
             {
@@ -2004,6 +2021,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 _lastSafetySignature = _pendingSafetyChange.Signature;
                 _pendingSafetyChange = null;
             }
+
+            // Refused for good and given up (onboard-hmi#254): never resent, its version skipped.
+            ForgetAbandonedSafetyChange();
             // 换代必须重新全量上报一次安全快照（ADR-cross-0022「连接时全量同步，变化时可靠增量」
             // 的前半句，它在重连时同样适用）。签名去重是进程内状态而会话不是：服务端重启后新会话
             // 手上没有上一代的快照，车载端进程没重启、签名照旧，那份快照就永远不会重发，服务端的
@@ -2089,6 +2109,24 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
         }
+        catch (Exception exception) when (ForgetAbandonedSafetyChange())
+        {
+            // The server refused this change for good and the session client gave it up (onboard-hmi#254). Nothing to
+            // disconnect for: the connection is fine, the server asks for a fresh snapshot (control-server#478), and the
+            // present reading goes out next as a change of its own.
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                "SafetyStateChanged被服务端拒收并已放弃；不断开会话，改报此刻读数。",
+                exception);
+            // The next pass is what sends the present reading. In the App another is never far off: the Modbus client
+            // publishes a snapshot on every poll, changed or not (every 100 ms by default, IoModuleSettings.PollIntervalMs),
+            // and each one asks for a pass, twice over -- OnIoSnapshotChanged and the controller's StateChanged
+            // (RefreshSafetyAfterFatalFaultLatchChange). So this request is close to redundant there, and the G2 fixture,
+            // wired the same way, keeps it alive under mutation for the same reason (review of PR #258, R10). It stays for
+            // a vehicle whose IO has stopped publishing, where nothing else would send the reading.
+            _ = Task.Run(RequestSafetyStateChange, CancellationToken.None);
+        }
         catch (Exception exception)
         {
             // 这一份所在的连接已经不在了（被关掉，或已换成下一条）：失败属于那条连接，没有东西可断——关掉它的那一方
@@ -2170,6 +2208,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 _lastSafetySignature = _pendingSafetyChange.Signature;
                 _pendingSafetyChange = null;
             }
+
+            // A change refused for good is not waiting to be resent (onboard-hmi#254). Kept, it left this request -- the
+            // one the server makes after refusing a safety message -- unanswered for as long as it stayed.
+            ForgetAbandonedSafetyChange();
 
             // A change still unacknowledged is waiting to be resent, under its own version and content, on
             // the session its failure is tearing down. A snapshot with a higher version now would make that
@@ -2579,6 +2621,18 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return;
             }
 
+            // Its result was refused for good and given up (onboard-hmi#254), and no rejection of it is on file -- the
+            // one sent when the result was given up never reached the outbox. The server's resume waits for an answer
+            // that will never come, so this command is answered with one, as it would have been then. Ahead of the
+            // gate, as the decline above is: the rejection opens nothing, and the gate would refuse this command under
+            // another reason and another text -- the session is already forgotten, and a resume sent at
+            // ACTIVE_UNLOCK_SET no longer matches the SAFE_FINISH_REACHED its run left on file (review of PR #258, S-3).
+            if (await ResultIsGivenUpAsync(recoveryResultKey, cancellationToken).ConfigureAwait(false))
+            {
+                await RefuseResumeWhoseResultWasGivenUpAsync(command, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
             state = await _session.Journal
                 .ReadRecoveryStateAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -2661,6 +2715,14 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             WireToGateDurableMessage? existingResult = await _session.Journal
                 .ReadOutgoingByDeduplicationKeyAsync(recoveryResultKey, cancellationToken)
                 .ConfigureAwait(false);
+            if (existingResult is { Abandoned: true })
+            {
+                // The check ahead of the gate read nothing given up -- its read failed, and this one did not -- so it is
+                // caught here instead of being taken for a result to replay (review of PR #258, detail 2).
+                await RefuseResumeWhoseResultWasGivenUpAsync(command, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
             if (existingResult is not null)
             {
                 PublishOperatorEvent(
@@ -2875,6 +2937,38 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         break;
                     }
 
+                    if (await ResultIsGivenUpAsync(recoveryResultKey, cancellationToken).ConfigureAwait(false))
+                    {
+                        // Refused for good and given up (onboard-hmi#254) -- by the send above, by the resend just now,
+                        // or by an earlier run, whose row a send now refuses before it goes out. Nothing will
+                        // acknowledge it, so the operator is not told to wait for one (review of PR #258, S2).
+                        // The server's session stays EXECUTING with RESUME selected and its workflow AwaitingResult,
+                        // which refuses a second action -- a forced recovery included -- and a new session; only an
+                        // answer to the resume closes it. So it is answered now, with the command at hand: refused,
+                        // correlated to it, which the server closes the session on (ObserveCommandRejectedAsync,
+                        // control-server#187). Waiting for the server to send the command again would wait for a
+                        // reconnect, and since control-server#479 a refusal keeps the connection (review of PR #258,
+                        // S-1). The rejection is on file before it is sent: a link that drops replays it with the
+                        // outbox, and a resend of the command finds it and sends it again. One that never reached the
+                        // outbox, written twice, is answered when the command comes again, ahead of the gate -- after a
+                        // reconnect, since nothing else sends the command again; the operator is told so. A vehicle that
+                        // never comes back answers nothing; that way out is control-server#483.
+                        _logger.Write(
+                            LogSeverity.Error,
+                            nameof(WireToGateBusinessService),
+                            $"恢复后的OperationResult被服务端拒收并已放弃，不再等待确认：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。回复这条续作命令的拒绝，通知服务端结束这次恢复；车在线时服务端据此关掉恢复会话，车机永久离线时没有出口（见 control-server#483），请联系调度处理。",
+                            exception);
+                        bool answered = await AnswerResumeWhoseResultWasGivenUpAsync(command, cancellationToken)
+                            .ConfigureAwait(false);
+                        PublishOperatorEvent(
+                            $"recovery-result-abandoned:{command.RecoveryActionId}",
+                            "OPERATION_RECOVERY_REQUIRED",
+                            "恢复后的原操作结果被服务端拒收并已放弃，不会再等待确认，也不会重复执行仓门IO；"
+                            + (answered ? ResumeEndedText : ResumeNotEndedText)
+                            + "两端结论不一致，请维护人员核对。");
+                        return;
+                    }
+
                     _logger.Write(
                         LogSeverity.Warning,
                         nameof(WireToGateBusinessService),
@@ -2961,6 +3055,24 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 nameof(WireToGateBusinessService),
                 $"恢复OperationResult已在发件箱，当前会话重发一次仍未收到DurableAck：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。",
                 exception);
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// Whether the outbox row under <paramref name="key"/> was given up as a content conflict (onboard-hmi#254); false when
+    /// there is none or the journal cannot say.
+    /// </summary>
+    private async Task<bool> ResultIsGivenUpAsync(string key, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return (await _session.Journal
+                    .ReadOutgoingByDeduplicationKeyAsync(key, cancellationToken)
+                    .ConfigureAwait(false))?.Abandoned == true;
+        }
+        catch (IOException)
+        {
             return false;
         }
     }
@@ -3174,11 +3286,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _logger.Write(
                 LogSeverity.Information,
                 nameof(WireToGateBusinessService),
-                $"忽略重复SlotOperationCommand：attempt={command.SlotOperationAttemptId}，保留原OperationResult重放。");
+                existingResult.Abandoned
+                    ? $"忽略重复SlotOperationCommand：attempt={command.SlotOperationAttemptId}，原OperationResult已被服务端拒收并放弃，不重放。"
+                    : $"忽略重复SlotOperationCommand：attempt={command.SlotOperationAttemptId}，保留原OperationResult重放。");
             PublishOperatorEvent(
                 $"operation-replay:{command.SlotOperationAttemptId}",
                 "OPERATION_REPLAY",
-                "收到重复仓位命令，已保持原结果重放，未再次执行仓门IO。");
+                existingResult.Abandoned
+                    // Given up (onboard-hmi#254): it is never sent again, so "replayed" would be untrue (review N3).
+                    ? "收到重复仓位命令；这次操作的结果已被服务端拒收并放弃，不会重放，也未再次执行仓门IO，请维护人员核对。"
+                    : "收到重复仓位命令，已保持原结果重放，未再次执行仓门IO。");
             return;
         }
 
@@ -3425,6 +3542,20 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                             completedSuccessfully ? "操作完成。" : "操作需要管理员恢复。",
                             execution.ObservedAt)
                         : null);
+            }
+            catch (InvalidDataException exception) when (WasGivenUp(command.SlotOperationAttemptId))
+            {
+                // Refused for good and given up (onboard-hmi#254); the operator was told by OnDurableMessageAbandoned. Not
+                // pending: nothing will acknowledge it. The server holds another conclusion for this attempt, and the
+                // restore below finds the given-up result and puts the recovery entry up -- the way the two are
+                // reconciled. Before onboard-hmi#254 this refusal escaped this method, and no entry was put up.
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    $"OperationResult被服务端拒收并已放弃，转由管理员恢复：attempt={command.SlotOperationAttemptId}，reason={exception.Message}。",
+                    exception);
+                resultUnacknowledged = true;
+                MarkConcludedHere(command.SlotOperationAttemptId);
             }
             catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
             {
@@ -4026,6 +4157,104 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     : null,
             $"恢复会话已关闭，但清除本地恢复会话记录失败：session={exceptionRecoverySessionId}。",
             cancellationToken);
+
+    /// <summary>What the operator is told once the rejection that ends the recovery is on file.</summary>
+    private const string ResumeEndedText = "已通知服务端结束这次恢复，可重新申请恢复。";
+
+    /// <summary>What the operator is told when it could not be written: only a reconnect brings the command back.</summary>
+    private const string ResumeNotEndedText =
+        "未能通知服务端结束这次恢复，需重新连接（或重启车载程序）后才会结束，期间申请恢复会被拒。";
+
+    /// <summary>
+    /// Refuses a resume command whose replacement result was given up (onboard-hmi#254) -- one that comes again with no
+    /// rejection of it on file -- and tells the operator whether the server has been told.
+    /// </summary>
+    private async Task RefuseResumeWhoseResultWasGivenUpAsync(
+        WireToGateSlotOperationResumeCommand command,
+        CancellationToken cancellationToken)
+    {
+        _logger.Write(
+            LogSeverity.Warning,
+            nameof(WireToGateBusinessService),
+            $"收到SlotOperationResumeCommand，但这次恢复的结果已被服务端拒收并放弃，回复拒绝以结束这次恢复，未执行仓门IO：attempt={command.SlotOperationAttemptId}，messageId={command.MessageId}。");
+        bool answered = await AnswerResumeWhoseResultWasGivenUpAsync(command, cancellationToken).ConfigureAwait(false);
+        // Keyed by the outcome too: a send of the command that could not be answered, followed by one that was, must
+        // tell the operator the second time as well, and the deduplicator keeps a key for the whole session.
+        PublishOperatorEvent(
+            $"resume-command:{command.MessageId}:{(answered ? "ended" : "not-ended")}",
+            "RECOVERY_BLOCKED",
+            "恢复结果已被服务端拒收并放弃，不会重放，也未再次执行仓门IO；"
+            + (answered ? ResumeEndedText : ResumeNotEndedText));
+    }
+
+    /// <summary>
+    /// Answers a resume whose replacement result was refused for good and given up (onboard-hmi#254): refused with
+    /// <c>SLOT_OPERATION_CONFLICT</c>, correlated to the command, which the server closes the recovery session on
+    /// (control-server <c>ObserveCommandRejectedAsync</c>, #187) without reading the code. The two ends disagree on how
+    /// the operation ended, which is what that code says, and it is MANUAL_REVIEW. True once the rejection is on file.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// On file is what counts, not acknowledged: a rejection on file that the link lost is replayed with the outbox, and a
+    /// resend of the command finds it. One that did not reach the outbox is written once more (review of PR #258, item 2):
+    /// on a link that stays up nothing else would bring the command back. Failing twice, the server hears of it only when
+    /// it sends the command again, which it does in a reconnect's handshake -- so the caller tells the operator that.
+    /// </para>
+    /// <para>
+    /// A failure is logged here and not thrown: thrown from the resume path it would reach
+    /// <see cref="HandleBlockedResumeAsync"/>'s last catch, which refuses the same command again under another reason.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> AnswerResumeWhoseResultWasGivenUpAsync(
+        WireToGateSlotOperationResumeCommand command,
+        CancellationToken cancellationToken)
+    {
+        for (int attempt = 1; attempt <= 2; attempt++)
+        {
+            try
+            {
+                await SendResumeRejectedAsync(command, "SLOT_OPERATION_CONFLICT", cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception exception) when (
+                exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
+            {
+                _logger.Write(
+                    LogSeverity.Warning,
+                    nameof(WireToGateBusinessService),
+                    $"续作结果已放弃，回复续作命令的拒绝未完成：attempt={command.SlotOperationAttemptId}，messageId={command.MessageId}，第{attempt}次，reason={exception.Message}。",
+                    exception);
+            }
+
+            if (await ResumeRejectionIsOnFileAsync(command, cancellationToken).ConfigureAwait(false))
+            {
+                return true;
+            }
+        }
+
+        _logger.Write(
+            LogSeverity.Error,
+            nameof(WireToGateBusinessService),
+            $"续作结果已放弃，回复续作命令的拒绝两次都未能写入发件箱；服务端的恢复会话要等重新连接、服务端补发这条命令时才会结束：attempt={command.SlotOperationAttemptId}，messageId={command.MessageId}。");
+        return false;
+    }
+
+    /// <summary>Whether a rejection of this resume command is on file; false when the journal cannot say.</summary>
+    private async Task<bool> ResumeRejectionIsOnFileAsync(
+        WireToGateSlotOperationResumeCommand command,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _session.Journal
+                .ReadOutgoingByDeduplicationKeyAsync(ResumeRejectedKey(command), cancellationToken)
+                .ConfigureAwait(false) is not null;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+    }
 
     private static string ResumeRejectedKey(WireToGateSlotOperationResumeCommand command) =>
         $"slot-operation-resume-rejected:{command.SlotOperationAttemptId}:{command.MessageId}";

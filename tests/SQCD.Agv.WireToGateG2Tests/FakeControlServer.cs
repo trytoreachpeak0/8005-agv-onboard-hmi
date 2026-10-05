@@ -217,6 +217,35 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool AnswerOperationResultsWithProtocolProblem { get; set; }
 
     /// <summary>
+    /// Answers every message of a listed type with a <c>ProtocolProblem</c> carrying the listed reason code, correlated
+    /// to it, the connection left open and nothing of the message kept -- what the real server does since
+    /// control-server#478 when it refuses an inbound message (<c>OnboardMessageProcessor</c>'s inbound boundary).
+    /// Checked before every other handling of the type (onboard-hmi#254).
+    /// </summary>
+    public IReadOnlyDictionary<string, string> ProtocolProblemByMessageType { get; set; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Takes every message of a listed type and answers nothing, the connection left open: the vehicle's send times out
+    /// and its outbox row stays unacknowledged for the next handshake to replay (onboard-hmi#254).
+    /// </summary>
+    public IReadOnlySet<string> UnansweredMessageTypes { get; set; } = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// As <see cref="ProtocolProblemByMessageType"/>, for the one message whose messageId is listed: a test that refuses
+    /// a single row and lets every other message of its type through (onboard-hmi#254, review of PR #258).
+    /// </summary>
+    public IReadOnlyDictionary<string, string> ProtocolProblemByMessageId { get; set; } =
+        new Dictionary<string, string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The refusals <see cref="ProtocolProblemByMessageType"/> and <see cref="ProtocolProblemByMessageId"/> send name
+    /// another message as the one rejected, and are correlated to it: a <c>ProtocolProblem</c> that is not about the line
+    /// the vehicle just sent (onboard-hmi#254, review of PR #258, S3).
+    /// </summary>
+    public bool ProtocolProblemNamesAnotherMessage { get; set; }
+
+    /// <summary>
     /// Whether a mid-session <c>SafetyStateChanged</c> is answered at all. Off, it is taken and left unanswered with
     /// the connection open: the vehicle republishes its session state only once such a change is acknowledged, so
     /// this keeps every session state change after the handshake's readiness out of a test that must not lean on
@@ -1722,6 +1751,22 @@ public sealed class FakeControlServer : IAsyncDisposable
                     continue;
                 }
 
+                if (ProtocolProblemByMessageId.TryGetValue(messageId, out string? refusalCode)
+                    || ProtocolProblemByMessageType.TryGetValue(messageType, out refusalCode))
+                {
+                    await WriteEnvelopeAsync(context, CreateProtocolProblem(
+                        context,
+                        ProtocolProblemNamesAnotherMessage ? Guid.NewGuid().ToString("D") : messageId,
+                        messageType,
+                        refusalCode)).ConfigureAwait(false);
+                    continue;
+                }
+
+                if (UnansweredMessageTypes.Contains(messageType))
+                {
+                    continue;
+                }
+
                 if ((messageType == "LoadCompensationRequested"
                         && TryConsume(ref _loadCompensationRequestsToLose))
                     || (messageType == "LoadCorrectionRequested"
@@ -1814,12 +1859,15 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "OperationResult" when OperationResultAcksToDrop > 0:
                         OperationResultAcksToDrop--;
                         break;
+                    // A code the vehicle retries (AFTER_STATE_CHANGE). It was MESSAGE_ID_CONTENT_CONFLICT until onboard-hmi#254,
+                    // which made a MANUAL_REVIEW code give the result up instead of leaving it owed: a test of "refused, and
+                    // still owed" needs a code that is retried. Giving up is ProtocolProblemByMessageType's.
                     case "OperationResult" when AnswerOperationResultsWithProtocolProblem:
                         await WriteEnvelopeAsync(context, CreateProtocolProblem(
                             context,
                             messageId,
                             messageType,
-                            "MESSAGE_ID_CONTENT_CONFLICT")).ConfigureAwait(false);
+                            "ACTION_NOT_ALLOWED_IN_STATE")).ConfigureAwait(false);
                         break;
                     case "OperationResult":
                         if (DropBeforeOperationResultAck)

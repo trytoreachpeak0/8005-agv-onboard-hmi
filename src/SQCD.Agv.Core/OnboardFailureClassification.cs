@@ -198,6 +198,9 @@ public static class OnboardFailureClassification
         "BUSINESS_ID_CONTENT_CONFLICT",
         "CONTENT_HASH_MISMATCH",
         "CORRELATION_INVALID",
+        // A send of an outbox row the server refused for good earlier (onboard-hmi#254). The scan's own message never
+        // carries it -- each scan goes out under a new messageId, so its row cannot be one given up before.
+        "DURABLE_MESSAGE_ABANDONED",
         "DURABLE_OUTBOX_CONTENT_MISMATCH",
         "DURABLE_OUTBOX_MISSING",
         "DURABLE_OUTBOX_REBIND_CONFLICT",
