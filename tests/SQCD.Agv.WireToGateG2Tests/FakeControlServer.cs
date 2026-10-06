@@ -232,6 +232,16 @@ public sealed class FakeControlServer : IAsyncDisposable
     public IReadOnlySet<string> UnansweredMessageTypes { get; set; } = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>
+    /// With <see cref="ProtocolProblemByMessageType"/>, a refused recovery result's attempt is taken off the pending facts
+    /// as a settled one. Models what <c>BUSINESS_ID_CONTENT_CONFLICT</c> on a recovery result leaves at the real server:
+    /// the workflow already holds another first result (<c>OnboardRecoveryCoordinator.cs:204-207</c>), the operation is
+    /// committed or cancelled, and the handshake takes a reported attempt in that state off
+    /// (<c>WireToGateStore.TryTakeOffSettledReportedAttemptsAsync</c>) -- so the session can come up READY while the
+    /// vehicle still holds the refused vector (onboard-hmi#254 part 2).
+    /// </summary>
+    public bool RefusedRecoveryResultsWereReconciledByAnother { get; set; }
+
+    /// <summary>
     /// As <see cref="ProtocolProblemByMessageType"/>, for the one message whose messageId is listed: a test that refuses
     /// a single row and lets every other message of its type through (onboard-hmi#254, review of PR #258).
     /// </summary>
@@ -937,6 +947,14 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// double still accepts the change at once; only the vehicle hears of it late.
     /// </summary>
     public TimeSpan SafetyStateChangedAckDelay { get; set; }
+
+    /// <summary>
+    /// Writes the <c>DurableAck</c> of every <c>LoadCompensationResult</c> this much later, off the read loop, as
+    /// <see cref="OperationProgressAckDelay"/> does for progress; the result is reconciled at once as usual. Past the
+    /// vehicle's message timeout it is the late acknowledgement of onboard-hmi#250 reaching a recovery result: the session
+    /// stays up and no handshake replays anything (onboard-hmi#150).
+    /// </summary>
+    public TimeSpan LoadCompensationResultAckDelay { get; set; }
 
     private int _judgedRecoveryRequests;
 
@@ -1823,6 +1841,25 @@ public sealed class FakeControlServer : IAsyncDisposable
                         ProtocolProblemNamesAnotherMessage ? Guid.NewGuid().ToString("D") : messageId,
                         messageType,
                         refusalCode)).ConfigureAwait(false);
+                    if (RefusedRecoveryResultsWereReconciledByAnother
+                        && messageType is "LoadCancellationResult" or "LoadCompensationResult" or "LoadCorrectionResult"
+                            or "FaultCargoRecoveryResult" or "ForcedMechanicalRecoveryResult")
+                    {
+                        string? reconciledAttempt =
+                            root.GetProperty("payload").TryGetProperty("slotOperationAttemptId", out JsonElement attempt)
+                            && attempt.ValueKind == JsonValueKind.String
+                                ? attempt.GetString()
+                                : RecoveryVectorSlotOperationAttemptId;
+                        await ReconcileAsync(context, _ =>
+                        {
+                            if (reconciledAttempt is not null)
+                            {
+                                _settledAttempts.Add(reconciledAttempt);
+                                _operationsNeedingRecovery.Remove(reconciledAttempt);
+                            }
+                        }).ConfigureAwait(false);
+                    }
+
                     continue;
                 }
 
@@ -2023,7 +2060,15 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "LoadCancellationResult":
                     case "LoadCompensationResult":
                     case "FaultCargoRecoveryResult":
-                        await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        if (messageType == "LoadCompensationResult" && LoadCompensationResultAckDelay > TimeSpan.Zero)
+                        {
+                            DelayDurableAck(context, CreateDurableAck(context, root), LoadCompensationResultAckDelay);
+                        }
+                        else
+                        {
+                            await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        }
+
                         JsonElement recoveryPayload = root.GetProperty("payload");
                         if (messageType == "LoadCompensationResult")
                         {
