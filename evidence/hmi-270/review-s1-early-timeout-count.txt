@@ -1,0 +1,20 @@
+# onboard-hmi#270 审查 S1 的取红：超时计数取早了
+# 探针（本地，未提交）：在 AnAckArrivingAfterItsSendTimedOut… 与 ALateAckOfARowGivenUp… 里，扣住被测那条进度 Y 之前，
+# 先扣住前一条进度 X 的确认，2.5 秒后才放行（超过 X 自己 2 秒的超时）。
+# 旧顺序（283f99d）：超时计数在扣住 Y 之前取，X 的超时警告让「Y 已停止等待」提前成立，Y 的确认在 Y 还在等时放出，
+# 被当成普通确认，等满 1 分钟上限后红。新顺序：计数在 Y 到达替身之后取（执行器串行发进度，X 的警告必在 Y 发出之前写下），绿。
+## 旧顺序 + 探针
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAckArrivingAfterItsSendTimedOutIsTakenAndTheSessionGoesOn [1 m 6 s]
+   Within 00:01:00 of its ack being written, 5e02d87d-62c8-005a-9cce-1df12ee06e86 was neither settled as a late ack nor did the session end.
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALateAckOfARowGivenUpLeavesItGivenUpAndTheSessionGoesOn [1 m 6 s]
+   Within 00:01:00 of its ack being written, d667a3a6-82a3-db54-a6f9-1e24d4542bc7 was neither settled as a late ack nor did the session end.
+Total tests: 2
+     Failed: 2
+exit=1
+## 新顺序 + 探针
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAckArrivingAfterItsSendTimedOutIsTakenAndTheSessionGoesOn [6 s]
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALateAckOfARowGivenUpLeavesItGivenUpAndTheSessionGoesOn [6 s]
+Total tests: 2
+     Passed: 2
+exit=0
+# 探针删除后（文件与修正版逐字相同），同批 153 个用例 exit=0。
