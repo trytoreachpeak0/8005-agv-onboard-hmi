@@ -1,0 +1,29 @@
+[xUnit.net 00:00:09.56]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.OnlyTheCommandThatTakesTheExecutorBecomesTheCurrentOperationWhenBothArriveAtOnce [FAIL]
+  Error Message:
+   the queued command announced "准备执行装货：5号仓。" without the executor: [车载端正在启动。 | 正在连接仓门控制设备和任务系统。 | 准备执行装货：1号仓。 | 准备执行装货：5号仓。 | 正在检查1号仓的安全条件。 | 正在打开1号仓。 | 请在1号仓放入货物并关门。]
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.<>c__DisplayClass113_0.<OnlyTheCommandThatTakesTheExecutorBecomesTheCurrentOperationWhenBothArriveAtOnce>b__1() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.QueuedSlotCommandDisplay.cs:line 261
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AssertWhileAsync(TimeSpan window, Action assertion, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.QueuedSlotCommandDisplay.cs:line 366
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.OnlyTheCommandThatTakesTheExecutorBecomesTheCurrentOperationWhenBothArriveAtOnce() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.QueuedSlotCommandDisplay.cs:line 252
+[xUnit.net 00:00:19.50]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AQueuedSlotCommandLeavesTheCurrentOperationAndTheTargetHighlightOnTheRunningOne [FAIL]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+                                              ↓ (pos 35)
+Expected: "44444444-0000-4444-8444-00000000000a"
+Actual:   "44444444-0000-4444-8444-00000000000b"
+                                              ↑ (pos 35)
+[xUnit.net 00:00:29.84]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheRunningDemandsUnknownResultIsShownBeforeTheQueuedCommandTakesOver [FAIL]
+  Error Message:
+   "准备执行装货：5号仓。" was announced at 6, before "1号仓操作未完成，需要恢复处理。" at 8: [车载端正在启动。 | 正在连接仓门控制设备和任务系统。 | 准备执行装货：1号仓。 | 正在检查1号仓的安全条件。 | 正在打开1号仓。 | 请在1号仓放入货物并关门。 | 准备执行装货：5号仓。 | 正在处理1号仓。 | 1号仓操作未完成，需要恢复处理。 | 无法确认1号仓的门已关好，本车已拒收新的仓位命令，未打开任何仓门。请先确认1号仓的门已关好，关好后这条命令会自动重新执行。  | 正在检查5号仓的安全条件。 | 1号仓操作失败或状态未知，服务端已收到结果，等待管理员恢复。 | 正在打开5号仓。 | 请在5号仓放入货物并关门。]
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AssertAnnouncedInOrder(Harness harness, String first, String second) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.QueuedSlotCommandDisplay.cs:line 399
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheRunningDemandsUnknownResultIsShownBeforeTheQueuedCommandTakesOver() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.QueuedSlotCommandDisplay.cs:line 157
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheRunningDemandsUnknownResultIsShownBeforeTheQueuedCommandTakesOver() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.QueuedSlotCommandDisplay.cs:line 159
+[xUnit.net 00:00:52.37]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedDemandWhoseResultAckIsLostDoesNotTakeTheDisplayBackFromTheNextCommand [FAIL]
+  Error Message:
+   "准备执行装货：5号仓。" was announced at 3, before "1号仓操作未完成，需要恢复处理。" at 4: [车载端正在启动。 | 正在连接仓门控制设备和任务系统。 | 准备执行装货：1号仓。 | 准备执行装货：5号仓。 | 1号仓操作未完成，需要恢复处理。 | 正在检查5号仓的安全条件。 | 正在打开5号仓。 | 请在5号仓放入货物并关门。 | 操作已安全结束，但结果确认暂未收到；系统将保持同一结果重放，不会重复执行IO。 | 请在5号仓放入货物并关门。（第2次提示）]
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AssertAnnouncedInOrder(Harness harness, String first, String second) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.QueuedSlotCommandDisplay.cs:line 399
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedDemandWhoseResultAckIsLostDoesNotTakeTheDisplayBackFromTheNextCommand() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.QueuedSlotCommandDisplay.cs:line 222
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedDemandWhoseResultAckIsLostDoesNotTakeTheDisplayBackFromTheNextCommand() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.QueuedSlotCommandDisplay.cs:line 223
+Failed!  - Failed:     4, Passed:    84, Skipped:     0, Total:    88, Duration: 1 m 15 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

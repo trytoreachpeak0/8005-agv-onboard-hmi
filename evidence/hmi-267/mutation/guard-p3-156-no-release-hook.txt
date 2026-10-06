@@ -1,0 +1,15 @@
+[xUnit.net 00:00:13.99]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AShownRecoveryEntryIsNotShownAgainWhenTheDoorsComeFreeASecondTime [FAIL]
+  Error Message:
+   Timed out after 5s waiting for: A's recovery entry to reach the screen once B has finished with the display. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 617
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AShownRecoveryEntryIsNotShownAgainWhenTheDoorsComeFreeASecondTime() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 133
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AShownRecoveryEntryIsNotShownAgainWhenTheDoorsComeFreeASecondTime() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 163
+[xUnit.net 00:01:09.06]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryReachesTheOperatorOnceTheRunningCommandHasFinished [FAIL]
+  Error Message:
+   Timed out after 5s waiting for: A's recovery entry to reach the screen once B has finished with the display. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 617
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryReachesTheOperatorOnceTheRunningCommandHasFinished() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 76
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryReachesTheOperatorOnceTheRunningCommandHasFinished() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 103
+Failed!  - Failed:     2, Passed:    86, Skipped:     0, Total:    88, Duration: 1 m 27 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

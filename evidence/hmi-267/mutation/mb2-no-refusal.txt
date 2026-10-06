@@ -1,0 +1,8 @@
+[xUnit.net 00:00:12.15]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACommandOverAVectorWithNoResultYetIsRefused [FAIL]
+  Error Message:
+   Timed out after 5s waiting for: the command to be refused
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.RecoveryVectorHarness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.cs:line 1883
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACommandOverAVectorWithNoResultYetIsRefused() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.DoorNotProvenShut.cs:line 304
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACommandOverAVectorWithNoResultYetIsRefused() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.DoorNotProvenShut.cs:line 322
+Failed!  - Failed:     1, Passed:     3, Skipped:     0, Total:     4, Duration: 10 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
