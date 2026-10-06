@@ -69,15 +69,25 @@ public sealed partial class WireToGateBusinessService
                 .ReadOutgoingByDeduplicationKeyAsync(
                     WireToGateSessionClient.SlotFaultDeclarationResultKey(command.DeclarationId),
                     cancellationToken)
-                .ConfigureAwait(false) is not null)
+                .ConfigureAwait(false) is { } answered)
         {
+            // Unless that answer was refused for good and given up (onboard-hmi#254): it is not sent again, and the
+            // command is refused instead, which is how the server learns to close the declaration (onboard-hmi#266).
+            if (answered.Abandoned)
+            {
+                await RefuseDeclarationWithAbandonedAnswerAsync(command, cancellationToken).ConfigureAwait(false);
+                return;
+            }
+
             _logger.Write(
                 LogSeverity.Information,
                 nameof(WireToGateBusinessService),
                 $"收到重复的SlotFaultDeclarationCommand：declarationId={command.DeclarationId}，重发原应答，未再次中止或结算。");
             await SendSlotFaultDeclarationAnswerAsync(
                 command.DeclarationId,
-                () => _session.ResendSlotFaultDeclarationResultAsync(command.DeclarationId, cancellationToken))
+                command,
+                () => _session.ResendSlotFaultDeclarationResultAsync(command.DeclarationId, cancellationToken),
+                cancellationToken)
                 .ConfigureAwait(false);
             return;
         }
@@ -277,19 +287,58 @@ public sealed partial class WireToGateBusinessService
         CancellationToken cancellationToken) =>
         SendSlotFaultDeclarationAnswerAsync(
             command.DeclarationId,
+            command,
             () => _session.SendSlotFaultDeclarationResultAsync(
                 new SlotFaultDeclarationResultPayload(
                     command.DeclarationId,
                     command.SlotOperationAttemptId,
                     outcome,
                     problem),
-                cancellationToken));
+                cancellationToken),
+            cancellationToken);
 
-    private async Task SendSlotFaultDeclarationAnswerAsync(string declarationId, Func<Task<string>> send)
+    /// <summary>
+    /// Sends an answer and never throws for one that did not get through: a send that failed leaves the answer in the
+    /// outbox, and one the server refused for good leaves it given up (onboard-hmi#254). In the second case, when
+    /// <paramref name="command"/> is at hand, it is refused on the spot (onboard-hmi#266).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A refusal is caught only once the row is given up</b>, as the OperationResult sends catch theirs only for a
+    /// messageId given up: the first refusal arrives as the server's own code, a later send of the row as
+    /// <c>DURABLE_MESSAGE_ABANDONED</c>, and any other <see cref="InvalidDataException"/> still reaches the caller. Caught,
+    /// it no longer skips what follows an applied declaration -- the log line and the operator's notice: the declaration
+    /// is journaled and the run stopped whatever became of the answer.
+    /// </para>
+    /// <para>
+    /// <b>Refused on the spot, not on the next replay</b>: the server replays a pending declaration's command only when a
+    /// session starts, so a refusal left for the replay would keep the declaration pending, and the load's cancellation
+    /// blocked, until the next reconnect. Checked after every send, because an acknowledged answer replayed and refused
+    /// is given up without anything being thrown.
+    /// </para>
+    /// </remarks>
+    private async Task SendSlotFaultDeclarationAnswerAsync(
+        string declarationId,
+        WireToGateSlotFaultDeclarationCommand? command,
+        Func<Task<string>> send,
+        CancellationToken cancellationToken)
     {
         try
         {
             await send().ConfigureAwait(false);
+        }
+        catch (InvalidDataException exception)
+        {
+            if (!await IsSlotFaultDeclarationAnswerGivenUpAsync(declarationId, cancellationToken).ConfigureAwait(false))
+            {
+                throw;
+            }
+
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"SlotFaultDeclarationResult被服务端拒收并已放弃：declarationId={declarationId}，reason={exception.Message}。",
+                exception);
         }
         catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException
             or OperationCanceledException)
@@ -300,6 +349,63 @@ public sealed partial class WireToGateBusinessService
                 $"SlotFaultDeclarationResult暂未收到DurableAck：declarationId={declarationId}。",
                 exception);
         }
+
+        if (command is not null
+            && await IsSlotFaultDeclarationAnswerGivenUpAsync(declarationId, cancellationToken).ConfigureAwait(false))
+        {
+            await RefuseDeclarationWithAbandonedAnswerAsync(command, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<bool> IsSlotFaultDeclarationAnswerGivenUpAsync(
+        string declarationId,
+        CancellationToken cancellationToken) =>
+        await _session.Journal
+            .ReadOutgoingByDeduplicationKeyAsync(
+                WireToGateSessionClient.SlotFaultDeclarationResultKey(declarationId),
+                cancellationToken)
+            .ConfigureAwait(false) is { Abandoned: true };
+
+    /// <summary>
+    /// Refuses a declaration whose answer the server refused for good, with a <c>ProtocolProblem</c> correlated to the
+    /// command and <c>SLOT_OPERATION_CONFLICT</c>; the session is kept. A declaration still pending on the server is taken
+    /// as "the two sides disagree" and closed as <c>UNRECONCILED</c> (control-server#481); one it no longer holds as pending
+    /// -- answered already with other content -- is left as it is, so the log says only that the command was refused. Nothing here changes: the answer stays
+    /// given up, and the declaration, applied or not, stays as the journal has it (onboard-hmi#266).
+    /// </summary>
+    /// <remarks>
+    /// The same code onboard-hmi#254 refuses a resume with, on another message: that refusal is a durable
+    /// <c>SlotOperationCommandRejected</c>, this one a <c>ProtocolProblem</c>, which is not durable. A refusal that does
+    /// not get out -- the connection gone, an IO error -- is only logged: the declaration stays pending on the server,
+    /// whose next session replays the command, and that replay is refused again. The operator was told when the answer
+    /// was given up, so no notice of its own is published here.
+    /// </remarks>
+    private async Task RefuseDeclarationWithAbandonedAnswerAsync(
+        WireToGateSlotFaultDeclarationCommand command,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _session.RejectServerCommandAsync(command, "SLOT_OPERATION_CONFLICT", cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"判故障应答已被服务端拒收，但这条命令的回拒未能发出：declarationId={command.DeclarationId}，"
+                + $"command={command.MessageId}。服务端下次连接重放这条命令时再回。",
+                exception);
+            return;
+        }
+
+        _logger.Write(
+            LogSeverity.Error,
+            nameof(WireToGateBusinessService),
+            $"判故障应答已被服务端拒收，已回拒这条命令：declarationId={command.DeclarationId}，"
+            + $"attempt={command.SlotOperationAttemptId}，slot={command.SlotNo}，command={command.MessageId}，"
+            + "回SLOT_OPERATION_CONFLICT。应答不再重发，本车业务状态未改变，需人工核对两端的判定结论。");
     }
 
     /// <summary>
@@ -333,15 +439,18 @@ public sealed partial class WireToGateBusinessService
                     cancellationToken)
                 .ConfigureAwait(false) is null)
         {
+            // No command at hand to refuse: an answer given up here is refused when the server replays the command.
             await SendSlotFaultDeclarationAnswerAsync(
                 declaration.DeclarationId,
+                null,
                 () => _session.SendSlotFaultDeclarationResultAsync(
                     new SlotFaultDeclarationResultPayload(
                         declaration.DeclarationId,
                         declaration.SlotOperationAttemptId,
                         SlotFaultDeclarationApplied,
                         null),
-                    cancellationToken)).ConfigureAwait(false);
+                    cancellationToken),
+                cancellationToken).ConfigureAwait(false);
         }
 
         PublishOperatorEvent(

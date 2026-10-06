@@ -1,0 +1,11 @@
+M1b-refuse-once-per-command build exit=0
+M1b-refuse-once-per-command test exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALostRefusalIsGivenAgainWhenTheReplayComesBackAfterAReconnect [11 s]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayHandledAfterTheConnectionWentIsRefusedOnTheNextSession [10 s]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAnswerRefusedOnItsFirstSendIsGivenUpAndItsCommandRefusedOnTheSpotWhileTheDeclarationApplies [846 ms]
+Failed!  - Failed:     3, Passed:     2, Skipped:     0, Total:     5, Duration: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+M2M5-no-A-no-B build exit=0
+M2M5-no-A-no-B test exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedAnswerGivenUpLaterIsNeverResentAndTheReplayIsRefused [633 ms]
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+restored build exit=0
