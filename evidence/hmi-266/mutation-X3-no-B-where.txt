@@ -1,0 +1,7 @@
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedAnswerGivenUpLaterIsNeverResentAndTheReplayIsRefused [809 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.IO.InvalidDataException)
+     at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedAnswerGivenUpLaterIsNeverResentAndTheReplayIsRefused() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 158
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedAnswerGivenUpLaterIsNeverResentAndTheReplayIsRefused() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 161
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

@@ -1,0 +1,24 @@
+## review fixes, class run 1
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALateAckOfARowGivenUpLeavesItGivenUpAndTheSessionGoesOn [10 s]
+   Timed out after 10s waiting for: the late ack of 9869c561-b842-7f50-b5dd-a07cf558215e to be logged (Warning, 保持放弃)
+Failed!  - Failed:     1, Passed:    79, Skipped:     0, Total:    80, Duration: 1 m 45 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## review fixes, class run 2
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALateAckOfARowGivenUpLeavesItGivenUpAndTheSessionGoesOn [10 s]
+   Timed out after 10s waiting for: the late ack of d87089e2-9fcd-d259-a887-6b6248e2faab to be logged (Warning, 保持放弃)
+Failed!  - Failed:     1, Passed:    79, Skipped:     0, Total:    80, Duration: 1 m 53 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## control: previous head 1ccf854, same load
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAckArrivingAfterALoadCancellationAbortedItsSendIsTakenAndTheSessionGoesOn [14 s]
+   Timed out after 10s waiting for: the late ack of 4ba15d4b-0a05-635a-a2b6-2aef90dae8bc to be logged (Information, 现记为已确认)
+Failed!  - Failed:     1, Passed:    79, Skipped:     0, Total:    80, Duration: 2 m 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## ALateAckOfARowGivenUp alone, run 1
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## ALateAckOfARowGivenUp alone, run 2
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## ALateAckOfARowGivenUp alone, run 3
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## ALateAckOfARowGivenUp alone, run 4
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## ALateAckOfARowGivenUp alone, run 5
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+## ALateAckOfARowGivenUp alone, run 6
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

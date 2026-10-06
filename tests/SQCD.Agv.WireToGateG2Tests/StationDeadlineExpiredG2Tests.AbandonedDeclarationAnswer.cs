@@ -67,14 +67,22 @@ public sealed partial class StationDeadlineExpiredG2Tests
         await SendDeclarationCommandAsync(harness, replay);
         await WaitForDeclarationRefusalAsync(harness, replay, 1, token);
 
+        // Refused off the outbox mark, before any resend is tried (A): the resend path would log its intent first. Without
+        // A, B and the given-up catch still refuse the replay, and only this tells the two apart (review of PR #268).
+        Assert.DoesNotContain(
+            harness.Logger.Entries,
+            entry => entry.Message.StartsWith("收到重复的SlotFaultDeclarationCommand", StringComparison.Ordinal));
         AssertAnswerNotResentAndSessionKept(harness);
     }
 
     /// <summary>
-    /// 路径二：会话没就绪时。重放的命令到了、处理到读发件箱那一步时连接断了；改前走
-    /// <c>SendDurableCoreAsync</c> 的未就绪分支，以 <c>rebind:false</c> 存盘时抛 <c>DURABLE_MESSAGE_ABANDONED</c>，落进兜底。
-    /// 改后回拒发不出去只记日志；重连后服务端再重放，这一次回拒到达。
+    /// 路径二：会话没就绪时。重放的命令到了、处理到读发件箱那一步时连接断了。
     /// </summary>
+    /// <remarks>
+    /// 改前走 <c>SendDurableCoreAsync</c> 的未就绪分支，以 <c>rebind:false</c> 存盘时抛 <c>DURABLE_MESSAGE_ABANDONED</c>，落进兜底。
+    /// 改后走不到那一支：读到的那一行已放弃，A 直接回拒；连接已经不在，回拒发不出去，只记日志（D）。重连后服务端再重放，
+    /// 这一次回拒到达。所以这条用例测的是「A 拦下、回拒发不出去由 D 记日志、下一次会话再回」。
+    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-SLOT-FAULT-DECLARATION-APPLIED")]
@@ -101,6 +109,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
         await SendDeclarationCommandAsync(harness, replay);
         await WaitForDeclarationRefusalAsync(harness, replay, 1, token);
 
+        Assert.Contains(
+            harness.Logger.Entries,
+            entry => entry.Message.StartsWith("判故障应答已被服务端拒收，但这条命令的回拒未能发出", StringComparison.Ordinal));
         Assert.NotEqual(
             harness.Server.ReceivedEnvelopes.Single(item => item.MessageType == "SlotFaultDeclarationResult").Connection,
             harness.Server.ReceivedEnvelopes.Single(item => IsDeclarationRefusal(item.WireLine, replay)).Connection);
@@ -141,6 +152,13 @@ public sealed partial class StationDeadlineExpiredG2Tests
 
         Assert.Equal(answersOnTheWire, CountOnTheWire(harness, "SlotFaultDeclarationResult"));
         Assert.True(harness.Client.Current.Connected);
+
+        // B on its own: A refuses every replay before a resend is tried, so only a direct call reaches the check that keeps
+        // an answer acknowledged and then given up off the wire (review of PR #268).
+        InvalidDataException refused = await Assert.ThrowsAsync<InvalidDataException>(
+            () => harness.Client.ResendSlotFaultDeclarationResultAsync(FirstDeclarationId, token));
+        Assert.Equal("DURABLE_MESSAGE_ABANDONED", refused.Message);
+        Assert.Equal(answersOnTheWire, CountOnTheWire(harness, "SlotFaultDeclarationResult"));
     }
 
     /// <summary>

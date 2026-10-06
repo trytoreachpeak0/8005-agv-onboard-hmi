@@ -43,3 +43,30 @@
 所以 A 和 B 是互为备份的两道防线，单独去掉任何一道都杀不死，两道都去掉才会红。两道都保留。
 
 M1b 下第五条用例也红了，但那是用例自己的时序竞争：「已执行服务端的人工判故障」这条日志要等执行器停下才写，而用例只等到 `OperationResult` 就直接断言。已改为等待这条日志；修改后连跑 5 轮都是 5/5。
+
+## 审查后补充（PR #268 审查）
+
+审查要求把 A 和 B 各自钉住：
+
+- A 由用例 2（`AReplayedDeclarationWhoseAnswerWasGivenUp…`）钉住。回拒到达之后，断言日志里没有「收到重复的SlotFaultDeclarationCommand」。原因是重发路径在动手之前会先写这一句，而 A 在任何重发之前就回拒了。
+- B 由用例 4（`AnAcknowledgedAnswerGivenUpLater…`）钉住。在用例末尾直接调用 `ResendSlotFaultDeclarationResultAsync(FirstDeclarationId)`，断言它抛出 `DURABLE_MESSAGE_ABANDONED`，而且线上的应答条数不变。
+- 用例 3 的注释改成它真正测的东西：A 拦下，回拒因为连接不在发不出去，由 D 记日志；下一次会话再回。同时加了一条断言，确认 D 那句日志确实出现。
+
+`mutations-3-review.txt` 与 `mutation-X2-no-A-where.txt`、`mutation-X3-no-B-where.txt` 记录了取红结果。每个变异都整体重新编译，按文件内容还原。
+
+| 变异 | 结果 |
+| --- | --- |
+| 改后不加变异 | 5/5，退出码 0 |
+| X2：只去掉 A | 1 红（用例 2，`Assert.DoesNotContain`），退出码 1 |
+| X3：只去掉 B | 1 红（用例 4，`Assert.Throws`：没有抛出异常），退出码 1 |
+| 全部还原后重新编译 | 退出码 0 |
+
+### 整类运行在本机负载下的一条红（`class-runs-under-load.txt`）
+
+本轮改完后，`StationDeadlineExpiredG2Tests` 整类加 G2 架构测试跑了两遍，两遍都是 79/80。红的都是 `ALateAckOfARowGivenUpLeavesItGivenUpAndTheSessionGoesOn`，在「等迟到确认的日志」那一步超时。当时本机空闲内存约 2.15 GB，另一张票的全量也在这台机器上跑。
+
+- 这条用例单独跑 6 次，6 次都通过。
+- 对照：上一轮的 `1ccf854` 在负载较轻时整类跑过 80/80。这次在同样负载下重跑，同样是 79/80，红的是同一族里的另一条 `AnAckArrivingAfterALoadCancellationAbortedItsSendIsTaken…`，也是在等迟到确认的日志时超时。
+- 这一族用例靠真实时钟：先把确认扣住，超过消息超时后才放出，再限时等日志出现。本票没有改它们走的代码。这一点是推断，依据有二：它们发的是 `OperationProgress`，不经过判故障；本轮改动只有用例断言、日志文案和注释。
+
+结论：这两次红来自负载下的时序，和本轮改动无关。已作为票外发现转给调度。

@@ -368,8 +368,9 @@ public sealed partial class WireToGateBusinessService
 
     /// <summary>
     /// Refuses a declaration whose answer the server refused for good, with a <c>ProtocolProblem</c> correlated to the
-    /// command and <c>SLOT_OPERATION_CONFLICT</c>; the session is kept. The server takes it as "the two sides disagree"
-    /// and closes the declaration as <c>UNRECONCILED</c> (control-server#481). Nothing here changes: the answer stays
+    /// command and <c>SLOT_OPERATION_CONFLICT</c>; the session is kept. A declaration still pending on the server is taken
+    /// as "the two sides disagree" and closed as <c>UNRECONCILED</c> (control-server#481); one it no longer holds as pending
+    /// -- answered already with other content -- is left as it is, so the log says only that the command was refused. Nothing here changes: the answer stays
     /// given up, and the declaration, applied or not, stays as the journal has it (onboard-hmi#266).
     /// </summary>
     /// <remarks>
@@ -393,7 +394,7 @@ public sealed partial class WireToGateBusinessService
             _logger.Write(
                 LogSeverity.Warning,
                 nameof(WireToGateBusinessService),
-                $"判故障应答已被服务端拒收，但通知服务端结束这次判定的回拒未能发出：declarationId={command.DeclarationId}，"
+                $"判故障应答已被服务端拒收，但这条命令的回拒未能发出：declarationId={command.DeclarationId}，"
                 + $"command={command.MessageId}。服务端下次连接重放这条命令时再回。",
                 exception);
             return;
@@ -402,7 +403,7 @@ public sealed partial class WireToGateBusinessService
         _logger.Write(
             LogSeverity.Error,
             nameof(WireToGateBusinessService),
-            $"判故障应答已被服务端拒收，已通知服务端结束这次判定：declarationId={command.DeclarationId}，"
+            $"判故障应答已被服务端拒收，已回拒这条命令：declarationId={command.DeclarationId}，"
             + $"attempt={command.SlotOperationAttemptId}，slot={command.SlotNo}，command={command.MessageId}，"
             + "回SLOT_OPERATION_CONFLICT。应答不再重发，本车业务状态未改变，需人工核对两端的判定结论。");
     }

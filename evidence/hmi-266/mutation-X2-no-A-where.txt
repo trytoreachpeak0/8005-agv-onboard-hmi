@@ -1,0 +1,6 @@
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayedDeclarationWhoseAnswerWasGivenUpIsRefusedWithoutResendingTheAnswer [714 ms]
+  Error Message:
+   Assert.DoesNotContain() Failure: Filter matched in collection
+     at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayedDeclarationWhoseAnswerWasGivenUpIsRefusedWithoutResendingTheAnswer() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 72
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayedDeclarationWhoseAnswerWasGivenUpIsRefusedWithoutResendingTheAnswer() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 75
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
