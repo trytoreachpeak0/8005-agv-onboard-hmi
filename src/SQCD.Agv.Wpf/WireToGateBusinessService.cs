@@ -4035,8 +4035,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             new WireToGateProblemPayload(reasonCode, null, null),
             _session.Current.CapabilityVersion,
             null);
-        // Called only while the session is not Ready, so it takes the send path that allows RecoveryRequired
-        // (onboard-hmi#127); the Ready-only path could never send it. Now that it is actually written, its messageId
+        // Called while the session is not Ready (onboard-hmi#127), and while it is Ready too: a command refused while a
+        // recovery waits for its manual check (onboard-hmi#150) or over a door or recovery vector still on file
+        // (onboard-hmi#267). So it takes the send path that allows RecoveryRequired as well as Ready; the Ready-only
+        // path could never send it in the first case. Now that it is actually written, its messageId
         // is derived from its own key, as the resume rejection's is: the attempt id is the OperationResult's
         // messageId, the outbox holds one row per messageId, and a rejection holding it would keep the result of
         // the same attempt, issued again once the session is ready, out of the outbox for good.
