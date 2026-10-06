@@ -157,20 +157,26 @@ public sealed partial class RecoveryVectorG2Tests
     /// The ack comes after the send stopped waiting, and the session settles it against the outbox without a reconnect
     /// (onboard-hmi#250). No handshake runs, so nothing that hangs off a session coming up can be what clears the record.
     /// </summary>
+    /// <remarks>
+    /// The double holds the ack until the vehicle has recorded that the send ended without it, and only then releases it
+    /// (onboard-hmi#270). It used to send it 3 s late against the 2 s message timeout, two real clocks one second apart:
+    /// under load the ack could land while the send still waited, be taken as an ordinary ack, and leave the wait for the
+    /// late-ack line to time out.
+    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
     public async Task AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
+        FakeControlServer.DurableAckHold? hold = null;
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
             token,
             server =>
             {
                 server.SendRecoveryVectorCommandAfterRecoveryAction = false;
                 server.RecoverySlotOperationAttemptId = AttemptId;
-                // Past the harness's 2 s message timeout.
-                server.LoadCompensationResultAckDelay = TimeSpan.FromSeconds(3);
+                hold = server.HoldNextDurableAck("LoadCompensationResult");
             },
             cargoInTargetSlots: true,
             lockerWaitTimesOut: true);
@@ -180,13 +186,28 @@ public sealed partial class RecoveryVectorG2Tests
         WireToGateRecoveryState prepared = await PrepareCompensationAsync(harness, token);
         await harness.Server.SendCommandAsync(
             "LoadCompensationCommand", CompensationCommandMessageId, CompensationCommand(prepared));
+        // Logged once the result's send has thrown, so it has stopped waiting for the held ack by then.
         await WaitForAckPendingAsync(harness, token);
-
         await RecoveryVectorHarness.WaitUntilAsync(
-            () => harness.Logger.Entries.Any(entry => entry.Message.StartsWith("收到迟到的DurableAck", StringComparison.Ordinal)
-                && entry.Message.Contains("LoadCompensationResult", StringComparison.Ordinal)),
-            "the late DurableAck of the compensation result to be settled by the session",
+            () => hold!.Held.IsCompleted,
+            "the compensation result whose ack is held to reach the control server",
             token);
+        string late = await hold!.Held;
+
+        WireToGateLateDurableAck ack = await LateDurableAckObservation.SettleAsync(
+            harness.Session,
+            late,
+            hold.ReleaseAsync,
+            () => string.Join(
+                Environment.NewLine,
+                harness.Logger.Entries.Select(entry => $"{entry.Severity} {entry.Message}")),
+            token);
+
+        Assert.Equal(WireToGateLateDurableAckOutcome.Acknowledged, ack.Outcome);
+        Assert.Equal("LoadCompensationResult", ack.MessageType);
+        Assert.Contains(harness.Logger.Entries, entry =>
+            entry.Message.StartsWith("收到迟到的DurableAck", StringComparison.Ordinal)
+            && entry.Message.Contains("LoadCompensationResult", StringComparison.Ordinal));
         Assert.Equal(generation, harness.Session.Current.SessionGeneration);
         Assert.Single(harness.ResultsOfType("LoadCompensationResult"));
         await AssertTheVectorAndSessionAreForgottenAsync(harness, token);

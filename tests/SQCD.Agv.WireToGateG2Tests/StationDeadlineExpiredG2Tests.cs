@@ -432,7 +432,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
             Action<WireToGateBusinessService>? observe = null,
             Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
             Action<WireToGateSessionService>? observeSession = null,
-            IClock? businessClock = null)
+            IClock? businessClock = null,
+            TimeSpan? messageTimeout = null)
         {
             FakeControlServer server = NewServer();
             configure?.Invoke(server);
@@ -456,7 +457,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
                     new string('a', 40),
                     CredentialVariable,
                     G2SessionTimeouts.Connect,
-                    TimeSpan.FromSeconds(2),
+                    messageTimeout ?? TimeSpan.FromSeconds(2),
                     baselineRevision,
                     baselineRevision,
                     "eight-slot-v1",

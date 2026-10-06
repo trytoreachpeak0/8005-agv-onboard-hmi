@@ -115,16 +115,16 @@ public sealed partial class RecoveryVectorG2Tests
     public async Task AVectorResultAcknowledgedAfterANewOperationClearedItChangesNothing()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
-        TaskCompletionSource ackRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
             token,
             server =>
             {
                 server.SendRecoveryVectorCommandAfterRecoveryAction = false;
                 server.RecoverySlotOperationAttemptId = AttemptId;
-                server.LoadCompensationResultAckRelease = ackRelease;
             });
 
+        // The compensation result is acknowledged only when the test releases it (onboard-hmi#270's hold).
+        FakeControlServer.DurableAckHold compensationAck = harness.Server.HoldNextDurableAck("LoadCompensationResult");
         WireToGateRecoveryState prepared = await PrepareCompensationAsync(harness, token);
         await harness.Server.SendCommandAsync(
             "LoadCompensationCommand", CompensationCommandMessageId, CompensationCommand(prepared));
@@ -165,7 +165,8 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Null(afterNewOperation.RecoveryActionId);
         Assert.Equal(newAttemptId, afterNewOperation.UnsettledSlotOperationAttemptId);
 
-        ackRelease.SetResult();
+        await compensationAck.Held;
+        await compensationAck.ReleaseAsync();
         await RecoveryVectorHarness.WaitUntilAsync(
             () => harness.Logger.Entries.Any(entry => entry.Message.StartsWith("收到迟到的DurableAck", StringComparison.Ordinal)
                 && entry.Message.Contains("LoadCompensationResult", StringComparison.Ordinal)),
@@ -207,16 +208,16 @@ public sealed partial class RecoveryVectorG2Tests
     public async Task ALateVectorAcknowledgementLeavesAnotherAttemptOnFile()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
-        TaskCompletionSource ackRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
             token,
             server =>
             {
                 server.SendRecoveryVectorCommandAfterRecoveryAction = false;
                 server.RecoverySlotOperationAttemptId = AttemptId;
-                server.LoadCompensationResultAckRelease = ackRelease;
             });
 
+        // The compensation result is acknowledged only when the test releases it (onboard-hmi#270's hold).
+        FakeControlServer.DurableAckHold compensationAck = harness.Server.HoldNextDurableAck("LoadCompensationResult");
         WireToGateRecoveryState prepared = await PrepareCompensationAsync(harness, token);
         await harness.Server.SendCommandAsync(
             "LoadCompensationCommand", CompensationCommandMessageId, CompensationCommand(prepared));
@@ -252,7 +253,8 @@ public sealed partial class RecoveryVectorG2Tests
             token);
         Assert.NotNull((await harness.ReadRecoveryStateAsync(token)).RecoveryVector);
 
-        ackRelease.SetResult();
+        await compensationAck.Held;
+        await compensationAck.ReleaseAsync();
         await RecoveryVectorHarness.WaitUntilAsync(
             () => harness.Logger.Entries.Any(entry => entry.Severity == LogSeverity.Warning
                 && entry.Message.StartsWith("恢复向量结算时日志簿的未结作业已不是它自己的", StringComparison.Ordinal)
