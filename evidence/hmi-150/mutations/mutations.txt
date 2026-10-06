@@ -1,0 +1,27 @@
+# hmi#150 + hmi#254 第二部分：变异记录
+
+做法：每个变异只改一处源码（脚本按文本替换），dotnet build --no-incremental 重编，跑本票新增的 21 条（第二轮 22 条）G2 用例，记汇总行与 dotnet test 退出码；还原一律把原文件内容整份写回，不用 cp/mv。最后一次还原后 --no-incremental 重编退出码 0，git status 只剩预期改动。
+
+## 第一轮（提交 82a5e8e）
+
+M1 acked row never settles: exit=1 ['Failed!  - Failed:     6, Passed:    15, Skipped:     0, Total:    21, Duration: 52 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.AnAcknowledgedResultWhoseRecordOutlivedTheProcessIsForgottenAfterARestart', 'RecoveryVectorG2Tests.AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect', 'RecoveryVectorG2Tests.ASettlementFromTheRowRacingASecondSessionForgetsNothingOfIt', 'RecoveryVectorG2Tests.ACompletedResultAcknowledgedByTheHandshakeReplayIsSettled', 'RecoveryVectorG2Tests.ANonCompletedResultAcknowledgedByTheHandshakeReplayIsForgotten(outcome: "UNKNOWN")', 'RecoveryVectorG2Tests.ANonCompletedResultAcknowledgedByTheHandshakeReplayIsForgotten(outcome: "FAILED")']
+M2 late ack handler ignores Acknowledged: exit=1 ['Failed!  - Failed:     1, Passed:    20, Skipped:     0, Total:    21, Duration: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect']
+M3 acked row not checked against the vector: exit=1 ['Failed!  - Failed:     3, Passed:    18, Skipped:     0, Total:    21, Duration: 29 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.ACorrectionPreparedAgainUnderAnAcknowledgedKeyIsNotSettledByTheOldRow', 'RecoveryVectorG2Tests.ANonCompletedResultAcknowledgedByTheHandshakeReplayIsForgotten(outcome: "UNKNOWN")', 'RecoveryVectorG2Tests.ANonCompletedResultAcknowledgedByTheHandshakeReplayIsForgotten(outcome: "FAILED")']
+M4 COMPLETED settled as not completed: exit=1 ['Failed!  - Failed:     1, Passed:    20, Skipped:     0, Total:    21, Duration: 20 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.ACompletedResultAcknowledgedByTheHandshakeReplayIsSettled']
+M5 close-out writes ActiveUnlockSlots []: exit=1 ['Failed!  - Failed:     4, Passed:    17, Skipped:     0, Total:    21, Duration: 23 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.AMaintainerEndsARefusedRecoveryAfterTheManualCheck(refused: LoadCompensation)', 'RecoveryVectorG2Tests.AMaintainerEndsARefusedRecoveryAfterTheManualCheck(refused: FaultCargoHandoff)', 'RecoveryVectorG2Tests.AMaintainerEndsARefusedRecoveryAfterTheManualCheck(refused: LoadCorrection)', 'RecoveryVectorG2Tests.ACommandRefusedWhileTheCheckIsPendingIsRefusedOnceOnFileAndRunsAfterTheCheck']
+M6 close-out gated by the maintenance switch: exit=1 ['Failed!  - Failed:     3, Passed:    18, Skipped:     0, Total:    21, Duration: 23 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['LoadCancellationBeforeSublotG2Tests.ARefusedCancellationBeforeAnySublotHoldsEntryUntilAMaintainerEndsIt', 'StationDeadlineExpiredG2Tests.ACancellationEndedAfterTheManualCheckReportsNothingForTheAbortedLoad', 'RecoveryVectorG2Tests.TheManualCheckEntryIsNotBehindTheMaintenanceSwitch']
+M7 close-out press skips the proof: exit=1 ['Failed!  - Failed:     1, Passed:    20, Skipped:     0, Total:    21, Duration: 23 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.TheManualCheckEntryNeedsTheRecoveryProof']
+M8 no refusal of new slot commands: exit=1 ['Failed!  - Failed:     2, Passed:    19, Skipped:     0, Total:    21, Duration: 32 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.ACommandRefusedWhileTheCheckIsPendingIsRefusedOnceOnFileAndRunsAfterTheCheck', 'RecoveryVectorG2Tests.ANewSlotCommandWhileARefusedRecoveryAwaitsItsCheckIsRefused']
+M9 load cancellation close-out keeps the attempt: exit=1 ['Failed!  - Failed:     2, Passed:    19, Skipped:     0, Total:    21, Duration: 21 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['StationDeadlineExpiredG2Tests.ACancellationEndedAfterTheManualCheckReportsNothingForTheAbortedLoad', 'RecoveryVectorG2Tests.ACommandRefusedWhileTheCheckIsPendingIsRefusedOnceOnFileAndRunsAfterTheCheck']
+M10 refused forced recovery not isolated: exit=1 ['Failed!  - Failed:     1, Passed:    20, Skipped:     0, Total:    21, Duration: 28 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.ARefusedForcedRecoveryResultIsolatesTheSlotsAndOffersTheHardwareRecord']
+M11 restore stops after a settlement from the row: exit=1 ['Failed!  - Failed:     1, Passed:    20, Skipped:     0, Total:    21, Duration: 30 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.AnAcknowledgedResultWhoseRecordOutlivedTheProcessIsForgottenAfterARestart']
+M12 given-up row not checked against the vector: exit=0 ['Passed!  - Failed:     0, Passed:    21, Skipped:     0, Total:    21, Duration: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=[]
+restored rebuild exit=0
+done exit=0
+
+## 第二轮（补 ACorrectionPreparedAgainUnderAGivenUpKeyIsNotTakenUpAsAwaitingACheck 之后只重跑 M12）
+
+M12 given-up row not checked against the vector: exit=1 ['Failed!  - Failed:     1, Passed:    21, Skipped:     0, Total:    22, Duration: 25 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.ACorrectionPreparedAgainUnderAGivenUpKeyIsNotTakenUpAsAwaitingACheck']
+restored rebuild exit=0
+ M tests/SQCD.Agv.WireToGateG2Tests/FakeControlServer.cs
+ M tests/SQCD.Agv.WireToGateG2Tests/RecoveryVectorG2Tests.ManualCheckCloseOut.cs

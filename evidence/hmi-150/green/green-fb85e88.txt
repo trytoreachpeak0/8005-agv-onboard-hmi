@@ -1,0 +1,10 @@
+# 绿：提交 fb85e88 上的单测全量与恢复相关定向 G2（不是全量 ONBOARD_HMI_G2）
+
+## 单测全量（dotnet test tests/SQCD.Agv.UnitTests）
+Passed!  - Failed:     0, Passed:   713, Skipped:     0, Total:   713, Duration: 23 s - SQCD.Agv.UnitTests.dll (net8.0)
+exit=0
+
+## 定向 G2（WireToGateG2Tests、RecoveryVectorG2Tests、StationDeadlineExpiredG2Tests、MultiDemandJourneyG2Tests、LoadCancellationBeforeSublotG2Tests、JournaledOperationsFeedTests 与全部 *ArchitectureTests）
+Passed!  - Failed:     0, Passed:   429, Skipped:     0, Total:   429, Duration: 3 m 12 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+程序集收尾的 schema 一致性（schema-conformance.txt 原文，同目录另存）：0 条新违规，1 条已登记的故意违规（MultiDemandJourneyG2Tests.AClosedLoadingPhaseWithoutAReasonIsStillRefusedAndLeavesNoHalfState，替身发的 VehicleBusinessStateSnapshot），所以退出码为 0。
