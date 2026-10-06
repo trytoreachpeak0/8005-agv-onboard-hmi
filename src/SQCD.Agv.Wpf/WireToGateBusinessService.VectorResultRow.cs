@@ -36,6 +36,10 @@ public sealed partial class WireToGateBusinessService
 {
     private const string RecoveryVectorResultKeyPrefix = "recovery-vector-result:";
 
+    /// <summary>The vector results found still owed by a restore in this process, each logged once.</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _owedVectorResultsLogged =
+        new(StringComparer.Ordinal);
+
     private static string RecoveryVectorResultKey(WireToGateRecoveryVectorContext vector) =>
         $"{RecoveryVectorResultKeyPrefix}{vector.VectorType}:{vector.PrimaryId}";
 
@@ -114,6 +118,17 @@ public sealed partial class WireToGateBusinessService
 
         if (!row.Acknowledged)
         {
+            // Owed: only its acknowledgement settles the vector, and the next handshake sends it again. Said once per
+            // result, not on every session state.
+            if (_owedVectorResultsLogged.TryAdd(row.MessageId, 0))
+            {
+                _logger.Write(
+                    LogSeverity.Information,
+                    nameof(WireToGateBusinessService),
+                    $"恢复向量结果尚未得到服务端确认，保留向量与恢复会话记录，等补发后的确认：type={vector.VectorType}，"
+                    + $"id={vector.PrimaryId}，messageId={row.MessageId}。");
+            }
+
             return false;
         }
 
