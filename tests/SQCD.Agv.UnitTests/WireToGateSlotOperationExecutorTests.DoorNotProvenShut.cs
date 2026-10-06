@@ -55,7 +55,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         Assert.Equal(command.SlotOperationAttemptId, overwrite.NewSlotOperationAttemptId);
         Assert.Equal(earlier.SlotOperationAttemptId, overwrite.PreviousSlotOperationAttemptId);
         Assert.Equal([3], overwrite.ClearedActiveUnlockSlots);
-        Assert.Null(overwrite.RecoveryVectorType);
+        Assert.Null(overwrite.ClearedRecoveryVector);
     }
 
     /// <summary>

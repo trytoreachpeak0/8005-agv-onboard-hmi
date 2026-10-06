@@ -306,6 +306,14 @@ public sealed class FakeControlServer : IAsyncDisposable
     public bool AnswerReadyOverPendingFactsForTest { get; set; }
 
     /// <summary>
+    /// <b>A deviation from the real server, for tests of the vehicle's own defence only.</b> Leaves the operations this
+    /// double holds for recovery out of the readiness decision, so a vehicle whose operation needs recovery is answered
+    /// READY. The real server answers it RECOVERY_REQUIRED (<c>WireToGateStore.DecideReadinessAsync</c>,
+    /// <c>operationNeedsRecovery</c>; onboard-hmi#267).
+    /// </summary>
+    public bool AnswerReadyOverOperationsNeedingRecoveryForTest { get; set; }
+
+    /// <summary>
     /// Attempts this server has settled, across connections and, through
     /// <see cref="AdoptDurableRecoveryMemoryFrom"/>, across a vehicle restart: the <c>StationOperations</c> rows
     /// <c>WireToGateStore.TryTakeOffSettledReportedAttemptsAsync</c> reads as Committed or Cancelled.
@@ -2665,7 +2673,9 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
 
         // OPERATION_RECOVERY_REQUIRED, last of the reasons as in GetRecoveryReason.
-        return _operationsNeedingRecovery.Count > 0 ? "SESSION_RECOVERY_REQUIRED" : null;
+        return _operationsNeedingRecovery.Count > 0 && !AnswerReadyOverOperationsNeedingRecoveryForTest
+            ? "SESSION_RECOVERY_REQUIRED"
+            : null;
     }
 
     /// <summary>

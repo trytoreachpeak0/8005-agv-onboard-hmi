@@ -3128,6 +3128,7 @@ public sealed partial class WireToGateBusinessService
         // between the read and the write is exactly the case it exists for.
         bool vectorChanged = false;
         bool isolationStands = false;
+        string? otherAttempt = null;
         WireToGateRecoveryState? settled = await UpdateRecoveryStateCachedAsync(
                 journalled =>
                 {
@@ -3136,6 +3137,7 @@ public sealed partial class WireToGateBusinessService
                     // left set by an earlier evaluation would throw over a successful write.
                     vectorChanged = false;
                     isolationStands = false;
+                    otherAttempt = null;
                     if (journalled.RecoveryVector is not { } onFile
                         || onFile.VectorType != context.VectorType
                         || onFile.PrimaryId != context.PrimaryId)
@@ -3150,6 +3152,23 @@ public sealed partial class WireToGateBusinessService
                     {
                         isolationStands = true;
                         return null;
+                    }
+
+                    // The second line of 8005-agv-onboard-hmi#267. The attempt, its context and its checkpoint are the
+                    // vector's to settle only while they are the vector's own. A journal whose unsettled attempt is another
+                    // one has had a new operation written beside the vector -- which the new operation's own first write is
+                    // meant never to do -- and settling that attempt here would end an operation the server still holds
+                    // for recovery, with its context gone. So only the vector, its recovery session and, for a forced
+                    // recovery, its isolation are written; the rest stays.
+                    if (journalled.UnsettledSlotOperationAttemptId is { } unsettled
+                        && onFile.SlotOperationAttemptId is { } own
+                        && !string.Equals(unsettled, own, StringComparison.Ordinal))
+                    {
+                        otherAttempt = unsettled;
+                        return ForgetSettledVector(journalled, onFile) with
+                        {
+                            ForcedIsolation = isolation ?? journalled.ForcedIsolation
+                        };
                     }
 
                     return journalled with
@@ -3187,6 +3206,16 @@ public sealed partial class WireToGateBusinessService
             throw isolationStands ? new InvalidDataException("HARDWARE_RECOVERY_RECORD_REQUIRED")
                 : vectorChanged ? new InvalidDataException("RECOVERY_STATE_MISMATCH")
                 : new UnreachableException();
+        }
+
+        if (otherAttempt is not null)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"恢复向量结算时日志簿的未结作业已不是它自己的，只去掉向量与恢复会话，保留该作业的记录："
+                + $"type={context.VectorType}，id={context.PrimaryId}，vectorAttempt={context.SlotOperationAttemptId}，"
+                + $"unsettledAttempt={otherAttempt}。");
         }
     }
 

@@ -1,3 +1,5 @@
+using SQCD.Agv.Core;
+
 namespace SQCD.Agv.Application;
 
 /// <summary>
@@ -34,13 +36,38 @@ public sealed class WireToGateDoorNotProvenShutException : Exception
 }
 
 /// <summary>
-/// What a new slot operation replaced in the journal when it started (8005-agv-onboard-hmi#267) -- the earlier attempt and
-/// active unlock set -- and the recovery vector it was written beside, which stays: told to the caller so the overwrite
-/// leaves a trace in the log.
+/// A new <c>SlotOperationCommand</c> the executor refused before its first journal write and its first unlock pulse,
+/// because a recovery vector is on file that has no result of its own in the outbox yet -- prepared and not run, or
+/// running -- or that is a forced mechanical recovery, whose isolation only its acknowledged result records
+/// (8005-agv-onboard-hmi#267). Nothing physical happened and the journal was not touched.
 /// </summary>
+/// <remarks>
+/// Answered as <see cref="WireToGateDoorNotProvenShutException"/> is. The vector leaves the journal by its own result's
+/// acknowledgement, a maintainer's close-out or the recovery session's CLOSED fallback, and the next copy of the
+/// command then runs.
+/// </remarks>
+public sealed class WireToGateRecoveryVectorUnsettledException : Exception
+{
+    public WireToGateRecoveryVectorUnsettledException(WireToGateRecoveryVectorContext vector)
+        : base($"RECOVERY_VECTOR_UNSETTLED:{vector.VectorType}:{vector.PrimaryId}")
+    {
+        Vector = vector;
+    }
+
+    /// <summary>The vector on file.</summary>
+    public WireToGateRecoveryVectorContext Vector { get; }
+}
+
+/// <summary>
+/// What a new slot operation replaced in the journal when it started (8005-agv-onboard-hmi#267): the earlier attempt and
+/// active unlock set, and the recovery vector it settled first -- one whose result was already in the outbox -- told to
+/// the caller so the overwrite leaves a trace in the log.
+/// </summary>
+/// <param name="ClearedRecoveryVector">The vector taken off the journal with its recovery session, or <c>null</c>.</param>
+/// <param name="ClearedRecoveryVectorResultKey">The outbox key of that vector's result.</param>
 public sealed record WireToGateJournalOverwrite(
     string NewSlotOperationAttemptId,
     string? PreviousSlotOperationAttemptId,
     IReadOnlyList<int> ClearedActiveUnlockSlots,
-    string? RecoveryVectorType,
-    string? RecoveryVectorPrimaryId);
+    WireToGateRecoveryVectorContext? ClearedRecoveryVector,
+    string? ClearedRecoveryVectorResultKey);

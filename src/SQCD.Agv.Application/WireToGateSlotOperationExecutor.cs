@@ -61,6 +61,14 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     private readonly Func<bool> _reopenPermitted;
     private readonly Func<bool> _fatalFaultLatched;
     private readonly Action<WireToGateJournalOverwrite> _journalOverwritten;
+
+    /// <summary>
+    /// The outbox key of the result the vector on file produced itself, not given up, or <c>null</c> when it has none
+    /// (8005-agv-onboard-hmi#267). The outbox keys and the tie between a result and one preparation of its vector are the
+    /// business service's; without it every vector on file counts as having no result.
+    /// </summary>
+    private readonly Func<WireToGateRecoveryVectorContext, WireToGateRecoveryState, CancellationToken, Task<string?>>
+        _vectorResultKeyOnFile;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private ActiveOperation? _activeOperation;
 
@@ -86,7 +94,9 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         WireToGateSlotOperationExecutorOptions options,
         Func<bool> reopenPermitted,
         Func<bool>? fatalFaultLatched = null,
-        Action<WireToGateJournalOverwrite>? journalOverwritten = null)
+        Action<WireToGateJournalOverwrite>? journalOverwritten = null,
+        Func<WireToGateRecoveryVectorContext, WireToGateRecoveryState, CancellationToken, Task<string?>>?
+            vectorResultKeyOnFile = null)
     {
         _ioModule = ioModule;
         _journal = journal;
@@ -95,6 +105,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         _reopenPermitted = reopenPermitted ?? throw new ArgumentNullException(nameof(reopenPermitted));
         _fatalFaultLatched = fatalFaultLatched ?? (() => false);
         _journalOverwritten = journalOverwritten ?? (_ => { });
+        _vectorResultKeyOnFile = vectorResultKeyOnFile ?? ((_, _, _) => Task.FromResult<string?>(null));
         ValidateOptions(options);
     }
 
@@ -646,6 +657,26 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 journaled.UnsettledSlotOperationAttemptId);
         }
 
+        // A recovery vector on file is settled before the operation starts, or the operation is refused
+        // (8005-agv-onboard-hmi#267). Its fields are not the checkpoint's: written beside a new attempt they would stay,
+        // and the late acknowledgement of the vector's result would then settle the new attempt as the vector's. When
+        // the vector's own result is already in the outbox the server has it -- and a server still holding that
+        // operation for recovery would not have called the vehicle ready and sent this command -- so the first write
+        // below takes the vector and its recovery session off. A vector with no result yet, prepared and not run or
+        // running, refuses; so does a forced mechanical recovery, whose isolation only its acknowledged result records.
+        string? vectorResultKey = null;
+        if (journaled.RecoveryVector is { } vectorOnFile)
+        {
+            vectorResultKey = vectorOnFile.VectorType == WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery
+                ? null
+                : await _vectorResultKeyOnFile(vectorOnFile, journaled, cancellationToken).ConfigureAwait(false);
+            if (vectorResultKey is null)
+            {
+                throw new WireToGateRecoveryVectorUnsettledException(vectorOnFile);
+            }
+        }
+
+        WireToGateRecoveryVectorContext? vectorToSettle = journaled.RecoveryVector;
         IReadOnlyList<int> physicallyUnknown = journaled.ForcedIsolation?.PhysicallyUnknownSlots ?? [];
         if (command.Slots.Any(physicallyUnknown.Contains))
         {
@@ -685,8 +716,9 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 [],
                 conflict.SlotResults,
                 fresh,
-                cancellationToken).ConfigureAwait(false);
-            OnJournalOverwritten(journaled, command);
+                cancellationToken,
+                vectorToSettle).ConfigureAwait(false);
+            OnJournalOverwritten(journaled, command, vectorResultKey);
             return conflict with { JournalCheckpoint = "SAFE_FINISH_REACHED" };
         }
 
@@ -705,8 +737,9 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             completed,
             results,
             fresh,
-            cancellationToken).ConfigureAwait(false);
-        OnJournalOverwritten(journaled, command);
+            cancellationToken,
+            vectorToSettle).ConfigureAwait(false);
+        OnJournalOverwritten(journaled, command, vectorResultKey);
         await SendProgressAsync(progress, new("PREPARING", [], []), cancellationToken).ConfigureAwait(false);
 
         return await ExecuteRemainingSlotsAsync(
@@ -721,10 +754,13 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     }
 
     /// <summary>
-    /// Tells the caller what the clean journal of <paramref name="command"/> replaced, when it replaced anything an operator
-    /// or a maintainer may later ask about: an unsettled attempt, an active unlock set or a recovery vector.
+    /// Tells the caller what the first write of <paramref name="command"/> replaced, when it replaced anything an operator
+    /// or a maintainer may later ask about: an unsettled attempt, an active unlock set or a recovery vector it settled.
     /// </summary>
-    private void OnJournalOverwritten(WireToGateRecoveryState replaced, WireToGateSlotOperationCommand command)
+    private void OnJournalOverwritten(
+        WireToGateRecoveryState replaced,
+        WireToGateSlotOperationCommand command,
+        string? vectorResultKey)
     {
         if (replaced.UnsettledSlotOperationAttemptId is null
             && replaced.ActiveUnlockSlots.Count == 0
@@ -737,8 +773,8 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             command.SlotOperationAttemptId,
             replaced.UnsettledSlotOperationAttemptId,
             [.. replaced.ActiveUnlockSlots.Order()],
-            replaced.RecoveryVector?.VectorType,
-            replaced.RecoveryVector?.PrimaryId));
+            replaced.RecoveryVector,
+            vectorResultKey));
     }
 
     private async Task<WireToGateOperationExecutionResult> ResumeExclusiveAsync(
@@ -1296,7 +1332,8 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         IReadOnlyList<int> completedSlots,
         IReadOnlyList<WireToGateSlotExecutionResult> results,
         WireToGateRecoveryState existingState,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        WireToGateRecoveryVectorContext? settleVector = null)
     {
         // Merged under the journal's lock against the newest state, not against the copy this run read
         // when it started. This checkpoint owns six fields -- the attempt, the checkpoint itself, the
@@ -1306,42 +1343,87 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         // snapshot came back, a forced recovery generation went back down, a pending result recorded
         // in between disappeared (onboard-hmi#136 point 2). Only PendingLoadCancellation was read
         // afresh, and only because onboard-hmi#78 was bitten by it; that rule is kept below.
+        //
+        // The one exception is a new operation's first write over a vector it settles first
+        // (<paramref name="settleVector"/>, 8005-agv-onboard-hmi#267): that vector and its recovery session are taken off
+        // in the same step, so they are never written beside the new attempt.
         await _journal.UpdateRecoveryStateAsync(
-            current => new WireToGateRecoveryState(
-                context.SlotOperationAttemptId,
-                checkpoint,
-                activeSlots.Order().ToArray(),
-                current.ForcedRecoveryGeneration,
-                current.PendingResults)
+            journalled =>
             {
-                OperationContext = context,
-                CompletedSlots = completedSlots.Distinct().Order().ToArray(),
-                SlotResults = results
-                    .GroupBy(result => result.SlotNo)
-                    .Select(group => group.Last())
-                    .OrderBy(result => result.SlotNo)
-                    .ToArray(),
-                ExceptionRecoverySessionId = current.ExceptionRecoverySessionId,
-                RecoveryActionId = current.RecoveryActionId,
-                RecoverySessionRequestId = current.RecoverySessionRequestId,
-                RecoveryActionRequestId = current.RecoveryActionRequestId,
-                RecoveryReason = current.RecoveryReason,
-                RecoveryOperatorId = current.RecoveryOperatorId,
-                RecoveryOperatorVerifiedAt = current.RecoveryOperatorVerifiedAt,
-                RecoveryVector = current.RecoveryVector,
-                RecoveryResultObservedAt = current.RecoveryResultObservedAt,
-                LastCompletedLoadOperationContext = current.LastCompletedLoadOperationContext,
-                // The operator's unanswered load cancellation for this attempt stays; one left over
-                // from another attempt goes, as it always did (onboard-hmi#78).
-                PendingLoadCancellation = string.Equals(
-                    current.PendingLoadCancellation?.SlotOperationAttemptId,
+                WireToGateRecoveryState current = WithoutSettledVector(journalled, settleVector);
+                return new WireToGateRecoveryState(
                     context.SlotOperationAttemptId,
-                    StringComparison.Ordinal)
-                    ? current.PendingLoadCancellation
-                    : existingState.PendingLoadCancellation,
-                ForcedIsolation = current.ForcedIsolation
+                    checkpoint,
+                    activeSlots.Order().ToArray(),
+                    current.ForcedRecoveryGeneration,
+                    current.PendingResults)
+                {
+                    OperationContext = context,
+                    CompletedSlots = completedSlots.Distinct().Order().ToArray(),
+                    SlotResults = results
+                        .GroupBy(result => result.SlotNo)
+                        .Select(group => group.Last())
+                        .OrderBy(result => result.SlotNo)
+                        .ToArray(),
+                    ExceptionRecoverySessionId = current.ExceptionRecoverySessionId,
+                    RecoveryActionId = current.RecoveryActionId,
+                    RecoverySessionRequestId = current.RecoverySessionRequestId,
+                    RecoveryActionRequestId = current.RecoveryActionRequestId,
+                    RecoveryReason = current.RecoveryReason,
+                    RecoveryOperatorId = current.RecoveryOperatorId,
+                    RecoveryOperatorVerifiedAt = current.RecoveryOperatorVerifiedAt,
+                    RecoveryVector = current.RecoveryVector,
+                    RecoveryResultObservedAt = current.RecoveryResultObservedAt,
+                    LastCompletedLoadOperationContext = current.LastCompletedLoadOperationContext,
+                    // The operator's unanswered load cancellation for this attempt stays; one left over
+                    // from another attempt goes, as it always did (onboard-hmi#78).
+                    PendingLoadCancellation = string.Equals(
+                        current.PendingLoadCancellation?.SlotOperationAttemptId,
+                        context.SlotOperationAttemptId,
+                        StringComparison.Ordinal)
+                        ? current.PendingLoadCancellation
+                        : existingState.PendingLoadCancellation,
+                    ForcedIsolation = current.ForcedIsolation
+                };
             },
             cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// <paramref name="state"/> without <paramref name="vector"/>, and without its recovery session when the journal still
+    /// names that session -- the fields an acknowledged non-<c>COMPLETED</c> result forgets (the business service's
+    /// <c>ForgetSettledVector</c>). Unchanged when <paramref name="vector"/> is <c>null</c> or no longer the one on file.
+    /// </summary>
+    private static WireToGateRecoveryState WithoutSettledVector(
+        WireToGateRecoveryState state,
+        WireToGateRecoveryVectorContext? vector)
+    {
+        if (vector is null
+            || state.RecoveryVector is not { } onFile
+            || !string.Equals(onFile.VectorType, vector.VectorType, StringComparison.Ordinal)
+            || !string.Equals(onFile.PrimaryId, vector.PrimaryId, StringComparison.Ordinal))
+        {
+            return state;
+        }
+
+        WireToGateRecoveryState cleared = state with
+        {
+            RecoveryVector = null,
+            RecoveryResultObservedAt = null
+        };
+        return vector.ExceptionRecoverySessionId is { } session
+            && string.Equals(state.ExceptionRecoverySessionId, session, StringComparison.Ordinal)
+                ? cleared with
+                {
+                    ExceptionRecoverySessionId = null,
+                    RecoveryActionId = null,
+                    RecoverySessionRequestId = null,
+                    RecoveryActionRequestId = null,
+                    RecoveryReason = null,
+                    RecoveryOperatorId = null,
+                    RecoveryOperatorVerifiedAt = null
+                }
+                : cleared;
     }
 
     private string? ValidateBeforeOperation(

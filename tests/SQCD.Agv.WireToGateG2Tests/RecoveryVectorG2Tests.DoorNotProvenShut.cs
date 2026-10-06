@@ -104,9 +104,10 @@ public sealed partial class RecoveryVectorG2Tests
 
     /// <summary>
     /// A compensation completed and its result's acknowledgement is held, so the vector is still on file when the server
-    /// calls the vehicle ready and commands a new load. The load starts from a clean journal -- every door proven shut --
-    /// and the cleared vector is logged. When the held acknowledgement then arrives, nothing settles a vector that is no
-    /// longer there: no error, and the new operation's journal is exactly as it left it.
+    /// calls the vehicle ready and commands a new load. The vector's result is in the outbox, so the load settles the vector
+    /// first: its first write takes the vector and its recovery session off, and says so. When the held acknowledgement
+    /// then arrives, nothing settles a vector that is no longer there: no error, and the new operation's journal is exactly
+    /// as it left it.
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
@@ -148,14 +149,20 @@ public sealed partial class RecoveryVectorG2Tests
             () => harness.ResultsOfType("OperationResult").Any(line => line.Contains(newAttemptId, StringComparison.Ordinal)),
             "the new load's result",
             token);
+        // Settled first: the vector's result was in the outbox, so the new operation's first write took the vector and its
+        // recovery session off instead of writing beside them.
         Assert.Contains(harness.Logger.Entries, entry =>
             entry.Severity == LogSeverity.Information
-            && entry.Message.StartsWith("新仓位操作替换了日志簿里上一次的操作记录", StringComparison.Ordinal)
-            && entry.Message.Contains($"previousAttempt={AttemptId}", StringComparison.Ordinal)
+            && entry.Message.StartsWith("新仓位操作起步前先收尾在案的恢复向量", StringComparison.Ordinal)
             && entry.Message.Contains($"vector={vector.VectorType}", StringComparison.Ordinal)
-            && entry.Message.Contains($"vectorId={vector.PrimaryId}", StringComparison.Ordinal));
+            && entry.Message.Contains($"id={vector.PrimaryId}", StringComparison.Ordinal)
+            && entry.Message.Contains($"vectorAttempt={AttemptId}", StringComparison.Ordinal)
+            && entry.Message.Contains($"resultKey={CompensationResultKey(vector.PrimaryId)}", StringComparison.Ordinal));
         WireToGateRecoveryState afterNewOperation = await harness.ReadRecoveryStateAsync(token);
-        Assert.True(afterNewOperation.RecoveryVector is null, "DEBUG|" + string.Join("|", harness.Logger.Entries.Select(e => $"{e.Severity} {e.Message}")) + "|UNSETTLED=" + afterNewOperation.UnsettledSlotOperationAttemptId);
+        Assert.Null(afterNewOperation.RecoveryVector);
+        Assert.Null(afterNewOperation.RecoveryResultObservedAt);
+        Assert.Null(afterNewOperation.ExceptionRecoverySessionId);
+        Assert.Null(afterNewOperation.RecoveryActionId);
         Assert.Equal(newAttemptId, afterNewOperation.UnsettledSlotOperationAttemptId);
 
         ackRelease.SetResult();
@@ -181,5 +188,137 @@ public sealed partial class RecoveryVectorG2Tests
             entry.Message.StartsWith("按发件箱结果行收尾恢复向量失败", StringComparison.Ordinal)
             || entry.Message.StartsWith("恢复向量结果的DurableAck不在首次发送时到达", StringComparison.Ordinal));
         Assert.DoesNotContain(harness.OperatorEvents, item => item.Kind == "RECOVERY_VECTOR_COMPLETED");
+        // The recovery entries judge the new operation, with no trace of the settled vector.
+        string lastEntryDecision = harness.Logger.Entries
+            .Last(entry => entry.Message.StartsWith("判恢复入口", StringComparison.Ordinal)).Message;
+        Assert.Contains(newAttemptId, lastEntryDecision, StringComparison.Ordinal);
+        Assert.Contains("recoveryVector=none", lastEntryDecision, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The second line, on its own: the journal is put straight into the mixed state the first line exists to prevent --
+    /// a new attempt written beside a vector whose result is owed its acknowledgement. When that acknowledgement arrives the
+    /// settlement takes off the vector and its recovery session only, and says so; the new attempt, its context and its
+    /// checkpoint stay.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ALateVectorAcknowledgementLeavesAnotherAttemptOnFile()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        TaskCompletionSource ackRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server =>
+            {
+                server.SendRecoveryVectorCommandAfterRecoveryAction = false;
+                server.RecoverySlotOperationAttemptId = AttemptId;
+                server.LoadCompensationResultAckRelease = ackRelease;
+            });
+
+        WireToGateRecoveryState prepared = await PrepareCompensationAsync(harness, token);
+        await harness.Server.SendCommandAsync(
+            "LoadCompensationCommand", CompensationCommandMessageId, CompensationCommand(prepared));
+        Assert.Equal(
+            "ALL_EMPTY",
+            (await harness.WaitForResultAsync("LoadCompensationResult", token)).GetProperty("overallOutcome").GetString());
+        await WaitForAckPendingAsync(harness, token);
+
+        const string otherAttemptId = "9c9c9c9c-9c9c-4c9c-8c9c-9c9c9c9c9c9d";
+        WireToGateRecoveryOperationContext other = new(
+            Guid.NewGuid().ToString("D"),
+            null,
+            1,
+            DateTimeOffset.UtcNow,
+            "9d9d9d9d-9d9d-4d9d-8d9d-9d9d9d9d9d9d",
+            OperationSessionId,
+            otherAttemptId,
+            OperationType.Load,
+            [5],
+            1,
+            true,
+            new string('0', 64));
+        await harness.RewriteRecoveryStateAsync(
+            state => state with
+            {
+                UnsettledSlotOperationAttemptId = otherAttemptId,
+                ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.SafeFinishReached,
+                OperationContext = other,
+                ActiveUnlockSlots = [],
+                CompletedSlots = [],
+                SlotResults = []
+            },
+            token);
+        Assert.NotNull((await harness.ReadRecoveryStateAsync(token)).RecoveryVector);
+
+        ackRelease.SetResult();
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Logger.Entries.Any(entry => entry.Severity == LogSeverity.Warning
+                && entry.Message.StartsWith("恢复向量结算时日志簿的未结作业已不是它自己的", StringComparison.Ordinal)
+                && entry.Message.Contains($"unsettledAttempt={otherAttemptId}", StringComparison.Ordinal)),
+            "the late acknowledgement to settle the vector alone",
+            token);
+
+        WireToGateRecoveryState after = await harness.ReadRecoveryStateAsync(token);
+        Assert.Null(after.RecoveryVector);
+        Assert.Null(after.RecoveryResultObservedAt);
+        Assert.Null(after.ExceptionRecoverySessionId);
+        Assert.Equal(otherAttemptId, after.UnsettledSlotOperationAttemptId);
+        Assert.Equal(otherAttemptId, after.OperationContext?.SlotOperationAttemptId);
+        Assert.Equal(WireToGateRecoveryCheckpoint.SafeFinishReached, after.ProvenRecoveryCheckpoint);
+    }
+
+    /// <summary>
+    /// A vector prepared and never run has no result in the outbox: the new command is refused with
+    /// <c>ACTION_NOT_ALLOWED_IN_STATE</c> before any journal write or door IO, and the vector stays on file.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ACommandOverAVectorWithNoResultYetIsRefused()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server =>
+            {
+                server.SendRecoveryVectorCommandAfterRecoveryAction = false;
+                server.RecoverySlotOperationAttemptId = AttemptId;
+            });
+        WireToGateRecoveryState prepared = await PrepareCompensationAsync(harness, token);
+
+        // This double calls the vehicle ready over the operation it holds for recovery, which the real server does not do.
+        // It stands for any way a command meets a vector that has not produced its result.
+        harness.Server.AnswerReadyOverPendingFactsForTest = true;
+        harness.Server.AnswerReadyOverOperationsNeedingRecoveryForTest = true;
+        harness.Server.RequireSafeSafetyForReadiness = false;
+        await harness.Server.SendSessionReadinessAsync();
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Session.Current.Readiness == WireToGateSessionReadiness.Ready,
+            "the session to be ready",
+            token);
+
+        const string newAttemptId = "9e9e9e9e-9e9e-4e9e-8e9e-9e9e9e9e9e9f";
+        await SendNewLoadCommandAsync(harness.Server, Guid.NewGuid().ToString("D"), newAttemptId);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Logger.Entries.Any(entry =>
+                entry.Message.StartsWith("拒收SlotOperationCommand：日志簿上的恢复向量还没有它自己的结果", StringComparison.Ordinal)
+                && entry.Message.Contains(newAttemptId, StringComparison.Ordinal)
+                && entry.Message.Contains($"id={prepared.RecoveryVector!.PrimaryId}", StringComparison.Ordinal)),
+            "the command to be refused",
+            token);
+
+        Assert.Equal(1, RefusalsOf(harness, newAttemptId));
+        Assert.Single(harness.OperatorEvents, item => item.Kind == "RECOVERY_VECTOR_UNSETTLED");
+        Assert.Equal(0, harness.Io.UnlockCount);
+        Assert.DoesNotContain(harness.Server.ReceivedEnvelopes, envelope =>
+            envelope.MessageType is "OperationProgress" or "OperationResult"
+            && envelope.WireLine.Contains(newAttemptId, StringComparison.Ordinal));
+        WireToGateRecoveryState after = await harness.ReadRecoveryStateAsync(token);
+        Assert.Equal(prepared.RecoveryVector!.PrimaryId, after.RecoveryVector?.PrimaryId);
+        Assert.Equal(prepared.UnsettledSlotOperationAttemptId, after.UnsettledSlotOperationAttemptId);
+        Assert.Equal(prepared.ProvenRecoveryCheckpoint, after.ProvenRecoveryCheckpoint);
+        Assert.Equal(prepared.ExceptionRecoverySessionId, after.ExceptionRecoverySessionId);
     }
 }

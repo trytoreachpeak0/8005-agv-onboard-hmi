@@ -223,7 +223,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             executorOptions,
             IsReopenPermitted,
             _fatalFaultLatched,
-            LogJournalOverwrite);
+            LogJournalOverwrite,
+            VectorResultKeyOnFileAsync);
         // Both executors ask the latch themselves, immediately before each pulse
         // (8005-agv-onboard-hmi#191): the checks on this side run when a press is made or a command
         // arrives, and a latch can come after either.
@@ -3471,6 +3472,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 // Refused before anything was written or pulsed (8005-agv-onboard-hmi#267): the screen goes back to
                 // what it showed before this command, and the server is told the command was not taken.
                 await RefuseOverDoorNotProvenShutAsync(command, refused, displayBefore, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+            catch (WireToGateRecoveryVectorUnsettledException refused)
+            {
+                // A recovery vector on file with no result of its own yet (8005-agv-onboard-hmi#267): refused the same way.
+                await RefuseOverUnsettledRecoveryVectorAsync(command, refused, displayBefore, cancellationToken)
                     .ConfigureAwait(false);
                 return;
             }
