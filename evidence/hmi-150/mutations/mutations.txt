@@ -41,3 +41,24 @@ done exit=0
 M9d close-out does not mark the cancellation concluded: exit=1 ['Failed!  - Failed:     1, Passed:    21, Skipped:     0, Total:    22, Duration: 18 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['StationDeadlineExpiredG2Tests.ACancellationEndedAfterTheManualCheckReportsNothingForTheAbortedLoad']
 restored rebuild exit=0
 done exit=0
+
+## 第五轮（审查 S1-S5 之后，0c10f2e）
+
+M3 acked row not checked against the vector: exit=1 ['Failed!  - Failed:     4, Passed:    22, Skipped:     0, Total:    26, Duration: 38 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.ACorrectionPreparedAgainUnderAnAcknowledgedKeyIsNotSettledByTheOldRow(recordedAtDiffers: False)', 'RecoveryVectorG2Tests.ACorrectionPreparedAgainUnderAnAcknowledgedKeyIsNotSettledByTheOldRow(recordedAtDiffers: True)', 'RecoveryVectorG2Tests.ANonCompletedResultAcknowledgedByTheHandshakeReplayIsForgotten(outcome: "UNKNOWN")', 'RecoveryVectorG2Tests.ANonCompletedResultAcknowledgedByTheHandshakeReplayIsForgotten(outcome: "FAILED")']
+N1 observedAt equality not compared: exit=1 ['Failed!  - Failed:     1, Passed:    25, Skipped:     0, Total:    26, Duration: 35 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.ACorrectionPreparedAgainUnderAnAcknowledgedKeyIsNotSettledByTheOldRow(recordedAtDiffers: True)']
+N2 unacknowledged rows settle too: exit=0 ['Passed!  - Failed:     0, Passed:    26, Skipped:     0, Total:    26, Duration: 30 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=[]
+N4 close-out press does not check the row is this vectors: exit=1 ['Failed!  - Failed:     1, Passed:    25, Skipped:     0, Total:    26, Duration: 28 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.AVectorUnderAGivenUpKeyThatDidNotProduceItIsNotAwaitingACheck']
+N4b view does not check the row is this vectors: exit=1 ['Failed!  - Failed:     1, Passed:    25, Skipped:     0, Total:    26, Duration: 27 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.AVectorUnderAGivenUpKeyThatDidNotProduceItIsNotAwaitingACheck']
+S4a correction press not refused after a refused correction: exit=1 ['Failed!  - Failed:     1, Passed:    25, Skipped:     0, Total:    26, Duration: 27 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.ACorrectionRefusedAndEndedCannotBePressedAgain']
+S4b correction entry not greyed after a refused correction: exit=1 ['Failed!  - Failed:     1, Passed:    25, Skipped:     0, Total:    26, Duration: 28 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.ACorrectionRefusedAndEndedCannotBePressedAgain']
+S4c restore does not read a refused correction back: exit=1 ['Failed!  - Failed:     1, Passed:    25, Skipped:     0, Total:    26, Duration: 34 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.ACorrectionRefusedAndEndedCannotBePressedAgain']
+M12 given-up row not checked against the vector: exit=1 ['Failed!  - Failed:     1, Passed:    25, Skipped:     0, Total:    26, Duration: 33 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.AVectorUnderAGivenUpKeyThatDidNotProduceItIsNotAwaitingACheck']
+restored rebuild exit=0
+done exit=0
+
+## 第六轮（S1 用例改为会话不断、替身中途触发还原之后，只重跑 M1、N2，8d14d09）
+
+M1 acked row never settles: exit=1 ['Failed!  - Failed:     8, Passed:    18, Skipped:     0, Total:    26, Duration: 1 m 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.AResultWhoseAckDoesNotComeKeepsItsVectorUntilTheReplayIsAcknowledged(outcome: "UNKNOWN")', 'RecoveryVectorG2Tests.AResultWhoseAckDoesNotComeKeepsItsVectorUntilTheReplayIsAcknowledged(outcome: "ALL_EMPTY")', 'RecoveryVectorG2Tests.AnAcknowledgedResultWhoseRecordOutlivedTheProcessIsForgottenAfterARestart', 'RecoveryVectorG2Tests.AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect', 'RecoveryVectorG2Tests.ASettlementFromTheRowRacingASecondSessionForgetsNothingOfIt', 'RecoveryVectorG2Tests.ACompletedResultAcknowledgedByTheHandshakeReplayIsSettled', 'RecoveryVectorG2Tests.ANonCompletedResultAcknowledgedByTheHandshakeReplayIsForgotten(outcome: "UNKNOWN")', 'RecoveryVectorG2Tests.ANonCompletedResultAcknowledgedByTheHandshakeReplayIsForgotten(outcome: "FAILED")']
+N2 unacknowledged rows settle too: exit=1 ['Failed!  - Failed:     2, Passed:    24, Skipped:     0, Total:    26, Duration: 32 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.AResultWhoseAckDoesNotComeKeepsItsVectorUntilTheReplayIsAcknowledged(outcome: "UNKNOWN")', 'RecoveryVectorG2Tests.AResultWhoseAckDoesNotComeKeepsItsVectorUntilTheReplayIsAcknowledged(outcome: "ALL_EMPTY")']
+restored rebuild exit=0
+done exit=0

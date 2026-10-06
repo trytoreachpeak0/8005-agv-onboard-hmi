@@ -1,0 +1,18 @@
+# 绿：提交 8d14d09 上的单测全量与恢复相关定向 G2（不是全量 ONBOARD_HMI_G2）
+
+审查（fb85e88）S1-S5 修改之后。取代 green-31eb5e7.txt。
+
+## 单测全量
+Passed!  - Failed:     0, Passed:   713, Skipped:     0, Total:   713, Duration: 17 s - SQCD.Agv.UnitTests.dll (net8.0)
+exit=0
+
+## 定向 G2，第一遍（与前几份同一组过滤）
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAckArrivingAfterALoadCancellationAbortedItsSendIsTakenAndTheSessionGoesOn [14 s]
+Failed!  - Failed:     1, Passed:   432, Skipped:     0, Total:   433, Duration: 2 m 32 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1
+失败那条是 hmi#250 的计时型用例（迟到确认只晚 1 秒，要求装货取消的中止落在这 1 秒内），属于 StationDeadlineExpiredG2Tests 一族在并行下的等待超时。单独连跑 6 遍全过。
+
+## 定向 G2，第二遍（同一提交、同一构建）
+Passed!  - Failed:     0, Passed:   433, Skipped:     0, Total:   433, Duration: 2 m 29 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+schema 一致性：0 条新违规，1 条已登记的故意违规，原文见 schema-conformance-8d14d09.txt。
