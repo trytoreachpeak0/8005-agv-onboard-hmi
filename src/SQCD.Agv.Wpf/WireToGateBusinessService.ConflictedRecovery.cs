@@ -65,10 +65,16 @@ public sealed partial class WireToGateBusinessService
     /// The recovery whose result the server refused for good and which waits for a maintainer's manual check, or
     /// <c>null</c>.
     /// </summary>
+    /// <remarks>
+    /// Shown only while the vector on file is the one that produced the given-up result (<see cref="ResultIsThisVectors"/>),
+    /// not merely one under the same key: a vector prepared afresh under it has given nothing up.
+    /// </remarks>
     public WireToGateConflictedRecoveryView? ConflictedRecoveryView =>
         Volatile.Read(ref _conflictedRecovery) is { } conflicted
-        && Volatile.Read(ref _lastRecoveryState).RecoveryVector is { } onFile
+        && Volatile.Read(ref _lastRecoveryState) is var state
+        && state.RecoveryVector is { } onFile
         && IsSameVector(onFile, conflicted.Vector)
+        && ResultIsThisVectors(conflicted.Row, onFile, state)
             ? new WireToGateConflictedRecoveryView(
                 conflicted.Vector.VectorType,
                 conflicted.Vector.PrimaryId,
@@ -134,6 +140,12 @@ public sealed partial class WireToGateBusinessService
             && vector.SlotOperationAttemptId is { } cancelled)
         {
             Volatile.Write(ref _cancellationConcludedAttemptId, cancelled);
+        }
+
+        if (vector.VectorType == WireToGateRecoveryVectorTypes.LoadCorrection
+            && vector.SlotOperationAttemptId is { } corrected)
+        {
+            Volatile.Write(ref _correctionRefusedAttemptId, corrected);
         }
 
         _logger.Write(
@@ -205,6 +217,49 @@ public sealed partial class WireToGateBusinessService
         string.Equals(Volatile.Read(ref _cancellationConcludedAttemptId), slotOperationAttemptId, StringComparison.Ordinal);
 
     /// <summary>
+    /// The settled load whose correction result the server refused for good, as last seen in this process; the
+    /// journal-backed answer is <see cref="IsCorrectionRefusedAsync"/>. Read by the correction entry.
+    /// </summary>
+    private string? _correctionRefusedAttemptId;
+
+    /// <summary>
+    /// Whether the load <paramref name="slotOperationAttemptId"/> has a correction whose result was given up.
+    /// </summary>
+    /// <remarks>
+    /// A correction's id is derived from the load (<c>RequestLoadCorrectionCoreAsync</c>), so a second one is the same
+    /// correction to the server with another request content: it answers <c>BUSINESS_ID_CONTENT_CONFLICT</c> and commands
+    /// nothing, and the vehicle would be left at the station with a correction vector no command will ever come for and
+    /// every other entry grey. Ending the refused correction after the manual check is what opens that press, so this
+    /// shuts it, as <see cref="IsCancellationConcludedAsync"/> does for the cancellation. A correction whose result was
+    /// acknowledged is not this: the server took it, and asking again is as it always was.
+    /// </remarks>
+    private async Task<bool> IsCorrectionRefusedAsync(
+        string demandId,
+        string slotOperationAttemptId,
+        CancellationToken cancellationToken)
+    {
+        bool refused = await _session.Journal
+            .ReadOutgoingByDeduplicationKeyAsync(
+                $"{RecoveryVectorResultKeyPrefix}{WireToGateRecoveryVectorTypes.LoadCorrection}:"
+                + LoadCorrectionId(demandId, slotOperationAttemptId),
+                cancellationToken)
+            .ConfigureAwait(false) is { Abandoned: true };
+        if (refused)
+        {
+            Volatile.Write(ref _correctionRefusedAttemptId, slotOperationAttemptId);
+        }
+
+        return refused;
+    }
+
+    private bool IsCorrectionRefused(string slotOperationAttemptId) =>
+        string.Equals(Volatile.Read(ref _correctionRefusedAttemptId), slotOperationAttemptId, StringComparison.Ordinal);
+
+    /// <summary>The correction id every press over this settled load asks about.</summary>
+    private static string LoadCorrectionId(string demandId, string slotOperationAttemptId) =>
+        StableUuid($"{demandId}|{slotOperationAttemptId}|load-correction");
+
+    /// <summary>
     /// Takes up a vector whose result row was given up: the forced mechanical recovery is isolated, the other four wait for
     /// the manual check. Answers whether the vector was taken up, so the restore shows nothing more for it.
     /// </summary>
@@ -216,7 +271,13 @@ public sealed partial class WireToGateBusinessService
         string reasonCode = row.AbandonedReasonCode!;
         if (vector.VectorType != WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery)
         {
-            Volatile.Write(ref _conflictedRecovery, new ConflictedRecovery(vector, row.MessageId, reasonCode));
+            Volatile.Write(ref _conflictedRecovery, new ConflictedRecovery(vector, row, reasonCode));
+            if (vector.VectorType == WireToGateRecoveryVectorTypes.LoadCorrection
+                && vector.SlotOperationAttemptId is { } corrected)
+            {
+                Volatile.Write(ref _correctionRefusedAttemptId, corrected);
+            }
+
             string text = DescribeConflictedRecovery(vector, reasonCode);
             PublishRecoveryVectorOperation(vector, WireToGateHmiOperationStage.RecoveryRequired, text, "conflict-review");
             PublishOperatorEvent(
@@ -245,7 +306,7 @@ public sealed partial class WireToGateBusinessService
             PublishRecoveryVectorOperation(
                 current,
                 WireToGateHmiOperationStage.RecoveryRequired,
-                $"强制机械取出结果被服务端拒收（{reasonCode}），两端内容不一致；{FormatSlots(current.Slots)}物理状态未知，禁止操作，"
+                $"强制机械取出结果被服务端拒收：{RefusalMeaning(reasonCode)}；{FormatSlots(current.Slots)}物理状态未知，禁止操作，"
                 + "请维护人员核对后提交硬件恢复记录。",
                 "isolated-after-refusal");
             PublishOperatorEvent(
@@ -313,13 +374,33 @@ public sealed partial class WireToGateBusinessService
             ? row
             : null;
 
+    /// <remarks>Words only: the codes are in the log line the refusal was given up with (<c>ReportAbandonment</c>).</remarks>
     private static string DescribeConflictedRecovery(WireToGateRecoveryVectorContext vector, string reasonCode) =>
-        $"恢复结果（{vector.VectorType}）被服务端以 {reasonCode} 拒收，服务端收下的结论与本车不一致。"
-        + $"请维护人员到现场核对{FormatSlots(vector.Slots)}的实物（货物在不在、仓门是否关好上锁）后，按「人工核对后结束此恢复」。";
+        $"{RecoveryKindName(vector.VectorType)}的结果被服务端拒收：{RefusalMeaning(reasonCode)}，与本车的结论不一致。"
+        + $"请维护人员到现场核对{FormatSlots(vector.Slots)}的实物（货物在不在、仓门是否关好上锁）后，"
+        + "按「人工核对后结束此恢复」（需要维护人员的工号与凭据）。";
+
+    private static string RecoveryKindName(string vectorType) => vectorType switch
+    {
+        WireToGateRecoveryVectorTypes.LoadCancellation => "装货取消",
+        WireToGateRecoveryVectorTypes.LoadCompensation => "补偿清空",
+        WireToGateRecoveryVectorTypes.LoadCorrection => "装货修正",
+        WireToGateRecoveryVectorTypes.FaultCargoHandoff => "故障货物交接",
+        WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery => "强制机械取出",
+        _ => "恢复"
+    };
+
+    /// <summary>What the two refusals a recovery result can meet say happened at the server, in words.</summary>
+    private static string RefusalMeaning(string reasonCode) => reasonCode switch
+    {
+        "MESSAGE_ID_CONTENT_CONFLICT" => "服务端在同一报文编号下已收下另一份内容",
+        "BUSINESS_ID_CONTENT_CONFLICT" => "服务端对这次恢复已有另一份结论，或这份结果与服务端登记的不符",
+        _ => "服务端不接受这份结果"
+    };
 
     private sealed record ConflictedRecovery(
         WireToGateRecoveryVectorContext Vector,
-        string MessageId,
+        WireToGateDurableMessage Row,
         string ReasonCode);
 }
 

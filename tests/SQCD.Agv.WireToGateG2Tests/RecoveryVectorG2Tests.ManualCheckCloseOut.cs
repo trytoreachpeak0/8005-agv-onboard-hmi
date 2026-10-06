@@ -58,7 +58,11 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.True(viewModel.HasConflictedRecovery);
         Assert.True(viewModel.CanCloseConflictedRecovery);
         Assert.Contains("人工核对后结束此恢复", viewModel.ConflictedRecoveryText, StringComparison.Ordinal);
-        Assert.Contains("BUSINESS_ID_CONTENT_CONFLICT", viewModel.ConflictedRecoveryText, StringComparison.Ordinal);
+        // Words, not codes: the codes are in the log.
+        Assert.Contains("服务端对这次恢复已有另一份结论", viewModel.ConflictedRecoveryText, StringComparison.Ordinal);
+        Assert.DoesNotContain("BUSINESS_ID_CONTENT_CONFLICT", viewModel.ConflictedRecoveryText, StringComparison.Ordinal);
+        Assert.DoesNotContain(vector.VectorType, viewModel.ConflictedRecoveryText, StringComparison.Ordinal);
+        Assert.Contains("需要维护人员的工号与凭据", viewModel.ConflictedRecoveryText, StringComparison.Ordinal);
 
         int sentBefore = harness.Server.ReceivedEnvelopes.Count;
         Assert.True(await viewModel.CloseConflictedRecoveryAsync(token));
@@ -303,14 +307,19 @@ public sealed partial class RecoveryVectorG2Tests
     }
 
     /// <summary>
-    /// A load correction's id is derived from the load, so a second correction of the same load after the first one was
-    /// refused and ended is prepared under the key of the given-up row. That row is not the second correction's result:
-    /// across the next session's restore it is not taken up as waiting for a check, and its entry is not offered.
+    /// A vector on file under the key of a given-up row that did not produce it -- prepared afresh, its observation time
+    /// cleared, as a second correction of the same load used to be before such a press was shut -- is not a recovery
+    /// waiting for its check: the restore does not take it up, the entry is not shown even though one was shown for the
+    /// first, and a press that gets past the screen is refused and writes nothing.
     /// </summary>
+    /// <remarks>
+    /// The journal is rewritten to that state rather than reached by pressing: the press is refused now
+    /// (<see cref="ACorrectionRefusedAndEndedCannotBePressedAgain"/>), and the guards hold whatever brings it about.
+    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-06")]
     [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
-    public async Task ACorrectionPreparedAgainUnderAGivenUpKeyIsNotTakenUpAsAwaitingACheck()
+    public async Task AVectorUnderAGivenUpKeyThatDidNotProduceItIsNotAwaitingACheck()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
@@ -325,29 +334,91 @@ public sealed partial class RecoveryVectorG2Tests
             },
             loadAlreadySettled: true);
         await RunRefusedVectorAsync(harness, RefusedVector.LoadCorrection, token);
-        WireToGateRecoveryVectorContext first = await WaitForGivenUpResultAsync(harness, token);
+        WireToGateRecoveryVectorContext vector = await WaitForGivenUpResultAsync(harness, token);
         await RecoveryVectorHarness.WaitUntilAsync(
-            () => harness.Business.CanCloseConflictedRecoveryAfterReview,
-            "the manual check entry to be offered",
+            () => harness.Business.ConflictedRecoveryView is not null,
+            "the refused correction to wait for its manual check",
             token);
-        Assert.True(await harness.Business.CloseConflictedRecoveryAfterReviewAsync(token));
         int takenUpBefore = harness.OperatorEvents.Count(item => item.Kind == "CONFLICTED_RECOVERY_PENDING");
 
-        Assert.True(await harness.Business.RequestLoadCorrectionAsync("现场确认需要修正已完成的装货结果。", token));
-        WireToGateRecoveryVectorContext second = (await harness.ReadRecoveryStateAsync(token)).RecoveryVector!;
-        Assert.Equal(first.PrimaryId, second.PrimaryId);
-
+        // The same vector, prepared afresh: no result observed for it yet.
+        await harness.RewriteRecoveryStateAsync(state => state with { RecoveryResultObservedAt = null }, token);
         await harness.Session.Client.DisconnectAsync();
         _ = await harness.Session.Client.ConnectAndRecoverAsync(token);
         await RecoveryVectorHarness.WaitUntilAsync(
             () => harness.OperatorEvents.Any(item => item.Kind == "OPERATION_PROGRESS"
-                && item.Message.StartsWith($"恢复向量 {second.VectorType} 尚未完成", StringComparison.Ordinal)),
-            "the restore to show the second correction as unfinished",
+                && item.Message.StartsWith($"恢复向量 {vector.VectorType} 尚未完成", StringComparison.Ordinal)),
+            "the restore to show the correction as unfinished",
             token);
+
         Assert.Null(harness.Business.ConflictedRecoveryView);
         Assert.False(harness.Business.CanCloseConflictedRecoveryAfterReview);
         Assert.Equal(takenUpBefore, harness.OperatorEvents.Count(item => item.Kind == "CONFLICTED_RECOVERY_PENDING"));
-        Assert.Equal(second.PrimaryId, (await harness.ReadRecoveryStateAsync(token)).RecoveryVector?.PrimaryId);
+        Assert.False(await harness.Business.CloseConflictedRecoveryAfterReviewAsync(token));
+        Assert.Equal(vector.PrimaryId, (await harness.ReadRecoveryStateAsync(token)).RecoveryVector?.PrimaryId);
+    }
+
+    /// <summary>
+    /// A correction refused for good and ended after the manual check cannot be pressed again for the same load: the
+    /// server would take the second request as different content under the same correction, refuse it and command nothing,
+    /// leaving a correction vector at the station that no command will ever come for. Not offered -- after a restart too --
+    /// and a press that gets past the screen is refused before anything is written or sent.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-06")]
+    [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
+    public async Task ACorrectionRefusedAndEndedCannotBePressedAgain()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = NewRestartJournalPath();
+        await using FakeControlServer server = RecoveryVectorHarness.NewServer();
+        server.RecoveryVectorSlotOperationAttemptId = AttemptId;
+        server.ProtocolProblemByMessageType = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["LoadCorrectionResult"] = "BUSINESS_ID_CONTENT_CONFLICT"
+        };
+        await using (RecoveryVectorHarness beforeRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: server,
+            journalPath: journalPath,
+            loadAlreadySettled: true))
+        {
+            await RunRefusedVectorAsync(beforeRestart, RefusedVector.LoadCorrection, token);
+            await WaitForGivenUpResultAsync(beforeRestart, token);
+            await RecoveryVectorHarness.WaitUntilAsync(
+                () => beforeRestart.Business.CanCloseConflictedRecoveryAfterReview,
+                "the manual check entry to be offered",
+                token);
+            Assert.True(await beforeRestart.Business.CloseConflictedRecoveryAfterReviewAsync(token));
+
+            Assert.False(beforeRestart.Business.CanRequestLoadCorrection);
+            Assert.False(await beforeRestart.Business.RequestLoadCorrectionAsync("现场确认需要修正已完成的装货结果。", token));
+            Assert.Null((await beforeRestart.ReadRecoveryStateAsync(token)).RecoveryVector);
+            Assert.Single(beforeRestart.ResultsOfType("LoadCorrectionRequested"));
+            Assert.Contains(beforeRestart.OperatorEvents, item => item.Kind == "RECOVERY_BLOCKED"
+                && item.Message.Contains(
+                    OnboardCommandRejectionText.DescribeRecoveryBlocked("LOAD_CORRECTION_ALREADY_REFUSED"),
+                    StringComparison.Ordinal));
+        }
+
+        await using FakeControlServer serverAfterRestart = RecoveryVectorHarness.NewServer();
+        serverAfterRestart.AdoptDurableRecoveryMemoryFrom(server);
+        await using RecoveryVectorHarness afterRestart = await RecoveryVectorHarness.StartAsync(
+            token,
+            existingServer: serverAfterRestart,
+            journalPath: journalPath,
+            baselineRevision: 2,
+            restart: true,
+            nothingOnFile: true);
+        // The restore reads the row back: until it has, nothing in this process knows the correction was refused.
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => afterRestart.Logger.Entries.Any(entry => entry.Message.StartsWith(
+                "这次装货的修正结果已被服务端拒收并经人工核对结束，修正入口保持关闭", StringComparison.Ordinal)),
+            "the restore to read the refused correction back after the restart",
+            token);
+        Assert.False(afterRestart.Business.CanRequestLoadCorrection);
+        Assert.False(await afterRestart.Business.RequestLoadCorrectionAsync("现场确认需要修正已完成的装货结果。", token));
+        Assert.Empty(afterRestart.ResultsOfType("LoadCorrectionRequested"));
     }
 
     private static int RefusalsOf(RecoveryVectorHarness harness, string attemptId) =>

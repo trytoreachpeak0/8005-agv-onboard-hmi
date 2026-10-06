@@ -164,6 +164,9 @@ public static class OnboardFailureClassification
         // A cancellation pressed over a load whose cancellation already has a result on file (onboard-hmi#254): it
         // would ask again under the same cancellationId and open doors the first one emptied. Nothing was sent.
         "LOAD_CANCELLATION_ALREADY_CONCLUDED",
+        // A correction pressed over a settled load whose correction was refused for good (onboard-hmi#254): the server
+        // would refuse the request and command nothing. Nothing was sent.
+        "LOAD_CORRECTION_ALREADY_REFUSED",
         "HARDWARE_RECOVERY_OBSERVATIONS_REQUIRED",
         "HARDWARE_RECOVERY_RECORD_REQUIRED",
         "SLOT_STATE_UNKNOWN"

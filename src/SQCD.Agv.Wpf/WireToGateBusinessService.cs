@@ -1123,6 +1123,21 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
                 .ConfigureAwait(false);
 
+            // After a restart: a refused correction of the settled load keeps its entry shut (onboard-hmi#254). Read here
+            // because nothing else looks at that row until somebody presses.
+            if (state.RecoveryVector is null
+                && state.LastCompletedLoadOperationContext is { } settledLoad
+                && !IsCorrectionRefused(settledLoad.SlotOperationAttemptId)
+                && await IsCorrectionRefusedAsync(
+                        settledLoad.DemandId, settledLoad.SlotOperationAttemptId, cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                _logger.Write(
+                    LogSeverity.Information,
+                    nameof(WireToGateBusinessService),
+                    $"这次装货的修正结果已被服务端拒收并经人工核对结束，修正入口保持关闭：attempt={settledLoad.SlotOperationAttemptId}。");
+            }
+
             // A forced isolation is a device fact beside whatever else is on file, not instead of it:
             // it settled its own business side when it was acknowledged, and an operation or vector on
             // other slots is restored and settled below exactly as it would be without it. The

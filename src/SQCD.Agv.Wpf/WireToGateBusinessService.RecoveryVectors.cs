@@ -558,8 +558,11 @@ public sealed partial class WireToGateBusinessService
     private bool HasRecoveryVectorOrCompletedLoad(string vectorType)
     {
         WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+        // Not over a load whose correction was refused for good (onboard-hmi#254): the request path refuses it from the
+        // outbox; this greys the entry out.
         return state.RecoveryVector?.VectorType == vectorType
-            || state.LastCompletedLoadOperationContext is not null;
+            || state.LastCompletedLoadOperationContext is { } settled
+                && !IsCorrectionRefused(settled.SlotOperationAttemptId);
     }
 
     private bool CanRequestRecoveryAction(string action, string vectorType)
@@ -1226,9 +1229,16 @@ public sealed partial class WireToGateBusinessService
             WireToGateRecoveryOperationContext operation =
                 state.LastCompletedLoadOperationContext
                 ?? throw new InvalidOperationException("LOAD_CORRECTION_OPERATION_NOT_AVAILABLE");
+            // Its correction was refused for good and ended after a manual check: asked again, the server would refuse the
+            // request as different content under the same correction and command nothing (onboard-hmi#254).
+            if (await IsCorrectionRefusedAsync(operation.DemandId, operation.SlotOperationAttemptId, cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                throw new InvalidOperationException("LOAD_CORRECTION_ALREADY_REFUSED");
+            }
+
             WireToGateOperatorContextPayload operatorContext = ReadOperatorContext();
-            string correctionId = StableUuid(
-                $"{operation.DemandId}|{operation.SlotOperationAttemptId}|load-correction");
+            string correctionId = LoadCorrectionId(operation.DemandId, operation.SlotOperationAttemptId);
             correctionReason = RequireReason(reason);
             vector = new(
                 WireToGateRecoveryVectorTypes.LoadCorrection,

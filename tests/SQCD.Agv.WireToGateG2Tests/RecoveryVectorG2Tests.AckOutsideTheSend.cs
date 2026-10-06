@@ -251,10 +251,16 @@ public sealed partial class RecoveryVectorG2Tests
     /// left. That row is not the second correction's result: across the next session's restore it stays on file, waiting
     /// for its own command.
     /// </summary>
-    [Fact]
+    /// <param name="recordedAtDiffers">
+    /// Whether the vector on file has an observation time of its own, different from the row's -- what a second
+    /// preparation that went on to observe its own result would hold -- rather than none.
+    /// </param>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
-    public async Task ACorrectionPreparedAgainUnderAnAcknowledgedKeyIsNotSettledByTheOldRow()
+    public async Task ACorrectionPreparedAgainUnderAnAcknowledgedKeyIsNotSettledByTheOldRow(bool recordedAtDiffers)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
@@ -281,6 +287,12 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(first.PrimaryId, second.PrimaryId);
         Assert.True((await harness.ReadOutgoingAsync(
             $"recovery-vector-result:{second.VectorType}:{second.PrimaryId}", token))?.Acknowledged);
+        if (recordedAtDiffers)
+        {
+            await harness.RewriteRecoveryStateAsync(
+                state => state with { RecoveryResultObservedAt = DateTimeOffset.UtcNow.AddMinutes(-5) },
+                token);
+        }
 
         await ReconnectAsync(harness, token);
         await RecoveryVectorHarness.WaitUntilAsync(
@@ -292,6 +304,77 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.DoesNotContain(harness.Logger.Entries, entry =>
             entry.Message.StartsWith("恢复向量结果的DurableAck不在首次发送时到达", StringComparison.Ordinal));
     }
+
+    /// <summary>
+    /// The ack never comes, not even for the handshake's replay: the vector and the recovery session stay on file through
+    /// the next session's restore, and the result is sent again (ticket acceptance 4). Settling from a row that is still
+    /// owed would read "the server has it" off a row that says the opposite.
+    /// </summary>
+    [Theory]
+    [InlineData("ALL_EMPTY")]
+    [InlineData("UNKNOWN")]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task AResultWhoseAckNeverComesKeepsItsVectorAndIsReplayed(string outcome)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server =>
+            {
+                server.SendRecoveryVectorCommandAfterRecoveryAction = false;
+                server.RecoverySlotOperationAttemptId = AttemptId;
+                server.LoadCompensationResultAcksToDrop = int.MaxValue;
+            },
+            cargoInTargetSlots: outcome == "UNKNOWN",
+            lockerWaitTimesOut: outcome == "UNKNOWN");
+
+        WireToGateRecoveryState prepared = await PrepareCompensationAsync(harness, token);
+        await harness.Server.SendCommandAsync(
+            "LoadCompensationCommand", CompensationCommandMessageId, CompensationCommand(prepared));
+        JsonElement result = await harness.WaitForResultAsync("LoadCompensationResult", token);
+        Assert.Equal(outcome, result.GetProperty("overallOutcome").GetString());
+        await WaitForAckPendingAsync(harness, token);
+        int restoredBefore = RestoredAsUnfinished(harness, prepared);
+
+        await harness.Session.Client.DisconnectAsync();
+        try
+        {
+            _ = await harness.Session.Client.ConnectAndRecoverAsync(token);
+        }
+        catch (Exception exception) when (exception is IOException or TimeoutException or InvalidOperationException)
+        {
+            // A handshake whose replay is never acknowledged may not come up; the replay having gone out is the point.
+        }
+
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.ResultsOfType("LoadCompensationResult").Count >= 2,
+            "the handshake to send the unacknowledged result again",
+            token);
+        if (harness.Session.Current.Readiness is WireToGateSessionReadiness.Ready or WireToGateSessionReadiness.RecoveryRequired)
+        {
+            // The second fact: the restore ran past the row and showed the vector as unfinished.
+            await RecoveryVectorHarness.WaitUntilAsync(
+                () => RestoredAsUnfinished(harness, prepared) > restoredBefore,
+                "the restore to keep the vector as unfinished",
+                token);
+        }
+
+        WireToGateDurableMessage row = (await harness.ReadOutgoingAsync(
+            CompensationResultKey(prepared.RecoveryVector!.PrimaryId), token))!;
+        Assert.False(row.Acknowledged);
+        WireToGateRecoveryState after = await harness.ReadRecoveryStateAsync(token);
+        Assert.Equal(prepared.RecoveryVector.PrimaryId, after.RecoveryVector?.PrimaryId);
+        Assert.Equal(prepared.ExceptionRecoverySessionId, after.ExceptionRecoverySessionId);
+        Assert.Equal(prepared.RecoveryActionId, after.RecoveryActionId);
+        Assert.DoesNotContain(harness.Logger.Entries, entry =>
+            entry.Message.StartsWith("恢复向量结果的DurableAck不在首次发送时到达", StringComparison.Ordinal));
+    }
+
+    private static int RestoredAsUnfinished(RecoveryVectorHarness harness, WireToGateRecoveryState prepared) =>
+        harness.OperatorEvents.Count(item => item.Kind == "OPERATION_PROGRESS"
+            && item.Message.StartsWith(
+                $"恢复向量 {prepared.RecoveryVector!.VectorType} 尚未完成", StringComparison.Ordinal));
 
     private static Task WaitForAckPendingAsync(RecoveryVectorHarness harness, CancellationToken token) =>
         RecoveryVectorHarness.WaitUntilAsync(
