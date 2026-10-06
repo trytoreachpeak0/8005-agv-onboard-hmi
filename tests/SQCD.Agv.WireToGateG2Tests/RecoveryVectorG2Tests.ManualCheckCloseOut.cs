@@ -302,6 +302,54 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Equal(refusalsOnTheWire, RefusalsOf(harness, newAttemptId));
     }
 
+    /// <summary>
+    /// A load correction's id is derived from the load, so a second correction of the same load after the first one was
+    /// refused and ended is prepared under the key of the given-up row. That row is not the second correction's result:
+    /// across the next session's restore it is not taken up as waiting for a check, and its entry is not offered.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-06")]
+    [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
+    public async Task ACorrectionPreparedAgainUnderAGivenUpKeyIsNotTakenUpAsAwaitingACheck()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server =>
+            {
+                server.RecoveryVectorSlotOperationAttemptId = AttemptId;
+                server.ProtocolProblemByMessageType = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["LoadCorrectionResult"] = "BUSINESS_ID_CONTENT_CONFLICT"
+                };
+            },
+            loadAlreadySettled: true);
+        await RunRefusedVectorAsync(harness, RefusedVector.LoadCorrection, token);
+        WireToGateRecoveryVectorContext first = await WaitForGivenUpResultAsync(harness, token);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Business.CanCloseConflictedRecoveryAfterReview,
+            "the manual check entry to be offered",
+            token);
+        Assert.True(await harness.Business.CloseConflictedRecoveryAfterReviewAsync(token));
+        int takenUpBefore = harness.OperatorEvents.Count(item => item.Kind == "CONFLICTED_RECOVERY_PENDING");
+
+        Assert.True(await harness.Business.RequestLoadCorrectionAsync("现场确认需要修正已完成的装货结果。", token));
+        WireToGateRecoveryVectorContext second = (await harness.ReadRecoveryStateAsync(token)).RecoveryVector!;
+        Assert.Equal(first.PrimaryId, second.PrimaryId);
+
+        await harness.Session.Client.DisconnectAsync();
+        _ = await harness.Session.Client.ConnectAndRecoverAsync(token);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.OperatorEvents.Any(item => item.Kind == "OPERATION_PROGRESS"
+                && item.Message.StartsWith($"恢复向量 {second.VectorType} 尚未完成", StringComparison.Ordinal)),
+            "the restore to show the second correction as unfinished",
+            token);
+        Assert.Null(harness.Business.ConflictedRecoveryView);
+        Assert.False(harness.Business.CanCloseConflictedRecoveryAfterReview);
+        Assert.Equal(takenUpBefore, harness.OperatorEvents.Count(item => item.Kind == "CONFLICTED_RECOVERY_PENDING"));
+        Assert.Equal(second.PrimaryId, (await harness.ReadRecoveryStateAsync(token)).RecoveryVector?.PrimaryId);
+    }
+
     private static int RefusalsOf(RecoveryVectorHarness harness, string attemptId) =>
         harness.ResultsOfType("SlotOperationCommandRejected")
             .Count(line => line.Contains(attemptId, StringComparison.Ordinal));

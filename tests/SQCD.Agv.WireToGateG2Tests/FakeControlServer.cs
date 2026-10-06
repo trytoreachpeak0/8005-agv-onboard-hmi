@@ -1836,28 +1836,35 @@ public sealed class FakeControlServer : IAsyncDisposable
                 if (ProtocolProblemByMessageId.TryGetValue(messageId, out string? refusalCode)
                     || ProtocolProblemByMessageType.TryGetValue(messageType, out refusalCode))
                 {
+                    // Reconciled before the refusal goes out, as the real server's other first result already was: a
+                    // vehicle that reconnects the moment it reads the refusal must meet a server that has settled it.
+                    string? reconciledAttempt =
+                        RefusedRecoveryResultsWereReconciledByAnother
+                        && messageType is "LoadCancellationResult" or "LoadCompensationResult" or "LoadCorrectionResult"
+                            or "FaultCargoRecoveryResult" or "ForcedMechanicalRecoveryResult"
+                            ? root.GetProperty("payload").TryGetProperty("slotOperationAttemptId", out JsonElement attempt)
+                                && attempt.ValueKind == JsonValueKind.String
+                                    ? attempt.GetString()
+                                    : RecoveryVectorSlotOperationAttemptId
+                            : null;
+                    if (reconciledAttempt is not null)
+                    {
+                        lock (_sync)
+                        {
+                            _settledAttempts.Add(reconciledAttempt);
+                            _operationsNeedingRecovery.Remove(reconciledAttempt);
+                        }
+                    }
+
                     await WriteEnvelopeAsync(context, CreateProtocolProblem(
                         context,
                         ProtocolProblemNamesAnotherMessage ? Guid.NewGuid().ToString("D") : messageId,
                         messageType,
                         refusalCode)).ConfigureAwait(false);
-                    if (RefusedRecoveryResultsWereReconciledByAnother
-                        && messageType is "LoadCancellationResult" or "LoadCompensationResult" or "LoadCorrectionResult"
-                            or "FaultCargoRecoveryResult" or "ForcedMechanicalRecoveryResult")
+                    if (reconciledAttempt is not null)
                     {
-                        string? reconciledAttempt =
-                            root.GetProperty("payload").TryGetProperty("slotOperationAttemptId", out JsonElement attempt)
-                            && attempt.ValueKind == JsonValueKind.String
-                                ? attempt.GetString()
-                                : RecoveryVectorSlotOperationAttemptId;
-                        await ReconcileAsync(context, _ =>
-                        {
-                            if (reconciledAttempt is not null)
-                            {
-                                _settledAttempts.Add(reconciledAttempt);
-                                _operationsNeedingRecovery.Remove(reconciledAttempt);
-                            }
-                        }).ConfigureAwait(false);
+                        // Announces the readiness the settlement changed, if it did.
+                        await ReconcileAsync(context, _ => { }).ConfigureAwait(false);
                     }
 
                     continue;
