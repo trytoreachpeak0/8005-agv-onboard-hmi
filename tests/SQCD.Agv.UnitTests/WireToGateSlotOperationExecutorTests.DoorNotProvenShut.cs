@@ -70,6 +70,9 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         CancellationToken token = TestContext.Current.CancellationToken;
         await using TestFixture fixture = await TestFixture.CreateAsync(cancellationToken: token);
         WireToGateSlotOperationCommand earlier = await SeedDoorInDoubtAsync(fixture, token);
+        // A fresh reading of door 3 shut, taken now: the fixture trusts a reading for one second, and the one its IO was
+        // built with can be older than that by the time a loaded machine gets here.
+        fixture.Io.CloseDoor(2);
 
         WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(
             CreateCommand(OperationType.Load, [1], expectedOccupied: true),
