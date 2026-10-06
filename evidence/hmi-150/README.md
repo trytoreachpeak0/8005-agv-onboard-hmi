@@ -10,4 +10,6 @@
 | `g2-full-085c98c/` | 本机全量 ONBOARD_HMI_G2：085c98c（代码 03d7618），`pwsh -File scripts/run-w2g-g2.ps1 -ProtocolRoot <protocol-v2.0.0 的普通克隆>`，不传 `-Slice`。PASS，退出码 0；UnitTests 713 通过，G2 700 通过；`summary.json` status=PASS、g1Status=PASS，build/test/format 退出码 0；schema 一致性 0 条新违规、4 条已登记的故意违规（均为既有用例）。目录原样保留，约 60 KB |
 | `mutations/mutations.txt` | 变异汇总行与退出码，七轮；最终全部取红 |
 
-CI 真装置 real-onboard-compensate-then-reconnect 待调度放行后在最终 head 上跑，届时补到本目录。
+| `ci-real-rig-37439910002/` | CI 真装置 `real-onboard-compensate-then-reconnect`，run 37439910002（control-server `cb8a894e`、本仓 `dbf29315`、simulator `fb5f7c59`）：PASS，94 秒，9 条判据全 PASS。按 hmi#254、hmi#255 的先例精简为 7 个文件：`run-SUMMARY.md` 是这一轮的汇总，`SUMMARY.md`、`assertions.json`、`timeline.jsonl` 是场景结论，`onboard-app-log.txt` 是车载端应用日志，`commits.json` 与 `commit-samples.csv` 是三方提交与内存采样。服务端日志与数据库快照没有入库，原件在该 run 的 artifact `real-rig-evidence` 里 |
+
+这个场景里补偿结果在首发就拿到确认，走不到本票新增的「首发之外的确认」与「人工核对后结束」两条路径；它证明的是恢复入口与界面没有回归。新路径由上面的 G2 用例覆盖。
