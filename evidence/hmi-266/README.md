@@ -80,3 +80,12 @@ M1b 下第五条用例也红了，但那是用例自己的时序竞争：「已�
 - schema 收尾：检查 18926 行，0 处新违规，4 处已登记的故意违规（同 hmi#264）。
 - 行数比 hmi#264 的 19540 行少。推断原因是心跳、进度重发这类周期报文的数量取决于实际运行时长，这次没有并行负载，跑得更快；没有逐条核实。
 - 迟到确认那一族（hmi#270）这次没有红。
+
+## 两端联合 CI 真装置（`ci-real-rig-37439190357/`）
+
+由调度放行后派发。run `37439190357`，结论 success，headSha 是 `73037f53`。
+
+- 三个提交：control-server `73037f53`（PR #495 的分支顶），onboard-hmi `a96f4f9`，slots-simulator `fb5f7c59`。
+- 场景 `real-onboard-slot-fault-declaration` PASS，用时 97 秒，7 条判据全部 PASS。判故障的正常路径没有被打坏：应答是 APPLIED 且收到 DurableAck，OperationResult 报 UNKNOWN 加 `SLOT_FAULT_DECLARED`，判定之后零开锁。
+- 车载端日志里，兜底的「处理服务端业务消息失败」出现 0 次，「判故障应答已被服务端拒收」出现 0 次。正常路径下应答不会被拒收，所以本票的回拒不会触发。
+- 入库的文件和 hmi#264 的真装置证据一样：`SUMMARY.md`、`assertions.json`、`timeline.jsonl`、`commits.json`、`commit-samples.csv`、车载端应用日志。
