@@ -75,3 +75,17 @@
 - 文案与日志级别：
   - `mut-text-always-shut-door.txt`：变异"文案一律叫人关门"，三种维修原因的三格红。
   - `mut-log-always-warning.txt`：变异"每份重发都记 Warning"，门开着那一格红。
+
+## 5. CI 真装置：`ci-real-rig-37492878389/`
+
+- Run：https://github.com/trytoreachpeak0/8005-agv-control-server/actions/runs/37492878389
+  - `l2.yml`，`rig=real`，只跑一场 `real-onboard-compensate-then-reconnect`。调度在 vm01 空闲时放行。
+  - 结论 success：job `real-rig` 为 success；`scenarios` 为 skipped，这是 `rig=real` 时的正常分支。
+- `commits.json`：与派发时一致。control-server `1de2d2e27667305ac3aff917a425db9dbe92efeb`（派发前读到的 `fp/v2-impl` 顶端），onboard-hmi `eaa0f0358ca873841ddb04f4c69a763af54f1f83`，slots-simulator `fb5f7c593742bf98bc3957b8729a38aad5321f28`。
+- `run-SUMMARY.md`：场景 PASS，用时 86 秒。
+- `SUMMARY.md`、`assertions.json`：判据 `L2-CR-00` 到 `L2-CR-08` 共 9 条，全部 PASS。
+- `timeline.jsonl`：场景时间线。
+- `onboard-app-log.txt`：车载端应用日志，整份 73 行。
+  - 本票加的拒收与收尾一条都没有出现："拒收SlotOperationCommand"、"日志簿记录的仓门未能确认已关好"、"恢复向量还没有它自己的结果"、"新仓位操作替换了日志簿"、"先收尾在案的恢复向量"、"未结作业已不是它自己的"、`RECOVERY_BLOCKED` 都是 0 次。正常流程里没有误拦。
+  - "判恢复入口"那几行在几次重连之间判断正常，补偿之后 `recoveryVector=none`。
+- `commit-samples.csv`：vm01 已提交内存的采样，59 次，在 4.57 到 7.7 GiB 之间（上限 16 GiB）。
