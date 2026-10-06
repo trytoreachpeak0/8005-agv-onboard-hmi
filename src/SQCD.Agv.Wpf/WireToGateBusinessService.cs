@@ -222,7 +222,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             clock,
             executorOptions,
             IsReopenPermitted,
-            _fatalFaultLatched);
+            _fatalFaultLatched,
+            LogJournalOverwrite);
         // Both executors ask the latch themselves, immediately before each pulse
         // (8005-agv-onboard-hmi#191): the checks on this side run when a press is made or a command
         // arrives, and a latch can come after either.
@@ -3418,6 +3419,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             await _operationDisplayGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             ownsDisplay = true;
             Volatile.Write(ref _operationDisplayOwnerAttemptId, command.SlotOperationAttemptId);
+            WireToGateHmiOperationSnapshot? displayBefore = Volatile.Read(ref _currentOperationSnapshot);
             PublishOperation(
                 command,
                 WireToGateHmiOperationStage.Preparing,
@@ -3462,6 +3464,14 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     LogSeverity.Information,
                     nameof(WireToGateBusinessService),
                     $"装货已被授权的装货取消中止，不上报OperationResult：attempt={command.SlotOperationAttemptId}。");
+                return;
+            }
+            catch (WireToGateDoorNotProvenShutException refused)
+            {
+                // Refused before anything was written or pulsed (8005-agv-onboard-hmi#267): the screen goes back to
+                // what it showed before this command, and the server is told the command was not taken.
+                await RefuseOverDoorNotProvenShutAsync(command, refused, displayBefore, cancellationToken)
+                    .ConfigureAwait(false);
                 return;
             }
 

@@ -956,6 +956,13 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </summary>
     public TimeSpan LoadCompensationResultAckDelay { get; set; }
 
+    /// <summary>
+    /// When set, the <c>DurableAck</c> of every <c>LoadCompensationResult</c> is written only once the test completes this,
+    /// off the read loop: a late acknowledgement whose moment the test chooses (onboard-hmi#267), rather than one a fixed
+    /// <see cref="LoadCompensationResultAckDelay"/> races against.
+    /// </summary>
+    public TaskCompletionSource? LoadCompensationResultAckRelease { get; set; }
+
     private int _judgedRecoveryRequests;
 
     /// <summary>
@@ -2079,7 +2086,11 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "LoadCancellationResult":
                     case "LoadCompensationResult":
                     case "FaultCargoRecoveryResult":
-                        if (messageType == "LoadCompensationResult" && LoadCompensationResultAckDelay > TimeSpan.Zero)
+                        if (messageType == "LoadCompensationResult" && LoadCompensationResultAckRelease is { } release)
+                        {
+                            HoldDurableAck(context, CreateDurableAck(context, root), release.Task);
+                        }
+                        else if (messageType == "LoadCompensationResult" && LoadCompensationResultAckDelay > TimeSpan.Zero)
                         {
                             DelayDurableAck(context, CreateDurableAck(context, root), LoadCompensationResultAckDelay);
                         }
@@ -3973,10 +3984,13 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// connection gone by then takes the ack with it, as a real one would.
     /// </summary>
     private void DelayDurableAck(ConnectionContext context, WireToGateEnvelope ack, TimeSpan delay) =>
+        HoldDurableAck(context, ack, Task.Delay(delay));
+
+    private void HoldDurableAck(ConnectionContext context, WireToGateEnvelope ack, Task release) =>
         _ = Task.Run(
             async () =>
             {
-                await Task.Delay(delay).ConfigureAwait(false);
+                await release.ConfigureAwait(false);
                 try
                 {
                     await WriteEnvelopeAsync(context, ack).ConfigureAwait(false);

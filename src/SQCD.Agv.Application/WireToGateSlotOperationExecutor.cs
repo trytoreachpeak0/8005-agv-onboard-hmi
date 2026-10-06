@@ -60,6 +60,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     private readonly WireToGateSlotOperationExecutorOptions _options;
     private readonly Func<bool> _reopenPermitted;
     private readonly Func<bool> _fatalFaultLatched;
+    private readonly Action<WireToGateJournalOverwrite> _journalOverwritten;
     private readonly SemaphoreSlim _operationGate = new(1, 1);
     private ActiveOperation? _activeOperation;
 
@@ -84,7 +85,8 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         IClock clock,
         WireToGateSlotOperationExecutorOptions options,
         Func<bool> reopenPermitted,
-        Func<bool>? fatalFaultLatched = null)
+        Func<bool>? fatalFaultLatched = null,
+        Action<WireToGateJournalOverwrite>? journalOverwritten = null)
     {
         _ioModule = ioModule;
         _journal = journal;
@@ -92,6 +94,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         _options = options;
         _reopenPermitted = reopenPermitted ?? throw new ArgumentNullException(nameof(reopenPermitted));
         _fatalFaultLatched = fatalFaultLatched ?? (() => false);
+        _journalOverwritten = journalOverwritten ?? (_ => { });
         ValidateOptions(options);
     }
 
@@ -622,6 +625,27 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 
         DateTimeOffset started = _clock.Now;
         IoSnapshot initial = _ioModule.CurrentSnapshot;
+
+        // The journal's active unlock set is the record of a door that may still be open -- left by an UNKNOWN result,
+        // a recovery vector the server has concluded, or one a maintainer ended after the manual check -- and the
+        // clean journal below would drop it from every later handshake. So the whole set is asked of a fresh reading
+        // first, not only this command's targets: a door it does not prove shut refuses the command before anything is
+        // written, and the record stays (8005-agv-onboard-hmi#267). The single-door rule in front of each pulse would
+        // stop the pulse too, but only after the clean journal had been written and an UNKNOWN result made up for an
+        // operation that opened nothing.
+        bool initialFresh = IsFresh(initial);
+        int[] doorsInDoubt = WireToGateSingleDoorRule.DoorsNotProvenShut(
+            initial,
+            initialFresh,
+            journaled.ActiveUnlockSlots);
+        if (doorsInDoubt.Length > 0)
+        {
+            throw new WireToGateDoorNotProvenShutException(
+                doorsInDoubt,
+                initialFresh,
+                journaled.UnsettledSlotOperationAttemptId);
+        }
+
         IReadOnlyList<int> physicallyUnknown = journaled.ForcedIsolation?.PhysicallyUnknownSlots ?? [];
         if (command.Slots.Any(physicallyUnknown.Contains))
         {
@@ -632,7 +656,10 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         }
 
         // A new operation starts from a clean journal, except for the device facts that outlive
-        // every operation.
+        // every operation. Only the fields a checkpoint owns are replaced (WriteCheckpointAsync); a recovery vector and
+        // its session stay as the journal holds them. Every door of the active unlock set has just been proven shut, so
+        // replacing the set drops no door in doubt; the earlier attempt it replaces, and a vector it writes beside, are
+        // told to the caller to log once the journal is written (OnJournalOverwritten).
         WireToGateRecoveryState fresh = WireToGateRecoveryState.Empty with
         {
             ForcedIsolation = journaled.ForcedIsolation
@@ -659,6 +686,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 conflict.SlotResults,
                 fresh,
                 cancellationToken).ConfigureAwait(false);
+            OnJournalOverwritten(journaled, command);
             return conflict with { JournalCheckpoint = "SAFE_FINISH_REACHED" };
         }
 
@@ -678,6 +706,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             results,
             fresh,
             cancellationToken).ConfigureAwait(false);
+        OnJournalOverwritten(journaled, command);
         await SendProgressAsync(progress, new("PREPARING", [], []), cancellationToken).ConfigureAwait(false);
 
         return await ExecuteRemainingSlotsAsync(
@@ -689,6 +718,27 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             progress,
             firstRun: true,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Tells the caller what the clean journal of <paramref name="command"/> replaced, when it replaced anything an operator
+    /// or a maintainer may later ask about: an unsettled attempt, an active unlock set or a recovery vector.
+    /// </summary>
+    private void OnJournalOverwritten(WireToGateRecoveryState replaced, WireToGateSlotOperationCommand command)
+    {
+        if (replaced.UnsettledSlotOperationAttemptId is null
+            && replaced.ActiveUnlockSlots.Count == 0
+            && replaced.RecoveryVector is null)
+        {
+            return;
+        }
+
+        _journalOverwritten(new WireToGateJournalOverwrite(
+            command.SlotOperationAttemptId,
+            replaced.UnsettledSlotOperationAttemptId,
+            [.. replaced.ActiveUnlockSlots.Order()],
+            replaced.RecoveryVector?.VectorType,
+            replaced.RecoveryVector?.PrimaryId));
     }
 
     private async Task<WireToGateOperationExecutionResult> ResumeExclusiveAsync(
