@@ -70,6 +70,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.Equal(attempt, after.UnsettledSlotOperationAttemptId);
         Assert.Equal(attempt, after.OperationContext?.SlotOperationAttemptId);
         Assert.Equal(before.ActiveUnlockSlots, after.ActiveUnlockSlots);
+        // Not offered from the moment it is ended: nothing else changes the session state before the next restore.
+        Assert.False(harness.Business.CanRequestLoadCancellation);
 
         // The next session: the vehicle still reports the attempt, so the double -- which never accepted a conclusion for
         // it -- holds the session in RecoveryRequired, as a server holding the operation in RecoveryRequired would. The
