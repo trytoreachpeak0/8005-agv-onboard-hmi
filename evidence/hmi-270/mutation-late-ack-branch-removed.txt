@@ -1,0 +1,26 @@
+# onboard-hmi#270 变异：删掉 WireToGateSessionClient 接收循环里 TrySettleLateDurableAckAsync 那一支
+# 基于本票测试改动（跑时尚未提交，随后原样提交为 ab9a877）；变异后 dotnet build --no-incremental，跑这一族 9 个用例；还原为写回原文件内容后再 --no-incremental 重编
+# 预期：迟到确认 5 个用例红（会话断开而非等到截止时间），AnAckMatchingNoRowOnFileStillEndsTheSession 4 个 InlineData 仍绿
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAckArrivingAfterItsSendTimedOutIsTakenAndTheSessionGoesOn [4 s]
+  Error Message:
+   The session ended instead of taking the ack of f642c994-e99a-6150-87c1-e83c067ced9c as late.
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALateAckOfASafetyStateChangeMovesTheAcceptedSafetyStateVersionOn [2 s]
+  Error Message:
+   The session ended instead of taking the ack of 93e7d09c-8ba9-1754-afbc-dac7f27ed757 as late.
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALateAckOfARowGivenUpLeavesItGivenUpAndTheSessionGoesOn [2 s]
+  Error Message:
+   The session ended instead of taking the ack of 92930d04-ac8a-6e5c-8137-ce9a88c3d65b as late.
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAckMatchingNoRowOnFileStillEndsTheSession(mismatch: "correlation") [146 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAckMatchingNoRowOnFileStillEndsTheSession(mismatch: "type") [150 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAckMatchingNoRowOnFileStillEndsTheSession(mismatch: "content") [152 ms]
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAckMatchingNoRowOnFileStillEndsTheSession(mismatch: "unknown") [154 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AFurtherAckOfARowAlreadyAcknowledgedChangesNothingAndTheSessionGoesOn [139 ms]
+  Error Message:
+   The session ended instead of taking the ack of 40be2be4-1c7b-f550-a585-bc2e457a764e as late.
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAckArrivingAfterALoadCancellationAbortedItsSendIsTakenAndTheSessionGoesOn [4 s]
+  Error Message:
+   The session ended instead of taking the ack of 3dbf378f-2d57-7051-8988-aac4799dc81f as late.
+Total tests: 9
+     Passed: 4
+     Failed: 5
+EXIT=1

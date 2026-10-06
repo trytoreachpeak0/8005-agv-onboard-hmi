@@ -1,0 +1,18 @@
+# onboard-hmi#270 整类 StationDeadlineExpiredG2Tests（62 个用例）在负载下运行，new=ab9a877，old=4bbbbfb
+# 负载 A：PowerShell 忙循环（CPU 采样 22%~64%）；负载 B：每逻辑核 2 个编译后的 C# 自旋线程（CPU 采样 100%）
+# 说明：两种负载下旧写法也都没红——纯 CPU 负载压不出原来的停顿（原红发生在内存吃紧、另一全量并行时）。
+# 能区分新旧的证据见 injection-slow-cancel-old-vs-new.txt；这里只证明新写法在满负载下整类稳定。
+## 负载 A
+round=1 tree=new cpuBefore=42.4% freeGb=1.63 exit=0 :: :: Total tests: 62  Passed: 62 
+round=1 tree=old cpuBefore=22.6% freeGb=2.64 exit=0 :: :: Total tests: 62  Passed: 62 
+round=2 tree=new cpuBefore=63.7% freeGb=1.66 exit=0 :: :: Total tests: 62  Passed: 62 
+round=2 tree=old cpuBefore=63.1% freeGb=2.1 exit=0 :: :: Total tests: 62  Passed: 62 
+round=3 tree=new cpuBefore=55.9% freeGb=2.18 exit=0 :: :: Total tests: 62  Passed: 62 
+round=3 tree=old cpuBefore=24% freeGb=3.58 exit=0 :: :: Total tests: 62  Passed: 62 
+## 负载 B
+round=1 tree=new cpuBefore=100% freeGb=2.65 exit=0 :: Total tests: 62 Passed: 62 :: 
+round=1 tree=old cpuBefore=100% freeGb=2.9 exit=0 :: Total tests: 62 Passed: 62 :: 
+round=2 tree=new cpuBefore=100% freeGb=3.27 exit=0 :: Total tests: 62 Passed: 62 :: 
+round=2 tree=old cpuBefore=100% freeGb=3.23 exit=0 :: Total tests: 62 Passed: 62 :: 
+round=3 tree=new cpuBefore=100% freeGb=4.07 exit=0 :: Total tests: 62 Passed: 62 :: 
+round=3 tree=old cpuBefore=100% freeGb=4.61 exit=0 :: Total tests: 62 Passed: 62 :: 
