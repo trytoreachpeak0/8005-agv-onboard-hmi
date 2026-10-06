@@ -232,6 +232,16 @@ public sealed class FakeControlServer : IAsyncDisposable
     public IReadOnlySet<string> UnansweredMessageTypes { get; set; } = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>
+    /// With <see cref="ProtocolProblemByMessageType"/>, a refused recovery result's attempt is taken off the pending facts
+    /// as a settled one. Models what <c>BUSINESS_ID_CONTENT_CONFLICT</c> on a recovery result leaves at the real server:
+    /// the workflow already holds another first result (<c>OnboardRecoveryCoordinator.cs:204-207</c>), the operation is
+    /// committed or cancelled, and the handshake takes a reported attempt in that state off
+    /// (<c>WireToGateStore.TryTakeOffSettledReportedAttemptsAsync</c>) -- so the session can come up READY while the
+    /// vehicle still holds the refused vector (onboard-hmi#254 part 2).
+    /// </summary>
+    public bool RefusedRecoveryResultsWereReconciledByAnother { get; set; }
+
+    /// <summary>
     /// As <see cref="ProtocolProblemByMessageType"/>, for the one message whose messageId is listed: a test that refuses
     /// a single row and lets every other message of its type through (onboard-hmi#254, review of PR #258).
     /// </summary>
@@ -938,6 +948,14 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </summary>
     public TimeSpan SafetyStateChangedAckDelay { get; set; }
 
+    /// <summary>
+    /// Writes the <c>DurableAck</c> of every <c>LoadCompensationResult</c> this much later, off the read loop, as
+    /// <see cref="OperationProgressAckDelay"/> does for progress; the result is reconciled at once as usual. Past the
+    /// vehicle's message timeout it is the late acknowledgement of onboard-hmi#250 reaching a recovery result: the session
+    /// stays up and no handshake replays anything (onboard-hmi#150).
+    /// </summary>
+    public TimeSpan LoadCompensationResultAckDelay { get; set; }
+
     private int _judgedRecoveryRequests;
 
     /// <summary>
@@ -1332,6 +1350,18 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     private ConnectionContext? _latestSession;
     private int _midSessionSafetySnapshotAcksToDrop;
+
+    /// <summary>
+    /// Announces the readiness this double decides, on the latest session, now: what the real server sends after any
+    /// inbound message that may change it. A test that needs the vehicle's handling of a session state -- its restore --
+    /// to run without a reconnect says when (onboard-hmi#150).
+    /// </summary>
+    public Task SendSessionReadinessAsync()
+    {
+        ConnectionContext context = Volatile.Read(ref _latestSession)
+            ?? throw new InvalidOperationException("No session has been accepted yet.");
+        return WriteEnvelopeAsync(context, CreateSessionReadiness(context));
+    }
 
     /// <summary>
     /// Sends the <c>SlotOperationCommand</c> that <see cref="SendSlotOperationCommandAfterRecovery"/>
@@ -1818,11 +1848,37 @@ public sealed class FakeControlServer : IAsyncDisposable
                 if (ProtocolProblemByMessageId.TryGetValue(messageId, out string? refusalCode)
                     || ProtocolProblemByMessageType.TryGetValue(messageType, out refusalCode))
                 {
+                    // Reconciled before the refusal goes out, as the real server's other first result already was: a
+                    // vehicle that reconnects the moment it reads the refusal must meet a server that has settled it.
+                    string? reconciledAttempt =
+                        RefusedRecoveryResultsWereReconciledByAnother
+                        && messageType is "LoadCancellationResult" or "LoadCompensationResult" or "LoadCorrectionResult"
+                            or "FaultCargoRecoveryResult" or "ForcedMechanicalRecoveryResult"
+                            ? root.GetProperty("payload").TryGetProperty("slotOperationAttemptId", out JsonElement attempt)
+                                && attempt.ValueKind == JsonValueKind.String
+                                    ? attempt.GetString()
+                                    : RecoveryVectorSlotOperationAttemptId
+                            : null;
+                    if (reconciledAttempt is not null)
+                    {
+                        lock (_sync)
+                        {
+                            _settledAttempts.Add(reconciledAttempt);
+                            _operationsNeedingRecovery.Remove(reconciledAttempt);
+                        }
+                    }
+
                     await WriteEnvelopeAsync(context, CreateProtocolProblem(
                         context,
                         ProtocolProblemNamesAnotherMessage ? Guid.NewGuid().ToString("D") : messageId,
                         messageType,
                         refusalCode)).ConfigureAwait(false);
+                    if (reconciledAttempt is not null)
+                    {
+                        // Announces the readiness the settlement changed, if it did.
+                        await ReconcileAsync(context, _ => { }).ConfigureAwait(false);
+                    }
+
                     continue;
                 }
 
@@ -2023,7 +2079,15 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "LoadCancellationResult":
                     case "LoadCompensationResult":
                     case "FaultCargoRecoveryResult":
-                        await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        if (messageType == "LoadCompensationResult" && LoadCompensationResultAckDelay > TimeSpan.Zero)
+                        {
+                            DelayDurableAck(context, CreateDurableAck(context, root), LoadCompensationResultAckDelay);
+                        }
+                        else
+                        {
+                            await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        }
+
                         JsonElement recoveryPayload = root.GetProperty("payload");
                         if (messageType == "LoadCompensationResult")
                         {

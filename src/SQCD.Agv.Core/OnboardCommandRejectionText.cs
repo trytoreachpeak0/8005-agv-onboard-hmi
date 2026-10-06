@@ -91,6 +91,14 @@ public static class OnboardCommandRejectionText
 
         // The hardware-recovery record is incomplete, unnecessary, or cannot be judged yet.
         ["HARDWARE_RECOVERY_NOT_REQUIRED"] = "当前不需要填写硬件恢复记录。",
+        // 人工核对后结束此恢复（onboard-hmi#254）：按下时那份被拒收的恢复已经不在了——另一处已经结束它，或者服务端改派了新的操作。
+        ["CONFLICTED_RECOVERY_NOT_PENDING"] = "当前没有等待人工核对的恢复，无需结束。",
+        // 恢复结果被服务端拒收、正等待人工核对时，同一恢复的入口不再执行（onboard-hmi#254）。
+        ["RECOVERY_AWAITING_MANUAL_CHECK"] = "这次恢复的结果已被服务端拒收，正等待维护人员现场核对；请核对后按「人工核对后结束此恢复」，不要重复执行。",
+        // 装货修正的结果被服务端拒收、已人工核对结束，同一次装货不能再修正（onboard-hmi#254）。
+        ["LOAD_CORRECTION_ALREADY_REFUSED"] = "这次装货的修正结果已被服务端拒收并经人工核对结束，不能再修正；需要处理货物请联系维护人员走恢复流程。",
+        // 装货中取消已经有了结论（结果在发件箱里），这次装货不能再取消（onboard-hmi#254）。
+        ["LOAD_CANCELLATION_ALREADY_CONCLUDED"] = "这次装货已经取消过、取消已有结论，不能再取消；需要处理货物请联系维护人员走恢复流程。",
         ["HARDWARE_RECOVERY_OBSERVATIONS_REQUIRED"] = "请先逐仓填写现场确认结果，再提交。",
         ["HARDWARE_RECOVERY_RECORD_REQUIRED"] = "请先提交硬件恢复记录，再继续。",
         ["SLOT_STATE_UNKNOWN"] = "部分仓位状态暂时读不到，请等待恢复后再试。"

@@ -158,6 +158,18 @@ public static class OnboardFailureClassification
         // IO_SNAPSHOT_STALE) which already blocks scanning and departure; refusing this press does
         // not need a second, permanent one.
         "HARDWARE_RECOVERY_NOT_REQUIRED",
+        // The manual close of a recovery whose result the server refused for good, pressed when there is none
+        // (onboard-hmi#254). Nothing was written.
+        "CONFLICTED_RECOVERY_NOT_PENDING",
+        // A recovery entry pressed while that recovery's result waits for a manual check (onboard-hmi#254). Nothing was
+        // written or sent.
+        "RECOVERY_AWAITING_MANUAL_CHECK",
+        // A cancellation pressed over a load whose cancellation already has a result on file (onboard-hmi#254): it
+        // would ask again under the same cancellationId and open doors the first one emptied. Nothing was sent.
+        "LOAD_CANCELLATION_ALREADY_CONCLUDED",
+        // A correction pressed over a settled load whose correction was refused for good (onboard-hmi#254): the server
+        // would refuse the request and command nothing. Nothing was sent.
+        "LOAD_CORRECTION_ALREADY_REFUSED",
         "HARDWARE_RECOVERY_OBSERVATIONS_REQUIRED",
         "HARDWARE_RECOVERY_RECORD_REQUIRED",
         "SLOT_STATE_UNKNOWN"

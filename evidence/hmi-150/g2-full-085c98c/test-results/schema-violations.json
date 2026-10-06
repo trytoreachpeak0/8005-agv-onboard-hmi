@@ -1,0 +1,130 @@
+[
+  {
+    "messageType": "ManualChargingReturnToServiceResult",
+    "origin": "synthetic-peer",
+    "site": "FakeControlServer.SendCommandAsync",
+    "errors": [
+      {
+        "pointer": "#/payload/outcome",
+        "keyword": "type",
+        "message": "Validation type - should have been 'string' but was 'Number'.",
+        "actual": "5"
+      },
+      {
+        "pointer": "#/payload/outcome",
+        "keyword": "enum",
+        "message": "Validation enum - did not validate against the enumeration.",
+        "actual": "5"
+      }
+    ],
+    "sampleLine": "{\"protocolVersion\":3,\"profileId\":\"AGV_FULL_PRODUCT\",\"protocolReleaseVersion\":\"2.0.0\",\"protocolReleaseManifestSha256\":\"4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7\",\"messageType\":\"ManualChargingReturnToServiceResult\",\"messageId\":\"5da9a647-a2f3-4f7d-84c3-1ac7b486b2e8\",\"correlationId\":\"3014aeab-712e-4d61-b86e-9b3714382a1e\",\"agvId\":\"AGV-8005-01\",\"sessionGeneration\":1,\"sentAt\":\"2026-10-06T08:20:06.7990644+00:00\",\"payload\":{\"requestId\":\"a0bdb48b-5cb3-487f-af5e-88fe47fb93df\",\"outcome\":5,\"problem\":null,\"vehicleBusinessStateRevision\":1}}",
+    "count": 1,
+    "onFile": [
+      {
+        "messageType": "ManualChargingReturnToServiceResult",
+        "pointer": "#/payload/outcome",
+        "keyword": "type",
+        "actual": "5",
+        "issue": null,
+        "deliberate": "ManualStationClearanceG2Tests.ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown"
+      },
+      {
+        "messageType": "ManualChargingReturnToServiceResult",
+        "pointer": "#/payload/outcome",
+        "keyword": "enum",
+        "actual": "5",
+        "issue": null,
+        "deliberate": "ManualStationClearanceG2Tests.ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown"
+      }
+    ]
+  },
+  {
+    "messageType": "ManualStationClearanceConfirmationResult",
+    "origin": "synthetic-peer",
+    "site": "FakeControlServer.SendCommandAsync",
+    "errors": [
+      {
+        "pointer": "#/payload/outcome",
+        "keyword": "type",
+        "message": "Validation type - should have been 'string' but was 'Number'.",
+        "actual": "5"
+      },
+      {
+        "pointer": "#/payload/outcome",
+        "keyword": "enum",
+        "message": "Validation enum - did not validate against the enumeration.",
+        "actual": "5"
+      }
+    ],
+    "sampleLine": "{\"protocolVersion\":3,\"profileId\":\"AGV_FULL_PRODUCT\",\"protocolReleaseVersion\":\"2.0.0\",\"protocolReleaseManifestSha256\":\"4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7\",\"messageType\":\"ManualStationClearanceConfirmationResult\",\"messageId\":\"3a974ae8-d218-4783-aeb9-c8c90066a91e\",\"correlationId\":\"0ad72e33-10c5-4dbc-94ee-fc7c406f2e7a\",\"agvId\":\"AGV-8005-01\",\"sessionGeneration\":1,\"sentAt\":\"2026-10-06T08:20:00.6581951+00:00\",\"payload\":{\"confirmationRequestId\":\"0ad72e33-10c5-4dbc-94ee-fc7c406f2e7a\",\"outcome\":5,\"problem\":null,\"stationReleased\":true}}",
+    "count": 1,
+    "onFile": [
+      {
+        "messageType": "ManualStationClearanceConfirmationResult",
+        "pointer": "#/payload/outcome",
+        "keyword": "type",
+        "actual": "5",
+        "issue": null,
+        "deliberate": "ManualStationClearanceG2Tests.AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable"
+      },
+      {
+        "messageType": "ManualStationClearanceConfirmationResult",
+        "pointer": "#/payload/outcome",
+        "keyword": "enum",
+        "actual": "5",
+        "issue": null,
+        "deliberate": "ManualStationClearanceG2Tests.AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable"
+      }
+    ]
+  },
+  {
+    "messageType": "UnableToChargeFieldConfirmationResult",
+    "origin": "synthetic-peer",
+    "site": "FakeControlServer.CreateEnvelope <- FakeControlServer.HandleUnableToChargeFieldConfirmationRequestedAsync <- FakeControlServer.HandleConnectionAsync",
+    "errors": [
+      {
+        "pointer": "#/payload/chargingPolicyDecision",
+        "keyword": "anyOf",
+        "message": "Validation anyOf - did not validate against the schema.",
+        "actual": "\"CHARGE_ELSEWHERE\""
+      }
+    ],
+    "sampleLine": "{\"protocolVersion\":3,\"profileId\":\"AGV_FULL_PRODUCT\",\"protocolReleaseVersion\":\"2.0.0\",\"protocolReleaseManifestSha256\":\"4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7\",\"messageType\":\"UnableToChargeFieldConfirmationResult\",\"messageId\":\"83eb4332-0451-4ee4-b800-c108d079dd73\",\"correlationId\":\"aa6364d8-5737-4b9e-bfa0-ea08ab864506\",\"agvId\":\"AGV-8005-01\",\"sessionGeneration\":1,\"sentAt\":\"2026-10-06T08:20:02.5047237+00:00\",\"payload\":{\"confirmationRequestId\":\"aa6364d8-5737-4b9e-bfa0-ea08ab864506\",\"outcome\":\"CONFIRMED\",\"problem\":null,\"chargingPolicyDecision\":\"CHARGE_ELSEWHERE\"}}",
+    "count": 1,
+    "onFile": [
+      {
+        "messageType": "UnableToChargeFieldConfirmationResult",
+        "pointer": "#/payload/chargingPolicyDecision",
+        "keyword": "anyOf",
+        "actual": "\"CHARGE_ELSEWHERE\"",
+        "issue": null,
+        "deliberate": "UnableToChargeFieldConfirmationG2Tests.AResultThatContradictsItselfOrTheSchemaIsRefusedAndThePressEndsAsUnknown"
+      }
+    ]
+  },
+  {
+    "messageType": "VehicleBusinessStateSnapshot",
+    "origin": "synthetic-peer",
+    "site": "FakeControlServer.CreateJourneyEnvelope <- FakeControlServer.SendJourneySnapshotAsync",
+    "errors": [
+      {
+        "pointer": "#/payload/loadingPhase",
+        "keyword": "anyOf",
+        "message": "Validation anyOf - did not validate against the schema.",
+        "actual": "{\"state\":\"CLOSED\",\"cargoHoldingDeadlineAt\":null,\"closedReason\":null}"
+      }
+    ],
+    "sampleLine": "{\"protocolVersion\":3,\"profileId\":\"AGV_FULL_PRODUCT\",\"protocolReleaseVersion\":\"2.0.0\",\"protocolReleaseManifestSha256\":\"4ac095ad371d3aaa60d7c2e0198cfd64cff5f3068230fc3420e9cdf5616422a7\",\"messageType\":\"VehicleBusinessStateSnapshot\",\"messageId\":\"51aa47b3-72f6-4972-99ec-de77a4bf0e5a\",\"correlationId\":null,\"agvId\":\"AGV-8005-01\",\"sessionGeneration\":1,\"sentAt\":\"2026-10-06T08:20:55.4555714+00:00\",\"payload\":{\"vehicleBusinessStateRevision\":2,\"readiness\":\"READY\",\"activePurpose\":\"TRANSPORT\",\"manualChargingHold\":false,\"batteryState\":\"SUFFICIENT\",\"chargingCycleState\":\"NOT_CHARGING\",\"loadingPhase\":{\"state\":\"CLOSED\",\"cargoHoldingDeadlineAt\":null,\"closedReason\":null},\"blockingFacts\":[],\"observedAt\":\"2026-10-06T08:20:55.4555636\\u002B00:00\"}}",
+    "count": 1,
+    "onFile": [
+      {
+        "messageType": "VehicleBusinessStateSnapshot",
+        "pointer": "#/payload/loadingPhase",
+        "keyword": "anyOf",
+        "actual": "{\"state\":\"CLOSED\",\"cargoHoldingDeadlineAt\":null,\"closedReason\":null}",
+        "issue": null,
+        "deliberate": "MultiDemandJourneyG2Tests.AClosedLoadingPhaseWithoutAReasonIsStillRefusedAndLeavesNoHalfState"
+      }
+    ]
+  }
+]

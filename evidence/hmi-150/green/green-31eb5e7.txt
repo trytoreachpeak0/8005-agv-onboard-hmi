@@ -1,0 +1,13 @@
+（已被取代：之后按审查 S1-S5 改过，见同目录更新的 green 文件。）
+# 绿：提交 31eb5e7 上的单测全量与恢复相关定向 G2（不是全量 ONBOARD_HMI_G2）
+
+装货中取消改为保留 attempt（调度 10-06 裁定）之后重跑。取代 green-fb85e88.txt。
+
+## 单测全量
+Passed!  - Failed:     0, Passed:   713, Skipped:     0, Total:   713, Duration: 17 s - SQCD.Agv.UnitTests.dll (net8.0)
+exit=0
+
+## 定向 G2（与 green-fb85e88.txt 同一组过滤）
+Passed!  - Failed:     0, Passed:   429, Skipped:     0, Total:   429, Duration: 2 m 37 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+schema 一致性：0 条新违规，1 条已登记的故意违规，原文见 schema-conformance-31eb5e7.txt。

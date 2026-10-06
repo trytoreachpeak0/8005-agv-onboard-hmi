@@ -110,6 +110,13 @@ public sealed class WireToGateSessionService : IAsyncDisposable
     /// <inheritdoc cref="WireToGateSessionClient.DurableMessageAbandoned"/>
     public event EventHandler<ValueChangedEventArgs<WireToGateDurableMessageAbandonment>>? DurableMessageAbandoned;
 
+    /// <summary>
+    /// A <c>DurableAck</c> the client settled against its outbox row after the send had stopped waiting for it
+    /// (onboard-hmi#250), raised after it is logged. The business side settles what waited for that acknowledgement
+    /// (onboard-hmi#150): nothing else tells it, because the session stays up and no handshake replays anything.
+    /// </summary>
+    public event EventHandler<ValueChangedEventArgs<WireToGateLateDurableAck>>? LateDurableAckReceived;
+
     /// <inheritdoc cref="WireToGateSessionClient.ClosedRecoverySessionHandler"/>
     public Func<WireToGateExceptionRecoverySessionSnapshot, CancellationToken, Task<bool>>?
         ClosedRecoverySessionHandler
@@ -461,6 +468,7 @@ public sealed class WireToGateSessionService : IAsyncDisposable
                 WireToGateLateDurableAckOutcome.AlreadyAcknowledged => subject + "这条消息早已确认，不做改动，会话继续。",
                 _ => subject + "这条消息此前已因服务端拒收而放弃，但服务端此后以相同内容哈希确认收到，这次放弃很可能是误报，核对 MES 时不要重复补录。这一行保持放弃、不记为已确认，会话继续。"
             });
+        LateDurableAckReceived?.Invoke(this, args);
     }
 
     private async Task RunAsync(CancellationToken stoppingToken)
