@@ -933,7 +933,8 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// <summary>
     /// Holds back the <c>DurableAck</c> of the next <paramref name="messageType"/> this double receives -- one whose
     /// payload <paramref name="payloadMatches"/>, when given -- until the test releases it; acks after it go out at once
-    /// as usual. Supported for <c>OperationProgress</c> and <c>SafetyStateChanged</c>.
+    /// as usual. Supported for <c>OperationProgress</c>, <c>SafetyStateChanged</c> and
+    /// <c>LoadCompensationResult</c>.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -2152,7 +2153,11 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "LoadCancellationResult":
                     case "LoadCompensationResult":
                     case "FaultCargoRecoveryResult":
-                        if (messageType == "LoadCompensationResult" && LoadCompensationResultAckDelay > TimeSpan.Zero)
+                        if (messageType == "LoadCompensationResult" && TryHoldDurableAck(context, root))
+                        {
+                            // Written when the test releases it.
+                        }
+                        else if (messageType == "LoadCompensationResult" && LoadCompensationResultAckDelay > TimeSpan.Zero)
                         {
                             DelayDurableAck(context, CreateDurableAck(context, root), LoadCompensationResultAckDelay);
                         }

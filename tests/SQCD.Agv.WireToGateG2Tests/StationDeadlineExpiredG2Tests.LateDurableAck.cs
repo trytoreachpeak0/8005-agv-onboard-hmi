@@ -291,12 +291,6 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.Equal(row, await harness.Journal.ReadOutgoingByMessageIdAsync(row.MessageId, token));
     }
 
-    /// <summary>
-    /// How long an outcome wait may go with neither the late ack settled nor the session ended. Not a criterion: once
-    /// the ack is written one of the two follows within milliseconds, so this only stops a broken test from hanging.
-    /// </summary>
-    private static readonly TimeSpan LateAckHangGuard = TimeSpan.FromMinutes(1);
-
     /// <summary>The first <c>OperationProgress</c> of the load, once its ack has been taken on file.</summary>
     private static async Task<WireToGateDurableMessage> FirstAcknowledgedProgressAsync(
         Harness harness,
@@ -342,41 +336,15 @@ public sealed partial class StationDeadlineExpiredG2Tests
         ObserveLateAckAsync(harness, messageId, hold.ReleaseAsync, cancellationToken);
 
     /// <summary>
-    /// Runs <paramref name="deliver"/>, which puts an ack of <paramref name="messageId"/> on the wire, and returns the
-    /// session's <c>LateDurableAckReceived</c> for it -- raised after the late-ack line is logged and the row settled,
-    /// so both can be asserted at once. Fails as soon as the session ends instead: an ack the receive loop does not take
-    /// as late ends the session as an unhandled message.
+    /// Runs <paramref name="deliver"/>, which puts an ack of <paramref name="messageId"/> on the wire, and returns how the
+    /// session settled it; see <see cref="LateDurableAckObservation.SettleAsync"/>.
     /// </summary>
-    private static async Task<WireToGateLateDurableAck> ObserveLateAckAsync(
+    private static Task<WireToGateLateDurableAck> ObserveLateAckAsync(
         Harness harness,
         string messageId,
         Func<Task> deliver,
-        CancellationToken cancellationToken)
-    {
-        using Harness.LateAckObservation observation = harness.ObserveLateAck(messageId);
-        await deliver();
-        WireToGateLateDurableAck? ack;
-        try
-        {
-            ack = await observation.Outcome.WaitAsync(LateAckHangGuard, cancellationToken);
-        }
-        catch (TimeoutException)
-        {
-            Assert.Fail(
-                $"Within {LateAckHangGuard} of its ack being written, {messageId} was neither settled as a late ack nor "
-                + $"did the session end.{Environment.NewLine}{DescribeLog(harness)()}");
-            throw;
-        }
-
-        if (ack is null)
-        {
-            Assert.Fail(
-                $"The session ended instead of taking the ack of {messageId} as late.{Environment.NewLine}"
-                + DescribeLog(harness)());
-        }
-
-        return ack;
-    }
+        CancellationToken cancellationToken) =>
+        LateDurableAckObservation.SettleAsync(harness.Session, messageId, deliver, DescribeLog(harness), cancellationToken);
 
     private static void AssertLateAckLogged(Harness harness, string messageId, LogSeverity severity, string outcome) =>
         Assert.True(
@@ -425,51 +393,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
 
     private sealed partial class Harness
     {
-        /// <summary>
-        /// Starts watching for the session to settle the late ack of <paramref name="messageId"/> or to end, whichever
-        /// comes first. Subscribed before the ack is written, so neither can be missed.
-        /// </summary>
-        public LateAckObservation ObserveLateAck(string messageId) => new(_session, messageId);
-
-        public sealed class LateAckObservation : IDisposable
-        {
-            private readonly WireToGateSessionService _session;
-            private readonly string _messageId;
-            private readonly TaskCompletionSource<WireToGateLateDurableAck?> _outcome =
-                new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            internal LateAckObservation(WireToGateSessionService session, string messageId)
-            {
-                _session = session;
-                _messageId = messageId;
-                _session.LateDurableAckReceived += OnLateDurableAckReceived;
-                _session.StateChanged += OnStateChanged;
-            }
-
-            /// <summary>The late ack, or null when the session ended first.</summary>
-            public Task<WireToGateLateDurableAck?> Outcome => _outcome.Task;
-
-            public void Dispose()
-            {
-                _session.LateDurableAckReceived -= OnLateDurableAckReceived;
-                _session.StateChanged -= OnStateChanged;
-            }
-
-            private void OnLateDurableAckReceived(object? sender, ValueChangedEventArgs<WireToGateLateDurableAck> args)
-            {
-                if (string.Equals(args.Value.MessageId, _messageId, StringComparison.Ordinal))
-                {
-                    _outcome.TrySetResult(args.Value);
-                }
-            }
-
-            private void OnStateChanged(object? sender, ValueChangedEventArgs<WireToGateSessionSnapshot> args)
-            {
-                if (!args.Value.Connected)
-                {
-                    _outcome.TrySetResult(null);
-                }
-            }
-        }
+        /// <summary>The session the vehicle runs, for a test that watches its events.</summary>
+        public WireToGateSessionService Session => _session;
     }
 }
