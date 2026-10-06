@@ -53,9 +53,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
             token);
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
 
-        int timedOutBefore = ProgressTimeouts(harness);
         FakeControlServer.DurableAckHold hold = harness.Server.HoldNextDurableAck("OperationProgress");
         string late = await HeldAsync(harness, hold, token);
+        int timedOutBefore = ProgressTimeouts(harness);
         await WaitForProgressTimeoutAsync(harness, timedOutBefore, token);
 
         WireToGateLateDurableAck ack = await ReleaseAndObserveLateAckAsync(harness, hold, late, token);
@@ -176,6 +176,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
         AssertLateAckLogged(harness, late, LogSeverity.Information, "现记为已确认");
         Assert.True(harness.Client.Current.Connected, "the late ack must not end the session");
         Assert.Equal(changed, harness.Client.Current.SafetyStateVersion);
+        Assert.Empty(harness.Server.DurableAckHoldPredicateFailures);
     }
 
     /// <summary>
@@ -220,9 +221,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
             new FakeIoModuleClient { OperatorNeverActs = true, KeepSnapshotFresh = true },
             token);
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
-        int timedOutBefore = ProgressTimeouts(harness);
         FakeControlServer.DurableAckHold hold = harness.Server.HoldNextDurableAck("OperationProgress");
         string late = await HeldAsync(harness, hold, token);
+        int timedOutBefore = ProgressTimeouts(harness);
         await WaitForProgressTimeoutAsync(harness, timedOutBefore, token);
         WireToGateDurableMessage row = Assert.IsType<WireToGateDurableMessage>(
             await harness.Journal.ReadOutgoingByMessageIdAsync(late, token));
@@ -376,9 +377,17 @@ public sealed partial class StationDeadlineExpiredG2Tests
             && entry.Message.Contains("error=TimeoutException", StringComparison.Ordinal));
 
     /// <summary>
-    /// Waits for the held re-prompt's send to time out. One progress send is in flight at a time and every other ack goes
-    /// out at once, so the next timeout is that send's.
+    /// Waits for the held re-prompt's send to time out, counting from <paramref name="before"/>, which the caller takes
+    /// once the held re-prompt has reached the double.
     /// </summary>
+    /// <remarks>
+    /// Not before that. The executor sends its progress one at a time and waits out each send before the next
+    /// (<c>WireToGateSlotOperationExecutor.SendProgressAsync</c>), so by the time the held re-prompt arrives, the send
+    /// before it has ended and any timeout warning of its own is already written. Counted earlier, that earlier send --
+    /// often still in flight when the load reaches <c>WaitingOperator</c>, and timing out if its ack is slow -- would
+    /// satisfy this wait while the held re-prompt still waits, and the ack released then would be taken as an ordinary
+    /// one (the independent review of onboard-hmi#270, reproduced by holding that earlier ack for 2.5 s).
+    /// </remarks>
     private static Task WaitForProgressTimeoutAsync(Harness harness, int before, CancellationToken cancellationToken) =>
         Harness.WaitUntilAsync(
             () => ProgressTimeouts(harness) > before,

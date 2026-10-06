@@ -961,6 +961,23 @@ public sealed class FakeControlServer : IAsyncDisposable
     }
 
     private readonly List<DurableAckHold> _durableAckHolds = [];
+    private readonly List<string> _durableAckHoldPredicateFailures = [];
+
+    /// <summary>
+    /// Each <c>payloadMatches</c> of <see cref="HoldNextDurableAck"/> that threw, with the message type it was asked
+    /// about. The predicate runs on the read loop, so a throw is taken as "not this one" rather than let through to end
+    /// the loop; a test that passes a predicate asserts this stays empty.
+    /// </summary>
+    public IReadOnlyList<string> DurableAckHoldPredicateFailures
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _durableAckHoldPredicateFailures.ToArray();
+            }
+        }
+    }
 
     /// <summary>
     /// Parks the ack of <paramref name="message"/> in the first hold that wants it and returns true; false when no hold
@@ -973,7 +990,21 @@ public sealed class FakeControlServer : IAsyncDisposable
         DurableAckHold? hold;
         lock (_sync)
         {
-            hold = _durableAckHolds.FirstOrDefault(candidate => candidate.Wants(messageType, payload));
+            hold = null;
+            foreach (DurableAckHold candidate in _durableAckHolds)
+            {
+                if (candidate.Wants(messageType, payload, out Exception? failure))
+                {
+                    hold = candidate;
+                    break;
+                }
+
+                if (failure is not null)
+                {
+                    _durableAckHoldPredicateFailures.Add($"{messageType}: {failure.GetType().Name}: {failure.Message}");
+                }
+            }
+
             if (hold is null)
             {
                 return false;
@@ -1004,16 +1035,38 @@ public sealed class FakeControlServer : IAsyncDisposable
         /// <summary>The messageId whose ack is held, once the double has received that message.</summary>
         public Task<string> Held => _held.Task;
 
-        /// <summary>Writes the held ack now.</summary>
-        public async Task ReleaseAsync()
-        {
-            _ = await Held.ConfigureAwait(false);
-            await _write!().ConfigureAwait(false);
-        }
+        /// <summary>
+        /// Writes the held ack now. Only once <see cref="Held"/> has completed: called earlier there is nothing to write,
+        /// and it throws rather than wait for a message that may never come.
+        /// </summary>
+        public Task ReleaseAsync() =>
+            Held.IsCompleted
+                ? _write!()
+                : throw new InvalidOperationException(
+                    $"Nothing is held yet: no {_messageType} has reached the double. Wait for Held first.");
 
-        internal bool Wants(string messageType, JsonElement payload) =>
-            string.Equals(messageType, _messageType, StringComparison.Ordinal)
-            && (_payloadMatches is null || _payloadMatches(payload));
+        /// <summary>
+        /// Whether this hold wants the ack of a <paramref name="messageType"/> with <paramref name="payload"/>. A
+        /// predicate that throws does not want it, and the exception comes back in <paramref name="failure"/>.
+        /// </summary>
+        internal bool Wants(string messageType, JsonElement payload, out Exception? failure)
+        {
+            failure = null;
+            if (!string.Equals(messageType, _messageType, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            try
+            {
+                return _payloadMatches is null || _payloadMatches(payload);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+                return false;
+            }
+        }
 
         internal void Park(Func<Task> write, string messageId)
         {
