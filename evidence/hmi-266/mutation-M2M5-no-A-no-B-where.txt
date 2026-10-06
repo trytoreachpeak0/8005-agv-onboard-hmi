@@ -1,0 +1,7 @@
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedAnswerGivenUpLaterIsNeverResentAndTheReplayIsRefused [633 ms]
+  Error Message:
+Expected: 2
+Actual:   3
+     at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedAnswerGivenUpLaterIsNeverResentAndTheReplayIsRefused() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 138
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedAnswerGivenUpLaterIsNeverResentAndTheReplayIsRefused() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 139
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

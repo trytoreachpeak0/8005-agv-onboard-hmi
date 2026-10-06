@@ -663,7 +663,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// Sends the answer to <paramref name="declarationId"/> already on file once more, exactly as stored -- same
     /// messageId and payload -- and waits for its <c>DurableAck</c>. A declaration the server sends again is
     /// answered with what the first one got, never judged a second time. Returns at once when the stored answer
-    /// is already acknowledged.
+    /// is already acknowledged; throws <c>DURABLE_MESSAGE_ABANDONED</c> when it was given up.
     /// </summary>
     public async Task<string> ResendSlotFaultDeclarationResultAsync(
         string declarationId,
@@ -682,6 +682,14 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             || !string.Equals(envelope.MessageType, "SlotFaultDeclarationResult", StringComparison.Ordinal))
         {
             throw new InvalidDataException("DURABLE_OUTBOX_CONTENT_MISMATCH");
+        }
+
+        // Given up (onboard-hmi#254): an answer acknowledged once and refused when it was replayed is both, and is never
+        // sent again -- refused here before the acknowledged branch below would put it back on the wire, with the
+        // exception StoreDurableAsync refuses an unacknowledged one by (onboard-hmi#266).
+        if (stored.Abandoned)
+        {
+            throw new InvalidDataException("DURABLE_MESSAGE_ABANDONED");
         }
 
         if (stored.Acknowledged)

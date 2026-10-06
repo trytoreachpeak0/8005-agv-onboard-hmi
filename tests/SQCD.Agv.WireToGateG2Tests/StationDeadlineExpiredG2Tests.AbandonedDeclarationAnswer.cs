@@ -16,6 +16,41 @@ public sealed partial class StationDeadlineExpiredG2Tests
     private const string SlotFaultDeclarationCommandFailure = "处理服务端业务消息失败：SlotFaultDeclarationCommand";
 
     /// <summary>
+    /// 应答首发即被拒收：车载端放弃这一行，当场用手边这条命令回拒，不等下一次重连的重放（服务端只在会话开始时重放）。
+    /// 判定已写进日志、执行器已中止，所以判定生效的日志与 <c>SLOT_FAULT_DECLARED</c> 照常出现，<c>OperationResult</c> 照常报
+    /// 2 号仓 UNKNOWN；拒收不落进命令处理的兜底。
+    /// </summary>
+    /// <remarks>
+    /// 先红：改前首发的拒收以 <c>InvalidDataException(BUSINESS_ID_CONTENT_CONFLICT)</c> 越过应答发送，落进
+    /// <c>HandleCommandAsync</c> 的兜底，判定生效日志与事件都被跳过，命令也无人回答。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-SLOT-FAULT-DECLARATION-APPLIED")]
+    public async Task AnAnswerRefusedOnItsFirstSendIsGivenUpAndItsCommandRefusedOnTheSpotWhileTheDeclarationApplies()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartForDeclarationAsync(token, configure: RefuseDeclarationAnswers);
+        string command = await DeclareAndHaveTheAnswerGivenUpAsync(harness, token);
+
+        Assert.Single(
+            harness.Server.ReceivedEnvelopes,
+            item => item.MessageType == "ProtocolProblem" && IsDeclarationRefusal(item.WireLine, command));
+        // Written once DeclareSlotFaultAsync has seen the run stop, which the OperationResult does not wait for.
+        await Harness.WaitUntilAsync(
+            () => harness.Logger.Entries.Any(
+                entry => entry.Message.StartsWith("已执行服务端的人工判故障", StringComparison.Ordinal)),
+            "the applied declaration to be logged",
+            token,
+            () => DescribeDeclarationHandling(harness));
+        await harness.WaitForEventAsync("SLOT_FAULT_DECLARED", token);
+        Assert.True(harness.HasEvent("DURABLE_MESSAGE_ABANDONED"));
+        JsonElement result = harness.SingleResult("OperationResult");
+        AssertWireSlot(result, 2, "UNKNOWN", ["SLOT_FAULT_DECLARED"]);
+        AssertAnswerNotResentAndSessionKept(harness);
+    }
+
+    /// <summary>
     /// 路径一：会话就绪时重发。应答首发即被拒收、放弃；服务端重放命令时，改前走
     /// <c>ResendSlotFaultDeclarationResultAsync</c> → <c>StoreDurableAsync</c> 抛 <c>DURABLE_MESSAGE_ABANDONED</c>，落进兜底，不作回答。
     /// </summary>
@@ -68,7 +103,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
 
         Assert.NotEqual(
             harness.Server.ReceivedEnvelopes.Single(item => item.MessageType == "SlotFaultDeclarationResult").Connection,
-            harness.Server.ReceivedEnvelopes.Single(item => item.MessageType == "ProtocolProblem").Connection);
+            harness.Server.ReceivedEnvelopes.Single(item => IsDeclarationRefusal(item.WireLine, replay)).Connection);
         AssertAnswerNotResentAndSessionKept(harness);
     }
 
@@ -89,11 +124,16 @@ public sealed partial class StationDeadlineExpiredG2Tests
         await WaitForAckedAsync(harness, FirstDeclarationId, token);
 
         RefuseDeclarationAnswers(harness.Server);
-        await SendDeclarationCommandAsync(harness, Guid.NewGuid().ToString("D"));
+        string refusedReplay = Guid.NewGuid().ToString("D");
+        await SendDeclarationCommandAsync(harness, refusedReplay);
         await WaitForAnswerGivenUpAsync(harness, token);
         WireToGateDurableMessage row = await ReadDeclarationAnswerAsync(harness, token);
         Assert.True(row.Acknowledged && row.Abandoned);
+        // Given up without anything thrown -- the acknowledged answer's replay swallows the refusal -- and still refused
+        // on the spot.
+        await WaitForDeclarationRefusalAsync(harness, refusedReplay, 1, token);
         int answersOnTheWire = CountOnTheWire(harness, "SlotFaultDeclarationResult");
+        Assert.Equal(2, answersOnTheWire);
 
         string replay = Guid.NewGuid().ToString("D");
         await SendDeclarationCommandAsync(harness, replay);
@@ -128,7 +168,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
         int[] connections =
         [
             .. harness.Server.ReceivedEnvelopes
-                .Where(item => item.MessageType == "ProtocolProblem")
+                .Where(item => IsDeclarationRefusal(item.WireLine, replay))
                 .Select(item => item.Connection)
                 .Distinct()
         ];
@@ -143,16 +183,21 @@ public sealed partial class StationDeadlineExpiredG2Tests
         };
 
     /// <summary>
-    /// The three-slot load waits on slot 2, the declaration arrives, its APPLIED answer is refused and given up, and the
-    /// run it stopped reports its UNKNOWN result.
+    /// The three-slot load waits on slot 2, the declaration arrives, its APPLIED answer is refused and given up, the
+    /// command is refused on the spot, and the run it stopped reports its UNKNOWN result. Returns the command's messageId.
     /// </summary>
-    private static async Task DeclareAndHaveTheAnswerGivenUpAsync(Harness harness, CancellationToken cancellationToken)
+    private static async Task<string> DeclareAndHaveTheAnswerGivenUpAsync(
+        Harness harness,
+        CancellationToken cancellationToken)
     {
         await StartThreeSlotLoadAtSlotTwoAsync(harness, cancellationToken);
-        await SendDeclarationCommandAsync(harness, Guid.NewGuid().ToString("D"));
+        string command = Guid.NewGuid().ToString("D");
+        await SendDeclarationCommandAsync(harness, command);
         await WaitForAnswerGivenUpAsync(harness, cancellationToken);
+        await WaitForDeclarationRefusalAsync(harness, command, 1, cancellationToken);
         await harness.WaitForInboundAsync("OperationResult", cancellationToken);
         Assert.Equal(1, CountOnTheWire(harness, "SlotFaultDeclarationResult"));
+        return command;
     }
 
     private static Task SendDeclarationCommandAsync(Harness harness, string messageId) =>

@@ -1,0 +1,21 @@
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALostRefusalIsGivenAgainWhenTheReplayComesBackAfterAReconnect [12 s]
+  Error Message:
+   Timed out after 10s waiting for: refusal 1 of SlotFaultDeclarationCommand cb33cd2f-d042-4d75-84a6-bc4bb50b6a9d
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALostRefusalIsGivenAgainWhenTheReplayComesBackAfterAReconnect() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 157
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALostRefusalIsGivenAgainWhenTheReplayComesBackAfterAReconnect() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 172
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedAnswerGivenUpLaterIsNeverResentAndTheReplayIsRefused [10 s]
+  Error Message:
+   Timed out after 10s waiting for: refusal 1 of SlotFaultDeclarationCommand be1fb430-588b-4de5-bf7d-fef131b03368
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedAnswerGivenUpLaterIsNeverResentAndTheReplayIsRefused() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 136
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedAnswerGivenUpLaterIsNeverResentAndTheReplayIsRefused() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 139
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayedDeclarationWhoseAnswerWasGivenUpIsRefusedWithoutResendingTheAnswer [10 s]
+  Error Message:
+   Timed out after 10s waiting for: refusal 1 of SlotFaultDeclarationCommand fed0f6dc-ada2-4928-8800-064a4d6e19d8
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayedDeclarationWhoseAnswerWasGivenUpIsRefusedWithoutResendingTheAnswer() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 64
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayedDeclarationWhoseAnswerWasGivenUpIsRefusedWithoutResendingTheAnswer() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 66
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayHandledAfterTheConnectionWentIsRefusedOnTheNextSession [10 s]
+  Error Message:
+   Timed out after 10s waiting for: refusal 1 of SlotFaultDeclarationCommand 5d6264d0-3fad-42e1-bb39-47f3e0b1eac7
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayHandledAfterTheConnectionWentIsRefusedOnTheNextSession() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 98
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayHandledAfterTheConnectionWentIsRefusedOnTheNextSession() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 103
+Failed!  - Failed:     4, Passed:     1, Skipped:     0, Total:     5, Duration: 46 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

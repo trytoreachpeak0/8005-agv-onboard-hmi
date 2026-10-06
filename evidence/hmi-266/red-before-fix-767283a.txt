@@ -1,0 +1,164 @@
+Test run for tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:19.98]     SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALostRefusalIsGivenAgainWhenTheReplayComesBackAfterAReconnect [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALostRefusalIsGivenAgainWhenTheReplayComesBackAfterAReconnect [12 s]
+  Error Message:
+   Timed out after 10s waiting for: refusal 1 of SlotFaultDeclarationCommand a701c941-a730-4780-be52-9474fea06944
+OPERATION_PROGRESS: 准备执行装货：1、2、3号仓。
+OPERATION_PROGRESS: 正在检查1、2、3号仓的安全条件。
+OPERATION_PROGRESS: 正在打开1号仓。
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。
+OPERATION_PROGRESS: 正在核对仓门、货物和输出状态；已完成 1/3。
+OPERATION_PROGRESS: 正在打开2号仓。
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。
+DURABLE_MESSAGE_ABANDONED: 服务端以 BUSINESS_ID_CONTENT_CONFLICT 拒收本车的 SlotFaultDeclarationResult（messageId 5d82c61a-f423-a550-bc1c-5d2c53c9eeea）：服务端对同一业务号已有另一份记录，或这条报文与服务端登记的操作身份不符，两端不一致。本车已放弃这条报文、不再重发，请联系维护人员核对。 
+OPERATION_PROGRESS: 正在处理1、2、3号仓。
+OPERATION_PROGRESS: 1、2、3号仓操作未完成，需要恢复处理。
+OPERATION_RECOVERY_REQUIRED: 1、2、3号仓操作失败或状态未知，服务端已收到结果，等待管理员恢复。
+received: 1:CONNECTED, 1:SessionHello, 1:CapabilitySnapshot, 1:SafetyStateSnapshot, 1:OnboardAlarmSnapshot, 1:RecoveryStateReport, 1:SafetyStateChanged, 1:SnapshotAppliedAck, 1:SnapshotAppliedAck, 1:SnapshotAppliedAck, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:SlotFaultDeclarationResult, 1:OperationProgress, 1:OperationResult, 1:SafetyStateChanged
+处理服务端业务消息失败：SlotFaultDeclarationCommand。已保持物理安全阻塞。
+System.IO.InvalidDataException: BUSINESS_ID_CONTENT_CONFLICT
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ThrowIfProtocolProblem(WireToGateEnvelope envelope) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 5139
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendDurableCoreAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Boolean allowRecoveryRequired, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1800
+   at SQCD.Agv.Wpf.WireToGateBusinessService.SendSlotFaultDeclarationAnswerAsync(String declarationId, Func`1 send) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 292
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.DeclareSlotFaultAsync(WireToGateSlotFaultDeclaration declaration, Func`1 announceApplied, CancellationToken cancellationToken) in src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 354
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.DeclareSlotFaultAsync(WireToGateSlotFaultDeclaration declaration, Func`1 announceApplied, CancellationToken cancellationToken) in src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 369
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleSlotFaultDeclarationCoreAsync(WireToGateSlotFaultDeclarationCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 119
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleSlotFaultDeclarationAsync(WireToGateSlotFaultDeclarationCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 54
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleCommandAsync(WireToGateServerCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 2438
+处理服务端业务消息失败：SlotFaultDeclarationCommand。已保持物理安全阻塞。
+System.IO.InvalidDataException: DURABLE_MESSAGE_ABANDONED
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.StoreDurableAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Nullable`1 generation, Boolean rebind, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 2010
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendDurableCoreAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Boolean allowRecoveryRequired, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1755
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ResendSlotFaultDeclarationResultAsync(String declarationId, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 701
+   at SQCD.Agv.Wpf.WireToGateBusinessService.SendSlotFaultDeclarationAnswerAsync(String declarationId, Func`1 send) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 292
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleSlotFaultDeclarationCoreAsync(WireToGateSlotFaultDeclarationCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 78
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleSlotFaultDeclarationAsync(WireToGateSlotFaultDeclarationCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 54
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleCommandAsync(WireToGateServerCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 2438
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken, Func`1 describe) in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.cs:line 618
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALostRefusalIsGivenAgainWhenTheReplayComesBackAfterAReconnect() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 121
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALostRefusalIsGivenAgainWhenTheReplayComesBackAfterAReconnect() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 136
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:30.73]     SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedAnswerGivenUpLaterIsNeverResentAndTheReplayIsRefused [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedAnswerGivenUpLaterIsNeverResentAndTheReplayIsRefused [10 s]
+  Error Message:
+   Timed out after 10s waiting for: refusal 1 of SlotFaultDeclarationCommand 16c8ecb2-447f-410a-b11b-db62c104ed5c
+OPERATION_PROGRESS: 准备执行装货：1、2、3号仓。
+OPERATION_PROGRESS: 正在检查1、2、3号仓的安全条件。
+OPERATION_PROGRESS: 正在打开1号仓。
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。
+OPERATION_PROGRESS: 正在核对仓门、货物和输出状态；已完成 1/3。
+OPERATION_PROGRESS: 正在打开2号仓。
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。
+OPERATION_PROGRESS: 正在处理1、2、3号仓。
+OPERATION_PROGRESS: 1、2、3号仓操作未完成，需要恢复处理。
+SLOT_FAULT_DECLARED: 管理员已判定2号仓故障：锁，本次操作转人工恢复。
+OPERATION_RECOVERY_REQUIRED: 1、2、3号仓操作失败或状态未知，服务端已收到结果，等待管理员恢复。
+DURABLE_MESSAGE_ABANDONED: 服务端以 BUSINESS_ID_CONTENT_CONFLICT 拒收本车的 SlotFaultDeclarationResult（messageId 5d82c61a-f423-a550-bc1c-5d2c53c9eeea）：服务端对同一业务号已有另一份记录，或这条报文与服务端登记的操作身份不符，两端不一致。本车已放弃这条报文、不再重发，请联系维护人员核对。 
+received: 1:CONNECTED, 1:SessionHello, 1:CapabilitySnapshot, 1:SafetyStateSnapshot, 1:OnboardAlarmSnapshot, 1:RecoveryStateReport, 1:SafetyStateChanged, 1:SnapshotAppliedAck, 1:SnapshotAppliedAck, 1:SnapshotAppliedAck, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:SlotFaultDeclarationResult, 1:OperationProgress, 1:OperationResult, 1:SafetyStateChanged, 1:SlotFaultDeclarationResult, 1:SlotFaultDeclarationResult
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken, Func`1 describe) in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.cs:line 618
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedAnswerGivenUpLaterIsNeverResentAndTheReplayIsRefused() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 100
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedAnswerGivenUpLaterIsNeverResentAndTheReplayIsRefused() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 103
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:41.71]     SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayedDeclarationWhoseAnswerWasGivenUpIsRefusedWithoutResendingTheAnswer [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayedDeclarationWhoseAnswerWasGivenUpIsRefusedWithoutResendingTheAnswer [10 s]
+  Error Message:
+   Timed out after 10s waiting for: refusal 1 of SlotFaultDeclarationCommand db02f913-a01e-4437-b71e-8c21f010a4a7
+OPERATION_PROGRESS: 准备执行装货：1、2、3号仓。
+OPERATION_PROGRESS: 正在检查1、2、3号仓的安全条件。
+OPERATION_PROGRESS: 正在打开1号仓。
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。
+OPERATION_PROGRESS: 正在核对仓门、货物和输出状态；已完成 1/3。
+OPERATION_PROGRESS: 正在打开2号仓。
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。
+DURABLE_MESSAGE_ABANDONED: 服务端以 BUSINESS_ID_CONTENT_CONFLICT 拒收本车的 SlotFaultDeclarationResult（messageId 5d82c61a-f423-a550-bc1c-5d2c53c9eeea）：服务端对同一业务号已有另一份记录，或这条报文与服务端登记的操作身份不符，两端不一致。本车已放弃这条报文、不再重发，请联系维护人员核对。 
+OPERATION_PROGRESS: 正在处理1、2、3号仓。
+OPERATION_PROGRESS: 1、2、3号仓操作未完成，需要恢复处理。
+OPERATION_RECOVERY_REQUIRED: 1、2、3号仓操作失败或状态未知，服务端已收到结果，等待管理员恢复。
+received: 1:CONNECTED, 1:SessionHello, 1:CapabilitySnapshot, 1:SafetyStateSnapshot, 1:OnboardAlarmSnapshot, 1:RecoveryStateReport, 1:SafetyStateChanged, 1:SnapshotAppliedAck, 1:SnapshotAppliedAck, 1:SnapshotAppliedAck, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:SlotFaultDeclarationResult, 1:OperationProgress, 1:OperationResult, 1:SafetyStateChanged
+处理服务端业务消息失败：SlotFaultDeclarationCommand。已保持物理安全阻塞。
+System.IO.InvalidDataException: BUSINESS_ID_CONTENT_CONFLICT
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ThrowIfProtocolProblem(WireToGateEnvelope envelope) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 5139
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendDurableCoreAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Boolean allowRecoveryRequired, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1800
+   at SQCD.Agv.Wpf.WireToGateBusinessService.SendSlotFaultDeclarationAnswerAsync(String declarationId, Func`1 send) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 292
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.DeclareSlotFaultAsync(WireToGateSlotFaultDeclaration declaration, Func`1 announceApplied, CancellationToken cancellationToken) in src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 354
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.DeclareSlotFaultAsync(WireToGateSlotFaultDeclaration declaration, Func`1 announceApplied, CancellationToken cancellationToken) in src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 369
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleSlotFaultDeclarationCoreAsync(WireToGateSlotFaultDeclarationCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 119
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleSlotFaultDeclarationAsync(WireToGateSlotFaultDeclarationCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 54
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleCommandAsync(WireToGateServerCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 2438
+处理服务端业务消息失败：SlotFaultDeclarationCommand。已保持物理安全阻塞。
+System.IO.InvalidDataException: DURABLE_MESSAGE_ABANDONED
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.StoreDurableAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Nullable`1 generation, Boolean rebind, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 2010
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendDurableCoreAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Boolean allowRecoveryRequired, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1755
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ResendSlotFaultDeclarationResultAsync(String declarationId, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 701
+   at SQCD.Agv.Wpf.WireToGateBusinessService.SendSlotFaultDeclarationAnswerAsync(String declarationId, Func`1 send) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 292
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleSlotFaultDeclarationCoreAsync(WireToGateSlotFaultDeclarationCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 78
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleSlotFaultDeclarationAsync(WireToGateSlotFaultDeclarationCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 54
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleCommandAsync(WireToGateServerCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 2438
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken, Func`1 describe) in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.cs:line 618
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayedDeclarationWhoseAnswerWasGivenUpIsRefusedWithoutResendingTheAnswer() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 33
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayedDeclarationWhoseAnswerWasGivenUpIsRefusedWithoutResendingTheAnswer() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 35
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:52.69]     SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayHandledAfterTheConnectionWentIsRefusedOnTheNextSession [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayHandledAfterTheConnectionWentIsRefusedOnTheNextSession [10 s]
+  Error Message:
+   Timed out after 10s waiting for: refusal 1 of SlotFaultDeclarationCommand 41da0aed-0f26-4be7-8ef0-73a3ab295de0
+OPERATION_PROGRESS: 准备执行装货：1、2、3号仓。
+OPERATION_PROGRESS: 正在检查1、2、3号仓的安全条件。
+OPERATION_PROGRESS: 正在打开1号仓。
+OPERATION_PROGRESS: 请在1号仓放入货物并关门。
+OPERATION_PROGRESS: 正在核对仓门、货物和输出状态；已完成 1/3。
+OPERATION_PROGRESS: 正在打开2号仓。
+OPERATION_PROGRESS: 请在2号仓放入货物并关门。
+DURABLE_MESSAGE_ABANDONED: 服务端以 BUSINESS_ID_CONTENT_CONFLICT 拒收本车的 SlotFaultDeclarationResult（messageId 5d82c61a-f423-a550-bc1c-5d2c53c9eeea）：服务端对同一业务号已有另一份记录，或这条报文与服务端登记的操作身份不符，两端不一致。本车已放弃这条报文、不再重发，请联系维护人员核对。 
+OPERATION_PROGRESS: 正在处理1、2、3号仓。
+OPERATION_PROGRESS: 1、2、3号仓操作未完成，需要恢复处理。
+OPERATION_RECOVERY_REQUIRED: 1、2、3号仓操作失败或状态未知，服务端已收到结果，等待管理员恢复。
+received: 1:CONNECTED, 1:SessionHello, 1:CapabilitySnapshot, 1:SafetyStateSnapshot, 1:OnboardAlarmSnapshot, 1:RecoveryStateReport, 1:SafetyStateChanged, 1:SnapshotAppliedAck, 1:SnapshotAppliedAck, 1:SnapshotAppliedAck, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:SlotFaultDeclarationResult, 1:OperationProgress, 1:OperationResult, 2:CONNECTED, 2:SessionHello, 2:SafetyStateChanged, 2:CapabilitySnapshot, 2:SafetyStateSnapshot, 2:OnboardAlarmSnapshot, 2:RecoveryStateReport, 2:SafetyStateChanged, 2:OperationResult
+处理服务端业务消息失败：SlotFaultDeclarationCommand。已保持物理安全阻塞。
+System.IO.InvalidDataException: BUSINESS_ID_CONTENT_CONFLICT
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ThrowIfProtocolProblem(WireToGateEnvelope envelope) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 5139
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendDurableCoreAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Boolean allowRecoveryRequired, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1800
+   at SQCD.Agv.Wpf.WireToGateBusinessService.SendSlotFaultDeclarationAnswerAsync(String declarationId, Func`1 send) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 292
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.DeclareSlotFaultAsync(WireToGateSlotFaultDeclaration declaration, Func`1 announceApplied, CancellationToken cancellationToken) in src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 354
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.DeclareSlotFaultAsync(WireToGateSlotFaultDeclaration declaration, Func`1 announceApplied, CancellationToken cancellationToken) in src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 369
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleSlotFaultDeclarationCoreAsync(WireToGateSlotFaultDeclarationCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 119
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleSlotFaultDeclarationAsync(WireToGateSlotFaultDeclarationCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 54
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleCommandAsync(WireToGateServerCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 2438
+SafetyStateChanged未能在它所属的连接上发出（会话代1），那条连接已关闭或已换代；不断开当前会话，由新会话重新上报。
+SQCD.Agv.Infrastructure.WireToGateConnectionGoneException: WIRE_TO_GATE连接不可用。
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendLineAsync(String line, Int64 connectionEpoch, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 4681
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendDurableCoreAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Boolean allowRecoveryRequired, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1784
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendSafetyStateChangedAsync(Int64 safetyStateVersion, DateTimeOffset observedAt, WireToGateSafetySummaryPayload safety, IReadOnlyList`1 affectedSlots, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 758
+   at SQCD.Agv.Wpf.WireToGateBusinessService.QueueSafetyStateChangeAsync(CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 2116
+处理服务端业务消息失败：SlotFaultDeclarationCommand。已保持物理安全阻塞。
+System.IO.InvalidDataException: DURABLE_MESSAGE_ABANDONED
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.StoreDurableAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Nullable`1 generation, Boolean rebind, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 2010
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendDurableCoreAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Boolean allowRecoveryRequired, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1741
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ResendSlotFaultDeclarationResultAsync(String declarationId, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 701
+   at SQCD.Agv.Wpf.WireToGateBusinessService.SendSlotFaultDeclarationAnswerAsync(String declarationId, Func`1 send) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 292
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleSlotFaultDeclarationCoreAsync(WireToGateSlotFaultDeclarationCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 78
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleSlotFaultDeclarationAsync(WireToGateSlotFaultDeclarationCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 54
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleCommandAsync(WireToGateServerCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 2438
+处理服务端业务消息失败：SlotFaultDeclarationCommand。已保持物理安全阻塞。
+System.IO.InvalidDataException: DURABLE_MESSAGE_ABANDONED
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.StoreDurableAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Nullable`1 generation, Boolean rebind, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 2010
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.SendDurableCoreAsync(String messageType, String deduplicationKey, String messageId, String correlationId, Object payload, Boolean allowRecoveryRequired, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 1755
+   at SQCD.Agv.Infrastructure.WireToGateSessionClient.ResendSlotFaultDeclarationResultAsync(String declarationId, CancellationToken cancellationToken) in src\SQCD.Agv.Infrastructure\WireToGateSessionClient.cs:line 701
+   at SQCD.Agv.Wpf.WireToGateBusinessService.SendSlotFaultDeclarationAnswerAsync(String declarationId, Func`1 send) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 292
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleSlotFaultDeclarationCoreAsync(WireToGateSlotFaultDeclarationCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 78
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleSlotFaultDeclarationAsync(WireToGateSlotFaultDeclarationCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.SlotFaultDeclaration.cs:line 54
+   at SQCD.Agv.Wpf.WireToGateBusinessService.HandleCommandAsync(WireToGateServerCommand command, CancellationToken cancellationToken) in src\SQCD.Agv.Wpf\WireToGateBusinessService.cs:line 2438
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken, Func`1 describe) in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.cs:line 618
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayHandledAfterTheConnectionWentIsRefusedOnTheNextSession() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 67
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayHandledAfterTheConnectionWentIsRefusedOnTheNextSession() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 72
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     4, Passed:     0, Skipped:     0, Total:     4, Duration: 44 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

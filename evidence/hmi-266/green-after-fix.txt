@@ -1,0 +1,7 @@
+green-sdx2.txt:Passed!  - Failed:     0, Passed:    80, Skipped:     0, Total:    80, Duration: 1 m 55 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+arch.txt:Passed!  - Failed:     0, Passed:   100, Skipped:     0, Total:   100, Duration: 14 s - SQCD.Agv.UnitTests.dll (net8.0)
+repeat-1.txt:Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+repeat-2.txt:Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 2 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+repeat-3.txt:Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+repeat-4.txt:Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+repeat-5.txt:Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
