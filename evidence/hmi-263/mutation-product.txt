@@ -1,0 +1,24 @@
+# onboard-hmi#263 产品代码变异：新写法（00a16b7）仍会判红
+# 每个变异都是本地临时改产品代码，跑完写回原文件内容、--no-incremental 重编，再跑一次确认恢复绿。判据是退出码。
+
+## M1：WireToGateSessionClient.SendRecoveryStateReportAsync 不把待答结果加进 replayable
+##     （重启后的 RecoveryStateReport 不列出、握手也不补发）
+    Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AnUnknownResultIsReportedAsPendingAfterARestartAndReplayedOnceTheReportIsAcknowledged [773 ms]
+    Error Message:
+     No OperationResult was replayed by the handshake after the restart. Received: 1:SessionHello, 1:CapabilitySnapshot, 1:SafetyStateSnapshot, 1:OnboardAlarmSnapshot, 1:RecoveryStateReport, 1:SafetyStateChanged, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:OperationResult, 2:SessionHello, 2:CapabilitySnapshot, 2:SafetyStateSnapshot, 2:OnboardAlarmSnapshot, 2:RecoveryStateReport, 2:SafetyStateChanged
+  Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 809 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1
+
+## M2：WireToGateBusinessService.HandleSlotOperationAsync 不调用 RecordPendingResultAsync
+##     （UNKNOWN 结果不记为待答；即 2026-09-13 之前的产品行为）
+    Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AnUnknownResultIsReportedAsPendingAfterARestartAndReplayedOnceTheReportIsAcknowledged [1 s]
+    Error Message:
+     No OperationResult was replayed by the handshake after the restart. Received: 1:SessionHello, 1:CapabilitySnapshot, 1:SafetyStateSnapshot, 1:OnboardAlarmSnapshot, 1:RecoveryStateReport, 1:SafetyStateChanged, 1:OperationProgress, 1:OperationProgress, 1:OperationProgress, 1:OperationResult, 2:SessionHello, 2:CapabilitySnapshot, 2:SafetyStateSnapshot, 2:OnboardAlarmSnapshot, 2:RecoveryStateReport, 2:SafetyStateChanged
+  Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1
+
+## 两个变异都在 1 秒内红，不是等截止时间：握手返回后当场断言补发已在替身记录里。
+
+## 还原后（产品代码写回原内容、--no-incremental 重编）
+  Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
