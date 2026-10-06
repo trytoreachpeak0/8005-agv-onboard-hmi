@@ -1352,13 +1352,6 @@ public sealed class FakeControlServer : IAsyncDisposable
     private int _midSessionSafetySnapshotAcksToDrop;
 
     /// <summary>
-    /// Sends the <c>SlotOperationCommand</c> that <see cref="SendSlotOperationCommandAfterRecovery"/>
-    /// sends -- the same attempt, under a new messageId -- once more on the latest session. The real
-    /// control server's outbox does this about once a second until the <c>OperationResult</c> arrives
-    /// (8005-agv-onboard-hmi#78, the <c>1086c4a</c> case). The test decides when, so this is not held behind the
-    /// readiness gate: call it on a session that has been announced READY unless the test is about the violation.
-    /// </summary>
-    /// <summary>
     /// Announces the readiness this double decides, on the latest session, now: what the real server sends after any
     /// inbound message that may change it. A test that needs the vehicle's handling of a session state -- its restore --
     /// to run without a reconnect says when (onboard-hmi#150).
@@ -1370,6 +1363,13 @@ public sealed class FakeControlServer : IAsyncDisposable
         return WriteEnvelopeAsync(context, CreateSessionReadiness(context));
     }
 
+    /// <summary>
+    /// Sends the <c>SlotOperationCommand</c> that <see cref="SendSlotOperationCommandAfterRecovery"/>
+    /// sends -- the same attempt, under a new messageId -- once more on the latest session. The real
+    /// control server's outbox does this about once a second until the <c>OperationResult</c> arrives
+    /// (8005-agv-onboard-hmi#78, the <c>1086c4a</c> case). The test decides when, so this is not held behind the
+    /// readiness gate: call it on a session that has been announced READY unless the test is about the violation.
+    /// </summary>
     public Task ResendSlotOperationCommandAsync()
     {
         ConnectionContext context = Volatile.Read(ref _latestSession)

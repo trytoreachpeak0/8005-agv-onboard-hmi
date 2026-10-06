@@ -401,7 +401,7 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Null(after.UnsettledSlotOperationAttemptId);
         Assert.Null(after.OperationContext);
         Assert.Contains(harness.OperatorEvents, item => item.Kind == "RECOVERY_VECTOR_COMPLETED"
-            && item.Message.Contains(WireToGateRecoveryVectorTypes.LoadCompensation, StringComparison.Ordinal));
+            && item.Message.StartsWith("补偿清空已完成", StringComparison.Ordinal));
         Assert.NotNull(prepared.RecoveryVector);
     }
 

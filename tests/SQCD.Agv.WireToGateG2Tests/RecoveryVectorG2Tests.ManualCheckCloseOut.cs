@@ -421,6 +421,63 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Empty(afterRestart.ResultsOfType("LoadCorrectionRequested"));
     }
 
+    /// <summary>
+    /// While a refused recovery waits for its manual check, the entry for the same action is shut, and a press that gets
+    /// past the screen is refused before anything is written, sent or pulsed: pressed, it would ask again for a recovery
+    /// the server has concluded, or run the vector again.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(RefusedVectors))]
+    [Trait("IntegrationSlice", "FP-IS-06")]
+    [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
+    public async Task TheSameEntryIsShutWhileARefusedRecoveryAwaitsItsCheck(RefusedVector refused)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server =>
+            {
+                server.RecoverySlotOperationAttemptId = AttemptId;
+                server.RecoveryVectorSlotOperationAttemptId = AttemptId;
+                server.ProtocolProblemByMessageType = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [ResultTypeOf(refused)] = "BUSINESS_ID_CONTENT_CONFLICT"
+                };
+            },
+            loadAlreadySettled: refused == RefusedVector.LoadCorrection);
+        await RunRefusedVectorAsync(harness, refused, token);
+        WireToGateRecoveryVectorContext vector = await WaitForGivenUpResultAsync(harness, token);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Business.ConflictedRecoveryView is not null,
+            "the refused recovery to wait for its manual check",
+            token);
+
+        (Func<bool> offered, Func<Task<bool>> press) = refused switch
+        {
+            RefusedVector.FaultCargoHandoff => (
+                (Func<bool>)(() => harness.Business.CanRequestFaultCargoHandoff),
+                (Func<Task<bool>>)(() => harness.Business.RequestFaultCargoHandoffAsync("现场确认故障仓货物需要交接处理。", token))),
+            RefusedVector.LoadCompensation => (
+                () => harness.Business.CanRequestLoadCompensation,
+                () => harness.Business.RequestLoadCompensationAsync("现场确认装货无法继续，申请补偿清空目标仓位。", token)),
+            _ => (
+                () => harness.Business.CanRequestLoadCorrection,
+                () => harness.Business.RequestLoadCorrectionAsync("现场确认需要修正已完成的装货结果。", token))
+        };
+        Assert.False(offered());
+
+        int sentBefore = harness.Server.ReceivedEnvelopes.Count;
+        int unlocksBefore = harness.Io.UnlockCount;
+        Assert.False(await press());
+        Assert.Equal(sentBefore, harness.Server.ReceivedEnvelopes.Count);
+        Assert.Equal(unlocksBefore, harness.Io.UnlockCount);
+        AssertStillOnFile(vector, await harness.ReadRecoveryStateAsync(token));
+        Assert.Contains(harness.OperatorEvents, item => item.Kind == "RECOVERY_BLOCKED"
+            && item.Message.Contains(
+                OnboardCommandRejectionText.DescribeRecoveryBlocked("RECOVERY_AWAITING_MANUAL_CHECK"),
+                StringComparison.Ordinal));
+    }
+
     private static int RefusalsOf(RecoveryVectorHarness harness, string attemptId) =>
         harness.ResultsOfType("SlotOperationCommandRejected")
             .Count(line => line.Contains(attemptId, StringComparison.Ordinal));

@@ -71,10 +71,7 @@ public sealed partial class WireToGateBusinessService
     /// </remarks>
     public WireToGateConflictedRecoveryView? ConflictedRecoveryView =>
         Volatile.Read(ref _conflictedRecovery) is { } conflicted
-        && Volatile.Read(ref _lastRecoveryState) is var state
-        && state.RecoveryVector is { } onFile
-        && IsSameVector(onFile, conflicted.Vector)
-        && ResultIsThisVectors(conflicted.Row, onFile, state)
+        && IsAwaitingManualCheck(Volatile.Read(ref _lastRecoveryState))
             ? new WireToGateConflictedRecoveryView(
                 conflicted.Vector.VectorType,
                 conflicted.Vector.PrimaryId,
@@ -102,6 +99,38 @@ public sealed partial class WireToGateBusinessService
             "CONFLICTED_RECOVERY_REVIEW",
             () => CloseConflictedRecoveryAfterReviewCoreAsync(cancellationToken),
             cancellationToken);
+
+    /// <summary>
+    /// Whether the vector in <paramref name="state"/> is the one taken up as waiting for a maintainer's manual check, and
+    /// produced the given-up result itself (<see cref="ResultIsThisVectors"/>). Cached, for the entries; the presses ask
+    /// the outbox (<see cref="RefuseWhileAwaitingManualCheckAsync"/>).
+    /// </summary>
+    /// <remarks>
+    /// While it waits, the entry for the same action stays shut. Pressed, it would run the vector again -- a load
+    /// cancellation pulses its doors open over cargo and its result is refused locally as given up -- or ask again for a
+    /// recovery the server has concluded (review of onboard-hmi#254 part 2).
+    /// </remarks>
+    private bool IsAwaitingManualCheck(WireToGateRecoveryState state) =>
+        Volatile.Read(ref _conflictedRecovery) is { } conflicted
+        && state.RecoveryVector is { } onFile
+        && IsSameVector(onFile, conflicted.Vector)
+        && ResultIsThisVectors(conflicted.Row, onFile, state);
+
+    /// <summary>
+    /// Refuses a press over <paramref name="vector"/> while its result waits for a maintainer's manual check, before
+    /// anything is written, sent or pulsed. Read from the outbox: the entry's cached answer can lag the refusal.
+    /// </summary>
+    private async Task RefuseWhileAwaitingManualCheckAsync(
+        WireToGateRecoveryVectorContext vector,
+        WireToGateRecoveryState state,
+        CancellationToken cancellationToken)
+    {
+        if (vector.VectorType != WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery
+            && await GivenUpResultOfAsync(vector, state, cancellationToken).ConfigureAwait(false) is not null)
+        {
+            throw new InvalidOperationException("RECOVERY_AWAITING_MANUAL_CHECK");
+        }
+    }
 
     private async Task<bool> CloseConflictedRecoveryAfterReviewCoreAsync(CancellationToken cancellationToken)
     {

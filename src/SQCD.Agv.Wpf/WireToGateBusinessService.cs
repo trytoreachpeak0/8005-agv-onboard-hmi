@@ -1820,9 +1820,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return InterruptedOperationSettlement.TakenOver;
             }
 
-            // A load cancellation over this attempt that has a result on file -- here only once a maintainer ended a
-            // cancellation the server refused for good, the vector gone and the attempt kept (onboard-hmi#254): its
-            // conclusion is that cancellation's (ADR-cross-0046), so nothing is settled and nothing is sent. NotSettled,
+            // A load cancellation over this attempt that has a result on file, with no vector on file any more: its
+            // conclusion is that cancellation's (ADR-cross-0046), so nothing is settled and nothing is sent. Reached
+            // when a maintainer ended a cancellation the server refused for good (onboard-hmi#254), and also when the
+            // cancellation's vector was replaced by a vector of another type that was then forgotten on a
+            // non-COMPLETED result -- either way the attempt is kept and its cancellation has concluded. NotSettled,
             // not TakenOver: the operation is unfinished as far as this vehicle can tell, and the restore owes the
             // recovery entry for it.
             if (context.OperationType == OperationType.Load

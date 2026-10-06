@@ -277,7 +277,7 @@ public sealed partial class WireToGateBusinessService
         PublishOperatorEvent(
             $"recovery-vector-completed:{context.VectorType}:{context.PrimaryId}",
             "RECOVERY_VECTOR_COMPLETED",
-            $"恢复向量 {context.VectorType} 已完成并收到服务端确认。 ");
+            $"{RecoveryKindName(context.VectorType)}已完成并收到服务端确认。 ");
     }
 
     private void PublishSettledRecoveryVectorStillUnfinished(WireToGateRecoveryVectorContext context) =>

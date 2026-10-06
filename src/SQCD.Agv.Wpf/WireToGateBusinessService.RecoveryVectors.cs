@@ -308,7 +308,9 @@ public sealed partial class WireToGateBusinessService
         WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
         if (state.RecoveryVector is { } vector)
         {
-            return vector.VectorType == vectorType;
+            // Not while its result waits for a maintainer's manual check: pressed, it would run the vector again
+            // (onboard-hmi#254).
+            return vector.VectorType == vectorType && !IsAwaitingManualCheck(state);
         }
 
         // Not once the attempt's own non-completed result is on its way: the server puts such a result into
@@ -359,6 +361,7 @@ public sealed partial class WireToGateBusinessService
         if (state.RecoveryVector is { } vector)
         {
             return WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector)
+                && !IsAwaitingManualCheck(state)
                 && session.Readiness is WireToGateSessionReadiness.Ready
                     or WireToGateSessionReadiness.RecoveryRequired;
         }
@@ -560,7 +563,8 @@ public sealed partial class WireToGateBusinessService
         WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
         // Not over a load whose correction was refused for good (onboard-hmi#254): the request path refuses it from the
         // outbox; this greys the entry out.
-        return state.RecoveryVector?.VectorType == vectorType
+        // Nor over a correction whose result waits for a maintainer's manual check.
+        return state.RecoveryVector?.VectorType == vectorType && !IsAwaitingManualCheck(state)
             || state.LastCompletedLoadOperationContext is { } settled
                 && !IsCorrectionRefused(settled.SlotOperationAttemptId);
     }
@@ -570,7 +574,8 @@ public sealed partial class WireToGateBusinessService
         WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
         if (state.RecoveryVector is { } vector)
         {
-            return vector.VectorType == vectorType;
+            // Not while its result waits for a maintainer's manual check (onboard-hmi#254).
+            return vector.VectorType == vectorType && !IsAwaitingManualCheck(state);
         }
 
         if (FindRecoveryOperation(state, action) is not { } context)
@@ -615,6 +620,8 @@ public sealed partial class WireToGateBusinessService
             {
                 throw new InvalidDataException("RECOVERY_VECTOR_CONFLICT");
             }
+
+            await RefuseWhileAwaitingManualCheckAsync(existingVector, state, cancellationToken).ConfigureAwait(false);
 
             if (WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(existingVector))
             {
@@ -1200,6 +1207,11 @@ public sealed partial class WireToGateBusinessService
             throw new InvalidDataException("RECOVERY_VECTOR_CONFLICT");
         }
 
+        if (existingVector is not null)
+        {
+            await RefuseWhileAwaitingManualCheckAsync(existingVector, state, cancellationToken).ConfigureAwait(false);
+        }
+
         WireToGateRecoveryVectorContext vector;
         string correctionReason;
         if (existingVector is not null)
@@ -1325,6 +1337,11 @@ public sealed partial class WireToGateBusinessService
         if (vector is not null && vector.VectorType != vectorType)
         {
             throw new InvalidDataException("RECOVERY_VECTOR_CONFLICT");
+        }
+
+        if (vector is not null)
+        {
+            await RefuseWhileAwaitingManualCheckAsync(vector, state, cancellationToken).ConfigureAwait(false);
         }
 
         WireToGateExceptionRecoverySessionSnapshot? snapshot =

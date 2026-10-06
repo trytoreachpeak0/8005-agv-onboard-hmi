@@ -54,6 +54,11 @@ public sealed partial class LoadCancellationBeforeSublotG2Tests
         Assert.False(harness.Business.CanSubmitSublot);
         Assert.True(harness.Business.CanCloseConflictedRecoveryAfterReview);
 
+        // While it waits for the check, cancelling again is not offered, and a press reports nothing again.
+        Assert.False(harness.Business.CanRequestLoadCancellation);
+        Assert.False(await harness.Business.RequestLoadCancellationAsync("到站后现场确认本站没有要装的货。", token));
+        Assert.Single(harness.ResultsReceived());
+
         Assert.True(await harness.Business.CloseConflictedRecoveryAfterReviewAsync(token));
 
         WireToGateRecoveryState after = await harness.ReadRecoveryStateAsync(token);
