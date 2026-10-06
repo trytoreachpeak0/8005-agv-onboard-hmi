@@ -653,6 +653,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         {
             throw new WireToGateDoorNotProvenShutException(
                 doorsInDoubt,
+                initial,
                 initialFresh,
                 journaled.UnsettledSlotOperationAttemptId);
         }

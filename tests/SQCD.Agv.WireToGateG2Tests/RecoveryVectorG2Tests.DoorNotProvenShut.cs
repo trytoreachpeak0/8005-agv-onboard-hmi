@@ -67,6 +67,15 @@ public sealed partial class RecoveryVectorG2Tests
         }
 
         Assert.Equal(1, RefusalsOf(harness, newAttemptId));
+        // Three copies, one warning: the rest are logged at debug (review of onboard-hmi#273).
+        LogSeverity[] refusalSeverities =
+        [
+            .. harness.Logger.Entries
+                .Where(entry => entry.Message.StartsWith("拒收SlotOperationCommand：日志簿记录的仓门未能确认已关好", StringComparison.Ordinal)
+                    && entry.Message.Contains(newAttemptId, StringComparison.Ordinal))
+                .Select(entry => entry.Severity)
+        ];
+        Assert.Equal([LogSeverity.Warning, LogSeverity.Debug, LogSeverity.Debug], refusalSeverities);
         WireToGateOperatorEvent told = Assert.Single(harness.OperatorEvents, item => item.Kind == "DOOR_NOT_PROVEN_SHUT");
         Assert.Contains("请先确认3号仓的门已关好", told.Message, StringComparison.Ordinal);
         Assert.DoesNotContain("#", told.Message, StringComparison.Ordinal);

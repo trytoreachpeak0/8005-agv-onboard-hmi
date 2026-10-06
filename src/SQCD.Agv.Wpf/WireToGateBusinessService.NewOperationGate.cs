@@ -28,13 +28,23 @@ namespace SQCD.Agv.Wpf;
 /// <para>
 /// <b>The way out needs no one at the server.</b> The server only acknowledges the refusal and sends the same command
 /// again each round while the session is ready, so once the door is proven shut, or the vector has left the journal, the
-/// next copy runs. The operator is told once per command and cause; the log records every copy refused, as the
-/// manual-check refusal does.
+/// next copy runs -- when the cause is a door left open. A lock that cannot be read, an unlock output that will not
+/// reset or an IO reading that is stale or disconnected is a repair, and the operator is told to call maintenance
+/// instead of to shut a door.
+/// </para>
+/// <para>
+/// <b>Told once, logged once.</b> The command comes back about every two seconds. The operator is told once per command
+/// and cause; the log records the first copy refused for that command and cause as a warning and every later one at
+/// debug, so a door left open for a day costs one warning, not some forty thousand.
 /// </para>
 /// </remarks>
 public sealed partial class WireToGateBusinessService
 {
     private const string NewOperationRefusalCode = "ACTION_NOT_ALLOWED_IN_STATE";
+
+    /// <summary>The refusals already logged as a warning in this process, by command and cause.</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _newOperationRefusalsWarned =
+        new(StringComparer.Ordinal);
 
     private Task RefuseOverDoorNotProvenShutAsync(
         WireToGateSlotOperationCommand command,
@@ -43,20 +53,55 @@ public sealed partial class WireToGateBusinessService
         CancellationToken cancellationToken)
     {
         string doors = string.Join(",", refused.Doors);
-        string slots = FormatSlots(refused.Doors);
+        string cause = refused.ReadingFresh
+            ? $"open=[{string.Join(",", refused.OpenDoors)}]，unreadable=[{string.Join(",", refused.UnreadableDoors)}]，"
+                + $"outputActive=[{string.Join(",", refused.OutputActiveDoors)}]"
+            : "ioStale";
         return RefuseNewOperationAsync(
             command,
             displayBefore,
-            $"slot-operation-refused-door-not-proven-shut:{command.SlotOperationAttemptId}:{doors}",
+            $"slot-operation-refused-door-not-proven-shut:{command.SlotOperationAttemptId}:{doors}:{cause}",
             "DOOR_NOT_PROVEN_SHUT",
-            (refused.ReadingFresh ? string.Empty : "IO 读数过期或已断开，")
-            + $"无法确认{slots}的门已关好，本车已拒收新的仓位命令，未打开任何仓门。"
-            + $"请先确认{slots}的门已关好，关好后这条命令会自动重新执行。 ",
+            DescribeDoorsNotProvenShut(refused),
             $"拒收SlotOperationCommand：日志簿记录的仓门未能确认已关好，保留记录、未写日志簿、未操作仓门。"
-            + $"attempt={command.SlotOperationAttemptId}，message={command.MessageId}，slots=[{doors}]，"
-            + $"ioFresh={refused.ReadingFresh}，recordedAttempt={refused.RecordedSlotOperationAttemptId ?? "无"}，"
+            + $"attempt={command.SlotOperationAttemptId}，message={command.MessageId}，slots=[{doors}]，{cause}，"
+            + $"recordedAttempt={refused.RecordedSlotOperationAttemptId ?? "无"}，"
             + $"reasonCode={NewOperationRefusalCode}。",
             cancellationToken);
+    }
+
+    /// <summary>
+    /// What the operator is told, by cause (review of onboard-hmi#273): a door shown open is for the operator to shut, and
+    /// the command then runs again by itself; a lock that cannot be read, an unlock output that will not reset and a
+    /// reading too old or disconnected are for maintenance. Words only -- the codes are in the log line.
+    /// </summary>
+    private static string DescribeDoorsNotProvenShut(WireToGateDoorNotProvenShutException refused)
+    {
+        const string Refused = "本车已拒收新的仓位命令，未打开任何仓门。";
+        const string CallMaintenance = "车暂不执行新的仓位操作，请联系维护人员检查。";
+        if (!refused.ReadingFresh)
+        {
+            return $"IO 读数过期或已断开，无法确认{FormatSlots(refused.Doors)}的门锁状态，{Refused}{CallMaintenance} ";
+        }
+
+        List<string> sentences = [Refused];
+        if (refused.OpenDoors.Count > 0)
+        {
+            string open = FormatSlots(refused.OpenDoors);
+            sentences.Add($"{open}的门可能还开着，请先确认{open}的门已关好，关好后这条命令会自动重新执行。");
+        }
+
+        if (refused.UnreadableDoors.Count > 0)
+        {
+            sentences.Add($"{FormatSlots(refused.UnreadableDoors)}门锁状态读不到，{CallMaintenance}");
+        }
+
+        if (refused.OutputActiveDoors.Count > 0)
+        {
+            sentences.Add($"{FormatSlots(refused.OutputActiveDoors)}开锁输出未复位，{CallMaintenance}");
+        }
+
+        return string.Concat(sentences) + " ";
     }
 
     private Task RefuseOverUnsettledRecoveryVectorAsync(
@@ -108,8 +153,12 @@ public sealed partial class WireToGateBusinessService
             PublishOperatorEvent(eventKey, eventKind, operatorText, shown);
 
             // Last, after the answer and the screen: once a copy is logged, nothing of its handling is left but the
-            // synchronous release of its claim, so the next copy is not taken for a concurrent duplicate.
-            _logger.Write(LogSeverity.Warning, nameof(WireToGateBusinessService), logLine);
+            // synchronous release of its claim, so the next copy is not taken for a concurrent duplicate. A warning the
+            // first time for this command and cause, debug after (review of onboard-hmi#273).
+            _logger.Write(
+                _newOperationRefusalsWarned.TryAdd(eventKey, 0) ? LogSeverity.Warning : LogSeverity.Debug,
+                nameof(WireToGateBusinessService),
+                logLine);
         }
     }
 
