@@ -161,6 +161,9 @@ public static class OnboardFailureClassification
         // The manual close of a recovery whose result the server refused for good, pressed when there is none
         // (onboard-hmi#254). Nothing was written.
         "CONFLICTED_RECOVERY_NOT_PENDING",
+        // A cancellation pressed over a load whose cancellation already has a result on file (onboard-hmi#254): it
+        // would ask again under the same cancellationId and open doors the first one emptied. Nothing was sent.
+        "LOAD_CANCELLATION_ALREADY_CONCLUDED",
         "HARDWARE_RECOVERY_OBSERVATIONS_REQUIRED",
         "HARDWARE_RECOVERY_RECORD_REQUIRED",
         "SLOT_STATE_UNKNOWN"

@@ -29,9 +29,11 @@ namespace SQCD.Agv.Wpf;
 /// it would mean changing the vehicle's configuration to get out. It still asks for the operator's id and the recovery
 /// proof, as every maintenance entry does. Ending it is written the way an acknowledged non-<c>COMPLETED</c> result is
 /// (<see cref="ForgetSettledVector"/>): the vector and the recovery session go, the unsettled attempt, its context and
-/// the active unlock set stay, so the server -- which holds the conclusion -- decides what the attempt still needs. The
-/// load cancellation is the exception: its attempt is the aborted load's, whose conclusion is the cancellation's
-/// (ADR-cross-0046), and kept unsettled it would be settled as an interrupted load and reported.
+/// the active unlock set stay, so the server -- which holds the conclusion -- decides what the attempt still needs, and
+/// while it holds the operation in <c>RecoveryRequired</c> the recovery entries find it here. The load cancellation keeps
+/// its attempt too: the aborted load's, whose conclusion is the cancellation's (ADR-cross-0046). Its result's row in the
+/// outbox marks it so, and the interrupted settlement and the cancellation entry both read that row
+/// (<see cref="IsCancellationConcludedAsync"/>), so nothing is reported for the load and nothing is cancelled twice.
 /// </para>
 /// <para>
 /// <b>Not behind onboard-hmi#255's door gate.</b> That gate refuses a press that would prepare a vector over a door in
@@ -128,6 +130,12 @@ public sealed partial class WireToGateBusinessService
             Interlocked.CompareExchange(ref _conflictedRecovery, null, shown);
         }
 
+        if (vector.VectorType == WireToGateRecoveryVectorTypes.LoadCancellation
+            && vector.SlotOperationAttemptId is { } cancelled)
+        {
+            Volatile.Write(ref _cancellationConcludedAttemptId, cancelled);
+        }
+
         _logger.Write(
             LogSeverity.Warning,
             nameof(WireToGateBusinessService),
@@ -157,31 +165,44 @@ public sealed partial class WireToGateBusinessService
         WireToGateRecoveryVectorContext vector)
     {
         WireToGateRecoveryState ended = ForgetSettledVector(state, vector);
-        if (WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector))
-        {
-            return ended with { PendingLoadCancellation = null };
-        }
-
-        if (vector.VectorType != WireToGateRecoveryVectorTypes.LoadCancellation
-            || vector.SlotOperationAttemptId is not { } cancelled)
-        {
-            return ended;
-        }
-
-        // The aborted load's attempt belongs to the cancellation (ADR-cross-0046). Left unsettled with its context, the
-        // restore would find no result and no pending cancellation for it and settle it as an interrupted load, sending an
-        // OperationResult for a load whose conclusion the server already has from the cancellation.
-        return ended with
-        {
-            UnsettledSlotOperationAttemptId =
-                string.Equals(ended.UnsettledSlotOperationAttemptId, cancelled, StringComparison.Ordinal)
-                    ? null
-                    : ended.UnsettledSlotOperationAttemptId,
-            OperationContext = string.Equals(ended.OperationContext?.SlotOperationAttemptId, cancelled, StringComparison.Ordinal)
-                ? null
-                : ended.OperationContext
-        };
+        return WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector)
+            ? ended with { PendingLoadCancellation = null }
+            : ended;
     }
+
+    /// <summary>
+    /// The aborted load whose cancellation has a result on file, as last seen in this process; the journal-backed answer
+    /// is <see cref="IsCancellationConcludedAsync"/>. Read by the cancellation entry, which reads cached state only.
+    /// </summary>
+    private string? _cancellationConcludedAttemptId;
+
+    /// <summary>
+    /// Whether the load <paramref name="slotOperationAttemptId"/> was taken over by a load cancellation that has a result
+    /// on file -- acknowledged, owed or given up. Such an attempt's conclusion is the cancellation's (ADR-cross-0046): it
+    /// is never settled as an interrupted load, and never cancelled again. The row is the mark and nothing else records
+    /// it; <c>PendingLoadCancellation</c> could not be, because the interrupted settlement resends what that names.
+    /// </summary>
+    private async Task<bool> IsCancellationConcludedAsync(
+        string demandId,
+        string slotOperationAttemptId,
+        CancellationToken cancellationToken)
+    {
+        bool concluded = await _session.Journal
+            .ReadOutgoingByDeduplicationKeyAsync(
+                $"{RecoveryVectorResultKeyPrefix}{WireToGateRecoveryVectorTypes.LoadCancellation}:"
+                + InFlightLoadCancellationId(demandId, slotOperationAttemptId),
+                cancellationToken)
+            .ConfigureAwait(false) is not null;
+        if (concluded)
+        {
+            Volatile.Write(ref _cancellationConcludedAttemptId, slotOperationAttemptId);
+        }
+
+        return concluded;
+    }
+
+    private bool IsCancellationConcluded(string slotOperationAttemptId) =>
+        string.Equals(Volatile.Read(ref _cancellationConcludedAttemptId), slotOperationAttemptId, StringComparison.Ordinal);
 
     /// <summary>
     /// Takes up a vector whose result row was given up: the forced mechanical recovery is isolated, the other four wait for

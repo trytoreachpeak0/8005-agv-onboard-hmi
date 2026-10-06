@@ -1805,6 +1805,17 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return InterruptedOperationSettlement.TakenOver;
             }
 
+            // A load cancellation over this attempt that has a result on file -- here only once a maintainer ended a
+            // cancellation the server refused for good, the vector gone and the attempt kept (onboard-hmi#254): its
+            // conclusion is that cancellation's (ADR-cross-0046), so nothing is settled and nothing is sent. NotSettled,
+            // not TakenOver: the operation is unfinished as far as this vehicle can tell, and the restore owes the
+            // recovery entry for it.
+            if (context.OperationType == OperationType.Load
+                && await IsCancellationConcludedAsync(context.DemandId, attemptId, cancellationToken).ConfigureAwait(false))
+            {
+                return InterruptedOperationSettlement.NotSettled;
+            }
+
             // An unanswered load cancellation over this attempt: its conclusion is that cancellation's,
             // not this settlement's (1acb018 redone, onboard-hmi#78) -- the executor was aborted by it or
             // went with the process, and the server may already have authorized it. Resent with the first

@@ -320,11 +320,14 @@ public sealed partial class WireToGateBusinessService
         // is recorded pending before it is sent, so its presence here means the server has it or is about to.
         // A result sent without being recorded -- the journal overwritten by the next command in between --
         // is not seen here; that shape is onboard-hmi#182's.
+        // Nor over a load whose cancellation already has a result on file (onboard-hmi#254): pressed, it would ask again
+        // under the same cancellationId. The request path refuses it from the outbox; this greys the entry out.
         return state.OperationContext is { OperationType: OperationType.Load } context
             && string.Equals(
                 state.UnsettledSlotOperationAttemptId,
                 context.SlotOperationAttemptId,
                 StringComparison.Ordinal)
+            && !IsCancellationConcluded(context.SlotOperationAttemptId)
             && !state.PendingResults.Any(pending =>
                 string.Equals(pending.MessageType, "OperationResult", StringComparison.Ordinal)
                 && string.Equals(pending.BusinessId, context.SlotOperationAttemptId, StringComparison.Ordinal));
@@ -641,6 +644,14 @@ public sealed partial class WireToGateBusinessService
 
         RefuseDoorOpeningCancellationWhileLatched();
         WireToGateRecoveryOperationContext operation = RequireUnsettledLoadOperation(state);
+        // Already cancelled, with a result on file: asked again it would be authorized again and the doors pulsed open
+        // over a load the first cancellation concluded (onboard-hmi#254).
+        if (await IsCancellationConcludedAsync(operation.DemandId, operation.SlotOperationAttemptId, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("LOAD_CANCELLATION_ALREADY_CONCLUDED");
+        }
+
         string cancellationId = InFlightLoadCancellationId(operation.DemandId, operation.SlotOperationAttemptId);
         // The press the restart settlement's resend runs on (onboard-hmi#239). A resend does not move it: a link that keeps
         // dropping would otherwise carry the press forward for as long as it dropped, and an authorization long after the
