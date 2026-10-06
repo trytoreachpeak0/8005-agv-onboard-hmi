@@ -1,3 +1,4 @@
+（已被取代：之后装货中取消的收尾改了，见同目录更新的 green 文件。）
 # 绿：提交 fb85e88 上的单测全量与恢复相关定向 G2（不是全量 ONBOARD_HMI_G2）
 
 ## 单测全量（dotnet test tests/SQCD.Agv.UnitTests）

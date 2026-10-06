@@ -25,3 +25,19 @@ M12 given-up row not checked against the vector: exit=1 ['Failed!  - Failed:    
 restored rebuild exit=0
  M tests/SQCD.Agv.WireToGateG2Tests/FakeControlServer.cs
  M tests/SQCD.Agv.WireToGateG2Tests/RecoveryVectorG2Tests.ManualCheckCloseOut.cs
+
+## 第三轮（装货中取消改为保留 attempt 之后，ef9ecf7）
+
+M5 close-out writes ActiveUnlockSlots []: exit=1 ['Failed!  - Failed:     3, Passed:    19, Skipped:     0, Total:    22, Duration: 26 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['RecoveryVectorG2Tests.AMaintainerEndsARefusedRecoveryAfterTheManualCheck(refused: LoadCompensation)', 'RecoveryVectorG2Tests.AMaintainerEndsARefusedRecoveryAfterTheManualCheck(refused: FaultCargoHandoff)', 'RecoveryVectorG2Tests.AMaintainerEndsARefusedRecoveryAfterTheManualCheck(refused: LoadCorrection)']
+M9a interrupted settlement ignores the cancellation mark: exit=1 ['Failed!  - Failed:     1, Passed:    21, Skipped:     0, Total:    22, Duration: 19 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['StationDeadlineExpiredG2Tests.ACancellationEndedAfterTheManualCheckReportsNothingForTheAbortedLoad']
+M9b cancellation press not refused when concluded: exit=1 ['Failed!  - Failed:     1, Passed:    21, Skipped:     0, Total:    22, Duration: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['StationDeadlineExpiredG2Tests.ACancellationEndedAfterTheManualCheckReportsNothingForTheAbortedLoad']
+M9c cancellation entry not greyed when concluded: exit=1 ['Failed!  - Failed:     1, Passed:    21, Skipped:     0, Total:    22, Duration: 20 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['StationDeadlineExpiredG2Tests.ACancellationEndedAfterTheManualCheckReportsNothingForTheAbortedLoad']
+M9d close-out does not mark the cancellation concluded: exit=0 ['Passed!  - Failed:     0, Passed:    22, Skipped:     0, Total:    22, Duration: 20 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=[]
+restored rebuild exit=0
+done exit=0
+
+## 第四轮（补「结束后立刻断言取消入口不亮」之后只重跑 M9d，31eb5e7）
+
+M9d close-out does not mark the cancellation concluded: exit=1 ['Failed!  - Failed:     1, Passed:    21, Skipped:     0, Total:    22, Duration: 18 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)'] failed=['StationDeadlineExpiredG2Tests.ACancellationEndedAfterTheManualCheckReportsNothingForTheAbortedLoad']
+restored rebuild exit=0
+done exit=0
