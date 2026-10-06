@@ -1380,6 +1380,10 @@ public sealed partial class RecoveryVectorG2Tests
         /// Every wait on a locker's feedback times out: a pulse goes out and the executor then
         /// cannot confirm the lock released, the ADR-cross-0058 decision 2 failure after door IO.
         /// </param>
+        /// <param name="resumeAfterRepairEnabled">
+        /// The vehicle's maintenance switch (<c>wireToGate.recoveryResumeEnabled</c>). On by default here, so the recovery
+        /// entries can be pressed; off is the factory default.
+        /// </param>
         /// <param name="nothingOnFile">
         /// Seeds neither an armed operation nor a settled load: a vehicle with no record at all of
         /// the attempt a server might name. The case the batch 5-15 rule and the attempt check both
@@ -1406,7 +1410,8 @@ public sealed partial class RecoveryVectorG2Tests
             TimeSpan? messageTimeout = null,
             bool awaitStartSettlement = true,
             TimeSpan? resumeSettlementWaitLimit = null,
-            IClock? businessClock = null)
+            IClock? businessClock = null,
+            bool resumeAfterRepairEnabled = true)
         {
             bool ownsServer = existingServer is null;
             FakeControlServer server = existingServer ?? NewServer();
@@ -1483,7 +1488,7 @@ public sealed partial class RecoveryVectorG2Tests
                     TimeSpan.FromSeconds(30),
                     TimeSpan.FromMilliseconds(500),
                     new WireToGateRecoveryOptions(
-                        ResumeAfterRepairEnabled: true,
+                        ResumeAfterRepairEnabled: resumeAfterRepairEnabled,
                         ProofVariable,
                         "MAINTENANCE_ADMINISTRATOR",
                         "CONFIGURED_PROOF"),

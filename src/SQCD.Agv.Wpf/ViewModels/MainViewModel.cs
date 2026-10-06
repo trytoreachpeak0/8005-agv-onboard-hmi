@@ -143,6 +143,12 @@ public sealed class MainViewModel : ViewModelBase
     private Func<WireToGateHeldRecoveryCommandView>? _heldRecoveryCommandView;
     private Func<WireToGateHeldRecoveryCommandPrompt, CancellationToken, Task<bool>>? _heldRecoveryCommandConfirmer;
     private Func<WireToGateHeldRecoveryCommandPrompt, CancellationToken, Task<bool>>? _heldRecoveryCommandDecliner;
+    private bool _hasConflictedRecovery;
+    private bool _canCloseConflictedRecovery;
+    private string _conflictedRecoveryText = string.Empty;
+    private Func<WireToGateConflictedRecoveryView?>? _conflictedRecoveryView;
+    private Func<bool>? _canCloseConflictedRecoveryGate;
+    private Func<CancellationToken, Task<bool>>? _conflictedRecoveryCloser;
     private UnableToChargeDisplay _unableToCharge = UnableToChargeDisplay.Empty;
     private Func<WireToGateUnableToChargeView>? _unableToChargeView;
     private Func<WireToGateUnableToChargePrompt, CancellationToken, Task<bool>>? _unableToChargeConfirmer;
@@ -715,6 +721,8 @@ public sealed class MainViewModel : ViewModelBase
         RefreshHeldRecoveryCommandCore();
         // 现场确认充不上同样不在那九个里，不看锁存（见 RefreshUnableToChargeCore）。
         RefreshUnableToChargeCore();
+        // 人工核对后结束被拒收的恢复，同样不在那九个里，不看锁存（见 RefreshConflictedRecoveryCore）。
+        RefreshConflictedRecoveryCore();
     }
 
     /// <summary>
@@ -1672,6 +1680,63 @@ public sealed class MainViewModel : ViewModelBase
             WireToGateStationClearanceText.Status(view.LastOutcome));
     }
 
+    // ---- 人工核对后结束被服务端拒收结果的恢复（8005-agv-onboard-hmi#254） ----
+
+    public bool HasConflictedRecovery
+    {
+        get => _hasConflictedRecovery;
+        private set => SetProperty(ref _hasConflictedRecovery, value);
+    }
+
+    public bool CanCloseConflictedRecovery
+    {
+        get => _canCloseConflictedRecovery;
+        private set => SetProperty(ref _canCloseConflictedRecovery, value);
+    }
+
+    public string ConflictedRecoveryText
+    {
+        get => _conflictedRecoveryText;
+        private set => SetProperty(ref _conflictedRecoveryText, value);
+    }
+
+    /// <remarks>接线本身在 <c>ConflictedRecoveryWiring</c>，G2 夹具调的是同一个方法。</remarks>
+    internal void ConfigureConflictedRecovery(
+        Func<WireToGateConflictedRecoveryView?> view,
+        Func<bool> canClose,
+        Func<CancellationToken, Task<bool>> closer)
+    {
+        _conflictedRecoveryView = view ?? throw new ArgumentNullException(nameof(view));
+        _canCloseConflictedRecoveryGate = canClose ?? throw new ArgumentNullException(nameof(canClose));
+        _conflictedRecoveryCloser = closer ?? throw new ArgumentNullException(nameof(closer));
+        RunOnUiThread(RefreshConflictedRecoveryCore);
+    }
+
+    /// <summary>维护人员在现场核对实物、在对话框里确认之后调用。</summary>
+    public async Task<bool> CloseConflictedRecoveryAsync(CancellationToken cancellationToken = default)
+    {
+        if (_conflictedRecoveryCloser is null)
+        {
+            return false;
+        }
+
+        bool closed = await _conflictedRecoveryCloser(cancellationToken).ConfigureAwait(true);
+        RunOnUiThread(RefreshConflictedRecoveryCore);
+        return closed;
+    }
+
+    /// <remarks>
+    /// 不在那九个恢复入口里，锁存期间照常开着：按下去只清本机的恢复记录、不发任何报文、不碰仓门，与人工清桩确认同类
+    /// （见 RefreshStationClearanceCore）。它解开的扫码录入与恢复入口各自仍受锁存约束。
+    /// </remarks>
+    private void RefreshConflictedRecoveryCore()
+    {
+        WireToGateConflictedRecoveryView? view = _conflictedRecoveryView?.Invoke();
+        HasConflictedRecovery = view is not null;
+        ConflictedRecoveryText = view?.Text ?? string.Empty;
+        CanCloseConflictedRecovery = view is not null && _canCloseConflictedRecoveryGate?.Invoke() == true;
+    }
+
     // ---- 扣住等待现场确认的服务端恢复命令（8005-agv-onboard-hmi#239） ----
 
     public HeldRecoveryCommandDisplay HeldRecoveryCommand
@@ -2058,6 +2123,8 @@ public sealed class MainViewModel : ViewModelBase
         RefreshStationClearanceCore();
         // 扣住的服务端恢复命令同理写在守卫之前，锁存与否由它自己判（见 RefreshHeldRecoveryCommandCore）。
         RefreshHeldRecoveryCommandCore();
+        // 人工核对后结束被拒收的恢复同理（见 RefreshConflictedRecoveryCore）。
+        RefreshConflictedRecoveryCore();
         if (RecoveryEntriesBlockedByFatalFault)
         {
             CanRequestWireToGateRecovery = false;
@@ -2167,10 +2234,11 @@ public sealed class MainViewModel : ViewModelBase
             OperatorRecordKind.Success,
         "OPERATION_RECOVERY_REQUIRED" or "RECOVERY_BLOCKED" or "STATION_CLEARANCE_REJECTED"
             or "STATION_CLEARANCE_NOT_ACCEPTED" or "UNABLE_TO_CHARGE_REJECTED" or "UNABLE_TO_CHARGE_NOT_ACCEPTED"
-            or "DURABLE_MESSAGE_ABANDONED" =>
+            or "DURABLE_MESSAGE_ABANDONED" or "CONFLICTED_RECOVERY_PENDING" =>
             OperatorRecordKind.Error,
         "RESULT_ACK_PENDING" or "RECOVERY_AUTHORIZED" or "RECOVERY_AUTHORIZATION_UNKNOWN" or "SUBLOT_REJECTED" or "STATION_CLEARANCE_UNKNOWN"
-            or "STATION_CLEARANCE_BLOCKED" or "UNABLE_TO_CHARGE_UNKNOWN" or "UNABLE_TO_CHARGE_BLOCKED" =>
+            or "STATION_CLEARANCE_BLOCKED" or "UNABLE_TO_CHARGE_UNKNOWN" or "UNABLE_TO_CHARGE_BLOCKED"
+            or "CONFLICTED_RECOVERY_CLOSED" =>
             OperatorRecordKind.Warning,
         "SUBLOT_ENTRY_REQUESTED" or "SUBLOT_ENTRY_WITHDRAWN" or "SUBLOT_SUBMITTED" or "OPERATION_PROGRESS"
             or "OPERATION_REPLAY" =>

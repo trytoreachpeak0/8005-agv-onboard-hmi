@@ -23,13 +23,16 @@ namespace SQCD.Agv.WireToGateG2Tests;
 public sealed partial class RecoveryVectorG2Tests
 {
     /// <summary>
-    /// <c>UNKNOWN</c>, its ack dropped, the connection lost and the result replayed in the handshake and acknowledged:
-    /// the vector and the session are forgotten as on an ack inside the send, and the next press opens a second session.
+    /// <c>UNKNOWN</c> (the door pulsed, its lock never answered) or <c>FAILED</c> (a slot unreadable before any pulse), its
+    /// ack dropped, the connection lost and the result replayed in the handshake and acknowledged: the vector and the
+    /// session are forgotten as on an ack inside the send, once, and the next press opens a second session.
     /// </summary>
-    [Fact]
+    [Theory]
+    [InlineData("UNKNOWN")]
+    [InlineData("FAILED")]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
-    public async Task AnUnknownResultAcknowledgedByTheHandshakeReplayIsForgotten()
+    public async Task ANonCompletedResultAcknowledgedByTheHandshakeReplayIsForgotten(string outcome)
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
@@ -41,13 +44,19 @@ public sealed partial class RecoveryVectorG2Tests
                 server.LoadCompensationResultAcksToDrop = 1;
             },
             cargoInTargetSlots: true,
-            lockerWaitTimesOut: true);
+            lockerWaitTimesOut: outcome == "UNKNOWN");
 
         WireToGateRecoveryState prepared = await PrepareCompensationAsync(harness, token);
+        if (outcome == "FAILED")
+        {
+            // After the vector is prepared, so only the executor's precheck fails.
+            harness.Io.SetUnreadable(1);
+        }
+
         await harness.Server.SendCommandAsync(
             "LoadCompensationCommand", CompensationCommandMessageId, CompensationCommand(prepared));
         JsonElement result = await harness.WaitForResultAsync("LoadCompensationResult", token);
-        Assert.Equal("UNKNOWN", result.GetProperty("overallOutcome").GetString());
+        Assert.Equal(outcome, result.GetProperty("overallOutcome").GetString());
         await WaitForAckPendingAsync(harness, token);
 
         await ReconnectAsync(harness, token);
@@ -57,6 +66,59 @@ public sealed partial class RecoveryVectorG2Tests
         await WaitForCompensationResultAcknowledgedAsync(harness, prepared, token);
         Assert.Equal(2, harness.ResultsOfType("LoadCompensationResult").Count);
         await AssertTheVectorAndSessionAreForgottenAsync(harness, token);
+
+        // Another session state, another restore: nothing is settled twice.
+        await ReconnectAsync(harness, token);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.ResultsOfType("RecoveryStateReport").Count >= 3,
+            "the third handshake's recovery state report",
+            token);
+        Assert.Single(harness.Logger.Entries, entry =>
+            entry.Message.StartsWith("恢复向量结果的DurableAck不在首次发送时到达", StringComparison.Ordinal));
+        Assert.Single(harness.OperatorEvents, item => item.Kind == "OPERATION_RECOVERY_REQUIRED"
+            && item.Message.StartsWith("恢复结果已上报，但物理状态仍未达到可确认条件", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The operator opens a second recovery session in the moment between the settlement from the row reading the journal
+    /// and its write. Nothing of that session is forgotten: guard and write are one journal update.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ASettlementFromTheRowRacingASecondSessionForgetsNothingOfIt()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        RivalSessionJournal? rival = null;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server =>
+            {
+                server.SendRecoveryVectorCommandAfterRecoveryAction = false;
+                server.RecoverySlotOperationAttemptId = AttemptId;
+                server.LoadCompensationResultAcksToDrop = 1;
+            },
+            cargoInTargetSlots: true,
+            lockerWaitTimesOut: true,
+            wrapJournal: inner => rival = new RivalSessionJournal(inner));
+
+        WireToGateRecoveryState prepared = await PrepareCompensationAsync(harness, token);
+        await harness.Server.SendCommandAsync(
+            "LoadCompensationCommand", CompensationCommandMessageId, CompensationCommand(prepared));
+        await WaitForAckPendingAsync(harness, token);
+
+        rival!.OpenASecondSessionWhenTheSettlementRuns(prepared.RecoveryVector!);
+        await ReconnectAsync(harness, token);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => rival.SettlementFinished,
+            "the settlement from the row to run across the second session",
+            token);
+        Assert.True(rival.SecondSessionOpened, "the second session was never opened inside the settlement");
+
+        WireToGateRecoveryState after = await harness.ReadRecoveryStateAsync(token);
+        Assert.Equal(RivalSessionId, after.ExceptionRecoverySessionId);
+        Assert.Equal(RivalActionId, after.RecoveryActionId);
+        Assert.Equal(RivalActionId, after.RecoveryVector?.PrimaryId);
     }
 
     /// <summary>
@@ -179,8 +241,56 @@ public sealed partial class RecoveryVectorG2Tests
             baselineRevision: 2,
             restart: true);
 
-        await AssertTheVectorAndSessionAreForgottenAsync(afterRestart, token);
+        await AssertTheVectorAndSessionAreForgottenAsync(afterRestart, token, sessionRequestsAfterThePress: 1);
         Assert.Empty(afterRestart.ResultsOfType("LoadCompensationResult"));
+    }
+
+    /// <summary>
+    /// A load correction's id is derived from the load, so a second correction of the same load -- after the first one's
+    /// <c>FAILED</c> result was acknowledged and forgotten -- is prepared under the key whose acknowledged row the first
+    /// left. That row is not the second correction's result: across the next session's restore it stays on file, waiting
+    /// for its own command.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ACorrectionPreparedAgainUnderAnAcknowledgedKeyIsNotSettledByTheOldRow()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using RecoveryVectorHarness harness = await RecoveryVectorHarness.StartAsync(
+            token,
+            server => server.RecoveryVectorSlotOperationAttemptId = AttemptId,
+            loadAlreadySettled: true);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCorrection,
+            "the load correction entry to be offered",
+            token);
+        Assert.True(await harness.Business.RequestLoadCorrectionAsync("现场确认需要修正已完成的装货结果。", token));
+        WireToGateRecoveryVectorContext first = (await harness.ReadRecoveryStateAsync(token)).RecoveryVector!;
+        harness.Io.SetUnreadable(1);
+        await SendCorrectionCommandAsync(harness.Server, first, Guid.NewGuid().ToString("D"));
+        JsonElement result = await harness.WaitForResultAsync("LoadCorrectionResult", token);
+        Assert.Equal("FAILED", result.GetProperty("overallOutcome").GetString());
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.ReadRecoveryStateAsync(token).GetAwaiter().GetResult().RecoveryVector is null,
+            "the acknowledged FAILED correction to be forgotten",
+            token);
+
+        Assert.True(await harness.Business.RequestLoadCorrectionAsync("现场确认需要修正已完成的装货结果。", token));
+        WireToGateRecoveryVectorContext second = (await harness.ReadRecoveryStateAsync(token)).RecoveryVector!;
+        Assert.Equal(first.PrimaryId, second.PrimaryId);
+        Assert.True((await harness.ReadOutgoingAsync(
+            $"recovery-vector-result:{second.VectorType}:{second.PrimaryId}", token))?.Acknowledged);
+
+        await ReconnectAsync(harness, token);
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.OperatorEvents.Any(item => item.Kind == "OPERATION_PROGRESS"
+                && item.Message.StartsWith($"恢复向量 {second.VectorType} 尚未完成", StringComparison.Ordinal)),
+            "the restore to show the second correction as unfinished",
+            token);
+        Assert.Equal(second.PrimaryId, (await harness.ReadRecoveryStateAsync(token)).RecoveryVector?.PrimaryId);
+        Assert.DoesNotContain(harness.Logger.Entries, entry =>
+            entry.Message.StartsWith("恢复向量结果的DurableAck不在首次发送时到达", StringComparison.Ordinal));
     }
 
     private static Task WaitForAckPendingAsync(RecoveryVectorHarness harness, CancellationToken token) =>

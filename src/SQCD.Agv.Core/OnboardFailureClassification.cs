@@ -158,6 +158,9 @@ public static class OnboardFailureClassification
         // IO_SNAPSHOT_STALE) which already blocks scanning and departure; refusing this press does
         // not need a second, permanent one.
         "HARDWARE_RECOVERY_NOT_REQUIRED",
+        // The manual close of a recovery whose result the server refused for good, pressed when there is none
+        // (onboard-hmi#254). Nothing was written.
+        "CONFLICTED_RECOVERY_NOT_PENDING",
         "HARDWARE_RECOVERY_OBSERVATIONS_REQUIRED",
         "HARDWARE_RECOVERY_RECORD_REQUIRED",
         "SLOT_STATE_UNKNOWN"

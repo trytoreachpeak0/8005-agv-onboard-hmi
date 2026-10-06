@@ -40,7 +40,7 @@ public sealed partial class RecoveryVectorG2Tests
     /// </summary>
     [Theory]
     [MemberData(nameof(RefusedVectors))]
-    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("IntegrationSlice", "FP-IS-06")]
     [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
     public async Task ARefusedRecoveryResultSendsTheOperatorToTheManualCheck(RefusedVector refused)
     {
@@ -67,7 +67,7 @@ public sealed partial class RecoveryVectorG2Tests
                 item.Message.Contains("人工核对后结束此恢复", StringComparison.Ordinal)),
             "the operator to be sent to the manual check that ends the refused recovery",
             token);
-        Assert.Equal(vector, (await harness.ReadRecoveryStateAsync(token)).RecoveryVector);
+        AssertStillOnFile(vector, await harness.ReadRecoveryStateAsync(token));
     }
 
     /// <summary>
@@ -76,7 +76,7 @@ public sealed partial class RecoveryVectorG2Tests
     /// refused instead, and the vector stays for the manual check.
     /// </summary>
     [Fact]
-    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("IntegrationSlice", "FP-IS-06")]
     [Trait("ProtocolVector", "CV-RELIABLE-RETRY-DIFFERENT-CONTENT")]
     public async Task ANewSlotCommandWhileARefusedRecoveryAwaitsItsCheckIsRefused()
     {
@@ -126,7 +126,7 @@ public sealed partial class RecoveryVectorG2Tests
             "the new slot command to be refused while the refused recovery awaits its check",
             token);
         Assert.Equal(0, harness.Io.UnlockCount);
-        Assert.Equal(vector, (await harness.ReadRecoveryStateAsync(token)).RecoveryVector);
+        AssertStillOnFile(vector, await harness.ReadRecoveryStateAsync(token));
     }
 
     /// <summary>
@@ -169,6 +169,13 @@ public sealed partial class RecoveryVectorG2Tests
         Assert.Null(isolated.RecoveryVector);
         Assert.Equal([1, 2], isolated.ForcedIsolation?.PhysicallyUnknownSlots);
         Assert.Equal(0, harness.Io.UnlockCount);
+    }
+
+    /// <summary>The same vector, by type and id: the record's slot list is compared by reference.</summary>
+    private static void AssertStillOnFile(WireToGateRecoveryVectorContext vector, WireToGateRecoveryState state)
+    {
+        Assert.Equal(vector.VectorType, state.RecoveryVector?.VectorType);
+        Assert.Equal(vector.PrimaryId, state.RecoveryVector?.PrimaryId);
     }
 
     private static string ResultTypeOf(RefusedVector refused) => refused switch

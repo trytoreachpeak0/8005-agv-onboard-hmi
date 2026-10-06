@@ -848,6 +848,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         _session.StateChanged += OnSessionStateChanged;
         _session.JourneyChanged += OnJourneyChanged;
         _session.DurableMessageAbandoned += OnDurableMessageAbandoned;
+        _session.LateDurableAckReceived += OnLateDurableAckReceived;
         _ioModule.SnapshotChanged += OnIoSnapshotChanged;
         if (_observableVehicleSafetySignalProvider is not null)
         {
@@ -875,6 +876,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _session.StateChanged -= OnSessionStateChanged;
             _session.JourneyChanged -= OnJourneyChanged;
             _session.DurableMessageAbandoned -= OnDurableMessageAbandoned;
+            _session.LateDurableAckReceived -= OnLateDurableAckReceived;
             _ioModule.SnapshotChanged -= OnIoSnapshotChanged;
             if (_observableVehicleSafetySignalProvider is not null)
             {
@@ -1135,15 +1137,27 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
             if (state.RecoveryVector is { } vector)
             {
-                if (WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector))
+                // Its result acknowledged by the handshake's replay, or before a restart, and never settled; or given
+                // up, and waiting for a maintainer's manual check (onboard-hmi#150, onboard-hmi#254).
+                if (!await SettleVectorByItsResultRowAsync(vector, cancellationToken).ConfigureAwait(false))
                 {
-                    await RestoreLoadCancellationBeforeSublotAsync(vector, cancellationToken)
-                        .ConfigureAwait(false);
+                    if (WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector))
+                    {
+                        RestoreLoadCancellationBeforeSublot(vector);
+                        return;
+                    }
+
+                    PublishRecoveryVectorRestored(vector);
                     return;
                 }
 
-                PublishRecoveryVectorRestored(vector);
-                return;
+                // Settled from its row. A vector forgotten that way leaves its attempt unsettled, and that attempt's entry
+                // is restored below in this same pass, as it would be on the next; one still on file waits for its check.
+                state = await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
+                if (state.RecoveryVector is not null)
+                {
+                    return;
+                }
             }
 
             WireToGateRecoveryOperationContext? context = state.OperationContext;
@@ -3296,6 +3310,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     // Given up (onboard-hmi#254): it is never sent again, so "replayed" would be untrue (review N3).
                     ? "收到重复仓位命令；这次操作的结果已被服务端拒收并放弃，不会重放，也未再次执行仓门IO，请维护人员核对。"
                     : "收到重复仓位命令，已保持原结果重放，未再次执行仓门IO。");
+            return;
+        }
+
+        // A recovery whose result the server refused for good is waiting for a maintainer's manual check; run, this
+        // command would start from a fresh journal over its vector (onboard-hmi#254 part 2).
+        if (await RefuseWhileRecoveryAwaitsManualCheckAsync(command, cancellationToken).ConfigureAwait(false))
+        {
             return;
         }
 
