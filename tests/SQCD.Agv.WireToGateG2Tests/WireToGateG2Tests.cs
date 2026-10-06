@@ -1223,9 +1223,23 @@ public sealed partial class WireToGateG2Tests
     /// session generation -- without touching a door again.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Before 2026-09-13 pendingResults was always empty, because nothing ever put a result in it, and
     /// an acknowledged result was never sent again: the control server had no way to reconcile from
     /// the vehicle's journal, which is what the vector's replay is for.
+    /// </para>
+    /// <para>
+    /// No step here is about how fast anything happens, so nothing is judged by a clock
+    /// (onboard-hmi#263). The two waits used to be 2 s polls, the same 2 s as the session's message
+    /// timeout, and under load they failed with nothing wrong: an ack held up by a stall ran the
+    /// result's own send out of time (RESULT_ACK_PENDING instead of the acknowledged announcement),
+    /// or the poll ran out first. The message timeout is now far above any stall measured on these
+    /// machines. Before the restart the wait ends on an event: the announcement after the result was
+    /// acknowledged, or RESULT_ACK_PENDING, which fails at once; the
+    /// <see cref="LateDurableAckObservation.HangGuard"/> only stops a broken test from hanging. After
+    /// the restart there is no wait: the replay is settled by the time the handshake returns. What
+    /// turns this red is a result that is not acknowledged, not reported as pending, or not replayed.
+    /// </para>
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-03")]
@@ -1244,8 +1258,13 @@ public sealed partial class WireToGateG2Tests
         NullLogger logger = new();
         string journalPath = NewJournalPath();
 
+        // Every ack this test needs does come; the timeout only decides whether a stall can make one
+        // count as missing. Kept under the hang guard, so a result that is never acknowledged still
+        // ends in RESULT_ACK_PENDING rather than in the guard.
+        TimeSpan messageTimeout = TimeSpan.FromSeconds(30);
+
         WireToGateSessionService NewSession() => new(
-            CreateSessionOptions(server),
+            CreateSessionOptions(server, messageTimeout: messageTimeout),
             io,
             new SqliteWireToGateJournal(journalPath),
             logger,
@@ -1279,19 +1298,21 @@ public sealed partial class WireToGateG2Tests
         {
             // The same kind is also raised as soon as the journal holds the unsettled operation, long
             // before its result is sent; only the one after the server has the result means the
-            // DurableAck came back.
-            bool acknowledged = false;
+            // DurableAck came back. RESULT_ACK_PENDING is the other way the result's send can end.
+            TaskCompletionSource<string> resultSendEnded = new(TaskCreationOptions.RunContinuationsAsynchronously);
             business.OperatorEventPublished += (_, args) =>
             {
-                if (args.Value.Kind == "OPERATION_RECOVERY_REQUIRED"
+                if (args.Value.Kind is "OPERATION_RECOVERY_REQUIRED" or "RESULT_ACK_PENDING"
                     && server.ReceivedEnvelopes.Any(item => item.MessageType == "OperationResult"))
                 {
-                    acknowledged = true;
+                    resultSendEnded.TrySetResult(args.Value.Kind);
                 }
             };
             business.Start();
             await session.Client.ConnectAndRecoverAsync(testToken);
-            await WaitUntilAsync(() => acknowledged, testToken);
+            Assert.Equal(
+                "OPERATION_RECOVERY_REQUIRED",
+                await resultSendEnded.Task.WaitAsync(LateDurableAckObservation.HangGuard, testToken));
         }
 
         int unlocksBeforeRestart = io.UnlockCount;
@@ -1302,9 +1323,14 @@ public sealed partial class WireToGateG2Tests
         {
             business.Start();
             await session.Client.ConnectAndRecoverAsync(testToken);
-            await WaitUntilAsync(
-                () => server.ReceivedEnvelopes.Count(item => item.MessageType == "OperationResult") == 2,
-                testToken);
+            // Nothing to wait for: the handshake replays the reported result before it returns, and
+            // only once that replay is acknowledged -- which the double does after recording it. So by
+            // now the replay is on file or it was never sent. Should the replay ever move out of the
+            // handshake, this is where that shows, and the wait it then needs is an event, not a poll.
+            Assert.True(
+                server.ReceivedEnvelopes.Count(item => item.MessageType == "OperationResult") == 2,
+                "No OperationResult was replayed by the handshake after the restart. Received: "
+                + string.Join(", ", server.ReceivedEnvelopes.Select(item => $"{item.Connection}:{item.MessageType}")));
             Assert.True(session.Current.Connected);
         }
 
