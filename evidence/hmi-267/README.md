@@ -57,4 +57,21 @@
 - `unit-00b4f34.txt`：`SQCD.Agv.UnitTests` 全部 717 格通过。
 - `g2-targeted-00b4f34.txt`：`RecoveryVectorG2Tests`、`LoadCancellationBeforeSublotG2Tests`、`MultiDemandJourneyG2Tests` 三组，共 297 格通过。
 
+- `unit-460105c.txt`、`g2-targeted-460105c.txt`：审查后的 head `460105c`。单元测试 717 格通过；上面三组 G2 共 300 格通过（新增维修原因的三格参数用例）。退出码都是 0。
+
 本机全量 `ONBOARD_HMI_G2` 和 CI 真装置 `real-onboard-compensate-then-reconnect` 还没跑，要先向调度申请时段。
+
+## 4. 审查后的改动：`review/`
+
+审查对象是 `e99ee7b`，以下都在它之后。
+
+- 合入集成分支 `81758d6`（hmi#270）之后：
+  - `merge-81758d6-two-cases.txt`：改用 `HoldNextDurableAck` 的两格通过。
+  - `merge-81758d6-mb1-no-settle.txt`、`merge-81758d6-mc-no-second-line.txt`：两个变异各自只红自己那一格。
+- `TheRunningDemandsUnknownResultIsShownBeforeTheQueuedCommandTakesOver` 的消息超时，三组都在关门前注入 2.5 秒延迟：
+  - `inject-30s.txt`：30 秒超时，3/3 通过。
+  - `inject-30s-p7.txt`：再加 P7 变异，3/3 红在屏幕被拽回 A。
+  - `inject-2s-control.txt`：退回 2 秒的对照，1/1 红在等不到 A 的确认，复现审查看到的误红。
+- 文案与日志级别：
+  - `mut-text-always-shut-door.txt`：变异"文案一律叫人关门"，三种维修原因的三格红。
+  - `mut-log-always-warning.txt`：变异"每份重发都记 Warning"，门开着那一格红。
