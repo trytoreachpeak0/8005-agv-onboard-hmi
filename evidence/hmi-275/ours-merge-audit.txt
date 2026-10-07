@@ -1,0 +1,165 @@
+# -s ours 记为已合并的对照（fp@28545a8 vs v3@22a98199，merge-base dae3db6e）
+# 生成于 96f2a46，git 2.55.0.windows.5
+
+## 1. fp 有、v3 没有的提交：git rev-list 22a98199..28545a8
+28545a8 6b5fef4 c499825 Merge pull request #260 from trytoreachpeak0/w2g/hmi250-late-durable-ack
+c499825 6aa0389 test(w2g): 入库 hmi#250 审查修改后的全量 G2 证据（6aa0389，PASS）
+6b5fef4 5d387d8 28975b1 Merge pull request #256 from trytoreachpeak0/w2g/hmi255-recovery-active-set-truth
+6aa0389 7b94a14 fix(w2g): 迟到 ack 结清安全变化时推进已接受版本，放弃行的告警写明可能误报（hmi#250 审查）
+28975b1 e34aece 5d387d8 Merge remote-tracking branch 'origin/w2g/fp-v2-impl' into w2g/hmi255-recovery-active-set-truth
+5d387d8 0d85775 47cf45d Merge pull request #262 from trytoreachpeak0/w2g/hmi261-sqlite-provider-order
+47cf45d 0d85775 test(w2g): 单测程序集启动时先设置 SQLite 提供程序，去掉对执行顺序的依赖（hmi#261）
+e34aece ded23c0 chore(evidence): 入库 hmi#255 定稿版本的全量 G2 与 CI 真装置证据（hmi#255）
+7b94a14 dbaa162 test(w2g): 补 correlationId 与 acceptedMessageId 不一致的迟到 ack 用例（hmi#250）
+dbaa162 0d85775 fix(w2g): 等待已结束后才到的 DurableAck 按发件箱结清，不再断开会话（hmi#250）
+ded23c0 45bd937 chore(evidence): hmi#255 合入 fp-v2-impl（0d85775）后的定向运行记录
+45bd937 e49f259 0d85775 Merge remote-tracking branch 'origin/w2g/fp-v2-impl' into w2g/hmi255-recovery-active-set-truth
+e49f259 7541718 fix(w2g): hmi#255 增量审查：出口整句断言、门禁单次读快照、证据记退出码
+0d85775 0eccfd8 19d8a2c Merge pull request #258 from trytoreachpeak0/w2g/hmi254-abandon-conflicting-outbox-row
+7541718 134c38a test(w2g): 补偿被拒用例的拒绝报文补上 correlationId（hmi#255）
+134c38a e474e68 chore(evidence): hmi#255 第二轮红绿与变异记录
+19d8a2c 9349f30 test(w2g): 入库 hmi#254 定稿版本的全量 G2 与 CI 真装置证据（hmi#254）
+9349f30 03ab4a3 fix(w2g): 续作拒绝写盘失败重试一次，告警按是否已通知服务端选文案（hmi#254）
+e474e68 73f3fd9 fix(w2g): hmi#255 审查意见：单门规则与门禁钉住、按原因提示、原因码改准
+03ab4a3 8e9ddf7 fix(w2g): 续作结果放弃时当场回拒绝结束服务端会话，放弃判断挪到安全门禁前（hmi#254）
+8e9ddf7 6961b00 fix(w2g): 安全变化被拒后请求下一轮的那一句写明为什么留着，撤回夹具保鲜改动（hmi#254）
+6961b00 7793b9d fix(w2g): 续作结果放弃告警改为说明重连后自动结束这次恢复（hmi#254）
+7793b9d 38425e7 fix(w2g): 续作结果被放弃后，服务端补发的续作命令回拒绝以关掉会话；按审查补用例与文案（hmi#254）
+38425e7 623036f fix(w2g): 续作结果被放弃时如实告知车上没有收尾入口（hmi#254）
+623036f 096a41c test(w2g): 补安全变化被拒后再无新变化时仍回应快照重问的用例（hmi#254）
+096a41c e03e781 fix(w2g): 续作结果放弃改为读发件箱的单一判断，删掉多余的安全上报请求（hmi#254）
+e03e781 55df753 fix(w2g): 按审查收窄放弃白名单并修 S1-S4、N1-N3（hmi#254）
+55df753 03ff1b3 test(w2g): 补已完成结果被拒收与中断结算结果被拒收两条用例（hmi#254）
+73f3fd9 3172948 chore(evidence): hmi#255 红绿与变异记录
+3172948 68c390c test(w2g): 补新鲜度两条用例，杀掉存活变异（hmi#255）
+03ff1b3 a5682ae refactor(w2g): 五种恢复结果被拒收后的收尾拆到第二部分，本 PR 只交发件箱放弃（hmi#254）
+a5682ae d69ec95 test(w2g): 补放弃路径用例；含五种恢复结果收尾（第二部分，待拆出）（hmi#254）
+68c390c a5072cc fix(w2g): 准备新恢复向量前核对上一个向量留下的可能开着的门（hmi#255）
+d69ec95 4c7114e fix(w2g): 发件箱行收到 MANUAL_REVIEW 码时持久放弃并告警，握手继续到 READY（hmi#254）
+a5072cc 7c150c7 fix(w2g): 恢复向量复核已完成仓，门读成开着时不再报 COMPLETED（hmi#255）
+7c150c7 0eccfd8 test(w2g): 恢复向量三处如实性缺口的红用例（hmi#255）
+4c7114e 0eccfd8 test(w2g): 补发件箱行被判内容冲突时的红用例（hmi#254 第一步）
+0eccfd8 17043d0 dae3db6 Merge pull request #252 from trytoreachpeak0/w2g/hmi249-failed-replays-failed
+
+## 2. 按票的 patch-id --stable（合并提交相对第一父提交 vs v3 的 cherry-pick）
+#258 hmi#254 fp d584fad361d2 v3 60dd6b6 d584fad361d2
+#262 hmi#261 fp defaed77a219 v3 7bd1438 defaed77a219
+#260 hmi#250 fp fbc27c83b3fa v3 2959403 f4eda6735ff9
+#260 增删行逐行比较：相同
+#252 hmi#249 父提交 17043d0 dae3db6：都是 v3 祖先？是
+
+## 3. 合并提交的 git show --cc 行数（0 = 无手工解冲突）
+28545a8 0
+6b5fef4 0
+28975b1 0
+5d387d8 0
+45bd937 0
+0d85775 0
+0eccfd8 0
+
+## 4. 模拟正常合并：git merge-tree --write-tree 22a98199 28545a8
+tree 4e0ad5c29362110f28754b86a3866b8eefca46b6，冲突文件：
+tests/SQCD.Agv.WireToGateG2Tests/FakeControlServer.cs
+tests/SQCD.Agv.WireToGateG2Tests/RecoveryVectorG2Tests.CarriedOpenDoor.cs
+
+相对 v3 的改动：
+ evidence/hmi-255/README.md                                                |  52 ++++++++++++++++
+ evidence/hmi-255/ci-real-rig-37331952427/SUMMARY.md                       |  55 +++++++++++++++++
+ evidence/hmi-255/ci-real-rig-37331952427/assertions.json                  |  95 ++++++++++++++++++++++++++++
+ evidence/hmi-255/ci-real-rig-37331952427/commit-samples.csv               |  57 +++++++++++++++++
+ evidence/hmi-255/ci-real-rig-37331952427/commits.json                     |   5 ++
+ evidence/hmi-255/ci-real-rig-37331952427/onboard-app-log.txt              |  77 +++++++++++++++++++++++
+ evidence/hmi-255/ci-real-rig-37331952427/run-SUMMARY.md                   |   9 +++
+ evidence/hmi-255/ci-real-rig-37331952427/timeline.jsonl                   |  94 ++++++++++++++++++++++++++++
+ evidence/hmi-255/g2-full-ded23c0/journal.ndjson                           |   3 +
+ evidence/hmi-255/g2-full-ded23c0/logs/dotnet-build-release.log            |  18 ++++++
+ evidence/hmi-255/g2-full-ded23c0/logs/dotnet-format-verify.log            |   0
+ evidence/hmi-255/g2-full-ded23c0/logs/dotnet-test-release.log             |  14 +++++
+ evidence/hmi-255/g2-full-ded23c0/logs/protocol-g1.log                     |  19 ++++++
+ evidence/hmi-255/g2-full-ded23c0/summary.json                             | 117 +++++++++++++++++++++++++++++++++++
+ evidence/hmi-255/g2-full-ded23c0/test-results/schema-conformance.txt      |  11 ++++
+ evidence/hmi-255/g2-full-ded23c0/test-results/schema-coverage.json        | 229 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ evidence/hmi-255/g2-full-ded23c0/test-results/schema-violations.json      | 130 +++++++++++++++++++++++++++++++++++++++
+ evidence/hmi-255/g2-full-ded23c0/transcript.ndjson                        |  11 ++++
+ evidence/hmi-255/green/g2-targeted-green-round2.txt                       |   3 +
+ evidence/hmi-255/green/g2-targeted-green.txt                              |   2 +
+ evidence/hmi-255/green/green-merge-0d85775.txt                            |   9 +++
+ evidence/hmi-255/green/green-round3.txt                                   |   9 +++
+ evidence/hmi-255/green/mutation-r-b1-combined.txt                         |   3 +
+ evidence/hmi-255/green/mutations-fp-round2.txt                            |  61 ++++++++++++++++++
+ evidence/hmi-255/green/mutations-fp-round3-exit-text.txt                  |  11 ++++
+ evidence/hmi-255/green/mutations-fp.txt                                   |  39 ++++++++++++
+ evidence/hmi-255/green/schema-fix-targeted.txt                            |   4 ++
+ evidence/hmi-255/green/unit-green-round2.txt                              |   3 +
+ evidence/hmi-255/green/unit-green.txt                                     |   3 +
+ evidence/hmi-255/red/g2-red-fp-0eccfd8-round2.txt                         |  12 ++++
+ evidence/hmi-255/red/g2-red-fp-0eccfd8.txt                                |  20 ++++++
+ evidence/hmi-255/red/unit-red-fp-0eccfd8-round2.txt                       |  15 +++++
+ evidence/hmi-255/red/unit-red-fp-0eccfd8.txt                              |  12 ++++
+ tests/SQCD.Agv.WireToGateG2Tests/FakeControlServer.cs                     |  19 ++++++
+ tests/SQCD.Agv.WireToGateG2Tests/RecoveryVectorG2Tests.CarriedOpenDoor.cs |   3 +
+ 35 files changed, 1224 insertions(+)
+
+## 5. 逐文件分类（fp 在 dae3db6e..28545a8 改过的文件）
+  DIFF-fpbrings evidence/hmi-255/README.md
+  DIFF-fpbrings evidence/hmi-255/ci-real-rig-37331952427/SUMMARY.md
+  DIFF-fpbrings evidence/hmi-255/ci-real-rig-37331952427/assertions.json
+  DIFF-fpbrings evidence/hmi-255/ci-real-rig-37331952427/commit-samples.csv
+  DIFF-fpbrings evidence/hmi-255/ci-real-rig-37331952427/commits.json
+  DIFF-fpbrings evidence/hmi-255/ci-real-rig-37331952427/onboard-app-log.txt
+  DIFF-fpbrings evidence/hmi-255/ci-real-rig-37331952427/run-SUMMARY.md
+  DIFF-fpbrings evidence/hmi-255/ci-real-rig-37331952427/timeline.jsonl
+  DIFF-fpbrings evidence/hmi-255/g2-full-ded23c0/journal.ndjson
+  DIFF-fpbrings evidence/hmi-255/g2-full-ded23c0/logs/dotnet-build-release.log
+  DIFF-fpbrings evidence/hmi-255/g2-full-ded23c0/logs/dotnet-format-verify.log
+  DIFF-fpbrings evidence/hmi-255/g2-full-ded23c0/logs/dotnet-test-release.log
+  DIFF-fpbrings evidence/hmi-255/g2-full-ded23c0/logs/protocol-g1.log
+  DIFF-fpbrings evidence/hmi-255/g2-full-ded23c0/summary.json
+  DIFF-fpbrings evidence/hmi-255/g2-full-ded23c0/test-results/schema-conformance.txt
+  DIFF-fpbrings evidence/hmi-255/g2-full-ded23c0/test-results/schema-coverage.json
+  DIFF-fpbrings evidence/hmi-255/g2-full-ded23c0/test-results/schema-violations.json
+  DIFF-fpbrings evidence/hmi-255/g2-full-ded23c0/transcript.ndjson
+  DIFF-fpbrings evidence/hmi-255/green/g2-targeted-green-round2.txt
+  DIFF-fpbrings evidence/hmi-255/green/g2-targeted-green.txt
+  DIFF-fpbrings evidence/hmi-255/green/green-merge-0d85775.txt
+  DIFF-fpbrings evidence/hmi-255/green/green-round3.txt
+  DIFF-fpbrings evidence/hmi-255/green/mutation-r-b1-combined.txt
+  DIFF-fpbrings evidence/hmi-255/green/mutations-fp-round2.txt
+  DIFF-fpbrings evidence/hmi-255/green/mutations-fp-round3-exit-text.txt
+  DIFF-fpbrings evidence/hmi-255/green/mutations-fp.txt
+  DIFF-fpbrings evidence/hmi-255/green/schema-fix-targeted.txt
+  DIFF-fpbrings evidence/hmi-255/green/unit-green-round2.txt
+  DIFF-fpbrings evidence/hmi-255/green/unit-green.txt
+  DIFF-fpbrings evidence/hmi-255/red/g2-red-fp-0eccfd8-round2.txt
+  DIFF-fpbrings evidence/hmi-255/red/g2-red-fp-0eccfd8.txt
+  DIFF-fpbrings evidence/hmi-255/red/unit-red-fp-0eccfd8-round2.txt
+  DIFF-fpbrings evidence/hmi-255/red/unit-red-fp-0eccfd8.txt
+  DIFF-v3only +175 -0 src/SQCD.Agv.Application/WireToGateRecoveryVectorExecutor.cs
+  DIFF-v3only +15 -1 src/SQCD.Agv.Core/OnboardFailureClassification.cs
+  DIFF-v3only +78 -0 src/SQCD.Agv.Core/WireToGateRecovery.cs
+  DIFF-v3only +39 -0 src/SQCD.Agv.Infrastructure/SqliteWireToGateJournal.cs
+  DIFF-v3only +308 -53 src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs
+  DIFF-v3only +12 -0 src/SQCD.Agv.Infrastructure/WireToGateSessionService.cs
+  DIFF-v3only +233 -19 src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs
+  DIFF-v3only +282 -40 src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+  DIFF-v3only +133 -12 src/SQCD.Agv.Wpf/WireToGateBusinessService.cs
+  DIFF-v3only +55 -1 tests/SQCD.Agv.UnitTests/WireToGateRecoveryVectorExecutorTests.cs
+  DIFF-fpbrings tests/SQCD.Agv.WireToGateG2Tests/FakeControlServer.cs
+  DIFF-v3only +17 -0 tests/SQCD.Agv.WireToGateG2Tests/FakeIoModuleClient.cs
+  DIFF-v3only +1 -2 tests/SQCD.Agv.WireToGateG2Tests/LoadCancellationBeforeSublotG2Tests.cs
+  DIFF-fpbrings tests/SQCD.Agv.WireToGateG2Tests/RecoveryVectorG2Tests.CarriedOpenDoor.cs
+  108 个文件里，其余 61 个 fp@28545a8 与 v3@22a98199 逐字节相同
+
+## 6. 差异文件里 fp 有、v3 没有的行是否都在 merge-base 上
+  src/SQCD.Agv.Application/WireToGateRecoveryVectorExecutor.cs removed=0 notInBase=0；v3 的票：#257 #253 #248 #246 
+  src/SQCD.Agv.Core/OnboardFailureClassification.cs removed=1 notInBase=0；v3 的票：#265 #248 #247 #225 
+  src/SQCD.Agv.Core/WireToGateRecovery.cs removed=0 notInBase=0；v3 的票：#265 #248 #247 #225 
+  src/SQCD.Agv.Infrastructure/SqliteWireToGateJournal.cs removed=0 notInBase=0；v3 的票：#265 #248 #247 #246 
+  src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs removed=50 notInBase=0；v3 的票：#268 #265 #248 #247 #246 
+  src/SQCD.Agv.Infrastructure/WireToGateSessionService.cs removed=0 notInBase=0；v3 的票：#265 #247 #246 
+  src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs removed=19 notInBase=0；v3 的票：#265 #248 #246 #225 
+  src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs removed=40 notInBase=0；v3 的票：#257 #248 #247 #246 #225 
+  src/SQCD.Agv.Wpf/WireToGateBusinessService.cs removed=12 notInBase=0；v3 的票：#265 #248 #247 #246 #225 
+  tests/SQCD.Agv.UnitTests/WireToGateRecoveryVectorExecutorTests.cs removed=1 notInBase=0；v3 的票：#257 #248 
+  tests/SQCD.Agv.WireToGateG2Tests/FakeIoModuleClient.cs removed=0 notInBase=0；v3 的票：#257 #248 
+  tests/SQCD.Agv.WireToGateG2Tests/LoadCancellationBeforeSublotG2Tests.cs removed=2 notInBase=0；v3 的票：#257 
