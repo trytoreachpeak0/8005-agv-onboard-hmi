@@ -1,5 +1,6 @@
 using System.Text.Json;
 using SQCD.Agv.Core;
+using SQCD.Agv.Wpf;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
@@ -88,6 +89,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             token,
             journalPath,
             io,
+            recoveryOptions: CancellationOverRecordedLoadRecovery,
             messageTimeout: TimeSpan.FromSeconds(30));
         AssertCancellationOnFile(ReadJournal(afterRestart, token), activeSlots: [1]);
         (int _, string _, string _, string wireLine) = Assert.Single(
@@ -356,12 +358,22 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Empty(journal.PendingResults);
     }
 
+    /// <summary>This file's own proof variable: a maintainer's close-out of a refused result asks for one.</summary>
+    private const string CancellationOverRecordedLoadProofVariable = "W2G_G2_HMI259_RECOVERY_PROOF";
+
+    private static readonly WireToGateRecoveryOptions CancellationOverRecordedLoadRecovery = new(
+        ResumeAfterRepairEnabled: false,
+        AuthenticationProofEnvironmentVariable: CancellationOverRecordedLoadProofVariable,
+        AdministratorRole: "MAINTENANCE_ADMINISTRATOR",
+        VerificationMethod: "SESSION");
+
     private static async Task<Harness> StartCancellationStopAsync(
         FakeIoModuleClient io,
         string journalPath,
         Action<FakeControlServer> configure,
         CancellationToken token)
     {
+        Environment.SetEnvironmentVariable(CancellationOverRecordedLoadProofVariable, "hmi259-proof");
         Harness harness = await Harness.StartAsync(
             server =>
             {
@@ -379,6 +391,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             token,
             journalPath,
             io: io,
+            recoveryOptions: CancellationOverRecordedLoadRecovery,
             messageTimeout: TimeSpan.FromSeconds(30));
         await harness.WaitUntilAsync(
             () => harness.Session.CurrentJourney.CurrentStopWorklist is not null
