@@ -60,6 +60,41 @@ public sealed partial class MultiDemandJourneyG2Tests
         WireToGateRecoveryState after = ReadJournal(harness, token);
         Dump("after-prepare", after);
         TestContext.Current.TestOutputHelper!.WriteLine($"probe press-completed={press.IsCompleted} unlocks={io.UnlockCount}");
+        await EmptyAndFinishAsync(harness, io, press, firstCancellationPulse: 3, token);
+    }
+
+    private static async Task EmptyAndFinishAsync(
+        Harness harness,
+        FakeIoModuleClient io,
+        Task<bool> press,
+        int firstCancellationPulse,
+        CancellationToken token)
+    {
+        try
+        {
+            await harness.WaitUntilAsync(() => io.UnlockCount >= firstCancellationPulse || press.IsCompleted, "pulse", token);
+            io.CloseDoor(0, cargo: false);
+            await harness.WaitUntilAsync(() => io.UnlockCount >= firstCancellationPulse + 1 || press.IsCompleted, "pulse 2", token);
+            io.CloseDoor(1, cargo: false);
+            await harness.WaitUntilAsync(() => press.IsCompleted, "the press to end", token);
+        }
+        catch (Xunit.Sdk.FailException exception)
+        {
+            TestContext.Current.TestOutputHelper!.WriteLine($"probe wait failed: {exception.Message}");
+        }
+
+        string pressOutcome = press.IsCompleted
+            ? press.IsFaulted ? $"faulted {press.Exception!.InnerException!.Message}" : $"returned {press.Result}"
+            : "still running";
+        TestContext.Current.TestOutputHelper!.WriteLine($"probe press {pressOutcome} unlocks={io.UnlockCount}");
+        foreach (JsonElement result in ReceivedPayloads(harness, "LoadCancellationResult"))
+        {
+            TestContext.Current.TestOutputHelper!.WriteLine($"probe LoadCancellationResult {result.GetProperty("overallOutcome").GetString()}");
+        }
+
+        TestContext.Current.TestOutputHelper!.WriteLine(
+            $"probe ui-errors=[{string.Join(" | ", harness.UiErrors.Select(error => error.Message))}]");
+        Dump("final", ReadJournal(harness, token));
     }
 
     /// <summary>
@@ -125,6 +160,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         }
         Dump("after-late-ack", ReadJournal(harness, token));
         TestContext.Current.TestOutputHelper!.WriteLine($"probe unlocks={io.UnlockCount}");
+        await EmptyAndFinishAsync(harness, io, press, firstCancellationPulse: 3, token);
     }
 
     private static void Dump(string label, WireToGateRecoveryState state) =>
