@@ -119,8 +119,12 @@ public sealed partial class MultiDemandJourneyG2Tests
         // proven shut or not: hmi#267's "settle before start" holds again now that the vector stays (review L-2). The
         // server sends it again once the cancellation has ended, and then it runs.
         await SendSlotCommandAsync(afterRestart, DemandB, AttemptB, [5]);
-        await afterRestart.WaitUntilAsync(() => RefusalsOfB(afterRestart) == 1, "B's first copy to be refused", token);
-        Assert.Contains(afterRestart.Events, item => item.Kind == "RECOVERY_VECTOR_UNSETTLED");
+        // The refusal goes on the wire before the operator is told, so both are waited for.
+        await afterRestart.WaitUntilAsync(
+            () => RefusalsOfB(afterRestart) == 1
+                && afterRestart.Events.Any(item => item.Kind == "RECOVERY_VECTOR_UNSETTLED"),
+            "B's first copy to be refused over the cancellation on file, and the operator told",
+            token);
         Assert.Equal(unlocksBeforeRestart, io.UnlockCount);
         AssertCancellationOnFile(ReadJournal(afterRestart, token), activeSlots: [1]);
 
