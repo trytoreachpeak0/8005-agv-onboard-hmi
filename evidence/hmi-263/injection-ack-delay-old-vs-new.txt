@@ -1,0 +1,34 @@
+# onboard-hmi#263 确定性对照：WireToGateG2Tests.AnUnknownResultIsReportedAsPendingAfterARestartAndReplayedOnceTheReportIsAcknowledged
+# 注入（本地临时、未提交，已写回原内容并 --no-incremental 重编）：替身已有的 OperationResultAckHold 设为 Task.Delay(4 s)，
+# 即替身收下 OperationResult 后要等到这个 4 秒任务完成才回 DurableAck，模拟负载下确认被拖慢。
+# old = 81758d6（改动前，w2g/fp-v2-impl 顶端），new = 00a16b7（本票）。均为定向 --filter 单跑，判据是退出码。
+
+## 注入一：重启前那次结果的确认被拖慢（hold 在构造替身时设，4 秒从用例开始计）
+### old：红，报错与 CI／hmi#250 全量那次原文相同
+    Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AnUnknownResultIsReportedAsPendingAfterARestartAndReplayedOnceTheReportIsAcknowledged [3 s]
+    Error Message:
+     System.OperationCanceledException : Timed out after 2s waiting for a G2 condition.
+  Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1
+### new：绿
+  Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+### 对照 new-but-2s：新写法但 MessageTimeout 留在 2 秒：红，而且是立即按事件红（RESULT_ACK_PENDING），
+### 说明只把轮询换成等事件不够，产品自己的发送也在和这 2 秒赛跑。
+    Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AnUnknownResultIsReportedAsPendingAfterARestartAndReplayedOnceTheReportIsAcknowledged [2 s]
+    Error Message:
+  Expected: "OPERATION_RECOVERY_REQUIRED"
+  Actual:   "RESULT_ACK_PENDING"
+  Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 2 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1
+
+## 注入二：重启后补发那次的确认被拖慢（hold 在 SimulateOnboardProcessRestart 之后设）
+### old：红，握手里的补发等确认等满 2 秒 MessageTimeout，ConnectAndRecoverAsync 抛出
+    Failed SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.AnUnknownResultIsReportedAsPendingAfterARestartAndReplayedOnceTheReportIsAcknowledged [3 s]
+    Error Message:
+     System.TimeoutException : The operation has timed out.
+  Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1
+### new：绿
+  Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0

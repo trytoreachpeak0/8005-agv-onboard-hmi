@@ -530,6 +530,20 @@
                             Visibility="{Binding CanRequestHardwareRepairRelease, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnHardwareRepairReleaseClick"
                             Content="维修放行" />
+                    <!--
+                        人工核对后结束此恢复（8005-agv-onboard-hmi#254）：服务端拒收了本车的恢复结果、两端结论不一致时出现，
+                        由已验证的维护人员在现场核对实物后按下。只清本机的恢复记录，不发报文、不碰仓门。
+                    -->
+                    <Button Margin="0,0,8,0"
+                            Padding="12,6"
+                            FontSize="13"
+                            Background="#D6A32A"
+                            AutomationProperties.AutomationId="CloseConflictedRecovery"
+                            IsEnabled="{Binding CanCloseConflictedRecovery}"
+                            Visibility="{Binding CanCloseConflictedRecovery, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            ToolTip="{Binding ConflictedRecoveryText}"
+                            Click="OnCloseConflictedRecoveryClick"
+                            Content="人工核对后结束此恢复" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"

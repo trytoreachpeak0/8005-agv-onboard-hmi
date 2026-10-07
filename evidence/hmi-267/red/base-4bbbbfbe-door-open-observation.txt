@@ -1,0 +1,1 @@
+OBSERVE overallOutcome=UNKNOWN slotResults=[{"slotNo":5,"outcome":"NOT_STARTED","finalPhysicalState":"EMPTY","lockState":"LOCKED","unlockOutputState":"RESET","reasonCodes":["LOCK_NOT_CLOSED"]}] activeUnlockSlots=[] unsettled=9a9a9a9a-9a9a-4a9a-8a9a-9a9a9a9a9a9a checkpoint=SafeFinishReached unlockCount=0 rejections=0

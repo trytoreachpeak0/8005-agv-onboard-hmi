@@ -1,0 +1,16 @@
+# onboard-hmi#270 范围补充那一格的确定性对照：RecoveryVectorG2Tests.AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect
+# 本地注入（未提交，已写回原内容并 --no-incremental 重编）：WireToGateSessionClient.SendDurableCoreAsync 在写出 LoadCompensationResult 之后、
+# 开始等确认之前停 1.5 秒，模拟负载下发送线程的停顿。旧写法替身晚 3 秒发确认，于是确认落在 2 秒等待之内。
+# 旧写法红在更早一步：确认被当成普通确认收下，车载端不记「恢复向量结果暂未收到DurableAck」，也没有任何「收到迟到的DurableAck」（old 输出里计数 0）。
+## old = 4bbbbfb（改动前）
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the vehicle to record that the result has no acknowledgement yet
+Total tests: 1
+     Failed: 1
+exit=1
+## new = 1cf37be（本票）
+  Passed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AnUnknownResultWhoseAckArrivesLateIsForgottenWithoutAReconnect [4 s]
+Total tests: 1
+     Passed: 1
+exit=0

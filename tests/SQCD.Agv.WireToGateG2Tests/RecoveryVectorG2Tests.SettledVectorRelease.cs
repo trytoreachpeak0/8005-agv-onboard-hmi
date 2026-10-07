@@ -318,9 +318,14 @@ public sealed partial class RecoveryVectorG2Tests
     /// reds onboard-hmi#149 traced to seconds-long stalls under load. The assertion below stays, so a
     /// genuine failure still reports on the same line.
     /// </remarks>
+    /// <param name="sessionRequestsAfterThePress">
+    /// How many session requests this harness's double holds once the press has gone out: the first press's and this one,
+    /// unless the vehicle restarted onto a double that never saw the first.
+    /// </param>
     private static async Task AssertTheVectorAndSessionAreForgottenAsync(
         RecoveryVectorHarness harness,
-        CancellationToken token)
+        CancellationToken token,
+        int sessionRequestsAfterThePress = 2)
     {
         await RecoveryVectorHarness.WaitUntilAsync(
             () => harness.ReadRecoveryStateAsync(token).GetAwaiter().GetResult().RecoveryVector is null,
@@ -343,7 +348,7 @@ public sealed partial class RecoveryVectorG2Tests
             .Select(entry => entry.Message)
             .TakeLast(3)));
         await RecoveryVectorHarness.WaitUntilAsync(
-            () => harness.ResultsOfType("ExceptionRecoverySessionRequested").Count == 2,
+            () => harness.ResultsOfType("ExceptionRecoverySessionRequested").Count == sessionRequestsAfterThePress,
             "a second recovery session request for the same vehicle",
             token);
     }

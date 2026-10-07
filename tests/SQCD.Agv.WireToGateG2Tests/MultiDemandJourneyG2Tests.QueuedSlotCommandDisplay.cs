@@ -108,7 +108,24 @@ public sealed partial class MultiDemandJourneyG2Tests
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         FakeIoModuleClient io = new() { OperatorNeverActs = true };
-        await using Harness harness = await StartTwoDemandStopAsync(io, token);
+        // A's OperationResult is held unanswered -- and unprocessed -- until B has the display (onboard-hmi#267). Since then
+        // B's first copy is refused over A's door in doubt and B only runs when it is sent again, and a server that had
+        // already taken A's UNKNOWN would hold the session out of READY and the vehicle would not take B. Held, the server
+        // has not answered yet, as in the field before its reply arrives. Released once B is current, A's acknowledgement
+        // then lands while B holds the display: the order in which this test always met it, and the one that tells whether
+        // the acknowledged result's event takes the display back.
+        TaskCompletionSource aResultHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        //
+        // The hold has to stay inside the vehicle's message timeout, as OperationResultAckHold asks: past it A's send stops
+        // waiting, A's result goes the RESULT_ACK_PENDING way, and the acknowledged-result event this test is about never
+        // comes. The two seconds the harness otherwise gives are shorter than a loaded machine takes from A's result to B
+        // taking the display (review of onboard-hmi#273: 1 in 154 runs, and 3/3 with 2.5 s injected before the door is shut).
+        await using Harness harness = await StartTwoDemandStopAsync(
+            io,
+            token,
+            server => server.OperationResultAckHold = aResultHeld.Task,
+            messageTimeout: TimeSpan.FromSeconds(30));
+        using ReleaseOnExit releaseHeldResult = new(() => aResultHeld.TrySetResult());
 
         await SendSlotCommandAsync(harness, DemandA, AttemptA, [1]);
         await harness.WaitUntilAsync(
@@ -123,9 +140,19 @@ public sealed partial class MultiDemandJourneyG2Tests
         // The lock feedback on A's open door goes unreadable: the executor's wait ends on its unknown
         // leg and the operation settles UNKNOWN. B is still queued behind it at that point.
         io.SetUnreadable(0);
+        // A's slot 1 is left in doubt, so B's first copy is refused; the door is shut and B sent again
+        // (onboard-hmi#267).
+        await RefuseBOverAsDoorThenResendOnceShutAsync(harness, io, token);
         await harness.WaitUntilAsync(
             () => harness.Business.CurrentOperationSnapshot?.SlotOperationAttemptId == AttemptB,
             "B to take over once A has ended UNKNOWN",
+            token);
+
+        // A's result is acknowledged now, with B at the doors.
+        aResultHeld.SetResult();
+        await harness.WaitUntilAsync(
+            () => OperatorLog(harness).Contains("1号仓操作失败或状态未知，服务端已收到结果，等待管理员恢复。"),
+            "A's acknowledged result to reach the operator",
             token);
 
         await AssertWhileAsync(
@@ -134,6 +161,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
 
         AssertAnnouncedInOrder(harness, "1号仓操作未完成，需要恢复处理。", "准备执行装货：5号仓。");
+        AssertOnlyBsFirstCopyRefused(harness);
         Assert.Empty(harness.UiErrors);
     }
 
@@ -307,7 +335,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         CancellationToken token,
         Action<FakeControlServer>? alsoConfigure = null,
         Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
-        string? journalPath = null)
+        string? journalPath = null,
+        TimeSpan? messageTimeout = null)
     {
         Harness harness = await Harness.StartAsync(
             server =>
@@ -324,7 +353,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             token,
             journalPath: journalPath,
             io: io,
-            wrapJournal: wrapJournal);
+            wrapJournal: wrapJournal,
+            messageTimeout: messageTimeout);
         await harness.WaitUntilAsync(
             () => harness.Session.CurrentJourney.CurrentStopWorklist is not null,
             "the worklist",

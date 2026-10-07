@@ -245,6 +245,16 @@ public sealed class FakeControlServer : IAsyncDisposable
     public IReadOnlySet<string> UnansweredMessageTypes { get; set; } = new HashSet<string>(StringComparer.Ordinal);
 
     /// <summary>
+    /// With <see cref="ProtocolProblemByMessageType"/>, a refused recovery result's attempt is taken off the pending facts
+    /// as a settled one. Models what <c>BUSINESS_ID_CONTENT_CONFLICT</c> on a recovery result leaves at the real server:
+    /// the workflow already holds another first result (<c>OnboardRecoveryCoordinator.cs:204-207</c>), the operation is
+    /// committed or cancelled, and the handshake takes a reported attempt in that state off
+    /// (<c>WireToGateStore.TryTakeOffSettledReportedAttemptsAsync</c>) -- so the session can come up READY while the
+    /// vehicle still holds the refused vector (onboard-hmi#254 part 2).
+    /// </summary>
+    public bool RefusedRecoveryResultsWereReconciledByAnother { get; set; }
+
+    /// <summary>
     /// As <see cref="ProtocolProblemByMessageType"/>, for the one message whose messageId is listed: a test that refuses
     /// a single row and lets every other message of its type through (onboard-hmi#254, review of PR #258).
     /// </summary>
@@ -307,6 +317,14 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// (<c>WireToGateStore.DecideReadinessAsync</c>, <c>noPendingFacts</c>; onboard-hmi#128).
     /// </summary>
     public bool AnswerReadyOverPendingFactsForTest { get; set; }
+
+    /// <summary>
+    /// <b>A deviation from the real server, for tests of the vehicle's own defence only.</b> Leaves the operations this
+    /// double holds for recovery out of the readiness decision, so a vehicle whose operation needs recovery is answered
+    /// READY. The real server answers it RECOVERY_REQUIRED (<c>WireToGateStore.DecideReadinessAsync</c>,
+    /// <c>operationNeedsRecovery</c>; onboard-hmi#267).
+    /// </summary>
+    public bool AnswerReadyOverOperationsNeedingRecoveryForTest { get; set; }
 
     /// <summary>
     /// Attempts this server has settled, across connections and, through
@@ -1017,30 +1035,166 @@ public sealed class FakeControlServer : IAsyncDisposable
     public TimeSpan HeartbeatAckDelay { get; set; }
 
     /// <summary>
-    /// Writes the <c>DurableAck</c> of every <c>OperationProgress</c> this much later, off the read loop, so the double
-    /// keeps reading what the vehicle sends meanwhile (8005-agv-onboard-hmi#250).
+    /// Holds back the <c>DurableAck</c> of the next <paramref name="messageType"/> this double receives -- one whose
+    /// payload <paramref name="payloadMatches"/>, when given -- until the test releases it; acks after it go out at once
+    /// as usual. Supported for <c>OperationProgress</c>, <c>SafetyStateChanged</c> and
+    /// <c>LoadCompensationResult</c>.
     /// </summary>
     /// <remarks>
-    /// What it builds is an acknowledgement that reaches the vehicle after the send it answers stopped waiting for it:
-    /// past the vehicle's message timeout, or after the run that sent the progress was aborted under it. Read when the
-    /// progress arrives, so a test can switch it on at the moment it needs.
+    /// <para>
+    /// What it builds is an acknowledgement that reaches the vehicle after the send it answers stopped waiting for it
+    /// (8005-agv-onboard-hmi#250): the test waits until the send has stopped -- timed out, or aborted with its run -- and
+    /// only then releases the ack.
+    /// </para>
+    /// <para>
+    /// It replaced a fixed delay (onboard-hmi#270). A delay races two real clocks, the ack's and the send's: under load
+    /// the ack could land while the send was still waiting and be taken as an ordinary ack, so the late-ack path the test
+    /// was about never ran and its wait for the late-ack log could only time out. A release the test gives once the send
+    /// has stopped cannot lose that race.
+    /// </para>
     /// </remarks>
-    public TimeSpan OperationProgressAckDelay { get; set; }
+    public DurableAckHold HoldNextDurableAck(string messageType, Func<JsonElement, bool>? payloadMatches = null)
+    {
+        DurableAckHold hold = new(messageType, payloadMatches);
+        lock (_sync)
+        {
+            _durableAckHolds.Add(hold);
+        }
+
+        return hold;
+    }
+
+    private readonly List<DurableAckHold> _durableAckHolds = [];
+    private readonly List<string> _durableAckHoldPredicateFailures = [];
 
     /// <summary>
     /// While set, the <c>DurableAck</c> of every <c>OperationProgress</c> is written only once this task completes, off the
-    /// read loop (8005-agv-onboard-hmi#264, the review of PR #265). Where <see cref="OperationProgressAckDelay"/> lets the
-    /// clock decide when the ack lands, this lets the test: it releases the ack once the vehicle has said what has to have
-    /// happened first. Read when the progress arrives; clearing it afterwards leaves the acks already held waiting.
+    /// read loop (8005-agv-onboard-hmi#264, the review of PR #265). Where <see cref="HoldNextDurableAck"/> holds the next
+    /// matching ack alone, this holds every progress ack that arrives while it is set: the test releases them once the
+    /// vehicle has said what has to have happened first. Read when the progress arrives; clearing it afterwards leaves the
+    /// acks already held waiting.
     /// </summary>
     public Task? OperationProgressAckHold { get; set; }
 
     /// <summary>
-    /// Writes the <c>DurableAck</c> of every accepted <c>SafetyStateChanged</c> this much later, off the read loop, as
-    /// <see cref="OperationProgressAckDelay"/> does for progress (8005-agv-onboard-hmi#250, review S1 of #260). The
-    /// double still accepts the change at once; only the vehicle hears of it late.
+    /// Each <c>payloadMatches</c> of <see cref="HoldNextDurableAck"/> that threw, with the message type it was asked
+    /// about. The predicate runs on the read loop, so a throw is taken as "not this one" rather than let through to end
+    /// the loop; a test that passes a predicate asserts this stays empty.
     /// </summary>
-    public TimeSpan SafetyStateChangedAckDelay { get; set; }
+    public IReadOnlyList<string> DurableAckHoldPredicateFailures
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _durableAckHoldPredicateFailures.ToArray();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Parks the ack of <paramref name="message"/> in the first hold that wants it and returns true; false when no hold
+    /// does, and the caller acks as usual.
+    /// </summary>
+    private bool TryHoldDurableAck(ConnectionContext context, JsonElement message)
+    {
+        string messageType = message.GetProperty("messageType").GetString()!;
+        JsonElement payload = message.GetProperty("payload");
+        DurableAckHold? hold;
+        lock (_sync)
+        {
+            hold = null;
+            foreach (DurableAckHold candidate in _durableAckHolds)
+            {
+                if (candidate.Wants(messageType, payload, out Exception? failure))
+                {
+                    hold = candidate;
+                    break;
+                }
+
+                if (failure is not null)
+                {
+                    _durableAckHoldPredicateFailures.Add($"{messageType}: {failure.GetType().Name}: {failure.Message}");
+                }
+            }
+
+            if (hold is null)
+            {
+                return false;
+            }
+
+            _durableAckHolds.Remove(hold);
+        }
+
+        WireToGateEnvelope ack = CreateDurableAck(context, message);
+        hold.Park(() => WriteEnvelopeAsync(context, ack), message.GetProperty("messageId").GetString()!);
+        return true;
+    }
+
+    /// <summary>One ack held back by <see cref="HoldNextDurableAck"/>.</summary>
+    public sealed class DurableAckHold
+    {
+        private readonly string _messageType;
+        private readonly Func<JsonElement, bool>? _payloadMatches;
+        private readonly TaskCompletionSource<string> _held = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private Func<Task>? _write;
+
+        internal DurableAckHold(string messageType, Func<JsonElement, bool>? payloadMatches)
+        {
+            _messageType = messageType;
+            _payloadMatches = payloadMatches;
+        }
+
+        /// <summary>The messageId whose ack is held, once the double has received that message.</summary>
+        public Task<string> Held => _held.Task;
+
+        /// <summary>
+        /// Writes the held ack now. Only once <see cref="Held"/> has completed: called earlier there is nothing to write,
+        /// and it throws rather than wait for a message that may never come.
+        /// </summary>
+        public Task ReleaseAsync() =>
+            Held.IsCompleted
+                ? _write!()
+                : throw new InvalidOperationException(
+                    $"Nothing is held yet: no {_messageType} has reached the double. Wait for Held first.");
+
+        /// <summary>
+        /// Whether this hold wants the ack of a <paramref name="messageType"/> with <paramref name="payload"/>. A
+        /// predicate that throws does not want it, and the exception comes back in <paramref name="failure"/>.
+        /// </summary>
+        internal bool Wants(string messageType, JsonElement payload, out Exception? failure)
+        {
+            failure = null;
+            if (!string.Equals(messageType, _messageType, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            try
+            {
+                return _payloadMatches is null || _payloadMatches(payload);
+            }
+            catch (Exception exception)
+            {
+                failure = exception;
+                return false;
+            }
+        }
+
+        internal void Park(Func<Task> write, string messageId)
+        {
+            _write = write;
+            _held.TrySetResult(messageId);
+        }
+    }
+
+    /// <summary>
+    /// Writes the <c>DurableAck</c> of every <c>LoadCompensationResult</c> this much later, off the read loop, so the
+    /// double keeps reading what the vehicle sends meanwhile; the result is reconciled at once as usual. Past the
+    /// vehicle's message timeout it is the late acknowledgement of onboard-hmi#250 reaching a recovery result: the session
+    /// stays up and no handshake replays anything (onboard-hmi#150).
+    /// </summary>
+    public TimeSpan LoadCompensationResultAckDelay { get; set; }
 
     private int _judgedRecoveryRequests;
 
@@ -1440,6 +1594,18 @@ public sealed class FakeControlServer : IAsyncDisposable
 
     private ConnectionContext? _latestSession;
     private int _midSessionSafetySnapshotAcksToDrop;
+
+    /// <summary>
+    /// Announces the readiness this double decides, on the latest session, now: what the real server sends after any
+    /// inbound message that may change it. A test that needs the vehicle's handling of a session state -- its restore --
+    /// to run without a reconnect says when (onboard-hmi#150).
+    /// </summary>
+    public Task SendSessionReadinessAsync()
+    {
+        ConnectionContext context = Volatile.Read(ref _latestSession)
+            ?? throw new InvalidOperationException("No session has been accepted yet.");
+        return WriteEnvelopeAsync(context, CreateSessionReadiness(context));
+    }
 
     /// <summary>
     /// Sends the <c>SlotOperationCommand</c> that <see cref="SendSlotOperationCommandAfterRecovery"/>
@@ -1926,11 +2092,37 @@ public sealed class FakeControlServer : IAsyncDisposable
                 if (ProtocolProblemByMessageId.TryGetValue(messageId, out string? refusalCode)
                     || ProtocolProblemByMessageType.TryGetValue(messageType, out refusalCode))
                 {
+                    // Reconciled before the refusal goes out, as the real server's other first result already was: a
+                    // vehicle that reconnects the moment it reads the refusal must meet a server that has settled it.
+                    string? reconciledAttempt =
+                        RefusedRecoveryResultsWereReconciledByAnother
+                        && messageType is "LoadCancellationResult" or "LoadCompensationResult" or "LoadCorrectionResult"
+                            or "FaultCargoRecoveryResult" or "ForcedMechanicalRecoveryResult"
+                            ? root.GetProperty("payload").TryGetProperty("slotOperationAttemptId", out JsonElement attempt)
+                                && attempt.ValueKind == JsonValueKind.String
+                                    ? attempt.GetString()
+                                    : RecoveryVectorSlotOperationAttemptId
+                            : null;
+                    if (reconciledAttempt is not null)
+                    {
+                        lock (_sync)
+                        {
+                            _settledAttempts.Add(reconciledAttempt);
+                            _operationsNeedingRecovery.Remove(reconciledAttempt);
+                        }
+                    }
+
                     await WriteEnvelopeAsync(context, CreateProtocolProblem(
                         context,
                         ProtocolProblemNamesAnotherMessage ? Guid.NewGuid().ToString("D") : messageId,
                         messageType,
                         refusalCode)).ConfigureAwait(false);
+                    if (reconciledAttempt is not null)
+                    {
+                        // Announces the readiness the settlement changed, if it did.
+                        await ReconcileAsync(context, _ => { }).ConfigureAwait(false);
+                    }
+
                     continue;
                 }
 
@@ -2131,7 +2323,19 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "LoadCancellationResult":
                     case "LoadCompensationResult":
                     case "FaultCargoRecoveryResult":
-                        await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        if (messageType == "LoadCompensationResult" && TryHoldDurableAck(context, root))
+                        {
+                            // Written when the test releases it.
+                        }
+                        else if (messageType == "LoadCompensationResult" && LoadCompensationResultAckDelay > TimeSpan.Zero)
+                        {
+                            DelayDurableAck(context, CreateDurableAck(context, root), LoadCompensationResultAckDelay);
+                        }
+                        else
+                        {
+                            await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        }
+
                         JsonElement recoveryPayload = root.GetProperty("payload");
                         if (messageType == "LoadCompensationResult")
                         {
@@ -2179,8 +2383,7 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "OperationProgress" when OperationProgressAckHold is { } hold:
                         DelayDurableAck(context, CreateDurableAck(context, root), () => hold);
                         break;
-                    case "OperationProgress" when OperationProgressAckDelay > TimeSpan.Zero:
-                        DelayDurableAck(context, CreateDurableAck(context, root), OperationProgressAckDelay);
+                    case "OperationProgress" when TryHoldDurableAck(context, root):
                         break;
                     case "SublotSubmitted":
                     case "OperationProgress":
@@ -2725,7 +2928,9 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
 
         // OPERATION_RECOVERY_REQUIRED, last of the reasons as in GetRecoveryReason.
-        return _operationsNeedingRecovery.Count > 0 ? "SESSION_RECOVERY_REQUIRED" : null;
+        return _operationsNeedingRecovery.Count > 0 && !AnswerReadyOverOperationsNeedingRecoveryForTest
+            ? "SESSION_RECOVERY_REQUIRED"
+            : null;
     }
 
     /// <summary>
@@ -3575,11 +3780,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             return;
         }
 
-        if (SafetyStateChangedAckDelay > TimeSpan.Zero)
-        {
-            DelayDurableAck(context, CreateDurableAck(context, message), SafetyStateChangedAckDelay);
-        }
-        else
+        if (!TryHoldDurableAck(context, message))
         {
             await WriteEnvelopeAsync(context, CreateDurableAck(context, message)).ConfigureAwait(false);
         }

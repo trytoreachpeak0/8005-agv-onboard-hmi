@@ -1,0 +1,12 @@
+# 绿：提交 03d7618 上的单测全量与恢复相关定向 G2（不是全量 ONBOARD_HMI_G2）
+
+增量审查（dd8a1e6）之后。取代 green-8d14d09.txt。
+
+## 单测全量
+Passed!  - Failed:     0, Passed:   713, Skipped:     0, Total:   713, Duration: 15 s - SQCD.Agv.UnitTests.dll (net8.0)
+exit=0
+
+## 定向 G2（与前几份同一组过滤）
+Passed!  - Failed:     0, Passed:   438, Skipped:     0, Total:   438, Duration: 2 m 19 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+schema 一致性：0 条新违规，1 条已登记的故意违规，原文见 schema-conformance-03d7618.txt。

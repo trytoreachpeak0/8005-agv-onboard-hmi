@@ -1,0 +1,15 @@
+[xUnit.net 00:00:20.05]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorInDoubtThatReadsOpenRefusesTheNewOperationAndKeepsTheRecord [FAIL]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(SQCD.Agv.Application.WireToGateDoorNotProvenShutException)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorInDoubtThatReadsOpenRefusesTheNewOperationAndKeepsTheRecord() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.DoorNotProvenShut.cs:line 35
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorInDoubtThatReadsOpenRefusesTheNewOperationAndKeepsTheRecord() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.DoorNotProvenShut.cs:line 58
+[xUnit.net 00:00:20.11]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AStaleReadingProvesNoDoorShutAndRefusesTheNewOperation [FAIL]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(SQCD.Agv.Application.WireToGateDoorNotProvenShutException)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AStaleReadingProvesNoDoorShutAndRefusesTheNewOperation() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.DoorNotProvenShut.cs:line 105
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AStaleReadingProvesNoDoorShutAndRefusesTheNewOperation() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.DoorNotProvenShut.cs:line 115
+Failed!  - Failed:     2, Passed:    71, Skipped:     0, Total:    73, Duration: 16 s - SQCD.Agv.UnitTests.dll (net8.0)

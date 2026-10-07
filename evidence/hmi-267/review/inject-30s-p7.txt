@@ -1,0 +1,27 @@
+== run1
+[xUnit.net 00:00:04.59]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheRunningDemandsUnknownResultIsShownBeforeTheQueuedCommandTakesOver [FAIL]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+                                              ↓ (pos 35)
+Expected: "44444444-0000-4444-8444-00000000000b"
+Actual:   "44444444-0000-4444-8444-00000000000a"
+                                              ↑ (pos 35)
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+== run2
+[xUnit.net 00:00:04.31]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheRunningDemandsUnknownResultIsShownBeforeTheQueuedCommandTakesOver [FAIL]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+                                              ↓ (pos 35)
+Expected: "44444444-0000-4444-8444-00000000000b"
+Actual:   "44444444-0000-4444-8444-00000000000a"
+                                              ↑ (pos 35)
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+== run3
+[xUnit.net 00:00:04.86]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheRunningDemandsUnknownResultIsShownBeforeTheQueuedCommandTakesOver [FAIL]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+                                              ↓ (pos 35)
+Expected: "44444444-0000-4444-8444-00000000000b"
+Actual:   "44444444-0000-4444-8444-00000000000a"
+                                              ↑ (pos 35)
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

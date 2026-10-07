@@ -289,7 +289,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             FakeIoModuleClient? io = null,
             Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
             WireToGateRecoveryOptions? recoveryOptions = null,
-            string? operatorIdEnvironmentVariable = null)
+            string? operatorIdEnvironmentVariable = null,
+            TimeSpan? messageTimeout = null)
         {
             FakeControlServer server = new(IPAddress.Loopback)
             {
@@ -306,7 +307,8 @@ public sealed partial class MultiDemandJourneyG2Tests
                     io,
                     wrapJournal,
                     recoveryOptions,
-                    operatorIdEnvironmentVariable);
+                    operatorIdEnvironmentVariable,
+                    messageTimeout);
                 started._ownsServer = true;
                 return started;
             }
@@ -341,7 +343,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             FakeIoModuleClient? io = null,
             Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
             WireToGateRecoveryOptions? recoveryOptions = null,
-            string? operatorIdEnvironmentVariable = null)
+            string? operatorIdEnvironmentVariable = null,
+            TimeSpan? messageTimeout = null)
         {
             io ??= new FakeIoModuleClient();
             RecordingLogger logger = new();
@@ -358,7 +361,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                     new string('a', 40),
                     CredentialVariable,
                     G2SessionTimeouts.Connect,
-                    TimeSpan.FromSeconds(2),
+                    messageTimeout ?? TimeSpan.FromSeconds(2),
                     1,
                     1,
                     "eight-slot-v1",

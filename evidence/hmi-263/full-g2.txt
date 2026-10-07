@@ -1,0 +1,7 @@
+# onboard-hmi#263 本机全量 ONBOARD_HMI_G2，2026-10-07，提交 21c856d，协议 protocol-v2.0.0（86575456），含协议 G1
+# 命令：pwsh -NoProfile -File scripts/run-w2g-g2.ps1 -ProtocolRoot <protocol-v2.0.0 普通克隆> -EvidenceRoot <scratch>
+# 结果：Status: PASS，脚本 exit=0；build/test/format exitCode 均为 0；protocol g1Status=PASS
+Passed!  - Failed:     0, Passed:   713, Skipped:     0, Total:   713, Duration: 19 s - SQCD.Agv.UnitTests.dll (net8.0)
+Passed!  - Failed:     0, Passed:   700, Skipped:     0, Total:   700, Duration: 2 m 46 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+Schema conformance (protocol-v2.0.0 APPROVED_RELEASE): 18053 lines, 17952 distinct, 58 message types; 0 distinct violations, 4 on file; schema compilation 108786 ms, validation 10559 ms.
+# 4 行登记在案的违规均为测试故意让替身发出的畸形报文，见 full-g2-summary.json 的 schemaConformance
