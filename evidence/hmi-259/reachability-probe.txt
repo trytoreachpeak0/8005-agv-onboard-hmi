@@ -1,0 +1,22 @@
+  Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ProbeResultRecordedAfterThePrepareWrite [1 s]
+ probe result-held: unsettled=44444444-0000-4444-8444-00000000000a checkpoint=SafeFinishReached active=[] operationContext=44444444-0000-4444-8444-00000000000a vector=null/- lastCompletedLoad=null pendingResults=0 pendingCancellation=null
+ probe entry-open=True
+ probe after-prepare: unsettled=44444444-0000-4444-8444-00000000000a checkpoint=Prepared active=[] operationContext=44444444-0000-4444-8444-00000000000a vector=LOAD_CANCELLATION/44444444-0000-4444-8444-00000000000a lastCompletedLoad=null pendingResults=0 pendingCancellation=null
+ probe press-completed=False unlocks=2
+ probe after-late-ack: unsettled=null checkpoint=ResultRecorded active=[] operationContext=null vector=null/- lastCompletedLoad=44444444-0000-4444-8444-00000000000a pendingResults=0 pendingCancellation=null
+ probe unlocks=3
+ probe press returned True unlocks=4
+ probe LoadCancellationResult ALL_EMPTY
+ probe ui-errors=[]
+ probe final: unsettled=null checkpoint=ResultRecorded active=[] operationContext=null vector=null/- lastCompletedLoad=44444444-0000-4444-8444-00000000000a pendingResults=0 pendingCancellation=null
+  Passed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ProbeResultRecordedBeforeThePrepareWrite [1 s]
+ probe before-release: unsettled=null checkpoint=ResultRecorded active=[] operationContext=null vector=null/- lastCompletedLoad=44444444-0000-4444-8444-00000000000a pendingResults=0 pendingCancellation=null
+ probe after-prepare: unsettled=44444444-0000-4444-8444-00000000000a checkpoint=Prepared active=[] operationContext=null vector=LOAD_CANCELLATION/44444444-0000-4444-8444-00000000000a lastCompletedLoad=44444444-0000-4444-8444-00000000000a pendingResults=0 pendingCancellation=null
+ probe press-completed=False unlocks=2
+ probe press returned True unlocks=4
+ probe LoadCancellationResult ALL_EMPTY
+ probe ui-errors=[]
+ probe final: unsettled=null checkpoint=ResultRecorded active=[] operationContext=null vector=null/- lastCompletedLoad=44444444-0000-4444-8444-00000000000a pendingResults=0 pendingCancellation=null
+Total tests: 2
+ Total time: 1.0642 Minutes
+d3d6ea1e74434e307bd6ba90c3167118ac637758

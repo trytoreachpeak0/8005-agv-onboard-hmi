@@ -1589,6 +1589,24 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 _clock.Now.ToUniversalTime()));
     }
 
+    /// <summary>
+    /// Logs a recorded result whose attempt a recovery vector has taken over (8005-agv-onboard-hmi#259). Every caller of
+    /// <see cref="WireToGateSlotOperationExecutor.MarkResultRecordedAsync"/> goes on as it did: the server holds the result
+    /// either way, and what the operator is told about it is unchanged. Only the journal differs -- the vector keeps the
+    /// attempt and settles it -- and this says so where someone reading the log would otherwise find the attempt still
+    /// unsettled after its result was confirmed.
+    /// </summary>
+    private void NoteResultRecording(string attemptId, WireToGateResultRecording recording)
+    {
+        if (recording == WireToGateResultRecording.TakenOverByRecoveryVector)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"仓位操作结果已被服务端确认，但这次尝试已由恢复向量接管，只收掉结果本身，向量与未结尝试留给向量结清：attempt={attemptId}。");
+        }
+    }
+
     /// <summary>Whether this process executed <paramref name="attemptId"/> and concluded it itself.</summary>
     private bool ConcludedHere(string attemptId)
     {
@@ -1639,8 +1657,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     {
         try
         {
-            await _executor.MarkResultRecordedAsync(context.SlotOperationAttemptId, cancellationToken)
-                .ConfigureAwait(false);
+            NoteResultRecording(
+                context.SlotOperationAttemptId,
+                await _executor.MarkResultRecordedAsync(context.SlotOperationAttemptId, cancellationToken)
+                    .ConfigureAwait(false));
         }
         catch (InvalidDataException exception) when (exception.Message == "SLOT_OPERATION_CONFLICT")
         {
@@ -1776,9 +1796,32 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             // conclusion already given is never redone. An UNKNOWN decided mid-execution is
             // recognised here too.
             string resultKey = $"operation-result:{attemptId}";
-            if (await _session.Journal
-                    .ReadOutgoingByDeduplicationKeyAsync(resultKey, cancellationToken)
-                    .ConfigureAwait(false) is { } sent)
+            WireToGateDurableMessage? sent = await _session.Journal
+                .ReadOutgoingByDeduplicationKeyAsync(resultKey, cancellationToken)
+                .ConfigureAwait(false);
+
+            // A load whose COMPLETED result is on file, but which a load cancellation took over before the result's
+            // acknowledgement was recorded (8005-agv-onboard-hmi#259 review S-1): the acknowledgement left the attempt to
+            // the cancellation (MarkResultRecordedAsync), and once that cancellation has a result of its own the attempt
+            // is its conclusion, as below for an attempt with no load result on file. Settled here as a completed load,
+            // the attempt was recorded and the active unlock set written empty over the door the cancellation left in
+            // doubt. Only a COMPLETED result needs the question first: for every other one the branch below concludes
+            // NotSettled anyway, and asks nothing more. An unacknowledged one is still sent once more, as there.
+            if (sent is { Abandoned: false }
+                && IsCompletedOperationResult(sent)
+                && context.OperationType == OperationType.Load
+                && await IsCancellationConcludedAsync(context.DemandId, attemptId, cancellationToken).ConfigureAwait(false))
+            {
+                if (!sent.Acknowledged)
+                {
+                    _ = await TryResendUnacknowledgedResultAsync(context, resultKey, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+
+                return InterruptedOperationSettlement.NotSettled;
+            }
+
+            if (sent is not null)
             {
                 // FAILED and UNKNOWN stay unfinished until an administrator recovers them. One the server has not
                 // acknowledged yet is still sent once more, as below: it is what the server waits for to reconcile
@@ -1897,8 +1940,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     cancellationToken).ConfigureAwait(false);
                 if (completedSuccessfully)
                 {
-                    await _executor.MarkResultRecordedAsync(attemptId, cancellationToken)
-                        .ConfigureAwait(false);
+                    NoteResultRecording(
+                        attemptId,
+                        await _executor.MarkResultRecordedAsync(attemptId, cancellationToken)
+                            .ConfigureAwait(false));
                     // Same refresh as the formal load path: recording the result is what makes the
                     // load correctable, and the CanRequest* gates read a cached copy.
                     await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
@@ -3051,9 +3096,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         {
             try
             {
-                await _executor.MarkResultRecordedAsync(
+                NoteResultRecording(
                     command.SlotOperationAttemptId,
-                    cancellationToken).ConfigureAwait(false);
+                    await _executor.MarkResultRecordedAsync(
+                        command.SlotOperationAttemptId,
+                        cancellationToken).ConfigureAwait(false));
                 // Same refresh as the formal load path: a resumed load that completes is the
                 // last completed load, and the correction entry must see it now.
                 await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
@@ -3572,9 +3619,11 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 if (completedSuccessfully
                     && !string.Equals(execution.JournalCheckpoint, "NONE", StringComparison.Ordinal))
                 {
-                    await _executor.MarkResultRecordedAsync(
+                    NoteResultRecording(
                         command.SlotOperationAttemptId,
-                        cancellationToken).ConfigureAwait(false);
+                        await _executor.MarkResultRecordedAsync(
+                            command.SlotOperationAttemptId,
+                            cancellationToken).ConfigureAwait(false));
                     // Recording the result is what makes the load correctable
                     // (LastCompletedLoadOperationContext), and the CanRequest* gates read a cached
                     // copy. Without this refresh the correction entry waited for an unrelated session

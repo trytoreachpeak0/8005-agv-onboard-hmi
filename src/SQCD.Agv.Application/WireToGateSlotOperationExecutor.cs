@@ -50,6 +50,19 @@ public sealed record WireToGateOperationProgress(
     int PromptRound = 0,
     WireToGatePromptCause Cause = WireToGatePromptCause.None);
 
+/// <summary>What <see cref="WireToGateSlotOperationExecutor.MarkResultRecordedAsync"/> did with the journal.</summary>
+public enum WireToGateResultRecording
+{
+    /// <summary>The attempt is settled: the journal records its result and holds nothing of it any more.</summary>
+    Settled,
+
+    /// <summary>
+    /// A recovery vector prepared over the same attempt holds the journal entry; only the result's own share was
+    /// closed, and the attempt settles with the vector (8005-agv-onboard-hmi#259).
+    /// </summary>
+    TakenOverByRecoveryVector
+}
+
 public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
 {
     private readonly IIoModuleClient _ioModule;
@@ -342,7 +355,29 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         }
     }
 
-    public async Task MarkResultRecordedAsync(
+    /// <summary>
+    /// Records that the server acknowledged the COMPLETED result of <paramref name="slotOperationAttemptId"/>, the journal's
+    /// unsettled attempt, and says how: settled, or left to the recovery vector that has taken the attempt over.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>A recovery vector prepared over the same attempt keeps its entry</b> (8005-agv-onboard-hmi#259). An in-flight
+    /// load cancellation is prepared under the load's own attempt id, and the load's acknowledgement can land after that
+    /// prepare write: the server answers the cancellation request and then the result, and the two continuations race on
+    /// the vehicle. Settled here, the write would drop the running cancellation and the door it holds open from the
+    /// journal -- a restart in that window found no vector and no open door. So only the result's own share is closed:
+    /// its pending entry goes, so no handshake replays it, and the load becomes the last completed one, as it would had
+    /// the acknowledgement come first. The outbox row is not this method's: the send that got the acknowledgement marked
+    /// it already. Everything the prepare write took over -- the unsettled attempt, the checkpoint, the active unlock set,
+    /// the vector, the operation context, the slot results and the recovery session -- stays, and the attempt is
+    /// settled with the vector when the vector settles.
+    /// </para>
+    /// <para>
+    /// Answered as a value rather than thrown: every caller has a result the server acknowledged in hand, and a refusal
+    /// here used to end the formal load path with nothing caught.
+    /// </para>
+    /// </remarks>
+    public async Task<WireToGateResultRecording> MarkResultRecordedAsync(
         string slotOperationAttemptId,
         CancellationToken cancellationToken = default)
     {
@@ -351,16 +386,52 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
         // (onboard-hmi#123). A late acknowledgement records its attempt while the next operation may already be
         // journaling its Prepared; with a separate read and write, that write could land in between and this one
         // would put the old state back over it, wiping the operation now at the doors (onboard-hmi#127).
+        WireToGateResultRecording recording = WireToGateResultRecording.Settled;
         WireToGateRecoveryState? written = await _journal.UpdateRecoveryStateAsync(
-            state => string.Equals(state.UnsettledSlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal)
-                ? Recorded(state)
-                : null,
+            state =>
+            {
+                if (!string.Equals(state.UnsettledSlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal))
+                {
+                    return null;
+                }
+
+                if (state.RecoveryVector is { } vector
+                    && string.Equals(vector.SlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal))
+                {
+                    recording = WireToGateResultRecording.TakenOverByRecoveryVector;
+                    return RecordedUnderRecoveryVector(state, slotOperationAttemptId);
+                }
+
+                recording = WireToGateResultRecording.Settled;
+                return Recorded(state);
+            },
             cancellationToken).ConfigureAwait(false);
         if (written is null)
         {
             throw new InvalidDataException("SLOT_OPERATION_CONFLICT");
         }
+
+        return recording;
     }
+
+    /// <summary>
+    /// The result's own share of <see cref="Recorded"/>, for an attempt a recovery vector has taken over: the two fields
+    /// that belong to the acknowledged result and not to the vector (8005-agv-onboard-hmi#259).
+    /// </summary>
+    private static WireToGateRecoveryState RecordedUnderRecoveryVector(
+        WireToGateRecoveryState state,
+        string slotOperationAttemptId) =>
+        state with
+        {
+            PendingResults = state.PendingResults
+                .Where(item => !(string.Equals(item.MessageType, "OperationResult", StringComparison.Ordinal)
+                    && string.Equals(item.BusinessId, slotOperationAttemptId, StringComparison.Ordinal)))
+                .ToArray(),
+            LastCompletedLoadOperationContext = state.OperationContext is { OperationType: OperationType.Load } load
+                && string.Equals(load.SlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal)
+                    ? load
+                    : state.LastCompletedLoadOperationContext
+        };
 
     private static WireToGateRecoveryState Recorded(WireToGateRecoveryState state) =>
         state with

@@ -1432,6 +1432,15 @@ public sealed class FakeControlServer : IAsyncDisposable
     public Action? BeforeLoadCancellationAuthorization { get; set; }
 
     /// <summary>
+    /// When set, a <c>LoadCancellationAuthorization</c> is decided on arrival but written only once this task completes,
+    /// off the read loop, so every message after the request is still taken and answered in the meantime
+    /// (8005-agv-onboard-hmi#259). What it builds is the order the vehicle's own continuations can take: the answer read
+    /// first and an <c>OperationResult</c>'s acknowledgement right after it, the recording of that result landing in the
+    /// journal before the cancellation's prepare write. Set the session's message timeout above the hold.
+    /// </summary>
+    public Task? LoadCancellationAuthorizationHold { get; set; }
+
+    /// <summary>
     /// Runs after a recovery action is accepted and before the command it authorizes is sent: the
     /// window between the operator's request and the command arriving (8005-agv-onboard-hmi#191).
     /// </summary>
@@ -2965,9 +2974,7 @@ public sealed class FakeControlServer : IAsyncDisposable
         BeforeLoadCancellationAuthorization?.Invoke();
         string decision = operationNeedsRecovery ? "REJECTED" : LoadCancellationDecision;
         bool authorized = decision == "AUTHORIZED";
-        await WriteEnvelopeAsync(
-            context,
-            CreateEnvelope(
+        WireToGateEnvelope answer = CreateEnvelope(
                 context,
                 "LoadCancellationAuthorization",
                 request.GetProperty("messageId").GetString(),
@@ -2994,8 +3001,27 @@ public sealed class FakeControlServer : IAsyncDisposable
                             fieldPath = "payload.demandId",
                             displayMessage = "当前状态不允许取消装货。"
                         }
-                }))
-            .ConfigureAwait(false);
+                });
+        if (LoadCancellationAuthorizationHold is { } hold)
+        {
+            _ = Task.Run(
+                async () =>
+                {
+                    await hold.ConfigureAwait(false);
+                    try
+                    {
+                        await WriteEnvelopeAsync(context, answer).ConfigureAwait(false);
+                    }
+                    catch (Exception exception) when (exception is IOException or ObjectDisposedException
+                        or InvalidOperationException)
+                    {
+                    }
+                },
+                CancellationToken.None);
+            return;
+        }
+
+        await WriteEnvelopeAsync(context, answer).ConfigureAwait(false);
     }
 
     private async Task HandleHardwareRecoveryRecordSubmittedAsync(
