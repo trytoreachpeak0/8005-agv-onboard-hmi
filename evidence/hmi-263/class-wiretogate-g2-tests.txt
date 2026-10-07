@@ -1,0 +1,3 @@
+# onboard-hmi#263 整个 WireToGateG2Tests 类定向回归，00a16b7 的测试代码（提交前同内容），--filter FullyQualifiedName~SQCD.Agv.WireToGateG2Tests.WireToGateG2Tests.
+Passed!  - Failed:     0, Passed:    76, Skipped:     0, Total:    76, Duration: 41 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
