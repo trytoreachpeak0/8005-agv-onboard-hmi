@@ -1269,6 +1269,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-VEHICLE-HOLD-DOOR-REPAIR-RELEASE")]
     public async Task ARepairReleaseOutlivesAnOperationOnOtherSlots()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
