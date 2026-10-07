@@ -1791,22 +1791,6 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
         try
         {
-            // A load cancellation over this attempt that has a result on file, with no vector on file any more: its
-            // conclusion is that cancellation's (ADR-cross-0046), so nothing is settled and nothing is sent. Reached
-            // when a maintainer ended a cancellation the server refused for good (onboard-hmi#254), and also when the
-            // cancellation's vector was replaced by a vector of another type that was then forgotten on a
-            // non-COMPLETED result -- either way the attempt is kept and its cancellation has concluded. NotSettled,
-            // not TakenOver: the operation is unfinished as far as this vehicle can tell, and the restore owes the
-            // recovery entry for it.
-            //
-            // Asked before the load's own result (8005-agv-onboard-hmi#259 review S-1). The cancellation can take the
-            // attempt over after the load's COMPLETED result went out and before its acknowledgement was recorded; the
-            // acknowledgement then leaves the attempt to the cancellation (MarkResultRecordedAsync), and the outbox holds
-            // both. Asked the other way round, the load's acknowledged COMPLETED settled the attempt here and wrote the
-            // active unlock set empty over the door the cancellation left in doubt. A load result of any outcome the
-            // server has not acknowledged is still sent once more, as the branch below does for one that is not
-            // COMPLETED: the order of the two questions decides the settlement, not whether an owed result goes out.
-            //
             // The same deduplication key HandleSlotOperationAsync uses: once a result is in the
             // durable outbox it has either been acknowledged or is replayed by the handshake, and a
             // conclusion already given is never redone. An UNKNOWN decided mid-execution is
@@ -1815,10 +1799,20 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             WireToGateDurableMessage? sent = await _session.Journal
                 .ReadOutgoingByDeduplicationKeyAsync(resultKey, cancellationToken)
                 .ConfigureAwait(false);
-            if (context.OperationType == OperationType.Load
+
+            // A load whose COMPLETED result is on file, but which a load cancellation took over before the result's
+            // acknowledgement was recorded (8005-agv-onboard-hmi#259 review S-1): the acknowledgement left the attempt to
+            // the cancellation (MarkResultRecordedAsync), and once that cancellation has a result of its own the attempt
+            // is its conclusion, as below for an attempt with no load result on file. Settled here as a completed load,
+            // the attempt was recorded and the active unlock set written empty over the door the cancellation left in
+            // doubt. Only a COMPLETED result needs the question first: for every other one the branch below concludes
+            // NotSettled anyway, and asks nothing more. An unacknowledged one is still sent once more, as there.
+            if (sent is { Abandoned: false }
+                && IsCompletedOperationResult(sent)
+                && context.OperationType == OperationType.Load
                 && await IsCancellationConcludedAsync(context.DemandId, attemptId, cancellationToken).ConfigureAwait(false))
             {
-                if (sent is { Acknowledged: false, Abandoned: false })
+                if (!sent.Acknowledged)
                 {
                     _ = await TryResendUnacknowledgedResultAsync(context, resultKey, cancellationToken)
                         .ConfigureAwait(false);
@@ -1869,6 +1863,19 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 // Recorded now, exactly as the sender would have.
                 await RecordAcknowledgedCompletedResultAsync(context, cancellationToken).ConfigureAwait(false);
                 return InterruptedOperationSettlement.TakenOver;
+            }
+
+            // A load cancellation over this attempt that has a result on file, with no vector on file any more: its
+            // conclusion is that cancellation's (ADR-cross-0046), so nothing is settled and nothing is sent. Reached
+            // when a maintainer ended a cancellation the server refused for good (onboard-hmi#254), and also when the
+            // cancellation's vector was replaced by a vector of another type that was then forgotten on a
+            // non-COMPLETED result -- either way the attempt is kept and its cancellation has concluded. NotSettled,
+            // not TakenOver: the operation is unfinished as far as this vehicle can tell, and the restore owes the
+            // recovery entry for it.
+            if (context.OperationType == OperationType.Load
+                && await IsCancellationConcludedAsync(context.DemandId, attemptId, cancellationToken).ConfigureAwait(false))
+            {
+                return InterruptedOperationSettlement.NotSettled;
             }
 
             // An unanswered load cancellation over this attempt: its conclusion is that cancellation's,
