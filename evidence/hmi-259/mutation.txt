@@ -77,3 +77,5 @@ group run 7: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
 group run 8: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
 group run 9: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
 group run 10: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+
+注：上面各轮连跑与整类运行时，机器上可能同时有另一张票的全量 G2 在跑；均为一次一个 testhost 串行运行。
