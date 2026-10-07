@@ -154,9 +154,20 @@ public sealed partial class RecoveryVectorG2Tests
 
         Assert.True(await harness.Business.RequestForcedMechanicalRecoveryAsync(
             "现场确认仓门无法电动解锁，申请强制机械恢复。", token));
+        await RecoveryVectorHarness.WaitUntilAsync(
+            () => harness.Business.CanConfirmForcedMechanicalRecovery,
+            "the authorized forced recovery to wait for the operator's confirmation",
+            token);
         // With the cargo handoff record a forced recovery on a demand needs on this line (b8-14); without it the press
-        // is refused before any result is written, and there is nothing for the server to refuse.
-        await harness.ConfirmForcedMechanicalRecoveryAsync(token);
+        // is refused before any result is written, and there is nothing for the server to refuse. Not through the
+        // harness's ConfirmForcedMechanicalRecoveryAsync: that one asserts the press succeeds, and here the server
+        // refuses the result it sends.
+        string demandId = (await harness.ReadRecoveryStateAsync(token)).RecoveryVector!.DemandId;
+        await harness.NameTheDemandOnTheWorklistAsync(demandId, RecoveryVectorHarness.HandoffSublot, token);
+        await harness.Business.ConfirmForcedMechanicalRecoveryAsync(
+            RecoveryVectorHarness.HandoffSublot,
+            RecoveryVectorHarness.HandoffReceiver,
+            token);
         await WaitForGivenUpResultAsync(harness, token);
 
         await RecoveryVectorHarness.WaitUntilAsync(
