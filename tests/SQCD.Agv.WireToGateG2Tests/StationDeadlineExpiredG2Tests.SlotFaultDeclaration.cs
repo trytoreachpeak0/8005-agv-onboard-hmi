@@ -186,7 +186,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// </para>
     /// <para>
     /// 先红：去掉接收循环里迟到 ack 的那一支，迟到的 ack 被当成未处理消息断开会话（这个夹具不重连），
-    /// 等发件箱记为已确认那一步超时。
+    /// 迟到确认的观测（<see cref="LateDurableAckObservation"/>）看到会话先断，当场判红。
     /// </para>
     /// </remarks>
     [Fact]
