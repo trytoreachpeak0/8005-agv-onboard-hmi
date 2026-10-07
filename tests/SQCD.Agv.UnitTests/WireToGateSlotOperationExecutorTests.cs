@@ -1280,7 +1280,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             [3],
             "maintenance-001",
             "SESSION",
-            DateTimeOffset.Parse("2026-10-07T08:00:00+00:00"),
+            new DateTimeOffset(2026, 10, 7, 8, 0, 0, TimeSpan.Zero),
             "门锁已更换。")
         {
             ExceptionRecoverySessionId = "99999999-9999-4999-8999-999999999994",
