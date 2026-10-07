@@ -31,17 +31,16 @@ Failed!  - Failed:     1, Passed:     1, Skipped:     0, Total:     2, Duration:
 每次变异都在提交后改文件内容、--no-incremental 构建 0 Error(s) 后再跑；还原为写回原文件内容。
 
 == 审查轮（M-1、S-1、L-2）
-M4: 去掉 S-1 的挪动（取消结论判断放回装货结果分支之后）
+M4: 去掉 S-1 的提前判断（条件前加 false &&，即恢复原先「先看装货结果」的顺序）
 exit=1
-  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect(doorLeftOpen: True) [3 s]
-Expected: "44444444-0000-4444-8444-00000000000a"
-Actual:   null
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect(doorLeftOpen: True) [2 s]
      at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect(Boolean doorLeftOpen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 217
-  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect(doorLeftOpen: False) [886 ms]
-Expected: "44444444-0000-4444-8444-00000000000a"
-Actual:   null
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect(doorLeftOpen: False) [622 ms]
      at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect(Boolean doorLeftOpen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 217
-Failed!  - Failed:     2, Passed:     3, Skipped:     0, Total:     5, Duration: 8 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+注：S-1 第一版把取消结论判断对每次装货结算都提前，StationDeadlineExpiredG2Tests.AnUnfinishedResultWhoseAckWasLostIsStillAnnouncedOnceByTheRestore 在整类运行里两次都红（"recovery decision 2 of 2 to get past the step a projection follows" 超时；单独跑 8/8 绿）。
+收窄为只在装货结果是 COMPLETED 时提前问之后，四个类 352/352 绿。
 
 M-1/L-2 稳定性（修后）
 run 1: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
@@ -56,6 +55,18 @@ run 9: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
 run 10: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
 run 11: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
 run 12: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+group run 1: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 2: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 3: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 4: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 5: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 6: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 7: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 8: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 9: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 10: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+
+收窄后新用例整组连跑
 group run 1: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
 group run 2: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
 group run 3: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
