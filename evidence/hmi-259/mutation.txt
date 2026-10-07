@@ -29,3 +29,40 @@ Actual:   List<WireToGatePendingResult>                           [WireToGatePen
 Failed!  - Failed:     1, Passed:     1, Skipped:     0, Total:     2, Duration: 381 ms - SQCD.Agv.UnitTests.dll (net8.0)
 
 每次变异都在提交后改文件内容、--no-incremental 构建 0 Error(s) 后再跑；还原为写回原文件内容。
+
+== 审查轮（M-1、S-1、L-2）
+M4: 去掉 S-1 的挪动（取消结论判断放回装货结果分支之后）
+exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect(doorLeftOpen: True) [3 s]
+Expected: "44444444-0000-4444-8444-00000000000a"
+Actual:   null
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect(Boolean doorLeftOpen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 217
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect(doorLeftOpen: False) [886 ms]
+Expected: "44444444-0000-4444-8444-00000000000a"
+Actual:   null
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect(Boolean doorLeftOpen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 217
+Failed!  - Failed:     2, Passed:     3, Skipped:     0, Total:     5, Duration: 8 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+M-1/L-2 稳定性（修后）
+run 1: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 2: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 3: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 4: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 5: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 6: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 7: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 8: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 9: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 10: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 11: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 12: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+group run 1: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 2: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 3: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 4: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 5: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 6: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 7: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 8: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 9: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 10: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
