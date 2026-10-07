@@ -1,0 +1,38 @@
+# G2 定向（Release，dotnet test --no-build，按类串行，本机无其他测试负载）
+
+## 第一轮：96f2a46
+RecoveryVectorG2Tests exit=1
+StationDeadlineExpiredG2Tests exit=0
+LoadCancellationBeforeSublotG2Tests exit=0
+MultiDemandJourneyG2Tests exit=0
+FatalFaultLatchViewModelTests exit=0
+RecoveryEntryNotificationViewModelTests exit=0
+g2-FatalFaultLatchViewModelTests: Passed!  - Failed:     0, Passed:    13, Skipped:     0, Total:    13, Duration: 140 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2-LoadCancellationBeforeSublotG2Tests: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 15 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2-MultiDemandJourneyG2Tests: Passed!  - Failed:     0, Passed:    99, Skipped:     0, Total:    99, Duration: 1 m 28 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2-RecoveryEntryNotificationViewModelTests: Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2, Duration: 124 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2-RecoveryVectorG2Tests: Failed!  - Failed:     1, Passed:   219, Skipped:     0, Total:   220, Duration: 2 m 51 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2-StationDeadlineExpiredG2Tests: Passed!  - Failed:     0, Passed:    79, Skipped:     0, Total:    79, Duration: 1 m 31 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## RecoveryVectorG2Tests 第一轮失败
+[xUnit.net 00:01:08.75]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ARefusedForcedRecoveryResultIsolatesTheSlotsAndOffersTheHardwareRecord [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ARefusedForcedRecoveryResultIsolatesTheSlotsAndOffersTheHardwareRecord [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the refused recovery result to be given up
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.RecoveryVectorHarness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\sync-fp-v3-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.cs:line 1956
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.WaitForGivenUpResultAsync(RecoveryVectorHarness harness, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\sync-fp-v3-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.RefusedResultCloseOut.cs:line 193
+
+## 第二轮：改用夹具助手后（d5a5b51），仍红：按下被服务端拒收，助手断言按下成功
+[xUnit.net 00:01:07.79]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ARefusedForcedRecoveryResultIsolatesTheSlotsAndOffersTheHardwareRecord [FAIL]
+Failed!  - Failed:     1, Passed:   219, Skipped:     0, Total:   220, Duration: 3 m - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## 第三轮：b823f9c
+RecoveryVectorG2Tests exit=0
+Passed!  - Failed:     0, Passed:   220, Skipped:     0, Total:   220, Duration: 2 m 59 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## 实际跑了几次（PR #277 审查 N3，更正 627758a 提交标题里的「三轮」）
+- 另外五个类：各在 96f2a46 上整类跑了一次。
+- RecoveryVectorG2Tests：整类跑了三次，分别在 96f2a46（1 红）、d5a5b51（1 红）、b823f9c（全绿）；
+  另外在 b823f9c 上用 --filter 单跑过那一条一次（1/1），然后才整类跑第三次。
+- 入库的完整输出只有第一次（round1-*.txt）和第三次（round3-*.txt）；第二次只留了上面两行失败摘要。

@@ -1,0 +1,43 @@
+[xUnit.net 00:00:10.24]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AShownRecoveryEntryIsNotShownAgainWhenTheDoorsComeFreeASecondTime [FAIL]
+  Error Message:
+   Timed out after 5s waiting for: B to reach its own Prepared write. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 617
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.DriveAOwedWhileBHoldsTheDoorsAsync(Harness harness, FakeIoModuleClient io, RestoreWindowJournal window, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 256
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AShownRecoveryEntryIsNotShownAgainWhenTheDoorsComeFreeASecondTime() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 131
+[xUnit.net 00:00:32.51]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheRunningDemandsUnknownResultIsShownBeforeTheQueuedCommandTakesOver [FAIL]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+                                              ↓ (pos 35)
+Expected: "44444444-0000-4444-8444-00000000000b"
+Actual:   "44444444-0000-4444-8444-00000000000a"
+                                              ↑ (pos 35)
+[xUnit.net 00:01:00.76]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryReachesTheOperatorOnceTheRunningCommandHasFinished [FAIL]
+  Error Message:
+   Timed out after 5s waiting for: B to reach its own Prepared write. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 617
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.DriveAOwedWhileBHoldsTheDoorsAsync(Harness harness, FakeIoModuleClient io, RestoreWindowJournal window, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 256
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryReachesTheOperatorOnceTheRunningCommandHasFinished() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 74
+[xUnit.net 00:01:10.48]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryDoesNotTakeTheScreenOffTheCommandThatNeedsRecoveryItself [FAIL]
+  Error Message:
+   Timed out after 5s waiting for: B to reach its own Prepared write. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 617
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.DriveAOwedWhileBHoldsTheDoorsAsync(Harness harness, FakeIoModuleClient io, RestoreWindowJournal window, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 256
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryDoesNotTakeTheScreenOffTheCommandThatNeedsRecoveryItself() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 204
+[xUnit.net 00:01:16.50]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestoredRecoveryProjectionLeavesTheRunningCommandsDisplayAndClockAlone [FAIL]
+  Error Message:
+   Timed out after 5s waiting for: B to reach its own Prepared write. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 617
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestoredRecoveryProjectionLeavesTheRunningCommandsDisplayAndClockAlone() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryProjectionDisplay.cs:line 107
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestoredRecoveryProjectionLeavesTheRunningCommandsDisplayAndClockAlone() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryProjectionDisplay.cs:line 161
+[xUnit.net 00:01:22.75]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnOverdueIsStillRaisedOnTheRunningCommandsOwnUnlockAfterARestoredRecoveryProjection [FAIL]
+  Error Message:
+   Timed out after 5s waiting for: B to reach its own Prepared write. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 617
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnOverdueIsStillRaisedOnTheRunningCommandsOwnUnlockAfterARestoredRecoveryProjection() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryProjectionDisplay.cs:line 195
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnOverdueIsStillRaisedOnTheRunningCommandsOwnUnlockAfterARestoredRecoveryProjection() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryProjectionDisplay.cs:line 235
+Failed!  - Failed:     6, Passed:   291, Skipped:     0, Total:   297, Duration: 2 m 27 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

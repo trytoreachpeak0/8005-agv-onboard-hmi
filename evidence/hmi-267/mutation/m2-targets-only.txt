@@ -1,0 +1,43 @@
+[xUnit.net 00:00:05.01]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.UnknownSnapshotFailsClosedWithoutUnlock [FAIL]
+  Error Message:
+   SQCD.Agv.Application.WireToGateDoorNotProvenShutException : DOOR_NOT_PROVEN_SHUT:1
+  Stack Trace:
+     at SQCD.Agv.Application.WireToGateSlotOperationExecutor.ExecuteExclusiveAsync(WireToGateSlotOperationCommand command, Func`3 progress, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 643
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.ExecuteAsync(WireToGateSlotOperationCommand command, Func`3 progress, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 176
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.UnknownSnapshotFailsClosedWithoutUnlock() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.cs:line 148
+[xUnit.net 00:00:12.63]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AConflictBesideAnUnsafeSlotClaimsNoSafeFinishAndJournalsNothing(unsafeReason: "UNLOCK_OUTPUT_NOT_RESET") [FAIL]
+[xUnit.net 00:00:12.65]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AConflictBesideAnUnsafeSlotClaimsNoSafeFinishAndJournalsNothing(unsafeReason: "SLOT_STATE_UNKNOWN") [FAIL]
+  Error Message:
+   SQCD.Agv.Application.WireToGateDoorNotProvenShutException : DOOR_NOT_PROVEN_SHUT:2
+  Stack Trace:
+     at SQCD.Agv.Application.WireToGateSlotOperationExecutor.ExecuteExclusiveAsync(WireToGateSlotOperationCommand command, Func`3 progress, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 643
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.ExecuteAsync(WireToGateSlotOperationCommand command, Func`3 progress, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 176
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AConflictBesideAnUnsafeSlotClaimsNoSafeFinishAndJournalsNothing(String unsafeReason) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.OccupancyConflict.cs:line 105
+  Error Message:
+   SQCD.Agv.Application.WireToGateDoorNotProvenShutException : DOOR_NOT_PROVEN_SHUT:2
+  Stack Trace:
+     at SQCD.Agv.Application.WireToGateSlotOperationExecutor.ExecuteExclusiveAsync(WireToGateSlotOperationCommand command, Func`3 progress, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 643
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.ExecuteAsync(WireToGateSlotOperationCommand command, Func`3 progress, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 176
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AConflictBesideAnUnsafeSlotClaimsNoSafeFinishAndJournalsNothing(String unsafeReason) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.OccupancyConflict.cs:line 105
+[xUnit.net 00:00:12.67]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AConflictBesideAnUnsafeSlotClaimsNoSafeFinishAndJournalsNothing(unsafeReason: "LOCK_NOT_CLOSED") [FAIL]
+  Error Message:
+   SQCD.Agv.Application.WireToGateDoorNotProvenShutException : DOOR_NOT_PROVEN_SHUT:2
+  Stack Trace:
+     at SQCD.Agv.Application.WireToGateSlotOperationExecutor.ExecuteExclusiveAsync(WireToGateSlotOperationCommand command, Func`3 progress, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 643
+   at SQCD.Agv.Application.WireToGateSlotOperationExecutor.ExecuteAsync(WireToGateSlotOperationCommand command, Func`3 progress, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\src\SQCD.Agv.Application\WireToGateSlotOperationExecutor.cs:line 176
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AConflictBesideAnUnsafeSlotClaimsNoSafeFinishAndJournalsNothing(String unsafeReason) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.OccupancyConflict.cs:line 105
+[xUnit.net 00:00:20.01]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorInDoubtThatReadsOpenRefusesTheNewOperationAndKeepsTheRecord [FAIL]
+[xUnit.net 00:00:20.08]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.AStaleReadingProvesNoDoorShutAndRefusesTheNewOperation [FAIL]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(SQCD.Agv.Application.WireToGateDoorNotProvenShutException)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorInDoubtThatReadsOpenRefusesTheNewOperationAndKeepsTheRecord() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.DoorNotProvenShut.cs:line 35
+   at SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ADoorInDoubtThatReadsOpenRefusesTheNewOperationAndKeepsTheRecord() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateSlotOperationExecutorTests.DoorNotProvenShut.cs:line 58
+  Error Message:
+   Assert.Equal() Failure: Collections differ
+                                               ↓ (pos 0)
+Expected: <>z__ReadOnlySingleElementList<int> [3]
+Actual:   int[]                               [1]
+                                               ↑ (pos 0)
+Failed!  - Failed:     6, Passed:    67, Skipped:     0, Total:    73, Duration: 16 s - SQCD.Agv.UnitTests.dll (net8.0)

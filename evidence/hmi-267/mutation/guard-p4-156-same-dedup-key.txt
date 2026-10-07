@@ -1,0 +1,15 @@
+[xUnit.net 00:00:08.96]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AShownRecoveryEntryIsNotShownAgainWhenTheDoorsComeFreeASecondTime [FAIL]
+  Error Message:
+   Assert.Equal() Failure: Values differ
+Expected: 2
+Actual:   1
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AssertRecoveryEntryAnnouncedExactlyTwice(Harness harness) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 326
+[xUnit.net 00:01:02.96]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryReachesTheOperatorOnceTheRunningCommandHasFinished [FAIL]
+  Error Message:
+   Timed out after 5s waiting for: the screen to read A's recovery guidance. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 617
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryReachesTheOperatorOnceTheRunningCommandHasFinished() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 89
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryReachesTheOperatorOnceTheRunningCommandHasFinished() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 103
+Failed!  - Failed:     2, Passed:    86, Skipped:     0, Total:    88, Duration: 1 m 21 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

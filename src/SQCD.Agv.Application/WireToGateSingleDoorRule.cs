@@ -53,4 +53,17 @@ internal static class WireToGateSingleDoorRule
 
         return null;
     }
+
+    /// <summary>
+    /// The slots of <paramref name="slots"/> whose door <paramref name="snapshot"/> does not prove shut -- known, locked
+    /// and output reset in a fresh reading -- in ascending order. A reading that cannot be trusted proves none of them.
+    /// </summary>
+    public static int[] DoorsNotProvenShut(IoSnapshot snapshot, bool fresh, IReadOnlyList<int> slots) =>
+        slots
+            .Where(slot => !fresh
+                || snapshot.Lockers.FirstOrDefault(item => item.PhysicalNumber == slot)
+                    is not { IsKnown: true, IsLocked: true, UnlockOutputRaw: false })
+            .Distinct()
+            .Order()
+            .ToArray();
 }

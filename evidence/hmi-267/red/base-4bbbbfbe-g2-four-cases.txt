@@ -1,0 +1,29 @@
+[xUnit.net 00:00:06.56]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACommandOverAVectorWithNoResultYetIsRefused [FAIL]
+  Error Message:
+   Timed out after 5s waiting for: the command to be refused
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.RecoveryVectorHarness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-base-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.cs:line 1883
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACommandOverAVectorWithNoResultYetIsRefused() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-base-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.DoorNotProvenShut.cs:line 304
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACommandOverAVectorWithNoResultYetIsRefused() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-base-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.DoorNotProvenShut.cs:line 322
+[xUnit.net 00:00:09.10]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AVectorResultAcknowledgedAfterANewOperationClearedItChangesNothing [FAIL]
+  Error Message:
+   Assert.Contains() Failure: Filter not matched in collection
+Collection: [Tuple (Information, "WireToGateSessionClient", "会话状态发布：source=handshake-start，connected=False，gene"···), Tuple (Information, "WireToGateSessionClient", "会话状态发布：source=session-accepted，connected=True，gene"···), Tuple (Information, "WireToGateSessionClient", "收到SessionReadiness：messageId=d11a0968-8d4d-4f73-a3"···), Tuple (Information, "WireToGateSessionClient", "会话状态发布：source=SessionRea
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AVectorResultAcknowledgedAfterANewOperationClearedItChangesNothing() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-base-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.DoorNotProvenShut.cs:line 154
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.AVectorResultAcknowledgedAfterANewOperationClearedItChangesNothing() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-base-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.DoorNotProvenShut.cs:line 195
+[xUnit.net 00:00:14.21]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACommandOverADoorNotProvenShutIsRefusedUntilTheDoorIsShut [FAIL]
+  Error Message:
+   Timed out after 5s waiting for: copy 1 of the command to be refused
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.RecoveryVectorHarness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-base-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.cs:line 1883
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACommandOverADoorNotProvenShutIsRefusedUntilTheDoorIsShut() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-base-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.DoorNotProvenShut.cs:line 47
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACommandOverADoorNotProvenShutIsRefusedUntilTheDoorIsShut() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-base-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.DoorNotProvenShut.cs:line 98
+[xUnit.net 00:00:21.49]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ALateVectorAcknowledgementLeavesAnotherAttemptOnFile [FAIL]
+  Error Message:
+   Timed out after 5s waiting for: the late acknowledgement to settle the vector alone
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.RecoveryVectorHarness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-base-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.cs:line 1883
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ALateVectorAcknowledgementLeavesAnotherAttemptOnFile() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-base-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.DoorNotProvenShut.cs:line 256
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ALateVectorAcknowledgementLeavesAnotherAttemptOnFile() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-base-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.DoorNotProvenShut.cs:line 269
+Failed!  - Failed:     4, Passed:     0, Skipped:     0, Total:     4, Duration: 20 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

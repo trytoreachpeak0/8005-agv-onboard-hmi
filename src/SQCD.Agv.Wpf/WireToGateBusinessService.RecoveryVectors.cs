@@ -358,7 +358,9 @@ public sealed partial class WireToGateBusinessService
         WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
         if (state.RecoveryVector is { } vector)
         {
-            return vector.VectorType == vectorType;
+            // Not while its result waits for a maintainer's manual check: pressed, it would run the vector again
+            // (onboard-hmi#254).
+            return vector.VectorType == vectorType && !IsAwaitingManualCheck(state);
         }
 
         // Not once the attempt's own non-completed result is on its way: the server puts such a result into
@@ -370,11 +372,14 @@ public sealed partial class WireToGateBusinessService
         // is recorded pending before it is sent, so its presence here means the server has it or is about to.
         // A result sent without being recorded -- the journal overwritten by the next command in between --
         // is not seen here; that shape is onboard-hmi#182's.
+        // Nor over a load whose cancellation already has a result on file (onboard-hmi#254): pressed, it would ask again
+        // under the same cancellationId. The request path refuses it from the outbox; this greys the entry out.
         return state.OperationContext is { OperationType: OperationType.Load } context
             && string.Equals(
                 state.UnsettledSlotOperationAttemptId,
                 context.SlotOperationAttemptId,
                 StringComparison.Ordinal)
+            && !IsCancellationConcluded(context.SlotOperationAttemptId)
             && !state.PendingResults.Any(pending =>
                 string.Equals(pending.MessageType, "OperationResult", StringComparison.Ordinal)
                 && string.Equals(pending.BusinessId, context.SlotOperationAttemptId, StringComparison.Ordinal));
@@ -406,6 +411,7 @@ public sealed partial class WireToGateBusinessService
         if (state.RecoveryVector is { } vector)
         {
             return WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector)
+                && !IsAwaitingManualCheck(state)
                 && session.Readiness is WireToGateSessionReadiness.Ready
                     or WireToGateSessionReadiness.RecoveryRequired;
         }
@@ -605,8 +611,12 @@ public sealed partial class WireToGateBusinessService
     private bool HasRecoveryVectorOrCompletedLoad(string vectorType)
     {
         WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
-        return state.RecoveryVector?.VectorType == vectorType
-            || state.LastCompletedLoadOperationContext is not null;
+        // Not over a load whose correction was refused for good (onboard-hmi#254): the request path refuses it from the
+        // outbox; this greys the entry out.
+        // Nor over a correction whose result waits for a maintainer's manual check.
+        return state.RecoveryVector?.VectorType == vectorType && !IsAwaitingManualCheck(state)
+            || state.LastCompletedLoadOperationContext is { } settled
+                && !IsCorrectionRefused(settled.SlotOperationAttemptId);
     }
 
     private bool CanRequestRecoveryAction(string action, string vectorType)
@@ -614,7 +624,8 @@ public sealed partial class WireToGateBusinessService
         WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
         if (state.RecoveryVector is { } vector)
         {
-            return vector.VectorType == vectorType;
+            // Not while its result waits for a maintainer's manual check (onboard-hmi#254).
+            return vector.VectorType == vectorType && !IsAwaitingManualCheck(state);
         }
 
         if (FindRecoveryOperation(state, action) is not { } context)
@@ -660,6 +671,8 @@ public sealed partial class WireToGateBusinessService
                 throw new InvalidDataException("RECOVERY_VECTOR_CONFLICT");
             }
 
+            await RefuseWhileAwaitingManualCheckAsync(existingVector, state, cancellationToken).ConfigureAwait(false);
+
             if (WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(existingVector))
             {
                 return await ReportLoadCancellationBeforeSublotAsync(existingVector, cancellationToken)
@@ -691,6 +704,14 @@ public sealed partial class WireToGateBusinessService
 
         RefuseDoorOpeningCancellationWhileLatched();
         WireToGateRecoveryOperationContext operation = RequireUnsettledLoadOperation(state);
+        // Already cancelled, with a result on file: asked again it would be authorized again and the doors pulsed open
+        // over a load the first cancellation concluded (onboard-hmi#254).
+        if (await IsCancellationConcludedAsync(operation.DemandId, operation.SlotOperationAttemptId, cancellationToken)
+                .ConfigureAwait(false))
+        {
+            throw new InvalidOperationException("LOAD_CANCELLATION_ALREADY_CONCLUDED");
+        }
+
         string cancellationId = InFlightLoadCancellationId(operation.DemandId, operation.SlotOperationAttemptId);
         // The press the restart settlement's resend runs on (onboard-hmi#239). A resend does not move it: a link that keeps
         // dropping would otherwise carry the press forward for as long as it dropped, and an authorization long after the
@@ -1110,49 +1131,20 @@ public sealed partial class WireToGateBusinessService
     }
 
     /// <summary>
-    /// On a session coming up, settles a cancellation before any sublot whose result the handshake
-    /// has already had acknowledged.
+    /// On a session coming up, tells the operator a cancellation before any sublot is still waiting for its result to be
+    /// acknowledged. One that has been is settled before this by <see cref="SettleVectorByItsResultRowAsync"/>.
     /// </summary>
     /// <remarks>
-    /// An unacknowledged result is replayed during the handshake, before the session is ready, so by
-    /// the time this runs the journal says whether the server has it. Without this the vector would
-    /// outlive the stop: once the server ends the stop it sends no further entry request, and the
-    /// vector would refuse every later cancellation as a conflict.
+    /// An unacknowledged result is replayed during the handshake, before the session is ready, so by the time this runs
+    /// the journal says whether the server has it. Without the settlement the vector would outlive the stop: once the
+    /// server ends the stop it sends no further entry request, and the vector would refuse every later cancellation as a
+    /// conflict.
     /// </remarks>
-    private async Task RestoreLoadCancellationBeforeSublotAsync(
-        WireToGateRecoveryVectorContext vector,
-        CancellationToken cancellationToken)
-    {
-        WireToGateDurableMessage? result = await _session.Journal
-            .ReadOutgoingByDeduplicationKeyAsync(LoadCancellationResultKey(vector), cancellationToken)
-            .ConfigureAwait(false);
-        if (result is not { Acknowledged: true })
-        {
-            PublishOperatorEvent(
-                $"load-cancellation-before-sublot-restored:{vector.PrimaryId}",
-                "RESULT_ACK_PENDING",
-                "装货取消已获服务端授权，结果尚未得到服务端确认；可再按一次「取消装货」补报，不会打开仓门。 ");
-            return;
-        }
-
-        await _recoveryRequestGate.WaitAsync(cancellationToken).ConfigureAwait(false);
-        try
-        {
-            WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
-                .ConfigureAwait(false);
-            if (state.RecoveryVector is { } current
-                && WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(current)
-                && current.PrimaryId == vector.PrimaryId)
-            {
-                await SettleLoadCancellationBeforeSublotAsync(current, cancellationToken)
-                    .ConfigureAwait(false);
-            }
-        }
-        finally
-        {
-            _recoveryRequestGate.Release();
-        }
-    }
+    private void RestoreLoadCancellationBeforeSublot(WireToGateRecoveryVectorContext vector) =>
+        PublishOperatorEvent(
+            $"load-cancellation-before-sublot-restored:{vector.PrimaryId}",
+            "RESULT_ACK_PENDING",
+            "装货取消已获服务端授权，结果尚未得到服务端确认；可再按一次「取消装货」补报，不会打开仓门。 ");
 
     private static string LoadCancellationResultKey(WireToGateRecoveryVectorContext vector) =>
         $"recovery-vector-result:{WireToGateRecoveryVectorTypes.LoadCancellation}:{vector.PrimaryId}";
@@ -1282,6 +1274,11 @@ public sealed partial class WireToGateBusinessService
             throw new InvalidDataException("RECOVERY_VECTOR_CONFLICT");
         }
 
+        if (existingVector is not null)
+        {
+            await RefuseWhileAwaitingManualCheckAsync(existingVector, state, cancellationToken).ConfigureAwait(false);
+        }
+
         WireToGateRecoveryVectorContext vector;
         string correctionReason;
         if (existingVector is not null)
@@ -1311,9 +1308,16 @@ public sealed partial class WireToGateBusinessService
             WireToGateRecoveryOperationContext operation =
                 state.LastCompletedLoadOperationContext
                 ?? throw new InvalidOperationException("LOAD_CORRECTION_OPERATION_NOT_AVAILABLE");
+            // Its correction was refused for good and ended after a manual check: asked again, the server would refuse the
+            // request as different content under the same correction and command nothing (onboard-hmi#254).
+            if (await IsCorrectionRefusedAsync(operation.DemandId, operation.SlotOperationAttemptId, cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                throw new InvalidOperationException("LOAD_CORRECTION_ALREADY_REFUSED");
+            }
+
             WireToGateOperatorContextPayload operatorContext = ReadOperatorContext();
-            string correctionId = StableUuid(
-                $"{operation.DemandId}|{operation.SlotOperationAttemptId}|load-correction");
+            string correctionId = LoadCorrectionId(operation.DemandId, operation.SlotOperationAttemptId);
             correctionReason = RequireReason(reason);
             vector = new(
                 WireToGateRecoveryVectorTypes.LoadCorrection,
@@ -1400,6 +1404,11 @@ public sealed partial class WireToGateBusinessService
         if (vector is not null && vector.VectorType != vectorType)
         {
             throw new InvalidDataException("RECOVERY_VECTOR_CONFLICT");
+        }
+
+        if (vector is not null)
+        {
+            await RefuseWhileAwaitingManualCheckAsync(vector, state, cancellationToken).ConfigureAwait(false);
         }
 
         WireToGateExceptionRecoverySessionSnapshot? snapshot =
@@ -2031,15 +2040,7 @@ public sealed partial class WireToGateBusinessService
         }
 
         await SettleForcedIsolationAsync(onFileContext, cancellationToken).ConfigureAwait(false);
-        PublishRecoveryVectorOperation(
-            onFileContext,
-            WireToGateHmiOperationStage.RecoveryRequired,
-            $"强制机械取出已上报；{FormatSlots(onFileContext.Slots)}物理状态未知，禁止操作，等待提交硬件恢复记录。",
-            "isolated");
-        PublishOperatorEvent(
-            $"forced-recovery-isolated:{onFileContext.PrimaryId}",
-            "RECOVERY_VECTOR_COMPLETED",
-            $"强制机械取出已由服务端确认；{FormatSlots(onFileContext.Slots)}物理状态未知，修复后请提交硬件恢复记录。 ");
+        PublishForcedIsolationAcknowledged(onFileContext);
         return true;
     }
 
@@ -2806,10 +2807,10 @@ public sealed partial class WireToGateBusinessService
     /// comes first on purpose: a record cleared before the answer is on file would leave the next copy
     /// of the command refused with <c>RECOVERY_VECTOR_CONTEXT_MISSING</c> and nothing to rebuild the
     /// answer from. What the order leaves open is the window between the two -- acknowledged, not yet
-    /// forgotten -- where a crash leaves a settled result with the record still on file. That window
-    /// exists on the <c>COMPLETED</c> path in exactly the same shape and has since long before this,
-    /// so closing it belongs to onboard-hmi#150, which closes it on both paths at once. Closing it here
-    /// for one path only would leave the two behaving differently for no stated reason.
+    /// forgotten -- where a crash leaves a settled result with the record still on file. That window,
+    /// and the acknowledgement that arrives by the handshake's replay or late, are closed on both paths
+    /// at once by <see cref="SettleVectorByItsResultRowAsync"/> (onboard-hmi#150), which settles from
+    /// the outbox row whatever way its answer came.
     /// </para>
     /// </remarks>
     private async Task ForgetSettledRecoveryVectorAsync(
@@ -3100,15 +3101,7 @@ public sealed partial class WireToGateBusinessService
         if (success)
         {
             await CompleteRecoveryVectorStateAsync(context, cancellationToken).ConfigureAwait(false);
-            PublishRecoveryVectorOperation(
-                context,
-                WireToGateHmiOperationStage.Completed,
-                "恢复向量结果已确认，目标仓位已回到安全状态。",
-                "completed");
-            PublishOperatorEvent(
-                $"recovery-vector-completed:{context.VectorType}:{context.PrimaryId}",
-                "RECOVERY_VECTOR_COMPLETED",
-                $"恢复向量 {context.VectorType} 已完成并收到服务端确认。 ");
+            PublishRecoveryVectorCompleted(context);
             return true;
         }
 
@@ -3139,10 +3132,7 @@ public sealed partial class WireToGateBusinessService
             await releaseSettledFailure().ConfigureAwait(false);
         }
 
-        PublishOperatorEvent(
-            $"recovery-vector-recovery-required:{context.VectorType}:{context.PrimaryId}",
-            "OPERATION_RECOVERY_REQUIRED",
-            "恢复结果已上报，但物理状态仍未达到可确认条件；请保持车辆停稳并等待下一步处理。 ");
+        PublishSettledRecoveryVectorStillUnfinished(context);
         return false;
     }
 
@@ -3380,6 +3370,7 @@ public sealed partial class WireToGateBusinessService
         // between the read and the write is exactly the case it exists for.
         bool vectorChanged = false;
         bool isolationStands = false;
+        string? otherAttempt = null;
         WireToGateRecoveryState? settled = await UpdateRecoveryStateCachedAsync(
                 journalled =>
                 {
@@ -3388,6 +3379,7 @@ public sealed partial class WireToGateBusinessService
                     // left set by an earlier evaluation would throw over a successful write.
                     vectorChanged = false;
                     isolationStands = false;
+                    otherAttempt = null;
                     if (journalled.RecoveryVector is not { } onFile
                         || onFile.VectorType != context.VectorType
                         || onFile.PrimaryId != context.PrimaryId)
@@ -3402,6 +3394,23 @@ public sealed partial class WireToGateBusinessService
                     {
                         isolationStands = true;
                         return null;
+                    }
+
+                    // The second line of 8005-agv-onboard-hmi#267. The attempt, its context and its checkpoint are the
+                    // vector's to settle only while they are the vector's own. A journal whose unsettled attempt is another
+                    // one has had a new operation written beside the vector -- which the new operation's own first write is
+                    // meant never to do -- and settling that attempt here would end an operation the server still holds
+                    // for recovery, with its context gone. So only the vector, its recovery session and, for a forced
+                    // recovery, its isolation are written; the rest stays.
+                    if (journalled.UnsettledSlotOperationAttemptId is { } unsettled
+                        && onFile.SlotOperationAttemptId is { } own
+                        && !string.Equals(unsettled, own, StringComparison.Ordinal))
+                    {
+                        otherAttempt = unsettled;
+                        return ForgetSettledVector(journalled, onFile) with
+                        {
+                            ForcedIsolation = isolation ?? journalled.ForcedIsolation
+                        };
                     }
 
                     return journalled with
@@ -3439,6 +3448,16 @@ public sealed partial class WireToGateBusinessService
             throw isolationStands ? new InvalidDataException("HARDWARE_RECOVERY_RECORD_REQUIRED")
                 : vectorChanged ? new InvalidDataException("RECOVERY_STATE_MISMATCH")
                 : new UnreachableException();
+        }
+
+        if (otherAttempt is not null)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"恢复向量结算时日志簿的未结作业已不是它自己的，只去掉向量与恢复会话，保留该作业的记录："
+                + $"type={context.VectorType}，id={context.PrimaryId}，vectorAttempt={context.SlotOperationAttemptId}，"
+                + $"unsettledAttempt={otherAttempt}。");
         }
     }
 

@@ -1261,6 +1261,54 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     }
 
     /// <summary>
+    /// A repair release in progress is not the operation's either (8005-agv-onboard-hmi#219): an operation on other slots
+    /// writes its checkpoints over the journal and the release is still there afterwards, field for field. The checkpoint
+    /// write takes every field it does not own from the journal, so this field is one line there
+    /// (<c>WriteCheckpointAsync</c>); fp has no such field, and a sync from fp that rewrites that write drops it without a
+    /// conflict (the review of PR #277, S2).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-VEHICLE-HOLD-DOOR-REPAIR-RELEASE")]
+    public async Task ARepairReleaseOutlivesAnOperationOnOtherSlots()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync(cancellationToken: token);
+        WireToGateRepairRelease release = new(
+            "99999999-9999-4999-8999-999999999991",
+            "99999999-9999-4999-8999-999999999992",
+            "99999999-9999-4999-8999-999999999993",
+            [3],
+            "maintenance-001",
+            "SESSION",
+            new DateTimeOffset(2026, 10, 7, 8, 0, 0, TimeSpan.Zero),
+            "门锁已更换。")
+        {
+            ExceptionRecoverySessionId = "99999999-9999-4999-8999-999999999994",
+            Accepted = true
+        };
+        await fixture.Journal.UpdateRecoveryStateAsync(
+            _ => WireToGateRecoveryState.Empty with { RepairRelease = release },
+            token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(command, null, token);
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        AssertSameRelease(release, (await fixture.Journal.ReadRecoveryStateAsync(token)).RepairRelease);
+
+        await fixture.Executor.MarkResultRecordedAsync(command.SlotOperationAttemptId, token);
+        AssertSameRelease(release, (await fixture.Journal.ReadRecoveryStateAsync(token)).RepairRelease);
+
+        // The slot list is compared by value: the journal reads back a new list.
+        static void AssertSameRelease(WireToGateRepairRelease expected, WireToGateRepairRelease? actual)
+        {
+            Assert.NotNull(actual);
+            Assert.Equal(expected.Slots, actual.Slots);
+            Assert.Equal(expected with { Slots = actual.Slots }, actual);
+        }
+    }
+
+    /// <summary>
     /// The isolation is on disk: a restart -- a new journal and executor over the same file -- still
     /// refuses a command that touches an isolated slot.
     /// </summary>
@@ -2079,12 +2127,17 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         private TestFixture(
             SimulationIo io,
             SqliteWireToGateJournal journal,
-            WireToGateSlotOperationExecutor executor)
+            WireToGateSlotOperationExecutor executor,
+            List<WireToGateJournalOverwrite> overwrites)
         {
             Io = io;
             Journal = journal;
             Executor = executor;
+            Overwrites = overwrites;
         }
+
+        /// <summary>Every journal a new operation replaced, as the executor told it (onboard-hmi#267).</summary>
+        public List<WireToGateJournalOverwrite> Overwrites { get; }
 
         public SimulationIo Io { get; }
 
@@ -2105,6 +2158,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             SqliteWireToGateJournal journal = new(Path.Combine(directory, "journal.db"));
             await journal.InitializeAsync(cancellationToken);
             SimulationIo io = new(initialCargo, finalCargo);
+            List<WireToGateJournalOverwrite> overwrites = [];
             WireToGateSlotOperationExecutor executor = new(
                 io,
                 journal,
@@ -2115,8 +2169,9 @@ public sealed partial class WireToGateSlotOperationExecutorTests
                     TimeSpan.FromSeconds(5),
                     TimeSpan.FromMilliseconds(1),
                     TimeSpan.FromSeconds(1)),
-                () => true);
-            return new TestFixture(io, journal, executor);
+                () => true,
+                journalOverwritten: overwrites.Add);
+            return new TestFixture(io, journal, executor, overwrites);
         }
 
         public async ValueTask DisposeAsync()
@@ -2239,6 +2294,33 @@ public sealed partial class WireToGateSlotOperationExecutorTests
                         .Select(index => LockerSnapshot.Unknown(index, DateTimeOffset.UtcNow))
                         .ToArray(),
                     DateTimeOffset.UtcNow);
+            }
+        }
+
+        /// <summary>The door shut and locked, its unlock output reset, in a fresh reading.</summary>
+        public void CloseDoor(int slotIndex)
+        {
+            lock (_sync)
+            {
+                UpdateLocker(slotIndex, locker => locker with
+                {
+                    LockFeedbackRaw = true,
+                    UnlockOutputRaw = false,
+                    ObservedAt = DateTimeOffset.UtcNow
+                });
+            }
+        }
+
+        /// <summary>Every slot reads as it does now, but the reading is <paramref name="age"/> old.</summary>
+        public void MakeStale(TimeSpan age)
+        {
+            lock (_sync)
+            {
+                DateTimeOffset then = DateTimeOffset.UtcNow - age;
+                CurrentSnapshot = new IoSnapshot(
+                    true,
+                    _lockers.Select(locker => locker with { ObservedAt = then }).ToArray(),
+                    then);
             }
         }
 

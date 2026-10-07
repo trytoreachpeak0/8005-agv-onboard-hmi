@@ -25,8 +25,9 @@ namespace SQCD.Agv.Wpf;
 /// unanswered for as long as it stayed (<see cref="AnswerSafetyStateSnapshotRequestAsync"/>).</item>
 /// <item><c>OperationResult</c>: the attempt stays unsettled here, which keeps the recovery entry on offer
 /// (<see cref="TrySettleInterruptedOperationAsync"/>).</item>
-/// <item>The five recovery results: given up and reported; what closes their vector is onboard-hmi#254's second part,
-/// on top of onboard-hmi#255.</item>
+/// <item>The five recovery results: the forced mechanical recovery goes on to its isolation; the other four keep their
+/// vector until a verified maintainer ends it after a manual check (<c>WireToGateBusinessService.ConflictedRecovery.cs</c>,
+/// onboard-hmi#254 part 2).</item>
 /// <item>The rest wait for nothing.</item>
 /// </list>
 /// </remarks>
@@ -58,6 +59,14 @@ public sealed partial class WireToGateBusinessService
             // here: a refusal mid-session is caught by that work, which asks for one, and one in a handshake is followed
             // by the readiness that asks for one (review of PR #258, N2: an extra request here was never needed).
             Volatile.Write(ref _abandonedSafetyChange, change);
+            return;
+        }
+
+        if (abandoned.DeduplicationKey.StartsWith(RecoveryVectorResultKeyPrefix, StringComparison.Ordinal) && !_disposed)
+        {
+            // Not here: inside a handshake this runs on the handshake's thread, which waits for it, and mid-session the
+            // send that was refused may still hold the recovery request gate.
+            TrackTask(SettleVectorOnFileByItsResultRowAsync(_stopping.Token));
         }
     }
 

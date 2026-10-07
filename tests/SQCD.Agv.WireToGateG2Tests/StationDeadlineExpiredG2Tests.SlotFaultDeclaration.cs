@@ -186,7 +186,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// </para>
     /// <para>
     /// 先红：去掉接收循环里迟到 ack 的那一支，迟到的 ack 被当成未处理消息断开会话（这个夹具不重连），
-    /// 等发件箱记为已确认那一步超时。
+    /// 迟到确认的观测（<see cref="LateDurableAckObservation"/>）看到会话先断，当场判红。
     /// </para>
     /// </remarks>
     [Fact]
@@ -226,11 +226,19 @@ public sealed partial class StationDeadlineExpiredG2Tests
             harness.Server.SentEnvelopes.Any(envelope =>
                 envelope.MessageType == "DurableAck" && envelope.WireLine.Contains(late, StringComparison.Ordinal)),
             "the re-prompt's ack must still be held when the run has stopped");
-        releaseAck.SetResult();
+        WireToGateLateDurableAck ack = await ObserveLateAckAsync(
+            harness,
+            late,
+            () =>
+            {
+                releaseAck.SetResult();
+                return Task.CompletedTask;
+            },
+            token);
 
-        await WaitForLateAckAsync(harness, late, token);
-        await WaitForAcknowledgedOnFileAsync(harness, late, token);
-        await WaitForLateAckLogAsync(harness, late, LogSeverity.Information, "现记为已确认", token);
+        Assert.Equal(WireToGateLateDurableAckOutcome.Acknowledged, ack.Outcome);
+        await AssertAcknowledgedOnFileAsync(harness, late, token);
+        AssertLateAckLogged(harness, late, LogSeverity.Information, "现记为已确认");
         Assert.True(harness.Client.Current.Connected, "the late ack must not end the session");
 
         await harness.WaitForInboundAsync("OperationResult", token);
@@ -240,6 +248,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
         AssertWireSlot(result, 2, "UNKNOWN", ["SLOT_FAULT_DECLARED"]);
         Assert.DoesNotContain(harness.Server.Received, item => item.Connection != 1);
     }
+
+    private static int ProgressCount(Harness harness) =>
+        harness.Server.ReceivedEnvelopes.Count(envelope => envelope.MessageType == "OperationProgress");
 
     /// <summary>
     /// 判定不生效之一，「操作员恰好关门闭环」（<c>CV-SLOT-FAULT-DECLARATION-NOT-APPLICABLE</c>）：闭环结果已经写进发件箱

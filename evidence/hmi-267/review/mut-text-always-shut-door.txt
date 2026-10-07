@@ -1,0 +1,22 @@
+[xUnit.net 00:00:02.14]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACommandOverADoorThatNeedsRepairIsRefusedAndTheOperatorIsSentToMaintenance(cause: "unreadable", expectedCause: "3号仓门锁状态读不到") [FAIL]
+[xUnit.net 00:00:02.31]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACommandOverADoorThatNeedsRepairIsRefusedAndTheOperatorIsSentToMaintenance(cause: "stale", expectedCause: "IO 读数过期或已断开，无法确认3号仓的门锁状态") [FAIL]
+[xUnit.net 00:00:02.53]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACommandOverADoorThatNeedsRepairIsRefusedAndTheOperatorIsSentToMaintenance(cause: "output", expectedCause: "3号仓开锁输出未复位") [FAIL]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "本车已拒收新的仓位命令，未打开任何仓门。3号仓的门可能还开着，请先确认3号仓的门已关好，关好后这条命"···
+Not found: "3号仓门锁状态读不到"
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACommandOverADoorThatNeedsRepairIsRefusedAndTheOperatorIsSentToMaintenance(String cause, String expectedCause) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.DoorNeedsRepair.cs:line 59
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "本车已拒收新的仓位命令，未打开任何仓门。3号仓的门可能还开着，请先确认3号仓的门已关好，关好后这条命"···
+Not found: "IO 读数过期或已断开，无法确认3号仓的门锁状态"
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACommandOverADoorThatNeedsRepairIsRefusedAndTheOperatorIsSentToMaintenance(String cause, String expectedCause) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.DoorNeedsRepair.cs:line 59
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "本车已拒收新的仓位命令，未打开任何仓门。3号仓的门可能还开着，请先确认3号仓的门已关好，关好后这条命"···
+Not found: "3号仓开锁输出未复位"
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACommandOverADoorThatNeedsRepairIsRefusedAndTheOperatorIsSentToMaintenance(String cause, String expectedCause) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.DoorNeedsRepair.cs:line 59
+Failed!  - Failed:     3, Passed:     1, Skipped:     0, Total:     4, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

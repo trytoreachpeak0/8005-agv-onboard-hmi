@@ -1,0 +1,6 @@
+== run1
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+== run2
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+== run3
+Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

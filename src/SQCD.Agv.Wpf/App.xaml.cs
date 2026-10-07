@@ -302,6 +302,8 @@ public partial class App : System.Windows.Application, IDisposable
                 UnableToChargeWiring.Configure(viewModel, _wireToGateBusiness);
                 // 扣住等待现场确认的服务端恢复命令（8005-agv-onboard-hmi#239）。接线在 HeldRecoveryCommandWiring 里，G2 夹具调的是同一个方法。
                 HeldRecoveryCommandWiring.Configure(viewModel, _wireToGateBusiness);
+                // 服务端拒收恢复结果后，维护人员现场核对、人工结束那份恢复的入口（8005-agv-onboard-hmi#254）。
+                ConflictedRecoveryWiring.Configure(viewModel, _wireToGateBusiness);
                 viewModel.StationDepartureCountdownTextOverride =
                     _wireToGateBusiness.DescribeExpiredStationDeadline;
                 _wireToGateBusiness.Start();

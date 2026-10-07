@@ -1,0 +1,14 @@
+# onboard-hmi#270 确定性对照：替身在 LoadCancellationStartRequested 授权前等 1.5 秒（本地注入，未提交，已写回原内容）
+# 重现 CI run 37440854933 第 1 次尝试的时序：装货取消落在进度确认（旧写法固定延迟 1 秒）之后
+## old = 4bbbbfb（改动前）
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAckArrivingAfterALoadCancellationAbortedItsSendIsTakenAndTheSessionGoesOn [16 s]
+  Error Message:
+   Timed out after 10s waiting for: the late ack of b7133fc2-8c5d-345d-9ab2-d01486537a42 to be logged (Information, 现记为已确认)
+Total tests: 1
+     Failed: 1
+exit=1
+## new = ab9a877（本票）
+  Passed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAckArrivingAfterALoadCancellationAbortedItsSendIsTakenAndTheSessionGoesOn [4 s]
+Total tests: 1
+     Passed: 1
+exit=0

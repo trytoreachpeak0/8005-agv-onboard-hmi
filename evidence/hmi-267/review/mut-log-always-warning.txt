@@ -1,0 +1,8 @@
+[xUnit.net 00:00:03.05]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACommandOverADoorNotProvenShutIsRefusedUntilTheDoorIsShut [FAIL]
+  Error Message:
+   Assert.Equal() Failure: Collections differ
+                    ↓ (pos 1)
+Expected: [Warning, Debug, Debug]
+Actual:   [Warning, Warning, Warning]
+                    ↑ (pos 1)
+Failed!  - Failed:     1, Passed:     3, Skipped:     0, Total:     4, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

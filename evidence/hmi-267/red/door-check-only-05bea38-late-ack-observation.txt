@@ -1,0 +1,14 @@
+OBSERVE
+before vector=LOAD_COMPENSATION unsettled=9b9b9b9b-9b9b-4b9b-8b9b-9b9b9b9b9b9b ctx=9b9b9b9b-9b9b-4b9b-8b9b-9b9b9b9b9b9b cp=SafeFinishReached
+after vector= unsettled= ctx= cp=ResultRecorded pending=1
+Information 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=Ready，reasonCodes=[]，safetyStateVersion=2。
+Information 新仓位操作从空白日志簿起步，清除了上一次记录：attempt=9b9b9b9b-9b9b-4b9b-8b9b-9b9b9b9b9b9b，previousAttempt=33333333-3333-4333-8333-333333333333，activeUnlockSlots=[]（已确认关好），vector=LOAD_COMPENSATION，vectorId=bfd3a029-4348-de5d-a6c6-4c4ec1abc5a8。
+Information 收到SessionReadiness：messageId=26d5a655-620b-493e-b634-1be60f0e64c3，generation=1，readiness=RECOVERY_REQUIRED，reasonCodes=[SESSION_RECOVERY_REQUIRED]，acceptedSafetyStateVersion=3。
+Information 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=3。
+Information 判恢复入口：generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，subject=Load/9d9d9d9d-9d9d-4d9d-8d9d-9d9d9d9d9d9d/9b9b9b9b-9b9b-4b9b-8b9b-9b9b9b9b9b9b（在途操作），recoveryVector=LOAD_COMPENSATION，recoverySession=none，faultCargoHandoff=False。
+Information 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=3。
+Information 收到迟到的DurableAck：messageType=LoadCompensationResult，messageId=7fc9af38-a466-2f5f-a1ad-dc3b3a952048，key=recovery-vector-result:LOAD_COMPENSATION:bfd3a029-4348-de5d-a6c6-4c4ec1abc5a8，contentSha256=637d599e4bf1df12dd662cb69878fc534d4c6a0b36a542dae3b178638babcc68，这条消息的等待已经结束（超时或随执行中止），现记为已确认，会话继续。
+Information 恢复向量结果的DurableAck不在首次发送时到达，按发件箱已确认的结果收尾：type=LOAD_COMPENSATION，id=bfd3a029-4348-de5d-a6c6-4c4ec1abc5a8，outcome=ALL_EMPTY，messageId=7fc9af38-a466-2f5f-a1ad-dc3b3a952048。
+Information 收到SessionReadiness：messageId=fdae48a9-16d7-4a73-a315-c04413439b1a，generation=1，readiness=RECOVERY_REQUIRED，reasonCodes=[SESSION_RECOVERY_REQUIRED]，acceptedSafetyStateVersion=3。
+Information 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=3。
+EVENTS OPERATION_PROGRESS;OPERATION_RECOVERY_REQUIRED;RECOVERY_ACTION_SUBMITTED;OPERATION_PROGRESS;OPERATION_PROGRESS;OPERATION_PROGRESS;OPERATION_PROGRESS;OPERATION_PROGRESS;RESULT_ACK_PENDING;OPERATION_PROGRESS;OPERATION_PROGRESS;OPERATION_RECOVERY_REQUIRED;OPERATION_PROGRESS;RECOVERY_VECTOR_COMPLETED

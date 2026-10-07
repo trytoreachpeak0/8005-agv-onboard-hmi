@@ -1,0 +1,36 @@
+[xUnit.net 00:00:08.74]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AShownRecoveryEntryIsNotShownAgainWhenTheDoorsComeFreeASecondTime [FAIL]
+  Error Message:
+   Assert.Null() Failure: Value is not null
+Expected: null
+Actual:   WireToGateHmiOperationSnapshot { SlotOperationAttemptId = 44444444-0000-4444-8444-00000000000a, OperationType = Load, Slots = System.Collections.Generic.List`1[System.Int32], Stage = RecoveryRequired, Guidance = 装货操作未完成：1号仓，需要管理员恢复。, ObservedAt = 10/6/2026 1:50:04 PM +00:00 }
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.DriveAOwedWhileBHoldsTheDoorsAsync(Harness harness, FakeIoModuleClient io, RestoreWindowJournal window, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 288
+[xUnit.net 00:00:57.67]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryReachesTheOperatorOnceTheRunningCommandHasFinished [FAIL]
+  Error Message:
+   Assert.Null() Failure: Value is not null
+Expected: null
+Actual:   WireToGateHmiOperationSnapshot { SlotOperationAttemptId = 44444444-0000-4444-8444-00000000000a, OperationType = Load, Slots = System.Collections.Generic.List`1[System.Int32], Stage = RecoveryRequired, Guidance = 装货操作未完成：1号仓，需要管理员恢复。, ObservedAt = 10/6/2026 1:50:53 PM +00:00 }
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.DriveAOwedWhileBHoldsTheDoorsAsync(Harness harness, FakeIoModuleClient io, RestoreWindowJournal window, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 288
+[xUnit.net 00:01:06.46]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AWithheldRecoveryEntryDoesNotTakeTheScreenOffTheCommandThatNeedsRecoveryItself [FAIL]
+  Error Message:
+   Assert.Null() Failure: Value is not null
+Expected: null
+Actual:   WireToGateHmiOperationSnapshot { SlotOperationAttemptId = 44444444-0000-4444-8444-00000000000a, OperationType = Load, Slots = System.Collections.Generic.List`1[System.Int32], Stage = RecoveryRequired, Guidance = 装货操作未完成：1号仓，需要管理员恢复。, ObservedAt = 10/6/2026 1:51:01 PM +00:00 }
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.DriveAOwedWhileBHoldsTheDoorsAsync(Harness harness, FakeIoModuleClient io, RestoreWindowJournal window, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryEntryAfterDisplayFrees.cs:line 288
+[xUnit.net 00:01:11.66]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestoredRecoveryProjectionLeavesTheRunningCommandsDisplayAndClockAlone [FAIL]
+  Error Message:
+   Assert.Null() Failure: Value is not null
+Expected: null
+Actual:   WireToGateHmiOperationSnapshot { SlotOperationAttemptId = 44444444-0000-4444-8444-00000000000a, OperationType = Load, Slots = System.Collections.Generic.List`1[System.Int32], Stage = RecoveryRequired, Guidance = 装货操作未完成：1号仓，需要管理员恢复。, ObservedAt = 10/6/2026 1:51:07 PM +00:00 }
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestoredRecoveryProjectionLeavesTheRunningCommandsDisplayAndClockAlone() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryProjectionDisplay.cs:line 144
+[xUnit.net 00:01:16.75]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnOverdueIsStillRaisedOnTheRunningCommandsOwnUnlockAfterARestoredRecoveryProjection [FAIL]
+  Error Message:
+   Assert.Null() Failure: Value is not null
+Expected: null
+Actual:   WireToGateHmiOperationSnapshot { SlotOperationAttemptId = 44444444-0000-4444-8444-00000000000a, OperationType = Load, Slots = System.Collections.Generic.List`1[System.Int32], Stage = RecoveryRequired, Guidance = 装货操作未完成：1号仓，需要管理员恢复。, ObservedAt = 10/6/2026 1:51:12 PM +00:00 }
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnOverdueIsStillRaisedOnTheRunningCommandsOwnUnlockAfterARestoredRecoveryProjection() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.RecoveryProjectionDisplay.cs:line 236
+Failed!  - Failed:     5, Passed:    83, Skipped:     0, Total:    88, Duration: 1 m 15 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

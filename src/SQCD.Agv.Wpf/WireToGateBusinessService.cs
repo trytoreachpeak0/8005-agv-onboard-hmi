@@ -233,7 +233,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             clock,
             executorOptions,
             IsReopenPermitted,
-            _fatalFaultLatched);
+            _fatalFaultLatched,
+            LogJournalOverwrite,
+            VectorResultKeyOnFileAsync);
         // Both executors ask the latch themselves, immediately before each pulse
         // (8005-agv-onboard-hmi#191): the checks on this side run when a press is made or a command
         // arrives, and a latch can come after either.
@@ -859,6 +861,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         _session.StateChanged += OnSessionStateChanged;
         _session.JourneyChanged += OnJourneyChanged;
         _session.DurableMessageAbandoned += OnDurableMessageAbandoned;
+        _session.LateDurableAckReceived += OnLateDurableAckReceived;
         _ioModule.SnapshotChanged += OnIoSnapshotChanged;
         if (_observableVehicleSafetySignalProvider is not null)
         {
@@ -886,6 +889,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _session.StateChanged -= OnSessionStateChanged;
             _session.JourneyChanged -= OnJourneyChanged;
             _session.DurableMessageAbandoned -= OnDurableMessageAbandoned;
+            _session.LateDurableAckReceived -= OnLateDurableAckReceived;
             _ioModule.SnapshotChanged -= OnIoSnapshotChanged;
             if (_observableVehicleSafetySignalProvider is not null)
             {
@@ -1132,6 +1136,21 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
                 .ConfigureAwait(false);
 
+            // After a restart: a refused correction of the settled load keeps its entry shut (onboard-hmi#254). Read here
+            // because nothing else looks at that row until somebody presses.
+            if (state.RecoveryVector is null
+                && state.LastCompletedLoadOperationContext is { } settledLoad
+                && !IsCorrectionRefused(settledLoad.SlotOperationAttemptId)
+                && await IsCorrectionRefusedAsync(
+                        settledLoad.DemandId, settledLoad.SlotOperationAttemptId, cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                _logger.Write(
+                    LogSeverity.Information,
+                    nameof(WireToGateBusinessService),
+                    $"这次装货的修正结果已被服务端拒收并经人工核对结束，修正入口保持关闭：attempt={settledLoad.SlotOperationAttemptId}。");
+            }
+
             // A forced isolation is a device fact beside whatever else is on file, not instead of it:
             // it settled its own business side when it was acknowledged, and an operation or vector on
             // other slots is restored and settled below exactly as it would be without it. The
@@ -1146,15 +1165,27 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
 
             if (state.RecoveryVector is { } vector)
             {
-                if (WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector))
+                // Its result acknowledged by the handshake's replay, or before a restart, and never settled; or given
+                // up, and waiting for a maintainer's manual check (onboard-hmi#150, onboard-hmi#254).
+                if (!await SettleVectorByItsResultRowAsync(vector, cancellationToken).ConfigureAwait(false))
                 {
-                    await RestoreLoadCancellationBeforeSublotAsync(vector, cancellationToken)
-                        .ConfigureAwait(false);
+                    if (WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector))
+                    {
+                        RestoreLoadCancellationBeforeSublot(vector);
+                        return;
+                    }
+
+                    PublishRecoveryVectorRestored(vector);
                     return;
                 }
 
-                PublishRecoveryVectorRestored(vector);
-                return;
+                // Settled from its row. A vector forgotten that way leaves its attempt unsettled, and that attempt's entry
+                // is restored below in this same pass, as it would be on the next; one still on file waits for its check.
+                state = await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
+                if (state.RecoveryVector is not null)
+                {
+                    return;
+                }
             }
 
             WireToGateRecoveryOperationContext? context = state.OperationContext;
@@ -1800,6 +1831,19 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 // Recorded now, exactly as the sender would have.
                 await RecordAcknowledgedCompletedResultAsync(context, cancellationToken).ConfigureAwait(false);
                 return InterruptedOperationSettlement.TakenOver;
+            }
+
+            // A load cancellation over this attempt that has a result on file, with no vector on file any more: its
+            // conclusion is that cancellation's (ADR-cross-0046), so nothing is settled and nothing is sent. Reached
+            // when a maintainer ended a cancellation the server refused for good (onboard-hmi#254), and also when the
+            // cancellation's vector was replaced by a vector of another type that was then forgotten on a
+            // non-COMPLETED result -- either way the attempt is kept and its cancellation has concluded. NotSettled,
+            // not TakenOver: the operation is unfinished as far as this vehicle can tell, and the restore owes the
+            // recovery entry for it.
+            if (context.OperationType == OperationType.Load
+                && await IsCancellationConcludedAsync(context.DemandId, attemptId, cancellationToken).ConfigureAwait(false))
+            {
+                return InterruptedOperationSettlement.NotSettled;
             }
 
             // An unanswered load cancellation over this attempt: its conclusion is that cancellation's,
@@ -3346,6 +3390,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             return;
         }
 
+        // A recovery whose result the server refused for good is waiting for a maintainer's manual check; run, this
+        // command would start from a fresh journal over its vector (onboard-hmi#254 part 2).
+        if (await RefuseWhileRecoveryAwaitsManualCheckAsync(command, cancellationToken).ConfigureAwait(false))
+        {
+            return;
+        }
+
         lock (_operationAttemptGate)
         {
             if (!_operationAttempts.TryAdd(command.SlotOperationAttemptId, AttemptClaim.SlotOperation))
@@ -3416,6 +3467,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             await _operationDisplayGate.WaitAsync(cancellationToken).ConfigureAwait(false);
             ownsDisplay = true;
             Volatile.Write(ref _operationDisplayOwnerAttemptId, command.SlotOperationAttemptId);
+            WireToGateHmiOperationSnapshot? displayBefore = Volatile.Read(ref _currentOperationSnapshot);
             PublishOperation(
                 command,
                 WireToGateHmiOperationStage.Preparing,
@@ -3460,6 +3512,21 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     LogSeverity.Information,
                     nameof(WireToGateBusinessService),
                     $"装货已被授权的装货取消中止，不上报OperationResult：attempt={command.SlotOperationAttemptId}。");
+                return;
+            }
+            catch (WireToGateDoorNotProvenShutException refused)
+            {
+                // Refused before anything was written or pulsed (8005-agv-onboard-hmi#267): the screen goes back to
+                // what it showed before this command, and the server is told the command was not taken.
+                await RefuseOverDoorNotProvenShutAsync(command, refused, displayBefore, cancellationToken)
+                    .ConfigureAwait(false);
+                return;
+            }
+            catch (WireToGateRecoveryVectorUnsettledException refused)
+            {
+                // A recovery vector on file with no result of its own yet (8005-agv-onboard-hmi#267): refused the same way.
+                await RefuseOverUnsettledRecoveryVectorAsync(command, refused, displayBefore, cancellationToken)
+                    .ConfigureAwait(false);
                 return;
             }
 
@@ -4087,8 +4154,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             new WireToGateProblemPayload(reasonCode, null, null),
             _session.Current.CapabilityVersion,
             null);
-        // Called only while the session is not Ready, so it takes the send path that allows RecoveryRequired
-        // (onboard-hmi#127); the Ready-only path could never send it. Now that it is actually written, its messageId
+        // Called while the session is not Ready (onboard-hmi#127), and while it is Ready too: a command refused while a
+        // recovery waits for its manual check (onboard-hmi#150) or over a door or recovery vector still on file
+        // (onboard-hmi#267). So it takes the send path that allows RecoveryRequired as well as Ready; the Ready-only
+        // path could never send it in the first case. Now that it is actually written, its messageId
         // is derived from its own key, as the resume rejection's is: the attempt id is the OperationResult's
         // messageId, the outbox holds one row per messageId, and a rejection holding it would keep the result of
         // the same attempt, issued again once the session is ready, out of the outbox for good.

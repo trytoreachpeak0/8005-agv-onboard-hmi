@@ -386,6 +386,27 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void OnCloseConflictedRecoveryClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel is null
+            || MessageBox.Show(
+                _viewModel.ConflictedRecoveryText
+                + "\n\n请由已验证的维护人员到现场逐仓核对实物：货物在不在、仓门是否关好上锁。"
+                + "\n按「是」只结束本机这份恢复记录，不发送任何报文、不开任何仓门；两端不一致的结论已记入日志，以服务端为准。是否已完成核对？",
+                "人工核对后结束此恢复",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning,
+                MessageBoxResult.No) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        if (!await _viewModel.CloseConflictedRecoveryAsync())
+        {
+            ShowRecoveryFailure("未能结束此恢复。请确认维护人员身份与凭据已就绪后再试。", "结束恢复失败");
+        }
+    }
+
     private async void OnManualChargingReturnClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel is null
