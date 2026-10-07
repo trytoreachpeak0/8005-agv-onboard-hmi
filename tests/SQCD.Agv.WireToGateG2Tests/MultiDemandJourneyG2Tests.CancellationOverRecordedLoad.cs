@@ -108,9 +108,21 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => afterRestart.Business.CanRequestLoadCancellation,
             "the restarted vehicle to offer the cancellation on file",
             token);
-        Task<bool> again = afterRestart.Business.RequestLoadCancellationAsync("现场确认不装了。", token);
-        // Door 1 was left open by the run that died; the operator empties and shuts it, then slot 2 is pulsed.
+        // Door 1 was left open by the run that died; the operator empties and shuts it before pressing again. Shut after
+        // the press, it raced the resumed vector's first reading at its write-ahead fence and the slot came out UNKNOWN
+        // about half the time (review M-1).
         io.CloseDoor(0, cargo: false);
+
+        // While the cancellation is on file without a result of its own, the next demand's command is refused, door 1
+        // proven shut or not: hmi#267's "settle before start" holds again now that the vector stays (review L-2). The
+        // server sends it again once the cancellation has ended, and then it runs.
+        await SendSlotCommandAsync(afterRestart, DemandB, AttemptB, [5]);
+        await afterRestart.WaitUntilAsync(() => RefusalsOfB(afterRestart) == 1, "B's first copy to be refused", token);
+        Assert.Contains(afterRestart.Events, item => item.Kind == "RECOVERY_VECTOR_UNSETTLED");
+        Assert.Equal(unlocksBeforeRestart, io.UnlockCount);
+        AssertCancellationOnFile(ReadJournal(afterRestart, token), activeSlots: [1]);
+
+        Task<bool> again = afterRestart.Business.RequestLoadCancellationAsync("现场确认不装了。", token);
         await afterRestart.WaitUntilAsync(
             () => io.UnlockCount > unlocksBeforeRestart || again.IsCompleted,
             "slot 2 to be opened for emptying",
@@ -121,8 +133,94 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal("ALL_EMPTY", result.GetProperty("overallOutcome").GetString());
         AssertAttemptSettledWithTheCancellation(ReadJournal(afterRestart, token));
         Assert.Single(ReceivedPayloads(afterRestart, "OperationResult"));
+
+        int unlocksBeforeB = io.UnlockCount;
+        await SendSlotCommandAsync(afterRestart, DemandB, AttemptB, [5]);
+        await afterRestart.WaitUntilAsync(
+            () => ReadJournal(afterRestart, token).UnsettledSlotOperationAttemptId == AttemptB
+                && io.UnlockCount == unlocksBeforeB + 1,
+            "B's second copy to run once the cancellation has ended",
+            token);
+        Assert.Equal(1, RefusalsOfB(afterRestart));
         Assert.Empty(afterRestart.UiErrors);
     }
+
+    /// <summary>
+    /// 顺序 b 之后，取消的结果被服务端永久拒收，维护人员核对后结束（review S-1）：向量去掉，装货的尝试、上下文和活动开锁集
+    /// 留下。下一次握手后的还原里，中断结算先查到的是这次装货已确认的 COMPLETED 结果；修复之前它照此补记，把尝试结清、
+    /// 活动开锁集写成空。取消的结论在先：尝试留着、不报装货结果、欠恢复入口。门开、门关两种。
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect(bool doorLeftOpen)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        TaskCompletionSource resultAckHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using Harness harness = await StartCancellationStopAsync(
+            io,
+            Harness.NewJournalPath(),
+            server =>
+            {
+                server.OperationResultAckHold = resultAckHeld.Task;
+                server.ProtocolProblemByMessageType = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["LoadCancellationResult"] = "BUSINESS_ID_CONTENT_CONFLICT"
+                };
+            },
+            token);
+        using ReleaseOnExit releaseAck = new(() => resultAckHeld.TrySetResult());
+
+        Task<bool> press = await PrepareCancellationThenAcknowledgeLoadResultAsync(harness, io, resultAckHeld, token);
+        if (doorLeftOpen)
+        {
+            // Door 1's lock feedback goes unreadable while it stands open: the cancellation ends UNKNOWN over it.
+            io.SetUnreadable(0);
+        }
+        else
+        {
+            await EmptyBothSlotsAsync(harness, io, press, firstCancellationPulse: 3, token);
+        }
+
+        await Record.ExceptionAsync(() => press);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanCloseConflictedRecoveryAfterReview,
+            "the refused cancellation to wait for a maintainer's manual check",
+            token);
+        Assert.True(await harness.Business.CloseConflictedRecoveryAfterReviewAsync(token));
+        WireToGateRecoveryState ended = ReadJournal(harness, token);
+        Assert.Null(ended.RecoveryVector);
+        Assert.Equal(AttemptA, ended.UnsettledSlotOperationAttemptId);
+        Assert.Equal(AttemptA, ended.OperationContext?.SlotOperationAttemptId);
+        int[] activeWhenEnded = [.. ended.ActiveUnlockSlots];
+        Assert.Equal(doorLeftOpen ? [1] : [], activeWhenEnded);
+
+        int restoresBefore = RestoredEntryLines(harness);
+        await harness.Session.Client.DisconnectAsync();
+        await harness.Session.Client.ConnectAndRecoverAsync(token);
+        await harness.WaitUntilAsync(
+            () => RestoredEntryLines(harness) > restoresBefore
+                || ReadJournal(harness, token).UnsettledSlotOperationAttemptId is null,
+            "the restore to owe the recovery entry, or to settle the attempt",
+            token);
+
+        WireToGateRecoveryState after = ReadJournal(harness, token);
+        Assert.Equal(AttemptA, after.UnsettledSlotOperationAttemptId);
+        Assert.Equal(activeWhenEnded, after.ActiveUnlockSlots);
+        Assert.NotEqual(WireToGateRecoveryCheckpoint.ResultRecorded, after.ProvenRecoveryCheckpoint);
+        Assert.False(harness.Business.CanRequestLoadCorrection);
+        Assert.Single(ReceivedPayloads(harness, "OperationResult"));
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>The restore's projection of an unfinished attempt: the line that puts the recovery entry up.</summary>
+    private static int RestoredEntryLines(Harness harness) =>
+        harness.Events.Count(item => item.Kind == "OPERATION_RECOVERY_REQUIRED"
+            && item.Message.Contains("操作未完成", StringComparison.Ordinal)
+            && item.Message.Contains("需要管理员恢复", StringComparison.Ordinal));
 
     /// <summary>
     /// 顺序 a：装货结果先记录（尝试已结清），取消的准备写入在后，把尝试号写回未结——向量持有自己的尝试，与对已记录
