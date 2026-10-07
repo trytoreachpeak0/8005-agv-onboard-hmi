@@ -104,6 +104,9 @@ public sealed partial class MultiDemandJourneyG2Tests
         // and gives the display up before its result is even sent, so B starts while A is still
         // waiting on an acknowledgement that never comes.
         io.SetUnreadable(0);
+        // A's slot 1 is left in doubt, so B's first copy is refused; the door is shut and B sent again
+        // (onboard-hmi#267).
+        await RefuseBOverAsDoorThenResendOnceShutAsync(harness, io, token);
         await harness.WaitUntilAsync(
             () => window!.PreparedWriteHeld,
             "B to reach its own Prepared write",
@@ -119,8 +122,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             "A's restore to read the journal while A is still the unsettled attempt",
             token);
 
-        // The operator shuts A's door; only then can B open one beside it (REQ-0357).
-        io.CloseDoor(0, cargo: true);
+        // A's door was shut before B was sent again (REQ-0357); B's write goes on.
         window!.Release();
         await harness.WaitUntilAsync(
             () => harness.Business.CurrentExpectedActionWait?.SlotOperationAttemptId == AttemptB
@@ -157,7 +159,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             },
             token);
 
-        AssertNotRefused(harness);
+        AssertOnlyBsFirstCopyRefused(harness);
         Assert.Empty(harness.UiErrors);
     }
 
@@ -192,6 +194,9 @@ public sealed partial class MultiDemandJourneyG2Tests
         await WaitForBothCommandsToReachTheVehicleAsync(harness, token);
 
         io.SetUnreadable(0);
+        // A's slot 1 is left in doubt, so B's first copy is refused; the door is shut and B sent again
+        // (onboard-hmi#267).
+        await RefuseBOverAsDoorThenResendOnceShutAsync(harness, io, token);
         await harness.WaitUntilAsync(
             () => window!.PreparedWriteHeld,
             "B to reach its own Prepared write",
@@ -207,7 +212,6 @@ public sealed partial class MultiDemandJourneyG2Tests
             "A's restore to read the journal while A is still the unsettled attempt",
             token);
 
-        io.CloseDoor(0, cargo: true);
         window!.Release();
         await harness.WaitUntilAsync(
             () => harness.Business.CurrentExpectedActionWait?.SlotOperationAttemptId == AttemptB
@@ -232,6 +236,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Null(harness.Events.Single(item => item.Message == RecoveryRestoredLine).Operation);
         Assert.NotNull(OverdueFor(harness, 5, threshold));
         Assert.Equal(bUnlockedAt, harness.Business.CurrentExpectedActionWait?.FirstUnlockAt);
+        AssertOnlyBsFirstCopyRefused(harness);
         Assert.Empty(harness.UiErrors);
     }
 

@@ -2079,12 +2079,17 @@ public sealed partial class WireToGateSlotOperationExecutorTests
         private TestFixture(
             SimulationIo io,
             SqliteWireToGateJournal journal,
-            WireToGateSlotOperationExecutor executor)
+            WireToGateSlotOperationExecutor executor,
+            List<WireToGateJournalOverwrite> overwrites)
         {
             Io = io;
             Journal = journal;
             Executor = executor;
+            Overwrites = overwrites;
         }
+
+        /// <summary>Every journal a new operation replaced, as the executor told it (onboard-hmi#267).</summary>
+        public List<WireToGateJournalOverwrite> Overwrites { get; }
 
         public SimulationIo Io { get; }
 
@@ -2105,6 +2110,7 @@ public sealed partial class WireToGateSlotOperationExecutorTests
             SqliteWireToGateJournal journal = new(Path.Combine(directory, "journal.db"));
             await journal.InitializeAsync(cancellationToken);
             SimulationIo io = new(initialCargo, finalCargo);
+            List<WireToGateJournalOverwrite> overwrites = [];
             WireToGateSlotOperationExecutor executor = new(
                 io,
                 journal,
@@ -2115,8 +2121,9 @@ public sealed partial class WireToGateSlotOperationExecutorTests
                     TimeSpan.FromSeconds(5),
                     TimeSpan.FromMilliseconds(1),
                     TimeSpan.FromSeconds(1)),
-                () => true);
-            return new TestFixture(io, journal, executor);
+                () => true,
+                journalOverwritten: overwrites.Add);
+            return new TestFixture(io, journal, executor, overwrites);
         }
 
         public async ValueTask DisposeAsync()
@@ -2239,6 +2246,33 @@ public sealed partial class WireToGateSlotOperationExecutorTests
                         .Select(index => LockerSnapshot.Unknown(index, DateTimeOffset.UtcNow))
                         .ToArray(),
                     DateTimeOffset.UtcNow);
+            }
+        }
+
+        /// <summary>The door shut and locked, its unlock output reset, in a fresh reading.</summary>
+        public void CloseDoor(int slotIndex)
+        {
+            lock (_sync)
+            {
+                UpdateLocker(slotIndex, locker => locker with
+                {
+                    LockFeedbackRaw = true,
+                    UnlockOutputRaw = false,
+                    ObservedAt = DateTimeOffset.UtcNow
+                });
+            }
+        }
+
+        /// <summary>Every slot reads as it does now, but the reading is <paramref name="age"/> old.</summary>
+        public void MakeStale(TimeSpan age)
+        {
+            lock (_sync)
+            {
+                DateTimeOffset then = DateTimeOffset.UtcNow - age;
+                CurrentSnapshot = new IoSnapshot(
+                    true,
+                    _lockers.Select(locker => locker with { ObservedAt = then }).ToArray(),
+                    then);
             }
         }
 

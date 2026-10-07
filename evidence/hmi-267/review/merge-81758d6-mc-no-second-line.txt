@@ -1,0 +1,8 @@
+[xUnit.net 00:00:12.45]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ALateVectorAcknowledgementLeavesAnotherAttemptOnFile [FAIL]
+  Error Message:
+   Timed out after 5s waiting for: the late acknowledgement to settle the vector alone
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.RecoveryVectorHarness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.cs:line 1883
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ALateVectorAcknowledgementLeavesAnotherAttemptOnFile() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.DoorNotProvenShut.cs:line 258
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ALateVectorAcknowledgementLeavesAnotherAttemptOnFile() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.DoorNotProvenShut.cs:line 271
+Failed!  - Failed:     1, Passed:     1, Skipped:     0, Total:     2, Duration: 12 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

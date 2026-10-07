@@ -1,0 +1,9 @@
+== run1
+[xUnit.net 00:00:09.40]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheRunningDemandsUnknownResultIsShownBeforeTheQueuedCommandTakesOver [FAIL]
+  Error Message:
+   Timed out after 5s waiting for: A's acknowledged result to reach the operator. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 620
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheRunningDemandsUnknownResultIsShownBeforeTheQueuedCommandTakesOver() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.QueuedSlotCommandDisplay.cs:line 153
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheRunningDemandsUnknownResultIsShownBeforeTheQueuedCommandTakesOver() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi267-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.QueuedSlotCommandDisplay.cs:line 165
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 8 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
