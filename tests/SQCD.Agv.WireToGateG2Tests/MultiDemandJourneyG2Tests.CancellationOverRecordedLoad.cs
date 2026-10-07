@@ -20,13 +20,13 @@ public sealed partial class MultiDemandJourneyG2Tests
         FakeIoModuleClient io = new() { OperatorNeverActs = true };
         await using Harness harness = await StartCancellationStopAsync(
             io,
-            token,
             server =>
             {
                 server.RespondToLoadCancellationRequests = true;
                 server.LoadCancellationAuthorizedSlots = [1, 2];
                 server.LoadCancellationAuthorizationHold = authorizationHeld.Task;
-            });
+            },
+            token);
         using ReleaseOnExit releaseAuthorization = new(() => authorizationHeld.TrySetResult());
 
         await SendSlotCommandAsync(harness, DemandA, AttemptA, [1, 2]);
@@ -59,7 +59,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
         WireToGateRecoveryState after = ReadJournal(harness, token);
         Dump("after-prepare", after);
-        TestContext.Current.SendDiagnosticMessage($"probe press-completed={press.IsCompleted} unlocks={io.UnlockCount}");
+        TestContext.Current.TestOutputHelper!.WriteLine($"probe press-completed={press.IsCompleted} unlocks={io.UnlockCount}");
     }
 
     /// <summary>
@@ -76,13 +76,13 @@ public sealed partial class MultiDemandJourneyG2Tests
         FakeIoModuleClient io = new() { OperatorNeverActs = true };
         await using Harness harness = await StartCancellationStopAsync(
             io,
-            token,
             server =>
             {
                 server.RespondToLoadCancellationRequests = true;
                 server.LoadCancellationAuthorizedSlots = [1, 2];
                 server.OperationResultAckHold = resultAckHeld.Task;
-            });
+            },
+            token);
         using ReleaseOnExit releaseAck = new(() => resultAckHeld.TrySetResult());
 
         await SendSlotCommandAsync(harness, DemandA, AttemptA, [1, 2]);
@@ -95,7 +95,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             "the load's COMPLETED result to be held unacknowledged",
             token);
         Dump("result-held", ReadJournal(harness, token));
-        TestContext.Current.SendDiagnosticMessage(
+        TestContext.Current.TestOutputHelper!.WriteLine(
             $"probe entry-open={harness.Business.CanRequestLoadCancellation}");
 
         Task<bool> press = harness.Business.RequestLoadCancellationAsync("现场确认不装了。", token);
@@ -104,7 +104,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             "the prepare write, or the press to end",
             token);
         Dump("after-prepare", ReadJournal(harness, token));
-        TestContext.Current.SendDiagnosticMessage($"probe press-completed={press.IsCompleted} unlocks={io.UnlockCount}");
+        TestContext.Current.TestOutputHelper!.WriteLine($"probe press-completed={press.IsCompleted} unlocks={io.UnlockCount}");
         if (press.IsCompleted)
         {
             return;
@@ -121,14 +121,14 @@ public sealed partial class MultiDemandJourneyG2Tests
         }
         catch (Xunit.Sdk.FailException)
         {
-            TestContext.Current.SendDiagnosticMessage("probe the vector stayed on file");
+            TestContext.Current.TestOutputHelper!.WriteLine("probe the vector stayed on file");
         }
         Dump("after-late-ack", ReadJournal(harness, token));
-        TestContext.Current.SendDiagnosticMessage($"probe unlocks={io.UnlockCount}");
+        TestContext.Current.TestOutputHelper!.WriteLine($"probe unlocks={io.UnlockCount}");
     }
 
     private static void Dump(string label, WireToGateRecoveryState state) =>
-        TestContext.Current.SendDiagnosticMessage(
+        TestContext.Current.TestOutputHelper!.WriteLine(
             $"probe {label}: unsettled={state.UnsettledSlotOperationAttemptId ?? "null"} "
             + $"checkpoint={state.ProvenRecoveryCheckpoint} active=[{string.Join(",", state.ActiveUnlockSlots)}] "
             + $"operationContext={state.OperationContext?.SlotOperationAttemptId ?? "null"} "
@@ -138,8 +138,8 @@ public sealed partial class MultiDemandJourneyG2Tests
 
     private static async Task<Harness> StartCancellationStopAsync(
         FakeIoModuleClient io,
-        CancellationToken token,
-        Action<FakeControlServer> configure)
+        Action<FakeControlServer> configure,
+        CancellationToken token)
     {
         Harness harness = await Harness.StartAsync(
             server =>
