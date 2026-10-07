@@ -1260,7 +1260,10 @@ public sealed partial class WireToGateG2Tests
 
         // Every ack this test needs does come; the timeout only decides whether a stall can make one
         // count as missing. Kept under the hang guard, so a result that is never acknowledged still
-        // ends in RESULT_ACK_PENDING rather than in the guard.
+        // ends in RESULT_ACK_PENDING rather than in the guard. 30 s is this test's alone: a production
+        // configuration must keep the timeout below WireToGateSessionService.MaximumHeartbeatInterval
+        // (WireToGateSettings validation, Configuration.cs), so nothing here says whether an ack
+        // arrives in time under the production timeout.
         TimeSpan messageTimeout = TimeSpan.FromSeconds(30);
 
         WireToGateSessionService NewSession() => new(
@@ -1329,7 +1332,8 @@ public sealed partial class WireToGateG2Tests
             // handshake, this is where that shows, and the wait it then needs is an event, not a poll.
             Assert.True(
                 server.ReceivedEnvelopes.Count(item => item.MessageType == "OperationResult") == 2,
-                "No OperationResult was replayed by the handshake after the restart. Received: "
+                "Expected exactly 2 OperationResults (original + one replay) once the handshake after the restart "
+                + "returned. Received: "
                 + string.Join(", ", server.ReceivedEnvelopes.Select(item => $"{item.Connection}:{item.MessageType}")));
             Assert.True(session.Current.Connected);
         }
