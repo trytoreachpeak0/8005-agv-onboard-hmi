@@ -1,0 +1,11 @@
+Schema conformance (protocol-v3.0.0 SUPERSEDING_CANDIDATE): 20230 lines, 20099 distinct, 60 message types; 0 distinct violations, 4 on file; schema compilation 82638 ms, validation 7123 ms.
+DELIBERATE SCHEMA VIOLATION (ManualStationClearanceG2Tests.ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown, ManualStationClearanceG2Tests.ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown) x1: ManualChargingReturnToServiceResult sent by synthetic-peer FakeControlServer.SendCommandAsync
+  #/payload/outcome [type] Validation type - should have been 'string' but was 'Number'. actual: 5
+  #/payload/outcome [enum] Validation enum - did not validate against the enumeration. actual: 5
+DELIBERATE SCHEMA VIOLATION (ManualStationClearanceG2Tests.AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable, ManualStationClearanceG2Tests.AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable) x1: ManualStationClearanceConfirmationResult sent by synthetic-peer FakeControlServer.SendCommandAsync
+  #/payload/outcome [type] Validation type - should have been 'string' but was 'Number'. actual: 5
+  #/payload/outcome [enum] Validation enum - did not validate against the enumeration. actual: 5
+DELIBERATE SCHEMA VIOLATION (UnableToChargeFieldConfirmationG2Tests.AResultThatContradictsItselfOrTheSchemaIsRefusedAndThePressEndsAsUnknown) x1: UnableToChargeFieldConfirmationResult sent by synthetic-peer FakeControlServer.CreateEnvelope <- FakeControlServer.HandleUnableToChargeFieldConfirmationRequestedAsync <- FakeControlServer.HandleConnectionAsync
+  #/payload/chargingPolicyDecision [anyOf] Validation anyOf - did not validate against the schema. actual: "CHARGE_ELSEWHERE"
+DELIBERATE SCHEMA VIOLATION (MultiDemandJourneyG2Tests.AClosedLoadingPhaseWithoutAReasonIsStillRefusedAndLeavesNoHalfState) x1: VehicleBusinessStateSnapshot sent by synthetic-peer FakeControlServer.CreateJourneyEnvelope <- FakeControlServer.SendJourneySnapshotAsync
+  #/payload/loadingPhase [anyOf] Validation anyOf - did not validate against the schema. actual: {"state":"CLOSED","cargoHoldingDeadlineAt":null,"closedReason":null}
