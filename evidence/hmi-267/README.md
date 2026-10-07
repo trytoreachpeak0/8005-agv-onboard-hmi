@@ -89,3 +89,16 @@
   - 本票加的拒收与收尾一条都没有出现："拒收SlotOperationCommand"、"日志簿记录的仓门未能确认已关好"、"恢复向量还没有它自己的结果"、"新仓位操作替换了日志簿"、"先收尾在案的恢复向量"、"未结作业已不是它自己的"、`RECOVERY_BLOCKED` 都是 0 次。正常流程里没有误拦。
   - "判恢复入口"那几行在几次重连之间判断正常，补偿之后 `recoveryVector=none`。
 - `commit-samples.csv`：vm01 已提交内存的采样，59 次，在 4.57 到 7.7 GiB 之间（上限 16 GiB）。
+
+## 6. 本机全量 ONBOARD_HMI_G2：`g2-full-c7bd350/`
+
+- 命令：`pwsh -File scripts/run-w2g-g2.ps1 -ProtocolRoot <protocol-v2.0.0 的普通克隆> -EvidenceRoot <工作区外的 scratch 目录>`。没有传 `-Slice`，跑的是整个解决方案。
+- 代码：审过的 `eaa0f03` 加真装置证据提交，即 `c7bd350`；两者之间证据目录以外 0 行差异。
+- 结论：PASS，脚本退出码 0。
+- `logs/dotnet-test-release.log`：
+  - `SQCD.Agv.UnitTests`：`Passed!  - Failed:     0, Passed:   717, Skipped:     0, Total:   717`
+  - `SQCD.Agv.WireToGateG2Tests`：`Passed!  - Failed:     0, Passed:   707, Skipped:     0, Total:   707`
+  - 没有 `Test Assembly Cleanup Failure`。
+- `test-results/schema-conformance.txt`：`0 distinct violations, 4 on file`。4 条全是已登记的有意违规；`schema-violations.json` 里没有 `onFile` 为空的项。
+- `summary.json`：`status=PASS`，`hmi.commit` 是 `c7bd3509b43e4c2470f23dfa7af6f941eaed9dae`，`workingTreeStatus=[]`；协议 `protocol-v2.0.0`，`APPROVED_RELEASE`。
+- 整个目录原样保留，约 60 KB。
