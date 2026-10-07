@@ -1,0 +1,31 @@
+M1: 去掉「有接管同一尝试号的向量就不结清」（条件前加 false &&）
+exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestartAfterTheLateLoadAcknowledgementResumesTheCancellationOverItsOpenDoor [3 s]
+Expected: "44444444-0000-4444-8444-00000000000a"
+Actual:   null
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestartAfterTheLateLoadAcknowledgementResumesTheCancellationOverItsOpenDoor() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 92
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoadResultAcknowledgedAfterTheCancellationTookItsAttemptOverLeavesTheCancellationOnFile [539 ms]
+Expected: "44444444-0000-4444-8444-00000000000a"
+Actual:   null
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoadResultAcknowledgedAfterTheCancellationTookItsAttemptOverLeavesTheCancellationOnFile() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 46
+Failed!  - Failed:     2, Passed:     1, Skipped:     0, Total:     3, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+M2: 接管分支不设 LastCompletedLoadOperationContext
+    0 Error(s)
+exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoadResultAcknowledgedAfterTheCancellationTookItsAttemptOverLeavesTheCancellationOnFile [619 ms]
+Expected: "44444444-0000-4444-8444-00000000000a"
+Actual:   null
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoadResultAcknowledgedAfterTheCancellationTookItsAttemptOverLeavesTheCancellationOnFile() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 47
+Failed!  - Failed:     1, Passed:     2, Skipped:     0, Total:     3, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+M3: 接管分支不移除 PendingResults 里本次尝试的 OperationResult
+G2 三条（exit=0，存活：G2 路径上 COMPLETED 结果从不进待补发列表）
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+执行器级用例（exit=1，杀死）
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorResultUnderVectorTests.AResultAcknowledgedUnderAVectorClosesOnlyItsOwnShare [88 ms]
+Expected: <>z__ReadOnlySingleElementList<WireToGatePendingResult> [WireToGatePendingResult { MessageType = OperationResult, MessageId = cccccccc-cccc-4ccc-8ccc-cccccccccccc, BusinessId = cccccccc-cccc-4ccc-8ccc-cccccccccccc, ContentSha256 = cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc }]
+Actual:   List<WireToGatePendingResult>                           [WireToGatePendingResult { MessageType = OperationResult, MessageId = aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa, BusinessId = aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa, ContentSha256 = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb }, WireToGatePendingResult { MessageType = OperationResult, MessageId = cccccccc-cccc-4ccc-8ccc-cccccccccccc, BusinessId = cccccccc-cccc-4ccc-8ccc-cccccccccccc, ContentSha256 = cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc }]
+Failed!  - Failed:     1, Passed:     1, Skipped:     0, Total:     2, Duration: 381 ms - SQCD.Agv.UnitTests.dll (net8.0)
+
+每次变异都在提交后改文件内容、--no-incremental 构建 0 Error(s) 后再跑；还原为写回原文件内容。

@@ -1,4 +1,4 @@
-commit=d3d6ea1e74434e307bd6ba90c3167118ac637758 (tests on top, product unchanged)
+commit=d630c5c 测试在此提交，产品代码未改
 exit=1
   Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestartAfterTheLateLoadAcknowledgementResumesTheCancellationOverItsOpenDoor [3 s]
 Expected: "44444444-0000-4444-8444-00000000000a"
