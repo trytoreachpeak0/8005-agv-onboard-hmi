@@ -150,16 +150,19 @@ tests/SQCD.Agv.WireToGateG2Tests/RecoveryVectorG2Tests.CarriedOpenDoor.cs
   DIFF-fpbrings tests/SQCD.Agv.WireToGateG2Tests/RecoveryVectorG2Tests.CarriedOpenDoor.cs
   108 个文件里，其余 61 个 fp@28545a8 与 v3@22a98199 逐字节相同
 
-## 6. 差异文件里 fp 有、v3 没有的行是否都在 merge-base 上
-  src/SQCD.Agv.Application/WireToGateRecoveryVectorExecutor.cs removed=0 notInBase=0；v3 的票：#257 #253 #248 #246 
-  src/SQCD.Agv.Core/OnboardFailureClassification.cs removed=1 notInBase=0；v3 的票：#265 #248 #247 #225 
-  src/SQCD.Agv.Core/WireToGateRecovery.cs removed=0 notInBase=0；v3 的票：#265 #248 #247 #225 
-  src/SQCD.Agv.Infrastructure/SqliteWireToGateJournal.cs removed=0 notInBase=0；v3 的票：#265 #248 #247 #246 
-  src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs removed=50 notInBase=0；v3 的票：#268 #265 #248 #247 #246 
-  src/SQCD.Agv.Infrastructure/WireToGateSessionService.cs removed=0 notInBase=0；v3 的票：#265 #247 #246 
-  src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs removed=19 notInBase=0；v3 的票：#265 #248 #246 #225 
-  src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs removed=40 notInBase=0；v3 的票：#257 #248 #247 #246 #225 
-  src/SQCD.Agv.Wpf/WireToGateBusinessService.cs removed=12 notInBase=0；v3 的票：#265 #248 #247 #246 #225 
-  tests/SQCD.Agv.UnitTests/WireToGateRecoveryVectorExecutorTests.cs removed=1 notInBase=0；v3 的票：#257 #248 
-  tests/SQCD.Agv.WireToGateG2Tests/FakeIoModuleClient.cs removed=0 notInBase=0；v3 的票：#257 #248 
-  tests/SQCD.Agv.WireToGateG2Tests/LoadCancellationBeforeSublotG2Tests.cs removed=2 notInBase=0；v3 的票：#257 
+## 6. 差异文件里 fp 有、v3 没有的行（-U0 下的 `-` 行）是否都在 merge-base 上
+  三种计数（PR #277 审查 N1）：raw = git diff --numstat 的删除数；nonblank = 去掉空行；unique = 去重后的不同行。
+  逐行核对按 nonblank 做（grep -xF 对 merge-base 版本），notInBase 是核不到的行数。
+  src/SQCD.Agv.Application/WireToGateRecoveryVectorExecutor.cs raw=0 nonblank=0 unique=0 notInBase=0；v3 的票：#257 #253 #248 #246 
+  src/SQCD.Agv.Core/OnboardFailureClassification.cs raw=1 nonblank=1 unique=1 notInBase=0；v3 的票：#265 #248 #247 #225 
+  src/SQCD.Agv.Core/WireToGateRecovery.cs raw=0 nonblank=0 unique=0 notInBase=0；v3 的票：#265 #248 #247 #225 
+  src/SQCD.Agv.Infrastructure/SqliteWireToGateJournal.cs raw=0 nonblank=0 unique=0 notInBase=0；v3 的票：#265 #248 #247 #246 
+  src/SQCD.Agv.Infrastructure/WireToGateSessionClient.cs raw=53 nonblank=50 unique=44 notInBase=0；v3 的票：#268 #265 #248 #247 #246 
+  src/SQCD.Agv.Infrastructure/WireToGateSessionService.cs raw=0 nonblank=0 unique=0 notInBase=0；v3 的票：#265 #247 #246 
+  src/SQCD.Agv.Wpf/ViewModels/MainViewModel.cs raw=19 nonblank=19 unique=19 notInBase=0；v3 的票：#265 #248 #246 #225 
+  src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs raw=40 nonblank=40 unique=40 notInBase=0；v3 的票：#257 #248 #247 #246 #225 
+  src/SQCD.Agv.Wpf/WireToGateBusinessService.cs raw=12 nonblank=12 unique=12 notInBase=0；v3 的票：#265 #248 #247 #246 #225 
+  tests/SQCD.Agv.UnitTests/WireToGateRecoveryVectorExecutorTests.cs raw=1 nonblank=1 unique=1 notInBase=0；v3 的票：#257 #248 
+  tests/SQCD.Agv.WireToGateG2Tests/FakeIoModuleClient.cs raw=0 nonblank=0 unique=0 notInBase=0；v3 的票：#257 #248 
+  tests/SQCD.Agv.WireToGateG2Tests/LoadCancellationBeforeSublotG2Tests.cs raw=2 nonblank=2 unique=2 notInBase=0；v3 的票：#257 
+  合计 raw=128 nonblank=125 unique=119（unique 是各文件去重后的行数相加）

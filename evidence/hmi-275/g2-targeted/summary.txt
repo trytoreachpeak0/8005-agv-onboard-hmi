@@ -30,3 +30,9 @@ Failed!  - Failed:     1, Passed:   219, Skipped:     0, Total:   220, Duration:
 ## 第三轮：b823f9c
 RecoveryVectorG2Tests exit=0
 Passed!  - Failed:     0, Passed:   220, Skipped:     0, Total:   220, Duration: 2 m 59 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+## 实际跑了几次（PR #277 审查 N3，更正 627758a 提交标题里的「三轮」）
+- 另外五个类：各在 96f2a46 上整类跑了一次。
+- RecoveryVectorG2Tests：整类跑了三次，分别在 96f2a46（1 红）、d5a5b51（1 红）、b823f9c（全绿）；
+  另外在 b823f9c 上用 --filter 单跑过那一条一次（1/1），然后才整类跑第三次。
+- 入库的完整输出只有第一次（round1-*.txt）和第三次（round3-*.txt）；第二次只留了上面两行失败摘要。
