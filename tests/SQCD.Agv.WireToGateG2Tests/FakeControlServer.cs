@@ -1453,6 +1453,15 @@ public sealed class FakeControlServer : IAsyncDisposable
     public Action? BeforeRecoverySessionAnswer { get; set; }
 
     /// <summary>
+    /// Opens every recovery session under an id derived from its request, as the real server does
+    /// (<c>OnboardRecoveryCoordinator.OpenSessionAsync</c>: <c>StableGuid(requestId, "exception-recovery-session")</c>), instead
+    /// of the one fixed id. A test that opens a second session after the first closed needs it: the vehicle derives the
+    /// recovery action id from the session, so under the fixed id the second action would carry the first one's id and
+    /// its result key (8005-agv-onboard-hmi#278).
+    /// </summary>
+    public bool RecoverySessionIdPerRequest { get; set; }
+
+    /// <summary>
     /// The <c>slotOperationAttemptId</c> the <c>commandContentSha256</c> is computed over.
     /// </summary>
     /// <remarks>
@@ -2861,7 +2870,9 @@ public sealed class FakeControlServer : IAsyncDisposable
             return;
         }
 
-        string sessionId = "77777777-7777-4777-8777-777777777777";
+        string sessionId = RecoverySessionIdPerRequest
+            ? FakeControlServerIdentifiers.StableUuid($"{payload.GetProperty("requestId").GetString()}|exception-recovery-session")
+            : "77777777-7777-4777-8777-777777777777";
         await WriteEnvelopeAsync(
             context,
             CreateEnvelope(
