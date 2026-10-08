@@ -1,26 +1,45 @@
-head 4540c70e430fc2685e2595ca574372d8bebe12c7
+head 38dd5327afcf4c099d0257f4d6b656bce5025ee6
     0 Error(s)
     0 Error(s)
-MultiDemandJourneyG2Tests (filter FullyQualifiedName~MultiDemandJourneyG2Tests) exit=0
-Passed!  - Failed:     0, Passed:   109, Skipped:     0, Total:   109, Duration: 1 m 55 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+MultiDemandJourneyG2Tests (filter FullyQualifiedName~MultiDemandJourneyG2Tests) exit=1
+[xUnit.net 00:00:12.04]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheRunningDemandsUnknownResultIsShownBeforeTheQueuedCommandTakesOver [FAIL]
+Failed!  - Failed:     1, Passed:   111, Skipped:     0, Total:   112, Duration: 1 m 58 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
 MultiDemandViewModelTests (filter FullyQualifiedName~MultiDemandViewModelTests) exit=0
-Passed!  - Failed:     0, Passed:    24, Skipped:     0, Total:    24, Duration: 204 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+Passed!  - Failed:     0, Passed:    24, Skipped:     0, Total:    24, Duration: 323 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
 RecoveryEntryNotificationViewModelTests (filter FullyQualifiedName~RecoveryEntryNotificationViewModelTests) exit=0
-Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2, Duration: 85 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2, Duration: 138 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
 ExpectedActionOverdueViewModelTests (filter FullyQualifiedName~ExpectedActionOverdueViewModelTests) exit=0
-Passed!  - Failed:     0, Passed:     6, Skipped:     0, Total:     6, Duration: 94 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+Passed!  - Failed:     0, Passed:     6, Skipped:     0, Total:     6, Duration: 132 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
 FatalFaultLatchViewModelTests (filter FullyQualifiedName~FatalFaultLatchViewModelTests) exit=0
-Passed!  - Failed:     0, Passed:    13, Skipped:     0, Total:    13, Duration: 112 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+Passed!  - Failed:     0, Passed:    13, Skipped:     0, Total:    13, Duration: 179 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
 WireToGateLoadEndedByVectorTests (filter FullyQualifiedName~WireToGateLoadEndedByVectorTests) exit=0
-Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 38 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 56 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
 WireToGateTakenOverMarkerTests (filter FullyQualifiedName~WireToGateTakenOverMarkerTests) exit=0
-Passed!  - Failed:     0, Passed:     6, Skipped:     0, Total:     6, Duration: 38 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+Passed!  - Failed:     0, Passed:     6, Skipped:     0, Total:     6, Duration: 47 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
 RecoveryVectorG2Tests (filter FullyQualifiedName~RecoveryVectorG2Tests) exit=0
-Passed!  - Failed:     0, Passed:   193, Skipped:     0, Total:   193, Duration: 2 m 21 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+Passed!  - Failed:     0, Passed:   193, Skipped:     0, Total:   193, Duration: 2 m 35 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
 StationDeadlineExpiredG2Tests (filter FullyQualifiedName~StationDeadlineExpiredG2Tests) exit=0
-Passed!  - Failed:     0, Passed:    62, Skipped:     0, Total:    62, Duration: 1 m 13 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+Passed!  - Failed:     0, Passed:    62, Skipped:     0, Total:    62, Duration: 1 m 19 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
 ArchitectureTests (filter FullyQualifiedName~ArchitectureTests) exit=0
-Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 983 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
 SQCD.Agv.UnitTests (all) exit=0
-Passed!  - Failed:     0, Passed:   738, Skipped:     0, Total:   738, Duration: 17 s - SQCD.Agv.UnitTests.dll (net8.0)
+Passed!  - Failed:     0, Passed:   739, Skipped:     0, Total:   739, Duration: 18 s - SQCD.Agv.UnitTests.dll (net8.0)
 dotnet format --verify-no-changes exit=0
+--- the one red above, then the class three more times at the same head
+TheRunningDemandsUnknownResultIsShownBeforeTheQueuedCommandTakesOver: pre-existing on w2g/fp-v2-impl
+(MultiDemandJourneyG2Tests.QueuedSlotCommandDisplay.cs); alone 10/10 exit=0; class runs 2-4 below.
+Failure text not captured (the run above kept only the summary lines). Unrelated to this ticket is INFERRED, not read:
+it does not use CloseDoorAfterNextUnlock, and its own comment records load flakes (1 in 154 runs, review of #273).
+class run 2 exit=0 Passed!  - Failed:     0, Passed:   112, Skipped:     0, Total:   112
+class run 3 exit=0 Passed!  - Failed:     0, Passed:   112, Skipped:     0, Total:   112
+class run 4 exit=0 Passed!  - Failed:     0, Passed:   112, Skipped:     0, Total:   112
+--- the per-demand flakes of 44c128f and their fix (38dd532)
+At 44c128f the per-demand group (5 cases) went red about 1 run in 10, for two reasons, both in the G2 harness:
+1. NullReferenceException at MainViewModel.RecoveryDemandChoices.cs:175 -- no dispatcher in G2, so a journey
+   update and an operator event rebuilt RecoveryDemandChoices on two threads at once. Harness.OnUiThread now takes
+   one lock (the dispatcher's one-at-a-time); test-thread reads go through Harness.OnUi.
+2. HandOffAsync: Expected "HANDED_OFF", Actual "UNKNOWN" -- with OperatorNeverActs the fake waits for the shut door
+   at most OperationTimeout (2 s); a test thread waking late ran it out. FakeIoModuleClient.CloseDoorAfterNextUnlock
+   lets the executor's own wait shut the door.
+group of 5 cases, 30 runs at 38dd532: 30/30 exit=0
+mutations re-run at 38dd532: 26/26 killed, every build 0 Error(s) (mutation.txt)
