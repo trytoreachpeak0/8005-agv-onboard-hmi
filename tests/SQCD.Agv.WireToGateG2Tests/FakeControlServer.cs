@@ -730,6 +730,15 @@ public sealed class FakeControlServer : IAsyncDisposable
     public string? RecoverySessionRejectionReasonCode { get; set; }
 
     /// <summary>
+    /// When set, a recovery session request is checked the way the real server checks its scope
+    /// (<c>OnboardRecoveryCoordinator.ValidateSessionScopeAsync</c>): its <c>slots</c> must equal, in order, the target
+    /// slots of the latest operation of the demand it names, keyed here by demandId. A request naming a demand not in the
+    /// map, or other slots, is answered <c>ExceptionRecoverySessionRejected</c> with <c>RECOVERY_SCOPE_MISMATCH</c>. The
+    /// journey's Blocked stage, the server's other condition, is not modelled (8005-agv-onboard-hmi#209).
+    /// </summary>
+    public IReadOnlyDictionary<string, int[]>? RecoverySessionScopeByDemand { get; set; }
+
+    /// <summary>
     /// When set, every <c>RecoveryActionSubmitted</c> is answered with a <c>RecoveryActionRejected</c> carrying this
     /// reason code (8005-agv-onboard-hmi#255).
     /// </summary>
@@ -2848,7 +2857,21 @@ public sealed class FakeControlServer : IAsyncDisposable
     {
         BeforeRecoverySessionAnswer?.Invoke();
         JsonElement payload = request.GetProperty("payload");
-        if (RecoverySessionRejectionReasonCode is { } rejectionReasonCode)
+        string? rejectionReasonCode = RecoverySessionRejectionReasonCode;
+        if (rejectionReasonCode is null && RecoverySessionScopeByDemand is { } scopes)
+        {
+            int[] requestedSlots = payload.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()).ToArray();
+            string? requestedDemand = payload.TryGetProperty("demandId", out JsonElement requestedDemandId)
+                ? requestedDemandId.GetString()
+                : null;
+            if (requestedDemand is not null
+                && (!scopes.TryGetValue(requestedDemand, out int[]? targetSlots) || !requestedSlots.SequenceEqual(targetSlots)))
+            {
+                rejectionReasonCode = "RECOVERY_SCOPE_MISMATCH";
+            }
+        }
+
+        if (rejectionReasonCode is not null)
         {
             await WriteEnvelopeAsync(
                 context,
