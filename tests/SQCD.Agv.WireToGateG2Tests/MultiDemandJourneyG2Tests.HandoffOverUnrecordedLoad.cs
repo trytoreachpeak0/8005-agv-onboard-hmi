@@ -379,11 +379,20 @@ public sealed partial class MultiDemandJourneyG2Tests
             messageTimeout: TimeSpan.FromSeconds(3));
 
         await LoadBothSlotsOfAAsync(harness, io, token);
+        await harness.WaitUntilAsync(
+            () => harness.Logger.Entries.Any(entry => entry.Message.StartsWith(
+                "OperationResult暂未收到DurableAck", StringComparison.Ordinal)),
+            "the load's own wait for its acknowledgement to give up",
+            token);
         await HoldTheSessionForRecoveryAsync(harness, token);
+        // The restore's resend holds the attempt until it stops waiting; a restore that ran meanwhile would find the attempt
+        // in flight and leave it.
         await harness.WaitUntilAsync(
             () => ReceivedPayloads(harness, "OperationResult").Length == 2
+                && harness.Logger.Entries.Any(entry => entry.Message.StartsWith(
+                    "OperationResult重发一次后仍未收到DurableAck", StringComparison.Ordinal))
                 && harness.Business.CanRequestFaultCargoHandoff,
-            "the restore's resend of A's result, and the handoff entry over A",
+            "the restore's resend of A's result to give up, and the handoff entry over A",
             token);
 
         Assert.True(await harness.Business.RequestFaultCargoHandoffAsync("现场确认故障仓货物需要交接处理。", token));
@@ -398,7 +407,9 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
         AssertAttemptAndDoorKept(ReadJournal(harness, token));
 
-        // The next restore takes the marked branch: the result is sent once more, and this time acknowledged.
+        // The server lets the vehicle go, and the restore that readiness runs takes the marked branch: the result is sent
+        // once more, and this time acknowledged.
+        harness.Server.ReadinessReasonOverride = null;
         await harness.Server.SendSessionReadinessAsync();
         await harness.WaitUntilAsync(
             () => harness.Session.Journal.ReadOutgoingByDeduplicationKeyAsync($"operation-result:{AttemptA}", token)
