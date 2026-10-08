@@ -1,3 +1,12 @@
+# hmi#278 第一轮变异（0ffd173，审查之前）。每轮只改一处（PRE 三处），--no-incremental 重编，跑当时的 4 格 G2 与 4 格执行器单测，按 HEAD 整份写回。
+# PRE  三处判断全部退回、只留字段（修前行为）：ForgetSettledVector 不写标记；MarkResultRecordedAsync 的标记比较改 false；TrySettleInterruptedOperationAsync 的标记比较改 false。
+# M1   ForgetSettledVector 不写标记（TakenOverSlotOperationAttemptId 照抄原值）。
+# M2   MarkResultRecordedAsync 的「标记等于本尝试」改成 false。
+# M3   TrySettleInterruptedOperationAsync 的标记比较改成 false。
+# M4   SettleRecoveryVectorStateAsync 主分支删掉 TakenOverSlotOperationAttemptId = null。
+# M5   Recorded 删掉 TakenOverSlotOperationAttemptId = null。
+# 审查之后的代码与新增用例上重跑的一轮（含 X1、X2、X3、X4、M6、R6A、R6B）见 mutation-review.txt。
+
 === PRE (0ffd173)
 applied PRE
  3 files changed, 3 insertions(+), 9 deletions(-)
