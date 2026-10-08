@@ -745,6 +745,25 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// </summary>
     private readonly HashSet<string> _endedDemands = new(StringComparer.Ordinal);
 
+    /// <summary>The demand each opened recovery session named, for the forced recovery's result, which names none.</summary>
+    private readonly Dictionary<string, string> _sessionDemands = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Whether an acknowledged ending result -- a fault cargo handoff HANDED_OFF, a compensation or cancellation ALL_EMPTY, a
+    /// forced recovery MECHANICALLY_ISOLATED -- ends its demand. <c>false</c> models a result the server did not reconcile
+    /// (<c>OnboardRecoveryCoordinator</c>: <c>_NOT_RECONCILED</c>): the demand stays, and a session over it is opened again.
+    /// </summary>
+    public bool EndingResultsReconcile { get; set; } = true;
+
+    /// <summary>Called under <c>_sync</c>.</summary>
+    private void MarkEndedLocked(string demandId)
+    {
+        if (EndingResultsReconcile)
+        {
+            _endedDemands.Add(demandId);
+        }
+    }
+
     /// <summary>
     /// When set, every <c>RecoveryActionSubmitted</c> is answered with a <c>RecoveryActionRejected</c> carrying this
     /// reason code (8005-agv-onboard-hmi#255).
@@ -2284,11 +2303,10 @@ public sealed class FakeControlServer : IAsyncDisposable
                                 _operationsNeedingRecovery.Remove(settledAttempt);
                             }
 
-                            if (messageType == "FaultCargoRecoveryResult"
-                                && recoveryPayload.GetProperty("overallOutcome").GetString() == "HANDED_OFF"
+                            if (recoveryPayload.GetProperty("overallOutcome").GetString() is "HANDED_OFF" or "ALL_EMPTY"
                                 && recoveryPayload.GetProperty("demandId").GetString() is { } endedDemand)
                             {
-                                _endedDemands.Add(endedDemand);
+                                MarkEndedLocked(endedDemand);
                             }
                         }).ConfigureAwait(false);
                         break;
@@ -2304,6 +2322,21 @@ public sealed class FakeControlServer : IAsyncDisposable
                     case "LoadCorrectionResult":
                     case "ForcedMechanicalRecoveryResult":
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        if (messageType == "ForcedMechanicalRecoveryResult"
+                            && root.GetProperty("payload").GetProperty("outcome").GetString() == "MECHANICALLY_ISOLATED")
+                        {
+                            // The forced recovery's result carries no demand; its session named one.
+                            lock (_sync)
+                            {
+                                if (_sessionDemands.TryGetValue(
+                                        root.GetProperty("payload").GetProperty("exceptionRecoverySessionId").GetString()!,
+                                        out string? forcedDemand))
+                                {
+                                    MarkEndedLocked(forcedDemand);
+                                }
+                            }
+                        }
+
                         break;
                     case "ExceptionRecoverySessionRequested" when RespondToRecoveryRequests:
                         await HandleRecoverySessionRequestAsync(context, root).ConfigureAwait(false);
@@ -2922,6 +2955,14 @@ public sealed class FakeControlServer : IAsyncDisposable
         string sessionId = RecoverySessionIdPerRequest
             ? FakeControlServerIdentifiers.StableUuid($"{payload.GetProperty("requestId").GetString()}|exception-recovery-session")
             : "77777777-7777-4777-8777-777777777777";
+        if (payload.TryGetProperty("demandId", out JsonElement sessionDemand) && sessionDemand.GetString() is { } named)
+        {
+            lock (_sync)
+            {
+                _sessionDemands[sessionId] = named;
+            }
+        }
+
         await WriteEnvelopeAsync(
             context,
             CreateEnvelope(

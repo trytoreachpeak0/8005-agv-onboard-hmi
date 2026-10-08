@@ -206,37 +206,62 @@ public sealed partial class WireToGateBusinessService
     /// what an earlier one left (8005-agv-onboard-hmi#209 review S4).
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Fired from the journey handler and not awaited there. The screen re-reads its own copy on the same snapshot, possibly
     /// before this write lands, so a write that takes loads off tells the operator, which also makes the screen read again.
+    /// </para>
+    /// <para>
+    /// <b>The cached state is refreshed only when this writes.</b> The journal hands its settled callback the state it read
+    /// even when the change writes nothing, and every journey snapshot comes through here, so caching that read would refresh
+    /// the entry gates' copy at the first snapshot after a start -- earlier than anything did before, and earlier than the
+    /// worklist the screen names sublots from (review M1 of #209: <c>TheFallbackTargetIsTheSettledLoadOnlyWhileNothingIsArmed</c>
+    /// waited on the cache and then found no sublot to name). A change that writes nothing leaves the cache to the reads that
+    /// always refreshed it.
+    /// </para>
+    /// <para>
+    /// Not awaited, so nothing would see an exception it threw: every one is logged here, and the list stays as it was until
+    /// the next snapshot.
+    /// </para>
     /// </remarks>
     private async Task UpdateLoadsOnBoardForJourneyAsync(WireToGateJourneySnapshot journey)
     {
         int before = 0;
         int after = 0;
+        bool changed = false;
         try
         {
-            WireToGateRecoveryState? written = await UpdateRecoveryStateCachedAsync(
+            await _session.Journal
+                .UpdateRecoveryStateAsync(
                     state =>
                     {
+                        // Reset on entry: a change function may be evaluated more than once for one step.
+                        changed = false;
                         WireToGateRecoveryState next = state.WithLoadsOnBoardFor(journey);
                         if (ReferenceEquals(next, state))
                         {
                             return null;
                         }
 
+                        changed = true;
                         before = state.LoadsOnBoard?.Count ?? 0;
                         after = next.LoadsOnBoard?.Count ?? 0;
                         return next;
                     },
+                    settled =>
+                    {
+                        if (changed)
+                        {
+                            CacheRecoveryState(settled);
+                        }
+                    },
                     _stopping.Token)
                 .ConfigureAwait(false);
-            if (written is null || after == before)
+            if (!changed || after == before)
             {
                 return;
             }
         }
-        catch (Exception exception) when (exception is IOException or InvalidDataException or OperationCanceledException
-            or ObjectDisposedException)
+        catch (Exception exception)
         {
             _logger.Write(
                 LogSeverity.Warning,
@@ -246,6 +271,7 @@ public sealed partial class WireToGateBusinessService
             return;
         }
 
+        bool closed = WireToGateRecoveryState.DescribesNoTransport(journey);
         _logger.Write(
             LogSeverity.Information,
             nameof(WireToGateBusinessService),
@@ -255,7 +281,7 @@ public sealed partial class WireToGateBusinessService
         PublishOperatorEvent(
             $"loads-on-board-updated:{journey.UpdatedAt.UtcTicks}:{after}",
             "LOADS_ON_BOARD_UPDATED",
-            after == 0
+            closed
                 ? "本趟行程已结束，「车上待交接的需求」已清空。"
                 : "「车上待交接的需求」里有上一趟行程留下的条目，已按服务端当前的行程移除。");
     }

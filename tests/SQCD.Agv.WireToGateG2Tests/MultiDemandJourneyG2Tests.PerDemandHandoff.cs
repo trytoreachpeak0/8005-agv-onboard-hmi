@@ -87,7 +87,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(actionsBefore, ReceivedPayloads(harness, "RecoveryActionSubmitted").Length);
         await harness.WaitUntilAsync(
             () => harness.ViewModel.Logs.Any(line => line.Message.Contains(
-                "服务端不接受为这条需求开处置会话：它当前不在待恢复的状态，可能已经交接完成或已经结束。（RECOVERY_DEMAND_NOT_BLOCKED）",
+                NotBlockedRefusalText,
                 StringComparison.Ordinal)),
             "the server's refusal to reach the operator",
             token);
@@ -111,6 +111,10 @@ public sealed partial class MultiDemandJourneyG2Tests
             line => line.Message.Contains("本趟行程已结束，「车上待交接的需求」已清空。", StringComparison.Ordinal));
         Assert.Empty(harness.UiErrors);
     }
+
+    /// <summary>What the operator reads when the server refuses a session over a demand it does not hold for recovery.</summary>
+    private const string NotBlockedRefusalText =
+        "服务端当前没有因这条需求停住行程（行程不在待恢复状态，或这条需求已经结束），不能为它开处置会话。（RECOVERY_DEMAND_NOT_BLOCKED）";
 
     /// <summary>
     /// The business state <c>JourneyClosure</c> stages when a journey ends: no purpose, no loading phase (control-server
@@ -193,7 +197,8 @@ public sealed partial class MultiDemandJourneyG2Tests
 
     /// <summary>
     /// 与 hmi#278 的接管标记交错：B 的装货确认被扣住，交接接管 B、以 UNKNOWN 结束、被忘掉，标记记着 B；B 的确认随后到达，
-    /// 只收结果自己那一份，B 进入已装列表、标记留着。再交接 B 一次，HANDED_OFF 结清 B：标记清掉、B 移出列表，A 还在、还能交接。
+    /// 只收结果自己那一份，B 进入已装列表、标记留着。再交接 B 一次，HANDED_OFF 结清 B：标记清掉，B 标成「已交接，待系统确认」
+    /// 留在列表里，A 还在、还能交接。
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
@@ -336,7 +341,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal([1], session.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()));
 
         // The person confirms the isolation and the manual extraction; the server acknowledges MECHANICALLY_ISOLATED, which
-        // ends A's demand as a handoff does: A leaves the loads on board, B stays (review RC).
+        // asks to end A's demand as a handoff does: A is marked handed off, awaiting the server, and B stays as it was
+        // (review RC).
         await harness.WaitUntilAsync(
             () => harness.Business.CanConfirmForcedMechanicalRecovery,
             "the authorized forced recovery to wait for the operator's confirmation",
@@ -407,9 +413,13 @@ public sealed partial class MultiDemandJourneyG2Tests
             () =>
             {
                 harness.ViewModel.RefreshWireToGateInputState();
-                return harness.ViewModel.RecoveryDemandChoices.Select(row => row.Text).SequenceEqual(texts);
+                // A list on screen is a list for the handoff entry: waited on together, since the list is read from the
+                // journal and the entry from the session, and either may be the later one (re-review S-a).
+                return harness.ViewModel.RecoveryDemandChoices.Select(row => row.Text).SequenceEqual(texts)
+                    && (texts.Length == 0 || harness.ViewModel.CanRequestFaultCargoHandoff);
             },
-            $"the loads on board listed as [{string.Join("; ", texts)}]",
+            $"the loads on board listed as [{string.Join("; ", texts)}]"
+            + (texts.Length == 0 ? string.Empty : ", with the handoff entry on screen"),
             token);
 
     private static async Task LoadAndRecordAsync(

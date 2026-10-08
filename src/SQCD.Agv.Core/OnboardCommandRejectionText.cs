@@ -94,7 +94,7 @@ public static class OnboardCommandRejectionText
         ["RECOVERY_DEMAND_LOCKED"] = "本次恢复已针对另一条需求开始，请先完成它，再处理其他需求。",
         // The server's answer to a session over a demand it does not hold for recovery: its journey is not stopped, or the
         // demand has ended (control-server#505). Not read as "ended": the list keeps the demand (onboard-hmi#209).
-        ["RECOVERY_DEMAND_NOT_BLOCKED"] = "服务端不接受为这条需求开处置会话：它当前不在待恢复的状态，可能已经交接完成或已经结束。",
+        ["RECOVERY_DEMAND_NOT_BLOCKED"] = "服务端当前没有因这条需求停住行程（行程不在待恢复状态，或这条需求已经结束），不能为它开处置会话。",
         ["LOAD_CORRECTION_OPERATION_NOT_AVAILABLE"] = "当前没有可以修正的装货操作。",
 
         // The hardware-recovery record is incomplete, unnecessary, or cannot be judged yet.

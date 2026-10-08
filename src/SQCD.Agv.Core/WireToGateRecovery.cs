@@ -372,8 +372,7 @@ public sealed record WireToGateRecoveryState(
             return this;
         }
 
-        if (journey.VehicleBusinessState is { } business
-            && !string.Equals(business.ActivePurpose, TransportPurpose, StringComparison.Ordinal))
+        if (DescribesNoTransport(journey))
         {
             return this with { LoadsOnBoard = [] };
         }
@@ -396,6 +395,14 @@ public sealed record WireToGateRecoveryState(
         ];
         return kept.SequenceEqual(loads) ? this : this with { LoadsOnBoard = kept };
     }
+
+    /// <summary>
+    /// Whether <paramref name="journey"/> carries a business state whose purpose is not a transport: the journey's closure
+    /// (no purpose), or a journey of another kind -- idle return, charging, clearing. None of them carries cargo.
+    /// </summary>
+    public static bool DescribesNoTransport(WireToGateJourneySnapshot journey) =>
+        journey?.VehicleBusinessState is { } business
+        && !string.Equals(business.ActivePurpose, TransportPurpose, StringComparison.Ordinal);
 
     private const string TransportPurpose = "TRANSPORT";
 

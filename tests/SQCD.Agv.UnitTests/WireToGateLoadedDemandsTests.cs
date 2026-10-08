@@ -114,7 +114,7 @@ public sealed class WireToGateLoadedDemandsTests
                 state => state with { LastCompletedLoadOperationContext = Load(DemandB, AttemptB, [5]) },
                 token);
             string json = await ReadContentJsonAsync(path, token);
-            Assert.DoesNotContain("loadedDemandOperationContexts\":[", json, StringComparison.Ordinal);
+            Assert.DoesNotContain("loadsOnBoard\":[", json, StringComparison.Ordinal);
 
             await WriteContentJsonAsync(path, json.Insert(1, "\"aFieldFromAnotherVersion\":[{\"demandId\":\"x\"}],"), token);
             WireToGateRecoveryState read = await journal.ReadRecoveryStateAsync(token);
@@ -140,6 +140,7 @@ public sealed class WireToGateLoadedDemandsTests
     [InlineData(null)]
     [InlineData("IDLE_RETURN")]
     [InlineData("CHARGING")]
+    [InlineData("CLEARING_MAINTENANCE")]
     public void AClosedJourneyEmptiesTheLoadsOnBoard(string? purpose)
     {
         WireToGateRecoveryState state = TwoOnBoard().WithLoadsOnBoardFor(Journey(purpose, [DemandA]));

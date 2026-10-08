@@ -6,7 +6,10 @@ G2 = ("FullyQualifiedName~EveryLoadedDemand|FullyQualifiedName~AForgottenHandoff
       "|FullyQualifiedName~AForcedMechanicalRecoveryIsAskedForTheChosenLoad|FullyQualifiedName~AnOpenSessionLocks"
       "|FullyQualifiedName~APreparedVectorLocks|FullyQualifiedName~AnUnknownHandoffOverASettledLoad"
       "|FullyQualifiedName~CompensationNamesItsOwnTarget|FullyQualifiedName~AfterTheLaterLoadIsUnloaded"
-      "|FullyQualifiedName~ASelectionWhoseRowIsGone|FullyQualifiedName~WireToGateLoadEndedByVectorTests")
+      "|FullyQualifiedName~ASelectionWhoseRowIsGone|FullyQualifiedName~WireToGateLoadEndedByVectorTests"
+      "|FullyQualifiedName~ASingleDemandHandoffTheServerDidNotReconcile|FullyQualifiedName~AfterAForcedRecoveryAHandoffPress"
+      "|FullyQualifiedName~APlanOfTheNextJourneyDropsWhatTheLastOneLeft"
+      "|FullyQualifiedName~TheFallbackTargetIsTheSettledLoadOnlyWhileNothingIsArmed")
 UNIT = ("FullyQualifiedName~WireToGateLoadedDemandsTests|FullyQualifiedName~ARecordedLoadPutsItsDemandOnBoard"
         "|FullyQualifiedName~RecoveryDemandChoiceXamlTests")
 
@@ -91,6 +94,16 @@ MUTATIONS = [
     ("S4e", "the business service does not align the loads with the journey", BS,
      "        _ = UpdateLoadsOnBoardForJourneyAsync(args.Value);\n",
      ""),
+    # The re-review's (r280-keep/mut280.py), same replacements, and the operator text of a pruning.
+    ("MX7", "re-review MX7: the lone target line does not say it awaits the server", VMC,
+     "RecoveryFallbackTargetText += HandedOffAwaitingServerText;",
+     "RecoveryFallbackTargetText += string.Empty;"),
+    ("MX8", "re-review MX8: only a closure with no purpose empties the list, not another kind of journey", CORE,
+     "        journey?.VehicleBusinessState is { } business\n        && !string.Equals(business.ActivePurpose, TransportPurpose, StringComparison.Ordinal);",
+     "        journey?.VehicleBusinessState is { } business\n        && business.ActivePurpose is null;"),
+    ("PX1", "a plan's pruning to nothing is told as the journey's end", RV,
+     "        bool closed = WireToGateRecoveryState.DescribesNoTransport(journey);",
+     "        bool closed = after == 0;"),
 ]
 
 def run(cmd):
