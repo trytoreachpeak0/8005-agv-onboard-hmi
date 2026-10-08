@@ -1,0 +1,37 @@
+# hmi#278 reachability probe on w2g/fp-v2-impl 45faf677 + probe test only (no product change)
+# dotnet test tests/SQCD.Agv.WireToGateG2Tests --no-build --filter FullyQualifiedName~AnUnknownHandoffOverALoadWhoseAckCameLate
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\h278\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:06.86]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [4 s]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+Expected: "44444444-0000-4444-8444-00000000000a"
+Actual:   null
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(Boolean ackAfterHandoffEnded) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\h278\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandoffOverUnrecordedLoad.cs:line 127
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(Boolean ackAfterHandoffEnded) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\h278\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandoffOverUnrecordedLoad.cs:line 131
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:10.00]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [3 s]
+  Error Message:
+   Assert.Equal() Failure: Strings differ
+Expected: "44444444-0000-4444-8444-00000000000a"
+Actual:   null
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(Boolean ackAfterHandoffEnded) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\h278\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandoffOverUnrecordedLoad.cs:line 127
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(Boolean ackAfterHandoffEnded) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\h278\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandoffOverUnrecordedLoad.cs:line 131
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:56.84]     [Test Assembly Cleanup Failure (C:\Users\szy\Desktop\8005-workspace-v2\worktrees\h278\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll)] Xunit.Sdk.TestPipelineException
+Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2, Duration: 7 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1
+# journal probe lines
+taken: unlocks=3 pressDone=True unsettled=44444444-0000-4444-8444-00000000000a cp=ActiveUnlockSet active=[1] ctx=44444444-0000-4444-8444-00000000000a vector=FAULT_CARGO_HANDOFF lastLoad=null pending=0
+[True] after-forget: unsettled=44444444-0000-4444-8444-00000000000a cp=ActiveUnlockSet active=[1] ctx=44444444-0000-4444-8444-00000000000a vector=null lastLoad=null pending=0
+[True] after-late-ack: unsettled=null cp=ResultRecorded active=[] ctx=null vector=null lastLoad=44444444-0000-4444-8444-00000000000a pending=0
+[True] after-reconnect: unsettled=null cp=ResultRecorded active=[] ctx=null vector=null lastLoad=44444444-0000-4444-8444-00000000000a pending=0
+taken: unlocks=3 pressDone=True unsettled=44444444-0000-4444-8444-00000000000a cp=ActiveUnlockSet active=[1] ctx=44444444-0000-4444-8444-00000000000a vector=FAULT_CARGO_HANDOFF lastLoad=null pending=0
+[False] after-forget: unsettled=44444444-0000-4444-8444-00000000000a cp=ActiveUnlockSet active=[1] ctx=44444444-0000-4444-8444-00000000000a vector=null lastLoad=44444444-0000-4444-8444-00000000000a pending=0
+[False] after-reconnect: unsettled=null cp=ResultRecorded active=[] ctx=null vector=null lastLoad=44444444-0000-4444-8444-00000000000a pending=0

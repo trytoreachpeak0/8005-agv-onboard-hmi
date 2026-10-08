@@ -1952,6 +1952,45 @@ public sealed partial class WireToGateBusinessService
             "awaiting-confirmation");
     }
 
+    /// <summary>
+    /// <paramref name="current"/> once the server rejected the request behind <paramref name="onFile"/>: a compensation
+    /// keeps its attempt and session to ask again, every other vector's attempt goes with it.
+    /// </summary>
+    internal static WireToGateRecoveryState ReleaseRejectedVector(
+        WireToGateRecoveryState current,
+        WireToGateRecoveryVectorContext onFile,
+        bool compensation) =>
+        current with
+        {
+            RecoveryVector = null,
+            ProvenRecoveryCheckpoint = compensation
+                ? WireToGateRecoveryCheckpoint.Prepared
+                : WireToGateRecoveryCheckpoint.ResultRecorded,
+            // Kept, as on a refused action: nothing of the rejected vector was opened, so the set is a
+            // door in doubt from before it (8005-agv-onboard-hmi#255).
+            ActiveUnlockSlots = current.ActiveUnlockSlots,
+            CompletedSlots = [],
+            SlotResults = [],
+            UnsettledSlotOperationAttemptId = compensation
+                ? onFile.SlotOperationAttemptId
+                : null,
+            OperationContext = compensation ? current.OperationContext : null,
+            ExceptionRecoverySessionId = compensation
+                ? current.ExceptionRecoverySessionId
+                : null,
+            RecoveryActionId = null,
+            RecoveryActionRequestId = null,
+            RecoveryReason = compensation ? current.RecoveryReason : null,
+            RecoveryOperatorId = compensation ? current.RecoveryOperatorId : null,
+            RecoveryOperatorVerifiedAt = compensation
+                ? current.RecoveryOperatorVerifiedAt
+                : null,
+            RecoveryResultObservedAt = null,
+            // The attempt goes unless the compensation keeps it, and a marker naming a gone attempt would only sit on
+            // file (8005-agv-onboard-hmi#278).
+            TakenOverSlotOperationAttemptId = compensation ? current.TakenOverSlotOperationAttemptId : null
+        };
+
     private async Task HandleRecoveryVectorRejectedAsync(
         WireToGateRecoveryCommand command,
         CancellationToken cancellationToken)
@@ -2005,33 +2044,7 @@ public sealed partial class WireToGateBusinessService
                     current => current.RecoveryVector is not { } onFile
                         || (primaryId is not null && onFile.PrimaryId != primaryId)
                         ? null
-                        : current with
-                        {
-                            RecoveryVector = null,
-                            ProvenRecoveryCheckpoint = compensation
-                            ? WireToGateRecoveryCheckpoint.Prepared
-                            : WireToGateRecoveryCheckpoint.ResultRecorded,
-                            // Kept, as on a refused action: nothing of the rejected vector was opened, so the set is a
-                            // door in doubt from before it (8005-agv-onboard-hmi#255).
-                            ActiveUnlockSlots = current.ActiveUnlockSlots,
-                            CompletedSlots = [],
-                            SlotResults = [],
-                            UnsettledSlotOperationAttemptId = compensation
-                            ? onFile.SlotOperationAttemptId
-                            : null,
-                            OperationContext = compensation ? current.OperationContext : null,
-                            ExceptionRecoverySessionId = compensation
-                            ? current.ExceptionRecoverySessionId
-                            : null,
-                            RecoveryActionId = null,
-                            RecoveryActionRequestId = null,
-                            RecoveryReason = compensation ? current.RecoveryReason : null,
-                            RecoveryOperatorId = compensation ? current.RecoveryOperatorId : null,
-                            RecoveryOperatorVerifiedAt = compensation
-                            ? current.RecoveryOperatorVerifiedAt
-                            : null,
-                            RecoveryResultObservedAt = null
-                        },
+                        : ReleaseRejectedVector(current, onFile, compensation),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -2711,14 +2724,15 @@ public sealed partial class WireToGateBusinessService
     /// other vector's are cleared under the same guard <see cref="ForgetRecoverySessionAsync"/> applies,
     /// which is what keeps one vector's settlement from forgetting another session's record.
     /// </remarks>
-    private static WireToGateRecoveryState ForgetSettledVector(
+    internal static WireToGateRecoveryState ForgetSettledVector(
         WireToGateRecoveryState state,
         WireToGateRecoveryVectorContext context)
     {
         WireToGateRecoveryState cleared = state with
         {
             RecoveryVector = null,
-            RecoveryResultObservedAt = null
+            RecoveryResultObservedAt = null,
+            TakenOverSlotOperationAttemptId = TakenOverMarkerAfterForgetting(state, context)
         };
         return context.ExceptionRecoverySessionId is { } session
             && string.Equals(state.ExceptionRecoverySessionId, session, StringComparison.Ordinal)
@@ -2733,6 +2747,45 @@ public sealed partial class WireToGateBusinessService
                     RecoveryOperatorVerifiedAt = null
                 }
                 : cleared;
+    }
+
+    /// <summary>
+    /// The marker <see cref="ForgetSettledVector"/> leaves (8005-agv-onboard-hmi#278): the attempt the vector held, when it
+    /// is the journal's unsettled attempt and the vector acted on it; otherwise whatever marker already names the unsettled
+    /// attempt, and none at all when the one on file names another.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Only a vector that acted.</b> One that stopped at its prepare write -- no active unlock set, no slot counted
+    /// complete, the checkpoint still <c>Prepared</c>, the same reading <see cref="ForgetRefusedVector"/> makes -- opened no
+    /// door, so no door record is at stake; the attempt's own COMPLETED, acknowledged later, settles it truthfully, and
+    /// marking it would only leave an entry on screen that the server will not let anyone press.
+    /// </para>
+    /// <para>
+    /// The attempt stays unsettled, and a COMPLETED result of it acknowledged from now on must not settle it over the doors
+    /// the vector left in doubt. Written in the same step that drops the vector, so no moment exists with neither on file.
+    /// </para>
+    /// </remarks>
+    private static string? TakenOverMarkerAfterForgetting(
+        WireToGateRecoveryState state,
+        WireToGateRecoveryVectorContext context)
+    {
+        bool vectorActed = state.ProvenRecoveryCheckpoint != WireToGateRecoveryCheckpoint.Prepared
+            || state.ActiveUnlockSlots.Count > 0
+            || state.CompletedSlots.Count > 0;
+        if (vectorActed
+            && context.SlotOperationAttemptId is { } held
+            && string.Equals(state.UnsettledSlotOperationAttemptId, held, StringComparison.Ordinal))
+        {
+            return held;
+        }
+
+        return string.Equals(
+            state.TakenOverSlotOperationAttemptId,
+            state.UnsettledSlotOperationAttemptId,
+            StringComparison.Ordinal)
+                ? state.TakenOverSlotOperationAttemptId
+                : null;
     }
 
     private async Task<WireToGateRecoveryVectorContext> BindRecoveryVectorCommandAsync(
@@ -3194,6 +3247,7 @@ public sealed partial class WireToGateBusinessService
                         RecoveryResultObservedAt = null,
                         RecoveryVector = null,
                         PendingLoadCancellation = null,
+                        TakenOverSlotOperationAttemptId = null,
                         ForcedIsolation = isolation ?? journalled.ForcedIsolation
                     };
                 },

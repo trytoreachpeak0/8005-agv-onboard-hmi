@@ -1603,7 +1603,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _logger.Write(
                 LogSeverity.Warning,
                 nameof(WireToGateBusinessService),
-                $"仓位操作结果已被服务端确认，但这次尝试已由恢复向量接管，只收掉结果本身，向量与未结尝试留给向量结清：attempt={attemptId}。");
+                $"仓位操作结果已被服务端确认，但这次尝试已由恢复向量接管（向量在案，或已结束而尝试与存疑的门留着，hmi#259、hmi#278），只收掉结果本身，未结尝试与活动开锁集不动：attempt={attemptId}。");
         }
     }
 
@@ -1807,10 +1807,19 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             // the attempt was recorded and the active unlock set written empty over the door the cancellation left in
             // doubt. Only a COMPLETED result needs the question first: for every other one the branch below concludes
             // NotSettled anyway, and asks nothing more. An unacknowledged one is still sent once more, as there.
+            //
+            // The same for an attempt any other vector held when it was forgotten (8005-agv-onboard-hmi#278): a fault cargo
+            // handoff or a compensation ended UNKNOWN or FAILED over a load or unload whose COMPLETED result was still
+            // unacknowledged. Read from the cached journal state the restore has just refreshed, not from the outbox: the
+            // marker is a journal field, and an extra outbox read here moves StationDeadlineExpiredG2Tests' step count.
             if (sent is { Abandoned: false }
                 && IsCompletedOperationResult(sent)
-                && context.OperationType == OperationType.Load
-                && await IsCancellationConcludedAsync(context.DemandId, attemptId, cancellationToken).ConfigureAwait(false))
+                && (string.Equals(
+                        Volatile.Read(ref _lastRecoveryState).TakenOverSlotOperationAttemptId,
+                        attemptId,
+                        StringComparison.Ordinal)
+                    || context.OperationType == OperationType.Load
+                    && await IsCancellationConcludedAsync(context.DemandId, attemptId, cancellationToken).ConfigureAwait(false)))
             {
                 if (!sent.Acknowledged)
                 {
@@ -1865,6 +1874,15 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return InterruptedOperationSettlement.TakenOver;
             }
 
+            // No result of the attempt's own on file, and a vector held it when it was forgotten
+            // (TakenOverSlotOperationAttemptId, 8005-agv-onboard-hmi#278): not asked here, on purpose. Nothing is recorded
+            // as completed on this branch except from the live IO below, which counts a slot complete only in its final
+            // state and keeps every other slot of the active unlock set UNKNOWN, so the door the vector left in doubt is
+            // not lost. And the result it sends is the one the server needs: with no result for the attempt the operation
+            // stays Prepared, its readiness PENDING_FACT_RECONCILIATION_REQUIRED, and resume and compensation are refused
+            // until a result puts it into RecoveryRequired (control-server OnboardRecoveryCoordinator
+            // ValidateActionPreconditions). Answering NotSettled here would take those two ways out away.
+            //
             // A load cancellation over this attempt that has a result on file, with no vector on file any more: its
             // conclusion is that cancellation's (ADR-cross-0046), so nothing is settled and nothing is sent. Reached
             // when a maintainer ended a cancellation the server refused for good (onboard-hmi#254), and also when the

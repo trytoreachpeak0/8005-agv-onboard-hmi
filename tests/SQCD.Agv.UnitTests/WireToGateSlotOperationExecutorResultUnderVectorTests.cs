@@ -102,9 +102,80 @@ public sealed class WireToGateSlotOperationExecutorResultUnderVectorTests
         Assert.Equal(WireToGateRecoveryCheckpoint.ResultRecorded, after.ProvenRecoveryCheckpoint);
     }
 
+    /// <summary>
+    /// 向量已经被忘掉（交接或补偿以 UNKNOWN 结束），它接管的尝试、上下文与存疑的门留着，标记记着这次尝试
+    /// （8005-agv-onboard-hmi#278）。这时到的确认同样只收结果自己的那一份：不结清，活动开锁集不动，标记留着。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
+    public async Task AResultAcknowledgedAfterTheVectorThatHeldItWasForgottenClosesOnlyItsOwnShare()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        WireToGateRecoveryOperationContext load = LoadA();
+        WireToGateRecoveryState seeded = WireToGateRecoveryState.Empty with
+        {
+            UnsettledSlotOperationAttemptId = AttemptA,
+            ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+            ActiveUnlockSlots = [1],
+            OperationContext = load,
+            TakenOverSlotOperationAttemptId = AttemptA
+        };
+
+        (WireToGateResultRecording recording, WireToGateRecoveryState after) = await RecordAsync(seeded, token);
+
+        Assert.Equal(WireToGateResultRecording.TakenOverByRecoveryVector, recording);
+        Assert.Equal(AttemptA, after.UnsettledSlotOperationAttemptId);
+        Assert.Equal(WireToGateRecoveryCheckpoint.ActiveUnlockSet, after.ProvenRecoveryCheckpoint);
+        Assert.Equal([1], after.ActiveUnlockSlots);
+        Assert.Equivalent(load, after.OperationContext, strict: true);
+        Assert.Equivalent(load, after.LastCompletedLoadOperationContext, strict: true);
+        Assert.Equal(AttemptA, after.TakenOverSlotOperationAttemptId);
+    }
+
+    /// <summary>
+    /// 标记只对它记着的那次尝试说话：日志簿换成了下一次尝试 C，C 的确认照常结清，旧标记随之清掉，不会挡住以后的结清
+    /// （8005-agv-onboard-hmi#278）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
+    public async Task AMarkerNamingAnEarlierAttemptDoesNotHoldTheNextOnesSettlementAndGoesWithIt()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        WireToGateRecoveryState seeded = WireToGateRecoveryState.Empty with
+        {
+            UnsettledSlotOperationAttemptId = AttemptC,
+            ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.SafeFinishReached,
+            TakenOverSlotOperationAttemptId = AttemptA
+        };
+
+        (WireToGateResultRecording recording, WireToGateRecoveryState after) = await RecordAsync(seeded, token, AttemptC);
+
+        Assert.Equal(WireToGateResultRecording.Settled, recording);
+        Assert.Null(after.UnsettledSlotOperationAttemptId);
+        Assert.Equal(WireToGateRecoveryCheckpoint.ResultRecorded, after.ProvenRecoveryCheckpoint);
+        Assert.Null(after.TakenOverSlotOperationAttemptId);
+    }
+
+    private static WireToGateRecoveryOperationContext LoadA() => new(
+        "11111111-1111-4111-8111-111111111111",
+        null,
+        1,
+        DateTimeOffset.UnixEpoch,
+        DemandA,
+        "22222222-2222-4222-8222-222222222222",
+        AttemptA,
+        OperationType.Load,
+        [1, 2],
+        2,
+        true,
+        new string('a', 64));
+
     private static async Task<(WireToGateResultRecording Recording, WireToGateRecoveryState After)> RecordAsync(
         WireToGateRecoveryState seeded,
-        CancellationToken token)
+        CancellationToken token,
+        string attemptId = AttemptA)
     {
         string directory = Path.Combine(Path.GetTempPath(), "w2g-executor", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
@@ -123,7 +194,7 @@ public sealed class WireToGateSlotOperationExecutorResultUnderVectorTests
                 TimeSpan.FromSeconds(1)),
             () => true);
 
-        WireToGateResultRecording recording = await executor.MarkResultRecordedAsync(AttemptA, token);
+        WireToGateResultRecording recording = await executor.MarkResultRecordedAsync(attemptId, token);
         return (recording, await journal.ReadRecoveryStateAsync(token));
     }
 
