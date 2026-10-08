@@ -68,7 +68,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             .GetProperty("overallOutcome").GetString());
 
         // The server's journey stops with cargo on board and hands the vehicle to an administrator (control-server#345).
-        harness.Server.ReadinessReasonOverride = "CARGO_HANDOFF_AWAITED";
+        harness.Server.ReadinessReasonOverride = "SESSION_RECOVERY_REQUIRED";
         await harness.Server.SendSessionReadinessAsync();
         await harness.WaitUntilAsync(
             () => harness.Business.CanRequestFaultCargoHandoff,

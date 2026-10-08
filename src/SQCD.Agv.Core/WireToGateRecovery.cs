@@ -272,6 +272,17 @@ public sealed record WireToGateRecoveryState(
     /// </summary>
     public WireToGateForcedIsolation? ForcedIsolation { get; init; }
 
+    /// <summary>
+    /// The unsettled attempt a recovery vector held when that vector was forgotten on a non-completed result, or ended
+    /// after a maintainer's manual check (8005-agv-onboard-hmi#278). The vector is gone, the attempt, its context and the
+    /// active unlock set stay -- and nothing else on file says that a vector took the attempt over: the vector results
+    /// are keyed by their own action ids. A COMPLETED result of the attempt acknowledged after that is the attempt's own
+    /// account from before the vector, not a settlement of it, and recording it as one would write the active unlock set
+    /// empty over the doors the vector left in doubt. Compared by attempt id, so a marker naming another attempt says
+    /// nothing; cleared when the attempt settles.
+    /// </summary>
+    public string? TakenOverSlotOperationAttemptId { get; init; }
+
     public static WireToGateRecoveryState Empty { get; } = new(
         null,
         WireToGateRecoveryCheckpoint.None,

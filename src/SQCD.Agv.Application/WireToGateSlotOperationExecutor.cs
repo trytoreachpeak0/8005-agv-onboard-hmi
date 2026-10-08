@@ -373,6 +373,12 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     /// settled with the vector when the vector settles.
     /// </para>
     /// <para>
+    /// <b>So does an attempt a vector held when it was forgotten</b> (8005-agv-onboard-hmi#278): a fault cargo handoff or a
+    /// compensation over a load whose result went out unacknowledged, ended UNKNOWN or FAILED. The vector is gone, its
+    /// doors in doubt are not, and <see cref="WireToGateRecoveryState.TakenOverSlotOperationAttemptId"/> is what says so --
+    /// the acknowledgement may come while the vector runs, after it was forgotten, or with a replay after a reconnect.
+    /// </para>
+    /// <para>
     /// Answered as a value rather than thrown: every caller has a result the server acknowledged in hand, and a refusal
     /// here used to end the formal load path with nothing caught.
     /// </para>
@@ -396,7 +402,8 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                 }
 
                 if (state.RecoveryVector is { } vector
-                    && string.Equals(vector.SlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal))
+                        && string.Equals(vector.SlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal)
+                    || string.Equals(state.TakenOverSlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal))
                 {
                     recording = WireToGateResultRecording.TakenOverByRecoveryVector;
                     return RecordedUnderRecoveryVector(state, slotOperationAttemptId);
@@ -453,6 +460,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
             RecoveryVector = null,
             RecoveryResultObservedAt = null,
             PendingLoadCancellation = null,
+            TakenOverSlotOperationAttemptId = null,
             LastCompletedLoadOperationContext = state.OperationContext?.OperationType == OperationType.Load
                 ? state.OperationContext
                 : state.LastCompletedLoadOperationContext

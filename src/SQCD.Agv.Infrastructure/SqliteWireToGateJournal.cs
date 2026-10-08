@@ -954,6 +954,11 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             RequireUuid(state.UnsettledSlotOperationAttemptId, nameof(state.UnsettledSlotOperationAttemptId));
         }
 
+        if (state.TakenOverSlotOperationAttemptId is not null)
+        {
+            RequireUuid(state.TakenOverSlotOperationAttemptId, nameof(state.TakenOverSlotOperationAttemptId));
+        }
+
         if (state.ActiveUnlockSlots is null
             || state.CompletedSlots is null
             || state.SlotResults is null

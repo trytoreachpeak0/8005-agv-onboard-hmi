@@ -2718,7 +2718,14 @@ public sealed partial class WireToGateBusinessService
         WireToGateRecoveryState cleared = state with
         {
             RecoveryVector = null,
-            RecoveryResultObservedAt = null
+            RecoveryResultObservedAt = null,
+            // The attempt it held stays unsettled, and a COMPLETED result of it acknowledged from now on must not settle
+            // it over the doors the vector left in doubt (8005-agv-onboard-hmi#278). Written in the same step that drops
+            // the vector, so no moment exists with neither on file.
+            TakenOverSlotOperationAttemptId = context.SlotOperationAttemptId is { } held
+                && string.Equals(state.UnsettledSlotOperationAttemptId, held, StringComparison.Ordinal)
+                    ? held
+                    : state.TakenOverSlotOperationAttemptId
         };
         return context.ExceptionRecoverySessionId is { } session
             && string.Equals(state.ExceptionRecoverySessionId, session, StringComparison.Ordinal)
@@ -3194,6 +3201,7 @@ public sealed partial class WireToGateBusinessService
                         RecoveryResultObservedAt = null,
                         RecoveryVector = null,
                         PendingLoadCancellation = null,
+                        TakenOverSlotOperationAttemptId = null,
                         ForcedIsolation = isolation ?? journalled.ForcedIsolation
                     };
                 },
