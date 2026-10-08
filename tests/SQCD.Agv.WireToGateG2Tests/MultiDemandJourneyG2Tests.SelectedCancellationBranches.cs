@@ -420,7 +420,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         await harness.WaitUntilAsync(
             () =>
             {
-                harness.ViewModel.RefreshWireToGateInputState();
+                harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
                 return harness.ViewModel.RecoveryFallbackTargetText == expected;
             },
             $"the fallback target line to read \"{expected}\"",

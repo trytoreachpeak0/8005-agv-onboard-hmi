@@ -44,7 +44,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         // The server's journey stops with both loads on board and hands the vehicle to an administrator (control-server#345).
         await HoldTheSessionForRecoveryAsync(harness, token);
         await WaitForChoicesAsync(harness, ["子批 SUBLOT-A / 1号仓", "子批 SUBLOT-B / 5号仓"], token);
-        Assert.Equal([DemandA, DemandB], harness.ViewModel.RecoveryDemandChoices.Select(row => row.DemandId));
+        Assert.Equal([DemandA, DemandB], harness.OnUi(() => harness.ViewModel.RecoveryDemandChoices.Select(row => row.DemandId).ToArray()));
         Assert.True(harness.ViewModel.CanRequestFaultCargoHandoff);
         Assert.True(harness.ViewModel.ShowsRecoveryDemandChoices);
         Assert.Equal(string.Empty, harness.ViewModel.RecoveryFallbackTargetText);
@@ -73,8 +73,8 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         // Pressed for B again, the session request goes out and the server answers it: it ended B, so it refuses the session
         // (control-server#505, A3). The refusal is shown, nothing is commanded, and B is not taken off on that answer alone.
-        harness.ViewModel.SelectedRecoveryDemandChoice =
-            harness.ViewModel.RecoveryDemandChoices.Single(row => row.DemandId == DemandB);
+        harness.OnUi(() => harness.ViewModel.SelectedRecoveryDemandChoice =
+            harness.ViewModel.RecoveryDemandChoices.Single(row => row.DemandId == DemandB));
         Assert.True(harness.ViewModel.CanPressFaultCargoHandoff);
         Assert.Equal(
             "处理对象：子批 SUBLOT-B / 5号仓（已交接，待系统确认）。\n\n",
@@ -185,7 +185,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
         // Restored from the journal: the sublots come back with the worklist the server sends again on the handshake.
         await WaitForChoicesAsync(afterRestart, ["子批 SUBLOT-A / 1号仓", "子批 SUBLOT-B / 5号仓"], token);
-        Assert.Equal([DemandA, DemandB], afterRestart.ViewModel.RecoveryDemandChoices.Select(row => row.DemandId));
+        Assert.Equal([DemandA, DemandB], afterRestart.OnUi(() => afterRestart.ViewModel.RecoveryDemandChoices.Select(row => row.DemandId).ToArray()));
 
         await HandOffAsync(afterRestart, ioAfterRestart, DemandA, AttemptA, slot: 1, sessions: 1, token);
         Assert.Equal(
@@ -332,8 +332,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.False(await harness.ViewModel.RequestForcedMechanicalRecoveryAsync(token));
         Assert.Empty(ReceivedPayloads(harness, "ExceptionRecoverySessionRequested"));
 
-        harness.ViewModel.SelectedRecoveryDemandChoice =
-            harness.ViewModel.RecoveryDemandChoices.Single(row => row.DemandId == DemandA);
+        harness.OnUi(() => harness.ViewModel.SelectedRecoveryDemandChoice =
+            harness.ViewModel.RecoveryDemandChoices.Single(row => row.DemandId == DemandA));
         Assert.True(harness.ViewModel.CanPressForcedMechanicalRecovery);
         Assert.True(await harness.ViewModel.RequestForcedMechanicalRecoveryAsync(token));
         JsonElement session = Assert.Single(ReceivedPayloads(harness, "ExceptionRecoverySessionRequested"));
@@ -378,25 +378,21 @@ public sealed partial class MultiDemandJourneyG2Tests
         int unlocksBefore = io.UnlockCount;
         // Counted, not taken from the session count: a session the server refused leaves no result.
         int resultsBefore = ReceivedPayloads(harness, "FaultCargoRecoveryResult").Length;
-        harness.ViewModel.RefreshWireToGateInputState();
+        harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
         if (harness.ViewModel.ShowsRecoveryDemandChoices)
         {
-            harness.ViewModel.SelectedRecoveryDemandChoice =
-                harness.ViewModel.RecoveryDemandChoices.Single(row => row.DemandId == demandId);
+            harness.OnUi(() => harness.ViewModel.SelectedRecoveryDemandChoice =
+                harness.ViewModel.RecoveryDemandChoices.Single(row => row.DemandId == demandId));
         }
 
         Assert.True(harness.ViewModel.CanPressFaultCargoHandoff);
+        // Emptied and shut by the fake when the executor waits for it (see LoadAndRecordAsync).
+        io.CloseDoorAfterNextUnlock(slot - 1, cargo: false);
         Assert.True(await harness.ViewModel.RequestFaultCargoHandoffAsync(token));
         JsonElement[] requested = ReceivedPayloads(harness, "ExceptionRecoverySessionRequested");
         Assert.Equal(sessions, requested.Length);
         Assert.Equal(demandId, requested[^1].GetProperty("demandId").GetString());
         Assert.Equal([slot], requested[^1].GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()));
-        await harness.WaitUntilAsync(
-            () => io.UnlockCount > unlocksBefore
-                || ReceivedPayloads(harness, "FaultCargoRecoveryResult").Length > resultsBefore,
-            $"the handoff to open slot {slot}",
-            token);
-        io.CloseDoor(slot - 1, cargo: false);
         await harness.WaitUntilAsync(
             () => ReceivedPayloads(harness, "FaultCargoRecoveryResult").Length == resultsBefore + 1
                 && ReadJournal(harness, token).RecoveryVector is null,
@@ -405,19 +401,21 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(
             "HANDED_OFF",
             ReceivedPayloads(harness, "FaultCargoRecoveryResult")[^1].GetProperty("overallOutcome").GetString());
+        Assert.Equal(unlocksBefore + 1, io.UnlockCount);
+        Assert.False(io.HasScheduledClose);
     }
 
     /// <summary>The rows of the loads-on-board choice as the screen shows them, refreshed the way the dispatcher would.</summary>
     private static Task WaitForChoicesAsync(Harness harness, string[] texts, CancellationToken token) =>
         harness.WaitUntilAsync(
-            () =>
+            () => harness.OnUi(() =>
             {
-                harness.ViewModel.RefreshWireToGateInputState();
+                harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
                 // A list on screen is a list for the handoff entry: waited on together, since the list is read from the
                 // journal and the entry from the session, and either may be the later one (re-review S-a).
                 return harness.ViewModel.RecoveryDemandChoices.Select(row => row.Text).SequenceEqual(texts)
                     && (texts.Length == 0 || harness.ViewModel.CanRequestFaultCargoHandoff);
-            },
+            }),
             $"the loads on board listed as [{string.Join("; ", texts)}]"
             + (texts.Length == 0 ? string.Empty : ", with the handoff entry on screen"),
             token);
@@ -431,13 +429,16 @@ public sealed partial class MultiDemandJourneyG2Tests
         CancellationToken token)
     {
         int pulses = io.UnlockCount + 1;
+        // Closed by the fake when the executor waits for it, not by this thread after it sees the pulse: a late wake-up
+        // here would run the 2-second operation timeout out.
+        io.CloseDoorAfterNextUnlock(slot - 1, cargo: true);
         await SendSlotCommandAsync(harness, demandId, attemptId, [slot]);
-        await WaitForDoorOpenAsync(harness, io, attemptId, pulses, token);
-        io.CloseDoor(slot - 1, cargo: true);
         await harness.WaitUntilAsync(
             () => ReadJournal(harness, token) is { UnsettledSlotOperationAttemptId: null } state
                 && state.LastCompletedLoadOperationContext?.SlotOperationAttemptId == attemptId,
             $"the load of {demandId} to be recorded",
             token);
+        Assert.Equal(pulses, io.UnlockCount);
+        Assert.False(io.HasScheduledClose);
     }
 }

@@ -36,8 +36,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         await HoldTheSessionForRecoveryAsync(harness, token);
         await WaitForChoicesAsync(harness, ["子批 SUBLOT-A / 1号仓", "子批 SUBLOT-B / 5号仓"], token);
 
-        harness.ViewModel.SelectedRecoveryDemandChoice =
-            harness.ViewModel.RecoveryDemandChoices.Single(row => row.DemandId == DemandA);
+        harness.OnUi(() => harness.ViewModel.SelectedRecoveryDemandChoice =
+            harness.ViewModel.RecoveryDemandChoices.Single(row => row.DemandId == DemandA));
         Assert.Equal("处理对象：子批 SUBLOT-A / 1号仓。\n\n", harness.ViewModel.RecoveryTargetConfirmationText);
         Assert.False(await harness.ViewModel.RequestFaultCargoHandoffAsync(token));
         Assert.Single(ReceivedPayloads(harness, "RecoveryActionSubmitted"));
@@ -92,8 +92,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         await WaitForChoicesAsync(first, ["子批 SUBLOT-A / 1号仓", "子批 SUBLOT-B / 5号仓"], token);
         first.Server.RecoverySlotOperationAttemptId = AttemptA;
         first.Server.RecoveryVectorSlotOperationAttemptId = AttemptA;
-        first.ViewModel.SelectedRecoveryDemandChoice =
-            first.ViewModel.RecoveryDemandChoices.Single(row => row.DemandId == DemandA);
+        first.OnUi(() => first.ViewModel.SelectedRecoveryDemandChoice =
+            first.ViewModel.RecoveryDemandChoices.Single(row => row.DemandId == DemandA));
         Assert.True(await first.ViewModel.RequestFaultCargoHandoffAsync(token));
         await first.WaitUntilAsync(
             () => ReadJournal(first, token).RecoveryVector?.DemandId == DemandA,
@@ -151,8 +151,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         await HoldTheSessionForRecoveryAsync(harness, token);
         await WaitForChoicesAsync(harness, ["子批 SUBLOT-A / 1号仓", "子批 SUBLOT-B / 5号仓"], token);
 
-        harness.ViewModel.SelectedRecoveryDemandChoice =
-            harness.ViewModel.RecoveryDemandChoices.Single(row => row.DemandId == DemandA);
+        harness.OnUi(() => harness.ViewModel.SelectedRecoveryDemandChoice =
+            harness.ViewModel.RecoveryDemandChoices.Single(row => row.DemandId == DemandA));
         Assert.True(await harness.ViewModel.RequestFaultCargoHandoffAsync(token));
         await harness.WaitUntilAsync(
             () => ReadJournal(harness, token) is { RecoveryVector: not null, ActiveUnlockSlots: [1] },
@@ -225,7 +225,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         await harness.WaitUntilAsync(
             () =>
             {
-                harness.ViewModel.RefreshWireToGateInputState();
+                harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
                 return harness.ViewModel.CanRequestFaultCargoHandoff && harness.ViewModel.CanRequestLoadCompensation;
             },
             "the handoff and compensation entries",
@@ -270,7 +270,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         await harness.WaitUntilAsync(
             () =>
             {
-                harness.ViewModel.RefreshWireToGateInputState();
+                harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
                 return harness.ViewModel.CanPressFaultCargoHandoff;
             },
             "the handoff entry over A",
@@ -287,7 +287,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         await harness.WaitUntilAsync(
             () =>
             {
-                harness.ViewModel.RefreshWireToGateInputState();
+                harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
                 return harness.ViewModel.CanPressFaultCargoHandoff
                     && harness.ViewModel.RecoveryFallbackTargetText == "目标：子批 SUBLOT-A（已交接，待系统确认）";
             },
@@ -309,7 +309,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.ViewModel.Logs.Any(line => line.Message.Contains(NotBlockedRefusalText, StringComparison.Ordinal)),
             "the server's refusal to reach the operator",
             token);
-        harness.ViewModel.RefreshWireToGateInputState();
+        harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
         Assert.True(harness.ViewModel.CanPressFaultCargoHandoff);
 
         // 3. The journey closes: the list empties and the entry goes.
@@ -317,7 +317,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         await harness.WaitUntilAsync(
             () =>
             {
-                harness.ViewModel.RefreshWireToGateInputState();
+                harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
                 return ReadJournal(harness, token).LoadsOnBoard is { Count: 0 }
                     && !harness.ViewModel.CanRequestFaultCargoHandoff;
             },
@@ -350,7 +350,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         await harness.WaitUntilAsync(
             () =>
             {
-                harness.ViewModel.RefreshWireToGateInputState();
+                harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
                 return harness.ViewModel.CanPressForcedMechanicalRecovery;
             },
             "the forced mechanical recovery entry over A",
@@ -372,7 +372,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         await harness.WaitUntilAsync(
             () =>
             {
-                harness.ViewModel.RefreshWireToGateInputState();
+                harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
                 return harness.ViewModel.CanPressFaultCargoHandoff;
             },
             "the handoff entry over A, marked",
