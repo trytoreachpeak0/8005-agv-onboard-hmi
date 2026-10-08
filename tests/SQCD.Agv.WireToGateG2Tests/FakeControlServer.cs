@@ -739,6 +739,13 @@ public sealed class FakeControlServer : IAsyncDisposable
     public IReadOnlyDictionary<string, int[]>? RecoverySessionScopeByDemand { get; set; }
 
     /// <summary>
+    /// Demands a reconciled fault cargo handoff ended. With <see cref="RecoverySessionScopeByDemand"/> set, a session request for
+    /// one of them is refused with <c>RECOVERY_DEMAND_NOT_BLOCKED</c>, as the real server does since control-server#505 (A3:
+    /// <c>ValidateSessionScopeAsync</c> refuses a demand whose status is Succeeded or Cancelled).
+    /// </summary>
+    private readonly HashSet<string> _endedDemands = new(StringComparer.Ordinal);
+
+    /// <summary>
     /// When set, every <c>RecoveryActionSubmitted</c> is answered with a <c>RecoveryActionRejected</c> carrying this
     /// reason code (8005-agv-onboard-hmi#255).
     /// </summary>
@@ -2276,6 +2283,13 @@ public sealed class FakeControlServer : IAsyncDisposable
                                 _settledAttempts.Add(settledAttempt);
                                 _operationsNeedingRecovery.Remove(settledAttempt);
                             }
+
+                            if (messageType == "FaultCargoRecoveryResult"
+                                && recoveryPayload.GetProperty("overallOutcome").GetString() == "HANDED_OFF"
+                                && recoveryPayload.GetProperty("demandId").GetString() is { } endedDemand)
+                            {
+                                _endedDemands.Add(endedDemand);
+                            }
                         }).ConfigureAwait(false);
                         break;
                     case "OperationProgress" when TryHoldDurableAck(context, root):
@@ -2864,7 +2878,19 @@ public sealed class FakeControlServer : IAsyncDisposable
             string? requestedDemand = payload.TryGetProperty("demandId", out JsonElement requestedDemandId)
                 ? requestedDemandId.GetString()
                 : null;
-            if (requestedDemand is not null
+            bool ended;
+            lock (_sync)
+            {
+                ended = requestedDemand is not null && _endedDemands.Contains(requestedDemand);
+            }
+
+            // The real server's order (ValidateSessionScopeAsync after control-server#505): a demand it ended is refused before
+            // its scope is compared.
+            if (ended)
+            {
+                rejectionReasonCode = "RECOVERY_DEMAND_NOT_BLOCKED";
+            }
+            else if (requestedDemand is not null
                 && (!scopes.TryGetValue(requestedDemand, out int[]? targetSlots) || !requestedSlots.SequenceEqual(targetSlots)))
             {
                 rejectionReasonCode = "RECOVERY_SCOPE_MISMATCH";

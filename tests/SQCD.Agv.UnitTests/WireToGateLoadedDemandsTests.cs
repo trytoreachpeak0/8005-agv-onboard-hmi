@@ -26,7 +26,7 @@ public sealed class WireToGateLoadedDemandsTests
 
         Assert.Equal(
             [(DemandB, AttemptB), (DemandA, AttemptA2)],
-            state.SettledLoadSubjects().Select(load => (load.DemandId, load.SlotOperationAttemptId)));
+            state.SettledLoadSubjects().Select(load => (load.DemandId, load.Load.SlotOperationAttemptId)));
     }
 
     [Fact]
@@ -37,7 +37,7 @@ public sealed class WireToGateLoadedDemandsTests
             LastCompletedLoadOperationContext = Load(DemandB, AttemptB, [5])
         };
 
-        Assert.Null(old.LoadedDemandOperationContexts);
+        Assert.Null(old.LoadsOnBoard);
         Assert.Equal([DemandB], old.SettledLoadSubjects().Select(load => load.DemandId));
         Assert.Empty(old.WithoutLoadOnBoard(DemandB).SettledLoadSubjects());
         // Another demand's ending leaves the last load where it was.
@@ -76,7 +76,7 @@ public sealed class WireToGateLoadedDemandsTests
             WireToGateRecoveryState read = await journal.ReadRecoveryStateAsync(token);
             Assert.Equal(
                 ["aaaaaaaa-0000-4000-8000-00000000000a:1,2", "bbbbbbbb-0000-4000-8000-00000000000b:5"],
-                read.LoadedDemandOperationContexts!.Select(load => $"{load.DemandId}:{string.Join(",", load.Slots)}"));
+                read.LoadsOnBoard!.Select(load => $"{load.DemandId}:{string.Join(",", load.Load.Slots)}"));
         }
     }
 
@@ -90,10 +90,10 @@ public sealed class WireToGateLoadedDemandsTests
             await Assert.ThrowsAsync<InvalidDataException>(() => journal.UpdateRecoveryStateAsync(
                 state => state with
                 {
-                    LoadedDemandOperationContexts = [Load(DemandA, AttemptA, [1]), Load(DemandA, AttemptA2, [2])]
+                    LoadsOnBoard = [new(Load(DemandA, AttemptA, [1])), new(Load(DemandA, AttemptA2, [2]))]
                 },
                 token));
-            Assert.Null((await journal.ReadRecoveryStateAsync(token)).LoadedDemandOperationContexts);
+            Assert.Null((await journal.ReadRecoveryStateAsync(token)).LoadsOnBoard);
         }
     }
 
@@ -119,10 +119,101 @@ public sealed class WireToGateLoadedDemandsTests
             await WriteContentJsonAsync(path, json.Insert(1, "\"aFieldFromAnotherVersion\":[{\"demandId\":\"x\"}],"), token);
             WireToGateRecoveryState read = await journal.ReadRecoveryStateAsync(token);
 
-            Assert.Null(read.LoadedDemandOperationContexts);
+            Assert.Null(read.LoadsOnBoard);
             Assert.Equal([DemandB], read.SettledLoadSubjects().Select(load => load.DemandId));
         }
     }
+
+    /// <summary>A handed-off load stays a subject, marked; the other loads are untouched (review S4).</summary>
+    [Fact]
+    public void AHandedOffLoadStaysOnBoardMarked()
+    {
+        WireToGateRecoveryState state = TwoOnBoard().WithLoadHandedOff(DemandA);
+
+        Assert.Equal(
+            [(DemandA, true), (DemandB, false)],
+            state.SettledLoadSubjects().Select(load => (load.DemandId, load.HandedOffAwaitingServer)));
+    }
+
+    /// <summary>The journey's closure -- a business state with no transport purpose -- empties the list.</summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("IDLE_RETURN")]
+    [InlineData("CHARGING")]
+    public void AClosedJourneyEmptiesTheLoadsOnBoard(string? purpose)
+    {
+        WireToGateRecoveryState state = TwoOnBoard().WithLoadsOnBoardFor(Journey(purpose, [DemandA]));
+
+        Assert.Empty(state.LoadsOnBoard!);
+    }
+
+    /// <summary>A transport journey keeps them; a journey with no business state yet says nothing.</summary>
+    [Fact]
+    public void ATransportJourneyOrNoBusinessStateKeepsTheLoadsOnBoard()
+    {
+        WireToGateRecoveryState onBoard = TwoOnBoard();
+
+        Assert.Equal(2, onBoard.WithLoadsOnBoardFor(Journey("TRANSPORT", [DemandA, DemandB])).LoadsOnBoard!.Count);
+        Assert.Same(onBoard, onBoard.WithLoadsOnBoardFor(WireToGateJourneySnapshot.Empty));
+    }
+
+    /// <summary>
+    /// A plan naming one demand is the journey's anchor: unstamped loads take it, and a later plan of another anchor drops
+    /// them -- the closure of their journey was missed. A plan naming several demands stamps nothing and drops nothing.
+    /// </summary>
+    [Fact]
+    public void APlanOfAnotherJourneyDropsTheLoadsOfAnEarlierOne()
+    {
+        const string NextAnchor = "cccccccc-0000-4000-8000-00000000000c";
+        WireToGateRecoveryState stamped = TwoOnBoard().WithLoadsOnBoardFor(Journey("TRANSPORT", [DemandA]));
+        Assert.Equal([DemandA, DemandA], stamped.LoadsOnBoard!.Select(load => load.JourneyAnchorDemandId));
+        Assert.Same(stamped, stamped.WithLoadsOnBoardFor(Journey("TRANSPORT", [DemandA])));
+
+        WireToGateRecoveryState next = stamped.WithLoadOnBoard(Load(NextAnchor, AttemptA2, [3]));
+        WireToGateRecoveryState aligned = next.WithLoadsOnBoardFor(Journey("TRANSPORT", [NextAnchor]));
+
+        Assert.Equal([NextAnchor], aligned.LoadsOnBoard!.Select(load => load.DemandId));
+        Assert.Equal(NextAnchor, aligned.LoadsOnBoard![0].JourneyAnchorDemandId);
+
+        WireToGateRecoveryState unstamped = TwoOnBoard().WithLoadsOnBoardFor(Journey("TRANSPORT", [DemandA, DemandB]));
+        Assert.All(unstamped.LoadsOnBoard!, load => Assert.Null(load.JourneyAnchorDemandId));
+    }
+
+    private static WireToGateRecoveryState TwoOnBoard() =>
+        WireToGateRecoveryState.Empty
+            .WithLoadOnBoard(Load(DemandA, AttemptA, [1]))
+            .WithLoadOnBoard(Load(DemandB, AttemptB, [5]));
+
+    private static WireToGateJourneySnapshot Journey(string? purpose, string[] planDemands) =>
+        WireToGateJourneySnapshot.Empty with
+        {
+            VehicleBusinessState = new WireToGateVehicleBusinessState(
+                2,
+                "READY",
+                purpose,
+                false,
+                "SUFFICIENT",
+                "NOT_CHARGING",
+                null,
+                [],
+                new DateTimeOffset(2026, 10, 8, 0, 0, 0, TimeSpan.Zero),
+                new string('0', 64)),
+            UpcomingStopPlan = new WireToGateUpcomingStopPlan(
+                2,
+                [
+                    .. planDemands.Select((demand, index) => new WireToGateMovementLeg(
+                        $"leg-{index}",
+                        "TO_DROPOFF",
+                        "BUSINESS",
+                        demand,
+                        null,
+                        index + 1,
+                        "ST-01",
+                        "MAP-26",
+                        "PLANNED"))
+                ],
+                new string('0', 64))
+        };
 
     private static WireToGateRecoveryOperationContext Load(string demandId, string attemptId, int[] slots) =>
         new(

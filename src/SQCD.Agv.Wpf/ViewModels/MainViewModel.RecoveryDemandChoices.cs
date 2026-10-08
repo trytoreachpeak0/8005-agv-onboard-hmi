@@ -20,7 +20,13 @@ public sealed partial class MainViewModel
 {
     private const string RecoveryDemandSelectionHint = "请先在「车上待交接的需求」中选择要处理的一条。";
 
-    private Func<IReadOnlyList<WireToGateRecoveryOperationContext>>? _recoveryDemandChoices;
+    private const string HandedOffAwaitingServerText = "（已交接，待系统确认）";
+
+    private Func<IReadOnlyList<WireToGateLoadOnBoard>>? _recoveryDemandChoices;
+    private Func<IReadOnlyList<WireToGateLoadOnBoard>>? _loadsOnBoard;
+    private Func<string?>? _compensationDemandId;
+    private Func<string?, WireToGateRecoveryOperationContext?>? _recoveryTargetOf;
+    private string _compensationTargetText = string.Empty;
     private Func<string?, string?, CancellationToken, Task<bool>>? _faultCargoHandoffForDemandRequester;
     private Func<string?, string?, CancellationToken, Task<bool>>? _forcedMechanicalRecoveryForDemandRequester;
     private RecoveryDemandChoiceRow? _selectedRecoveryDemandChoice;
@@ -60,18 +66,60 @@ public sealed partial class MainViewModel
     public bool CanPressForcedMechanicalRecovery =>
         CanRequestForcedMechanicalRecovery && !HasRecoveryDemandSelectionHint;
 
+    /// <summary>
+    /// 补偿自己的目标子批，只在它与「目标：子批 X」那一行说的不是同一条时才有值（审查 S3）。补偿始终针对最近一次完成的装货；
+    /// 交接与强制恢复针对车上的货。车上有几条需求时列表替交接说话，那一行只剩补偿的；后装的那条卸掉之后，交接只剩先装的那条，
+    /// 补偿仍是后装的那条。这两种时候各标各的，不让一行话替两个不同的目标说话。
+    /// </summary>
+    public string CompensationTargetText
+    {
+        get => _compensationTargetText;
+        private set
+        {
+            if (SetProperty(ref _compensationTargetText, value))
+            {
+                OnPropertyChanged(nameof(HasCompensationTarget));
+                OnPropertyChanged(nameof(HasRecoveryFallbackTarget));
+            }
+        }
+    }
+
+    /// <summary>补偿的目标那一行在不在屏上：有话要说，并且「补偿清空」真的在屏上。</summary>
+    public bool HasCompensationTarget => HasSeparateCompensationTarget && CanRequestLoadCompensation;
+
+    private bool HasSeparateCompensationTarget => CompensationTargetText.Length > 0;
+
     internal void ConfigureRecoveryDemandChoices(
-        Func<IReadOnlyList<WireToGateRecoveryOperationContext>> choices,
+        Func<IReadOnlyList<WireToGateLoadOnBoard>> choices,
+        Func<IReadOnlyList<WireToGateLoadOnBoard>> loadsOnBoard,
+        Func<string?> compensationDemandId,
+        Func<string?, WireToGateRecoveryOperationContext?> recoveryTargetOf,
         Func<string?, string?, CancellationToken, Task<bool>> faultCargoHandoffRequester,
         Func<string?, string?, CancellationToken, Task<bool>> forcedMechanicalRecoveryRequester)
     {
         _recoveryDemandChoices = choices ?? throw new ArgumentNullException(nameof(choices));
+        _loadsOnBoard = loadsOnBoard ?? throw new ArgumentNullException(nameof(loadsOnBoard));
+        _compensationDemandId = compensationDemandId ?? throw new ArgumentNullException(nameof(compensationDemandId));
+        _recoveryTargetOf = recoveryTargetOf ?? throw new ArgumentNullException(nameof(recoveryTargetOf));
         _faultCargoHandoffForDemandRequester = faultCargoHandoffRequester
             ?? throw new ArgumentNullException(nameof(faultCargoHandoffRequester));
         _forcedMechanicalRecoveryForDemandRequester = forcedMechanicalRecoveryRequester
             ?? throw new ArgumentNullException(nameof(forcedMechanicalRecoveryRequester));
         RunOnUiThread(RefreshRecoveryDemandChoicesCore);
     }
+
+    /// <summary>
+    /// 故障交接与强制机械恢复的确认框开头那一句：这一下处理的是哪条需求的哪几个仓。说不出时是空串，确认框照旧只说通用那段。
+    /// 读的是按下时业务服务会选的那一条，不是屏上另算的一份。
+    /// </summary>
+    public string RecoveryTargetConfirmationText =>
+        _recoveryTargetOf?.Invoke(ChosenRecoveryDemandId) is { } target
+            ? "处理对象："
+                + (SublotOf(target.DemandId) is { } sublot ? $"子批 {sublot} / " : string.Empty)
+                + SlotsText(target.Slots)
+                + (IsHandedOffAwaitingServer(target.DemandId) ? HandedOffAwaitingServerText : string.Empty)
+                + "。\n\n"
+            : string.Empty;
 
     /// <summary>
     /// 按下时交给业务服务的那条需求：列表在用时是选中行的，否则 <c>null</c>——只剩一条时什么都不传，与今天一样。
@@ -107,11 +155,12 @@ public sealed partial class MainViewModel
 
         RecoveryDemandChoiceRow[] rows =
         [
-            .. _recoveryDemandChoices().Select(load => new RecoveryDemandChoiceRow(
-                load.DemandId,
-                SublotOf(load.DemandId) is { } sublot
-                    ? $"子批 {sublot} / {SlotsText(load.Slots)}"
-                    : SlotsText(load.Slots)))
+            .. _recoveryDemandChoices().Select(item => new RecoveryDemandChoiceRow(
+                item.DemandId,
+                (SublotOf(item.DemandId) is { } sublot
+                    ? $"子批 {sublot} / {SlotsText(item.Load.Slots)}"
+                    : SlotsText(item.Load.Slots))
+                + (item.HandedOffAwaitingServer ? HandedOffAwaitingServerText : string.Empty)))
         ];
         if (!rows.SequenceEqual(RecoveryDemandChoices))
         {
@@ -125,8 +174,28 @@ public sealed partial class MainViewModel
             SelectedRecoveryDemandChoice = RecoveryDemandChoices.FirstOrDefault(row => row.DemandId == selected);
         }
 
+        // The lone subject the target line names may itself be one handed off, awaiting the server (review S4).
+        if (RecoveryFallbackTargetText.Length > 0
+            && !RecoveryFallbackTargetText.EndsWith(HandedOffAwaitingServerText, StringComparison.Ordinal)
+            && IsHandedOffAwaitingServer(_wireToGateRecoveryFallbackDemandId?.Invoke()))
+        {
+            RecoveryFallbackTargetText += HandedOffAwaitingServerText;
+        }
+
+        string? compensationDemandId = _compensationDemandId?.Invoke();
+        bool separate = compensationDemandId is not null
+            && (RecoveryDemandChoices.Count > 0
+                || !string.Equals(compensationDemandId, _wireToGateRecoveryFallbackDemandId?.Invoke(), StringComparison.Ordinal));
+        CompensationTargetText = separate && SublotOf(compensationDemandId) is { } sublot
+            ? $"补偿目标：子批 {sublot}"
+            : string.Empty;
         RaiseRecoveryDemandChoiceState();
     }
+
+    private bool IsHandedOffAwaitingServer(string? demandId) =>
+        demandId is not null
+        && _loadsOnBoard?.Invoke().Any(item => item.HandedOffAwaitingServer
+            && string.Equals(item.DemandId, demandId, StringComparison.Ordinal)) == true;
 
     private void RaiseRecoveryDemandChoiceState()
     {
@@ -135,6 +204,8 @@ public sealed partial class MainViewModel
         OnPropertyChanged(nameof(RecoveryDemandSelectionHintText));
         OnPropertyChanged(nameof(CanPressFaultCargoHandoff));
         OnPropertyChanged(nameof(CanPressForcedMechanicalRecovery));
+        OnPropertyChanged(nameof(HasCompensationTarget));
+        OnPropertyChanged(nameof(HasRecoveryFallbackTarget));
     }
 
     private static string SlotsText(IReadOnlyList<int> slots) => $"{string.Join("、", slots)}号仓";

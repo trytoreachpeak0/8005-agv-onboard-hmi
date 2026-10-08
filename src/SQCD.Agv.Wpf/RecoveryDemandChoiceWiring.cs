@@ -18,6 +18,9 @@ internal static class RecoveryDemandChoiceWiring
         ArgumentNullException.ThrowIfNull(business);
         viewModel.ConfigureRecoveryDemandChoices(
             () => business.RecoveryDemandChoices,
+            () => business.LoadsOnBoard,
+            () => business.CompensationFallbackDemandId,
+            business.RecoveryTargetFor,
             (reason, demandId, cancellationToken) =>
                 business.RequestFaultCargoHandoffAsync(reason, demandId, cancellationToken),
             (reason, demandId, cancellationToken) =>

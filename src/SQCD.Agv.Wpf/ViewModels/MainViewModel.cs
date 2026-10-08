@@ -914,8 +914,9 @@ public sealed partial class MainViewModel : ViewModelBase
         HasLoadCancellationSelectionHint ? LoadCancellationSelectionHint : string.Empty;
 
     /// <summary>
-    /// 补偿清空、故障交接、强制机械恢复这三个入口此刻指向哪一条需求的子批（批次7-14）。只在它们回落到
-    /// 「上次完成的装货」时有值：有在途操作时主体就是那次操作，业务服务给出 <c>null</c>，这里也不标。
+    /// 补偿清空、故障交接、强制机械恢复这三个入口此刻指向哪一条需求的子批（批次7-14）。只在没有在途操作时有值：有在途操作时
+    /// 主体就是那次操作，业务服务给出 <c>null</c>，这里也不标。车上有几条需求的货时，交接与强制恢复改由「车上待交接的需求」列表选，
+    /// 这一行为空；补偿与交接的目标不是同一条时，补偿另由 <see cref="CompensationTargetText"/> 标（onboard-hmi#209）。
     /// </summary>
     public string RecoveryFallbackTargetText
     {
@@ -939,7 +940,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </remarks>
     public bool HasRecoveryFallbackTarget =>
         RecoveryFallbackTargetText.Length > 0
-        && (CanRequestLoadCompensation
+        && (CanRequestLoadCompensation && !HasSeparateCompensationTarget
             || CanRequestFaultCargoHandoff
             || CanRequestForcedMechanicalRecovery);
 

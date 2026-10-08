@@ -200,6 +200,30 @@ public sealed record WireToGateRecoveryOperationContext(
             CommandContentSha256);
 }
 
+/// <summary>
+/// One demand's cargo on board, as <see cref="WireToGateRecoveryState.LoadsOnBoard"/> keeps it (8005-agv-onboard-hmi#209).
+/// </summary>
+/// <param name="Load">The recorded load of the demand: the subject a handoff or a forced recovery is opened for.</param>
+public sealed record WireToGateLoadOnBoard(WireToGateRecoveryOperationContext Load)
+{
+    /// <summary>
+    /// The anchor demand of the journey the load was made in, as the plan names it; <c>null</c> until a plan naming exactly
+    /// one demand has been seen (<see cref="WireToGateRecoveryState.WithLoadsOnBoardFor"/>).
+    /// </summary>
+    public string? JourneyAnchorDemandId { get; init; }
+
+    /// <summary>
+    /// A recovery that ends the demand was acknowledged over it -- a handoff, a forced recovery, a compensation, a
+    /// cancellation -- and only the server knows whether that result reconciled. The load stays a subject: if it did not, a
+    /// second handoff is the way out; if it did, the server refuses the session.
+    /// </summary>
+    public bool HandedOffAwaitingServer { get; init; }
+
+    /// <summary>The demand this load is for. Not serialized: it is <see cref="Load"/>'s.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string DemandId => Load.DemandId;
+}
+
 public sealed record WireToGateRecoveryState(
     string? UnsettledSlotOperationAttemptId,
     WireToGateRecoveryCheckpoint ProvenRecoveryCheckpoint,
@@ -254,25 +278,38 @@ public sealed record WireToGateRecoveryState(
 
     /// <summary>
     /// One recorded LOAD per demand whose cargo may still be on board: the subjects a fault cargo handoff and a forced
-    /// mechanical recovery choose from once nothing is armed (8005-agv-onboard-hmi#209). A recorded load enters it (a
-    /// later load of the same demand replaces the earlier one); a recorded unload of the demand, or a recovery vector over
-    /// the demand that the server took to end it, takes it out.
+    /// mechanical recovery choose from once nothing is armed (8005-agv-onboard-hmi#209).
     /// </summary>
     /// <remarks>
+    /// <para>
+    /// A recorded load enters it (a later load of the same demand replaces the earlier one). A recovery vector the server
+    /// acknowledged as ending the demand -- a handoff, a forced recovery, a compensation, a cancellation -- does <b>not</b> take
+    /// it out: it marks it <see cref="WireToGateLoadOnBoard.HandedOffAwaitingServer"/>. The vehicle cannot tell whether the
+    /// server reconciled that result: the session closes either way, and a result that did not reconcile keeps the demand, which
+    /// is then handed off again (control-server <c>AdvanceSessionAfterResultAsync</c>, <c>PrepareCargoHandoffAsync</c>). The
+    /// server refuses a session over a demand it ended (control-server#505, A3), so a second press there is answered, not
+    /// carried out.
+    /// </para>
+    /// <para>
+    /// What does take it out is the server's or the vehicle's own fact that the cargo is gone: a recorded unload of the demand,
+    /// the journey's closure (a business state whose purpose is no longer a transport), or a plan that no longer carries the
+    /// journey the load was made in.
+    /// </para>
+    /// <para>
     /// <c>null</c> is a journal written before this field existed: the subject is then
-    /// <see cref="LastCompletedLoadOperationContext"/>, as it always was. A version without this field reads the journal
-    /// and ignores it, and its next write drops it -- back to only the last load being offered.
+    /// <see cref="LastCompletedLoadOperationContext"/>, as it always was. A version without this field reads the journal and
+    /// ignores it, and its next write drops it -- back to only the last load being offered.
+    /// </para>
     /// </remarks>
-    public IReadOnlyList<WireToGateRecoveryOperationContext>? LoadedDemandOperationContexts { get; init; }
+    public IReadOnlyList<WireToGateLoadOnBoard>? LoadsOnBoard { get; init; }
 
     /// <summary>
-    /// The settled loads a handoff or a forced recovery may be about: <see cref="LoadedDemandOperationContexts"/>, or for a
-    /// journal that predates it, the last completed load alone. A method, not a property: the journal serializes every
-    /// public property.
+    /// The loads a handoff or a forced recovery may be about: <see cref="LoadsOnBoard"/>, or for a journal that predates it,
+    /// the last completed load alone. A method, not a property: the journal serializes every public property.
     /// </summary>
-    public IReadOnlyList<WireToGateRecoveryOperationContext> SettledLoadSubjects() =>
-        LoadedDemandOperationContexts
-        ?? (LastCompletedLoadOperationContext is { } last ? [last] : []);
+    public IReadOnlyList<WireToGateLoadOnBoard> SettledLoadSubjects() =>
+        LoadsOnBoard
+        ?? (LastCompletedLoadOperationContext is { } last ? [new WireToGateLoadOnBoard(last)] : []);
 
     /// <summary>The state with <paramref name="load"/> recorded as its demand's load on board.</summary>
     /// <remarks>
@@ -282,21 +319,85 @@ public sealed record WireToGateRecoveryState(
     public WireToGateRecoveryState WithLoadOnBoard(WireToGateRecoveryOperationContext load) =>
         this with
         {
-            LoadedDemandOperationContexts =
+            LoadsOnBoard =
             [
-                .. (LoadedDemandOperationContexts ?? []).Where(item =>
-                    !string.Equals(item.DemandId, load.DemandId, StringComparison.Ordinal)),
-                load
+                .. (LoadsOnBoard ?? []).Where(item => !string.Equals(item.DemandId, load.DemandId, StringComparison.Ordinal)),
+                new WireToGateLoadOnBoard(load)
             ]
         };
 
-    /// <summary>The state with <paramref name="demandId"/>'s load no longer on board.</summary>
+    /// <summary>The state with <paramref name="demandId"/>'s load no longer on board: its unload was recorded.</summary>
     public WireToGateRecoveryState WithoutLoadOnBoard(string demandId) =>
         this with
         {
-            LoadedDemandOperationContexts =
+            LoadsOnBoard =
                 [.. SettledLoadSubjects().Where(item => !string.Equals(item.DemandId, demandId, StringComparison.Ordinal))]
         };
+
+    /// <summary>
+    /// The state with <paramref name="demandId"/>'s load marked as handed off, awaiting the server: still on the list and still
+    /// a subject, because the vehicle cannot tell a result the server reconciled from one it did not.
+    /// </summary>
+    public WireToGateRecoveryState WithLoadHandedOff(string demandId) =>
+        this with
+        {
+            LoadsOnBoard =
+            [
+                .. SettledLoadSubjects().Select(item => string.Equals(item.DemandId, demandId, StringComparison.Ordinal)
+                    ? item with { HandedOffAwaitingServer = true }
+                    : item)
+            ]
+        };
+
+    /// <summary>
+    /// The state with the loads on board brought in line with the journey the server describes now:
+    /// <list type="bullet">
+    /// <item>a business state whose purpose is not a transport -- the journey's closure, or a journey of another kind -- empties
+    /// the list;</item>
+    /// <item>a plan whose legs name exactly one demand names the journey's anchor (control-server <c>JourneyPlanBuilder.Plan</c>
+    /// puts the anchor on every leg), and loads not yet stamped with an anchor are stamped with it;</item>
+    /// <item>a plan whose legs name demands drops the loads stamped with an anchor it does not name: they were made in another
+    /// journey, whose closure this vehicle missed.</item>
+    /// </list>
+    /// The anchor is written once, when the server accepts the journey, and never changes in its life (control-server
+    /// <c>WireToGateStore</c> is the only writer of <c>JourneyRuntimeRow.DemandId</c>). The same demand may anchor a later journey
+    /// after a redispatch, so an anchor that repeats is not proof of the same journey; that journey's closure clears the list
+    /// in between, and a missed closure followed by a redispatch of the same anchor is the one shape this leaves on the list.
+    /// </summary>
+    public WireToGateRecoveryState WithLoadsOnBoardFor(WireToGateJourneySnapshot journey)
+    {
+        ArgumentNullException.ThrowIfNull(journey);
+        if (LoadsOnBoard is not { Count: > 0 } loads)
+        {
+            return this;
+        }
+
+        if (journey.VehicleBusinessState is { } business
+            && !string.Equals(business.ActivePurpose, TransportPurpose, StringComparison.Ordinal))
+        {
+            return this with { LoadsOnBoard = [] };
+        }
+
+        IReadOnlyList<string> planned = journey.UpcomingStopPlan?.DemandIds ?? [];
+        if (planned.Count == 0)
+        {
+            return this;
+        }
+
+        string? anchor = planned.Count == 1 ? planned[0] : null;
+        WireToGateLoadOnBoard[] kept =
+        [
+            .. loads
+                .Select(item => item.JourneyAnchorDemandId is null && anchor is not null
+                    ? item with { JourneyAnchorDemandId = anchor }
+                    : item)
+                .Where(item => item.JourneyAnchorDemandId is null
+                    || planned.Contains(item.JourneyAnchorDemandId, StringComparer.Ordinal))
+        ];
+        return kept.SequenceEqual(loads) ? this : this with { LoadsOnBoard = kept };
+    }
+
+    private const string TransportPurpose = "TRANSPORT";
 
     /// <summary>
     /// A load cancellation that went out and has had no answer yet. The server keeps an

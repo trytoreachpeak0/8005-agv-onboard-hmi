@@ -374,6 +374,17 @@
                                AutomationProperties.AutomationId="LoadCancellationSelection"
                                Text="{Binding LoadCancellationSelectionHintText}"
                                Visibility="{Binding HasLoadCancellationSelectionHint, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <!--
+                        补偿自己的目标子批，只在它与「目标：子批 X」那一行不是同一条时出现（onboard-hmi#209 审查 S3）：车上有几条需求、
+                        或后装的那条已经卸掉时，补偿仍针对最近一次完成的装货，而交接与强制恢复针对的是车上的货。
+                    -->
+                    <TextBlock Margin="0,0,8,0"
+                               VerticalAlignment="Center"
+                               FontSize="13"
+                               Foreground="{StaticResource MutedBrush}"
+                               AutomationProperties.AutomationId="CompensationTarget"
+                               Text="{Binding CompensationTargetText}"
+                               Visibility="{Binding HasCompensationTarget, Converter={StaticResource BooleanToVisibilityConverter}}" />
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"

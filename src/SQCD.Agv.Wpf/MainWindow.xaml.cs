@@ -280,7 +280,8 @@ public partial class MainWindow : Window
     {
         if (_viewModel is null
             || MessageBox.Show(
-                "请确认目标仓存在故障货物，并由授权维护人员确认交接范围。\n\n系统会先等待服务端下发故障交接命令，再将目标仓位安全清空。是否继续？",
+                _viewModel.RecoveryTargetConfirmationText
+                + "请确认目标仓存在故障货物，并由授权维护人员确认交接范围。\n\n系统会先等待服务端下发故障交接命令，再将目标仓位安全清空。是否继续？",
                 "故障货物交接",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,
@@ -299,7 +300,8 @@ public partial class MainWindow : Window
     {
         if (_viewModel is null
             || MessageBox.Show(
-                "请确认目标仓门无法电动解锁，并由授权维护人员现场确认需要人工撬开处理。\n\n强制机械恢复不证明仓位已清空、也不证明车辆可以恢复作业，车辆会保持需恢复状态，等待重新核对。是否继续？",
+                _viewModel.RecoveryTargetConfirmationText
+                + "请确认目标仓门无法电动解锁，并由授权维护人员现场确认需要人工撬开处理。\n\n强制机械恢复不证明仓位已清空、也不证明车辆可以恢复作业，车辆会保持需恢复状态，等待重新核对。是否继续？",
                 "强制机械恢复",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Warning,

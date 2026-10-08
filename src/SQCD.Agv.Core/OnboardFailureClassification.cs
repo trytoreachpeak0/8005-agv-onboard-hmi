@@ -155,6 +155,7 @@ public static class OnboardFailureClassification
         // longer on board (onboard-hmi#209). Nothing was sent.
         "RECOVERY_DEMAND_SELECTION_REQUIRED",
         "RECOVERY_DEMAND_NOT_ON_BOARD",
+        "RECOVERY_DEMAND_LOCKED",
         "LOAD_CORRECTION_OPERATION_NOT_AVAILABLE",
 
         // The hardware-recovery record is incomplete, not required, or cannot be judged because slot

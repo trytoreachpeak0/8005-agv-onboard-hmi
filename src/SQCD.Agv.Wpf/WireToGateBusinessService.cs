@@ -1016,6 +1016,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// </remarks>
     private void OnJourneyChanged(object? sender, ValueChangedEventArgs<WireToGateJourneySnapshot> args)
     {
+        _ = UpdateLoadsOnBoardForJourneyAsync(args.Value);
         ForgetStationClearanceOnceTheServerSaysItIsOver(args.Value);
         ForgetUnableToChargeOnceTheServerSaysItIsOver(args.Value);
         if (args.Value.CurrentStopWorklist is not { } worklist

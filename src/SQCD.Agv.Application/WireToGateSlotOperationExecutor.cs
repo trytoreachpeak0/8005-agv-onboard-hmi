@@ -1470,7 +1470,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     RecoveryVector = current.RecoveryVector,
                     RecoveryResultObservedAt = current.RecoveryResultObservedAt,
                     LastCompletedLoadOperationContext = current.LastCompletedLoadOperationContext,
-                    LoadedDemandOperationContexts = current.LoadedDemandOperationContexts,
+                    LoadsOnBoard = current.LoadsOnBoard,
                     // The operator's unanswered load cancellation for this attempt stays; one left over
                     // from another attempt goes, as it always did (onboard-hmi#78).
                     PendingLoadCancellation = string.Equals(

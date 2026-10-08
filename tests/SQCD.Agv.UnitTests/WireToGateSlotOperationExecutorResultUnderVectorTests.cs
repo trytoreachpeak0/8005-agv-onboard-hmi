@@ -180,7 +180,7 @@ public sealed class WireToGateSlotOperationExecutorResultUnderVectorTests
         };
 
         (_, WireToGateRecoveryState loaded) = await RecordAsync(loading, token);
-        Assert.Equal([other.DemandId, DemandA], loaded.LoadedDemandOperationContexts!.Select(load => load.DemandId));
+        Assert.Equal([other.DemandId, DemandA], loaded.LoadsOnBoard!.Select(load => load.DemandId));
 
         string unloadAttempt = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
         WireToGateRecoveryState unloading = loaded with
@@ -196,7 +196,7 @@ public sealed class WireToGateSlotOperationExecutorResultUnderVectorTests
         };
 
         (_, WireToGateRecoveryState unloaded) = await RecordAsync(unloading, token, unloadAttempt);
-        Assert.Equal([other.DemandId], unloaded.LoadedDemandOperationContexts!.Select(load => load.DemandId));
+        Assert.Equal([other.DemandId], unloaded.LoadsOnBoard!.Select(load => load.DemandId));
     }
 
     private static WireToGateRecoveryOperationContext LoadA() => new(

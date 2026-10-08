@@ -944,8 +944,8 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
         LastCompletedLoadOperationContext = state.LastCompletedLoadOperationContext is { } lastLoad
             ? lastLoad with { Slots = lastLoad.Slots.Order().ToArray() }
             : null,
-        LoadedDemandOperationContexts = state.LoadedDemandOperationContexts?
-            .Select(load => load with { Slots = load.Slots.Order().ToArray() })
+        LoadsOnBoard = state.LoadsOnBoard?
+            .Select(item => item with { Load = item.Load with { Slots = item.Load.Slots.Order().ToArray() } })
             .ToArray()
     };
 
@@ -996,15 +996,19 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             ValidateOperationContext(lastLoad, requireLoad: true);
         }
 
-        if (state.LoadedDemandOperationContexts is { } loads)
+        if (state.LoadsOnBoard is { } loads)
         {
-            foreach (WireToGateRecoveryOperationContext load in loads)
+            foreach (WireToGateLoadOnBoard item in loads)
             {
-                ValidateOperationContext(load, requireLoad: true);
+                ValidateOperationContext(item.Load, requireLoad: true);
+                if (item.JourneyAnchorDemandId is not null)
+                {
+                    RequireUuid(item.JourneyAnchorDemandId, nameof(item.JourneyAnchorDemandId));
+                }
             }
 
             // One per demand: a second would make "which load of this demand" a question the subject choice cannot answer.
-            if (loads.Select(load => load.DemandId).Distinct(StringComparer.Ordinal).Count() != loads.Count)
+            if (loads.Select(item => item.DemandId).Distinct(StringComparer.Ordinal).Count() != loads.Count)
             {
                 throw new InvalidDataException("WIRE_TO_GATE recovery state字段无效。");
             }

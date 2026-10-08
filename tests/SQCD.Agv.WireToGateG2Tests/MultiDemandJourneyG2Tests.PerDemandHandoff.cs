@@ -59,85 +59,76 @@ public sealed partial class MultiDemandJourneyG2Tests
         // B's handoff, as the operator chose it on screen; the server's scope check accepts it.
         await HandOffAsync(harness, io, DemandB, AttemptB, slot: 5, sessions: 1, token);
 
-        // B is off the vehicle and A is still on it: A is the only subject now, and the screen asks for no choice.
+        // B was handed off, and only the server knows whether that reconciled: B stays, marked, and A is still to hand off
+        // (review S4).
         await harness.WaitUntilAsync(
             () => harness.Session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired
                 && harness.Business.CanRequestFaultCargoHandoff,
-            "the handoff entry over A's cargo",
+            "the handoff entry after B's handoff",
+            token);
+        await WaitForChoicesAsync(harness, ["子批 SUBLOT-A / 1号仓", "子批 SUBLOT-B / 5号仓（已交接，待系统确认）"], token);
+        Assert.Equal(
+            [(DemandA, false), (DemandB, true)],
+            ReadJournal(harness, token).LoadsOnBoard?.Select(load => (load.DemandId, load.HandedOffAwaitingServer)));
+
+        // Pressed for B again, the session request goes out and the server answers it: it ended B, so it refuses the session
+        // (control-server#505, A3). The refusal is shown, nothing is commanded, and B is not taken off on that answer alone.
+        harness.ViewModel.SelectedRecoveryDemandChoice =
+            harness.ViewModel.RecoveryDemandChoices.Single(row => row.DemandId == DemandB);
+        Assert.True(harness.ViewModel.CanPressFaultCargoHandoff);
+        Assert.Equal(
+            "处理对象：子批 SUBLOT-B / 5号仓（已交接，待系统确认）。\n\n",
+            harness.ViewModel.RecoveryTargetConfirmationText);
+        int actionsBefore = ReceivedPayloads(harness, "RecoveryActionSubmitted").Length;
+        Assert.False(await harness.ViewModel.RequestFaultCargoHandoffAsync(token));
+        JsonElement[] sessions = ReceivedPayloads(harness, "ExceptionRecoverySessionRequested");
+        Assert.Equal(2, sessions.Length);
+        Assert.Equal(DemandB, sessions[1].GetProperty("demandId").GetString());
+        Assert.Equal(actionsBefore, ReceivedPayloads(harness, "RecoveryActionSubmitted").Length);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.Logs.Any(line => line.Message.Contains(
+                "服务端不接受为这条需求开处置会话：它当前不在待恢复的状态，可能已经交接完成或已经结束。（RECOVERY_DEMAND_NOT_BLOCKED）",
+                StringComparison.Ordinal)),
+            "the server's refusal to reach the operator",
+            token);
+        Assert.Equal([DemandA, DemandB], ReadJournal(harness, token).LoadsOnBoard?.Select(load => load.DemandId));
+
+        await HandOffAsync(harness, io, DemandA, AttemptA, slot: 1, sessions: 3, token);
+        Assert.Equal(
+            [(DemandA, true), (DemandB, true)],
+            ReadJournal(harness, token).LoadsOnBoard?.Select(load => (load.DemandId, load.HandedOffAwaitingServer)));
+
+        // The journey closes: the server's closure business state has no purpose, and the list empties with it.
+        await harness.Server.SendJourneySnapshotAsync("VehicleBusinessStateSnapshot", ClosureBusinessState(revision: 9));
+        await harness.WaitUntilAsync(
+            () => ReadJournal(harness, token).LoadsOnBoard is { Count: 0 },
+            "the journey's closure to empty the loads on board",
             token);
         await WaitForChoicesAsync(harness, [], token);
-        Assert.False(harness.ViewModel.ShowsRecoveryDemandChoices);
-        Assert.True(harness.ViewModel.CanPressFaultCargoHandoff);
-        Assert.Equal("目标：子批 SUBLOT-A", harness.ViewModel.RecoveryFallbackTargetText);
-        Assert.Equal([DemandA], ReadJournal(harness, token).LoadedDemandOperationContexts?.Select(load => load.DemandId));
-
-        // B handed off cannot be asked about again: before this change a press after B's handoff asked for B over slot 5.
-        Assert.False(await harness.Business.RequestFaultCargoHandoffAsync(
-            "现场确认故障仓货物需要交接处理。", DemandB, token));
-        Assert.Single(ReceivedPayloads(harness, "ExceptionRecoverySessionRequested"));
-
-        await HandOffAsync(harness, io, DemandA, AttemptA, slot: 1, sessions: 2, token);
-        Assert.Empty(ReadJournal(harness, token).LoadedDemandOperationContexts ?? [null!]);
-        await harness.WaitUntilAsync(
-            () => !harness.Business.CanRequestFaultCargoHandoff,
-            "the handoff entry to close with nothing left on board",
-            token);
+        Assert.False(harness.Business.CanRequestFaultCargoHandoff);
+        Assert.Contains(
+            harness.ViewModel.Logs,
+            line => line.Message.Contains("本趟行程已结束，「车上待交接的需求」已清空。", StringComparison.Ordinal));
         Assert.Empty(harness.UiErrors);
     }
 
     /// <summary>
-    /// 会话已经为 A 开着：动作被服务端拒绝、向量放掉之后，入口仍对 A 开着（会话说的是哪条需求，主体就是哪条），再按一次沿用
-    /// 这个会话，不再申请新会话。
+    /// The business state <c>JourneyClosure</c> stages when a journey ends: no purpose, no loading phase (control-server
+    /// <c>JourneyClosure.StageAsync</c>).
     /// </summary>
-    [Fact]
-    [Trait("IntegrationSlice", "FP-IS-07")]
-    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
-    public async Task AnOpenSessionKeepsTheEntryOnItsDemandAmongSeveralLoads()
-    {
-        CancellationToken token = TestContext.Current.CancellationToken;
-        FakeIoModuleClient io = new() { OperatorNeverActs = true };
-        await using Harness harness = await StartTakeOverStopAsync(
-            io,
-            server =>
-            {
-                server.RecoverySessionSnapshotStatesAfterOpened = ["OPEN"];
-                server.OpenSnapshotAllowedActions = ["FAULT_CARGO_HANDOFF", "FORCED_MECHANICAL_RECOVERY"];
-                server.RecoveryActionRejectionReasonCode = "ACTION_NOT_ALLOWED_IN_STATE";
-                server.RecoverySessionScopeByDemand = new Dictionary<string, int[]>(StringComparer.Ordinal)
-                {
-                    [DemandA] = [1],
-                    [DemandB] = [5]
-                };
-            },
-            token);
-        await LoadAndRecordAsync(harness, io, DemandA, AttemptA, slot: 1, token);
-        await LoadAndRecordAsync(harness, io, DemandB, AttemptB, slot: 5, token);
-        await HoldTheSessionForRecoveryAsync(harness, token);
-        await WaitForChoicesAsync(harness, ["子批 SUBLOT-A / 1号仓", "子批 SUBLOT-B / 5号仓"], token);
-
-        harness.ViewModel.SelectedRecoveryDemandChoice =
-            harness.ViewModel.RecoveryDemandChoices.Single(row => row.DemandId == DemandA);
-        Assert.False(await harness.ViewModel.RequestFaultCargoHandoffAsync(token));
-        Assert.Single(ReceivedPayloads(harness, "RecoveryActionSubmitted"));
-        await harness.WaitUntilAsync(
-            () => ReadJournal(harness, token).RecoveryVector is null,
-            "the refused handoff's vector to be released",
-            token);
-
-        // The session the press opened is A's, and the entry stays on A.
-        await AssertWhileAsync(
-            DisplaySettleWindow,
-            () => Assert.True(harness.Business.CanRequestFaultCargoHandoff),
-            token);
-        harness.Server.RecoveryActionRejectionReasonCode = null;
-        Assert.True(await harness.ViewModel.RequestFaultCargoHandoffAsync(token));
-        Assert.Single(ReceivedPayloads(harness, "ExceptionRecoverySessionRequested"));
-        JsonElement[] actions = ReceivedPayloads(harness, "RecoveryActionSubmitted");
-        Assert.Equal(2, actions.Length);
-        Assert.Equal(DemandA, actions[1].GetProperty("demandId").GetString());
-        Assert.Equal([1], actions[1].GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()));
-        Assert.Empty(harness.UiErrors);
-    }
+    private static object ClosureBusinessState(long revision) =>
+        new
+        {
+            vehicleBusinessStateRevision = revision,
+            readiness = "READY",
+            activePurpose = (string?)null,
+            manualChargingHold = false,
+            batteryState = "SUFFICIENT",
+            chargingCycleState = "NOT_CHARGING",
+            loadingPhase = (object?)null,
+            blockingFacts = Array.Empty<object>(),
+            observedAt = DateTimeOffset.UtcNow
+        };
 
     /// <summary>
     /// 两条已装需求的上下文都在日志簿里：断线重连之后、车载端重启之后都还能选，重启后先交接较早装的 A，B 仍在。
@@ -193,7 +184,9 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal([DemandA, DemandB], afterRestart.ViewModel.RecoveryDemandChoices.Select(row => row.DemandId));
 
         await HandOffAsync(afterRestart, ioAfterRestart, DemandA, AttemptA, slot: 1, sessions: 1, token);
-        Assert.Equal([DemandB], ReadJournal(afterRestart, token).LoadedDemandOperationContexts?.Select(load => load.DemandId));
+        Assert.Equal(
+            [(DemandA, true), (DemandB, false)],
+            ReadJournal(afterRestart, token).LoadsOnBoard?.Select(load => (load.DemandId, load.HandedOffAwaitingServer)));
         Assert.Empty(first.UiErrors);
         Assert.Empty(afterRestart.UiErrors);
     }
@@ -263,7 +256,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         // B's acknowledgement arrives: only the result's share is recorded, and B is on board.
         resultAckHeld.SetResult();
         await harness.WaitUntilAsync(
-            () => ReadJournal(harness, token).LoadedDemandOperationContexts?.Count == 2,
+            () => ReadJournal(harness, token).LoadsOnBoard?.Count == 2,
             "B's late acknowledgement to put B on the loaded list",
             token);
         WireToGateRecoveryState acknowledged = ReadJournal(harness, token);
@@ -288,10 +281,13 @@ public sealed partial class MultiDemandJourneyG2Tests
             ReceivedPayloads(harness, "FaultCargoRecoveryResult")[1].GetProperty("overallOutcome").GetString());
         WireToGateRecoveryState settled = ReadJournal(harness, token);
         Assert.Null(settled.TakenOverSlotOperationAttemptId);
-        Assert.Equal([DemandA], settled.LoadedDemandOperationContexts?.Select(load => load.DemandId));
+        Assert.Equal(
+            [(DemandA, false), (DemandB, true)],
+            settled.LoadsOnBoard?.Select(load => (load.DemandId, load.HandedOffAwaitingServer)));
         await harness.WaitUntilAsync(
-            () => harness.Business.CanRequestFaultCargoHandoff && harness.Business.RecoveryFallbackDemandId == DemandA,
-            "the handoff entry over A",
+            () => harness.Business.CanRequestFaultCargoHandoff
+                && harness.Business.RecoveryDemandChoices.Select(load => load.DemandId).SequenceEqual([DemandA, DemandB]),
+            "the handoff entry over A, with B marked",
             token);
         Assert.Empty(harness.UiErrors);
     }
@@ -310,7 +306,6 @@ public sealed partial class MultiDemandJourneyG2Tests
             io,
             server =>
             {
-                server.SendRecoveryVectorCommandAfterRecoveryAction = false;
                 server.RecoverySessionScopeByDemand = new Dictionary<string, int[]>(StringComparer.Ordinal)
                 {
                     [DemandA] = [1],
@@ -339,6 +334,21 @@ public sealed partial class MultiDemandJourneyG2Tests
         JsonElement session = Assert.Single(ReceivedPayloads(harness, "ExceptionRecoverySessionRequested"));
         Assert.Equal(DemandA, session.GetProperty("demandId").GetString());
         Assert.Equal([1], session.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()));
+
+        // The person confirms the isolation and the manual extraction; the server acknowledges MECHANICALLY_ISOLATED, which
+        // ends A's demand as a handoff does: A leaves the loads on board, B stays (review RC).
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanConfirmForcedMechanicalRecovery,
+            "the authorized forced recovery to wait for the operator's confirmation",
+            token);
+        await harness.Business.ConfirmForcedMechanicalRecoveryAsync(token);
+        await harness.WaitUntilAsync(
+            () => ReadJournal(harness, token) is { RecoveryVector: null, ForcedIsolation: not null },
+            "the acknowledged isolation to settle the forced recovery",
+            token);
+        Assert.Equal(
+            [(DemandA, true), (DemandB, false)],
+            ReadJournal(harness, token).LoadsOnBoard?.Select(load => (load.DemandId, load.HandedOffAwaitingServer)));
         Assert.Empty(harness.UiErrors);
     }
 
@@ -360,6 +370,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         harness.Server.RecoverySlotOperationAttemptId = attemptId;
         harness.Server.RecoveryVectorSlotOperationAttemptId = attemptId;
         int unlocksBefore = io.UnlockCount;
+        // Counted, not taken from the session count: a session the server refused leaves no result.
+        int resultsBefore = ReceivedPayloads(harness, "FaultCargoRecoveryResult").Length;
         harness.ViewModel.RefreshWireToGateInputState();
         if (harness.ViewModel.ShowsRecoveryDemandChoices)
         {
@@ -374,12 +386,13 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(demandId, requested[^1].GetProperty("demandId").GetString());
         Assert.Equal([slot], requested[^1].GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()));
         await harness.WaitUntilAsync(
-            () => io.UnlockCount > unlocksBefore || ReceivedPayloads(harness, "FaultCargoRecoveryResult").Length >= sessions,
+            () => io.UnlockCount > unlocksBefore
+                || ReceivedPayloads(harness, "FaultCargoRecoveryResult").Length > resultsBefore,
             $"the handoff to open slot {slot}",
             token);
         io.CloseDoor(slot - 1, cargo: false);
         await harness.WaitUntilAsync(
-            () => ReceivedPayloads(harness, "FaultCargoRecoveryResult").Length == sessions
+            () => ReceivedPayloads(harness, "FaultCargoRecoveryResult").Length == resultsBefore + 1
                 && ReadJournal(harness, token).RecoveryVector is null,
             $"the handoff over {demandId} to be settled",
             token);
