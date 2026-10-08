@@ -1463,7 +1463,12 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                         StringComparison.Ordinal)
                         ? current.PendingLoadCancellation
                         : existingState.PendingLoadCancellation,
-                    ForcedIsolation = current.ForcedIsolation
+                    ForcedIsolation = current.ForcedIsolation,
+                    // Written as null on purpose, not left out by accident (8005-agv-onboard-hmi#278): a checkpoint of
+                    // this attempt means this executor is running it again -- a new operation, or a resume of the very
+                    // attempt a forgotten vector held -- and the result it reaches is this run's own account, to be
+                    // recorded as a settlement. A marker carried over would leave that result recorded as a share only.
+                    TakenOverSlotOperationAttemptId = null
                 };
             },
             cancellationToken).ConfigureAwait(false);

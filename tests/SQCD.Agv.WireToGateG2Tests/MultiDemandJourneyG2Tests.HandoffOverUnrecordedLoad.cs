@@ -242,6 +242,174 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Empty(harness.UiErrors);
     }
 
+    /// <summary>
+    /// 维护人员核对后结束这条路同样写标记（审查 X2）：交接以 UNKNOWN 结束，它的结果被服务端永久拒收，等待人工核对；
+    /// A 的 COMPLETED 已确认在案。维护人员结束这次恢复之后重连，标记、A 与 1 号门都还在。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
+    public async Task ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        TaskCompletionSource resultAckHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using Harness harness = await StartTakeOverStopAsync(
+            io,
+            server =>
+            {
+                server.OperationResultAckHold = resultAckHeld.Task;
+                server.ProtocolProblemByMessageType = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    ["FaultCargoRecoveryResult"] = "BUSINESS_ID_CONTENT_CONFLICT"
+                };
+            },
+            token);
+        using ReleaseOnExit releaseAck = new(() => resultAckHeld.TrySetResult());
+
+        await LoadBothSlotsOfAAsync(harness, io, token);
+        await harness.WaitUntilAsync(
+            () => harness.Server.OperationResultsHeld == 1,
+            "the load's COMPLETED result to be held unacknowledged",
+            token);
+        await HoldTheSessionForRecoveryAsync(harness, token);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanRequestFaultCargoHandoff,
+            "the fault cargo handoff entry over load A",
+            token);
+        Assert.True(await harness.Business.RequestFaultCargoHandoffAsync("现场确认故障仓货物需要交接处理。", token));
+        await harness.WaitUntilAsync(
+            () => io.UnlockCount == 3 || ReceivedPayloads(harness, "FaultCargoRecoveryResult").Length > 0,
+            "the handoff to open slot 1",
+            token);
+        await ReleaseLoadAckAsync(harness, resultAckHeld, token);
+
+        io.SetUnreadable(0);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanCloseConflictedRecoveryAfterReview,
+            "the refused handoff to wait for a maintainer's manual check",
+            token);
+        Assert.True(await harness.Business.CloseConflictedRecoveryAfterReviewAsync(token));
+        AssertAttemptAndDoorKept(ReadJournal(harness, token));
+
+        int restoresBefore = RestoredEntryLines(harness);
+        await harness.Session.Client.DisconnectAsync();
+        await harness.Session.Client.ConnectAndRecoverAsync(token);
+        await harness.WaitUntilAsync(
+            () => RestoredEntryLines(harness) > restoresBefore
+                || ReadJournal(harness, token).UnsettledSlotOperationAttemptId is null,
+            "the restore to owe the recovery entry, or to settle the attempt",
+            token);
+        AssertAttemptAndDoorKept(ReadJournal(harness, token));
+        Assert.Single(ReceivedPayloads(harness, "OperationResult"));
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// 什么都没做的向量不写标记（审查第 3 条）：交接命令到车时 1 号门的锁反馈已读不到，执行器在第一次开锁之前拒绝，交接以
+    /// FAILED 结束、被忘掉，一扇门都没开。A 的确认随后到达，照常把 A 结清。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
+    public async Task AHandoffThatOpenedNothingLeavesTheLoadsAckToSettleIt()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        TaskCompletionSource resultAckHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using Harness harness = await StartTakeOverStopAsync(
+            io,
+            server =>
+            {
+                server.OperationResultAckHold = resultAckHeld.Task;
+                server.BeforeRecoveryVectorCommand = () => io.SetUnreadable(0);
+            },
+            token);
+        using ReleaseOnExit releaseAck = new(() => resultAckHeld.TrySetResult());
+
+        await LoadBothSlotsOfAAsync(harness, io, token);
+        await harness.WaitUntilAsync(
+            () => harness.Server.OperationResultsHeld == 1,
+            "the load's COMPLETED result to be held unacknowledged",
+            token);
+        await HoldTheSessionForRecoveryAsync(harness, token);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanRequestFaultCargoHandoff,
+            "the fault cargo handoff entry over load A",
+            token);
+        int unlocksBefore = io.UnlockCount;
+        Assert.True(await harness.Business.RequestFaultCargoHandoffAsync("现场确认故障仓货物需要交接处理。", token));
+        JsonElement handoffResult = await WaitForPayloadAsync(harness, "FaultCargoRecoveryResult", token);
+        Assert.Equal("FAILED", handoffResult.GetProperty("overallOutcome").GetString());
+        await harness.WaitUntilAsync(
+            () => ReadJournal(harness, token).RecoveryVector is null,
+            "the FAILED handoff to be forgotten",
+            token);
+        Assert.Equal(unlocksBefore, io.UnlockCount);
+        WireToGateRecoveryState forgotten = ReadJournal(harness, token);
+        Assert.Equal(AttemptA, forgotten.UnsettledSlotOperationAttemptId);
+        Assert.Empty(forgotten.ActiveUnlockSlots);
+        Assert.Null(forgotten.TakenOverSlotOperationAttemptId);
+
+        await ReleaseLoadAckAsync(harness, resultAckHeld, token);
+        WireToGateRecoveryState settled = ReadJournal(harness, token);
+        Assert.Null(settled.UnsettledSlotOperationAttemptId);
+        Assert.Equal(WireToGateRecoveryCheckpoint.ResultRecorded, settled.ProvenRecoveryCheckpoint);
+        Assert.Equal(AttemptA, settled.LastCompletedLoadOperationContext?.SlotOperationAttemptId);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// 标记分支照旧把未确认的 COMPLETED 再发一次（审查 X4）：A 的结果与还原的重发都没等到确认，交接接管 A、以 UNKNOWN
+    /// 结束、被忘掉；下一次还原走标记分支，再发一次、拿到确认，A 与 1 号门照样留着。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FAULT-CARGO-HANDOFF")]
+    public async Task TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        // A's OperationResult and the first restore's resend of it are taken and never answered; the vehicle stops waiting
+        // for each after the short message timeout.
+        await using Harness harness = await StartTakeOverStopAsync(
+            io,
+            server => server.OperationResultAcksToDrop = 2,
+            token,
+            messageTimeout: TimeSpan.FromSeconds(3));
+
+        await LoadBothSlotsOfAAsync(harness, io, token);
+        await HoldTheSessionForRecoveryAsync(harness, token);
+        await harness.WaitUntilAsync(
+            () => ReceivedPayloads(harness, "OperationResult").Length == 2
+                && harness.Business.CanRequestFaultCargoHandoff,
+            "the restore's resend of A's result, and the handoff entry over A",
+            token);
+
+        Assert.True(await harness.Business.RequestFaultCargoHandoffAsync("现场确认故障仓货物需要交接处理。", token));
+        await harness.WaitUntilAsync(
+            () => io.UnlockCount == 3 || ReceivedPayloads(harness, "FaultCargoRecoveryResult").Length > 0,
+            "the handoff to open slot 1",
+            token);
+        io.SetUnreadable(0);
+        await harness.WaitUntilAsync(
+            () => ReadJournal(harness, token).RecoveryVector is null,
+            "the UNKNOWN handoff to be forgotten once acknowledged",
+            token);
+        AssertAttemptAndDoorKept(ReadJournal(harness, token));
+
+        // The next restore takes the marked branch: the result is sent once more, and this time acknowledged.
+        await harness.Server.SendSessionReadinessAsync();
+        await harness.WaitUntilAsync(
+            () => harness.Session.Journal.ReadOutgoingByDeduplicationKeyAsync($"operation-result:{AttemptA}", token)
+                .GetAwaiter().GetResult() is { Acknowledged: true },
+            "A's result to be sent once more and acknowledged",
+            token);
+        Assert.Equal(3, ReceivedPayloads(harness, "OperationResult").Length);
+        AssertAttemptAndDoorKept(ReadJournal(harness, token));
+        Assert.Empty(harness.UiErrors);
+    }
+
     /// <summary>The attempt the forgotten handoff held, its context and door 1 all still on file, and the marker on A.</summary>
     private static void AssertAttemptAndDoorKept(WireToGateRecoveryState journal)
     {
@@ -357,7 +525,8 @@ public sealed partial class MultiDemandJourneyG2Tests
     private static async Task<Harness> StartTakeOverStopAsync(
         FakeIoModuleClient io,
         Action<FakeControlServer> configure,
-        CancellationToken token)
+        CancellationToken token,
+        TimeSpan? messageTimeout = null)
     {
         Environment.SetEnvironmentVariable(TakeOverProofVariable, "hmi278-proof");
         Harness harness = await Harness.StartAsync(
@@ -381,7 +550,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             Harness.NewJournalPath(),
             io: io,
             recoveryOptions: TakeOverRecovery,
-            messageTimeout: TimeSpan.FromSeconds(30));
+            messageTimeout: messageTimeout ?? TimeSpan.FromSeconds(30));
         await harness.WaitUntilAsync(
             () => harness.Session.CurrentJourney.CurrentStopWorklist is not null
                 && harness.Session.Current.Readiness == WireToGateSessionReadiness.Ready,

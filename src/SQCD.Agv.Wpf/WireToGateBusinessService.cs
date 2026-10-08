@@ -1874,6 +1874,15 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return InterruptedOperationSettlement.TakenOver;
             }
 
+            // No result of the attempt's own on file, and a vector held it when it was forgotten
+            // (TakenOverSlotOperationAttemptId, 8005-agv-onboard-hmi#278): not asked here, on purpose. Nothing is recorded
+            // as completed on this branch except from the live IO below, which counts a slot complete only in its final
+            // state and keeps every other slot of the active unlock set UNKNOWN, so the door the vector left in doubt is
+            // not lost. And the result it sends is the one the server needs: with no result for the attempt the operation
+            // stays Prepared, its readiness PENDING_FACT_RECONCILIATION_REQUIRED, and resume and compensation are refused
+            // until a result puts it into RecoveryRequired (control-server OnboardRecoveryCoordinator
+            // ValidateActionPreconditions). Answering NotSettled here would take those two ways out away.
+            //
             // A load cancellation over this attempt that has a result on file, with no vector on file any more: its
             // conclusion is that cancellation's (ADR-cross-0046), so nothing is settled and nothing is sent. Reached
             // when a maintainer ended a cancellation the server refused for good (onboard-hmi#254), and also when the
