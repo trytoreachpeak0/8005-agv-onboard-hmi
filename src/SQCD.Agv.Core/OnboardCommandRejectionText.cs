@@ -87,6 +87,10 @@ public static class OnboardCommandRejectionText
         ["RECOVERY_ACTION_ALREADY_SELECTED"] = "本次恢复已经选过处理方式，请等待服务端下发后续命令。",
         ["RECOVERY_REASON_REQUIRED"] = "请先填写恢复原因，再提交。",
         ["RECOVERY_OPERATION_CONTEXT_MISSING"] = "找不到本次恢复对应的仓位操作，请等待服务端同步，或联系维护人员。",
+        // Several demands' cargo on board (onboard-hmi#209): which one a handoff or a forced recovery is about is the
+        // operator's to say, never guessed.
+        ["RECOVERY_DEMAND_SELECTION_REQUIRED"] = "车上有多条需求的货物，请先选择要处理的需求，再提交。",
+        ["RECOVERY_DEMAND_NOT_ON_BOARD"] = "所选需求的货物已不在车上待处理，请重新选择。",
         ["LOAD_CORRECTION_OPERATION_NOT_AVAILABLE"] = "当前没有可以修正的装货操作。",
 
         // The hardware-recovery record is incomplete, unnecessary, or cannot be judged yet.

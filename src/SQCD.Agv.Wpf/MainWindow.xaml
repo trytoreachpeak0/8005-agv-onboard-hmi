@@ -412,11 +412,44 @@
                                AutomationProperties.AutomationId="RecoveryFallbackTarget"
                                Text="{Binding RecoveryFallbackTargetText}"
                                Visibility="{Binding HasRecoveryFallbackTarget, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <!--
+                        车上有多条需求的货时，故障交接与强制机械恢复先选一条（onboard-hmi#209）。不用清单选中行：清单只列当前这一站，
+                        别的站装上的货不在里面。UIA 读的是行容器 ListBoxItem 的 Name 与 ItemStatus（需求号）：行模板的根元素没有
+                        自动化对象，标在那里读不到。
+                    -->
+                    <StackPanel Margin="0,0,8,0"
+                                VerticalAlignment="Center"
+                                Visibility="{Binding ShowsRecoveryDemandChoices, Converter={StaticResource BooleanToVisibilityConverter}}">
+                        <TextBlock FontSize="13" FontWeight="Bold" Foreground="#334155" Text="车上待交接的需求" />
+                        <ListBox MinWidth="180"
+                                 Margin="0,2,0,0"
+                                 AutomationProperties.AutomationId="RecoveryDemandChoices"
+                                 AutomationProperties.Name="车上待交接的需求"
+                                 ItemsSource="{Binding RecoveryDemandChoices}"
+                                 SelectedItem="{Binding SelectedRecoveryDemandChoice, Mode=TwoWay}">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="AutomationProperties.Name" Value="{Binding Text}" />
+                                    <Setter Property="AutomationProperties.ItemStatus" Value="{Binding DemandId}" />
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="{x:Type vm:RecoveryDemandChoiceRow}">
+                                    <TextBlock FontSize="13" Text="{Binding Text}" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                        <TextBlock FontSize="12"
+                                   Foreground="#B45309"
+                                   AutomationProperties.AutomationId="RecoveryDemandSelectionHint"
+                                   Text="{Binding RecoveryDemandSelectionHintText}"
+                                   Visibility="{Binding HasRecoveryDemandSelectionHint, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    </StackPanel>
                     <Button Margin="0,0,8,0"
                             Padding="12,6"
                             FontSize="13"
                             Background="#D6A32A"
-                            IsEnabled="{Binding CanRequestFaultCargoHandoff}"
+                            IsEnabled="{Binding CanPressFaultCargoHandoff}"
                             Visibility="{Binding CanRequestFaultCargoHandoff, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnFaultCargoHandoffClick"
                             Content="故障交接" />
@@ -424,7 +457,7 @@
                             Padding="12,6"
                             FontSize="13"
                             Background="#D6A32A"
-                            IsEnabled="{Binding CanRequestForcedMechanicalRecovery}"
+                            IsEnabled="{Binding CanPressForcedMechanicalRecovery}"
                             Visibility="{Binding CanRequestForcedMechanicalRecovery, Converter={StaticResource BooleanToVisibilityConverter}}"
                             Click="OnForcedMechanicalRecoveryClick"
                             Content="强制机械恢复" />

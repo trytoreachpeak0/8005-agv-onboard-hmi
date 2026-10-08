@@ -8,7 +8,7 @@ using SQCD.Agv.Infrastructure;
 
 namespace SQCD.Agv.Wpf.ViewModels;
 
-public sealed class MainViewModel : ViewModelBase
+public sealed partial class MainViewModel : ViewModelBase
 {
     private const int MaxLogEntries = 300;
 
@@ -1015,6 +1015,7 @@ public sealed class MainViewModel : ViewModelBase
         RecoveryFallbackTargetText = SublotOf(_wireToGateRecoveryFallbackDemandId?.Invoke()) is { } target
             ? $"目标：子批 {target}"
             : string.Empty;
+        RefreshRecoveryDemandChoicesCore();
     }
 
     /// <summary>
@@ -1285,6 +1286,7 @@ public sealed class MainViewModel : ViewModelBase
             OnPropertyChanged(nameof(HasRecoveryReasonInput));
             OnPropertyChanged(nameof(HasRecoveryReasonCarriedOver));
             OnPropertyChanged(nameof(HasRecoveryFallbackTarget));
+            RaiseRecoveryDemandChoiceState();
         }
     }
 
@@ -1553,11 +1555,13 @@ public sealed class MainViewModel : ViewModelBase
             ? Task.FromResult(false)
             : _wireToGateLoadCorrectionRequester(cancellationToken);
 
+    /// <summary>按下「故障交接」。车上有多条需求的货时带上「车上待交接的需求」里选中的那条（onboard-hmi#209）。</summary>
     public Task<bool> RequestFaultCargoHandoffAsync(CancellationToken cancellationToken = default) =>
-        RequestWithReasonAsync(_wireToGateFaultCargoHandoffRequester, cancellationToken);
+        RequestFaultCargoHandoffForChoiceAsync(cancellationToken);
 
+    /// <summary>按下「强制机械恢复」，所选需求同上。</summary>
     public Task<bool> RequestForcedMechanicalRecoveryAsync(CancellationToken cancellationToken = default) =>
-        RequestWithReasonAsync(_wireToGateForcedMechanicalRecoveryRequester, cancellationToken);
+        RequestForcedMechanicalRecoveryForChoiceAsync(cancellationToken);
 
     /// <summary>
     /// Sends the administrator's entered reason, trimmed, or <c>null</c> when nothing was entered, and clears

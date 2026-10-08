@@ -158,6 +158,47 @@ public sealed class WireToGateSlotOperationExecutorResultUnderVectorTests
         Assert.Null(after.TakenOverSlotOperationAttemptId);
     }
 
+    /// <summary>
+    /// 记录一次完成的装货，这条需求进入车上已装列表；记录同一条需求完成的卸货，它离开列表（8005-agv-onboard-hmi#209）。
+    /// </summary>
+    [Fact]
+    public async Task ARecordedLoadPutsItsDemandOnBoardAndItsRecordedUnloadTakesItOff()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        WireToGateRecoveryOperationContext other = LoadA() with
+        {
+            DemandId = "ffffffff-ffff-4fff-8fff-ffffffffffff",
+            SlotOperationAttemptId = AttemptC,
+            Slots = [5],
+            ExpectedBasketCount = 1
+        };
+        WireToGateRecoveryState loading = WireToGateRecoveryState.Empty.WithLoadOnBoard(other) with
+        {
+            UnsettledSlotOperationAttemptId = AttemptA,
+            ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+            OperationContext = LoadA()
+        };
+
+        (_, WireToGateRecoveryState loaded) = await RecordAsync(loading, token);
+        Assert.Equal([other.DemandId, DemandA], loaded.LoadedDemandOperationContexts!.Select(load => load.DemandId));
+
+        string unloadAttempt = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+        WireToGateRecoveryState unloading = loaded with
+        {
+            UnsettledSlotOperationAttemptId = unloadAttempt,
+            ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+            OperationContext = LoadA() with
+            {
+                SlotOperationAttemptId = unloadAttempt,
+                OperationType = OperationType.Unload,
+                ExpectedOccupied = false
+            }
+        };
+
+        (_, WireToGateRecoveryState unloaded) = await RecordAsync(unloading, token, unloadAttempt);
+        Assert.Equal([other.DemandId], unloaded.LoadedDemandOperationContexts!.Select(load => load.DemandId));
+    }
+
     private static WireToGateRecoveryOperationContext LoadA() => new(
         "11111111-1111-4111-8111-111111111111",
         null,

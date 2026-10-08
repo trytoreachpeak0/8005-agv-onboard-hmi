@@ -943,7 +943,10 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             : null,
         LastCompletedLoadOperationContext = state.LastCompletedLoadOperationContext is { } lastLoad
             ? lastLoad with { Slots = lastLoad.Slots.Order().ToArray() }
-            : null
+            : null,
+        LoadedDemandOperationContexts = state.LoadedDemandOperationContexts?
+            .Select(load => load with { Slots = load.Slots.Order().ToArray() })
+            .ToArray()
     };
 
     private static void ValidateRecoveryState(WireToGateRecoveryState state)
@@ -991,6 +994,20 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
         if (state.LastCompletedLoadOperationContext is { } lastLoad)
         {
             ValidateOperationContext(lastLoad, requireLoad: true);
+        }
+
+        if (state.LoadedDemandOperationContexts is { } loads)
+        {
+            foreach (WireToGateRecoveryOperationContext load in loads)
+            {
+                ValidateOperationContext(load, requireLoad: true);
+            }
+
+            // One per demand: a second would make "which load of this demand" a question the subject choice cannot answer.
+            if (loads.Select(load => load.DemandId).Distinct(StringComparer.Ordinal).Count() != loads.Count)
+            {
+                throw new InvalidDataException("WIRE_TO_GATE recovery state字段无效。");
+            }
         }
 
         if (state.RecoveryVector is { } vector)

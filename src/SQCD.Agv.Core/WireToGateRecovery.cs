@@ -253,6 +253,52 @@ public sealed record WireToGateRecoveryState(
     public WireToGateRecoveryOperationContext? LastCompletedLoadOperationContext { get; init; }
 
     /// <summary>
+    /// One recorded LOAD per demand whose cargo may still be on board: the subjects a fault cargo handoff and a forced
+    /// mechanical recovery choose from once nothing is armed (8005-agv-onboard-hmi#209). A recorded load enters it (a
+    /// later load of the same demand replaces the earlier one); a recorded unload of the demand, or a recovery vector over
+    /// the demand that the server took to end it, takes it out.
+    /// </summary>
+    /// <remarks>
+    /// <c>null</c> is a journal written before this field existed: the subject is then
+    /// <see cref="LastCompletedLoadOperationContext"/>, as it always was. A version without this field reads the journal
+    /// and ignores it, and its next write drops it -- back to only the last load being offered.
+    /// </remarks>
+    public IReadOnlyList<WireToGateRecoveryOperationContext>? LoadedDemandOperationContexts { get; init; }
+
+    /// <summary>
+    /// The settled loads a handoff or a forced recovery may be about: <see cref="LoadedDemandOperationContexts"/>, or for a
+    /// journal that predates it, the last completed load alone. A method, not a property: the journal serializes every
+    /// public property.
+    /// </summary>
+    public IReadOnlyList<WireToGateRecoveryOperationContext> SettledLoadSubjects() =>
+        LoadedDemandOperationContexts
+        ?? (LastCompletedLoadOperationContext is { } last ? [last] : []);
+
+    /// <summary>The state with <paramref name="load"/> recorded as its demand's load on board.</summary>
+    /// <remarks>
+    /// A journal that predates the list starts it empty rather than from its last completed load: that load may belong to a
+    /// journey long delivered, and seeded here it would stand beside the new one as a second subject.
+    /// </remarks>
+    public WireToGateRecoveryState WithLoadOnBoard(WireToGateRecoveryOperationContext load) =>
+        this with
+        {
+            LoadedDemandOperationContexts =
+            [
+                .. (LoadedDemandOperationContexts ?? []).Where(item =>
+                    !string.Equals(item.DemandId, load.DemandId, StringComparison.Ordinal)),
+                load
+            ]
+        };
+
+    /// <summary>The state with <paramref name="demandId"/>'s load no longer on board.</summary>
+    public WireToGateRecoveryState WithoutLoadOnBoard(string demandId) =>
+        this with
+        {
+            LoadedDemandOperationContexts =
+                [.. SettledLoadSubjects().Where(item => !string.Equals(item.DemandId, demandId, StringComparison.Ordinal))]
+        };
+
+    /// <summary>
     /// A load cancellation that went out and has had no answer yet. The server keeps an
     /// authorization under the cancellationId and compares every later request's whole payload
     /// with the first, so a retry must repeat this operator and reason -- verifiedAt included --

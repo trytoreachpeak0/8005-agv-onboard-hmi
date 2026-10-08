@@ -980,11 +980,14 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         }
 
         WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
-        WireToGateRecoveryOperationContext? subject = FindRecoveryOperation(state, FaultCargoHandoffAction);
-        string subjectText = subject is null
+        bool armed = IsArmed(state, out _);
+        IReadOnlyList<WireToGateRecoveryOperationContext> subjects = RecoverySubjects(state, FaultCargoHandoffAction);
+        string subjectText = subjects.Count == 0
             ? "none"
-            : $"{subject.OperationType}/{subject.DemandId}/{subject.SlotOperationAttemptId}"
-                + (ReferenceEquals(subject, state.LastCompletedLoadOperationContext) ? "（最近完成的装货）" : "（在途操作）");
+            : string.Join(
+                "；",
+                subjects.Select(subject => $"{subject.OperationType}/{subject.DemandId}/{subject.SlotOperationAttemptId}"))
+                + (armed ? "（在途操作）" : subjects.Count == 1 ? "（最近完成的装货）" : "（车上已装的需求，待选择）");
         _logger.Write(
             LogSeverity.Information,
             nameof(WireToGateBusinessService),
