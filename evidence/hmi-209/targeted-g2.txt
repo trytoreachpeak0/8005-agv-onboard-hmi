@@ -1,22 +1,26 @@
-head 0080363
+head 4540c70e430fc2685e2595ca574372d8bebe12c7
     0 Error(s)
-MultiDemandJourneyG2Tests exit=0
-Passed!  - Failed:     0, Passed:   105, Skipped:     0, Total:   105, Duration: 2 m 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-MultiDemandViewModelTests exit=0
-Passed!  - Failed:     0, Passed:    23, Skipped:     0, Total:    23, Duration: 284 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-RecoveryEntryNotificationViewModelTests exit=0
-Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2, Duration: 120 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-ExpectedActionOverdueViewModelTests exit=0
-Passed!  - Failed:     0, Passed:     6, Skipped:     0, Total:     6, Duration: 126 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-FatalFaultLatchViewModelTests exit=0
-Passed!  - Failed:     0, Passed:    13, Skipped:     0, Total:    13, Duration: 165 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-RecoveryVectorG2Tests exit=0
-Passed!  - Failed:     0, Passed:   193, Skipped:     0, Total:   193, Duration: 2 m 32 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-StationDeadlineExpiredG2Tests exit=0
-Passed!  - Failed:     0, Passed:    62, Skipped:     0, Total:    62, Duration: 1 m 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-ArchitectureTests exit=0
-SQCD.Agv.UnitTests exit=0
-Passed!  - Failed:     0, Passed:   732, Skipped:     0, Total:   732, Duration: 18 s - SQCD.Agv.UnitTests.dll (net8.0)
+    0 Error(s)
+MultiDemandJourneyG2Tests (filter FullyQualifiedName~MultiDemandJourneyG2Tests) exit=0
+Passed!  - Failed:     0, Passed:   109, Skipped:     0, Total:   109, Duration: 1 m 55 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+MultiDemandViewModelTests (filter FullyQualifiedName~MultiDemandViewModelTests) exit=0
+Passed!  - Failed:     0, Passed:    24, Skipped:     0, Total:    24, Duration: 204 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+RecoveryEntryNotificationViewModelTests (filter FullyQualifiedName~RecoveryEntryNotificationViewModelTests) exit=0
+Passed!  - Failed:     0, Passed:     2, Skipped:     0, Total:     2, Duration: 85 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+ExpectedActionOverdueViewModelTests (filter FullyQualifiedName~ExpectedActionOverdueViewModelTests) exit=0
+Passed!  - Failed:     0, Passed:     6, Skipped:     0, Total:     6, Duration: 94 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+FatalFaultLatchViewModelTests (filter FullyQualifiedName~FatalFaultLatchViewModelTests) exit=0
+Passed!  - Failed:     0, Passed:    13, Skipped:     0, Total:    13, Duration: 112 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+WireToGateLoadEndedByVectorTests (filter FullyQualifiedName~WireToGateLoadEndedByVectorTests) exit=0
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 38 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+WireToGateTakenOverMarkerTests (filter FullyQualifiedName~WireToGateTakenOverMarkerTests) exit=0
+Passed!  - Failed:     0, Passed:     6, Skipped:     0, Total:     6, Duration: 38 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+RecoveryVectorG2Tests (filter FullyQualifiedName~RecoveryVectorG2Tests) exit=0
+Passed!  - Failed:     0, Passed:   193, Skipped:     0, Total:   193, Duration: 2 m 21 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+StationDeadlineExpiredG2Tests (filter FullyQualifiedName~StationDeadlineExpiredG2Tests) exit=0
+Passed!  - Failed:     0, Passed:    62, Skipped:     0, Total:    62, Duration: 1 m 13 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+ArchitectureTests (filter FullyQualifiedName~ArchitectureTests) exit=0
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 983 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+SQCD.Agv.UnitTests (all) exit=0
+Passed!  - Failed:     0, Passed:   738, Skipped:     0, Total:   738, Duration: 17 s - SQCD.Agv.UnitTests.dll (net8.0)
 dotnet format --verify-no-changes exit=0
-ArchitectureTests (filter FullyQualifiedName~ArchitectureTests; the prefixed filter above matched none) exit=0
-Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
