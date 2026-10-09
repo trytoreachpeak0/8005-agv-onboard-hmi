@@ -12,3 +12,5 @@ RecoveryEntryNotificationViewModelTests exit=0
 ArchitectureTests exit=0
 MultiDemandJourneyG2Tests@ce3368d run1 exit=0
 MultiDemandJourneyG2Tests@ce3368d run2 exit=0
+MultiDemandJourneyG2Tests@47d5c0a exit=0
+RecoveryVectorG2Tests@47d5c0a exit=0
