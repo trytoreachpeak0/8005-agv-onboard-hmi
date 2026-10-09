@@ -1,0 +1,1 @@
+Schema conformance (protocol-v3.0.0 SUPERSEDING_CANDIDATE): 2439 lines, 2433 distinct, 27 message types; 0 distinct violations, 0 on file; schema compilation 37969 ms, validation 2209 ms.

@@ -1,0 +1,14 @@
+head=5778847
+UnitTests(all) exit=0
+MultiDemandJourneyG2Tests exit=1
+MultiDemandViewModelTests exit=0
+WireToGateLoadEndedByVectorTests exit=0
+WireToGateTakenOverMarkerTests exit=0
+RecoveryVectorG2Tests exit=0
+StationDeadlineExpiredG2Tests exit=0
+LoadCancellationBeforeSublotG2Tests exit=0
+FatalFaultLatchViewModelTests exit=0
+RecoveryEntryNotificationViewModelTests exit=0
+ArchitectureTests exit=0
+MultiDemandJourneyG2Tests@ce3368d run1 exit=0
+MultiDemandJourneyG2Tests@ce3368d run2 exit=0
