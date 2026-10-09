@@ -203,6 +203,10 @@ public sealed partial class MultiDemandJourneyG2Tests
     internal sealed class Harness : IAsyncDisposable
     {
         private readonly object _sync = new();
+        // Stands in for the dispatcher's one-at-a-time guarantee. Without it, a journey update and an operator
+        // event ran view-model code on two threads at once, and a Clear()/Add() of the same ObservableCollection
+        // let a reader see a null row (8005-agv-onboard-hmi#209, about 1 run in 10 of the per-demand group).
+        private readonly object _uiThread = new();
         private readonly List<Exception> _uiErrors = [];
         private readonly List<WireToGateOperatorEvent> _events = [];
 
@@ -490,6 +494,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             // The same method App.xaml.cs calls, not a copy of its lines (8005-agv-onboard-hmi#221).
             StationClearanceWiring.Configure(viewModel, business);
             UnableToChargeWiring.Configure(viewModel, business);
+            RecoveryDemandChoiceWiring.Configure(viewModel, business);
             HeldRecoveryCommandWiring.Configure(viewModel, business);
             // The forced isolation's record form and the repair release share one wiring (8005-agv-onboard-hmi#219).
             ForcedIsolationWiring.Configure(viewModel, business);
@@ -511,6 +516,27 @@ public sealed partial class MultiDemandJourneyG2Tests
         }
 
         /// <summary>
+        /// Reads or drives the view model from the test the way the operator does: on the (stand-in) UI thread,
+        /// never in the middle of an update. What it throws reaches the test.
+        /// </summary>
+        internal T OnUi<T>(Func<T> read)
+        {
+            lock (_uiThread)
+            {
+                return read();
+            }
+        }
+
+        /// <inheritdoc cref="OnUi{T}(Func{T})"/>
+        internal void OnUi(Action action)
+        {
+            lock (_uiThread)
+            {
+                action();
+            }
+        }
+
+        /// <summary>
         /// Runs a view-model update the way the WPF dispatcher would, and treats what escapes it the way
         /// <c>App.OnDispatcherUnhandledException</c> does.
         /// </summary>
@@ -518,7 +544,10 @@ public sealed partial class MultiDemandJourneyG2Tests
         {
             try
             {
-                action();
+                lock (_uiThread)
+                {
+                    action();
+                }
             }
             catch (Exception exception)
             {

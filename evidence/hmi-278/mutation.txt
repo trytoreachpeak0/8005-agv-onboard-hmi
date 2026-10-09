@@ -1,0 +1,85 @@
+# hmi#278 第一轮变异（0ffd173，审查之前）。每轮只改一处（PRE 三处），--no-incremental 重编，跑当时的 4 格 G2 与 4 格执行器单测，按 HEAD 整份写回。
+# PRE  三处判断全部退回、只留字段（修前行为）：ForgetSettledVector 不写标记；MarkResultRecordedAsync 的标记比较改 false；TrySettleInterruptedOperationAsync 的标记比较改 false。
+# M1   ForgetSettledVector 不写标记（TakenOverSlotOperationAttemptId 照抄原值）。
+# M2   MarkResultRecordedAsync 的「标记等于本尝试」改成 false。
+# M3   TrySettleInterruptedOperationAsync 的标记比较改成 false。
+# M4   SettleRecoveryVectorStateAsync 主分支删掉 TakenOverSlotOperationAttemptId = null。
+# M5   Recorded 删掉 TakenOverSlotOperationAttemptId = null。
+# 审查之后的代码与新增用例上重跑的一轮（含 X1、X2、X3、X4、M6、R6A、R6B）见 mutation-review.txt。
+
+=== PRE (0ffd173)
+applied PRE
+ 3 files changed, 3 insertions(+), 9 deletions(-)
+Build succeeded.
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AForgottenCompensationOverAnUnsettledLoadLeavesItsAttemptMarked [2 s]
+Failed!  - Failed:     3, Passed:     1, Skipped:     0, Total:     4, Duration: 10 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorResultUnderVectorTests.AResultAcknowledgedAfterTheVectorThatHeldItWasForgottenClosesOnlyItsOwnShare [314 ms]
+Failed!  - Failed:     1, Passed:     3, Skipped:     0, Total:     4, Duration: 551 ms - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=1
+restored
+=== M1 (0ffd173)
+applied M1
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+Build succeeded.
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AForgottenCompensationOverAnUnsettledLoadLeavesItsAttemptMarked [2 s]
+Failed!  - Failed:     3, Passed:     1, Skipped:     0, Total:     4, Duration: 11 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 764 ms - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=0
+restored
+=== M2 (0ffd173)
+applied M2
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+Build succeeded.
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [2 s]
+Failed!  - Failed:     1, Passed:     3, Skipped:     0, Total:     4, Duration: 11 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorResultUnderVectorTests.AResultAcknowledgedAfterTheVectorThatHeldItWasForgottenClosesOnlyItsOwnShare [955 ms]
+Failed!  - Failed:     1, Passed:     3, Skipped:     0, Total:     4, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=1
+restored
+=== M3 (0ffd173)
+applied M3
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+Build succeeded.
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [7 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [7 s]
+Failed!  - Failed:     2, Passed:     2, Skipped:     0, Total:     4, Duration: 20 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 372 ms - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=0
+restored
+=== M4 (0ffd173)
+applied M4
+ 1 file changed, 1 deletion(-)
+Build succeeded.
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [2 s]
+Failed!  - Failed:     2, Passed:     2, Skipped:     0, Total:     4, Duration: 11 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 371 ms - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=0
+restored
+=== M5 (0ffd173)
+applied M5
+ 1 file changed, 1 deletion(-)
+Build succeeded.
+    0 Error(s)
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 11 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=0
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorResultUnderVectorTests.AMarkerNamingAnEarlierAttemptDoesNotHoldTheNextOnesSettlementAndGoesWithIt [29 ms]
+Failed!  - Failed:     1, Passed:     3, Skipped:     0, Total:     4, Duration: 317 ms - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=1
+restored
+Build succeeded.
+    0 Error(s)

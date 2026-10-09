@@ -1,0 +1,81 @@
+M1: 去掉「有接管同一尝试号的向量就不结清」（条件前加 false &&）
+exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestartAfterTheLateLoadAcknowledgementResumesTheCancellationOverItsOpenDoor [3 s]
+Expected: "44444444-0000-4444-8444-00000000000a"
+Actual:   null
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestartAfterTheLateLoadAcknowledgementResumesTheCancellationOverItsOpenDoor() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 92
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoadResultAcknowledgedAfterTheCancellationTookItsAttemptOverLeavesTheCancellationOnFile [539 ms]
+Expected: "44444444-0000-4444-8444-00000000000a"
+Actual:   null
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoadResultAcknowledgedAfterTheCancellationTookItsAttemptOverLeavesTheCancellationOnFile() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 46
+Failed!  - Failed:     2, Passed:     1, Skipped:     0, Total:     3, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+M2: 接管分支不设 LastCompletedLoadOperationContext
+    0 Error(s)
+exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoadResultAcknowledgedAfterTheCancellationTookItsAttemptOverLeavesTheCancellationOnFile [619 ms]
+Expected: "44444444-0000-4444-8444-00000000000a"
+Actual:   null
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoadResultAcknowledgedAfterTheCancellationTookItsAttemptOverLeavesTheCancellationOnFile() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 47
+Failed!  - Failed:     1, Passed:     2, Skipped:     0, Total:     3, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+M3: 接管分支不移除 PendingResults 里本次尝试的 OperationResult
+G2 三条（exit=0，存活：G2 路径上 COMPLETED 结果从不进待补发列表）
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+执行器级用例（exit=1，杀死）
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorResultUnderVectorTests.AResultAcknowledgedUnderAVectorClosesOnlyItsOwnShare [88 ms]
+Expected: <>z__ReadOnlySingleElementList<WireToGatePendingResult> [WireToGatePendingResult { MessageType = OperationResult, MessageId = cccccccc-cccc-4ccc-8ccc-cccccccccccc, BusinessId = cccccccc-cccc-4ccc-8ccc-cccccccccccc, ContentSha256 = cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc }]
+Actual:   List<WireToGatePendingResult>                           [WireToGatePendingResult { MessageType = OperationResult, MessageId = aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa, BusinessId = aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa, ContentSha256 = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb }, WireToGatePendingResult { MessageType = OperationResult, MessageId = cccccccc-cccc-4ccc-8ccc-cccccccccccc, BusinessId = cccccccc-cccc-4ccc-8ccc-cccccccccccc, ContentSha256 = cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc }]
+Failed!  - Failed:     1, Passed:     1, Skipped:     0, Total:     2, Duration: 381 ms - SQCD.Agv.UnitTests.dll (net8.0)
+
+每次变异都在提交后改文件内容、--no-incremental 构建 0 Error(s) 后再跑；还原为写回原文件内容。
+
+== 审查轮（M-1、S-1、L-2）
+M4: 去掉 S-1 的提前判断（条件前加 false &&，即恢复原先「先看装货结果」的顺序）
+exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect(doorLeftOpen: True) [2 s]
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect(Boolean doorLeftOpen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 217
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect(doorLeftOpen: False) [622 ms]
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect(Boolean doorLeftOpen) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 217
+Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2, Duration: 3 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+
+注：S-1 第一版把取消结论判断对每次装货结算都提前，StationDeadlineExpiredG2Tests.AnUnfinishedResultWhoseAckWasLostIsStillAnnouncedOnceByTheRestore 在整类运行里两次都红（"recovery decision 2 of 2 to get past the step a projection follows" 超时；单独跑 8/8 绿）。
+收窄为只在装货结果是 COMPLETED 时提前问之后，四个类 352/352 绿。
+
+M-1/L-2 稳定性（修后）
+run 1: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 2: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 3: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 4: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 5: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 6: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 7: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 8: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 9: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 10: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 11: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+run 12: exit=0 Passed!  - Failed:     0, Passed:     1, Skipped:     0, Tot
+group run 1: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 2: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 3: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 4: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 5: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 6: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 7: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 8: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 9: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 10: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+
+收窄后新用例整组连跑
+group run 1: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 2: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 3: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 4: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 5: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 6: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 7: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 8: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 9: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+group run 10: exit=0 Passed!  - Failed:     0, Passed:     5, Skipped:     0, Tot
+
+注：上面各轮连跑与整类运行时，机器上可能同时有另一张票的全量 G2 在跑；均为一次一个 testhost 串行运行。

@@ -1,0 +1,171 @@
+# hmi#278 审查后变异（864f756）
+# 每轮只改下列一处（PRE 是三处），`--no-incremental` 重编，跑本票 13 格 G2（含纯函数格）与 5 格执行器单测，
+# 再按 HEAD 整份写回原文件；每轮最后一行 dirty 为 0 表示还原干净。脚本：mutate2.py / mutate2.sh（审查同形，改法原文见脚本）。
+# PRE = 修前行为（三处判断全部退回，只留字段）。PRE 下绿的 6 格：补偿护栏、什么都没做的向量（G2 与纯函数两格）、
+#   拒绝补偿保留标记、什么都没做时保留同一尝试上的旧标记、拒绝非补偿向量清标记——都是护栏或只在修后有意义的状态转换。
+
+=== PRE (base 864f756)
+PRE: ForgetSettledVector 不写标记：TakenOverSlotOperationAttemptId 照抄原值 (src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs)
+PRE: MarkResultRecordedAsync 不认标记：标记那一项改成 false (src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs)
+PRE: TrySettleInterruptedOperationAsync 不认标记：标记比较改成 false (src/SQCD.Agv.Wpf/WireToGateBusinessService.cs)
+ 3 files changed, 3 insertions(+), 6 deletions(-)
+Build succeeded.
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateTakenOverMarkerTests.ForgettingAVectorBesideAnotherAttemptDropsAMarkerOfAnAttemptThatIsGone [17 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateTakenOverMarkerTests.AVectorThatActedLeavesItsAttemptMarked [1 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [8 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AForgottenCompensationOverAnUnsettledLoadLeavesItsAttemptMarked [2 s]
+Failed!  - Failed:     7, Passed:     6, Skipped:     0, Total:    13, Duration: 21 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorResultUnderVectorTests.AResultAcknowledgedAfterTheVectorThatHeldItWasForgottenClosesOnlyItsOwnShare [138 ms]
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=1
+restored, dirty: 0
+=== M1 (base 864f756)
+M1: ForgetSettledVector 不写标记：TakenOverSlotOperationAttemptId 照抄原值 (src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs)
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+Build succeeded.
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateTakenOverMarkerTests.ForgettingAVectorBesideAnotherAttemptDropsAMarkerOfAnAttemptThatIsGone [21 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateTakenOverMarkerTests.AVectorThatActedLeavesItsAttemptMarked [1 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [8 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AForgottenCompensationOverAnUnsettledLoadLeavesItsAttemptMarked [2 s]
+Failed!  - Failed:     7, Passed:     6, Skipped:     0, Total:    13, Duration: 21 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=0
+restored, dirty: 0
+=== M2 (base 864f756)
+M2: MarkResultRecordedAsync 不认标记：标记那一项改成 false (src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs)
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+Build succeeded.
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [2 s]
+Failed!  - Failed:     1, Passed:    12, Skipped:     0, Total:    13, Duration: 21 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorResultUnderVectorTests.AResultAcknowledgedAfterTheVectorThatHeldItWasForgottenClosesOnlyItsOwnShare [171 ms]
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=1
+restored, dirty: 0
+=== M3 (base 864f756)
+M3: TrySettleInterruptedOperationAsync 不认标记：标记比较改成 false (src/SQCD.Agv.Wpf/WireToGateBusinessService.cs)
+ 1 file changed, 1 insertion(+), 4 deletions(-)
+Build succeeded.
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect [8 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [7 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [7 s]
+Failed!  - Failed:     3, Passed:    10, Skipped:     0, Total:    13, Duration: 36 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=0
+restored, dirty: 0
+=== M4 (base 864f756)
+M4: SettleRecoveryVectorStateAsync 主分支不清标记：删掉 TakenOverSlotOperationAttemptId = null 一行 (src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs)
+ 1 file changed, 1 deletion(-)
+Build succeeded.
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: True) [2 s]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect(ackAfterHandoffEnded: False) [2 s]
+Failed!  - Failed:     2, Passed:    11, Skipped:     0, Total:    13, Duration: 21 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=0
+restored, dirty: 0
+=== M5 (base 864f756)
+M5: Recorded 不清标记：删掉 TakenOverSlotOperationAttemptId = null 一行 (src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs)
+ 1 file changed, 1 deletion(-)
+Build succeeded.
+    0 Error(s)
+Passed!  - Failed:     0, Passed:    13, Skipped:     0, Total:    13, Duration: 22 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=0
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorResultUnderVectorTests.AMarkerNamingAnEarlierAttemptDoesNotHoldTheNextOnesSettlementAndGoesWithIt [25 ms]
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=1
+restored, dirty: 0
+=== M6 (base 864f756)
+M6: 第 3 条：去掉「向量做过事」条件（vectorActed 恒为 true） (src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs)
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+Build succeeded.
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateTakenOverMarkerTests.AVectorThatDidNothingLeavesNoMarker [2 ms]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AHandoffThatOpenedNothingLeavesTheLoadsAckToSettleIt [299 ms]
+Failed!  - Failed:     2, Passed:    11, Skipped:     0, Total:    13, Duration: 22 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=0
+restored, dirty: 0
+=== X1 (base 864f756)
+X1: 审查 X1：检查点写入把标记带过去（= current.TakenOverSlotOperationAttemptId） (src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs)
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+Build succeeded.
+    0 Error(s)
+Passed!  - Failed:     0, Passed:    13, Skipped:     0, Total:    13, Duration: 22 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=0
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ACheckpointOfTheMarkedAttemptDropsTheMarker [1 s]
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=1
+restored, dirty: 0
+=== X2 (base 864f756)
+X2: 审查 X2：人工核对结束不写标记（结束后照抄原值） (src/SQCD.Agv.Wpf/WireToGateBusinessService.ConflictedRecovery.cs)
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+Build succeeded.
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect [3 s]
+Failed!  - Failed:     1, Passed:    12, Skipped:     0, Total:    13, Duration: 23 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=0
+restored, dirty: 0
+=== X3 (base 864f756)
+X3: 审查 X3 的新形状：忘掉向量时一律丢掉已有标记（保留分支改成 null） (src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs)
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+Build succeeded.
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateTakenOverMarkerTests.AVectorThatDidNothingKeepsAnEarlierMarkerOnTheSameAttempt [3 ms]
+Failed!  - Failed:     1, Passed:    12, Skipped:     0, Total:    13, Duration: 22 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=0
+restored, dirty: 0
+=== X4 (base 864f756)
+X4: 审查 X4：标记分支不再重发未确认的 COMPLETED (src/SQCD.Agv.Wpf/WireToGateBusinessService.cs)
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+Build succeeded.
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.TheMarkedSettlementStillResendsAnUnacknowledgedCompletedResult [13 s]
+Failed!  - Failed:     1, Passed:    12, Skipped:     0, Total:    13, Duration: 27 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=0
+restored, dirty: 0
+=== R6A (base 864f756)
+R6A: 第 6 条：服务端拒绝非补偿向量时不清标记 (src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs)
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+Build succeeded.
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateTakenOverMarkerTests.ARejectedVectorThatTakesTheAttemptAwayDropsTheMarker [2 ms]
+Failed!  - Failed:     1, Passed:    12, Skipped:     0, Total:    13, Duration: 22 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=0
+restored, dirty: 0
+=== R6B (base 864f756)
+R6B: 第 6 条：日志簿已换成别的尝试时仍保留指向旧尝试的标记 (src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs)
+ 1 file changed, 1 insertion(+), 6 deletions(-)
+Build succeeded.
+    0 Error(s)
+  Failed SQCD.Agv.WireToGateG2Tests.WireToGateTakenOverMarkerTests.ForgettingAVectorBesideAnotherAttemptDropsAMarkerOfAnAttemptThatIsGone [22 ms]
+Failed!  - Failed:     1, Passed:    12, Skipped:     0, Total:    13, Duration: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+g2 exit=1
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+unit exit=0
+restored, dirty: 0
+Build succeeded.
+    0 Error(s)

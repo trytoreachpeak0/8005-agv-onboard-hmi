@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Text.Json;
 using SQCD.Agv.Application;
@@ -149,30 +150,181 @@ public sealed partial class WireToGateBusinessService
         AwaitingForcedConfirmation(Volatile.Read(ref _lastRecoveryState))?.CargoHandoff;
 
     /// <summary>
-    /// The demand the entries that fall back to the last settled load are about -- compensation,
-    /// fault cargo handoff, forced mechanical recovery -- or <c>null</c> when they are not falling
-    /// back (onboard-hmi#135).
+    /// The loads on board a fault cargo handoff or a forced mechanical recovery has to choose between, oldest first; empty
+    /// unless there are at least two, nothing is armed and no recovery is under way on one of them
+    /// (8005-agv-onboard-hmi#209). With one, the entries are about that one and nothing is asked.
     /// </summary>
     /// <remarks>
-    /// <b>Read through <see cref="FindRecoveryOperation"/>, not beside it.</b> Whether the subject is
-    /// the armed operation or the last settled load is that helper's rule, and the question here is
-    /// only which of the two it picked -- so this compares its answer with the settled load rather
-    /// than re-deriving "is anything armed", which is how two copies of one rule drift apart. With
-    /// something armed the entries are about that operation, which the screen already names; the
-    /// subject is the last settled load exactly when there is nothing armed, and then the operator
-    /// has no other way to tell which demand a compensation is about.
+    /// A prepared vector or a session that is not closed names its demand, and a press is about that demand whatever the
+    /// screen has selected (<see cref="RequestRecoveryActionVectorCoreAsync"/>: vector, then session, then choice). So the
+    /// list is not offered then: a selection it could not honour would be overridden in silence (review S1 of #209). The
+    /// entries name the locked demand instead (<see cref="RecoveryFallbackDemandId"/>).
+    /// </remarks>
+    public IReadOnlyList<WireToGateLoadOnBoard> RecoveryDemandChoices
+    {
+        get
+        {
+            WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+            if (LockedRecoveryDemandId(state) is not null || IsArmed(state, out _))
+            {
+                return [];
+            }
+
+            IReadOnlyList<WireToGateLoadOnBoard> subjects = state.SettledLoadSubjects();
+            return subjects.Count > 1 ? subjects : [];
+        }
+    }
+
+    /// <summary>
+    /// Every load on board as the journal keeps it, for the screen to say which of them were handed off and await the
+    /// server (8005-agv-onboard-hmi#209).
+    /// </summary>
+    public IReadOnlyList<WireToGateLoadOnBoard> LoadsOnBoard =>
+        Volatile.Read(ref _lastRecoveryState).SettledLoadSubjects();
+
+    /// <summary>
+    /// The demand a fault cargo handoff and a forced mechanical recovery are about when nothing is armed and there is no
+    /// choice to make -- the lone load on board, or the demand a prepared vector or an open session is locked on -- or
+    /// <c>null</c> when something is armed (the screen names that operation already) or the operator has to choose
+    /// (onboard-hmi#135, onboard-hmi#209).
+    /// </summary>
+    /// <remarks>
+    /// Read through <see cref="FindRecoveryOperation"/>, never beside it, so that the line on screen and the press cannot
+    /// name two different demands. Compensation keeps to the last completed load and has its own answer,
+    /// <see cref="CompensationFallbackDemandId"/>: with several loads on board, or once a later load was unloaded, the two
+    /// are different demands.
     /// </remarks>
     public string? RecoveryFallbackDemandId
     {
         get
         {
             WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
-            return FindRecoveryOperation(state, null) is { } subject
-                && ReferenceEquals(subject, state.LastCompletedLoadOperationContext)
+            return !IsArmed(state, out _)
+                && FindRecoveryOperation(state, FaultCargoHandoffAction, LockedRecoveryDemandId(state)) is { } subject
                 ? subject.DemandId
                 : null;
         }
     }
+
+    /// <summary>
+    /// The demand a compensation is about when it falls back to the last completed load, or <c>null</c> while something is
+    /// armed (review S3 of 8005-agv-onboard-hmi#209).
+    /// </summary>
+    public string? CompensationFallbackDemandId
+    {
+        get
+        {
+            WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+            return !IsArmed(state, out _) && FindRecoveryOperation(state, CompensateLoadAction, null) is { } subject
+                ? subject.DemandId
+                : null;
+        }
+    }
+
+    /// <summary>
+    /// The operation a fault cargo handoff pressed now would be about, with <paramref name="selectedDemandId"/> as the
+    /// operator's choice: the same subject the request path picks, for the confirmation the operator answers before it.
+    /// <c>null</c> when it would refuse.
+    /// </summary>
+    public WireToGateRecoveryOperationContext? RecoveryTargetFor(string? selectedDemandId)
+    {
+        WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+        return FindRecoveryOperation(state, FaultCargoHandoffAction, LockedRecoveryDemandId(state) ?? selectedDemandId);
+    }
+
+    /// <summary>
+    /// Brings the loads on board in line with the journey the server describes now
+    /// (<see cref="WireToGateRecoveryState.WithLoadsOnBoardFor"/>): its closure empties them, a plan of another journey drops
+    /// what an earlier one left (8005-agv-onboard-hmi#209 review S4).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Fired from the journey handler and not awaited there. The screen re-reads its own copy on the same snapshot, possibly
+    /// before this write lands, so a write that takes loads off tells the operator, which also makes the screen read again.
+    /// </para>
+    /// <para>
+    /// <b>The cached state is refreshed only when this writes.</b> The journal hands its settled callback the state it read
+    /// even when the change writes nothing, and every journey snapshot comes through here, so caching that read would refresh
+    /// the entry gates' copy at the first snapshot after a start -- earlier than anything did before, and earlier than the
+    /// worklist the screen names sublots from (review M1 of #209: <c>TheFallbackTargetIsTheSettledLoadOnlyWhileNothingIsArmed</c>
+    /// waited on the cache and then found no sublot to name). A change that writes nothing leaves the cache to the reads that
+    /// always refreshed it.
+    /// </para>
+    /// <para>
+    /// Not awaited, so nothing would see an exception it threw: every one is logged here, and the list stays as it was until
+    /// the next snapshot.
+    /// </para>
+    /// </remarks>
+    private async Task UpdateLoadsOnBoardForJourneyAsync(WireToGateJourneySnapshot journey)
+    {
+        int before = 0;
+        int after = 0;
+        bool changed = false;
+        try
+        {
+            await _session.Journal
+                .UpdateRecoveryStateAsync(
+                    state =>
+                    {
+                        // Reset on entry: a change function may be evaluated more than once for one step.
+                        changed = false;
+                        WireToGateRecoveryState next = state.WithLoadsOnBoardFor(journey);
+                        if (ReferenceEquals(next, state))
+                        {
+                            return null;
+                        }
+
+                        changed = true;
+                        before = state.LoadsOnBoard?.Count ?? 0;
+                        after = next.LoadsOnBoard?.Count ?? 0;
+                        return next;
+                    },
+                    settled =>
+                    {
+                        if (changed)
+                        {
+                            CacheRecoveryState(settled);
+                        }
+                    },
+                    _stopping.Token)
+                .ConfigureAwait(false);
+            if (!changed || after == before)
+            {
+                return;
+            }
+        }
+        catch (Exception exception)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                "按服务端行程更新车上待交接的需求失败，保留原列表，下一份行程快照再试。",
+                exception);
+            return;
+        }
+
+        bool closed = WireToGateRecoveryState.DescribesNoTransport(journey);
+        _logger.Write(
+            LogSeverity.Information,
+            nameof(WireToGateBusinessService),
+            $"按服务端行程更新车上待交接的需求：{before} 条 → {after} 条，"
+            + $"activePurpose={journey.VehicleBusinessState?.ActivePurpose ?? "null"}，"
+            + $"planDemands=[{string.Join(",", journey.UpcomingStopPlan?.DemandIds ?? [])}]。");
+        PublishOperatorEvent(
+            $"loads-on-board-updated:{journey.UpdatedAt.UtcTicks}:{after}",
+            "LOADS_ON_BOARD_UPDATED",
+            closed
+                ? "本趟行程已结束，「车上待交接的需求」已清空。"
+                : "「车上待交接的需求」里有上一趟行程留下的条目，已按服务端当前的行程移除。");
+    }
+
+    /// <summary>
+    /// The demand a recovery under way is bound to: the prepared vector's, else the open session's; <c>null</c> when
+    /// neither. The same order the request path takes them in.
+    /// </summary>
+    private string? LockedRecoveryDemandId(WireToGateRecoveryState state) =>
+        state.RecoveryVector?.DemandId
+        ?? (Volatile.Read(ref _recoverySessionSnapshot) is { State: not "CLOSED" } open ? open.DemandId : null);
 
     /// <summary>
     /// The slots left physically unknown by an acknowledged forced mechanical recovery (REQ-0241),
@@ -217,6 +369,7 @@ public sealed partial class WireToGateBusinessService
                 CompensateLoadAction,
                 WireToGateRecoveryVectorTypes.LoadCompensation,
                 ReasonOrDefault(reason, "现场确认装货无法继续，申请补偿清空目标仓位。"),
+                selectedDemandId: null,
                 pressedByOperator: true,
                 cancellationToken),
             cancellationToken);
@@ -233,12 +386,24 @@ public sealed partial class WireToGateBusinessService
     public Task<bool> RequestFaultCargoHandoffAsync(
         string? reason = null,
         CancellationToken cancellationToken = default) =>
+        RequestFaultCargoHandoffAsync(reason, selectedDemandId: null, cancellationToken);
+
+    /// <param name="reason">As for <see cref="RequestLoadCompensationAsync"/>.</param>
+    /// <param name="selectedDemandId">
+    /// The demand the operator chose among several loads on board (<see cref="RecoveryDemandChoices"/>). Read only when
+    /// there are several; with one, the press is about that one, as it always was (8005-agv-onboard-hmi#209).
+    /// </param>
+    public Task<bool> RequestFaultCargoHandoffAsync(
+        string? reason,
+        string? selectedDemandId,
+        CancellationToken cancellationToken = default) =>
         RunRecoveryRequestAsync(
             WireToGateRecoveryVectorTypes.FaultCargoHandoff,
             () => RequestRecoveryActionVectorCoreAsync(
                 FaultCargoHandoffAction,
                 WireToGateRecoveryVectorTypes.FaultCargoHandoff,
                 ReasonOrDefault(reason, "现场确认故障仓货物需要交接处理。"),
+                selectedDemandId,
                 pressedByOperator: true,
                 cancellationToken),
             cancellationToken);
@@ -247,12 +412,24 @@ public sealed partial class WireToGateBusinessService
     public Task<bool> RequestForcedMechanicalRecoveryAsync(
         string? reason = null,
         CancellationToken cancellationToken = default) =>
+        RequestForcedMechanicalRecoveryAsync(reason, selectedDemandId: null, cancellationToken);
+
+    /// <param name="reason">As for <see cref="RequestLoadCompensationAsync"/>.</param>
+    /// <param name="selectedDemandId">
+    /// The demand the operator chose among several loads on board (<see cref="RecoveryDemandChoices"/>). Read only when
+    /// there are several; with one, the press is about that one, as it always was (8005-agv-onboard-hmi#209).
+    /// </param>
+    public Task<bool> RequestForcedMechanicalRecoveryAsync(
+        string? reason,
+        string? selectedDemandId,
+        CancellationToken cancellationToken = default) =>
         RunRecoveryRequestAsync(
             WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery,
             () => RequestRecoveryActionVectorCoreAsync(
                 ForcedMechanicalRecoveryAction,
                 WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery,
                 ReasonOrDefault(reason, "现场确认仓门无法电动解锁，申请强制机械恢复。"),
+                selectedDemandId,
                 pressedByOperator: true,
                 cancellationToken),
             cancellationToken);
@@ -628,16 +805,20 @@ public sealed partial class WireToGateBusinessService
             return vector.VectorType == vectorType && !IsAwaitingManualCheck(state);
         }
 
-        if (FindRecoveryOperation(state, action) is not { } context)
-        {
-            return false;
-        }
-
         WireToGateExceptionRecoverySessionSnapshot? snapshot =
             Volatile.Read(ref _recoverySessionSnapshot);
         if (snapshot is null || snapshot.State == "CLOSED")
         {
-            return _session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired;
+            // With several loads on board the entry is there for all of them; which one a press is about is the
+            // operator's choice (8005-agv-onboard-hmi#209).
+            return RecoverySubjects(state, action).Count > 0
+                && _session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired;
+        }
+
+        // An open session names its demand: the subject is that demand's, whatever else is on board.
+        if (FindRecoveryOperation(state, action, snapshot.DemandId) is not { } context)
+        {
+            return false;
         }
 
         // The subject is #80's and only #80's; the server's attempt id is an extra condition on it,
@@ -1383,10 +1564,12 @@ public sealed partial class WireToGateBusinessService
     }
 
     /// <param name="pressedByOperator">As for <see cref="RequestLoadCancellationCoreAsync"/>.</param>
+    /// <param name="selectedDemandId">As for <see cref="RequestFaultCargoHandoffAsync(string?, string?, CancellationToken)"/>.</param>
     private async Task<bool> RequestRecoveryActionVectorCoreAsync(
         string action,
         string vectorType,
         string reason,
+        string? selectedDemandId,
         bool pressedByOperator,
         CancellationToken cancellationToken)
     {
@@ -1397,14 +1580,35 @@ public sealed partial class WireToGateBusinessService
             throw new InvalidOperationException("HARDWARE_RECOVERY_RECORD_REQUIRED");
         }
 
-        WireToGateRecoveryOperationContext operation = FindRecoveryOperation(state, action)
-            ?? throw new InvalidOperationException("RECOVERY_OPERATION_CONTEXT_MISSING");
-
         WireToGateRecoveryVectorContext? vector = state.RecoveryVector;
         if (vector is not null && vector.VectorType != vectorType)
         {
             throw new InvalidDataException("RECOVERY_VECTOR_CONFLICT");
         }
+
+        // The demand this press is about: the prepared vector's, else the open session's, else the operator's choice.
+        // A choice is required only among several loads on board, so a lone subject is what it always was; a choice that
+        // names a demand not among them is refused rather than swapped for the one that is (8005-agv-onboard-hmi#209).
+        string? lockedDemandId = LockedRecoveryDemandId(state);
+        if (lockedDemandId is not null
+            && selectedDemandId is not null
+            && !string.Equals(lockedDemandId, selectedDemandId, StringComparison.Ordinal))
+        {
+            // The screen does not offer a choice while a recovery is under way (RecoveryDemandChoices); one that reaches
+            // here anyway is refused rather than overridden in silence (review S1).
+            throw new InvalidOperationException("RECOVERY_DEMAND_LOCKED");
+        }
+
+        string? subjectDemandId = lockedDemandId
+            ?? selectedDemandId
+            ?? (RecoverySubjects(state, action).Count > 1
+                ? throw new InvalidOperationException("RECOVERY_DEMAND_SELECTION_REQUIRED")
+                : null);
+        WireToGateRecoveryOperationContext operation = FindRecoveryOperation(state, action, subjectDemandId)
+            ?? throw new InvalidOperationException(
+                subjectDemandId is not null && subjectDemandId == selectedDemandId
+                    ? "RECOVERY_DEMAND_NOT_ON_BOARD"
+                    : "RECOVERY_OPERATION_CONTEXT_MISSING");
 
         if (vector is not null)
         {
@@ -2080,6 +2284,45 @@ public sealed partial class WireToGateBusinessService
             "awaiting-confirmation");
     }
 
+    /// <summary>
+    /// <paramref name="current"/> once the server rejected the request behind <paramref name="onFile"/>: a compensation
+    /// keeps its attempt and session to ask again, every other vector's attempt goes with it.
+    /// </summary>
+    internal static WireToGateRecoveryState ReleaseRejectedVector(
+        WireToGateRecoveryState current,
+        WireToGateRecoveryVectorContext onFile,
+        bool compensation) =>
+        current with
+        {
+            RecoveryVector = null,
+            ProvenRecoveryCheckpoint = compensation
+                ? WireToGateRecoveryCheckpoint.Prepared
+                : WireToGateRecoveryCheckpoint.ResultRecorded,
+            // Kept, as on a refused action: nothing of the rejected vector was opened, so the set is a
+            // door in doubt from before it (8005-agv-onboard-hmi#255).
+            ActiveUnlockSlots = current.ActiveUnlockSlots,
+            CompletedSlots = [],
+            SlotResults = [],
+            UnsettledSlotOperationAttemptId = compensation
+                ? onFile.SlotOperationAttemptId
+                : null,
+            OperationContext = compensation ? current.OperationContext : null,
+            ExceptionRecoverySessionId = compensation
+                ? current.ExceptionRecoverySessionId
+                : null,
+            RecoveryActionId = null,
+            RecoveryActionRequestId = null,
+            RecoveryReason = compensation ? current.RecoveryReason : null,
+            RecoveryOperatorId = compensation ? current.RecoveryOperatorId : null,
+            RecoveryOperatorVerifiedAt = compensation
+                ? current.RecoveryOperatorVerifiedAt
+                : null,
+            RecoveryResultObservedAt = null,
+            // The attempt goes unless the compensation keeps it, and a marker naming a gone attempt would only sit on
+            // file (8005-agv-onboard-hmi#278).
+            TakenOverSlotOperationAttemptId = compensation ? current.TakenOverSlotOperationAttemptId : null
+        };
+
     private async Task HandleRecoveryVectorRejectedAsync(
         WireToGateRecoveryCommand command,
         CancellationToken cancellationToken)
@@ -2133,33 +2376,7 @@ public sealed partial class WireToGateBusinessService
                     current => current.RecoveryVector is not { } onFile
                         || (primaryId is not null && onFile.PrimaryId != primaryId)
                         ? null
-                        : current with
-                        {
-                            RecoveryVector = null,
-                            ProvenRecoveryCheckpoint = compensation
-                            ? WireToGateRecoveryCheckpoint.Prepared
-                            : WireToGateRecoveryCheckpoint.ResultRecorded,
-                            // Kept, as on a refused action: nothing of the rejected vector was opened, so the set is a
-                            // door in doubt from before it (8005-agv-onboard-hmi#255).
-                            ActiveUnlockSlots = current.ActiveUnlockSlots,
-                            CompletedSlots = [],
-                            SlotResults = [],
-                            UnsettledSlotOperationAttemptId = compensation
-                            ? onFile.SlotOperationAttemptId
-                            : null,
-                            OperationContext = compensation ? current.OperationContext : null,
-                            ExceptionRecoverySessionId = compensation
-                            ? current.ExceptionRecoverySessionId
-                            : null,
-                            RecoveryActionId = null,
-                            RecoveryActionRequestId = null,
-                            RecoveryReason = compensation ? current.RecoveryReason : null,
-                            RecoveryOperatorId = compensation ? current.RecoveryOperatorId : null,
-                            RecoveryOperatorVerifiedAt = compensation
-                            ? current.RecoveryOperatorVerifiedAt
-                            : null,
-                            RecoveryResultObservedAt = null
-                        },
+                        : ReleaseRejectedVector(current, onFile, compensation),
                     cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -2849,14 +3066,15 @@ public sealed partial class WireToGateBusinessService
     /// other vector's are cleared under the same guard <see cref="ForgetRecoverySessionAsync"/> applies,
     /// which is what keeps one vector's settlement from forgetting another session's record.
     /// </remarks>
-    private static WireToGateRecoveryState ForgetSettledVector(
+    internal static WireToGateRecoveryState ForgetSettledVector(
         WireToGateRecoveryState state,
         WireToGateRecoveryVectorContext context)
     {
         WireToGateRecoveryState cleared = state with
         {
             RecoveryVector = null,
-            RecoveryResultObservedAt = null
+            RecoveryResultObservedAt = null,
+            TakenOverSlotOperationAttemptId = TakenOverMarkerAfterForgetting(state, context)
         };
         return context.ExceptionRecoverySessionId is { } session
             && string.Equals(state.ExceptionRecoverySessionId, session, StringComparison.Ordinal)
@@ -2871,6 +3089,45 @@ public sealed partial class WireToGateBusinessService
                     RecoveryOperatorVerifiedAt = null
                 }
                 : cleared;
+    }
+
+    /// <summary>
+    /// The marker <see cref="ForgetSettledVector"/> leaves (8005-agv-onboard-hmi#278): the attempt the vector held, when it
+    /// is the journal's unsettled attempt and the vector acted on it; otherwise whatever marker already names the unsettled
+    /// attempt, and none at all when the one on file names another.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Only a vector that acted.</b> One that stopped at its prepare write -- no active unlock set, no slot counted
+    /// complete, the checkpoint still <c>Prepared</c>, the same reading <see cref="ForgetRefusedVector"/> makes -- opened no
+    /// door, so no door record is at stake; the attempt's own COMPLETED, acknowledged later, settles it truthfully, and
+    /// marking it would only leave an entry on screen that the server will not let anyone press.
+    /// </para>
+    /// <para>
+    /// The attempt stays unsettled, and a COMPLETED result of it acknowledged from now on must not settle it over the doors
+    /// the vector left in doubt. Written in the same step that drops the vector, so no moment exists with neither on file.
+    /// </para>
+    /// </remarks>
+    private static string? TakenOverMarkerAfterForgetting(
+        WireToGateRecoveryState state,
+        WireToGateRecoveryVectorContext context)
+    {
+        bool vectorActed = state.ProvenRecoveryCheckpoint != WireToGateRecoveryCheckpoint.Prepared
+            || state.ActiveUnlockSlots.Count > 0
+            || state.CompletedSlots.Count > 0;
+        if (vectorActed
+            && context.SlotOperationAttemptId is { } held
+            && string.Equals(state.UnsettledSlotOperationAttemptId, held, StringComparison.Ordinal))
+        {
+            return held;
+        }
+
+        return string.Equals(
+            state.TakenOverSlotOperationAttemptId,
+            state.UnsettledSlotOperationAttemptId,
+            StringComparison.Ordinal)
+                ? state.TakenOverSlotOperationAttemptId
+                : null;
     }
 
     private async Task<WireToGateRecoveryVectorContext> BindRecoveryVectorCommandAsync(
@@ -2936,7 +3193,8 @@ public sealed partial class WireToGateBusinessService
                     state,
                     vectorType == WireToGateRecoveryVectorTypes.LoadCompensation
                         ? CompensateLoadAction
-                        : null)
+                        : null,
+                    demandId)
                 ?? throw new InvalidDataException("RECOVERY_OPERATION_CONTEXT_MISSING");
             if (operation.DemandId != demandId
                 || operation.SlotOperationAttemptId != boundSlotOperationAttemptId
@@ -3407,13 +3665,13 @@ public sealed partial class WireToGateBusinessService
                         && !string.Equals(unsettled, own, StringComparison.Ordinal))
                     {
                         otherAttempt = unsettled;
-                        return ForgetSettledVector(journalled, onFile) with
+                        return WithLoadEndedBy(ForgetSettledVector(journalled, onFile), onFile) with
                         {
                             ForcedIsolation = isolation ?? journalled.ForcedIsolation
                         };
                     }
 
-                    return journalled with
+                    return WithLoadEndedBy(journalled, onFile) with
                     {
                         UnsettledSlotOperationAttemptId = null,
                         ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ResultRecorded,
@@ -3436,6 +3694,7 @@ public sealed partial class WireToGateBusinessService
                         RecoveryResultObservedAt = null,
                         RecoveryVector = null,
                         PendingLoadCancellation = null,
+                        TakenOverSlotOperationAttemptId = null,
                         ForcedIsolation = isolation ?? journalled.ForcedIsolation
                     };
                 },
@@ -3460,6 +3719,26 @@ public sealed partial class WireToGateBusinessService
                 + $"unsettledAttempt={otherAttempt}。");
         }
     }
+
+    /// <summary>
+    /// <paramref name="state"/> with the load on board of the demand <paramref name="vector"/> settled marked as handed off,
+    /// awaiting the server (8005-agv-onboard-hmi#209). Every vector that settles here asks the server to end its demand -- a
+    /// handoff and a forced recovery as <c>TERMINATED_BY_FAULT_CARGO_HANDOFF</c>, a compensation as
+    /// <c>CANCELLED_BY_LOAD_COMPENSATION</c>, a cancellation as cancelled -- except a correction, which only corrects the load
+    /// and leaves its cargo where it is.
+    /// </summary>
+    /// <remarks>
+    /// Marked, not taken off (decided for #209's review S4). The session closes whether or not the server reconciled the
+    /// result, so the vehicle cannot tell; a result that did not reconcile keeps the demand, and a second handoff is its way
+    /// out. Taken off, a single-demand trip had no handoff left on the vehicle after such a result. The server refuses a session
+    /// over a demand it did end (control-server#505, A3), so a second press there is answered, not carried out.
+    /// </remarks>
+    internal static WireToGateRecoveryState WithLoadEndedBy(
+        WireToGateRecoveryState state,
+        WireToGateRecoveryVectorContext vector) =>
+        vector.VectorType == WireToGateRecoveryVectorTypes.LoadCorrection
+            ? state
+            : state.WithLoadHandedOff(vector.DemandId);
 
     /// <param name="handedOverOpenSlots">
     /// The doors an aborted load may have left open, handed to a load cancellation as the prepared
@@ -3795,16 +4074,61 @@ public sealed partial class WireToGateBusinessService
     /// </remarks>
     private static WireToGateRecoveryOperationContext? FindRecoveryOperation(
         WireToGateRecoveryState state,
-        string? action) =>
-        state.OperationContext is { } armed
+        string? action,
+        string? demandId)
+    {
+        IReadOnlyList<WireToGateRecoveryOperationContext> subjects = RecoverySubjects(state, action);
+        return demandId is null
+            ? subjects.Count == 1 ? subjects[0] : null
+            : subjects.FirstOrDefault(subject => string.Equals(subject.DemandId, demandId, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// Every operation <see cref="FindRecoveryOperation"/> may pick for <paramref name="action"/>
+    /// (8005-agv-onboard-hmi#209).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The armed and unsettled operation, when there is one, is the only subject -- for compensation only if it is a load.
+    /// Otherwise compensation keeps to the last completed load, as it always did: it is about the load the server judged
+    /// <c>RecoveryRequired</c> right after it was reported. A fault cargo handoff and a forced mechanical recovery are
+    /// about cargo still on board, and a journey may carry the cargo of several demands loaded one after another: each of
+    /// them is a subject (<see cref="WireToGateRecoveryState.SettledLoadSubjects"/>). Before this only the last load was
+    /// kept, so the cargo of every earlier demand had no handoff at all, and once the last one was handed off the entry
+    /// stayed open over it.
+    /// </para>
+    /// <para>
+    /// With more than one subject a press has to name the demand: <see cref="FindRecoveryOperation"/> never picks one of
+    /// several on its own, because the subject is the slots a person opens and empties.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<WireToGateRecoveryOperationContext> RecoverySubjects(
+        WireToGateRecoveryState state,
+        string? action)
+    {
+        if (IsArmed(state, out WireToGateRecoveryOperationContext? armed))
+        {
+            return armed.OperationType == OperationType.Load || action != CompensateLoadAction ? [armed] : [];
+        }
+
+        return action == CompensateLoadAction
+            ? state.LastCompletedLoadOperationContext is { } last ? [last] : []
+            : [.. state.SettledLoadSubjects().Select(item => item.Load)];
+    }
+
+    private static bool IsArmed(
+        WireToGateRecoveryState state,
+        [NotNullWhen(true)] out WireToGateRecoveryOperationContext? armed)
+    {
+        armed = state.OperationContext is { } context
             && string.Equals(
                 state.UnsettledSlotOperationAttemptId,
-                armed.SlotOperationAttemptId,
+                context.SlotOperationAttemptId,
                 StringComparison.Ordinal)
-                ? armed.OperationType == OperationType.Load || action != CompensateLoadAction
-                    ? armed
-                    : null
-                : state.LastCompletedLoadOperationContext;
+                ? context
+                : null;
+        return armed is not null;
+    }
 
     private static WireToGateRecoveryOperationContext RequireUnsettledLoadOperation(
         WireToGateRecoveryState state)

@@ -87,6 +87,14 @@ public static class OnboardCommandRejectionText
         ["RECOVERY_ACTION_ALREADY_SELECTED"] = "本次恢复已经选过处理方式，请等待服务端下发后续命令。",
         ["RECOVERY_REASON_REQUIRED"] = "请先填写恢复原因，再提交。",
         ["RECOVERY_OPERATION_CONTEXT_MISSING"] = "找不到本次恢复对应的仓位操作，请等待服务端同步，或联系维护人员。",
+        // Several demands' cargo on board (onboard-hmi#209): which one a handoff or a forced recovery is about is the
+        // operator's to say, never guessed.
+        ["RECOVERY_DEMAND_SELECTION_REQUIRED"] = "车上有多条需求的货物，请先选择要处理的需求，再提交。",
+        ["RECOVERY_DEMAND_NOT_ON_BOARD"] = "所选需求的货物已不在车上待处理，请重新选择。",
+        ["RECOVERY_DEMAND_LOCKED"] = "本次恢复已针对另一条需求开始，请先完成它，再处理其他需求。",
+        // The server's answer to a session over a demand it does not hold for recovery: its journey is not stopped, or the
+        // demand has ended (control-server#505). Not read as "ended": the list keeps the demand (onboard-hmi#209).
+        ["RECOVERY_DEMAND_NOT_BLOCKED"] = "服务端当前没有因这条需求停住行程（行程不在待恢复状态，或这条需求已经结束），不能为它开处置会话。",
         ["LOAD_CORRECTION_OPERATION_NOT_AVAILABLE"] = "当前没有可以修正的装货操作。",
 
         // The hardware-recovery record is incomplete, unnecessary, or cannot be judged yet.

@@ -1,0 +1,18 @@
+hmi#209 step 1 -- G2 confirmation of 4b on w2g/fp-v2-impl db8fec10 (unmodified product code)
+
+Case: MultiDemandJourneyG2Tests.EveryLoadedDemandOfAJourneyCanBeHandedOff
+A loaded into slot 1, B into slot 5, both COMPLETED and recorded; session held RECOVERY_REQUIRED.
+Fake server checks the session scope like ValidateSessionScopeAsync: A -> [1], B -> [5].
+
+Run (dotnet test --filter EveryLoadedDemandOfAJourneyCanBeHandedOff|ArchitectureTests), exit code 1:
+  [FAIL] EveryLoadedDemandOfAJourneyCanBeHandedOff
+  Expected: "aaaaaaaa-0000-4000-8000-00000000000a"   (DemandA)
+  Actual:   "bbbbbbbb-0000-4000-8000-00000000000b"   (DemandB)
+  at MultiDemandJourneyG2Tests.PerDemandHandoff.cs:line 77  (RecoveryFallbackDemandId after B's HANDED_OFF)
+  Failed: 1, Passed: 4 (ArchitectureTests 4/4)
+
+Probe (temporary Assert.Fail at the same point, then reverted):
+  PROBE can=True vmCan=True fallback=<DemandB> text=目标：子批 SUBLOT-B lastLoad=<DemandB> unsettled= ctx= pressed=True
+        sessions=<DemandB>/5;<DemandB>/5
+  -> after B was handed off, the entry is still open, still names SUBLOT-B, and a second press asks for B over slot 5
+     again. A (slot 1) is never asked about: it has no handoff subject on the vehicle.

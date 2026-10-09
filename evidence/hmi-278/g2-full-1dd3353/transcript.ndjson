@@ -1,0 +1,11 @@
+{"timestampUtc":"2026-10-08T03:03:46.5791772Z","kind":"run.started","data":{"protocolRoot":"C:/Users/szy/Desktop/8005-workspace-v2/scratch/hmi150-protocol-v2.0.0","integrationSliceId":"","evidenceType":"ONBOARD_HMI_LOCAL_G2","hmiRoot":"C:\\Users\\szy\\Desktop\\8005-workspace-v2\\worktrees\\h278","runId":"20261008T030346403Z","selectedTestCount":null}}
+{"timestampUtc":"2026-10-08T03:03:47.1143273Z","kind":"protocol.g1.started","data":{"drive":"X:"}}
+{"timestampUtc":"2026-10-08T03:04:00.0129522Z","kind":"protocol.g1.completed","data":{"status":"PASS","log":"protocol-g1.log","exitCode":0}}
+{"timestampUtc":"2026-10-08T03:04:00.0220318Z","kind":"command.started","data":{"arguments":["build",".\\SQCD_8005AGV.sln","-c","Release"],"name":"dotnet-build-release"}}
+{"timestampUtc":"2026-10-08T03:04:11.8197843Z","kind":"command.completed","data":{"log":"dotnet-build-release.log","name":"dotnet-build-release","exitCode":0}}
+{"timestampUtc":"2026-10-08T03:04:11.8210185Z","kind":"command.started","data":{"arguments":["test",".\\SQCD_8005AGV.sln","-c","Release","--no-build","--results-directory","C:\\Users\\szy\\Desktop\\8005-workspace-v2\\scratch\\hmi278-g2\\protocol-v2.0.0\\20261008T030346403Z-1dd335306bb3\\test-results"],"name":"dotnet-test-release"}}
+{"timestampUtc":"2026-10-08T03:08:07.6903270Z","kind":"command.completed","data":{"log":"dotnet-test-release.log","name":"dotnet-test-release","exitCode":0}}
+{"timestampUtc":"2026-10-08T03:08:07.7005354Z","kind":"command.started","data":{"arguments":["format",".\\SQCD_8005AGV.sln","--verify-no-changes","--no-restore"],"name":"dotnet-format-verify"}}
+{"timestampUtc":"2026-10-08T03:08:45.0865955Z","kind":"command.completed","data":{"log":"dotnet-format-verify.log","name":"dotnet-format-verify","exitCode":0}}
+{"timestampUtc":"2026-10-08T03:08:45.1151633Z","kind":"evidence.journal.bound","data":{"g1Status":"PASS","hmiStatus":"PASS","hmiCommit":"1dd335306bb363467e3917e93afcdb7338ba764b","protocolCommit":"86575456c847041515b7b75e8851a00e0d939804"}}
+{"timestampUtc":"2026-10-08T03:08:45.3089401Z","kind":"run.completed","data":{"failures":0,"status":"PASS"}}

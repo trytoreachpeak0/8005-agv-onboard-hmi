@@ -174,7 +174,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             "the restarted vehicle to read its unanswered cancellation back from the journal",
             token);
         // What the entry request and an operator event do in the product, done once here.
-        afterRestart.ViewModel.RefreshWireToGateInputState();
+        afterRestart.OnUi(afterRestart.ViewModel.RefreshWireToGateInputState);
 
         // The restarted process has no selection, and the entry is pressable all the same: the
         // subject is the journal's, not a new pick.
@@ -296,7 +296,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                 () => harness.Business.CanRequestLoadCancellation,
                 "the cancellation-before-sublot entry to be offered",
                 cancellationToken);
-            harness.ViewModel.RefreshWireToGateInputState();
+            harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
             return harness;
         }
         catch
