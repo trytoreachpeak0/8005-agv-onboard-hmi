@@ -1,0 +1,14 @@
+=== StationDeadlineExpiredG2Tests
+Passed!  - Failed:     0, Passed:    62, Skipped:     0, Total:    62, Duration: 1 m 26 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+=== MultiDemandJourneyG2Tests
+Passed!  - Failed:     0, Passed:    97, Skipped:     0, Total:    97, Duration: 1 m 37 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+=== RecoveryVectorG2Tests
+Passed!  - Failed:     0, Passed:   193, Skipped:     0, Total:   193, Duration: 2 m 34 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+=== ArchitectureTests
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+=== format
+format exit=0

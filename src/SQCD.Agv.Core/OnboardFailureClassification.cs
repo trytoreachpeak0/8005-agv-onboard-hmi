@@ -151,6 +151,11 @@ public static class OnboardFailureClassification
         "RECOVERY_ACTION_ALREADY_SELECTED",
         "RECOVERY_REASON_REQUIRED",
         "RECOVERY_OPERATION_CONTEXT_MISSING",
+        // A handoff or forced recovery pressed among several loads on board without a demand chosen, or with one no
+        // longer on board (onboard-hmi#209). Nothing was sent.
+        "RECOVERY_DEMAND_SELECTION_REQUIRED",
+        "RECOVERY_DEMAND_NOT_ON_BOARD",
+        "RECOVERY_DEMAND_LOCKED",
         "LOAD_CORRECTION_OPERATION_NOT_AVAILABLE",
 
         // The hardware-recovery record is incomplete, not required, or cannot be judged because slot

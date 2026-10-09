@@ -1,0 +1,16 @@
+commit=d630c5c 测试在此提交，产品代码未改
+exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestartAfterTheLateLoadAcknowledgementResumesTheCancellationOverItsOpenDoor [3 s]
+Expected: "44444444-0000-4444-8444-00000000000a"
+Actual:   null
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AssertCancellationOnFile(WireToGateRecoveryState journal, Int32[] activeSlots) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 243
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestartAfterTheLateLoadAcknowledgementResumesTheCancellationOverItsOpenDoor() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 92
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestartAfterTheLateLoadAcknowledgementResumesTheCancellationOverItsOpenDoor() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 124
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ARestartAfterTheLateLoadAcknowledgementResumesTheCancellationOverItsOpenDoor() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 124
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoadResultAcknowledgedAfterTheCancellationTookItsAttemptOverLeavesTheCancellationOnFile [608 ms]
+Expected: "44444444-0000-4444-8444-00000000000a"
+Actual:   null
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AssertCancellationOnFile(WireToGateRecoveryState journal, Int32[] activeSlots) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 243
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoadResultAcknowledgedAfterTheCancellationTookItsAttemptOverLeavesTheCancellationOnFile() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 46
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ALoadResultAcknowledgedAfterTheCancellationTookItsAttemptOverLeavesTheCancellationOnFile() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi259-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:line 56
+Failed!  - Failed:     2, Passed:     1, Skipped:     0, Total:     3, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

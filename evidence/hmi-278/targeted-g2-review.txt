@@ -1,0 +1,21 @@
+# 864f756 上逐类运行（审查后）
+=== StationDeadlineExpiredG2Tests
+Passed!  - Failed:     0, Passed:    62, Skipped:     0, Total:    62, Duration: 1 m 22 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+=== MultiDemandJourneyG2Tests
+Passed!  - Failed:     0, Passed:   100, Skipped:     0, Total:   100, Duration: 1 m 59 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+=== RecoveryVectorG2Tests
+Passed!  - Failed:     0, Passed:   193, Skipped:     0, Total:   193, Duration: 2 m 32 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+=== WireToGateTakenOverMarkerTests
+Passed!  - Failed:     0, Passed:     6, Skipped:     0, Total:     6, Duration: 41 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+=== ArchitectureTests
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+=== UnitTests
+Passed!  - Failed:     0, Passed:   722, Skipped:     0, Total:   722, Duration: 22 s - SQCD.Agv.UnitTests.dll (net8.0)
+exit=0
+=== format
+format exit=0

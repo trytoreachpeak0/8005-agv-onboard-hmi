@@ -826,6 +826,41 @@ public sealed class FakeControlServer : IAsyncDisposable
     public IReadOnlyList<string> RejectedRecoverySessionRequests { get; private set; } = [];
 
     /// <summary>
+    /// When set, a recovery session request is checked the way the real server checks its scope
+    /// (<c>OnboardRecoveryCoordinator.ValidateSessionScopeAsync</c>): its <c>slots</c> must equal, in order, the target
+    /// slots of the latest operation of the demand it names, keyed here by demandId. A request naming a demand not in the
+    /// map, or other slots, is answered <c>ExceptionRecoverySessionRejected</c> with <c>RECOVERY_SCOPE_MISMATCH</c>. The
+    /// journey's Blocked stage, the server's other condition, is not modelled (8005-agv-onboard-hmi#209).
+    /// </summary>
+    public IReadOnlyDictionary<string, int[]>? RecoverySessionScopeByDemand { get; set; }
+
+    /// <summary>
+    /// Demands a reconciled fault cargo handoff ended. With <see cref="RecoverySessionScopeByDemand"/> set, a session request for
+    /// one of them is refused with <c>RECOVERY_DEMAND_NOT_BLOCKED</c>, as the real server does since control-server#505 (A3:
+    /// <c>ValidateSessionScopeAsync</c> refuses a demand whose status is Succeeded or Cancelled).
+    /// </summary>
+    private readonly HashSet<string> _endedDemands = new(StringComparer.Ordinal);
+
+    /// <summary>The demand each opened recovery session named, for the forced recovery's result, which names none.</summary>
+    private readonly Dictionary<string, string> _sessionDemands = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Whether an acknowledged ending result -- a fault cargo handoff HANDED_OFF, a compensation or cancellation ALL_EMPTY, a
+    /// forced recovery MECHANICALLY_ISOLATED -- ends its demand. <c>false</c> models a result the server did not reconcile
+    /// (<c>OnboardRecoveryCoordinator</c>: <c>_NOT_RECONCILED</c>): the demand stays, and a session over it is opened again.
+    /// </summary>
+    public bool EndingResultsReconcile { get; set; } = true;
+
+    /// <summary>Called under <c>_sync</c>.</summary>
+    private void MarkEndedLocked(string demandId)
+    {
+        if (EndingResultsReconcile)
+        {
+            _endedDemands.Add(demandId);
+        }
+    }
+
+    /// <summary>
     /// When set, every <c>RecoveryActionSubmitted</c> is answered with a <c>RecoveryActionRejected</c> carrying this
     /// reason code (8005-agv-onboard-hmi#255).
     /// </summary>
@@ -1541,6 +1576,15 @@ public sealed class FakeControlServer : IAsyncDisposable
     public Action? BeforeLoadCancellationAuthorization { get; set; }
 
     /// <summary>
+    /// When set, a <c>LoadCancellationAuthorization</c> is decided on arrival but written only once this task completes,
+    /// off the read loop, so every message after the request is still taken and answered in the meantime
+    /// (8005-agv-onboard-hmi#259). What it builds is the order the vehicle's own continuations can take: the answer read
+    /// first and an <c>OperationResult</c>'s acknowledgement right after it, the recording of that result landing in the
+    /// journal before the cancellation's prepare write. Set the session's message timeout above the hold.
+    /// </summary>
+    public Task? LoadCancellationAuthorizationHold { get; set; }
+
+    /// <summary>
     /// Runs after a recovery action is accepted and before the command it authorizes is sent: the
     /// window between the operator's request and the command arriving (8005-agv-onboard-hmi#191).
     /// </summary>
@@ -1551,6 +1595,15 @@ public sealed class FakeControlServer : IAsyncDisposable
     /// press's own checks and the vector it prepares once the session opens (8005-agv-onboard-hmi#255).
     /// </summary>
     public Action? BeforeRecoverySessionAnswer { get; set; }
+
+    /// <summary>
+    /// Opens every recovery session under an id derived from its request, as the real server does
+    /// (<c>OnboardRecoveryCoordinator.OpenSessionAsync</c>: <c>StableGuid(requestId, "exception-recovery-session")</c>), instead
+    /// of the one fixed id. A test that opens a second session after the first closed needs it: the vehicle derives the
+    /// recovery action id from the session, so under the fixed id the second action would carry the first one's id and
+    /// its result key (8005-agv-onboard-hmi#278).
+    /// </summary>
+    public bool RecoverySessionIdPerRequest { get; set; }
 
     /// <summary>
     /// The <c>slotOperationAttemptId</c> the <c>commandContentSha256</c> is computed over.
@@ -2362,6 +2415,12 @@ public sealed class FakeControlServer : IAsyncDisposable
                                 _settledAttempts.Add(settledAttempt);
                                 _operationsNeedingRecovery.Remove(settledAttempt);
                             }
+
+                            if (recoveryPayload.GetProperty("overallOutcome").GetString() is "HANDED_OFF" or "ALL_EMPTY"
+                                && recoveryPayload.GetProperty("demandId").GetString() is { } endedDemand)
+                            {
+                                MarkEndedLocked(endedDemand);
+                            }
                         }).ConfigureAwait(false);
                         // Published once the session is past its handshake: a result resent inside the handshake window
                         // would otherwise put a journey push between a snapshot and its ack. A test that needs the hold
@@ -2398,6 +2457,21 @@ public sealed class FakeControlServer : IAsyncDisposable
                     // it is 8005-agv-control-server#383, not this double.
                     case "SlotFaultDeclarationResult":
                         await WriteEnvelopeAsync(context, CreateDurableAck(context, root)).ConfigureAwait(false);
+                        if (messageType == "ForcedMechanicalRecoveryResult"
+                            && root.GetProperty("payload").GetProperty("outcome").GetString() == "MECHANICALLY_ISOLATED")
+                        {
+                            // The forced recovery's result carries no demand; its session named one.
+                            lock (_sync)
+                            {
+                                if (_sessionDemands.TryGetValue(
+                                        root.GetProperty("payload").GetProperty("exceptionRecoverySessionId").GetString()!,
+                                        out string? forcedDemand))
+                                {
+                                    MarkEndedLocked(forcedDemand);
+                                }
+                            }
+                        }
+
                         break;
                     case "ExceptionRecoverySessionRequested" when RespondToRecoveryRequests:
                         await HandleRecoverySessionRequestAsync(context, root).ConfigureAwait(false);
@@ -2966,8 +3040,37 @@ public sealed class FakeControlServer : IAsyncDisposable
     {
         BeforeRecoverySessionAnswer?.Invoke();
         JsonElement payload = request.GetProperty("payload");
+        // The scope is checked before anything below records a session (8005-agv-onboard-hmi#282 review S1): the real
+        // server validates the scope and only then opens a session, so a request refused for its scope neither stands as
+        // the open session nor uses up an opened reply to lose.
+        string? scopeRejection = null;
+        if (RecoverySessionRejectionReasonCode is null && RecoverySessionScopeByDemand is { } scopes)
+        {
+            int[] requestedSlots = payload.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()).ToArray();
+            string? requestedDemand = payload.TryGetProperty("demandId", out JsonElement requestedDemandId)
+                ? requestedDemandId.GetString()
+                : null;
+            bool ended;
+            lock (_sync)
+            {
+                ended = requestedDemand is not null && _endedDemands.Contains(requestedDemand);
+            }
+
+            // The real server's order (ValidateSessionScopeAsync after control-server#505): a demand it ended is refused before
+            // its scope is compared.
+            if (ended)
+            {
+                scopeRejection = "RECOVERY_DEMAND_NOT_BLOCKED";
+            }
+            else if (requestedDemand is not null
+                && (!scopes.TryGetValue(requestedDemand, out int[]? targetSlots) || !requestedSlots.SequenceEqual(targetSlots)))
+            {
+                scopeRejection = "RECOVERY_SCOPE_MISMATCH";
+            }
+        }
+
         string? standingRejection = null;
-        if (ModelOneOpenRecoverySession)
+        if (scopeRejection is null && ModelOneOpenRecoverySession)
         {
             string requestId = payload.GetProperty("requestId").GetString()!;
             string content = payload.GetRawText();
@@ -3004,7 +3107,8 @@ public sealed class FakeControlServer : IAsyncDisposable
             }
         }
 
-        if ((standingRejection ?? RecoverySessionRejectionReasonCode) is { } rejectionReasonCode)
+        string? rejectionReasonCode = standingRejection ?? RecoverySessionRejectionReasonCode ?? scopeRejection;
+        if (rejectionReasonCode is not null)
         {
             await WriteEnvelopeAsync(
                 context,
@@ -3026,7 +3130,17 @@ public sealed class FakeControlServer : IAsyncDisposable
             return;
         }
 
-        string sessionId = "77777777-7777-4777-8777-777777777777";
+        string sessionId = RecoverySessionIdPerRequest
+            ? FakeControlServerIdentifiers.StableUuid($"{payload.GetProperty("requestId").GetString()}|exception-recovery-session")
+            : "77777777-7777-4777-8777-777777777777";
+        if (payload.TryGetProperty("demandId", out JsonElement sessionDemand) && sessionDemand.GetString() is { } named)
+        {
+            lock (_sync)
+            {
+                _sessionDemands[sessionId] = named;
+            }
+        }
+
         await WriteEnvelopeAsync(
             context,
             CreateEnvelope(
@@ -3140,9 +3254,7 @@ public sealed class FakeControlServer : IAsyncDisposable
         BeforeLoadCancellationAuthorization?.Invoke();
         string decision = operationNeedsRecovery ? "REJECTED" : LoadCancellationDecision;
         bool authorized = decision == "AUTHORIZED";
-        await WriteEnvelopeAsync(
-            context,
-            CreateEnvelope(
+        WireToGateEnvelope answer = CreateEnvelope(
                 context,
                 "LoadCancellationAuthorization",
                 request.GetProperty("messageId").GetString(),
@@ -3169,8 +3281,27 @@ public sealed class FakeControlServer : IAsyncDisposable
                             fieldPath = "payload.demandId",
                             displayMessage = "当前状态不允许取消装货。"
                         }
-                }))
-            .ConfigureAwait(false);
+                });
+        if (LoadCancellationAuthorizationHold is { } hold)
+        {
+            _ = Task.Run(
+                async () =>
+                {
+                    await hold.ConfigureAwait(false);
+                    try
+                    {
+                        await WriteEnvelopeAsync(context, answer).ConfigureAwait(false);
+                    }
+                    catch (Exception exception) when (exception is IOException or ObjectDisposedException
+                        or InvalidOperationException)
+                    {
+                    }
+                },
+                CancellationToken.None);
+            return;
+        }
+
+        await WriteEnvelopeAsync(context, answer).ConfigureAwait(false);
     }
 
     private async Task HandleHardwareRecoveryRecordSubmittedAsync(

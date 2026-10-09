@@ -406,16 +406,25 @@ public sealed partial class MultiDemandJourneyG2Tests
         // and asserted on what the entries make of it. One wait for both cases: deriving the wait from
         // `armed` would make each case wait on something the other does not, and a change to the
         // startup order could then leave one of them asserting against an empty cache without failing.
+        // The worklist the screen names sublots from is a separate arrival, and with an operation armed it does not come at all:
+        // the cache can be in place before it, and then there is no sublot to name yet (review M1 of
+        // 8005-agv-onboard-hmi#209). So the line on screen is waited for, not read once; the rule itself is the business
+        // service's answer, asserted first.
         await harness.WaitUntilAsync(
             () => harness.Business.CachedRecoveryStateForTest.LastCompletedLoadOperationContext is not null,
             "the seeded recovery state to reach the entry gates' cache",
             token);
 
         Assert.Equal(armed ? null : DemandB, harness.Business.RecoveryFallbackDemandId);
-        harness.ViewModel.RefreshWireToGateInputState();
-        Assert.Equal(
-            armed ? string.Empty : "目标：子批 SUBLOT-B",
-            harness.ViewModel.RecoveryFallbackTargetText);
+        string expected = armed ? string.Empty : "目标：子批 SUBLOT-B";
+        await harness.WaitUntilAsync(
+            () =>
+            {
+                harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
+                return harness.ViewModel.RecoveryFallbackTargetText == expected;
+            },
+            $"the fallback target line to read \"{expected}\"",
+            token);
         // 这台车是出厂配置（recoveryResumeEnabled=false），三个回落入口一个都不出现，所以这一行也不显示
         // ——文案说得出来不等于该显示。这一点由 MultiDemandViewModelTests 的
         // WithNoFallbackEntryOnScreenTheTargetLineIsNotShownEither 单独钉住。

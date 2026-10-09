@@ -1,0 +1,266 @@
+{
+  "protocol": {
+    "tag": "protocol-v3.0.0",
+    "releaseVersion": "3.0.0",
+    "profileId": "AGV_FULL_PRODUCT",
+    "protocolVersion": 4,
+    "approvalStatus": "SUPERSEDING_CANDIDATE",
+    "manifestSha256": "d5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e",
+    "vendoredSchemaFiles": 71
+  },
+  "validator": "Corvus.Json.Validator 4.6.7",
+  "linesObserved": 8983,
+  "testAuthoredLinesSkipped": 1,
+  "linesChecked": 8982,
+  "distinctLinesChecked": 8903,
+  "linesInViolation": 0,
+  "linesInKnownViolation": 0,
+  "linesInIssueViolation": 0,
+  "linesInDeliberateViolation": 0,
+  "schemaCompilationMilliseconds": 84581,
+  "validationMilliseconds": 7193,
+  "byMessageType": {
+    "CapabilitySnapshot": {
+      "product": 349
+    },
+    "CurrentStopWorklistSnapshot": {
+      "synthetic-peer": 99
+    },
+    "DurableAck": {
+      "synthetic-peer": 1777
+    },
+    "ExceptionRecoverySessionOpened": {
+      "synthetic-peer": 221
+    },
+    "ExceptionRecoverySessionRejected": {
+      "synthetic-peer": 5
+    },
+    "ExceptionRecoverySessionRequested": {
+      "product": 228
+    },
+    "ExceptionRecoverySessionSnapshot": {
+      "synthetic-peer": 32
+    },
+    "FaultCargoRecoveryCommand": {
+      "synthetic-peer": 27
+    },
+    "FaultCargoRecoveryResult": {
+      "product": 25
+    },
+    "ForcedMechanicalRecoveryCommand": {
+      "synthetic-peer": 31
+    },
+    "ForcedMechanicalRecoveryResult": {
+      "product": 34
+    },
+    "HardwareRecoveryRecordResult": {
+      "synthetic-peer": 7
+    },
+    "HardwareRecoveryRecordSubmitted": {
+      "product": 8
+    },
+    "Heartbeat": {
+      "product": 1
+    },
+    "HeartbeatAck": {
+      "synthetic-peer": 1
+    },
+    "LoadCancellationAuthorization": {
+      "synthetic-peer": 2
+    },
+    "LoadCancellationResult": {
+      "product": 1
+    },
+    "LoadCancellationStartRequested": {
+      "product": 4
+    },
+    "LoadCompensationCommand": {
+      "synthetic-peer": 85
+    },
+    "LoadCompensationRejected": {
+      "synthetic-peer": 1
+    },
+    "LoadCompensationRequested": {
+      "product": 112
+    },
+    "LoadCompensationResult": {
+      "product": 77
+    },
+    "LoadCorrectionCommand": {
+      "synthetic-peer": 2
+    },
+    "LoadCorrectionRequested": {
+      "product": 6
+    },
+    "LoadCorrectionResult": {
+      "product": 2
+    },
+    "ManualChargingReturnToServiceRequested": {
+      "product": 6
+    },
+    "ManualChargingReturnToServiceResult": {
+      "synthetic-peer": 6
+    },
+    "OnboardAlarmSnapshot": {
+      "product": 349
+    },
+    "OperationProgress": {
+      "product": 612
+    },
+    "OperationResult": {
+      "product": 310
+    },
+    "PreDepartureSafetyCheck": {
+      "synthetic-peer": 7
+    },
+    "PreDepartureSafetyCheckResult": {
+      "product": 7
+    },
+    "ProtocolProblem": {
+      "product": 12,
+      "synthetic-peer": 17
+    },
+    "RecoveryActionAccepted": {
+      "synthetic-peer": 219
+    },
+    "RecoveryActionRejected": {
+      "synthetic-peer": 2
+    },
+    "RecoveryActionSubmitted": {
+      "product": 221
+    },
+    "RecoveryStateReport": {
+      "product": 349
+    },
+    "SafetyStateChanged": {
+      "product": 414
+    },
+    "SafetyStateSnapshot": {
+      "product": 376
+    },
+    "SafetyStateSnapshotRequested": {
+      "synthetic-peer": 27
+    },
+    "SessionAccepted": {
+      "synthetic-peer": 349
+    },
+    "SessionHello": {
+      "product": 349
+    },
+    "SessionReadiness": {
+      "synthetic-peer": 464
+    },
+    "SlotFaultDeclarationCommand": {
+      "synthetic-peer": 26
+    },
+    "SlotFaultDeclarationResult": {
+      "product": 22
+    },
+    "SlotOperationCommand": {
+      "synthetic-peer": 79
+    },
+    "SlotOperationCommandRejected": {
+      "product": 54
+    },
+    "SlotOperationResumeCommand": {
+      "synthetic-peer": 56
+    },
+    "SnapshotAppliedAck": {
+      "product": 273,
+      "synthetic-peer": 1074
+    },
+    "UpcomingStopPlanSnapshot": {
+      "synthetic-peer": 78
+    },
+    "VehicleBusinessStateSnapshot": {
+      "synthetic-peer": 87
+    }
+  },
+  "origins": {
+    "product": {
+      "directions": [
+        "O_TO_C",
+        "BIDIRECTIONAL"
+      ],
+      "messageTypesObserved": 26,
+      "messageTypesNotObserved": [
+        "DemandSelectionRequested",
+        "DurableAck",
+        "ManualStationClearanceConfirmationRequested",
+        "SlotConfigurationActivationResult",
+        "SublotSubmitted",
+        "UnableToChargeFieldConfirmationRequested"
+      ],
+      "messageTypesOutsideDirection": []
+    },
+    "syntheticPeer": {
+      "directions": [
+        "C_TO_O",
+        "BIDIRECTIONAL"
+      ],
+      "messageTypesObserved": 27,
+      "messageTypesNotObserved": [
+        "CapabilitySnapshotRequested",
+        "DemandSelectionResult",
+        "LoadCorrectionRejected",
+        "ManualStationClearanceConfirmationResult",
+        "SessionRejected",
+        "SlotConfigurationActivationCommand",
+        "SublotEntryRequested",
+        "SublotRejected",
+        "UnableToChargeFieldConfirmationResult"
+      ],
+      "messageTypesOutsideDirection": []
+    }
+  },
+  "knownViolationEntriesNotMatched": [
+    {
+      "messageType": "VehicleBusinessStateSnapshot",
+      "pointer": "#/payload/loadingPhase",
+      "keyword": "anyOf",
+      "actual": "{\"state\":\"CLOSED\",\"cargoHoldingDeadlineAt\":null,\"closedReason\":null}",
+      "issue": null,
+      "deliberate": "MultiDemandJourneyG2Tests.AClosedLoadingPhaseWithoutAReasonIsStillRefusedAndLeavesNoHalfState"
+    },
+    {
+      "messageType": "ManualChargingReturnToServiceResult",
+      "pointer": "#/payload/outcome",
+      "keyword": "type",
+      "actual": "5",
+      "issue": null,
+      "deliberate": "ManualStationClearanceG2Tests.ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown"
+    },
+    {
+      "messageType": "ManualChargingReturnToServiceResult",
+      "pointer": "#/payload/outcome",
+      "keyword": "enum",
+      "actual": "5",
+      "issue": null,
+      "deliberate": "ManualStationClearanceG2Tests.ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown"
+    },
+    {
+      "messageType": "ManualStationClearanceConfirmationResult",
+      "pointer": "#/payload/outcome",
+      "keyword": "type",
+      "actual": "5",
+      "issue": null,
+      "deliberate": "ManualStationClearanceG2Tests.AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable"
+    },
+    {
+      "messageType": "ManualStationClearanceConfirmationResult",
+      "pointer": "#/payload/outcome",
+      "keyword": "enum",
+      "actual": "5",
+      "issue": null,
+      "deliberate": "ManualStationClearanceG2Tests.AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable"
+    },
+    {
+      "messageType": "UnableToChargeFieldConfirmationResult",
+      "pointer": "#/payload/chargingPolicyDecision",
+      "keyword": "anyOf",
+      "actual": "\"CHARGE_ELSEWHERE\"",
+      "issue": null,
+      "deliberate": "UnableToChargeFieldConfirmationG2Tests.AResultThatContradictsItselfOrTheSchemaIsRefusedAndThePressEndsAsUnknown"
+    }
+  ]
+}
