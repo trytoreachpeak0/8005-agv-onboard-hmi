@@ -355,6 +355,17 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(
             [(DemandA, true), (DemandB, false)],
             ReadJournal(harness, token).LoadsOnBoard?.Select(load => (load.DemandId, load.HandedOffAwaitingServer)));
+
+        // What went out on the wire, not only what the journal says (8005-agv-onboard-hmi#282 review S2): the helper's first
+        // press may return false for a reason it does not tell apart, so the result itself is checked -- A's demand, the
+        // isolation, the handoff record pressed and A's slot.
+        JsonElement result = Assert.Single(ReceivedPayloads(harness, "ForcedMechanicalRecoveryResult"));
+        Assert.Equal(DemandA, result.GetProperty("demandId").GetString());
+        Assert.Equal("MECHANICALLY_ISOLATED", result.GetProperty("outcome").GetString());
+        JsonElement handoff = result.GetProperty("cargoHandoff");
+        Assert.Equal("SUBLOT-A", handoff.GetProperty("sublot").GetString());
+        Assert.Equal(ForcedHandoffReceiver, handoff.GetProperty("receiverName").GetString());
+        Assert.Equal([1], result.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()));
         Assert.Empty(harness.UiErrors);
     }
 
@@ -417,11 +428,14 @@ public sealed partial class MultiDemandJourneyG2Tests
         string sublot,
         CancellationToken token)
     {
-        if (!await harness.Business.ConfirmForcedMechanicalRecoveryAsync(sublot, "现场接收人", token))
+        if (!await harness.Business.ConfirmForcedMechanicalRecoveryAsync(sublot, ForcedHandoffReceiver, token))
         {
-            Assert.True(await harness.Business.ConfirmForcedMechanicalRecoveryAsync(sublot, "现场接收人", token));
+            Assert.True(await harness.Business.ConfirmForcedMechanicalRecoveryAsync(sublot, ForcedHandoffReceiver, token));
         }
     }
+
+    /// <summary>The receiver <see cref="ConfirmForcedRecoveryWithHandoffAsync"/> names in the cargo handoff record.</summary>
+    private const string ForcedHandoffReceiver = "现场接收人";
 
     /// <summary>The rows of the loads-on-board choice as the screen shows them, refreshed the way the dispatcher would.</summary>
     private static Task WaitForChoicesAsync(Harness harness, string[] texts, CancellationToken token) =>

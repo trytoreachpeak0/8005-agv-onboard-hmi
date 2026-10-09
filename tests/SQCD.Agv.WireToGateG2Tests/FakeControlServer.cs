@@ -3040,8 +3040,37 @@ public sealed class FakeControlServer : IAsyncDisposable
     {
         BeforeRecoverySessionAnswer?.Invoke();
         JsonElement payload = request.GetProperty("payload");
+        // The scope is checked before anything below records a session (8005-agv-onboard-hmi#282 review S1): the real
+        // server validates the scope and only then opens a session, so a request refused for its scope neither stands as
+        // the open session nor uses up an opened reply to lose.
+        string? scopeRejection = null;
+        if (RecoverySessionRejectionReasonCode is null && RecoverySessionScopeByDemand is { } scopes)
+        {
+            int[] requestedSlots = payload.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()).ToArray();
+            string? requestedDemand = payload.TryGetProperty("demandId", out JsonElement requestedDemandId)
+                ? requestedDemandId.GetString()
+                : null;
+            bool ended;
+            lock (_sync)
+            {
+                ended = requestedDemand is not null && _endedDemands.Contains(requestedDemand);
+            }
+
+            // The real server's order (ValidateSessionScopeAsync after control-server#505): a demand it ended is refused before
+            // its scope is compared.
+            if (ended)
+            {
+                scopeRejection = "RECOVERY_DEMAND_NOT_BLOCKED";
+            }
+            else if (requestedDemand is not null
+                && (!scopes.TryGetValue(requestedDemand, out int[]? targetSlots) || !requestedSlots.SequenceEqual(targetSlots)))
+            {
+                scopeRejection = "RECOVERY_SCOPE_MISMATCH";
+            }
+        }
+
         string? standingRejection = null;
-        if (ModelOneOpenRecoverySession)
+        if (scopeRejection is null && ModelOneOpenRecoverySession)
         {
             string requestId = payload.GetProperty("requestId").GetString()!;
             string content = payload.GetRawText();
@@ -3078,32 +3107,7 @@ public sealed class FakeControlServer : IAsyncDisposable
             }
         }
 
-        string? rejectionReasonCode = standingRejection ?? RecoverySessionRejectionReasonCode;
-        if (rejectionReasonCode is null && RecoverySessionScopeByDemand is { } scopes)
-        {
-            int[] requestedSlots = payload.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()).ToArray();
-            string? requestedDemand = payload.TryGetProperty("demandId", out JsonElement requestedDemandId)
-                ? requestedDemandId.GetString()
-                : null;
-            bool ended;
-            lock (_sync)
-            {
-                ended = requestedDemand is not null && _endedDemands.Contains(requestedDemand);
-            }
-
-            // The real server's order (ValidateSessionScopeAsync after control-server#505): a demand it ended is refused before
-            // its scope is compared.
-            if (ended)
-            {
-                rejectionReasonCode = "RECOVERY_DEMAND_NOT_BLOCKED";
-            }
-            else if (requestedDemand is not null
-                && (!scopes.TryGetValue(requestedDemand, out int[]? targetSlots) || !requestedSlots.SequenceEqual(targetSlots)))
-            {
-                rejectionReasonCode = "RECOVERY_SCOPE_MISMATCH";
-            }
-        }
-
+        string? rejectionReasonCode = standingRejection ?? RecoverySessionRejectionReasonCode ?? scopeRejection;
         if (rejectionReasonCode is not null)
         {
             await WriteEnvelopeAsync(
