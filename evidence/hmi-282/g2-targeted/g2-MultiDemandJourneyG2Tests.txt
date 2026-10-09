@@ -1,0 +1,38 @@
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi282-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Release\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:01:18.19]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AHandoffThatOpenedNothingLeavesTheLoadsAckToSettleIt [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AHandoffThatOpenedNothingLeavesTheLoadsAckToSettleIt [547 ms]
+  Error Message:
+   System.InvalidOperationException : Collection was modified; enumeration operation may not execute.
+  Stack Trace:
+     at System.Collections.Generic.List`1.Enumerator.MoveNext()
+   at System.Linq.Enumerable.Any[TSource](IEnumerable`1 source, Func`2 predicate)
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.<>c__DisplayClass75_0.<ReleaseLoadAckAsync>b__0() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi282-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandoffOverUnrecordedLoad.cs:line 522
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi282-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 647
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.ReleaseLoadAckAsync(Harness harness, TaskCompletionSource resultAckHeld, CancellationToken token) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi282-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandoffOverUnrecordedLoad.cs:line 521
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AHandoffThatOpenedNothingLeavesTheLoadsAckToSettleIt() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi282-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandoffOverUnrecordedLoad.cs:line 354
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AHandoffThatOpenedNothingLeavesTheLoadsAckToSettleIt() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi282-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandoffOverUnrecordedLoad.cs:line 359
+--- End of stack trace from previous location ---
+[xUnit.net 00:01:53.82]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AForcedMechanicalRecoveryIsAskedForTheChosenLoad [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AForcedMechanicalRecoveryIsAskedForTheChosenLoad [6 s]
+  Error Message:
+   Timed out after 5s waiting for: the acknowledged isolation to settle the forced recovery. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi282-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 652
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AForcedMechanicalRecoveryIsAskedForTheChosenLoad() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi282-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.PerDemandHandoff.cs:line 351
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AForcedMechanicalRecoveryIsAskedForTheChosenLoad() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi282-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.PerDemandHandoff.cs:line 358
+--- End of stack trace from previous location ---
+[xUnit.net 00:02:22.57]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AfterAForcedRecoveryAHandoffPressIsAnsweredByTheServer [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AfterAForcedRecoveryAHandoffPressIsAnsweredByTheServer [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the acknowledged isolation to settle the forced recovery. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi282-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 652
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AfterAForcedRecoveryAHandoffPressIsAnsweredByTheServer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi282-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.PerDemandHandoffLocks.cs:line 364
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AfterAForcedRecoveryAHandoffPressIsAnsweredByTheServer() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi282-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.PerDemandHandoffLocks.cs:line 390
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     3, Passed:   120, Skipped:     0, Total:   123, Duration: 2 m 40 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

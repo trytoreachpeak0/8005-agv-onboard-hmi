@@ -1,4 +1,0 @@
-# 修 LoadCompensationRejected 缺 correlationId 后的定向运行（只跑 ARejectedCompensationKeepsTheDoorInTheActiveSet，WIRE_TO_GATE_SCHEMA_REPORT_DIR 指向独立目录）
-exit=0
-Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-Schema conformance (protocol-v2.0.0 APPROVED_RELEASE): 21 lines, 21 distinct, 17 message types; 0 distinct violations, 0 on file; schema compilation 79055 ms, validation 3962 ms.

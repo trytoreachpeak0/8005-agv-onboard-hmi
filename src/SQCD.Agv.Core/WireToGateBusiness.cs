@@ -60,10 +60,11 @@ public sealed record WireToGatePreDepartureSafetyCheck(
     long SessionGeneration,
     DateTimeOffset SentAt,
     string PreDepartureSafetyCheckId,
-    string DemandId,
-    string MovementLegId,
+    string CheckPurpose,
+    string? DemandId,
+    string? MovementLegId,
     long ExpectedSafetyStateVersion,
-    string TargetStationId)
+    string? TargetStationId)
     : WireToGateServerCommand("PreDepartureSafetyCheck", MessageId, null, SessionGeneration, SentAt);
 
 public sealed record WireToGateRecoveryCommand(
@@ -151,6 +152,31 @@ public sealed record WireToGateForcedMechanicalRecoveryCommand(
         SessionGeneration,
         SentAt);
 
+/// <summary>
+/// An administrator's declaration, made on the control server, that the slot this vehicle is waiting on the
+/// operator for is faulty (REQ-0359, CP-0005, 8005-agv-onboard-hmi#215). It names one attempt and one slot and
+/// applies to nothing else: the vehicle checks both against what its executor is doing before it acts.
+/// </summary>
+public sealed record WireToGateSlotFaultDeclarationCommand(
+    string MessageId,
+    long SessionGeneration,
+    DateTimeOffset SentAt,
+    string DeclarationId,
+    string DemandId,
+    string SlotOperationAttemptId,
+    int SlotNo,
+    string AdministratorId,
+    string AdministratorRole,
+    string FaultCategory,
+    string Note,
+    DateTimeOffset DeclaredAt)
+    : WireToGateServerCommand(
+        "SlotFaultDeclarationCommand",
+        MessageId,
+        null,
+        SessionGeneration,
+        SentAt);
+
 public sealed record WireToGateRecoveryBlockingFact(
     string ReasonCode,
     string SubjectType,
@@ -179,7 +205,8 @@ public sealed record WireToGateExceptionRecoverySessionSnapshot(
     IReadOnlyList<int> Slots,
     string? SelectedAction,
     IReadOnlyList<string> AllowedActions,
-    IReadOnlyList<WireToGateRecoveryBlockingFact> BlockingFacts)
+    IReadOnlyList<WireToGateRecoveryBlockingFact> BlockingFacts,
+    string? ClosedReason = null)
     : WireToGateServerCommand(
         "ExceptionRecoverySessionSnapshot",
         MessageId,

@@ -99,6 +99,7 @@ public static class OnboardCommandRejectionText
 
         // The hardware-recovery record is incomplete, unnecessary, or cannot be judged yet.
         ["HARDWARE_RECOVERY_NOT_REQUIRED"] = "当前不需要填写硬件恢复记录。",
+        ["REPAIR_RELEASE_NOT_REQUIRED"] = "本车当前没有因门锁未证明而被扣，不需要维修放行。",
         // 人工核对后结束此恢复（onboard-hmi#254）：按下时那份被拒收的恢复已经不在了——另一处已经结束它，或者服务端改派了新的操作。
         ["CONFLICTED_RECOVERY_NOT_PENDING"] = "当前没有等待人工核对的恢复，无需结束。",
         // 恢复结果被服务端拒收、正等待人工核对时，同一恢复的入口不再执行（onboard-hmi#254）。
@@ -109,6 +110,8 @@ public static class OnboardCommandRejectionText
         ["LOAD_CANCELLATION_ALREADY_CONCLUDED"] = "这次装货已经取消过、取消已有结论，不能再取消；需要处理货物请联系维护人员走恢复流程。",
         ["HARDWARE_RECOVERY_OBSERVATIONS_REQUIRED"] = "请先逐仓填写现场确认结果，再提交。",
         ["HARDWARE_RECOVERY_RECORD_REQUIRED"] = "请先提交硬件恢复记录，再继续。",
+        ["FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED"] = "请先填写货物交接记录（子批号、接收人），再确认强制机械取出。",
+        ["LOAD_CANCELLATION_AFTER_SLOT_FAULT_DECLARATION"] = "管理员已判定本次装货的仓位故障，装货取消不再执行，未开任何仓门；请等管理员在异常处置会话里处理。",
         ["SLOT_STATE_UNKNOWN"] = "部分仓位状态暂时读不到，请等待恢复后再试。"
     };
 

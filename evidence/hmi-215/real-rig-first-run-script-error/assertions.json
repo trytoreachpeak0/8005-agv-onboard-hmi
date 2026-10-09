@@ -1,0 +1,46 @@
+{
+  "schemaVersion": 1,
+  "scenario": "real-onboard-slot-fault-declaration",
+  "runId": "20261003T062420216Z",
+  "outcome": "FAIL",
+  "failureReason": "在此对象上找不到属性“PayloadJson”。请验证该属性是否存在。",
+  "identity": {
+    "controlServerCommit": "3cf62fecd28c402fe9fc54a144b20a85583edd4b",
+    "protocolReleaseIdentity": {
+      "repository": "8005-agv-protocol",
+      "releaseVersion": "3.0.0",
+      "tag": "protocol-v3.0.0",
+      "commit": "3f091cb2eae7c58cec54a95dd9389c9180bc7b4c",
+      "protocolVersion": 4,
+      "profileId": "AGV_FULL_PRODUCT",
+      "manifestSha256": "d5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e",
+      "schemaBundleSha256": "e435b2b14d9ccd60c89f07df909da7626fef056a6b8a2241087557fd7dc3df43",
+      "vectorsSha256": "be849f9749b004296ebd9e7bffa98faf2f8ffa90b63308ca3b210c68e7b8656e",
+      "approvalStatus": "SUPERSEDING_CANDIDATE"
+    },
+    "agvId": "AGV-L2-001",
+    "onboardHmiCommit": "b9cd47f74e456a75093c9aa97083db0e7795005e",
+    "expectedActionOverdueThreshold": "00:00:20",
+    "vehicleKey": "BROKERX-L2-0001",
+    "batchId": "unspecified",
+    "slotsSimulatorCommit": "fb5f7c593742bf98bc3957b8729a38aad5321f28",
+    "rig": "RealOnboard",
+    "stageRoot": "C:\\actions-runner\\win11-01-control-server-desktop\\_work\\_temp\\real-rig-37102766873-1\\_stage\\l2-20261003T062420216Z"
+  },
+  "assertions": [
+    {
+      "id": "L2-RSFD-01",
+      "description": "判定被受理并已下发到车：202、PENDING、sentToVehicle，demandId 与尝试是这次装货的",
+      "outcome": "PASS",
+      "expected": "202 / PENDING / True / d2f34870-7f23-4a43-9481-9fad96584e86 / d8f78cee-2c2a-125e-b963-63cb503fede1",
+      "actual": "202 / PENDING / True / d2f34870-7f23-4a43-9481-9fad96584e86 / d8f78cee-2c2a-125e-b963-63cb503fede1"
+    },
+    {
+      "id": "L2-RSFD-02",
+      "description": "线上 SlotFaultDeclarationResult：APPLIED、同一个尝试、problem 为空，服务端 DurableAck",
+      "outcome": "PASS",
+      "expected": "APPLIED / d8f78cee-2c2a-125e-b963-63cb503fede1 / problem null / DurableAck",
+      "actual": "APPLIED / d8f78cee-2c2a-125e-b963-63cb503fede1 / problem {\"declarationId\":\"f92adaa1-ab4e-4795-94a5-913f4a7ff74c\",\"slotOperationAttemptId\":\"d8f78cee-2c2a-125e-b963-63cb503fede1\",\"outcome\":\"APPLIED\",\"problem\":null} / DurableAck"
+    }
+  ]
+}

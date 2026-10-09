@@ -1056,6 +1056,45 @@ public sealed class SqliteWireToGateJournal : IWireToGateJournal
             }
         }
 
+        if (state.RepairRelease is { } release)
+        {
+            RequireUuid(release.RequestId, nameof(release.RequestId));
+            RequireUuid(release.EventId, nameof(release.EventId));
+            RequireUuid(release.RecoveryActionId, nameof(release.RecoveryActionId));
+            ValidateOptionalUuid(release.ExceptionRecoverySessionId, nameof(release.ExceptionRecoverySessionId));
+            ArgumentException.ThrowIfNullOrWhiteSpace(release.OperatorId);
+            ArgumentException.ThrowIfNullOrWhiteSpace(release.OperatorVerificationMethod);
+            ArgumentException.ThrowIfNullOrWhiteSpace(release.Reason);
+            if (release.Slots is not { Count: > 0 } releaseSlots
+                || releaseSlots.Any(slot => slot is < 1 or > 8)
+                || !releaseSlots.SequenceEqual(releaseSlots.Distinct().Order())
+                || release.Accepted && release.ExceptionRecoverySessionId is null
+                || release.PendingRecord is not null && !release.Accepted)
+            {
+                throw new InvalidDataException("WIRE_TO_GATE repair release字段无效。");
+            }
+
+            if (release.PendingRecord is { } releaseRecord)
+            {
+                RequireUuid(releaseRecord.RecordId, nameof(releaseRecord.RecordId));
+                ArgumentException.ThrowIfNullOrWhiteSpace(releaseRecord.OperatorId);
+                ArgumentException.ThrowIfNullOrWhiteSpace(releaseRecord.OperatorVerificationMethod);
+                ArgumentException.ThrowIfNullOrWhiteSpace(releaseRecord.AdministratorRole);
+                ArgumentException.ThrowIfNullOrWhiteSpace(releaseRecord.Observations);
+            }
+        }
+
+        if (state.SlotFaultDeclaration is { } declaration)
+        {
+            RequireUuid(declaration.DeclarationId, nameof(declaration.DeclarationId));
+            RequireUuid(declaration.SlotOperationAttemptId, nameof(declaration.SlotOperationAttemptId));
+            ArgumentException.ThrowIfNullOrWhiteSpace(declaration.FaultCategory);
+            if (declaration.SlotNo is < 1 or > 8)
+            {
+                throw new InvalidDataException("WIRE_TO_GATE slot fault declaration字段无效。");
+            }
+        }
+
         foreach (WireToGatePendingResult pending in state.PendingResults)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(pending.MessageType);

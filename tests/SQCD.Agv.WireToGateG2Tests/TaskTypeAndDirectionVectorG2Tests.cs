@@ -83,11 +83,12 @@ public sealed class TaskTypeAndDirectionVectorG2Tests
     /// entry that names one (<c>NEVER_INFER_UNBOUND_TASK_TYPE</c>).
     /// </summary>
     /// <remarks>
-    /// The vector's other onboard assertion, <c>DISPLAY_ADMISSION_BLOCK_REASON</c>, is deliberately
-    /// not claimed here or anywhere on this end: spec section 5.3 keeps the admission block reason on
-    /// the control server and the dashboard and never sends it through <c>blockingFacts</c>, so the
-    /// assertion has no producer. The conflict is registered for <c>protocol-v3.0.0</c> in
-    /// <c>trytoreachpeak0/8005-agv-program#125</c>.
+    /// The vector used to carry a second onboard assertion, <c>DISPLAY_ADMISSION_BLOCK_REASON</c>, which
+    /// this end never claimed: spec section 5.3 keeps the admission block reason on the control server
+    /// and the dashboard and never sends it through <c>blockingFacts</c>, so it had no producer. The
+    /// 3.0.0 candidate deleted it from the vector (<c>trytoreachpeak0/8005-agv-program#150</c>, registered
+    /// in <c>#125</c>), so what this test proves is now the vector's whole onboard half
+    /// (8005-agv-onboard-hmi#214).
     /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-10")]
@@ -271,8 +272,7 @@ public sealed class TaskTypeAndDirectionVectorG2Tests
                 1,
                 1,
                 "eight-slot-v1",
-                "eight-slot-modbus-v1",
-                SupportsBatchUnlock: false),
+                "eight-slot-modbus-v1"),
             new FakeIoModuleClient(),
             new SqliteWireToGateJournal(NewJournalPath()),
             new SystemClock(),

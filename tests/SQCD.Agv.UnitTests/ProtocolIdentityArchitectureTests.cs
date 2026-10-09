@@ -56,8 +56,8 @@ public sealed class ProtocolIdentityArchitectureTests
         Dictionary<string, string> table = ManifestFileTable();
         string[] vendored = VendoredFiles();
 
-        Assert.Equal(71, vendored.Length);
-        Assert.Equal(69, vendored.Count(path => path.StartsWith("schemas/", StringComparison.Ordinal)));
+        Assert.Equal(73, vendored.Length);
+        Assert.Equal(71, vendored.Count(path => path.StartsWith("schemas/", StringComparison.Ordinal)));
 
         List<string> offences = [];
         foreach (string relative in vendored)
@@ -162,13 +162,15 @@ public sealed class ProtocolIdentityArchitectureTests
     /// The tag is schema-legal, and the approval status says it names the approved release.
     /// </summary>
     /// <remarks>
-    /// The two are checked together because either alone says too little. Until 2026-09-16
-    /// <c>protocol-v2.0.0</c> had not been cut and this test asserted <c>SUPERSEDING_CANDIDATE</c>.
-    /// The change was made here on purpose the day the annotated tag and its approval attestation
-    /// were published, and it is also what stops the development-grade G2 runs made on the candidate
-    /// from counting as the gate's evidence -- a run binds the identity this constant held when it
-    /// ran. That the tag really points at <see cref="WireToGateRelease.Commit"/> is checked by
-    /// <c>scripts/run-w2g-g2.ps1</c> against a protocol checkout, which this assembly does not have.
+    /// The two are checked together because either alone says too little. While
+    /// <c>protocol-v3.0.0</c> had not been cut this test asserted <c>SUPERSEDING_CANDIDATE</c>
+    /// (8005-agv-onboard-hmi#214), as it had for <c>protocol-v2.0.0</c> until 2026-09-16. The change
+    /// was made here on purpose after the annotated tag and its approval attestation were published on
+    /// 2026-10-09 (8005-agv-program#152, bound by 8005-agv-control-server#393), and it is also what
+    /// stops the development-grade G2 runs made on the candidate from counting as the gate's evidence
+    /// -- a run binds the identity this constant held when it ran. That the tag really points at
+    /// <see cref="WireToGateRelease.Commit"/> is checked by <c>scripts/run-w2g-g2.ps1</c> against a
+    /// protocol checkout, which this assembly does not have.
     /// </remarks>
     [Fact]
     public void TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsTheApprovedRelease()
@@ -184,16 +186,18 @@ public sealed class ProtocolIdentityArchitectureTests
     }
 
     /// <summary>
-    /// An envelope whose <c>protocolVersion</c> is this build's 3 but whose release is
-    /// <c>WIRE_TO_GATE_MVP 0.3.0</c> is refused.
+    /// An envelope whose <c>protocolVersion</c> is this build's 4 but whose profile, release version or
+    /// manifest is another release's is refused.
     /// </summary>
     /// <remarks>
     /// <para>
     /// The integer is only monotonic <i>within</i> a profile: <c>WIRE_TO_GATE_MVP 0.2.0</c> and
     /// <c>AGV_FULL_PRODUCT 1.0.0</c> were both 2, and <c>WIRE_TO_GATE_MVP 0.3.0</c> and
-    /// <c>AGV_FULL_PRODUCT 2.0.0</c> are both 3. So a peer on the MVP line now agrees with this
-    /// build on the one field that looks like a version, and a comparison that stopped there would
-    /// admit its payloads -- which have different shapes under the same message names.
+    /// <c>AGV_FULL_PRODUCT 2.0.0</c> are both 3. A peer of another profile can therefore agree with
+    /// this build on the one field that looks like a version, and a comparison that stopped there
+    /// would admit its payloads -- which have different shapes under the same message names. The
+    /// <c>releaseVersion</c> variant is <c>2.0.0</c>, the release this build replaced
+    /// (8005-agv-onboard-hmi#214).
     /// </para>
     /// <para>
     /// The three variants below are the three remaining identity fields, each wrong on its own with
@@ -204,7 +208,7 @@ public sealed class ProtocolIdentityArchitectureTests
     [Fact]
     public void AnEnvelopeOnADifferentReleaseWithTheSameProtocolVersionIsRefused()
     {
-        Assert.Equal(3, WireToGateRelease.ProtocolVersion);
+        Assert.Equal(4, WireToGateRelease.ProtocolVersion);
 
         foreach ((string what, string line) in ForeignReleaseEnvelopes())
         {
@@ -230,7 +234,7 @@ public sealed class ProtocolIdentityArchitectureTests
         yield return ("profileId", Envelope(
             "WIRE_TO_GATE_MVP", WireToGateRelease.ReleaseVersion, WireToGateRelease.ManifestSha256));
         yield return ("releaseVersion", Envelope(
-            WireToGateRelease.ProfileId, "0.3.0", WireToGateRelease.ManifestSha256));
+            WireToGateRelease.ProfileId, "2.0.0", WireToGateRelease.ManifestSha256));
         yield return ("protocolReleaseManifestSha256", Envelope(
             WireToGateRelease.ProfileId, WireToGateRelease.ReleaseVersion, ManifestOfAnotherRelease));
 

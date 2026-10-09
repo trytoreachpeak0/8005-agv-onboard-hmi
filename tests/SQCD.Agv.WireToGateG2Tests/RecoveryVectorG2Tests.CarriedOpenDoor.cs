@@ -302,6 +302,9 @@ public sealed partial class RecoveryVectorG2Tests
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         await using RecoveryVectorHarness harness = await StartWithDoorLeftInDoubtAsync(token);
+        // The real server's one open recovery session per vehicle: the session the refused press opens stands, and the
+        // next press is answered on it rather than opening another.
+        harness.Server.ModelOneOpenRecoverySession = true;
         harness.Server.RecoverySessionSnapshotStatesAfterOpened = ["OPEN"];
         // What the real server offers for a load in RecoveryRequired (OnboardRecoveryCoordinator.AllowedActions).
         harness.Server.OpenSnapshotAllowedActions =

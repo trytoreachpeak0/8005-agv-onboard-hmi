@@ -319,6 +319,16 @@ public sealed class WireToGateSessionService : IAsyncDisposable
             payload,
             cancellationToken);
 
+    public Task<string> SendSlotFaultDeclarationResultAsync(
+        SlotFaultDeclarationResultPayload payload,
+        CancellationToken cancellationToken = default) =>
+        _client.SendSlotFaultDeclarationResultAsync(payload, cancellationToken);
+
+    public Task<string> ResendSlotFaultDeclarationResultAsync(
+        string declarationId,
+        CancellationToken cancellationToken = default) =>
+        _client.ResendSlotFaultDeclarationResultAsync(declarationId, cancellationToken);
+
     public Task<ManualChargingReturnToServiceResultPayload> RequestManualChargingReturnToServiceAsync(
         string messageId,
         ManualChargingReturnToServiceRequestedPayload payload,
@@ -339,6 +349,7 @@ public sealed class WireToGateSessionService : IAsyncDisposable
 
     public Task<string> SendPreDepartureSafetyCheckResultAsync(
         string preDepartureSafetyCheckId,
+        string checkPurpose,
         string outcome,
         DateTimeOffset observedAt,
         long safetyStateVersion,
@@ -347,6 +358,7 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         _client.SendPreDepartureSafetyCheckResultAsync(
             preDepartureSafetyCheckId,
+            checkPurpose,
             outcome,
             observedAt,
             safetyStateVersion,

@@ -1,0 +1,12 @@
+green build exit=0
+green test exit=0
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+X2-no-A build exit=0
+X2-no-A test exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayedDeclarationWhoseAnswerWasGivenUpIsRefusedWithoutResendingTheAnswer [714 ms]
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+X3-no-B build exit=0
+X3-no-B test exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedAnswerGivenUpLaterIsNeverResentAndTheReplayIsRefused [809 ms]
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+restored build exit=0

@@ -301,6 +301,7 @@ public sealed partial class RecoveryVectorG2Tests
                 slots = ResumeSlots,
                 selectedAction = "RESUME_AFTER_REPAIR",
                 allowedActions = Array.Empty<string>(),
+                closedReason = (string?)null,
                 blockingFacts = Array.Empty<object>()
             });
         await harness.WaitForInboundAsync("SnapshotAppliedAck", token);

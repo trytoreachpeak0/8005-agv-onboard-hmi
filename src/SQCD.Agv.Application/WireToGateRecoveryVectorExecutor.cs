@@ -11,6 +11,19 @@ namespace SQCD.Agv.Application;
 /// </summary>
 public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
 {
+    /// <summary>
+    /// The outcome of a load cancellation or compensation clear that the light curtain settled as empty
+    /// while some door's lock or unlock output could not be proven (CP-0009, REQ-0357, REQ-0364). Already the
+    /// protocol's own <c>overallOutcome</c> value, so the business service sends it as it stands.
+    /// </summary>
+    public const string AllEmptyDoorUnprovenOutcome = "ALL_EMPTY_DOOR_UNPROVEN";
+
+    /// <summary>
+    /// The reason on each slot of such a clear whose door is not proven. Its registry entry allows it on
+    /// <c>LoadCancellationResult</c>, <c>LoadCompensationResult</c> and <c>VehicleBusinessStateSnapshot</c>.
+    /// </summary>
+    public const string DoorLockUnprovenAfterEmptyReason = "SLOT_DOOR_LOCK_UNPROVEN_AFTER_EMPTY";
+
     private readonly IIoModuleClient _ioModule;
     private readonly IWireToGateJournal _journal;
     private readonly IClock _clock;
@@ -382,6 +395,42 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         }
 
         IoSnapshot initial = _ioModule.CurrentSnapshot;
+        // A slot already empty whose door cannot be proven is not reopened: opening it again proves the lock
+        // no better and opens one more door (CP-0009). When it is the only kind of slot left besides slots
+        // proven empty and shut, the clear settles here without a pulse; with a loaded slot still to open,
+        // the precheck below refuses the clear as it always has.
+        if (!correction
+            && SettlesDoorUnproven(context)
+            && IsFresh(initial)
+            && context.Slots.All(slot => IsFinalState(GetLocker(initial, slot), correction: false)
+                || !handedOver.Contains(slot) && IsEmptyWithDoorUnproven(initial, slot))
+            && context.Slots.Any(slot => IsEmptyWithDoorUnproven(initial, slot)))
+        {
+            foreach (int slot in context.Slots)
+            {
+                LockerSnapshot locker = GetLocker(initial, slot);
+                if (IsEmptyWithDoorUnproven(initial, slot))
+                {
+                    UpsertResult(results, CreateDoorUnprovenResult(locker));
+                }
+                else if (!completed.Contains(slot))
+                {
+                    completed.Add(slot);
+                    UpsertResult(results, CreateSlotResult(locker, "COMPLETED", []));
+                }
+            }
+
+            DateTimeOffset settledAt = await RecordDoorUnprovenSettlementAsync(context, [], completed, results)
+                .ConfigureAwait(false);
+            await SendProgressAsync(progress, "PAUSED", [], completed, CancellationToken.None).ConfigureAwait(false);
+            return CreateResult(
+                context,
+                AllEmptyDoorUnprovenOutcome,
+                results,
+                WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                settledAt);
+        }
+
         // A door handed over open is expected to be open; it only has to be readable.
         string? precheckFailure = ValidateInitialSnapshot(
                 initial,
@@ -566,6 +615,10 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             }
 
             bool pulseSent = false;
+            // Set once the door is the operator's: only the wait for it to be emptied and relocked can end in
+            // the door-unproven settlement. A door that never unlocked or whose output never fell back after
+            // the pulse is still UNKNOWN.
+            bool awaitingOperator = false;
             try
             {
                 EnsureRemaining(deadline, cancellationToken);
@@ -606,6 +659,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                     [physicalSlot],
                     completed,
                     cancellationToken).ConfigureAwait(false);
+                awaitingOperator = true;
                 LockerSnapshot completedLocker = correction
                     ? await WaitForCorrectionAsync(slotIndex, deadline, cancellationToken)
                     : await _ioModule.WaitForLockerAsync(
@@ -682,6 +736,35 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
                 // own UNKNOWN is not overwritten, and a slot never opened reports what the IO reads
                 // with no reason code (ADR-cross-0058 decision 6).
                 IoSnapshot failureSnapshot = _ioModule.CurrentSnapshot;
+                if (exception is TimeoutException
+                    && awaitingOperator
+                    && !correction
+                    && SettlesDoorUnproven(context)
+                    && context.Slots.All(slot => slot == physicalSlot || completed.Contains(slot))
+                    && IsEmptyWithDoorUnproven(failureSnapshot, physicalSlot))
+                {
+                    // The operator emptied the last slot still to clear and its lock never reported closed,
+                    // or its output never reported reset: the light curtain settles the slot EMPTY, the door
+                    // is not proven, and no slot is left to open (CP-0009). The door may still stand open, so
+                    // it stays the active unlock set. With a slot still loaded after this one, the condition
+                    // above fails and the clear pauses UNKNOWN below, as before -- that slot is never opened
+                    // beside an unproven door (REQ-0357).
+                    UpsertResult(results, CreateDoorUnprovenResult(GetLocker(failureSnapshot, physicalSlot)));
+                    DateTimeOffset settledAt = await RecordDoorUnprovenSettlementAsync(
+                        context,
+                        [physicalSlot],
+                        completed,
+                        results).ConfigureAwait(false);
+                    await SendProgressAsync(progress, "PAUSED", [physicalSlot], completed, CancellationToken.None)
+                        .ConfigureAwait(false);
+                    return CreateResult(
+                        context,
+                        AllEmptyDoorUnprovenOutcome,
+                        results,
+                        WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                        settledAt);
+                }
+
                 string reason = MapFailureReason(exception);
                 UpsertResult(
                     results,
@@ -866,6 +949,40 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
         await _journal.UpdateRecoveryStateAsync(
             current => WithVectorState(current, context, checkpoint, activeSlots, completedSlots, results),
             cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Records the door-unproven settlement and its observation stamp in one journal write, and returns the
+    /// stamp.
+    /// </summary>
+    /// <remarks>
+    /// The UNKNOWN and COMPLETED results are written as a checkpoint and then stamped in a second write
+    /// (<see cref="EnsureResultObservedAtAsync"/>). Here the pair must not be split: a process that died
+    /// between them would come back to an unstamped vector whose active slot no fresh reading proves safe,
+    /// and the replay fence would report UNKNOWN over a slot the light curtain had already settled. In one
+    /// write, a restart finds the stamp and replays the settlement as recorded, reading no IO
+    /// (REPLAY_SAME_DOOR_UNPROVEN_RESULT_AFTER_RESTART). A stamp already on file is kept.
+    /// </remarks>
+    private async Task<DateTimeOffset> RecordDoorUnprovenSettlementAsync(
+        WireToGateRecoveryVectorContext context,
+        IReadOnlyList<int> activeSlots,
+        IReadOnlyList<int> completedSlots,
+        IReadOnlyList<WireToGateSlotExecutionResult> results)
+    {
+        WireToGateRecoveryState? written = await _journal.UpdateRecoveryStateAsync(
+            current => WithVectorState(
+                current,
+                context,
+                WireToGateRecoveryCheckpoint.ActiveUnlockSet,
+                activeSlots,
+                completedSlots,
+                results) with
+            {
+                RecoveryResultObservedAt = current.RecoveryResultObservedAt ?? _clock.Now.ToUniversalTime()
+            },
+            CancellationToken.None).ConfigureAwait(false);
+        // The change function never returns null, so neither does the journal.
+        return written?.RecoveryResultObservedAt ?? throw new UnreachableException();
     }
 
     /// <summary>
@@ -1092,6 +1209,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
     /// <summary>
     /// The overall outcome the journal shows for <paramref name="context"/>: <c>COMPLETED</c> at the safe finish,
     /// <c>FAILED</c> at the prepared checkpoint with nothing in the active unlock set,
+    /// <c>ALL_EMPTY_DOOR_UNPROVEN</c> for the settlement CP-0009 allows, recorded at the active unlock set;
     /// and <c>UNKNOWN</c> for everything else.
     /// </summary>
     /// <remarks>
@@ -1124,6 +1242,7 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
             WireToGateRecoveryCheckpoint.SafeFinishReached
                 or WireToGateRecoveryCheckpoint.ResultRecorded => "COMPLETED",
             WireToGateRecoveryCheckpoint.Prepared when state.ActiveUnlockSlots.Count == 0 => "FAILED",
+            _ when IsDoorUnprovenSettlement(state, context) => AllEmptyDoorUnprovenOutcome,
             _ => "UNKNOWN"
         };
 
@@ -1241,6 +1360,62 @@ public sealed class WireToGateRecoveryVectorExecutor : IAsyncDisposable
     /// </summary>
     private static bool IsAlreadyEmpty(LockerSnapshot locker, int slot, int[] handedOver) =>
         !locker.HasCargo && (!handedOver.Contains(slot) || IsFinalState(locker, correction: false));
+
+    /// <summary>
+    /// The two clears CP-0009 lets settle an empty slot whose door is not proven. A fault cargo handoff, a
+    /// correction and a forced recovery are not among them.
+    /// </summary>
+    private static bool SettlesDoorUnproven(WireToGateRecoveryVectorContext context) =>
+        context.VectorType is WireToGateRecoveryVectorTypes.LoadCancellation
+            or WireToGateRecoveryVectorTypes.LoadCompensation;
+
+    /// <summary>
+    /// The light curtain proves the slot EMPTY in a fresh snapshot, and its door is not proven: the lock does
+    /// not read locked or the unlock output does not read reset. A light curtain that cannot be read proves
+    /// nothing, so such a slot is never this.
+    /// </summary>
+    private bool IsEmptyWithDoorUnproven(IoSnapshot snapshot, int physicalSlot) =>
+        IsFresh(snapshot)
+        && GetLocker(snapshot, physicalSlot) is { LightCurtainRaw: true } locker
+        && !(locker.LockFeedbackRaw is true && locker.UnlockOutputRaw is false);
+
+    /// <summary>
+    /// The slot settled EMPTY with its door unproven: lock and output as read, the reason on it, and
+    /// <c>FAILED</c> -- its clearing did not reach the closed loop, which is what the per-slot
+    /// <c>COMPLETED</c> of an <c>ALL_EMPTY</c> means and keeps meaning.
+    /// </summary>
+    private static WireToGateSlotExecutionResult CreateDoorUnprovenResult(LockerSnapshot locker) =>
+        new(
+            locker.PhysicalNumber,
+            "FAILED",
+            "EMPTY",
+            locker.LockFeedbackRaw switch { true => "LOCKED", false => "UNLOCKED", null => "UNKNOWN" },
+            locker.UnlockOutputRaw switch { false => "RESET", true => "ACTIVE", null => "UNKNOWN" },
+            [DoorLockUnprovenAfterEmptyReason]);
+
+    /// <summary>
+    /// Whether the journal records a door-unproven settlement of <paramref name="context"/>: one of the two
+    /// clears, every target slot recorded EMPTY, and at least one carrying the reason. Only this executor
+    /// writes that reason, and only in that settlement, so the recorded results are enough to replay it.
+    /// </summary>
+    private static bool IsDoorUnprovenSettlement(
+        WireToGateRecoveryState state,
+        WireToGateRecoveryVectorContext context)
+    {
+        if (!SettlesDoorUnproven(context) || context.Slots.Count == 0)
+        {
+            return false;
+        }
+
+        WireToGateSlotExecutionResult[] recorded = state.SlotResults
+            .Where(result => context.Slots.Contains(result.SlotNo))
+            .ToArray();
+        return recorded.Length == context.Slots.Count
+            && recorded.All(result => result.FinalPhysicalState == "EMPTY")
+            && recorded.Any(result => result.ReasonCodes.Contains(
+                DoorLockUnprovenAfterEmptyReason,
+                StringComparer.Ordinal));
+    }
 
     private static bool IsShut(LockerSnapshot locker) =>
         locker.IsKnown && locker.IsLocked && locker.UnlockOutputRaw is false;

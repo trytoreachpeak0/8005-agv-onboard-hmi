@@ -134,7 +134,30 @@ public sealed record WireToGateRecoveryVectorContext(
     /// report the generation the command it answers was issued under, byte for byte.
     /// </remarks>
     public long? ForcedRecoveryGeneration { get; init; }
+
+    /// <summary>
+    /// The cargo handoff the operator recorded when confirming a forced mechanical recovery on a demand
+    /// (REQ-0242, protocol 3.0.0 <c>cargoHandoff</c>, 8005-agv-onboard-hmi#216); null until then, and for
+    /// every other vector.
+    /// </summary>
+    /// <remarks>
+    /// Written in the same journal step as the confirmation's observation stamp and before the result is
+    /// built, and the result reads it from here only -- never from the screen -- so a press after a lost
+    /// acknowledgement, and the outbox replay after a restart, carry the same record. Once on file it is
+    /// never replaced: a later press with other text still sends this one.
+    /// </remarks>
+    public WireToGateForcedCargoHandoff? CargoHandoff { get; init; }
 }
+
+/// <summary>
+/// Which sublot a forced mechanical recovery took out, the named person it was handed to, and when
+/// (protocol 3.0.0 <c>ForcedMechanicalRecoveryResult.cargoHandoff</c>). It records the cargo's rescue and
+/// the handover of responsibility; it proves neither an empty slot nor a ready vehicle (REQ-0242).
+/// </summary>
+public sealed record WireToGateForcedCargoHandoff(
+    string Sublot,
+    string ReceiverName,
+    DateTimeOffset HandedOverAt);
 
 public sealed record WireToGateRecoveryVectorExecutionResult(
     string VectorType,
@@ -427,6 +450,24 @@ public sealed record WireToGateRecoveryState(
     public WireToGateForcedIsolation? ForcedIsolation { get; init; }
 
     /// <summary>
+    /// An administrator's slot fault declaration this vehicle applied to the unsettled attempt (REQ-0359,
+    /// 8005-agv-onboard-hmi#215). Written before the vehicle answers <c>APPLIED</c> and before the executor is
+    /// stopped, so a restart in between still reports the declared slot UNKNOWN rather than judging it again
+    /// from the live IO. It belongs to its attempt: whatever settles or replaces the attempt drops it.
+    /// </summary>
+    public WireToGateSlotFaultDeclaration? SlotFaultDeclaration { get; init; }
+
+    /// <summary>
+    /// A <c>HARDWARE_REPAIR_RELEASE</c> this vehicle asked for over the slots the server holds for an unproven door
+    /// (CP-0009, REQ-0364, 8005-agv-onboard-hmi#219). Written before the session request and the action leave
+    /// (<c>JOURNAL_RELEASE_ACTION_BEFORE_SUBMITTING</c>), so a restart repeats the same ids and, once the action is
+    /// accepted, offers the repair record form again (<c>RESTORE_REPAIR_RECORD_FORM_AFTER_RESTART</c>). Like
+    /// <see cref="ForcedIsolation"/> it outlives every attempt: a hold is about the vehicle, not an operation.
+    /// Cleared when the server records the repair record, refuses it, or closes the session.
+    /// </summary>
+    public WireToGateRepairRelease? RepairRelease { get; init; }
+
+    /// <summary>
     /// The unsettled attempt a recovery vector held when that vector was forgotten on a non-completed result, or ended
     /// after a maintainer's manual check (8005-agv-onboard-hmi#278). The vector is gone, the attempt, its context and the
     /// active unlock set stay -- and nothing else on file says that a vector took the attempt over: the vector results
@@ -470,6 +511,33 @@ public sealed record WireToGateForcedIsolation(
     public WireToGatePendingHardwareRecoveryRecord? PendingRecord { get; init; }
 }
 
+/// <summary>
+/// The journal's record of a repair release in progress (see <see cref="WireToGateRecoveryState.RepairRelease"/>).
+/// </summary>
+/// <param name="RequestId">The <c>ExceptionRecoverySessionRequested</c> that opens the release's session.</param>
+/// <param name="EventId">The event the session and the action are about; the request's own id.</param>
+/// <param name="RecoveryActionId">The release action, kept across presses: the server deduplicates by it.</param>
+/// <param name="Slots">The held slots, ascending, as the server named them when the release was asked for.</param>
+public sealed record WireToGateRepairRelease(
+    string RequestId,
+    string EventId,
+    string RecoveryActionId,
+    IReadOnlyList<int> Slots,
+    string OperatorId,
+    string OperatorVerificationMethod,
+    DateTimeOffset OperatorVerifiedAt,
+    string Reason)
+{
+    /// <summary>The session the server opened for the release, once it has answered.</summary>
+    public string? ExceptionRecoverySessionId { get; init; }
+
+    /// <summary>Whether the server accepted the release action; the repair record form is offered from then on.</summary>
+    public bool Accepted { get; init; }
+
+    /// <summary>The repair record that went out and has had no answer yet, repeated field for field on a retry.</summary>
+    public WireToGatePendingHardwareRecoveryRecord? PendingRecord { get; init; }
+}
+
 public sealed record WireToGatePendingHardwareRecoveryRecord(
     string RecordId,
     string OperatorId,
@@ -478,6 +546,16 @@ public sealed record WireToGatePendingHardwareRecoveryRecord(
     string AdministratorRole,
     string Observations,
     DateTimeOffset ObservedAt);
+
+/// <summary>
+/// The journal's record of an applied slot fault declaration: which declaration, on which attempt and slot,
+/// and the category the operator is told.
+/// </summary>
+public sealed record WireToGateSlotFaultDeclaration(
+    string DeclarationId,
+    string SlotOperationAttemptId,
+    int SlotNo,
+    string FaultCategory);
 
 public sealed record WireToGatePendingLoadCancellation(
     string CancellationId,

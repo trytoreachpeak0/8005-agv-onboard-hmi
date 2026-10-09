@@ -1,0 +1,27 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  SQCD.Agv.Core -> <worktree>\src\SQCD.Agv.Core\bin\Debug\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Contracts -> <worktree>\src\SQCD.Agv.Contracts\bin\Debug\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Application -> <worktree>\src\SQCD.Agv.Application\bin\Debug\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.Infrastructure -> <worktree>\src\SQCD.Agv.Infrastructure\bin\Debug\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.AutomationHost -> <worktree>\src\SQCD.Agv.AutomationHost\bin\Debug\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Wpf -> <worktree>\src\SQCD.Agv.Wpf\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.Wpf.dll
+  SQCD.Agv.SchemaConformance -> <worktree>\tools\SQCD.Agv.SchemaConformance\bin\Debug\net8.0\win-x64\SQCD.Agv.SchemaConformance.dll
+  SQCD.Agv.WireToGateG2Tests -> <worktree>\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll
+Test run for <worktree>\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:01.72]     SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACompensationHeldAtPreparedIsDeclinedAsFailedAndTheOperatorIsToldSo [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACompensationHeldAtPreparedIsDeclinedAsFailedAndTheOperatorIsToldSo [553 ms]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "已按操作员选择不再继续补偿清空；部分仓门已开过：1号仓。已按日志如实向服务端报告结果未知（UNKNO"···
+Not found: "已向服务端报告未完成（FAILED）"
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACompensationHeldAtPreparedIsDeclinedAsFailedAndTheOperatorIsToldSo() in <worktree>\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.RestartReplay.cs:line 251
+   at SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ACompensationHeldAtPreparedIsDeclinedAsFailedAndTheOperatorIsToldSo() in <worktree>\tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.RestartReplay.cs:line 254
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 585 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

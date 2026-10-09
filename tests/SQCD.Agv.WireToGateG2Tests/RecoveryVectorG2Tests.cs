@@ -284,8 +284,14 @@ public sealed partial class RecoveryVectorG2Tests
 
     /// <summary>
     /// REPORT_FORCED_RECOVERY_OUTCOME, including the two proofs the schema forbids this message
-    /// from ever claiming.
+    /// from ever claiming -- and, since protocol 3.0.0, COPY_COMMAND_DEMAND_INTO_RESULT and
+    /// REPORT_CARGO_HANDOFF_RECORD_IN_RESULT: the result names the command's demand and carries the
+    /// handoff record the operator entered, and the record proves neither of the two (REQ-0242).
     /// </summary>
+    /// <remarks>
+    /// Held unreported between 8005-agv-onboard-hmi#214 and #216, which added the handoff record; this is
+    /// the reporting test restored, not a new one.
+    /// </remarks>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
     [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
@@ -317,7 +323,10 @@ public sealed partial class RecoveryVectorG2Tests
             [1, 2],
             result.GetProperty("slots").EnumerateArray().Select(slot => slot.GetInt32()).ToArray());
         Assert.False(result.TryGetProperty("slotResults", out _));
-        Assert.False(result.TryGetProperty("demandId", out _));
+        Assert.Equal(DemandId, result.GetProperty("demandId").GetString());
+        JsonElement handoff = result.GetProperty("cargoHandoff");
+        Assert.Equal(RecoveryVectorHarness.HandoffSublot, handoff.GetProperty("sublot").GetString());
+        Assert.Equal(RecoveryVectorHarness.HandoffReceiver, handoff.GetProperty("receiverName").GetString());
 
         // The generation the command carried is now the vehicle's own, which is what makes the
         // next fence decision meaningful.
@@ -369,7 +378,7 @@ public sealed partial class RecoveryVectorG2Tests
         // harness's, and the forced recovery must add none.
         int operationResultsBefore = harness.ResultsOfType("OperationResult").Count;
 
-        Assert.True(await harness.Business.ConfirmForcedMechanicalRecoveryAsync(token));
+        await harness.ConfirmForcedMechanicalRecoveryAsync(token);
         JsonElement result = await harness.WaitForResultAsync(
             "ForcedMechanicalRecoveryResult", token);
 
@@ -433,7 +442,7 @@ public sealed partial class RecoveryVectorG2Tests
             "the forced recovery to still wait for the confirmation after the restart",
             token);
 
-        Assert.True(await afterRestart.Business.ConfirmForcedMechanicalRecoveryAsync(token));
+        await afterRestart.ConfirmForcedMechanicalRecoveryAsync(token);
         JsonElement result = await afterRestart.WaitForResultAsync(
             "ForcedMechanicalRecoveryResult", token);
 
@@ -817,6 +826,10 @@ public sealed partial class RecoveryVectorG2Tests
         // shape does not.
         Assert.Single(harness.ResultsOfType("ForcedMechanicalRecoveryResult"));
         Assert.Equal("FAILED", result.GetProperty("outcome").GetString());
+        // COPY_COMMAND_DEMAND_INTO_RESULT (3.0.0, 8005-agv-onboard-hmi#214): a result that is not an
+        // isolation copies the command's demand and carries no handoff record.
+        Assert.Equal(DemandId, result.GetProperty("demandId").GetString());
+        Assert.Equal(JsonValueKind.Null, result.GetProperty("cargoHandoff").ValueKind);
         Assert.Equal(9, result.GetProperty("forcedRecoveryGeneration").GetInt64());
         Assert.Equal(
             [1],
@@ -1455,8 +1468,7 @@ public sealed partial class RecoveryVectorG2Tests
                         baselineRevision,
                         baselineRevision,
                         "eight-slot-v1",
-                        "eight-slot-modbus-v1",
-                        SupportsBatchUnlock: false),
+                        "eight-slot-modbus-v1"),
                     io,
                     wrapJournal?.Invoke(journal) ?? journal,
                     logger,
@@ -1832,9 +1844,19 @@ public sealed partial class RecoveryVectorG2Tests
                 cancellationToken);
         }
 
+        /// <summary>The SUBLOT the harness's handoff record names, and the worklist it sends names for the demand.</summary>
+        public const string HandoffSublot = "SUBLOT-FORCED-001";
+
+        /// <summary>The receiver the harness's handoff record names.</summary>
+        public const string HandoffReceiver = "收货员王一";
+
+        private long _worklistRevision = 100;
+
         /// <summary>
         /// Waits for the authorized forced recovery to be waiting on the operator, then confirms
-        /// the isolation and the manual extraction the way the HMI button does.
+        /// the isolation and the manual extraction the way the HMI button does -- with the cargo handoff
+        /// record protocol 3.0.0 requires on a demand, whose SUBLOT the current stop's worklist names for
+        /// that demand, so the check before sending passes on the first press (8005-agv-onboard-hmi#216).
         /// </summary>
         public async Task ConfirmForcedMechanicalRecoveryAsync(CancellationToken cancellationToken)
         {
@@ -1842,7 +1864,58 @@ public sealed partial class RecoveryVectorG2Tests
                 () => Business.CanConfirmForcedMechanicalRecovery,
                 "the authorized forced recovery to wait for the operator's confirmation",
                 cancellationToken);
-            Assert.True(await Business.ConfirmForcedMechanicalRecoveryAsync(cancellationToken));
+            string demandId = (await ReadRecoveryStateAsync(cancellationToken)).RecoveryVector!.DemandId;
+            if (Session.CurrentJourney.CurrentStopWorklist?.Items.Any(item => item.DemandId == demandId) != true)
+            {
+                await NameTheDemandOnTheWorklistAsync(demandId, HandoffSublot, cancellationToken);
+            }
+
+            Assert.True(
+                await Business.ConfirmForcedMechanicalRecoveryAsync(HandoffSublot, HandoffReceiver, cancellationToken),
+                string.Join(" / ", Logger.Entries
+                    .Where(entry => entry.Severity >= LogSeverity.Warning)
+                    .Select(entry => entry.Message)
+                    .TakeLast(3)));
+        }
+
+        /// <summary>
+        /// Sends a current stop worklist naming <paramref name="demandId"/> with <paramref name="sublot"/> --
+        /// what the forced recovery's SUBLOT check reads -- and waits for the vehicle to hold it. Each call is a
+        /// new revision, so a later call replaces the worklist rather than conflicting with it.
+        /// </summary>
+        public async Task NameTheDemandOnTheWorklistAsync(
+            string demandId,
+            string sublot,
+            CancellationToken cancellationToken)
+        {
+            long revision = Interlocked.Increment(ref _worklistRevision);
+            await Server.SendJourneySnapshotAsync(
+                "CurrentStopWorklistSnapshot",
+                new
+                {
+                    stationId = "ST-01",
+                    worklistRevision = revision,
+                    operationSessionId = (string?)null,
+                    stationDepartureDeadlineAt = (DateTimeOffset?)null,
+                    stopEndedReason = (string?)null,
+                    items = new[]
+                    {
+                        new
+                        {
+                            demandId,
+                            transportDemandKey = "TD-FORCED-001",
+                            sublot,
+                            workType = "WIRE_TO_GATE",
+                            stopRole = "PICKUP",
+                            expectedBasketCount = 2
+                        }
+                    }
+                });
+            await WaitUntilAsync(
+                () => Session.CurrentJourney.CurrentStopWorklist is { } worklist
+                    && worklist.Revision == revision,
+                "the vehicle to hold the worklist naming the forced recovery's demand",
+                cancellationToken);
         }
 
         public IReadOnlyList<string> ResultsOfType(string messageType) =>

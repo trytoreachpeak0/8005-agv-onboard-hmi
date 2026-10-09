@@ -687,7 +687,7 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
             [("COMPLETED", 1), ("NOT_STARTED", 2), ("NOT_STARTED", 3)],
             result.SlotResults.OrderBy(slot => slot.SlotNo).Select(slot => (slot.Outcome, slot.SlotNo)));
         Assert.Equal(
-            ["VEHICLE_NOT_READY"],
+            ["ONBOARD_FATAL_FAULT_LATCHED"],
             result.SlotResults.Single(slot => slot.SlotNo == 2).ReasonCodes);
         Assert.Empty(result.SlotResults.Single(slot => slot.SlotNo == 3).ReasonCodes);
         Assert.Empty((await fixture.Journal.ReadRecoveryStateAsync(token)).ActiveUnlockSlots);
@@ -1094,6 +1094,27 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
         public HashSet<int> NeverEmptiedSlots { get; } = [];
 
         /// <summary>
+        /// Physical slots the operator empties whose lock never reports closed again: the light curtain
+        /// reads EMPTY and the lock feedback stays UNLOCKED (8005-agv-onboard-hmi#219).
+        /// </summary>
+        public HashSet<int> LockNeverClosesSlots { get; } = [];
+
+        /// <summary>Physical slots the operator empties whose lock feedback input stops reading.</summary>
+        public HashSet<int> LockFeedbackLostOnEmptySlots { get; } = [];
+
+        /// <summary>
+        /// Physical slots the operator empties after which the IO stops publishing: the reading that proves the slot
+        /// empty grows older than the snapshot age the executor trusts (PR #248 review, D2).
+        /// </summary>
+        public HashSet<int> IoGoesSilentAfterEmptySlots { get; } = [];
+
+        /// <summary>Physical slots whose light curtain stops reading while the door stands open.</summary>
+        public HashSet<int> LightCurtainLostSlots { get; } = [];
+
+        /// <summary>How many times a wait was asked for; a replay that reads no IO leaves it unchanged.</summary>
+        public int WaitCount => _waitCallCount;
+
+        /// <summary>
         /// How long the operator takes to empty a door and shut it; the clock moves on by this much each
         /// time, so a deadline the executor keeps is measured against the operator, not the test.
         /// </summary>
@@ -1161,6 +1182,31 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
                     {
                         UpdateLocker(slotIndex, current => current with { LockFeedbackRaw = true });
                     }
+                    else if (IoGoesSilentAfterEmptySlots.Contains(slotIndex + 1))
+                    {
+                        if (locker.LightCurtainRaw is not true)
+                        {
+                            UpdateLocker(slotIndex, current => current with { LightCurtainRaw = true });
+                        }
+
+                        _clock.Advance(TimeSpan.FromSeconds(2));
+                    }
+                    else if (LockNeverClosesSlots.Contains(slotIndex + 1))
+                    {
+                        UpdateLocker(slotIndex, current => current with { LightCurtainRaw = true });
+                    }
+                    else if (LockFeedbackLostOnEmptySlots.Contains(slotIndex + 1))
+                    {
+                        UpdateLocker(slotIndex, current => current with
+                        {
+                            LightCurtainRaw = true,
+                            LockFeedbackRaw = null
+                        });
+                    }
+                    else if (LightCurtainLostSlots.Contains(slotIndex + 1))
+                    {
+                        UpdateLocker(slotIndex, current => current with { LightCurtainRaw = null });
+                    }
                     else if (_correction && locker.HasCargo)
                     {
                         UpdateLocker(slotIndex, current => current with { LightCurtainRaw = true });
@@ -1196,6 +1242,14 @@ public sealed partial class WireToGateRecoveryVectorExecutorTests
         /// <summary>The door is shut again and the lock closed, with the unlock output left as it reads.</summary>
         public void CloseDoorKeepingOutput(int slotIndex) =>
             UpdateLocker(slotIndex, current => current with { LockFeedbackRaw = true });
+
+        /// <summary>The light curtain input stops reading while the bus stays up.</summary>
+        public void LoseLightCurtain(int slotIndex) =>
+            UpdateLocker(slotIndex, current => current with { LightCurtainRaw = null });
+
+        /// <summary>The unlock output reads energised while the door stays shut and locked.</summary>
+        public void RaiseOutput(int slotIndex) =>
+            UpdateLocker(slotIndex, current => current with { UnlockOutputRaw = true });
 
         /// <summary>The lock feedback input stops reading while the bus stays up.</summary>
         public void LoseLockFeedback(int slotIndex) =>

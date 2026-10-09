@@ -1,0 +1,12 @@
+# 产品代码为 b5a44d6（w2g/batch-p3/v3 顶端），测试为本分支
+  Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ACompletedSlotOpenedBeforeTheSafeFinishIsNotReportedCompleted(path: "after-pulse") [71 ms]
+   outcome=COMPLETED checkpoint=SAFE_FINISH_REACHED slot1=COMPLETED/LOCKED
+  Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ACompletedSlotOpenedBeforeTheSafeFinishIsNotReportedCompleted(path: "handed-over") [59 ms]
+   outcome=COMPLETED checkpoint=SAFE_FINISH_REACHED slot1=COMPLETED/LOCKED
+  Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.AnIoFailureDoesNotReportACompletedSlotWhoseDoorReadsOpenAsCompleted [66 ms]
+   outcome=UNKNOWN checkpoint=ACTIVE_UNLOCK_SET slot1=COMPLETED/LOCKED
+  Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.APrecheckRefusalDoesNotReportACompletedSlotWhoseDoorReadsOpenAsCompleted [43 ms]
+   outcome=FAILED checkpoint=PREPARED slot1=COMPLETED/LOCKED
+  Failed SQCD.Agv.UnitTests.WireToGateRecoveryVectorExecutorTests.ALatchRefusalDoesNotReportACompletedSlotWhoseDoorReadsOpenAsCompleted [65 ms]
+   outcome=FAILED checkpoint=PREPARED slot1=COMPLETED/LOCKED
+Failed!  - Failed:     5, Passed:     5, Skipped:     0, Total:    10, Duration: 799 ms - SQCD.Agv.UnitTests.dll (net8.0)

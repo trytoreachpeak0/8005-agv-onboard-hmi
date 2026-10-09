@@ -215,7 +215,8 @@ public sealed class ProtocolPayloadShapeArchitectureTests
     /// Proves the shape check is not vacuous, by running it over the payload shapes v1 sent.
     /// </summary>
     /// <remarks>
-    /// The real defects, reproduced exactly: a <c>CapabilitySnapshot</c> without the fingerprint v2
+    /// The real defects, reproduced exactly (less the batch-unlock capability flag protocol 3.0.0
+    /// removed): a <c>CapabilitySnapshot</c> without the fingerprint v2
     /// added, and an <c>UpcomingStopPlanSnapshot</c> with a top-level <c>demandId</c> the payload
     /// forbids, a leg missing the three fields v2 added, and <c>legType: "TO_GATE"</c>. If the check
     /// reported nothing here it would have reported nothing on 2026-09-09 either.
@@ -230,7 +231,6 @@ public sealed class ProtocolPayloadShapeArchitectureTests
               "slotModelVersion": "eight-slot-v1",
               "activeSlotConfigurationVersion": "eight-slot-modbus-v1",
               "slotStates": [],
-              "supportsBatchUnlock": false,
               "onboardJournalFormatVersion": 1
             }
             """;
@@ -309,8 +309,7 @@ public sealed class ProtocolPayloadShapeArchitectureTests
                     1,
                     1,
                     "eight-slot-v1",
-                    "eight-slot-modbus-v1",
-                    false),
+                    "eight-slot-modbus-v1"),
                 io,
                 new SqliteWireToGateJournal(journalPath),
                 new SystemClock(),
@@ -358,7 +357,7 @@ public sealed class ProtocolPayloadShapeArchitectureTests
                     DateTimeOffset.UtcNow, "NONE", Sha256Of("operation-result")),
                 token);
             await client.SendPreDepartureSafetyCheckResultAsync(
-                checkId, "SAFE", DateTimeOffset.UtcNow, 1,
+                checkId, "DEPARTURE", "SAFE", DateTimeOffset.UtcNow, 1,
                 DateTimeOffset.UtcNow.AddMinutes(1), Safety(), token);
             await client.SendSafetyStateChangedAsync(2, DateTimeOffset.UtcNow, Safety(), [1], token);
 
@@ -487,15 +486,46 @@ public sealed class ProtocolPayloadShapeArchitectureTests
                     opened.ExceptionRecoverySessionId, actionId, demandId, legId, "HANDED_OFF",
                     [SlotResult(1, "COMPLETED", "EMPTY")], operatorContext, DateTimeOffset.UtcNow),
                 token);
-            // No slot results and no demandId: this message's schema carries neither, and the two
-            // proof flags are const false in it.
+            // No slot results: this message's schema carries none, and the two proof flags are const
+            // false in it. An isolation without a demand names no demand and no cargo handoff; the
+            // schema's if/then allows a handoff record only on a demand.
             await client.SendForcedMechanicalRecoveryResultAsync(
                 $"forced-mechanical-recovery-result:{attemptId}",
                 "66666666-6666-4666-8666-666666666667",
                 new ForcedMechanicalRecoveryResultPayload(
                     opened.ExceptionRecoverySessionId, actionId, 1, "MECHANICALLY_ISOLATED",
                     [1, 2], operatorContext, DateTimeOffset.UtcNow,
-                    ElectronicEmptyProven: false, VehicleReadyProven: false),
+                    ElectronicEmptyProven: false, VehicleReadyProven: false,
+                    DemandId: null, CargoHandoff: null),
+                token);
+
+            // onboard-hmi#215: an administrator's slot fault declaration, the double's command and both shapes of the
+            // vehicle's answer -- problem null for APPLIED, a Problem object for NOT_APPLICABLE (the schema's if/then).
+            await server.SendCommandAsync(
+                "SlotFaultDeclarationCommand",
+                "dddddddd-dddd-4ddd-8ddd-ddddddddddd0",
+                new
+                {
+                    declarationId = "dddddddd-dddd-4ddd-8ddd-ddddddddddd1",
+                    demandId,
+                    slotOperationAttemptId = attemptId,
+                    slotNo = 1,
+                    administrator = operatorContext,
+                    administratorRole = "MAINTENANCE_ADMINISTRATOR",
+                    faultCategory = "DOOR_MECHANISM",
+                    note = "door frame bent",
+                    declaredAt = DateTimeOffset.UtcNow
+                });
+            await client.SendSlotFaultDeclarationResultAsync(
+                new SlotFaultDeclarationResultPayload(
+                    "dddddddd-dddd-4ddd-8ddd-ddddddddddd1", attemptId, "APPLIED", null),
+                token);
+            await client.SendSlotFaultDeclarationResultAsync(
+                new SlotFaultDeclarationResultPayload(
+                    "dddddddd-dddd-4ddd-8ddd-ddddddddddd2",
+                    attemptId,
+                    "NOT_APPLICABLE",
+                    new WireToGateProblemPayload("ACTION_NOT_ALLOWED_IN_STATE", "payload.slotNo", "slot closed")),
                 token);
 
             return server;

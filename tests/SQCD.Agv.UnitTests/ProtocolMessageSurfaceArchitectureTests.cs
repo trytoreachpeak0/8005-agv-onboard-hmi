@@ -52,7 +52,8 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
     /// <c>FP-IS-09</c> demand selection pair: the slot configuration activation pair,
     /// <c>OnboardAlarmSnapshot</c>, with batch 9-16 (<c>8005-agv-onboard-hmi#221</c>) the manual station
     /// clearance pair and with batch 9-17 (<c>8005-agv-onboard-hmi#222</c>) the unable-to-charge field
-    /// confirmation pair have been implemented. Until
+    /// confirmation pair have been implemented. The 3.0.0 candidate's slot fault declaration pair was pinned
+    /// here by <c>8005-agv-onboard-hmi#214</c> and left with batch 8-13 (<c>8005-agv-onboard-hmi#215</c>). Until
     /// onboard-hmi#107 one more predated v2 and was pinned as a finding rather than a schedule.
     /// </para>
     /// <para>
@@ -135,7 +136,9 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
     ];
 
     /// <summary>
-    /// The parse of the manifest, checked against the shape v2 froze.
+    /// The parse of the manifest, checked against the shape the bound release froze: 65 message types
+    /// since the 3.0.0 candidate added <c>SlotFaultDeclarationCommand</c> and
+    /// <c>SlotFaultDeclarationResult</c> (8005-agv-onboard-hmi#214).
     /// </summary>
     /// <remarks>
     /// Without this, every assertion below could pass over an empty parse: an empty message table
@@ -144,9 +147,9 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
     /// wrong property is reported here.
     /// </remarks>
     [Fact]
-    public void TheManifestParsesIntoSixtyThreeMessagesAndElevenDenylistedTypes()
+    public void TheManifestParsesIntoSixtyFiveMessagesAndElevenDenylistedTypes()
     {
-        Assert.Equal(63, FrozenMessageTypes().Length);
+        Assert.Equal(65, FrozenMessageTypes().Length);
         Assert.Equal(11, DenylistedMessageTypes().Length);
         Assert.Empty(FrozenMessageTypes().Intersect(DenylistedMessageTypes(), StringComparer.Ordinal));
     }

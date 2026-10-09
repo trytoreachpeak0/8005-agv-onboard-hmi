@@ -30,6 +30,8 @@ public sealed partial class MainViewModel : ViewModelBase
     private string _batteryStatusText = string.Empty;
     private string _batteryStatus = string.Empty;
     private string _chargingStatusText = string.Empty;
+    private string _doorHoldNotice = string.Empty;
+    private string _doorHoldSlots = string.Empty;
     private string _chargingStatus = string.Empty;
     private string? _loggedNonBusinessStopContradiction;
     private bool _hasWorklistItems;
@@ -89,11 +91,21 @@ public sealed partial class MainViewModel : ViewModelBase
     private string _physicallyUnknownSlotsText = string.Empty;
     private string _hardwareRecoveryObservations = string.Empty;
     private Func<bool>? _wireToGateCanConfirmForcedMechanicalRecovery;
-    private Func<CancellationToken, Task<bool>>? _wireToGateForcedMechanicalRecoveryConfirmer;
+    private Func<string?, string?, CancellationToken, Task<bool>>? _wireToGateForcedMechanicalRecoveryConfirmer;
+    private Func<bool>? _wireToGateForcedConfirmationNeedsCargoHandoff;
+    private Func<WireToGateForcedCargoHandoff?>? _wireToGateForcedCargoHandoffOnFile;
+    private string _forcedHandoffSublot = string.Empty;
+    private string _forcedHandoffReceiverName = string.Empty;
+    private bool _needsForcedCargoHandoff;
+    private string _forcedCargoHandoffOnFileText = string.Empty;
     private Func<IReadOnlyList<int>>? _wireToGatePhysicallyUnknownSlots;
     private Func<bool>? _wireToGateCanSubmitHardwareRecoveryRecord;
     private Func<string, CancellationToken, Task<bool>>? _wireToGateHardwareRecoveryRecordSubmitter;
+    private Func<bool>? _wireToGateCanRequestHardwareRepairRelease;
+    private Func<string?, CancellationToken, Task<bool>>? _wireToGateHardwareRepairReleaseRequester;
+    private Func<string?>? _wireToGatePendingHardwareRecoveryRecord;
     private bool _canRequestManualChargingReturn;
+    private bool _canRequestHardwareRepairRelease;
     private bool _hasWireToGateJourney;
     private bool _wireToGateEnabled;
     private bool _hasStationDepartureCountdown;
@@ -356,13 +368,17 @@ public sealed partial class MainViewModel : ViewModelBase
             : snapshot.CurrentStopWorklist is not { } worklist
                 ? "旅程未同步"
                 : worklist.Items.Count == 0
-                    ? $"{worklist.StationId} / 无待处理任务"
+                    // 清单空了写本站为什么结束（协议 3.0.0 的 stopEndedReason，onboard-hmi#214）；没有原因时照旧。
+                    ? $"{worklist.StationId} / {WireToGateStopEndedReasonText.Describe(worklist.StopEndedReason)}"
                     : worklist.StationId;
         LogNonBusinessStopContradictionCore(snapshot);
         // 电量与充电状态整值跟随业务状态：断线清投影时一起变空，重启从日志恢复时一起回来（onboard-hmi#220）。
         BatteryStatusText = WireToGateChargingText.BatteryText(snapshot);
         BatteryStatus = WireToGateChargingText.BatteryStatus(snapshot);
         ChargingStatusText = WireToGateChargingText.StatusText(snapshot);
+        // 门未证明扣车也整值跟随业务状态（onboard-hmi#219）：扣着就显示，服务端解除或断线清投影时一起消失。
+        DoorHoldNotice = WireToGateDoorHoldText.Notice(snapshot);
+        DoorHoldSlots = string.Join(",", WireToGateDoorHoldText.HeldSlots(snapshot));
         ChargingStatus = WireToGateChargingText.CycleStatus(snapshot);
         _worklistOperationSessionId = snapshot.CurrentStopWorklist?.OperationSessionId;
         ReplaceWorklistItemsCore(snapshot.CurrentStopWorklist?.Items ?? []);
@@ -548,18 +564,46 @@ public sealed partial class MainViewModel : ViewModelBase
     /// the operator's confirmation of the isolation and the manual extraction, and the hardware
     /// recovery record that clears the slots it left physically unknown.
     /// </summary>
+    /// <param name="confirmer">Takes the SUBLOT and receiver the operator entered for the cargo handoff.</param>
+    /// <param name="needsCargoHandoff">
+    /// Whether the confirmation awaited needs a cargo handoff record entered (8005-agv-onboard-hmi#216).
+    /// </param>
+    /// <param name="cargoHandoffOnFile">The record already on file, which every later press sends.</param>
     internal void ConfigureForcedIsolation(
         Func<bool> canConfirm,
-        Func<CancellationToken, Task<bool>> confirmer,
+        Func<string?, string?, CancellationToken, Task<bool>> confirmer,
         Func<IReadOnlyList<int>> physicallyUnknownSlots,
         Func<bool> canSubmitRecord,
-        Func<string, CancellationToken, Task<bool>> recordSubmitter)
+        Func<string, CancellationToken, Task<bool>> recordSubmitter,
+        Func<bool>? needsCargoHandoff = null,
+        Func<WireToGateForcedCargoHandoff?>? cargoHandoffOnFile = null)
     {
         _wireToGateCanConfirmForcedMechanicalRecovery = canConfirm;
         _wireToGateForcedMechanicalRecoveryConfirmer = confirmer;
+        _wireToGateForcedConfirmationNeedsCargoHandoff = needsCargoHandoff;
+        _wireToGateForcedCargoHandoffOnFile = cargoHandoffOnFile;
         _wireToGatePhysicallyUnknownSlots = physicallyUnknownSlots;
         _wireToGateCanSubmitHardwareRecoveryRecord = canSubmitRecord;
         _wireToGateHardwareRecoveryRecordSubmitter = recordSubmitter;
+        RefreshWireToGateInputStateCore();
+    }
+
+    /// <summary>
+    /// The repair release of a hold for an unproven door (CP-0009, REQ-0364, 8005-agv-onboard-hmi#219): the entry that
+    /// asks for it. The record it earns is submitted through the hardware recovery record form configured above.
+    /// </summary>
+    /// <param name="pendingRecordObservations">
+    /// The observations of a hardware recovery record that went out unanswered and that the next submit resends as
+    /// it was, or <c>null</c>; the confirmation dialog shows them instead of what is typed.
+    /// </param>
+    internal void ConfigureRepairRelease(
+        Func<bool> canRequest,
+        Func<string?, CancellationToken, Task<bool>> requester,
+        Func<string?>? pendingRecordObservations = null)
+    {
+        _wireToGateCanRequestHardwareRepairRelease = canRequest;
+        _wireToGateHardwareRepairReleaseRequester = requester;
+        _wireToGatePendingHardwareRecoveryRecord = pendingRecordObservations;
         RefreshWireToGateInputStateCore();
     }
 
@@ -622,10 +666,10 @@ public sealed partial class MainViewModel : ViewModelBase
     /// 加 early return（语句式），它的正常分支直接取业务值、不经本方法。语义等价，结构不同。
     /// </para>
     /// <para>
-    /// <b>这九个属性的写入点由 <c>RecoveryEntryWriteSiteArchitectureTests</c> 守着</b>
+    /// <b>这十个属性的写入点由 <c>RecoveryEntryWriteSiteArchitectureTests</c> 守着</b>
     /// （onboard-hmi#176，就是下面这段注释原先说「今天没有」的那道守卫）。
     /// <c>BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands</c> 断的是行为
-    /// （锁存态下这两条路径走完，八个属性为 false，取消装货只剩扫码之前那一半，onboard-hmi#174），**而它成立的前提是「只有这两条路径写这九个
+    /// （锁存态下这两条路径走完，九个属性为 false，取消装货只剩扫码之前那一半，onboard-hmi#174），**而它成立的前提是「只有这两条路径写这十个
     /// 属性」，它自己证明不了这个前提**：新加第三条路径直接赋值，那条测试不会红，因为它只调这两个
     /// 已知入口。承担那个前提的就是上面那个测试类，两条是互补的。
     /// </para>
@@ -645,7 +689,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>这是九个恢复入口里唯一一个锁存期间可以开的，理由只有一条：它不碰 IO。</b>扫码之前取消，服务端授权时
+    /// <b>这是十个恢复入口里唯一一个锁存期间可以开的，理由只有一条：它不碰 IO。</b>扫码之前取消，服务端授权时
     /// 仓位集为空，车载端的回答是 ALL_EMPTY，一扇门都不开。锁存期间把它也关掉，操作员只能干等站点超时，而超时会把
     /// 那张需求永久抑制——比操作员主动取消更重的后果，并且不给选。在途那一半会接管仓位、逐个开门清空，而开门的
     /// 恢复向量执行器不经过控制器、锁存在执行层拦不住它，所以那一半照旧关着：它走 <see cref="AllowRecoveryEntry"/>。
@@ -698,7 +742,7 @@ public sealed partial class MainViewModel : ViewModelBase
         // 记录）在下面的 RefreshForcedIsolationCore 里，写法相同。**另一条刷新路径
         // ApplyWireToGatePresentationCore 用的不是这个方法，是 early return，语义等价、结构不同**
         // ——共用的是判据 RecoveryEntriesBlockedByFatalFault。少经一处，锁存期间那个入口就会被放回来。
-        // 这九个入口的写入路径由 RecoveryEntryWriteSiteArchitectureTests 守着（onboard-hmi#176）：
+        // 这十个入口的写入路径由 RecoveryEntryWriteSiteArchitectureTests 守着（onboard-hmi#176）：
         // 第三条直接赋值的路径出现就红，合规写法它都认得。
         CanRequestWireToGateRecovery = AllowRecoveryEntry(_wireToGateCanRequestRecovery?.Invoke() == true);
         CanRequestLoadCancellation = AllowLoadCancellationEntry(
@@ -715,11 +759,11 @@ public sealed partial class MainViewModel : ViewModelBase
         RefreshRecoveryReasonLockCore();
         // 回落目标随入口一起重算：主体是否已经回落，与入口开关来自同一份恢复状态。
         RefreshLoadCorrectionTargetCore();
-        // 人工清桩确认不在那九个恢复入口里，不看锁存（见 RefreshStationClearanceCore）。
+        // 人工清桩确认不在那十个恢复入口里，不看锁存（见 RefreshStationClearanceCore）。
         RefreshStationClearanceCore();
         // 扣住的服务端恢复命令自己看锁存：「确认执行」锁存时关，「不执行」照常开（见 RefreshHeldRecoveryCommandCore）。
         RefreshHeldRecoveryCommandCore();
-        // 现场确认充不上同样不在那九个里，不看锁存（见 RefreshUnableToChargeCore）。
+        // 现场确认充不上同样不在那十个里，不看锁存（见 RefreshUnableToChargeCore）。
         RefreshUnableToChargeCore();
         // 人工核对后结束被拒收的恢复，同样不在那九个里，不看锁存（见 RefreshConflictedRecoveryCore）。
         RefreshConflictedRecoveryCore();
@@ -1089,6 +1133,32 @@ public sealed partial class MainViewModel : ViewModelBase
         private set => SetProperty(ref _batteryStatus, value);
     }
 
+    /// <summary>
+    /// 门未证明扣车的提示：「仓已确认无货，门锁未锁闭，本车需维修后才能继续。」前面带被扣仓号；没有扣车时是空串
+    /// （CP-0009，onboard-hmi#219）。只照服务端车辆业务快照的 <c>blockingFacts</c>，车载端不自己判。
+    /// </summary>
+    public string DoorHoldNotice
+    {
+        get => _doorHoldNotice;
+        private set
+        {
+            if (SetProperty(ref _doorHoldNotice, value))
+            {
+                OnPropertyChanged(nameof(HasDoorHold));
+            }
+        }
+    }
+
+    /// <summary>是否有门未证明扣车。</summary>
+    public bool HasDoorHold => _doorHoldNotice.Length > 0;
+
+    /// <summary>扣车那一行给 UIA 的 ItemStatus（AutomationId <c>DoorHoldNotice</c>）：被扣仓号，逗号分隔，升序。</summary>
+    public string DoorHoldSlots
+    {
+        get => _doorHoldSlots;
+        private set => SetProperty(ref _doorHoldSlots, value);
+    }
+
     /// <summary>车辆那一格的充电状态文字：充电周期状态与「需人工充电：服务端保持」（批次9-15，onboard-hmi#220）。</summary>
     public string ChargingStatusText
     {
@@ -1307,7 +1377,106 @@ public sealed partial class MainViewModel : ViewModelBase
     public bool CanConfirmForcedMechanicalRecovery
     {
         get => _canConfirmForcedMechanicalRecovery;
-        private set => SetProperty(ref _canConfirmForcedMechanicalRecovery, value);
+        private set
+        {
+            if (SetProperty(ref _canConfirmForcedMechanicalRecovery, value))
+            {
+                OnPropertyChanged(nameof(NeedsForcedCargoHandoff));
+                OnPropertyChanged(nameof(HasForcedCargoHandoffOnFile));
+                OnForcedHandoffInputChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// The SUBLOT of the cargo a forced mechanical recovery took out, as the operator entered it for the
+    /// handoff record (protocol 3.0.0 <c>cargoHandoff.sublot</c>, 8005-agv-onboard-hmi#216).
+    /// </summary>
+    public string ForcedHandoffSublot
+    {
+        get => _forcedHandoffSublot;
+        set
+        {
+            if (SetProperty(ref _forcedHandoffSublot, value ?? string.Empty))
+            {
+                OnForcedHandoffInputChanged();
+            }
+        }
+    }
+
+    /// <summary>The named person the cargo was handed to (<c>cargoHandoff.receiverName</c>).</summary>
+    public string ForcedHandoffReceiverName
+    {
+        get => _forcedHandoffReceiverName;
+        set
+        {
+            if (SetProperty(ref _forcedHandoffReceiverName, value ?? string.Empty))
+            {
+                OnForcedHandoffInputChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Whether the confirmation step shows the two handoff fields: the step is on offer, the forced recovery
+    /// is on a demand and no record is on file yet. Read through <see cref="CanConfirmForcedMechanicalRecovery"/>
+    /// so a latch that closes the step closes the fields with it, whichever refresh path closed it.
+    /// </summary>
+    public bool NeedsForcedCargoHandoff
+    {
+        get => _needsForcedCargoHandoff && CanConfirmForcedMechanicalRecovery;
+        private set
+        {
+            if (SetProperty(ref _needsForcedCargoHandoff, value))
+            {
+                OnForcedHandoffInputChanged();
+            }
+        }
+    }
+
+    /// <summary>
+    /// What the handoff record still lacks, in the operator's words, or empty when nothing is missing.
+    /// The confirm button stays disabled while this is not empty.
+    /// </summary>
+    public string ForcedCargoHandoffMissingText =>
+        !NeedsForcedCargoHandoff
+            ? string.Empty
+            : (string.IsNullOrWhiteSpace(ForcedHandoffSublot), string.IsNullOrWhiteSpace(ForcedHandoffReceiverName)) switch
+            {
+                (true, true) => "请填写取出货物的子批号和接收人。",
+                (true, false) => "请填写取出货物的子批号。",
+                (false, true) => "请填写接收人。",
+                _ => string.Empty
+            };
+
+    /// <summary>
+    /// The confirm button's enabled state: the step is on offer and the handoff record, when one is
+    /// needed, is complete. Visibility stays on <see cref="CanConfirmForcedMechanicalRecovery"/>, so the
+    /// button does not vanish while the operator is still typing.
+    /// </summary>
+    public bool CanSubmitForcedMechanicalRecoveryConfirmation =>
+        CanConfirmForcedMechanicalRecovery && ForcedCargoHandoffMissingText.Length == 0;
+
+    /// <summary>The handoff record already on file, described for the operator, or empty.</summary>
+    public string ForcedCargoHandoffOnFileText
+    {
+        get => _forcedCargoHandoffOnFileText;
+        private set
+        {
+            if (SetProperty(ref _forcedCargoHandoffOnFileText, value))
+            {
+                OnPropertyChanged(nameof(HasForcedCargoHandoffOnFile));
+            }
+        }
+    }
+
+    public bool HasForcedCargoHandoffOnFile =>
+        ForcedCargoHandoffOnFileText.Length > 0 && CanConfirmForcedMechanicalRecovery;
+
+    private void OnForcedHandoffInputChanged()
+    {
+        OnPropertyChanged(nameof(ForcedCargoHandoffMissingText));
+        OnPropertyChanged(nameof(CanSubmitForcedMechanicalRecoveryConfirmation));
     }
 
     public bool CanSubmitHardwareRecoveryRecord
@@ -1333,6 +1502,16 @@ public sealed partial class MainViewModel : ViewModelBase
     {
         get => _hardwareRecoveryObservations;
         set => SetProperty(ref _hardwareRecoveryObservations, value ?? string.Empty);
+    }
+
+    /// <summary>
+    /// 维修放行入口（onboard-hmi#219）：服务端因门锁未证明扣着本车、面前是带认证的维护管理员时出现。按下去只开一个无需求的
+    /// 恢复会话并选 <c>HARDWARE_REPAIR_RELEASE</c>，不碰任何仓门；之后在硬件恢复记录表单里提交维修记录。
+    /// </summary>
+    public bool CanRequestHardwareRepairRelease
+    {
+        get => _canRequestHardwareRepairRelease;
+        private set => SetProperty(ref _canRequestHardwareRepairRelease, value);
     }
 
     public bool CanRequestManualChargingReturn
@@ -1591,15 +1770,43 @@ public sealed partial class MainViewModel : ViewModelBase
         return accepted;
     }
 
-    public Task<bool> ConfirmForcedMechanicalRecoveryAsync(CancellationToken cancellationToken = default) =>
-        _wireToGateForcedMechanicalRecoveryConfirmer is null
-            ? Task.FromResult(false)
-            : _wireToGateForcedMechanicalRecoveryConfirmer(cancellationToken);
+    /// <remarks>
+    /// Sends the two handoff fields as typed; the business service trims them, checks them and writes them
+    /// to the journal before anything goes out. They are cleared only once the result was acknowledged, so
+    /// a press that was refused or warned about keeps what the operator typed.
+    /// </remarks>
+    public async Task<bool> ConfirmForcedMechanicalRecoveryAsync(CancellationToken cancellationToken = default)
+    {
+        if (_wireToGateForcedMechanicalRecoveryConfirmer is not { } confirmer)
+        {
+            return false;
+        }
+
+        bool reported = await confirmer(ForcedHandoffSublot, ForcedHandoffReceiverName, cancellationToken)
+            .ConfigureAwait(true);
+        if (reported)
+        {
+            ForcedHandoffSublot = string.Empty;
+            ForcedHandoffReceiverName = string.Empty;
+        }
+
+        return reported;
+    }
+
+    /// <summary>
+    /// The observations a submit would resend because an earlier record went out unanswered, or <c>null</c> when it
+    /// sends what is typed. Read when the confirmation is shown, so the dialog names the record the press will send.
+    /// </summary>
+    public string? PendingHardwareRecoveryRecordObservations => _wireToGatePendingHardwareRecoveryRecord?.Invoke();
 
     public Task<bool> SubmitHardwareRecoveryRecordAsync(CancellationToken cancellationToken = default) =>
         _wireToGateHardwareRecoveryRecordSubmitter is null
             ? Task.FromResult(false)
             : _wireToGateHardwareRecoveryRecordSubmitter(HardwareRecoveryObservations, cancellationToken);
+
+    /// <summary>Asks for the repair release with the reason entered, as the other administrator entries do.</summary>
+    public Task<bool> RequestHardwareRepairReleaseAsync(CancellationToken cancellationToken = default) =>
+        RequestWithReasonAsync(_wireToGateHardwareRepairReleaseRequester, cancellationToken);
 
     public Task<bool> RequestManualChargingReturnAsync(CancellationToken cancellationToken = default) =>
         _wireToGateManualChargingReturnRequester is null
@@ -1658,7 +1865,7 @@ public sealed partial class MainViewModel : ViewModelBase
     /// 入口、对话框正文、说明与结果四样出自同一份业务视图，一次替换。
     /// </summary>
     /// <remarks>
-    /// <b>它不经 <see cref="AllowRecoveryEntry"/>，严重安全故障锁存期间照常开着，是有意的。</b>那九个恢复入口锁存时
+    /// <b>它不经 <see cref="AllowRecoveryEntry"/>，严重安全故障锁存期间照常开着，是有意的。</b>那十个恢复入口锁存时
     /// 关闭，是因为其中三个会经恢复向量执行器真的开门，锁存在执行层拦不住。这个入口只发一条请求、显示服务端的结果，
     /// 不碰 IO、不开门、不写恢复状态（<c>WireToGateStationClearanceTests</c> 里有一条结构守卫钉着），而
     /// <c>REQ-0180</c> 说人工清桩不自动恢复也不阻断车辆：一辆故障后被推离充电桩的车，不该等它自己的故障清掉才能把
@@ -2113,8 +2320,8 @@ public sealed partial class MainViewModel : ViewModelBase
         // 那个方法——这里是 early return 的语句式，那边是九行各自调用的函数式，语义等价、结构不同。
         // 这里仍然 early return，因为锁存时后面那些横幅计算本来就不该跑。
         // **下面那个 return; 是这一段的判据本身，不是顺手写的**：少了它，控制流会往下走到正常分支，
-        // 紧接着按业务值把九个入口全部写回来，而这个块看起来完全正确。
-        // 这九个属性的写入路径由 RecoveryEntryWriteSiteArchitectureTests 守着（onboard-hmi#176），
+        // 紧接着按业务值把十个入口全部写回来，而这个块看起来完全正确。
+        // 这十个属性的写入路径由 RecoveryEntryWriteSiteArchitectureTests 守着（onboard-hmi#176），
         // 它认的就是「有效的 early return」，删掉那个 return; 会让这一整段判成不合规。
         // 取消装货写在锁存守卫之前、不在守卫块里：守卫块只许写 false，而它是锁存期间唯一可以开的那一个
         // （扫码之前那一半，不碰 IO；见 AllowLoadCancellationEntry）。下面正常分支也不再写它。
@@ -2123,7 +2330,7 @@ public sealed partial class MainViewModel : ViewModelBase
             _wireToGateCanRequestLoadCancellationBeforeAnySublot?.Invoke() == true);
         // 现场确认充不上与它同理（见 RefreshUnableToChargeCore）。
         RefreshUnableToChargeCore();
-        // 人工清桩确认同样写在锁存守卫之前：它不在那九个恢复入口里、锁存期间照常开着（见 RefreshStationClearanceCore），
+        // 人工清桩确认同样写在锁存守卫之前：它不在那十个恢复入口里、锁存期间照常开着（见 RefreshStationClearanceCore），
         // 放到守卫之后，锁存期间这条路径就不再刷新它，入口会停在锁存那一刻的样子。
         RefreshStationClearanceCore();
         // 扣住的服务端恢复命令同理写在守卫之前，锁存与否由它自己判（见 RefreshHeldRecoveryCommandCore）。
@@ -2140,6 +2347,7 @@ public sealed partial class MainViewModel : ViewModelBase
             CanRequestManualChargingReturn = false;
             CanConfirmForcedMechanicalRecovery = false;
             CanSubmitHardwareRecoveryRecord = false;
+            CanRequestHardwareRepairRelease = false;
             return;
         }
 
@@ -2189,6 +2397,12 @@ public sealed partial class MainViewModel : ViewModelBase
             AllowRecoveryEntry(_wireToGateCanConfirmForcedMechanicalRecovery?.Invoke() == true);
         CanSubmitHardwareRecoveryRecord =
             AllowRecoveryEntry(_wireToGateCanSubmitHardwareRecoveryRecord?.Invoke() == true);
+        CanRequestHardwareRepairRelease =
+            AllowRecoveryEntry(_wireToGateCanRequestHardwareRepairRelease?.Invoke() == true);
+        NeedsForcedCargoHandoff = _wireToGateForcedConfirmationNeedsCargoHandoff?.Invoke() == true;
+        ForcedCargoHandoffOnFileText = _wireToGateForcedCargoHandoffOnFile?.Invoke() is { } onFile
+                ? $"货物交接记录已登记：子批号 {onFile.Sublot}，接收人 {onFile.ReceiverName}；再次确认会重发这一份。"
+                : string.Empty;
         IReadOnlyList<int> unknown = _wireToGatePhysicallyUnknownSlots?.Invoke() ?? [];
         HasPhysicallyUnknownSlots = unknown.Count > 0;
         PhysicallyUnknownSlotsText = unknown.Count > 0

@@ -1,3 +1,0 @@
-# 产品代码为本分支修复版（提交 68c390c 之上的工作区）
-Passed!  - Failed:     0, Passed:   702, Skipped:     0, Total:   702, Duration: 16 s - SQCD.Agv.UnitTests.dll (net8.0)
-Passed!  - Failed:     0, Passed:    59, Skipped:     0, Total:    59, Duration: 3 s - SQCD.Agv.UnitTests.dll (net8.0)

@@ -123,8 +123,7 @@ public sealed class OutboundResultShapeTests
                 1,
                 1,
                 "eight-slot-v1",
-                "eight-slot-modbus-v1",
-                false),
+                "eight-slot-modbus-v1"),
             new FakeIoModuleClient(),
             new SqliteWireToGateJournal(Path.Combine(
                 Path.GetTempPath(), $"w2g-result-shape-{Guid.NewGuid():N}.db")),

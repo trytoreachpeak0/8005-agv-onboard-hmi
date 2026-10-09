@@ -1,0 +1,29 @@
+M1-refuse-once build exit=0
+M1-refuse-once test exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALostRefusalIsGivenAgainWhenTheReplayComesBackAfterAReconnect [12 s]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedAnswerGivenUpLaterIsNeverResentAndTheReplayIsRefused [10 s]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayedDeclarationWhoseAnswerWasGivenUpIsRefusedWithoutResendingTheAnswer [10 s]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayHandledAfterTheConnectionWentIsRefusedOnTheNextSession [10 s]
+Failed!  - Failed:     4, Passed:     1, Skipped:     0, Total:     5, Duration: 46 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+M2-no-B build exit=0
+M2-no-B test exit=0
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 7 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+M3-no-spot build exit=0
+M3-no-spot test exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALostRefusalIsGivenAgainWhenTheReplayComesBackAfterAReconnect [11 s]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAcknowledgedAnswerGivenUpLaterIsNeverResentAndTheReplayIsRefused [11 s]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayedDeclarationWhoseAnswerWasGivenUpIsRefusedWithoutResendingTheAnswer [10 s]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayHandledAfterTheConnectionWentIsRefusedOnTheNextSession [10 s]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAnswerRefusedOnItsFirstSendIsGivenUpAndItsCommandRefusedOnTheSpotWhileTheDeclarationApplies [10 s]
+Failed!  - Failed:     5, Passed:     0, Skipped:     0, Total:     5, Duration: 55 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+M4-no-C build exit=0
+M4-no-C test exit=1
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALostRefusalIsGivenAgainWhenTheReplayComesBackAfterAReconnect [11 s]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayedDeclarationWhoseAnswerWasGivenUpIsRefusedWithoutResendingTheAnswer [10 s]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayHandledAfterTheConnectionWentIsRefusedOnTheNextSession [10 s]
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAnswerRefusedOnItsFirstSendIsGivenUpAndItsCommandRefusedOnTheSpotWhileTheDeclarationApplies [11 s]
+Failed!  - Failed:     4, Passed:     1, Skipped:     0, Total:     5, Duration: 44 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+M5-no-A build exit=0
+M5-no-A test exit=0
+Passed!  - Failed:     0, Passed:     5, Skipped:     0, Total:     5, Duration: 4 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+restored build exit=0

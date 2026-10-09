@@ -5,19 +5,19 @@ using static SQCD.Agv.UnitTests.CSharpSourceLexer;
 namespace SQCD.Agv.UnitTests;
 
 /// <summary>
-/// 九个恢复入口属性的**写入路径**守卫：只有两种写法可以写它们，第三种出现就红
+/// 十个恢复入口属性的**写入路径**守卫：只有两种写法可以写它们，第三种出现就红
 /// （<c>trytoreachpeak0/8005-agv-onboard-hmi#176</c>，hmi#171 的跟进票）。
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>它承担的是一条别处成立不了的前提。</b> hmi#171 留下的行为判据
 /// <c>BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands</c> 断的是「严重安全故障锁存着的
-/// 时候，那两条刷新路径走完，九个入口都关着」。**那条断言成立的前提是「只有那两条路径写这九个属性」**
+/// 时候，那两条刷新路径走完，十个入口都关着」。**那条断言成立的前提是「只有那两条路径写这十个属性」**
 /// ——而它自己证明不了这个前提：它只调那两个已知入口，新加第三条路径直接赋值，它一声不响。
 /// 前提要写成约束并写明由谁承担，承担者就是本文件。
 /// </para>
 /// <para>
-/// <b>为什么这九个属性值得一道结构守卫。</b> 其中补偿清空、修正装货、强制机械取出三个入口按下去会经
+/// <b>为什么这十个属性值得一道结构守卫。</b> 其中补偿清空、修正装货、强制机械取出三个入口按下去会经
 /// <c>WireToGateRecoveryVectorExecutor</c> 真的开仓门，而那个执行器直接持 <c>IIoModuleClient</c>、
 /// 不经过 <c>OnboardController</c>，所以严重安全故障锁存在执行那一层拦不住它——**挡住它的是界面这一层**。
 /// 全仓四个开门点各自受不受锁存约束，见 <see cref="FatalFaultScopeArchitectureTests"/> 那张表。
@@ -25,8 +25,8 @@ namespace SQCD.Agv.UnitTests;
 /// <para>
 /// <b>判据的写法是这张票的全部难点，因为两条路径的结构不同。</b> 一条是函数式（九行各自
 /// <c>AllowRecoveryEntry(...)</c>），一条是语句式（<c>if (RecoveryEntriesBlockedByFatalFault)</c>
-/// 把九个置 false 然后 <c>return;</c>，正常分支直接取业务值）。语义等价，结构不同，而
-/// **hmi#171 的注释一度把它写成「九个入口全部收到同一道闸门 AllowRecoveryEntry 后面」**。
+/// 把十个置 false 然后 <c>return;</c>，正常分支直接取业务值）。语义等价，结构不同，而
+/// **hmi#171 的注释一度把它写成「十个入口全部收到同一道闸门 AllowRecoveryEntry 后面」**。
 /// 照那句话写出来的守卫只扫 <c>AllowRecoveryEntry(</c>，会把 early-return 那条判成「没有闸门」；
 /// 反过来，有人把那个 <c>return;</c> 删掉改成直接赋值，那样的扫描器完全看不见。
 /// 所以这里的判据是两条并列：**每一次写，要么是右边整个就是一次 <c>AllowRecoveryEntry(...)</c> 的简单
@@ -61,22 +61,23 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
         "BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands";
 
     /// <summary>
-    /// 真实源码里 setter 以外的写入点条数（7 + 1 + 8 + 6 + 2：输入刷新路径七个；展示路径守卫之前的取消装货一个、
-    /// 守卫块八个、正常分支六个；强制隔离两个）。onboard-hmi#174 把展示路径里取消装货的两处写（守卫块的 false 与正常分支
+    /// 真实源码里 setter 以外的写入点条数（7 + 1 + 9 + 6 + 3：输入刷新路径七个；展示路径守卫之前的取消装货一个、
+    /// 守卫块九个（十个入口里取消装货不在块内）、正常分支六个；强制隔离三个）。onboard-hmi#219 加了第十个入口维修放行，两处写：守卫块里的 false，
+    /// 与 <c>RefreshForcedIsolationCore</c> 里的 <c>AllowRecoveryEntry(...)</c>，所以从 24 变成 26。onboard-hmi#174 把展示路径里取消装货的两处写（守卫块的 false 与正常分支
     /// 的业务值）合成守卫之前的一处 <c>AllowLoadCancellationEntry(...)</c>，所以从 25 变成 24。**写死是有意的**：这条数字是
     /// <see cref="TheScannerStillSeesTheRealWriteSites"/> 判断「扫描器还睁着眼」的判据之一，而扫描器变瞎时的
     /// 默认输出正是「什么都没发现」，与「确实没有」长得一模一样。
     /// **它变了的时候先别改它**：第三条写入路径落在核心守卫盲区里时，这个数是唯一会响的东西。
     /// 先按那条测试报错里的问题逐行回答，确认新写入点挡得住锁存，再改。
     /// </summary>
-    private const int ExpectedWriteSiteCount = 24;
+    private const int ExpectedWriteSiteCount = 26;
 
     /// <summary>一个恢复入口：公开属性，以及它的 backing field（直接写字段一样是绕过）。</summary>
     private sealed record RecoveryEntry(string Property, string BackingField);
 
     /// <summary>
-    /// 九个恢复入口。<see cref="TheRegisteredEntriesAreExactlyWhatTheBehaviouralAssertionCovers"/>
-    /// 把这张表钉在行为判据断言的那九个上，两边任何一侧漂移都会红。
+    /// 十个恢复入口。<see cref="TheRegisteredEntriesAreExactlyWhatTheBehaviouralAssertionCovers"/>
+    /// 把这张表钉在行为判据断言的那十个上，两边任何一侧漂移都会红。
     /// </summary>
     private static readonly RecoveryEntry[] RecoveryEntries =
     [
@@ -88,12 +89,13 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
         new("CanRequestForcedMechanicalRecovery", "_canRequestForcedMechanicalRecovery"),
         new("CanRequestManualChargingReturn", "_canRequestManualChargingReturn"),
         new("CanConfirmForcedMechanicalRecovery", "_canConfirmForcedMechanicalRecovery"),
-        new("CanSubmitHardwareRecoveryRecord", "_canSubmitHardwareRecoveryRecord")
+        new("CanSubmitHardwareRecoveryRecord", "_canSubmitHardwareRecoveryRecord"),
+        new("CanRequestHardwareRepairRelease", "_canRequestHardwareRepairRelease")
     ];
 
     /// <summary>
-    /// 今天真的写这九个属性的三个成员。**「两条刷新路径」是从操作员那一侧数的，赋值点落在三个方法里**：
-    /// <c>RefreshForcedIsolationCore</c> 是另外两条共用的子过程，最后两个入口只在它里面写。
+    /// 今天真的写这十个属性的三个成员。**「两条刷新路径」是从操作员那一侧数的，赋值点落在三个方法里**：
+    /// <c>RefreshForcedIsolationCore</c> 是另外两条共用的子过程，最后三个入口只在它里面写。
     /// </summary>
     private static readonly string[] WritingMembers =
     [
@@ -208,7 +210,7 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
         StringComparer.Ordinal);
 
     /// <summary>
-    /// 九个属性的写入点没有第三条路径。**这一条是本票的交付物**；它的判别力由
+    /// 十个属性的写入点没有第三条路径。**这一条是本票的交付物**；它的判别力由
     /// <see cref="TheGuardTellsAThirdWritePathFromACompliantOne"/> 双向验，扫描器有没有睁着眼由
     /// <see cref="TheScannerStillSeesTheRealWriteSites"/> 验。
     /// </summary>
@@ -236,9 +238,9 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
     /// </summary>
     /// <remarks>
     /// <para>
-    /// 五项一起才够：setter 以外的写入点条数对得上（漏扫会掉数）、九个入口每个都至少被看见两次（某个名字
+    /// 五项一起才够：setter 以外的写入点条数对得上（漏扫会掉数）、十个入口每个都至少被看见两次（某个名字
     /// 打错会掉到零）、写入成员恰好是那三个（缩进格式一变，成员切分就不准，而那会悄悄改变「同一个成员里」
-    /// 这个判据）、**每个入口恰好一个自己的 setter 被认出来**（属性声明行认不出时，九个 setter 会整批变成
+    /// 这个判据）、**每个入口恰好一个自己的 setter 被认出来**（属性声明行认不出时，十个 setter 会整批变成
     /// 违规或整批消失）、**函数式与语句式两种写法各自都被认出来过**（只认得函数式那种，正是票面点名的那个陷阱）。
     /// hmi#181 换用 <see cref="CSharpSourceLexer"/> 后再加两项：视图模型里每个成员都切得出名字，且没有一个以续行
     /// 记号开头（深度与命名两项拦不住深度 1 上的错切，hmi#162 第四轮复审）。
@@ -273,7 +275,7 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             Assert.True(
                 seen >= 2,
                 $"{entry.Property} 在源码里只被看见 {seen} 次。"
-                + "九个入口每个至少在两条路径上被写，看见不到两次说明这个名字已经对不上源码了。");
+                + "十个入口每个至少在两条路径上被写，看见不到两次说明这个名字已经对不上源码了。");
 
             WriteSite[] setters = sites
                 .Where(site => site.Entry == entry.Property && site.Kind == WriteKind.OwnSetter)
@@ -288,7 +290,7 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             .Order(StringComparer.Ordinal).ToArray();
         Assert.True(
             members.SequenceEqual(WritingMembers, StringComparer.Ordinal),
-            $"写这九个属性的成员变了。源码里：{string.Join(", ", members)}；"
+            $"写这十个属性的成员变了。源码里：{string.Join(", ", members)}；"
             + $"表里：{string.Join(", ", WritingMembers)}。"
             + "新增一个成员就要回答：它凭什么可以写这些入口，锁存期间它写的是什么。");
 
@@ -384,7 +386,7 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             """,
             expectedSites: 1);
 
-        // 合规五：属性自己的 setter 把 value 原样写进自己的字段——这个文件里九个 setter 全是这个形状。
+        // 合规五：属性自己的 setter 把 value 原样写进自己的字段——这个文件里十个 setter 全是这个形状。
         AssertCompliant(
             """
                 public bool CanRequestLoadCompensation
@@ -868,8 +870,8 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
     }
 
     /// <summary>
-    /// 登记的九个入口，与行为判据 <c>BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands</c>
-    /// 断言的那九个**互相钉住**。
+    /// 登记的十个入口，与行为判据 <c>BothRefreshPathsKeepTheRecoveryEntriesClosedWhileALatchStands</c>
+    /// 断言的那十个**互相钉住**。
     /// </summary>
     /// <remarks>
     /// 两张清单各自都会过期，而它们过期的方式不一样：本文件漏一个，那个入口的写入路径就没人看；
@@ -1051,14 +1053,14 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             + "（`private set => _ = SetProperty(ref _x, value) | (_x |= y);`、`AllowRecoveryEntry(... Task.Run(() => CanX |= y) ...)`，"
             + "合成例钉着前一种；基分支同样看不见，按扫描护栏「第二轮仍有绕法就停」没有追）。语句边界是按这三个字符往回找的，"
             + "不是语法分析。"
-            + "它看不见的写法：经反射或 XAML 双向绑定写入、在别的文件里写（今天九个属性都是 private set 且类不是 partial，"
+            + "它看不见的写法：经反射或 XAML 双向绑定写入、在别的文件里写（今天十个属性都是 private set 且类不是 partial，"
             + "所以别的文件写不进来——那是今天的状态，不是这条守卫保证的）；写另一个实例的入口（`other.CanX = true`，"
-            + "形状里排除了点号前缀）；九个之外的新入口。词法层自己的限度：同一行两个成员共用这一行、用转义写的标识符"
+            + "形状里排除了点号前缀）；十个之外的新入口。词法层自己的限度：同一行两个成员共用这一行、用转义写的标识符"
             + "认不出、原始字符串拒读（大声失败）。"),
         new(
             "RecoveryEntryWriteSiteArchitectureTests.TheScannerStillSeesTheRealWriteSites",
             GuardKind.SelfCheck,
-            "确认扫描器在真实源码上有输出：setter 以外的写入点条数对得上、九个名字都还命中、每个入口恰好认出一个"
+            "确认扫描器在真实源码上有输出：setter 以外的写入点条数对得上、十个名字都还命中、每个入口恰好认出一个"
             + "自己的 setter、成员切分没跑偏、两种写法都认得出。**第三条写入路径落在核心守卫盲区里时，唯一会红的就是"
             + "它的条数那一项**——所以它的报错先问「多出来的那一行凭什么挡得住锁存」，再许可改数。它保证不了扫描器对一种"
             + "将来才出现的写法仍然准，也拦不住有人不读报错直接改数。"),

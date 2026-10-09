@@ -1,3 +1,0 @@
-# 组合变异：同时删掉修正按键门禁与准备写入兜底检查（产品代码为本分支修复版，变异后已重写文件还原并 --no-incremental 重编）
-  Failed SQCD.Agv.WireToGateG2Tests.RecoveryVectorG2Tests.ALoadCorrectionPressIsRefusedOverADoorLeftInDoubtUntilItIsShut [695 ms]
-Failed!  - Failed:     1, Passed:     0, Skipped:     0, Total:     1, Duration: 732 ms - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

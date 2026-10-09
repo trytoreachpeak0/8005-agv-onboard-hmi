@@ -1,0 +1,15 @@
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALostRefusalIsGivenAgainWhenTheReplayComesBackAfterAReconnect [11 s]
+  Error Message:
+   Timed out after 10s waiting for: refusal 2 of SlotFaultDeclarationCommand 0ab7c1ef-bd32-4a10-ad8b-14b31c629c62
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALostRefusalIsGivenAgainWhenTheReplayComesBackAfterAReconnect() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 162
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.ALostRefusalIsGivenAgainWhenTheReplayComesBackAfterAReconnect() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 172
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayHandledAfterTheConnectionWentIsRefusedOnTheNextSession [10 s]
+  Error Message:
+   Timed out after 10s waiting for: refusal 1 of SlotFaultDeclarationCommand b33bb8f1-421f-4173-bda3-b2de40a5bde8
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayHandledAfterTheConnectionWentIsRefusedOnTheNextSession() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 98
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AReplayHandledAfterTheConnectionWentIsRefusedOnTheNextSession() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 103
+  Failed SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAnswerRefusedOnItsFirstSendIsGivenUpAndItsCommandRefusedOnTheSpotWhileTheDeclarationApplies [846 ms]
+  Error Message:
+     at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAnswerRefusedOnItsFirstSendIsGivenUpAndItsCommandRefusedOnTheSpotWhileTheDeclarationApplies() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 39
+   at SQCD.Agv.WireToGateG2Tests.StationDeadlineExpiredG2Tests.AnAnswerRefusedOnItsFirstSendIsGivenUpAndItsCommandRefusedOnTheSpotWhileTheDeclarationApplies() in tests\SQCD.Agv.WireToGateG2Tests\StationDeadlineExpiredG2Tests.AbandonedDeclarationAnswer.cs:line 46
+Failed!  - Failed:     3, Passed:     2, Skipped:     0, Total:     5, Duration: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

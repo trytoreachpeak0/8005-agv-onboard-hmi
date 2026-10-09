@@ -1,0 +1,9 @@
+# 第三轮绿色证据：产品代码为本分支 af56e4a 加本轮未提交改动（提交后即为新 head）。每步记 dotnet test 退出码与程序集收尾的 schema 一致性结论。
+unit build exit=0
+unit test exit=0
+Passed!  - Failed:     0, Passed:   845, Skipped:     0, Total:   845, Duration: 25 s - SQCD.Agv.UnitTests.dll (net8.0)
+G2 build exit=0
+G2 targeted (恢复相关，非全量) test exit=0
+Passed!  - Failed:     0, Passed:   239, Skipped:     0, Total:   239, Duration: 2 m 54 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+schema: Schema conformance (protocol-v3.0.0 SUPERSEDING_CANDIDATE): 6350 lines, 6294 distinct, 52 message types; 0 distinct violations, 0 on file; schema compilation 219042 ms, validation 15203 ms.
+schema-violations.json absent (no violations)

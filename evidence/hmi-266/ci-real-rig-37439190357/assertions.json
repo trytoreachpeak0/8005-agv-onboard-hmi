@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "scenario": "real-onboard-slot-fault-declaration",
+  "runId": "20261006T085543207Z",
+  "outcome": "PASS",
+  "failureReason": "",
+  "identity": {
+    "expectedActionOverdueThreshold": "00:00:20",
+    "vehicleKey": "BROKERX-L2-0001",
+    "slotsSimulatorCommit": "fb5f7c593742bf98bc3957b8729a38aad5321f28",
+    "agvId": "AGV-L2-001",
+    "onboardHmiCommit": "a96f4f918982237f66a8b5b25d39b1cab57e6e94",
+    "controlServerCommit": "73037f53aee2c278ed42f6eb4519a92ad906bb70",
+    "stageRoot": "C:\\actions-runner\\win11-01-control-server-desktop\\_work\\_temp\\real-rig-37439190357-1\\_stage\\l2-20261006T085543207Z",
+    "batchId": "unspecified",
+    "protocolReleaseIdentity": {
+      "repository": "8005-agv-protocol",
+      "releaseVersion": "3.0.0",
+      "tag": "protocol-v3.0.0",
+      "commit": "3f091cb2eae7c58cec54a95dd9389c9180bc7b4c",
+      "protocolVersion": 4,
+      "profileId": "AGV_FULL_PRODUCT",
+      "manifestSha256": "d5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e",
+      "schemaBundleSha256": "e435b2b14d9ccd60c89f07df909da7626fef056a6b8a2241087557fd7dc3df43",
+      "vectorsSha256": "be849f9749b004296ebd9e7bffa98faf2f8ffa90b63308ca3b210c68e7b8656e",
+      "approvalStatus": "SUPERSEDING_CANDIDATE"
+    },
+    "rig": "RealOnboard"
+  },
+  "assertions": [
+    {
+      "id": "L2-RSFD-01",
+      "description": "判定被受理并已下发到车：202、PENDING、sentToVehicle，demandId 与尝试是这次装货的",
+      "outcome": "PASS",
+      "expected": "202 / PENDING / True / 6e1a98cb-ca3e-44db-b3da-d5d5bca6b222 / dcb880d1-7514-795e-8c0c-d72701a4b0a9",
+      "actual": "202 / PENDING / True / 6e1a98cb-ca3e-44db-b3da-d5d5bca6b222 / dcb880d1-7514-795e-8c0c-d72701a4b0a9"
+    },
+    {
+      "id": "L2-RSFD-02",
+      "description": "线上 SlotFaultDeclarationResult：APPLIED、同一个尝试、problem 为空，服务端 DurableAck",
+      "outcome": "PASS",
+      "expected": "APPLIED / dcb880d1-7514-795e-8c0c-d72701a4b0a9 / problem null / DurableAck",
+      "actual": "APPLIED / dcb880d1-7514-795e-8c0c-d72701a4b0a9 / problem null / DurableAck"
+    },
+    {
+      "id": "L2-RSFD-03",
+      "description": "OperationResult：overallOutcome UNKNOWN；1 号仓 UNKNOWN 且 reasonCodes 含 SLOT_FAULT_DECLARED；其余目标仓 NOT_STARTED",
+      "outcome": "PASS",
+      "expected": "UNKNOWN / slot 1 UNKNOWN [SLOT_FAULT_DECLARED] / 其余 NOT_STARTED",
+      "actual": "UNKNOWN / {\"demandId\":\"6e1a98cb-ca3e-44db-b3da-d5d5bca6b222\",\"slotOperationAttemptId\":\"dcb880d1-7514-795e-8c0c-d72701a4b0a9\",\"operationType\":\"LOAD\",\"overallOutcome\":\"UNKNOWN\",\"slotResults\":[{\"slotNo\":1,\"outcome\":\"UNKNOWN\",\"finalPhysicalState\":\"EMPTY\",\"lockState\":\"UNLOCKED\",\"unlockOutputState\":\"RESET\",\"reasonCodes\":[\"SLOT_FAULT_DECLARED\"]}],\"observedAt\":\"2026-10-06T16:57:07.2743646+08:00\",\"journalCheckpoint\":\"ACTIVE_UNLOCK_SET\",\"resultContentSha256\":\"bd8111b00075e8006bb1eab04c13389bb2d6a84186c50f152542edaab55091e2\"}"
+    },
+    {
+      "id": "L2-RSFD-04",
+      "description": "旅程转 Blocked，原因 LOAD_RESULT_REQUIRES_RECOVERY",
+      "outcome": "PASS",
+      "expected": "Blocked / LOAD_RESULT_REQUIRES_RECOVERY",
+      "actual": "Blocked / LOAD_RESULT_REQUIRES_RECOVERY"
+    },
+    {
+      "id": "L2-RSFD-05",
+      "description": "装货仓位操作 RecoveryRequired（既有 UNKNOWN 结算）",
+      "outcome": "PASS",
+      "expected": "RecoveryRequired",
+      "actual": "RecoveryRequired"
+    },
+    {
+      "id": "L2-RSFD-06",
+      "description": "判定记录 APPLIED，审计带判定时车载端最近上报的读数与观测时刻",
+      "outcome": "PASS",
+      "expected": "APPLIED / slot 1 / dcb880d1-7514-795e-8c0c-d72701a4b0a9 / readings with observedAt",
+      "actual": "APPLIED / slot 1 / dcb880d1-7514-795e-8c0c-d72701a4b0a9 / {\"observedAt\":\"2026-10-06T08:57:06.1558822+00:00\",\"safetyStateVersion\":5,\"lockState\":\"UNLOCKED\",\"physicalState\":\"EMPTY\",\"unlockOutputState\":\"RESET\",\"changedSinceObserved\":false}"
+    },
+    {
+      "id": "L2-RSFD-07",
+      "description": "判定之后零开锁：空关后 10 秒门仍关着，这次装货的 UNLOCKING 进度条数与判定前相同",
+      "outcome": "PASS",
+      "expected": "CLOSED/* / UNLOCKING 1",
+      "actual": "CLOSED/EMPTY/1/0 / UNLOCKING 1"
+    }
+  ]
+}

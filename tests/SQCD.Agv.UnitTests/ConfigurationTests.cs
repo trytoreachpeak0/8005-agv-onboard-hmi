@@ -325,6 +325,37 @@ public sealed class ConfigurationTests
         }
     }
 
+    /// <summary>
+    /// A vehicle's existing settings file still carries <c>wireToGate.supportsBatchUnlock</c>, which protocol
+    /// 3.0.0 removed from <c>CapabilitySnapshot</c> (8005-agv-onboard-hmi#214). The key is ignored, not
+    /// refused: a refused settings file stops the onboard program silently before its logger exists, so on
+    /// site the vehicle would simply not start over a key that no longer means anything.
+    /// </summary>
+    [Fact]
+    public void ALeftoverBatchUnlockKeyInAnOldSettingsFileIsIgnored()
+    {
+        string json = File.ReadAllText(FindRepositoryFile("src/SQCD.Agv.Wpf/appsettings.json"));
+        int wireToGate = json.IndexOf("\"wireToGate\": {", StringComparison.Ordinal);
+        Assert.True(wireToGate >= 0, "appsettings.json has no wireToGate section to add the leftover key to");
+        int brace = json.IndexOf('{', wireToGate);
+        string withLeftover = json.Insert(brace + 1, "\n    \"supportsBatchUnlock\": true,");
+        string path = Path.Combine(Path.GetTempPath(), $"onboard-settings-{Guid.NewGuid():N}.json");
+        try
+        {
+            File.WriteAllText(path, withLeftover);
+
+            OnboardSettings settings = OnboardSettings.Load(path);
+
+            Assert.Contains("supportsBatchUnlock", File.ReadAllText(path), StringComparison.Ordinal);
+            // Loaded as the unmodified file loads: same section, same values.
+            Assert.Equal(OnboardSettings.Load(FindRepositoryFile("src/SQCD.Agv.Wpf/appsettings.json")).WireToGate.Port, settings.WireToGate.Port);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Fact]
     public void ProductionRequiresEnabledVehicleSafetyProjection()
     {

@@ -65,13 +65,21 @@ public sealed record WireToGateBlockingFactPayload(
 /// to load, which the vehicle shows as no countdown at all rather than as an expired one. The
 /// payload object is <c>additionalProperties: false</c> with every property required, so a record
 /// without it would throw on every worklist the 2.0.0 server sends.
+/// <para>
+/// <c>StopEndedReason</c> is new in 3.0.0 (8005-agv-onboard-hmi#214): required, <c>null</c> while
+/// <c>items</c> is non-empty and one of seven strings once it is empty. It is taken as the schema's
+/// whole set -- all seven values, not only the ones the control server sends today -- and shown
+/// verbatim when the text table does not know it (which today no accepted value reaches). A worklist journaled by a 2.0.0 build lacks the property;
+/// replaying it deserializes the missing member to <c>null</c>, the same reading as "no reason given".
+/// </para>
 /// </remarks>
 public sealed record CurrentStopWorklistSnapshotPayload(
     string StationId,
     long WorklistRevision,
     string? OperationSessionId,
     DateTimeOffset? StationDepartureDeadlineAt,
-    IReadOnlyList<WireToGateWorklistItem> Items);
+    IReadOnlyList<WireToGateWorklistItem> Items,
+    string? StopEndedReason = null);
 
 public sealed record WireToGateWorklistItem(
     string DemandId,

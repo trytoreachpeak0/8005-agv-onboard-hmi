@@ -7,7 +7,7 @@ scripts/run-w2g-g2.ps1 为每次本机验证创建一个不可复用的证据目
 
 不带 `-Slice` 时输出到 evidence/g2/<Tag>/<UTC时间>-<HMI commit>/；
 带 `-Slice` 时多一层切片目录：evidence/g2/<Tag>/FP-IS-NN/<UTC时间>-<HMI commit>/。
-`<Tag>` 取 `$expected.Tag`，当前是 `protocol-v2.0.0`。
+`<Tag>` 取 `$expected.Tag`，批次分支 `w2g/batch-p3/v3` 上是 `protocol-v3.0.0`（集成分支上仍是 `protocol-v2.0.0`）。
 两种都包含：
 
 - summary.json：精确协议身份、HMI commit、切片向量、命令退出码和外部门禁；
@@ -73,21 +73,21 @@ scripts/run-w2g-g2.ps1 为每次本机验证创建一个不可复用的证据目
 
 ## 身份校验
 
-脚本逐字段核对 `$expected` 身份。当前绑定的是协议 `v2.0.0` 候选：commit
-86575456c847041515b7b75e8851a00e0d939804（`fp/v2-candidate` 顶端，由 `8005-agv-program#96`
-公布），`(profileId AGV_FULL_PRODUCT, protocolVersion 3)`，`releaseVersion 2.0.0`。
+脚本逐字段核对 `$expected` 身份。批次分支 `w2g/batch-p3/v3` 上绑定的是协议 `v3.0.0` 候选：commit
+3f091cb2eae7c58cec54a95dd9389c9180bc7b4c（协议仓分支 `batch-p3/protocol-v3.0.0-candidate`，身份表由
+`8005-agv-program#151` 关闭评论公布，`8005-agv-onboard-hmi#214`），`(profileId AGV_FULL_PRODUCT, protocolVersion 4)`，
+`releaseVersion 3.0.0`。
 
-`Tag` 写的 `protocol-v2.0.0` **至今没有打出**，由 `8005-agv-program#97` 在同一个 commit 上创建，
+`Tag` 写的 `protocol-v3.0.0` **尚未打出**，由 `8005-agv-program#152` 在同一个 commit 上创建，
 所以脚本查的是「存在则必须指向候选 commit」而不是「必须存在」；`approvalStatus` 声称
 `APPROVED_RELEASE` 时才要求 tag 必须存在。同时确认当前 protocol HEAD 是该候选的后继提交，再执行
-protocol G1。这样协议仓库可以在候选之后继续增加不改变身份的 CI/文档提交；release manifest、
-Schema bundle 和 vectors 哈希仍会逐项校验。工作区路径包含 # 时，脚本临时映射一个盘符运行 G1；
-协议仓库本身不会被修改。
+protocol G1。release manifest、Schema bundle 和 vectors 哈希仍会逐项校验。工作区路径包含 # 时，脚本临时
+映射一个盘符运行 G1；协议仓库本身不会被修改。CI（`.github/workflows/test.yml`）按同一对常量选检出：
+`ApprovalStatus` 为 `APPROVED_RELEASE` 时按 `Tag` 检出，否则按 `Commit` 检出。
 
 `approvalStatus` 是 `SUPERSEDING_CANDIDATE`，不是 `APPROVED_RELEASE`：发布需要一份批准
-attestation 加注释 tag，两件都还没发生。在这个身份上跑出的 G2 只是开发态，不是正式证据，
-不要当成已批准发布。`protocolVersion 3` 在 MVP 线 `WIRE_TO_GATE_MVP 0.3.0` 上也出现过，
-读证据时连 `profileId` 一起读。
+attestation 加注释 tag，两件都还没发生。在这个身份上跑出的 G2 一律标 `UNRELEASED_CANDIDATE`，只是开发态，
+不计入批次出口。`protocolVersion` 只在同一 `profileId` 内单调递增，读证据时连 `profileId` 一起读。
 
 该证据只代表 OnboardHmi 本机 G2。summary.json 会明确保留
 controlServerG2=PENDING_EXTERNAL 和 g3=PENDING_JOINT，不能把本机结果当作

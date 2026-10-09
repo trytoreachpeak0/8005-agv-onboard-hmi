@@ -50,23 +50,34 @@ jobs:
           path: 8005-agv-onboard-hmi
 
       # The protocol release this branch binds, read from the contract rather than written here, so the
-      # same workflow file serves a branch bound to another release without an edit.
-      - name: Protocol tag
+      # same workflow file serves a branch bound to another release without an edit. A released identity
+      # (ApprovalStatus APPROVED_RELEASE) is checked out by its tag; a candidate's tag does not exist yet
+      # (8005-agv-onboard-hmi#214: protocol-v3.0.0 is created by 8005-agv-program#152 only at release), so
+      # a candidate is checked out by its Commit constant. The switch is the constant, not this file.
+      - name: Protocol ref
         id: protocol
         shell: pwsh
         run: |
           $source = Get-Content -LiteralPath 8005-agv-onboard-hmi/src/SQCD.Agv.Contracts/WireToGateProtocol.cs -Raw
-          $match = [regex]::Match($source, 'public\s+const\s+string\s+Tag\s*=\s*"([^"]+)"\s*;')
-          if (-not $match.Success) { throw 'WireToGateProtocol.cs declares no Tag constant.' }
-          Write-Output "Protocol tag: $($match.Groups[1].Value)"
-          "tag=$($match.Groups[1].Value)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+          function Get-Constant([string] $name) {
+            $match = [regex]::Match($source, "public\s+const\s+string\s+$name\s*=\s*`"([^`"]+)`"\s*;")
+            if (-not $match.Success) { throw "WireToGateProtocol.cs declares no $name constant." }
+            $match.Groups[1].Value
+          }
+          $tag = Get-Constant 'Tag'
+          $commit = Get-Constant 'Commit'
+          $approval = Get-Constant 'ApprovalStatus'
+          $ref = $approval -eq 'APPROVED_RELEASE' ? $tag : $commit
+          Write-Output "Protocol: tag $tag, commit $commit, approval $approval -> checkout ref $ref"
+          "ref=$ref" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
-      # Full history and tags: the gate checks that the tag exists, points at the bound commit, and is an
-      # ancestor of HEAD. The protocol repository is public, so the default token reads it.
+      # Full history and tags: the gate checks that the tag, if it exists, points at the bound commit, and
+      # that the bound commit is an ancestor of HEAD. The protocol repository is public, so the default
+      # token reads it.
       - uses: actions/checkout@v7
         with:
           repository: trytoreachpeak0/8005-agv-protocol
-          ref: ${{ steps.protocol.outputs.tag }}
+          ref: ${{ steps.protocol.outputs.ref }}
           path: 8005-agv-protocol
           fetch-depth: 0
 
@@ -76,7 +87,7 @@ jobs:
         run: dotnet --info
 
       # ONBOARD_HMI_G2 over the whole solution: Release build, every test, dotnet format, and the protocol
-      # identity checks. -SkipProtocolG1 because the protocol's own CI ran G1 on this immutable tag; running
+      # identity checks. -SkipProtocolG1 because the protocol's own CI ran G1 on the bound commit; running
       # it here would add node and pnpm to this runner for no new fact.
       #
       # The evidence goes to the runner's temp directory and is uploaded below; it is never committed.

@@ -1261,6 +1261,54 @@ public sealed partial class WireToGateSlotOperationExecutorTests
     }
 
     /// <summary>
+    /// A repair release in progress is not the operation's either (8005-agv-onboard-hmi#219): an operation on other slots
+    /// writes its checkpoints over the journal and the release is still there afterwards, field for field. The checkpoint
+    /// write takes every field it does not own from the journal, so this field is one line there
+    /// (<c>WriteCheckpointAsync</c>); fp has no such field, and a sync from fp that rewrites that write drops it without a
+    /// conflict (the review of PR #277, S2).
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-VEHICLE-HOLD-DOOR-REPAIR-RELEASE")]
+    public async Task ARepairReleaseOutlivesAnOperationOnOtherSlots()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using TestFixture fixture = await TestFixture.CreateAsync(cancellationToken: token);
+        WireToGateRepairRelease release = new(
+            "99999999-9999-4999-8999-999999999991",
+            "99999999-9999-4999-8999-999999999992",
+            "99999999-9999-4999-8999-999999999993",
+            [3],
+            "maintenance-001",
+            "SESSION",
+            new DateTimeOffset(2026, 10, 7, 8, 0, 0, TimeSpan.Zero),
+            "门锁已更换。")
+        {
+            ExceptionRecoverySessionId = "99999999-9999-4999-8999-999999999994",
+            Accepted = true
+        };
+        await fixture.Journal.UpdateRecoveryStateAsync(
+            _ => WireToGateRecoveryState.Empty with { RepairRelease = release },
+            token);
+        WireToGateSlotOperationCommand command = CreateCommand(OperationType.Load, [1], expectedOccupied: true);
+
+        WireToGateOperationExecutionResult result = await fixture.Executor.ExecuteAsync(command, null, token);
+        Assert.Equal("COMPLETED", result.OverallOutcome);
+        AssertSameRelease(release, (await fixture.Journal.ReadRecoveryStateAsync(token)).RepairRelease);
+
+        await fixture.Executor.MarkResultRecordedAsync(command.SlotOperationAttemptId, token);
+        AssertSameRelease(release, (await fixture.Journal.ReadRecoveryStateAsync(token)).RepairRelease);
+
+        // The slot list is compared by value: the journal reads back a new list.
+        static void AssertSameRelease(WireToGateRepairRelease expected, WireToGateRepairRelease? actual)
+        {
+            Assert.NotNull(actual);
+            Assert.Equal(expected.Slots, actual.Slots);
+            Assert.Equal(expected with { Slots = actual.Slots }, actual);
+        }
+    }
+
+    /// <summary>
     /// The isolation is on disk: a restart -- a new journal and executor over the same file -- still
     /// refuses a command that touches an isolated slot.
     /// </summary>

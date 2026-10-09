@@ -347,7 +347,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.Business.CanConfirmForcedMechanicalRecovery,
             "the authorized forced recovery to wait for the operator's confirmation",
             token);
-        await harness.Business.ConfirmForcedMechanicalRecoveryAsync(token);
+        await ConfirmForcedRecoveryWithHandoffAsync(harness, "SUBLOT-A", token);
         await harness.WaitUntilAsync(
             () => ReadJournal(harness, token) is { RecoveryVector: null, ForcedIsolation: not null },
             "the acknowledged isolation to settle the forced recovery",
@@ -355,6 +355,17 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(
             [(DemandA, true), (DemandB, false)],
             ReadJournal(harness, token).LoadsOnBoard?.Select(load => (load.DemandId, load.HandedOffAwaitingServer)));
+
+        // What went out on the wire, not only what the journal says (8005-agv-onboard-hmi#282 review S2): the helper's first
+        // press may return false for a reason it does not tell apart, so the result itself is checked -- A's demand, the
+        // isolation, the handoff record pressed and A's slot.
+        JsonElement result = Assert.Single(ReceivedPayloads(harness, "ForcedMechanicalRecoveryResult"));
+        Assert.Equal(DemandA, result.GetProperty("demandId").GetString());
+        Assert.Equal("MECHANICALLY_ISOLATED", result.GetProperty("outcome").GetString());
+        JsonElement handoff = result.GetProperty("cargoHandoff");
+        Assert.Equal("SUBLOT-A", handoff.GetProperty("sublot").GetString());
+        Assert.Equal(ForcedHandoffReceiver, handoff.GetProperty("receiverName").GetString());
+        Assert.Equal([1], result.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()));
         Assert.Empty(harness.UiErrors);
     }
 
@@ -404,6 +415,27 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(unlocksBefore + 1, io.UnlockCount);
         Assert.False(io.HasScheduledClose);
     }
+
+    /// <summary>
+    /// Confirms the authorized forced recovery the way a press on this line must: with the cargo handoff record a forced
+    /// recovery on a demand carries since protocol 3.0.0 (b8-14, 8005-agv-onboard-hmi#216). Without it the press is refused
+    /// with <c>FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED</c> before any result is written (v3 sync, 8005-agv-onboard-hmi#282).
+    /// When the current stop's worklist does not name the demand, the first press only warns that the SUBLOT cannot be
+    /// checked, and the operator's second press sends it.
+    /// </summary>
+    private static async Task ConfirmForcedRecoveryWithHandoffAsync(
+        Harness harness,
+        string sublot,
+        CancellationToken token)
+    {
+        if (!await harness.Business.ConfirmForcedMechanicalRecoveryAsync(sublot, ForcedHandoffReceiver, token))
+        {
+            Assert.True(await harness.Business.ConfirmForcedMechanicalRecoveryAsync(sublot, ForcedHandoffReceiver, token));
+        }
+    }
+
+    /// <summary>The receiver <see cref="ConfirmForcedRecoveryWithHandoffAsync"/> names in the cargo handoff record.</summary>
+    private const string ForcedHandoffReceiver = "现场接收人";
 
     /// <summary>The rows of the loads-on-board choice as the screen shows them, refreshed the way the dispatcher would.</summary>
     private static Task WaitForChoicesAsync(Harness harness, string[] texts, CancellationToken token) =>

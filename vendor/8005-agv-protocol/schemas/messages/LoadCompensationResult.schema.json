@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.8005-agv.local/agv-full-product/v3/messages/LoadCompensationResult.schema.json",
+  "$id": "https://schemas.8005-agv.local/agv-full-product/v4/messages/LoadCompensationResult.schema.json",
   "title": "LoadCompensationResult",
   "type": "object",
   "properties": {
     "protocolVersion": {
       "type": "integer",
-      "const": 3
+      "const": 4
     },
     "profileId": {
       "type": "string",
@@ -18,11 +18,11 @@
       "minLength": 1,
       "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
       "examples": [
-        "2.0.0"
+        "3.0.0"
       ]
     },
     "protocolReleaseManifestSha256": {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Sha256"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/Sha256"
     },
     "messageType": {
       "type": "string",
@@ -30,7 +30,7 @@
       "const": "LoadCompensationResult"
     },
     "messageId": {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Id"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/Id"
     },
     "correlationId": {
       "type": "null"
@@ -43,42 +43,43 @@
       ]
     },
     "sessionGeneration": {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Generation"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/Generation"
     },
     "sentAt": {
-      "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Instant"
+      "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/Instant"
     },
     "payload": {
       "type": "object",
       "properties": {
         "recoveryActionId": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Id"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/Id"
         },
         "demandId": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Id"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/Id"
         },
         "slotOperationAttemptId": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Id"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/Id"
         },
         "overallOutcome": {
           "type": "string",
           "enum": [
             "ALL_EMPTY",
             "FAILED",
-            "UNKNOWN"
+            "UNKNOWN",
+            "ALL_EMPTY_DOOR_UNPROVEN"
           ]
         },
         "slotResults": {
           "type": "array",
           "items": {
-            "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/SlotResult"
+            "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/SlotResult"
           },
           "minItems": 1,
           "maxItems": 8,
           "uniqueItems": true
         },
         "observedAt": {
-          "$ref": "https://schemas.8005-agv.local/agv-full-product/v3/common/types.schema.json#/$defs/Instant"
+          "$ref": "https://schemas.8005-agv.local/agv-full-product/v4/common/types.schema.json#/$defs/Instant"
         }
       },
       "required": [
@@ -89,7 +90,31 @@
         "slotResults",
         "observedAt"
       ],
-      "additionalProperties": false
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "overallOutcome": {
+            "const": "ALL_EMPTY_DOOR_UNPROVEN"
+          }
+        },
+        "required": [
+          "overallOutcome"
+        ]
+      },
+      "then": {
+        "properties": {
+          "slotResults": {
+            "minItems": 1,
+            "items": {
+              "properties": {
+                "finalPhysicalState": {
+                  "const": "EMPTY"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "required": [

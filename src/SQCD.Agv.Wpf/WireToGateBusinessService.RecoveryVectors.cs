@@ -14,6 +14,21 @@ public sealed partial class WireToGateBusinessService
     private const string FaultCargoHandoffAction = "FAULT_CARGO_HANDOFF";
     private const string ForcedMechanicalRecoveryAction = "FORCED_MECHANICAL_RECOVERY";
 
+    /// <summary>
+    /// What the operator is told when a clear settles <c>ALL_EMPTY_DOOR_UNPROVEN</c> (CP-0009,
+    /// 8005-agv-onboard-hmi#219): the same sentence the view keeps showing from the server's hold.
+    /// </summary>
+    private const string DoorUnprovenRepairNotice = WireToGateDoorHoldText.RepairRequiredNotice;
+
+    /// <summary>The slots of a door-unproven settlement whose door is the one not proven.</summary>
+    private static IReadOnlyList<int> DoorUnprovenSlots(IReadOnlyList<WireToGateSlotExecutionResult> slotResults) =>
+        [.. slotResults
+            .Where(slot => slot.ReasonCodes.Contains(
+                WireToGateRecoveryVectorExecutor.DoorLockUnprovenAfterEmptyReason,
+                StringComparer.Ordinal))
+            .Select(slot => slot.SlotNo)
+            .Order()];
+
     private readonly WireToGateRecoveryVectorExecutor _vectorExecutor;
     private WireToGateRecoveryState _lastRecoveryState = WireToGateRecoveryState.Empty;
 
@@ -116,6 +131,23 @@ public sealed partial class WireToGateBusinessService
             vector.OperatorId,
             Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable),
             StringComparison.Ordinal);
+
+    /// <summary>
+    /// Whether the forced recovery awaiting confirmation still needs the operator to enter its cargo
+    /// handoff record: it is on a demand, so its isolation result must carry one (protocol 3.0.0), and none
+    /// is on file yet (8005-agv-onboard-hmi#216).
+    /// </summary>
+    public bool ForcedConfirmationNeedsCargoHandoff =>
+        AwaitingForcedConfirmation(Volatile.Read(ref _lastRecoveryState)) is { } vector
+        && NeedsCargoHandoff(vector)
+        && vector.CargoHandoff is null;
+
+    /// <summary>
+    /// The cargo handoff record already on file for the forced recovery awaiting confirmation, or
+    /// <c>null</c>. Once on file it is what every later press sends, whatever the screen holds.
+    /// </summary>
+    public WireToGateForcedCargoHandoff? ForcedCargoHandoffOnFile =>
+        AwaitingForcedConfirmation(Volatile.Read(ref _lastRecoveryState))?.CargoHandoff;
 
     /// <summary>
     /// The loads on board a fault cargo handoff or a forced mechanical recovery has to choose between, oldest first; empty
@@ -407,11 +439,29 @@ public sealed partial class WireToGateBusinessService
     /// qualified person opened the slots by hand (REQ-0241). Only this reports
     /// <c>MECHANICALLY_ISOLATED</c>; the vehicle itself proves nothing here and sends no unlock.
     /// </summary>
+    /// <remarks>
+    /// Without a handoff record: enough for a recovery with no demand, or one whose record is already on
+    /// file. On a demand with none on file it is refused with
+    /// <c>FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED</c> and nothing is written.
+    /// </remarks>
     public Task<bool> ConfirmForcedMechanicalRecoveryAsync(
+        CancellationToken cancellationToken = default) =>
+        ConfirmForcedMechanicalRecoveryAsync(null, null, cancellationToken);
+
+    /// <param name="sublot">The SUBLOT of the cargo taken out (protocol 3.0.0 <c>cargoHandoff.sublot</c>).</param>
+    /// <param name="receiverName">The named person the cargo was handed to.</param>
+    /// <param name="cancellationToken">Cancels the press.</param>
+    /// <remarks>
+    /// The two fields are used only while no record is on file for this recovery; after that the record on
+    /// file is sent and these are ignored (REPLAY_SAME_HANDOFF_RECORD_AFTER_RESTART).
+    /// </remarks>
+    public Task<bool> ConfirmForcedMechanicalRecoveryAsync(
+        string? sublot,
+        string? receiverName,
         CancellationToken cancellationToken = default) =>
         RunRecoveryRequestAsync(
             WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery,
-            () => ConfirmForcedMechanicalRecoveryCoreAsync(cancellationToken),
+            () => ConfirmForcedMechanicalRecoveryCoreAsync(sublot, receiverName, cancellationToken),
             cancellationToken);
 
     private async Task<bool> RunRecoveryRequestAsync(
@@ -868,6 +918,23 @@ public sealed partial class WireToGateBusinessService
             || !authorization.Slots.SequenceEqual(operation.Slots))
         {
             throw new InvalidDataException("RECOVERY_RESPONSE_SCOPE_MISMATCH");
+        }
+
+        // An administrator's slot fault declaration applied to this attempt since the press (8005-agv-onboard-hmi#215,
+        // review S1 of PR #247): the declared slot is UNKNOWN and its OperationResult is the attempt's conclusion, and no
+        // door of this operation may be opened again. Taken over here, the cancellation would drive the declared slot and
+        // then open the next one. Read from the journal, not the cached copy: the declaration is written by the executor,
+        // which never refreshes that copy. The pending entry goes, as it does on either answer. The server does not refuse
+        // such an authorization yet, and is not told of this refusal: both are 8005-agv-control-server#384's to add.
+        if ((await _session.Journal.ReadRecoveryStateAsync(cancellationToken).ConfigureAwait(false))
+                .SlotFaultDeclaration is { } declared
+            && string.Equals(
+                declared.SlotOperationAttemptId,
+                operation.SlotOperationAttemptId,
+                StringComparison.Ordinal))
+        {
+            await ForgetLoadCancellationRequestAsync(cancellationId, cancellationToken).ConfigureAwait(false);
+            throw new InvalidDataException("LOAD_CANCELLATION_AFTER_SLOT_FAULT_DECLARATION");
         }
 
         // The abort channel (onboard-hmi#78): the load's closed loop stops before the cancellation
@@ -2042,14 +2109,26 @@ public sealed partial class WireToGateBusinessService
     /// are one person's account of what was done at the vehicle.
     /// </para>
     /// <para>
-    /// The observation time is written before the result goes out, so a press after a lost
-    /// acknowledgement repeats the durable result byte for byte instead of making a second one.
-    /// Once the server acknowledges it the business side is settled -- the server has cancelled the
-    /// operation and needs no OperationResult for it -- and the device side begins:
-    /// <see cref="SettleForcedIsolationAsync"/>.
+    /// The observation time -- and, on a demand, the cargo handoff record -- is written before the
+    /// result goes out, in one journal step, and the result is then built from what that step left on
+    /// file, not from this press's arguments. A press after a lost acknowledgement, or the outbox replay
+    /// after a restart, therefore repeats the durable result byte for byte instead of making a second
+    /// one (REPLAY_SAME_HANDOFF_RECORD_AFTER_RESTART). Once the server acknowledges it the business side
+    /// is settled -- the server has cancelled the operation and needs no OperationResult for it -- and
+    /// the device side begins: <see cref="SettleForcedIsolationAsync"/>.
+    /// </para>
+    /// <para>
+    /// CONFIRM_SUBLOT_AGAINST_DEMAND_BEFORE_SENDING: the control server settles the demand on the record
+    /// and never refuses the result over what it says, so the check has to happen here. A SUBLOT that is
+    /// not the one the current stop's worklist names for this demand -- or that cannot be checked because
+    /// the worklist does not name the demand -- is not sent on the first press: the operator is warned and
+    /// asked to confirm again, and the second press with the same SUBLOT sends it. The slots are already
+    /// isolated by hand, so the check never holds the result back for good.
     /// </para>
     /// </remarks>
     private async Task<bool> ConfirmForcedMechanicalRecoveryCoreAsync(
+        string? sublot,
+        string? receiverName,
         CancellationToken cancellationToken)
     {
         WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
@@ -2064,47 +2143,87 @@ public sealed partial class WireToGateBusinessService
             throw new InvalidOperationException("RECOVERY_OPERATOR_MISMATCH");
         }
 
-        DateTimeOffset observedAt = state.RecoveryResultObservedAt ?? _clock.Now.ToUniversalTime();
-        if (state.RecoveryResultObservedAt is null)
+        WireToGateForcedCargoHandoff? entered = null;
+        if (NeedsCargoHandoff(context) && context.CargoHandoff is null)
         {
-            // Owns RecoveryResultObservedAt alone. Written from the copy above it put that copy back
-            // over anything that landed since (onboard-hmi#136 point 7). The "not stamped yet" check is
-            // asked again inside the step so a stamp that landed in between is not replaced -- a retry
-            // has to report the first observation -- and the reported time is then that stamp, so what
-            // goes on the wire is what the journal holds.
-            DateTimeOffset? alreadyStamped = null;
+            string enteredSublot = sublot?.Trim() ?? string.Empty;
+            string enteredReceiver = receiverName?.Trim() ?? string.Empty;
+            if (enteredSublot.Length == 0 || enteredReceiver.Length == 0)
+            {
+                // Nothing written: a record with a blank field would be a made-up value on the wire.
+                throw new InvalidOperationException("FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED");
+            }
+
+            if (!SublotConfirmedAgainstDemand(context, enteredSublot))
+            {
+                return false;
+            }
+
+            entered = new WireToGateForcedCargoHandoff(
+                enteredSublot,
+                enteredReceiver,
+                _clock.Now.ToUniversalTime());
+        }
+
+        if (state.RecoveryResultObservedAt is null || entered is not null)
+        {
+            // Owns RecoveryResultObservedAt and the vector's CargoHandoff alone. Written from the copy
+            // above it put that copy back over anything that landed since (onboard-hmi#136 point 7), so
+            // both "not written yet" checks are asked again inside the step: a stamp or a record that
+            // landed in between is kept -- a retry reports the first observation and the first record --
+            // and a vector that is no longer this one is left alone.
+            DateTimeOffset observedAt = _clock.Now.ToUniversalTime();
             await UpdateRecoveryStateCachedAsync(
                     current =>
                     {
-                        // Assigned unconditionally on entry, so an earlier evaluation of this same
-                        // change function cannot leave a stale stamp behind (see point 6).
-                        alreadyStamped = current.RecoveryResultObservedAt;
-                        return alreadyStamped is null
-                            ? current with { RecoveryResultObservedAt = observedAt }
+                        bool stamp = current.RecoveryResultObservedAt is null;
+                        bool record = entered is not null
+                            && current.RecoveryVector is { CargoHandoff: null } onFile
+                            && onFile.PrimaryId == context.PrimaryId
+                            && onFile.VectorType == context.VectorType;
+                        return stamp || record
+                            ? current with
+                            {
+                                RecoveryResultObservedAt = current.RecoveryResultObservedAt ?? observedAt,
+                                RecoveryVector = record
+                                    ? current.RecoveryVector! with { CargoHandoff = entered }
+                                    : current.RecoveryVector
+                            }
                             : null;
                     },
                     cancellationToken)
                 .ConfigureAwait(false);
-            observedAt = alreadyStamped ?? observedAt;
         }
 
+        // What goes on the wire is what the journal holds: the stamp and the record are read back from
+        // the state the step above left, never from this press.
+        WireToGateRecoveryState written = await ReadRecoveryStateCachedAsync(cancellationToken)
+            .ConfigureAwait(false);
+        WireToGateRecoveryVectorContext onFileContext = AwaitingForcedConfirmation(written) is { } current
+            && current.PrimaryId == context.PrimaryId
+                ? current
+                : throw new InvalidOperationException("FORCED_RECOVERY_NOT_AUTHORIZED");
+        DateTimeOffset reportedAt = written.RecoveryResultObservedAt
+            ?? throw new InvalidOperationException("FORCED_RECOVERY_NOT_AUTHORIZED");
+        _forcedSublotWarnedFor = null;
+
         string resultKey =
-            $"recovery-vector-result:{WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery}:{context.PrimaryId}";
+            $"recovery-vector-result:{WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery}:{onFileContext.PrimaryId}";
         try
         {
             await SendRecoveryVectorResultAsync(
-                    context,
+                    onFileContext,
                     resultKey,
                     new WireToGateRecoveryVectorExecutionResult(
-                        context.VectorType,
-                        context.PrimaryId,
-                        context.ExceptionRecoverySessionId,
-                        context.DemandId,
-                        context.SlotOperationAttemptId,
+                        onFileContext.VectorType,
+                        onFileContext.PrimaryId,
+                        onFileContext.ExceptionRecoverySessionId,
+                        onFileContext.DemandId,
+                        onFileContext.SlotOperationAttemptId,
                         null,
                         "MECHANICALLY_ISOLATED",
                         [],
-                        observedAt,
+                        reportedAt,
                         "NONE"),
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -2115,17 +2234,17 @@ public sealed partial class WireToGateBusinessService
             _logger.Write(
                 LogSeverity.Warning,
                 nameof(WireToGateBusinessService),
-                $"强制机械取出结果暂未收到DurableAck：id={context.PrimaryId}。",
+                $"强制机械取出结果暂未收到DurableAck：id={onFileContext.PrimaryId}。",
                 exception);
             PublishOperatorEvent(
-                $"recovery-vector-result-pending:{context.VectorType}:{context.PrimaryId}",
+                $"recovery-vector-result-pending:{onFileContext.VectorType}:{onFileContext.PrimaryId}",
                 "RESULT_ACK_PENDING",
                 "强制机械取出结果已持久化，等待服务端确认；可再次按确认重发，不会输出开锁。 ");
             return false;
         }
 
-        await SettleForcedIsolationAsync(context, cancellationToken).ConfigureAwait(false);
-        PublishForcedIsolationAcknowledged(context);
+        await SettleForcedIsolationAsync(onFileContext, cancellationToken).ConfigureAwait(false);
+        PublishForcedIsolationAcknowledged(onFileContext);
         return true;
     }
 
@@ -2146,9 +2265,18 @@ public sealed partial class WireToGateBusinessService
 
     private void PublishForcedConfirmationAwaited(WireToGateRecoveryVectorContext context)
     {
-        string guidance =
-            $"强制机械取出已授权：请先断电、抱闸隔离车辆，再由有资质人员以机械方式开锁或拆卸，取出{FormatSlots(context.Slots)}的货物；"
-            + "系统不会输出开锁。完成后由申请人按「已隔离并完成机械取出」确认。";
+        // Already confirmed once -- by a build that held it for the handoff record (8005-agv-onboard-hmi#214),
+        // or by a press whose acknowledgement was lost: after a restart or a resent command, asking the people
+        // at the vehicle to cut power and extract again would read as a second extraction. Ask for what is
+        // still missing instead.
+        string guidance = Volatile.Read(ref _lastRecoveryState).RecoveryResultObservedAt is not null
+            ? context.CargoHandoff is null && NeedsCargoHandoff(context)
+                ? $"强制机械取出已确认；请填写货物交接记录（子批号、接收人）后按「已隔离并完成机械取出」上报结果。{FormatSlots(context.Slots)}保持禁止操作，系统不会输出开锁。"
+                : $"强制机械取出已确认，结果等待服务端确认；可再次按「已隔离并完成机械取出」重发同一份结果。{FormatSlots(context.Slots)}保持禁止操作，系统不会输出开锁。"
+            : $"强制机械取出已授权：请先断电、抱闸隔离车辆，再由有资质人员以机械方式开锁或拆卸，取出{FormatSlots(context.Slots)}的货物；"
+                + (NeedsCargoHandoff(context)
+                    ? "系统不会输出开锁。完成后由申请人填写货物交接记录（子批号、接收人），按「已隔离并完成机械取出」确认。"
+                    : "系统不会输出开锁。完成后由申请人按「已隔离并完成机械取出」确认。");
         PublishRecoveryVectorOperation(
             context,
             WireToGateHmiOperationStage.RecoveryRequired,
@@ -2630,6 +2758,14 @@ public sealed partial class WireToGateBusinessService
     /// unlock set, no slot counted complete. Such a vector leaves no trace to settle, so its slot
     /// results, observation time and checkpoint go with it; the attempt stays unsettled under its own
     /// operation context. A vector that may have acted is settled by its result, never forgotten.
+    /// <para>
+    /// A forced mechanical recovery never unlocks, so those three readings say nothing about it: what it
+    /// did is people cutting the power and opening the slots by hand, and the operator's confirmation --
+    /// the observation stamp, with the handoff record on a demand -- is the journal's record that they did.
+    /// A confirmed one has acted and is kept for its result, like any vector that may have (hmi#224
+    /// review, 8005-agv-onboard-hmi#216). Forgetting it on the session's CLOSED would drop the one record
+    /// that the slots were opened, and the next session would offer them as though they were not.
+    /// </para>
     /// </remarks>
     private static WireToGateRecoveryState? ForgetRefusedVector(
         WireToGateRecoveryState state,
@@ -2637,6 +2773,8 @@ public sealed partial class WireToGateBusinessService
         state.ProvenRecoveryCheckpoint == WireToGateRecoveryCheckpoint.Prepared
         && state.ActiveUnlockSlots.Count == 0
         && state.CompletedSlots.Count == 0
+        && !(vector.VectorType == WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery
+            && state.RecoveryResultObservedAt is not null)
             ? state with
             {
                 UnsettledSlotOperationAttemptId =
@@ -3181,6 +3319,7 @@ public sealed partial class WireToGateBusinessService
             : await _vectorExecutor.ExecuteClearAsync(context, SendProgress, cancellationToken)
                 .ConfigureAwait(false);
         bool success = result.OverallOutcome == "COMPLETED";
+        bool doorUnproven = result.OverallOutcome == WireToGateRecoveryVectorExecutor.AllEmptyDoorUnprovenOutcome;
         PublishRecoveryVectorOperation(
             context,
             success
@@ -3188,6 +3327,8 @@ public sealed partial class WireToGateBusinessService
                 : WireToGateHmiOperationStage.RecoveryRequired,
             success
                 ? "物理状态已达到安全收尾条件，正在上报恢复结果。"
+                : doorUnproven
+                    ? DoorUnprovenRepairNotice
                 : RefusedByFatalFaultLatch(result.SlotResults)
                     ? $"本机已锁存严重安全故障，{FormatSlots(NotCompletedSlots(result.SlotResults))}停止开门；复核并复位后可再次申请恢复。"
                     : "恢复向量未完成，已保持故障安全并准备上报未知/失败结果。",
@@ -3220,6 +3361,25 @@ public sealed partial class WireToGateBusinessService
             await CompleteRecoveryVectorStateAsync(context, cancellationToken).ConfigureAwait(false);
             PublishRecoveryVectorCompleted(context);
             return true;
+        }
+
+        // The demand is settled EMPTY on the server's side -- terminated, the vehicle held for repair -- so the
+        // business side is cleared here as a completed clear's is: no attempt, no operation context, no session.
+        // What stays is the server's hold, which it publishes in the vehicle business state and the view shows
+        // from there (DISPLAY_REPAIR_REQUIRED_NOTICE); nothing on this side has to remember the door.
+        if (doorUnproven)
+        {
+            await CompleteRecoveryVectorStateAsync(context, cancellationToken).ConfigureAwait(false);
+            PublishRecoveryVectorOperation(
+                context,
+                WireToGateHmiOperationStage.RecoveryRequired,
+                DoorUnprovenRepairNotice,
+                "door-unproven");
+            PublishOperatorEvent(
+                $"recovery-vector-door-unproven:{context.VectorType}:{context.PrimaryId}",
+                "RECOVERY_VECTOR_DOOR_UNPROVEN",
+                $"{FormatSlots(DoorUnprovenSlots(result.SlotResults))}：{DoorUnprovenRepairNotice}");
+            return false;
         }
 
         // Forgotten before the operator is told, so the entry the message sends them to is already
@@ -3311,7 +3471,8 @@ public sealed partial class WireToGateBusinessService
             // the slot set, because a forced mechanical recovery is a human opening a locker by hand
             // and no electronic reading proves anything about what was done. The outcome is the
             // operator's confirmation, never an executor's finish (onboard-hmi#107). The two proof
-            // flags are constants for the same reason -- see ForcedMechanicalRecoveryResultPayload.
+            // flags are constants for the same reason -- see ForcedMechanicalRecoveryResultPayload; the
+            // handoff record proves neither (REQ-0242).
             WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery => _session
                 .SendForcedMechanicalRecoveryResultAsync(
                     resultKey,
@@ -3327,10 +3488,91 @@ public sealed partial class WireToGateBusinessService
                         RequirePersistedOperator(context),
                         result.ObservedAt,
                         ElectronicEmptyProven: false,
-                        VehicleReadyProven: false),
+                        VehicleReadyProven: false,
+                        // COPY_COMMAND_DEMAND_INTO_RESULT.
+                        DemandId: context.DemandId,
+                        // REPORT_CARGO_HANDOFF_RECORD_IN_RESULT: read from the journalled context only, never
+                        // from the screen. An isolation on a demand without one on file is refused here
+                        // whoever the caller, rather than sent with a made-up record; every other shape
+                        // carries none.
+                        CargoHandoff: result.OverallOutcome == "MECHANICALLY_ISOLATED" && NeedsCargoHandoff(context)
+                            ? context.CargoHandoff is { } handoff
+                                ? new WireToGateCargoHandoffPayload(
+                                    handoff.Sublot,
+                                    handoff.ReceiverName,
+                                    handoff.HandedOverAt)
+                                : throw new InvalidDataException("FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED")
+                            : null),
                     cancellationToken),
             _ => throw new InvalidDataException("RECOVERY_VECTOR_TYPE_INVALID")
         };
+    }
+
+    /// <summary>
+    /// Whether this forced recovery's isolation result has to carry a cargo handoff record: protocol
+    /// 3.0.0's <c>ForcedMechanicalRecoveryResult</c> requires <c>cargoHandoff</c> exactly when the outcome
+    /// is <c>MECHANICALLY_ISOLATED</c> and <c>demandId</c> is set.
+    /// </summary>
+    private static bool NeedsCargoHandoff(WireToGateRecoveryVectorContext context) =>
+        context.VectorType == WireToGateRecoveryVectorTypes.ForcedMechanicalRecovery
+        && context.DemandId is { Length: > 0 };
+
+    /// <summary>
+    /// CONFIRM_SUBLOT_AGAINST_DEMAND_BEFORE_SENDING: <c>true</c> when <paramref name="sublot"/> is the one
+    /// the current stop's worklist names for this demand, or the operator already saw the warning for this
+    /// recovery, this SUBLOT and this comparison, and pressed again. Otherwise warns, remembers what it
+    /// warned about, and answers <c>false</c>: nothing is written and nothing sent.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The second press confirms what the operator was shown, so the warning is keyed on everything the
+    /// sentence named: the recovery, the SUBLOT typed, and what it was compared with -- the demand's SUBLOT,
+    /// or none when the worklist did not name the demand. A warning that said "cannot be checked" does not
+    /// cover a worklist that has since arrived naming another SUBLOT: that mismatch is a new sentence the
+    /// operator has not read yet (independent review of 8005-agv-onboard-hmi#216, M1).
+    /// </para>
+    /// <para>
+    /// The warning is remembered in memory only, so a restart asks again; that errs towards one more
+    /// press, never towards sending unchecked. A different SUBLOT on the second press is a new warning.
+    /// </para>
+    /// </remarks>
+    private bool SublotConfirmedAgainstDemand(WireToGateRecoveryVectorContext context, string sublot)
+    {
+        string? expected = _session.CurrentJourney.CurrentStopWorklist?.Items
+            .FirstOrDefault(item => string.Equals(item.DemandId, context.DemandId, StringComparison.Ordinal))
+            ?.Sublot;
+        if (string.Equals(expected, sublot, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        string warnedFor = string.Join('|', context.PrimaryId, sublot, expected ?? "<none>");
+        if (string.Equals(_forcedSublotWarnedFor, warnedFor, StringComparison.Ordinal))
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"强制机械取出交接子批号未能与需求核对一致，操作员已再次确认：id={context.PrimaryId}，"
+                    + $"demand={context.DemandId}，sublot={sublot}，expected={expected ?? "（清单中无此需求）"}。");
+            return true;
+        }
+
+        _forcedSublotWarnedFor = warnedFor;
+        string warning = expected is null
+            ? $"无法核对子批号：当前站清单里没有这条需求，无法确认 {sublot} 就是它的货物。请核对实物后再按一次「已隔离并完成机械取出」上报。"
+            : $"子批号 {sublot} 与需求的子批号 {expected} 不一致。请核对实物；确认无误后再按一次「已隔离并完成机械取出」上报，或改正子批号后再确认。";
+        _logger.Write(
+            LogSeverity.Warning,
+            nameof(WireToGateBusinessService),
+            $"强制机械取出交接子批号未能与需求核对一致，等待操作员再次确认：id={context.PrimaryId}，"
+                + $"demand={context.DemandId}，sublot={sublot}，expected={expected ?? "（清单中无此需求）"}。");
+        PublishRecoveryVectorOperation(
+            context,
+            WireToGateHmiOperationStage.RecoveryRequired,
+            warning,
+            "handoff-sublot-unconfirmed");
+        PublishOperatorResponse("RECOVERY_BLOCKED", warning);
+        return false;
     }
 
     private Task CompleteRecoveryVectorStateAsync(

@@ -308,8 +308,6 @@ public sealed class WireToGateSettings
     /// </remarks>
     public string ActiveSlotConfigurationPath { get; init; } = "active-slot-configuration.json";
 
-    public bool SupportsBatchUnlock { get; init; }
-
     public int JourneySnapshotMaxAgeMs { get; init; } = 5_000;
 
     public string OperatorIdEnvironmentVariable { get; init; } = "CONTROL_SERVER_OPERATOR_ID";
@@ -355,8 +353,7 @@ public sealed class WireToGateSettings
             CapabilityVersion,
             SafetyStateVersion,
             SlotModelVersion,
-            ActiveSlotConfigurationVersion,
-            SupportsBatchUnlock);
+            ActiveSlotConfigurationVersion);
     }
 
     internal void Validate(bool production = false)

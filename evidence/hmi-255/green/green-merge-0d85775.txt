@@ -1,9 +1,0 @@
-# 合入 origin/w2g/fp-v2-impl（0d85775，含 hmi#254 / PR #258）后的定向运行：合并提交 45bd937。每步记 dotnet test 退出码与程序集收尾的 schema 一致性结论。
-unit build exit=0
-unit test exit=0
-Passed!  - Failed:     0, Passed:   712, Skipped:     0, Total:   712, Duration: 22 s - SQCD.Agv.UnitTests.dll (net8.0)
-G2 build exit=0
-G2 targeted (恢复相关 + hmi#254 新增用例，非全量) test exit=0
-Passed!  - Failed:     0, Passed:   220, Skipped:     0, Total:   220, Duration: 2 m 41 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
-schema: Schema conformance (protocol-v2.0.0 APPROVED_RELEASE): 5908 lines, 5851 distinct, 48 message types; 0 distinct violations, 0 on file; schema compilation 171801 ms, validation 12978 ms.
-schema-violations.json absent (no violations)

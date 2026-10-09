@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -137,6 +138,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private readonly OperatorEventDeduplicator _operatorEventDeduplicator = new();
     private readonly SemaphoreSlim _safetySendGate = new(1, 1);
     private readonly SemaphoreSlim _recoveryRequestGate = new(1, 1);
+
+    // The forced recovery and SUBLOT the operator was last warned about (SublotConfirmedAgainstDemand).
+    // Read and written only under _recoveryRequestGate.
+    private string? _forcedSublotWarnedFor;
+
+    // The CLOSED recovery session snapshots (session and revision) whose closing was said to the operator,
+    // one small entry per closed session for the life of the process. Separate from
+    // _recoverySessionSnapshot on purpose; see the CLOSED case in the pump.
+    private readonly ConcurrentDictionary<string, byte> _announcedClosedRecoverySessions =
+        new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _operationDisplayGate = new(1, 1);
     private string? _operationDisplayOwnerAttemptId;
     private WireToGateSublotEntryRequest? _currentEntryRequest;
@@ -1917,6 +1928,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 return InterruptedOperationSettlement.TakenOver;
             }
 
+            // A slot fault declaration journaled before the process went away: its APPLIED goes out first, as it
+            // would have, and the settlement below reports the declared slot UNKNOWN from the same journal entry
+            // (8005-agv-onboard-hmi#215).
+            WireToGateSlotFaultDeclaration? declared = await ReplayJournaledSlotFaultDeclarationAsync(
+                context,
+                cancellationToken).ConfigureAwait(false);
             WireToGateOperationExecutionResult execution = await _executor
                 .SettleInterruptedAsync(cancellationToken)
                 .ConfigureAwait(false);
@@ -1929,7 +1946,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             _logger.Write(
                 LogSeverity.Warning,
                 nameof(WireToGateBusinessService),
-                $"上次仓位操作在执行中中断，未再输出开锁，按实时IO结算：attempt={attemptId}，outcome={execution.OverallOutcome}，checkpoint={execution.JournalCheckpoint}。");
+                declared is null
+                    ? $"上次仓位操作在执行中中断，未再输出开锁，按实时IO结算：attempt={attemptId}，outcome={execution.OverallOutcome}，checkpoint={execution.JournalCheckpoint}。"
+                    : $"上次仓位操作在执行中中断，未再输出开锁；{declared.SlotNo}号仓按日志里已生效的管理员判定（declarationId={declared.DeclarationId}）报UNKNOWN，其余按实时IO结算：attempt={attemptId}，outcome={execution.OverallOutcome}，checkpoint={execution.JournalCheckpoint}。");
             WireToGateHmiOperationStage finalStage = completedSuccessfully
                 ? WireToGateHmiOperationStage.Completed
                 : WireToGateHmiOperationStage.RecoveryRequired;
@@ -2468,12 +2487,37 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         PublishHeldCommandVoided(held, "服务端恢复会话已关闭");
                     }
 
-                    PublishOperatorEvent(
-                        $"recovery-session-snapshot:{recoverySnapshot.ExceptionRecoverySessionId}:{recoverySnapshot.RecoverySessionRevision}",
-                        "RECOVERY_SESSION_UPDATED",
-                        recoverySnapshot.State == "CLOSED"
-                            ? "服务端恢复会话已关闭。"
-                            : $"收到服务端恢复会话状态：{recoverySnapshot.State}。 ");
+                    string snapshotKey =
+                        $"recovery-session-snapshot:{recoverySnapshot.ExceptionRecoverySessionId}:{recoverySnapshot.RecoverySessionRevision}";
+                    if (recoverySnapshot.State == "CLOSED")
+                    {
+                        // A repair release's session is over, whatever it ended on (8005-agv-onboard-hmi#219).
+                        await ForgetRepairReleaseOfClosedSessionAsync(
+                                recoverySnapshot.ExceptionRecoverySessionId,
+                                cancellationToken)
+                            .ConfigureAwait(false);
+
+                        // The reason is said once per closed session and revision, in this process: the
+                        // server resends a CLOSED it has no acknowledgement for on the next session, and
+                        // the event deduplicator is cleared on every new generation. Kept in its own field,
+                        // never in _recoverySessionSnapshot -- that one is null after a CLOSED, and the
+                        // recovery entries coming back depends on exactly that (8005-agv-onboard-hmi#216).
+                        if (_announcedClosedRecoverySessions.TryAdd(snapshotKey, 0))
+                        {
+                            PublishOperatorEvent(
+                                snapshotKey,
+                                "RECOVERY_SESSION_UPDATED",
+                                WireToGateRecoverySessionClosedReasonText.Describe(recoverySnapshot.ClosedReason));
+                        }
+                    }
+                    else
+                    {
+                        PublishOperatorEvent(
+                            snapshotKey,
+                            "RECOVERY_SESSION_UPDATED",
+                            $"收到服务端恢复会话状态：{recoverySnapshot.State}。 ");
+                    }
+
                     break;
                 case WireToGateSlotOperationCommand operation:
                     await HandleSlotOperationAsync(operation, cancellationToken).ConfigureAwait(false);
@@ -2500,6 +2544,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 case WireToGateForcedMechanicalRecoveryCommand forcedRecovery:
                     await HandleForcedMechanicalRecoveryCommandAsync(forcedRecovery, cancellationToken)
                         .ConfigureAwait(false);
+                    break;
+                case WireToGateSlotFaultDeclarationCommand declaration:
+                    await HandleSlotFaultDeclarationAsync(declaration, cancellationToken).ConfigureAwait(false);
                     break;
                 case WireToGateRecoveryCommand { MessageType: "SublotRejected" } rejection:
                     HandleSublotRejected(rejection);
@@ -4046,6 +4093,23 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         WireToGatePreDepartureSafetyCheck command,
         CancellationToken cancellationToken)
     {
+        // Protocol 3.0.0 added checkPurpose (8005-agv-onboard-hmi#214), and all three are answered since
+        // 8005-agv-onboard-hmi#219. DEPARTURE and NON_BUSINESS_MOVE are the same question about the vehicle -- may
+        // it move now -- one with a demand and one without, so both take the departure evaluation. HOLD_RELEASE
+        // is a different question and never takes the departure verdict as its answer: see
+        // EvaluateHoldRelease.
+        if (command.CheckPurpose is not ("DEPARTURE" or "NON_BUSINESS_MOVE" or "HOLD_RELEASE"))
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"出发前安全检查的用途无法识别：check={command.PreDepartureSafetyCheckId}，" +
+                $"checkPurpose={command.CheckPurpose}。回ACTION_NOT_ALLOWED_IN_STATE，不作答。");
+            await _session.RejectServerCommandAsync(command, "ACTION_NOT_ALLOWED_IN_STATE", cancellationToken)
+                .ConfigureAwait(false);
+            return;
+        }
+
         // CV-PREDEPARTURE-SAFETY-EXPIRES. The check names the safety state version it is asking about.
         // Once this vehicle has had a later version accepted, the question is about a state that no
         // longer holds: answering would report today's safety against it. Refused as
@@ -4065,17 +4129,72 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             return;
         }
 
-        SafetyEvaluation evaluation = EvaluateSafety(_ioModule.CurrentSnapshot);
-        bool safe = evaluation.Safety.DepartureSafe;
+        bool isolated = command.CheckPurpose == "HOLD_RELEASE"
+            && (await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false)).ForcedIsolation is not null;
+        IoSnapshot snapshot = _ioModule.CurrentSnapshot;
+        SafetyEvaluation evaluation = EvaluateSafety(snapshot);
+        string outcome = command.CheckPurpose == "HOLD_RELEASE"
+            ? EvaluateHoldRelease(snapshot, evaluation, isolated, command.PreDepartureSafetyCheckId)
+            : evaluation.Safety.DepartureSafe ? "SAFE" : evaluation.Safety.UnknownPresent ? "UNKNOWN" : "UNSAFE";
         long safetyStateVersion = _session.Current.SafetyStateVersion;
         await _session.SendPreDepartureSafetyCheckResultAsync(
             command.PreDepartureSafetyCheckId,
-            safe ? "SAFE" : evaluation.Safety.UnknownPresent ? "UNKNOWN" : "UNSAFE",
+            command.CheckPurpose,
+            outcome,
             evaluation.ObservedAt,
             safetyStateVersion,
             evaluation.ObservedAt.AddSeconds(2),
             evaluation.Safety,
             cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The answer to a <c>HOLD_RELEASE</c> check (CP-0009, REQ-0364, 8005-agv-onboard-hmi#219;
+    /// <c>ANSWER_HOLD_RELEASE_CHECK_WITHOUT_DEMAND_OR_LEG</c>): <c>SAFE</c> exactly when every slot the server holds
+    /// for an unproven door reads EMPTY, LOCKED and RESET in a fresh snapshot, and nothing else blocks the vehicle
+    /// -- the departure evaluation is safe (every door locked and reset, the vehicle stopped, no fatal fault
+    /// latched) and no slot is left physically unknown by a forced recovery.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The departure verdict is one of the conditions and never the answer by itself: it says nothing about
+    /// whether a held slot is empty, and a held slot with a basket in it is not a repaired door over an empty slot.
+    /// </para>
+    /// <para>
+    /// The held slots are the server's, read from the vehicle business state's <c>blockingFacts</c>
+    /// (<see cref="WireToGateDoorHoldText.HeldSlots"/>). Asked with no hold on record here -- the business state not
+    /// yet received, or the hold not in it -- the vehicle cannot say which slots the question is about, so the
+    /// answer is <c>UNKNOWN</c>, never a <c>SAFE</c> over slots nobody named. A held slot that cannot be read is
+    /// <c>UNKNOWN</c> too; one that reads but is not EMPTY, LOCKED and RESET is <c>UNSAFE</c>.
+    /// </para>
+    /// </remarks>
+    private string EvaluateHoldRelease(
+        IoSnapshot snapshot,
+        SafetyEvaluation evaluation,
+        bool isolated,
+        string checkId)
+    {
+        IReadOnlyList<int> held = WireToGateDoorHoldText.HeldSlots(_session.CurrentJourney);
+        bool fresh = snapshot.IsConnected && SafetyRules.IsSnapshotFresh(snapshot, _clock.Now, _ioSnapshotMaxAge);
+        bool heldUnknown = !fresh || held.Any(slot => !snapshot.GetLocker(slot - 1).IsKnown);
+        bool heldProven = !heldUnknown && held.All(slot => snapshot.GetLocker(slot - 1) is
+        {
+            LightCurtainRaw: true,
+            LockFeedbackRaw: true,
+            UnlockOutputRaw: false
+        });
+        string outcome = held.Count == 0 || heldUnknown || evaluation.Safety.UnknownPresent
+            ? "UNKNOWN"
+            : heldProven && evaluation.Safety.DepartureSafe && !isolated
+                ? "SAFE"
+                : "UNSAFE";
+        _logger.Write(
+            outcome == "SAFE" ? LogSeverity.Information : LogSeverity.Warning,
+            nameof(WireToGateBusinessService),
+            $"扣车解除检查：check={checkId}，被扣仓位={(held.Count == 0 ? "（未收到）" : string.Join(",", held))}，"
+                + $"被扣仓位已证空锁闭复位={heldProven}，出发判定安全={evaluation.Safety.DepartureSafe}，"
+                + $"强制取出隔离={isolated}，结论={outcome}。");
+        return outcome;
     }
 
     /// <summary>
@@ -4459,8 +4578,10 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
             case "SLOT_SET_INVALID":
                 return "SLOT_SET_INVALID";
             case "FATAL_FAULT_LATCHED":
-                // No protocol code says "latched" (program#115 has it for v3.0.0); the vehicle refuses door
-                // IO on its own state with VEHICLE_NOT_READY, as the slot and vector executors do.
+                // Protocol 3.0.0 has ONBOARD_FATAL_FAULT_LATCHED, but its allowedMessageTypes do not include
+                // SlotOperationCommandRejected, the message this answer travels in (8005-agv-onboard-hmi#214).
+                // So the refused resume keeps VEHICLE_NOT_READY: the registered code for the vehicle refusing
+                // door IO on its own state.
                 return "VEHICLE_NOT_READY";
             case "RECOVERY_OPERATION_CONTEXT_MISSING":
                 // Nothing on file to resume: the same answer the safety gate gives an unpersisted state.

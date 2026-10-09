@@ -295,15 +295,7 @@ public partial class App : System.Windows.Application, IDisposable
                     // 不接这一条，视图模型按 false 处理，锁存期间取消装货整个关着——安全，但操作员又只能干等站点超时。
                     canRequestLoadCancellationBeforeAnySublot: () =>
                         _wireToGateBusiness.CanRequestLoadCancellationBeforeAnySublot);
-                viewModel.ConfigureForcedIsolation(
-                    () => _wireToGateBusiness.CanConfirmForcedMechanicalRecovery,
-                    cancellationToken => _wireToGateBusiness.ConfirmForcedMechanicalRecoveryAsync(
-                        cancellationToken),
-                    () => _wireToGateBusiness.PhysicallyUnknownSlots,
-                    () => _wireToGateBusiness.CanSubmitHardwareRecoveryRecord,
-                    (observations, cancellationToken) => _wireToGateBusiness.SubmitHardwareRecoveryRecordAsync(
-                        observations,
-                        cancellationToken));
+                ForcedIsolationWiring.Configure(viewModel, _wireToGateBusiness);
                 // 人工清桩确认入口（8005-agv-onboard-hmi#221）。接线在 StationClearanceWiring 里，G2 夹具调的是同一个方法。
                 StationClearanceWiring.Configure(viewModel, _wireToGateBusiness);
                 // 现场确认充不上入口（8005-agv-onboard-hmi#222）。接线在 UnableToChargeWiring 里，G2 夹具调的是同一个方法。

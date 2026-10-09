@@ -116,12 +116,18 @@ public sealed record WireToGateOperationResultPayload(
     string JournalCheckpoint,
     string ResultContentSha256);
 
+/// <summary>
+/// The v3 check: <see cref="CheckPurpose"/> is <c>DEPARTURE</c>, <c>NON_BUSINESS_MOVE</c> or
+/// <c>HOLD_RELEASE</c>, and the schema's three <c>if/then</c> clauses pin which of the other three ids
+/// are null for each purpose (8005-agv-onboard-hmi#214).
+/// </summary>
 public sealed record PreDepartureSafetyCheckPayload(
     string PreDepartureSafetyCheckId,
-    string DemandId,
-    string MovementLegId,
+    string CheckPurpose,
+    string? DemandId,
+    string? MovementLegId,
     long ExpectedSafetyStateVersion,
-    string TargetStationId);
+    string? TargetStationId);
 
 public sealed record WireToGateSafetySummaryPayload(
     bool DepartureSafe,
@@ -133,6 +139,7 @@ public sealed record WireToGateSafetySummaryPayload(
 
 public sealed record PreDepartureSafetyCheckResultPayload(
     string PreDepartureSafetyCheckId,
+    string CheckPurpose,
     string Outcome,
     DateTimeOffset ObservedAt,
     long SafetyStateVersion,
@@ -310,6 +317,11 @@ public sealed record UnableToChargeFieldConfirmationResultPayload(
 /// <remarks>
 /// <b><c>SlotOperationAttemptId</c> is new in 2.0.0: required, and nullable.</b> Same field, same
 /// meaning, as on the other two recovery messages.
+/// <para>
+/// <c>ClosedReason</c> is new in 3.0.0: required and nullable, an error code only when
+/// <c>state</c> is <c>CLOSED</c> (8005-agv-onboard-hmi#214). It is received and kept on the record;
+/// showing it is 8005-agv-onboard-hmi#216.
+/// </para>
 /// </remarks>
 public sealed record ExceptionRecoverySessionSnapshotPayload(
     string ExceptionRecoverySessionId,
@@ -323,7 +335,8 @@ public sealed record ExceptionRecoverySessionSnapshotPayload(
     IReadOnlyList<int> Slots,
     string? SelectedAction,
     IReadOnlyList<string> AllowedActions,
-    IReadOnlyList<WireToGateBlockingFactPayload> BlockingFacts);
+    IReadOnlyList<WireToGateBlockingFactPayload> BlockingFacts,
+    string? ClosedReason = null);
 
 public sealed record WireToGateProblemPayload(
     string ReasonCode,
@@ -433,8 +446,10 @@ public sealed record ForcedMechanicalRecoveryCommandPayload(
 /// </summary>
 /// <remarks>
 /// <para>
-/// There is no <c>demandId</c>: the command's is nullable and the result schema does not carry one
-/// at all.  There is no per-slot result array either -- a forced mechanical recovery is a human
+/// <see cref="DemandId"/> and <see cref="CargoHandoff"/> are new in 3.0.0, both required and
+/// nullable: the result copies the command's demand, and an isolation on a demand names the cargo
+/// handoff (<c>CV-FORCED-MECHANICAL-RECOVERY</c>, 8005-agv-onboard-hmi#214). There is no per-slot
+/// result array -- a forced mechanical recovery is a human
 /// prying a locker open, and the vehicle has no trustworthy electronic reading of what happened
 /// inside it, so the message reports only which slots were in scope.
 /// </para>
@@ -456,4 +471,39 @@ public sealed record ForcedMechanicalRecoveryResultPayload(
     WireToGateOperatorContextPayload Operator,
     DateTimeOffset ObservedAt,
     bool ElectronicEmptyProven,
-    bool VehicleReadyProven);
+    bool VehicleReadyProven,
+    string? DemandId,
+    WireToGateCargoHandoffPayload? CargoHandoff);
+
+/// <summary>
+/// The cargo handoff an isolation on a demand records: which sublot went to whom, and when.
+/// </summary>
+public sealed record WireToGateCargoHandoffPayload(
+    string Sublot,
+    string ReceiverName,
+    DateTimeOffset HandedOverAt);
+
+/// <summary>
+/// The C_TO_O administrator's slot fault declaration, shaped by the 3.0.0 candidate's
+/// <c>SlotFaultDeclarationCommand.schema.json</c> (REQ-0359, 8005-agv-onboard-hmi#215).
+/// </summary>
+public sealed record SlotFaultDeclarationCommandPayload(
+    string DeclarationId,
+    string DemandId,
+    string SlotOperationAttemptId,
+    int SlotNo,
+    WireToGateOperatorContextPayload Administrator,
+    string AdministratorRole,
+    string FaultCategory,
+    string Note,
+    DateTimeOffset DeclaredAt);
+
+/// <summary>
+/// The O_TO_C answer to a slot fault declaration. <see cref="Problem"/> is required and nullable: it says why
+/// a <c>NOT_APPLICABLE</c> declaration was refused, and is <c>null</c> for <c>APPLIED</c>.
+/// </summary>
+public sealed record SlotFaultDeclarationResultPayload(
+    string DeclarationId,
+    string SlotOperationAttemptId,
+    string Outcome,
+    WireToGateProblemPayload? Problem);

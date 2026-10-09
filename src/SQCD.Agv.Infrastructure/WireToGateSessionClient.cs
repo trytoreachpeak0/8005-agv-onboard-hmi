@@ -22,8 +22,7 @@ public sealed record WireToGateSessionOptions(
     long CapabilityVersion,
     long SafetyStateVersion,
     string SlotModelVersion,
-    string ActiveSlotConfigurationVersion,
-    bool SupportsBatchUnlock);
+    string ActiveSlotConfigurationVersion);
 
 /// <summary>
 /// 服务端 ack 过的一份告警快照：哪一代会话、哪些告警。
@@ -619,6 +618,104 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             cancellationToken);
     }
 
+    /// <summary>
+    /// The outbox key of the answer to the slot fault declaration <paramref name="declarationId"/>: the business
+    /// deduplication key the protocol gives the message, and the one source of its messageId.
+    /// </summary>
+    public static string SlotFaultDeclarationResultKey(string declarationId) =>
+        $"slot-fault-declaration-result:{declarationId}";
+
+    /// <summary>
+    /// Answers a slot fault declaration (REQ-0359, 8005-agv-onboard-hmi#215). The messageId is
+    /// <c>StableUuid</c> of the declaration's outbox key, never anything about the attempt, so every answer to one
+    /// declaration -- a resend, the answer rebuilt from the journal after a restart -- is the same message. Sendable
+    /// while RECOVERY_REQUIRED, like every other result.
+    /// </summary>
+    public Task<string> SendSlotFaultDeclarationResultAsync(
+        SlotFaultDeclarationResultPayload payload,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(payload);
+        RequireUuid(payload.DeclarationId, nameof(payload.DeclarationId));
+        RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
+        if (payload.Outcome switch
+        {
+            "APPLIED" => payload.Problem is not null,
+            "NOT_APPLICABLE" => payload.Problem is null || !IsProtocolErrorCode(payload.Problem.ReasonCode),
+            _ => true
+        })
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        string deduplicationKey = SlotFaultDeclarationResultKey(payload.DeclarationId);
+        return SendDurableCoreAsync(
+            "SlotFaultDeclarationResult",
+            deduplicationKey,
+            StableUuid(deduplicationKey),
+            null,
+            payload,
+            allowRecoveryRequired: true,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Sends the answer to <paramref name="declarationId"/> already on file once more, exactly as stored -- same
+    /// messageId and payload -- and waits for its <c>DurableAck</c>. A declaration the server sends again is
+    /// answered with what the first one got, never judged a second time. Returns at once when the stored answer
+    /// is already acknowledged; throws <c>DURABLE_MESSAGE_ABANDONED</c> when it was given up.
+    /// </summary>
+    public async Task<string> ResendSlotFaultDeclarationResultAsync(
+        string declarationId,
+        CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        string deduplicationKey = SlotFaultDeclarationResultKey(declarationId);
+        WireToGateDurableMessage stored = await _journal
+            .ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidDataException("DURABLE_OUTBOX_ROW_MISSING");
+        WireToGateEnvelope envelope = WireToGateProtocolSerializer.DeserializeAndValidate(
+            stored.WireLine.TrimEnd('\r', '\n'),
+            _options.AgvId);
+        if (!string.Equals(stored.MessageType, "SlotFaultDeclarationResult", StringComparison.Ordinal)
+            || !string.Equals(envelope.MessageType, "SlotFaultDeclarationResult", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("DURABLE_OUTBOX_CONTENT_MISMATCH");
+        }
+
+        // Given up (onboard-hmi#254): an answer acknowledged once and refused when it was replayed is both, and is never
+        // sent again -- refused here before the acknowledged branch below would put it back on the wire, with the
+        // exception StoreDurableAsync refuses an unacknowledged one by (onboard-hmi#266).
+        if (stored.Abandoned)
+        {
+            throw new InvalidDataException("DURABLE_MESSAGE_ABANDONED");
+        }
+
+        if (stored.Acknowledged)
+        {
+            // The server has it on file and asked again anyway -- its own outbox, resending until it sees an
+            // answer. The answer goes out once more as stored; the durable send below would return without a word.
+            WireToGateSessionSnapshot current = Current;
+            if (!current.Connected || current.SessionGeneration is not long generation)
+            {
+                throw new InvalidOperationException("WIRE_TO_GATE_NOT_READY");
+            }
+
+            await ReplayAcknowledgedResultAsync(stored, generation, cancellationToken).ConfigureAwait(false);
+            return stored.MessageId;
+        }
+
+        return await SendDurableCoreAsync(
+            "SlotFaultDeclarationResult",
+            deduplicationKey,
+            stored.MessageId,
+            envelope.CorrelationId,
+            envelope.Payload,
+            allowRecoveryRequired: true,
+            cancellationToken).ConfigureAwait(false);
+    }
+
     public Task<ManualChargingReturnToServiceResultPayload> RequestManualChargingReturnToServiceAsync(
         string messageId,
         ManualChargingReturnToServiceRequestedPayload payload,
@@ -627,6 +724,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
     public Task<string> SendPreDepartureSafetyCheckResultAsync(
         string preDepartureSafetyCheckId,
+        string checkPurpose,
         string outcome,
         DateTimeOffset observedAt,
         long safetyStateVersion,
@@ -640,6 +738,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             preDepartureSafetyCheckId,
             new PreDepartureSafetyCheckResultPayload(
                 preDepartureSafetyCheckId,
+                checkPurpose,
                 outcome,
                 observedAt,
                 safetyStateVersion,
@@ -841,7 +940,6 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                     // 一版，只有生效配置存储说了算。从配置项现算会让每次激活之后两端立刻对不上。
                     _activationCoordinator.ActiveConfiguration.Fingerprint,
                     slotStates,
-                    _options.SupportsBatchUnlock,
                     1),
                 cancellationToken).ConfigureAwait(false);
 
@@ -1642,8 +1740,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             // ends while the session is down or mid-handshake is replayed by the next handshake under the same
             // messageId (ADR-cross-0029 step 4), instead of being lost and settled again from the live IO
             // (onboard-hmi#127). Only OperationResult: SafetyStateChanged and the other durable messages keep
-            // their own replay behaviour.
-            if (string.Equals(messageType, "OperationResult", StringComparison.Ordinal))
+            // their own replay behaviour. And the answer to a slot fault declaration, for the same reason and
+            // because it has to reach the server ahead of the OperationResult the declaration produces: on
+            // file in the order they were written, the next handshake replays them in that order
+            // (8005-agv-onboard-hmi#215).
+            if (messageType is "OperationResult" or "SlotFaultDeclarationResult")
             {
                 await StoreDurableAsync(
                     messageType,
@@ -3054,7 +3155,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                                 payload.OperationSessionId,
                                 payload.StationDepartureDeadlineAt,
                                 payload.Items.Select(ToCoreWorklistItem).ToArray(),
-                                payloadContentSha256),
+                                payloadContentSha256,
+                                payload.StopEndedReason),
                             UpdatedAt = _clock.Now
                         },
                         cancellationToken);
@@ -3233,6 +3335,101 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             .ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// The three <c>if/then</c> clauses of the v3 <c>PreDepartureSafetyCheck</c> schema: which of
+    /// <c>demandId</c>, <c>movementLegId</c> and <c>targetStationId</c> are ids and which are null is
+    /// fixed by <c>checkPurpose</c>, and a purpose outside the enum is a schema violation.
+    /// </summary>
+    /// <remarks>
+    /// Every purpose the schema allows is accepted here, including the two this line does not act on
+    /// yet (<c>NON_BUSINESS_MOVE</c>, <c>HOLD_RELEASE</c>): whether to answer them is the business
+    /// service's decision, and refusing a schema-valid message as schema-invalid would misreport it
+    /// (8005-agv-onboard-hmi#214).
+    /// </remarks>
+    internal static void ValidatePreDepartureSafetyCheck(PreDepartureSafetyCheckPayload payload)
+    {
+        RequireUuid(payload.PreDepartureSafetyCheckId, nameof(payload.PreDepartureSafetyCheckId));
+        if (payload.ExpectedSafetyStateVersion < 0)
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        switch (payload.CheckPurpose)
+        {
+            case "DEPARTURE":
+                RequireUuid(payload.DemandId, nameof(payload.DemandId));
+                RequireUuid(payload.MovementLegId, nameof(payload.MovementLegId));
+                RequireStationId(payload.TargetStationId);
+                return;
+            case "NON_BUSINESS_MOVE":
+                RequireNull(payload.DemandId);
+                RequireUuid(payload.MovementLegId, nameof(payload.MovementLegId));
+                RequireStationId(payload.TargetStationId);
+                return;
+            case "HOLD_RELEASE":
+                RequireNull(payload.DemandId);
+                RequireNull(payload.MovementLegId);
+                RequireNull(payload.TargetStationId);
+                return;
+            default:
+                throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        static void RequireNull(string? value)
+        {
+            if (value is not null)
+            {
+                throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+            }
+        }
+
+        static void RequireStationId(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Checks an inbound recovery session snapshot against the frozen schema.
+    /// </summary>
+    /// <remarks>
+    /// <c>closedReason</c> is new in 3.0.0 (8005-agv-onboard-hmi#214): a registered error code, and
+    /// only on a <c>CLOSED</c> session -- the schema's <c>else</c> pins it to <c>null</c> on the other
+    /// three states. A <c>CLOSED</c> session with no reason is legal too. Any registered code is taken,
+    /// not only <c>RECOVERY_ACTION_RESULT_NOT_RECONCILED</c>, the one the control server sends today.
+    /// </remarks>
+    internal static void ValidateExceptionRecoverySessionSnapshot(ExceptionRecoverySessionSnapshotPayload payload)
+    {
+        RequireUuid(payload.ExceptionRecoverySessionId, nameof(payload.ExceptionRecoverySessionId));
+        RequireUuid(payload.EventId, nameof(payload.EventId));
+        if (payload.RecoverySessionRevision < 0
+            || payload.State is not ("OPEN" or "ACTION_SELECTED" or "EXECUTING" or "CLOSED")
+            || string.IsNullOrWhiteSpace(payload.AdministratorId)
+            || payload.AdministratorRole is not ("MAINTENANCE_ADMINISTRATOR" or "SYSTEM_ADMINISTRATOR")
+            || payload.DemandId is not null
+                && !Guid.TryParseExact(payload.DemandId, "D", out _)
+            || payload.Slots is null
+            || payload.AllowedActions is null
+            || payload.BlockingFacts is null
+            || payload.ClosedReason is not null
+                && (payload.State != "CLOSED" || !IsProtocolErrorCode(payload.ClosedReason)))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
+        ValidateSortedSlots(payload.Slots);
+        if (payload.AllowedActions.Any(string.IsNullOrWhiteSpace)
+            || payload.BlockingFacts.Any(fact =>
+                string.IsNullOrWhiteSpace(fact.ReasonCode)
+                || string.IsNullOrWhiteSpace(fact.SubjectType)))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+    }
+
     private WireToGateEnvelope CreateProtocolProblem(
         string rejectedMessageId,
         string rejectedMessageType,
@@ -3404,20 +3601,14 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
                     PreDepartureSafetyCheckPayload payload =
                         WireToGateProtocolSerializer.DeserializePayload<PreDepartureSafetyCheckPayload>(envelope);
-                    RequireUuid(payload.PreDepartureSafetyCheckId, nameof(payload.PreDepartureSafetyCheckId));
-                    RequireUuid(payload.DemandId, nameof(payload.DemandId));
-                    RequireUuid(payload.MovementLegId, nameof(payload.MovementLegId));
-                    if (payload.ExpectedSafetyStateVersion < 0
-                        || string.IsNullOrWhiteSpace(payload.TargetStationId))
-                    {
-                        throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
-                    }
+                    ValidatePreDepartureSafetyCheck(payload);
 
                     command = new WireToGatePreDepartureSafetyCheck(
                         envelope.MessageId,
                         envelope.SessionGeneration!.Value,
                         envelope.SentAt,
                         payload.PreDepartureSafetyCheckId,
+                        payload.CheckPurpose,
                         payload.DemandId,
                         payload.MovementLegId,
                         payload.ExpectedSafetyStateVersion,
@@ -3433,31 +3624,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
                     ExceptionRecoverySessionSnapshotPayload payload =
                         WireToGateProtocolSerializer.DeserializePayload<ExceptionRecoverySessionSnapshotPayload>(envelope);
-                    RequireUuid(
-                        payload.ExceptionRecoverySessionId,
-                        nameof(payload.ExceptionRecoverySessionId));
-                    RequireUuid(payload.EventId, nameof(payload.EventId));
-                    if (payload.RecoverySessionRevision < 0
-                        || payload.State is not ("OPEN" or "ACTION_SELECTED" or "EXECUTING" or "CLOSED")
-                        || string.IsNullOrWhiteSpace(payload.AdministratorId)
-                        || payload.AdministratorRole is not ("MAINTENANCE_ADMINISTRATOR" or "SYSTEM_ADMINISTRATOR")
-                        || payload.DemandId is not null
-                            && !Guid.TryParseExact(payload.DemandId, "D", out _)
-                        || payload.Slots is null
-                        || payload.AllowedActions is null
-                        || payload.BlockingFacts is null)
-                    {
-                        throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
-                    }
-
-                    ValidateSortedSlots(payload.Slots);
-                    if (payload.AllowedActions.Any(string.IsNullOrWhiteSpace)
-                        || payload.BlockingFacts.Any(fact =>
-                            string.IsNullOrWhiteSpace(fact.ReasonCode)
-                            || string.IsNullOrWhiteSpace(fact.SubjectType)))
-                    {
-                        throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
-                    }
+                    ValidateExceptionRecoverySessionSnapshot(payload);
 
                     command = new WireToGateExceptionRecoverySessionSnapshot(
                         envelope.MessageId,
@@ -3478,7 +3645,8 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         payload.BlockingFacts.Select(fact => new WireToGateRecoveryBlockingFact(
                             fact.ReasonCode,
                             fact.SubjectType,
-                            fact.SubjectId)).ToArray());
+                            fact.SubjectId)).ToArray(),
+                        payload.ClosedReason);
                     return true;
                 }
             case "SublotRejected":
@@ -3668,6 +3836,45 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         payload.CommandContentSha256);
                     return true;
                 }
+            case "SlotFaultDeclarationCommand":
+                {
+                    if (envelope.CorrelationId is not null)
+                    {
+                        throw new InvalidDataException("CORRELATION_INVALID");
+                    }
+
+                    SlotFaultDeclarationCommandPayload payload =
+                        WireToGateProtocolSerializer.DeserializePayload<SlotFaultDeclarationCommandPayload>(envelope);
+                    RequireUuid(payload.DeclarationId, nameof(payload.DeclarationId));
+                    RequireUuid(payload.DemandId, nameof(payload.DemandId));
+                    RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
+                    // Every constraint the 3.0.0 candidate schema puts on the payload, and nothing narrower.
+                    if (payload.SlotNo is < 1 or > 8
+                        || payload.Administrator is null
+                        || string.IsNullOrEmpty(payload.Administrator.OperatorId)
+                        || payload.Administrator.VerificationMethod is not ("BADGE" or "SESSION")
+                        || payload.AdministratorRole is not ("MAINTENANCE_ADMINISTRATOR" or "SYSTEM_ADMINISTRATOR")
+                        || payload.FaultCategory is not ("LOCK" or "LIGHT_CURTAIN" or "DOOR_MECHANISM" or "IO_MODULE")
+                        || string.IsNullOrEmpty(payload.Note))
+                    {
+                        throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+                    }
+
+                    command = new WireToGateSlotFaultDeclarationCommand(
+                        envelope.MessageId,
+                        envelope.SessionGeneration!.Value,
+                        envelope.SentAt,
+                        payload.DeclarationId,
+                        payload.DemandId,
+                        payload.SlotOperationAttemptId,
+                        payload.SlotNo,
+                        payload.Administrator.OperatorId,
+                        payload.AdministratorRole,
+                        payload.FaultCategory,
+                        payload.Note,
+                        payload.DeclaredAt);
+                    return true;
+                }
             case "CapabilitySnapshotRequested":
             case "SafetyStateChanged":
             case "SafetyStateSnapshotRequested":
@@ -3825,11 +4032,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
         }
 
-        if (payload.OverallOutcome is not ("ALL_EMPTY" or "FAILED" or "UNKNOWN"))
-        {
-            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
-        }
-
+        ValidateClearOutcome(payload.OverallOutcome, payload.SlotResults);
         ValidateSlotResults(payload.SlotResults, minimumCount: 0);
     }
 
@@ -3840,12 +4043,28 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         RequireUuid(payload.RecoveryActionId, nameof(payload.RecoveryActionId));
         RequireUuid(payload.DemandId, nameof(payload.DemandId));
         RequireUuid(payload.SlotOperationAttemptId, nameof(payload.SlotOperationAttemptId));
-        if (payload.OverallOutcome is not ("ALL_EMPTY" or "FAILED" or "UNKNOWN"))
+        ValidateClearOutcome(payload.OverallOutcome, payload.SlotResults);
+        ValidateSlotResults(payload.SlotResults);
+    }
+
+    /// <summary>
+    /// The <c>overallOutcome</c> of a load cancellation or compensation result, with the schema's
+    /// <c>if/then</c> on the 3.0.0 value: <c>ALL_EMPTY_DOOR_UNPROVEN</c> carries at least one slot result and
+    /// every one of them <c>EMPTY</c> (CP-0009, 8005-agv-onboard-hmi#219). <c>ALL_EMPTY</c> keeps its meaning
+    /// and is not touched here.
+    /// </summary>
+    internal static void ValidateClearOutcome(
+        string overallOutcome,
+        IReadOnlyList<WireToGateSlotResultPayload> slotResults)
+    {
+        if (overallOutcome is not ("ALL_EMPTY" or "FAILED" or "UNKNOWN" or "ALL_EMPTY_DOOR_UNPROVEN")
+            || overallOutcome == "ALL_EMPTY_DOOR_UNPROVEN"
+                && (slotResults is null
+                    || slotResults.Count == 0
+                    || slotResults.Any(result => result.FinalPhysicalState != "EMPTY")))
         {
             throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
         }
-
-        ValidateSlotResults(payload.SlotResults);
     }
 
     private static void ValidateLoadCorrectionResult(
@@ -3891,16 +4110,28 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// it here keeps that failure on this side of the wire, where the journal has not yet recorded
     /// a claim the vehicle cannot support.
     /// </remarks>
-    private static void ValidateForcedMechanicalRecoveryResult(
+    /// <remarks>
+    /// <c>demandId</c> and <c>cargoHandoff</c> (3.0.0, 8005-agv-onboard-hmi#214) are checked in both
+    /// directions of the schema's <c>if/then/else</c>: an isolation on a demand must carry a handoff
+    /// record, and every other result must carry none. Today the business service never builds the
+    /// first shape (it holds that confirmation unreported); this check stays right once
+    /// 8005-agv-onboard-hmi#216 adds the send path that does.
+    /// </remarks>
+    internal static void ValidateForcedMechanicalRecoveryResult(
         ForcedMechanicalRecoveryResultPayload payload)
     {
         ArgumentNullException.ThrowIfNull(payload);
         RequireUuid(payload.ExceptionRecoverySessionId, nameof(payload.ExceptionRecoverySessionId));
         RequireUuid(payload.RecoveryActionId, nameof(payload.RecoveryActionId));
+        bool isolationOnADemand = payload.Outcome == "MECHANICALLY_ISOLATED" && payload.DemandId is not null;
         if (payload.ForcedRecoveryGeneration < 0
             || payload.Outcome is not ("MECHANICALLY_ISOLATED" or "FAILED" or "UNKNOWN")
             || payload.ElectronicEmptyProven
-            || payload.VehicleReadyProven)
+            || payload.VehicleReadyProven
+            || payload.DemandId is not null && !IsUuid(payload.DemandId)
+            || isolationOnADemand != (payload.CargoHandoff is not null)
+            || payload.CargoHandoff is { } handoff
+                && (string.IsNullOrWhiteSpace(handoff.Sublot) || string.IsNullOrWhiteSpace(handoff.ReceiverName)))
         {
             throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
         }
@@ -4202,7 +4433,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         or "SUBLOT_NOT_IN_DISPATCH_SCOPE"
         or "SUBLOT_BOX_COUNT_UNAVAILABLE"
         or "PACKAGE_CAPACITY_UNRESOLVED"
-        or "OPERATOR_TIMEOUT";
+        or "OPERATOR_TIMEOUT"
+        // Registered by the 3.0.0 candidate (8005-agv-onboard-hmi#214). ONBOARD_FATAL_FAULT_LATCHED is
+        // the one this build emits; the other three arrive in results and recovery snapshots.
+        or "SLOT_FAULT_DECLARED"
+        or "RECOVERY_ACTION_RESULT_NOT_RECONCILED"
+        or "ONBOARD_FATAL_FAULT_LATCHED"
+        or "SLOT_DOOR_LOCK_UNPROVEN_AFTER_EMPTY";
 
     /// <summary>
     /// Checks an inbound worklist snapshot against the frozen v2 schema, and nothing narrower.
@@ -4222,9 +4459,28 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// the widening opens no crash path, and a <c>STAGING_TO_WIRE</c> journey must not lock the
     /// session the way <c>8005-agv-onboard-hmi#38</c> did.
     /// </para>
+    /// <para>
+    /// <c>stopEndedReason</c> (3.0.0, 8005-agv-onboard-hmi#214) is checked against the schema's seven
+    /// values and its <c>if/then/else</c>: <c>null</c> while there are items, a string once there are
+    /// none. One case is let through that the schema would refuse, on purpose: an empty worklist with
+    /// no reason. That is the shape a 2.0.0 build journaled, and <c>RestorePersistedJourneyProjectionAsync</c>
+    /// replays the journal through this same check on the first start after an upgrade -- refusing it
+    /// would stop the vehicle from starting over a display field. It shows as it did before, 「无待处理任务」.
+    /// The same check serves the live path, so a 3.0.0 server sending that shape on the wire is let
+    /// through too, not refused as <c>PROTOCOL_SCHEMA_INVALID</c>; the replay and the live receipt cannot
+    /// tell the two apart, because the payload record reads a missing member and an explicit <c>null</c> alike.
+    /// </para>
     /// </remarks>
     internal static void ValidateCurrentStopWorklist(CurrentStopWorklistSnapshotPayload payload)
     {
+        if (payload.Items is { Count: > 0 } && payload.StopEndedReason is not null
+            || payload.StopEndedReason is not (null or "COMPLETED" or "STATION_DEADLINE_EXPIRED"
+                or "LOAD_CANCELLED" or "LOAD_COMPENSATED" or "CARGO_HANDED_OFF" or "DEMAND_RELEASED"
+                or "TRIP_TERMINATED"))
+        {
+            throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+        }
+
         if (string.IsNullOrWhiteSpace(payload.StationId)
             || payload.WorklistRevision < 0
             || payload.OperationSessionId is not null && !IsUuid(payload.OperationSessionId)
@@ -4922,7 +5178,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
     }
 
-    private static void RequireUuid(string value, string name)
+    private static void RequireUuid(string? value, string name)
     {
         if (!Guid.TryParseExact(value, "D", out _))
         {
@@ -4990,7 +5246,6 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         string ActiveSlotConfigurationVersion,
         string ActiveSlotConfigurationFingerprint,
         IReadOnlyList<ProtocolSlotState> SlotStates,
-        bool SupportsBatchUnlock,
         int OnboardJournalFormatVersion);
 
     private sealed record SlotConfigurationActivationCommandPayload(

@@ -1,0 +1,19 @@
+# 审查 S2：WriteCheckpointAsync 保留 RepairRelease 的那一行由 ARepairReleaseOutlivesAnOperationOnOtherSlots 钉住
+# Debug，dotnet build 成功后 dotnet test --no-build --filter 该用例；变异前已提交，用 git checkout 还原
+
+## aee3418 原样
+  Passed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ARepairReleaseOutlivesAnOperationOnOtherSlots [270 ms]
+
+## 变异：删去 src/SQCD.Agv.Application/WireToGateSlotOperationExecutor.cs:1821「RepairRelease = current.RepairRelease,」
+[xUnit.net 00:00:01.33]     SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ARepairReleaseOutlivesAnOperationOnOtherSlots [FAIL]
+[xUnit.net 00:00:01.34]       Assert.NotNull() Failure: Value is null
+  Failed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ARepairReleaseOutlivesAnOperationOnOtherSlots [218 ms]
+   Assert.NotNull() Failure: Value is null
+
+## 还原后
+  Passed SQCD.Agv.UnitTests.WireToGateSlotOperationExecutorTests.ARepairReleaseOutlivesAnOperationOnOtherSlots [286 ms]
+
+## 作废的一轮：第一次跑时用例有 CA1305 构建错误，--no-build 跑的是旧二进制（只选中 1 条、没有新用例），三步结果全部不算数；修好后重跑即上面三段。
+
+## dfac833 补 ProtocolVector 标签之后（用例体与 aee3418 相同），SQCD.Agv.UnitTests 全量（Debug）
+Passed!  - Failed:     0, Passed:   859, Skipped:     0, Total:   859, Duration: 18 s - SQCD.Agv.UnitTests.dll (net8.0)
