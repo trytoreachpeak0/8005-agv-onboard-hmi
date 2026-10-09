@@ -309,7 +309,7 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         // 一、按钮点不下去。入口关在业务层，所以两条刷新路径读到的是同一个答案。
         Assert.False(harness.Business.CanSubmitSublot);
-        harness.ViewModel.RefreshWireToGateInputState();
+        harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
         Assert.False(harness.ViewModel.CanSubmit);
         harness.ViewModel.ScanText = "SUBLOT-B";
         Assert.False(harness.ViewModel.ScannerSubmitCommand.CanExecute(null));
@@ -682,7 +682,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.Business.CanSubmitSublot && harness.WorklistRows().Length == items,
             "the entry request and the worklist",
             token);
-        harness.ViewModel.RefreshWireToGateInputState();
+        harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
 
         Assert.True(harness.ViewModel.CanRequestLoadCancellation);
         if (items == 2)

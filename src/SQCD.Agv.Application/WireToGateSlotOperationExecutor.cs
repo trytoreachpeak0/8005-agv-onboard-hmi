@@ -428,7 +428,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
     private static WireToGateRecoveryState RecordedUnderRecoveryVector(
         WireToGateRecoveryState state,
         string slotOperationAttemptId) =>
-        state with
+        WithLoadOnBoardRecorded(state, slotOperationAttemptId) with
         {
             PendingResults = state.PendingResults
                 .Where(item => !(string.Equals(item.MessageType, "OperationResult", StringComparison.Ordinal)
@@ -440,8 +440,23 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     : state.LastCompletedLoadOperationContext
         };
 
+    /// <summary>
+    /// The settled-load list's share of recording <paramref name="slotOperationAttemptId"/> (8005-agv-onboard-hmi#209): its
+    /// load is on board, its unload takes the demand's load off. Anything else -- no context, another attempt's -- leaves
+    /// the list as it is.
+    /// </summary>
+    private static WireToGateRecoveryState WithLoadOnBoardRecorded(
+        WireToGateRecoveryState state,
+        string? slotOperationAttemptId) =>
+        state.OperationContext is { } context
+            && string.Equals(context.SlotOperationAttemptId, slotOperationAttemptId, StringComparison.Ordinal)
+                ? context.OperationType == OperationType.Load
+                    ? state.WithLoadOnBoard(context)
+                    : state.WithoutLoadOnBoard(context.DemandId)
+                : state;
+
     private static WireToGateRecoveryState Recorded(WireToGateRecoveryState state) =>
-        state with
+        WithLoadOnBoardRecorded(state, state.OperationContext?.SlotOperationAttemptId) with
         {
             UnsettledSlotOperationAttemptId = null,
             ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ResultRecorded,
@@ -1455,6 +1470,7 @@ public sealed class WireToGateSlotOperationExecutor : IAsyncDisposable
                     RecoveryVector = current.RecoveryVector,
                     RecoveryResultObservedAt = current.RecoveryResultObservedAt,
                     LastCompletedLoadOperationContext = current.LastCompletedLoadOperationContext,
+                    LoadsOnBoard = current.LoadsOnBoard,
                     // The operator's unanswered load cancellation for this attempt stays; one left over
                     // from another attempt goes, as it always did (onboard-hmi#78).
                     PendingLoadCancellation = string.Equals(

@@ -699,6 +699,52 @@ public sealed class MultiDemandViewModelTests
 
     internal const string StopSessionId = "77777777-7777-4777-8777-777777777777";
 
+    /// <summary>
+    /// 选中的那一行不在了（卸完、旅程收尾），选择清空、提示先选，不悄悄换成另一行（onboard-hmi#209 审查 RE）。三条需求，选中 B；
+    /// 列表只剩 A、C 时没有选中行，按钮禁用。
+    /// </summary>
+    [Fact]
+    public async Task ASelectionWhoseRowIsGoneIsClearedNotMovedToAnother()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        WireToGateLoadOnBoard[] loads =
+        [
+            new(WireToGateRecoveryOperationContext.FromCommand(Command(DemandA, [1]))),
+            new(WireToGateRecoveryOperationContext.FromCommand(Command(DemandB, [5]))),
+            new(WireToGateRecoveryOperationContext.FromCommand(Command(DemandC, [3])))
+        ];
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => false,
+            canRequestFaultCargoHandoff: () => true,
+            faultCargoHandoffRequester: (_, _) => Task.FromResult(true));
+        viewModel.ConfigureRecoveryDemandChoices(
+            () => loads,
+            () => loads,
+            () => null,
+            _ => null,
+            (_, _, _) => Task.FromResult(true),
+            (_, _, _) => Task.FromResult(true));
+        viewModel.UpdateWireToGateStatus(Session());
+        viewModel.UpdateWireToGateJourney(Journey(Worklist(
+            1,
+            Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 1),
+            Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1),
+            Item(DemandC, "SUBLOT-C", "WIRE_TO_GATE", "PICKUP", 1))));
+        viewModel.RefreshWireToGateInputState();
+        viewModel.SelectedRecoveryDemandChoice = viewModel.RecoveryDemandChoices.Single(row => row.DemandId == DemandB);
+        Assert.True(viewModel.CanPressFaultCargoHandoff);
+
+        loads = [loads[0], loads[2]];
+        viewModel.RefreshWireToGateInputState();
+
+        Assert.Equal(["子批 SUBLOT-A / 1号仓", "子批 SUBLOT-C / 3号仓"], viewModel.RecoveryDemandChoices.Select(row => row.Text));
+        Assert.Null(viewModel.SelectedRecoveryDemandChoice);
+        Assert.True(viewModel.HasRecoveryDemandSelectionHint);
+        Assert.False(viewModel.CanPressFaultCargoHandoff);
+    }
+
     internal static WireToGateSlotOperationCommand Command(
         string demandId,
         IReadOnlyList<int> slots,

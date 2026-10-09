@@ -8,7 +8,7 @@ using SQCD.Agv.Infrastructure;
 
 namespace SQCD.Agv.Wpf.ViewModels;
 
-public sealed class MainViewModel : ViewModelBase
+public sealed partial class MainViewModel : ViewModelBase
 {
     private const int MaxLogEntries = 300;
 
@@ -914,8 +914,9 @@ public sealed class MainViewModel : ViewModelBase
         HasLoadCancellationSelectionHint ? LoadCancellationSelectionHint : string.Empty;
 
     /// <summary>
-    /// 补偿清空、故障交接、强制机械恢复这三个入口此刻指向哪一条需求的子批（批次7-14）。只在它们回落到
-    /// 「上次完成的装货」时有值：有在途操作时主体就是那次操作，业务服务给出 <c>null</c>，这里也不标。
+    /// 补偿清空、故障交接、强制机械恢复这三个入口此刻指向哪一条需求的子批（批次7-14）。只在没有在途操作时有值：有在途操作时
+    /// 主体就是那次操作，业务服务给出 <c>null</c>，这里也不标。车上有几条需求的货时，交接与强制恢复改由「车上待交接的需求」列表选，
+    /// 这一行为空；补偿与交接的目标不是同一条时，补偿另由 <see cref="CompensationTargetText"/> 标（onboard-hmi#209）。
     /// </summary>
     public string RecoveryFallbackTargetText
     {
@@ -939,7 +940,7 @@ public sealed class MainViewModel : ViewModelBase
     /// </remarks>
     public bool HasRecoveryFallbackTarget =>
         RecoveryFallbackTargetText.Length > 0
-        && (CanRequestLoadCompensation
+        && (CanRequestLoadCompensation && !HasSeparateCompensationTarget
             || CanRequestFaultCargoHandoff
             || CanRequestForcedMechanicalRecovery);
 
@@ -1015,6 +1016,7 @@ public sealed class MainViewModel : ViewModelBase
         RecoveryFallbackTargetText = SublotOf(_wireToGateRecoveryFallbackDemandId?.Invoke()) is { } target
             ? $"目标：子批 {target}"
             : string.Empty;
+        RefreshRecoveryDemandChoicesCore();
     }
 
     /// <summary>
@@ -1285,6 +1287,7 @@ public sealed class MainViewModel : ViewModelBase
             OnPropertyChanged(nameof(HasRecoveryReasonInput));
             OnPropertyChanged(nameof(HasRecoveryReasonCarriedOver));
             OnPropertyChanged(nameof(HasRecoveryFallbackTarget));
+            RaiseRecoveryDemandChoiceState();
         }
     }
 
@@ -1553,11 +1556,13 @@ public sealed class MainViewModel : ViewModelBase
             ? Task.FromResult(false)
             : _wireToGateLoadCorrectionRequester(cancellationToken);
 
+    /// <summary>按下「故障交接」。车上有多条需求的货时带上「车上待交接的需求」里选中的那条（onboard-hmi#209）。</summary>
     public Task<bool> RequestFaultCargoHandoffAsync(CancellationToken cancellationToken = default) =>
-        RequestWithReasonAsync(_wireToGateFaultCargoHandoffRequester, cancellationToken);
+        RequestFaultCargoHandoffForChoiceAsync(cancellationToken);
 
+    /// <summary>按下「强制机械恢复」，所选需求同上。</summary>
     public Task<bool> RequestForcedMechanicalRecoveryAsync(CancellationToken cancellationToken = default) =>
-        RequestWithReasonAsync(_wireToGateForcedMechanicalRecoveryRequester, cancellationToken);
+        RequestForcedMechanicalRecoveryForChoiceAsync(cancellationToken);
 
     /// <summary>
     /// Sends the administrator's entered reason, trimmed, or <c>null</c> when nothing was entered, and clears

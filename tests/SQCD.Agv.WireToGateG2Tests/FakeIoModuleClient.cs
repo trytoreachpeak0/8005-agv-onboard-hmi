@@ -150,6 +150,35 @@ public sealed class FakeIoModuleClient : IIoModuleClient
     }
 
     /// <summary>
+    /// With <see cref="OperatorNeverActs"/>, the operator's next act is told in advance: once the slot has been pulsed
+    /// after this call and reads released, the first wait on it that is not yet satisfied finds the door shut as
+    /// <see cref="CloseDoor"/> leaves it. The executor's own wait drives the close, so a test thread that wakes late
+    /// cannot run the executor past its operation timeout (8005-agv-onboard-hmi#209: an UNKNOWN about 1 run in 20 when
+    /// the test closed the door itself after seeing the pulse).
+    /// </summary>
+    public void CloseDoorAfterNextUnlock(int slotIndex, bool cargo)
+    {
+        lock (_sync)
+        {
+            _scheduledClose = (slotIndex, cargo, UnlockCount);
+        }
+    }
+
+    /// <summary>Whether a <see cref="CloseDoorAfterNextUnlock"/> is still waiting for its pulse.</summary>
+    public bool HasScheduledClose
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _scheduledClose is not null;
+            }
+        }
+    }
+
+    private (int SlotIndex, bool Cargo, int UnlocksWhenScheduled)? _scheduledClose;
+
+    /// <summary>
     /// The door reads open -- lock feedback released, unlock output reset -- as a door left standing open
     /// after a vector that could not confirm it reads (8005-agv-onboard-hmi#255).
     /// </summary>
@@ -258,6 +287,16 @@ public sealed class FakeIoModuleClient : IIoModuleClient
                     if (predicate(locker))
                     {
                         return locker;
+                    }
+
+                    if (_scheduledClose is { } close
+                        && close.SlotIndex == slotIndex
+                        && UnlockCount > close.UnlocksWhenScheduled
+                        && _lockers[slotIndex].LockFeedbackRaw == false)
+                    {
+                        _scheduledClose = null;
+                        CloseDoor(slotIndex, close.Cargo);
+                        continue;
                     }
                 }
 
