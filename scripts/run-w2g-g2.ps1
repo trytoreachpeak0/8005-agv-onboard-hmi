@@ -23,16 +23,17 @@ if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
     $EvidenceRoot = Join-Path $hmiRoot 'evidence\g2'
 }
 
-# 协议 v2.0.0 的身份。这是本仓库的第二份副本，权威副本是
+# 协议 v3.0.0 的身份。这是本仓库的第二份副本，权威副本是
 # src/SQCD.Agv.Contracts/WireToGateProtocol.cs 的 WireToGateRelease；
 # ProtocolIdentityArchitectureTests.TheGateScriptExpectsTheSameIdentityAsTheAssembly
 # 逐字段比对这两份，任一处漂移即测试红。
 #
-# 本分支（w2g/batch-p3/v3）绑的是 v3.0.0 候选：8005-agv-protocol 分支
-# batch-p3/protocol-v3.0.0-candidate 的提交 3f091cb2…，身份表见 8005-agv-program#151 关闭评论
-# （8005-agv-onboard-hmi#214）。Tag protocol-v3.0.0 届时尚不存在，由 8005-agv-program#152 在同一
-# 提交上创建；ApprovalStatus 为 SUPERSEDING_CANDIDATE，所以下面只在 tag 已存在时核它指向 Commit，
-# 不要求它存在。这份身份上跑出的 G2 一律是 UNRELEASED_CANDIDATE，不计入批次出口。
+# protocol-v3.0.0 已于 2026-10-09 发布（8005-agv-program#152）：注释 tag 指向下面的 Commit，
+# 外置 attestation 里有一份批准，由产品负责人授权的 AI agent 给出。发布内容与候选
+# （8005-agv-program#151 冻结的 3f091cb2…，候选期的绑定见 8005-agv-onboard-hmi#214）一字未改，
+# 所以九个身份值原样保留，只把 ApprovalStatus 由 SUPERSEDING_CANDIDATE 改为 APPROVED_RELEASE
+# （8005-agv-control-server#393，照 8005-agv-onboard-hmi#79 的先例）。
+# 下面照旧检查 tag 若存在必须指向 Commit，并且 ApprovalStatus 声称已发布时 tag 必须存在。
 #
 # ProtocolVersion 只在同一 profileId 内单调递增（WIRE_TO_GATE_MVP 0.3.0 与 AGV_FULL_PRODUCT 2.0.0 都是 3），
 # 所以身份比较一律逐字段比完整身份，不得只比这个整数。
@@ -46,7 +47,7 @@ $expected = [ordered]@{
     ManifestSha256 = 'd5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e'
     SchemaBundleSha256 = 'e435b2b14d9ccd60c89f07df909da7626fef056a6b8a2241087557fd7dc3df43'
     VectorsSha256 = 'be849f9749b004296ebd9e7bffa98faf2f8ffa90b63308ca3b210c68e7b8656e'
-    ApprovalStatus = 'SUPERSEDING_CANDIDATE'
+    ApprovalStatus = 'APPROVED_RELEASE'
 }
 
 $failures = [System.Collections.Generic.List[string]]::new()

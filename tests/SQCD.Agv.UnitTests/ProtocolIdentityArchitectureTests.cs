@@ -88,7 +88,7 @@ public sealed class ProtocolIdentityArchitectureTests
     /// <b>Six of ten, and the other four are named here rather than left to look covered.</b>
     /// <c>ManifestSha256</c> is <see cref="TheVendoredManifestIsTheProtocolManifestByteForByte"/>'s
     /// job -- a manifest cannot carry its own digest. <c>Tag</c> and <c>ApprovalStatus</c> are
-    /// <see cref="TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsTheSupersedingCandidate"/>'s.
+    /// <see cref="TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsTheApprovedRelease"/>'s.
     /// </para>
     /// <para>
     /// <b><c>Commit</c> is the one no assertion in this assembly can bind.</b> Nothing inside the
@@ -159,21 +159,21 @@ public sealed class ProtocolIdentityArchitectureTests
     }
 
     /// <summary>
-    /// The tag is schema-legal, and the approval status says it names a candidate, not a release.
+    /// The tag is schema-legal, and the approval status says it names the approved release.
     /// </summary>
     /// <remarks>
-    /// The two are checked together because either alone says too little: <c>protocol-v3.0.0</c> does
-    /// not exist yet, and <c>SUPERSEDING_CANDIDATE</c> is what makes naming it truthful
-    /// (8005-agv-onboard-hmi#214). This test asserted <c>APPROVED_RELEASE</c> while the build bound
-    /// <c>protocol-v2.0.0</c>; it flips back on purpose the day <c>protocol-v3.0.0</c> is cut
-    /// (8005-agv-control-server#393), and that flip is also what keeps the development-grade G2 runs
-    /// made on the candidate from counting as the gate's evidence -- a run binds the identity this
-    /// constant held when it ran. That a tag, once it exists, points at
+    /// The two are checked together because either alone says too little. While
+    /// <c>protocol-v3.0.0</c> had not been cut this test asserted <c>SUPERSEDING_CANDIDATE</c>
+    /// (8005-agv-onboard-hmi#214), as it had for <c>protocol-v2.0.0</c> until 2026-09-16. The change
+    /// was made here on purpose after the annotated tag and its approval attestation were published on
+    /// 2026-10-09 (8005-agv-program#152, bound by 8005-agv-control-server#393), and it is also what
+    /// stops the development-grade G2 runs made on the candidate from counting as the gate's evidence
+    /// -- a run binds the identity this constant held when it ran. That the tag really points at
     /// <see cref="WireToGateRelease.Commit"/> is checked by <c>scripts/run-w2g-g2.ps1</c> against a
     /// protocol checkout, which this assembly does not have.
     /// </remarks>
     [Fact]
-    public void TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsTheSupersedingCandidate()
+    public void TheTagIsSchemaLegalAndTheApprovalStatusSaysItIsTheApprovedRelease()
     {
         using JsonDocument types = JsonDocument.Parse(File.ReadAllBytes(
             Path.Combine(VendorRoot(), "schemas", "common", "types.schema.json")));
@@ -182,7 +182,7 @@ public sealed class ProtocolIdentityArchitectureTests
 
         Assert.Matches(tag.GetProperty("pattern").GetString()!, WireToGateRelease.Tag);
         Assert.True(WireToGateRelease.Tag.Length >= tag.GetProperty("minLength").GetInt32());
-        Assert.Equal("SUPERSEDING_CANDIDATE", WireToGateRelease.ApprovalStatus);
+        Assert.Equal("APPROVED_RELEASE", WireToGateRelease.ApprovalStatus);
     }
 
     /// <summary>
