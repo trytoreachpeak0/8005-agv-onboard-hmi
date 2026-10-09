@@ -11,22 +11,23 @@ namespace SQCD.Agv.Contracts;
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This names the <c>3.0.0</c> candidate, not a release.</b> Every value below is read off
-/// <c>8005-agv-protocol</c> commit <c>3f091cb2eae7c58cec54a95dd9389c9180bc7b4c</c> on the branch
-/// <c>batch-p3/protocol-v3.0.0-candidate</c>, as published in the candidate identity table of
-/// <c>8005-agv-program#151</c> (8005-agv-onboard-hmi#214). <see cref="Tag"/> names
-/// <c>protocol-v3.0.0</c>, which does not exist yet: <c>8005-agv-program#152</c> creates it on this
-/// same commit when the release is authorized. <see cref="ApprovalStatus"/> is the field to read
-/// before treating this identity as releasable, and it says <c>SUPERSEDING_CANDIDATE</c> -- the two
-/// fields are only truthful read together. Evidence produced on this identity is
-/// <c>UNRELEASED_CANDIDATE</c> and does not count toward a batch exit.
+/// <b>This names <c>protocol-v3.0.0</c>, an approved release.</b> Every value below is read off
+/// <c>8005-agv-protocol</c> commit <c>3f091cb2eae7c58cec54a95dd9389c9180bc7b4c</c>, the commit the
+/// annotated tag <c>protocol-v3.0.0</c> (object <c>e08c362e</c>) points at. It was frozen as the
+/// <c>3.0.0</c> candidate by <c>8005-agv-program#151</c> (bound here by 8005-agv-onboard-hmi#214)
+/// and released unchanged by <c>8005-agv-program#152</c> on 2026-10-09, with one approval in the
+/// external attestation given by an AI agent the product owner authorized for that release. The
+/// release content is the candidate's byte for byte, so the nine identity values stayed and only
+/// <see cref="ApprovalStatus"/> moved from <c>SUPERSEDING_CANDIDATE</c> to <c>APPROVED_RELEASE</c>
+/// (<c>8005-agv-control-server#393</c>, as 8005-agv-onboard-hmi#79 did for <c>2.0.0</c>).
+/// Evidence produced while this identity was still a candidate is <c>UNRELEASED_CANDIDATE</c> and
+/// does not count toward a batch exit.
 /// </para>
 /// <para>
-/// <b>This identity lives only on the batch branch <c>w2g/batch-p3/v3</c>.</b> The integration
-/// branch stays on <c>protocol-v2.0.0</c> until the release, because the control server refuses to
-/// package a release candidate whose approval status is not <c>APPROVED_RELEASE</c>, and the two
-/// ends have no version negotiation. The switch to the release identity is
-/// <c>8005-agv-control-server#393</c>.
+/// <b>The batch branch <c>w2g/batch-p3/v3</c> carried this identity until the release.</b> The
+/// integration branch stayed on <c>protocol-v2.0.0</c> meanwhile, because the control server refuses
+/// to package a release candidate whose approval status is not <c>APPROVED_RELEASE</c>, and the two
+/// ends have no version negotiation. <c>8005-agv-control-server#393</c> merged it back.
 /// </para>
 /// <para>
 /// <b><see cref="ProtocolVersion"/> is only monotonic within one <c>profileId</c>, so never compare
@@ -41,7 +42,7 @@ namespace SQCD.Agv.Contracts;
 /// <b>These nine values have to match the control server's.</b> <c>ProtocolCandidateIdentity</c>
 /// in <c>8005-agv-control-server</c> is the other copy; the handshake compares <c>commit</c>,
 /// <c>manifestSha256</c>, <c>profileId</c> and <c>protocolVersion</c> and refuses the session on any
-/// difference. That end moves to the same candidate in <c>8005-agv-control-server#382</c> on its own
+/// difference. That end moved to the same candidate in <c>8005-agv-control-server#382</c> on its own
 /// batch branch <c>batch-p3/v3</c>. Neither end copies the other: both read the candidate's
 /// published identity table.
 /// </para>
@@ -63,7 +64,7 @@ public static class WireToGateRelease
     public const string ManifestSha256 = "d5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e";
     public const string SchemaBundleSha256 = "e435b2b14d9ccd60c89f07df909da7626fef056a6b8a2241087557fd7dc3df43";
     public const string VectorsSha256 = "be849f9749b004296ebd9e7bffa98faf2f8ffa90b63308ca3b210c68e7b8656e";
-    public const string ApprovalStatus = "SUPERSEDING_CANDIDATE";
+    public const string ApprovalStatus = "APPROVED_RELEASE";
 
     public static ProtocolReleaseIdentity Identity { get; } = new(
         Repository,
