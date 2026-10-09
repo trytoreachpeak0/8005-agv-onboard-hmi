@@ -360,7 +360,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.Business.CanConfirmForcedMechanicalRecovery,
             "the authorized forced recovery to wait for the operator's confirmation",
             token);
-        await harness.Business.ConfirmForcedMechanicalRecoveryAsync(token);
+        await ConfirmForcedRecoveryWithHandoffAsync(harness, "SUBLOT-A", token);
         await harness.WaitUntilAsync(
             () => ReadJournal(harness, token) is { RecoveryVector: null, ForcedIsolation: not null },
             "the acknowledged isolation to settle the forced recovery",

@@ -347,7 +347,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.Business.CanConfirmForcedMechanicalRecovery,
             "the authorized forced recovery to wait for the operator's confirmation",
             token);
-        await harness.Business.ConfirmForcedMechanicalRecoveryAsync(token);
+        await ConfirmForcedRecoveryWithHandoffAsync(harness, "SUBLOT-A", token);
         await harness.WaitUntilAsync(
             () => ReadJournal(harness, token) is { RecoveryVector: null, ForcedIsolation: not null },
             "the acknowledged isolation to settle the forced recovery",
@@ -403,6 +403,24 @@ public sealed partial class MultiDemandJourneyG2Tests
             ReceivedPayloads(harness, "FaultCargoRecoveryResult")[^1].GetProperty("overallOutcome").GetString());
         Assert.Equal(unlocksBefore + 1, io.UnlockCount);
         Assert.False(io.HasScheduledClose);
+    }
+
+    /// <summary>
+    /// Confirms the authorized forced recovery the way a press on this line must: with the cargo handoff record a forced
+    /// recovery on a demand carries since protocol 3.0.0 (b8-14, 8005-agv-onboard-hmi#216). Without it the press is refused
+    /// with <c>FORCED_RECOVERY_HANDOFF_RECORD_REQUIRED</c> before any result is written (v3 sync, 8005-agv-onboard-hmi#282).
+    /// When the current stop's worklist does not name the demand, the first press only warns that the SUBLOT cannot be
+    /// checked, and the operator's second press sends it.
+    /// </summary>
+    private static async Task ConfirmForcedRecoveryWithHandoffAsync(
+        Harness harness,
+        string sublot,
+        CancellationToken token)
+    {
+        if (!await harness.Business.ConfirmForcedMechanicalRecoveryAsync(sublot, "现场接收人", token))
+        {
+            Assert.True(await harness.Business.ConfirmForcedMechanicalRecoveryAsync(sublot, "现场接收人", token));
+        }
     }
 
     /// <summary>The rows of the loads-on-board choice as the screen shows them, refreshed the way the dispatcher would.</summary>
