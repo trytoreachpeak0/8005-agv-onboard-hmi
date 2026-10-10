@@ -22,6 +22,15 @@ if ([string]::IsNullOrWhiteSpace($ProtocolRoot)) {
 if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
     $EvidenceRoot = Join-Path $hmiRoot 'evidence\g2'
 }
+# Resolve both against the caller's location now, before anything below changes it. A relative
+# value taken as given resolves wherever the script happens to be standing: under the subst drive
+# root in Invoke-ProtocolG1 (every slice exited 1 without a gate-result.json), or under $hmiRoot
+# after Push-Location (evidence silently written somewhere else). Fixing it here rather than in each
+# consumer keeps New-Item, the logs, --results-directory and gate-result.json on one absolute path.
+# G2ScriptPathArchitectureTests keeps these two lines ahead of the first location change
+# (onboard-hmi#287).
+$EvidenceRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($EvidenceRoot)
+$ProtocolRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ProtocolRoot)
 
 # 协议 v3.0.0 的身份。这是本仓库的第二份副本，权威副本是
 # src/SQCD.Agv.Contracts/WireToGateProtocol.cs 的 WireToGateRelease；

@@ -43,6 +43,32 @@ public sealed class G2ScriptPathArchitectureTests
     }
 
     /// <summary>
+    /// Proves the check is not vacuous: the same script with one conversion moved to just after its
+    /// first location change is reported, for each parameter.
+    /// </summary>
+    [Fact]
+    public void AConversionMovedAfterTheFirstLocationChangeIsReported()
+    {
+        string script = File.ReadAllText(ScriptPath()).Replace("\r\n", "\n", StringComparison.Ordinal);
+
+        foreach (string parameter in PathParameters)
+        {
+            List<string> lines = [.. script.Split('\n')];
+            int conversion = lines.FindIndex(line => line.StartsWith(
+                "$" + parameter + " = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath(",
+                StringComparison.Ordinal));
+            Assert.True(conversion >= 0, $"conversion of -{parameter} not found");
+            string moved = lines[conversion];
+            lines.RemoveAt(conversion);
+            int firstPush = lines.FindIndex(line => line.TrimStart().StartsWith("Push-Location", StringComparison.Ordinal));
+            Assert.True(firstPush > conversion, "the first Push-Location must follow the conversion in the original");
+            lines.Insert(firstPush + 1, moved);
+
+            Assert.False(ConversionPrecedesFirstLocationChange(string.Join('\n', lines), parameter));
+        }
+    }
+
+    /// <summary>
     /// True when <paramref name="script"/> assigns <c>$parameter</c> its absolute form on a line
     /// before the first line that changes location. False when there is no conversion, no location
     /// change (the check would then be vacuous), or the conversion comes after it.
