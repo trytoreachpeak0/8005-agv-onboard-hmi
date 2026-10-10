@@ -105,6 +105,30 @@ public sealed class InboundPayloadSchemaBoundaryTests
     }
 
     /// <summary>
+    /// One stop's worklist that mixes the four same-direction task types batch 10 opens with
+    /// <c>WIRE_TO_GATE</c> passes the session client's own inbound check, every item kept as sent
+    /// (batch 10-03, <c>8005-agv-onboard-hmi#289</c>).
+    /// </summary>
+    /// <remarks>
+    /// The single-item theory above proves each literal on its own. Batch 10 is the first time the
+    /// control server can put several of them at one AREA stop, and the check runs over every item,
+    /// so a narrowing on any one of them would refuse the whole snapshot -- the
+    /// <c>8005-agv-onboard-hmi#38</c> lockup again.
+    /// </remarks>
+    [Fact]
+    public void AWorklistMixingTheFourSameDirectionTypesWithWireToGateIsAccepted()
+    {
+        string[] workTypes = ["WIRE_TO_GATE", "DIE_TO_WIRE_STAGING", "DIE_TO_OVEN", "WIRE_TO_OPTICAL", "WIRE_TO_NITROGEN"];
+        CurrentStopWorklistSnapshotPayload payload = Inbound<CurrentStopWorklistSnapshotPayload>(
+            "CurrentStopWorklistSnapshot",
+            WorklistPayloadWithWorkTypes(workTypes));
+
+        WireToGateSessionClient.ValidateCurrentStopWorklist(payload);
+
+        Assert.Equal(workTypes, payload.Items.Select(item => item.WorkType));
+    }
+
+    /// <summary>
     /// <c>items.maxItems</c> is 8: a worklist carrying eight items passes the session client's own
     /// inbound check, in the order the server sent them (batch 7-13, <c>8005-agv-onboard-hmi#134</c>).
     /// </summary>
@@ -173,6 +197,19 @@ public sealed class InboundPayloadSchemaBoundaryTests
             () => WireToGateSessionClient.ValidateUpcomingStopPlan(payload));
         Assert.Equal("PROTOCOL_SCHEMA_INVALID", refused.Message);
     }
+
+    private static string WorklistPayloadWithWorkTypes(IReadOnlyList<string> workTypes) =>
+        $$"""
+        {"stationId":"STATION-01","worklistRevision":7,
+        "operationSessionId":"00000000-0000-4000-8000-0000000000aa",
+        "stationDepartureDeadlineAt":null,
+        "items":[{{string.Join(",", workTypes.Select((workType, index) =>
+            $$"""
+            {"demandId":"00000000-0000-4000-8000-0000000004{{index + 1:D2}}",
+            "transportDemandKey":"TDK-{{index + 1}}","sublot":"SL-{{index + 1}}","workType":"{{workType}}",
+            "stopRole":"PICKUP","expectedBasketCount":1}
+            """))}}]}
+        """;
 
     private static string WorklistPayloadWithItems(int count) =>
         $$"""

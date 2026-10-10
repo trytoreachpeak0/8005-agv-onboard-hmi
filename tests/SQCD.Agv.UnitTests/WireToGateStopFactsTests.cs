@@ -206,6 +206,25 @@ public sealed class WireToGateStopFactsTests
         Assert.Equal(WireToGateStopFacts.UnknownTaskTypeText, WireToGateStopFacts.ItemTaskTypeText(unknown));
     }
 
+    /// <summary>
+    /// 批次 10 放开的同向四类，在清单列表的每一行上显示自己的文案，不显示「未知」
+    /// （批次10-03，<c>8005-agv-onboard-hmi#289</c>）。
+    /// </summary>
+    /// <remarks>
+    /// 顶栏的六类用例也经过 <see cref="WireToGateStopFacts.ItemTaskTypeText"/>，但走的是顶栏那条路；
+    /// 这里直接钉清单行上的那一段，它是 <c>MainViewModel</c> 给每一行取文案的入口。期望文案同样取自
+    /// MES 路线注释，不从被测代码抄。
+    /// </remarks>
+    [Theory]
+    [InlineData("DIE_TO_WIRE_STAGING", "装片→焊线待送")]
+    [InlineData("DIE_TO_OVEN", "装片→烘箱")]
+    [InlineData("WIRE_TO_OPTICAL", "焊线→三光")]
+    [InlineData("WIRE_TO_NITROGEN", "焊线→氮气柜")]
+    public void EachOfTheFourSameDirectionTaskTypesShowsItsOwnTextOnItsRow(string workType, string expected)
+    {
+        Assert.Equal(expected, WireToGateStopFacts.ItemTaskTypeText(Item(workType, "PICKUP")));
+    }
+
     private static WireToGateJourneySnapshot Journey(
         IReadOnlyList<WireToGateWorklistItem> items,
         WireToGateUpcomingStopPlan? plan = null) =>
