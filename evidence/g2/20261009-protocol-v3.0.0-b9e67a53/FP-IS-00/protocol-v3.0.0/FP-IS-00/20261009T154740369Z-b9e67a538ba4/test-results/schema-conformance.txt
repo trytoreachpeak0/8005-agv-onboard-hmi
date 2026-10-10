@@ -1,0 +1,1 @@
+Schema conformance (protocol-v3.0.0 APPROVED_RELEASE): 996 lines, 990 distinct, 27 message types; 0 distinct violations, 0 on file; schema compilation 41102 ms, validation 2271 ms.
