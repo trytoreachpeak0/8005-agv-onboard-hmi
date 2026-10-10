@@ -1,0 +1,208 @@
+{
+  "protocol": {
+    "tag": "protocol-v3.0.0",
+    "releaseVersion": "3.0.0",
+    "profileId": "AGV_FULL_PRODUCT",
+    "protocolVersion": 4,
+    "approvalStatus": "APPROVED_RELEASE",
+    "manifestSha256": "d5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e",
+    "vendoredSchemaFiles": 71
+  },
+  "validator": "Corvus.Json.Validator 4.6.7",
+  "linesObserved": 335,
+  "testAuthoredLinesSkipped": 0,
+  "linesChecked": 335,
+  "distinctLinesChecked": 335,
+  "linesInViolation": 0,
+  "linesInKnownViolation": 0,
+  "linesInIssueViolation": 0,
+  "linesInDeliberateViolation": 0,
+  "schemaCompilationMilliseconds": 35944,
+  "validationMilliseconds": 1683,
+  "byMessageType": {
+    "CapabilitySnapshot": {
+      "product": 18
+    },
+    "CurrentStopWorklistSnapshot": {
+      "synthetic-peer": 6
+    },
+    "DurableAck": {
+      "synthetic-peer": 32
+    },
+    "Heartbeat": {
+      "product": 1
+    },
+    "HeartbeatAck": {
+      "synthetic-peer": 1
+    },
+    "ManualChargingReturnToServiceRequested": {
+      "product": 6
+    },
+    "ManualChargingReturnToServiceResult": {
+      "synthetic-peer": 6
+    },
+    "ManualStationClearanceConfirmationRequested": {
+      "product": 2
+    },
+    "ManualStationClearanceConfirmationResult": {
+      "synthetic-peer": 2
+    },
+    "OnboardAlarmSnapshot": {
+      "product": 18
+    },
+    "RecoveryStateReport": {
+      "product": 18
+    },
+    "SafetyStateChanged": {
+      "product": 14
+    },
+    "SafetyStateSnapshot": {
+      "product": 18
+    },
+    "SessionAccepted": {
+      "synthetic-peer": 18
+    },
+    "SessionHello": {
+      "product": 18
+    },
+    "SessionReadiness": {
+      "synthetic-peer": 18
+    },
+    "SnapshotAppliedAck": {
+      "product": 39,
+      "synthetic-peer": 54
+    },
+    "SublotEntryRequested": {
+      "synthetic-peer": 4
+    },
+    "UnableToChargeFieldConfirmationRequested": {
+      "product": 4
+    },
+    "UnableToChargeFieldConfirmationResult": {
+      "synthetic-peer": 4
+    },
+    "UpcomingStopPlanSnapshot": {
+      "synthetic-peer": 14
+    },
+    "VehicleBusinessStateSnapshot": {
+      "synthetic-peer": 20
+    }
+  },
+  "origins": {
+    "product": {
+      "directions": [
+        "O_TO_C",
+        "BIDIRECTIONAL"
+      ],
+      "messageTypesObserved": 11,
+      "messageTypesNotObserved": [
+        "DemandSelectionRequested",
+        "DurableAck",
+        "ExceptionRecoverySessionRequested",
+        "FaultCargoRecoveryResult",
+        "ForcedMechanicalRecoveryResult",
+        "HardwareRecoveryRecordSubmitted",
+        "LoadCancellationResult",
+        "LoadCancellationStartRequested",
+        "LoadCompensationRequested",
+        "LoadCompensationResult",
+        "LoadCorrectionRequested",
+        "LoadCorrectionResult",
+        "OperationProgress",
+        "OperationResult",
+        "PreDepartureSafetyCheckResult",
+        "ProtocolProblem",
+        "RecoveryActionSubmitted",
+        "SlotConfigurationActivationResult",
+        "SlotFaultDeclarationResult",
+        "SlotOperationCommandRejected",
+        "SublotSubmitted"
+      ],
+      "messageTypesOutsideDirection": []
+    },
+    "syntheticPeer": {
+      "directions": [
+        "C_TO_O",
+        "BIDIRECTIONAL"
+      ],
+      "messageTypesObserved": 12,
+      "messageTypesNotObserved": [
+        "CapabilitySnapshotRequested",
+        "DemandSelectionResult",
+        "ExceptionRecoverySessionOpened",
+        "ExceptionRecoverySessionRejected",
+        "ExceptionRecoverySessionSnapshot",
+        "FaultCargoRecoveryCommand",
+        "ForcedMechanicalRecoveryCommand",
+        "HardwareRecoveryRecordResult",
+        "LoadCancellationAuthorization",
+        "LoadCompensationCommand",
+        "LoadCompensationRejected",
+        "LoadCorrectionCommand",
+        "LoadCorrectionRejected",
+        "PreDepartureSafetyCheck",
+        "ProtocolProblem",
+        "RecoveryActionAccepted",
+        "RecoveryActionRejected",
+        "SafetyStateSnapshotRequested",
+        "SessionRejected",
+        "SlotConfigurationActivationCommand",
+        "SlotFaultDeclarationCommand",
+        "SlotOperationCommand",
+        "SlotOperationResumeCommand",
+        "SublotRejected"
+      ],
+      "messageTypesOutsideDirection": []
+    }
+  },
+  "knownViolationEntriesNotMatched": [
+    {
+      "messageType": "VehicleBusinessStateSnapshot",
+      "pointer": "#/payload/loadingPhase",
+      "keyword": "anyOf",
+      "actual": "{\"state\":\"CLOSED\",\"cargoHoldingDeadlineAt\":null,\"closedReason\":null}",
+      "issue": null,
+      "deliberate": "MultiDemandJourneyG2Tests.AClosedLoadingPhaseWithoutAReasonIsStillRefusedAndLeavesNoHalfState"
+    },
+    {
+      "messageType": "ManualChargingReturnToServiceResult",
+      "pointer": "#/payload/outcome",
+      "keyword": "type",
+      "actual": "5",
+      "issue": null,
+      "deliberate": "ManualStationClearanceG2Tests.ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown"
+    },
+    {
+      "messageType": "ManualChargingReturnToServiceResult",
+      "pointer": "#/payload/outcome",
+      "keyword": "enum",
+      "actual": "5",
+      "issue": null,
+      "deliberate": "ManualStationClearanceG2Tests.ASessionThatFailsWithAnUnexpectedExceptionStillEndsThePressAsUnknown"
+    },
+    {
+      "messageType": "ManualStationClearanceConfirmationResult",
+      "pointer": "#/payload/outcome",
+      "keyword": "type",
+      "actual": "5",
+      "issue": null,
+      "deliberate": "ManualStationClearanceG2Tests.AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable"
+    },
+    {
+      "messageType": "ManualStationClearanceConfirmationResult",
+      "pointer": "#/payload/outcome",
+      "keyword": "enum",
+      "actual": "5",
+      "issue": null,
+      "deliberate": "ManualStationClearanceG2Tests.AMalformedResultLeavesTheVehicleUnlatchedAndTheConfirmationResubmittable"
+    },
+    {
+      "messageType": "UnableToChargeFieldConfirmationResult",
+      "pointer": "#/payload/chargingPolicyDecision",
+      "keyword": "anyOf",
+      "actual": "\"CHARGE_ELSEWHERE\"",
+      "issue": null,
+      "deliberate": "UnableToChargeFieldConfirmationG2Tests.AResultThatContradictsItselfOrTheSchemaIsRefusedAndThePressEndsAsUnknown"
+    }
+  ]
+}

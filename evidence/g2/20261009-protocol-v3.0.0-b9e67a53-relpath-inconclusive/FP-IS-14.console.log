@@ -1,0 +1,6 @@
+[31;1mOut-File: [0mC:\Users\szy\Desktop\8005-workspace-v2\worktrees\cs393-8005-agv-onboard-hmi\scripts\run-w2g-g2.ps1:371[0m
+[31;1m[0m[36;1mLine |[0m
+[31;1m[0m[36;1m[36;1m 371 | [0m … Output) + @($output)) | [36;1mOut-File -LiteralPath $LogPath -Encoding utf8[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m     | [31;1m                           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1mCould not find a part of the path[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m[31;1m[36;1m     | [31;1m'X:\evidence\g2\20261009-protocol-v3.0.0-b9e67a53\FP-IS-14\protocol-v3.0.0\FP-IS-14\20261009T154302359Z-b9e67a538ba4\logs\protocol-g1.log'.[0m
