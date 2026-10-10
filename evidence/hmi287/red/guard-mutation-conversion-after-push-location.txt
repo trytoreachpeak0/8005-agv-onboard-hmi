@@ -1,0 +1,54 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  SQCD.Agv.Core -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi287-8005-agv-onboard-hmi\src\SQCD.Agv.Core\bin\Release\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Contracts -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi287-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Release\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.RuleMock -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi287-8005-agv-onboard-hmi\tools\SQCD.Agv.RuleMock\bin\Release\net8.0\win-x64\SQCD.Agv.RuleMock.dll
+  SQCD.Agv.Application -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi287-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Release\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.AutomationHost -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi287-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Release\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Infrastructure -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi287-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Release\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.UnitTests -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi287-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi287-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:08.84]     SQCD.Agv.UnitTests.G2ScriptPathArchitectureTests.ThePathParametersAreMadeAbsoluteBeforeTheFirstLocationChange [FAIL]
+[xUnit.net 00:00:08.87]     SQCD.Agv.UnitTests.G2ScriptPathArchitectureTests.AConversionMovedAfterTheFirstLocationChangeIsReported [FAIL]
+  Failed SQCD.Agv.UnitTests.G2ScriptPathArchitectureTests.ThePathParametersAreMadeAbsoluteBeforeTheFirstLocationChange [73 ms]
+  Error Message:
+   run-w2g-g2.ps1 must make -EvidenceRoot absolute before its first Push-Location/Set-Location/subst.
+  Stack Trace:
+     at SQCD.Agv.UnitTests.G2ScriptPathArchitectureTests.ThePathParametersAreMadeAbsoluteBeforeTheFirstLocationChange() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi287-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\G2ScriptPathArchitectureTests.cs:line 39
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Failed SQCD.Agv.UnitTests.G2ScriptPathArchitectureTests.AConversionMovedAfterTheFirstLocationChangeIsReported [11 ms]
+  Error Message:
+   the first Push-Location must follow the conversion in the original
+  Stack Trace:
+     at SQCD.Agv.UnitTests.G2ScriptPathArchitectureTests.AConversionMovedAfterTheFirstLocationChangeIsReported() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi287-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\G2ScriptPathArchitectureTests.cs:line 64
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+
+Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2, Duration: 188 ms - SQCD.Agv.UnitTests.dll (net8.0)
+diff --git a/scripts/run-w2g-g2.ps1 b/scripts/run-w2g-g2.ps1
+index 3d24663..ff2cda5 100644
+--- a/scripts/run-w2g-g2.ps1
++++ b/scripts/run-w2g-g2.ps1
+@@ -29,8 +29,6 @@ if ([string]::IsNullOrWhiteSpace($EvidenceRoot)) {
+ # consumer keeps New-Item, the logs, --results-directory and gate-result.json on one absolute path.
+ # G2ScriptPathArchitectureTests keeps these two lines ahead of the first location change
+ # (onboard-hmi#287).
+-$EvidenceRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($EvidenceRoot)
+-$ProtocolRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ProtocolRoot)
+ 
+ # 协议 v3.0.0 的身份。这是本仓库的第二份副本，权威副本是
+ # src/SQCD.Agv.Contracts/WireToGateProtocol.cs 的 WireToGateRelease；
+@@ -106,6 +104,8 @@ if ($isSliceRun) {
+     $sliceEntry = $sliceMatches[0]
+ 
+     Push-Location $hmiRoot
++$EvidenceRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($EvidenceRoot)
++$ProtocolRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ProtocolRoot)
+     try {
+         $listed = @(& dotnet test '.\SQCD_8005AGV.sln' -c Release --list-tests --filter "IntegrationSlice=$Slice" |
+             Where-Object { $_ -match '^\s*SQCD\.Agv\.\S+\.\S' })
