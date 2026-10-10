@@ -1,0 +1,17 @@
+# run 1 (fix 09e90af), cwd = worktree root
+$ pwsh -File C:/Users/szy/Desktop/8005-workspace-v2/Invoke-HeavyLocal.ps1 -Ticket hmi#287 pwsh -File scripts/run-w2g-g2.ps1 -Slice FP-IS-00 -ProtocolRoot C:/Users/szy/Desktop/8005-workspace-v2/scratch/hmi287-protocol -EvidenceRoot evidence/g2/tmp-relpath
+G2 evidence: C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi287-8005-agv-onboard-hmi\evidence\g2\tmp-relpath\protocol-v3.0.0\FP-IS-00\20261010T162109354Z-09e90af7ddf4
+Status: PASS
+exit=0
+gate-result.json: C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi287-8005-agv-onboard-hmi\evidence\g2\tmp-relpath\protocol-v3.0.0\FP-IS-00\20261010T162109354Z-09e90af7ddf4\gate-result.json
+
+# run 2 (fix 09e90af), cwd = C:\Users\szy\Desktop\8005-workspace-v2\scratch (outside the repository)
+$ pwsh -File C:/Users/szy/Desktop/8005-workspace-v2/Invoke-HeavyLocal.ps1 -Ticket hmi#287 pwsh -File C:/Users/szy/Desktop/8005-workspace-v2/worktrees/hmi287-8005-agv-onboard-hmi/scripts/run-w2g-g2.ps1 -Slice FP-IS-00 -ProtocolRoot C:/Users/szy/Desktop/8005-workspace-v2/scratch/hmi287-protocol -EvidenceRoot hmi287-g2-from-scratch
+G2 evidence: C:\Users\szy\Desktop\8005-workspace-v2\scratch\hmi287-g2-from-scratch\protocol-v3.0.0\FP-IS-00\20261010T162807309Z-09e90af7ddf4
+Status: PASS
+exit=0
+gate-result.json: C:\Users\szy\Desktop\8005-workspace-v2\scratch\hmi287-g2-from-scratch\protocol-v3.0.0\FP-IS-00\20261010T162807309Z-09e90af7ddf4\gate-result.json
+
+# negative checks after run 2
+under repo root <worktree>\hmi287-g2-from-scratch: absent
+X:\ : absent

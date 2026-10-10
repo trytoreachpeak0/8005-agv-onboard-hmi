@@ -1,0 +1,11 @@
+$ cd worktrees/rig-hmi287-red-8005-agv-onboard-hmi  (detached at 60c920f, pre-fix)
+$ pwsh -File C:/Users/szy/Desktop/8005-workspace-v2/Invoke-HeavyLocal.ps1 -Ticket hmi#287 pwsh -File scripts/run-w2g-g2.ps1 -Slice FP-IS-00 -ProtocolRoot C:/Users/szy/Desktop/8005-workspace-v2/scratch/hmi287-protocol -EvidenceRoot evidence/g2/tmp-relpath
+Out-File: C:\Users\szy\Desktop\8005-workspace-v2\worktrees\rig-hmi287-red-8005-agv-onboard-hmi\scripts\run-w2g-g2.ps1:371
+Line |
+ 371 |  … Output) + @($output)) | Out-File -LiteralPath $LogPath -Encoding utf8
+     |                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | Could not find a part of the path
+     | 'X:\evidence\g2\tmp-relpath\protocol-v3.0.0\FP-IS-00\20261010T161917421Z-60c920f54101\logs\protocol-g1.log'.
+exit=1
+# gate-result.json written: none
+0
