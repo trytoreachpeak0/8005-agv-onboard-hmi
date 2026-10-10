@@ -1,0 +1,19 @@
+Already up to date
+Done in 598ms using pnpm v11.25.0
+$ node tools/g1-validate.mjs
+{
+  "gate": "G1",
+  "status": "PASS",
+  "candidateManifestSha256": "d5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e",
+  "approvalAttestationStatus": "PENDING",
+  "approvalAttestationSha256": "ddfa96adea3e2d534791a3ee3e5fdf9f97d3af21e96286858c17840788474e41",
+  "approvalAttestationSource": "TRACKED_TEMPLATE",
+  "schemaCount": 71,
+  "messageTypeCount": 65,
+  "validExampleCount": 65,
+  "invalidExampleCount": 1666,
+  "trajectoryCount": 39,
+  "integrationSliceCount": 16,
+  "checkedAt": "2026-09-29T00:00:00Z",
+  "failures": []
+}
