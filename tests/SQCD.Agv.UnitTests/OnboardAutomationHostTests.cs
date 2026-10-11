@@ -79,6 +79,69 @@ public sealed class OnboardAutomationHostTests
     }
 
     [Fact]
+    public async Task RunIdMismatchErrorCarriesTheProcessRunIdNotTheAgvId()
+    {
+        await using AutomationHostHarness harness = await AutomationHostHarness.StartAsync();
+        string foreignRunId = "33333333-3333-4333-8333-333333333333";
+        Assert.NotEqual(harness.Server.RunId, foreignRunId);
+
+        JsonDocument error = await harness.SubmitExpectingConflictAsync(new
+        {
+            runId = foreignRunId,
+            commandId = "44444444-4444-4444-8444-444444444444",
+            expectedRevision = await harness.ReadRevisionAsync(),
+            sublot = "SUBLOT-001"
+        });
+
+        Assert.Equal("RUN_ID_MISMATCH", error.RootElement.GetProperty("reasonCode").GetString());
+        string? responseRunId = error.RootElement.GetProperty("runId").GetString();
+        Assert.Equal(harness.Server.RunId, responseRunId);
+        Assert.NotEqual(FakeFacade.AgvId, responseRunId);
+    }
+
+    [Fact]
+    public async Task CommandIdConflictErrorCarriesTheRequestRunId()
+    {
+        await using AutomationHostHarness harness = await AutomationHostHarness.StartAsync();
+        string commandId = "55555555-5555-4555-8555-555555555555";
+        long revision = await harness.ReadRevisionAsync();
+        HttpResponseMessage first = await harness.Client.PostAsJsonAsync(
+            "/api/v1/sublots/submit",
+            new { runId = harness.Server.RunId, commandId, expectedRevision = revision, sublot = "SUBLOT-001" },
+            TestContext.Current.CancellationToken);
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+
+        JsonDocument error = await harness.SubmitExpectingConflictAsync(new
+        {
+            runId = harness.Server.RunId,
+            commandId,
+            expectedRevision = revision,
+            sublot = "SUBLOT-002"
+        });
+
+        Assert.Equal("COMMAND_ID_CONFLICT", error.RootElement.GetProperty("reasonCode").GetString());
+        Assert.Equal(harness.Server.RunId, error.RootElement.GetProperty("runId").GetString());
+    }
+
+    [Fact]
+    public async Task RevisionConflictErrorCarriesTheRequestRunId()
+    {
+        await using AutomationHostHarness harness = await AutomationHostHarness.StartAsync();
+        long revision = await harness.ReadRevisionAsync();
+
+        JsonDocument error = await harness.SubmitExpectingConflictAsync(new
+        {
+            runId = harness.Server.RunId,
+            commandId = "66666666-6666-4666-8666-666666666666",
+            expectedRevision = revision + 1,
+            sublot = "SUBLOT-001"
+        });
+
+        Assert.Equal("REVISION_CONFLICT", error.RootElement.GetProperty("reasonCode").GetString());
+        Assert.Equal(harness.Server.RunId, error.RootElement.GetProperty("runId").GetString());
+    }
+
+    [Fact]
     public void HostRejectsNonLoopbackBinding()
     {
         Assert.Throws<InvalidDataException>(() => new OnboardAutomationHttpServer(
@@ -106,8 +169,57 @@ public sealed class OnboardAutomationHostTests
         return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 
+    private sealed class AutomationHostHarness : IAsyncDisposable
+    {
+        private AutomationHostHarness(OnboardAutomationHttpServer server)
+        {
+            Server = server;
+            Client = new HttpClient { BaseAddress = new Uri(server.Endpoint) };
+        }
+
+        public OnboardAutomationHttpServer Server { get; }
+
+        public HttpClient Client { get; }
+
+        public static async Task<AutomationHostHarness> StartAsync()
+        {
+            OnboardAutomationHttpServer server = new(
+                new OnboardAutomationHostOptions("127.0.0.1", GetFreePort()),
+                new FakeFacade());
+            await server.StartAsync(TestContext.Current.CancellationToken);
+            return new AutomationHostHarness(server);
+        }
+
+        public async Task<long> ReadRevisionAsync()
+        {
+            JsonDocument snapshot = (await Client.GetFromJsonAsync<JsonDocument>(
+                "/api/v1/snapshot",
+                TestContext.Current.CancellationToken))!;
+            return snapshot.RootElement.GetProperty("revision").GetInt64();
+        }
+
+        public async Task<JsonDocument> SubmitExpectingConflictAsync(object request)
+        {
+            HttpResponseMessage response = await Client.PostAsJsonAsync(
+                "/api/v1/sublots/submit",
+                request,
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+            return (await response.Content.ReadFromJsonAsync<JsonDocument>(
+                cancellationToken: TestContext.Current.CancellationToken))!;
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            Client.Dispose();
+            await Server.DisposeAsync();
+        }
+    }
+
     private sealed class FakeFacade : IOnboardAutomationFacade
     {
+        public const string AgvId = "AGV-8005-01";
+
         private readonly OnboardAutomationSnapshot _snapshot = CreateSnapshot();
 
         public int SubmitCount { get; private set; }
@@ -142,7 +254,7 @@ public sealed class OnboardAutomationHostTests
                 null,
                 now);
             return new OnboardAutomationSnapshot(
-                "AGV-8005-01",
+                AgvId,
                 onboard,
                 new WireToGateSessionSnapshot(
                     true,

@@ -172,13 +172,13 @@ public static class OnboardAutomationApi
         string reasonCode,
         string message) =>
         new(
-            "1.0.0",
-            state.Snapshot.AgvId,
-            state.Revision,
-            DateTimeOffset.UtcNow,
-            commandId,
-            reasonCode,
-            message);
+            SchemaVersion: "1.0.0",
+            RunId: state.RunId,
+            Revision: state.Revision,
+            ObservedAt: DateTimeOffset.UtcNow,
+            CommandId: commandId,
+            ReasonCode: reasonCode,
+            Message: message);
 
     private static byte[] OpenApiDocument { get; } = LoadOpenApiDocument();
 
