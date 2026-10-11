@@ -79,6 +79,14 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Empty(ReceivedPayloads(harness, "LoadCancellationStartRequested"));
         Assert.Equal(1, io.UnlockCount);
         Assert.Empty(harness.UiErrors);
+
+        // 屏上的操作记录：这一行记作「提醒」，整段没有一行「故障」。
+        await harness.WaitUntilAsync(
+            () => harness.LogsSnapshot().Any(line => line.Message == notice.Message),
+            "the notice to reach the operator record",
+            token);
+        Assert.Equal("提醒", harness.LogsSnapshot().Single(line => line.Message == notice.Message).CategoryText);
+        Assert.DoesNotContain(harness.LogsSnapshot(), line => line.CategoryText == "故障");
     }
 
     /// <summary>
