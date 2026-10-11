@@ -1,0 +1,33 @@
+{
+  "mode": "compare",
+  "hmiRoot": "C:\\Users\\szy\\Desktop\\8005-workspace-v2\\worktrees\\hmi295-8005-agv-onboard-hmi",
+  "hmiCommit": "fbc0752d883ee84f2e77bb8315e6ea9660cc2368",
+  "hmiWorkingTreeStatus": [],
+  "slices": [
+    "FP-IS-04",
+    "FP-IS-01",
+    "FP-IS-10"
+  ],
+  "expectFailSlice": "",
+  "multiSliceRun": {
+    "exitCode": 1,
+    "seconds": 1.1,
+    "log": "multi-slice.console.log"
+  },
+  "multiSliceFacts": {
+    "FP-IS-04": {
+      "problem": "FP-IS-04：期望 1 个证据目录，找到 0 个（C:\\Users\\szy\\Desktop\\8005-workspace-v2\\evidence\\hmi295-runs\\red-before-impl\\multi-slice）"
+    },
+    "FP-IS-01": {
+      "problem": "FP-IS-01：期望 1 个证据目录，找到 0 个（C:\\Users\\szy\\Desktop\\8005-workspace-v2\\evidence\\hmi295-runs\\red-before-impl\\multi-slice）"
+    },
+    "FP-IS-10": {
+      "problem": "FP-IS-10：期望 1 个证据目录，找到 0 个（C:\\Users\\szy\\Desktop\\8005-workspace-v2\\evidence\\hmi295-runs\\red-before-impl\\multi-slice）"
+    }
+  },
+  "problems": [
+    "多片调用应写出 1 个 multi-slice 目录，实际 0 个",
+    "多片调用退出码 1"
+  ],
+  "verdict": "FAIL"
+}

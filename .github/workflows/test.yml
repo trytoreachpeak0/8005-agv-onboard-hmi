@@ -48,8 +48,10 @@ jobs:
     runs-on: [self-hosted, headless]
     # A backstop, not how a run ends: a normal run takes a few minutes, and a timeout ends the job by
     # cancelling it, which can wedge the runner the same way a manual cancel does. The per-slice run
-    # does fifteen filtered test runs, most of them paying the outbound schema compilation again
-    # (about a minute each); see the PR of 8005-agv-onboard-hmi#295 for the measured duration.
+    # does fifteen filtered test runs, most of them paying the outbound schema compilation again.
+    # Measured on 2026-10-11, all fifteen slices (run 38101599940): job 19 min, of which preflight
+    # 88 s, G1 11 s, build 5 s, format 40 s and the fifteen test runs 939 s (FP-IS-07 alone 256 s).
+    # 60 minutes is three times that.
     timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 60 || 30 }}
     env:
       # NuGet's vulnerability audit fetches from nuget.org during every restore, and with
