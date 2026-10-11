@@ -609,11 +609,8 @@ public sealed partial class WireToGateBusinessService
             return CancellableLoadInFlight(state) is { } load ? $"load:{load.SlotOperationAttemptId}" : null;
         }
 
-        return FindLoadCancellationBeforeSublot(state, selectedDemandId) is
-            {
-                Availability: LoadCancellationBeforeSublotAvailability.Ready,
-                Target: { } target
-            }
+        LoadCancellationBeforeSublotOutcome beforeSublot = FindLoadCancellationBeforeSublot(state, selectedDemandId);
+        return beforeSublot is { Availability: LoadCancellationBeforeSublotAvailability.Ready, Target: { } target }
             ? $"before-sublot:{target.CancellationId}"
             : null;
     }
