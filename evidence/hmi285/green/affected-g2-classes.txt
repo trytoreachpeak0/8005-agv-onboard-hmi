@@ -1,0 +1,2 @@
+# commit 1bd8a24
+# dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter "FullyQualifiedName~...MultiDemandJourneyG2Tests|...ManualStationClearanceG2Tests|...UnableToChargeFieldConfirmationG2Tests"

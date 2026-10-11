@@ -1,0 +1,1 @@
+# commit 1bd8a24 + 'public int LogCount => ViewModel.Logs.Count;' added to MultiDemandJourneyG2Tests.cs Harness

@@ -1,0 +1,15 @@
+# commit 1bd8a24: git grep -n "ViewModel\.Logs" -- tests
+tests/SQCD.Agv.UnitTests/ViewModelLogsReadArchitectureTests.cs:6:/// The guard on how G2 tests read the operator log: no test reads <c>ViewModel.Logs</c> directly; every
+tests/SQCD.Agv.UnitTests/ViewModelLogsReadArchitectureTests.cs:21:/// <b>What this cannot see.</b> It looks for one written form, <c>.ViewModel.Logs</c>, in code (text after
+tests/SQCD.Agv.UnitTests/ViewModelLogsReadArchitectureTests.cs:22:/// <c>//</c> on a line is dropped, so <c>cref="MainViewModel.Logs"</c> in a doc comment is not a read). It
+tests/SQCD.Agv.UnitTests/ViewModelLogsReadArchitectureTests.cs:57:            $"{reads.Count} direct read(s) of ViewModel.Logs; read the log through the harness snapshot method instead:"
+tests/SQCD.Agv.UnitTests/ViewModelLogsReadArchitectureTests.cs:74:            $"{SnapshotFile} reads ViewModel.Logs on line(s) [{string.Join(", ", lines)}]; only the snapshot method may.");
+tests/SQCD.Agv.UnitTests/ViewModelLogsReadArchitectureTests.cs:85:            /// nothing. Asserted on <see cref="MainViewModel.Logs"/>, the layer the operator reads;
+tests/SQCD.Agv.UnitTests/ViewModelLogsReadArchitectureTests.cs:87:                () => harness.ViewModel.Logs.Any(line => line.Message.Contains("x")),
+tests/SQCD.Agv.UnitTests/ViewModelLogsReadArchitectureTests.cs:91:                afterRestart.ViewModel.Logs,
+tests/SQCD.Agv.UnitTests/ViewModelLogsReadArchitectureTests.cs:94:                harness.ViewModel.Logs;
+tests/SQCD.Agv.UnitTests/ViewModelLogsReadArchitectureTests.cs:95:            // harness.ViewModel.Logs is not read here
+tests/SQCD.Agv.UnitTests/ViewModelLogsReadArchitectureTests.cs:97:            int other = harness.ViewModel.LogsCount;
+tests/SQCD.Agv.WireToGateG2Tests/ManualStationClearanceG2Tests.cs:190:    /// nothing. Asserted on <see cref="MainViewModel.Logs"/>, the layer the operator reads; the result line itself is
+tests/SQCD.Agv.WireToGateG2Tests/MultiDemandJourneyG2Tests.cs:615:        /// reads the log through here, never <c>ViewModel.Logs</c> itself (ViewModelLogsReadArchitectureTests): call it
+tests/SQCD.Agv.WireToGateG2Tests/MultiDemandJourneyG2Tests.cs:638:            System.Collections.ObjectModel.ObservableCollection<LogLineViewModel> lines = ViewModel.Logs;

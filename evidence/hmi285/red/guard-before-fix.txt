@@ -1,0 +1,2 @@
+# commit a771a68 (guard only, before fix)
+# dotnet test tests/SQCD.Agv.UnitTests --filter FullyQualifiedName~ViewModelLogsReadArchitectureTests

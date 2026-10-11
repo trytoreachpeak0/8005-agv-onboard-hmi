@@ -1,0 +1,1 @@
+# commit 1bd8a24 + HandoffOverUnrecordedLoad.cs:522 reverted to harness.ViewModel.Logs.Any(...)
