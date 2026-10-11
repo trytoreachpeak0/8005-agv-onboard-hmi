@@ -145,13 +145,13 @@ try {
         dllArgument = (Join-Path $StageRoot 'simulator\Probe.dll')
         exitCode = $simulator.ExitCode
         started = $null -ne $simulatorReport
-        loadedFrom = $simulatorReport?.entryAssembly
+        loadedFrom = ${simulatorReport}?.entryAssembly
         # Inferred, not observed: dotnet resolves a relative app path against its own working
         # directory, which is <stage>\simulator here.
         inferredResolution = [IO.Path]::GetFullPath((Join-Path $StageRoot 'simulator\Probe.dll'), (Join-Path $expectedStage 'simulator'))
         stdout = $simulatorOut.Trim()
         stderr = $simulatorErr.Trim()
-        landedUnderStage = (Test-UnderStage $simulatorReport?.entryAssembly)
+        landedUnderStage = (Test-UnderStage (${simulatorReport}?.entryAssembly))
     }
 
     # B: the script's connection string, read by a child working in <stage>\control.
@@ -175,9 +175,9 @@ try {
         # working directory reported above.
         inferredResolution = [IO.Path]::GetFullPath((Join-Path $StageRoot 'controlserver.db'), ($controlLines[0]?.workingDirectory ?? (Join-Path $expectedStage 'control')))
         exitCode = $control.ExitCode
-        databaseFile = $controlReport?.databaseFile
+        databaseFile = ${controlReport}?.databaseFile
         stderr = $controlErr.Trim()
-        landedUnderStage = (Test-UnderStage $controlReport?.databaseFile)
+        landedUnderStage = (Test-UnderStage (${controlReport}?.databaseFile))
     }
 
     # C: the proxy's first write, File.WriteAllText(transcriptPath, ...), in this process.

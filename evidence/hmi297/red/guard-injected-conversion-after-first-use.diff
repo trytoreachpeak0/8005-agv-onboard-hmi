@@ -1,0 +1,20 @@
+diff --git a/scripts/run-staged-g3-recovery-ack-drop.ps1 b/scripts/run-staged-g3-recovery-ack-drop.ps1
+index 3b2c974..5db442c 100644
+--- a/scripts/run-staged-g3-recovery-ack-drop.ps1
++++ b/scripts/run-staged-g3-recovery-ack-drop.ps1
+@@ -43,7 +43,6 @@ $ErrorActionPreference = 'Stop'
+ # process (the proxy transcript, the SQLite read, GetRelativePath, WriteAllText) against the process
+ # current directory, which Set-Location does not move. StagedG3ScriptPathArchitectureTests keeps this
+ # line ahead of every other use of $StageRoot (onboard-hmi#297, same shape as #287).
+-$StageRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($StageRoot)
+ 
+ $controlCommit = 'cc6e2b97e4308fa14b519edf9a0089d0da7d6d14'
+ $simulatorCommit = 'fb5f7c593742bf98bc3957b8729a38aad5321f28'
+@@ -53,6 +52,7 @@ $controlPort = 58115
+ $healthPort = 58117
+ $credential = [Guid]::NewGuid().ToString('N')
+ $proxyTranscript = Join-Path $StageRoot 'proxy-events.ndjson'
++$StageRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($StageRoot)
+ 
+ if ([string]::IsNullOrWhiteSpace($OnboardBuildCommit)) {
+     $repoRoot = Split-Path -Parent $PSScriptRoot
