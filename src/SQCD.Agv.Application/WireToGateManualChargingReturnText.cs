@@ -33,7 +33,7 @@ public static class WireToGateManualChargingReturnText
 {
     public const string FatalFaultLatchedGuidance = "安全故障解除前不能申请返回服务，请联系系统维护人员。";
 
-    public const string SessionNotReadyGuidance = "与服务端恢复连接后才能申请返回服务。";
+    public const string SessionNotReadyGuidance = "与服务端的连接就绪后才能申请返回服务。";
 
     public const string OperatorNotAuthorizedGuidance =
         "充电完成后需维护管理员在本机开启返回服务权限，再按「充电后返回服务」。请联系系统维护人员。";

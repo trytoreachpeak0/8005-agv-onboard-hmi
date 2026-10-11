@@ -516,19 +516,18 @@ public sealed partial class WireToGateBusinessService
     /// An operator with an id at a vehicle whose session can carry a request. No maintenance switch and
     /// no proof: this is what a station operator's step needs.
     /// </summary>
-    private bool CanUseStationOperator() =>
-        SessionCanCarryOperatorRequest()
-        && !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable));
-
-    /// <summary>
-    /// The session half of <see cref="CanUseStationOperator"/>: connected, and ready or in recovery. Split out so
-    /// the manual-charging line can say "offline" before it says "not authorized" (8005-agv-onboard-hmi#293).
-    /// </summary>
-    private bool SessionCanCarryOperatorRequest()
+    private bool CanUseStationOperator()
     {
         WireToGateSessionSnapshot session = _session.Current;
-        return session.Connected
-            && session.Readiness is WireToGateSessionReadiness.Ready or WireToGateSessionReadiness.RecoveryRequired;
+        if (!session.Connected
+            || session.Readiness is not (WireToGateSessionReadiness.Ready
+                or WireToGateSessionReadiness.RecoveryRequired))
+        {
+            return false;
+        }
+
+        return !string.IsNullOrWhiteSpace(
+            Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable));
     }
 
     private bool HasRecoveryVectorOrLoadOperation(string vectorType)

@@ -18,7 +18,7 @@ namespace SQCD.Agv.UnitTests;
 /// that would not open it; the session goes before authorization because a maintainer who configures the
 /// vehicle while it is offline still cannot press. The view-model half -- the line follows the hold and the
 /// entry, and is announced to the window -- is <c>ManualChargingReturnGuidanceViewModelTests</c>; the
-/// business-service half and the press are <c>ManualChargingReturnG2Tests</c>.
+/// business-service half and the press are <c>ManualChargingReturnEntryG2Tests</c>.
 /// </para>
 /// </remarks>
 public sealed class WireToGateManualChargingReturnTextTests
@@ -26,7 +26,7 @@ public sealed class WireToGateManualChargingReturnTextTests
     private const string NotAuthorized =
         "充电完成后需维护管理员在本机开启返回服务权限，再按「充电后返回服务」。请联系系统维护人员。";
 
-    private const string SessionNotReady = "与服务端恢复连接后才能申请返回服务。";
+    private const string SessionNotReady = "与服务端的连接就绪后才能申请返回服务。";
 
     private const string Latched = "安全故障解除前不能申请返回服务，请联系系统维护人员。";
 
@@ -84,48 +84,110 @@ public sealed class WireToGateManualChargingReturnTextTests
             WireToGateManualChargingReturnText.Guidance(manualChargingHold, entryOffered, fatalFaultLatched, blocker));
 
     /// <summary>
-    /// The operator-facing sentences name no ticket and no internal role (the workspace's rule for this screen):
-    /// 「调度」 reads as the person who dispatches vehicles on the plant floor.
-    /// </summary>
-    /// <summary>
     /// The cause is read from the judgement the button itself uses, never from the proof. This request carries no
     /// proof and the server checks only the role it names, so the vehicle's local check is the whole credential
-    /// boundary; a second reading of the proof variable beside it is a second boundary that can drift from the first.
-    /// The line's own code reads no credential at all.
+    /// boundary; a second reading of a credential beside it is a second boundary that can drift from the first.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The guard is a closed set, not a list of forbidden words (8005-agv-onboard-hmi#293 review S3: a first version
+    /// that scanned the cause property alone let a helper, or the view model's refresh, read the proof). Every method
+    /// the line's code reaches is named below with the only calls it may make. The one exit from the set is
+    /// <c>CanRequestManualChargingReturnToService</c>, the button's own judgement, which the cause must read. A new
+    /// call anywhere in the set is red here until someone adds it to this table and says why.
+    /// </para>
+    /// <para>
+    /// Within the set nothing names an environment variable or a credential reader.
+    /// </para>
+    /// </remarks>
     [Fact]
     public void TheCauseComesFromTheButtonsOwnJudgementAndReadsNoCredential()
     {
         string root = ProtocolIdentityArchitectureTests.RepositoryRoot();
         string business = File.ReadAllText(Path.Combine(
             root, "src", "SQCD.Agv.Wpf", "WireToGateBusinessService.ManualChargingReturn.cs"));
-        const string member = "public WireToGateManualChargingReturnBlocker ManualChargingReturnBlocker =>";
-        int start = business.IndexOf(member, StringComparison.Ordinal);
-        Assert.True(start >= 0, "ManualChargingReturnBlocker is no longer an expression-bodied property.");
-        string body = business[start..(business.IndexOf(';', start) + 1)];
+        string viewModel = File.ReadAllText(Path.Combine(root, "src", "SQCD.Agv.Wpf", "ViewModels", "MainViewModel.cs"));
+        string text = File.ReadAllText(Path.Combine(
+            root, "src", "SQCD.Agv.Application", "WireToGateManualChargingReturnText.cs"));
+        string wiring = File.ReadAllText(Path.Combine(root, "src", "SQCD.Agv.Wpf", "ManualChargingReturnWiring.cs"));
 
-        Assert.Contains("CanRequestManualChargingReturnToService", body, StringComparison.Ordinal);
-        string[] sources =
+        const string causeMember = "public WireToGateManualChargingReturnBlocker ManualChargingReturnBlocker =>";
+        int causeStart = business.IndexOf(causeMember, StringComparison.Ordinal);
+        Assert.True(causeStart >= 0, "ManualChargingReturnBlocker is no longer an expression-bodied property.");
+        string cause = business[causeStart..(business.IndexOf(';', causeStart) + 1)];
+        Assert.Contains("CanRequestManualChargingReturnToService", cause, StringComparison.Ordinal);
+
+        (string Name, string Body, string[]? AllowedCalls)[] reached =
         [
-            body,
-            File.ReadAllText(Path.Combine(root, "src", "SQCD.Agv.Application", "WireToGateManualChargingReturnText.cs")),
-            File.ReadAllText(Path.Combine(root, "src", "SQCD.Agv.Wpf", "ManualChargingReturnWiring.cs"))
+            ("ManualChargingReturnBlocker", cause, ["SessionCanCarryOperatorRequest"]),
+            ("SessionCanCarryOperatorRequest",
+                MethodBody(business, "private bool SessionCanCarryOperatorRequest()"), []),
+            ("RefreshManualChargingReturnGuidanceCore",
+                MethodBody(viewModel, "private void RefreshManualChargingReturnGuidanceCore()"), ["Guidance", "Invoke"]),
+            ("ConfigureManualChargingReturnGuidance",
+                MethodBody(viewModel, "internal void ConfigureManualChargingReturnGuidance("),
+                ["ArgumentNullException", "nameof", "RunOnUiThread"]),
+            ("WireToGateManualChargingReturnText.Guidance",
+                MethodBody(text, "public static string Guidance("), []),
+            ("ManualChargingReturnWiring.Configure",
+                MethodBody(wiring, "public static void Configure("),
+                ["ThrowIfNull", "ConfigureManualChargingReturnGuidance"]),
+            // The two files whole, comments included, for the forbidden names only: no call may be added there either.
+            ("WireToGateManualChargingReturnText.cs", text, null),
+            ("ManualChargingReturnWiring.cs", wiring, null)
         ];
-        foreach (string source in sources)
+        foreach ((string name, string body, string[]? allowedCalls) in reached)
         {
+            if (allowedCalls is not null)
+            {
+                string[] outside =
+                [
+                    .. System.Text.RegularExpressions.Regex.Matches(body, @"\b([A-Za-z_]\w*)\s*\(")
+                        .Select(match => match.Groups[1].Value)
+                        .Where(call => call is not ("if" or "switch" or "return"))
+                        .Distinct()
+                        .Except(allowedCalls)
+                ];
+                Assert.True(
+                    outside.Length == 0,
+                    $"{name} calls {string.Join(", ", outside)}, outside the set this test allows.");
+            }
+
             foreach (string forbidden in new[]
             {
                 "GetEnvironmentVariable",
                 "ReadRecoveryProof",
                 "ReadOperatorContext",
-                "AuthenticationProofEnvironmentVariable",
+                "EnvironmentVariable",
                 "_recoveryOptions",
-                "CONTROL_SERVER_RECOVERY_PROOF"
+                "CONTROL_SERVER_"
             })
             {
-                Assert.DoesNotContain(forbidden, source, StringComparison.Ordinal);
+                Assert.DoesNotContain(forbidden, body, StringComparison.Ordinal);
             }
         }
+    }
+
+    /// <summary>
+    /// The body of the member whose declaration starts with <paramref name="signature"/>, from its opening brace to
+    /// its closing one: the declaration itself is not a call.
+    /// </summary>
+    private static string MethodBody(string source, string signature)
+    {
+        int start = source.IndexOf(signature, StringComparison.Ordinal);
+        Assert.True(start >= 0, $"Not found: {signature}");
+        int open = source.IndexOf('{', start);
+        int depth = 0;
+        for (int index = open; index < source.Length; index++)
+        {
+            depth += source[index] switch { '{' => 1, '}' => -1, _ => 0 };
+            if (depth == 0)
+            {
+                return source[open..(index + 1)];
+            }
+        }
+
+        throw new InvalidDataException($"Unbalanced braces after: {signature}");
     }
 
     /// <summary>
@@ -164,6 +226,10 @@ public sealed class WireToGateManualChargingReturnTextTests
             StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The operator-facing sentences name no ticket and no internal role (the workspace's rule for this screen):
+    /// 「调度」 reads as the person who dispatches vehicles on the plant floor.
+    /// </summary>
     [Theory]
     [InlineData(NotAuthorized)]
     [InlineData(SessionNotReady)]

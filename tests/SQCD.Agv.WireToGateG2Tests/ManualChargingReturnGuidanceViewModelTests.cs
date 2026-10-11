@@ -21,7 +21,7 @@ public sealed class ManualChargingReturnGuidanceViewModelTests
     private const string NotAuthorized =
         "充电完成后需维护管理员在本机开启返回服务权限，再按「充电后返回服务」。请联系系统维护人员。";
 
-    private const string SessionNotReady = "与服务端恢复连接后才能申请返回服务。";
+    private const string SessionNotReady = "与服务端的连接就绪后才能申请返回服务。";
 
     private const string Latched = "安全故障解除前不能申请返回服务，请联系系统维护人员。";
 
@@ -92,6 +92,32 @@ public sealed class ManualChargingReturnGuidanceViewModelTests
         Assert.Equal(Latched, viewModel.ManualChargingReturnGuidance);
         viewModel.RefreshWireToGateInputState();
         Assert.Equal(Latched, viewModel.ManualChargingReturnGuidance);
+    }
+
+    /// <summary>
+    /// 锁存解除只经控制器（审查 S2）：凭据齐全、保持中，先锁存、屏上说锁存；维护人员复位之后，控制器的状态变化走展示路径
+    /// 把按钮放回来，那一行要跟着清掉，不能停在「安全故障解除前……」。这一步只有展示路径在跑，输入刷新路径不参与。
+    /// </summary>
+    [Fact]
+    public async Task LiftingTheLatchThroughTheControllerAloneTakesTheLineAway()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, () => "OP-7");
+        Configure(viewModel, () => WireToGateManualChargingReturnBlocker.None, offered: true);
+        viewModel.UpdateWireToGateStatus(Session(connected: true));
+        viewModel.UpdateWireToGateJourney(Journey(hold: true));
+        Assert.True(viewModel.CanRequestManualChargingReturn);
+        Assert.Equal(string.Empty, viewModel.ManualChargingReturnGuidance);
+
+        controller.EnterFatalFault("UI_COMMAND_FAILED", OnboardFatalFaultBanner.UiCommandFailed);
+        Assert.False(viewModel.CanRequestManualChargingReturn);
+        Assert.Equal(Latched, viewModel.ManualChargingReturnGuidance);
+
+        Assert.True(await viewModel.ClearFatalFaultAsync(TestContext.Current.CancellationToken));
+
+        Assert.True(viewModel.CanRequestManualChargingReturn);
+        Assert.Equal(string.Empty, viewModel.ManualChargingReturnGuidance);
+        Assert.False(viewModel.HasManualChargingReturnGuidance);
     }
 
     /// <summary>业务服务说可以按：按钮在，旁边不再挂一行说明。</summary>
@@ -168,13 +194,16 @@ public sealed class ManualChargingReturnGuidanceViewModelTests
         null,
         Now);
 
-    private static async Task<MainViewModel> ViewModel(OnboardController controller)
+    private static async Task<MainViewModel> ViewModel(
+        OnboardController controller,
+        Func<string?>? operatorIdProvider = null)
     {
         MainViewModel viewModel = new(
             controller,
             new RecordingLogger(),
             "agv02",
-            OnboardActiveSlotConfigurationFactory.Create(new WireToGateSettings(), new IoModuleSettings()))
+            OnboardActiveSlotConfigurationFactory.Create(new WireToGateSettings(), new IoModuleSettings()),
+            operatorIdProvider)
         {
             StationDepartureCountdownDispatcher = null,
             Clock = new SystemClock()

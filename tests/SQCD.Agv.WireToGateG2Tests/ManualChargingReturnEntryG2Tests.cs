@@ -84,6 +84,7 @@ public sealed class ManualChargingReturnEntryG2Tests
         Assert.False(await harness.ViewModel.RequestManualChargingReturnAsync(token));
         await AssertWhileAsync(() => Assert.Empty(Requests(harness)), token);
         Assert.Equal(NotAuthorized, harness.ViewModel.ManualChargingReturnGuidance);
+        AssertRefusedLocally(harness);
     }
 
     /// <summary>
@@ -105,6 +106,63 @@ public sealed class ManualChargingReturnEntryG2Tests
         Assert.False(harness.ViewModel.CanRequestManualChargingReturn);
         Assert.False(await harness.ViewModel.RequestManualChargingReturnAsync(token));
         await AssertWhileAsync(() => Assert.Empty(Requests(harness)), token);
+        AssertRefusedLocally(harness);
+    }
+
+    /// <summary>
+    /// The maintenance switch off while the operator id and the proof are both configured: no button, and a press
+    /// made anyway is refused by the entry's own local check, before anything is read or sent.
+    /// </summary>
+    /// <remarks>
+    /// The other refused states all lack the proof, so in them the credential reader throwing would also keep the
+    /// wire silent; with the local check removed they stayed green (review S1, mutation R5x). Here the proof is
+    /// there, so only the local check stands between the press and the wire -- and the refusal it publishes is its
+    /// own sentence, not the one an exception on the way out produces.
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
+    [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
+    public async Task WithTheSwitchOffAConfiguredProofIsStillRefusedByTheLocalCheck()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartHeldAsync(
+            new WireToGateRecoveryOptions(false, ProofVariable, "MAINTENANCE_ADMINISTRATOR", "CONFIGURED_PROOF"),
+            token);
+        await WaitForGuidanceAsync(harness, NotAuthorized, token);
+        Assert.False(harness.ViewModel.CanRequestManualChargingReturn);
+
+        Assert.False(await harness.ViewModel.RequestManualChargingReturnAsync(token));
+        await AssertWhileAsync(() => Assert.Empty(Requests(harness)), token);
+        AssertRefusedLocally(harness);
+    }
+
+    /// <summary>
+    /// A verified maintainer whose session is gone: a press made anyway is refused by the local check, not by the
+    /// send failing on a closed connection.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
+    [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
+    public async Task OfflineAVerifiedMaintainersPressIsRefusedByTheLocalCheck()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartHeldAsync(VerifiedMaintainer(), token);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.CanRequestManualChargingReturn,
+            "the button for a verified maintainer",
+            token);
+
+        await harness.StopServerAsync();
+        await harness.WaitUntilAsync(
+            () => harness.Business.ManualChargingReturnBlocker == WireToGateManualChargingReturnBlocker.SessionNotReady,
+            "the session to be named once the server is gone",
+            token);
+
+        Assert.False(await harness.ViewModel.RequestManualChargingReturnAsync(token));
+        await AssertWhileAsync(() => Assert.Empty(Requests(harness)), token);
+        AssertRefusedLocally(harness);
     }
 
     /// <summary>
@@ -279,6 +337,7 @@ public sealed class ManualChargingReturnEntryG2Tests
         Assert.False(second.ViewModel.CanRequestManualChargingReturn);
         Assert.False(await second.ViewModel.RequestManualChargingReturnAsync(token));
         await AssertWhileAsync(() => Assert.Empty(Requests(second)), token);
+        AssertRefusedLocally(second);
     }
 
     private static WireToGateRecoveryOptions VerifiedMaintainer() =>
@@ -355,6 +414,19 @@ public sealed class ManualChargingReturnEntryG2Tests
                 $"{exception.Message} Shown: 「{shown}」; blocker: {harness.Business.ManualChargingReturnBlocker}; "
                 + $"button: {harness.ViewModel.CanRequestManualChargingReturn}.");
         }
+    }
+
+    /// <summary>
+    /// The last refusal is the local check's own sentence (<c>RunManualChargingReturnAsync</c> before anything is read)
+    /// and no refusal of this entry says the request failed on its way out.
+    /// </summary>
+    private static void AssertRefusedLocally(Harness harness)
+    {
+        WireToGateOperatorEvent[] refusals =
+            [.. harness.Events.Where(item => item.Kind == "RECOVERY_BLOCKED" && item.Message.Contains("返回服务", StringComparison.Ordinal))];
+        Assert.NotEmpty(refusals);
+        Assert.Contains("本次未发送请求", refusals[^1].Message, StringComparison.Ordinal);
+        Assert.DoesNotContain(refusals, item => item.Message.Contains("请求未完成", StringComparison.Ordinal));
     }
 
     private static JsonElement[] Requests(Harness harness) =>
