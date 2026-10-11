@@ -206,7 +206,7 @@ public sealed class ManualStationClearanceG2Tests
         Assert.True(await harness.ViewModel.ConfirmStationClearanceAsync(shown.Prompt!, token));
 
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.Logs.Any(line =>
+            () => harness.LogsSnapshot().Any(line =>
                 line.Kind == OperatorRecordKind.Success
                 && line.Message.Contains("服务端已确认清桩", StringComparison.Ordinal)),
             "the operator record of the confirmed clearance on the view model",
@@ -238,7 +238,7 @@ public sealed class ManualStationClearanceG2Tests
 
         LogLineViewModel? record = null;
         await harness.WaitUntilAsync(
-            () => (record = harness.ViewModel.Logs.LastOrDefault(line =>
+            () => (record = harness.LogsSnapshot().LastOrDefault(line =>
                 line.Kind == OperatorRecordKind.Warning && line.Message.Contains("结果未知", StringComparison.Ordinal))) is not null,
             "the operator record that the press's result is unknown",
             token);

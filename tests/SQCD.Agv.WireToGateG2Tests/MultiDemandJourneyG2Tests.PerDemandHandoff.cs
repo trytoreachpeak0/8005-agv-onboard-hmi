@@ -86,7 +86,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(DemandB, sessions[1].GetProperty("demandId").GetString());
         Assert.Equal(actionsBefore, ReceivedPayloads(harness, "RecoveryActionSubmitted").Length);
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.Logs.Any(line => line.Message.Contains(
+            () => harness.LogsSnapshot().Any(line => line.Message.Contains(
                 NotBlockedRefusalText,
                 StringComparison.Ordinal)),
             "the server's refusal to reach the operator",
@@ -107,7 +107,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         await WaitForChoicesAsync(harness, [], token);
         Assert.False(harness.Business.CanRequestFaultCargoHandoff);
         Assert.Contains(
-            harness.ViewModel.Logs,
+            harness.LogsSnapshot(),
             line => line.Message.Contains("本趟行程已结束，「车上待交接的需求」已清空。", StringComparison.Ordinal));
         Assert.Empty(harness.UiErrors);
     }

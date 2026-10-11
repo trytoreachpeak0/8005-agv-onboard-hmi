@@ -1,0 +1,38 @@
+# commit a771a68 (guard only, before fix)
+# dotnet test tests/SQCD.Agv.UnitTests --filter FullyQualifiedName~ViewModelLogsReadArchitectureTests
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:04.21]     SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.TheHarnessFileReadsViewModelLogsExactlyOnce [FAIL]
+[xUnit.net 00:00:04.53]     SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethod [FAIL]
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.TheHarnessFileReadsViewModelLogsExactlyOnce [34 ms]
+  Error Message:
+   MultiDemandJourneyG2Tests.cs reads ViewModel.Logs on line(s) []; only the snapshot method may.
+  Stack Trace:
+     at SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.TheHarnessFileReadsViewModelLogsExactlyOnce() in tests\SQCD.Agv.UnitTests\ViewModelLogsReadArchitectureTests.cs:line 72
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethod [326 ms]
+  Error Message:
+   20 direct read(s) of ViewModel.Logs; read the log through the harness snapshot method instead:
+tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:209
+tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:241
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationOverRecordedLoad.cs:306
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandoffOverUnrecordedLoad.cs:522
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.OperatorSelectedCancellation.cs:211
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.Paths.cs:535
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.PerDemandHandoff.cs:89
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.PerDemandHandoff.cs:110
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.PerDemandHandoffLocks.cs:309
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.PerDemandHandoffLocks.cs:387
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.PerDemandHandoffLocks.cs:432
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.PerDemandHandoffLocks.cs:438
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.QueuedSlotCommandDisplay.cs:427
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.SelectedCancellationBranches.cs:146
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.SelectedCancellationBranches.cs:361
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.SelectedCancellationBranches.cs:472
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.SelectedCancellationBranches.cs:476
+tests\SQCD.Agv.WireToGateG2Tests\UnableToChargeFieldConfirmationG2Tests.cs:152
+tests\SQCD.Agv.WireToGateG2Tests\UnableToChargeFieldConfirmationG2Tests.cs:416
+tests\SQCD.Agv.WireToGateG2Tests\UnableToChargeFieldConfirmationG2Tests.cs:1602
+  Stack Trace:
+     at SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethod() in tests\SQCD.Agv.UnitTests\ViewModelLogsReadArchitectureTests.cs:line 55
+
+Failed!  - Failed:     2, Passed:     1, Skipped:     0, Total:     3, Duration: 483 ms - SQCD.Agv.UnitTests.dll (net8.0)

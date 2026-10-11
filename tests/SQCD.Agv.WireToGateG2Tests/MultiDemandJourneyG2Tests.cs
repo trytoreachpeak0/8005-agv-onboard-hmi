@@ -610,6 +610,43 @@ public sealed partial class MultiDemandJourneyG2Tests
         public string[] PlanLegStatuses() =>
             ReadStable(() => ViewModel.JourneyPlanLegs.Select(row => row.ItemStatus).ToArray());
 
+        /// <summary>
+        /// The operator log as the screen shows it, oldest first, copied without tripping over an append. Every test
+        /// reads the log through here, never <c>ViewModel.Logs</c> itself (ViewModelLogsReadArchitectureTests): call it
+        /// again on each poll of a wait, and take a line found in it from the copy.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Enumerating <c>Logs</c> while the view model appends to it throws "Collection was modified", and did once
+        /// (onboard-hmi#285). Taking the stand-in UI lock is not enough on its own: the controller's
+        /// <c>StateChanged</c> reaches <c>MainViewModel.AppendOperatorRecord</c> on the controller's thread, outside
+        /// that lock, because the product relies on the WPF dispatcher there and this harness has none; so does the
+        /// rejection report <see cref="OnUiThread"/> routes after releasing it. So the copy is taken by index off a
+        /// count read first -- indexing does not check the collection's version -- and a read that still loses the
+        /// race is retried by <see cref="ReadStable"/>: an index past a collection that shrank throws
+        /// <c>ArgumentOutOfRangeException</c>, and a slot read between an append raising the count and storing the
+        /// line comes back empty, which is turned into an <c>InvalidOperationException</c>.
+        /// </para>
+        /// <para>
+        /// <b>What the retry cannot repair.</b> <c>TrimLogs</c> removes from the front once the log passes 300 lines;
+        /// a removal in the middle of a copy can shift a line out of it without any exception. No G2 test comes near
+        /// that size.
+        /// </para>
+        /// </remarks>
+        public LogLineViewModel[] LogsSnapshot() => ReadStable(() => OnUi(() =>
+        {
+            System.Collections.ObjectModel.ObservableCollection<LogLineViewModel> lines = ViewModel.Logs;
+            int count = lines.Count;
+            LogLineViewModel[] copy = new LogLineViewModel[count];
+            for (int index = 0; index < count; index++)
+            {
+                copy[index] = lines[index]
+                    ?? throw new InvalidOperationException("the operator log was read in the middle of an append");
+            }
+
+            return copy;
+        }));
+
         private static T[] ReadStable<T>(Func<T[]> read)
         {
             for (int attempt = 0; ; attempt++)

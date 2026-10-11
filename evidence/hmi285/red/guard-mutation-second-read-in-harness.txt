@@ -1,0 +1,4 @@
+# commit 1bd8a24 + 'public int LogCount => ViewModel.Logs.Count;' added to the Harness in MultiDemandJourneyG2Tests.cs
+[xUnit.net 00:00:03.82]     SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.TheHarnessFileReadsViewModelLogsExactlyOnce [FAIL]
+   MultiDemandJourneyG2Tests.cs reads ViewModel.Logs on line(s) [610, 640]; only the snapshot method may.
+Failed!  - Failed:     1, Passed:     2, Skipped:     0, Total:     3, Duration: 259 ms - SQCD.Agv.UnitTests.dll (net8.0)
