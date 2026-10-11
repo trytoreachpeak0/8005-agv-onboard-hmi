@@ -100,7 +100,7 @@ public sealed class OnboardAutomationHostTests
     }
 
     [Fact]
-    public async Task CommandIdConflictErrorCarriesTheRequestRunId()
+    public async Task CommandIdConflictErrorCarriesTheProcessRunId()
     {
         await using AutomationHostHarness harness = await AutomationHostHarness.StartAsync();
         string commandId = "55555555-5555-4555-8555-555555555555";
@@ -124,7 +124,7 @@ public sealed class OnboardAutomationHostTests
     }
 
     [Fact]
-    public async Task RevisionConflictErrorCarriesTheRequestRunId()
+    public async Task RevisionConflictErrorCarriesTheProcessRunId()
     {
         await using AutomationHostHarness harness = await AutomationHostHarness.StartAsync();
         long revision = await harness.ReadRevisionAsync();
@@ -138,6 +138,46 @@ public sealed class OnboardAutomationHostTests
         });
 
         Assert.Equal("REVISION_CONFLICT", error.RootElement.GetProperty("reasonCode").GetString());
+        Assert.Equal(harness.Server.RunId, error.RootElement.GetProperty("runId").GetString());
+    }
+
+    [Fact]
+    public async Task PathNotFoundErrorCarriesTheProcessRunId()
+    {
+        await using AutomationHostHarness harness = await AutomationHostHarness.StartAsync();
+
+        HttpResponseMessage response = await harness.Client.PostAsync(
+            "/api/v1/slots/1/unlock",
+            content: null,
+            cancellationToken: TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        JsonDocument error = (await response.Content.ReadFromJsonAsync<JsonDocument>(
+            cancellationToken: TestContext.Current.CancellationToken))!;
+        Assert.Equal("PATH_NOT_FOUND", error.RootElement.GetProperty("reasonCode").GetString());
+        Assert.Equal(harness.Server.RunId, error.RootElement.GetProperty("runId").GetString());
+    }
+
+    [Fact]
+    public async Task InvalidRequestErrorCarriesTheProcessRunId()
+    {
+        await using AutomationHostHarness harness = await AutomationHostHarness.StartAsync();
+
+        HttpResponseMessage response = await harness.Client.PostAsJsonAsync(
+            "/api/v1/sublots/submit",
+            new
+            {
+                runId = harness.Server.RunId,
+                commandId = "77777777-7777-4777-8777-777777777777",
+                expectedRevision = await harness.ReadRevisionAsync(),
+                sublot = ""
+            },
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        JsonDocument error = (await response.Content.ReadFromJsonAsync<JsonDocument>(
+            cancellationToken: TestContext.Current.CancellationToken))!;
+        Assert.Equal("INVALID_HTTP_REQUEST", error.RootElement.GetProperty("reasonCode").GetString());
         Assert.Equal(harness.Server.RunId, error.RootElement.GetProperty("runId").GetString());
     }
 
