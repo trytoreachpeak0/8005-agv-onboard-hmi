@@ -208,7 +208,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         // operator has A highlighted while B is what goes out, and a message he never sees fixes
         // nothing.
         Assert.Contains(
-            afterRestart.ViewModel.Logs,
+            afterRestart.LogsSnapshot(),
             line => line.Message.Contains("这一次按下是它的重发", StringComparison.Ordinal));
     }
 
