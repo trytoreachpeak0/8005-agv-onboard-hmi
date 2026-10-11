@@ -722,7 +722,9 @@ public sealed class WorkflowSettings
 
 public sealed class LogSettings
 {
-    public string Directory { get; init; } = "logs";
+    // 不在程序目录：部署把程序目录整个换成新包、旧包只留一代，日志会随第二次部署被删（REQ-0272，onboard-hmi#312）。
+    // 与日志簿同处。环境变量在 FileAppLogger 里展开；相对路径仍按程序目录解析。
+    public string Directory { get; init; } = @"%LOCALAPPDATA%\SQCD\8005AGV\logs";
 
     public bool WriteToConsole { get; init; }
 }

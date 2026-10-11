@@ -37,7 +37,9 @@ public sealed class FileAppLogger : IAppLogger
         OnboardTechnicalLogRetentionPolicy? retentionPolicy = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        _directory = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, settings.Directory));
+        _directory = Path.GetFullPath(Path.Combine(
+            AppContext.BaseDirectory,
+            Environment.ExpandEnvironmentVariables(settings.Directory)));
         _writeToConsole = settings.WriteToConsole;
         _time = timeProvider ?? TimeProvider.System;
         _retention = retentionPolicy ?? OnboardTechnicalLogRetentionPolicy.Default;

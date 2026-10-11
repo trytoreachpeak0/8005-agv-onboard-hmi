@@ -20,7 +20,7 @@ internal static class StartupConfiguration
     /// </summary>
     /// <param name="standardError">
     /// 同一句话再写一份的地方，缺省是进程的 stderr。拉起车载端的一方（L2 把 <c>logging.directory</c> 指到证据目录，
-    /// 另把 stderr 收成 <c>.err.log</c>）看不到引导日志器写在程序旁边的那份；日志目录不可写时，它也是唯一的出处。
+    /// 另把 stderr 收成 <c>.err.log</c>）看不到引导日志器写在 %LOCALAPPDATA% 下的那份；日志目录不可写时，它也是唯一的出处。
     /// </param>
     /// <remarks>
     /// 捕获全部异常，不按类型挑：这里只做读文件、解析、校验，没有任何副作用可以留到一半，而无论被拒成什么样子，

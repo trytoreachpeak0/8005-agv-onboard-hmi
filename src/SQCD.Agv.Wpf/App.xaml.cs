@@ -45,8 +45,8 @@ public partial class App : System.Windows.Application, IDisposable
     {
         base.OnStartup(e);
 
-        // 引导日志器在任何可能被拒的东西之前建（onboard-hmi#14）：它不读业务配置，写到固定的 <程序目录>/logs，
-        // 与出厂配置的日志目录是同一个。修复之前读配置在建日志器之前，配置一被拒，catch 拿到的日志器是 null，
+        // 引导日志器在任何可能被拒的东西之前建（onboard-hmi#14）：它不读业务配置，写到固定的 %LOCALAPPDATA%\SQCD\8005AGV\logs，
+        // 与出厂配置的日志目录是同一个（onboard-hmi#312 起不在程序目录，部署删不到）。修复之前读配置在建日志器之前，配置一被拒，catch 拿到的日志器是 null，
         // 一个字节都不写，再被一个没人点的模态框挡住退出——车上看到的就是「进程活着、没窗口、没日志」。
         FileAppLogger bootstrapLogger = new(new LogSettings());
         string settingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");

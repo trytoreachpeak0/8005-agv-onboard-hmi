@@ -209,6 +209,38 @@ public sealed class FileAppLoggerTechnicalLogTests : IDisposable
         Assert.Contains(LinesOfToday(), line => line.EndsWith("\tApp\t业务照常", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// 默认目录在 %LOCALAPPDATA%，不在程序目录：部署把程序目录整个换成新包、旧包只留一代，第二次部署就把
+    /// 两代以前的日志一并删掉，30 天无从谈起。
+    /// </summary>
+    [Fact]
+    public void TheDefaultDirectoryIsUnderLocalAppDataNotBesideTheProgram()
+    {
+        Assert.Equal(@"%LOCALAPPDATA%\SQCD\8005AGV\logs", new LogSettings().Directory);
+    }
+
+    [Fact]
+    public void AnEnvironmentVariableInTheDirectoryIsExpanded()
+    {
+        string variable = "HMI312_LOG_ROOT_" + Guid.NewGuid().ToString("N");
+        Environment.SetEnvironmentVariable(variable, _directory);
+        try
+        {
+            FileAppLogger logger = new(new LogSettings { Directory = $"%{variable}%\\expanded" }, new ManualTime(Noon));
+
+            logger.Write(LogSeverity.Information, "App", "展开环境变量");
+
+            Assert.True(File.Exists(Path.Combine(
+                _directory,
+                "expanded",
+                OnboardTechnicalLogFileName.For(DateOnly.FromDateTime(Noon.DateTime)))));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(variable, null);
+        }
+    }
+
     private FileAppLogger NewLogger(TimeProvider time, OnboardTechnicalLogRetentionPolicy? retention = null) =>
         new(new LogSettings { Directory = _directory }, time, retention);
 
