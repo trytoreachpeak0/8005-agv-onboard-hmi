@@ -1,0 +1,4 @@
+  Passed SQCD.Agv.UnitTests.StagedG3ScriptPathArchitectureTests.AConversionMovedAfterTheFirstUseIsReported [163 ms]
+  Passed SQCD.Agv.UnitTests.StagedG3ScriptPathArchitectureTests.TheStageRootIsMadeAbsoluteBeforeItsFirstUse [4 ms]
+Total tests: 2
+     Passed: 2

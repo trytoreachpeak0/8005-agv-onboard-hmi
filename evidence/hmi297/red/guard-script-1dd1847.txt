@@ -1,0 +1,7 @@
+  Failed SQCD.Agv.UnitTests.StagedG3ScriptPathArchitectureTests.AConversionMovedAfterTheFirstUseIsReported [93 ms]
+  Error Message:
+   conversion of -StageRoot not found
+  Failed SQCD.Agv.UnitTests.StagedG3ScriptPathArchitectureTests.TheStageRootIsMadeAbsoluteBeforeItsFirstUse [16 ms]
+  Error Message:
+   run-staged-g3-recovery-ack-drop.ps1 must make -StageRoot absolute before any other line reads $StageRoot.
+Failed!  - Failed:     2, Passed:     0, Skipped:     0, Total:     2, Duration: 171 ms - SQCD.Agv.UnitTests.dll (net8.0)
