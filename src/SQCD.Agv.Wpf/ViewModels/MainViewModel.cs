@@ -105,6 +105,9 @@ public sealed partial class MainViewModel : ViewModelBase
     private Func<string?, CancellationToken, Task<bool>>? _wireToGateHardwareRepairReleaseRequester;
     private Func<string?>? _wireToGatePendingHardwareRecoveryRecord;
     private bool _canRequestManualChargingReturn;
+    private string _manualChargingReturnGuidance = string.Empty;
+    private bool _hasManualChargingReturnGuidance;
+    private Func<WireToGateManualChargingReturnBlocker>? _manualChargingReturnBlocker;
     private bool _canRequestHardwareRepairRelease;
     private bool _hasWireToGateJourney;
     private bool _wireToGateEnabled;
@@ -1518,6 +1521,27 @@ public sealed partial class MainViewModel : ViewModelBase
     {
         get => _canRequestManualChargingReturn;
         private set => SetProperty(ref _canRequestManualChargingReturn, value);
+    }
+
+    /// <summary>
+    /// 人工充电保持中、「充电后返回服务」按不了时，屏上说为什么、找谁（8005-agv-onboard-hmi#293）。只读，不是入口。
+    /// </summary>
+    public string ManualChargingReturnGuidance
+    {
+        get => _manualChargingReturnGuidance;
+        private set => SetProperty(ref _manualChargingReturnGuidance, value);
+    }
+
+    public bool HasManualChargingReturnGuidance
+    {
+        get => _hasManualChargingReturnGuidance;
+        private set => SetProperty(ref _hasManualChargingReturnGuidance, value);
+    }
+
+    /// <remarks>接线本身在 <c>ManualChargingReturnWiring</c>，App 与 G2 夹具调同一个方法。</remarks>
+    internal void ConfigureManualChargingReturnGuidance(Func<WireToGateManualChargingReturnBlocker> blocker)
+    {
+        _manualChargingReturnBlocker = blocker ?? throw new ArgumentNullException(nameof(blocker));
     }
 
     public string RecoverySlotName

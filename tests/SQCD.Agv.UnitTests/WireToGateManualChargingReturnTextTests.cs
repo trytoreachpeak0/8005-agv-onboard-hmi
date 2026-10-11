@@ -84,6 +84,83 @@ public sealed class WireToGateManualChargingReturnTextTests
     /// The operator-facing sentences name no ticket and no internal role (the workspace's rule for this screen):
     /// 「调度」 reads as the person who dispatches vehicles on the plant floor.
     /// </summary>
+    /// <summary>
+    /// The cause is read from the judgement the button itself uses, never from the proof. This request carries no
+    /// proof and the server checks only the role it names, so the vehicle's local check is the whole credential
+    /// boundary; a second reading of the proof variable beside it is a second boundary that can drift from the first.
+    /// The line's own code reads no credential at all.
+    /// </summary>
+    [Fact]
+    public void TheCauseComesFromTheButtonsOwnJudgementAndReadsNoCredential()
+    {
+        string root = ProtocolIdentityArchitectureTests.RepositoryRoot();
+        string business = File.ReadAllText(Path.Combine(
+            root, "src", "SQCD.Agv.Wpf", "WireToGateBusinessService.ManualChargingReturn.cs"));
+        const string member = "public WireToGateManualChargingReturnBlocker ManualChargingReturnBlocker =>";
+        int start = business.IndexOf(member, StringComparison.Ordinal);
+        Assert.True(start >= 0, "ManualChargingReturnBlocker is no longer an expression-bodied property.");
+        string body = business[start..(business.IndexOf(';', start) + 1)];
+
+        Assert.Contains("CanRequestManualChargingReturnToService", body, StringComparison.Ordinal);
+        string[] sources =
+        [
+            body,
+            File.ReadAllText(Path.Combine(root, "src", "SQCD.Agv.Application", "WireToGateManualChargingReturnText.cs")),
+            File.ReadAllText(Path.Combine(root, "src", "SQCD.Agv.Wpf", "ManualChargingReturnWiring.cs"))
+        ];
+        foreach (string source in sources)
+        {
+            foreach (string forbidden in new[]
+            {
+                "GetEnvironmentVariable",
+                "ReadRecoveryProof",
+                "ReadOperatorContext",
+                "AuthenticationProofEnvironmentVariable",
+                "_recoveryOptions",
+                "CONTROL_SERVER_RECOVERY_PROOF"
+            })
+            {
+                Assert.DoesNotContain(forbidden, source, StringComparison.Ordinal);
+            }
+        }
+    }
+
+    /// <summary>
+    /// <c>App.xaml.cs</c> wires the line through <c>ManualChargingReturnWiring.Configure</c>, the method the G2 harness
+    /// calls -- so the seam test drives the product's own lines, not a copy of them.
+    /// </summary>
+    [Fact]
+    public void TheAppWiresTheLineThroughTheMethodTheSeamTestDrives()
+    {
+        string root = ProtocolIdentityArchitectureTests.RepositoryRoot();
+        string app = File.ReadAllText(Path.Combine(root, "src", "SQCD.Agv.Wpf", "App.xaml.cs"));
+        string harness = File.ReadAllText(Path.Combine(
+            root, "tests", "SQCD.Agv.WireToGateG2Tests", "MultiDemandJourneyG2Tests.cs"));
+
+        Assert.Contains("ManualChargingReturnWiring.Configure(viewModel, _wireToGateBusiness);", app, StringComparison.Ordinal);
+        Assert.DoesNotContain("ConfigureManualChargingReturnGuidance(", app, StringComparison.Ordinal);
+        Assert.Contains("ManualChargingReturnWiring.Configure(viewModel, business);", harness, StringComparison.Ordinal);
+        Assert.DoesNotContain("ConfigureManualChargingReturnGuidance(", harness, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The window shows the line: its text and its visibility are bound to the two view-model properties, and it
+    /// carries an AutomationId the real-rig scenarios can read. The view model is tested; the binding is only here.
+    /// </summary>
+    [Fact]
+    public void TheWindowBindsTheLine()
+    {
+        string window = File.ReadAllText(Path.Combine(
+            ProtocolIdentityArchitectureTests.RepositoryRoot(), "src", "SQCD.Agv.Wpf", "MainWindow.xaml"));
+
+        Assert.Contains("AutomationProperties.AutomationId=\"ManualChargingReturnGuidance\"", window, StringComparison.Ordinal);
+        Assert.Contains("Text=\"{Binding ManualChargingReturnGuidance}\"", window, StringComparison.Ordinal);
+        Assert.Contains(
+            "Visibility=\"{Binding HasManualChargingReturnGuidance, Converter={StaticResource BooleanToVisibilityConverter}}\"",
+            window,
+            StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData(NotAuthorized)]
     [InlineData(SessionNotReady)]

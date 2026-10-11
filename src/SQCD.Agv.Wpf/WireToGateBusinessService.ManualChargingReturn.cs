@@ -1,4 +1,5 @@
 using System.IO;
+using SQCD.Agv.Application;
 using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
 
@@ -28,6 +29,10 @@ public sealed partial class WireToGateBusinessService
 
     public bool CanRequestManualChargingReturnToService =>
         CanUseRecoveryOperator(requireProof: true);
+
+    // Stub until the implementation commit (8005-agv-onboard-hmi#293).
+    public WireToGateManualChargingReturnBlocker ManualChargingReturnBlocker =>
+        _session is null ? WireToGateManualChargingReturnBlocker.None : WireToGateManualChargingReturnBlocker.None;
 
     public Task<bool> RequestManualChargingReturnToServiceAsync(
         string reason = "手动充电结束，申请恢复业务资格评估。",

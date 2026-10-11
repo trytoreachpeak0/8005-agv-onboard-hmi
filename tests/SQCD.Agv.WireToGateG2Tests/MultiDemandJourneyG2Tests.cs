@@ -494,6 +494,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             // The same method App.xaml.cs calls, not a copy of its lines (8005-agv-onboard-hmi#221).
             StationClearanceWiring.Configure(viewModel, business);
             UnableToChargeWiring.Configure(viewModel, business);
+            ManualChargingReturnWiring.Configure(viewModel, business);
             RecoveryDemandChoiceWiring.Configure(viewModel, business);
             HeldRecoveryCommandWiring.Configure(viewModel, business);
             // The forced isolation's record form and the repair release share one wiring (8005-agv-onboard-hmi#219).
