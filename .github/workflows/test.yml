@@ -37,8 +37,11 @@ on:
 # broker long-poll; the backoff retries exhaust and the session wedges without self-healing. Measured on
 # 2026-09-03: 4 hours 14 minutes of dead CI. This repository has exactly one runner, so a wedged session
 # is its entire CI. A duplicate five-minute run is the cheaper outcome.
+#
+# event_name is in the group so a per-slice dispatch and a push to the same branch never share one:
+# a third arrival in a group displaces the queued one, and these two are different runs, not repeats.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:

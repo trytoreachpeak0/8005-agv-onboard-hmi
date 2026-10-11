@@ -16,10 +16,9 @@ param(
     # on the raw argument). Build, dotnet format and protocol G1 then run once for all of them, and
     # each slice still gets its own directory and gate-result.json -- see "Several slices" below.
     [string[]]$Slice = @(),
-    # Every slice in the index that selects at least one test here. A slice that selects none is
-    # listed in multi-slice-summary.json, not refused: IntegrationSliceTraitArchitectureTests keeps
-    # "selects a test here" equal to "this line implements it", so the skipped ones are the slices
-    # nobody has built yet, not a broken filter.
+    # Every slice in the index except those $slicesNotImplementedHere names, which are skipped and
+    # listed in multi-slice-summary.json. Any other slice that selects no test refuses the whole run,
+    # exactly as -Slice does -- see the table below for why skipping is not decided by the filter.
     [switch]$AllSlices,
     [switch]$SkipProtocolG1
 )
@@ -114,6 +113,20 @@ $sliceIndexPath = Join-Path $ProtocolRoot 'integration-slices\index.json'
 $sliceIndexSha256 = $null
 $slicesWithoutTests = @()
 
+# The slices of the index this line has not implemented: the only ones -AllSlices may skip. Written
+# here rather than inferred from "the filter selects nothing", because that inference is the
+# defect it would hide: an implemented slice whose tests all went missing (a mistyped trait, a test
+# project dropped from the solution) also selects nothing, and -AllSlices used to write fourteen
+# PASS verdicts and exit 0 over it (onboard-hmi#295 review, M1; the -Slice form of the same hole is
+# docs/defects/20260908-empty-slice-filter-mints-a-green-g2.md). The architecture test cannot stand
+# in for this check: it runs in the push/PR round, not in the per-slice round a batch exit cites,
+# and not at all if its project leaves the solution.
+#
+# A second copy of a fact the test assembly holds -- the index minus
+# ProtocolVectorTestBindingArchitectureTests.SlicesThisLineImplements -- and
+# G2ScriptSliceTableArchitectureTests compares the two. Keep it on one line; that test reads it.
+$slicesNotImplementedHere = @('FP-IS-09')
+
 # Lists the tests one slice's filter selects. The first call of a run builds (as the single-slice
 # preflight always has); later calls of a multi-slice run pass --no-build, because the tree they
 # would build is the one the first call just built.
@@ -167,13 +180,21 @@ if ($isSliceRun) {
         }
 
         $listed = Get-SliceSelection -SliceId $candidate -NoBuild:($runs.Count -gt 0 -or $slicesWithoutTests.Count -gt 0)
-        if ($listed.Count -eq 0) {
-            if ($AllSlices) {
-                $slicesWithoutTests += [ordered]@{ integrationSliceId = $candidate; vectorIds = @($sliceMatches[0].vectorIds) }
-                continue
+        $tabledAsNotImplemented = $slicesNotImplementedHere -ccontains $candidate
+        if ($AllSlices -and $tabledAsNotImplemented) {
+            # Listed all the same, so a slice somebody built without updating the table is a refusal
+            # rather than a slice quietly left out of the batch exit's evidence.
+            if ($listed.Count -gt 0) {
+                throw ("切片 '$candidate' 在 `$slicesNotImplementedHere 里，却选中了 $($listed.Count) 条测试。" +
+                       '它已经实现了：把它从表里删掉（G2ScriptSliceTableArchitectureTests 会要求同时改 SlicesThisLineImplements）。')
             }
+            $slicesWithoutTests += [ordered]@{ integrationSliceId = $candidate; vectorIds = @($sliceMatches[0].vectorIds) }
+            continue
+        }
+        if ($listed.Count -eq 0) {
             throw ("切片 '$candidate' 在本仓选不中任何测试，ONBOARD_HMI_G2 没有东西可证。" +
-                   "它的向量是 " + ($sliceMatches[0].vectorIds -join ', ') + '。')
+                   "它的向量是 " + ($sliceMatches[0].vectorIds -join ', ') + '。' +
+                   $(if ($AllSlices) { '它不在 $slicesNotImplementedHere 里，所以这是一片已实现切片的测试全丢了（trait 写错、测试工程不在解决方案里），不是还没建。' } else { '' }))
         }
         $runs.Add([pscustomobject]@{ Slice = $candidate; Entry = $sliceMatches[0]; Listed = $listed; SelectedTestCount = $listed.Count })
     }
