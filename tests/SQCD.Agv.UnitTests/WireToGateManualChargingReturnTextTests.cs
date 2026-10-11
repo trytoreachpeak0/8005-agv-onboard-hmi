@@ -71,6 +71,9 @@ public sealed class WireToGateManualChargingReturnTextTests
     [InlineData(false, false, true, WireToGateManualChargingReturnBlocker.None)]
     [InlineData(false, true, false, WireToGateManualChargingReturnBlocker.None)]
     [InlineData(true, true, false, WireToGateManualChargingReturnBlocker.None)]
+    // An entry offered while the business service, read a moment later, names a cause: the button decides.
+    [InlineData(true, true, false, WireToGateManualChargingReturnBlocker.OperatorNotAuthorized)]
+    [InlineData(true, true, false, WireToGateManualChargingReturnBlocker.SessionNotReady)]
     public void NothingIsShownWithoutAHoldOrWhileTheEntryCanBePressed(
         bool manualChargingHold,
         bool entryOffered,

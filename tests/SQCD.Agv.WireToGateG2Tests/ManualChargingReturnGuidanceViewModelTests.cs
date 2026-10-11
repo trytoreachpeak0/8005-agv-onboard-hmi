@@ -109,6 +109,36 @@ public sealed class ManualChargingReturnGuidanceViewModelTests
         Assert.False(viewModel.HasManualChargingReturnGuidance);
     }
 
+    /// <summary>
+    /// 只走输入刷新那一条路径（服务端重发录入请求时 App 调的 <see cref="MainViewModel.RefreshWireToGateInputState"/>）时，
+    /// 按钮来了说明也要走：两条路径各自重算，不靠另一条顺带。会话快照两条都走，测不出这一条。
+    /// </summary>
+    [Fact]
+    public async Task TheInputRefreshPathAloneTakesTheLineAwayWhenTheButtonComes()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        bool offered = false;
+        WireToGateManualChargingReturnBlocker blocker = WireToGateManualChargingReturnBlocker.OperatorNotAuthorized;
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => false,
+            canRequestManualChargingReturn: () => offered,
+            manualChargingReturnRequester: _ => Task.FromResult(true));
+        viewModel.ConfigureManualChargingReturnGuidance(() => blocker);
+        viewModel.UpdateWireToGateStatus(Session(connected: true));
+        viewModel.UpdateWireToGateJourney(Journey(hold: true));
+        Assert.Equal(NotAuthorized, viewModel.ManualChargingReturnGuidance);
+
+        offered = true;
+        blocker = WireToGateManualChargingReturnBlocker.None;
+        viewModel.RefreshWireToGateInputState();
+
+        Assert.True(viewModel.CanRequestManualChargingReturn);
+        Assert.Equal(string.Empty, viewModel.ManualChargingReturnGuidance);
+        Assert.False(viewModel.HasManualChargingReturnGuidance);
+    }
+
     private static void Configure(
         MainViewModel viewModel,
         Func<WireToGateManualChargingReturnBlocker> blocker,
