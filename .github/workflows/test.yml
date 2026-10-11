@@ -16,6 +16,22 @@ on:
   # A draft pull request runs nothing; marking it ready runs the one round a ticket is meant to need.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  # Per-slice ONBOARD_HMI_G2 evidence for a batch exit (8005-agv-onboard-hmi#295), so that step no
+  # longer runs serially on the control laptop. Dispatched by hand:
+  #   gh workflow run test.yml -R trytoreachpeak0/8005-agv-onboard-hmi --ref <branch> [-f slices=FP-IS-00,FP-IS-04] [-f protocol_ref=<tag or sha>]
+  # One build, one dotnet format and one protocol G1 for every slice, then one filtered test run per
+  # slice; each slice gets its own directory and gate-result.json, uploaded as g2-slice-evidence.
+  # push and pull_request keep the one whole-solution run they always had.
+  workflow_dispatch:
+    inputs:
+      slices:
+        description: "all = every slice that selects a test here; otherwise comma-separated FP-IS-NN"
+        required: false
+        default: all
+      protocol_ref:
+        description: "Protocol tag or full SHA to check out; empty = what WireToGateProtocol.cs binds"
+        required: false
+        default: ""
 
 # Never cancel a running job here. Cancelling one on a self-hosted runner also cancels the runner's
 # broker long-poll; the backoff retries exhaust and the session wedges without self-healing. Measured on
@@ -31,8 +47,10 @@ jobs:
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: [self-hosted, headless]
     # A backstop, not how a run ends: a normal run takes a few minutes, and a timeout ends the job by
-    # cancelling it, which can wedge the runner the same way a manual cancel does.
-    timeout-minutes: 30
+    # cancelling it, which can wedge the runner the same way a manual cancel does. The per-slice run
+    # does fifteen filtered test runs, most of them paying the outbound schema compilation again
+    # (about a minute each); see the PR of 8005-agv-onboard-hmi#295 for the measured duration.
+    timeout-minutes: ${{ github.event_name == 'workflow_dispatch' && 60 || 30 }}
     env:
       # NuGet's vulnerability audit fetches from nuget.org during every restore, and with
       # TreatWarningsAsErrors a failed fetch (NU1900) is a red run that says nothing about the code.
@@ -57,6 +75,8 @@ jobs:
       - name: Protocol ref
         id: protocol
         shell: pwsh
+        env:
+          PROTOCOL_REF_INPUT: ${{ inputs.protocol_ref }}
         run: |
           $source = Get-Content -LiteralPath 8005-agv-onboard-hmi/src/SQCD.Agv.Contracts/WireToGateProtocol.cs -Raw
           function Get-Constant([string] $name) {
@@ -68,6 +88,9 @@ jobs:
           $commit = Get-Constant 'Commit'
           $approval = Get-Constant 'ApprovalStatus'
           $ref = $approval -eq 'APPROVED_RELEASE' ? $tag : $commit
+          # A dispatch may name another protocol ref; the gate script still checks that the bound
+          # commit is an ancestor of it and that the tag, if present, points at the bound commit.
+          if (-not [string]::IsNullOrWhiteSpace($env:PROTOCOL_REF_INPUT)) { $ref = $env:PROTOCOL_REF_INPUT.Trim() }
           Write-Output "Protocol: tag $tag, commit $commit, approval $approval -> checkout ref $ref"
           "ref=$ref" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
 
@@ -92,12 +115,33 @@ jobs:
       #
       # The evidence goes to the runner's temp directory and is uploaded below; it is never committed.
       - name: ONBOARD_HMI_G2
+        if: github.event_name != 'workflow_dispatch'
         shell: pwsh
         working-directory: 8005-agv-onboard-hmi
         run: |
           $evidenceRoot = Join-Path $env:RUNNER_TEMP "g2-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
           "G2_EVIDENCE_ROOT=$evidenceRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           pwsh -NoProfile -File scripts/run-w2g-g2.ps1 -SkipProtocolG1 -EvidenceRoot $evidenceRoot
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # ONBOARD_HMI_G2 per slice, the evidence a batch exit cites. Protocol G1 runs here, once: the
+      # node and pnpm it needs are installed machine-wide on win11-01 (C:\Program Files\nodejs, node
+      # v24.20.0 and pnpm 11.25.0 on 2026-10-11) for the protocol repository's own g1.yml, whose runner
+      # runs as the same NETWORK SERVICE account as this one. Nothing here installs them; if they go
+      # missing, run-w2g-g2.ps1 records G1 as NOT_RUN and every slice fails, which is the right noise.
+      # The slice list goes through an environment variable, never into the script text.
+      - name: ONBOARD_HMI_G2 per slice
+        if: github.event_name == 'workflow_dispatch'
+        shell: pwsh
+        working-directory: 8005-agv-onboard-hmi
+        env:
+          G2_SLICES: ${{ inputs.slices }}
+        run: |
+          $evidenceRoot = Join-Path $env:RUNNER_TEMP "g2-slices-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
+          "G2_EVIDENCE_ROOT=$evidenceRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          $slices = ($env:G2_SLICES ?? '').Trim()
+          $sliceArguments = ($slices -eq '' -or $slices -eq 'all') ? @('-AllSlices') : @('-Slice', $slices)
+          pwsh -NoProfile -File scripts/run-w2g-g2.ps1 -EvidenceRoot $evidenceRoot @sliceArguments
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: UI layout audit
@@ -112,7 +156,7 @@ jobs:
       # codes of the steps above, already reached by the time this runs. A transient ECONNRESET from the
       # artifact service must not turn a green run red.
       - name: Upload G2 evidence
-        if: always()
+        if: always() && github.event_name != 'workflow_dispatch'
         continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
@@ -120,4 +164,19 @@ jobs:
           path: |
             ${{ env.G2_EVIDENCE_ROOT }}
             8005-agv-onboard-hmi/evidence/audits/
+          if-no-files-found: warn
+
+      # The per-slice run's evidence: one directory per slice, each with its own gate-result.json,
+      # plus protocol-v*/multi-slice/<run>/ with the shared steps' logs and multi-slice-summary.json.
+      # One artifact rather than one per slice: upload-artifact cannot loop, and a batch exit downloads
+      # all of them anyway. No retention-days, the same as g2-evidence above. This one is what a batch
+      # exit cites, and continue-on-error still holds: a failed upload is a missing artifact, plain to
+      # see, and the remedy is another dispatch, not a red verdict over slices that passed.
+      - name: Upload per-slice G2 evidence
+        if: always() && github.event_name == 'workflow_dispatch'
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: g2-slice-evidence
+          path: ${{ env.G2_EVIDENCE_ROOT }}
           if-no-files-found: warn
