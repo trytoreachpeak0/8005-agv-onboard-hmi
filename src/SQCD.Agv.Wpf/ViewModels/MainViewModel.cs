@@ -134,6 +134,7 @@ public sealed partial class MainViewModel : ViewModelBase
     private Func<bool>? _wireToGateCanRequestLoadCorrection;
     private Func<bool>? _wireToGateCanRequestFaultCargoHandoff;
     private Func<string?, CancellationToken, Task<bool>>? _wireToGateLoadCancellationRequester;
+    private Func<string?, WireToGateLoadCancellationPress>? _loadCancellationPressBinder;
     private Func<bool>? _wireToGateLoadCancellationSelectionRequired;
     private Func<string?>? _wireToGateRecoveryFallbackDemandId;
     private Func<bool>? _wireToGateCanRequestLoadCancellationBeforeAnySublot;
@@ -996,12 +997,13 @@ public sealed partial class MainViewModel : ViewModelBase
             || CanRequestForcedMechanicalRecovery);
 
     /// <summary>
-    /// 确认框里复述所选需求：子批号、任务类型与花篮数（批次7-14）。没有选中行时为空，确认框照旧只说通用那段。
+    /// 确认框里复述将要取消的需求：子批号、任务类型与花篮数（批次7-14）。取自 <see cref="BeginLoadCancellation"/>，与按键
+    /// 比对的对象是同一次读取。
     /// </summary>
-    public string LoadCancellationConfirmationDetailText =>
-        SelectedWorklistItem is { } row
-            ? $"将要取消的任务：子批 {row.Sublot}，{row.TaskTypeText}，{row.ExpectedBasketCountText}。"
-            : string.Empty;
+    public string LoadCancellationConfirmationDetailText => BeginLoadCancellation().DetailText;
+
+    private static string DescribeLoadCancellationSubject(WorklistItemRow row) =>
+        $"将要取消的任务：子批 {row.Sublot}，{row.TaskTypeText}，{row.ExpectedBasketCountText}。";
 
     /// <summary>
     /// 「修正装货」入口旁标出它针对的子批（批次7-13）。修正照旧针对本站最后一次装货；那一次的需求来自日志里的
@@ -1768,9 +1770,45 @@ public sealed partial class MainViewModel : ViewModelBase
     /// 在途装货的取消、只有一条清单项、以及重发已发出的那次取消，主体都不由这里决定（批次7-14）。
     /// </summary>
     public Task<bool> RequestLoadCancellationAsync(CancellationToken cancellationToken = default) =>
-        _wireToGateLoadCancellationRequester is null
-            ? Task.FromResult(false)
-            : _wireToGateLoadCancellationRequester(SelectedWorklistItem?.DemandId, cancellationToken);
+        BeginLoadCancellation().SendAsync(cancellationToken);
+
+    /// <summary>
+    /// 按下「取消装货」那一刻取下这一次按键与确认框要复述的内容，确认框点「是」之后再执行按键（8005-agv-onboard-hmi#291）。
+    /// </summary>
+    /// <remarks>
+    /// 复述的是按键实际作用的那条需求，与按键比对的对象出自同一次读取：已在日志里的取消（扫码前或在途）、在途装货，
+    /// 都复述它们自己的需求，不看选中行——原来照样复述选中行，操作员读到的是一条、作用的是另一条。只有一次新的扫码前取消
+    /// 才复述选中行，因为那时作用的就是它。按键没有对象时（入口没亮），复述选中行，与原来一样；没有选中行时为空。
+    /// </remarks>
+    public LoadCancellationConfirmation BeginLoadCancellation()
+    {
+        string? selectedDemandId = SelectedWorklistItem?.DemandId;
+        string selectedText = SelectedWorklistItem is { } selected
+            ? DescribeLoadCancellationSubject(selected)
+            : string.Empty;
+        if (_loadCancellationPressBinder is not { } binder)
+        {
+            return new LoadCancellationConfirmation(
+                selectedText,
+                cancellationToken => _wireToGateLoadCancellationRequester is null
+                    ? Task.FromResult(false)
+                    : _wireToGateLoadCancellationRequester(selectedDemandId, cancellationToken));
+        }
+
+        WireToGateLoadCancellationPress press = binder(selectedDemandId);
+        string detail = press.SubjectDemandId is not { } subjectDemandId
+            ? selectedText
+            : WorklistItems.FirstOrDefault(item => item.DemandId == subjectDemandId) is { } subject
+                ? DescribeLoadCancellationSubject(subject)
+                : press.SubjectIsLoadInFlight
+                    ? "将要取消的是正在进行的这次装货。"
+                    : "将要取消的任务已不在本站清单里。";
+        return new LoadCancellationConfirmation(detail, press.SendAsync);
+    }
+
+    /// <summary>接上业务服务取按键的入口（<see cref="LoadCancellationPressWiring"/>）。</summary>
+    internal void ConfigureLoadCancellationPress(Func<string?, WireToGateLoadCancellationPress> binder) =>
+        _loadCancellationPressBinder = binder ?? throw new ArgumentNullException(nameof(binder));
 
     public Task<bool> RequestLoadCompensationAsync(CancellationToken cancellationToken = default) =>
         RequestWithReasonAsync(_wireToGateLoadCompensationRequester, cancellationToken);
@@ -2504,7 +2542,8 @@ public sealed partial class MainViewModel : ViewModelBase
             OperatorRecordKind.Error,
         "RESULT_ACK_PENDING" or "RECOVERY_AUTHORIZED" or "RECOVERY_AUTHORIZATION_UNKNOWN" or "SUBLOT_REJECTED" or "STATION_CLEARANCE_UNKNOWN"
             or "STATION_CLEARANCE_BLOCKED" or "UNABLE_TO_CHARGE_UNKNOWN" or "UNABLE_TO_CHARGE_BLOCKED"
-            or "CONFLICTED_RECOVERY_CLOSED" or "DOOR_NOT_PROVEN_SHUT" or "RECOVERY_VECTOR_UNSETTLED" =>
+            or "CONFLICTED_RECOVERY_CLOSED" or "DOOR_NOT_PROVEN_SHUT" or "RECOVERY_VECTOR_UNSETTLED"
+            or "LOAD_CANCELLATION_NOTHING_TO_CANCEL" =>
             OperatorRecordKind.Warning,
         "SUBLOT_ENTRY_REQUESTED" or "SUBLOT_ENTRY_WITHDRAWN" or "SUBLOT_SUBMITTED" or "OPERATION_PROGRESS"
             or "OPERATION_REPLAY" =>

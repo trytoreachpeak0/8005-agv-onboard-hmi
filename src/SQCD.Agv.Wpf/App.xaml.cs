@@ -302,6 +302,8 @@ public partial class App : System.Windows.Application, IDisposable
                 UnableToChargeWiring.Configure(viewModel, _wireToGateBusiness);
                 // 人工充电保持时「充电后返回服务」按不了的原因与指引（8005-agv-onboard-hmi#293）。接线在 ManualChargingReturnWiring 里，G2 夹具调的是同一个方法。
                 ManualChargingReturnWiring.Configure(viewModel, _wireToGateBusiness);
+                // 「取消装货」按下时取下按键、确认后再发（8005-agv-onboard-hmi#291）。接线在 LoadCancellationPressWiring 里，G2 夹具调的是同一个方法。
+                LoadCancellationPressWiring.Configure(viewModel, _wireToGateBusiness);
                 RecoveryDemandChoiceWiring.Configure(viewModel, _wireToGateBusiness);
                 // 扣住等待现场确认的服务端恢复命令（8005-agv-onboard-hmi#239）。接线在 HeldRecoveryCommandWiring 里，G2 夹具调的是同一个方法。
                 HeldRecoveryCommandWiring.Configure(viewModel, _wireToGateBusiness);

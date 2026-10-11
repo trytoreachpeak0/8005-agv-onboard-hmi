@@ -353,7 +353,12 @@ public sealed partial class WireToGateBusinessService
         CancellationToken cancellationToken) =>
         RunRecoveryRequestAsync(
             WireToGateRecoveryVectorTypes.LoadCancellation,
-            () => RequestLoadCancellationCoreAsync(reason, selectedDemandId, pressedByOperator: true, cancellationToken),
+            () => RequestLoadCancellationCoreAsync(
+                reason,
+                selectedDemandId,
+                pressedByOperator: true,
+                alreadyRead: null,
+                cancellationToken),
             cancellationToken);
 
     /// <param name="reason">
@@ -381,6 +386,29 @@ public sealed partial class WireToGateBusinessService
             WireToGateRecoveryVectorTypes.LoadCorrection,
             () => RequestLoadCorrectionCoreAsync(reason, pressedByOperator: true, cancellationToken),
             cancellationToken);
+
+    /// <summary>
+    /// A load cancellation press taken when the operator presses the entry, to be sent once they confirm.
+    /// </summary>
+    /// <param name="reason">As for <see cref="RequestLoadCancellationAsync(string, string?, CancellationToken)"/>.</param>
+    /// <param name="selectedDemandId">The worklist row picked when the entry was pressed.</param>
+    /// <remarks>
+    /// The subject on screen is taken now, from the same cached state the entry is lit from, and the confirmation is held
+    /// to it (<see cref="RequestBoundLoadCancellationAsync"/>). The demand the confirmation dialog names comes from the
+    /// same read: read apart, the dialog could name one subject and the press be held to another (onboard-hmi#291 review
+    /// S1).
+    /// </remarks>
+    public WireToGateLoadCancellationPress BindLoadCancellationPress(string reason, string? selectedDemandId)
+    {
+        LoadCancellationTarget? pressed = LoadCancellationSubject(Volatile.Read(ref _lastRecoveryState), selectedDemandId);
+        return new WireToGateLoadCancellationPress(
+            pressed?.DemandId,
+            pressed?.IsLoadInFlight ?? false,
+            cancellationToken => RunRecoveryRequestAsync(
+                WireToGateRecoveryVectorTypes.LoadCancellation,
+                () => RequestBoundLoadCancellationAsync(reason, selectedDemandId, pressed?.Key, cancellationToken),
+                cancellationToken));
+    }
 
     /// <param name="reason">As for <see cref="RequestLoadCompensationAsync"/>.</param>
     public Task<bool> RequestFaultCargoHandoffAsync(
@@ -551,15 +579,144 @@ public sealed partial class WireToGateBusinessService
         // is not seen here; that shape is onboard-hmi#182's.
         // Nor over a load whose cancellation already has a result on file (onboard-hmi#254): pressed, it would ask again
         // under the same cancellationId. The request path refuses it from the outbox; this greys the entry out.
-        return state.OperationContext is { OperationType: OperationType.Load } context
-            && string.Equals(
-                state.UnsettledSlotOperationAttemptId,
-                context.SlotOperationAttemptId,
-                StringComparison.Ordinal)
-            && !IsCancellationConcluded(context.SlotOperationAttemptId)
-            && !state.PendingResults.Any(pending =>
-                string.Equals(pending.MessageType, "OperationResult", StringComparison.Ordinal)
-                && string.Equals(pending.BusinessId, context.SlotOperationAttemptId, StringComparison.Ordinal));
+        return CancellableLoadInFlight(state) is not null;
+    }
+
+    /// <summary>The load in flight the cancellation entry is offered over, by the rules above, or <c>null</c>.</summary>
+    private WireToGateRecoveryOperationContext? CancellableLoadInFlight(WireToGateRecoveryState state) =>
+        state.OperationContext is { OperationType: OperationType.Load } context
+        && string.Equals(
+            state.UnsettledSlotOperationAttemptId,
+            context.SlotOperationAttemptId,
+            StringComparison.Ordinal)
+        && !IsCancellationConcluded(context.SlotOperationAttemptId)
+        && !state.PendingResults.Any(pending =>
+            string.Equals(pending.MessageType, "OperationResult", StringComparison.Ordinal)
+            && string.Equals(pending.BusinessId, context.SlotOperationAttemptId, StringComparison.Ordinal))
+            ? context
+            : null;
+
+    /// <summary>
+    /// What a load cancellation would act on: <paramref name="Key"/> names it so two moments can be compared,
+    /// <paramref name="DemandId"/> is the demand the confirmation dialog names.
+    /// </summary>
+    private sealed record LoadCancellationTarget(string Key, string DemandId, bool IsLoadInFlight);
+
+    /// <summary>
+    /// What a load cancellation pressed now would act on, or <c>null</c> when there is nothing (onboard-hmi#291).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The same three subjects the request path picks between, in its order: a cancellation vector already on file, the
+    /// load in flight, the cancellation before any sublot. Each is keyed by the id the request would go out under, so
+    /// "the same key" means "the same request".
+    /// </para>
+    /// <para>
+    /// The demand is the one that request is about, never the highlighted row unless the request is about it: a vector on
+    /// file names its own, a load in flight its own, and a cancellation before any sublot already sent is recovered from
+    /// the journal by <see cref="FindLoadCancellationBeforeSublot"/> whatever is highlighted (review S2, M10).
+    /// </para>
+    /// </remarks>
+    private LoadCancellationTarget? LoadCancellationSubject(WireToGateRecoveryState state, string? selectedDemandId)
+    {
+        if (state.RecoveryVector is { } vector)
+        {
+            return vector.VectorType == WireToGateRecoveryVectorTypes.LoadCancellation && !IsAwaitingManualCheck(state)
+                ? new LoadCancellationTarget(
+                    $"vector:{vector.PrimaryId}",
+                    vector.DemandId,
+                    !WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector))
+                : null;
+        }
+
+        if (state.UnsettledSlotOperationAttemptId is not null)
+        {
+            return CancellableLoadInFlight(state) is { } load
+                ? new LoadCancellationTarget($"load:{load.SlotOperationAttemptId}", load.DemandId, IsLoadInFlight: true)
+                : null;
+        }
+
+        LoadCancellationBeforeSublotOutcome beforeSublot = FindLoadCancellationBeforeSublot(state, selectedDemandId);
+        return beforeSublot is { Availability: LoadCancellationBeforeSublotAvailability.Ready, Target: { } target }
+            ? new LoadCancellationTarget($"before-sublot:{target.CancellationId}", target.DemandId, IsLoadInFlight: false)
+            : null;
+    }
+
+    /// <summary>
+    /// The load cancellation the operator confirmed, held to the subject that was on screen when they pressed: the
+    /// confirmation dialog is modal, and what it was about can settle or be replaced while it is open (onboard-hmi#291).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A different subject at confirmation -- none, another load, a load instead of a cancellation before any sublot --
+    /// is answered with a notice and nothing is sent. Sending it would act on something the operator never confirmed: a
+    /// press over load A cancelling load B, or one that was to open no door taking a load's slots over and pulsing them.
+    /// </para>
+    /// <para>
+    /// A press taken with no subject goes the unbound way, as a press always did. So does every caller that is not the
+    /// entry -- the restart settlement's resend and the plain overloads -- which is why this narrows nothing else.
+    /// </para>
+    /// </remarks>
+    private async Task<bool> RequestBoundLoadCancellationAsync(
+        string reason,
+        string? selectedDemandId,
+        string? pressedSubject,
+        CancellationToken cancellationToken)
+    {
+        if (pressedSubject is null)
+        {
+            return await RequestLoadCancellationCoreAsync(
+                    reason,
+                    selectedDemandId,
+                    pressedByOperator: true,
+                    alreadyRead: null,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
+        string? confirmedSubject = LoadCancellationSubject(state, selectedDemandId)?.Key;
+        if (!string.Equals(pressedSubject, confirmedSubject, StringComparison.Ordinal))
+        {
+            return AnswerNothingToCancel($"按下时的对象={pressedSubject}，确认时的对象={confirmedSubject ?? "none"}");
+        }
+
+        // The state just compared is the state acted on (review L2): read again, a change in between would be acted on
+        // without having been compared.
+        return await RequestLoadCancellationCoreAsync(
+                reason,
+                selectedDemandId,
+                pressedByOperator: true,
+                alreadyRead: state,
+                cancellationToken)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// The operator event for a load cancellation press whose subject is no longer the one on screen when it was pressed.
+    /// </summary>
+    internal const string LoadCancellationNothingToCancelKind = "LOAD_CANCELLATION_NOTHING_TO_CANCEL";
+
+    /// <summary>
+    /// Answers a load cancellation press whose subject is gone or replaced: a notice, not a fault, nothing sent and no
+    /// door opened (onboard-hmi#291). The log keeps both subjects.
+    /// </summary>
+    /// <returns>
+    /// <c>true</c>: the press was handled and there was nothing to do, the convention the authorization resend already
+    /// uses. <c>false</c> would have the window add a "not accepted, check the authorization" box on top of the notice,
+    /// which misleads the same way the fault this replaces did.
+    /// </returns>
+    private bool AnswerNothingToCancel(string why)
+    {
+        _logger.Write(
+            LogSeverity.Information,
+            nameof(WireToGateBusinessService),
+            $"取消装货确认时，按下时的对象已不在或已换成别的，未发申请、未开仓门：{why}。");
+        PublishOperatorResponse(
+            LoadCancellationNothingToCancelKind,
+            "按下确认时，要取消的对象已经变了，这次取消没有执行，也没有开任何仓门。"
+            + "如仍需取消，请重新按「取消装货」，按屏上当前显示为准。");
+        return true;
     }
 
     /// <summary>
@@ -841,10 +998,11 @@ public sealed partial class WireToGateBusinessService
         string reason,
         string? selectedDemandId,
         bool pressedByOperator,
+        WireToGateRecoveryState? alreadyRead,
         CancellationToken cancellationToken)
     {
-        WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken)
-            .ConfigureAwait(false);
+        WireToGateRecoveryState state = alreadyRead
+            ?? await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
         if (state.RecoveryVector is { } existingVector)
         {
             if (existingVector.VectorType != WireToGateRecoveryVectorTypes.LoadCancellation)
@@ -1435,7 +1593,12 @@ public sealed partial class WireToGateBusinessService
             "上次按下的装货取消没有收到服务端答复，已按首次内容重新申请；不会再执行原装货。 ");
         await RunRecoveryRequestAsync(
                 WireToGateRecoveryVectorTypes.LoadCancellation,
-                () => RequestLoadCancellationCoreAsync(pending.Reason, null, pressedByOperator: false, cancellationToken),
+                () => RequestLoadCancellationCoreAsync(
+                    pending.Reason,
+                    null,
+                    pressedByOperator: false,
+                    alreadyRead: null,
+                    cancellationToken),
                 cancellationToken)
             .ConfigureAwait(false);
     }

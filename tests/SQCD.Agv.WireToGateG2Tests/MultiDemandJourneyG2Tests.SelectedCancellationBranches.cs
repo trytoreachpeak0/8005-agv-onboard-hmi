@@ -94,7 +94,13 @@ public sealed partial class MultiDemandJourneyG2Tests
             server => server.LoadCancellationDecision = "REJECTED",
             cancellationToken: token);
 
-        // B is excluded locally -- the vehicle knows it loaded it.
+        // B is excluded locally -- the vehicle knows it loaded it. Waited for on the state the entry is lit from: a press
+        // is taken against that state and confirmed against the journal (onboard-hmi#291), and pressed before the seed
+        // reached it, the two would differ and the answer would be the notice instead of this refusal.
+        await harness.WaitUntilAsync(
+            () => harness.Business.LoadsOnBoard.Any(load => load.Load.DemandId == DemandB),
+            "the seeded load of B to reach the state the entry is lit from",
+            token);
         SelectWorklistItem(harness, DemandB);
         Assert.False(await harness.ViewModel.RequestLoadCancellationAsync(token));
         Assert.Empty(Received(harness, "LoadCancellationStartRequested"));
