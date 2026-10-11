@@ -91,10 +91,13 @@ public sealed class WireToGateManualChargingReturnTextTests
     /// <remarks>
     /// <para>
     /// The guard is a closed set, not a list of forbidden words (8005-agv-onboard-hmi#293 review S3: a first version
-    /// that scanned the cause property alone let a helper, or the view model's refresh, read the proof). Every method
-    /// the line's code reaches is named below with the only calls it may make. The one exit from the set is
+    /// that scanned the cause property alone let a helper, or the view model's refresh, read the proof). Every member
+    /// body the line's code reaches is named below with <b>every identifier it may contain</b> -- calls, properties,
+    /// fields, types and keywords alike, comments and string literals stripped first. Closing only the calls let a
+    /// property that reads the proof through (re-review: <c>&amp;&amp; ProofPresent</c> in the cause, a static
+    /// property read in the view model's refresh). The one exit from the set is
     /// <c>CanRequestManualChargingReturnToService</c>, the button's own judgement, which the cause must read. A new
-    /// call anywhere in the set is red here until someone adds it to this table and says why.
+    /// name anywhere in the set is red here until someone adds it to this table and says why.
     /// </para>
     /// <para>
     /// Within the set nothing names an environment variable or a credential reader.
@@ -117,40 +120,54 @@ public sealed class WireToGateManualChargingReturnTextTests
         string cause = business[causeStart..(business.IndexOf(';', causeStart) + 1)];
         Assert.Contains("CanRequestManualChargingReturnToService", cause, StringComparison.Ordinal);
 
-        (string Name, string Body, string[]? AllowedCalls)[] reached =
+        const string Blocker = "WireToGateManualChargingReturnBlocker";
+        (string Name, string Body, string[]? AllowedNames)[] reached =
         [
-            ("ManualChargingReturnBlocker", cause, ["SessionCanCarryOperatorRequest"]),
+            ("ManualChargingReturnBlocker", cause,
+                ["public", Blocker, "ManualChargingReturnBlocker", "CanRequestManualChargingReturnToService", "None",
+                    "SessionCanCarryOperatorRequest", "SessionNotReady", "OperatorNotAuthorized"]),
             ("SessionCanCarryOperatorRequest",
-                MethodBody(business, "private bool SessionCanCarryOperatorRequest()"), []),
+                MethodBody(business, "private bool SessionCanCarryOperatorRequest()"),
+                ["WireToGateSessionSnapshot", "session", "_session", "Current", "return", "Connected", "Readiness", "is",
+                    "WireToGateSessionReadiness", "Ready", "or", "RecoveryRequired"]),
             ("RefreshManualChargingReturnGuidanceCore",
-                MethodBody(viewModel, "private void RefreshManualChargingReturnGuidanceCore()"), ["Guidance", "Invoke"]),
+                MethodBody(viewModel, "private void RefreshManualChargingReturnGuidanceCore()"),
+                ["string", "guidance", "WireToGateManualChargingReturnText", "Guidance", "_manualChargingHold",
+                    "CanRequestManualChargingReturn", "RecoveryEntriesBlockedByFatalFault", "_manualChargingReturnBlocker",
+                    "Invoke", Blocker, "None", "ManualChargingReturnGuidance", "HasManualChargingReturnGuidance", "Length"]),
             ("ConfigureManualChargingReturnGuidance",
                 MethodBody(viewModel, "internal void ConfigureManualChargingReturnGuidance("),
-                ["ArgumentNullException", "nameof", "RunOnUiThread"]),
+                ["_manualChargingReturnBlocker", "blocker", "throw", "new", "ArgumentNullException", "nameof",
+                    "RunOnUiThread", "RefreshManualChargingReturnGuidanceCore"]),
             ("WireToGateManualChargingReturnText.Guidance",
-                MethodBody(text, "public static string Guidance("), []),
+                MethodBody(text, "public static string Guidance("),
+                ["if", "manualChargingHold", "entryOffered", "return", "string", "Empty", "fatalFaultLatched",
+                    "FatalFaultLatchedGuidance", "blocker", "switch", Blocker, "SessionNotReady", "SessionNotReadyGuidance",
+                    "OperatorNotAuthorized", "OperatorNotAuthorizedGuidance", "_"]),
             ("ManualChargingReturnWiring.Configure",
                 MethodBody(wiring, "public static void Configure("),
-                ["ThrowIfNull", "ConfigureManualChargingReturnGuidance"]),
-            // The two files whole, comments included, for the forbidden names only: no call may be added there either.
+                ["ArgumentNullException", "ThrowIfNull", "viewModel", "business", "ConfigureManualChargingReturnGuidance",
+                    "ManualChargingReturnBlocker"]),
+            // The two files whole, comments included, for the forbidden names only.
             ("WireToGateManualChargingReturnText.cs", text, null),
             ("ManualChargingReturnWiring.cs", wiring, null)
         ];
-        foreach ((string name, string body, string[]? allowedCalls) in reached)
+        foreach ((string name, string body, string[]? allowedNames) in reached)
         {
-            if (allowedCalls is not null)
+            if (allowedNames is not null)
             {
+                string code = System.Text.RegularExpressions.Regex.Replace(
+                    body, @"//[^\n]*|""(?:[^""\\]|\\.)*""", " ");
                 string[] outside =
                 [
-                    .. System.Text.RegularExpressions.Regex.Matches(body, @"\b([A-Za-z_]\w*)\s*\(")
-                        .Select(match => match.Groups[1].Value)
-                        .Where(call => call is not ("if" or "switch" or "return"))
+                    .. System.Text.RegularExpressions.Regex.Matches(code, @"\b[A-Za-z_]\w*\b")
+                        .Select(match => match.Value)
                         .Distinct()
-                        .Except(allowedCalls)
+                        .Except(allowedNames)
                 ];
                 Assert.True(
                     outside.Length == 0,
-                    $"{name} calls {string.Join(", ", outside)}, outside the set this test allows.");
+                    $"{name} names {string.Join(", ", outside)}, outside the set this test allows.");
             }
 
             foreach (string forbidden in new[]
