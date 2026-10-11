@@ -896,7 +896,8 @@ public sealed partial class MainViewModel : ViewModelBase
 
     private void RefreshLoadingPhaseCore()
     {
-        LoadingPhaseView view = LoadingPhaseText.Describe(_loadingPhase, Clock.Now, DisplayTimeZone);
+        LoadingPhaseView view = LoadingPhaseText.Describe(
+            _loadingPhase, Clock.Now, DisplayTimeZone, _stationDepartureDeadlineAt);
         bool holding = view.Line == LoadingPhaseLine.CargoHolding;
         HasCargoHoldingCountdown = holding;
         CargoHoldingCountdownText = holding ? view.Text : string.Empty;

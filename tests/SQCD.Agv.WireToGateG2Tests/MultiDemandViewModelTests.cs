@@ -255,13 +255,14 @@ public sealed class MultiDemandViewModelTests
         MainViewModel viewModel = await ViewModel(controller, clock);
 
         viewModel.UpdateWireToGateJourney(Journey(
-            WorklistAt(1, Now.AddMinutes(30), Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2)),
+            // 站点期限早于持货期限：「最迟几点离站」就是持货期限（取两者中更晚的，onboard-hmi#310）。
+            WorklistAt(1, Now.AddSeconds(60), Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2)),
             loadingPhase: new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(90), null)));
 
         Assert.True(viewModel.HasCargoHoldingCountdown);
         Assert.Equal("等待更多任务，最迟 10:01 离站（剩 01:30）", viewModel.CargoHoldingCountdownText);
         Assert.Equal("ACTIVE", viewModel.CargoHoldingCountdownStatus);
-        Assert.Equal("30:00", viewModel.StationDepartureCountdownText);
+        Assert.Equal("01:00", viewModel.StationDepartureCountdownText);
         Assert.False(viewModel.HasLoadingClosedReason);
         Assert.False(viewModel.HasVehicleFullNotice);
 
@@ -403,6 +404,37 @@ public sealed class MultiDemandViewModelTests
         Assert.Equal("00:05", viewModel.StationDepartureCountdownText);
         Assert.Equal(StationDepartureCountdownTier.Critical, viewModel.StationDepartureCountdownTier);
         Assert.False(viewModel.StationDepartureCountdownDimmed);
+    }
+
+    /// <summary>
+    /// 持货期限早于站点期限（一站多批、生产值 5 分钟／5 分钟时会出现）：车要等到站点期限才走，持货那一行的「最迟几点离站」
+    /// 就报站点期限，剩余时间随它走；站点那一格是「本站作业剩余」、数到同一刻，屏上仍只有一个离站答案。持货期限过了而站点
+    /// 期限没过时，持货那一行不报「已到期」。
+    /// </summary>
+    [Fact]
+    public async Task AHoldingDeadlineEarlierThanTheStationsReportsTheStationsAsTheLatestDeparture()
+    {
+        ManualClock clock = new(Now);
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, clock);
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            WorklistAt(1, Now.AddSeconds(300), Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2)),
+            loadingPhase: new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(120), null)));
+
+        Assert.Equal("等待更多任务，最迟 10:05 离站（剩 05:00）", viewModel.CargoHoldingCountdownText);
+        Assert.Equal("ACTIVE", viewModel.CargoHoldingCountdownStatus);
+        Assert.Equal("本站作业剩余", viewModel.StationDepartureCountdownLabel);
+        Assert.Equal("05:00", viewModel.StationDepartureCountdownText);
+        Assert.DoesNotContain("离站", viewModel.StationDepartureCountdownLabel, StringComparison.Ordinal);
+        Assert.DoesNotContain("离站", viewModel.StationDepartureCountdownText, StringComparison.Ordinal);
+
+        clock.Advance(TimeSpan.FromSeconds(150));
+        viewModel.RefreshLoadingPhase();
+        viewModel.RefreshStationDepartureCountdown();
+        Assert.Equal("等待更多任务，最迟 10:05 离站（剩 02:30）", viewModel.CargoHoldingCountdownText);
+        Assert.Equal("ACTIVE", viewModel.CargoHoldingCountdownStatus);
+        Assert.Equal("02:30", viewModel.StationDepartureCountdownText);
     }
 
     [Fact]

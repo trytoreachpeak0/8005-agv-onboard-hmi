@@ -25,7 +25,9 @@ public sealed partial class MultiDemandJourneyG2Tests
     public async Task TheLoadingPhaseLinesFollowTheServersBusinessStateSnapshots()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
-        DateTimeOffset holdingDeadline = DateTimeOffset.UtcNow.AddMinutes(10);
+        // The holding deadline is the later one, so the holding line counts to its own deadline: the latest departure is
+        // the later of the two (onboard-hmi#310), and the case where the station's is later has its own view-model test.
+        DateTimeOffset holdingDeadline = DateTimeOffset.UtcNow.AddMinutes(30);
         DateTimeOffset stationDeadline = DateTimeOffset.UtcNow.AddMinutes(20);
         await using Harness harness = await Harness.StartAsync(
             server =>
@@ -55,7 +57,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         string holding = harness.ViewModel.CargoHoldingCountdownText;
         Assert.StartsWith($"等待更多任务，最迟 {latest} 离站（剩 ", holding, StringComparison.Ordinal);
         TimeSpan left = TimeSpan.ParseExact(holding[^6..^1], @"mm\:ss", System.Globalization.CultureInfo.InvariantCulture);
-        Assert.InRange(left, TimeSpan.FromMinutes(9.5), TimeSpan.FromMinutes(10));
+        Assert.InRange(left, TimeSpan.FromMinutes(29.5), TimeSpan.FromMinutes(30));
         Assert.Equal("ACTIVE", harness.ViewModel.CargoHoldingCountdownStatus);
         // Two deadlines side by side, not one: the station's is its own line, counting to its own deadline.
         TimeSpan stationLeft = TimeSpan.ParseExact(
