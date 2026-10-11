@@ -1463,7 +1463,7 @@ public sealed class OnboardController : IAsyncDisposable
     // IO 连接状态变化
     private void OnIoConnectionChanged(object? sender, ValueChangedEventArgs<bool> args)
     {
-        _logger.Write(args.Value ? LogSeverity.Information : LogSeverity.Warning, nameof(OnboardController),
+        _logger.Write(args.Value ? LogSeverity.Information : LogSeverity.Warning, OnboardTechnicalLogCategory.IoCommunication, nameof(OnboardController),
             args.Value ? "IO模块在线。" : "IO模块离线。");
         ReevaluateIdleState();
     }
@@ -1484,6 +1484,7 @@ public sealed class OnboardController : IAsyncDisposable
             {
                 _logger.Write(
                     LogSeverity.Warning,
+                    OnboardTechnicalLogCategory.SafetyDecision,
                     nameof(OnboardController),
                     $"启动IO快照不符合冷启动基线：{DescribeStartupSnapshot(args.Value)}。");
                 Publish(OnboardState.Faulted,
@@ -1493,7 +1494,11 @@ public sealed class OnboardController : IAsyncDisposable
             }
 
             _startupValidated = true;
-            _logger.Write(LogSeverity.Information, nameof(OnboardController), "启动IO安全快照验证通过。");
+            _logger.Write(
+                LogSeverity.Information,
+                OnboardTechnicalLogCategory.SafetyDecision,
+                nameof(OnboardController),
+                "启动IO安全快照验证通过。");
         }
 
         OnboardSnapshot current = Current;

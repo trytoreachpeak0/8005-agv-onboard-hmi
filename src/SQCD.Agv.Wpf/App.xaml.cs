@@ -28,6 +28,7 @@ public partial class App : System.Windows.Application, IDisposable
     internal const int ExitCodeStartupFailed = -1;
 
     private FileAppLogger? _logger;
+    private ProcessFailureLogging? _processFailureLogging;
     private SingleInstanceGuard? _singleInstance;
     private ModbusTcpIoModuleClient? _ioModule;
     private IRuleGateway? _ruleGateway;
@@ -60,6 +61,8 @@ public partial class App : System.Windows.Application, IDisposable
         try
         {
             _logger = new FileAppLogger(settings.Logging);
+            // 后台线程与没人观察的任务上的异常也进技术日志的本地异常（REQ-0272，onboard-hmi#312）。只记，不改生死。
+            _processFailureLogging = ProcessFailureLogging.Attach(_logger);
             // 单例守卫在任何副作用之前（onboard-hmi#173、#165）：下面的车辆安全投影一构造就开始轮询服务端，IO 客户端
             // 一构造就握着 Modbus 目标——第二个实例一步都不能走到那里。顺序是判据的一部分；日志器提前是为了让这一行
             // 落在部署实际在用的日志文件里。
@@ -136,6 +139,7 @@ public partial class App : System.Windows.Application, IDisposable
                 ?? "unknown";
             _logger.Write(
                 LogSeverity.Information,
+                OnboardTechnicalLogCategory.Configuration,
                 nameof(App),
                 $"车载端启动：agvId={settings.AgvId}，environment={settings.Environment}，version={version}。");
             // 生效配置与激活结果一起落在同一份原子文档里（#27）：分两次写会留下一个窗口——配置已切、结果没记下，
@@ -413,6 +417,7 @@ public partial class App : System.Windows.Application, IDisposable
     {
         DispatcherUnhandledException -= OnDispatcherUnhandledException;
         Dispose();
+        _processFailureLogging?.Dispose();
         base.OnExit(e);
     }
 

@@ -43,7 +43,7 @@ internal static class StartupConfiguration
             // 原因写进正文而不是只交给 exception 参数：FileAppLogger 只取最外层一句，内层（例如 JSON 转换失败时
             // 真正说明哪个值不对的那一句）会丢。
             string line = $"车载端配置被拒，程序退出：path={settingsPath}，reason={Describe(exception)}";
-            bootstrapLogger.Write(LogSeverity.Error, nameof(App), line);
+            bootstrapLogger.Write(LogSeverity.Error, OnboardTechnicalLogCategory.Configuration, nameof(App), line);
             if (standardError is null)
             {
                 // 按 UTF-8 写，不用 Console.Error：WinExe 没有控制台，Console.Error 的编码退回系统 ANSI 代码页

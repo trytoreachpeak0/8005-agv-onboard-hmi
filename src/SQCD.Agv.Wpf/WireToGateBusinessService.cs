@@ -4639,6 +4639,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         {
             _logger.Write(
                 LogSeverity.Error,
+                OnboardTechnicalLogCategory.SafetyDecision,
                 nameof(WireToGateBusinessService),
                 "读取车辆停稳信号失败，按未停稳处理。凭据和异常详情不会写入日志。");
             return new VehicleSafetySignal(
