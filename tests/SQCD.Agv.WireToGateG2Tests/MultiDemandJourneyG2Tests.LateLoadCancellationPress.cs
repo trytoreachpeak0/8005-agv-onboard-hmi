@@ -200,4 +200,151 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(1, io.UnlockCount);
         Assert.Empty(harness.UiErrors);
     }
+
+    /// <summary>
+    /// 失败／状态未知分支：装货在途时按下，确认之前装货以 UNKNOWN 结束、结果已经报出去。确认只给提醒，不向服务端申请取消。
+    /// </summary>
+    /// <remarks>
+    /// 这一格入口早就灭了（结果在路上，服务端对 <c>RecoveryRequired</c> 的操作不授权取消，onboard-hmi#188），但修之前按键路径
+    /// 不看结果，确认之后照样把申请发出去。服务端这里配成拒绝，免得修之前的那次授权真去开门。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task APressConfirmedAfterTheLoadEndedUnknownSendsNothing()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await StartLatchStopAsync(
+            io,
+            token,
+            server =>
+            {
+                server.RespondToLoadCancellationRequests = true;
+                server.LoadCancellationDecision = "REJECTED";
+            });
+
+        await SendSlotCommandAsync(harness, DemandA, AttemptA, [1, 2]);
+        await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 1, token);
+        io.CloseDoor(0, cargo: true);
+        await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 2, token);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCancellation,
+            "the in-flight cancellation entry",
+            token);
+        Func<CancellationToken, Task<bool>> press = harness.ViewModel.BeginLoadCancellation();
+
+        // 2 号仓开着时锁反馈读不到：装货以 UNKNOWN 结束，attempt 未结。
+        io.SetUnreadable(1);
+        JsonElement loadResult = await WaitForOperationResultAsync(harness, AttemptA, token);
+        Assert.Equal("UNKNOWN", loadResult.GetProperty("overallOutcome").GetString());
+        Assert.Equal(AttemptA, ReadJournal(harness, token).UnsettledSlotOperationAttemptId);
+
+        bool answered = await press(token);
+
+        Assert.Empty(ReceivedPayloads(harness, "LoadCancellationStartRequested"));
+        Assert.True(answered);
+        Assert.Single(harness.Events, item => item.Kind == NothingToCancelKind);
+        Assert.DoesNotContain(harness.Events, item => item.Kind == "RECOVERY_BLOCKED");
+        Assert.Equal(2, io.UnlockCount);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// 确认框开着时对象换了：按下时在途的是装货 A，确认时 A 已结束、装货 B 在途。确认只给提醒，不去取消 B。
+    /// </summary>
+    /// <remarks>
+    /// 修之前确认落到「当前在途的那一张」，于是操作员看着 A 点的「是」，取消的是 B——二次确认的键没有含比对对象。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task APressTakenOverLoadAIsNotSpentOnLoadBConfirmedInItsPlace()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await StartLatchStopAsync(
+            io,
+            token,
+            server =>
+            {
+                server.RespondToLoadCancellationRequests = true;
+                server.LoadCancellationDecision = "REJECTED";
+            });
+
+        await SendSlotCommandAsync(harness, DemandA, AttemptA, [5]);
+        await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 1, token);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCancellation,
+            "the in-flight cancellation entry over A",
+            token);
+        Func<CancellationToken, Task<bool>> press = harness.ViewModel.BeginLoadCancellation();
+
+        io.CloseDoor(4, cargo: true);
+        await harness.WaitUntilAsync(
+            () => ReadJournal(harness, token).LastCompletedLoadOperationContext?.SlotOperationAttemptId == AttemptA
+                && ReadJournal(harness, token).UnsettledSlotOperationAttemptId is null,
+            "A to complete and be recorded",
+            token);
+        await SendSlotCommandAsync(harness, DemandB, AttemptB, [1]);
+        await WaitForDoorOpenAsync(harness, io, AttemptB, pulses: 2, token);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCancellation,
+            "the in-flight cancellation entry over B",
+            token);
+
+        bool answered = await press(token);
+
+        Assert.Empty(ReceivedPayloads(harness, "LoadCancellationStartRequested"));
+        Assert.True(answered);
+        Assert.Single(harness.Events, item => item.Kind == NothingToCancelKind);
+        Assert.Equal(AttemptB, ReadJournal(harness, token).UnsettledSlotOperationAttemptId);
+        Assert.Equal(2, io.UnlockCount);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// 确认框开着时对象换了：按下时是扫码前取消（不开门），确认时同一需求的装货已经在途。确认只给提醒，不变成一次在途取消。
+    /// </summary>
+    /// <remarks>
+    /// 扫码前取消服务端授权时不带仓位、车上不开任何门；在途取消要接管仓位、开门清空。修之前确认落到在途那一路，
+    /// 操作员确认的是「不开门」的那一种，执行的却是会开门的那一种。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-BEFORE-LOAD")]
+    public async Task APressTakenBeforeAnySublotIsNotSpentOnTheLoadThatStartedMeanwhile()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await Harness.StartAsync(
+            server => ConfigureStop(
+                server,
+                ["SUBLOT-A"],
+                [Payloads.ItemA],
+                server => server.LoadCancellationDecision = "REJECTED"),
+            token,
+            io: io);
+        await harness.WaitUntilAsync(
+            () => harness.Business.ExpectedSublots is not null && harness.ViewModel.WorklistItems.Count == 1,
+            "the one-item worklist and the entry request to arrive",
+            token);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCancellationBeforeAnySublot,
+            "the cancellation-before-sublot entry to be offered",
+            token);
+        Func<CancellationToken, Task<bool>> press = harness.ViewModel.BeginLoadCancellation();
+
+        await SendSlotCommandAsync(harness, DemandA, AttemptA, [5]);
+        await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 1, token);
+
+        bool answered = await press(token);
+
+        Assert.Empty(ReceivedPayloads(harness, "LoadCancellationStartRequested"));
+        Assert.True(answered);
+        Assert.Single(harness.Events, item => item.Kind == NothingToCancelKind);
+        Assert.Equal(AttemptA, ReadJournal(harness, token).UnsettledSlotOperationAttemptId);
+        Assert.Equal(1, io.UnlockCount);
+        Assert.Empty(harness.UiErrors);
+    }
 }
