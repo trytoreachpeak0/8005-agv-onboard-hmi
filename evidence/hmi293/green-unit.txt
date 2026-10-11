@@ -1,2 +1,2 @@
-commit 23fa448
-Passed!  - Failed:     0, Passed:   123, Skipped:     0, Total:   123, Duration: 5 s - SQCD.Agv.UnitTests.dll (net8.0)
+commit ccbc6bc (merged origin/w2g/fp-v2-impl 164c49c)
+Passed!  - Failed:     0, Passed:   128, Skipped:     0, Total:   128, Duration: 2 s - SQCD.Agv.UnitTests.dll (net8.0)

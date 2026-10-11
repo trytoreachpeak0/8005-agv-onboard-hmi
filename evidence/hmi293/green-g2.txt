@@ -1,2 +1,2 @@
-commit 23fa448
+commit ccbc6bc (merged origin/w2g/fp-v2-impl 164c49c)
 Passed!  - Failed:     0, Passed:    80, Skipped:     0, Total:    80, Duration: 36 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
