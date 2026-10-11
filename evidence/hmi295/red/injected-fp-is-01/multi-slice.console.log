@@ -1,0 +1,13 @@
+G2 evidence: C:\Users\szy\Desktop\8005-workspace-v2\evidence\hmi295-runs\red-injected\multi-slice\protocol-v3.0.0\FP-IS-04\20261011T011207033Z-806e283400a7
+Status: PASS
+[33;1mWARNING: dotnet-test-release exited with code 1[0m
+G2 evidence: C:\Users\szy\Desktop\8005-workspace-v2\evidence\hmi295-runs\red-injected\multi-slice\protocol-v3.0.0\FP-IS-01\20261011T011207033Z-806e283400a7
+Status: FAIL
+G2 evidence: C:\Users\szy\Desktop\8005-workspace-v2\evidence\hmi295-runs\red-injected\multi-slice\protocol-v3.0.0\FP-IS-10\20261011T011207033Z-806e283400a7
+Status: PASS
+Multi-slice evidence: C:\Users\szy\Desktop\8005-workspace-v2\evidence\hmi295-runs\red-injected\multi-slice\protocol-v3.0.0\multi-slice\20261011T011207033Z-806e283400a7
+Exception: C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi295-red-8005-agv-onboard-hmi\scripts\run-w2g-g2.ps1:946
+Line |
+ 946 |      throw ("本机 G2 证据生成失败：" + [Environment]::NewLine + (@($lines) -joi …
+     |      ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+     | 本机 G2 证据生成失败： [FP-IS-01] dotnet-test-release exited with code 1

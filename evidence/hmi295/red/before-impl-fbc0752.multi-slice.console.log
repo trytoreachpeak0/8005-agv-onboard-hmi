@@ -1,0 +1,1 @@
+run-w2g-g2.ps1: Cannot validate argument on parameter 'Slice'. The argument "FP-IS-04,FP-IS-01,FP-IS-10" does not match the "^FP-IS-(0[0-9]|1[0-5])$" pattern. Supply an argument that matches "^FP-IS-(0[0-9]|1[0-5])$" and try the command again.
