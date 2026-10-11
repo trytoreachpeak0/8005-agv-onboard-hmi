@@ -382,6 +382,14 @@ public sealed partial class WireToGateBusinessService
             () => RequestLoadCorrectionCoreAsync(reason, pressedByOperator: true, cancellationToken),
             cancellationToken);
 
+    /// <summary>
+    /// A load cancellation press taken when the operator presses the entry, to be sent once they confirm.
+    /// </summary>
+    /// <param name="reason">As for <see cref="RequestLoadCancellationAsync(string, string?, CancellationToken)"/>.</param>
+    /// <param name="selectedDemandId">The worklist row picked when the entry was pressed.</param>
+    public Func<CancellationToken, Task<bool>> BindLoadCancellationPress(string reason, string? selectedDemandId) =>
+        cancellationToken => RequestLoadCancellationAsync(reason, selectedDemandId, cancellationToken);
+
     /// <param name="reason">As for <see cref="RequestLoadCompensationAsync"/>.</param>
     public Task<bool> RequestFaultCargoHandoffAsync(
         string? reason = null,

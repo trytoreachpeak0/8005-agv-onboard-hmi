@@ -134,6 +134,7 @@ public sealed partial class MainViewModel : ViewModelBase
     private Func<bool>? _wireToGateCanRequestLoadCorrection;
     private Func<bool>? _wireToGateCanRequestFaultCargoHandoff;
     private Func<string?, CancellationToken, Task<bool>>? _wireToGateLoadCancellationRequester;
+    private Func<string?, Func<CancellationToken, Task<bool>>>? _loadCancellationPressBinder;
     private Func<bool>? _wireToGateLoadCancellationSelectionRequired;
     private Func<string?>? _wireToGateRecoveryFallbackDemandId;
     private Func<bool>? _wireToGateCanRequestLoadCancellationBeforeAnySublot;
@@ -1768,9 +1769,27 @@ public sealed partial class MainViewModel : ViewModelBase
     /// 在途装货的取消、只有一条清单项、以及重发已发出的那次取消，主体都不由这里决定（批次7-14）。
     /// </summary>
     public Task<bool> RequestLoadCancellationAsync(CancellationToken cancellationToken = default) =>
-        _wireToGateLoadCancellationRequester is null
+        BeginLoadCancellation()(cancellationToken);
+
+    /// <summary>
+    /// 按下「取消装货」那一刻取下这一次按键，确认框点「是」之后再执行它。所选清单行在按下时取，与确认框复述的是同一行。
+    /// </summary>
+    public Func<CancellationToken, Task<bool>> BeginLoadCancellation()
+    {
+        string? selectedDemandId = SelectedWorklistItem?.DemandId;
+        if (_loadCancellationPressBinder is { } binder)
+        {
+            return binder(selectedDemandId);
+        }
+
+        return cancellationToken => _wireToGateLoadCancellationRequester is null
             ? Task.FromResult(false)
-            : _wireToGateLoadCancellationRequester(SelectedWorklistItem?.DemandId, cancellationToken);
+            : _wireToGateLoadCancellationRequester(selectedDemandId, cancellationToken);
+    }
+
+    /// <summary>接上业务服务取按键的入口（<see cref="LoadCancellationPressWiring"/>）。</summary>
+    internal void ConfigureLoadCancellationPress(Func<string?, Func<CancellationToken, Task<bool>>> binder) =>
+        _loadCancellationPressBinder = binder ?? throw new ArgumentNullException(nameof(binder));
 
     public Task<bool> RequestLoadCompensationAsync(CancellationToken cancellationToken = default) =>
         RequestWithReasonAsync(_wireToGateLoadCompensationRequester, cancellationToken);
