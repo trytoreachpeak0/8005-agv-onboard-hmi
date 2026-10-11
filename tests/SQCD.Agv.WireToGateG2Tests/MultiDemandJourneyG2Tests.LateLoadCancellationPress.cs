@@ -46,7 +46,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             "the in-flight cancellation entry",
             token);
         // 按下「取消装货」，确认框开着。
-        Func<CancellationToken, Task<bool>> press = harness.ViewModel.BeginLoadCancellation();
+        LoadCancellationConfirmation press = harness.ViewModel.BeginLoadCancellation();
 
         // 服务端等结果时的自动重发：车载端忽略，不再开门。
         await SendSlotCommandAsync(harness, DemandA, AttemptA, [5]);
@@ -67,7 +67,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
 
         // 这时才在确认框上点「是」。
-        bool answered = await press(token);
+        bool answered = await press.SendAsync(token);
 
         Assert.DoesNotContain(harness.Events, item => item.Kind == "RECOVERY_BLOCKED");
         Assert.True(answered);
@@ -121,8 +121,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.Business.CanRequestLoadCancellation,
             "the in-flight cancellation entry over A",
             token);
-        Func<CancellationToken, Task<bool>> first = harness.ViewModel.BeginLoadCancellation();
-        Func<CancellationToken, Task<bool>> second = harness.ViewModel.BeginLoadCancellation();
+        LoadCancellationConfirmation first = harness.ViewModel.BeginLoadCancellation();
+        LoadCancellationConfirmation second = harness.ViewModel.BeginLoadCancellation();
         io.CloseDoor(4, cargo: true);
         await harness.WaitUntilAsync(
             () => ReadJournal(harness, token).LastCompletedLoadOperationContext?.SlotOperationAttemptId == AttemptA
@@ -130,8 +130,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             "A to complete and be recorded",
             token);
 
-        Assert.True(await first(token));
-        Assert.True(await second(token));
+        Assert.True(await first.SendAsync(token));
+        Assert.True(await second.SendAsync(token));
 
         Assert.Equal(2, harness.Events.Count(item => item.Kind == NothingToCancelKind));
         Assert.DoesNotContain(harness.Events, item => item.Kind == "RECOVERY_BLOCKED");
@@ -178,7 +178,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.Business.CanRequestLoadCancellation,
             "the in-flight cancellation entry",
             token);
-        Func<CancellationToken, Task<bool>> press = harness.ViewModel.BeginLoadCancellation();
+        LoadCancellationConfirmation press = harness.ViewModel.BeginLoadCancellation();
         io.CloseDoor(4, cargo: true);
         await harness.WaitUntilAsync(
             () => ReadJournal(harness, token).LastCompletedLoadOperationContext?.SlotOperationAttemptId == AttemptA
@@ -199,7 +199,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             "the replayed command to be answered from the result on file",
             token);
 
-        bool answered = await press(token);
+        bool answered = await press.SendAsync(token);
 
         Assert.DoesNotContain(harness.Events, item => item.Kind == "RECOVERY_BLOCKED");
         Assert.True(answered);
@@ -240,7 +240,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.Business.CanRequestLoadCancellation,
             "the in-flight cancellation entry",
             token);
-        Func<CancellationToken, Task<bool>> press = harness.ViewModel.BeginLoadCancellation();
+        LoadCancellationConfirmation press = harness.ViewModel.BeginLoadCancellation();
 
         // 2 号仓开着时锁反馈读不到：装货以 UNKNOWN 结束，attempt 未结。
         io.SetUnreadable(1);
@@ -248,7 +248,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal("UNKNOWN", loadResult.GetProperty("overallOutcome").GetString());
         Assert.Equal(AttemptA, ReadJournal(harness, token).UnsettledSlotOperationAttemptId);
 
-        bool answered = await press(token);
+        bool answered = await press.SendAsync(token);
 
         Assert.Empty(ReceivedPayloads(harness, "LoadCancellationStartRequested"));
         Assert.True(answered);
@@ -286,7 +286,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.Business.CanRequestLoadCancellation,
             "the in-flight cancellation entry over A",
             token);
-        Func<CancellationToken, Task<bool>> press = harness.ViewModel.BeginLoadCancellation();
+        LoadCancellationConfirmation press = harness.ViewModel.BeginLoadCancellation();
 
         io.CloseDoor(4, cargo: true);
         await harness.WaitUntilAsync(
@@ -301,7 +301,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             "the in-flight cancellation entry over B",
             token);
 
-        bool answered = await press(token);
+        bool answered = await press.SendAsync(token);
 
         Assert.Empty(ReceivedPayloads(harness, "LoadCancellationStartRequested"));
         Assert.True(answered);
@@ -341,12 +341,12 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.Business.CanRequestLoadCancellationBeforeAnySublot,
             "the cancellation-before-sublot entry to be offered",
             token);
-        Func<CancellationToken, Task<bool>> press = harness.ViewModel.BeginLoadCancellation();
+        LoadCancellationConfirmation press = harness.ViewModel.BeginLoadCancellation();
 
         await SendSlotCommandAsync(harness, DemandA, AttemptA, [5]);
         await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 1, token);
 
-        bool answered = await press(token);
+        bool answered = await press.SendAsync(token);
 
         Assert.Empty(ReceivedPayloads(harness, "LoadCancellationStartRequested"));
         Assert.True(answered);
@@ -355,6 +355,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(1, io.UnlockCount);
         Assert.Empty(harness.UiErrors);
     }
+
     /// <summary>
     /// 装货在途时清单里选中了另一行：确认框复述的是在途装货那一条，取消的也是它，选中行不进确认文案。
     /// </summary>
@@ -389,16 +390,18 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
         SelectWorklistItem(harness, DemandB);
 
-        string detail = harness.ViewModel.LoadCancellationConfirmationDetailText;
-        Assert.StartsWith("将要取消的任务：子批 SUBLOT-A，", detail, StringComparison.Ordinal);
-        Assert.DoesNotContain("SUBLOT-B", detail, StringComparison.Ordinal);
+        // 文案与按键出自同一次按下（审查 S1）。
+        LoadCancellationConfirmation press = harness.ViewModel.BeginLoadCancellation();
+        Assert.StartsWith("将要取消的任务：子批 SUBLOT-A，", press.DetailText, StringComparison.Ordinal);
+        Assert.DoesNotContain("SUBLOT-B", press.DetailText, StringComparison.Ordinal);
 
-        await harness.ViewModel.BeginLoadCancellation()(token);
+        await press.SendAsync(token);
         JsonElement request = Assert.Single(ReceivedPayloads(harness, "LoadCancellationStartRequested"));
         Assert.Equal(DemandA, request.GetProperty("demandId").GetString());
         Assert.Equal(AttemptA, request.GetProperty("slotOperationAttemptId").GetString());
         Assert.Empty(harness.UiErrors);
     }
+
     /// <summary>
     /// 一次扫码前取消已经发出、还没等到答复：选中另一行时，确认框复述的仍是日志簿里那条需求，再按重发的也是它。
     /// </summary>

@@ -134,8 +134,7 @@ public sealed partial class MainViewModel : ViewModelBase
     private Func<bool>? _wireToGateCanRequestLoadCorrection;
     private Func<bool>? _wireToGateCanRequestFaultCargoHandoff;
     private Func<string?, CancellationToken, Task<bool>>? _wireToGateLoadCancellationRequester;
-    private Func<string?, Func<CancellationToken, Task<bool>>>? _loadCancellationPressBinder;
-    private Func<string?>? _loadCancellationInFlightDemandId;
+    private Func<string?, WireToGateLoadCancellationPress>? _loadCancellationPressBinder;
     private Func<bool>? _wireToGateLoadCancellationSelectionRequired;
     private Func<string?>? _wireToGateRecoveryFallbackDemandId;
     private Func<bool>? _wireToGateCanRequestLoadCancellationBeforeAnySublot;
@@ -998,24 +997,10 @@ public sealed partial class MainViewModel : ViewModelBase
             || CanRequestForcedMechanicalRecovery);
 
     /// <summary>
-    /// 确认框里复述将要取消的需求：子批号、任务类型与花篮数（批次7-14）。装货在途时复述在途装货那一条，不看选中行——
-    /// 在途取消的对象是在途装货本身，原来照样复述选中行，操作员读到的是一条、取消的是另一条（8005-agv-onboard-hmi#291）。
-    /// 扫码前取消复述选中行；没有选中行时为空，确认框照旧只说通用那段。
+    /// 确认框里复述将要取消的需求：子批号、任务类型与花篮数（批次7-14）。取自 <see cref="BeginLoadCancellation"/>，与按键
+    /// 比对的对象是同一次读取。
     /// </summary>
-    public string LoadCancellationConfirmationDetailText
-    {
-        get
-        {
-            if (_loadCancellationInFlightDemandId?.Invoke() is { } inFlightDemandId)
-            {
-                return WorklistItems.FirstOrDefault(item => item.DemandId == inFlightDemandId) is { } inFlight
-                    ? DescribeLoadCancellationSubject(inFlight)
-                    : "将要取消的是正在进行的这次装货。";
-            }
-
-            return SelectedWorklistItem is { } row ? DescribeLoadCancellationSubject(row) : string.Empty;
-        }
-    }
+    public string LoadCancellationConfirmationDetailText => BeginLoadCancellation().DetailText;
 
     private static string DescribeLoadCancellationSubject(WorklistItemRow row) =>
         $"将要取消的任务：子批 {row.Sublot}，{row.TaskTypeText}，{row.ExpectedBasketCountText}。";
@@ -1785,34 +1770,45 @@ public sealed partial class MainViewModel : ViewModelBase
     /// 在途装货的取消、只有一条清单项、以及重发已发出的那次取消，主体都不由这里决定（批次7-14）。
     /// </summary>
     public Task<bool> RequestLoadCancellationAsync(CancellationToken cancellationToken = default) =>
-        BeginLoadCancellation()(cancellationToken);
+        BeginLoadCancellation().SendAsync(cancellationToken);
 
     /// <summary>
-    /// 按下「取消装货」那一刻取下这一次按键，确认框点「是」之后再执行它。所选清单行在按下时取，与确认框复述的是同一行。
+    /// 按下「取消装货」那一刻取下这一次按键与确认框要复述的内容，确认框点「是」之后再执行按键（8005-agv-onboard-hmi#291）。
     /// </summary>
-    public Func<CancellationToken, Task<bool>> BeginLoadCancellation()
+    /// <remarks>
+    /// 复述的是按键实际作用的那条需求，与按键比对的对象出自同一次读取：已在日志里的取消（扫码前或在途）、在途装货，
+    /// 都复述它们自己的需求，不看选中行——原来照样复述选中行，操作员读到的是一条、作用的是另一条。只有一次新的扫码前取消
+    /// 才复述选中行，因为那时作用的就是它。按键没有对象时（入口没亮），复述选中行，与原来一样；没有选中行时为空。
+    /// </remarks>
+    public LoadCancellationConfirmation BeginLoadCancellation()
     {
         string? selectedDemandId = SelectedWorklistItem?.DemandId;
-        if (_loadCancellationPressBinder is { } binder)
+        string selectedText = SelectedWorklistItem is { } selected
+            ? DescribeLoadCancellationSubject(selected)
+            : string.Empty;
+        if (_loadCancellationPressBinder is not { } binder)
         {
-            return binder(selectedDemandId);
+            return new LoadCancellationConfirmation(
+                selectedText,
+                cancellationToken => _wireToGateLoadCancellationRequester is null
+                    ? Task.FromResult(false)
+                    : _wireToGateLoadCancellationRequester(selectedDemandId, cancellationToken));
         }
 
-        return cancellationToken => _wireToGateLoadCancellationRequester is null
-            ? Task.FromResult(false)
-            : _wireToGateLoadCancellationRequester(selectedDemandId, cancellationToken);
+        WireToGateLoadCancellationPress press = binder(selectedDemandId);
+        string detail = press.SubjectDemandId is not { } subjectDemandId
+            ? selectedText
+            : WorklistItems.FirstOrDefault(item => item.DemandId == subjectDemandId) is { } subject
+                ? DescribeLoadCancellationSubject(subject)
+                : press.SubjectIsLoadInFlight
+                    ? "将要取消的是正在进行的这次装货。"
+                    : "将要取消的任务已不在本站清单里。";
+        return new LoadCancellationConfirmation(detail, press.SendAsync);
     }
 
-    /// <summary>
-    /// 接上业务服务取按键的入口，以及在途取消的对象是哪条需求（确认框据此复述，<see cref="LoadCancellationPressWiring"/>）。
-    /// </summary>
-    internal void ConfigureLoadCancellationPress(
-        Func<string?, Func<CancellationToken, Task<bool>>> binder,
-        Func<string?> inFlightDemandId)
-    {
+    /// <summary>接上业务服务取按键的入口（<see cref="LoadCancellationPressWiring"/>）。</summary>
+    internal void ConfigureLoadCancellationPress(Func<string?, WireToGateLoadCancellationPress> binder) =>
         _loadCancellationPressBinder = binder ?? throw new ArgumentNullException(nameof(binder));
-        _loadCancellationInFlightDemandId = inFlightDemandId ?? throw new ArgumentNullException(nameof(inFlightDemandId));
-    }
 
     public Task<bool> RequestLoadCompensationAsync(CancellationToken cancellationToken = default) =>
         RequestWithReasonAsync(_wireToGateLoadCompensationRequester, cancellationToken);

@@ -225,11 +225,11 @@ public partial class MainWindow : Window
 
         // 按下这一刻就取下按键，不等确认：确认框是模态的，开着的时候装货可能已经结束，确认的应当是屏上那一次
         // （8005-agv-onboard-hmi#291）。
-        Func<CancellationToken, Task<bool>> press = _viewModel.BeginLoadCancellation();
+        LoadCancellationConfirmation press = _viewModel.BeginLoadCancellation();
         // 本站多条需求时确认框复述所选那一条，免得按下去才发现选错了行（批次7-14）。
         if (MessageBox.Show(
                 "请确认车辆已停稳、目标仓门已锁好，并由授权人员确认本次装货应取消。\n\n"
-                + _viewModel.LoadCancellationConfirmationDetailText
+                + press.DetailText
                 + "\n\n系统只会执行服务端授权的目标仓位清空，不会重新选择仓位；本站尚未录入子批时不会打开任何仓门。是否继续？",
                 "取消装货",
                 MessageBoxButton.YesNo,
@@ -239,7 +239,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!await press(CancellationToken.None))
+        if (!await press.SendAsync(CancellationToken.None))
         {
             ShowRecoveryFailure("装货取消未被接受。请检查授权、车辆停稳信号和服务端状态。", "取消装货失败");
         }
