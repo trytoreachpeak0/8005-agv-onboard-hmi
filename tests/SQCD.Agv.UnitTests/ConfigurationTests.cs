@@ -75,6 +75,39 @@ public sealed class ConfigurationTests
         Assert.False(new WireToGateSettings().UnableToChargeEntryEnabled);
     }
 
+    /// <summary>
+    /// 8005-agv-control-server#600：服务端凭车认投影，生产模板里出发安全投影的凭据变量与 WIRE_TO_GATE 的共享凭据分开，
+    /// 地址带上这台车的 vehicleKey 供服务端核对。部署脚本按车把凭据写进这个变量。
+    /// </summary>
+    [Fact]
+    public void TheProductionTemplateGivesTheSafetyProjectionAPerVehicleCredentialAndNamesTheVehicle()
+    {
+        string path = FindRepositoryFile("src/SQCD.Agv.Wpf/appsettings.Production.example.json");
+        using JsonDocument document = JsonDocument.Parse(
+            File.ReadAllText(path),
+            new JsonDocumentOptions
+            {
+                CommentHandling = JsonCommentHandling.Skip,
+                AllowTrailingCommas = true
+            });
+
+        JsonElement vehicleSafety = document.RootElement.GetProperty("vehicleSafety");
+        string safetyVariable = vehicleSafety.GetProperty("credentialEnvironmentVariable").GetString()!;
+        string sessionVariable = document.RootElement
+            .GetProperty("wireToGate")
+            .GetProperty("credentialEnvironmentVariable")
+            .GetString()!;
+
+        Assert.Equal("CONTROL_SERVER_ONBOARD_SAFETY_CREDENTIAL", safetyVariable);
+        Assert.NotEqual(sessionVariable, safetyVariable);
+        Assert.Equal(
+            "http://REPLACE_CONTROL_SERVER_HOST/api/onboard/v1/vehicle-safety?vehicleKey=REPLACE_WITH_EXPECTED_VEHICLE_KEY",
+            vehicleSafety.GetProperty("endpoint").GetString());
+        Assert.Equal(
+            "REPLACE_WITH_EXPECTED_VEHICLE_KEY",
+            vehicleSafety.GetProperty("expectedVehicleKey").GetString());
+    }
+
     [Theory]
     [InlineData("src/SQCD.Agv.Wpf/appsettings.json")]
     [InlineData("src/SQCD.Agv.Wpf/appsettings.Production.example.json")]
