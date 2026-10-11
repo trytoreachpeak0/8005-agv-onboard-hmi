@@ -117,6 +117,8 @@ public sealed partial class MainViewModel : ViewModelBase
     private string _stationDepartureCountdownText = StationDepartureCountdownFormatter.AbsentText;
     private StationDepartureCountdownTier _stationDepartureCountdownTier = StationDepartureCountdownTier.Absent;
     private bool _stationDepartureCountdownDimmed;
+    private string _stationDepartureCountdownLabel = StationDepartureCountdownFormatter.DepartureLabel;
+    private bool _isStationWorkCountdown;
     private Func<StationDepartureCountdownContext, string?>? _stationDepartureCountdownTextOverride;
     private DispatcherTimer? _stationDepartureCountdownTimer;
     private bool _stationDepartureCountdownStopped;
@@ -394,6 +396,9 @@ public sealed partial class MainViewModel : ViewModelBase
         _loadingPhase = snapshot.VehicleBusinessState?.LoadingPhase;
         RefreshLoadingPhaseCore();
         SyncCargoHoldingTimerCore();
+        // 站点倒计时的口径随 loadingPhase 换（onboard-hmi#310），上面那次刷新读的还是上一份的 loadingPhase：再算一次，
+        // 进出持货等单的那一份快照上标签就对。
+        RefreshStationDepartureCountdownCore();
         // 方向只随服务端的 stopRole／legType，任务类型只随清单项的 workType；都不推断（批次6-03）。
         StopDirectionText = WireToGateStopFacts.DirectionText(snapshot);
         TaskTypeText = WireToGateStopFacts.TaskTypeText(snapshot);
@@ -1642,6 +1647,23 @@ public sealed partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// 倒计时上方那行小字：平时「离站剩余」；持货等单时是「本站作业剩余」或「本站作业」（onboard-hmi#310）——
+    /// 那时期限只结束本站作业，车什么时候走由持货那一行回答（REQ-0355）。
+    /// </summary>
+    public string StationDepartureCountdownLabel
+    {
+        get => _stationDepartureCountdownLabel;
+        private set => SetProperty(ref _stationDepartureCountdownLabel, value);
+    }
+
+    /// <summary>持货等单期间按「本站作业」口径显示：XAML 据此不用黄红配色。</summary>
+    public bool IsStationWorkCountdown
+    {
+        get => _isStationWorkCountdown;
+        private set => SetProperty(ref _isStationWorkCountdown, value);
+    }
+
+    /// <summary>
     /// 倒计时文案的覆盖入口：<c>App</c> 把它接到 <c>WireToGateBusinessService.DescribeExpiredStationDeadline</c>
     /// （<c>8005-agv-onboard-hmi#78</c>，期限过后在途装货与装货取消的文案）。
     /// </summary>
@@ -1721,9 +1743,14 @@ public sealed partial class MainViewModel : ViewModelBase
         StationDepartureCountdownView view = StationDepartureCountdownFormatter.Format(_stationDepartureDeadlineAt, now);
         string? overrideText = _stationDepartureCountdownTextOverride?.Invoke(
             new StationDepartureCountdownContext(_stationDepartureDeadlineAt, now, view));
-        StationDepartureCountdownText = overrideText ?? view.Text;
+        StationDepartureCountdownCaption caption = StationDepartureCountdownFormatter.Caption(
+            view, _loadingPhase?.State == "CARGO_HOLDING_WAIT");
+        StationDepartureCountdownLabel = caption.Label;
+        StationDepartureCountdownText = overrideText ?? caption.Text;
+        // 档位照期限算，UIA 的 ItemStatus 语义不变；持货等单时配色由 IsStationWorkCountdown 换掉，也不闪烁。
         StationDepartureCountdownTier = view.Tier;
-        StationDepartureCountdownDimmed = view.Dimmed;
+        StationDepartureCountdownDimmed = view.Dimmed && !caption.StationWork;
+        IsStationWorkCountdown = caption.StationWork;
     }
 
     private async Task SubmitAsync(ScanInputMethod inputMethod)

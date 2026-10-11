@@ -29,6 +29,11 @@ public sealed record StationDepartureCountdownView(
     StationDepartureCountdownTier Tier,
     bool Dimmed);
 
+/// <param name="Label">倒计时上方那一行小字。</param>
+/// <param name="Text">倒计时那一行字（覆盖文案之前）。</param>
+/// <param name="StationWork">按「本站作业」口径显示：持货等单期间为真，界面据此不用黄红配色、不闪烁。</param>
+public sealed record StationDepartureCountdownCaption(string Label, string Text, bool StationWork);
+
 /// <summary>
 /// 交给覆盖文案的输入：服务端的截止时刻、算倒计时用的当前时刻，以及本类给出的通用显示。
 /// </summary>
@@ -72,6 +77,39 @@ public static class StationDepartureCountdownFormatter
 
     /// <summary>最后 10 秒转红并逐秒闪烁。</summary>
     private static readonly TimeSpan CriticalThreshold = TimeSpan.FromSeconds(10);
+
+    public const string DepartureLabel = "离站剩余";
+    public const string StationWorkLabel = "本站作业剩余";
+    public const string StationWorkEndedLabel = "本站作业";
+    public const string StationWorkEndedText = "已结束，车辆继续等单";
+
+    /// <summary>
+    /// The label above the countdown and the line in it, worded for what the deadline decides at this moment.
+    /// </summary>
+    /// <remarks>
+    /// While the vehicle holds its cargo waiting for more demands (<c>CARGO_HOLDING_WAIT</c>), this deadline only ends the
+    /// stop's work and the vehicle stays (REQ-0355); when it leaves is the cargo holding line's answer
+    /// (onboard-hmi#310). So the line is worded for the stop's work and never says 离站, and an expired deadline is a
+    /// normal state there rather than an alarm. The tier is untouched: UIA's ItemStatus keeps meaning the deadline's state.
+    /// The remaining time stays bare mm:ss, as L2 reads it; the label carries the words.
+    /// </remarks>
+    public static StationDepartureCountdownCaption Caption(StationDepartureCountdownView view, bool cargoHolding)
+    {
+        ArgumentNullException.ThrowIfNull(view);
+        if (!cargoHolding)
+        {
+            return new StationDepartureCountdownCaption(DepartureLabel, view.Text, StationWork: false);
+        }
+
+        return view.Tier switch
+        {
+            StationDepartureCountdownTier.Expired =>
+                new StationDepartureCountdownCaption(StationWorkEndedLabel, StationWorkEndedText, StationWork: true),
+            StationDepartureCountdownTier.Absent =>
+                new StationDepartureCountdownCaption(StationWorkEndedLabel, view.Text, StationWork: true),
+            _ => new StationDepartureCountdownCaption(StationWorkLabel, view.Text, StationWork: true)
+        };
+    }
 
     public static StationDepartureCountdownView Format(DateTimeOffset? deadlineAt, DateTimeOffset now)
     {

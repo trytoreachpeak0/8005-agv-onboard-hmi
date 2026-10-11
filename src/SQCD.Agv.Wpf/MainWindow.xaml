@@ -205,7 +205,7 @@
                                HorizontalAlignment="Right"
                                FontSize="12"
                                Foreground="{StaticResource MutedBrush}"
-                               Text="离站剩余" />
+                               Text="{Binding StationDepartureCountdownLabel}" />
                     <Grid Height="28" Margin="0,2,0,0">
                         <TextBlock HorizontalAlignment="Right"
                                    VerticalAlignment="Center"
@@ -237,6 +237,13 @@
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding StationDepartureCountdownDimmed}" Value="True">
                                             <Setter Property="Opacity" Value="0.15" />
+                                        </DataTrigger>
+                                        <!--
+                                            持货等单时这个期限只结束本站作业（REQ-0355，onboard-hmi#310），到期是正常状态：不用黄红配色。
+                                            放在最后，覆盖上面按档位给的颜色；档位本身不变，ItemStatus 仍是期限的状态。
+                                        -->
+                                        <DataTrigger Binding="{Binding IsStationWorkCountdown}" Value="True">
+                                            <Setter Property="Foreground" Value="#1F2933" />
                                         </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
