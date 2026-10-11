@@ -1,4 +1,5 @@
 using System.IO;
+using SQCD.Agv.Application;
 using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
 
@@ -28,6 +29,40 @@ public sealed partial class WireToGateBusinessService
 
     public bool CanRequestManualChargingReturnToService =>
         CanUseRecoveryOperator(requireProof: true);
+
+    /// <summary>
+    /// Why the entry cannot be pressed, for the line shown in its place (8005-agv-onboard-hmi#293): a session that
+    /// cannot carry the request first, then everything else the entry's own check refuses -- the maintenance
+    /// switch, the operator id, the proof.
+    /// </summary>
+    /// <remarks>
+    /// Read from <see cref="CanRequestManualChargingReturnToService"/> itself rather than from the variables again.
+    /// This request carries no proof and the control server checks only the role it names, so that one local
+    /// check is the whole credential boundary; a second reading beside it is a second boundary that can drift
+    /// from the first (<c>WireToGateManualChargingReturnTextTests</c> holds this structurally).
+    /// </remarks>
+    public WireToGateManualChargingReturnBlocker ManualChargingReturnBlocker =>
+        CanRequestManualChargingReturnToService
+            ? WireToGateManualChargingReturnBlocker.None
+            : !SessionCanCarryOperatorRequest()
+                ? WireToGateManualChargingReturnBlocker.SessionNotReady
+                : WireToGateManualChargingReturnBlocker.OperatorNotAuthorized;
+
+    /// <summary>
+    /// Whether the session could carry the request: connected, and ready or in recovery. Read only by
+    /// <see cref="ManualChargingReturnBlocker"/>, to name the session before the maintainer.
+    /// </summary>
+    /// <remarks>
+    /// A copy of the session half of <c>CanUseStationOperator</c>, deliberately not shared with it: the entry's
+    /// condition chain stays exactly as it was (8005-agv-onboard-hmi#293 review S4). If the two ever disagree only
+    /// the sentence is wrong -- the button still follows <c>CanUseStationOperator</c> alone.
+    /// </remarks>
+    private bool SessionCanCarryOperatorRequest()
+    {
+        WireToGateSessionSnapshot session = _session.Current;
+        return session.Connected
+            && session.Readiness is WireToGateSessionReadiness.Ready or WireToGateSessionReadiness.RecoveryRequired;
+    }
 
     public Task<bool> RequestManualChargingReturnToServiceAsync(
         string reason = "手动充电结束，申请恢复业务资格评估。",

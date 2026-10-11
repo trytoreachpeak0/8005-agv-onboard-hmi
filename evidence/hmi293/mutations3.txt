@@ -1,0 +1,12 @@
+R4b 原因经新 helper 方法读 proof => RED（被抓住）
+    ManualChargingReturnBlocker names ProofConfiguredForLine, outside the set this test allows.
+    Failed!  - Failed:     1, Passed:    18, Skipped:     0, Total:    19, Duration: 66 ms - SQCD.Agv.UnitTests.dll (net8.0)
+R4c 视图模型重算说明时直接读 proof 环境变量 => RED（被抓住）
+    RefreshManualChargingReturnGuidanceCore names _, Environment, GetEnvironmentVariable, outside the set this test allows.
+    Failed!  - Failed:     1, Passed:    18, Skipped:     0, Total:    19, Duration: 65 ms - SQCD.Agv.UnitTests.dll (net8.0)
+R4d 原因属性里加 && ProofPresent（读 proof 的属性） => RED（被抓住）
+    ManualChargingReturnBlocker names ProofPresent, outside the set this test allows.
+    Failed!  - Failed:     1, Passed:    18, Skipped:     0, Total:    19, Duration: 79 ms - SQCD.Agv.UnitTests.dll (net8.0)
+R4e 视图模型新加读 proof 的静态属性并在刷新方法里引用 => RED（被抓住）
+    RefreshManualChargingReturnGuidanceCore names ProofSet, outside the set this test allows.
+    Failed!  - Failed:     1, Passed:    18, Skipped:     0, Total:    19, Duration: 67 ms - SQCD.Agv.UnitTests.dll (net8.0)

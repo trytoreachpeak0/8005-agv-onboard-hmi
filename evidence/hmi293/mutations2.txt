@@ -1,0 +1,47 @@
+M1 展示路径锁存分支 return 前不重算说明 => RED（被抓住）
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnGuidanceViewModelTests.LiftingTheLatchThroughTheControllerAloneTakesTheLineAway [102 ms]
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnGuidanceViewModelTests.ALatchWhileOfflineIsTheCauseNamedOnBothRefreshPaths [1 ms]
+    Failed!  - Failed:     2, Passed:    36, Skipped:     0, Total:    38, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 49 ms - SQCD.Agv.UnitTests.dll (net8.0)
+M2 输入刷新路径不重算说明 => RED（被抓住）
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnGuidanceViewModelTests.TheInputRefreshPathAloneTakesTheLineAwayWhenTheButtonComes [4 ms]
+    Failed!  - Failed:     1, Passed:    37, Skipped:     0, Total:    38, Duration: 7 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 50 ms - SQCD.Agv.UnitTests.dll (net8.0)
+M3 原因删掉会话分支（离线也说未开权限） => RED（被抓住）
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnEntryG2Tests.OfflineTheSessionIsNamedBeforeTheMaintainerAndTheLineGoesWithTheHold [5 s]
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnEntryG2Tests.OfflineAVerifiedMaintainersPressIsRefusedByTheLocalCheck [5 s]
+    Failed!  - Failed:     2, Passed:    36, Skipped:     0, Total:    38, Duration: 15 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 48 ms - SQCD.Agv.UnitTests.dll (net8.0)
+M4 视图模型里的保持写死为 true => RED（被抓住）
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnGuidanceViewModelTests.TheLineFollowsTheHoldAndIsAnnouncedToTheWindow [3 ms]
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnEntryG2Tests.OfflineTheSessionIsNamedBeforeTheMaintainerAndTheLineGoesWithTheHold [5 s]
+    Failed!  - Failed:     2, Passed:    36, Skipped:     0, Total:    38, Duration: 11 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 64 ms - SQCD.Agv.UnitTests.dll (net8.0)
+M5 按钮可按时仍显示说明 => RED（被抓住）
+    Passed!  - Failed:     0, Passed:    38, Skipped:     0, Total:    38, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Failed SQCD.Agv.UnitTests.WireToGateManualChargingReturnTextTests.NothingIsShownWithoutAHoldOrWhileTheEntryCanBePressed(manualChargingHold: True, entryOffered: True, fatalFaultLatched: False, blocker: SessionNotReady) [8 ms]
+    Failed SQCD.Agv.UnitTests.WireToGateManualChargingReturnTextTests.NothingIsShownWithoutAHoldOrWhileTheEntryCanBePressed(manualChargingHold: True, entryOffered: True, fatalFaultLatched: False, blocker: OperatorNotAuthorized) [< 1 ms]
+    Failed!  - Failed:     2, Passed:    17, Skipped:     0, Total:    19, Duration: 96 ms - SQCD.Agv.UnitTests.dll (net8.0)
+R3a 展示路径正常分支不重算说明（锁存解除只走这条） => RED（被抓住）
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnGuidanceViewModelTests.LiftingTheLatchThroughTheControllerAloneTakesTheLineAway [91 ms]
+    Failed!  - Failed:     1, Passed:    37, Skipped:     0, Total:    38, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 58 ms - SQCD.Agv.UnitTests.dll (net8.0)
+R4b 原因经新 helper 读 proof => RED（被抓住）
+    Passed!  - Failed:     0, Passed:    38, Skipped:     0, Total:    38, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Failed SQCD.Agv.UnitTests.WireToGateManualChargingReturnTextTests.TheCauseComesFromTheButtonsOwnJudgementAndReadsNoCredential [7 ms]
+    Failed!  - Failed:     1, Passed:    18, Skipped:     0, Total:    19, Duration: 63 ms - SQCD.Agv.UnitTests.dll (net8.0)
+R4c 视图模型重算说明时读 proof 环境变量 => RED（被抓住）
+    Passed!  - Failed:     0, Passed:    38, Skipped:     0, Total:    38, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Failed SQCD.Agv.UnitTests.WireToGateManualChargingReturnTextTests.TheCauseComesFromTheButtonsOwnJudgementAndReadsNoCredential [8 ms]
+    Failed!  - Failed:     1, Passed:    18, Skipped:     0, Total:    19, Duration: 61 ms - SQCD.Agv.UnitTests.dll (net8.0)
+R5x 架空请求路径开头的本地检查 => RED（被抓住）
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnEntryG2Tests.TheSwitchWithoutAProofIsStillNotAMaintainer [575 ms]
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnEntryG2Tests.AfterARestartTheHeldVehicleSaysWhoCanReturnItAgain [602 ms]
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnEntryG2Tests.OfflineAVerifiedMaintainersPressIsRefusedByTheLocalCheck [600 ms]
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnEntryG2Tests.WithTheFactorySettingAHeldVehicleSaysWhoCanReturnItAndSendsNothing [589 ms]
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnEntryG2Tests.WithTheSwitchOffAConfiguredProofIsStillRefusedByTheLocalCheck [63 ms]
+    Failed!  - Failed:     5, Passed:    33, Skipped:     0, Total:    38, Duration: 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 40 ms - SQCD.Agv.UnitTests.dll (net8.0)
+R8 按钮条件去掉 session.Connected（集成分支原有代码） => GREEN（未抓住）
+    Passed!  - Failed:     0, Passed:    38, Skipped:     0, Total:    38, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 40 ms - SQCD.Agv.UnitTests.dll (net8.0)
