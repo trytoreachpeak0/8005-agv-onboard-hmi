@@ -355,4 +355,48 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(1, io.UnlockCount);
         Assert.Empty(harness.UiErrors);
     }
+    /// <summary>
+    /// 装货在途时清单里选中了另一行：确认框复述的是在途装货那一条，取消的也是它，选中行不进确认文案。
+    /// </summary>
+    /// <remarks>
+    /// 在途取消的对象是在途装货本身，与选中哪一行无关；确认框原来照样复述选中行，于是操作员读到的是 B，取消的是 A。
+    /// </remarks>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task TheConfirmationNamesTheLoadInFlightNotTheSelectedRow()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await StartLatchStopAsync(
+            io,
+            token,
+            server =>
+            {
+                server.RespondToLoadCancellationRequests = true;
+                server.LoadCancellationDecision = "REJECTED";
+            });
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.WorklistItems.Count == 2,
+            "both worklist rows",
+            token);
+
+        await SendSlotCommandAsync(harness, DemandA, AttemptA, [5]);
+        await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 1, token);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCancellation,
+            "the in-flight cancellation entry over A",
+            token);
+        SelectWorklistItem(harness, DemandB);
+
+        string detail = harness.ViewModel.LoadCancellationConfirmationDetailText;
+        Assert.StartsWith("将要取消的任务：子批 SUBLOT-A，", detail, StringComparison.Ordinal);
+        Assert.DoesNotContain("SUBLOT-B", detail, StringComparison.Ordinal);
+
+        await harness.ViewModel.BeginLoadCancellation()(token);
+        JsonElement request = Assert.Single(ReceivedPayloads(harness, "LoadCancellationStartRequested"));
+        Assert.Equal(DemandA, request.GetProperty("demandId").GetString());
+        Assert.Equal(AttemptA, request.GetProperty("slotOperationAttemptId").GetString());
+        Assert.Empty(harness.UiErrors);
+    }
 }
