@@ -1,0 +1,36 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  SQCD.Agv.Core -> F:\8005-wt\hmi293-8005-agv-onboard-hmi\src\SQCD.Agv.Core\bin\Debug\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Contracts -> F:\8005-wt\hmi293-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Debug\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Application -> F:\8005-wt\hmi293-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Debug\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.RuleMock -> F:\8005-wt\hmi293-8005-agv-onboard-hmi\tools\SQCD.Agv.RuleMock\bin\Debug\net8.0\win-x64\SQCD.Agv.RuleMock.dll
+  SQCD.Agv.AutomationHost -> F:\8005-wt\hmi293-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Debug\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Infrastructure -> F:\8005-wt\hmi293-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Debug\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.UnitTests -> F:\8005-wt\hmi293-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll
+Test run for F:\8005-wt\hmi293-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:02.04]     SQCD.Agv.UnitTests.WireToGateManualChargingReturnTextTests.TheCauseComesFromTheButtonsOwnJudgementAndReadsNoCredential [FAIL]
+[xUnit.net 00:00:02.06]     SQCD.Agv.UnitTests.WireToGateManualChargingReturnTextTests.TheWindowBindsTheLine [FAIL]
+  Failed SQCD.Agv.UnitTests.WireToGateManualChargingReturnTextTests.TheCauseComesFromTheButtonsOwnJudgementAndReadsNoCredential [9 ms]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "public WireToGateManualChargingReturnBlocker Manua"···
+Not found: "CanRequestManualChargingReturnToService"
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateManualChargingReturnTextTests.TheCauseComesFromTheButtonsOwnJudgementAndReadsNoCredential() in F:\8005-wt\hmi293-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateManualChargingReturnTextTests.cs:line 104
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+  Failed SQCD.Agv.UnitTests.WireToGateManualChargingReturnTextTests.TheWindowBindsTheLine [22 ms]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "<Window x:Class="SQCD.Agv.Wpf.MainWindow"\n        "···
+Not found: "AutomationProperties.AutomationId="ManualChargingR"···
+  Stack Trace:
+     at SQCD.Agv.UnitTests.WireToGateManualChargingReturnTextTests.TheWindowBindsTheLine() in F:\8005-wt\hmi293-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\WireToGateManualChargingReturnTextTests.cs:line 156
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+
+Failed!  - Failed:     2, Passed:    15, Skipped:     0, Total:    17, Duration: 106 ms - SQCD.Agv.UnitTests.dll (net8.0)

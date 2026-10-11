@@ -1,0 +1,22 @@
+M1 锁存分支不刷新指引 => RED
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnGuidanceViewModelTests.ALatchWhileOfflineIsTheCauseNamedOnBothRefreshPaths [11 ms]
+    Failed!  - Failed:     1, Passed:    12, Skipped:     0, Total:    13, Duration: 5 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 384 ms - SQCD.Agv.UnitTests.dll (net8.0)
+M2 输入刷新路径不刷新指引 => RED
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnGuidanceViewModelTests.TheInputRefreshPathAloneTakesTheLineAwayWhenTheButtonComes [816 ms]
+    Failed!  - Failed:     1, Passed:    12, Skipped:     0, Total:    13, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 462 ms - SQCD.Agv.UnitTests.dll (net8.0)
+M3 业务服务先说权限再说会话 => RED
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnEntryG2Tests.OfflineTheSessionIsNamedBeforeTheMaintainerAndTheLineGoesWithTheHold [5 s]
+    Failed!  - Failed:     1, Passed:    12, Skipped:     0, Total:    13, Duration: 10 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 562 ms - SQCD.Agv.UnitTests.dll (net8.0)
+M4 保持不进视图模型 => RED
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnGuidanceViewModelTests.TheLineFollowsTheHoldAndIsAnnouncedToTheWindow [8 ms]
+    Failed SQCD.Agv.WireToGateG2Tests.ManualChargingReturnEntryG2Tests.OfflineTheSessionIsNamedBeforeTheMaintainerAndTheLineGoesWithTheHold [5 s]
+    Failed!  - Failed:     2, Passed:    11, Skipped:     0, Total:    13, Duration: 10 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 117 ms - SQCD.Agv.UnitTests.dll (net8.0)
+M5 按钮可按时仍显示指引 => RED
+    Passed!  - Failed:     0, Passed:    13, Skipped:     0, Total:    13, Duration: 6 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+    Failed SQCD.Agv.UnitTests.WireToGateManualChargingReturnTextTests.NothingIsShownWithoutAHoldOrWhileTheEntryCanBePressed(manualChargingHold: True, entryOffered: True, fatalFaultLatched: False, blocker: SessionNotReady) [36 ms]
+    Failed SQCD.Agv.UnitTests.WireToGateManualChargingReturnTextTests.NothingIsShownWithoutAHoldOrWhileTheEntryCanBePressed(manualChargingHold: True, entryOffered: True, fatalFaultLatched: False, blocker: OperatorNotAuthorized) [< 1 ms]
+    Failed!  - Failed:     2, Passed:    17, Skipped:     0, Total:    19, Duration: 139 ms - SQCD.Agv.UnitTests.dll (net8.0)
