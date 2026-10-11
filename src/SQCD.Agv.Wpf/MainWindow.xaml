@@ -704,6 +704,17 @@
                                Text="{Binding StationClearance.StatusText}"
                                TextWrapping="Wrap"
                                Visibility="{Binding StationClearance.HasStatus, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                    <!--
+                        人工充电保持中「充电后返回服务」按不了时说为什么、找谁（8005-agv-onboard-hmi#293）。出厂配置下那个按钮永远不出现，
+                        原来屏上只有「需人工充电：服务端保持」而没有任何出口或指引。这一行只读，不改变按钮的任何条件。
+                    -->
+                    <TextBlock Margin="0,6,0,0"
+                               FontSize="13"
+                               FontWeight="Bold"
+                               AutomationProperties.AutomationId="ManualChargingReturnGuidance"
+                               Text="{Binding ManualChargingReturnGuidance}"
+                               TextWrapping="Wrap"
+                               Visibility="{Binding HasManualChargingReturnGuidance, Converter={StaticResource BooleanToVisibilityConverter}}" />
                 </StackPanel>
                 <!--
                     现场确认充不上（批次9-17，8005-agv-onboard-hmi#222）：服务端说车在充电用途上、计划当前腿是充电桩、面前是已验证的

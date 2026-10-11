@@ -229,6 +229,35 @@ public sealed class ManualChargingReturnEntryG2Tests
     }
 
     /// <summary>
+    /// The business service names the session before the maintainer: a factory-set vehicle that loses its server is
+    /// <see cref="WireToGateManualChargingReturnBlocker.SessionNotReady"/>, not still "not authorized" -- configuring
+    /// a maintainer would not open the entry while offline. Losing the server also clears the projected hold, so the
+    /// line goes with 「需人工充电：服务端保持」 rather than outliving it.
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("IntegrationSlice", "FP-IS-13")]
+    [Trait("ProtocolVector", "CV-MANUAL-CHARGING-RETURN")]
+    public async Task OfflineTheSessionIsNamedBeforeTheMaintainerAndTheLineGoesWithTheHold()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartHeldAsync(recoveryOptions: null, token);
+        await WaitForGuidanceAsync(harness, NotAuthorized, token);
+
+        await harness.StopServerAsync();
+        await harness.WaitUntilAsync(
+            () => harness.Business.ManualChargingReturnBlocker == WireToGateManualChargingReturnBlocker.SessionNotReady,
+            "the session to be named once the server is gone",
+            token);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.ChargingStatusText.Length == 0
+                && harness.ViewModel.ManualChargingReturnGuidance.Length == 0,
+            "the hold and its line to go together",
+            token);
+        Assert.False(harness.ViewModel.HasManualChargingReturnGuidance);
+    }
+
+    /// <summary>
     /// The vehicle process restarting while held: the new process shows the line again once the hold is back, and
     /// still sends nothing when pressed.
     /// </summary>

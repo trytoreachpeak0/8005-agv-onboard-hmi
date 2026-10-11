@@ -30,9 +30,23 @@ public sealed partial class WireToGateBusinessService
     public bool CanRequestManualChargingReturnToService =>
         CanUseRecoveryOperator(requireProof: true);
 
-    // Stub until the implementation commit (8005-agv-onboard-hmi#293).
+    /// <summary>
+    /// Why the entry cannot be pressed, for the line shown in its place (8005-agv-onboard-hmi#293): a session that
+    /// cannot carry the request first, then everything else the entry's own check refuses -- the maintenance
+    /// switch, the operator id, the proof.
+    /// </summary>
+    /// <remarks>
+    /// Read from <see cref="CanRequestManualChargingReturnToService"/> itself rather than from the variables again.
+    /// This request carries no proof and the control server checks only the role it names, so that one local
+    /// check is the whole credential boundary; a second reading beside it is a second boundary that can drift
+    /// from the first (<c>WireToGateManualChargingReturnTextTests</c> holds this structurally).
+    /// </remarks>
     public WireToGateManualChargingReturnBlocker ManualChargingReturnBlocker =>
-        _session is null ? WireToGateManualChargingReturnBlocker.None : WireToGateManualChargingReturnBlocker.None;
+        CanRequestManualChargingReturnToService
+            ? WireToGateManualChargingReturnBlocker.None
+            : !SessionCanCarryOperatorRequest()
+                ? WireToGateManualChargingReturnBlocker.SessionNotReady
+                : WireToGateManualChargingReturnBlocker.OperatorNotAuthorized;
 
     public Task<bool> RequestManualChargingReturnToServiceAsync(
         string reason = "手动充电结束，申请恢复业务资格评估。",

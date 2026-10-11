@@ -108,6 +108,7 @@ public sealed partial class MainViewModel : ViewModelBase
     private string _manualChargingReturnGuidance = string.Empty;
     private bool _hasManualChargingReturnGuidance;
     private Func<WireToGateManualChargingReturnBlocker>? _manualChargingReturnBlocker;
+    private bool _manualChargingHold;
     private bool _canRequestHardwareRepairRelease;
     private bool _hasWireToGateJourney;
     private bool _wireToGateEnabled;
@@ -379,6 +380,8 @@ public sealed partial class MainViewModel : ViewModelBase
         BatteryStatusText = WireToGateChargingText.BatteryText(snapshot);
         BatteryStatus = WireToGateChargingText.BatteryStatus(snapshot);
         ChargingStatusText = WireToGateChargingText.StatusText(snapshot);
+        // 保持与上面那句「需人工充电：服务端保持」出自同一份业务状态；按不了时的说明在下面的刷新里随它重算（onboard-hmi#293）。
+        _manualChargingHold = snapshot.VehicleBusinessState?.ManualChargingHold == true;
         // 门未证明扣车也整值跟随业务状态（onboard-hmi#219）：扣着就显示，服务端解除或断线清投影时一起消失。
         DoorHoldNotice = WireToGateDoorHoldText.Notice(snapshot);
         DoorHoldSlots = string.Join(",", WireToGateDoorHoldText.HeldSlots(snapshot));
@@ -758,6 +761,7 @@ public sealed partial class MainViewModel : ViewModelBase
             AllowRecoveryEntry(_wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true);
         CanRequestManualChargingReturn =
             AllowRecoveryEntry(_wireToGateCanRequestManualChargingReturn?.Invoke() == true);
+        RefreshManualChargingReturnGuidanceCore();
         RefreshForcedIsolationCore();
         RefreshRecoveryReasonLockCore();
         // 回落目标随入口一起重算：主体是否已经回落，与入口开关来自同一份恢复状态。
@@ -1542,6 +1546,23 @@ public sealed partial class MainViewModel : ViewModelBase
     internal void ConfigureManualChargingReturnGuidance(Func<WireToGateManualChargingReturnBlocker> blocker)
     {
         _manualChargingReturnBlocker = blocker ?? throw new ArgumentNullException(nameof(blocker));
+        RunOnUiThread(RefreshManualChargingReturnGuidanceCore);
+    }
+
+    /// <summary>
+    /// 那一行由保持、按钮的最终值、锁存与业务服务给的原因一起算，所以每条刷新路径都在写完
+    /// <see cref="CanRequestManualChargingReturn"/> 之后调它，锁存守卫 early return 的那一条也在 return 之前调。
+    /// 少调一处，屏上就会留着上一刻的原因（例如锁存之后仍说「请开启权限」）。
+    /// </summary>
+    private void RefreshManualChargingReturnGuidanceCore()
+    {
+        string guidance = WireToGateManualChargingReturnText.Guidance(
+            _manualChargingHold,
+            CanRequestManualChargingReturn,
+            RecoveryEntriesBlockedByFatalFault,
+            _manualChargingReturnBlocker?.Invoke() ?? WireToGateManualChargingReturnBlocker.None);
+        ManualChargingReturnGuidance = guidance;
+        HasManualChargingReturnGuidance = guidance.Length > 0;
     }
 
     public string RecoverySlotName
@@ -2372,6 +2393,7 @@ public sealed partial class MainViewModel : ViewModelBase
             CanConfirmForcedMechanicalRecovery = false;
             CanSubmitHardwareRecoveryRecord = false;
             CanRequestHardwareRepairRelease = false;
+            RefreshManualChargingReturnGuidanceCore();
             return;
         }
 
@@ -2409,6 +2431,7 @@ public sealed partial class MainViewModel : ViewModelBase
         CanRequestFaultCargoHandoff = _wireToGateCanRequestFaultCargoHandoff?.Invoke() == true;
         CanRequestForcedMechanicalRecovery = _wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true;
         CanRequestManualChargingReturn = _wireToGateCanRequestManualChargingReturn?.Invoke() == true;
+        RefreshManualChargingReturnGuidanceCore();
         RefreshForcedIsolationCore();
         RefreshRecoveryReasonLockCore();
         // 回落目标随入口一起重算：主体是否已经回落，与入口开关来自同一份恢复状态。
