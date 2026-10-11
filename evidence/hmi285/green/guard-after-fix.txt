@@ -1,0 +1,6 @@
+# commit 1bd8a24
+# dotnet test tests/SQCD.Agv.UnitTests --filter FullyQualifiedName~ViewModelLogsReadArchitectureTests
+Passed!  - Failed:     0, Passed:     3, Skipped:     0, Total:     3, Duration: 182 ms - SQCD.Agv.UnitTests.dll (net8.0)
+
+# dotnet test tests/SQCD.Agv.UnitTests --filter FullyQualifiedName~ArchitectureTests
+Passed!  - Failed:     0, Passed:   105, Skipped:     0, Total:   105, Duration: 8 s - SQCD.Agv.UnitTests.dll (net8.0)

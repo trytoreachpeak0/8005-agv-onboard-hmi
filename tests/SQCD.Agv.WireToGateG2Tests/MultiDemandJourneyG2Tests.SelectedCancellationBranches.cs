@@ -143,7 +143,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.True(harness.Business.CanSubmitSublot);
         // 断在操作记录上，不是业务层的事件流：这是给操作员看的正话，而屏幕才是他看的地方。
         Assert.Contains(
-            harness.ViewModel.Logs,
+            harness.LogsSnapshot(),
             line => line.Message.Contains("请重新选择", StringComparison.Ordinal));
         // And the stop is still fully cancellable once a real row is named.
         Assert.True(await harness.Business.RequestLoadCancellationAsync(
@@ -358,7 +358,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(0, harness.Io.UnlockCount);
         Assert.Empty(harness.UiErrors);
         Assert.Contains(
-            harness.ViewModel.Logs,
+            harness.LogsSnapshot(),
             line => line.Message.Contains("取消结果以服务端为准", StringComparison.Ordinal));
     }
 
@@ -469,11 +469,11 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(0, harness.Io.UnlockCount);
         Assert.Empty(harness.UiErrors);
         Assert.Contains(
-            harness.ViewModel.Logs,
+            harness.LogsSnapshot(),
             line => line.Message.Contains("请重新选择", StringComparison.Ordinal));
         // And not a word about a resend: nothing has been sent for this stop.
         Assert.DoesNotContain(
-            harness.ViewModel.Logs,
+            harness.LogsSnapshot(),
             line => line.Message.Contains("这一次按下是它的重发", StringComparison.Ordinal));
     }
 

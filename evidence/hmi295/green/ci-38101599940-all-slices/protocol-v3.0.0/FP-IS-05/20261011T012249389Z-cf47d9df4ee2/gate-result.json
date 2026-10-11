@@ -1,0 +1,66 @@
+{
+  "schemaVersion": "1.3.0",
+  "gate": "ONBOARD_HMI_G2",
+  "integrationSliceId": "FP-IS-05",
+  "status": "PASS",
+  "startedAt": "2026-10-11T01:22:49.3899615Z",
+  "finishedAt": "2026-10-11T01:30:43.4033120Z",
+  "implementationRepository": "8005-agv-onboard-hmi",
+  "implementationCommit": "cf47d9df4ee277306936c70bd26ffb1ad87f584b",
+  "implementationBranch": "w2g/hmi295-g2-multi-slice-ci",
+  "protocolReleaseVersion": "3.0.0",
+  "protocolTag": "protocol-v3.0.0",
+  "protocolProfileId": "AGV_FULL_PRODUCT",
+  "protocolVersion": 4,
+  "protocolApprovalStatus": "APPROVED_RELEASE",
+  "protocolRepositoryCommit": "3f091cb2eae7c58cec54a95dd9389c9180bc7b4c",
+  "protocolManifestSha256": "d5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e",
+  "protocolSchemaBundleSha256": "e435b2b14d9ccd60c89f07df909da7626fef056a6b8a2241087557fd7dc3df43",
+  "protocolVectorsSha256": "be849f9749b004296ebd9e7bffa98faf2f8ffa90b63308ca3b210c68e7b8656e",
+  "integrationSliceIndexSha256": "4f1ec1b186089f0f4dca9fa749cae2ad0044f061b868bac7f1f98b312b1b68b5",
+  "selectedTestCount": 30,
+  "recordedTestCount": 30,
+  "vectorIds": [
+    "CV-CONNECTION-LOSS-SAFE-FINISH",
+    "CV-SESSION-RECONNECT-DURING-RECOVERY"
+  ],
+  "buildExitCode": 0,
+  "testExitCode": 0,
+  "formatExitCode": 0,
+  "schemaConformance": {
+    "linesChecked": 1004,
+    "linesInViolation": 0,
+    "linesInKnownViolation": 0,
+    "schemaCompilationMilliseconds": 32813,
+    "coverage": "test-results/schema-coverage.json"
+  },
+  "multiSliceRun": {
+    "runId": "20261011T012249389Z",
+    "directory": "../../multi-slice/20261011T012249389Z-cf47d9df4ee2",
+    "integrationSliceIds": [
+      "FP-IS-00",
+      "FP-IS-01",
+      "FP-IS-02",
+      "FP-IS-03",
+      "FP-IS-04",
+      "FP-IS-05",
+      "FP-IS-06",
+      "FP-IS-07",
+      "FP-IS-08",
+      "FP-IS-10",
+      "FP-IS-11",
+      "FP-IS-12",
+      "FP-IS-13",
+      "FP-IS-14",
+      "FP-IS-15"
+    ],
+    "sharedSteps": [
+      "protocol-g1",
+      "dotnet-build-release",
+      "dotnet-format-verify"
+    ],
+    "g1Status": "PASS",
+    "protocolHeadCommit": "3f091cb2eae7c58cec54a95dd9389c9180bc7b4c",
+    "protocolG1Log": "logs/protocol-g1.log"
+  }
+}

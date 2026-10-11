@@ -1,0 +1,6 @@
+[31;1mException: [0mC:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi295-m1red-8005-agv-onboard-hmi\scripts\run-w2g-g2.ps1:188[0m
+[31;1m[0m[36;1mLine |[0m
+[31;1m[0m[36;1m[36;1m 188 | [0m …             [36;1mthrow ("切片 '$candidate' 在 `$slicesNotImplementedHere 里，却选[0m …[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m     | [31;1m               ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1m切片 'FP-IS-04' 在 $slicesNotImplementedHere 里，却选中了 7 条测试。它已经实现了：把它从表里删掉（G2ScriptSliceTableArchitectureTests 会要求同时改[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m[31;1m[36;1m     | [31;1mSlicesThisLineImplements）。[0m

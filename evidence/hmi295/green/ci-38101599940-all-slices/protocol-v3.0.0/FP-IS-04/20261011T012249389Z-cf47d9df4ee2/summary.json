@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "1.3.0",
+  "evidenceType": "ONBOARD_HMI_LOCAL_G2",
+  "status": "PASS",
+  "generatedAtUtc": "2026-10-11T01:22:49.3899615Z",
+  "runId": "20261011T012249389Z",
+  "integrationSliceId": "FP-IS-04",
+  "selectedTestCount": 7,
+  "recordedTestCount": 7,
+  "integrationSliceIndexSha256": "4f1ec1b186089f0f4dca9fa749cae2ad0044f061b868bac7f1f98b312b1b68b5",
+  "multiSliceRun": {
+    "runId": "20261011T012249389Z",
+    "directory": "../../multi-slice/20261011T012249389Z-cf47d9df4ee2",
+    "integrationSliceIds": [
+      "FP-IS-00",
+      "FP-IS-01",
+      "FP-IS-02",
+      "FP-IS-03",
+      "FP-IS-04",
+      "FP-IS-05",
+      "FP-IS-06",
+      "FP-IS-07",
+      "FP-IS-08",
+      "FP-IS-10",
+      "FP-IS-11",
+      "FP-IS-12",
+      "FP-IS-13",
+      "FP-IS-14",
+      "FP-IS-15"
+    ],
+    "sharedSteps": [
+      "protocol-g1",
+      "dotnet-build-release",
+      "dotnet-format-verify"
+    ],
+    "g1Status": "PASS",
+    "protocolHeadCommit": "3f091cb2eae7c58cec54a95dd9389c9180bc7b4c",
+    "protocolG1Log": "logs/protocol-g1.log"
+  },
+  "hmi": {
+    "commit": "cf47d9df4ee277306936c70bd26ffb1ad87f584b",
+    "branch": "w2g/hmi295-g2-multi-slice-ci",
+    "workingTreeStatus": [],
+    "protocolIdentity": {
+      "ProtocolVersion": 4,
+      "ProfileId": "AGV_FULL_PRODUCT",
+      "ReleaseVersion": "3.0.0",
+      "Tag": "protocol-v3.0.0",
+      "Commit": "3f091cb2eae7c58cec54a95dd9389c9180bc7b4c",
+      "ManifestSha256": "d5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e",
+      "SchemaBundleSha256": "e435b2b14d9ccd60c89f07df909da7626fef056a6b8a2241087557fd7dc3df43",
+      "VectorsSha256": "be849f9749b004296ebd9e7bffa98faf2f8ffa90b63308ca3b210c68e7b8656e",
+      "ApprovalStatus": "APPROVED_RELEASE"
+    }
+  },
+  "protocol": {
+    "repository": "8005-agv-protocol",
+    "headCommit": "3f091cb2eae7c58cec54a95dd9389c9180bc7b4c",
+    "tag": "protocol-v3.0.0",
+    "profileId": "AGV_FULL_PRODUCT",
+    "protocolVersion": 4,
+    "releaseVersion": "3.0.0",
+    "tagExists": true,
+    "tagCommit": "3f091cb2eae7c58cec54a95dd9389c9180bc7b4c",
+    "candidateCommit": "3f091cb2eae7c58cec54a95dd9389c9180bc7b4c",
+    "candidateIsAncestorOfHead": true,
+    "approvalStatus": "APPROVED_RELEASE",
+    "g1Status": "PASS",
+    "g1CandidateManifestSha256": "d5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e",
+    "releaseFile": "manifest/release.json",
+    "schemaBundleSha256": "e435b2b14d9ccd60c89f07df909da7626fef056a6b8a2241087557fd7dc3df43",
+    "vectorsSha256": "be849f9749b004296ebd9e7bffa98faf2f8ffa90b63308ca3b210c68e7b8656e"
+  },
+  "commands": {
+    "build": {
+      "exitCode": 0,
+      "log": "logs/dotnet-build-release.log"
+    },
+    "test": {
+      "exitCode": 0,
+      "log": "logs/dotnet-test-release.log",
+      "resultsDirectory": "test-results"
+    },
+    "format": {
+      "exitCode": 0,
+      "log": "logs/dotnet-format-verify.log"
+    }
+  },
+  "schemaConformance": null,
+  "slices": [
+    {
+      "integrationSliceId": "FP-IS-04",
+      "vectorIds": [
+        "CV-DESTINATION-UNLOAD-ALL-EMPTY"
+      ],
+      "onboardHmiG2": "PASS",
+      "controlServerG2": "PENDING_EXTERNAL",
+      "g3": "PENDING_JOINT",
+      "forbidUnclosedFailOrInconclusive": true
+    }
+  ],
+  "failures": [],
+  "artifacts": {
+    "transcript": "transcript.ndjson",
+    "journal": "journal.ndjson",
+    "logs": "logs",
+    "testResults": "test-results",
+    "gateResult": "gate-result.json"
+  },
+  "knownLimitations": [
+    "本证据是 OnboardHmi 本机 G2；ControlServer G2 和联合 G3 仍需外部/现场门禁。",
+    "G1 使用临时盘符运行，仅规避 Windows 工作区路径含 # 时的 Node URL 解码问题，不改变协议仓库内容。",
+    "真实车辆停稳信号、Modbus/锁/门/光幕和现场明文网络未在本机证据中宣称完成。",
+    "出站 schema 校验（schemaConformance）只验 WireToGateG2Tests 进程里经 WireToGateProtocolSerializer.Create／RebindSessionGeneration 产出的报文（车载端产品与 FakeControlServer 两个产地）；入站不验；messageType 覆盖只报告不判死——没被任何测试发出的消息，它的发送方法缺字段这道门禁看不见。违约按 dotnet test 退出码判，控制台摘要仍会写 Failed: 0。",
+    "本证据绑定的是已发布的 protocol-v3.0.0（commit 3f091cb2eae7c58cec54a95dd9389c9180bc7b4c）；发布批准记在外置 attestation 里，本证据不复核它。",
+    "本次只证 FP-IS-04 一片：测试按 IntegrationSlice=FP-IS-04 过滤，选中 7 条。构建与 dotnet format 仍是全仓的，不随切片收窄。其余切片的结论不在本目录里。",
+    "本片由一次多片调用出证（multiSliceRun）：构建、dotnet format 与协议 G1 对 FP-IS-00, FP-IS-01, FP-IS-02, FP-IS-03, FP-IS-04, FP-IS-05, FP-IS-06, FP-IS-07, FP-IS-08, FP-IS-10, FP-IS-11, FP-IS-12, FP-IS-13, FP-IS-14, FP-IS-15 只跑了一次，logs/ 里的 dotnet-build-release.log、dotnet-format-verify.log、protocol-g1.log 是那一次的副本，原件在 multiSliceRun.directory。测试仍按本片单独过滤、单独跑一次 dotnet test。"
+  ]
+}
