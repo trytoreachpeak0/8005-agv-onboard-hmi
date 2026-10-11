@@ -303,7 +303,7 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         resultAckHeld.SetResult();
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.Logs.Any(line =>
+            () => harness.LogsSnapshot().Any(line =>
                 line.Message.Contains("1、2号仓操作结果已被服务端确认", StringComparison.Ordinal)),
             "the load's handler to be done with the acknowledgement",
             token);

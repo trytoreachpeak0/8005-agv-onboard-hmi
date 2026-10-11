@@ -532,7 +532,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         harness.ViewModel.ScannerSubmitCommand.Execute(null);
 
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.Logs.Any(line =>
+            () => harness.LogsSnapshot().Any(line =>
                 line.Kind == OperatorRecordKind.Warning
                 && line.Message.Contains("不属于服务端下发的站点任务", StringComparison.Ordinal)),
             "the operator to be told why the scan was refused",

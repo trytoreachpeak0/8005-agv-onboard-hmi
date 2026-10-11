@@ -1,0 +1,7 @@
+# commit 1bd8a24
+# dotnet test tests/SQCD.Agv.WireToGateG2Tests --filter "FullyQualifiedName~SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests|FullyQualifiedName~SQCD.Agv.WireToGateG2Tests.ManualStationClearanceG2Tests|FullyQualifiedName~SQCD.Agv.WireToGateG2Tests.UnableToChargeFieldConfirmationG2Tests"
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+Results File: (local trx, not committed)
+
+Passed!  - Failed:     0, Passed:   217, Skipped:     0, Total:   217, Duration: 2 m 41 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

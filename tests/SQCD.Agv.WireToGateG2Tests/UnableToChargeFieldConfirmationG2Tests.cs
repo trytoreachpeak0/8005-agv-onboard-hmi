@@ -149,7 +149,7 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
             harness.ViewModel.UnableToCharge.StatusText,
             StringComparison.Ordinal);
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.Logs.Any(line =>
+            () => harness.LogsSnapshot().Any(line =>
                 line.Kind == OperatorRecordKind.Success
                 && line.Message.Contains("服务端已记录现场确认", StringComparison.Ordinal)
                 && line.Message.Contains(WireToGateUnableToChargeText.DecisionText("REASSIGN_CHARGER"), StringComparison.Ordinal)),
@@ -413,7 +413,7 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
         UnableToChargeDisplay unknown = await WaitForStatusAsync(harness, WireToGateUnableToChargeText.UnknownStatus, token);
         Assert.Contains("结果未知", unknown.StatusText, StringComparison.Ordinal);
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.Logs.Any(line =>
+            () => harness.LogsSnapshot().Any(line =>
                 line.Kind == OperatorRecordKind.Warning && line.Message.Contains("结果未知", StringComparison.Ordinal)),
             "the operator record that the result is unknown on the view model",
             token);
@@ -1599,7 +1599,7 @@ public sealed class UnableToChargeFieldConfirmationG2Tests
     {
         LogLineViewModel? found = null;
         await harness.WaitUntilAsync(
-            () => (found = harness.ViewModel.Logs.LastOrDefault(predicate)) is not null,
+            () => (found = harness.LogsSnapshot().LastOrDefault(predicate)) is not null,
             expectation,
             token);
         return found!;
