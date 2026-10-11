@@ -25,3 +25,17 @@ G1 状态；与基线比对时另加每条测试名与片目录里的文件清�
 耗时差异的说明：本机三轮跑在不同时刻，机器负载不同，同一片的逐片耗时在两轮之间差到 1.5 倍
 （FP-IS-10：341 秒对 163 秒）。能稳定读出的是多片一次约等于逐片调用中的一次多一点，
 因为构建、format、G1 只付一次，而每片测试本身（含出站 schema 编译）不变。
+
+## 审查 M1 的修复（`review-m1/`）
+
+审查发现：`-AllSlices` 把「已实现切片的测试全丢了」当成「还没建」跳过，其余各片照写 PASS、退出码 0。
+修复（`9d5ebe1`）：脚本写死 `$slicesNotImplementedHere = @('FP-IS-09')`，只跳过表里的片；
+新架构测试 `G2ScriptSliceTableArchitectureTests` 先于修复提交（`eb23d22`）。
+
+| 文件 | 是什么 | 结论 |
+| --- | --- | --- |
+| `red/table-test-before-fix.txt` | 在 `eb23d22`（只有测试）上跑新架构测试 | 2 条都红：脚本还没有这张表 |
+| `red/allslices-fp-is-04-trait-mistyped/` | 修后脚本，本地副本把 FP-IS-04 的 trait 名写错（提交 `7960c58`，未推送），跑 `-AllSlices` | 预检拒绝，退出码 1，没建任何证据目录。审查在修复前的脚本上实测同一变异：14 片 PASS、退出码 0 |
+| `red/allslices-fp-is-10-trait-mistyped/` | 同上，改写错 FP-IS-10（`833c4a5`） | 在 FP-IS-10 拒绝，退出码 1。能走到这里，说明 FP-IS-00～08 过了预检、FP-IS-09 按表跳过 |
+| `red/table-widened/` | 表里多塞已实现的 FP-IS-04（本地提交，未推送） | 架构测试红（期望 `FP-IS-09`，实际多出 `FP-IS-04`）；`-AllSlices` 在 FP-IS-04 拒绝（表里的片选中了 7 条测试） |
+| `green/architecture-tests-9d5ebe1.txt` | 修后的五个相关架构测试类 | 43/43 通过 |
