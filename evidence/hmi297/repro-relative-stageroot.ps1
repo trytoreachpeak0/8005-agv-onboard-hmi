@@ -138,7 +138,7 @@ try {
         -PassThru -Wait
     $simulatorOut = (Get-Content -Raw -LiteralPath (Join-Path $expectedStage 'simulator.out.log')) ?? ''
     $simulatorErr = (Get-Content -Raw -LiteralPath (Join-Path $expectedStage 'simulator.err.log')) ?? ''
-    $simulatorLines = @($simulatorOut -split "`r?`n" | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json })
+    $simulatorLines = @($simulatorOut -split "`r?`n" | Where-Object { $_.StartsWith("{") } | ForEach-Object { $_ | ConvertFrom-Json })
     $simulatorReport = $simulator.ExitCode -eq 0 ? $simulatorLines[-1] : $null
     $siteA = [ordered]@{
         expression = "Start-Process dotnet -ArgumentList @(Join-Path `$StageRoot 'simulator\Probe.dll') -WorkingDirectory (Join-Path `$StageRoot 'simulator')"
@@ -149,6 +149,7 @@ try {
         # Inferred, not observed: dotnet resolves a relative app path against its own working
         # directory, which is <stage>\simulator here.
         inferredResolution = [IO.Path]::GetFullPath((Join-Path $StageRoot 'simulator\Probe.dll'), (Join-Path $expectedStage 'simulator'))
+        stdout = $simulatorOut.Trim()
         stderr = $simulatorErr.Trim()
         landedUnderStage = (Test-UnderStage $simulatorReport?.entryAssembly)
     }
@@ -164,7 +165,7 @@ try {
         -PassThru -Wait
     $controlOut = (Get-Content -Raw -LiteralPath (Join-Path $expectedStage 'control.out.log')) ?? ''
     $controlErr = (Get-Content -Raw -LiteralPath (Join-Path $expectedStage 'control.err.log')) ?? ''
-    $controlLines = @($controlOut -split "`r?`n" | Where-Object { $_ } | ForEach-Object { $_ | ConvertFrom-Json })
+    $controlLines = @($controlOut -split "`r?`n" | Where-Object { $_.StartsWith("{") } | ForEach-Object { $_ | ConvertFrom-Json })
     $controlReport = $control.ExitCode -eq 0 ? $controlLines[-1] : $null
     $siteB = [ordered]@{
         expression = "`$env:ConnectionStrings__ControlServer = 'Data Source=' + (Join-Path `$StageRoot 'controlserver.db')"
