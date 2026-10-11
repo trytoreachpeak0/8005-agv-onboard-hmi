@@ -415,23 +415,9 @@ public sealed partial class MultiDemandJourneyG2Tests
             item => item.MessageType == "SlotOperationCommandRejected");
 
     /// <summary>
-    /// The operator log as the screen shows it, oldest first. Read by index off a count taken first:
-    /// the harness publishes view-model updates on whatever thread finished them (the product has a
-    /// dispatcher and does not), so enumerating <c>Logs</c> can collide with an <c>Add</c>. Indexing
-    /// does not check the collection's version, and <c>TrimLogs</c> cannot remove anything at these
-    /// sizes, so the count taken up front stays valid -- no retry, and no sleep to tune.
+    /// The operator log's messages as the screen shows them, oldest first, from the harness's snapshot
+    /// (<see cref="Harness.LogsSnapshot"/> says why enumerating <c>Logs</c> itself can collide with an <c>Add</c>).
     /// </summary>
-    private static string[] OperatorLog(Harness harness)
-    {
-        System.Collections.ObjectModel.ObservableCollection<SQCD.Agv.Wpf.ViewModels.LogLineViewModel> lines =
-            harness.ViewModel.Logs;
-        int count = lines.Count;
-        string[] messages = new string[count];
-        for (int index = 0; index < count; index++)
-        {
-            messages[index] = lines[index].Message;
-        }
-
-        return messages;
-    }
+    private static string[] OperatorLog(Harness harness) =>
+        harness.LogsSnapshot().Select(line => line.Message).ToArray();
 }

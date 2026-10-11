@@ -1,0 +1,5 @@
+# commit 0fbd514 + 'int probe = ViewModel.Logs.Count;' inserted after LoadCancellationBeforeSublotG2Tests.cs:100
+[xUnit.net 00:00:03.54]     SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethod [FAIL]
+   1 direct read(s) of ViewModel.Logs; read the log through the harness snapshot method instead:
+tests\SQCD.Agv.WireToGateG2Tests\LoadCancellationBeforeSublotG2Tests.cs:101
+Failed!  - Failed:     1, Passed:     2, Skipped:     0, Total:     3, Duration: 426 ms - SQCD.Agv.UnitTests.dll (net8.0)

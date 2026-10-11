@@ -1,0 +1,5 @@
+# commit 0fbd514 test changes, guard still on the leading-dot regex: self-check sample gains 'int count = ViewModel.Logs.Count;'
+[xUnit.net 00:00:03.41]     SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.TheCheckReportsEachWrittenFormAndIgnoresComments [FAIL]
+Expected: [3, 7, 10, 14]
+Actual:   [3, 7, 10]
+Failed!  - Failed:     1, Passed:     2, Skipped:     0, Total:     3, Duration: 364 ms - SQCD.Agv.UnitTests.dll (net8.0)

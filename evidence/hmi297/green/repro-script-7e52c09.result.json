@@ -1,0 +1,43 @@
+{
+  "ticket": "onboard-hmi#297",
+  "scriptPath": "C:\\Users\\szy\\Desktop\\8005-workspace-v2\\worktrees\\hmi297-8005-agv-onboard-hmi\\scripts\\run-staged-g3-recovery-ack-drop.ps1",
+  "scriptLastCommit": "7e52c0925d768605c9e663986b18571fcc46b885",
+  "conversionPresentInScript": true,
+  "callerLocation": "C:\\Users\\szy\\AppData\\Local\\Temp\\claude\\C--Users-szy-Desktop-8005-workspace-v2\\46f43515-3f62-48f7-8659-45b1bc9de926\\scratchpad\\r3-green\\caller",
+  "processCurrentDirectory": "C:\\Users\\szy\\AppData\\Local\\Temp\\claude\\C--Users-szy-Desktop-8005-workspace-v2\\46f43515-3f62-48f7-8659-45b1bc9de926\\scratchpad\\r3-green\\elsewhere",
+  "stageRootArgument": "stage",
+  "stageRootAfterEntry": "C:\\Users\\szy\\AppData\\Local\\Temp\\claude\\C--Users-szy-Desktop-8005-workspace-v2\\46f43515-3f62-48f7-8659-45b1bc9de926\\scratchpad\\r3-green\\caller\\stage",
+  "expectedStage": "C:\\Users\\szy\\AppData\\Local\\Temp\\claude\\C--Users-szy-Desktop-8005-workspace-v2\\46f43515-3f62-48f7-8659-45b1bc9de926\\scratchpad\\r3-green\\caller\\stage",
+  "sites": {
+    "A_dllLaunch": {
+      "expression": "Start-Process dotnet -ArgumentList @(Join-Path $StageRoot 'simulator\\Probe.dll') -WorkingDirectory (Join-Path $StageRoot 'simulator')",
+      "dllArgument": "C:\\Users\\szy\\AppData\\Local\\Temp\\claude\\C--Users-szy-Desktop-8005-workspace-v2\\46f43515-3f62-48f7-8659-45b1bc9de926\\scratchpad\\r3-green\\caller\\stage\\simulator\\Probe.dll",
+      "exitCode": 0,
+      "started": true,
+      "loadedFrom": "C:\\Users\\szy\\AppData\\Local\\Temp\\claude\\C--Users-szy-Desktop-8005-workspace-v2\\46f43515-3f62-48f7-8659-45b1bc9de926\\scratchpad\\r3-green\\caller\\stage\\simulator\\Probe.dll",
+      "inferredResolution": "C:\\Users\\szy\\AppData\\Local\\Temp\\claude\\C--Users-szy-Desktop-8005-workspace-v2\\46f43515-3f62-48f7-8659-45b1bc9de926\\scratchpad\\r3-green\\caller\\stage\\simulator\\Probe.dll",
+      "stdout": "{\"workingDirectory\":\"C:\\\\Users\\\\szy\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-szy-Desktop-8005-workspace-v2\\\\46f43515-3f62-48f7-8659-45b1bc9de926\\\\scratchpad\\\\r3-green\\\\caller\\\\stage\\\\simulator\"}\r\n{\"entryAssembly\":\"C:\\\\Users\\\\szy\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-szy-Desktop-8005-workspace-v2\\\\46f43515-3f62-48f7-8659-45b1bc9de926\\\\scratchpad\\\\r3-green\\\\caller\\\\stage\\\\simulator\\\\Probe.dll\",\"databaseFile\":null}",
+      "stderr": "",
+      "landedUnderStage": true
+    },
+    "B_controlDatabase": {
+      "expression": "$env:ConnectionStrings__ControlServer = 'Data Source=' + (Join-Path $StageRoot 'controlserver.db')",
+      "connectionString": "Data Source=C:\\Users\\szy\\AppData\\Local\\Temp\\claude\\C--Users-szy-Desktop-8005-workspace-v2\\46f43515-3f62-48f7-8659-45b1bc9de926\\scratchpad\\r3-green\\caller\\stage\\controlserver.db",
+      "childWorkingDirectory": "C:\\Users\\szy\\AppData\\Local\\Temp\\claude\\C--Users-szy-Desktop-8005-workspace-v2\\46f43515-3f62-48f7-8659-45b1bc9de926\\scratchpad\\r3-green\\caller\\stage\\control",
+      "inferredResolution": "C:\\Users\\szy\\AppData\\Local\\Temp\\claude\\C--Users-szy-Desktop-8005-workspace-v2\\46f43515-3f62-48f7-8659-45b1bc9de926\\scratchpad\\r3-green\\caller\\stage\\controlserver.db",
+      "exitCode": 0,
+      "databaseFile": "C:\\Users\\szy\\AppData\\Local\\Temp\\claude\\C--Users-szy-Desktop-8005-workspace-v2\\46f43515-3f62-48f7-8659-45b1bc9de926\\scratchpad\\r3-green\\caller\\stage\\controlserver.db",
+      "stderr": "",
+      "landedUnderStage": true
+    },
+    "C_proxyTranscript": {
+      "expression": "[IO.File]::WriteAllText((Join-Path $StageRoot 'proxy-events.ndjson'), ...)",
+      "transcriptArgument": "C:\\Users\\szy\\AppData\\Local\\Temp\\claude\\C--Users-szy-Desktop-8005-workspace-v2\\46f43515-3f62-48f7-8659-45b1bc9de926\\scratchpad\\r3-green\\caller\\stage\\proxy-events.ndjson",
+      "resolvedByDotNet": "C:\\Users\\szy\\AppData\\Local\\Temp\\claude\\C--Users-szy-Desktop-8005-workspace-v2\\46f43515-3f62-48f7-8659-45b1bc9de926\\scratchpad\\r3-green\\caller\\stage\\proxy-events.ndjson",
+      "written": true,
+      "error": null,
+      "landedUnderStage": true
+    }
+  },
+  "allUnderStage": true
+}

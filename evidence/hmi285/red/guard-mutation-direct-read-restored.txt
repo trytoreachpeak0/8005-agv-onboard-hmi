@@ -1,0 +1,12 @@
+# commit 1bd8a24 + HandoffOverUnrecordedLoad.cs:522 reverted to harness.ViewModel.Logs.Any(...)
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:03.60]     SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethod [FAIL]
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethod [324 ms]
+  Error Message:
+   1 direct read(s) of ViewModel.Logs; read the log through the harness snapshot method instead:
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.HandoffOverUnrecordedLoad.cs:522
+  Stack Trace:
+     at SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethod() in tests\SQCD.Agv.UnitTests\ViewModelLogsReadArchitectureTests.cs:line 55
+
+Failed!  - Failed:     1, Passed:     2, Skipped:     0, Total:     3, Duration: 448 ms - SQCD.Agv.UnitTests.dll (net8.0)

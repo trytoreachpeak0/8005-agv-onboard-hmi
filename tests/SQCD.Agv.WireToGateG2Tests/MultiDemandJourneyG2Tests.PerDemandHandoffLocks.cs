@@ -306,7 +306,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(3, ReceivedPayloads(harness, "ExceptionRecoverySessionRequested").Length);
         Assert.Equal(actionsBefore, ReceivedPayloads(harness, "RecoveryActionSubmitted").Length);
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.Logs.Any(line => line.Message.Contains(NotBlockedRefusalText, StringComparison.Ordinal)),
+            () => harness.LogsSnapshot().Any(line => line.Message.Contains(NotBlockedRefusalText, StringComparison.Ordinal)),
             "the server's refusal to reach the operator",
             token);
         harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
@@ -384,7 +384,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(DemandA, sessions[1].GetProperty("demandId").GetString());
         Assert.Equal(actionsBefore, ReceivedPayloads(harness, "RecoveryActionSubmitted").Length);
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.Logs.Any(line => line.Message.Contains(NotBlockedRefusalText, StringComparison.Ordinal)),
+            () => harness.LogsSnapshot().Any(line => line.Message.Contains(NotBlockedRefusalText, StringComparison.Ordinal)),
             "the server's refusal to reach the operator",
             token);
         Assert.Empty(harness.UiErrors);
@@ -429,13 +429,13 @@ public sealed partial class MultiDemandJourneyG2Tests
             "the next journey's plan to drop the loads the last one left",
             token);
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.Logs.Any(line => line.Message.Contains(
+            () => harness.LogsSnapshot().Any(line => line.Message.Contains(
                 "「车上待交接的需求」里有上一趟行程留下的条目，已按服务端当前的行程移除。",
                 StringComparison.Ordinal)),
             "the operator told that the last journey's loads were dropped",
             token);
         Assert.DoesNotContain(
-            harness.ViewModel.Logs,
+            harness.LogsSnapshot(),
             line => line.Message.Contains("本趟行程已结束", StringComparison.Ordinal));
         Assert.Empty(harness.UiErrors);
     }

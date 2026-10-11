@@ -37,6 +37,14 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Resolve -StageRoot against the caller's location once, here. Its consumers do not resolve against
+# PowerShell's location: the dotnet children resolve the dll path, the connection string and the
+# onboard journal and log paths against their own working directories, and the .NET calls in this
+# process (the proxy transcript, the SQLite read, GetRelativePath, WriteAllText) against the process
+# current directory, which Set-Location does not move. StagedG3ScriptPathArchitectureTests keeps this
+# line ahead of every other use of $StageRoot (onboard-hmi#297, same shape as #287).
+$StageRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($StageRoot)
+
 $controlCommit = 'cc6e2b97e4308fa14b519edf9a0089d0da7d6d14'
 $simulatorCommit = 'fb5f7c593742bf98bc3957b8729a38aad5321f28'
 $agvId = 'AGV-8005-STAGED-G3-ACK-DROP-01'
