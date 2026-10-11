@@ -4,7 +4,7 @@
 本仓被观测版本：`w2g/fp-v2-impl@270c20d`
 服务端被观测版本：`8005-agv-control-server` `fp/v2-impl@a25ef54e`（只读，`git show`／`git grep`）
 截屏工具：`8005-workspace` `remote-ops/onboard-hmi/scripts/17-capture-hmi-screen.ps1`（8005-workspace#16，PR 8005-workspace#17，
-本文引用的行号按该 PR 当时的头 `d52f0725`，PR 尚未合入），证据 `remote-ops/onboard-hmi/evidence/ws16-20261011/`
+本文引用的行号按 `d52f0725`，该 PR 已以合入提交 `8d6c850e` 合入），证据 `remote-ops/onboard-hmi/evidence/ws16-20261011/`
 日期：2026-10-11；按调度 Coordinator 10 的审查（M1～M9、L1～L7）修订一次
 
 ## 结论先说
@@ -110,13 +110,14 @@ hmi#297 的诊断 runner 在票面里被列为候选出口，读到的：它是�
 - 读到的：快照里唯一的「能不能按」是 `CanSubmitSublot`，取业务服务的值（`WpfOnboardAutomationFacade.cs:59`）；它自己已含锁存
   （`src/SQCD.Agv.Wpf/WireToGateBusinessService.cs:308-309`）。也就是说，`MainWindow.xaml` 的 22 个按钮里，这份快照只覆盖了
   扫码提交这 1 个。十个恢复入口（「十个」出自 `MainViewModel.cs:752` 的注释与 `RecoveryEntryWriteSiteArchitectureTests`）
-  根本不在快照里，它们的最终值要再过界面层的锁存闸门 `AllowRecoveryEntry`（`MainViewModel.cs:664-665`、`:691-692`），
-  这一层只存在于 ViewModel。
+  根本不在快照里。它们的最终值要再过界面层的锁存闸门：九个过 `AllowRecoveryEntry`（`MainViewModel.cs:664-665`、`:691-692`），
+  取消装货过 `AllowLoadCancellationEntry`（锁存期间只剩扫码之前那一半，`MainViewModel.cs:755-757`）。这一层只存在于 ViewModel。
 - 读到的：配置默认关（`appsettings.json:39-43`），**`Production` 环境开启会被校验拒绝**：「Production环境禁止启用车载端
   自动化loopback接口，除非完成独立安全评审。」（`src/SQCD.Agv.Infrastructure/Configuration.cs:466-471`）
 - 读到的：快照读日志簿是同步阻塞的（`.GetAwaiter().GetResult()`，`WpfOnboardAutomationFacade.cs:98-101`），与 O2 那把信号量同一把。
-- 读到的：本仓里用到这个接口的只有单元测试 `tests/SQCD.Agv.UnitTests/OnboardAutomationHostTests.cs`；
-  `scripts/run-first-integration.ps1` 里的 `/api/v1/snapshot` 是模拟器的接口（端口 58006），不是它。
+- 读到的：产品里它只在 `App.xaml.cs:358-375` 按配置启动；本仓的测试与脚本里，直接起这个主机的只有单元测试
+  `tests/SQCD.Agv.UnitTests/OnboardAutomationHostTests.cs`，没有 G2 场景或脚本调用它。`scripts/run-first-integration.ps1` 里的
+  `/api/v1/snapshot` 是模拟器的接口（端口 58006），不是它。本仓之外（服务端 L2、G3）有没有调用它，本票没有查。
 - 推的：它是为「测试驱动扫码」设计的，不是为「现场观测」设计的。
 
 ### O5 UIA 树
@@ -136,8 +137,10 @@ hmi#297 的诊断 runner 在票面里被列为候选出口，读到的：它是�
 以下是对服务端 `fp/v2-impl@a25ef54e` 的只读查询结果，由子代理检索、本会话抽查了其中 5 处原文（标 ✓）。
 
 - 读到的 ✓：入站消息整条原样写进收件箱表 `ProtocolInbox`（`src/ControlServer.Host/Transport/OnboardMessageProcessor.cs:154-171`）；
-  握手 `SessionHello` 是例外，它走单独的路径，凭据脱敏后再入库（`OnboardMessageProcessor.cs:59-120`，子代理读到、未抽查）。
-- 读到的 ✓：`OperationProgress` 服务端只回 `DurableAck`，载荷不解析（`OnboardMessageProcessor.cs:548-549`），服务端没有「当前仓位操作阶段」字段。
+  有两处脱敏后再入库：握手 `SessionHello` 走单独的路径（`OnboardMessageProcessor.cs:59-120`，子代理读到、未抽查）；
+  `ExceptionRecoverySessionRequested` 先去掉恢复认证凭证（✓ `OnboardMessageProcessor.cs:131-133`）。
+- 读到的 ✓：`OperationProgress` 服务端只回 `DurableAck`，载荷不解析（`OnboardMessageProcessor.cs:548-549`），服务端没有「当前仓位操作阶段」
+  的结构化字段；但整行原样存在 `ProtocolInbox` 里，按 `RequestJson` 能查到（推的：表上没有车号列，要从 JSON 里取）。
 - 读到的：安全摘要（`departureSafe`、`reasonCodes`）落在 `SessionRecoveries` 行（`OnboardMessageProcessor.cs:462-503`）；告警板整份
   落 `OnboardAlarmSnapshots`（`OnboardMessageProcessor.cs:443-461`）。
 - 读到的 ✓：车载端锁存时在安全摘要里报 `ONBOARD_FATAL_FAULT_LATCHED`（本仓 `src/SQCD.Agv.Infrastructure/WireToGateSafetyEvaluator.cs:33`），
@@ -170,9 +173,20 @@ hmi#297 的诊断 runner 在票面里被列为候选出口，读到的：它是�
     纯函数在 `src/SQCD.Agv.Wpf/ViewModels/WireToGateHmiPresentation.cs:13-60`），输入里有会话的 `ReasonCodes`。
   - 两条路径都经 `PublishGuidance`，一条操作员提示会把说明行压住 8 秒（`MainViewModel.cs:16`、`:2360-2371`）。
 - 读到的：会话的 `ReasonCodes` 只说到「`DEPARTURE_UNSAFE`」这一层；为什么不安全，在车载端算出的安全摘要的 `reasonCodes` 里
-  （`src/SQCD.Agv.Infrastructure/WireToGateSafetyEvaluator.cs:35` 起的 `Evaluate`）。安全摘要每次现算现发
-  （`WireToGateSessionClient.cs:4610` 的 `CreateSafetySummary`，调用点 `:952`、`:2377`），车载端没有字段保留「最近一次发出的那份」。
-  所以「为什么显示需要恢复」要同时看：横幅是哪条路径写的、那条路径的输入、以及最近一次安全摘要。
+  （`src/SQCD.Agv.Infrastructure/WireToGateSafetyEvaluator.cs:35` 起的 `Evaluate`）。安全摘要经三条路发出：
+  - 握手快照与按请求发的快照：会话客户端 `CreateSafetySummary`（`WireToGateSessionClient.cs:4610`，调用点 `:952`、`:2377`）；
+  - 最常发的 `SafetyStateChanged`（`WireToGateSessionClient.cs:749-779`）和 `PreDepartureSafetyCheckResult`（`:735-745`）：
+    内容由业务服务 `EvaluateSafety` 算好再交给会话客户端（`src/SQCD.Agv.Wpf/WireToGateBusinessService.cs:4651-4677`），
+    不经过 `CreateSafetySummary`。
+- 读到的：「最近一次」只以私有字段的形式存在，而且在业务服务里，不在会话客户端：`_pendingSafetyChange`（待确认的那份，含摘要）、
+  `_lastSafetySignature`（已被服务端接受的那份的签名，签名是摘要加各仓原始 IO 的 JSON）（`WireToGateBusinessService.cs:165-166`）。
+  签名在服务端接受的版本号追上待确认版本时写入（`:2148-2152`），换代时清空（`:2167-2171`），放弃的变化也会清（
+  `WireToGateBusinessService.AbandonedOutbox.cs:134-136`）。会话客户端只保留「服务端已接受的版本号」`_acceptedSafetyStateVersion`
+  （`WireToGateSessionClient.cs:83`），推进它的 `AdvanceSafetyStateVersion` 有六个调用点：`:778`（`SafetyStateChanged` 送达）、
+  `:969`（握手快照）、`:2386`（按请求的快照）、`:2734`（换代后重绑的持久消息送达）、`:4957`（`SessionReadiness` 带回的版本）、
+  `:5043`（迟到的送达确认）。其中只有前三处手里有摘要本身。
+- 读到的：安全摘要的 `reasonCodes` 不写文件日志（`src/` 里 grep 不到带安全原因码的 `logger.Write`）；文件日志里只有会话就绪的原因码（O1）。
+  所以「为什么显示需要恢复」要同时看：横幅是哪条路径写的、那条路径的输入、以及服务端已接受的那份安全摘要，而最后这一项今天在车载端进程外看不到。
 - 读到的：ViewModel 的写入都经 `RunOnUiThread` 调度到 WPF 调度线程（`MainViewModel.cs:2591-2606`）。从别的线程读它没有同步保证。
   **没有 `Dispatcher` 时（`Application.Current` 为空）它在调用线程上直接执行**（`MainViewModel.cs:2593-2597`）。
 - 读到的：G2 夹具直接构造真正的 `MainViewModel`（`tests/SQCD.Agv.WireToGateG2Tests/MultiDemandJourneyG2Tests.cs:408`），
@@ -203,8 +217,7 @@ hmi#297 的诊断 runner 在票面里被列为候选出口，读到的：它是�
 ### A. 车载端提供只读的本机状态出口
 
 内容统一叫「屏幕状态快照」：从 `MainViewModel` 在调度线程上读出的一份结构化记录，字段清单见第 4.1 节。
-
-A 也可以换别的进程间通道（命名管道、ETW 事件、.NET 诊断 IPC 的 EventCounters／EventPipe），比较如下：
+出口通道除了文件与 HTTP，还有命名管道、ETW 事件、.NET 诊断 IPC，比较如下：
 
 | 通道 | 新监听面 | 读者要在车上跑什么 | 判断 |
 | --- | --- | --- | --- |
@@ -212,7 +225,7 @@ A 也可以换别的进程间通道（命名管道、ETW 事件、.NET 诊断 IP
 | 回环 HTTP（A2） | 回环 TCP 端口 | 发请求 | 见下表 |
 | 命名管道 | 一个管道服务端，ACL 要另配 | 要有客户端程序 | 与 A2 同类代价，又没有现成代码，不选 |
 | ETW 事件 | 无 | 要起会话收事件（`logman`／`tracerpt` 或自写） | 适合事件流，不适合「此刻状态」；收集要在车上起会话，不选 |
-| .NET 诊断 IPC（`dotnet-counters`／EventPipe） | 运行时自带的诊断端点（默认已开） | 要在车上装诊断工具并附着进程 | 适合计数器与性能，不带业务状态；附着本身是对运行中进程的操作，不选 |
+| .NET 诊断 IPC（`dotnet-counters`／EventPipe） | 运行时自带的诊断端点（推的：.NET 默认开启，本仓未见关闭它的配置） | 要在车上装诊断工具并附着进程 | 适合计数器与性能，不带业务状态；附着本身是对运行中进程的操作，不选 |
 
 A1 与 A2 的差别：
 
@@ -274,7 +287,7 @@ A 有两种出口形态，差别很大：
     挂调试器还可能在断点或异常时暂停全部线程——在一台可能正在执行仓门操作的车上不可接受。
   - 推的：它们是交互式 GUI 工具，要在车上的交互桌面里操作，会抢前台、抢焦点（见第 2 节「焦点」）。
   - 要在车上装第三方工具，与工作区「第三方二进制不进 git、按配方取用」的一贯做法相悖，车上也没有这类工具的配方。
-- 同一类的还有转储工具 `dotnet-dump`、`procdump`：取转储要挂起目标进程直到写完，大进程可能停顿秒级。
+- 同一类的还有转储工具 `dotnet-dump`、`procdump`：推的，取完整转储要挂起目标进程直到写完，大进程可能停顿秒级（本票未实测）。
   **现场车上一律不用**，包括「只取一次看看」。
 - 适合：开发机、L2 本机装置上调界面绑定问题。
 - 结论：只在开发机用，现场不用。
@@ -308,8 +321,11 @@ A 有两种出口形态，差别很大：
   - **屏上看得见的（T1a）**：
     - 每个按钮的 `visible`、`enabled`。`visible` 明确定义为「绑定层可见」，即 `Visibility` 绑定属性的值，不管窗口是否被挡住或最小化；
       `enabled` 对 `IsEnabled` 绑定的取属性值，对 `Command` 绑定的取 `CanExecute`，对模板里的「充不上」选项按钮取选项列表本身；
-    - **模态框**：是否有模态框弹着、标题与第一行正文。由 code-behind 在每个 `MessageBox.Show` 前后登记（`MainWindow.xaml.cs` 24 处、
-      `App.xaml.cs` 2 处），快照读登记结果；
+    - **非按钮的可输入状态**：五个可编辑输入框各自的 `enabled` 与「是否非空」——扫码框 `ScanTextBox`（`IsEnabled` 绑 `CanSubmit`，
+      `MainWindow.xaml:133-141`）、恢复原因（`:355`）、强制交接的 sublot 与接收人（`:507`、`:522`，`TextBox` 起于 `:499`、`:514`）、
+      硬件恢复观察记录（`:553`，起于 `:546`）。注意 `:143` 是扫码框上的 `KeyBinding`，不是按钮；
+    - **模态框**：是否有模态框弹着、叠了几层、最上层的标题与第一行正文。由 code-behind 在每个 `MessageBox.Show` 外面用
+      `try/finally` 增减一个计数并记下标题（`MainWindow.xaml.cs` 24 处、`App.xaml.cs` 2 处），因为确认框可能叠加；快照读登记结果；
     - 横幅：`StateText`、`Guidance`、`HasWarning`、`HasError`，以及**最后写横幅的是哪条路径**（控制器快照，还是 W2G 呈现）；
     - 操作员提示：`operatorNotice` 的文字与到期时刻（8 秒保持，`MainViewModel.cs:16`）；
     - 旅程计划行、到站格、电量、充电状态的原始码（与 UIA 的 `ItemStatus` 同源）；
@@ -321,23 +337,35 @@ A 有两种出口形态，差别很大：
     - 会话的 `Readiness`、`ReasonCodes`、`SessionGeneration`；
     - 当前仓位操作阶段；`WireToGateHmiPresentation.Create` 的其余输入；
     - 十个恢复入口各自的业务层判据（锁存闸门之前的值），与 T1a 的最终值并列，二者之差就是锁存闸门的作用；
-    - **最近一次发出的安全摘要**（`departureSafe` 与 `reasonCodes`）。这一项车载端目前不保留（第 2 节 O7），T1b 要在会话客户端里
-      加一个只读的「最近一次」字段，这是推荐方案里唯一一处碰到 `SQCD.Agv.Infrastructure` 的改动。
-  - 元数据：`contentRevision`（内容指纹变化时加一）、`writtenAt`（每次写都更新，含心跳）、进程启动号、程序版本。
+    - **服务端已接受的那份安全摘要**：版本号、`departureSafe`、`reasonCodes`。今天它只以业务服务的私有签名存在（第 2 节 O7），
+      进程外看不到。T1b 在会话客户端里加一个只读字段，记「服务端已接受的版本号＋对应的摘要」：
+      - 在手里有摘要的三个发送点（`AdvanceSafetyStateVersion` 的 `:778`、`:969`、`:2386` 调用旁）记「这个版本号对应这份摘要」；
+      - 送达确认后、版本号推进时，用 `Volatile.Write` 存一个不可变 record 的引用；不加锁、不做 I/O、不改发送路径；
+      - 另外三个调用点（`:2734`、`:4957`、`:5043`）只带版本号，T1b 要说明这三种情形下字段怎么取值（例如保留已知最新的摘要并标出版本号不一致），
+        不能静默显示一份旧摘要当作当前。
+      这是推荐方案里唯一一处碰到 `SQCD.Agv.Infrastructure` 的改动。
+- 在 G2 里构造快照（M4）：G2 没有 `Dispatcher`，ViewModel 的集合可能正被别的线程追加。T1a 的 G2 断言要在夹具的 UI 锁内构造快照，
+  或者照 `Logs` 的做法用容忍并发追加的复制（`ViewModelLogsReadArchitectureTests.cs:5-21` 说的那个快照方法），二者选一并写明。
+  - 元数据：`contentRevision`（内容指纹变化时加一）、`writtenAt`（每次写都更新，含心跳）、进程启动号、程序版本，
+    以及 `status`：正常为 `ACTIVE`；快照因异常停用后，写出器最后写一份 `status=DISABLED` 并带停用原因与时刻，之后不再更新。
+    这样 T3 能把「快照自己停了」和「界面卡死」（`writtenAt` 不前进但 `status` 仍是 `ACTIVE`）分开。
 - 触发：订阅 `MainViewModel.PropertyChanged` 与几个集合的 `CollectionChanged`。**处理器里只置一个脏标记，不做任何别的事**；
   防抖后用 `Dispatcher.BeginInvoke(..., DispatcherPriority.Background)` 取一次值；外加定时心跳。构造完交给后台写出器。
 - 写出：两份文件（位置见第 7 节）：
   - `hmi-state.json`：当前快照，写临时文件再原子替换，读者永远读到完整的一份；
   - `hmi-state-yyyyMMdd.ndjson`：只在内容指纹变化时追加一行（指纹去掉时间戳，做法同 `AutomationApi.cs:237` 的
     `RemoveObservationTimestamps`；倒计时只按档位进指纹）。按天切分，单文件设大小上限（建议 20 MB，超出当天停写并记一行日志），
-    保留期设上限（建议 30 天，与 REQ-0272 的技术日志下限一致），过期由写出器自己清理。
+    保留期设上限（建议 30 天），过期由写出器自己清理。清理只匹配 `hmi-state-*.ndjson`，绝不碰同目录的 `agv-*.log`。
+    这份时间线是诊断材料，**不算 REQ-0272 的技术日志**，不替代、也不满足那条需求。
 - 控制端：`8005-workspace` 的 `remote-ops/onboard-hmi/scripts/` 下新增一个读取脚本，`ssh` 读文件、判新鲜度、打印摘要；
   加一个 `-CrossCheck` 模式，与 `17-capture-hmi-screen.ps1` 配合比对两者（做法见第 6 节第 1 条）。
 - 内容边界：
   - 快照与文件日志同级：放在日志目录或其旁，目录 ACL 与日志目录相同，不另开放读权限；
-  - 只写已经显示在屏上、或已经写进文件日志的东西，以及它们的直接输入。会话原因码、安全原因码、控制器状态都已在文件日志里
-    （第 2 节 O1），横幅与按钮本来就在屏上；
-  - 扫码输入框 `ScanTextBox` 只写一个「是否非空」的布尔值，不写内容；恢复原因输入框同理，只写是否已填与是否已提交；
+  - 只写已经显示在屏上、或已经写进文件日志、或已经发给服务端的东西，以及它们的直接输入。逐项说：横幅、按钮、到站与仓位本来就在屏上；
+    会话就绪原因码、控制器的错误码与提示已在文件日志里（第 2 节 O1）；**安全摘要的 `reasonCodes` 不在文件日志里**，
+    但它已经随安全摘要发给服务端、落在服务端 `SessionRecoveries` 里（O6），快照只是把车载端这一侧也记下来；
+  - 五个可编辑输入框（扫码框、恢复原因、强制交接的 sublot 与接收人、硬件恢复观察记录）一律只写「是否非空」与「是否已提交」的布尔值，
+    不写内容。接收人姓名是个人信息，观察记录是自由文本，都不进快照；
   - 不写凭据与认证凭证（恢复认证凭证本来就不持久化，`WireToGateRecovery.cs:267-271`），不写环境变量的值，只写变量名是否已设。
 
 ### 4.2 为什么不是 A2
@@ -350,14 +378,16 @@ A 有两种出口形态，差别很大：
 
 设计目标是不改，下面每一条都是这个目标的前提，缺一条就不成立：
 
-1. **调度线程上的代码整体隔离。**`PropertyChanged`／`CollectionChanged` 处理器与 `BeginInvoke` 进去的快照构造，各自整体包在
-   `try/catch (Exception)` 里，捕获后记一行日志、停用快照（直到下次重启），绝不重新抛出。理由见第 2 节：调度线程上的未处理异常
-   会被判为 `UNHANDLED_UI_ERROR`、整车锁存（`App.xaml.cs:504`、`:522`，`OnboardFailureClassification.cs:85-87`）；处理器在
-   `SetProperty` 里抛异常还会把入口刷新打断在半途。处理器只置脏标记，把这一路能抛异常的代码量压到最小。
+1. **调度线程上的代码整体隔离。**调度线程上的每一个入口——`PropertyChanged`／`CollectionChanged` 处理器、`BeginInvoke` 进去的
+   快照构造、心跳定时器的 `Tick` 处理器——各自整体包在 `try/catch (Exception)` 里，捕获后记一行日志、停用快照（直到下次重启、
+   并写出 `DISABLED` 标记），绝不重新抛出。**catch 里记日志这一步本身也要再包一层**：`FileAppLogger` 只接住 IO 与权限两类异常
+   （`FileAppLogger.cs:37-44`），别的异常会从 catch 里再抛出来。理由见第 2 节：调度线程上的未处理异常会被判为
+   `UNHANDLED_UI_ERROR`、整车锁存（`App.xaml.cs:504`、`:522`，`OnboardFailureClassification.cs:85-87`）；处理器在 `SetProperty`
+   里抛异常还会把入口刷新打断在半途。处理器只置脏标记，把这一路能抛异常的代码量压到最小。
 2. 构造器只调 getter；在调度线程上用 `Background` 优先级排队，排在所有输入与渲染之后。
 3. 序列化和写盘不在调度线程；写出失败只记日志。
 4. 不调任何窗口、焦点、输入 API。
-5. code-behind 登记模态框只是在 `MessageBox.Show` 前后各写一个字段，不改弹框本身。
+5. code-behind 登记模态框只是在 `MessageBox.Show` 外面套一层 `try/finally` 增减计数，不改弹框本身；登记代码同样不得抛异常。
 
 **仍有一条代价要明说**：它在调度线程上增加了少量排队工作。推的：量级是界面每次刷新本来就要做的属性读取，
 T1a 要用量测证明（见验收标准）。
@@ -370,19 +400,21 @@ T1a 要用量测证明（见验收标准）。
 | 票 | 仓 | 内容 | 依赖 |
 | --- | --- | --- | --- |
 | T1a | onboard-hmi | 快照模型与构造器：按钮、模态框、横幅、操作员提示、屏上原始码。不写盘 | 无 |
-| T1b | onboard-hmi | 快照里横幅与入口背后的输入：控制器状态、会话、业务层判据、最近一次安全摘要 | T1a |
+| T1b | onboard-hmi | 快照里横幅与入口背后的输入：控制器状态、会话、业务层判据、服务端已接受的安全摘要 | T1a |
 | T2 | onboard-hmi | 写出器（当前文件＋时间线）、调度线程隔离、配置开关、接线 | T1a（T1b 可后补字段） |
-| T3 | 8005-workspace | 控制端读取脚本与 `-CrossCheck` 对照模式 | T2 合入并部署到一台车；8005-workspace#17（`17-capture-hmi-screen.ps1`）合入 |
+| T3 | 8005-workspace | 控制端读取脚本与 `-CrossCheck` 对照模式 | T2 合入并部署到一台车；`17-capture-hmi-screen.ps1` 已随 8005-workspace#17 合入（`8d6c850e`），无待办依赖 |
 | T4（可选） | onboard-hmi | 「操作记录」落盘：在 `Logs` 这一层写结构化日志行，覆盖四个来源与清空动作 | 无，可与 T1a 并行 |
 
 ### T1a 验收标准
 
 - [ ] 护栏：一个读 XAML 文本的测试列出 `MainWindow.xaml` 里每一个 `Button` 的 `IsEnabled`、`Visibility`、`Command` 绑定，
-      以及带 `Click` 而没有 `IsEnabled` 绑定的按钮，断言每一个都在快照字段里有对应；另一个读 code-behind 文本的测试断言每一处
+      带 `Click` 而没有 `IsEnabled` 绑定的按钮，以及每一个可编辑 `TextBox` 的 `IsEnabled` 与 `Text` 绑定（`KeyBinding` 按它所在的输入框算），
+      断言每一个都在快照字段里有对应；另一个读 code-behind 文本的测试断言每一处
       `MessageBox.Show` 都经过模态框登记。新加按钮或弹框而不进快照时它们红。写明它们覆盖不到什么
       （例如绑定写在样式里、按钮在代码里动态创建）。
 - [ ] 横幅：快照给出横幅输出与「最后写横幅的路径」；操作员提示给出文字与到期时刻。
-- [ ] G2：在至少三个既有场景（正常装货中、会话需恢复、致命故障锁存）里断言快照内容。锁存场景要断言横幅来自控制器快照路径、
+- [ ] G2：在至少三个既有场景（正常装货中、会话需恢复、致命故障锁存）里断言快照内容；快照在夹具的 UI 锁内构造，或用容忍并发追加的复制，
+      二选一并写明（第 4.1 节「在 G2 里构造快照」）。锁存场景要断言横幅来自控制器快照路径、
       恢复入口在快照里为不可按。
 - [ ] 只读护栏：构造器源码扫描，不出现属性 setter 调用、`ICommand.Execute`、`Focus`、`Activate` 等；同时说明扫描的边界。
 - [ ] 量测：在 G2 夹具里量一次构造耗时，给出数字。
@@ -391,17 +423,23 @@ T1a 要用量测证明（见验收标准）。
 
 - [ ] 快照给出 `WireToGateHmiPresentation.Create` 的全部输入，以及控制器快照的 `State`／`ErrorCode`／`Guidance`。
 - [ ] 十个恢复入口的业务层判据与最终值并列；G2 锁存场景断言「业务层为真、最终值为假」——这正是 O4 回答不了的那一条。
-- [ ] 最近一次安全摘要：会话客户端保留最近一次发出的那份（只读字段），快照带出 `departureSafe` 与 `reasonCodes`；
-      G2 断言它与服务端假对端收到的那一份一致。
+- [ ] 服务端已接受的安全摘要：会话客户端按第 4.1 节记「已接受版本号＋对应摘要」，快照带出版本号、`departureSafe` 与 `reasonCodes`；
+      G2 覆盖三条发送路（握手快照、按请求快照、`SafetyStateChanged`），断言快照里的那份与服务端假对端确认的那一份一致；
+      并说明并测试只带版本号的三个调用点下字段的取值。
+- [ ] **发出的消息内容与时序不变**：加字段前后，同一组 G2 场景里假对端收到的安全类消息逐字节相同、顺序相同。
 
 ### T2 验收标准
 
-- [ ] **调度线程隔离（对应 4.3 第 1 条）**：一个起真 `Dispatcher` 的单元测试（STA 线程上 `Dispatcher.Run`），注入一个必抛异常的构造器
-      和一个必抛异常的处理器，断言：`OnDispatcherUnhandledException` 未被触发、控制器未进入锁存、没有弹框、
-      `RefreshWireToGateInputStateCore` 写的入口值与不挂快照时相同、日志里有一行、快照已停用。
+- [ ] **调度线程隔离（对应 4.3 第 1 条）**：一个起真 `Dispatcher` 的单元测试（STA 线程上 `Dispatcher.Run`），分别注入必抛异常的
+      构造器、处理器、心跳 `Tick`，以及一个必抛非 IO 异常的日志器，断言：测试 `Dispatcher` 的 `Dispatcher.UnhandledException`
+      触发零次（单元测试起不了 `App`，所以断言落在 `Dispatcher` 上，不落在 `OnDispatcherUnhandledException` 上）、
+      `RefreshWireToGateInputStateCore` 写的入口值与不挂快照时相同、快照已停用并写出 `DISABLED` 标记。
+- [ ] **入口护栏**：一个源码扫描断言快照代码里每一个调度线程入口（事件处理器、`BeginInvoke`／`InvokeAsync` 的委托、定时器 `Tick`）
+      方法体整体包在 `try/catch (Exception)` 里，catch 里的记日志再包一层；写明扫描的边界。
 - [ ] **线程模型（M4）**：同一类真 `Dispatcher` 测试断言构造在调度线程、写出在非调度线程；调度线程被人为阻塞时 `writtenAt` 停止前进
       （这是 T3 判「界面无响应」的依据）。G2 里 `RunOnUiThread` 直接在调用线程执行，验证不了这两条，所以必须是这类测试。
-- [ ] **时间线体积（M5）**：发车倒计时走完一个完整周期，时间线只按档位变化追加，不按秒追加；单文件大小上限与保留期清理各有测试。
+- [ ] **时间线体积（M5）**：发车倒计时走完一个完整周期，时间线只按档位变化追加，不按秒追加；单文件大小上限与保留期清理各有测试，
+      清理测试同时断言同目录里过期的 `agv-*.log` 不被删除。
 - [ ] 原子写：并发读者在任何时刻读到的都是完整 JSON（测试里边写边读若干千次）。
 - [ ] 写出器抛异常（目录只读、磁盘满的替身）时，业务与界面不受影响，日志里有一行。
 - [ ] 时间线只在内容变化时追加；同一内容重复触发不追加。
@@ -412,11 +450,14 @@ T1a 要用量测证明（见验收标准）。
 ### T3 验收标准
 
 - [ ] 只读：读取脚本只执行读文件命令，不在车上注册任务、不起进程；有自检扫描。
-- [ ] 新鲜度判定：`writtenAt` 超过阈值（建议心跳周期的 3 倍）判 `STALE`，文件不存在判 `ABSENT`，各有退出码。
-- [ ] `-CrossCheck`：先读一次快照，再跑一次 `17-capture-hmi-screen.ps1`，再读一次快照；两次快照的 `contentRevision` 相同才比对，
-      否则判 `MOVING`、不下结论。比对横幅文字、按钮可见与可按、模态框、到站格原始码，输出差异表。
+- [ ] 新鲜度判定：`status=DISABLED` 判 `DISABLED`；`writtenAt` 超过阈值（建议心跳周期的 3 倍）判 `STALE`；文件不存在判 `ABSENT`；各有退出码。
+- [ ] `-CrossCheck`：先读一次快照，再跑一次 `17-capture-hmi-screen.ps1`，再读一次快照；两次快照的进程启动号与 `contentRevision`
+      都相同才比对，否则判 `MOVING`、不下结论。比对横幅文字、按钮与输入框的可见与可按、模态框、到站格原始码，输出差异表。
 - [ ] 本机对照：在本机 L2 真装置上（`8005-agv-control-server` 的 `Invoke-L2Scenario.ps1` 真车载端模式，车载端 WPF 起在本机桌面），
-      在场景的几个停顿点各跑一次 `-CrossCheck`，读取脚本对本机走 `localhost` 而不是 `ssh`；零差异。
+      在场景的几个停顿点各跑一次对照。`17-capture-hmi-screen.ps1` 的 `-SshAlias` 只接受 `agv02`、`agv03`（`:54` 的 `ValidateSet`），
+      没有本机模式，所以 T3 要二选一并写明：给 17 号脚本加一个本机模式（直接在本机会话里跑同一份 UIA 读取，不经 ssh、不注册计划任务），
+      或者另写一个本机 UIA 读取，与 17 号脚本共用字段口径。读取快照对本机直接读文件。零差异。
+- [ ] 确定结论的次数：本机对照至少 10 次比对得出确定结论（不是 `MOVING`）；`MOVING` 的次数也报出来，占比过高说明夹取方法要改。
 - [ ] 实车对照：一次，不动车、只读文件与截屏，时间由调度安排。
 
 ### T4 验收标准
@@ -429,7 +470,8 @@ T1a 要用量测证明（见验收标准）。
 
 出现下面任何一条，就判这个观测手段**不可信**，回退到截屏，并把它当缺陷处理：
 
-1. **对照不一致**：一次 `-CrossCheck` 里，前后两次快照的 `contentRevision` 相同（UIA 读取被夹在中间、期间内容没变），
+1. **对照不一致**：一次 `-CrossCheck` 里，前后两次快照的进程启动号与 `contentRevision` 都相同（UIA 读取被夹在中间、期间内容没变、
+   进程没换），
    而快照与 UIA 读数在横幅文字、任一按钮的可见或可按、模态框、到站格原始码上不一致。
 2. **漏项**：屏上有一个按钮、弹框或状态区块，快照里没有（T1a 护栏本应拦住，拦不住即护栏失效）。
 3. **静默陈旧**：车载端在运行、界面在刷新（截屏可见变化），而 `writtenAt` 不前进，且读取脚本没有报 `STALE`。
@@ -439,7 +481,8 @@ T1a 要用量测证明（见验收标准）。
    - 现场出现扫码焦点丢失、界面卡顿可归因于它；
    - 写出器异常导致车辆故障或业务中断。
    注意：G2 没有 `Dispatcher`，判不出调度线程上的问题，这一条的前两种情形主要靠 T2 的真 `Dispatcher` 测试和现场日志。
-5. **泄露**：快照或时间线里出现凭据、认证凭证、扫码框或原因框里尚未提交的内容。
+5. **泄露**：快照或时间线里出现凭据、认证凭证，或五个可编辑输入框（扫码框、恢复原因、强制交接的 sublot 与接收人、硬件恢复观察记录）里的
+   任何文字内容。
 
 其中 1 是最重要的一条：快照只有在被证明与屏一致的范围内才可信，所以 E（截屏）不能退役，要定期用来对照。
 
