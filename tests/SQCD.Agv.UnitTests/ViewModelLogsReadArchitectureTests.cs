@@ -18,13 +18,16 @@ namespace SQCD.Agv.UnitTests;
 /// that tolerates those appends; a test that reads the collection itself does not.
 /// </para>
 /// <para>
-/// <b>What this cannot see.</b> It looks for one written form, <c>.ViewModel.Logs</c>, in code (text after
-/// <c>//</c> on a line is dropped, so <c>cref="MainViewModel.Logs"</c> in a doc comment is not a read). It
-/// does not follow the collection once it has left that form: <c>var logs = harness.ViewModel;</c> followed
-/// by <c>logs.Logs.Any(...)</c>, a view model held in a local and read as <c>viewModel.Logs</c> (the
-/// single-threaded view-model tests such as <c>FatalFaultLatchViewModelTests</c> do exactly that, and are
-/// not G2 harness tests), reflection, or a <c>/* ... */</c> block comment that happens to contain the form.
-/// Chasing every such spelling is not the goal; keeping the one form everyone copies from going back in is.
+/// <b>What this cannot see.</b> It looks for one written form, <c>ViewModel.Logs</c> on a single line with no
+/// identifier character in front (so <c>harness.ViewModel.Logs</c> and a bare <c>ViewModel.Logs</c>), in code:
+/// text after <c>//</c> on a line is dropped, so <c>cref="MainViewModel.Logs"</c> in a doc comment is not a read.
+/// It does not follow the collection once it has left that form: <c>harness.ViewModel</c> on one line and
+/// <c>.Logs</c> on the next, <c>var vm = harness.ViewModel;</c> followed by <c>vm.Logs.Any(...)</c>, a view model
+/// held in a local and read as <c>viewModel.Logs</c> (the view-model tests such as
+/// <c>FatalFaultLatchViewModelTests</c> construct the view model themselves instead of using the G2 harness, and
+/// read it that way), reflection, or a <c>/* ... */</c> block comment that happens to contain the form (a false
+/// report, not a miss). Chasing every such spelling is not the goal; keeping the form everyone copies from going
+/// back in is.
 /// </para>
 /// </remarks>
 public sealed class ViewModelLogsReadArchitectureTests
@@ -32,9 +35,11 @@ public sealed class ViewModelLogsReadArchitectureTests
     /// <summary>The file that holds the harness and its snapshot method: the one place allowed to read it.</summary>
     private const string SnapshotFile = "MultiDemandJourneyG2Tests.cs";
 
-    private static readonly Regex DirectRead = new(@"\.ViewModel\.Logs(?!\w)", RegexOptions.CultureInvariant);
-
-    private static readonly Regex AnyRead = new(@"(?<!\w)ViewModel\.Logs(?!\w)", RegexOptions.CultureInvariant);
+    /// <summary>
+    /// <c>ViewModel.Logs</c> not preceded by an identifier character: <c>harness.ViewModel.Logs</c> and a bare
+    /// <c>ViewModel.Logs</c> match, <c>MainViewModel.Logs</c> and <c>harness.ViewModel.LogsCount</c> do not.
+    /// </summary>
+    private static readonly Regex Read = new(@"(?<!\w)ViewModel\.Logs(?!\w)", RegexOptions.CultureInvariant);
 
     [Fact]
     public void NoTestReadsViewModelLogsOutsideTheSnapshotMethod()
@@ -67,7 +72,7 @@ public sealed class ViewModelLogsReadArchitectureTests
     {
         string path = Assert.Single(TestSources(), source => Path.GetFileName(source) == SnapshotFile);
 
-        int[] lines = CodeLines(File.ReadAllText(path), AnyRead);
+        int[] lines = DirectReads(File.ReadAllText(path));
 
         Assert.True(
             lines.Length == 1,
@@ -95,12 +100,13 @@ public sealed class ViewModelLogsReadArchitectureTests
             // harness.ViewModel.Logs is not read here
             string[] fine = harness.LogsSnapshotLike().Select(line => line.Message).ToArray();
             int other = harness.ViewModel.LogsCount;
+            int count = ViewModel.Logs.Count;
             """;
 
-        Assert.Equal([3, 7, 10], DirectReads(source));
+        Assert.Equal([3, 7, 10, 14], DirectReads(source));
     }
 
-    internal static int[] DirectReads(string source) => CodeLines(source, DirectRead);
+    internal static int[] DirectReads(string source) => CodeLines(source, Read);
 
     /// <summary>One-based numbers of the lines whose code, with any <c>//</c> comment dropped, matches.</summary>
     private static int[] CodeLines(string source, Regex pattern)
