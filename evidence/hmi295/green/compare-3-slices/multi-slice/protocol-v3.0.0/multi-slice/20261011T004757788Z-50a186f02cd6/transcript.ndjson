@@ -1,0 +1,8 @@
+{"timestampUtc":"2026-10-11T00:49:13.9294928Z","kind":"run.started","data":{"integrationSliceIds":["FP-IS-04","FP-IS-01","FP-IS-10"],"hmiRoot":"C:\\Users\\szy\\Desktop\\8005-workspace-v2\\worktrees\\hmi295-8005-agv-onboard-hmi","protocolRoot":"C:\\Users\\szy\\Desktop\\8005-workspace-v2\\scratch\\hmi295-protocol-v3.0.0","runId":"20261011T004757788Z","evidenceType":"ONBOARD_HMI_LOCAL_G2_MULTI_SLICE"}}
+{"timestampUtc":"2026-10-11T00:49:14.5724638Z","kind":"protocol.g1.started","data":{"drive":"X:"}}
+{"timestampUtc":"2026-10-11T00:49:30.1035484Z","kind":"protocol.g1.completed","data":{"exitCode":0,"log":"protocol-g1.log","status":"PASS"}}
+{"timestampUtc":"2026-10-11T00:49:30.1182052Z","kind":"command.started","data":{"name":"dotnet-build-release","arguments":["build",".\\SQCD_8005AGV.sln","-c","Release"]}}
+{"timestampUtc":"2026-10-11T00:49:56.7367341Z","kind":"command.completed","data":{"name":"dotnet-build-release","exitCode":0,"log":"dotnet-build-release.log"}}
+{"timestampUtc":"2026-10-11T00:49:56.7388784Z","kind":"command.started","data":{"name":"dotnet-format-verify","arguments":["format",".\\SQCD_8005AGV.sln","--verify-no-changes","--no-restore"]}}
+{"timestampUtc":"2026-10-11T00:52:56.5851744Z","kind":"command.completed","data":{"name":"dotnet-format-verify","exitCode":0,"log":"dotnet-format-verify.log"}}
+{"timestampUtc":"2026-10-11T00:56:03.9311859Z","kind":"run.completed","data":{"failingSlices":[],"status":"PASS"}}

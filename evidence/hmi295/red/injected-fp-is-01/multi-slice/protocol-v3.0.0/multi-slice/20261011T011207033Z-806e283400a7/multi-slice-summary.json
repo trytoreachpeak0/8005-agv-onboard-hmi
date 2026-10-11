@@ -1,0 +1,53 @@
+{
+  "schemaVersion": "1.0.0",
+  "evidenceType": "ONBOARD_HMI_LOCAL_G2_MULTI_SLICE",
+  "status": "FAIL",
+  "runId": "20261011T011207033Z",
+  "generatedAtUtc": "2026-10-11T01:12:07.0334296Z",
+  "finishedAtUtc": "2026-10-11T01:20:15.4299683Z",
+  "hmiCommit": "806e283400a7c2334f01c72b461cf8fc4b6642aa",
+  "protocolHeadCommit": "3f091cb2eae7c58cec54a95dd9389c9180bc7b4c",
+  "allSlices": false,
+  "integrationSliceIndexSha256": "4f1ec1b186089f0f4dca9fa749cae2ad0044f061b868bac7f1f98b312b1b68b5",
+  "sharedSteps": {
+    "protocolG1": {
+      "status": "PASS",
+      "log": "logs/protocol-g1.log"
+    },
+    "build": {
+      "exitCode": 0,
+      "log": "logs/dotnet-build-release.log"
+    },
+    "format": {
+      "exitCode": 0,
+      "log": "logs/dotnet-format-verify.log"
+    },
+    "failures": []
+  },
+  "slices": [
+    {
+      "integrationSliceId": "FP-IS-04",
+      "status": "PASS",
+      "selectedTestCount": 7,
+      "directory": "../../FP-IS-04/20261011T011207033Z-806e283400a7",
+      "failures": []
+    },
+    {
+      "integrationSliceId": "FP-IS-01",
+      "status": "FAIL",
+      "selectedTestCount": 5,
+      "directory": "../../FP-IS-01/20261011T011207033Z-806e283400a7",
+      "failures": [
+        "dotnet-test-release exited with code 1"
+      ]
+    },
+    {
+      "integrationSliceId": "FP-IS-10",
+      "status": "PASS",
+      "selectedTestCount": 1,
+      "directory": "../../FP-IS-10/20261011T011207033Z-806e283400a7",
+      "failures": []
+    }
+  ],
+  "slicesWithoutTests": []
+}

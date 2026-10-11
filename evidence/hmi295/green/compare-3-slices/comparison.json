@@ -1,0 +1,173 @@
+{
+  "mode": "compare",
+  "hmiRoot": "C:\\Users\\szy\\Desktop\\8005-workspace-v2\\worktrees\\hmi295-8005-agv-onboard-hmi",
+  "hmiCommit": "50a186f02cd6d0411f832af390da25a5d638517f",
+  "hmiWorkingTreeStatus": [],
+  "slices": [
+    "FP-IS-04",
+    "FP-IS-01",
+    "FP-IS-10"
+  ],
+  "expectFailSlice": "",
+  "multiSliceRun": {
+    "exitCode": 0,
+    "seconds": 487.9,
+    "log": "multi-slice.console.log"
+  },
+  "multiSliceSharedStepCounts": {
+    "build": 1,
+    "format": 1,
+    "g1": 1
+  },
+  "multiSliceFacts": {
+    "FP-IS-04": {
+      "directory": "C:\\Users\\szy\\Desktop\\8005-workspace-v2\\evidence\\hmi295-runs\\compare-1\\multi-slice\\protocol-v3.0.0\\FP-IS-04\\20261011T004757788Z-50a186f02cd6",
+      "gateStatus": "PASS",
+      "summaryStatus": "PASS",
+      "selectedTestCount": 7,
+      "recordedTestCount": 7,
+      "trxOutcomes": {
+        "Passed": 7,
+        "Failed": 0,
+        "NotExecuted": 0,
+        "Other": 0
+      },
+      "schemaConformance": null,
+      "buildExitCode": 0,
+      "testExitCode": 0,
+      "formatExitCode": 0,
+      "g1Status": "PASS"
+    },
+    "FP-IS-01": {
+      "directory": "C:\\Users\\szy\\Desktop\\8005-workspace-v2\\evidence\\hmi295-runs\\compare-1\\multi-slice\\protocol-v3.0.0\\FP-IS-01\\20261011T004757788Z-50a186f02cd6",
+      "gateStatus": "PASS",
+      "summaryStatus": "PASS",
+      "selectedTestCount": 5,
+      "recordedTestCount": 5,
+      "trxOutcomes": {
+        "Passed": 5,
+        "Failed": 0,
+        "NotExecuted": 0,
+        "Other": 0
+      },
+      "schemaConformance": {
+        "linesChecked": 62,
+        "linesInViolation": 0,
+        "linesInKnownViolation": 0
+      },
+      "buildExitCode": 0,
+      "testExitCode": 0,
+      "formatExitCode": 0,
+      "g1Status": "PASS"
+    },
+    "FP-IS-10": {
+      "directory": "C:\\Users\\szy\\Desktop\\8005-workspace-v2\\evidence\\hmi295-runs\\compare-1\\multi-slice\\protocol-v3.0.0\\FP-IS-10\\20261011T004757788Z-50a186f02cd6",
+      "gateStatus": "PASS",
+      "summaryStatus": "PASS",
+      "selectedTestCount": 1,
+      "recordedTestCount": 1,
+      "trxOutcomes": {
+        "Passed": 1,
+        "Failed": 0,
+        "NotExecuted": 0,
+        "Other": 0
+      },
+      "schemaConformance": {
+        "linesChecked": 15,
+        "linesInViolation": 0,
+        "linesInKnownViolation": 0
+      },
+      "buildExitCode": 0,
+      "testExitCode": 0,
+      "formatExitCode": 0,
+      "g1Status": "PASS"
+    }
+  },
+  "oneCallPerSliceRuns": {
+    "FP-IS-04": {
+      "exitCode": 0,
+      "seconds": 292.2,
+      "log": "one-call-FP-IS-04.console.log"
+    },
+    "FP-IS-01": {
+      "exitCode": 0,
+      "seconds": 309.5,
+      "log": "one-call-FP-IS-01.console.log"
+    },
+    "FP-IS-10": {
+      "exitCode": 0,
+      "seconds": 341.2,
+      "log": "one-call-FP-IS-10.console.log"
+    }
+  },
+  "oneCallPerSliceFacts": {
+    "FP-IS-04": {
+      "directory": "C:\\Users\\szy\\Desktop\\8005-workspace-v2\\evidence\\hmi295-runs\\compare-1\\one-call-per-slice\\protocol-v3.0.0\\FP-IS-04\\20261011T005605068Z-50a186f02cd6",
+      "gateStatus": "PASS",
+      "summaryStatus": "PASS",
+      "selectedTestCount": 7,
+      "recordedTestCount": 7,
+      "trxOutcomes": {
+        "Passed": 7,
+        "Failed": 0,
+        "NotExecuted": 0,
+        "Other": 0
+      },
+      "schemaConformance": null,
+      "buildExitCode": 0,
+      "testExitCode": 0,
+      "formatExitCode": 0,
+      "g1Status": "PASS"
+    },
+    "FP-IS-01": {
+      "directory": "C:\\Users\\szy\\Desktop\\8005-workspace-v2\\evidence\\hmi295-runs\\compare-1\\one-call-per-slice\\protocol-v3.0.0\\FP-IS-01\\20261011T010058748Z-50a186f02cd6",
+      "gateStatus": "PASS",
+      "summaryStatus": "PASS",
+      "selectedTestCount": 5,
+      "recordedTestCount": 5,
+      "trxOutcomes": {
+        "Passed": 5,
+        "Failed": 0,
+        "NotExecuted": 0,
+        "Other": 0
+      },
+      "schemaConformance": {
+        "linesChecked": 62,
+        "linesInViolation": 0,
+        "linesInKnownViolation": 0
+      },
+      "buildExitCode": 0,
+      "testExitCode": 0,
+      "formatExitCode": 0,
+      "g1Status": "PASS"
+    },
+    "FP-IS-10": {
+      "directory": "C:\\Users\\szy\\Desktop\\8005-workspace-v2\\evidence\\hmi295-runs\\compare-1\\one-call-per-slice\\protocol-v3.0.0\\FP-IS-10\\20261011T010607737Z-50a186f02cd6",
+      "gateStatus": "PASS",
+      "summaryStatus": "PASS",
+      "selectedTestCount": 1,
+      "recordedTestCount": 1,
+      "trxOutcomes": {
+        "Passed": 1,
+        "Failed": 0,
+        "NotExecuted": 0,
+        "Other": 0
+      },
+      "schemaConformance": {
+        "linesChecked": 15,
+        "linesInViolation": 0,
+        "linesInKnownViolation": 0
+      },
+      "buildExitCode": 0,
+      "testExitCode": 0,
+      "formatExitCode": 0,
+      "g1Status": "PASS"
+    }
+  },
+  "seconds": {
+    "multiSlice": 487.9,
+    "oneCallPerSlice": 942.9
+  },
+  "problems": [],
+  "verdict": "PASS"
+}

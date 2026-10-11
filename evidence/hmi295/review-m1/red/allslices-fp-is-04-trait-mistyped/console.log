@@ -1,0 +1,6 @@
+[31;1mException: [0mC:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi295-m1red-8005-agv-onboard-hmi\scripts\run-w2g-g2.ps1:195[0m
+[31;1m[0m[36;1mLine |[0m
+[31;1m[0m[36;1m[36;1m 195 | [0m             [36;1mthrow ("切片 '$candidate' 在本仓选不中任何测试，ONBOARD_HMI_G2 没有东西可证。[0m …[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m     | [31;1m             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m     | [31;1m切片 'FP-IS-04' 在本仓选不中任何测试，ONBOARD_HMI_G2 没有东西可证。它的向量是 CV-DESTINATION-UNLOAD-ALL-EMPTY。它不在[0m
+[31;1m[0m[36;1m[36;1m[0m[36;1m[0m[36;1m[31;1m[31;1m[36;1m[31;1m[36;1m     | [31;1m$slicesNotImplementedHere 里，所以这是一片已实现切片的测试全丢了（trait 写错、测试工程不在解决方案里），不是还没建。[0m

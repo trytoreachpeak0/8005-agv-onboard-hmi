@@ -1,0 +1,143 @@
+{
+  "schemaVersion": "1.0.0",
+  "evidenceType": "ONBOARD_HMI_LOCAL_G2_MULTI_SLICE",
+  "status": "PASS",
+  "runId": "20261011T012249389Z",
+  "generatedAtUtc": "2026-10-11T01:22:49.3899615Z",
+  "finishedAtUtc": "2026-10-11T01:40:56.0881018Z",
+  "hmiCommit": "cf47d9df4ee277306936c70bd26ffb1ad87f584b",
+  "protocolHeadCommit": "3f091cb2eae7c58cec54a95dd9389c9180bc7b4c",
+  "allSlices": true,
+  "integrationSliceIndexSha256": "4f1ec1b186089f0f4dca9fa749cae2ad0044f061b868bac7f1f98b312b1b68b5",
+  "sharedSteps": {
+    "protocolG1": {
+      "status": "PASS",
+      "log": "logs/protocol-g1.log"
+    },
+    "build": {
+      "exitCode": 0,
+      "log": "logs/dotnet-build-release.log"
+    },
+    "format": {
+      "exitCode": 0,
+      "log": "logs/dotnet-format-verify.log"
+    },
+    "failures": []
+  },
+  "slices": [
+    {
+      "integrationSliceId": "FP-IS-00",
+      "status": "PASS",
+      "selectedTestCount": 40,
+      "directory": "../../FP-IS-00/20261011T012249389Z-cf47d9df4ee2",
+      "failures": []
+    },
+    {
+      "integrationSliceId": "FP-IS-01",
+      "status": "PASS",
+      "selectedTestCount": 5,
+      "directory": "../../FP-IS-01/20261011T012249389Z-cf47d9df4ee2",
+      "failures": []
+    },
+    {
+      "integrationSliceId": "FP-IS-02",
+      "status": "PASS",
+      "selectedTestCount": 126,
+      "directory": "../../FP-IS-02/20261011T012249389Z-cf47d9df4ee2",
+      "failures": []
+    },
+    {
+      "integrationSliceId": "FP-IS-03",
+      "status": "PASS",
+      "selectedTestCount": 90,
+      "directory": "../../FP-IS-03/20261011T012249389Z-cf47d9df4ee2",
+      "failures": []
+    },
+    {
+      "integrationSliceId": "FP-IS-04",
+      "status": "PASS",
+      "selectedTestCount": 7,
+      "directory": "../../FP-IS-04/20261011T012249389Z-cf47d9df4ee2",
+      "failures": []
+    },
+    {
+      "integrationSliceId": "FP-IS-05",
+      "status": "PASS",
+      "selectedTestCount": 30,
+      "directory": "../../FP-IS-05/20261011T012249389Z-cf47d9df4ee2",
+      "failures": []
+    },
+    {
+      "integrationSliceId": "FP-IS-06",
+      "status": "PASS",
+      "selectedTestCount": 62,
+      "directory": "../../FP-IS-06/20261011T012249389Z-cf47d9df4ee2",
+      "failures": []
+    },
+    {
+      "integrationSliceId": "FP-IS-07",
+      "status": "PASS",
+      "selectedTestCount": 410,
+      "directory": "../../FP-IS-07/20261011T012249389Z-cf47d9df4ee2",
+      "failures": []
+    },
+    {
+      "integrationSliceId": "FP-IS-08",
+      "status": "PASS",
+      "selectedTestCount": 2,
+      "directory": "../../FP-IS-08/20261011T012249389Z-cf47d9df4ee2",
+      "failures": []
+    },
+    {
+      "integrationSliceId": "FP-IS-10",
+      "status": "PASS",
+      "selectedTestCount": 1,
+      "directory": "../../FP-IS-10/20261011T012249389Z-cf47d9df4ee2",
+      "failures": []
+    },
+    {
+      "integrationSliceId": "FP-IS-11",
+      "status": "PASS",
+      "selectedTestCount": 1,
+      "directory": "../../FP-IS-11/20261011T012249389Z-cf47d9df4ee2",
+      "failures": []
+    },
+    {
+      "integrationSliceId": "FP-IS-12",
+      "status": "PASS",
+      "selectedTestCount": 6,
+      "directory": "../../FP-IS-12/20261011T012249389Z-cf47d9df4ee2",
+      "failures": []
+    },
+    {
+      "integrationSliceId": "FP-IS-13",
+      "status": "PASS",
+      "selectedTestCount": 18,
+      "directory": "../../FP-IS-13/20261011T012249389Z-cf47d9df4ee2",
+      "failures": []
+    },
+    {
+      "integrationSliceId": "FP-IS-14",
+      "status": "PASS",
+      "selectedTestCount": 9,
+      "directory": "../../FP-IS-14/20261011T012249389Z-cf47d9df4ee2",
+      "failures": []
+    },
+    {
+      "integrationSliceId": "FP-IS-15",
+      "status": "PASS",
+      "selectedTestCount": 5,
+      "directory": "../../FP-IS-15/20261011T012249389Z-cf47d9df4ee2",
+      "failures": []
+    }
+  ],
+  "slicesWithoutTests": [
+    {
+      "integrationSliceId": "FP-IS-09",
+      "vectorIds": [
+        "CV-WORKLIST-SELECTION-ACCEPTED",
+        "CV-WORKLIST-SELECTION-STALE-REVISION"
+      ]
+    }
+  ]
+}

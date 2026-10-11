@@ -1,0 +1,28 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  SQCD.Agv.Core -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi295-m1red-8005-agv-onboard-hmi\src\SQCD.Agv.Core\bin\Release\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Contracts -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi295-m1red-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Release\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.AutomationHost -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi295-m1red-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Release\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Application -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi295-m1red-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Release\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.RuleMock -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi295-m1red-8005-agv-onboard-hmi\tools\SQCD.Agv.RuleMock\bin\Release\net8.0\win-x64\SQCD.Agv.RuleMock.dll
+  SQCD.Agv.Infrastructure -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi295-m1red-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Release\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.UnitTests -> C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi295-m1red-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll
+Test run for C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi295-m1red-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Release\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:02.84]     SQCD.Agv.UnitTests.G2ScriptSliceTableArchitectureTests.TheScriptsNotImplementedTableIsTheIndexMinusTheImplementedSlices [FAIL]
+  Failed SQCD.Agv.UnitTests.G2ScriptSliceTableArchitectureTests.TheScriptsNotImplementedTableIsTheIndexMinusTheImplementedSlices [92 ms]
+  Error Message:
+   Assert.Equal() Failure: Collections differ at index 0
+                  ↓ (pos 7)
+Expected: "FP-IS-09"
+Actual:   "FP-IS-04"
+                  ↑ (pos 7)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.G2ScriptSliceTableArchitectureTests.TheScriptsNotImplementedTableIsTheIndexMinusTheImplementedSlices() in C:\Users\szy\Desktop\8005-workspace-v2\worktrees\hmi295-m1red-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\G2ScriptSliceTableArchitectureTests.cs:line 32
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+
+Failed!  - Failed:     1, Passed:     1, Skipped:     0, Total:     2, Duration: 187 ms - SQCD.Agv.UnitTests.dll (net8.0)
