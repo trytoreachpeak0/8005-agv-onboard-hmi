@@ -572,6 +572,32 @@ public sealed partial class WireToGateBusinessService
         return CancellableLoadInFlight(state) is not null;
     }
 
+    /// <summary>
+    /// The demand a load cancellation pressed now would cancel when that is a load in flight -- the load itself, or an
+    /// in-flight cancellation already on file -- or <c>null</c> when it would be a cancellation before any sublot or
+    /// nothing (onboard-hmi#291).
+    /// </summary>
+    /// <remarks>
+    /// For the confirmation dialog to name what is cancelled. An in-flight cancellation's subject is the load, whichever
+    /// worklist row is highlighted, so repeating the highlighted row there named one demand and cancelled another.
+    /// </remarks>
+    public string? InFlightLoadCancellationDemandId
+    {
+        get
+        {
+            WireToGateRecoveryState state = Volatile.Read(ref _lastRecoveryState);
+            if (state.RecoveryVector is { } vector)
+            {
+                return vector.VectorType == WireToGateRecoveryVectorTypes.LoadCancellation
+                    && !WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector)
+                        ? vector.DemandId
+                        : null;
+            }
+
+            return state.UnsettledSlotOperationAttemptId is null ? null : CancellableLoadInFlight(state)?.DemandId;
+        }
+    }
+
     /// <summary>The load in flight the cancellation entry is offered over, by the rules above, or <c>null</c>.</summary>
     private WireToGateRecoveryOperationContext? CancellableLoadInFlight(WireToGateRecoveryState state) =>
         state.OperationContext is { OperationType: OperationType.Load } context
