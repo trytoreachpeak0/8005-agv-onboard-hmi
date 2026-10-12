@@ -153,8 +153,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// Whether the version read here is that one or the next depends only on how fast that report's ack comes back --
     /// 10 of 22 local runs read the next. So the test pins what the late ack itself publishes: the first published
     /// version at or above the change's is exactly the change's, and every version published above it is one the double
-    /// received a safety message under, other than the change itself. The double sends no readiness after a safety ack
-    /// in this harness, so nothing else publishes a version.
+    /// received a safety message under. That last part rests on the double sending no readiness after a safety ack
+    /// (<c>SendReadinessAfterSafetyStateChangedAck</c> is off here), so nothing publishes a version the vehicle did not
+    /// send a safety message under.
     /// </para>
     /// </remarks>
     [Fact]
@@ -171,8 +172,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
         harness.Session.StateChanged += (_, args) =>
         {
             published.Enqueue(args.Value.SafetyStateVersion);
-            trace.Enqueue(
-                $"{clock.ElapsedMilliseconds}ms accepted={args.Value.SafetyStateVersion} readiness={args.Value.Readiness}");
+            trace.Enqueue($"{clock.ElapsedMilliseconds}ms accepted={args.Value.SafetyStateVersion} "
+                + $"readiness={args.Value.Readiness}");
         };
         long changed = harness.Client.Current.SafetyStateVersion + 10;
         trace.Enqueue($"{clock.ElapsedMilliseconds}ms test start accepted={changed - 10} changed={changed}");
@@ -199,33 +200,44 @@ public sealed partial class StationDeadlineExpiredG2Tests
         long accepted = harness.Client.Current.SafetyStateVersion;
         // ToArray, not a spread: a report can still be publishing, and a spread counts and copies apart.
         long[] versions = published.ToArray();
+        // Described only on failure: the description reads the whole traffic and log.
         Func<string> describe = () => DescribeSafetyTraffic(harness, trace.ToArray());
         long firstAtOrAbove = versions.FirstOrDefault(version => version >= changed, long.MinValue);
-        Assert.True(
-            firstAtOrAbove == changed,
-            $"the late ack should publish the change's version {changed}, the first at or above it was "
-            + $"{(firstAtOrAbove == long.MinValue ? "none" : firstAtOrAbove)}{Environment.NewLine}{describe()}");
-        Assert.True(accepted >= changed, $"accepted {accepted} fell back below {changed}{Environment.NewLine}{describe()}");
-        HashSet<long> reported = SafetyVersionsReceived(harness, exceptMessageId: late);
-        long[] unexplained = [.. versions.Where(version => version > changed && !reported.Contains(version)).Distinct()];
-        Assert.True(
-            unexplained.Length == 0,
-            $"versions published above {changed} with no safety message received under them: "
-            + $"{string.Join(", ", unexplained)}{Environment.NewLine}{describe()}");
+        if (firstAtOrAbove != changed)
+        {
+            Assert.Fail(
+                $"the late ack should publish the change's version {changed}, the first at or above it was "
+                + $"{(firstAtOrAbove == long.MinValue ? "none" : firstAtOrAbove)}{Environment.NewLine}{describe()}");
+        }
+
+        if (accepted < changed)
+        {
+            Assert.Fail(
+                $"accepted {accepted} is below the change's version {changed}{Environment.NewLine}{describe()}");
+        }
+
+        HashSet<long> reported = SafetyVersionsReceived(harness);
+        long[] unexplained =
+            [.. versions.Where(version => version > changed && !reported.Contains(version)).Distinct()];
+        if (unexplained.Length != 0)
+        {
+            Assert.Fail(
+                $"versions published above {changed} with no safety message received under them: "
+                + $"{string.Join(", ", unexplained)}{Environment.NewLine}{describe()}");
+        }
+
         Assert.Empty(harness.Server.DurableAckHoldPredicateFailures);
     }
 
     /// <summary>
-    /// The safety state versions of the <c>SafetyStateChanged</c> and <c>SafetyStateSnapshot</c> the double received,
-    /// leaving out <paramref name="exceptMessageId"/>.
+    /// The safety state versions of the <c>SafetyStateChanged</c> and <c>SafetyStateSnapshot</c> the double received.
     /// </summary>
-    private static HashSet<long> SafetyVersionsReceived(Harness harness, string exceptMessageId)
+    private static HashSet<long> SafetyVersionsReceived(Harness harness)
     {
         HashSet<long> versions = [];
         foreach (var envelope in harness.Server.ReceivedEnvelopes)
         {
-            if (envelope.MessageType is not ("SafetyStateChanged" or "SafetyStateSnapshot")
-                || envelope.MessageId == exceptMessageId)
+            if (envelope.MessageType is not ("SafetyStateChanged" or "SafetyStateSnapshot"))
             {
                 continue;
             }
