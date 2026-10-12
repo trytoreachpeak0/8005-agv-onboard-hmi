@@ -31,7 +31,7 @@ public sealed record StationDepartureCountdownView(
 
 /// <param name="Label">倒计时上方那一行小字。</param>
 /// <param name="Text">倒计时那一行字（覆盖文案之前）。</param>
-/// <param name="StationWork">按「本站作业」口径显示：持货等单期间为真，界面据此不用黄红配色、不闪烁。</param>
+/// <param name="StationWork">按「本站作业」口径显示：持货等单期间为真。配色只在已到期时换成中性，由界面判。</param>
 public sealed record StationDepartureCountdownCaption(string Label, string Text, bool StationWork);
 
 /// <summary>
@@ -90,7 +90,8 @@ public static class StationDepartureCountdownFormatter
     /// While the vehicle holds its cargo waiting for more demands (<c>CARGO_HOLDING_WAIT</c>), this deadline only ends the
     /// stop's work and the vehicle stays (REQ-0355); when it leaves is the cargo holding line's answer
     /// (onboard-hmi#310). So the line is worded for the stop's work and never says 离站, and an expired deadline is a
-    /// normal state there rather than an alarm. The tier is untouched: UIA's ItemStatus keeps meaning the deadline's state.
+    /// normal state there rather than an alarm (the view model picks the neutral style for that tier only; the last
+    /// minute still turns yellow and red, ADR-cross-0055). The tier is untouched: UIA's ItemStatus keeps meaning the deadline's state.
     /// The remaining time stays bare mm:ss, as L2 reads it; the label carries the words.
     /// </remarks>
     public static StationDepartureCountdownCaption Caption(StationDepartureCountdownView view, bool cargoHolding)

@@ -68,7 +68,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         // But only one of them answers when the vehicle leaves (onboard-hmi#310): while holding, the station's deadline ends
         // the stop's work (REQ-0355), so its line is labelled for that and never says 离站.
         Assert.Equal("本站作业剩余", harness.ViewModel.StationDepartureCountdownLabel);
-        Assert.True(harness.ViewModel.IsStationWorkCountdown);
+        // Still counting, so it keeps the ordinary style; only an expired deadline while holding turns neutral.
+        Assert.False(harness.ViewModel.IsStationWorkCountdown);
         Assert.DoesNotContain("离站", harness.ViewModel.StationDepartureCountdownLabel, StringComparison.Ordinal);
 
         await harness.Server.SendJourneySnapshotAsync(

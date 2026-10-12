@@ -239,8 +239,9 @@
                                             <Setter Property="Opacity" Value="0.15" />
                                         </DataTrigger>
                                         <!--
-                                            持货等单时这个期限只结束本站作业（REQ-0355，onboard-hmi#310），到期是正常状态：不用黄红配色。
-                                            放在最后，覆盖上面按档位给的颜色；档位本身不变，ItemStatus 仍是期限的状态。
+                                            持货等单时这个期限只结束本站作业（REQ-0355，onboard-hmi#310），到期是正常状态：不用红字。
+                                            只在持货、已到期、没有 #78 覆盖文案时为真（MainViewModel 判）；黄、红与闪烁照旧。
+                                            放在最后，覆盖上面 Expired 档的颜色；档位本身不变，ItemStatus 仍是期限的状态。
                                         -->
                                         <DataTrigger Binding="{Binding IsStationWorkCountdown}" Value="True">
                                             <Setter Property="Foreground" Value="#1F2933" />

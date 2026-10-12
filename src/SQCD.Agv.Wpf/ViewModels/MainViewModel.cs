@@ -1662,7 +1662,10 @@ public sealed partial class MainViewModel : ViewModelBase
         private set => SetProperty(ref _stationDepartureCountdownLabel, value);
     }
 
-    /// <summary>持货等单期间按「本站作业」口径显示：XAML 据此不用黄红配色。</summary>
+    /// <summary>
+    /// 持货等单时本站作业期限已过、且没有 #78 的覆盖文案：这是正常状态，XAML 据此不用红字（onboard-hmi#310）。
+    /// 其余档位与覆盖文案照旧配色。
+    /// </summary>
     public bool IsStationWorkCountdown
     {
         get => _isStationWorkCountdown;
@@ -1753,10 +1756,13 @@ public sealed partial class MainViewModel : ViewModelBase
             view, _loadingPhase?.State == "CARGO_HOLDING_WAIT");
         StationDepartureCountdownLabel = caption.Label;
         StationDepartureCountdownText = overrideText ?? caption.Text;
-        // 档位照期限算，UIA 的 ItemStatus 语义不变；持货等单时配色由 IsStationWorkCountdown 换掉，也不闪烁。
+        // 档位照期限算，UIA 的 ItemStatus 语义不变。最后 60 秒转黄、最后 10 秒转红闪烁在持货时照旧（ADR-cross-0055：期限还决定
+        // 本站会话与纠正窗口何时结束）；只有持货时已到期这一档是正常状态，换中性样式。#78 的覆盖文案在说门开着或取消中，红字保留。
         StationDepartureCountdownTier = view.Tier;
-        StationDepartureCountdownDimmed = view.Dimmed && !caption.StationWork;
-        IsStationWorkCountdown = caption.StationWork;
+        StationDepartureCountdownDimmed = view.Dimmed;
+        IsStationWorkCountdown = caption.StationWork
+            && view.Tier == StationDepartureCountdownTier.Expired
+            && overrideText is null;
         if (_endedStopWorklist is { } ended)
         {
             VisitText = EndedStopVisitText(ended, now);
