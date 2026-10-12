@@ -77,26 +77,88 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(harness.ViewModel.StateText, screen.Banner.StateText);
         Assert.All(RecoveryEntryButtons, key => Assert.False(ButtonOf(screen, key).Enabled, key));
 
-        // What it was computed from (onboard-hmi#314, T1b): the latch gate's own criterion holds, the controller is
-        // Faulted, and the gate is what closed the load cancellation entry -- the business offers it, the final value is
-        // false. That difference is what the automation API cannot answer (research section 5, T1b).
+        // What it was computed from (onboard-hmi#314, T1b): the latch gate's own criterion holds and the controller is
+        // Faulted; every entry is its business value through the gate. Which entries the business offers here depends on
+        // how far the FAILED result has got by the time the snapshot is read, so none is named: the entry the business
+        // offers while the gate closes it is the next test, at a moment that does not move.
         HmiScreenBasisState basis = screen.Basis;
         Assert.True(basis.RecoveryEntriesLatched);
         HmiControllerState controller = Present(basis.Controller);
         Assert.Equal(OnboardState.Faulted, controller.State);
         Assert.Equal("UI_COMMAND_FAILED", controller.ErrorCode);
-        Assert.Equal(10, basis.RecoveryEntries.Count);
+        AssertEntriesAreTheirOffersThroughTheGate(basis);
         Assert.All(basis.RecoveryEntries, entry => Assert.False(entry.Final, entry.Entry));
-        HmiRecoveryEntryState cancellation =
-            Assert.Single(basis.RecoveryEntries, entry => entry.Entry == nameof(MainViewModel.CanRequestLoadCancellation));
-        Assert.True(cancellation.OfferedByBusiness);
-        Assert.False(cancellation.OfferedBeforeAnySublot);
-        Assert.False(cancellation.Final);
         // The safety state the server accepted says why departure is unsafe, which nothing on screen does.
         HmiAcceptedSafetyState accepted = Present(basis.AcceptedSafety);
         Assert.True(accepted.SafetyKnown);
         Assert.False(accepted.DepartureSafe);
         Assert.Contains("ONBOARD_FATAL_FAULT_LATCHED", accepted.ReasonCodes!);
+    }
+
+    /// <summary>
+    /// The difference T1b exists for (onboard-hmi#314, research section 5): the business offers the load cancellation over
+    /// a load in flight, the latch gate closes it, and the snapshot shows both -- business true, final false. The moment is
+    /// fixed: the door is open and the operator never acts, the cancellation entry is open before the latch, and the
+    /// snapshot is read once the latch has closed it.
+    /// </summary>
+    /// <remarks>
+    /// The executor gives the operator 2 s (this harness's operation timeout) and the latch-to-snapshot steps take
+    /// milliseconds; the operation is checked still waiting on the operator after the read, so a run where the timeout
+    /// got there first fails saying so instead of passing or failing on a moved premise.
+    /// </remarks>
+    [Fact]
+    public async Task ALatchOverAnOpenDoorClosesTheCancellationTheBusinessStillOffers()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await StartLatchStopAsync(io, token);
+        await SendSlotCommandAsync(harness, DemandA, AttemptA, [1]);
+        await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 1, token);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.CanRequestLoadCancellation,
+            "the cancellation entry over A's load in flight",
+            token);
+        HmiScreenBasisState before = harness.ScreenState().Basis;
+        Assert.False(before.RecoveryEntriesLatched);
+        AssertEntriesAreTheirOffersThroughTheGate(before);
+
+        LatchNow(harness);
+        await harness.WaitUntilAsync(
+            () => !harness.ViewModel.CanRequestLoadCancellation,
+            "the latch to close the cancellation entry",
+            token);
+        HmiScreenState screen = harness.ScreenState();
+        Assert.Equal(
+            WireToGateHmiOperationStage.WaitingOperator,
+            harness.Business.CurrentOperationSnapshot?.Stage);
+
+        HmiScreenBasisState basis = screen.Basis;
+        Assert.True(basis.RecoveryEntriesLatched);
+        AssertEntriesAreTheirOffersThroughTheGate(basis);
+        HmiRecoveryEntryState cancellation = EntryOf(screen, nameof(MainViewModel.CanRequestLoadCancellation));
+        Assert.Equal((true, false, false), (cancellation.OfferedByBusiness, cancellation.OfferedBeforeAnySublot, cancellation.Final));
+        Assert.Equal(cancellation.Final, ButtonOf(screen, "OnLoadCancellationClick").Enabled);
+        Assert.Equal(1, io.UnlockCount);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// Every recovery entry is its business value through the latch gate (<c>AllowRecoveryEntry</c>), and the load
+    /// cancellation also through its "before any sublot" half (<c>AllowLoadCancellationEntry</c>): the relation, not which
+    /// entries are open.
+    /// </summary>
+    private static void AssertEntriesAreTheirOffersThroughTheGate(HmiScreenBasisState basis)
+    {
+        Assert.Equal(10, basis.RecoveryEntries.Count);
+        Assert.All(basis.RecoveryEntries, entry =>
+        {
+            Assert.True(entry.OfferedByBusiness.HasValue, $"{entry.Entry} was never refreshed");
+            bool gated = entry.OfferedByBusiness.Value && !basis.RecoveryEntriesLatched;
+            bool expected = entry.Entry == nameof(MainViewModel.CanRequestLoadCancellation)
+                ? entry.OfferedBeforeAnySublot == true || gated
+                : gated;
+            Assert.True(expected == entry.Final, $"{entry.Entry}: offered {entry.OfferedByBusiness}, final {entry.Final}");
+        });
     }
 
     /// <summary>

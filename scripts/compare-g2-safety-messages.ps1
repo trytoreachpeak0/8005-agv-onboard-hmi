@@ -22,13 +22,19 @@ Probe directories of runs on the integration branch: the expectation.
 
 .PARAMETER Candidate
 Probe directories of runs on the branch under test. Omit to only report which baseline tests are stable.
+
+.PARAMETER AllowBaselineVariants
+Compare every test, not only the stable ones: a candidate's sequence must equal, byte for byte, one of the sequences
+the baseline runs showed for that test. A test with one baseline sequence is compared exactly as without the switch.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
     [string[]]$Baseline,
 
-    [string[]]$Candidate = @()
+    [string[]]$Candidate = @(),
+
+    [switch]$AllowBaselineVariants
 )
 
 $ErrorActionPreference = 'Stop'
@@ -89,10 +95,24 @@ $messageCount = ($stable | ForEach-Object { $baselineRuns[0][$_].Count } | Measu
 Write-Output "baseline: $($baselineRuns.Count) runs, $($names.Count) test files, $($stable.Count) stable ($messageCount messages), $($unstable.Count) unstable"
 $unstable | ForEach-Object { Write-Output "  unstable: $_" }
 
+# test -> the distinct sequences the baseline showed, joined so that a sequence compares as one string
+$variants = @{}
+foreach ($name in $names) {
+    $variants[$name] = @($baselineRuns | Where-Object { $_.ContainsKey($name) } | ForEach-Object { $_[$name] -join "`n" } |
+        Sort-Object -Unique -CaseSensitive)
+}
+
+if ($AllowBaselineVariants) {
+    $variantCount = ($names | ForEach-Object { $variants[$_].Count } | Measure-Object -Sum).Sum
+    Write-Output "variants: $($names.Count) tests, $variantCount baseline sequences"
+    $unstable | ForEach-Object { Write-Output "  $($variants[$_].Count) variants: $_" }
+}
+
+$compared = $AllowBaselineVariants ? @($names) : @($stable)
 $differences = 0
 foreach ($directory in $Candidate) {
     $run = Read-Run $directory
-    foreach ($name in $stable) {
+    foreach ($name in $compared) {
         if (-not $run.ContainsKey($name)) {
             $differences++
             Write-Output "MISSING in ${directory}: $name"
@@ -101,6 +121,15 @@ foreach ($directory in $Candidate) {
 
         $expected = $baselineRuns[0][$name]
         $actual = $run[$name]
+        if ($AllowBaselineVariants) {
+            if ($variants[$name] -cnotcontains ($actual -join "`n")) {
+                $differences++
+                Write-Output "NO MATCHING BASELINE VARIANT in ${directory}: $name ($($actual.Count) messages, $($variants[$name].Count) variants)"
+            }
+
+            continue
+        }
+
         if (-not (Test-Same $expected $actual)) {
             $differences++
             Write-Output "DIFF in ${directory}: $name ($($expected.Count) expected, $($actual.Count) actual)"
@@ -114,7 +143,7 @@ foreach ($directory in $Candidate) {
         }
     }
 
-    Write-Output "candidate ${directory}: $($stable.Count) stable tests compared"
+    Write-Output "candidate ${directory}: $($compared.Count) tests compared"
 }
 
 if ($Candidate.Count -gt 0) {
