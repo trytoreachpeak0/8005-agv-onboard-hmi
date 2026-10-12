@@ -28,6 +28,18 @@ public sealed class OnboardSettings
     public LogSettings Logging { get; init; } = new();
 
     /// <summary>
+    /// 屏幕状态快照段。配置里写 <c>"screenState": null</c> 时归一成默认值（关）：后面读它的地方——生效配置摘要、
+    /// 接线——不必各自判空，判漏一处就是一次绕过 <c>OnStartup</c> 的 catch 的 <c>NullReferenceException</c>（onboard-hmi#315 审查 N1）。
+    /// </summary>
+    public ScreenStateSettings ScreenState
+    {
+        get => _screenState;
+        init => _screenState = value ?? new ScreenStateSettings();
+    }
+
+    private readonly ScreenStateSettings _screenState = new();
+
+    /// <summary>
     /// 生效配置的一行摘要，启动时进技术日志的「配置」一面（REQ-0272，onboard-hmi#312）。
     /// </summary>
     /// <remarks>
@@ -40,7 +52,8 @@ public sealed class OnboardSettings
         + $"wireToGate.enabled={WireToGate.Enabled}，wireToGate.server={WireToGate.Host}:{WireToGate.Port}，"
         + $"wireToGate.recoveryResumeEnabled={WireToGate.RecoveryResumeEnabled}，wireToGate.journalPath={WireToGate.JournalPath}，"
         + $"vehicleSafety.enabled={VehicleSafety.Enabled}，vehicleSafety.endpoint={OriginOf(VehicleSafety.Endpoint)}，"
-        + $"ioModule={IoModule.Host}:{IoModule.Port}，logging.directory={Logging.Directory}。";
+        + $"ioModule={IoModule.Host}:{IoModule.Port}，logging.directory={Logging.Directory}，"
+        + $"screenState.enabled={ScreenState.Enabled}{(ScreenState.Enabled && ScreenState.Problem() is not null ? "（参数无效，本次不启动）" : string.Empty)}。";
 
     private static string OriginOf(string endpoint) =>
         Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? uri)
@@ -737,6 +750,70 @@ public sealed class WorkflowSettings
         {
             throw new InvalidDataException("业务反馈超时、稳定窗口、快照时效、条码长度或重新开门次数参数无效。");
         }
+    }
+}
+
+/// <summary>
+/// 屏幕状态快照的写盘开关与参数（hmi#308 调研 A1，onboard-hmi#315）：<c>hmi-state.json</c> 是此刻屏上显示什么、能按什么，
+/// <c>hmi-state-yyyyMMdd.ndjson</c> 是内容每变一次追加一行的时间线。只写本机文件，不开端口、不碰窗口。
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>所有环境默认关，配置可开，包括 Production。</b>用户 2026-10-12 定的两步走：先只在 agv02、agv03 的现场配置里开，
+/// 跑满一个现场周期、确认没有归因于快照的 <c>UNHANDLED_UI_ERROR</c>、时间线大小受控之后，再另开票把 Production 默认翻成开。
+/// 所以这里的默认值是那一步之前的状态，不是疏忽；<c>ConfigurationTests.TheScreenStateSnapshotShipsSwitchedOff</c> 钉着它。
+/// </para>
+/// <para>
+/// <b>数值越界不挡住车载端启动</b>（onboard-hmi#315 审查 S4）：这个块不参与 <see cref="OnboardSettings.Validate"/>。
+/// 开关打开而数值越界时，接线记一行日志、本次不启动快照，车照常启动；生效配置摘要里也写明「参数无效，本次不启动」。
+/// 观测手段不能改变 HMI 行为（调研 4.3），一个观测参数写错让车起不来，就是改变了行为。整段写成 <c>null</c> 归一成默认值（关）。
+/// </para>
+/// <para>
+/// <b>类型写错照样挡住启动</b>，与其他配置段一样（第二轮审查 L1）：<c>"enabled": "true"</c>、<c>"timelineMaxFileBytes": 1.5</c>、
+/// 超出 <c>int</c> 的 <c>"flushIntervalMs"</c> 在反序列化时就抛 <c>JsonException</c>，<c>StartupConfiguration.TryLoad</c> 记一行日志、
+/// 拒绝配置、车载端退出。那一步早于本段的任何代码，要放过它就得给整份配置换一种读法，不在本票范围。
+/// </para>
+/// </remarks>
+public sealed class ScreenStateSettings
+{
+    public bool Enabled { get; init; }
+
+    /// <summary>写到哪个目录；不配置就与技术日志同一个目录（同一份 ACL），解析方式也与日志目录相同。</summary>
+    public string? Directory { get; init; }
+
+    /// <summary>属性变化之后最多隔多久取一次快照：变化只置脏标记，按这个周期以低优先级取值。</summary>
+    public int FlushIntervalMs { get; init; } = 500;
+
+    /// <summary>内容不变时也重写一次当前文件的周期，证明调度线程还活着。</summary>
+    public int HeartbeatIntervalMs { get; init; } = 5_000;
+
+    /// <summary>单个按天时间线文件的大小上限，超出当天停写并记一行日志。</summary>
+    public long TimelineMaxFileBytes { get; init; } = 20L * 1024 * 1024;
+
+    /// <summary>时间线保留天数，过期由写出器自己清理。只匹配 <c>hmi-state-yyyyMMdd.ndjson</c>。</summary>
+    public int TimelineRetentionDays { get; init; } = 30;
+
+    /// <summary>参数有什么问题；没问题时为 null。不看开关：开关由调用方判断。</summary>
+    public string? Problem()
+    {
+        if (Directory is { } directory && string.IsNullOrWhiteSpace(directory))
+        {
+            return "屏幕状态快照目录不能是空白；不配置时与日志目录相同。";
+        }
+
+        if (FlushIntervalMs is < 50 or > 10_000
+            || HeartbeatIntervalMs is < 1_000 or > 60_000
+            || HeartbeatIntervalMs <= FlushIntervalMs
+            || TimelineMaxFileBytes is < 64 * 1024 or > 1024L * 1024 * 1024
+            || TimelineRetentionDays is < 1 or > 365)
+        {
+            return $"屏幕状态快照参数无效：flushIntervalMs={FlushIntervalMs}（50～10000），"
+                + $"heartbeatIntervalMs={HeartbeatIntervalMs}（1000～60000，且大于 flushIntervalMs），"
+                + $"timelineMaxFileBytes={TimelineMaxFileBytes}（65536～1073741824），"
+                + $"timelineRetentionDays={TimelineRetentionDays}（1～365）。";
+        }
+
+        return null;
     }
 }
 

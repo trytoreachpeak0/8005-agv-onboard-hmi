@@ -103,6 +103,8 @@ public sealed class ExplicitTechnicalLogCategoryPinTests
 
         Assert.Contains("wireToGate.enabled=", line, StringComparison.Ordinal);
         Assert.Contains("logging.directory=", line, StringComparison.Ordinal);
+        // onboard-hmi#315: whether the screen-state snapshot is on is part of what an engineer reads off a vehicle.
+        Assert.Contains("screenState.enabled=False", line, StringComparison.Ordinal);
         Assert.DoesNotContain("CREDENTIAL", line, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("PROOF", line, StringComparison.OrdinalIgnoreCase);
     }
