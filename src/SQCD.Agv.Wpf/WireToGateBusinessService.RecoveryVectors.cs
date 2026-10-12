@@ -3224,7 +3224,7 @@ public sealed partial class WireToGateBusinessService
                         || !string.Equals(vector.VectorType, context.VectorType, StringComparison.Ordinal)
                         || !string.Equals(vector.PrimaryId, context.PrimaryId, StringComparison.Ordinal)
                             ? null
-                            : ForgetSettledVector(state, context),
+                            : WithLoadsOnBoardForCurrentJourney(ForgetSettledVector(state, context)),
                     CacheRecoveryState,
                     cancellationToken)
                 .ConfigureAwait(false);
@@ -3854,7 +3854,7 @@ public sealed partial class WireToGateBusinessService
                         };
                     }
 
-                    return WithLoadEndedBy(journalled, onFile) with
+                    return WithLoadsOnBoardForCurrentJourney(WithLoadEndedBy(journalled, onFile) with
                     {
                         UnsettledSlotOperationAttemptId = null,
                         ProvenRecoveryCheckpoint = WireToGateRecoveryCheckpoint.ResultRecorded,
@@ -3879,7 +3879,7 @@ public sealed partial class WireToGateBusinessService
                         PendingLoadCancellation = null,
                         TakenOverSlotOperationAttemptId = null,
                         ForcedIsolation = isolation ?? journalled.ForcedIsolation
-                    };
+                    });
                 },
                 cancellationToken)
             .ConfigureAwait(false);
@@ -3916,6 +3916,21 @@ public sealed partial class WireToGateBusinessService
     /// out. Taken off, a single-demand trip had no handoff left on the vehicle after such a result. The server refuses a session
     /// over a demand it did end (control-server#505, A3), so a second press there is answered, not carried out.
     /// </remarks>
+    /// <summary>
+    /// <paramref name="state"/> brought in line with the journey the vehicle holds now
+    /// (<see cref="WireToGateRecoveryState.WithLoadsOnBoardFor"/>), applied inside the write that settles a recovery vector
+    /// (8005-agv-onboard-hmi#330 review S1).
+    /// </summary>
+    /// <remarks>
+    /// The server sends the journey's closure right after it answers a recovery result, and the vehicle may apply that
+    /// snapshot before it settles the vector: the closure then keeps the last completed load, because a vector was still on
+    /// file, and no later business state without a transport comes to drop it. Applying the current journey once more as
+    /// the vector goes closes that order in the same write. Nothing is dropped while recovery work still stands, so the
+    /// write that settles only the vector beside another unsettled attempt keeps it, as it should.
+    /// </remarks>
+    private WireToGateRecoveryState WithLoadsOnBoardForCurrentJourney(WireToGateRecoveryState state) =>
+        state.WithLoadsOnBoardFor(_session.CurrentJourney);
+
     internal static WireToGateRecoveryState WithLoadEndedBy(
         WireToGateRecoveryState state,
         WireToGateRecoveryVectorContext vector) =>

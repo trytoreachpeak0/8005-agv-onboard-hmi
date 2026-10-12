@@ -14,7 +14,7 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// 现场所见（10-12，agv02）：搬运装完两条、会话被判需恢复，屏上有「补偿目标：子批 …」和「只能修正本站最后一次装货：子批 …」；
     /// 车随后转为清桩（<c>activePurpose=CLEARING_MAINTENANCE</c>，计划只有充电桩那条腿），这两行仍然留着。修后：清桩那份业务状态一到，
     /// 日志里上一次完成的装货被清掉，修正与补偿入口关闭、补偿目标为空，操作员收到一句说明；会话仍是需恢复，说明关掉入口的是清掉的那条
-    /// 记录，不是会话变就绪。到站那一格写「清桩：车辆暂留原位」。
+    /// 记录，不是会话变就绪。到站那一格写「清桩：尚未下发开往等待点的任务」。
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
@@ -61,8 +61,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, harness.Session.Current.Readiness);
         Assert.False(harness.ViewModel.HasCompensationTarget);
         Assert.Null(harness.Business.CompensationFallbackDemandId);
-        Assert.Equal("清桩：车辆暂留原位", harness.ViewModel.VisitText);
-        Assert.Equal(WireToGateIdleReturnText.ClearingHeldInPlaceStatus, harness.ViewModel.IdleReturnStatus);
+        Assert.Equal("清桩：尚未下发开往等待点的任务", harness.ViewModel.VisitText);
+        Assert.Equal(WireToGateIdleReturnText.ClearingNoWaitingPointTaskStatus, harness.ViewModel.IdleReturnStatus);
         await harness.WaitUntilAsync(
             () => harness.LogsSnapshot().Any(line => line.Message.Contains(
                 "本趟行程已结束，「车上待交接的需求」已清空。",
@@ -133,7 +133,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             activePurpose = "CLEARING_MAINTENANCE",
             manualChargingHold = false,
             batteryState = "SUFFICIENT",
-            chargingCycleState = "NOT_CHARGING",
+            chargingCycleState = "UNABLE_TO_CHARGE",
             loadingPhase = (object?)null,
             blockingFacts = Array.Empty<object>(),
             observedAt = DateTimeOffset.UtcNow

@@ -223,7 +223,8 @@ public sealed class WireToGateLoadedDemandsTests
 
     /// <summary>
     /// Anything still under way that may be about the last completed load keeps it through the closure: an unsettled
-    /// operation, a recovery vector, a pending load cancellation, a bound recovery session (8005-agv-onboard-hmi#330). The
+    /// operation, a recovery vector, a pending load cancellation, a bound recovery session, or one requested and not yet
+    /// answered with its id (8005-agv-onboard-hmi#330 and its review L1). The
     /// loads on board go as before.
     /// </summary>
     [Theory]
@@ -231,6 +232,7 @@ public sealed class WireToGateLoadedDemandsTests
     [InlineData("vector")]
     [InlineData("cancellation")]
     [InlineData("session")]
+    [InlineData("requested")]
     public void AClosedJourneyKeepsTheLastCompletedLoadWhileRecoveryWorkIsUnderWay(string underWay)
     {
         WireToGateRecoveryOperationContext last = Load(DemandB, AttemptB, [5]);
@@ -250,6 +252,7 @@ public sealed class WireToGateLoadedDemandsTests
                     Guid.NewGuid().ToString("D"), AttemptB, "OP-1", "BADGE", DateTimeOffset.UnixEpoch, "reason")
             },
             "session" => state with { ExceptionRecoverySessionId = Guid.NewGuid().ToString("D") },
+            "requested" => state with { RecoverySessionRequestId = Guid.NewGuid().ToString("D") },
             _ => throw new ArgumentOutOfRangeException(nameof(underWay))
         };
 

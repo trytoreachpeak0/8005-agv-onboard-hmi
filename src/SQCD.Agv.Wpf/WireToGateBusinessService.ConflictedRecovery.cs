@@ -150,7 +150,7 @@ public sealed partial class WireToGateBusinessService
 
         WireToGateRecoveryState? ended = await _session.Journal.UpdateRecoveryStateAsync(
                 current => current.RecoveryVector is { } onFile && IsSameVector(onFile, vector)
-                    ? EndAfterManualCheck(current, onFile)
+                    ? WithLoadsOnBoardForCurrentJourney(EndAfterManualCheck(current, onFile))
                     : null,
                 CacheRecoveryState,
                 cancellationToken)

@@ -378,8 +378,8 @@ public sealed class AutomaticChargingCycleG2Tests
         AssertEachSnapshotAcknowledgedOnce(harness);
         await AssertEntryStaysClosedAsync(harness, token);
         await AssertCancellationStaysClosedAsync(harness, token);
-        Assert.Equal("清桩：车辆暂留原位", harness.ViewModel.VisitText);
-        Assert.Equal(WireToGateIdleReturnText.ClearingHeldInPlaceStatus, harness.ViewModel.IdleReturnStatus);
+        Assert.Equal("清桩：尚未下发开往等待点的任务", harness.ViewModel.VisitText);
+        Assert.Equal(WireToGateIdleReturnText.ClearingNoWaitingPointTaskStatus, harness.ViewModel.IdleReturnStatus);
         Assert.Equal(string.Empty, harness.ViewModel.StopDirectionText);
         InvalidOperationException refused = await Assert.ThrowsAsync<InvalidOperationException>(
             () => harness.Business.SubmitSublotAsync("SUBLOT-A", "SCANNER", token));

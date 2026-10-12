@@ -83,8 +83,8 @@
                     不是空闲返回时为空。
                     批次9-15（onboard-hmi#220）：充电停靠时写「前往充电桩 <站>」「在充电桩 <站> 充电中」等，ItemStatus 为空（充电周期
                     的原始值在车辆那一格的 ChargingStatus）；清桩去等待点写「清桩：……」，ItemStatus 给 CLEARING_TO_WAITING_POINT／
-                    CLEARING_AT_WAITING_POINT，不报空闲返回的值；onboard-hmi#330 起，清桩中计划里还没有等待点腿（车停在原地）时写
-                    「清桩：车辆暂留原位」，ItemStatus 给 CLEARING_HELD_IN_PLACE。两种停靠方向与任务类型都为空。
+                    CLEARING_AT_WAITING_POINT，不报空闲返回的值；onboard-hmi#330 起，清桩中计划里还没有等待点腿时写
+                    「清桩：尚未下发开往等待点的任务」（不预言车动不动），ItemStatus 给 CLEARING_NO_WAITING_POINT_TASK。两种停靠方向与任务类型都为空。
                     -->
                     <DockPanel LastChildFill="True">
                         <TextBlock DockPanel.Dock="Left" FontSize="12" Foreground="{StaticResource MutedBrush}" Text="到站" />

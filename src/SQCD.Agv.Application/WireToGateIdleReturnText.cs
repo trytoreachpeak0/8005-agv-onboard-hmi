@@ -20,13 +20,14 @@ namespace SQCD.Agv.Application;
 /// 而腿是等待点时照批次8-22 原样。
 /// </para>
 /// <para>
-/// <b>清桩中、计划里没有等待点腿，车就不会自己走</b>（<c>8005-agv-onboard-hmi#330</c>）。服务端只在清桩开往等待点的单被
+/// <b>清桩中、计划里还没有等待点腿时，只陈述这件事，不预言车动不动</b>（<c>8005-agv-onboard-hmi#330</c>）。服务端只在清桩开往等待点的单被
 /// RIoT 确认之后才发「原桩腿 <c>COMPLETED</c> + 等待点腿」那份计划（control-server
 /// <c>JourneyRuntimeEngine.ClearanceMove</c>，<c>PublishClearanceMoveSnapshotsAsync</c>）；开关
 /// <c>ClearanceToWaitingPointEnabled</c> 关着、开着但还没建单或单还没确认、移动撤回之后，计划里都只有充电桩那条腿。开关本身
-/// 不下发，这几种情形车载端分不开，也不必分：车都停在原地。所以那时写「清桩：车辆暂留原位」，<see cref="Status"/> 报
-/// <see cref="ClearingHeldInPlaceStatus"/>；不写「前往等待点」（会让现场等车自己走），也不写「等待人工确认」（开关开着的
-/// 过渡期里会诱人提前去按确认）。
+/// 不下发，这几种情形车载端分不开。所以那时写「清桩：尚未下发开往等待点的任务」，<see cref="Status"/> 报
+/// <see cref="ClearingNoWaitingPointTaskStatus"/>。不写「前往等待点」：开关关着时车不会自己走，现场会白等。也不写「暂留原位」
+/// 一类的话：开关开着时，单已发出而服务端对账还没确认（<c>ResultUnknown</c>）的那段里车可能已经在开，这段多长没有上限，
+/// 说车不动正是危险的那一侧。也不写「等待人工确认」：开关开着的过渡期里会诱人提前去按确认。
 /// </para>
 /// <para>
 /// 清单为 <c>null</c>（服务端到等待点不发清单）与清单为空（发一张空清单）两种做法显示同一句话：空闲返回不是
@@ -51,12 +52,12 @@ public static class WireToGateIdleReturnText
     /// <summary>清桩：已到等待点（当前腿 <c>ARRIVED</c>）。</summary>
     public const string ClearingAtWaitingPointStatus = "CLEARING_AT_WAITING_POINT";
 
-    /// <summary>清桩：计划里还没有等待点腿，车停在原地（<c>8005-agv-onboard-hmi#330</c>）。</summary>
-    public const string ClearingHeldInPlaceStatus = "CLEARING_HELD_IN_PLACE";
+    /// <summary>清桩：计划里还没有等待点腿，服务端尚未下发开往等待点的任务（<c>8005-agv-onboard-hmi#330</c>）。不说车动不动。</summary>
+    public const string ClearingNoWaitingPointTaskStatus = "CLEARING_NO_WAITING_POINT_TASK";
 
     /// <summary>
     /// 到站那一格的原始状态：空闲返回时 <see cref="EnRouteStatus"/>、<see cref="AtWaitingPointStatus"/>，清桩时
-    /// <see cref="ClearingHeldInPlaceStatus"/>、<see cref="ClearingEnRouteStatus"/>、<see cref="ClearingAtWaitingPointStatus"/>，
+    /// <see cref="ClearingNoWaitingPointTaskStatus"/>、<see cref="ClearingEnRouteStatus"/>、<see cref="ClearingAtWaitingPointStatus"/>，
     /// 其余是空串。
     /// </summary>
     public static string Status(WireToGateJourneySnapshot journey)
@@ -68,19 +69,19 @@ public static class WireToGateIdleReturnText
         {
             WireToGateNonBusinessStopKind.IdleReturn => arrived ? AtWaitingPointStatus : EnRouteStatus,
             WireToGateNonBusinessStopKind.Clearing => leg is null
-                ? ClearingHeldInPlaceStatus
+                ? ClearingNoWaitingPointTaskStatus
                 : arrived ? ClearingAtWaitingPointStatus : ClearingEnRouteStatus,
             _ => string.Empty
         };
     }
 
     /// <summary>
-    /// 到站那一格的文字：「空闲返回：前往等待点 &lt;站&gt;」或「在等待点 &lt;站&gt; 待命」；清桩时「清桩：车辆暂留原位」、
+    /// 到站那一格的文字：「空闲返回：前往等待点 &lt;站&gt;」或「在等待点 &lt;站&gt; 待命」；清桩时「清桩：尚未下发开往等待点的任务」、
     /// 「清桩：前往等待点 &lt;站&gt;」或「清桩：已到等待点 &lt;站&gt;」；其余是空串。
     /// </summary>
     /// <remarks>
     /// 空闲返回的用途已经说了、计划里当前那条腿还不是等待点（计划还没到或还是旧的）时，说不出站名，只写
-    /// 「空闲返回：前往等待点」，不拿别的腿的站名顶上。清桩不这样写：那时没有等待点腿是车停在原地的常态，不是计划没追上
+    /// 「空闲返回：前往等待点」，不拿别的腿的站名顶上。清桩不这样写：没有等待点腿时只说服务端还没下发去等待点的任务
     /// （见类注释）。
     /// </remarks>
     public static string VisitText(WireToGateJourneySnapshot journey)
@@ -96,7 +97,7 @@ public static class WireToGateIdleReturnText
         if (kind == WireToGateNonBusinessStopKind.Clearing)
         {
             return leg is null
-                ? "清桩：车辆暂留原位"
+                ? "清桩：尚未下发开往等待点的任务"
                 : leg.State == "ARRIVED"
                     ? $"清桩：已到等待点 {leg.StationId}"
                     : $"清桩：前往等待点 {leg.StationId}";

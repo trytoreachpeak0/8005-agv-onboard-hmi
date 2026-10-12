@@ -448,16 +448,19 @@ public sealed record WireToGateRecoveryState(
     private const string TransportPurpose = "TRANSPORT";
 
     /// <summary>
-    /// Whether an operation is unsettled, a recovery vector or a load cancellation is pending, or a recovery session is bound:
+    /// Whether an operation is unsettled, a recovery vector or a load cancellation is pending, or a recovery session is bound
+    /// or requested and not yet answered with its id:
     /// any of them may be about <see cref="LastCompletedLoadOperationContext"/>, so the journey's closure does not take it away
-    /// underneath them (8005-agv-onboard-hmi#330). Settling them clears these fields, and the next business state without a
-    /// transport drops the record then.
+    /// underneath them (8005-agv-onboard-hmi#330). Settling a recovery vector applies the current journey once more in the
+    /// same write (<c>WireToGateBusinessService</c>), so a closure that arrived while the vector was still on file drops the
+    /// record then; other settlements leave it to the next business state without a transport.
     /// </summary>
     private bool HoldsRecoveryWork =>
         UnsettledSlotOperationAttemptId is not null
         || RecoveryVector is not null
         || PendingLoadCancellation is not null
-        || ExceptionRecoverySessionId is not null;
+        || ExceptionRecoverySessionId is not null
+        || RecoverySessionRequestId is not null;
 
     /// <summary>
     /// A load cancellation that went out and has had no answer yet. The server keeps an
