@@ -1,5 +1,6 @@
 using SQCD.Agv.Core;
 using SQCD.Agv.Wpf;
+using SQCD.Agv.Wpf.ScreenState;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
@@ -68,6 +69,15 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.ViewModel.CanRequestLoadCancellation,
             "the cancellation entry over A's load in flight",
             token);
+        // The screen-state snapshot while loading (onboard-hmi#313): slot 5 is the target; the
+        // cancellation entry is shown and pressable.
+        HmiScreenState loading = harness.ScreenState();
+        HmiLockerState five = Assert.Single(loading.Lockers, locker => locker.PhysicalNumber == 5);
+        Assert.True(five.IsTarget);
+        HmiButtonState cancellation = ButtonOf(loading, "OnLoadCancellationClick");
+        Assert.True(cancellation.Visible);
+        Assert.Equal(harness.ViewModel.CanPressLoadCancellation, cancellation.Enabled);
+        Assert.Equal(HmiBannerSource.WireToGatePresentation, loading.Banner.Source);
         io.CloseDoor(4, cargo: true);
         await harness.WaitUntilAsync(
             () => ReadJournal(harness, token).LastCompletedLoadOperationContext?.DemandId == DemandA
@@ -90,5 +100,18 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.False(harness.ViewModel.CanRequestLoadCancellation);
         Assert.False(harness.Business.CanRequestLoadCancellation);
         Assert.Empty(harness.UiErrors);
+
+        // The screen-state snapshot of a session that requires recovery (onboard-hmi#313): the banner says so and came
+        // from the W2G presentation; compensation is offered, the cancellation is gone; slot 1 holds the cargo that
+        // refused B's load.
+        HmiScreenState recovery = harness.ScreenState();
+        Assert.Equal(HmiBannerSource.WireToGatePresentation, recovery.Banner.Source);
+        Assert.Equal("需要恢复", recovery.Banner.StateText);
+        Assert.Equal((true, true), (ButtonOf(recovery, "OnLoadCompensationClick").Visible, ButtonOf(recovery, "OnLoadCompensationClick").Enabled));
+        Assert.Equal((false, false), (ButtonOf(recovery, "OnLoadCancellationClick").Visible, ButtonOf(recovery, "OnLoadCancellationClick").Enabled));
+        HmiLockerState one = Assert.Single(recovery.Lockers, locker => locker.PhysicalNumber == 1);
+        Assert.True(one.IsKnown && one.HasCargo && one.IsLocked);
+        Assert.False(InputOf(recovery, "RecoveryReason").HasText);
+        AssertCarriesNone(recovery, "SUBLOT-A", "SUBLOT-B");
     }
 }

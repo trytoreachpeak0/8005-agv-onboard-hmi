@@ -74,7 +74,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        MessageBoxResult confirmation = MessageBox.Show(
+        MessageBoxResult confirmation = ModalDialogs.Show(
             "请先现场确认：所有仓门均已可靠锁闭，界面显示的货物状态与实际一致。\n\n安全复核不会清空货物状态，是否继续？",
             "启动安全复核",
             MessageBoxButton.YesNo,
@@ -98,7 +98,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        MessageBoxResult confirmation = MessageBox.Show(
+        MessageBoxResult confirmation = ModalDialogs.Show(
             "请先现场确认：所有仓门均已可靠锁闭，没有仓门正在开启，界面显示的货物状态与实际一致。\n\n"
             + "复位之后本界面会重新允许扫码开门，复位人会记入日志。是否继续？",
             "复位严重安全故障",
@@ -118,7 +118,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        MessageBoxResult confirmation = MessageBox.Show(
+        MessageBoxResult confirmation = ModalDialogs.Show(
             $"即将重新打开{_viewModel.RecoverySlotName}。\n\n请确认仓门附近无人遮挡，并准备继续完成装卸。是否继续？",
             "重新打开仓门",
             MessageBoxButton.YesNo,
@@ -132,7 +132,7 @@ public partial class MainWindow : Window
         bool accepted = await _viewModel.RequestReopenCurrentOperationAsync();
         if (!accepted)
         {
-            MessageBox.Show(
+            ModalDialogs.Show(
                 "当前状态已经变化，不能重新打开仓门。请按照界面最新提示操作。",
                 "无法重新开门",
                 MessageBoxButton.OK,
@@ -147,7 +147,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        MessageBoxResult confirmation = MessageBox.Show(
+        MessageBoxResult confirmation = ModalDialogs.Show(
             $"确定取消{_viewModel.RecoverySlotName}当前未完成的装卸操作吗？\n\n取消前请确认仓门已经锁好，仓内货物状态没有发生变化。",
             "取消本次操作",
             MessageBoxButton.YesNo,
@@ -161,7 +161,7 @@ public partial class MainWindow : Window
         bool accepted = await _viewModel.RequestCancelCurrentOperationAsync();
         if (!accepted)
         {
-            MessageBox.Show(
+            ModalDialogs.Show(
                 "当前状态已经变化，不能取消本次操作。请按照界面最新提示操作。",
                 "无法取消操作",
                 MessageBoxButton.OK,
@@ -179,7 +179,7 @@ public partial class MainWindow : Window
         bool acknowledged = await _viewModel.RetryPendingResultAsync();
         if (!acknowledged)
         {
-            MessageBox.Show(
+            ModalDialogs.Show(
                 "任务系统仍未确认结果。系统会保留原结果并在连接恢复后继续重试，请勿重复扫码或重新操作仓门。",
                 "结果尚未确认",
                 MessageBoxButton.OK,
@@ -194,7 +194,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        MessageBoxResult confirmation = MessageBox.Show(
+        MessageBoxResult confirmation = ModalDialogs.Show(
             "请由已授权维护人员现场确认：车辆已经停稳，维修已经完成，所有目标仓门已锁好，开锁输出已复位，现场无人和障碍物。\n\n申请恢复只会继续服务端已授权的原操作，不会重新选择仓位。是否继续？",
             "申请恢复原操作",
             MessageBoxButton.YesNo,
@@ -208,7 +208,7 @@ public partial class MainWindow : Window
         bool accepted = await _viewModel.RequestWireToGateRecoveryAsync();
         if (!accepted)
         {
-            MessageBox.Show(
+            ModalDialogs.Show(
                 "恢复申请未被接受。请检查授权凭据、现场安全条件和服务端恢复会话状态。",
                 "恢复申请失败",
                 MessageBoxButton.OK,
@@ -227,7 +227,7 @@ public partial class MainWindow : Window
         // （8005-agv-onboard-hmi#291）。
         LoadCancellationConfirmation press = _viewModel.BeginLoadCancellation();
         // 本站多条需求时确认框复述所选那一条，免得按下去才发现选错了行（批次7-14）。
-        if (MessageBox.Show(
+        if (ModalDialogs.Show(
                 "请确认车辆已停稳、目标仓门已锁好，并由授权人员确认本次装货应取消。\n\n"
                 + press.DetailText
                 + "\n\n系统只会执行服务端授权的目标仓位清空，不会重新选择仓位；本站尚未录入子批时不会打开任何仓门。是否继续？",
@@ -248,7 +248,7 @@ public partial class MainWindow : Window
     private async void OnLoadCompensationClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel is null
-            || MessageBox.Show(
+            || ModalDialogs.Show(
                 "请确认装货流程无法继续，并由授权维护人员确认需要将目标仓位全部清空。\n\n服务端授权后，系统才会执行清空动作。是否继续？",
                 "补偿清空",
                 MessageBoxButton.YesNo,
@@ -267,7 +267,7 @@ public partial class MainWindow : Window
     private async void OnLoadCorrectionClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel is null
-            || MessageBox.Show(
+            || ModalDialogs.Show(
                 "请确认上一笔装货结果需要修正，并由现场人员准备按‘取出后重新放入’的顺序操作。\n\n系统只执行服务端下发的原目标仓位修正命令。是否继续？",
                 "修正装货",
                 MessageBoxButton.YesNo,
@@ -286,7 +286,7 @@ public partial class MainWindow : Window
     private async void OnFaultCargoHandoffClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel is null
-            || MessageBox.Show(
+            || ModalDialogs.Show(
                 _viewModel.RecoveryTargetConfirmationText
                 + "请确认目标仓存在故障货物，并由授权维护人员确认交接范围。\n\n系统会先等待服务端下发故障交接命令，再将目标仓位安全清空。是否继续？",
                 "故障货物交接",
@@ -306,7 +306,7 @@ public partial class MainWindow : Window
     private async void OnForcedMechanicalRecoveryClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel is null
-            || MessageBox.Show(
+            || ModalDialogs.Show(
                 _viewModel.RecoveryTargetConfirmationText
                 + "请确认目标仓门无法电动解锁，并由授权维护人员现场确认需要人工撬开处理。\n\n强制机械恢复不证明仓位已清空、也不证明车辆可以恢复作业，车辆会保持需恢复状态，等待重新核对。是否继续？",
                 "强制机械恢复",
@@ -326,7 +326,7 @@ public partial class MainWindow : Window
     private async void OnConfirmForcedMechanicalRecoveryClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel is null
-            || MessageBox.Show(
+            || ModalDialogs.Show(
                 "请确认：车辆已断电、抱闸隔离，并已由具备现场作业资质的人员以机械方式开锁或拆卸、取出货物，货物已交给所填的接收人。\n\n系统不会输出开锁。确认后先记录本次确认与货物交接记录，再上报服务端；交接记录只证明货物已救出并完成交接，不证明仓位已空、也不证明车辆可以恢复作业。车辆保持需恢复，这些仓位保持禁止操作，直到提交硬件恢复记录。是否确认？",
                 "确认强制机械取出",
                 MessageBoxButton.YesNo,
@@ -354,7 +354,7 @@ public partial class MainWindow : Window
             ? string.Empty
             : $"\n\n将重发上次未送达的记录，说明为：「{pending}」。本次框里新填的文字不会发出；服务端只认这份记录的原内容。";
         if (_viewModel is null
-            || MessageBox.Show(
+            || ModalDialogs.Show(
                 "请确认需要恢复的全部仓位（强制机械取出的仓位，或因门锁未证明被扣的仓位）已修复，锁反馈、光幕和开锁输出信号正常。\n\n"
                     + "提交后服务端记录硬件恢复：强制机械取出的仓位由车载端复核实时信号有效后解除「物理状态未知」；被扣的仓位由服务端"
                     + "核对新读数、做一次扣车解除检查后决定是否解除扣车。不会自动续作任何操作。" + resend + "\n\n是否提交？",
@@ -378,7 +378,7 @@ public partial class MainWindow : Window
     private async void OnHardwareRepairReleaseClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel is null
-            || MessageBox.Show(
+            || ModalDialogs.Show(
                 "请由授权维护人员确认：被扣仓位的门锁已经修好，仓内无货。\n\n申请维修放行不会开任何仓门；获准后请填写维修记录并提交，"
                     + "服务端核对新读数、做一次扣车解除检查后决定是否解除扣车。是否继续？",
                 "维修放行",
@@ -398,7 +398,7 @@ public partial class MainWindow : Window
     private async void OnCloseConflictedRecoveryClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel is null
-            || MessageBox.Show(
+            || ModalDialogs.Show(
                 _viewModel.ConflictedRecoveryText
                 + "\n\n请由已验证的维护人员到现场逐仓核对实物：货物在不在、仓门是否关好上锁。"
                 + "\n按「是」只结束本机这份恢复记录，不发送任何报文、不开任何仓门；两端不一致的结论已记入日志，以服务端为准。是否已完成核对？",
@@ -419,7 +419,7 @@ public partial class MainWindow : Window
     private async void OnManualChargingReturnClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel is null
-            || MessageBox.Show(
+            || ModalDialogs.Show(
                 "请由授权维护人员确认手动充电已经结束、充电线已经拔除。\n\n系统只向服务端申请重新评估车辆业务资格，是否恢复接单以服务端的决定为准。是否继续？",
                 "充电后返回服务",
                 MessageBoxButton.YesNo,
@@ -446,7 +446,7 @@ public partial class MainWindow : Window
     private async void OnConfirmStationClearanceClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel?.StationClearance is not { Prompt: { } prompt, ConfirmationText: var confirmationText }
-            || MessageBox.Show(
+            || ModalDialogs.Show(
                 confirmationText,
                 "确认清桩",
                 MessageBoxButton.YesNo,
@@ -469,7 +469,7 @@ public partial class MainWindow : Window
     private async void OnConfirmHeldRecoveryCommandClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel?.HeldRecoveryCommand is not { Prompt: { } prompt }
-            || MessageBox.Show(
+            || ModalDialogs.Show(
                 prompt.Text.Trim()
                     + "\n\n确认人已在车旁、仓门附近安全，现在执行这条命令？车辆会给上述仓门发开锁信号。",
                 "确认执行服务端恢复命令",
@@ -497,7 +497,7 @@ public partial class MainWindow : Window
     private async void OnDeclineHeldRecoveryCommandClick(object sender, RoutedEventArgs e)
     {
         if (_viewModel?.HeldRecoveryCommand is not { Prompt: { } prompt }
-            || MessageBox.Show(
+            || ModalDialogs.Show(
                 prompt.Text.Trim()
                     + (prompt.DeclineConsequence.Length > 0 ? "\n\n" + prompt.DeclineConsequence : string.Empty)
                     + "\n\n确定不执行这条命令？车辆不会开锁，并向服务端报告未执行；服务端将结束本次恢复，如仍需处理要重新发起。",
@@ -530,7 +530,7 @@ public partial class MainWindow : Window
     {
         if (_viewModel is null
             || (sender as FrameworkElement)?.DataContext is not UnableToChargeOption { Prompt: var prompt, ConfirmationText: var confirmationText }
-            || MessageBox.Show(
+            || ModalDialogs.Show(
                 confirmationText,
                 "现场确认充不上",
                 MessageBoxButton.YesNo,
@@ -546,12 +546,20 @@ public partial class MainWindow : Window
         }
     }
 
-    private static void ShowRecoveryFailure(string message, string title) =>
-        MessageBox.Show(
+    /// <remarks>
+    /// The dialog is recorded under the handler that called this, not under this helper (onboard-hmi#313); every caller
+    /// passes a literal title (<c>ModalDialogRegistrationArchitectureTests</c>).
+    /// </remarks>
+    private static void ShowRecoveryFailure(
+        string message,
+        string title,
+        [System.Runtime.CompilerServices.CallerMemberName] string callSite = "") =>
+        ModalDialogs.Show(
             message,
             title,
             MessageBoxButton.OK,
-            MessageBoxImage.Information);
+            MessageBoxImage.Information,
+            callSite);
 
     private void OnClosed(object? sender, EventArgs e)
     {

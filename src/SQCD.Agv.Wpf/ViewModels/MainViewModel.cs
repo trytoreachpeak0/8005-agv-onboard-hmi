@@ -5,6 +5,7 @@ using System.Windows.Threading;
 using SQCD.Agv.Application;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
+using SQCD.Agv.Wpf.ScreenState;
 
 namespace SQCD.Agv.Wpf.ViewModels;
 
@@ -21,6 +22,7 @@ public sealed partial class MainViewModel : ViewModelBase
     private readonly Func<string?>? _operatorIdProvider;
     private string? _operatorNotice;
     private DateTimeOffset _operatorNoticeUntil;
+    private HmiBannerSource _bannerSource = HmiBannerSource.None;
     private string _scanText = string.Empty;
     private string _ruleConnectionText = "离线";
     private string _ioConnectionText = "离线";
@@ -1703,6 +1705,29 @@ public sealed partial class MainViewModel : ViewModelBase
     internal void RefreshStationDepartureCountdown() => RunOnUiThread(RefreshStationDepartureCountdownCore);
 
     /// <summary>
+    /// 最后一次写横幅（<see cref="StateText"/>、<see cref="Guidance"/>、<see cref="HasWarning"/>、<see cref="HasError"/>）的是哪条路径。
+    /// 只给屏幕状态快照读（onboard-hmi#313），不参与任何判据。
+    /// </summary>
+    internal HmiBannerSource BannerSource => _bannerSource;
+
+    /// <summary>此刻压在说明行上的操作员提示；没有或已过期时为空。只给屏幕状态快照读（onboard-hmi#313）。</summary>
+    internal string? ActiveOperatorNotice => _operatorNotice is { } notice && Clock.Now < _operatorNoticeUntil ? notice : null;
+
+    /// <summary><see cref="ActiveOperatorNotice"/> 的到期时刻；没有提示时为空。</summary>
+    internal DateTimeOffset? ActiveOperatorNoticeUntil => ActiveOperatorNotice is null ? null : _operatorNoticeUntil;
+
+    /// <summary>离站倒计时依据的截止时刻（服务端给的绝对值），没有时为空。只给屏幕状态快照读（onboard-hmi#313）。</summary>
+    internal DateTimeOffset? StationDepartureDeadlineAt => _stationDepartureDeadlineAt;
+
+    /// <summary>
+    /// 持货那一行写的「最迟离站」时刻：与那一行同一个取值（<see cref="LoadingPhaseText.LatestDeparture"/>，onboard-hmi#310 的取较晚者）。
+    /// 那一行不显示时为空。只给屏幕状态快照读（onboard-hmi#313）。
+    /// </summary>
+    internal DateTimeOffset? CargoHoldingLatestDepartureAt => HasCargoHoldingCountdown
+        ? LoadingPhaseText.LatestDeparture(_loadingPhase?.CargoHoldingDeadlineAt, _stationDepartureDeadlineAt)
+        : null;
+
+    /// <summary>
     /// 窗口关闭时停掉倒计时定时器（离站与持货两个），之后的快照也不再启动它们。
     /// </summary>
     internal void StopStationDepartureCountdown() => RunOnUiThread(() =>
@@ -2289,6 +2314,7 @@ public sealed partial class MainViewModel : ViewModelBase
                     : GetStateText(snapshot.State);
         // 控制器这一侧 hasBlockingError 是真的会变 true 的（故障态、阻断错误码）。
         bool noticeHeld = PublishGuidance(snapshot.Guidance, hasBlockingError);
+        _bannerSource = HmiBannerSource.ControllerSnapshot;
         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? snapshot.State == OnboardState.ReadyToScan;
         HasWarning = hasWarning || noticeHeld;
         HasError = hasBlockingError;
@@ -2364,6 +2390,7 @@ public sealed partial class MainViewModel : ViewModelBase
                 _controller.EnterFatalFault("UI_COMMAND_FAILED", OnboardFatalFaultBanner.UiCommandFailed);
                 Guidance = OnboardFatalFaultBanner.UiCommandFailed;
                 HasError = true;
+                _bannerSource = HmiBannerSource.CommandFailure;
                 return;
         }
     }
@@ -2383,6 +2410,7 @@ public sealed partial class MainViewModel : ViewModelBase
             _operatorNoticeUntil = Clock.Now + OperatorNoticeHold;
             Guidance = message;
             HasWarning = true;
+            _bannerSource = HmiBannerSource.OperatorRejection;
         });
 
     /// <summary>
@@ -2506,6 +2534,7 @@ public sealed partial class MainViewModel : ViewModelBase
             banner.HasError || _wireToGateOperation is not null);
         HasWarning = banner.HasWarning || bannerNoticeHeld;
         HasError = banner.HasError;
+        _bannerSource = HmiBannerSource.WireToGatePresentation;
         CanReopenOperation = false;
         CanCancelOperation = false;
         CanRetryPendingResult = false;

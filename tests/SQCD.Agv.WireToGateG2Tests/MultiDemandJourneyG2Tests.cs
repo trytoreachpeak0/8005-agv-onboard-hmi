@@ -4,6 +4,7 @@ using SQCD.Agv.Application;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
 using SQCD.Agv.Wpf;
+using SQCD.Agv.Wpf.ScreenState;
 using SQCD.Agv.Wpf.ViewModels;
 using Xunit;
 
@@ -87,6 +88,19 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal("SUBLOT-B", submitted.GetProperty("sublot").GetString());
         Assert.Empty(harness.UiErrors);
         Assert.NotEqual("UNHANDLED_UI_ERROR", harness.Controller.Current.ErrorCode);
+
+        // The screen-state snapshot at loading (onboard-hmi#313): the rows by demand and side, the plan by its raw
+        // status, the banner from the W2G presentation -- and neither sublot anywhere, although the worklist rows on
+        // the screen show both and the banner can name the one being verified.
+        HmiScreenState screen = harness.ScreenState();
+        Assert.Equal([DemandA, DemandB], screen.WorklistRows.Select(row => row.DemandId));
+        Assert.Equal(harness.PlanLegStatuses(), screen.JourneyPlanLegs.Select(leg => leg.ItemStatus));
+        Assert.Equal(HmiBannerSource.WireToGatePresentation, screen.Banner.Source);
+        Assert.Equal(harness.ViewModel.StateText, screen.Banner.StateText);
+        Assert.Equal(0, screen.Modals.Depth);
+        Assert.Equal(harness.ViewModel.CanSubmit, InputOf(screen, "ScanTextBox").Enabled);
+        Assert.All(RecoveryEntryButtons, key => Assert.False(ButtonOf(screen, key).Enabled));
+        AssertCarriesNone(screen, "SUBLOT-A", "SUBLOT-B");
     }
 
     /// <summary>
@@ -648,6 +662,20 @@ public sealed partial class MultiDemandJourneyG2Tests
 
             return copy;
         }));
+
+        /// <summary>
+        /// The screen-state snapshot (onboard-hmi#313), built the way <see cref="LogsSnapshot"/> copies the log: inside the
+        /// stand-in UI lock, and retried by <see cref="ReadStable"/> when a collection changes under it.
+        /// </summary>
+        /// <remarks>
+        /// The research asks for one of "build inside the UI lock" or "a copy that tolerates concurrent appends"; this is
+        /// the second, because the lock alone is not enough here -- the log is appended outside it (see
+        /// <see cref="LogsSnapshot"/>). The builder copies each collection by index off a count read first and throws
+        /// <c>InvalidOperationException</c> on a slot read mid-append, which is what <see cref="ReadStable"/> retries.
+        /// No dialog is ever shown in G2, so the registry is a fresh empty one, not the process's.
+        /// </remarks>
+        internal HmiScreenState ScreenState() =>
+            ReadStable(() => new[] { OnUi(() => HmiScreenStateBuilder.Build(ViewModel, new ModalDialogRegistry())) })[0];
 
         private static T[] ReadStable<T>(Func<T[]> read)
         {
