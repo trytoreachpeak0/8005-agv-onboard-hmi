@@ -58,10 +58,15 @@ public sealed partial class MultiDemandJourneyG2Tests
             "the compensation and correction entries to close",
             token);
 
+        // The visit cell is the journey projection's, written on the UI thread by another handler than the one that drops
+        // the record: waited for, not read once.
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.VisitText == "清桩：尚未下发开往等待点的任务",
+            "the visit cell to say no waiting-point task has been sent",
+            token);
         Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, harness.Session.Current.Readiness);
         Assert.False(harness.ViewModel.HasCompensationTarget);
         Assert.Null(harness.Business.CompensationFallbackDemandId);
-        Assert.Equal("清桩：尚未下发开往等待点的任务", harness.ViewModel.VisitText);
         Assert.Equal(WireToGateIdleReturnText.ClearingNoWaitingPointTaskStatus, harness.ViewModel.IdleReturnStatus);
         await harness.WaitUntilAsync(
             () => harness.LogsSnapshot().Any(line => line.Message.Contains(
