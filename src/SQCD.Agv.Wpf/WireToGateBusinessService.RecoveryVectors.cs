@@ -260,6 +260,7 @@ public sealed partial class WireToGateBusinessService
         int before = 0;
         int after = 0;
         bool changed = false;
+        bool lastLoadDropped = false;
         try
         {
             await _session.Journal
@@ -268,6 +269,7 @@ public sealed partial class WireToGateBusinessService
                     {
                         // Reset on entry: a change function may be evaluated more than once for one step.
                         changed = false;
+                        lastLoadDropped = false;
                         WireToGateRecoveryState next = state.WithLoadsOnBoardFor(journey);
                         if (ReferenceEquals(next, state))
                         {
@@ -277,6 +279,8 @@ public sealed partial class WireToGateBusinessService
                         changed = true;
                         before = state.LoadsOnBoard?.Count ?? 0;
                         after = next.LoadsOnBoard?.Count ?? 0;
+                        lastLoadDropped = state.LastCompletedLoadOperationContext is not null
+                            && next.LastCompletedLoadOperationContext is null;
                         return next;
                     },
                     settled =>
@@ -288,7 +292,7 @@ public sealed partial class WireToGateBusinessService
                     },
                     _stopping.Token)
                 .ConfigureAwait(false);
-            if (!changed || after == before)
+            if (!changed || (after == before && !lastLoadDropped))
             {
                 return;
             }
@@ -304,6 +308,22 @@ public sealed partial class WireToGateBusinessService
         }
 
         bool closed = WireToGateRecoveryState.DescribesNoTransport(journey);
+        if (after == before)
+        {
+            // Only the settled load went (8005-agv-onboard-hmi#330): the correction and the compensation fallback over it close.
+            // Told for the same reason the list is: the screen may have re-read the journal before this write landed.
+            _logger.Write(
+                LogSeverity.Information,
+                nameof(WireToGateBusinessService),
+                "本趟行程已结束，清掉日志里上一次完成的装货，修正与补偿入口不再针对它，"
+                + $"activePurpose={journey.VehicleBusinessState?.ActivePurpose ?? "null"}。");
+            PublishOperatorEvent(
+                $"last-load-cleared:{journey.UpdatedAt.UtcTicks}",
+                "LAST_LOAD_CLEARED",
+                "本趟行程已结束，上一趟装货的修正与补偿入口已关闭。");
+            return;
+        }
+
         _logger.Write(
             LogSeverity.Information,
             nameof(WireToGateBusinessService),

@@ -386,18 +386,36 @@ public sealed record WireToGateRecoveryState(
     /// <c>WireToGateStore</c> is the only writer of <c>JourneyRuntimeRow.DemandId</c>). The same demand may anchor a later journey
     /// after a redispatch, so an anchor that repeats is not proof of the same journey; that journey's closure clears the list
     /// in between, and a missed closure followed by a redispatch of the same anchor is the one shape this leaves on the list.
+    /// <para>
+    /// The same business state also drops <see cref="LastCompletedLoadOperationContext"/> (8005-agv-onboard-hmi#330), unless
+    /// something is still under way over it (<see cref="HoldsRecoveryWork"/>). That record is what the load correction entry and a
+    /// compensation that falls back to the settled load are about; it used to be replaced only by the next load, so a vehicle
+    /// that went on to charge or clear a charger still offered "correct the last load at this stop" and named the previous
+    /// journey's sublot as the compensation target. The server refuses both there anyway: a correction needs the demand accepted,
+    /// loaded on its journey and the journey awaiting departure from that stop, and a compensation needs the load's operation in
+    /// <c>RecoveryRequired</c> (control-server <c>OnboardRecoveryCoordinator.AuthorizeLoadCorrectionAsync</c> and
+    /// <c>ValidateActionPreconditions</c>).
+    /// </para>
     /// </summary>
     public WireToGateRecoveryState WithLoadsOnBoardFor(WireToGateJourneySnapshot journey)
     {
         ArgumentNullException.ThrowIfNull(journey);
+        if (DescribesNoTransport(journey))
+        {
+            bool dropLoads = LoadsOnBoard is { Count: > 0 };
+            bool dropLastLoad = LastCompletedLoadOperationContext is not null && !HoldsRecoveryWork;
+            return dropLoads || dropLastLoad
+                ? this with
+                {
+                    LoadsOnBoard = dropLoads ? [] : LoadsOnBoard,
+                    LastCompletedLoadOperationContext = dropLastLoad ? null : LastCompletedLoadOperationContext
+                }
+                : this;
+        }
+
         if (LoadsOnBoard is not { Count: > 0 } loads)
         {
             return this;
-        }
-
-        if (DescribesNoTransport(journey))
-        {
-            return this with { LoadsOnBoard = [] };
         }
 
         IReadOnlyList<string> planned = journey.UpcomingStopPlan?.DemandIds ?? [];
@@ -428,6 +446,18 @@ public sealed record WireToGateRecoveryState(
         && !string.Equals(business.ActivePurpose, TransportPurpose, StringComparison.Ordinal);
 
     private const string TransportPurpose = "TRANSPORT";
+
+    /// <summary>
+    /// Whether an operation is unsettled, a recovery vector or a load cancellation is pending, or a recovery session is bound:
+    /// any of them may be about <see cref="LastCompletedLoadOperationContext"/>, so the journey's closure does not take it away
+    /// underneath them (8005-agv-onboard-hmi#330). Settling them clears these fields, and the next business state without a
+    /// transport drops the record then.
+    /// </summary>
+    private bool HoldsRecoveryWork =>
+        UnsettledSlotOperationAttemptId is not null
+        || RecoveryVector is not null
+        || PendingLoadCancellation is not null
+        || ExceptionRecoverySessionId is not null;
 
     /// <summary>
     /// A load cancellation that went out and has had no answer yet. The server keeps an

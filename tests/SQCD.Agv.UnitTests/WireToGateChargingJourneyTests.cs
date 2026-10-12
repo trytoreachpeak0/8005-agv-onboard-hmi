@@ -241,17 +241,41 @@ public sealed class WireToGateChargingJourneyTests
     }
 
     /// <summary>
-    /// The clearance begins while the plan's current leg is still the charger: it reads as a clearance with no
-    /// station, not as charging and not with the charger's station.
+    /// A clearance whose plan still has only the charger leg: the vehicle stays where it is (8005-agv-onboard-hmi#330).
+    /// The server sends a waiting-point leg only once a clearance move is confirmed in RIoT, so with the server's
+    /// clearance-to-waiting-point switch off -- or on, before the move is confirmed -- this is all the vehicle gets. The
+    /// cell says it stays put, never that it is on its way (the field saw 「清桩：前往等待点」 with the switch off) and never
+    /// that it waits for a confirmation (with the switch on that would invite an early press). Not charging either, and
+    /// not with the charger's station.
     /// </summary>
     [Fact]
-    public void AClearanceStillOnTheChargerLegSaysClearingWithoutAStation()
+    public void AClearanceStillOnTheChargerLegSaysTheVehicleStaysInPlace()
     {
         WireToGateJourneySnapshot journey = Journey("CLEARING_MAINTENANCE", null, Charger(1, "ARRIVED"));
 
         Assert.Equal(WireToGateNonBusinessStopKind.Clearing, WireToGateNonBusinessStop.Classify(journey));
-        Assert.Equal("清桩：前往等待点", WireToGateIdleReturnText.VisitText(journey));
+        Assert.Equal("清桩：车辆暂留原位", WireToGateIdleReturnText.VisitText(journey));
+        Assert.Equal(WireToGateIdleReturnText.ClearingHeldInPlaceStatus, WireToGateIdleReturnText.Status(journey));
+        Assert.DoesNotContain("前往", WireToGateIdleReturnText.VisitText(journey), StringComparison.Ordinal);
         Assert.Equal(string.Empty, WireToGateChargingText.VisitText(journey));
+    }
+
+    /// <summary>
+    /// The two shapes the server's switch leads to, side by side (8005-agv-onboard-hmi#330): only the charger leg (switch
+    /// off, or a move not yet confirmed) stays in place; the completed charger leg followed by a waiting-point leg (a
+    /// confirmed clearance move) is on its way.
+    /// </summary>
+    [Fact]
+    public void AClearanceSaysOnItsWayOnlyOnceTheServerSendsTheWaitingPointLeg()
+    {
+        WireToGateJourneySnapshot held = Journey("CLEARING_MAINTENANCE", null, Charger(1, "ARRIVED"));
+        WireToGateJourneySnapshot moving = Journey(
+            "CLEARING_MAINTENANCE", null, Charger(1, "COMPLETED"), WaitingPoint(2, "ACTIVE"));
+
+        Assert.Equal("清桩：车辆暂留原位", WireToGateIdleReturnText.VisitText(held));
+        Assert.Equal(WireToGateIdleReturnText.ClearingHeldInPlaceStatus, WireToGateIdleReturnText.Status(held));
+        Assert.Equal("清桩：前往等待点 WP-01", WireToGateIdleReturnText.VisitText(moving));
+        Assert.Equal(WireToGateIdleReturnText.ClearingEnRouteStatus, WireToGateIdleReturnText.Status(moving));
     }
 
     /// <summary>
@@ -270,8 +294,8 @@ public sealed class WireToGateChargingJourneyTests
         Assert.True(journey.HasWorklistItemsAtNonBusinessStop);
         Assert.False(journey.CanAcceptSublot);
         Assert.Equal(WireToGateNonBusinessStopKind.Clearing, WireToGateNonBusinessStop.Classify(journey));
-        Assert.Equal("清桩：前往等待点", WireToGateIdleReturnText.VisitText(journey));
-        Assert.Equal(WireToGateIdleReturnText.ClearingEnRouteStatus, WireToGateIdleReturnText.Status(journey));
+        Assert.Equal("清桩：车辆暂留原位", WireToGateIdleReturnText.VisitText(journey));
+        Assert.Equal(WireToGateIdleReturnText.ClearingHeldInPlaceStatus, WireToGateIdleReturnText.Status(journey));
         Assert.Equal(string.Empty, WireToGateStopFacts.DirectionText(journey));
         Assert.Equal(string.Empty, WireToGateStopFacts.TaskTypeText(journey));
     }
