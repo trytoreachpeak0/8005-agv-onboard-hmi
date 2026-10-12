@@ -1,0 +1,39 @@
+# 每段测试运行的汇总行（dotnet test 输出原文）
+
+af19f3e-run1-WireToGateG2Tests.log: Passed!  - Failed:     0, Passed:    76, Skipped:     0, Total:    76, Duration: 37 s
+af19f3e-run2-WireToGateG2Tests.log: Passed!  - Failed:     0, Passed:    76, Skipped:     0, Total:    76, Duration: 36 s
+af19f3e-run3-WireToGateG2Tests.log: Passed!  - Failed:     0, Passed:    76, Skipped:     0, Total:    76, Duration: 36 s
+af19f3e-run1-MultiDemandJourneyG2Tests.log: Passed!  - Failed:     0, Passed:   136, Skipped:     0, Total:   136, Duration: 2 m 29 s
+af19f3e-run2-MultiDemandJourneyG2Tests.log: Passed!  - Failed:     0, Passed:   136, Skipped:     0, Total:   136, Duration: 2 m 13 s
+af19f3e-run3-MultiDemandJourneyG2Tests.log: Failed!  - Failed:     1, Passed:   135, Skipped:     0, Total:   136, Duration: 2 m 12 s
+af19f3e-u17-run1.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 25 s
+af19f3e-u17-run2.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 31 s
+af19f3e-u17-run3.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 27 s
+af19f3e-u17-run4.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 23 s
+af19f3e-u17-run5.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 22 s
+af19f3e-u17-run6.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 18 s
+af19f3e-u17-run7.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 21 s
+af19f3e-u17-run8.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 21 s
+af19f3e-u17-run9.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 25 s
+af19f3e-u17-run10.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 23 s
+af19f3e-u17-run9-void.log: Failed!  - Failed:     1, Passed:    18, Skipped:     0, Total:    19, Duration: 19 s
+113776c-run1-MultiDemandJourneyG2Tests.log: Passed!  - Failed:     0, Passed:   136, Skipped:     0, Total:   136, Duration: 2 m 12 s
+113776c-run1-WireToGateG2Tests.log: Passed!  - Failed:     0, Passed:    85, Skipped:     0, Total:    85, Duration: 40 s
+113776c-run3-MultiDemandJourneyG2Tests.log: Passed!  - Failed:     0, Passed:   136, Skipped:     0, Total:   136, Duration: 2 m 15 s
+113776c-run3-WireToGateG2Tests.log: Passed!  - Failed:     0, Passed:    85, Skipped:     0, Total:    85, Duration: 36 s
+d7cd011-run1-MultiDemandJourneyG2Tests.log: Passed!  - Failed:     0, Passed:   137, Skipped:     0, Total:   137, Duration: 2 m 16 s
+d7cd011-run1-WireToGateG2Tests.log: Passed!  - Failed:     0, Passed:    85, Skipped:     0, Total:    85, Duration: 36 s
+d7cd011-run2-MultiDemandJourneyG2Tests.log: Passed!  - Failed:     0, Passed:   137, Skipped:     0, Total:   137, Duration: 2 m 31 s
+d7cd011-run2-WireToGateG2Tests.log: Passed!  - Failed:     0, Passed:    85, Skipped:     0, Total:    85, Duration: 42 s
+d7cd011-run3-MultiDemandJourneyG2Tests.log: Passed!  - Failed:     0, Passed:   137, Skipped:     0, Total:   137, Duration: 2 m 19 s
+d7cd011-run3-WireToGateG2Tests.log: Passed!  - Failed:     0, Passed:    85, Skipped:     0, Total:    85, Duration: 43 s
+d7cd011-u17-run1.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 17 s
+d7cd011-u17-run2.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 19 s
+d7cd011-u17-run3.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 18 s
+d7cd011-u17-run4.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 22 s
+d7cd011-u17-run5.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 17 s
+d7cd011-u17-run6.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 21 s
+d7cd011-u17-run7.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 16 s
+d7cd011-u17-run8.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 19 s
+d7cd011-u17-run9.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 15 s
+d7cd011-u17-run10.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 23 s
