@@ -309,7 +309,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
             WireToGateRecoveryOptions? recoveryOptions = null,
             string? operatorIdEnvironmentVariable = null,
-            TimeSpan? messageTimeout = null)
+            TimeSpan? messageTimeout = null,
+            TimeSpan? operationTimeout = null)
         {
             FakeControlServer server = new(IPAddress.Loopback)
             {
@@ -327,7 +328,8 @@ public sealed partial class MultiDemandJourneyG2Tests
                     wrapJournal,
                     recoveryOptions,
                     operatorIdEnvironmentVariable,
-                    messageTimeout);
+                    messageTimeout,
+                    operationTimeout);
                 started._ownsServer = true;
                 return started;
             }
@@ -355,6 +357,11 @@ public sealed partial class MultiDemandJourneyG2Tests
         /// constructor sets; a test that changes who is at the vehicle names a variable of its own, so the tests of
         /// other classes running beside it keep theirs (8005-agv-onboard-hmi#222).
         /// </param>
+        /// <param name="operationTimeout">
+        /// How long the slot and vector executors give the operator at each door. Left null, two seconds, as every test
+        /// in this class has always had. Longer only for a test that keeps a door open on purpose while the test thread
+        /// does other work (8005-agv-onboard-hmi#323).
+        /// </param>
         public static async Task<Harness> StartAgainstAsync(
             FakeControlServer server,
             CancellationToken cancellationToken,
@@ -363,7 +370,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
             WireToGateRecoveryOptions? recoveryOptions = null,
             string? operatorIdEnvironmentVariable = null,
-            TimeSpan? messageTimeout = null)
+            TimeSpan? messageTimeout = null,
+            TimeSpan? operationTimeout = null)
         {
             io ??= new FakeIoModuleClient();
             RecordingLogger logger = new();
@@ -435,7 +443,7 @@ public sealed partial class MultiDemandJourneyG2Tests
                 new WireToGateSlotOperationExecutorOptions(
                     TimeSpan.FromSeconds(1),
                     TimeSpan.FromSeconds(1),
-                    TimeSpan.FromSeconds(2),
+                    operationTimeout ?? TimeSpan.FromSeconds(2),
                     TimeSpan.FromMilliseconds(10),
                     TimeSpan.FromSeconds(30)),
                 operatorIdEnvironmentVariable ?? OperatorVariable,
