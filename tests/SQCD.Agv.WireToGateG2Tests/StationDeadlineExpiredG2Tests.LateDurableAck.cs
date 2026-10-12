@@ -1,3 +1,6 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Text.Json;
 using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
@@ -143,8 +146,15 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// only this change's ack is held.
     /// </para>
     /// <para>
-    /// The double sends no readiness after a safety ack in this harness, so nothing but the late ack can move the version
-    /// on.
+    /// The late ack is not the last thing to move the version, so the version read afterwards is not the criterion
+    /// (onboard-hmi#335). Its own state publish wakes the business service's safety reporting, and by then the load has
+    /// pulsed its slot open, which the fake IO module changes without announcing: the business service reports the open
+    /// lock it has not reported yet (<c>LOCK_NOT_CLOSED</c>), numbered one above the version the late ack moved on to.
+    /// Whether the version read here is that one or the next depends only on how fast that report's ack comes back --
+    /// 10 of 22 local runs read the next. So the test pins what the late ack itself publishes: the first published
+    /// version at or above the change's is exactly the change's, and every version published above it is one the double
+    /// received a safety message under, other than the change itself. The double sends no readiness after a safety ack
+    /// in this harness, so nothing else publishes a version.
     /// </para>
     /// </remarks>
     [Fact]
@@ -155,12 +165,17 @@ public sealed partial class StationDeadlineExpiredG2Tests
             new FakeIoModuleClient { OperatorNeverActs = true, KeepSnapshotFresh = true },
             token);
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
-        System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
-        System.Collections.Concurrent.ConcurrentQueue<string> versions = new();
+        Stopwatch clock = Stopwatch.StartNew();
+        ConcurrentQueue<long> published = new();
+        ConcurrentQueue<string> trace = new();
         harness.Session.StateChanged += (_, args) =>
-            versions.Enqueue($"{clock.ElapsedMilliseconds}ms accepted={args.Value.SafetyStateVersion} readiness={args.Value.Readiness}");
+        {
+            published.Enqueue(args.Value.SafetyStateVersion);
+            trace.Enqueue(
+                $"{clock.ElapsedMilliseconds}ms accepted={args.Value.SafetyStateVersion} readiness={args.Value.Readiness}");
+        };
         long changed = harness.Client.Current.SafetyStateVersion + 10;
-        versions.Enqueue($"{clock.ElapsedMilliseconds}ms test start accepted={changed - 10} changed={changed}");
+        trace.Enqueue($"{clock.ElapsedMilliseconds}ms test start accepted={changed - 10} changed={changed}");
         FakeControlServer.DurableAckHold hold = harness.Server.HoldNextDurableAck(
             "SafetyStateChanged",
             payload => payload.GetProperty("safetyStateVersion").GetInt64() == changed);
@@ -180,13 +195,46 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.Equal(WireToGateLateDurableAckOutcome.Acknowledged, ack.Outcome);
         AssertLateAckLogged(harness, late, LogSeverity.Information, "现记为已确认");
         Assert.True(harness.Client.Current.Connected, "the late ack must not end the session");
-        versions.Enqueue($"{clock.ElapsedMilliseconds}ms late ack settled");
+        trace.Enqueue($"{clock.ElapsedMilliseconds}ms late ack settled");
         long accepted = harness.Client.Current.SafetyStateVersion;
+        // ToArray, not a spread: a report can still be publishing, and a spread counts and copies apart.
+        long[] versions = published.ToArray();
+        Func<string> describe = () => DescribeSafetyTraffic(harness, trace.ToArray());
+        long firstAtOrAbove = versions.FirstOrDefault(version => version >= changed, long.MinValue);
         Assert.True(
-            accepted == changed,
-            $"expected the accepted safety state version {changed}, found {accepted}{Environment.NewLine}"
-            + DescribeSafetyTraffic(harness, versions));
+            firstAtOrAbove == changed,
+            $"the late ack should publish the change's version {changed}, the first at or above it was "
+            + $"{(firstAtOrAbove == long.MinValue ? "none" : firstAtOrAbove)}{Environment.NewLine}{describe()}");
+        Assert.True(accepted >= changed, $"accepted {accepted} fell back below {changed}{Environment.NewLine}{describe()}");
+        HashSet<long> reported = SafetyVersionsReceived(harness, exceptMessageId: late);
+        long[] unexplained = [.. versions.Where(version => version > changed && !reported.Contains(version)).Distinct()];
+        Assert.True(
+            unexplained.Length == 0,
+            $"versions published above {changed} with no safety message received under them: "
+            + $"{string.Join(", ", unexplained)}{Environment.NewLine}{describe()}");
         Assert.Empty(harness.Server.DurableAckHoldPredicateFailures);
+    }
+
+    /// <summary>
+    /// The safety state versions of the <c>SafetyStateChanged</c> and <c>SafetyStateSnapshot</c> the double received,
+    /// leaving out <paramref name="exceptMessageId"/>.
+    /// </summary>
+    private static HashSet<long> SafetyVersionsReceived(Harness harness, string exceptMessageId)
+    {
+        HashSet<long> versions = [];
+        foreach (var envelope in harness.Server.ReceivedEnvelopes)
+        {
+            if (envelope.MessageType is not ("SafetyStateChanged" or "SafetyStateSnapshot")
+                || envelope.MessageId == exceptMessageId)
+            {
+                continue;
+            }
+
+            using JsonDocument document = JsonDocument.Parse(envelope.WireLine);
+            versions.Add(document.RootElement.GetProperty("payload").GetProperty("safetyStateVersion").GetInt64());
+        }
+
+        return versions;
     }
 
     /// <summary>
@@ -194,7 +242,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
     /// the accepted version as the session published it and the log -- what a failure of the version assertion needs
     /// to tell which message moved the version (onboard-hmi#335).
     /// </summary>
-    private static string DescribeSafetyTraffic(Harness harness, IEnumerable<string> versions)
+    private static string DescribeSafetyTraffic(Harness harness, IEnumerable<string> trace)
     {
         static bool IsSafety(string messageType) =>
             messageType is "SafetyStateChanged" or "SafetyStateSnapshot" or "SafetyStateSnapshotRequested";
@@ -210,7 +258,7 @@ public sealed partial class StationDeadlineExpiredG2Tests
                     .Where(envelope => IsSafety(envelope.MessageType) || envelope.MessageType == "DurableAck")
                     .Select(envelope => $"c{envelope.Connection} {envelope.WireLine}"),
                 "-- session states:",
-                .. versions,
+                .. trace,
                 "-- log:",
                 DescribeLog(harness)()
             ]);
