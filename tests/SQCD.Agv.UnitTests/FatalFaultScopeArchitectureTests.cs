@@ -69,7 +69,7 @@ public sealed class FatalFaultScopeArchitectureTests
     /// <summary>
     /// 全仓**经 <c>IIoModuleClient.PulseUnlockAsync</c> 的**开门点，四个（按文件三条，
     /// <c>OnboardController</c> 里有装卸与重开门两处）。绕开那个接口的路由
-    /// <see cref="NothingUnderSrcTouchesTheConcreteModbusClientOutsideItsTwoAllowedSites"/> 收窄，两条合起来覆盖的是
+    /// <see cref="NothingUnderSrcTouchesTheConcreteModbusClientOutsideItsAllowedFiles"/> 收窄，两条合起来覆盖的是
     /// 「全仓开门点」。**改这张表之前先确认你改的是事实，不是为了让测试变绿。**
     /// </summary>
     private static readonly UnlockSite[] UnlockSites =
@@ -198,7 +198,7 @@ public sealed class FatalFaultScopeArchitectureTests
     /// </para>
     /// </remarks>
     [Fact]
-    public void NothingUnderSrcTouchesTheConcreteModbusClientOutsideItsTwoAllowedSites()
+    public void NothingUnderSrcTouchesTheConcreteModbusClientOutsideItsAllowedFiles()
     {
         string root = ProtocolIdentityArchitectureTests.RepositoryRoot();
         string[] offenders = Directory

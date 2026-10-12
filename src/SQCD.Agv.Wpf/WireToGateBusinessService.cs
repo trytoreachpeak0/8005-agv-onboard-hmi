@@ -2576,6 +2576,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                             WireToGateRecoverySafetyFacts.Unknown);
                     _logger.Write(
                         LogSeverity.Warning,
+                        OnboardTechnicalLogCategory.SafetyDecision,
                         nameof(WireToGateBusinessService),
                         $"收到服务端恢复消息：{recovery.MessageType}，恢复动作被安全策略阻断：{decision.ReasonCode}。");
                     PublishOperatorEvent(
@@ -4102,6 +4103,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         {
             _logger.Write(
                 LogSeverity.Warning,
+                OnboardTechnicalLogCategory.SafetyDecision,
                 nameof(WireToGateBusinessService),
                 $"出发前安全检查的用途无法识别：check={command.PreDepartureSafetyCheckId}，" +
                 $"checkPurpose={command.CheckPurpose}。回ACTION_NOT_ALLOWED_IN_STATE，不作答。");
@@ -4120,6 +4122,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         {
             _logger.Write(
                 LogSeverity.Warning,
+                OnboardTechnicalLogCategory.SafetyDecision,
                 nameof(WireToGateBusinessService),
                 $"出发前安全检查已过期：check={command.PreDepartureSafetyCheckId}，" +
                 $"询问的安全版本={command.ExpectedSafetyStateVersion}，本端已被接受的版本={acceptedSafetyStateVersion}。" +
@@ -4190,6 +4193,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 : "UNSAFE";
         _logger.Write(
             outcome == "SAFE" ? LogSeverity.Information : LogSeverity.Warning,
+            OnboardTechnicalLogCategory.SafetyDecision,
             nameof(WireToGateBusinessService),
             $"扣车解除检查：check={checkId}，被扣仓位={(held.Count == 0 ? "（未收到）" : string.Join(",", held))}，"
                 + $"被扣仓位已证空锁闭复位={heldProven}，出发判定安全={evaluation.Safety.DepartureSafe}，"

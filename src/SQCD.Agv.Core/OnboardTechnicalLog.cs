@@ -18,19 +18,23 @@ public enum OnboardTechnicalLogCategory
     /// <summary>信号变化：锁反馈、光幕、开锁输出的翻转。</summary>
     SignalChange,
 
-    /// <summary>安全判断：冷启动基线、停稳信号、告警求值、出发前检查。</summary>
+    /// <summary>
+    /// 安全判断：安全相关的判断、锁存、复位与门禁读取失败，一律归这里——冷启动基线与启动安全复核、开锁前置条件、
+    /// 致命故障锁存与复位（含被拒、未生效）、停稳信号与安全会话门禁读取失败、出发前检查与扣车解除、
+    /// 恢复动作被安全策略阻断。是 Error 也归这里，不归本地异常。
+    /// </summary>
     SafetyDecision,
 
     /// <summary>执行阶段：装卸流程、操作员动作、服务端下发与结果上报。</summary>
     ExecutionPhase,
 
-    /// <summary>配置：生效配置、配置被拒、仓位配置识别。</summary>
+    /// <summary>配置：启动时的生效配置摘要（与启动行分开记）、配置被拒、仓位配置识别。</summary>
     Configuration,
 
-    /// <summary>重启恢复：启动、单实例、会话重建、日志簿恢复。</summary>
+    /// <summary>重启恢复：启动行、单实例、会话建立与重建、日志簿恢复。</summary>
     RestartRecovery,
 
-    /// <summary>本地异常：未处理异常与按 Error 记下的本地失败。</summary>
+    /// <summary>本地异常：未处理异常、后台任务失败、日志器自身的告警，以及不属于安全判断的按 Error 记下的本地失败。</summary>
     LocalFault
 }
 
@@ -48,7 +52,8 @@ public enum OnboardTechnicalLogCategory
 /// 归 <see cref="OnboardTechnicalLogCategory.LocalFault"/>，不抛异常——日志器绝不能因为分类挡住业务。
 /// </para>
 /// <para>
-/// 等级为 <see cref="LogSeverity.Error"/> 的未标注条目一律归本地异常，压过来源的默认值。
+/// 等级为 <see cref="LogSeverity.Error"/> 的未标注条目一律归本地异常，压过来源的默认值；安全相关的 Error 因此必须显式标
+/// <see cref="OnboardTechnicalLogCategory.SafetyDecision"/>。每个显式标注点都钉在 <c>ExplicitTechnicalLogCategoryPinTests</c> 里。
 /// </para>
 /// </remarks>
 public static class OnboardTechnicalLogCategories
@@ -63,7 +68,8 @@ public static class OnboardTechnicalLogCategories
             // 与规则模块（服务端）的往返是结果上报与握手。需求七个面里没有「与服务端通信」，它服务于执行阶段。
             ["TcpJsonRuleGateway"] = OnboardTechnicalLogCategory.ExecutionPhase,
             ["ModbusTcpIoModuleClient"] = OnboardTechnicalLogCategory.IoCommunication,
-            ["OnboardAlarmMonitor"] = OnboardTechnicalLogCategory.SafetyDecision,
+            // 告警监视只在自己失败时写日志（报不上服务端、后台任务退出、求值失败），告警本身走告警快照，不走这里。
+            ["OnboardAlarmMonitor"] = OnboardTechnicalLogCategory.LocalFault,
             ["SlotGroupPresentation"] = OnboardTechnicalLogCategory.Configuration,
             // 会话建立、断开、重连与就绪变化，都是断线或重启之后怎么回来。
             ["WireToGateSessionService"] = OnboardTechnicalLogCategory.RestartRecovery,
@@ -135,6 +141,12 @@ public sealed record OnboardTechnicalLogRetentionPolicy
     /// </remarks>
     public bool IsDayExpired(DateOnly day, DateTimeOffset now)
     {
+        // 最后一天没有「下一天」，AddDays(1) 会抛：它离现在远得很，不过期。
+        if (day == DateOnly.MaxValue)
+        {
+            return false;
+        }
+
         DateTimeOffset endOfDay = new(day.AddDays(1).ToDateTime(TimeOnly.MinValue), now.Offset);
         return endOfDay <= CutoffFor(now);
     }

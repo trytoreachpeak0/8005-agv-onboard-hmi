@@ -139,9 +139,14 @@ public partial class App : System.Windows.Application, IDisposable
                 ?? "unknown";
             _logger.Write(
                 LogSeverity.Information,
-                OnboardTechnicalLogCategory.Configuration,
+                OnboardTechnicalLogCategory.RestartRecovery,
                 nameof(App),
                 $"车载端启动：agvId={settings.AgvId}，environment={settings.Environment}，version={version}。");
+            _logger.Write(
+                LogSeverity.Information,
+                OnboardTechnicalLogCategory.Configuration,
+                nameof(App),
+                settings.DescribeForTechnicalLog());
             // 生效配置与激活结果一起落在同一份原子文档里（#27）：分两次写会留下一个窗口——配置已切、结果没记下，
             // 重连补报时车会以为自己没激活过，于是再激活一次。初始那一份是本机自述的配置，由设置渲染出来；文档里
             // 已有内容时以文档为准。仓位区的前后分组读的也是它，所以放在界面之前建。

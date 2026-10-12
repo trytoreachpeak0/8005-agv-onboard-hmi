@@ -27,6 +27,19 @@ public sealed class OnboardSettings
 
     public LogSettings Logging { get; init; } = new();
 
+    /// <summary>
+    /// 生效配置的一行摘要，启动时进技术日志的「配置」一面（REQ-0272，onboard-hmi#312）。
+    /// </summary>
+    /// <remarks>
+    /// 只写身份、开关、地址与路径。凭据只经环境变量传入，这里连环境变量名也不写：这一行会被拷回控制端、贴进证据。
+    /// </remarks>
+    public string DescribeForTechnicalLog() =>
+        $"生效配置：agvId={AgvId}，onboardInstanceId={OnboardInstanceId}，environment={Environment}，"
+        + $"wireToGate.enabled={WireToGate.Enabled}，wireToGate.server={WireToGate.Host}:{WireToGate.Port}，"
+        + $"wireToGate.recoveryResumeEnabled={WireToGate.RecoveryResumeEnabled}，wireToGate.journalPath={WireToGate.JournalPath}，"
+        + $"vehicleSafety.enabled={VehicleSafety.Enabled}，vehicleSafety.endpoint={VehicleSafety.Endpoint}，"
+        + $"ioModule={IoModule.Host}:{IoModule.Port}，logging.directory={Logging.Directory}。";
+
     public static OnboardSettings Load(string path)
     {
         if (!File.Exists(path))

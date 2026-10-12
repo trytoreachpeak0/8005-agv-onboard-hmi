@@ -18,17 +18,27 @@ namespace SQCD.Agv.Infrastructure;
 /// 证据目录，同目录里有别人的文件。时机是第一次写入与跨过午夜后的第一次写入：车可以几周不重启。
 /// </para>
 /// <para>
+/// <b>保留期边界两侧的按天日志不连续时一份都不删。</b>车上 RTC 断电后会跳到约 5 个月以后（workspace
+/// <c>remote-ops/fleet.md</c>），校时开机后才跑、还可能失败；按那个时钟算，目录里全部真实日志都「过期」。
+/// 只比较「今天与最新一份」挡得住开机第一行，挡不住错时钟跑过午夜之后（那时最新一份就是昨天按错时钟写的）；
+/// 比较边界两侧两种都挡得住。代价是停机几天后的清理推迟几天，只会多留，不会少留。
+/// </para>
+/// <para>
 /// <b>写日志与清理的任何失败都不出 <c>Write</c>。</b>业务代码在锁里、在 catch 里、在调度线程上调它，日志器抛出的
 /// 任何东西都会变成一次业务失败（hmi#308 调研第 2 节）。此前只接 IO 与权限两类。
 /// </para>
 /// </remarks>
 public sealed class FileAppLogger : IAppLogger
 {
+    /// <summary>边界两侧相隔不超过这么多天算连续：周末停机不该让清理停下。</summary>
+    private const int MaxContinuousGapDays = 2;
+
     private readonly object _gate = new();
     private readonly string _directory;
     private readonly bool _writeToConsole;
     private readonly TimeProvider _time;
     private readonly OnboardTechnicalLogRetentionPolicy _retention;
+    private bool _directoryReported;
     private DateOnly? _purgedFor;
 
     public FileAppLogger(
@@ -66,6 +76,7 @@ public sealed class FileAppLogger : IAppLogger
 
             lock (_gate)
             {
+                ReportDirectoryOnce(entry.Timestamp);
                 PurgeOnceADay(entry.Timestamp);
                 Append(entry.Timestamp, line);
             }
@@ -108,6 +119,27 @@ public sealed class FileAppLogger : IAppLogger
 #pragma warning restore CA1031
     }
 
+    private void AppendOwnWarning(DateTimeOffset now, string message) =>
+        Append(now, Format(now, LogSeverity.Warning, OnboardTechnicalLogCategory.LocalFault, nameof(FileAppLogger), message));
+
+    /// <summary>
+    /// 展开后路径里还留着 <c>%</c>，多半是那个环境变量不存在：日志会落进一个字面叫 <c>%LOCALAPPDATA%</c> 的目录。
+    /// 照写不误，只在第一次写时记一行。在锁里调。
+    /// </summary>
+    private void ReportDirectoryOnce(DateTimeOffset now)
+    {
+        if (_directoryReported)
+        {
+            return;
+        }
+
+        _directoryReported = true;
+        if (_directory.Contains('%', StringComparison.Ordinal))
+        {
+            AppendOwnWarning(now, $"技术日志目录里的环境变量没有展开：{_directory}。日志照写在这里，请核对 logging.directory 与运行账号。");
+        }
+    }
+
     /// <summary>每个本地日历日清一次。在锁里调。</summary>
     private void PurgeOnceADay(DateTimeOffset now)
     {
@@ -128,10 +160,37 @@ public sealed class FileAppLogger : IAppLogger
                 return;
             }
 
+            List<(string Path, DateOnly Day, bool Expired)> daily = [];
             foreach (string path in Directory.EnumerateFiles(_directory, "agv-*.log", SearchOption.TopDirectoryOnly))
             {
-                string name = Path.GetFileName(path);
-                if (!OnboardTechnicalLogFileName.TryParseDay(name, out DateOnly day) || !_retention.IsDayExpired(day, now))
+                if (OnboardTechnicalLogFileName.TryParseDay(Path.GetFileName(path), out DateOnly day))
+                {
+                    daily.Add((path, day, _retention.IsDayExpired(day, now)));
+                }
+            }
+
+            if (!daily.Any(file => file.Expired))
+            {
+                return;
+            }
+
+            // 今天这一份马上就要写，算在留下的一侧。
+            DateOnly newestExpired = daily.Where(file => file.Expired).Max(file => file.Day);
+            DateOnly oldestKept = daily.Where(file => !file.Expired).Select(file => file.Day).Append(today).Min();
+            int gap = oldestKept.DayNumber - newestExpired.DayNumber;
+            if (gap > MaxContinuousGapDays)
+            {
+                AppendOwnWarning(
+                    now,
+                    $"保留期边界两侧的按天日志不连续：要删的最新一份是 {newestExpired:yyyy-MM-dd}，要留的最早一份是 "
+                    + $"{oldestKept:yyyy-MM-dd}，相隔 {gap} 天。可能是停机，也可能是时钟前跳（车上 RTC 断电会快约 5 个月），"
+                    + "本次一份都不删，等边界两侧连续后再清。");
+                return;
+            }
+
+            foreach ((string path, _, bool expired) in daily)
+            {
+                if (!expired)
                 {
                     continue;
                 }
@@ -142,7 +201,7 @@ public sealed class FileAppLogger : IAppLogger
                 }
                 catch (Exception failure)
                 {
-                    failures.Add($"{name}（{failure.GetType().Name}: {failure.Message}）");
+                    failures.Add($"{Path.GetFileName(path)}（{failure.GetType().Name}: {failure.Message}）");
                 }
             }
         }
@@ -154,14 +213,7 @@ public sealed class FileAppLogger : IAppLogger
 
         if (failures.Count > 0)
         {
-            Append(
-                now,
-                Format(
-                    now,
-                    LogSeverity.Warning,
-                    OnboardTechnicalLogCategory.LocalFault,
-                    nameof(FileAppLogger),
-                    $"技术日志保留期清理没有删掉：{string.Join("；", failures)}。明天再试，业务不受影响。"));
+            AppendOwnWarning(now, $"技术日志保留期清理没有删掉：{string.Join("；", failures)}。明天再试，业务不受影响。");
         }
     }
 

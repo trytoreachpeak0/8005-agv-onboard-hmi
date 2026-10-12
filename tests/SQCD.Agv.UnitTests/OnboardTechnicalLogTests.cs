@@ -32,7 +32,7 @@ public sealed class OnboardTechnicalLogTests
 
     [Theory]
     [InlineData("ModbusTcpIoModuleClient", OnboardTechnicalLogCategory.IoCommunication)]
-    [InlineData("OnboardAlarmMonitor", OnboardTechnicalLogCategory.SafetyDecision)]
+    [InlineData("OnboardAlarmMonitor", OnboardTechnicalLogCategory.LocalFault)]
     [InlineData("WireToGateBusinessService", OnboardTechnicalLogCategory.ExecutionPhase)]
     [InlineData("SlotGroupPresentation", OnboardTechnicalLogCategory.Configuration)]
     [InlineData("WireToGateSessionService", OnboardTechnicalLogCategory.RestartRecovery)]
@@ -97,6 +97,13 @@ public sealed class OnboardTechnicalLogTests
         Assert.False(policy.IsDayExpired(today.AddDays(-30), justAfterMidnight.AddTicks(-1)));
     }
 
+    /// <summary>最后一天的「当天结束」不能溢出：它不过期，也不抛。</summary>
+    [Fact]
+    public void TheLastRepresentableDayNeverExpiresAndDoesNotThrow()
+    {
+        Assert.False(OnboardTechnicalLogRetentionPolicy.Default.IsDayExpired(DateOnly.MaxValue, Now));
+    }
+
     [Fact]
     public void ALongerConfiguredRetentionKeepsWhatTheDefaultWouldHavePurged()
     {
@@ -108,6 +115,8 @@ public sealed class OnboardTechnicalLogTests
 
     [Theory]
     [InlineData("agv-20260909.log", true)]
+    [InlineData("agv-99991231.log", true)]
+    [InlineData("agv-00010101.log", true)]
     [InlineData("agv-20260230.log", false)]
     [InlineData("agv-2026090.log", false)]
     [InlineData("agv-202609091.log", false)]

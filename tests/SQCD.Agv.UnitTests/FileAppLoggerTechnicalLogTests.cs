@@ -133,6 +133,7 @@ public sealed class FileAppLoggerTechnicalLogTests : IDisposable
     {
         ManualTime time = new(Noon);
         DateOnly today = DateOnly.FromDateTime(Noon.DateTime);
+        SeedDays(-29, -1);
         FileAppLogger logger = NewLogger(time);
         logger.Write(LogSeverity.Information, "App", "第一天");
 
@@ -154,6 +155,7 @@ public sealed class FileAppLoggerTechnicalLogTests : IDisposable
     public void APurgeFailureDoesNotReachTheCallerAndTheEntryIsStillWritten()
     {
         DateOnly today = DateOnly.FromDateTime(Noon.DateTime);
+        SeedDays(-59, -1);
         string locked = Seed(OnboardTechnicalLogFileName.For(today.AddDays(-60)));
         string deletable = Seed(OnboardTechnicalLogFileName.For(today.AddDays(-61)));
         FileAppLogger logger = NewLogger(new ManualTime(Noon));
@@ -172,6 +174,101 @@ public sealed class FileAppLoggerTechnicalLogTests : IDisposable
             lines,
             line => line.Contains("\tLocalFault\tFileAppLogger\t", StringComparison.Ordinal)
                 && line.Contains(Path.GetFileName(locked), StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 车上 RTC 断电后会跳到约 5 个月以后（workspace <c>remote-ops/fleet.md</c>「镜像自带一个时钟故障」），
+    /// 校时任务开机后才跑、还可能失败。车载端在校时之前写出第一行时，按那个时钟算，目录里全部真实日志都「过期」了。
+    /// 保留期边界两侧的按天日志不连续时一份都不删，只记一行。
+    /// </summary>
+    [Fact]
+    public void AClockThatJumpedForwardBeforeTimeSyncPurgesNothing()
+    {
+        string[] real = SeedDays(-40, -1);
+        DateTimeOffset jumped = Noon.AddDays(150);
+
+        NewLogger(new ManualTime(jumped)).Write(LogSeverity.Information, "App", "校时之前的第一行");
+
+        Assert.All(real, path => Assert.True(File.Exists(path), $"时钟前跳时删掉了真实日志：{path}"));
+        Assert.Contains(
+            LinesOf(jumped),
+            line => line.Contains("	Warning	LocalFault	FileAppLogger	", StringComparison.Ordinal)
+                && line.Contains("不连续", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 校时一直失败、错的时钟跑过了午夜：昨天按错时钟写的那份成了「最新」，只比较「今天与最新一份」挡不住这一步。
+    /// 比较的是保留期边界两侧，所以仍然一份不删；时钟纠正回来后照常清理，按错时钟写出的那份留着。
+    /// </summary>
+    [Fact]
+    public void AClockThatStaysWrongPastMidnightStillPurgesNothingAndThePurgeResumesOnceItIsCorrected()
+    {
+        string[] real = SeedDays(-40, -1);
+        ManualTime time = new(Noon.AddDays(150));
+        FileAppLogger logger = NewLogger(time);
+        logger.Write(LogSeverity.Information, "App", "错时钟第一天");
+
+        time.Now = Noon.AddDays(151);
+        logger.Write(LogSeverity.Information, "App", "错时钟第二天");
+        Assert.All(real, path => Assert.True(File.Exists(path), $"错时钟跨天后删掉了真实日志：{path}"));
+
+        time.Now = Noon;
+        logger.Write(LogSeverity.Information, "App", "时钟已纠正");
+        Assert.All(real.Take(10), path => Assert.False(File.Exists(path), $"纠正后该删没删：{path}"));
+        Assert.All(real.Skip(10), path => Assert.True(File.Exists(path), $"纠正后不该删：{path}"));
+        Assert.True(File.Exists(Path.Combine(_directory, OnboardTechnicalLogFileName.For(DateOnly.FromDateTime(Noon.AddDays(150).DateTime)))));
+    }
+
+    /// <summary>边界两侧连续时照常清理：相隔两天（周末停机）仍算连续。</summary>
+    [Fact]
+    public void ATwoDayGapAcrossTheBoundaryStillPurges()
+    {
+        string[] old = SeedDays(-40, -31);
+        string[] recent = SeedDays(-29, -1);
+
+        NewLogger(new ManualTime(Noon)).Write(LogSeverity.Information, "App", "周末之后");
+
+        Assert.All(old, path => Assert.False(File.Exists(path), path));
+        Assert.All(recent, path => Assert.True(File.Exists(path), path));
+    }
+
+    /// <summary>
+    /// 文件名是远未来的一天（<c>9999-12-31</c>）也是合法的按天文件；它既不过期，也不能让「那一天结束」的计算溢出、
+    /// 把整轮清理中断。
+    /// </summary>
+    [Fact]
+    public void AFarFutureDailyFileNeitherExpiresNorStopsThePurge()
+    {
+        string[] old = SeedDays(-40, -31);
+        string[] recent = SeedDays(-30, -1);
+        string farFuture = Seed("agv-99991231.log");
+
+        NewLogger(new ManualTime(Noon)).Write(LogSeverity.Information, "App", "远未来文件");
+
+        Assert.All(old, path => Assert.False(File.Exists(path), path));
+        Assert.All(recent, path => Assert.True(File.Exists(path), path));
+        Assert.True(File.Exists(farFuture));
+        // 目录按名字列，9999 排在最后，前面的照样删得掉；溢出是否中断了这一轮，看有没有记失败。
+        Assert.DoesNotContain(LinesOfToday(), line => line.Contains("\tFileAppLogger\t", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 环境变量没展开（变量不存在）时路径里还留着 <c>%</c>：照写，但记一行，否则日志悄悄落进一个字面叫
+    /// <c>%LOCALAPPDATA%</c> 的目录。
+    /// </summary>
+    [Fact]
+    public void AnUnexpandedVariableInTheDirectoryIsReported()
+    {
+        string unexpanded = Path.Combine(_directory, "%HMI312_NOT_SET_" + Guid.NewGuid().ToString("N") + "%");
+        FileAppLogger logger = new(new LogSettings { Directory = unexpanded }, new ManualTime(Noon));
+
+        logger.Write(LogSeverity.Information, "App", "第一条");
+        logger.Write(LogSeverity.Information, "App", "第二条");
+
+        string[] lines = File.ReadAllLines(Path.Combine(unexpanded, OnboardTechnicalLogFileName.For(DateOnly.FromDateTime(Noon.DateTime))));
+        Assert.Single(lines, line => line.Contains("	LocalFault	FileAppLogger	", StringComparison.Ordinal)
+            && line.Contains('%', StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.EndsWith("	App	第一条", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -255,8 +352,19 @@ public sealed class FileAppLoggerTechnicalLogTests : IDisposable
         return path;
     }
 
-    private string[] LinesOfToday() =>
-        File.ReadAllLines(Path.Combine(_directory, OnboardTechnicalLogFileName.For(DateOnly.FromDateTime(Noon.DateTime))));
+    /// <summary>相对 <see cref="Noon"/> 连续若干天的按天日志，从早到晚。</summary>
+    private string[] SeedDays(int fromOffset, int toOffset)
+    {
+        DateOnly today = DateOnly.FromDateTime(Noon.DateTime);
+        return Enumerable.Range(fromOffset, toOffset - fromOffset + 1)
+            .Select(offset => Seed(OnboardTechnicalLogFileName.For(today.AddDays(offset))))
+            .ToArray();
+    }
+
+    private string[] LinesOf(DateTimeOffset at) =>
+        File.ReadAllLines(Path.Combine(_directory, OnboardTechnicalLogFileName.For(DateOnly.FromDateTime(at.DateTime))));
+
+    private string[] LinesOfToday() => LinesOf(Noon);
 
     private string SingleLineOfToday() => Assert.Single(LinesOfToday());
 

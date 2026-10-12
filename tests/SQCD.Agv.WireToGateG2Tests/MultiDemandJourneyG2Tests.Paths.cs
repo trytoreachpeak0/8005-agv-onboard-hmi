@@ -689,6 +689,11 @@ public sealed partial class MultiDemandJourneyG2Tests
             Assert.Equal("PreDepartureSafetyCheck", problem.GetProperty("rejectedMessageType").GetString());
             Assert.Equal("PREDEPARTURE_CHECK_EXPIRED", problem.GetProperty("problem").GetProperty("reasonCode").GetString());
             Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "PreDepartureSafetyCheckResult");
+            // The refusal is a safety judgement in the technical log, not an execution step (REQ-0272, onboard-hmi#312).
+            Assert.Contains(
+                harness.Logger.Categories,
+                entry => entry.Category == OnboardTechnicalLogCategory.SafetyDecision
+                    && entry.Message.StartsWith("出发前安全检查已过期", StringComparison.Ordinal));
         }
         else
         {
