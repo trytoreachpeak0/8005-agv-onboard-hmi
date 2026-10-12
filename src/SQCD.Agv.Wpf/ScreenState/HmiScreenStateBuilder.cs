@@ -4,6 +4,9 @@ using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Reflection;
 using System.Windows.Input;
+using SQCD.Agv.Contracts;
+using SQCD.Agv.Core;
+using SQCD.Agv.Infrastructure;
 using SQCD.Agv.Wpf.ViewModels;
 
 namespace SQCD.Agv.Wpf.ScreenState;
@@ -44,7 +47,14 @@ internal static class HmiScreenStateBuilder
         ?? typeof(HmiScreenStateBuilder).Assembly.GetName().Version?.ToString()
         ?? string.Empty;
 
-    internal static HmiScreenState Build(MainViewModel viewModel, IModalDialogRegistry modals)
+    /// <param name="acceptedSafety">
+    /// The session client's accepted safety state, read by the caller (it is not the view model's); null without a
+    /// session.
+    /// </param>
+    internal static HmiScreenState Build(
+        MainViewModel viewModel,
+        IModalDialogRegistry modals,
+        WireToGateAcceptedSafety? acceptedSafety = null)
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         ArgumentNullException.ThrowIfNull(modals);
@@ -89,7 +99,77 @@ internal static class HmiScreenStateBuilder
                 viewModel.CargoHoldingLatestDepartureAt),
             [.. Copy(viewModel.Logs)
                 .TakeLast(RecentOperatorRecordCount)
-                .Select(line => new HmiOperatorRecordState(line.Timestamp, line.Kind.ToString()))]);
+                .Select(line => new HmiOperatorRecordState(line.Timestamp, line.Kind.ToString()))],
+            Basis(viewModel, acceptedSafety));
+    }
+
+    /// <summary>T1b (onboard-hmi#314): what the banner and the entries were computed from.</summary>
+    internal static HmiScreenBasisState Basis(MainViewModel viewModel, WireToGateAcceptedSafety? acceptedSafety)
+    {
+        IReadOnlyList<RecoveryEntryOffer?> offers = viewModel.RecoveryEntryOffers;
+        RecoveryEntryOffer? beforeAnySublot = viewModel.LoadCancellationBeforeAnySublotOffer;
+        return new HmiScreenBasisState(
+            viewModel.LastControllerSnapshot is { } controller
+                ? new HmiControllerState(
+                    controller.State,
+                    controller.ErrorCode,
+                    !string.IsNullOrWhiteSpace(controller.Guidance),
+                    controller.DeparturePermitted,
+                    controller.RuleConnected,
+                    controller.IoConnected)
+                : null,
+            viewModel.RecoveryEntriesLatched,
+            viewModel.PresentationInputs is { } inputs
+                ? new HmiPresentationInputsState(
+                    inputs.Session.Connected,
+                    inputs.Session.SessionGeneration,
+                    inputs.Session.Readiness,
+                    [.. inputs.Session.ReasonCodes],
+                    inputs.Operation is { } operation
+                        ? new HmiSlotOperationState(
+                            operation.SlotOperationAttemptId,
+                            operation.OperationType,
+                            [.. operation.Slots],
+                            operation.Stage,
+                            !string.IsNullOrWhiteSpace(operation.Guidance))
+                        : null,
+                    inputs.CanSubmit,
+                    inputs.LoadCancellationPending,
+                    inputs.SublotRejected,
+                    inputs.EntryPausedUntilStopped)
+                : null,
+            [
+                Entry(nameof(MainViewModel.CanRequestWireToGateRecovery), offers[(int)RecoveryEntry.WireToGateRecovery], null, viewModel.CanRequestWireToGateRecovery),
+                Entry(nameof(MainViewModel.CanRequestLoadCancellation), offers[(int)RecoveryEntry.LoadCancellation], beforeAnySublot, viewModel.CanRequestLoadCancellation),
+                Entry(nameof(MainViewModel.CanRequestLoadCompensation), offers[(int)RecoveryEntry.LoadCompensation], null, viewModel.CanRequestLoadCompensation),
+                Entry(nameof(MainViewModel.CanRequestLoadCorrection), offers[(int)RecoveryEntry.LoadCorrection], null, viewModel.CanRequestLoadCorrection),
+                Entry(nameof(MainViewModel.CanRequestFaultCargoHandoff), offers[(int)RecoveryEntry.FaultCargoHandoff], null, viewModel.CanRequestFaultCargoHandoff),
+                Entry(nameof(MainViewModel.CanRequestForcedMechanicalRecovery), offers[(int)RecoveryEntry.ForcedMechanicalRecovery], null, viewModel.CanRequestForcedMechanicalRecovery),
+                Entry(nameof(MainViewModel.CanRequestManualChargingReturn), offers[(int)RecoveryEntry.ManualChargingReturn], null, viewModel.CanRequestManualChargingReturn),
+                Entry(nameof(MainViewModel.CanConfirmForcedMechanicalRecovery), offers[(int)RecoveryEntry.ConfirmForcedMechanicalRecovery], null, viewModel.CanConfirmForcedMechanicalRecovery),
+                Entry(nameof(MainViewModel.CanSubmitHardwareRecoveryRecord), offers[(int)RecoveryEntry.SubmitHardwareRecoveryRecord], null, viewModel.CanSubmitHardwareRecoveryRecord),
+                Entry(nameof(MainViewModel.CanRequestHardwareRepairRelease), offers[(int)RecoveryEntry.HardwareRepairRelease], null, viewModel.CanRequestHardwareRepairRelease),
+            ],
+            acceptedSafety is { } accepted ? AcceptedSafety(accepted) : null);
+
+        static HmiRecoveryEntryState Entry(string name, RecoveryEntryOffer? offer, RecoveryEntryOffer? beforeAnySublot, bool final) =>
+            new(name, offer?.Offered, offer?.Path, beforeAnySublot?.Offered, final);
+    }
+
+    private static HmiAcceptedSafetyState AcceptedSafety(WireToGateAcceptedSafety accepted)
+    {
+        WireToGateSafetySummaryPayload? safety = accepted.Safety;
+        return new HmiAcceptedSafetyState(
+            accepted.SafetyStateVersion,
+            accepted.SessionGeneration,
+            accepted.Source,
+            safety is not null,
+            safety?.DepartureSafe,
+            safety?.VehicleStopped,
+            safety?.AllTargetSlotsLocked,
+            safety?.AllUnlockOutputsReset,
+            safety?.UnknownPresent,
+            safety is null ? null : [.. safety.ReasonCodes]);
     }
 
     internal static HmiButtonState Button(MainViewModel viewModel, HmiScreenBindings.ButtonBinding binding)
