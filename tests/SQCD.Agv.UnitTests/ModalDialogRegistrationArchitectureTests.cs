@@ -4,26 +4,27 @@ namespace SQCD.Agv.UnitTests;
 
 /// <summary>
 /// The guard on modal dialogs for the screen-state snapshot (onboard-hmi#313): every <c>MessageBox.Show</c> in the WPF
-/// project goes through <c>ModalDialogs.Show</c>, which records that a dialog is open, and every such call passes its
-/// title as a string literal.
+/// project goes through <c>ModalDialogs.Show</c>, which records that a dialog is open; every such call passes its title
+/// as a string literal; and none passes the recorded call site itself.
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>Why.</b> While a confirmation is up the view model still says its buttons can be pressed, but the operator can
 /// only press the dialog (<c>docs/W2G_HMI_OBSERVABILITY_RESEARCH.md</c>, O7). The snapshot learns about dialogs only
 /// from <c>ModalDialogs</c>; a dialog shown around it is one the snapshot cannot see -- failure 2 of section 6
-/// ("漏项"). The literal title is the content boundary: the snapshot records the title and never the body, and a
-/// title built from data could carry a sublot the way two of the bodies do.
+/// ("漏项"). The literal title and the compiler-filled call site are the content boundary: the snapshot records both and
+/// never the body, and either one built from data could carry a sublot the way two of the bodies do.
 /// </para>
 /// <para>
 /// <b>What this cannot see.</b> It reads source text under <c>src/SQCD.Agv.Wpf</c>, so: a modal shown another way
-/// (<c>Window.ShowDialog</c>, a <c>TaskDialog</c>, <c>System.Windows.Forms.MessageBox</c>), of which there is none
-/// today; <c>MessageBox.Show</c> reached through an alias, <c>using static</c> or reflection; a call in another
-/// project. Text after <c>//</c> is dropped, so a mention in a comment is not a call; a <c>/* ... */</c> block is not.
-/// The literal check reads the second argument up to its first comma, so a title that is a literal followed by
-/// <c>+ something</c> on the next line would pass; none is written that way. A helper that forwards a title it was
-/// given (<c>ShowRecoveryFailure</c>) has to be listed in <c>Forwarders</c>; an unlisted one fails the literal check at
-/// its own call, which is the safe direction.
+/// (<c>Window.ShowDialog</c>, a <c>TaskDialog</c>, <c>System.Windows.Forms.MessageBox</c>) -- there is one today,
+/// <c>RunningInstanceWindow</c>'s <c>ShowDialog</c>, shown only by a second process the single-instance guard turns
+/// away, which has no snapshot to miss it; <c>MessageBox.Show</c> reached through an alias, <c>using static</c> or
+/// reflection; a call in another project. Text after <c>//</c> is dropped, so a mention in a comment is not a call; a
+/// <c>/* ... */</c> block is not. The title must be one literal as a whole argument: a literal concatenated with
+/// anything, on the same line or the next, fails. A helper that forwards a title it was given
+/// (<c>ShowRecoveryFailure</c>) has to be listed in <c>Forwarders</c>; an unlisted one fails the literal check at its
+/// own call, which is the safe direction.
 /// </para>
 /// </remarks>
 public sealed class ModalDialogRegistrationArchitectureTests
@@ -39,11 +40,15 @@ public sealed class ModalDialogRegistrationArchitectureTests
     [Fact]
     public void NoMessageBoxIsShownAroundTheRegistry()
     {
+        // On the whole text, not line by line: "MessageBox" on one line and ".Show(" on the next is the same call.
         string[] offenders = WpfSources()
             .Where(file => Path.GetFileName(file) != Wrapper)
-            .SelectMany(file => CodeLines(file)
-                .Where(line => Regex.IsMatch(line.Text, @"\bMessageBox\.Show\s*\("))
-                .Select(line => $"{Path.GetRelativePath(Root(), file)}:{line.Number}"))
+            .SelectMany(file =>
+            {
+                (string text, int[] lineOf) = Code(file);
+                return Regex.Matches(text, @"\bMessageBox\s*\.\s*Show\s*\(")
+                    .Select(match => $"{Path.GetRelativePath(Root(), file)}:{lineOf[match.Index]}");
+            })
             .ToArray();
 
         Assert.True(
@@ -53,52 +58,73 @@ public sealed class ModalDialogRegistrationArchitectureTests
     }
 
     /// <summary>
-    /// The 26 call sites the research counted (24 in <c>MainWindow.xaml.cs</c>, 2 in <c>App.xaml.cs</c>), all moved.
-    /// A count, not a list, so a new dialog does not have to be added here -- only routed.
+    /// The 26 call sites the research counted (24 in <c>MainWindow.xaml.cs</c>, 2 in <c>App.xaml.cs</c>) all moved: at
+    /// least that many registry calls, so a scan that lost them fails here. A floor, not an exact count, so a new dialog
+    /// only has to be routed, not added here too.
     /// </summary>
     [Fact]
     public void EveryDialogTheResearchCountedGoesThroughTheRegistry()
     {
-        Assert.Equal(24, RegistryCalls("MainWindow.xaml.cs"));
-        Assert.Equal(2, RegistryCalls("App.xaml.cs"));
+        Assert.InRange(RegistryCalls("MainWindow.xaml.cs"), 24, int.MaxValue);
+        Assert.InRange(RegistryCalls("App.xaml.cs"), 2, int.MaxValue);
     }
 
     [Fact]
     public void EveryTitleIsALiteral()
     {
-        string[] offenders = WpfSources()
-            .Where(file => Path.GetFileName(file) != Wrapper)
-            .SelectMany(file => Calls(file).Select(call => (file, call)))
-            .Where(item => !Regex.IsMatch(item.call.Title, "^\"[^\"]*\"$"))
-            .Select(item => $"{Path.GetRelativePath(Root(), item.file)}:{item.call.Line}: {item.call.Title}")
-            .ToArray();
+        string[] offenders = [.. AllCalls()
+            .Where(call => call.Arguments.Count < 2 || !Regex.IsMatch(call.Arguments[1], "^\"[^\"]*\"$"))
+            .Select(call => $"{call.Where}: {(call.Arguments.Count < 2 ? "(no title)" : call.Arguments[1])}")];
 
         Assert.True(
             offenders.Length == 0,
             "A dialog title must be a string literal (the snapshot records it):\n" + string.Join("\n", offenders));
     }
 
+    /// <summary>
+    /// The call site the snapshot records is filled by the compiler (<c>[CallerMemberName]</c>); a caller that passed one
+    /// would put whatever it liked into the snapshot. Only the forwarder's own body passes it on, and that body is not a
+    /// call this scan sees.
+    /// </summary>
+    [Fact]
+    public void NoCallerPassesTheCallSite()
+    {
+        string[] offenders = [.. AllCalls()
+            .Where(call => call.Arguments.Any(argument => Regex.IsMatch(argument, @"^callSite\s*:"))
+                || (call.Callee == "ModalDialogs.Show"
+                    ? call.Arguments.Count > 5
+                        || call.Arguments.Count == 5 && !call.Arguments[4].StartsWith("MessageBoxResult.", StringComparison.Ordinal)
+                    : call.Arguments.Count > 2))
+            .Select(call => $"{call.Where}: {call.Callee}({string.Join(", ", call.Arguments)})")];
+
+        Assert.True(offenders.Length == 0, "Leave the call site to the compiler:\n" + string.Join("\n", offenders));
+    }
+
+    private static IEnumerable<(string Where, string Callee, IReadOnlyList<string> Arguments)> AllCalls() =>
+        WpfSources()
+            .Where(file => Path.GetFileName(file) != Wrapper)
+            .SelectMany(file => Calls(file).Select(call =>
+                ($"{Path.GetRelativePath(Root(), file)}:{call.Line}", call.Callee, call.Arguments)));
+
     private static int RegistryCalls(string fileName)
     {
         string file = WpfSources().Single(path => Path.GetFileName(path) == fileName);
-        return CodeLines(file).Sum(line => Regex.Matches(line.Text, @"\bModalDialogs\.Show\s*\(").Count);
+        return Regex.Matches(Code(file).Text, @"\bModalDialogs\s*\.\s*Show\s*\(").Count;
     }
 
     /// <summary>
-    /// Each dialog call and each forwarder call with its title argument, leaving out the forwarders' own bodies.
+    /// Each dialog call and each forwarder call with its arguments, leaving out the forwarders' own bodies.
     /// </summary>
-    private static (int Line, string Title)[] Calls(string file)
+    private static (int Line, string Callee, IReadOnlyList<string> Arguments)[] Calls(string file)
     {
-        (int Number, string Text)[] lines = CodeLines(file).ToArray();
-        string text = string.Join("\n", lines.Select(line => line.Text));
-        string callees = string.Join("|", Forwarders.Prepend("ModalDialogs.Show").Select(Regex.Escape));
-        return Regex.Matches(text, $@"(?<!\bvoid\s+)\b(?:{callees})\s*\(")
+        (string text, int[] lineOf) = Code(file);
+        string callees = string.Join("|", Forwarders.Append(@"ModalDialogs\s*\.\s*Show"));
+        return Regex.Matches(text, $@"(?<!\bvoid\s+)\b(?<callee>{callees})\s*\(")
             .Where(match => !InsideForwarder(text, match.Index))
-            .Select(match =>
-            {
-                int line = lines[text[..match.Index].Count(c => c == '\n')].Number;
-                return (line, SecondArgument(text, match.Index + match.Length));
-            })
+            .Select(match => (
+                lineOf[match.Index],
+                Regex.Replace(match.Groups["callee"].Value, @"\s", string.Empty),
+                (IReadOnlyList<string>)Arguments(text, match.Index + match.Length)))
             .ToArray();
     }
 
@@ -110,12 +136,12 @@ public sealed class ModalDialogRegistrationArchitectureTests
                 && declaration.Index < index
                 && text.IndexOf(';', declaration.Index) > index);
 
-    /// <summary>The second top-level argument of the call whose argument list starts at <paramref name="start"/>.</summary>
-    private static string SecondArgument(string text, int start)
+    /// <summary>The top-level arguments of the call whose argument list starts at <paramref name="start"/>, trimmed.</summary>
+    private static List<string> Arguments(string text, int start)
     {
+        List<string> arguments = [];
         int depth = 0;
-        int argument = 0;
-        int begin = -1;
+        int begin = start;
         bool inString = false;
         for (int index = start; index < text.Length; index++)
         {
@@ -143,34 +169,42 @@ public sealed class ModalDialogRegistrationArchitectureTests
                     depth++;
                     break;
                 case ')' or ']' or '}' when depth == 0:
-                    return begin < 0 ? string.Empty : text[begin..index].Trim();
+                    string last = text[begin..index].Trim();
+                    if (last.Length > 0 || arguments.Count > 0)
+                    {
+                        arguments.Add(last);
+                    }
+
+                    return arguments;
                 case ')' or ']' or '}':
                     depth--;
                     break;
                 case ',' when depth == 0:
-                    argument++;
-                    if (argument == 1)
-                    {
-                        begin = index + 1;
-                    }
-                    else if (argument == 2)
-                    {
-                        return text[begin..index].Trim();
-                    }
-
+                    arguments.Add(text[begin..index].Trim());
+                    begin = index + 1;
                     break;
             }
         }
 
-        return string.Empty;
+        return arguments;
     }
 
-    private static IEnumerable<(int Number, string Text)> CodeLines(string file) =>
-        File.ReadAllLines(file).Select((line, index) =>
+    /// <summary>The file's code with comments dropped, joined by newlines, and the source line of each character.</summary>
+    private static (string Text, int[] LineOf) Code(string file)
+    {
+        string[] lines = File.ReadAllLines(file);
+        System.Text.StringBuilder text = new();
+        List<int> lineOf = [];
+        for (int index = 0; index < lines.Length; index++)
         {
-            int comment = CommentStart(line);
-            return (index + 1, comment < 0 ? line : line[..comment]);
-        });
+            int comment = CommentStart(lines[index]);
+            string code = (comment < 0 ? lines[index] : lines[index][..comment]) + "\n";
+            text.Append(code);
+            lineOf.AddRange(Enumerable.Repeat(index + 1, code.Length));
+        }
+
+        return (text.ToString(), [.. lineOf]);
+    }
 
     /// <summary>The <c>//</c> that starts a comment, ignoring one inside a string literal (a URL, for instance).</summary>
     private static int CommentStart(string line)

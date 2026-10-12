@@ -4,6 +4,7 @@ using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
 using SQCD.Agv.Wpf;
+using SQCD.Agv.Wpf.ScreenState;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
@@ -552,6 +553,15 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.False(harness.ViewModel.HasError);
         Assert.True(harness.ViewModel.CanSubmit);
         Assert.Contains("不属于服务端下发的站点任务", harness.ViewModel.Guidance);
+        // 屏幕状态快照（onboard-hmi#313，审查 M1）：操作员提示给出文字与到期时刻，说明行此刻就是这句提示；
+        // 扫码框里的 SUBLOT-A 不进快照。
+        HmiScreenState screen = harness.ScreenState();
+        HmiOperatorNoticeState notice = Assert.IsType<HmiOperatorNoticeState>(screen.OperatorNotice);
+        Assert.Contains("不属于服务端下发的站点任务", notice.Text, StringComparison.Ordinal);
+        Assert.Equal(harness.OnUi(() => harness.ViewModel.Guidance), notice.Text);
+        Assert.True(screen.Banner.GuidanceHeldByOperatorNotice);
+        Assert.InRange(notice.Until, screen.BuiltAt, screen.BuiltAt + TimeSpan.FromSeconds(8));
+        AssertCarriesNone(screen, "SUBLOT-A", "SUBLOT-B");
         // 拒绝仍然是拒绝：一个字节都没有发出去。
         Assert.Empty(harness.Submissions);
         Assert.Empty(harness.UiErrors);

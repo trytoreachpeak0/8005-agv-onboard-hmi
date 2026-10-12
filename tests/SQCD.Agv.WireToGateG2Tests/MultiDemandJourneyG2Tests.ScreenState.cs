@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using SQCD.Agv.Core;
 using SQCD.Agv.Wpf.ScreenState;
 using Xunit;
 
@@ -73,6 +74,51 @@ public sealed partial class MultiDemandJourneyG2Tests
     {
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
+
+    /// <summary>
+    /// The guidance line at a moment it really names a sublot -- the one the operator typed into the forced handoff box
+    /// -- stays out of the snapshot (onboard-hmi#313, review M1). The event has the shape the business service publishes
+    /// for that warning (<c>WireToGateBusinessService.RecoveryVectors.cs</c>: <c>RECOVERY_BLOCKED</c>, the warning both as the
+    /// record's message and as the operation's guidance), delivered through the same view-model entry <c>App</c> wires.
+    /// </summary>
+    [Fact]
+    public async Task AGuidanceLineNamingTheTypedSublotStaysOutOfTheScreenState()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await Harness.StartAsync(
+            server =>
+            {
+                server.SendJourneySnapshotsAfterRecovery = true;
+                server.JourneySnapshotPayloads = new Dictionary<string, object>
+                {
+                    ["VehicleBusinessStateSnapshot"] = Payloads.BusinessState(1, loadingPhase: null),
+                    ["CurrentStopWorklistSnapshot"] = Payloads.Worklist(1, Payloads.ItemA, Payloads.ItemB),
+                    ["UpcomingStopPlanSnapshot"] = Payloads.Plan(1, Payloads.TwoDemandLegs)
+                };
+            },
+            token);
+        await harness.WaitUntilAsync(
+            () => harness.Session.CurrentJourney.CurrentStopWorklist is not null,
+            "the worklist",
+            token);
+
+        const string Typed = "SUBLOT-TYPED-7";
+        string warning = $"子批号 {Typed} 与需求的子批号 SUBLOT-A 不一致。请核对实物；确认无误后再按一次「已隔离并完成机械取出」上报，或改正子批号后再确认。";
+        DateTimeOffset now = DateTimeOffset.Now;
+        harness.OnUi(() => harness.ViewModel.ApplyWireToGateOperatorEvent(new WireToGateOperatorEvent(
+            now,
+            "RECOVERY_BLOCKED",
+            warning,
+            new WireToGateHmiOperationSnapshot(
+                AttemptA, OperationType.Load, [1], WireToGateHmiOperationStage.RecoveryRequired, warning, now))));
+
+        // The precondition the review found missing: the screen does show the typed sublot right now.
+        Assert.Contains(Typed, harness.OnUi(() => harness.ViewModel.Guidance), StringComparison.Ordinal);
+        HmiScreenState screen = harness.ScreenState();
+        AssertCarriesNone(screen, Typed, "SUBLOT-A", "SUBLOT-B");
+        AssertCarriesNoGuidanceOrRecordText(harness, screen);
+        Assert.Empty(harness.UiErrors);
+    }
 
     /// <summary>
     /// Research section 5, T1a: one measurement of the build in the G2 harness. The number is reported, not judged --

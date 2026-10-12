@@ -28,13 +28,21 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// another window or a resource dictionary, a <c>TextBox</c> marked <c>IsReadOnly="True"</c> (counted as not
 /// editable), and a <c>Visibility</c> or <c>IsEnabled</c> that a parent panel overrides (the snapshot reports the
 /// control's own binding, as the research defines "visible"). It also assumes every <c>Visibility</c> binding goes
-/// through <c>BooleanToVisibilityConverter</c>, and checks that it does.
+/// through <c>BooleanToVisibilityConverter</c>, and checks that it does; and that a button or input box never sets
+/// <c>IsEnabled</c> or <c>Visibility</c> to a literal, which the builder would read as "no binding", that is, enabled
+/// and visible (onboard-hmi#313 review L6).
+/// </para>
+/// <para>
+/// <b>Left for T2/T3</b> (review L6): the list boxes' selection (the worklist and the recovery demand choices; the
+/// snapshot reports the chosen recovery demand, not the worklist's selected row), and controls other than
+/// <c>Button</c> and <c>TextBox</c> that take input.
 /// </para>
 /// </remarks>
 public sealed class HmiScreenStateXamlCoverageArchitectureTests
 {
     private static readonly XNamespace Presentation = "http://schemas.microsoft.com/winfx/2006/xaml/presentation";
     private static readonly XNamespace Xaml = "http://schemas.microsoft.com/winfx/2006/xaml";
+    private static readonly string[] StateAttributes = ["IsEnabled", "Visibility"];
 
     [Fact]
     public void EveryButtonInTheWindowIsInTheSnapshotWithItsBindings()
@@ -80,6 +88,21 @@ public sealed class HmiScreenStateXamlCoverageArchitectureTests
             .OfType<string>()
             .Where(value => value.StartsWith("{Binding", StringComparison.Ordinal))
             .Where(value => !value.Contains("Converter={StaticResource BooleanToVisibilityConverter}", StringComparison.Ordinal))];
+
+        Assert.Empty(offenders);
+    }
+
+    /// <summary>A literal would read as "no binding" -- enabled and visible -- whatever it says.</summary>
+    [Fact]
+    public void NoButtonOrInputBoxSetsItsStateToALiteral()
+    {
+        string[] offenders = [.. Window().Descendants()
+            .Where(element => element.Name == Presentation + "Button" || element.Name == Presentation + "TextBox")
+            .SelectMany(element => StateAttributes
+                .Select(name => element.Attribute(name))
+                .OfType<XAttribute>()
+                .Where(attribute => Path(attribute) is null)
+                .Select(attribute => $"{element.Name.LocalName} {attribute}"))];
 
         Assert.Empty(offenders);
     }

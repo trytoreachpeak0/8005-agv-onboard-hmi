@@ -21,6 +21,12 @@ namespace SQCD.Agv.Wpf.ScreenState;
 /// dispatcher entry point of T2, which is where a failure has somewhere to go.
 /// </para>
 /// <para>
+/// <b>The operator notice at its expiry.</b> <c>ActiveOperatorNotice</c> is null from the instant its hold ends, but the
+/// guidance line keeps the notice's words until the next banner publish replaces them -- the next IO snapshot, about
+/// 100 ms by default. A snapshot taken in that gap reports no notice and <c>GuidanceHeldByOperatorNotice</c> false while
+/// the screen still shows the notice. Left as it is for T1a; T3's cross-check should expect it (onboard-hmi#313 review L5).
+/// </para>
+/// <para>
 /// <b>Collections are copied by index off a count read first</b>, the way the G2 harness copies the operator log: on the
 /// dispatcher nothing appends in between, and in the G2 harness, which has no dispatcher, a copy that loses a race
 /// throws and is retried by the caller.
@@ -86,7 +92,7 @@ internal static class HmiScreenStateBuilder
                 .Select(line => new HmiOperatorRecordState(line.Timestamp, line.Kind.ToString()))]);
     }
 
-    private static HmiButtonState Button(MainViewModel viewModel, HmiScreenBindings.ButtonBinding binding)
+    internal static HmiButtonState Button(MainViewModel viewModel, HmiScreenBindings.ButtonBinding binding)
     {
         bool visible = binding.Visibility is not { } visibility || (bool)Read(viewModel, visibility)!;
         switch (binding.Kind)
@@ -101,7 +107,8 @@ internal static class HmiScreenStateBuilder
                 return State(visible, options.Length > 0, options);
 
             default:
-                return State(visible, (bool)Read(viewModel, binding.IsEnabled!)!, null);
+                // No IsEnabled binding means WPF's default, enabled -- the same reading as an input box without one.
+                return State(visible, binding.IsEnabled is not { } isEnabled || (bool)Read(viewModel, isEnabled)!, null);
         }
 
         HmiButtonState State(bool isVisible, bool enabled, IReadOnlyList<HmiOptionButtonState>? options) =>
