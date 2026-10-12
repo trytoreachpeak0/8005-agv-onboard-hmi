@@ -227,8 +227,9 @@ public sealed class InboundPayloadSchemaBoundaryTests
     }
 
     /// <summary>
-    /// The payload agv02 refused 80 times on 2026-10-12, byte for byte as the control server's outbox holds it
-    /// (message 77b45b7d-76b9-8c54-8b3c-4c10366e176b, plan revision 50, 8005-agv-onboard-hmi#327).
+    /// The payload agv02 refused on 2026-10-12 (message 77b45b7d-76b9-8c54-8b3c-4c10366e176b, plan revision 50,
+    /// 8005-agv-onboard-hmi#327), with the same field values as the control server's outbox holds it; only the line breaks
+    /// differ. Event 1101 counts 94 refusals of it between 15:52 and 16:01 alone (evidence/hmi327/03-v2-log-1552-1601.txt).
     /// </summary>
     [Fact]
     public void TheClearanceClosingPlanAgv02RefusedIsAccepted()
@@ -256,6 +257,7 @@ public sealed class InboundPayloadSchemaBoundaryTests
     [InlineData("10")]
     [InlineData("0,1")]
     [InlineData("1,10")]
+    [InlineData("1,10,2")]
     [InlineData("-1,2")]
     [InlineData("1,1")]
     [InlineData("2,4,2")]

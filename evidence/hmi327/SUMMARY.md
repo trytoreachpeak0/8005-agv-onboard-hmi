@@ -45,3 +45,14 @@
 | `tests/green-after-restore.txt` | 还原后 `InboundPayloadSchemaBoundaryTests` 与 `ArchitectureTests` 共 330 条全绿 |
 
 每轮变异都核对过构建 0 错误、退出码 1；修后与还原后退出码 0。
+
+## 审查后补充（独立审查 ab64db0 的 S1、S2、L1、L2、L3）
+
+| 输出 | 结果 |
+| --- | --- |
+| `tests/unit-after-review.txt` | 补 `[1,10,2]`（越界腿在中间）后，`InboundPayloadSchemaBoundaryTests` 与 `ArchitectureTests` 共 331 条全绿，退出码 0 |
+| `tests/g2-after-review.txt` | G2 新用例 `APlanWhoseSequencesSkipIsAcknowledgedAndTheSessionStaysUp`（假服务端发 `[2]` 再发 `[1,3]`，两张都被确认、没有 `ProtocolProblem`、只有一次 `SessionHello`、全程一条连接、代数不变）、视图用例 `APlanWhoseSequencesSkipIsShownAsOneRowPerLegInSequenceOrder`（`[1,3]` 渲染两行、按序号排、行上是腿自己的号），加 G2 `ArchitectureTests`，共 14 条全绿，退出码 0 |
+
+`MainViewModel` 里「入站校验已保证从 1 起连续」那句过时注释已改，写明 `sequence` 只能排序、不能当下标。
+
+回退注意：本版本会把跳号计划存进车载端日志簿；回退到本 PR 之前的车载端版本前，必须先清车载端日志簿，否则旧校验在握手前回放日志簿时拒收，车载端永远连不上。
