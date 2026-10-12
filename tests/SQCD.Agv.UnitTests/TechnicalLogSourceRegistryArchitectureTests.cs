@@ -59,24 +59,70 @@ public sealed class TechnicalLogSourceRegistryArchitectureTests
 
     /// <summary>
     /// Cross-check two: every <c>.Write(</c> under <c>src/</c> is either a logger write or one of a few known
-    /// non-loggers, and none of the latter carries a <c>LogSeverity</c> — the first scanner's premise, kept as a check.
+    /// non-loggers named plainly, and none of the latter carries a <c>LogSeverity</c> — the first scanner's premise,
+    /// kept as a check. A receiver the scan cannot name (<c>Get().Write(</c>, <c>(a ?? b).Write(</c>) is reported here.
     /// </summary>
     [Fact]
     public void EveryWriteReceiverIsALoggerOrAKnownNonLogger()
     {
-        LoggerWriteScanner.WriteCallSite[] others = LoggerWriteScanner.ScanSource()
-            .Where(site => !site.IsLoggerWrite)
-            .ToArray();
+        LoggerWriteScanner.WriteCallSite[] sites = LoggerWriteScanner.ScanSource();
 
-        Assert.Contains(others, site => site.Receiver == "Volatile");
-        LoggerWriteScanner.WriteCallSite[] unknown = others
-            .Where(site => !KnownNonLoggerReceivers.Contains(site.Receiver, StringComparer.Ordinal)
-                || (site.Arguments.Count > 0 && site.Arguments[0].Contains("LogSeverity.", StringComparison.Ordinal)))
-            .ToArray();
+        Assert.Contains(sites, site => site.Receiver == "Volatile");
+        LoggerWriteScanner.WriteCallSite[] unknown = Unrecognised(sites);
         Assert.True(
             unknown.Length == 0,
             "These .Write( calls are neither a logger the scan recognises nor a known non-logger: "
             + string.Join(", ", unknown.Select(site => $"{site.Path}:{site.Line} {site.Receiver}")));
+    }
+
+    /// <summary>
+    /// Reconciliation: the scan read exactly as many calls as there are <c>.Write(</c> in the code (literals and
+    /// comments blanked by the lexer, counted here by plain substring search, not by the scanner's pattern).
+    /// </summary>
+    [Fact]
+    public void TheScanReadsEveryWriteInTheCode()
+    {
+        string repositoryRoot = ProtocolIdentityArchitectureTests.RepositoryRoot();
+        int counted = 0;
+        foreach (string path in Directory.EnumerateFiles(Path.Combine(repositoryRoot, "src"), "*.cs", SearchOption.AllDirectories))
+        {
+            string source = File.ReadAllText(path);
+            if (!source.Contains("Write", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            string code;
+            try
+            {
+                code = string.Join('\n', CSharpSourceLexer.Lex(source).Code);
+            }
+            catch (NotSupportedException)
+            {
+                // A file the lexer refuses; the scanner skips it only when it has no .Write( at all.
+                Assert.DoesNotContain(".Write(", source, StringComparison.Ordinal);
+                continue;
+            }
+
+            counted += CountOf(code, ".Write(") + CountOf(code, ". Write(");
+        }
+
+        // 241 at #312's third review round, by grep on the raw text: 199 log writes (188 `_logger.Write(`,
+        // 5 `logger.Write(`, 4 `_logger?.Write(`, 1 `bootstrapLogger.Write(`, 1 `(_logger ?? bootstrapLogger).Write(`)
+        // and 42 others (40 `Volatile.Write(`, 1 `Console.Write(`, 1 `stream.Write(`).
+        Assert.Equal(counted, LoggerWriteScanner.ScanSource().Length);
+        Assert.True(counted >= 241, $"only {counted} .Write( calls counted");
+    }
+
+    [Theory]
+    [InlineData("Get().Write(LogSeverity.Information, nameof(App), \"x\");")]
+    [InlineData("(primary ?? fallback).Write(LogSeverity.Information, nameof(App), \"x\");")]
+    [InlineData("writers[0].Write(LogSeverity.Information, nameof(App), \"x\");")]
+    public void AReceiverTheScanCannotNameIsReported(string syntheticSource)
+    {
+        LoggerWriteScanner.WriteCallSite site = Assert.Single(LoggerWriteScanner.ScanText(syntheticSource, "synthetic/Log.cs"));
+
+        Assert.Contains(site, Unrecognised([site]));
     }
 
     /// <summary>
@@ -100,8 +146,9 @@ public sealed class TechnicalLogSourceRegistryArchitectureTests
             Assert.Contains(expected, sources);
         }
 
-        // All four receiver spellings in use, including the null-conditional one.
-        foreach (string receiver in new[] { "_logger", "logger", "bootstrapLogger" })
+        // Every receiver spelling in use, including the null-conditional one and the startup-failure catch's
+        // `(_logger ?? bootstrapLogger)` (App.xaml.cs, which the second scanner missed).
+        foreach (string receiver in new[] { "_logger", "logger", "bootstrapLogger", "(_logger ?? bootstrapLogger)" })
         {
             Assert.Contains(writes, write => write.Receiver == receiver);
         }
@@ -111,9 +158,10 @@ public sealed class TechnicalLogSourceRegistryArchitectureTests
             writes,
             write => write.Path == "src/SQCD.Agv.Wpf/WireToGateBusinessService.NewOperationGate.cs"
                 && write.Arguments[0].Contains("TryAdd(", StringComparison.Ordinal));
-        // 198 at #312's second review round, counted by grep on the raw text, not by this scanner:
-        // 188 `_logger.Write(` + 5 `logger.Write(` + 4 `_logger?.Write(` + 1 `bootstrapLogger.Write(`.
-        Assert.True(writes.Length >= 198, $"only {writes.Length} log writes found");
+        // 199 at #312's third review round, counted by grep on the raw text, not by this scanner: 188 `_logger.Write(`
+        // + 5 `logger.Write(` + 4 `_logger?.Write(` + 1 `bootstrapLogger.Write(` + 1 `(_logger ?? bootstrapLogger).Write(`.
+        // The second round's comment said 198 and missed the last one.
+        Assert.True(writes.Length >= 199, $"only {writes.Length} log writes found");
     }
 
     [Theory]
@@ -125,6 +173,10 @@ public sealed class TechnicalLogSourceRegistryArchitectureTests
     [InlineData("LogSeverity severity = LogSeverity.Warning;\n_logger.Write(severity, nameof(NotRegisteredAnywhere), \"x\");")]
     [InlineData("void Report(LogSeverity level) => logger.Write(level, nameof(NotRegisteredAnywhere), \"x\");")]
     [InlineData("_logger?.Write((LogSeverity)raw, nameof(NotRegisteredAnywhere), $\"a, b {x}, \\\"c\\\" // not a comment\");")]
+    // Second review of #312, W1: receivers that are not a bare name.
+    [InlineData("logger!.Write(LogSeverity.Information, nameof(NotRegisteredAnywhere), \"x\");")]
+    [InlineData("(_logger ?? bootstrapLogger).Write(LogSeverity.Error, nameof(NotRegisteredAnywhere), \"x\", exception);")]
+    [InlineData("this._logger.Write(LogSeverity.Information, nameof(NotRegisteredAnywhere), \"x\");")]
     public void TheScannerCatchesAnUnregisteredSourceInEveryShape(string syntheticSource)
     {
         LoggerWriteScanner.WriteCallSite[] writes = LoggerWriteScanner.ScanText(syntheticSource, "synthetic/Log.cs");
@@ -168,6 +220,26 @@ public sealed class TechnicalLogSourceRegistryArchitectureTests
             """;
 
         Assert.DoesNotContain(LoggerWriteScanner.ScanText(syntheticSource, "synthetic/Other.cs"), site => site.IsLoggerWrite);
+    }
+
+    /// <summary>Calls that are neither a logger write nor a plainly named known non-logger without a severity.</summary>
+    private static LoggerWriteScanner.WriteCallSite[] Unrecognised(IEnumerable<LoggerWriteScanner.WriteCallSite> sites) =>
+        sites
+            .Where(site => !site.IsLoggerWrite)
+            .Where(site => !site.ReceiverIsName
+                || !KnownNonLoggerReceivers.Contains(site.Receiver, StringComparer.Ordinal)
+                || (site.Arguments.Count > 0 && site.Arguments[0].Contains("LogSeverity.", StringComparison.Ordinal)))
+            .ToArray();
+
+    private static int CountOf(string text, string value)
+    {
+        int count = 0;
+        for (int at = text.IndexOf(value, StringComparison.Ordinal); at >= 0; at = text.IndexOf(value, at + 1, StringComparison.Ordinal))
+        {
+            count++;
+        }
+
+        return count;
     }
 
     private static LoggerWriteScanner.WriteCallSite[] LoggerWrites() =>

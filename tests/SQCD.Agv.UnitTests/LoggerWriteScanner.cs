@@ -17,6 +17,13 @@ namespace SQCD.Agv.UnitTests;
 /// other <c>.Write(</c> receiver must be on a short list of known non-loggers.
 /// </para>
 /// <para>
+/// <b>Every <c>.Write(</c> is found first and its receiver read backwards from the dot</b>, so a receiver that is not
+/// a bare name is read too (second review of #312): <c>logger!.Write(</c>, <c>_logger?.Write(</c>,
+/// <c>(_logger ?? bootstrapLogger).Write(</c> (<c>App.xaml.cs</c>'s startup-failure catch), <c>Get().Write(</c>.
+/// An expression receiver is a logger when every name in it ends in <c>logger</c>; one that is neither a logger nor a
+/// known non-logger is reported by the cross-check, not skipped.
+/// </para>
+/// <para>
 /// Literals and comments are read by <see cref="CSharpSourceLexer"/>, so a <c>//</c> or a comma inside a string cannot
 /// cut an argument. A file the lexer refuses (a raw string literal) is skipped only when it contains no
 /// <c>.Write(</c> call shape at all (read on the raw text, so even one inside a literal counts), and reported otherwise.
@@ -27,7 +34,11 @@ internal static class LoggerWriteScanner
     private const string CategoryPrefix = "OnboardTechnicalLogCategory.";
 
     private static readonly Regex WriteCall = new(
-        @"\b(?<receiver>[A-Za-z_][A-Za-z0-9_]*)\s*\??\s*\.\s*Write\s*\(",
+        @"\.\s*Write\s*\(",
+        RegexOptions.Compiled | RegexOptions.CultureInvariant);
+
+    private static readonly Regex Name = new(
+        @"[A-Za-z_][A-Za-z0-9_]*",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
     private static readonly Regex LoggerDeclaration = new(
@@ -42,10 +53,18 @@ internal static class LoggerWriteScanner
         @"^""(?<name>[^""\\]*)""$",
         RegexOptions.Compiled | RegexOptions.CultureInvariant);
 
-    /// <summary>One <c>.Write(</c> call: its receiver, and its arguments as written (comments blanked).</summary>
+    /// <summary>
+    /// One <c>.Write(</c> call: its receiver as written (a bare name, or a parenthesised or call expression, without a
+    /// trailing <c>?</c> or <c>!</c>), and its arguments as written (comments blanked).
+    /// </summary>
     internal sealed record WriteCallSite(string Path, int Line, string Receiver, IReadOnlyList<string> Arguments)
     {
-        public bool IsLoggerWrite => Receiver.EndsWith("logger", StringComparison.OrdinalIgnoreCase);
+        public bool ReceiverIsName => Name.Match(Receiver) is { Success: true } match && match.Length == Receiver.Length;
+
+        /// <summary>Every name in the receiver ends in <c>logger</c>: <c>_logger</c>, <c>(_logger ?? bootstrapLogger)</c>.</summary>
+        public bool IsLoggerWrite =>
+            Name.Matches(Receiver) is { Count: > 0 } names
+            && names.All(name => name.Value.EndsWith("logger", StringComparison.OrdinalIgnoreCase));
 
         public string Call => string.Join(", ", Arguments);
 
@@ -105,7 +124,7 @@ internal static class LoggerWriteScanner
             found.Add(new WriteCallSite(
                 path,
                 code[..match.Index].Count(character => character == '\n') + 1,
-                match.Groups["receiver"].Value,
+                ReadReceiver(code, match.Index),
                 spans.Select(span => kept[span.Start..span.End].Trim()).ToArray()));
         }
 
@@ -150,6 +169,55 @@ internal static class LoggerWriteScanner
             code = kept = string.Empty;
             return false;
         }
+    }
+
+    /// <summary>
+    /// The receiver ending just before the dot at <paramref name="dot"/>: a trailing <c>?</c> or <c>!</c> is dropped; a
+    /// closing bracket is matched back to its opening one, together with the name it calls if any (<c>Get()</c>);
+    /// otherwise the last name (<c>this._logger</c> reads as <c>_logger</c>). Literals are blanked already. An empty
+    /// result means the scan could not read it, which the cross-check reports.
+    /// </summary>
+    private static string ReadReceiver(string code, int dot)
+    {
+        int end = dot - 1;
+        while (end >= 0 && char.IsWhiteSpace(code[end]))
+        {
+            end--;
+        }
+
+        while (end >= 0 && code[end] is '?' or '!')
+        {
+            end--;
+        }
+
+        int start = end;
+        if (end >= 0 && code[end] is ')' or ']')
+        {
+            int depth = 0;
+            for (; start >= 0; start--)
+            {
+                if (code[start] is ')' or ']')
+                {
+                    depth++;
+                }
+                else if (code[start] is '(' or '[' && --depth == 0)
+                {
+                    break;
+                }
+            }
+
+            if (start < 0)
+            {
+                return string.Empty;
+            }
+        }
+
+        while (start > 0 && (char.IsLetterOrDigit(code[start - 1]) || code[start - 1] == '_'))
+        {
+            start--;
+        }
+
+        return start >= 0 && end >= start ? code[start..(end + 1)].Trim() : string.Empty;
     }
 
     /// <summary>

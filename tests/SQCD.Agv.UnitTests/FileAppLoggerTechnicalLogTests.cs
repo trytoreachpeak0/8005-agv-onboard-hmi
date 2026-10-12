@@ -83,6 +83,7 @@ public sealed class FileAppLoggerTechnicalLogTests : IDisposable
     /// <summary>
     /// 第一次写的时候清一次：31 天前那一天整天过期，删；30 天前那一天还有没满 30 天的条目，留；
     /// 同目录里一切不是 <c>agv-yyyyMMdd.log</c> 形状的东西，无论多旧，都不碰；子目录也不进。
+    /// 今天这份已在（同一天重启过），所以清理用的「现在」只被锚定到今天零点。
     /// </summary>
     [Fact]
     public void ThePurgeDeletesOnlyExpiredDailyTechnicalLogs()
@@ -92,8 +93,7 @@ public sealed class FileAppLoggerTechnicalLogTests : IDisposable
         string longExpired = Seed(OnboardTechnicalLogFileName.For(today.AddDays(-400)));
         string[] kept =
         [
-            Seed(OnboardTechnicalLogFileName.For(today.AddDays(-30))),
-            Seed(OnboardTechnicalLogFileName.For(today.AddDays(-1))),
+            .. SeedDays(-30, 0),
             Seed("hmi-state-" + Digits(today.AddDays(-90)) + ".ndjson"),
             Seed("control.err.log"),
             Seed("onboard.out.log"),
@@ -133,7 +133,7 @@ public sealed class FileAppLoggerTechnicalLogTests : IDisposable
     {
         ManualTime time = new(Noon);
         DateOnly today = DateOnly.FromDateTime(Noon.DateTime);
-        SeedDays(-29, -1);
+        SeedDays(-29, 0);
         FileAppLogger logger = NewLogger(time);
         logger.Write(LogSeverity.Information, "App", "第一天");
 
@@ -187,44 +187,89 @@ public sealed class FileAppLoggerTechnicalLogTests : IDisposable
         string[] real = SeedDays(-40, -1);
         DateTimeOffset jumped = Noon.AddDays(150);
 
-        NewLogger(new ManualTime(jumped)).Write(LogSeverity.Information, "App", "校时之前的第一行");
+        NewLogger(new ManualTime(jumped, real: Noon)).Write(LogSeverity.Information, "App", "校时之前的第一行");
 
         Assert.All(real, path => Assert.True(File.Exists(path), $"时钟前跳时删掉了真实日志：{path}"));
         Assert.Contains(
             LinesOf(jumped),
-            line => line.Contains("	Warning	LocalFault	FileAppLogger	", StringComparison.Ordinal)
-                && line.Contains("不连续", StringComparison.Ordinal));
+            line => line.Contains("\tWarning\tLocalFault\tFileAppLogger\t", StringComparison.Ordinal)
+                && line.Contains("相隔 151 天", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// 跳得不远（不足一周，连续性那一道放行）、开机第一行就跳：清理用的「现在」被锚定在最新一份日志那天，
+    /// 删的只是按真实时间确已过期的。真实日期接近 RTC 落点（约 2027-02）时，跳变就是这么小。
+    /// </summary>
+    [Fact]
+    public void ASmallJumpOnTheFirstLineDeletesOnlyWhatIsReallyExpired()
+    {
+        string[] real = SeedDays(-40, -1);
+
+        NewLogger(new ManualTime(Noon.AddDays(5), real: Noon)).Write(LogSeverity.Information, "App", "跳了五天");
+
+        Assert.All(real.Take(9), path => Assert.False(File.Exists(path), $"按真实时间已过期却没删：{path}"));
+        Assert.All(real.Skip(9), path => Assert.True(File.Exists(path), $"按真实时间未满 30 天却删了：{path}"));
+    }
+
+    /// <summary>
+    /// 上一次跳变留下了一份日期在未来的日志，这次开机又小跳：锚点不能取那份未来文件，否则「锚点＋运行时长」这道上界
+    /// 被抬到墙钟之上、形同虚设，小跳就会删掉未满 30 天的真实日志。
+    /// </summary>
+    [Fact]
+    public void AFutureFileLeftByAnEarlierJumpDoesNotMoveTheAnchor()
+    {
+        string[] real = SeedDays(-40, -1);
+        string leftByAnEarlierJump = Seed(OnboardTechnicalLogFileName.For(DateOnly.FromDateTime(Noon.DateTime).AddDays(150)));
+
+        NewLogger(new ManualTime(Noon.AddDays(5), real: Noon)).Write(LogSeverity.Information, "App", "又跳了五天");
+
+        Assert.All(real.Take(9), path => Assert.False(File.Exists(path), $"按真实时间已过期却没删：{path}"));
+        Assert.All(real.Skip(9), path => Assert.True(File.Exists(path), $"按真实时间未满 30 天却删了：{path}"));
+        Assert.True(File.Exists(leftByAnEarlierJump));
+    }
+
+    /// <summary>窗口里任意一段超过一周的空档都挡住清理，不只是保留期边界上那一段。</summary>
+    [Fact]
+    public void AGapLongerThanAWeekAnywhereBeforeTodayHoldsThePurge()
+    {
+        string[] old = SeedDays(-40, -32);
+        string[] recent = SeedDays(-20, 0);
+
+        NewLogger(new ManualTime(Noon)).Write(LogSeverity.Information, "App", "空档之后");
+
+        Assert.All(old.Concat(recent), path => Assert.True(File.Exists(path), path));
+        Assert.Contains(LinesOfToday(), line => line.Contains("相隔 12 天", StringComparison.Ordinal));
     }
 
     /// <summary>
     /// 校时一直失败、错的时钟跑过了午夜：昨天按错时钟写的那份成了「最新」，只比较「今天与最新一份」挡不住这一步。
-    /// 比较的是保留期边界两侧，所以仍然一份不删；时钟纠正回来后照常清理，按错时钟写出的那份留着。
+    /// 两道闸都还在：锚点没动（同一进程），窗口里有空档；时钟纠正回来后照常清理，按错时钟写出的那份留着。
     /// </summary>
     [Fact]
     public void AClockThatStaysWrongPastMidnightStillPurgesNothingAndThePurgeResumesOnceItIsCorrected()
     {
         string[] real = SeedDays(-40, -1);
-        ManualTime time = new(Noon.AddDays(150));
+        ManualTime time = new(Noon.AddDays(150), real: Noon);
         FileAppLogger logger = NewLogger(time);
         logger.Write(LogSeverity.Information, "App", "错时钟第一天");
 
-        time.Now = Noon.AddDays(151);
+        time.Set(real: Noon.AddDays(1), wall: Noon.AddDays(151));
         logger.Write(LogSeverity.Information, "App", "错时钟第二天");
         Assert.All(real, path => Assert.True(File.Exists(path), $"错时钟跨天后删掉了真实日志：{path}"));
 
-        time.Now = Noon;
+        time.Set(real: Noon.AddDays(1), wall: Noon.AddDays(1));
         logger.Write(LogSeverity.Information, "App", "时钟已纠正");
         Assert.All(real.Take(10), path => Assert.False(File.Exists(path), $"纠正后该删没删：{path}"));
         Assert.All(real.Skip(10), path => Assert.True(File.Exists(path), $"纠正后不该删：{path}"));
         Assert.True(File.Exists(Path.Combine(_directory, OnboardTechnicalLogFileName.For(DateOnly.FromDateTime(Noon.AddDays(150).DateTime)))));
     }
 
-    /// <summary>边界两侧连续时照常清理：相隔两天（周末停机）仍算连续。</summary>
+    /// <summary>相隔两天（周末停机）仍算连续，照常清理。</summary>
     [Fact]
     public void ATwoDayGapAcrossTheBoundaryStillPurges()
     {
         string[] old = SeedDays(-40, -31);
-        string[] recent = SeedDays(-29, -1);
+        string[] recent = SeedDays(-29, 0);
 
         NewLogger(new ManualTime(Noon)).Write(LogSeverity.Information, "App", "周末之后");
 
@@ -240,7 +285,7 @@ public sealed class FileAppLoggerTechnicalLogTests : IDisposable
     public void AFarFutureDailyFileNeitherExpiresNorStopsThePurge()
     {
         string[] old = SeedDays(-40, -31);
-        string[] recent = SeedDays(-30, -1);
+        string[] recent = SeedDays(-30, 0);
         string farFuture = Seed("agv-99991231.log");
 
         NewLogger(new ManualTime(Noon)).Write(LogSeverity.Information, "App", "远未来文件");
@@ -266,9 +311,9 @@ public sealed class FileAppLoggerTechnicalLogTests : IDisposable
         logger.Write(LogSeverity.Information, "App", "第二条");
 
         string[] lines = File.ReadAllLines(Path.Combine(unexpanded, OnboardTechnicalLogFileName.For(DateOnly.FromDateTime(Noon.DateTime))));
-        Assert.Single(lines, line => line.Contains("	LocalFault	FileAppLogger	", StringComparison.Ordinal)
+        Assert.Single(lines, line => line.Contains("\tLocalFault\tFileAppLogger\t", StringComparison.Ordinal)
             && line.Contains('%', StringComparison.Ordinal));
-        Assert.Contains(lines, line => line.EndsWith("	App	第一条", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.EndsWith("\tApp\t第一条", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -338,6 +383,95 @@ public sealed class FileAppLoggerTechnicalLogTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// 八种使用节奏，各跑 200 天、每个用到的日子中午与晚上各写一次、每天开机一次（onboard-hmi#312 第二轮审查）。
+    /// </summary>
+    /// <remarks>
+    /// <list type="table">
+    /// <item><term>A</term><description>每天用</description></item>
+    /// <item><term>B</term><description>周一到周五</description></item>
+    /// <item><term>C</term><description>中间停 60 天</description></item>
+    /// <item><term>D</term><description>每 3 天用一次</description></item>
+    /// <item><term>E</term><description>每周一、周四（备用车的节奏）</description></item>
+    /// <item><term>F</term><description>第 100、101 天墙钟快 140 天（RTC 断电，校时失败两天）</description></item>
+    /// <item><term>G</term><description>第 100、101 天墙钟快 20 天</description></item>
+    /// <item><term>H</term><description>第 100 天墙钟快 20 天</description></item>
+    /// </list>
+    /// 第一轮的规则在 D、E 下一份都不删，在 G、H 下删掉了 11 天前的日志。这里要求三件事都成立：真删过；被删的
+    /// 每一份按真实日期都满 31 天（那一天最晚的一条也满 30 天）；最后留着的最旧一份不超过 40 天。
+    /// </remarks>
+    [Theory]
+    [InlineData("A")]
+    [InlineData("B")]
+    [InlineData("C")]
+    [InlineData("D")]
+    [InlineData("E")]
+    [InlineData("F")]
+    [InlineData("G")]
+    [InlineData("H")]
+    public void EveryUsagePatternKeepsThirtyDaysAndStillPurges(string pattern)
+    {
+        DateTimeOffset start = new(2026, 10, 5, 0, 0, 0, Offset); // a Monday
+        ManualTime time = new(start);
+        int deletions = 0;
+        int youngestDeleted = int.MaxValue;
+        DateOnly lastRealDay = default;
+        HashSet<DateOnly> present = [];
+        for (int day = 0; day < 200; day++)
+        {
+            DateTimeOffset midnight = start.AddDays(day);
+            if (!IsUsed(pattern, day, midnight.DayOfWeek))
+            {
+                continue;
+            }
+
+            TimeSpan jump = JumpOn(pattern, day);
+            FileAppLogger logger = NewLogger(time);
+            foreach (DateTimeOffset at in new[] { midnight.AddHours(12), midnight.AddHours(20) })
+            {
+                time.Set(real: at, wall: at + jump);
+                logger.Write(LogSeverity.Information, "App", "模拟");
+                lastRealDay = DateOnly.FromDateTime(at.DateTime);
+                HashSet<DateOnly> now = DailyFileDays();
+                foreach (DateOnly gone in present.Except(now).Where(gone => gone <= lastRealDay))
+                {
+                    deletions++;
+                    youngestDeleted = Math.Min(youngestDeleted, lastRealDay.DayNumber - gone.DayNumber);
+                }
+
+                present = now;
+            }
+        }
+
+        int oldestRetained = present.Where(day => day <= lastRealDay).Max(day => lastRealDay.DayNumber - day.DayNumber);
+        Assert.True(deletions > 0, $"{pattern}：200 天里一份都没删。");
+        Assert.True(youngestDeleted >= 31, $"{pattern}：删掉了按真实日期只有 {youngestDeleted} 天的日志。");
+        Assert.True(oldestRetained <= 40, $"{pattern}：最后还留着 {oldestRetained} 天前的日志。");
+    }
+
+    private static bool IsUsed(string pattern, int day, DayOfWeek weekday) => pattern switch
+    {
+        "B" => weekday is not (DayOfWeek.Saturday or DayOfWeek.Sunday),
+        "C" => day is < 60 or >= 120,
+        "D" => day % 3 == 0,
+        "E" => weekday is DayOfWeek.Monday or DayOfWeek.Thursday,
+        _ => true
+    };
+
+    private static TimeSpan JumpOn(string pattern, int day) => (pattern, day) switch
+    {
+        ("F", 100 or 101) => TimeSpan.FromDays(140),
+        ("G", 100 or 101) => TimeSpan.FromDays(20),
+        ("H", 100) => TimeSpan.FromDays(20),
+        _ => TimeSpan.Zero
+    };
+
+    private HashSet<DateOnly> DailyFileDays() =>
+        Directory.EnumerateFiles(_directory, "agv-*.log")
+            .Select(path => OnboardTechnicalLogFileName.TryParseDay(Path.GetFileName(path), out DateOnly day) ? day : (DateOnly?)null)
+            .OfType<DateOnly>()
+            .ToHashSet();
+
     private FileAppLogger NewLogger(TimeProvider time, OnboardTechnicalLogRetentionPolicy? retention = null) =>
         new(new LogSettings { Directory = _directory }, time, retention);
 
@@ -368,15 +502,42 @@ public sealed class FileAppLoggerTechnicalLogTests : IDisposable
 
     private string SingleLineOfToday() => Assert.Single(LinesOfToday());
 
-    /// <summary>本地时区固定为 +08:00，与车上一致，也让文件名的「哪一天」不随跑测试的机器变。</summary>
-    private sealed class ManualTime(DateTimeOffset now) : TimeProvider
+    /// <summary>
+    /// 两个钟：墙钟（文件名与日志行用它，会被 RTC 故障带跳）和单调时钟（真实流逝的时间，跳变带不动它）。
+    /// 本地时区固定为 +08:00，与车上一致，也让文件名的「哪一天」不随跑测试的机器变。
+    /// </summary>
+    private sealed class ManualTime(DateTimeOffset now, DateTimeOffset? real = null) : TimeProvider
     {
         private static readonly TimeZoneInfo Zone =
             TimeZoneInfo.CreateCustomTimeZone("hmi312+08", Offset, "hmi312+08", "hmi312+08");
 
-        public DateTimeOffset Now { get; set; } = now;
+        private DateTimeOffset _wall = now;
 
-        public override DateTimeOffset GetUtcNow() => Now.ToUniversalTime();
+        /// <summary>设它等于时间正常流逝：两个钟一起走。</summary>
+        public DateTimeOffset Now
+        {
+            get => _wall;
+            set
+            {
+                Real += value - _wall;
+                _wall = value;
+            }
+        }
+
+        public DateTimeOffset Real { get; private set; } = real ?? now;
+
+        /// <summary>分别设两个钟，用来模拟墙钟跳变。</summary>
+        public void Set(DateTimeOffset real, DateTimeOffset wall)
+        {
+            Real = real;
+            _wall = wall;
+        }
+
+        public override DateTimeOffset GetUtcNow() => _wall.ToUniversalTime();
+
+        public override long GetTimestamp() => Real.UtcTicks;
+
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
 
         public override TimeZoneInfo LocalTimeZone => Zone;
     }

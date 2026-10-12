@@ -48,6 +48,7 @@ public sealed class ExplicitTechnicalLogCategoryPinTests
         (Business, "出发前安全检查的用途无法识别", OnboardTechnicalLogCategory.SafetyDecision),
         (Business, "出发前安全检查已过期", OnboardTechnicalLogCategory.SafetyDecision),
         (Business, "扣车解除检查", OnboardTechnicalLogCategory.SafetyDecision),
+        ("src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs", "活动开锁集里的仓门未能确认已关好", OnboardTechnicalLogCategory.SafetyDecision),
         ("src/SQCD.Agv.Wpf/App.xaml.cs", "车载端启动：", OnboardTechnicalLogCategory.RestartRecovery),
         ("src/SQCD.Agv.Wpf/App.xaml.cs", "DescribeForTechnicalLog()", OnboardTechnicalLogCategory.Configuration),
         ("src/SQCD.Agv.Wpf/StartupConfiguration.cs", "nameof(App), line", OnboardTechnicalLogCategory.Configuration),
@@ -104,6 +105,28 @@ public sealed class ExplicitTechnicalLogCategoryPinTests
         Assert.Contains("logging.directory=", line, StringComparison.Ordinal);
         Assert.DoesNotContain("CREDENTIAL", line, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("PROOF", line, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// With the safety projection disabled the endpoint is not validated, so whatever its path, query or user info
+    /// carry would reach the log unchecked; only its origin is written.
+    /// </summary>
+    [Fact]
+    public void TheEffectiveConfigurationLineWritesOnlyTheEndpointsOrigin()
+    {
+        string line = new SQCD.Agv.Infrastructure.OnboardSettings
+        {
+            VehicleSafety = new SQCD.Agv.Infrastructure.VehicleSafetySettings
+            {
+                Enabled = false,
+                Endpoint = "http://operator:secret@10.0.0.5:58007/api/onboard/v1/vehicle-safety?vehicleKey=VK-02&token=abc"
+            }
+        }.DescribeForTechnicalLog();
+
+        Assert.Contains("vehicleSafety.endpoint=http://10.0.0.5:58007，", line, StringComparison.Ordinal);
+        Assert.DoesNotContain("secret", line, StringComparison.Ordinal);
+        Assert.DoesNotContain("token", line, StringComparison.Ordinal);
+        Assert.DoesNotContain("VK-02", line, StringComparison.Ordinal);
     }
 
     private static bool Matches(LoggerWriteScanner.WriteCallSite site, string fragment) =>

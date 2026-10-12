@@ -32,13 +32,20 @@ public sealed class OnboardSettings
     /// </summary>
     /// <remarks>
     /// 只写身份、开关、地址与路径。凭据只经环境变量传入，这里连环境变量名也不写：这一行会被拷回控制端、贴进证据。
+    /// 安全投影端点只写协议、主机与端口：投影未启用时 <c>Validate</c> 不校验它，路径、查询串与用户信息里有什么
+    /// 都不经检查（onboard-hmi#312 第二轮审查）。
     /// </remarks>
     public string DescribeForTechnicalLog() =>
         $"生效配置：agvId={AgvId}，onboardInstanceId={OnboardInstanceId}，environment={Environment}，"
         + $"wireToGate.enabled={WireToGate.Enabled}，wireToGate.server={WireToGate.Host}:{WireToGate.Port}，"
         + $"wireToGate.recoveryResumeEnabled={WireToGate.RecoveryResumeEnabled}，wireToGate.journalPath={WireToGate.JournalPath}，"
-        + $"vehicleSafety.enabled={VehicleSafety.Enabled}，vehicleSafety.endpoint={VehicleSafety.Endpoint}，"
+        + $"vehicleSafety.enabled={VehicleSafety.Enabled}，vehicleSafety.endpoint={OriginOf(VehicleSafety.Endpoint)}，"
         + $"ioModule={IoModule.Host}:{IoModule.Port}，logging.directory={Logging.Directory}。";
+
+    private static string OriginOf(string endpoint) =>
+        Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? uri)
+            ? $"{uri.Scheme}://{uri.Host}:{uri.Port}"
+            : "（不是绝对地址）";
 
     public static OnboardSettings Load(string path)
     {
