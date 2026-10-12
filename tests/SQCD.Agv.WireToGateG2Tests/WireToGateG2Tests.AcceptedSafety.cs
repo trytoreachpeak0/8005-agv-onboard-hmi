@@ -98,12 +98,13 @@ public sealed partial class WireToGateG2Tests
     }
 
     /// <summary>
-    /// A send of a change already acknowledged returns the row on file without sending it, and what is registered is
-    /// that row. The row and the arguments cannot differ, and that premise is pinned here too: a different summary under
-    /// the same key is refused before anything is sent.
+    /// A send of a change already acknowledged returns the row on file without sending it, and what is registered is what
+    /// the server took. The client registers the call's arguments rather than reading the row back (so the acknowledgement
+    /// is published as soon as before onboard-hmi#314); that stands for the row only because the two cannot differ, and
+    /// this pins it: a different summary under the same key is refused before anything is sent.
     /// </summary>
     [Fact]
-    public async Task AResendOfAnAcknowledgedChangeRegistersTheRowOnFileAndADifferentSummaryUnderItsKeyIsRefused()
+    public async Task AResendOfAnAcknowledgedChangeRegistersWhatTheServerTookAndADifferentSummaryUnderItsKeyIsRefused()
     {
         CancellationToken testToken = TestContext.Current.CancellationToken;
         await using FakeControlServer server = new(IPAddress.Loopback) { SendReadinessAfterRecoveryAck = true };

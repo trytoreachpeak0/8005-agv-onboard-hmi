@@ -769,7 +769,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
         string deduplicationKey = SafetyStateChangedDeduplicationKey(safetyStateVersion, observedAt);
         RememberSafety(safetyStateVersion, safety);
-        WireToGateDurableMessage stored = await SendDurableRowAsync(
+        string messageId = await SendDurableCoreAsync(
             "SafetyStateChanged",
             deduplicationKey,
             StableUuid(deduplicationKey),
@@ -782,12 +782,17 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             allowRecoveryRequired: true,
             cancellationToken).ConfigureAwait(false);
         AdvanceSafetyStateVersion(safetyStateVersion);
-        // The row on file, not this call's arguments: an already acknowledged key returns the stored row unsent. The two
-        // say the same -- StoreDurableAsync refuses a different payload under the key as BUSINESS_ID_CONTENT_CONFLICT --
-        // but the row is what the server took.
-        RegisterAcceptedSafetyChange(stored.WireLine, WireToGateAcceptedSafetySource.SafetyStateChanged);
+        // This call's arguments stand for the row on file: an already acknowledged key returns the stored row unsent,
+        // and StoreDurableAsync refuses a different payload under the key (BUSINESS_ID_CONTENT_CONFLICT), so the two say
+        // the same. Registered from the arguments rather than by reading the row back, so the acknowledgement reaches
+        // PublishAcceptedVersions as soon as it did before onboard-hmi#314: a record and a compare-exchange, no parsing.
+        RegisterAcceptedSafety(() => new WireToGateAcceptedSafety(
+            safetyStateVersion,
+            Volatile.Read(ref _current).SessionGeneration,
+            safety,
+            WireToGateAcceptedSafetySource.SafetyStateChanged));
         PublishAcceptedVersions("SafetyStateChanged-ack");
-        return stored.MessageId;
+        return messageId;
     }
 
     /// <summary>
@@ -1733,27 +1738,6 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         string? correlationId,
         object payload,
         bool allowRecoveryRequired,
-        CancellationToken cancellationToken) =>
-        (await SendDurableRowAsync(
-            messageType,
-            deduplicationKey,
-            messageId,
-            correlationId,
-            payload,
-            allowRecoveryRequired,
-            cancellationToken).ConfigureAwait(false)).MessageId;
-
-    /// <summary>
-    /// <see cref="SendDurableCoreAsync"/>, returning the row on file instead of its message id: the row a send found
-    /// acknowledged already is returned unsent (onboard-hmi#314 registers what that row says).
-    /// </summary>
-    private async Task<WireToGateDurableMessage> SendDurableRowAsync(
-        string messageType,
-        string deduplicationKey,
-        string messageId,
-        string? correlationId,
-        object payload,
-        bool allowRecoveryRequired,
         CancellationToken cancellationToken)
     {
         ThrowIfDisposed();
@@ -1812,7 +1796,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         // effect or another message identity.
         if (stored.Acknowledged)
         {
-            return stored;
+            return stored.MessageId;
         }
 
         TaskCompletionSource<WireToGateEnvelope> response = new(
@@ -1857,7 +1841,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 stored.MessageId,
                 stored.ContentSha256,
                 cancellationToken).ConfigureAwait(false);
-            return stored;
+            return stored.MessageId;
         }
         finally
         {
@@ -5058,22 +5042,6 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         }
     }
 
-    /// <summary>Registers the summary of a stored <c>SafetyStateChanged</c> line; see <see cref="RegisterAcceptedSafety"/>.</summary>
-    private void RegisterAcceptedSafetyChange(string wireLine, WireToGateAcceptedSafetySource source) =>
-        RegisterAcceptedSafety(() =>
-        {
-            WireToGateEnvelope envelope = WireToGateProtocolSerializer.DeserializeAndValidate(
-                wireLine.TrimEnd('\r', '\n'),
-                _options.AgvId);
-            SafetyStateChangedPayload payload =
-                WireToGateProtocolSerializer.DeserializePayload<SafetyStateChangedPayload>(envelope);
-            return new WireToGateAcceptedSafety(
-                payload.SafetyStateVersion,
-                envelope.SessionGeneration,
-                payload.Safety,
-                source);
-        });
-
     /// <summary>Remembers the summary built for a version, before it is sent; see <see cref="RegisterAcceptedSafety"/>.</summary>
     private void RememberSafety(long safetyStateVersion, WireToGateSafetySummaryPayload safety)
     {
@@ -5163,7 +5131,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         row.WireLine.TrimEnd('\r', '\n'),
                         _options.AgvId));
                 AdvanceSafetyStateVersion(payload.SafetyStateVersion);
-                RegisterAcceptedSafetyChange(row.WireLine, WireToGateAcceptedSafetySource.LateSafetyStateChangedAck);
+                RegisterAcceptedSafety(() => new WireToGateAcceptedSafety(
+                    payload.SafetyStateVersion,
+                    Volatile.Read(ref _current).SessionGeneration,
+                    payload.Safety,
+                    WireToGateAcceptedSafetySource.LateSafetyStateChangedAck));
                 PublishAcceptedVersions("SafetyStateChanged-late-ack");
             }
         }

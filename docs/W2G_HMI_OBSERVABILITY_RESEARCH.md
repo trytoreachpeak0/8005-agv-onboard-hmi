@@ -359,10 +359,17 @@ A1 与 A2 的差别：
       - 所以「版本号→摘要」**在构造摘要时、发送之前就记下**（`SafetyStateChanged`、握手快照、按请求快照三处，保留最近 16 个），
         不是在确认之后才记：否则 `:4957` 几乎总是查不到。查到就用；查不到（服务端报了一个本机从没构造过的版本）就登记摘要未知，
         绝不拿一份别的版本的摘要顶上（用例 `AReadinessReportingAVersionNeverBuiltHereLeavesTheSummaryUnknown`）。
-      - 有摘要的五个登记点（`:778`、`:969`、`:2386`、`:2734`、`:5043`）用手里的摘要登记；`:778` 所在的发送方法在「此前已送达」时
-        提前返回存档的那一行（`:1775-1778`），这时登记的是**存档的那一行**里的摘要。读到的：存档行与本次参数在 JSON 上恒等，
-        因为同一去重键下载荷不同会被 `StoreDurableAsync` 以 `BUSINESS_ID_CONTENT_CONFLICT` 拒绝（`:1984-2009`）；这条前提由
-        `AResendOfAnAcknowledgedChangeRegistersTheRowOnFileAndADifferentSummaryUnderItsKeyIsRefused` 钉住。
+      - 有摘要的五个登记点（`:778`、`:969`、`:2386`、`:2734`、`:5043`）用手里的摘要登记。`:778` 所在的发送方法在「此前已送达」时
+        提前返回存档的那一行（`:1775-1778`）；本节原先要求这时登记**存档那一行**里的摘要，实现改为登记本次调用的参数（调度
+        2026-10-12 批准的偏离）。理由：读到的，存档行与本次参数在 JSON 上恒等，因为同一去重键下载荷不同会被 `StoreDurableAsync`
+        以 `BUSINESS_ID_CONTENT_CONFLICT` 拒绝（`:1984-2009`），这条前提由
+        `AResendOfAnAcknowledgedChangeRegistersWhatTheServerTookAndADifferentSummaryUnderItsKeyIsRefused` 钉住；而回读存档行要在
+        每次确认之后、`PublishAcceptedVersions` 之前多做一次整行反序列化，第一版这样实现时，发出消息的逐字节对照里候选独有的
+        序列明显多于基线独有（见 `evidence/hmi314/README.md`），推的机理正是这段多出的开销改变了竞态的先后。`:5043` 同理直接用
+        原有代码已经解析出的载荷，不再解析第二遍。登记记录在原位置（推进版本号之后、发布之前），只做一次记录分配与一次 CAS：
+        放到发布之后会出现「已发布新号、未登记」的窗口——会话里的判断（按请求快照、握手选号 `:906-956`、就绪校验）读的都是
+        `_acceptedSafetyStateVersion` 而不读登记器，所以窗口不改变会话行为，但窗口里构造的快照会读到旧记录，且登记本身不置脏
+        标记，要等心跳才更新，所以不挪。
       - 每个登记点整体 `try/catch`，失败只记一行会话诊断、不影响发送；会话诊断本来就经 `WireToGateSessionService` 落到文件日志，
         不新增日志来源。
       这是推荐方案里唯一一处碰到 `SQCD.Agv.Infrastructure` 的改动。

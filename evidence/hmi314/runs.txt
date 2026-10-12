@@ -37,3 +37,17 @@ d7cd011-u17-run7.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, T
 d7cd011-u17-run8.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 19 s
 d7cd011-u17-run9.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 15 s
 d7cd011-u17-run10.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 23 s
+
+# 补跑（af19f3e06，11 条）与合并后
+af19f3e-supp-run1.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 18 s
+af19f3e-supp-run2.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 17 s
+af19f3e-supp-run3.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 16 s
+af19f3e-supp-run4.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 20 s
+af19f3e-supp-run5.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 17 s
+af19f3e-supp-run6.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 16 s
+af19f3e-supp-run7.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 20 s
+af19f3e-supp-run8.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 17 s
+af19f3e-supp-run9.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 18 s
+af19f3e-supp-run10.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 17 s
+pm-unit.log: Passed!  - Failed:     0, Passed:  1111, Skipped:     0, Total:  1111, Duration: 21 s
+pm-g2.log: Passed!  - Failed:     0, Passed:    51, Skipped:     0, Total:    51, Duration: 5 s
