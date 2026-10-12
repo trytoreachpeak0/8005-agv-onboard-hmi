@@ -51,3 +51,30 @@ af19f3e-supp-run9.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, 
 af19f3e-supp-run10.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 17 s
 pm-unit.log: Passed!  - Failed:     0, Passed:  1111, Skipped:     0, Total:  1111, Duration: 21 s
 pm-g2.log: Passed!  - Failed:     0, Passed:    51, Skipped:     0, Total:    51, Duration: 5 s
+
+# 候选 41a6d31（cherry-pick 于 d7cd011，src 与 41295b0 相同）
+41a6d31-u17-run1.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 19 s
+41a6d31-u17-run2.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 18 s
+41a6d31-u17-run3.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 20 s
+41a6d31-u17-run4.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 17 s
+41a6d31-u17-run5.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 20 s
+41a6d31-u17-run6.log: Failed!  - Failed:     1, Passed:    18, Skipped:     0, Total:    19, Duration: 20 s
+41a6d31-u17-run7.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 19 s
+41a6d31-u17-run8.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 16 s
+41a6d31-u17-run9.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 16 s
+41a6d31-u17-run10.log: Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19, Duration: 15 s
+41a6d31-u17-run2-void.log: Failed!  - Failed:     1, Passed:    18, Skipped:     0, Total:    19, Duration: 18 s
+41a6d31-u17-run4-void.log: Failed!  - Failed:     1, Passed:    18, Skipped:     0, Total:    19, Duration: 18 s
+41a6d31-supp-run1.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 16 s
+41a6d31-supp-run2.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 15 s
+41a6d31-supp-run3.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 16 s
+41a6d31-supp-run4.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 16 s
+41a6d31-supp-run5.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 17 s
+41a6d31-supp-run6.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 16 s
+41a6d31-supp-run7.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 16 s
+41a6d31-supp-run8.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 16 s
+41a6d31-supp-run9.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 16 s
+41a6d31-supp-run10.log: Passed!  - Failed:     0, Passed:    11, Skipped:     0, Total:    11, Duration: 15 s
+
+# 区分实验（单条交错，只跑 EveryLoadedDemandCanStillBeHandedOffAfterAReconnectAndARestart；20:41:21-22:25:07）
+runs with exit=0 total=1: 90
