@@ -267,7 +267,7 @@ public sealed class WireToGateStationClearanceTests
             "_viewModel?.StationClearance is not { Prompt: { } prompt, ConfirmationText: var confirmationText }",
             handler,
             StringComparison.Ordinal);
-        Assert.Contains("MessageBox.Show(\n                confirmationText,", handler, StringComparison.Ordinal);
+        Assert.Contains("ModalDialogs.Show(\n                confirmationText,", handler, StringComparison.Ordinal);
         Assert.Contains("_viewModel.ConfirmStationClearanceAsync(prompt)", handler, StringComparison.Ordinal);
     }
 
