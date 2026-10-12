@@ -101,6 +101,7 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(harness.ViewModel.CanSubmit, InputOf(screen, "ScanTextBox").Enabled);
         Assert.All(RecoveryEntryButtons, key => Assert.False(ButtonOf(screen, key).Enabled));
         AssertCarriesNone(screen, "SUBLOT-A", "SUBLOT-B");
+        AssertCarriesNoGuidanceOrRecordText(harness, screen);
     }
 
     /// <summary>

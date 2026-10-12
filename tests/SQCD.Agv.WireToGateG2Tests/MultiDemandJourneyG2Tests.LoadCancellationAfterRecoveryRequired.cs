@@ -113,5 +113,6 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.True(one.IsKnown && one.HasCargo && one.IsLocked);
         Assert.False(InputOf(recovery, "RecoveryReason").HasText);
         AssertCarriesNone(recovery, "SUBLOT-A", "SUBLOT-B");
+        AssertCarriesNoGuidanceOrRecordText(harness, recovery);
     }
 }

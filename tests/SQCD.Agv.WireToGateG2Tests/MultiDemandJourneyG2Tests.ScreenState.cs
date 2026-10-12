@@ -45,9 +45,34 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// </summary>
     private static void AssertCarriesNone(HmiScreenState screen, params string[] secrets)
     {
-        string written = JsonSerializer.Serialize(screen);
+        string written = JsonSerializer.Serialize(screen, ReadableJson);
         Assert.All(secrets, secret => Assert.DoesNotContain(secret, written, StringComparison.Ordinal));
     }
+
+    /// <summary>
+    /// The departure from research section 4.1 the coordinator decided on 2026-10-12: the banner's guidance line and the
+    /// operator record's messages are not in the snapshot, because both can carry a sublot or text the operator typed.
+    /// Checked against the text the screen shows at that moment, not a fixture: the guidance line (unless it is the
+    /// operator notice, which is recorded on purpose, or the same words as the state line) and every record message.
+    /// </summary>
+    private static void AssertCarriesNoGuidanceOrRecordText(Harness harness, HmiScreenState screen)
+    {
+        string written = JsonSerializer.Serialize(screen, ReadableJson);
+        string guidance = harness.OnUi(() => harness.ViewModel.Guidance);
+        string[] shown = [.. harness.LogsSnapshot().Select(line => line.Message).Append(guidance)
+            .Where(text => text.Length > 0
+                && text != screen.OperatorNotice?.Text
+                && text != screen.Banner.StateText)];
+
+        Assert.NotEmpty(shown);
+        Assert.All(shown, text => Assert.DoesNotContain(text, written, StringComparison.Ordinal));
+    }
+
+    /// <summary>Unescaped, so a search for Chinese text finds it if it is there.</summary>
+    private static readonly JsonSerializerOptions ReadableJson = new()
+    {
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
 
     /// <summary>
     /// Research section 5, T1a: one measurement of the build in the G2 harness. The number is reported, not judged --
