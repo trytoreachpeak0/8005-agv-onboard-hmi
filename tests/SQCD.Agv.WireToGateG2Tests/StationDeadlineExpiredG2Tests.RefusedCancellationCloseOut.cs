@@ -60,6 +60,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
         harness.Io.CloseDoor(0, cargo: false);
         _ = await cancelling;
         await harness.WaitForInboundAsync("LoadCancellationResult", token);
+        // The premise above, pinned: the refused result is the ALL_EMPTY one. An UNKNOWN cancellation is refused and closed
+        // out the same way, so without this a run whose slot wait ran out passed on the other path (8005-agv-onboard-hmi#331).
+        AssertRefusedResultAllEmpty(harness);
         await Harness.WaitUntilAsync(
             () => harness.Business.CanCloseConflictedRecoveryAfterReview,
             "the refused cancellation to wait for a maintainer's manual check",
@@ -251,6 +254,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
         string attempt = harness.ReadRecoveryState(token).RecoveryVector!.SlotOperationAttemptId!;
         harness.Io.CloseDoor(0, cargo: false);
         _ = await cancelling;
+        await harness.WaitForInboundAsync("LoadCancellationResult", token);
+        AssertRefusedResultAllEmpty(harness);
         await Harness.WaitUntilAsync(
             () => harness.Business.CanCloseConflictedRecoveryAfterReview,
             "the refused cancellation to wait for a maintainer's manual check",
@@ -259,6 +264,12 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.Equal(attempt, harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId);
         return attempt;
     }
+
+    /// <summary>The one cancellation result the server refused is the ALL_EMPTY the emptied, shut door makes.</summary>
+    private static void AssertRefusedResultAllEmpty(Harness harness) =>
+        Assert.Equal(
+            "ALL_EMPTY",
+            harness.SingleResult("LoadCancellationResult").GetProperty("overallOutcome").GetString());
 
     /// <summary>The restore's line owing the recovery entry for an unfinished operation, counted.</summary>
     private static int RecoveryEntryLinesOwed(Harness harness) =>
