@@ -11,8 +11,10 @@ namespace SQCD.Agv.Wpf.ScreenState;
 /// <remarks>
 /// <para>
 /// <b>Same build, same values.</b> Everything but <see cref="AcceptedSafety"/> is written on the dispatcher thread in
-/// the same work items that write the values it explains, and the builder reads it there too, so the business value and
-/// the final value of an entry come from one refresh. <see cref="AcceptedSafety"/> lives in the session client and is
+/// the same work items that write the values it explains, and the builder reads it there too. An entry's business value
+/// and final value come from one work item except while latched: a controller snapshot then writes nine entries false
+/// without reading the business, so their business value is as of the last work item that did, and
+/// <see cref="HmiRecoveryEntryState.OfferFromLastRefresh"/> says which. <see cref="AcceptedSafety"/> lives in the session client and is
 /// written on its threads: it is read as one record, so its version and summary always belong together, but it is not
 /// of the same instant as the rest; its <see cref="HmiAcceptedSafetyState.SessionGeneration"/> says which session.
 /// </para>
@@ -62,17 +64,31 @@ public sealed record HmiSlotOperationState(
     bool HasOperationGuidance);
 
 /// <summary>
-/// One recovery entry: what the business offered, read in the refresh that wrote <see cref="Final"/>, and the final
-/// value. Where the two differ the latch gate closed it.
+/// One recovery entry: what the business offered and the final value. Where the two differ the latch gate closed it --
+/// but only when <see cref="OfferFromLastRefresh"/> holds is the business value of the same refresh as the final one.
 /// </summary>
 /// <param name="Entry">The view-model property holding <see cref="Final"/>, as XAML and the button table name it.</param>
 /// <param name="OfferedByBusiness">Null before the entry's first refresh.</param>
-/// <param name="OfferPath">The refresh path that read <see cref="OfferedByBusiness"/>.</param>
+/// <param name="OfferPath">
+/// The method that read <see cref="OfferedByBusiness"/>. The three forced-isolation entries always name
+/// <c>RefreshForcedIsolationCore</c>, which both refresh paths call, so for them it does not tell the paths apart. The
+/// two paths' business criteria are not all the same: the presentation path offers <c>CanRequestWireToGateRecovery</c>
+/// only while the slot operation's stage is <c>RecoveryRequired</c>, the input path without that condition; while
+/// latched only the input path reads it, so the value then is the input path's.
+/// </param>
+/// <param name="OfferFromLastRefresh">
+/// Whether <see cref="OfferedByBusiness"/> was read in the last work item that wrote <see cref="Final"/> (an input
+/// refresh or a controller snapshot); null before the first. False only while latched, for the nine entries a controller
+/// snapshot writes without reading the business: their business value is as of an earlier work item, and a
+/// business-true, final-false pair then does not show the gate closing what the business offers now. The load
+/// cancellation is read in every work item, latched or not.
+/// </param>
 /// <param name="OfferedBeforeAnySublot">Load cancellation only: its "before any sublot" half, which the latch leaves open.</param>
 public sealed record HmiRecoveryEntryState(
     string Entry,
     bool? OfferedByBusiness,
     string? OfferPath,
+    bool? OfferFromLastRefresh,
     bool? OfferedBeforeAnySublot,
     bool Final);
 

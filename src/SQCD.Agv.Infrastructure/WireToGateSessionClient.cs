@@ -769,6 +769,9 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
 
         string deduplicationKey = SafetyStateChangedDeduplicationKey(safetyStateVersion, observedAt);
         RememberSafety(safetyStateVersion, safety);
+        // The generation this change goes out under, read before the send: the acknowledgement's continuation can run
+        // after a reconnect has published the next one, whose handshake may keep this version with its own summary.
+        long? sentGeneration = Volatile.Read(ref _current).SessionGeneration;
         string messageId = await SendDurableCoreAsync(
             "SafetyStateChanged",
             deduplicationKey,
@@ -788,7 +791,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         // PublishAcceptedVersions as soon as it did before onboard-hmi#314: a record and a compare-exchange, no parsing.
         RegisterAcceptedSafety(() => new WireToGateAcceptedSafety(
             safetyStateVersion,
-            Volatile.Read(ref _current).SessionGeneration,
+            sentGeneration,
             safety,
             WireToGateAcceptedSafetySource.SafetyStateChanged));
         PublishAcceptedVersions("SafetyStateChanged-ack");
@@ -2393,12 +2396,15 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             () =>
             {
                 IoSnapshot io = _ioModule.CurrentSnapshot;
+                // The clock first, then the summary (which reads it again for IO freshness): the order the payload's
+                // arguments were evaluated in before onboard-hmi#314.
+                DateTimeOffset observedAt = _clock.Now.ToUniversalTime();
                 WireToGateSafetySummaryPayload safety = CreateSafetySummary(io);
                 sent = safety;
                 RememberSafety(safetyStateVersion, safety);
                 return (safetyStateVersion, new SafetyStateSnapshotPayload(
                     safetyStateVersion,
-                    _clock.Now.ToUniversalTime(),
+                    observedAt,
                     safety,
                     CreateSlotStates(io)));
             },

@@ -21,8 +21,11 @@ internal enum RecoveryEntry
     HardwareRepairRelease,
 }
 
-/// <summary>What the business offered for one recovery entry, and which refresh path read it.</summary>
-internal sealed record RecoveryEntryOffer(bool Offered, string Path);
+/// <summary>
+/// What the business offered for one recovery entry, which refresh path read it, and in which entry refresh
+/// (<see cref="MainViewModel.RecoveryEntryRefresh"/>).
+/// </summary>
+internal sealed record RecoveryEntryOffer(bool Offered, string Path, long Refresh);
 
 /// <summary>
 /// The inputs <see cref="WireToGateHmiPresentation.Create"/> was last called with, as read for that call
@@ -45,6 +48,7 @@ public partial class MainViewModel
     private readonly RecoveryEntryOffer?[] _recoveryEntryOffers = new RecoveryEntryOffer?[Enum.GetValues<RecoveryEntry>().Length];
     private RecoveryEntryOffer? _loadCancellationBeforeAnySublotOffer;
     private WireToGatePresentationInputs? _presentationInputs;
+    private long _recoveryEntryRefresh;
 
     /// <summary>The controller snapshot the banner and the latch gate last read.</summary>
     internal OnboardSnapshot? LastControllerSnapshot => _lastControllerSnapshot;
@@ -61,20 +65,33 @@ public partial class MainViewModel
     /// </summary>
     internal IReadOnlyList<RecoveryEntryOffer?> RecoveryEntryOffers => [.. _recoveryEntryOffers];
 
+    /// <summary>
+    /// Counts the work items that write the ten entries' final values: each input refresh
+    /// (<c>RefreshWireToGateInputStateCore</c>, which the presentation path follows in the same work item wherever both
+    /// run) and each controller snapshot, the one caller that runs the presentation path alone. Every such work item
+    /// writes all ten, but the presentation path's latch branch writes nine of them false without reading the business,
+    /// so after a controller snapshot while latched those nine offers carry a lower number: the business value as of an
+    /// earlier work item.
+    /// </summary>
+    internal long RecoveryEntryRefresh => _recoveryEntryRefresh;
+
     /// <summary>The "before any sublot" half of the load cancellation entry, read with it.</summary>
     internal RecoveryEntryOffer? LoadCancellationBeforeAnySublotOffer => _loadCancellationBeforeAnySublotOffer;
 
     /// <summary>Records the business value of a recovery entry and returns it unchanged.</summary>
     private bool Offer(RecoveryEntry entry, bool offered, [CallerMemberName] string path = "")
     {
-        _recoveryEntryOffers[(int)entry] = new RecoveryEntryOffer(offered, path);
+        _recoveryEntryOffers[(int)entry] = new RecoveryEntryOffer(offered, path, _recoveryEntryRefresh);
         return offered;
     }
 
     /// <summary>Records the "before any sublot" half of the load cancellation entry and returns it unchanged.</summary>
     private bool OfferBeforeAnySublot(bool offered, [CallerMemberName] string path = "")
     {
-        _loadCancellationBeforeAnySublotOffer = new RecoveryEntryOffer(offered, path);
+        _loadCancellationBeforeAnySublotOffer = new RecoveryEntryOffer(offered, path, _recoveryEntryRefresh);
         return offered;
     }
+
+    /// <summary>Starts a work item that writes the ten entries' final values; reads nothing.</summary>
+    private void BeginRecoveryEntryRefresh() => _recoveryEntryRefresh++;
 }

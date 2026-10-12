@@ -102,16 +102,25 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// snapshot is read once the latch has closed it.
     /// </summary>
     /// <remarks>
-    /// The executor gives the operator 2 s (this harness's operation timeout) and the latch-to-snapshot steps take
-    /// milliseconds; the operation is checked still waiting on the operator after the read, so a run where the timeout
-    /// got there first fails saying so instead of passing or failing on a moved premise.
+    /// <para>
+    /// The executor's operator timeout is 10 s here rather than the harness's 2 s, so a loaded CI run does not reach it
+    /// before the latch-to-snapshot steps, which take milliseconds; the operation is checked still waiting on the operator
+    /// after the reads, so a run where the timeout got there first fails saying so instead of passing or failing on a
+    /// moved premise.
+    /// </para>
+    /// <para>
+    /// Then a controller snapshot while latched: it writes nine entries false without reading the business, so the snapshot
+    /// must say their business values are as of an earlier work item, or a business-true, final-false pair would read as
+    /// the gate closing an entry the business offers now. Forced inside the UI lock, the build following it at once: no
+    /// input refresh, which takes the same lock, can come between.
+    /// </para>
     /// </remarks>
     [Fact]
     public async Task ALatchOverAnOpenDoorClosesTheCancellationTheBusinessStillOffers()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         FakeIoModuleClient io = new() { OperatorNeverActs = true };
-        await using Harness harness = await StartLatchStopAsync(io, token);
+        await using Harness harness = await StartLatchStopAsync(io, token, operationTimeout: TimeSpan.FromSeconds(10));
         await SendSlotCommandAsync(harness, DemandA, AttemptA, [1]);
         await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 1, token);
         await harness.WaitUntilAsync(
@@ -138,6 +147,17 @@ public sealed partial class MultiDemandJourneyG2Tests
         HmiRecoveryEntryState cancellation = EntryOf(screen, nameof(MainViewModel.CanRequestLoadCancellation));
         Assert.Equal((true, false, false), (cancellation.OfferedByBusiness, cancellation.OfferedBeforeAnySublot, cancellation.Final));
         Assert.Equal(cancellation.Final, ButtonOf(screen, "OnLoadCancellationClick").Enabled);
+
+        HmiScreenBasisState afterControllerSnapshot = harness.ScreenStateAfter(
+            () => harness.Controller.RefreshExternalSafetyState()).Basis;
+        Assert.True(afterControllerSnapshot.RecoveryEntriesLatched);
+        AssertEntriesAreTheirOffersThroughTheGate(afterControllerSnapshot);
+        Assert.All(afterControllerSnapshot.RecoveryEntries, entry => Assert.Equal(
+            entry.Entry == nameof(MainViewModel.CanRequestLoadCancellation),
+            entry.OfferFromLastRefresh));
+        Assert.Equal(
+            WireToGateHmiOperationStage.WaitingOperator,
+            harness.Business.CurrentOperationSnapshot?.Stage);
         Assert.Equal(1, io.UnlockCount);
         Assert.Empty(harness.UiErrors);
     }
@@ -145,7 +165,7 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// <summary>
     /// Every recovery entry is its business value through the latch gate (<c>AllowRecoveryEntry</c>), and the load
     /// cancellation also through its "before any sublot" half (<c>AllowLoadCancellationEntry</c>): the relation, not which
-    /// entries are open.
+    /// entries are open. A business value is of the last work item unless latched, and the load cancellation's always.
     /// </summary>
     private static void AssertEntriesAreTheirOffersThroughTheGate(HmiScreenBasisState basis)
     {
@@ -153,6 +173,12 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.All(basis.RecoveryEntries, entry =>
         {
             Assert.True(entry.OfferedByBusiness.HasValue, $"{entry.Entry} was never refreshed");
+            Assert.True(entry.OfferFromLastRefresh.HasValue, $"{entry.Entry} has no refresh");
+            if (!basis.RecoveryEntriesLatched || entry.Entry == nameof(MainViewModel.CanRequestLoadCancellation))
+            {
+                Assert.True(entry.OfferFromLastRefresh.Value, $"{entry.Entry}: business value of an earlier work item");
+            }
+
             bool gated = entry.OfferedByBusiness.Value && !basis.RecoveryEntriesLatched;
             bool expected = entry.Entry == nameof(MainViewModel.CanRequestLoadCancellation)
                 ? entry.OfferedBeforeAnySublot == true || gated
@@ -327,7 +353,8 @@ public sealed partial class MultiDemandJourneyG2Tests
     private static async Task<Harness> StartLatchStopAsync(
         FakeIoModuleClient io,
         CancellationToken token,
-        Action<FakeControlServer>? alsoConfigure = null)
+        Action<FakeControlServer>? alsoConfigure = null,
+        TimeSpan? operationTimeout = null)
     {
         Harness harness = await Harness.StartAsync(
             server =>
@@ -342,7 +369,8 @@ public sealed partial class MultiDemandJourneyG2Tests
                 alsoConfigure?.Invoke(server);
             },
             token,
-            io: io);
+            io: io,
+            operationTimeout: operationTimeout);
         await harness.WaitUntilAsync(
             () => harness.Session.CurrentJourney.CurrentStopWorklist is not null
                 && harness.Session.Current.Readiness == WireToGateSessionReadiness.Ready,

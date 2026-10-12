@@ -689,6 +689,16 @@ public sealed partial class MultiDemandJourneyG2Tests
                 OnUi(() => HmiScreenStateBuilder.Build(ViewModel, new ModalDialogRegistry(), Session.Client.AcceptedSafety)),
             })[0];
 
+        /// <summary>
+        /// Runs <paramref name="action"/> and builds the snapshot in one hold of the UI lock, so no update that takes the
+        /// lock comes between the two.
+        /// </summary>
+        internal HmiScreenState ScreenStateAfter(Action action) => OnUi(() =>
+        {
+            action();
+            return ScreenState();
+        });
+
         private static T[] ReadStable<T>(Func<T[]> read)
         {
             for (int attempt = 0; ; attempt++)

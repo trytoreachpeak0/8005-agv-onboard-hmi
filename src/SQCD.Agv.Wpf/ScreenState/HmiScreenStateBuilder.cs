@@ -108,6 +108,7 @@ internal static class HmiScreenStateBuilder
     {
         IReadOnlyList<RecoveryEntryOffer?> offers = viewModel.RecoveryEntryOffers;
         RecoveryEntryOffer? beforeAnySublot = viewModel.LoadCancellationBeforeAnySublotOffer;
+        long refresh = viewModel.RecoveryEntryRefresh;
         return new HmiScreenBasisState(
             viewModel.LastControllerSnapshot is { } controller
                 ? new HmiControllerState(
@@ -152,8 +153,8 @@ internal static class HmiScreenStateBuilder
             ],
             acceptedSafety is { } accepted ? AcceptedSafety(accepted) : null);
 
-        static HmiRecoveryEntryState Entry(string name, RecoveryEntryOffer? offer, RecoveryEntryOffer? beforeAnySublot, bool final) =>
-            new(name, offer?.Offered, offer?.Path, beforeAnySublot?.Offered, final);
+        HmiRecoveryEntryState Entry(string name, RecoveryEntryOffer? offer, RecoveryEntryOffer? beforeAnySublot, bool final) =>
+            new(name, offer?.Offered, offer?.Path, offer is null ? null : offer.Refresh == refresh, beforeAnySublot?.Offered, final);
     }
 
     private static HmiAcceptedSafetyState AcceptedSafety(WireToGateAcceptedSafety accepted)

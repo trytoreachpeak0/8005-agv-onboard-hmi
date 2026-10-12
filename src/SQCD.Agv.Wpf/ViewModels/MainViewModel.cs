@@ -755,6 +755,7 @@ public sealed partial class MainViewModel : ViewModelBase
 
     private void RefreshWireToGateInputStateCore()
     {
+        BeginRecoveryEntryRefresh();
         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? CanSubmit;
         // 这条路径上的七个恢复入口，六个各自过 AllowRecoveryEntry，取消装货过 AllowLoadCancellationEntry
         // （锁存期间只剩扫码之前那一半，onboard-hmi#174）；另外两个（强制机械取出的确认、硬件恢复
@@ -2357,6 +2358,8 @@ public sealed partial class MainViewModel : ViewModelBase
 
         AppendOperatorRecord(snapshot);
         LogOperatorVisibleError(snapshot);
+        // The only caller that runs the presentation path without the input refresh first (onboard-hmi#314).
+        BeginRecoveryEntryRefresh();
         ApplyWireToGatePresentationCore();
     }
 
