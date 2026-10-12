@@ -48,11 +48,14 @@ public sealed class FatalFaultScopeArchitectureTests
 {
     /// <summary>
     /// 允许直接碰具体 Modbus 客户端的两个地方：它自己，和把依赖装配起来的 <c>App</c>。
+    /// 第三行不是调用方：技术日志的来源登记表把类名当字符串键（onboard-hmi#312），而它在 <c>SQCD.Agv.Core</c>，
+    /// 那个项目不引用 Infrastructure，编译上就碰不到这个类型。
     /// </summary>
     private static readonly string[] ModbusClientCallers =
     [
         "src/SQCD.Agv.Infrastructure/ModbusTcpIoModuleClient.cs",
-        "src/SQCD.Agv.Wpf/App.xaml.cs"
+        "src/SQCD.Agv.Wpf/App.xaml.cs",
+        "src/SQCD.Agv.Core/OnboardTechnicalLog.cs"
     ];
 
     /// <summary>门实际被打开的地方，以及它受不受 <c>_fatalFault</c> 约束。</summary>
@@ -66,7 +69,7 @@ public sealed class FatalFaultScopeArchitectureTests
     /// <summary>
     /// 全仓**经 <c>IIoModuleClient.PulseUnlockAsync</c> 的**开门点，四个（按文件三条，
     /// <c>OnboardController</c> 里有装卸与重开门两处）。绕开那个接口的路由
-    /// <see cref="NothingUnderSrcTouchesTheConcreteModbusClientOutsideItsTwoAllowedSites"/> 收窄，两条合起来覆盖的是
+    /// <see cref="NothingUnderSrcTouchesTheConcreteModbusClientOutsideItsAllowedFiles"/> 收窄，两条合起来覆盖的是
     /// 「全仓开门点」。**改这张表之前先确认你改的是事实，不是为了让测试变绿。**
     /// </summary>
     private static readonly UnlockSite[] UnlockSites =
@@ -195,7 +198,7 @@ public sealed class FatalFaultScopeArchitectureTests
     /// </para>
     /// </remarks>
     [Fact]
-    public void NothingUnderSrcTouchesTheConcreteModbusClientOutsideItsTwoAllowedSites()
+    public void NothingUnderSrcTouchesTheConcreteModbusClientOutsideItsAllowedFiles()
     {
         string root = ProtocolIdentityArchitectureTests.RepositoryRoot();
         string[] offenders = Directory

@@ -29,6 +29,27 @@ public sealed class OnboardSettings
 
     public ScreenStateSettings ScreenState { get; init; } = new();
 
+    /// <summary>
+    /// 生效配置的一行摘要，启动时进技术日志的「配置」一面（REQ-0272，onboard-hmi#312）。
+    /// </summary>
+    /// <remarks>
+    /// 只写身份、开关、地址与路径。凭据只经环境变量传入，这里连环境变量名也不写：这一行会被拷回控制端、贴进证据。
+    /// 安全投影端点只写协议、主机与端口：投影未启用时 <c>Validate</c> 不校验它，路径、查询串与用户信息里有什么
+    /// 都不经检查（onboard-hmi#312 第二轮审查）。
+    /// </remarks>
+    public string DescribeForTechnicalLog() =>
+        $"生效配置：agvId={AgvId}，onboardInstanceId={OnboardInstanceId}，environment={Environment}，"
+        + $"wireToGate.enabled={WireToGate.Enabled}，wireToGate.server={WireToGate.Host}:{WireToGate.Port}，"
+        + $"wireToGate.recoveryResumeEnabled={WireToGate.RecoveryResumeEnabled}，wireToGate.journalPath={WireToGate.JournalPath}，"
+        + $"vehicleSafety.enabled={VehicleSafety.Enabled}，vehicleSafety.endpoint={OriginOf(VehicleSafety.Endpoint)}，"
+        + $"ioModule={IoModule.Host}:{IoModule.Port}，logging.directory={Logging.Directory}，"
+        + $"screenState.enabled={ScreenState.Enabled}。";
+
+    private static string OriginOf(string endpoint) =>
+        Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? uri)
+            ? $"{uri.Scheme}://{uri.Host}:{uri.Port}"
+            : "（不是绝对地址）";
+
     public static OnboardSettings Load(string path)
     {
         if (!File.Exists(path))
@@ -781,7 +802,9 @@ public sealed class ScreenStateSettings
 
 public sealed class LogSettings
 {
-    public string Directory { get; init; } = "logs";
+    // 不在程序目录：部署把程序目录整个换成新包、旧包只留一代，日志会随第二次部署被删（REQ-0272，onboard-hmi#312）。
+    // 与日志簿同处。环境变量在 FileAppLogger 里展开；相对路径仍按程序目录解析。
+    public string Directory { get; init; } = @"%LOCALAPPDATA%\SQCD\8005AGV\logs";
 
     public bool WriteToConsole { get; init; }
 }

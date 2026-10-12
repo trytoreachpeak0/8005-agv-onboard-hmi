@@ -20,7 +20,7 @@ internal static class StartupConfiguration
     /// </summary>
     /// <param name="standardError">
     /// 同一句话再写一份的地方，缺省是进程的 stderr。拉起车载端的一方（L2 把 <c>logging.directory</c> 指到证据目录，
-    /// 另把 stderr 收成 <c>.err.log</c>）看不到引导日志器写在程序旁边的那份；日志目录不可写时，它也是唯一的出处。
+    /// 另把 stderr 收成 <c>.err.log</c>）看不到引导日志器写在 %LOCALAPPDATA% 下的那份；日志目录不可写时，它也是唯一的出处。
     /// </param>
     /// <remarks>
     /// 捕获全部异常，不按类型挑：这里只做读文件、解析、校验，没有任何副作用可以留到一半，而无论被拒成什么样子，
@@ -43,7 +43,7 @@ internal static class StartupConfiguration
             // 原因写进正文而不是只交给 exception 参数：FileAppLogger 只取最外层一句，内层（例如 JSON 转换失败时
             // 真正说明哪个值不对的那一句）会丢。
             string line = $"车载端配置被拒，程序退出：path={settingsPath}，reason={Describe(exception)}";
-            bootstrapLogger.Write(LogSeverity.Error, nameof(App), line);
+            bootstrapLogger.Write(LogSeverity.Error, OnboardTechnicalLogCategory.Configuration, nameof(App), line);
             if (standardError is null)
             {
                 // 按 UTF-8 写，不用 Console.Error：WinExe 没有控制台，Console.Error 的编码退回系统 ANSI 代码页

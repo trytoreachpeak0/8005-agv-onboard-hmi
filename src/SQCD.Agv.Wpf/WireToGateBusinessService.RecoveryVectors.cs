@@ -4093,6 +4093,7 @@ public sealed partial class WireToGateBusinessService
 
         _logger.Write(
             LogSeverity.Warning,
+            OnboardTechnicalLogCategory.SafetyDecision,
             nameof(WireToGateBusinessService),
             $"活动开锁集里的仓门未能确认已关好，拒绝准备新的恢复向量：slots={string.Join(",", doors)}。");
         PublishOperatorResponse(
