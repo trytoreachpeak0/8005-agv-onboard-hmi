@@ -2,6 +2,7 @@ using System.Text.Json;
 using SQCD.Agv.Core;
 using SQCD.Agv.Wpf;
 using SQCD.Agv.Wpf.ScreenState;
+using SQCD.Agv.Wpf.ViewModels;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
@@ -75,6 +76,27 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.True(screen.Banner.HasError);
         Assert.Equal(harness.ViewModel.StateText, screen.Banner.StateText);
         Assert.All(RecoveryEntryButtons, key => Assert.False(ButtonOf(screen, key).Enabled, key));
+
+        // What it was computed from (onboard-hmi#314, T1b): the latch gate's own criterion holds, the controller is
+        // Faulted, and the gate is what closed the load cancellation entry -- the business offers it, the final value is
+        // false. That difference is what the automation API cannot answer (research section 5, T1b).
+        HmiScreenBasisState basis = screen.Basis;
+        Assert.True(basis.RecoveryEntriesLatched);
+        HmiControllerState controller = Present(basis.Controller);
+        Assert.Equal(OnboardState.Faulted, controller.State);
+        Assert.Equal("UI_COMMAND_FAILED", controller.ErrorCode);
+        Assert.Equal(10, basis.RecoveryEntries.Count);
+        Assert.All(basis.RecoveryEntries, entry => Assert.False(entry.Final, entry.Entry));
+        HmiRecoveryEntryState cancellation =
+            Assert.Single(basis.RecoveryEntries, entry => entry.Entry == nameof(MainViewModel.CanRequestLoadCancellation));
+        Assert.True(cancellation.OfferedByBusiness);
+        Assert.False(cancellation.OfferedBeforeAnySublot);
+        Assert.False(cancellation.Final);
+        // The safety state the server accepted says why departure is unsafe, which nothing on screen does.
+        HmiAcceptedSafetyState accepted = Present(basis.AcceptedSafety);
+        Assert.True(accepted.SafetyKnown);
+        Assert.False(accepted.DepartureSafe);
+        Assert.Contains("ONBOARD_FATAL_FAULT_LATCHED", accepted.ReasonCodes!);
     }
 
     /// <summary>

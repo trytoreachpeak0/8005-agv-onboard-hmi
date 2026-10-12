@@ -1,6 +1,7 @@
 using SQCD.Agv.Core;
 using SQCD.Agv.Wpf;
 using SQCD.Agv.Wpf.ScreenState;
+using SQCD.Agv.Wpf.ViewModels;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
@@ -78,6 +79,16 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.True(cancellation.Visible);
         Assert.Equal(harness.ViewModel.CanPressLoadCancellation, cancellation.Enabled);
         Assert.Equal(HmiBannerSource.WireToGatePresentation, loading.Banner.Source);
+        // What the banner was computed from (onboard-hmi#314, T1b): A's operation waiting on the operator, a ready
+        // session; the cancellation entry offered and not latched, so its final value is the business value.
+        HmiPresentationInputsState loadingInputs = Present(loading.Basis.Presentation);
+        Assert.Equal(WireToGateSessionReadiness.Ready, loadingInputs.Readiness);
+        HmiSlotOperationState operation = Present(loadingInputs.Operation);
+        Assert.Equal((AttemptA, WireToGateHmiOperationStage.WaitingOperator), (operation.SlotOperationAttemptId, operation.Stage));
+        Assert.Equal(5, Assert.Single(operation.Slots));
+        Assert.False(loading.Basis.RecoveryEntriesLatched);
+        HmiRecoveryEntryState loadingCancellation = EntryOf(loading, nameof(MainViewModel.CanRequestLoadCancellation));
+        Assert.Equal((true, true), (loadingCancellation.OfferedByBusiness, loadingCancellation.Final));
         io.CloseDoor(4, cargo: true);
         await harness.WaitUntilAsync(
             () => ReadJournal(harness, token).LastCompletedLoadOperationContext?.DemandId == DemandA
@@ -112,6 +123,16 @@ public sealed partial class MultiDemandJourneyG2Tests
         HmiLockerState one = Assert.Single(recovery.Lockers, locker => locker.PhysicalNumber == 1);
         Assert.True(one.IsKnown && one.HasCargo && one.IsLocked);
         Assert.False(InputOf(recovery, "RecoveryReason").HasText);
+        // T1b: the session's readiness and reason codes as Create read them; compensation offered and final, the
+        // cancellation offered by nobody.
+        HmiPresentationInputsState recoveryInputs = Present(recovery.Basis.Presentation);
+        Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, recoveryInputs.Readiness);
+        Assert.Equal(harness.Session.Current.ReasonCodes, recoveryInputs.ReasonCodes);
+        Assert.Equal(harness.Session.Current.SessionGeneration, recoveryInputs.SessionGeneration);
+        HmiRecoveryEntryState compensation = EntryOf(recovery, nameof(MainViewModel.CanRequestLoadCompensation));
+        Assert.Equal((true, true), (compensation.OfferedByBusiness, compensation.Final));
+        HmiRecoveryEntryState gone = EntryOf(recovery, nameof(MainViewModel.CanRequestLoadCancellation));
+        Assert.Equal((false, false), (gone.OfferedByBusiness, gone.Final));
         AssertCarriesNone(recovery, "SUBLOT-A", "SUBLOT-B");
         AssertCarriesNoGuidanceOrRecordText(harness, recovery);
     }

@@ -676,7 +676,10 @@ public sealed partial class MultiDemandJourneyG2Tests
         /// No dialog is ever shown in G2, so the registry is a fresh empty one, not the process's.
         /// </remarks>
         internal HmiScreenState ScreenState() =>
-            ReadStable(() => new[] { OnUi(() => HmiScreenStateBuilder.Build(ViewModel, new ModalDialogRegistry())) })[0];
+            ReadStable(() => new[]
+            {
+                OnUi(() => HmiScreenStateBuilder.Build(ViewModel, new ModalDialogRegistry(), Session.Client.AcceptedSafety)),
+            })[0];
 
         private static T[] ReadStable<T>(Func<T[]> read)
         {
