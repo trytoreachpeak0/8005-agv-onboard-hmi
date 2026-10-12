@@ -355,10 +355,8 @@ public partial class App : System.Windows.Application, IDisposable
             window.Show();
             // 第二次双击被挡下时，由本实例自己把窗口调出来（onboard-hmi#165 第 2 条）。
             RunningInstanceWindow.Listen(window);
-            if (settings.ScreenState.Enabled)
-            {
-                StartScreenState(settings, viewModel);
-            }
+            // 开关与参数的判断在 HmiScreenStateWiring.Start 里，测试调的是同一个方法（onboard-hmi#315 审查 S2）。
+            StartScreenState(settings, viewModel);
 
             await viewModel.InitializeAsync().ConfigureAwait(true);
             if (settings.WireToGate.Enabled)
@@ -468,7 +466,7 @@ public partial class App : System.Windows.Application, IDisposable
     }
 
     /// <summary>
-    /// 屏幕状态快照（hmi#308 调研 A1，onboard-hmi#315）：配置开了才走到这里，默认关。
+    /// 屏幕状态快照（hmi#308 调研 A1，onboard-hmi#315）：每次启动都调；开关默认关，关着或参数无效时 <see cref="HmiScreenStateWiring.Start"/> 什么都不建。
     /// </summary>
     /// <remarks>
     /// 起不来就不起，车照常启动：写出器的构造只建一个后台任务，监视器的启动自己接住一切异常并记一行日志
@@ -480,22 +478,15 @@ public partial class App : System.Windows.Application, IDisposable
         try
         {
             FileAppLogger logger = _logger ?? throw new InvalidOperationException("日志器未初始化。");
-            HmiScreenStateOutputOptions options = HmiScreenStateOutputOptions.From(settings.ScreenState, settings.Logging);
-            _screenStateWriter = new HmiScreenStateFileWriter(
-                options,
-                HmiScreenStateFileSystem.Instance,
-                TimeProvider.System,
-                logger);
-            _screenStateMonitor = HmiScreenStateMonitor.TryStart(
+            HmiScreenStateWiring.Started? started = HmiScreenStateWiring.Start(
+                settings.ScreenState,
+                settings.Logging,
                 viewModel,
-                () => HmiScreenStateBuilder.Build(viewModel, ModalDialogs.Registry),
                 ModalDialogs.Registry,
-                _screenStateWriter,
                 logger,
-                TimeProvider.System,
-                Dispatcher,
-                options.FlushInterval,
-                options.HeartbeatInterval);
+                Dispatcher);
+            _screenStateWriter = started?.Writer;
+            _screenStateMonitor = started?.Monitor;
         }
         catch (Exception exception)
         {

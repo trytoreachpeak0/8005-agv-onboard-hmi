@@ -81,7 +81,9 @@ public static class OnboardTechnicalLogCategories
             ["ProcessFailureLogging"] = OnboardTechnicalLogCategory.LocalFault,
             // 屏幕状态快照（onboard-hmi#315）只在自己出错时写日志：停用、写盘失败与恢复、时间线到上限。快照本身走自己的文件。
             ["HmiScreenStateMonitor"] = OnboardTechnicalLogCategory.LocalFault,
-            ["HmiScreenStateFileWriter"] = OnboardTechnicalLogCategory.LocalFault
+            ["HmiScreenStateFileWriter"] = OnboardTechnicalLogCategory.LocalFault,
+            // 快照开关打开但参数无效、本次不启动（onboard-hmi#315 审查 S4）：是配置被拒，不是本地异常。
+            ["HmiScreenStateWiring"] = OnboardTechnicalLogCategory.Configuration
         };
 
     /// <summary>登记过的来源类名。</summary>

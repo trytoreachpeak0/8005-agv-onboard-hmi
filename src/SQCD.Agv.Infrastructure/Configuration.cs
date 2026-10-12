@@ -43,7 +43,7 @@ public sealed class OnboardSettings
         + $"wireToGate.recoveryResumeEnabled={WireToGate.RecoveryResumeEnabled}，wireToGate.journalPath={WireToGate.JournalPath}，"
         + $"vehicleSafety.enabled={VehicleSafety.Enabled}，vehicleSafety.endpoint={OriginOf(VehicleSafety.Endpoint)}，"
         + $"ioModule={IoModule.Host}:{IoModule.Port}，logging.directory={Logging.Directory}，"
-        + $"screenState.enabled={ScreenState.Enabled}。";
+        + $"screenState.enabled={ScreenState.Enabled}{(ScreenState.Enabled && ScreenState.Problem() is not null ? "（参数无效，本次不启动）" : string.Empty)}。";
 
     private static string OriginOf(string endpoint) =>
         Uri.TryCreate(endpoint, UriKind.Absolute, out Uri? uri)
@@ -97,7 +97,6 @@ public sealed class OnboardSettings
         VehicleSafety.Validate(production && WireToGate.Enabled);
         IoModule.Validate(production);
         Workflow.Validate();
-        ScreenState.Validate();
 
         if (production)
         {
@@ -752,10 +751,12 @@ public sealed class WorkflowSettings
 /// <para>
 /// <b>所有环境默认关，配置可开，包括 Production。</b>用户 2026-10-12 定的两步走：先只在 agv02、agv03 的现场配置里开，
 /// 跑满一个现场周期、确认没有归因于快照的 <c>UNHANDLED_UI_ERROR</c>、时间线大小受控之后，再另开票把 Production 默认翻成开。
-/// 所以这里的默认值是那一步之前的状态，不是疏忽；<c>ScreenStateSettingsTests</c> 钉着它。
+/// 所以这里的默认值是那一步之前的状态，不是疏忽；<c>ConfigurationTests.TheScreenStateSnapshotShipsSwitchedOff</c> 钉着它。
 /// </para>
 /// <para>
-/// <b>关着时不校验其余参数</b>：一个不用的块写错了，不该挡住车载端启动。
+/// <b>参数写错从不挡住车载端启动</b>（onboard-hmi#315 审查 S4）：这个块不参与 <see cref="OnboardSettings.Validate"/>。
+/// 开关打开而参数无效时，接线记一行日志、本次不启动快照，车照常启动；生效配置摘要里也写明「参数无效，本次不启动」。
+/// 观测手段不能改变 HMI 行为（调研 4.3），一个观测参数写错让车起不来，就是改变了行为。
 /// </para>
 /// </remarks>
 public sealed class ScreenStateSettings
@@ -777,16 +778,12 @@ public sealed class ScreenStateSettings
     /// <summary>时间线保留天数，过期由写出器自己清理。只匹配 <c>hmi-state-yyyyMMdd.ndjson</c>。</summary>
     public int TimelineRetentionDays { get; init; } = 30;
 
-    internal void Validate()
+    /// <summary>参数有什么问题；没问题时为 null。不看开关：开关由调用方判断。</summary>
+    public string? Problem()
     {
-        if (!Enabled)
-        {
-            return;
-        }
-
         if (Directory is { } directory && string.IsNullOrWhiteSpace(directory))
         {
-            throw new InvalidDataException("屏幕状态快照目录不能是空白；不配置时与日志目录相同。");
+            return "屏幕状态快照目录不能是空白；不配置时与日志目录相同。";
         }
 
         if (FlushIntervalMs is < 50 or > 10_000
@@ -795,8 +792,13 @@ public sealed class ScreenStateSettings
             || TimelineMaxFileBytes is < 64 * 1024 or > 1024L * 1024 * 1024
             || TimelineRetentionDays is < 1 or > 365)
         {
-            throw new InvalidDataException("屏幕状态快照的取值周期、心跳周期、时间线大小上限或保留天数参数无效。");
+            return $"屏幕状态快照参数无效：flushIntervalMs={FlushIntervalMs}（50～10000），"
+                + $"heartbeatIntervalMs={HeartbeatIntervalMs}（1000～60000，且大于 flushIntervalMs），"
+                + $"timelineMaxFileBytes={TimelineMaxFileBytes}（65536～1073741824），"
+                + $"timelineRetentionDays={TimelineRetentionDays}（1～365）。";
         }
+
+        return null;
     }
 }
 

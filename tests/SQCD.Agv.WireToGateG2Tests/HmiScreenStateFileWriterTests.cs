@@ -191,6 +191,66 @@ public sealed class HmiScreenStateFileWriterTests
     }
 
     /// <summary>
+    /// Gate one alone (review S3): the clock is six days ahead, every day has a file, so the files run without a gap up
+    /// to the wrong "today" and gate two lets the purge through. Only the anchor (the newest real file plus uptime) keeps
+    /// the files between 25 and 30 real days old.
+    /// </summary>
+    [Fact]
+    public async Task ASmallClockJumpIsHeldBackByTheNewestFile()
+    {
+        using TemporaryDirectory directory = new();
+        DateOnly today = DateOnly.FromDateTime(DateTime.Now);
+        foreach (int age in Enumerable.Range(0, 41))
+        {
+            await File.WriteAllTextAsync(Path.Combine(directory.Path, Timeline(today.AddDays(-age))), "{}\n", TestContext.Current.CancellationToken);
+        }
+
+        await using HmiScreenStateFileWriter writer = new(
+            Options(directory.Path),
+            HmiScreenStateFileSystem.Instance,
+            new ShiftedTimeProvider(TimeSpan.FromDays(6)),
+            new RecordingLogger());
+        writer.Submit(await AState(), heartbeat: false);
+        Assert.True(await writer.DrainAsync());
+
+        string[] left = [.. Directory.GetFiles(directory.Path).Select(Path.GetFileName).OfType<string>()];
+        // By the real clock days 31..40 back have expired; by the wrong clock days 25..30 back would have too.
+        Assert.All(Enumerable.Range(0, 31), age => Assert.Contains(Timeline(today.AddDays(-age)), left));
+        Assert.All(Enumerable.Range(31, 10), age => Assert.DoesNotContain(Timeline(today.AddDays(-age)), left));
+    }
+
+    /// <summary>
+    /// Gate two alone (review S3): a previous run, with the clock months ahead, wrote a timeline file dated in that
+    /// future, and the clock is still wrong. The anchor is that future file, so gate one holds nothing back; only the gap
+    /// between the newest real file and the wrong "today" stops every real file from being deleted.
+    /// </summary>
+    [Fact]
+    public async Task AFileWrittenUnderAWrongClockDoesNotUnlockThePurge()
+    {
+        using TemporaryDirectory directory = new();
+        DateOnly today = DateOnly.FromDateTime(DateTime.Now);
+        DateOnly wrongToday = today.AddDays(150);
+        string[] real = [.. Enumerable.Range(0, 41).Select(age => Timeline(today.AddDays(-age)))];
+        foreach (string name in real.Append(Timeline(wrongToday.AddDays(-1))))
+        {
+            await File.WriteAllTextAsync(Path.Combine(directory.Path, name), "{}\n", TestContext.Current.CancellationToken);
+        }
+
+        RecordingLogger logger = new();
+        await using HmiScreenStateFileWriter writer = new(
+            Options(directory.Path),
+            HmiScreenStateFileSystem.Instance,
+            new ShiftedTimeProvider(TimeSpan.FromDays(150)),
+            logger);
+        writer.Submit(await AState(), heartbeat: false);
+        Assert.True(await writer.DrainAsync());
+
+        string[] left = [.. Directory.GetFiles(directory.Path).Select(Path.GetFileName).OfType<string>()];
+        Assert.All(real, name => Assert.Contains(name, left));
+        Assert.Contains(logger.Entries, entry => entry.Message.Contains("空档", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// Readers never see half a document: thousands of reads while the writer keeps replacing the file, each one parsed.
     /// A read may find the file locked for an instant (that is retried by any reader); it may never find it partial.
     /// </summary>
@@ -222,7 +282,13 @@ public sealed class HmiScreenStateFileWriterTests
             byte[] bytes;
             try
             {
-                bytes = await File.ReadAllBytesAsync(current, TestContext.Current.CancellationToken);
+                // Shared for write and delete (review L1): this reader never holds the writer off, so it would see a file
+                // being written in place. File.ReadAllBytes shares for read only and could never catch half a document.
+                await using FileStream stream = new(
+                    current, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                using MemoryStream copy = new();
+                await stream.CopyToAsync(copy, TestContext.Current.CancellationToken);
+                bytes = copy.ToArray();
             }
             catch (IOException)
             {
@@ -281,20 +347,28 @@ public sealed class HmiScreenStateFileWriterTests
         _ = thread.Dispatcher.BeginInvoke(() => viewModel.ReportOperatorRejection("SUBLOT_NOT_IN_WORKLIST"));
         await WaitAsync(() => thread.Dispatcher.Invoke(() => viewModel.Logs.Count) == records + 1, "the operator record");
         files.Recover();
-        await WaitAsync(() => File.Exists(Path.Combine(directory.Path, HmiScreenStateFileWriter.CurrentFileName)), "a write after recovery");
+        // The writer writes the current file, then the timeline, and only then logs the recovery (review S1): wait for
+        // the log line itself, not for the file.
+        await WaitAsync(() => WriterLines(logger).Any(line => line.Message.Contains("已恢复", StringComparison.Ordinal)), "the recovery line");
         bool disabled = monitor.IsDisabled;
         thread.Dispatcher.Invoke(monitor.Dispose);
 
         Assert.Equal(0, Volatile.Read(ref unhandled));
         Assert.False(disabled);
         Assert.True(thread.Dispatcher.Invoke(() => viewModel.HasWarning));
-        (LogSeverity Severity, string Source, string Message)[] lines =
-            [.. logger.Entries.Where(entry => entry.Source == nameof(HmiScreenStateFileWriter))];
-        Assert.Equal(2, lines.Length);
+        Assert.True(File.Exists(Path.Combine(directory.Path, HmiScreenStateFileWriter.CurrentFileName)));
+        (LogSeverity Severity, string Source, string Message)[] lines = WriterLines(logger);
+        // Ten and more failed writes before the recovery, one line for them. After the recovery the real disk is in use,
+        // and a passing lock on it (a virus scanner, say) may log a fresh failure: that is not this test's subject.
+        int recovery = Array.FindIndex(lines, line => line.Message.Contains("已恢复", StringComparison.Ordinal));
+        Assert.Equal(1, recovery);
         Assert.Equal(LogSeverity.Warning, lines[0].Severity);
         Assert.Contains("写盘失败", lines[0].Message, StringComparison.Ordinal);
-        Assert.Contains("已恢复", lines[1].Message, StringComparison.Ordinal);
+        Assert.Equal(LogSeverity.Information, lines[1].Severity);
     }
+
+    private static (LogSeverity Severity, string Source, string Message)[] WriterLines(RecordingLogger logger) =>
+        [.. logger.Entries.Where(entry => entry.Source == nameof(HmiScreenStateFileWriter))];
 
     /// <summary>
     /// After <see cref="HmiScreenStateFileWriter.Disable"/> the current file says <c>DISABLED</c>, which entry point and

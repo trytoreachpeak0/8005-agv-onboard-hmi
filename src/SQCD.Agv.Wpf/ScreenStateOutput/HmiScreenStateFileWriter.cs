@@ -22,8 +22,8 @@ internal interface IHmiScreenStateSink
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>Thread model.</b> <see cref="Submit"/> and <see cref="Disable"/> are called on the dispatcher thread and only post
-/// to a bounded channel. Serialising, comparing and every file operation happen on the writer's own task, never on the
+/// <b>Thread model.</b> <see cref="Submit"/> is called on the dispatcher thread; <see cref="Disable"/> on whatever thread
+/// raised the failing handler (a change handler can be raised on any thread). Both only post to a bounded channel. Serialising, comparing and every file operation happen on the writer's own task, never on the
 /// dispatcher. When the writer falls behind the oldest pending state is dropped: each state is complete, and the content
 /// is compared with what was last written, so a drop loses an intermediate screen, never the latest one.
 /// </para>

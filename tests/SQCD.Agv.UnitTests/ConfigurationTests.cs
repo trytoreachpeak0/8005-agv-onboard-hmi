@@ -538,14 +538,17 @@ public sealed class ConfigurationTests
         Assert.True(switchedOn.ScreenState.Enabled);
     }
 
-    /// <summary>参数只在开着时校验：关着的块写错了不该挡住车载端启动；开着时写错就拒绝。</summary>
+    /// <summary>
+    /// 快照参数写错从不挡住车载端启动（onboard-hmi#315 审查 S4）：开着时整体校验照样通过，问题由 <c>Problem()</c> 报出，
+    /// 生效配置摘要写明本次不启动；接线据此不启动快照（<c>HmiScreenStateWiringTests</c>）。
+    /// </summary>
     [Theory]
     [InlineData(10, 5_000, 20_971_520, 30)]
     [InlineData(500, 500, 20_971_520, 30)]
     [InlineData(500, 120_000, 20_971_520, 30)]
     [InlineData(500, 5_000, 1_024, 30)]
     [InlineData(500, 5_000, 20_971_520, 0)]
-    public void InvalidScreenStateParametersAreRejectedOnlyWhenSwitchedOn(
+    public void InvalidScreenStateParametersNeverStopTheHmiFromStarting(
         int flushIntervalMs,
         int heartbeatIntervalMs,
         long timelineMaxFileBytes,
@@ -564,7 +567,17 @@ public sealed class ConfigurationTests
         };
 
         Settings(enabled: false).Validate();
-        Assert.Throws<InvalidDataException>(() => Settings(enabled: true).Validate());
+        Settings(enabled: true).Validate();
+        Assert.NotNull(Settings(enabled: true).ScreenState.Problem());
+        Assert.Contains("screenState.enabled=True（参数无效，本次不启动）", Settings(enabled: true).DescribeForTechnicalLog(), StringComparison.Ordinal);
+        Assert.Contains("screenState.enabled=False。", Settings(enabled: false).DescribeForTechnicalLog(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheShippedScreenStateParametersAreValid()
+    {
+        Assert.Null(new ScreenStateSettings { Enabled = true }.Problem());
+        Assert.Contains("screenState.enabled=True。", new OnboardSettings { ScreenState = new ScreenStateSettings { Enabled = true } }.DescribeForTechnicalLog(), StringComparison.Ordinal);
     }
 
     private static SlotIoMapping[] CreateDefaultSlots() =>
