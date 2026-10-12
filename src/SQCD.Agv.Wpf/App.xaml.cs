@@ -6,6 +6,8 @@ using SQCD.Agv.Application;
 using SQCD.Agv.AutomationHost;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
+using SQCD.Agv.Wpf.ScreenState;
+using SQCD.Agv.Wpf.ScreenStateOutput;
 using SQCD.Agv.Wpf.ViewModels;
 
 namespace SQCD.Agv.Wpf;
@@ -38,6 +40,8 @@ public partial class App : System.Windows.Application, IDisposable
     private ControlServerVehicleSafetySignalProvider? _vehicleSafetySignalProvider;
     private OnboardAlarmMonitor? _alarmMonitor;
     private MainViewModel? _viewModel;
+    private HmiScreenStateFileWriter? _screenStateWriter;
+    private HmiScreenStateMonitor? _screenStateMonitor;
     private bool _disposed;
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -342,6 +346,11 @@ public partial class App : System.Windows.Application, IDisposable
             window.Show();
             // 第二次双击被挡下时，由本实例自己把窗口调出来（onboard-hmi#165 第 2 条）。
             RunningInstanceWindow.Listen(window);
+            if (settings.ScreenState.Enabled)
+            {
+                StartScreenState(settings, viewModel);
+            }
+
             await viewModel.InitializeAsync().ConfigureAwait(true);
             if (settings.WireToGate.Enabled)
             {
@@ -424,6 +433,9 @@ public partial class App : System.Windows.Application, IDisposable
         }
 
         _disposed = true;
+        // 快照先停：它只读视图模型，停在业务服务之前，免得退出途中再取一份半拆的界面。
+        _screenStateMonitor?.Dispose();
+        _screenStateWriter?.DisposeAsync().AsTask().GetAwaiter().GetResult();
         try
         {
             _automationServer?.DisposeAsync().AsTask().GetAwaiter().GetResult();
@@ -443,6 +455,49 @@ public partial class App : System.Windows.Application, IDisposable
         // 最后才放开名字：IO 客户端停下之前，下一个实例不该拿到它。
         _singleInstance?.Dispose();
         GC.SuppressFinalize(this);
+    }
+
+    /// <summary>
+    /// 屏幕状态快照（hmi#308 调研 A1，onboard-hmi#315）：配置开了才走到这里，默认关。
+    /// </summary>
+    /// <remarks>
+    /// 起不来就不起，车照常启动：写出器的构造只建一个后台任务，监视器的启动自己接住一切异常并记一行日志
+    /// （<see cref="HmiScreenStateMonitor.TryStart"/>）。这里再包一层，是因为 <c>OnStartup</c> 的 catch 只接 IO 一类异常，
+    /// 别的异常会从 <c>async void</c> 里落到调度线程上，被判成 <c>UNHANDLED_UI_ERROR</c> 锁车。
+    /// </remarks>
+    private void StartScreenState(OnboardSettings settings, MainViewModel viewModel)
+    {
+        try
+        {
+            FileAppLogger logger = _logger ?? throw new InvalidOperationException("日志器未初始化。");
+            HmiScreenStateOutputOptions options = HmiScreenStateOutputOptions.From(settings.ScreenState, settings.Logging);
+            _screenStateWriter = new HmiScreenStateFileWriter(
+                options,
+                HmiScreenStateFileSystem.Instance,
+                TimeProvider.System,
+                logger);
+            _screenStateMonitor = HmiScreenStateMonitor.TryStart(
+                viewModel,
+                () => HmiScreenStateBuilder.Build(viewModel, ModalDialogs.Registry),
+                ModalDialogs.Registry,
+                _screenStateWriter,
+                logger,
+                TimeProvider.System,
+                Dispatcher,
+                options.FlushInterval,
+                options.HeartbeatInterval);
+        }
+        catch (Exception exception)
+        {
+            try
+            {
+                _logger?.Write(LogSeverity.Warning, nameof(App), "屏幕状态快照启动失败，本次运行不写快照。", exception);
+            }
+            catch (Exception)
+            {
+                // 日志器也可能抛（调研 4.3 第 1 条）；快照不起，车照常启动。
+            }
+        }
     }
 
     private OnboardAlarmInputs ReadAlarmInputs(

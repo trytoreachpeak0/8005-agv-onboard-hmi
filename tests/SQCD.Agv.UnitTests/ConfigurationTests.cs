@@ -492,6 +492,81 @@ public sealed class ConfigurationTests
         Assert.Contains("16个互不重复", exception.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// 屏幕状态快照出厂为关，所有环境都是，Production 也是（onboard-hmi#315，用户 2026-10-12 定的两步走）。
+    /// </summary>
+    /// <remarks>
+    /// 先只在 agv02、agv03 的现场配置里开，跑满一个现场周期再另开票翻 Production 默认值。代码默认值与两份出厂文件
+    /// 一起钉：出厂文件里少了这一项，读出来的仍是代码默认值。翻默认值的那张票要改的正是这一条。
+    /// </remarks>
+    [Theory]
+    [InlineData("src/SQCD.Agv.Wpf/appsettings.json")]
+    [InlineData("src/SQCD.Agv.Wpf/appsettings.Production.example.json")]
+    public void TheScreenStateSnapshotShipsSwitchedOff(string relativePath)
+    {
+        using JsonDocument document = JsonDocument.Parse(
+            File.ReadAllText(FindRepositoryFile(relativePath)),
+            new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+
+        Assert.False(new ScreenStateSettings().Enabled);
+        Assert.False(document.RootElement.GetProperty("screenState").GetProperty("enabled").GetBoolean());
+    }
+
+    /// <summary>
+    /// Production 下快照默认关，配置可开：开着的 Production 配置照常通过校验，不像自动化接口那样被禁止。
+    /// </summary>
+    [Fact]
+    public void ProductionLeavesTheScreenStateOffByDefaultAndAcceptsItSwitchedOn()
+    {
+        using EnvironmentVariableScope _ = new();
+        OnboardSettings byDefault = CreateValidProductionSettings();
+        byDefault.Validate();
+        Assert.False(byDefault.ScreenState.Enabled);
+
+        OnboardSettings switchedOn = new()
+        {
+            Environment = byDefault.Environment,
+            AgvId = byDefault.AgvId,
+            OnboardInstanceId = byDefault.OnboardInstanceId,
+            RuleGateway = byDefault.RuleGateway,
+            WireToGate = byDefault.WireToGate,
+            VehicleSafety = byDefault.VehicleSafety,
+            IoModule = byDefault.IoModule,
+            ScreenState = new ScreenStateSettings { Enabled = true }
+        };
+        switchedOn.Validate();
+        Assert.True(switchedOn.ScreenState.Enabled);
+    }
+
+    /// <summary>参数只在开着时校验：关着的块写错了不该挡住车载端启动；开着时写错就拒绝。</summary>
+    [Theory]
+    [InlineData(10, 5_000, 20_971_520, 30)]
+    [InlineData(500, 500, 20_971_520, 30)]
+    [InlineData(500, 120_000, 20_971_520, 30)]
+    [InlineData(500, 5_000, 1_024, 30)]
+    [InlineData(500, 5_000, 20_971_520, 0)]
+    public void InvalidScreenStateParametersAreRejectedOnlyWhenSwitchedOn(
+        int flushIntervalMs,
+        int heartbeatIntervalMs,
+        long timelineMaxFileBytes,
+        int timelineRetentionDays)
+    {
+        OnboardSettings Settings(bool enabled) => new()
+        {
+            ScreenState = new ScreenStateSettings
+            {
+                Enabled = enabled,
+                FlushIntervalMs = flushIntervalMs,
+                HeartbeatIntervalMs = heartbeatIntervalMs,
+                TimelineMaxFileBytes = timelineMaxFileBytes,
+                TimelineRetentionDays = timelineRetentionDays
+            }
+        };
+
+        Settings(enabled: false).Validate();
+        Assert.Throws<InvalidDataException>(() => Settings(enabled: true).Validate());
+    }
+
     private static SlotIoMapping[] CreateDefaultSlots() =>
         Enumerable.Range(0, 8)
             .Select(index => new SlotIoMapping

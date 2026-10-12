@@ -27,6 +27,8 @@ public sealed class OnboardSettings
 
     public LogSettings Logging { get; init; } = new();
 
+    public ScreenStateSettings ScreenState { get; init; } = new();
+
     public static OnboardSettings Load(string path)
     {
         if (!File.Exists(path))
@@ -74,6 +76,7 @@ public sealed class OnboardSettings
         VehicleSafety.Validate(production && WireToGate.Enabled);
         IoModule.Validate(production);
         Workflow.Validate();
+        ScreenState.Validate();
 
         if (production)
         {
@@ -716,6 +719,62 @@ public sealed class WorkflowSettings
             || MaxReopenAttempts is < 0 or > 10)
         {
             throw new InvalidDataException("业务反馈超时、稳定窗口、快照时效、条码长度或重新开门次数参数无效。");
+        }
+    }
+}
+
+/// <summary>
+/// 屏幕状态快照的写盘开关与参数（hmi#308 调研 A1，onboard-hmi#315）：<c>hmi-state.json</c> 是此刻屏上显示什么、能按什么，
+/// <c>hmi-state-yyyyMMdd.ndjson</c> 是内容每变一次追加一行的时间线。只写本机文件，不开端口、不碰窗口。
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>所有环境默认关，配置可开，包括 Production。</b>用户 2026-10-12 定的两步走：先只在 agv02、agv03 的现场配置里开，
+/// 跑满一个现场周期、确认没有归因于快照的 <c>UNHANDLED_UI_ERROR</c>、时间线大小受控之后，再另开票把 Production 默认翻成开。
+/// 所以这里的默认值是那一步之前的状态，不是疏忽；<c>ScreenStateSettingsTests</c> 钉着它。
+/// </para>
+/// <para>
+/// <b>关着时不校验其余参数</b>：一个不用的块写错了，不该挡住车载端启动。
+/// </para>
+/// </remarks>
+public sealed class ScreenStateSettings
+{
+    public bool Enabled { get; init; }
+
+    /// <summary>写到哪个目录；不配置就与技术日志同一个目录（同一份 ACL），解析方式也与日志目录相同。</summary>
+    public string? Directory { get; init; }
+
+    /// <summary>属性变化之后最多隔多久取一次快照：变化只置脏标记，按这个周期以低优先级取值。</summary>
+    public int FlushIntervalMs { get; init; } = 500;
+
+    /// <summary>内容不变时也重写一次当前文件的周期，证明调度线程还活着。</summary>
+    public int HeartbeatIntervalMs { get; init; } = 5_000;
+
+    /// <summary>单个按天时间线文件的大小上限，超出当天停写并记一行日志。</summary>
+    public long TimelineMaxFileBytes { get; init; } = 20L * 1024 * 1024;
+
+    /// <summary>时间线保留天数，过期由写出器自己清理。只匹配 <c>hmi-state-yyyyMMdd.ndjson</c>。</summary>
+    public int TimelineRetentionDays { get; init; } = 30;
+
+    internal void Validate()
+    {
+        if (!Enabled)
+        {
+            return;
+        }
+
+        if (Directory is { } directory && string.IsNullOrWhiteSpace(directory))
+        {
+            throw new InvalidDataException("屏幕状态快照目录不能是空白；不配置时与日志目录相同。");
+        }
+
+        if (FlushIntervalMs is < 50 or > 10_000
+            || HeartbeatIntervalMs is < 1_000 or > 60_000
+            || HeartbeatIntervalMs <= FlushIntervalMs
+            || TimelineMaxFileBytes is < 64 * 1024 or > 1024L * 1024 * 1024
+            || TimelineRetentionDays is < 1 or > 365)
+        {
+            throw new InvalidDataException("屏幕状态快照的取值周期、心跳周期、时间线大小上限或保留天数参数无效。");
         }
     }
 }
