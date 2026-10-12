@@ -15,6 +15,7 @@ internal sealed class RecordingLogger : IAppLogger
 {
     private readonly List<(LogSeverity Severity, string Source, string Message)> _entries = [];
     private readonly List<(string Message, Exception Exception)> _exceptions = [];
+    private readonly List<(OnboardTechnicalLogCategory Category, string Message)> _categories = [];
 
     public event EventHandler<LogEntryEventArgs>? EntryWritten;
 
@@ -29,6 +30,22 @@ internal sealed class RecordingLogger : IAppLogger
             lock (_entries)
             {
                 return _exceptions.ToArray();
+            }
+        }
+    }
+
+    /// <summary>
+    /// The technical-log category each entry was filed under, explicit or the source's default — what
+    /// <c>FileAppLogger</c> writes into its third column (REQ-0272, onboard-hmi#312). Without the explicit overload
+    /// here the interface's default implementation would drop the category before a test could see it.
+    /// </summary>
+    public IReadOnlyList<(OnboardTechnicalLogCategory Category, string Message)> Categories
+    {
+        get
+        {
+            lock (_entries)
+            {
+                return _categories.ToArray();
             }
         }
     }
@@ -64,11 +81,20 @@ internal sealed class RecordingLogger : IAppLogger
         LogSeverity severity,
         string source,
         string message,
+        Exception? exception = null) =>
+        Write(severity, OnboardTechnicalLogCategories.DefaultFor(source, severity), source, message, exception);
+
+    public void Write(
+        LogSeverity severity,
+        OnboardTechnicalLogCategory category,
+        string source,
+        string message,
         Exception? exception = null)
     {
         lock (_entries)
         {
             _entries.Add((severity, source, message));
+            _categories.Add((category, message));
             if (exception is not null)
             {
                 _exceptions.Add((message, exception));

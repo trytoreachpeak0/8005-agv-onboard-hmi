@@ -28,6 +28,7 @@ public partial class App : System.Windows.Application, IDisposable
     internal const int ExitCodeStartupFailed = -1;
 
     private FileAppLogger? _logger;
+    private ProcessFailureLogging? _processFailureLogging;
     private SingleInstanceGuard? _singleInstance;
     private ModbusTcpIoModuleClient? _ioModule;
     private IRuleGateway? _ruleGateway;
@@ -44,8 +45,8 @@ public partial class App : System.Windows.Application, IDisposable
     {
         base.OnStartup(e);
 
-        // 引导日志器在任何可能被拒的东西之前建（onboard-hmi#14）：它不读业务配置，写到固定的 <程序目录>/logs，
-        // 与出厂配置的日志目录是同一个。修复之前读配置在建日志器之前，配置一被拒，catch 拿到的日志器是 null，
+        // 引导日志器在任何可能被拒的东西之前建（onboard-hmi#14）：它不读业务配置，写到固定的 %LOCALAPPDATA%\SQCD\8005AGV\logs，
+        // 与出厂配置的日志目录是同一个（onboard-hmi#312 起不在程序目录，部署删不到）。修复之前读配置在建日志器之前，配置一被拒，catch 拿到的日志器是 null，
         // 一个字节都不写，再被一个没人点的模态框挡住退出——车上看到的就是「进程活着、没窗口、没日志」。
         FileAppLogger bootstrapLogger = new(new LogSettings());
         string settingsPath = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
@@ -60,6 +61,8 @@ public partial class App : System.Windows.Application, IDisposable
         try
         {
             _logger = new FileAppLogger(settings.Logging);
+            // 后台线程与没人观察的任务上的异常也进技术日志的本地异常（REQ-0272，onboard-hmi#312）。只记，不改生死。
+            _processFailureLogging = ProcessFailureLogging.Attach(_logger);
             // 单例守卫在任何副作用之前（onboard-hmi#173、#165）：下面的车辆安全投影一构造就开始轮询服务端，IO 客户端
             // 一构造就握着 Modbus 目标——第二个实例一步都不能走到那里。顺序是判据的一部分；日志器提前是为了让这一行
             // 落在部署实际在用的日志文件里。
@@ -136,8 +139,14 @@ public partial class App : System.Windows.Application, IDisposable
                 ?? "unknown";
             _logger.Write(
                 LogSeverity.Information,
+                OnboardTechnicalLogCategory.RestartRecovery,
                 nameof(App),
                 $"车载端启动：agvId={settings.AgvId}，environment={settings.Environment}，version={version}。");
+            _logger.Write(
+                LogSeverity.Information,
+                OnboardTechnicalLogCategory.Configuration,
+                nameof(App),
+                settings.DescribeForTechnicalLog());
             // 生效配置与激活结果一起落在同一份原子文档里（#27）：分两次写会留下一个窗口——配置已切、结果没记下，
             // 重连补报时车会以为自己没激活过，于是再激活一次。初始那一份是本机自述的配置，由设置渲染出来；文档里
             // 已有内容时以文档为准。仓位区的前后分组读的也是它，所以放在界面之前建。
@@ -413,6 +422,7 @@ public partial class App : System.Windows.Application, IDisposable
     {
         DispatcherUnhandledException -= OnDispatcherUnhandledException;
         Dispose();
+        _processFailureLogging?.Dispose();
         base.OnExit(e);
     }
 

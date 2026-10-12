@@ -20,8 +20,10 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// </para>
 /// <para>
 /// Each case runs a private copy of the build output, because the application reads
-/// <c>appsettings.json</c> from, and writes <c>logs/</c> under, its own base directory. Editing the
-/// shared copy would race every other test and leave a broken file behind.
+/// <c>appsettings.json</c> from its own base directory, and with a private <c>LOCALAPPDATA</c>,
+/// because its bootstrap logger writes under <c>%LOCALAPPDATA%\SQCD\8005AGV\logs</c>
+/// (onboard-hmi#312). Editing the shared copy, or the real profile, would race every other test and
+/// leave files behind.
 /// </para>
 /// <para>
 /// The rejections are real ones taken from the shipped <c>appsettings.json</c>, not a deleted
@@ -66,7 +68,7 @@ public sealed class StartupConfigurationRejectionTests
             string expectedReason = WriteRejectedSettings(settingsPath, rejection);
 
             (int exitCode, bool exited, TimeSpan elapsed, string standardError) =
-                await RunAsync(Path.Combine(root, "SQCD.Agv.Wpf.exe"));
+                await RunAsync(Path.Combine(root, "SQCD.Agv.Wpf.exe"), LocalAppData(root));
 
             Assert.True(exited, $"车载端在 {ExitBudget.TotalSeconds:0} 秒内没有退出：配置被拒后进程仍然活着。");
             Assert.NotEqual(0, exitCode);
@@ -85,7 +87,7 @@ public sealed class StartupConfigurationRejectionTests
             Assert.Contains(settingsPath, log, StringComparison.OrdinalIgnoreCase);
             // The same line on stderr, which is where a launcher looks: the L2 harness points
             // logging.directory at its evidence folder and captures stderr as <name>.err.log, so a
-            // reason written only under the bootstrap logs/ beside the executable does not land with
+            // reason written only under the bootstrap logger's %LOCALAPPDATA% directory does not land with
             // the rest of its evidence (review of onboard-hmi#196).
             Assert.Contains(expectedReason, standardError, StringComparison.Ordinal);
             Assert.Contains(settingsPath, standardError, StringComparison.OrdinalIgnoreCase);
@@ -133,10 +135,10 @@ public sealed class StartupConfigurationRejectionTests
     /// even that fails, the test fails loudly rather than returning as if the process had ended.
     /// </remarks>
     private static async Task<(int ExitCode, bool Exited, TimeSpan Elapsed, string StandardError)> RunAsync(
-        string executable)
+        string executable,
+        string localAppData)
     {
-        Stopwatch elapsed = Stopwatch.StartNew();
-        using Process process = Process.Start(new ProcessStartInfo(executable)
+        ProcessStartInfo start = new(executable)
         {
             UseShellExecute = false,
             RedirectStandardError = true,
@@ -144,7 +146,13 @@ public sealed class StartupConfigurationRejectionTests
             // wrote the ANSI code page would fail here with mojibake instead of passing unnoticed.
             StandardErrorEncoding = new UTF8Encoding(false),
             WorkingDirectory = Path.GetDirectoryName(executable)!
-        }) ?? throw new InvalidOperationException("SQCD.Agv.Wpf.exe did not start.");
+        };
+        // The bootstrap logger writes under %LOCALAPPDATA% (onboard-hmi#312). A private one keeps this
+        // test's logs out of the real profile of whoever runs it, and apart from every parallel case.
+        start.Environment["LOCALAPPDATA"] = localAppData;
+        Stopwatch elapsed = Stopwatch.StartNew();
+        using Process process = Process.Start(start)
+            ?? throw new InvalidOperationException("SQCD.Agv.Wpf.exe did not start.");
         // Drained concurrently: a child blocked on a full stderr pipe would look exactly like the hang.
         Task<string> standardError = process.StandardError.ReadToEndAsync(CancellationToken.None);
         using CancellationTokenSource budget = new(ExitBudget);
@@ -217,9 +225,20 @@ public sealed class StartupConfigurationRejectionTests
         relative.Equals("logs", StringComparison.OrdinalIgnoreCase)
         || relative.StartsWith("logs" + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>The private %LOCALAPPDATA% this case's process runs with, inside its own copy.</summary>
+    private static string LocalAppData(string root) => Path.Combine(root, "localappdata");
+
+    /// <summary>
+    /// Reads the bootstrap log where the vehicle keeps it since onboard-hmi#312:
+    /// <c>%LOCALAPPDATA%\SQCD\8005AGV\logs</c>, which a redeployment does not delete. The program
+    /// directory must stay free of <c>logs/</c>: that is where the deployment's <c>.previous</c> swap
+    /// took the vehicle's logs with it.
+    /// </summary>
     private static string ReadLogs(string root)
     {
-        string logs = Path.Combine(root, "logs");
+        string besideProgram = Path.Combine(root, "logs");
+        Assert.False(Directory.Exists(besideProgram), $"车载端仍把日志写在程序目录 {besideProgram}：部署会把它连同旧包删掉。");
+        string logs = Path.Combine(LocalAppData(root), "SQCD", "8005AGV", "logs");
         Assert.True(Directory.Exists(logs), $"车载端没有创建日志目录 {logs}：配置被拒时一个字节都没写。");
         string[] files = Directory.GetFiles(logs, "agv-*.log");
         Assert.NotEmpty(files);

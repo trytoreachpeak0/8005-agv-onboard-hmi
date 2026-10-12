@@ -67,6 +67,16 @@ public interface IAppLogger
     public event EventHandler<LogEntryEventArgs>? EntryWritten;
 
     public void Write(LogSeverity severity, string source, string message, Exception? exception = null);
+
+    // 显式标技术日志类别（REQ-0272）。只给来源默认值不对的少数调用点用，见 OnboardTechnicalLogCategories。
+    // 默认实现丢掉类别，测试替身因此不必改；FileAppLogger 把它写进日志行。
+    public void Write(
+        LogSeverity severity,
+        OnboardTechnicalLogCategory category,
+        string source,
+        string message,
+        Exception? exception = null) =>
+        Write(severity, source, message, exception);
 }
 
 // 时钟接口

@@ -3,38 +3,68 @@ using SQCD.Agv.Core;
 namespace SQCD.Agv.UnitTests;
 
 /// <summary>
-/// 车载技术日志覆盖四类事件，保留期至少 30 天且可配置（REQ-0272）。
+/// 车载技术日志的七个覆盖面、默认分类、保留期与文件命名（REQ-0272，onboard-hmi#312）。
 /// </summary>
 /// <remarks>不挂 <c>IntegrationSlice</c> trait，理由同 <see cref="OnboardAlarmSnapshotTests"/>。</remarks>
 public sealed class OnboardTechnicalLogTests
 {
-    private static readonly DateTimeOffset Now = new(2026, 9, 9, 12, 0, 0, TimeSpan.Zero);
+    private static readonly DateTimeOffset Now = new(2026, 9, 9, 12, 0, 0, TimeSpan.FromHours(8));
 
+    /// <summary>
+    /// 枚举就是需求原文那七个面，按原文顺序，一个不多一个不少。此前是四类，其中「操作事件」需求里没有，
+    /// 执行阶段、配置、重启恢复、本地异常四个面缺席。
+    /// </summary>
     [Fact]
-    public void AllFourCategoriesAreCoveredAndKeptApart()
+    public void TheCategoriesAreExactlyTheSevenAreasTheRequirementNames()
     {
-        OnboardTechnicalLog log = new();
-        foreach (OnboardTechnicalLogCategory category in Enum.GetValues<OnboardTechnicalLogCategory>())
-        {
-            log.Append(Now, category, $"{category} 的一条记录。");
-        }
-
         Assert.Equal(
             [
                 OnboardTechnicalLogCategory.IoCommunication,
                 OnboardTechnicalLogCategory.SignalChange,
                 OnboardTechnicalLogCategory.SafetyDecision,
-                OnboardTechnicalLogCategory.OperatorEvent
+                OnboardTechnicalLogCategory.ExecutionPhase,
+                OnboardTechnicalLogCategory.Configuration,
+                OnboardTechnicalLogCategory.RestartRecovery,
+                OnboardTechnicalLogCategory.LocalFault
             ],
             Enum.GetValues<OnboardTechnicalLogCategory>());
-        Assert.Equal(4, log.Entries.Select(entry => entry.Category).Distinct().Count());
+    }
+
+    [Theory]
+    [InlineData("ModbusTcpIoModuleClient", OnboardTechnicalLogCategory.IoCommunication)]
+    [InlineData("OnboardAlarmMonitor", OnboardTechnicalLogCategory.LocalFault)]
+    [InlineData("WireToGateBusinessService", OnboardTechnicalLogCategory.ExecutionPhase)]
+    [InlineData("SlotGroupPresentation", OnboardTechnicalLogCategory.Configuration)]
+    [InlineData("WireToGateSessionService", OnboardTechnicalLogCategory.RestartRecovery)]
+    public void AnUntaggedEntryTakesItsSourcesDefault(string source, OnboardTechnicalLogCategory expected)
+    {
+        Assert.Equal(expected, OnboardTechnicalLogCategories.DefaultFor(source, LogSeverity.Information));
+        Assert.Equal(expected, OnboardTechnicalLogCategories.DefaultFor(source, LogSeverity.Warning));
+    }
+
+    [Fact]
+    public void AnUntaggedErrorIsALocalFaultWhateverItsSource()
+    {
+        Assert.Equal(
+            OnboardTechnicalLogCategory.LocalFault,
+            OnboardTechnicalLogCategories.DefaultFor("ModbusTcpIoModuleClient", LogSeverity.Error));
+    }
+
+    /// <summary>未登记的来源在运行时不抛异常：分类不能挡住写日志，更不能挡住业务。拦它的是架构测试。</summary>
+    [Fact]
+    public void AnUnregisteredSourceIsALocalFaultAndDoesNotThrow()
+    {
+        Assert.False(OnboardTechnicalLogCategories.IsRegisteredSource("NobodyRegisteredMe"));
+        Assert.Equal(
+            OnboardTechnicalLogCategory.LocalFault,
+            OnboardTechnicalLogCategories.DefaultFor("NobodyRegisteredMe", LogSeverity.Information));
     }
 
     [Fact]
     public void RetentionDefaultsToThirtyDaysAndAShorterConfiguredPeriodIsRefused()
     {
         Assert.Equal(TimeSpan.FromDays(30), OnboardTechnicalLogRetentionPolicy.Minimum);
-        Assert.Equal(TimeSpan.FromDays(30), new OnboardTechnicalLog().RetentionPolicy.RetainFor);
+        Assert.Equal(TimeSpan.FromDays(30), OnboardTechnicalLogRetentionPolicy.Default.RetainFor);
 
         ArgumentOutOfRangeException failure = Assert.Throws<ArgumentOutOfRangeException>(
             () => new OnboardTechnicalLogRetentionPolicy(TimeSpan.FromDays(7)));
@@ -46,33 +76,70 @@ public sealed class OnboardTechnicalLogTests
             new OnboardTechnicalLogRetentionPolicy(TimeSpan.FromDays(90)).RetainFor);
     }
 
+    /// <summary>
+    /// 按天文件只有在那一天最晚的一条也满 30 天时才算过期：今天中午看，31 天前那一天整天都过了，
+    /// 30 天前那一天的下午还没满 30 天，所以留。
+    /// </summary>
     [Fact]
-    public void NothingInsideRetentionIsPurgedAndEverythingPastItCanBe()
+    public void ADayExpiresOnlyWhenItsLastPossibleEntryIsPastRetention()
     {
-        OnboardTechnicalLog log = new();
-        log.Append(Now.AddDays(-40), OnboardTechnicalLogCategory.IoCommunication, "四十天前");
-        log.Append(Now.AddDays(-31), OnboardTechnicalLogCategory.SignalChange, "三十一天前");
-        log.Append(Now.AddDays(-29), OnboardTechnicalLogCategory.SafetyDecision, "二十九天前");
-        log.Append(Now, OnboardTechnicalLogCategory.OperatorEvent, "刚刚");
+        OnboardTechnicalLogRetentionPolicy policy = OnboardTechnicalLogRetentionPolicy.Default;
+        DateOnly today = DateOnly.FromDateTime(Now.DateTime);
 
-        // 未过期不清理：把「现在」放在最早那条还没满 30 天的时点上，一条都不该走。
-        Assert.Equal(0, log.PurgeExpired(Now.AddDays(-20)));
-        Assert.Equal(4, log.Entries.Count);
+        Assert.True(policy.IsDayExpired(today.AddDays(-31), Now));
+        Assert.False(policy.IsDayExpired(today.AddDays(-30), Now));
+        Assert.False(policy.IsDayExpired(today.AddDays(-29), Now));
+        Assert.False(policy.IsDayExpired(today, Now));
 
-        // 已过期可清理：两条超过 30 天的走了，另外两条留下。
-        Assert.Equal(2, log.PurgeExpired(Now));
-        Assert.Equal(
-            ["二十九天前", "刚刚"],
-            log.Entries.Select(entry => entry.Message));
+        // 刚过午夜：30 天前那一天的最后一刻正好满 30 天。
+        DateTimeOffset justAfterMidnight = new(today.ToDateTime(TimeOnly.MinValue), Now.Offset);
+        Assert.True(policy.IsDayExpired(today.AddDays(-31), justAfterMidnight));
+        Assert.False(policy.IsDayExpired(today.AddDays(-30), justAfterMidnight.AddTicks(-1)));
+    }
+
+    /// <summary>最后一天的「当天结束」不能溢出：它不过期，也不抛。</summary>
+    [Fact]
+    public void TheLastRepresentableDayNeverExpiresAndDoesNotThrow()
+    {
+        Assert.False(OnboardTechnicalLogRetentionPolicy.Default.IsDayExpired(DateOnly.MaxValue, Now));
     }
 
     [Fact]
     public void ALongerConfiguredRetentionKeepsWhatTheDefaultWouldHavePurged()
     {
-        OnboardTechnicalLog log = new(new OnboardTechnicalLogRetentionPolicy(TimeSpan.FromDays(90)));
-        log.Append(Now.AddDays(-40), OnboardTechnicalLogCategory.IoCommunication, "四十天前");
+        DateOnly fortyDaysAgo = DateOnly.FromDateTime(Now.DateTime).AddDays(-40);
 
-        Assert.Equal(0, log.PurgeExpired(Now));
-        Assert.Single(log.Entries);
+        Assert.True(OnboardTechnicalLogRetentionPolicy.Default.IsDayExpired(fortyDaysAgo, Now));
+        Assert.False(new OnboardTechnicalLogRetentionPolicy(TimeSpan.FromDays(90)).IsDayExpired(fortyDaysAgo, Now));
+    }
+
+    [Theory]
+    [InlineData("agv-20260909.log", true)]
+    [InlineData("agv-99991231.log", true)]
+    [InlineData("agv-00010101.log", true)]
+    [InlineData("agv-20260230.log", false)]
+    [InlineData("agv-2026090.log", false)]
+    [InlineData("agv-202609091.log", false)]
+    [InlineData("agv-20260909.log.bak", false)]
+    [InlineData("AGV-20260909.log", false)]
+    [InlineData("agv-20260909.LOG", false)]
+    [InlineData("agv-2026-909.log", false)]
+    [InlineData("agv-current.log", false)]
+    [InlineData("hmi-state-20260909.ndjson", false)]
+    [InlineData("control.err.log", false)]
+    [InlineData("onboard.out.log", false)]
+    public void OnlyTheExactDailyFileNameCountsAsATechnicalLog(string fileName, bool expected)
+    {
+        Assert.Equal(expected, OnboardTechnicalLogFileName.TryParseDay(fileName, out _));
+    }
+
+    [Fact]
+    public void TheDailyFileNameRoundTrips()
+    {
+        DateOnly day = new(2026, 9, 9);
+
+        Assert.Equal("agv-20260909.log", OnboardTechnicalLogFileName.For(day));
+        Assert.True(OnboardTechnicalLogFileName.TryParseDay(OnboardTechnicalLogFileName.For(day), out DateOnly parsed));
+        Assert.Equal(day, parsed);
     }
 }

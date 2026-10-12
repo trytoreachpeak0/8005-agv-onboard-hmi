@@ -298,7 +298,7 @@ public sealed class OnboardController : IAsyncDisposable
             string? validationError = ValidateAuthorization(authorization);
             if (validationError is not null)
             {
-                _logger.Write(LogSeverity.Warning, nameof(OnboardController),
+                _logger.Write(LogSeverity.Warning, OnboardTechnicalLogCategory.SafetyDecision, nameof(OnboardController),
                     $"规则响应或开锁前置条件不满足，code={validationError}。");
                 bool? precheckAcknowledged = await TryReportPrecheckFailureAsync(
                     authorization,
@@ -597,7 +597,7 @@ public sealed class OnboardController : IAsyncDisposable
             }
 
             _startupValidated = true;
-            _logger.Write(LogSeverity.Warning, nameof(OnboardController),
+            _logger.Write(LogSeverity.Warning, OnboardTechnicalLogCategory.SafetyDecision, nameof(OnboardController),
                 "维护人员已执行启动安全复核：DO全0、仓门全锁、快照有效；保留当前货物反馈。 ");
             Publish(OnboardState.Connecting, "启动安全复核通过，正在重新评估通信和到站状态。");
             ReevaluateIdleState("启动安全复核通过，已保留当前仓位货物状态。");
@@ -623,6 +623,7 @@ public sealed class OnboardController : IAsyncDisposable
 
         _logger.Write(
             LogSeverity.Error,
+            OnboardTechnicalLogCategory.SafetyDecision,
             nameof(OnboardController),
             $"严重安全故障已锁存，code={effective.ErrorCode}；当前活动流程已请求停止。");
         Publish(OnboardState.Faulted, effective.Banner, effective.ErrorCode);
@@ -724,6 +725,7 @@ public sealed class OnboardController : IAsyncDisposable
                 FatalFault? current = Volatile.Read(ref _fatalFault);
                 _logger.Write(
                     LogSeverity.Warning,
+                    OnboardTechnicalLogCategory.SafetyDecision,
                     nameof(OnboardController),
                     $"严重安全故障复位未生效：复核期间锁存已变化，operator={operatorId}。");
                 if (current is not null)
@@ -736,6 +738,7 @@ public sealed class OnboardController : IAsyncDisposable
 
             _logger.Write(
                 LogSeverity.Warning,
+                OnboardTechnicalLogCategory.SafetyDecision,
                 nameof(OnboardController),
                 $"严重安全故障已复位：code={latched.ErrorCode}，operator={operatorId}，"
                 + $"at={_clock.Now.ToUniversalTime():O}；仓门全锁、开锁输出全0、快照有效已复核。 ");
@@ -790,6 +793,7 @@ public sealed class OnboardController : IAsyncDisposable
         Interlocked.CompareExchange(ref _fatalFault, explained, latched);
         _logger.Write(
             LogSeverity.Warning,
+            OnboardTechnicalLogCategory.SafetyDecision,
             nameof(OnboardController),
             $"严重安全故障复位被拒：code={latched.ErrorCode}，operator={operatorId}，reason={reason}");
         Publish(OnboardState.Faulted, explained.Banner, latched.ErrorCode);
@@ -1463,7 +1467,7 @@ public sealed class OnboardController : IAsyncDisposable
     // IO 连接状态变化
     private void OnIoConnectionChanged(object? sender, ValueChangedEventArgs<bool> args)
     {
-        _logger.Write(args.Value ? LogSeverity.Information : LogSeverity.Warning, nameof(OnboardController),
+        _logger.Write(args.Value ? LogSeverity.Information : LogSeverity.Warning, OnboardTechnicalLogCategory.IoCommunication, nameof(OnboardController),
             args.Value ? "IO模块在线。" : "IO模块离线。");
         ReevaluateIdleState();
     }
@@ -1484,6 +1488,7 @@ public sealed class OnboardController : IAsyncDisposable
             {
                 _logger.Write(
                     LogSeverity.Warning,
+                    OnboardTechnicalLogCategory.SafetyDecision,
                     nameof(OnboardController),
                     $"启动IO快照不符合冷启动基线：{DescribeStartupSnapshot(args.Value)}。");
                 Publish(OnboardState.Faulted,
@@ -1493,7 +1498,11 @@ public sealed class OnboardController : IAsyncDisposable
             }
 
             _startupValidated = true;
-            _logger.Write(LogSeverity.Information, nameof(OnboardController), "启动IO安全快照验证通过。");
+            _logger.Write(
+                LogSeverity.Information,
+                OnboardTechnicalLogCategory.SafetyDecision,
+                nameof(OnboardController),
+                "启动IO安全快照验证通过。");
         }
 
         OnboardSnapshot current = Current;
@@ -1831,6 +1840,7 @@ public sealed class OnboardController : IAsyncDisposable
         {
             _logger.Write(
                 LogSeverity.Error,
+                OnboardTechnicalLogCategory.SafetyDecision,
                 nameof(OnboardController),
                 "读取上层安全会话门禁失败，已按未就绪处理。",
                 exception);

@@ -983,7 +983,7 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             GuardKind.SourceShape,
             "只认得文本 `.PulseUnlockAsync(`。经委托、方法组或反射调用同一个成员它看不见；绕开 "
             + "IIoModuleClient、自己 new TcpClient 直接写开锁线圈更看不见（那一半由 "
-            + "NothingUnderSrcTouchesTheConcreteModbusClientOutsideItsTwoAllowedSites 部分收窄，而那条自己也承认它"
+            + "NothingUnderSrcTouchesTheConcreteModbusClientOutsideItsAllowedFiles 部分收窄，而那条自己也承认它"
             + "挡的只是「照着现成客户端再用一次」）。它也没有合成反向验证：没有造一个未登记的开门点确认它会红。"),
         new(
             "FatalFaultScopeArchitectureTests.EverySiteRegisteredAsGuardedReallyChecksTheLatchBeforeUnlocking",
@@ -999,7 +999,7 @@ public sealed class RecoveryEntryWriteSiteArchitectureTests
             + "锁存是否真挡住开门由 MultiDemandJourneyG2Tests.FatalFaultLatch 与 RecoveryVectorG2Tests.FatalFaultLatch 的开门次数断言"
             + "承担（onboard-hmi#191）。在那两个文件里写一句提到控制器类名的注释，它会误红（方向是保守的）。没有合成反向验证。"),
         new(
-            "FatalFaultScopeArchitectureTests.NothingUnderSrcTouchesTheConcreteModbusClientOutsideItsTwoAllowedSites",
+            "FatalFaultScopeArchitectureTests.NothingUnderSrcTouchesTheConcreteModbusClientOutsideItsAllowedFiles",
             GuardKind.SourceShape,
             "只认得类名 ModbusTcpIoModuleClient 这个 token。本仓的 Modbus 是手写在裸 TcpClient 上的，"
             + "所以一个新文件自己连 IO 模块、直接写开锁线圈，它看不见（文件里已注明）。没有合成反向验证。"),

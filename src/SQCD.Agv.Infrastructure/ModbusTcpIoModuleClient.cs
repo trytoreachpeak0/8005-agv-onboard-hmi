@@ -444,7 +444,7 @@ public sealed class ModbusTcpIoModuleClient : IIoModuleClient
                 || old.LockFeedbackRaw != current.LockFeedbackRaw
                 || old.LightCurtainRaw != current.LightCurtainRaw)
             {
-                _logger.Write(LogSeverity.Information, nameof(ModbusTcpIoModuleClient),
+                _logger.Write(LogSeverity.Information, OnboardTechnicalLogCategory.SignalChange, nameof(ModbusTcpIoModuleClient),
                     $"{current.PhysicalNumber}号仓IO变化：DO {ToRaw(old.UnlockOutputRaw)}->{ToRaw(current.UnlockOutputRaw)}，" +
                     $"锁DI {ToRaw(old.LockFeedbackRaw)}->{ToRaw(current.LockFeedbackRaw)}，" +
                     $"光幕DI {ToRaw(old.LightCurtainRaw)}->{ToRaw(current.LightCurtainRaw)}。");
