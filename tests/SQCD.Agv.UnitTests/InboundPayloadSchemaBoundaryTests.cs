@@ -198,6 +198,98 @@ public sealed class InboundPayloadSchemaBoundaryTests
         Assert.Equal("PROTOCOL_SCHEMA_INVALID", refused.Message);
     }
 
+    /// <summary>
+    /// The schema bounds each leg's <c>sequence</c> to 1..9 and nothing more: a plan whose sequences skip a number,
+    /// or do not start at 1, is legal.
+    /// </summary>
+    /// <remarks>
+    /// <c>[2]</c> is the closing plan the control server stages when a vehicle clearing a charger reaches its waiting
+    /// point: the one waiting point leg keeps the stop's own sequence, the charger's plus the attempt
+    /// (8005-agv-onboard-hmi#327). Refusing it as <c>PROTOCOL_SCHEMA_INVALID</c> dropped the session, the server replayed
+    /// the unacknowledged snapshot into the next one, and agv02 reconnected every 4 s until a later plan replaced it.
+    /// <c>[1,3]</c> is the en-route plan of a second clearance attempt. Nothing on this end reads <c>sequence</c> as an
+    /// index, so a gap means nothing to the projection.
+    /// </remarks>
+    [Theory]
+    [InlineData("2")]
+    [InlineData("1,3")]
+    [InlineData("3,1")]
+    [InlineData("9")]
+    public void APlanWhoseSequencesSkipOrDoNotStartAtOneIsAccepted(string sequences)
+    {
+        UpcomingStopPlanSnapshotPayload payload = Inbound<UpcomingStopPlanSnapshotPayload>(
+            "UpcomingStopPlanSnapshot",
+            PlanPayloadWithSequences(Sequences(sequences)));
+
+        WireToGateSessionClient.ValidateUpcomingStopPlan(payload);
+
+        Assert.Equal(Sequences(sequences).Order(), payload.Legs.Select(leg => leg.Sequence).Order());
+    }
+
+    /// <summary>
+    /// The payload agv02 refused on 2026-10-12 (message 77b45b7d-76b9-8c54-8b3c-4c10366e176b, plan revision 50,
+    /// 8005-agv-onboard-hmi#327), with the same field values as the control server's outbox holds it; only the line breaks
+    /// differ. Event 1101 counts 94 refusals of it between 15:52 and 16:01 alone (evidence/hmi327/03-v2-log-1552-1601.txt).
+    /// </summary>
+    [Fact]
+    public void TheClearanceClosingPlanAgv02RefusedIsAccepted()
+    {
+        UpcomingStopPlanSnapshotPayload payload = Inbound<UpcomingStopPlanSnapshotPayload>(
+            "UpcomingStopPlanSnapshot",
+            """
+            {"planRevision":50,"legs":[{"movementLegId":"71efc184-8822-8e5f-9445-4f3114c7a14d","legType":null,
+            "stopPurposeCategory":"WAITING_POINT","demandId":null,"publicStationFunction":null,"sequence":2,
+            "stationId":"等待点3","mapId":"老厂前线new_wk","state":"ARRIVED"}]}
+            """);
+
+        WireToGateSessionClient.ValidateUpcomingStopPlan(payload);
+
+        WireToGateMovementLeg leg = Assert.Single(payload.Legs);
+        Assert.Equal(2, leg.Sequence);
+        Assert.Null(leg.LegType);
+    }
+
+    /// <summary>
+    /// What the schema does forbid stays refused: a sequence outside 1..9, and two legs sharing one.
+    /// </summary>
+    [Theory]
+    [InlineData("0")]
+    [InlineData("10")]
+    [InlineData("0,1")]
+    [InlineData("1,10")]
+    [InlineData("1,10,2")]
+    [InlineData("-1,2")]
+    [InlineData("1,1")]
+    [InlineData("2,4,2")]
+    public void APlanWithASequenceOutOfRangeOrRepeatedIsRefused(string sequences)
+    {
+        UpcomingStopPlanSnapshotPayload payload = Inbound<UpcomingStopPlanSnapshotPayload>(
+            "UpcomingStopPlanSnapshot",
+            PlanPayloadWithSequences(Sequences(sequences)));
+
+        InvalidDataException refused = Assert.Throws<InvalidDataException>(
+            () => WireToGateSessionClient.ValidateUpcomingStopPlan(payload));
+        Assert.Equal("PROTOCOL_SCHEMA_INVALID", refused.Message);
+    }
+
+    private static int[] Sequences(string commaSeparated) =>
+        commaSeparated.Split(',').Select(value => int.Parse(value, System.Globalization.CultureInfo.InvariantCulture)).ToArray();
+
+    /// <summary>
+    /// A plan of waiting point legs carrying exactly <paramref name="sequences"/>, in the order given.
+    /// </summary>
+    private static string PlanPayloadWithSequences(IReadOnlyList<int> sequences) =>
+        $$"""
+        {"planRevision":4,
+        "legs":[{{string.Join(",", sequences.Select((sequence, index) =>
+            $$"""
+            {"movementLegId":"00000000-0000-4000-8000-0000000005{{index + 1:D2}}",
+            "legType":null,"stopPurposeCategory":"WAITING_POINT","demandId":null,
+            "publicStationFunction":null,"sequence":{{sequence}},"stationId":"ST-{{index + 1}}",
+            "mapId":"MAP-26","state":"ARRIVED"}
+            """))}}]}
+        """;
+
     private static string WorklistPayloadWithWorkTypes(IReadOnlyList<string> workTypes) =>
         $$"""
         {"stationId":"STATION-01","worklistRevision":7,

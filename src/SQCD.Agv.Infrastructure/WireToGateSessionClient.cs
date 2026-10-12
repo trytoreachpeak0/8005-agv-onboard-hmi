@@ -4507,6 +4507,17 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// Same history as the item count in <see cref="ValidateCurrentStopWorklist"/>: the leg count was
     /// held at two until batch 7-13 (<c>8005-agv-onboard-hmi#134</c>) and is now the schema's own
     /// <c>legs.maxItems</c> of 9. A tenth leg is a schema violation, not a narrowing.
+    /// <para>
+    /// <c>sequence</c> is held to the schema's own bounds, each one within 1..9, plus one narrowing kept on purpose: no
+    /// two legs may share one. The schema's <c>uniqueItems</c> compares whole legs, not their sequences; the narrowing
+    /// rests on <c>x-sortedBy: sequence</c>, which names sequence as the plan's order and is no order if two legs tie.
+    /// It is not required to start at 1 or to run without a gap, and the order legs arrive in is not checked. Until
+    /// 8005-agv-onboard-hmi#327 it was required to run 1..n, and the plan the control server stages when a vehicle
+    /// clearing a charger reaches its waiting point is one leg at sequence 2: refused, the session dropped, the server
+    /// replayed it into the next one, and agv02 reconnected every 4 s until a later plan replaced it. Nothing on this end
+    /// reads <c>sequence</c> as an index -- the projection only orders by it -- so a gap changes nothing above here.
+    /// The schema bounds are not checked anywhere else on this path: deserialising the envelope checks the envelope only.
+    /// </para>
     /// </remarks>
     internal static void ValidateUpcomingStopPlan(UpcomingStopPlanSnapshotPayload payload)
     {
@@ -4515,9 +4526,9 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             || payload.Legs.Count > 9
             || payload.Legs.Any(leg => leg is null)
             || payload.Legs.Select(leg => leg.Sequence).Distinct().Count() != payload.Legs.Count
-            || payload.Legs.OrderBy(leg => leg.Sequence).Select((leg, index) => leg.Sequence == index + 1).Any(valid => !valid)
             || payload.Legs.Any(leg =>
                 leg is null
+                || leg.Sequence is < 1 or > 9
                 || !IsUuid(leg.MovementLegId)
                 || leg.LegType is not (null or "TO_PICKUP" or "TO_DROPOFF")
                 || leg.StopPurposeCategory is not ("BUSINESS" or "WAITING_POINT" or "CHARGER")

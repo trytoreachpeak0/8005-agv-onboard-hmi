@@ -494,8 +494,10 @@ public sealed partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 计划腿列表整张替换。排序只按服务端给的 <c>sequence</c>：入站校验已保证它从 1 起连续、不重复，
-    /// 所以这里的排序就是服务端的顺序，不是本地的决定。
+    /// 计划腿列表整张替换。排序只按服务端给的 <c>sequence</c>：入站校验保证它在 1～9 之间、不重复，
+    /// 所以这里的排序就是服务端的顺序，不是本地的决定。<b>它不保证从 1 起、也不保证连续</b>：服务端清桩到点的
+    /// 收尾计划只有一条 <c>sequence</c> 为 2 的腿，第二次清桩途中是 <c>[1, 3]</c>（onboard-hmi#327）。所以
+    /// <c>sequence</c> 只能拿来排序，不能当下标，也不能当「第几站」。
     /// </summary>
     private void ReplaceJourneyPlanLegsCore(IReadOnlyList<WireToGateMovementLeg> legs)
     {
