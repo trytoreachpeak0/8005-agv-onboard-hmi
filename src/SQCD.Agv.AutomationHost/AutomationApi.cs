@@ -34,14 +34,7 @@ public static class OnboardAutomationApi
                 _ => ("HTTP_ERROR", $"HTTP请求失败，状态码{response.StatusCode}。")
             };
             await response.WriteAsJsonAsync(
-                new AutomationErrorResponse(
-                    "1.0.0",
-                    runId,
-                    revision.Read().Revision,
-                    DateTimeOffset.UtcNow,
-                    null,
-                    reasonCode,
-                    message));
+                CreateError(revision.Read(), commandId: null, reasonCode, message));
         });
 
         RouteGroupBuilder group = app.MapGroup("/api/v1");
@@ -87,11 +80,8 @@ public static class OnboardAutomationApi
                 || request.ExpectedRevision.Value < 1)
             {
                 return Results.Json(
-                    new AutomationErrorResponse(
-                        "1.0.0",
-                        runId,
-                        revision.Read().Revision,
-                        DateTimeOffset.UtcNow,
+                    CreateError(
+                        revision.Read(),
                         request.CommandId,
                         "INVALID_HTTP_REQUEST",
                         "runId、commandId、expectedRevision和sublot均为必填项。"),
@@ -172,13 +162,13 @@ public static class OnboardAutomationApi
         string reasonCode,
         string message) =>
         new(
-            "1.0.0",
-            state.Snapshot.AgvId,
-            state.Revision,
-            DateTimeOffset.UtcNow,
-            commandId,
-            reasonCode,
-            message);
+            SchemaVersion: "1.0.0",
+            RunId: state.RunId,
+            Revision: state.Revision,
+            ObservedAt: DateTimeOffset.UtcNow,
+            CommandId: commandId,
+            ReasonCode: reasonCode,
+            Message: message);
 
     private static byte[] OpenApiDocument { get; } = LoadOpenApiDocument();
 
