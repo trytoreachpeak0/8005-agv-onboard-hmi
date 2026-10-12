@@ -546,6 +546,42 @@ public sealed class MultiDemandViewModelTests
         clock.Advance(TimeSpan.FromSeconds(91));
         viewModel.RefreshStationDepartureCountdown();
         Assert.Equal("ST-01", viewModel.VisitText);
+
+        // 断线清投影，再来一版会话已结束的完成空清单：都不再写「装货完成」。
+        viewModel.UpdateWireToGateJourney(WireToGateJourneySnapshot.Empty);
+        viewModel.RefreshStationDepartureCountdown();
+        Assert.Equal("旅程未同步", viewModel.VisitText);
+
+        viewModel.UpdateWireToGateJourney(Journey(CompletedWorklist(Now.AddSeconds(300), null)));
+        Assert.Equal("ST-01 / 本站作业已完成", viewModel.VisitText);
+    }
+
+    /// <summary>
+    /// 持货时进入最后 10 秒：连续 2 秒、每 250 ms 看一次，始终是红色的 Critical 档、不换中性样式，并且确实在闪
+    /// （亮、灭两个相位都出现）。ADR-cross-0055 的提醒在持货时照旧。
+    /// </summary>
+    [Fact]
+    public async Task WhileCargoHoldingTheLastTenSecondsStayRedAndFlash()
+    {
+        ManualClock clock = new(Now);
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, clock);
+        viewModel.UpdateWireToGateJourney(Journey(
+            WorklistAt(1, Now.AddSeconds(10), Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2)),
+            loadingPhase: new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(90), null)));
+
+        HashSet<bool> phases = [];
+        for (int tick = 0; tick < 8; tick++)
+        {
+            viewModel.RefreshStationDepartureCountdown();
+            Assert.Equal(StationDepartureCountdownTier.Critical, viewModel.StationDepartureCountdownTier);
+            Assert.False(viewModel.IsStationWorkCountdown);
+            Assert.Equal("本站作业剩余", viewModel.StationDepartureCountdownLabel);
+            phases.Add(viewModel.StationDepartureCountdownDimmed);
+            clock.Advance(TimeSpan.FromMilliseconds(250));
+        }
+
+        Assert.Equal([false, true], phases.Order());
     }
 
     private static WireToGateCurrentStopWorklist CompletedWorklist(
