@@ -119,6 +119,7 @@ public sealed partial class MainViewModel : ViewModelBase
     private bool _stationDepartureCountdownDimmed;
     private string _stationDepartureCountdownLabel = StationDepartureCountdownFormatter.DepartureLabel;
     private bool _isStationWorkCountdown;
+    private WireToGateCurrentStopWorklist? _endedStopWorklist;
     private Func<StationDepartureCountdownContext, string?>? _stationDepartureCountdownTextOverride;
     private DispatcherTimer? _stationDepartureCountdownTimer;
     private bool _stationDepartureCountdownStopped;
@@ -360,6 +361,10 @@ public sealed partial class MainViewModel : ViewModelBase
         _hasWireToGateJourney = true;
         // 期限以最新快照为准，整值替换：重新计满、恢复后的新期限、变为空，都照收，车载端不自己推算。
         _stationDepartureDeadlineAt = snapshot.CurrentStopWorklist?.StationDepartureDeadlineAt;
+        // 清单空了的业务停靠：到站那一格的半句随站点期限变（onboard-hmi#310），倒计时每次重算时一起算。
+        _endedStopWorklist = !snapshot.IsNonBusinessStop && snapshot.CurrentStopWorklist is { Items.Count: 0 } ended
+            ? ended
+            : null;
         HasStationDepartureCountdown = snapshot.CurrentStopWorklist is not null;
         RefreshStationDepartureCountdownCore();
         SyncStationDepartureCountdownTimerCore();
@@ -376,7 +381,7 @@ public sealed partial class MainViewModel : ViewModelBase
                 ? "旅程未同步"
                 : worklist.Items.Count == 0
                     // 清单空了写本站为什么结束（协议 3.0.0 的 stopEndedReason，onboard-hmi#214）；没有原因时照旧。
-                    ? $"{worklist.StationId} / {WireToGateStopEndedReasonText.Describe(worklist.StopEndedReason)}"
+                    ? EndedStopVisitText(worklist, Clock.Now)
                     : worklist.StationId;
         LogNonBusinessStopContradictionCore(snapshot);
         // 电量与充电状态整值跟随业务状态：断线清投影时一起变空，重启从日志恢复时一起回来（onboard-hmi#220）。
@@ -1752,7 +1757,15 @@ public sealed partial class MainViewModel : ViewModelBase
         StationDepartureCountdownTier = view.Tier;
         StationDepartureCountdownDimmed = view.Dimmed && !caption.StationWork;
         IsStationWorkCountdown = caption.StationWork;
+        if (_endedStopWorklist is { } ended)
+        {
+            VisitText = EndedStopVisitText(ended, now);
+        }
     }
+
+    private static string EndedStopVisitText(WireToGateCurrentStopWorklist worklist, DateTimeOffset now) =>
+        $"{worklist.StationId} / " + WireToGateStopEndedReasonText.Describe(
+            worklist.StopEndedReason, worklist.OperationSessionId, worklist.StationDepartureDeadlineAt, now);
 
     private async Task SubmitAsync(ScanInputMethod inputMethod)
     {

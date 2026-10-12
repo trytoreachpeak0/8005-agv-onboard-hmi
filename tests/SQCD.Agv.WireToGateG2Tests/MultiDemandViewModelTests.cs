@@ -437,6 +437,67 @@ public sealed class MultiDemandViewModelTests
         Assert.Equal("02:30", viewModel.StationDepartureCountdownText);
     }
 
+    /// <summary>
+    /// 装完最后一批，服务端发空清单、原因 <c>COMPLETED</c>、会话仍在、带新的站点期限（control-server#633）：纠正窗口还开着，
+    /// 到站那一格写「装货完成」，与旁边仍在走的倒计时对得上——不持货时右上框照旧「离站剩余」，持货时是「本站作业剩余」。
+    /// 期限一到，到站那一格随倒计时的重算回到「本站作业已完成」（onboard-hmi#310）。
+    /// </summary>
+    [Theory]
+    [InlineData(false, "离站剩余", "已到期，等待本站结束")]
+    [InlineData(true, "本站作业剩余", "已结束，车辆继续等单")]
+    public async Task ACompletedStopStillInItsCorrectionWindowSaysLoadingIsComplete(
+        bool cargoHolding,
+        string runningLabel,
+        string expiredText)
+    {
+        ManualClock clock = new(Now);
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, clock);
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            CompletedWorklist(Now.AddSeconds(90), "op-session-1"),
+            loadingPhase: cargoHolding ? new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(300), null) : null));
+
+        Assert.Equal("ST-01 / 装货完成", viewModel.VisitText);
+        Assert.Equal(runningLabel, viewModel.StationDepartureCountdownLabel);
+        Assert.Equal("01:30", viewModel.StationDepartureCountdownText);
+
+        clock.Advance(TimeSpan.FromSeconds(91));
+        viewModel.RefreshStationDepartureCountdown();
+
+        Assert.Equal("ST-01 / 本站作业已完成", viewModel.VisitText);
+        Assert.Equal(expiredText, viewModel.StationDepartureCountdownText);
+    }
+
+    /// <summary>
+    /// 只在纠正窗口里写「装货完成」：会话已结束（无会话号）或没有站点期限时，照旧写「本站作业已完成」。
+    /// </summary>
+    [Theory]
+    [InlineData(90, null)]
+    [InlineData(null, "op-session-1")]
+    public async Task ACompletedStopOutsideItsCorrectionWindowKeepsTheOriginalWording(
+        int? stationSecondsLeft,
+        string? operationSessionId)
+    {
+        ManualClock clock = new(Now);
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, clock);
+
+        viewModel.UpdateWireToGateJourney(Journey(CompletedWorklist(
+            stationSecondsLeft is { } left ? Now.AddSeconds(left) : null, operationSessionId)));
+
+        Assert.Equal("ST-01 / 本站作业已完成", viewModel.VisitText);
+    }
+
+    private static WireToGateCurrentStopWorklist CompletedWorklist(
+        DateTimeOffset? stationDepartureDeadlineAt,
+        string? operationSessionId) =>
+        WorklistAt(2, stationDepartureDeadlineAt) with
+        {
+            OperationSessionId = operationSessionId,
+            StopEndedReason = "COMPLETED"
+        };
+
     [Fact]
     public async Task VehicleFullShowsItsNotice()
     {
