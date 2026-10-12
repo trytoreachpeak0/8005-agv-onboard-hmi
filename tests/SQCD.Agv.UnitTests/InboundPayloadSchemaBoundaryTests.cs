@@ -227,6 +227,28 @@ public sealed class InboundPayloadSchemaBoundaryTests
     }
 
     /// <summary>
+    /// The payload agv02 refused 80 times on 2026-10-12, byte for byte as the control server's outbox holds it
+    /// (message 77b45b7d-76b9-8c54-8b3c-4c10366e176b, plan revision 50, 8005-agv-onboard-hmi#327).
+    /// </summary>
+    [Fact]
+    public void TheClearanceClosingPlanAgv02RefusedIsAccepted()
+    {
+        UpcomingStopPlanSnapshotPayload payload = Inbound<UpcomingStopPlanSnapshotPayload>(
+            "UpcomingStopPlanSnapshot",
+            """
+            {"planRevision":50,"legs":[{"movementLegId":"71efc184-8822-8e5f-9445-4f3114c7a14d","legType":null,
+            "stopPurposeCategory":"WAITING_POINT","demandId":null,"publicStationFunction":null,"sequence":2,
+            "stationId":"等待点3","mapId":"老厂前线new_wk","state":"ARRIVED"}]}
+            """);
+
+        WireToGateSessionClient.ValidateUpcomingStopPlan(payload);
+
+        WireToGateMovementLeg leg = Assert.Single(payload.Legs);
+        Assert.Equal(2, leg.Sequence);
+        Assert.Null(leg.LegType);
+    }
+
+    /// <summary>
     /// What the schema does forbid stays refused: a sequence outside 1..9, and two legs sharing one.
     /// </summary>
     [Theory]

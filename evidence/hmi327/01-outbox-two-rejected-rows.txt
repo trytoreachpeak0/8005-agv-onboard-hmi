@@ -1,0 +1,17 @@
+2026-10-12T20:30:59.2792952+08:00 V2 db read-only: ProtocolOutbox rows for hmi#327
+columns: MessageId,MessageType,PayloadJson,CreatedAt,AcknowledgedAt,FencedAt
+=== the two rejected messages (full rows)
+----
+MessageId=77b45b7d-76b9-8c54-8b3c-4c10366e176b
+MessageType=UpcomingStopPlanSnapshot
+PayloadJson={"protocolVersion":4,"profileId":"AGV_FULL_PRODUCT","protocolReleaseVersion":"3.0.0","protocolReleaseManifestSha256":"d5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e","messageType":"UpcomingStopPlanSnapshot","messageId":"77b45b7d-76b9-8c54-8b3c-4c10366e176b","correlationId":null,"agvId":"\u8001\u5382\u524D\u7EBF\u65B0\u591A\u4ED3\u4F4D2","sessionGeneration":309,"sentAt":"2026-10-12T07:54:25.1461211+00:00","payload":{"planRevision":50,"legs":[{"movementLegId":"71efc184-8822-8e5f-9445-4f3114c7a14d","legType":null,"stopPurposeCategory":"WAITING_POINT","demandId":null,"publicStationFunction":null,"sequence":2,"stationId":"\u7B49\u5F85\u70B93","mapId":"\u8001\u5382\u524D\u7EBFnew_wk","state":"ARRIVED"}]}}
+CreatedAt=2026-10-12 07:54:25.1461211+00:00
+AcknowledgedAt=
+FencedAt=
+----
+MessageId=3cb1f8f1-7af8-4550-bb8d-41ac13622411
+MessageType=UpcomingStopPlanSnapshot
+PayloadJson={"protocolVersion":4,"profileId":"AGV_FULL_PRODUCT","protocolReleaseVersion":"3.0.0","protocolReleaseManifestSha256":"d5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e","messageType":"UpcomingStopPlanSnapshot","messageId":"3cb1f8f1-7af8-4550-bb8d-41ac13622411","correlationId":null,"agvId":"\u8001\u5382\u524D\u7EBF\u65B0\u591A\u4ED3\u4F4D2","sessionGeneration":366,"sentAt":"2026-10-12T12:14:08.9596936+00:00","payload":{"planRevision":62,"legs":[{"movementLegId":"98cb6889-6d9a-7154-9836-5c1f272cea12","legType":null,"stopPurposeCategory":"WAITING_POINT","demandId":null,"publicStationFunction":null,"sequence":2,"stationId":"\u7B49\u5F85\u70B93","mapId":"\u8001\u5382\u524D\u7EBFnew_wk","state":"ARRIVED"}]}}
+CreatedAt=2026-10-12 12:14:08.9596936+00:00
+AcknowledgedAt=
+FencedAt=
