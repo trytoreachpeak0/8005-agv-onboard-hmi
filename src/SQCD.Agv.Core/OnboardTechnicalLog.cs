@@ -83,7 +83,9 @@ public static class OnboardTechnicalLogCategories
             ["HmiScreenStateMonitor"] = OnboardTechnicalLogCategory.LocalFault,
             ["HmiScreenStateFileWriter"] = OnboardTechnicalLogCategory.LocalFault,
             // 快照开关打开但参数无效、本次不启动（onboard-hmi#315 审查 S4）：是配置被拒，不是本地异常。
-            ["HmiScreenStateWiring"] = OnboardTechnicalLogCategory.Configuration
+            ["HmiScreenStateWiring"] = OnboardTechnicalLogCategory.Configuration,
+            // 屏上「操作记录」落盘（onboard-hmi#317）：记的是操作员看到的事，归执行阶段；它自己停用的那一行显式标本地异常。
+            ["OperatorRecordLog"] = OnboardTechnicalLogCategory.ExecutionPhase
         };
 
     /// <summary>登记过的来源类名。</summary>

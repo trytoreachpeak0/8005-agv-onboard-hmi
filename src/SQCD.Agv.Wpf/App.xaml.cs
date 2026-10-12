@@ -6,6 +6,7 @@ using SQCD.Agv.Application;
 using SQCD.Agv.AutomationHost;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
+using SQCD.Agv.Wpf.OperatorRecordOutput;
 using SQCD.Agv.Wpf.ScreenState;
 using SQCD.Agv.Wpf.ScreenStateOutput;
 using SQCD.Agv.Wpf.ViewModels;
@@ -43,6 +44,7 @@ public partial class App : System.Windows.Application, IDisposable
     private MainViewModel? _viewModel;
     private HmiScreenStateFileWriter? _screenStateWriter;
     private HmiScreenStateMonitor? _screenStateMonitor;
+    private OperatorRecordLog? _operatorRecordLog;
     private bool _disposed;
 
     protected override async void OnStartup(StartupEventArgs e)
@@ -357,6 +359,8 @@ public partial class App : System.Windows.Application, IDisposable
             RunningInstanceWindow.Listen(window);
             // 开关与参数的判断在 HmiScreenStateWiring.Start 里，测试调的是同一个方法（onboard-hmi#315 审查 S2）。
             StartScreenState(settings, viewModel);
+            // 屏上「操作记录」落盘（onboard-hmi#317）：开关默认关，判断在 OperatorRecordLog.TryStart 里。
+            StartOperatorRecordLog(settings, viewModel);
 
             await viewModel.InitializeAsync().ConfigureAwait(true);
             if (settings.WireToGate.Enabled)
@@ -443,6 +447,7 @@ public partial class App : System.Windows.Application, IDisposable
         _disposed = true;
         // 快照先停：它只读视图模型，停在业务服务之前，免得退出途中再取一份半拆的界面。
         _screenStateMonitor?.Dispose();
+        _operatorRecordLog?.Dispose();
         _screenStateWriter?.DisposeAsync().AsTask().GetAwaiter().GetResult();
         try
         {
@@ -497,6 +502,33 @@ public partial class App : System.Windows.Application, IDisposable
             catch (Exception)
             {
                 // 日志器也可能抛（调研 4.3 第 1 条）；快照不起，车照常启动。
+            }
+        }
+    }
+
+    /// <summary>
+    /// 屏上「操作记录」落盘（hmi#308 调研 T4，onboard-hmi#317）：每次启动都调；<c>logging.operatorRecords</c> 关着时什么都不订阅。
+    /// </summary>
+    /// <remarks>
+    /// <see cref="OperatorRecordLog.TryStart"/> 自己接住一切异常；这里再包一层，理由同 <see cref="StartScreenState"/>：
+    /// <c>OnStartup</c> 是 <c>async void</c>，漏出来的异常落到调度线程上就是 <c>UNHANDLED_UI_ERROR</c> 锁车。
+    /// </remarks>
+    private void StartOperatorRecordLog(OnboardSettings settings, MainViewModel viewModel)
+    {
+        try
+        {
+            FileAppLogger logger = _logger ?? throw new InvalidOperationException("日志器未初始化。");
+            _operatorRecordLog = OperatorRecordLog.TryStart(settings.Logging, viewModel.Logs, logger);
+        }
+        catch (Exception exception)
+        {
+            try
+            {
+                _logger?.Write(LogSeverity.Warning, nameof(App), "操作记录落盘启动失败，本次运行不写。", exception);
+            }
+            catch (Exception)
+            {
+                // 日志器也可能抛（调研 4.3 第 1 条）；不落盘，车照常启动。
             }
         }
     }

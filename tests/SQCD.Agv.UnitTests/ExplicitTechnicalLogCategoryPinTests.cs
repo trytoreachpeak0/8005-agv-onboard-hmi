@@ -52,7 +52,10 @@ public sealed class ExplicitTechnicalLogCategoryPinTests
         ("src/SQCD.Agv.Wpf/App.xaml.cs", "车载端启动：", OnboardTechnicalLogCategory.RestartRecovery),
         ("src/SQCD.Agv.Wpf/App.xaml.cs", "DescribeForTechnicalLog()", OnboardTechnicalLogCategory.Configuration),
         ("src/SQCD.Agv.Wpf/StartupConfiguration.cs", "nameof(App), line", OnboardTechnicalLogCategory.Configuration),
-        ("src/SQCD.Agv.Infrastructure/ProcessFailureLogging.cs", "nameof(ProcessFailureLogging)", OnboardTechnicalLogCategory.LocalFault)
+        ("src/SQCD.Agv.Infrastructure/ProcessFailureLogging.cs", "nameof(ProcessFailureLogging)", OnboardTechnicalLogCategory.LocalFault),
+        // onboard-hmi#317: the operator record log's own failure is a local fault, its records are the execution phase.
+        ("src/SQCD.Agv.Wpf/OperatorRecordOutput/OperatorRecordLog.cs", "nameof(TryStart)}）", OnboardTechnicalLogCategory.LocalFault),
+        ("src/SQCD.Agv.Wpf/OperatorRecordOutput/OperatorRecordLog.cs", "（{where}）", OnboardTechnicalLogCategory.LocalFault)
     ];
 
     public static TheoryData<string, string, OnboardTechnicalLogCategory> Pins
@@ -105,6 +108,8 @@ public sealed class ExplicitTechnicalLogCategoryPinTests
         Assert.Contains("logging.directory=", line, StringComparison.Ordinal);
         // onboard-hmi#315: whether the screen-state snapshot is on is part of what an engineer reads off a vehicle.
         Assert.Contains("screenState.enabled=False", line, StringComparison.Ordinal);
+        // onboard-hmi#317: so is whether the operator record goes to the technical log.
+        Assert.Contains("logging.operatorRecords=False", line, StringComparison.Ordinal);
         Assert.DoesNotContain("CREDENTIAL", line, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("PROOF", line, StringComparison.OrdinalIgnoreCase);
     }
