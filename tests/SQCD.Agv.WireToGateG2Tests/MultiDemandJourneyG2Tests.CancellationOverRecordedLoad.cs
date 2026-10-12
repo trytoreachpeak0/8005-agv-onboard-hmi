@@ -128,13 +128,14 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(unlocksBeforeRestart, io.UnlockCount);
         AssertCancellationOnFile(ReadJournal(afterRestart, token), activeSlots: [1]);
 
+        // Slot 2 is emptied and shut as soon as the resumed cancellation opens it: told in advance, so the vector's own
+        // wait shuts it. Shut by this thread after it saw the pulse, a late wake-up ran the wait past its two-second
+        // operation timeout and the cancellation ended UNKNOWN (8005-agv-onboard-hmi#323).
+        io.CloseDoorAfterNextUnlock(1, cargo: false);
         Task<bool> again = afterRestart.Business.RequestLoadCancellationAsync("现场确认不装了。", token);
-        await afterRestart.WaitUntilAsync(
-            () => io.UnlockCount > unlocksBeforeRestart || again.IsCompleted,
-            "slot 2 to be opened for emptying",
-            token);
-        io.CloseDoor(1, cargo: false);
         Assert.True(await again);
+        Assert.Equal(unlocksBeforeRestart + 1, io.UnlockCount);
+        Assert.False(io.HasScheduledClose);
         JsonElement result = Assert.Single(ReceivedPayloads(afterRestart, "LoadCancellationResult"));
         Assert.Equal("ALL_EMPTY", result.GetProperty("overallOutcome").GetString());
         AssertAttemptSettledWithTheCancellation(ReadJournal(afterRestart, token));
@@ -323,6 +324,13 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>The operator empties and shuts slot 1, then slot 2, as the cancellation opens each.</summary>
+    /// <remarks>
+    /// Both closes are told to the fake in advance, keyed on the pulse that opens each slot, so the vector's own wait shuts
+    /// the door. Shut by this thread after it saw each pulse, a late wake-up ran the wait past its two-second operation
+    /// timeout and the slot came out UNKNOWN (8005-agv-onboard-hmi#323). Slot 1 may already have been pulsed when this is
+    /// called (order b opens it before the load's acknowledgement is released); the close then lands on the wait already
+    /// under way.
+    /// </remarks>
     private static async Task EmptyBothSlotsAsync(
         Harness harness,
         FakeIoModuleClient io,
@@ -330,16 +338,12 @@ public sealed partial class MultiDemandJourneyG2Tests
         int firstCancellationPulse,
         CancellationToken token)
     {
+        io.CloseDoorOnceUnlockedAt(0, cargo: false, firstCancellationPulse);
+        io.CloseDoorOnceUnlockedAt(1, cargo: false, firstCancellationPulse + 1);
         await harness.WaitUntilAsync(
-            () => io.UnlockCount >= firstCancellationPulse || press.IsCompleted,
-            "the cancellation to open slot 1",
+            () => !io.HasScheduledClose || press.IsCompleted,
+            "the cancellation to open and the operator to shut slot 1, then slot 2",
             token);
-        io.CloseDoor(0, cargo: false);
-        await harness.WaitUntilAsync(
-            () => io.UnlockCount >= firstCancellationPulse + 1 || press.IsCompleted,
-            "the cancellation to open slot 2",
-            token);
-        io.CloseDoor(1, cargo: false);
     }
 
     private static void AssertCancellationOnFile(WireToGateRecoveryState journal, int[] activeSlots)

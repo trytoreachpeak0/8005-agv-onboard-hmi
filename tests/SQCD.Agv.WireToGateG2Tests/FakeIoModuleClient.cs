@@ -177,23 +177,39 @@ public sealed class FakeIoModuleClient : IIoModuleClient
     {
         lock (_sync)
         {
-            _scheduledClose = (slotIndex, cargo, UnlockCount);
+            _scheduledCloses.Add((slotIndex, cargo, UnlockCount + 1));
         }
     }
 
-    /// <summary>Whether a <see cref="CloseDoorAfterNextUnlock"/> is still waiting for its pulse.</summary>
+    /// <summary>
+    /// As <see cref="CloseDoorAfterNextUnlock"/>, but keyed on the pulse count rather than on the next pulse: the door is
+    /// shut by the first wait on the slot once <see cref="UnlockCount"/> has reached <paramref name="unlockCount"/> and the
+    /// slot reads released -- also when that pulse has already happened by the time this is called. Several slots can be
+    /// told in advance this way, for an operator who empties one slot after another as a vector opens each
+    /// (8005-agv-onboard-hmi#323: closing each door after seeing its pulse ran the vector past its operation timeout
+    /// whenever the test thread woke late).
+    /// </summary>
+    public void CloseDoorOnceUnlockedAt(int slotIndex, bool cargo, int unlockCount)
+    {
+        lock (_sync)
+        {
+            _scheduledCloses.Add((slotIndex, cargo, unlockCount));
+        }
+    }
+
+    /// <summary>Whether a scheduled close is still waiting for its pulse.</summary>
     public bool HasScheduledClose
     {
         get
         {
             lock (_sync)
             {
-                return _scheduledClose is not null;
+                return _scheduledCloses.Count > 0;
             }
         }
     }
 
-    private (int SlotIndex, bool Cargo, int UnlocksWhenScheduled)? _scheduledClose;
+    private readonly List<(int SlotIndex, bool Cargo, int AtUnlockCount)> _scheduledCloses = [];
 
     /// <summary>
     /// The door reads open -- lock feedback released, unlock output reset -- as a door left standing open
@@ -306,13 +322,13 @@ public sealed class FakeIoModuleClient : IIoModuleClient
                         return locker;
                     }
 
-                    if (_scheduledClose is { } close
-                        && close.SlotIndex == slotIndex
-                        && UnlockCount > close.UnlocksWhenScheduled
-                        && _lockers[slotIndex].LockFeedbackRaw == false)
+                    int due = _scheduledCloses.FindIndex(close =>
+                        close.SlotIndex == slotIndex && UnlockCount >= close.AtUnlockCount);
+                    if (due >= 0 && _lockers[slotIndex].LockFeedbackRaw == false)
                     {
-                        _scheduledClose = null;
-                        CloseDoor(slotIndex, close.Cargo);
+                        bool cargo = _scheduledCloses[due].Cargo;
+                        _scheduledCloses.RemoveAt(due);
+                        CloseDoor(slotIndex, cargo);
                         continue;
                     }
                 }

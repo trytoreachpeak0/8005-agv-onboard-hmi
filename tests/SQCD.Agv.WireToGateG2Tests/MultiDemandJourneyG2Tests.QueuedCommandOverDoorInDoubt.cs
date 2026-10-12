@@ -27,14 +27,26 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// B's first copy is refused over A's door in doubt, before any journal write, and A's record of that door is still on
     /// file. Then the operator shuts A's door and the server sends B again.
     /// </summary>
+    /// <remarks>
+    /// The refused copy put B on the display as <c>Preparing</c> before the executor refused it, and the refusal goes on
+    /// the wire before the screen is given back to what it showed before (<c>RefuseNewOperationAsync</c>). Waiting for the
+    /// wire alone let a caller's next "B is the current operation" be met by that leftover <c>Preparing</c> instead of by
+    /// B's second copy, and A's snapshot then came back while the caller held its assertion (8005-agv-onboard-hmi#323).
+    /// The refusal's log line is written last, after the screen is given back, and from there nothing of the first copy's
+    /// handling is left but the synchronous release of its claim; sent before that line, the second copy can also meet
+    /// the claim still held and be dropped as a concurrent duplicate, which nothing in this test would send again.
+    /// </remarks>
     private static async Task RefuseBOverAsDoorThenResendOnceShutAsync(
         Harness harness,
         FakeIoModuleClient io,
         CancellationToken token)
     {
         await harness.WaitUntilAsync(
-            () => RefusalsOfB(harness) == 1,
-            "B's first copy to be refused over A's door in doubt",
+            () => RefusalsOfB(harness) == 1
+                && harness.Logger.Entries.Any(entry =>
+                    entry.Message.StartsWith("拒收SlotOperationCommand：", StringComparison.Ordinal)
+                    && entry.Message.Contains($"attempt={AttemptB}", StringComparison.Ordinal)),
+            "B's first copy to be refused over A's door in doubt, and its handling done",
             token);
         WireToGateRecoveryState onFile = await harness.Session.Journal.ReadRecoveryStateAsync(token);
         Assert.Equal(AttemptA, onFile.UnsettledSlotOperationAttemptId);
