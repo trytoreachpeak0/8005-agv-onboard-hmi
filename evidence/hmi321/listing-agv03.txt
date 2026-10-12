@@ -1,0 +1,12 @@
+# ssh agv03（只读，2026-10-12 约 11:31 CST）
+hostname=DESKTOP-94OA6CK now=2026-10-12T11:31:32.5455337+08:00
+=== DIR C:\8005\OnboardHmi\logs exists=True
+\agv-20261011.log	98932	2026-10-11T19:11:31	2026-10-11T20:08:41
+\agv-20261012.log	50138	2026-10-12T09:45:19	2026-10-12T11:19:37
+=== DIR C:\Users\HT\AppData\Local\SQCD\8005AGV\logs exists=False
+=== DRIVES
+C	used=23844847616	free=103454400512
+Temp	used=23844847616	free=103454400512
+=== DIR C:\8005\OnboardHmi.previous\logs exists=False
+=== VOLUME
+C	size=127299248128	free=103454302208	fs=NTFS
