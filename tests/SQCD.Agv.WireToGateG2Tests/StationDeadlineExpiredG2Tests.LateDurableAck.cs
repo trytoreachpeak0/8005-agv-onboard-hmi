@@ -155,7 +155,12 @@ public sealed partial class StationDeadlineExpiredG2Tests
             new FakeIoModuleClient { OperatorNeverActs = true, KeepSnapshotFresh = true },
             token);
         await harness.WaitForStageAsync(WireToGateHmiOperationStage.WaitingOperator, token);
+        System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+        System.Collections.Concurrent.ConcurrentQueue<string> versions = new();
+        harness.Session.StateChanged += (_, args) =>
+            versions.Enqueue($"{clock.ElapsedMilliseconds}ms accepted={args.Value.SafetyStateVersion} readiness={args.Value.Readiness}");
         long changed = harness.Client.Current.SafetyStateVersion + 10;
+        versions.Enqueue($"{clock.ElapsedMilliseconds}ms test start accepted={changed - 10} changed={changed}");
         FakeControlServer.DurableAckHold hold = harness.Server.HoldNextDurableAck(
             "SafetyStateChanged",
             payload => payload.GetProperty("safetyStateVersion").GetInt64() == changed);
@@ -175,8 +180,40 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.Equal(WireToGateLateDurableAckOutcome.Acknowledged, ack.Outcome);
         AssertLateAckLogged(harness, late, LogSeverity.Information, "现记为已确认");
         Assert.True(harness.Client.Current.Connected, "the late ack must not end the session");
-        Assert.Equal(changed, harness.Client.Current.SafetyStateVersion);
+        versions.Enqueue($"{clock.ElapsedMilliseconds}ms late ack settled");
+        long accepted = harness.Client.Current.SafetyStateVersion;
+        Assert.True(
+            accepted == changed,
+            $"expected the accepted safety state version {changed}, found {accepted}{Environment.NewLine}"
+            + DescribeSafetyTraffic(harness, versions));
         Assert.Empty(harness.Server.DurableAckHoldPredicateFailures);
+    }
+
+    /// <summary>
+    /// Every safety report the double received and every snapshot request and safety ack it sent, in wire order, with
+    /// the accepted version as the session published it and the log -- what a failure of the version assertion needs
+    /// to tell which message moved the version (onboard-hmi#335).
+    /// </summary>
+    private static string DescribeSafetyTraffic(Harness harness, IEnumerable<string> versions)
+    {
+        static bool IsSafety(string messageType) =>
+            messageType is "SafetyStateChanged" or "SafetyStateSnapshot" or "SafetyStateSnapshotRequested";
+        return string.Join(
+            Environment.NewLine,
+            [
+                "-- received (safety):",
+                .. harness.Server.ReceivedEnvelopes
+                    .Where(envelope => IsSafety(envelope.MessageType))
+                    .Select(envelope => $"c{envelope.Connection} {envelope.WireLine}"),
+                "-- sent (safety requests, durable acks):",
+                .. harness.Server.SentEnvelopes
+                    .Where(envelope => IsSafety(envelope.MessageType) || envelope.MessageType == "DurableAck")
+                    .Select(envelope => $"c{envelope.Connection} {envelope.WireLine}"),
+                "-- session states:",
+                .. versions,
+                "-- log:",
+                DescribeLog(harness)()
+            ]);
     }
 
     /// <summary>
