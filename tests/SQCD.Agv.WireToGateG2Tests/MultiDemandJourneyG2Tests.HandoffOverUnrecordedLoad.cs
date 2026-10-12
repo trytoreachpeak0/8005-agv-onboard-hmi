@@ -447,13 +447,12 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.Business.CanRequestFaultCargoHandoff,
             "the fault cargo handoff entry over A again",
             token);
+        // Slot 2 is emptied and shut as soon as the second handoff opens it: told in advance, so the vector's own wait shuts
+        // it. Shut by this thread after it saw the pulse, a late wake-up ran the wait past its two-second operation timeout
+        // and the handoff ended UNKNOWN (8005-agv-onboard-hmi#331, the shape #323 fixed elsewhere).
         int unlocksBefore = io.UnlockCount;
+        io.CloseDoorAfterNextUnlock(1, cargo: false);
         Assert.True(await harness.Business.RequestFaultCargoHandoffAsync("现场确认故障仓货物需要交接处理。", token));
-        await harness.WaitUntilAsync(
-            () => io.UnlockCount > unlocksBefore || ReceivedPayloads(harness, "FaultCargoRecoveryResult").Length > 1,
-            "the second handoff to open slot 2",
-            token);
-        io.CloseDoor(1, cargo: false);
         await harness.WaitUntilAsync(
             () => ReceivedPayloads(harness, "FaultCargoRecoveryResult").Length == 2,
             "the second handoff's result",
@@ -461,6 +460,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(
             "HANDED_OFF",
             ReceivedPayloads(harness, "FaultCargoRecoveryResult")[1].GetProperty("overallOutcome").GetString());
+        Assert.Equal(unlocksBefore + 1, io.UnlockCount);
+        Assert.False(io.HasScheduledClose);
         await harness.WaitUntilAsync(
             () => ReadJournal(harness, token) is { RecoveryVector: null, UnsettledSlotOperationAttemptId: null },
             "A to settle with the second handoff",

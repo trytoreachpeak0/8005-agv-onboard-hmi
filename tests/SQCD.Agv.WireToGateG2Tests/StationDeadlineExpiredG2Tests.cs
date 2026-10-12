@@ -189,6 +189,10 @@ public sealed partial class StationDeadlineExpiredG2Tests
             "the in-flight load cancellation entry to be offered",
             token);
 
+        // The cancellation takes slot 1 over standing open and waits on it with the harness's two-second operation timeout.
+        // Held until this thread shuts it: shut after seeing the vector start, a late wake-up ran that wait out and the slot
+        // came out UNKNOWN (8005-agv-onboard-hmi#331).
+        harness.Io.HoldWaitsUntilShut(0);
         Task<bool> cancellation = harness.Business.RequestLoadCancellationAsync("现场不装了。", token);
         await Harness.WaitUntilAsync(
             () => harness.ReadRecoveryState(token).RecoveryVector is not null,
