@@ -328,7 +328,7 @@ public sealed class WireToGateUnableToChargeTests
             "(sender as FrameworkElement)?.DataContext is not UnableToChargeOption { Prompt: var prompt, ConfirmationText: var confirmationText }",
             handler,
             StringComparison.Ordinal);
-        Assert.Contains("MessageBox.Show(\n                confirmationText,", handler, StringComparison.Ordinal);
+        Assert.Contains("ModalDialogs.Show(\n                confirmationText,", handler, StringComparison.Ordinal);
         Assert.Contains("_viewModel.ConfirmUnableToChargeAsync(prompt)", handler, StringComparison.Ordinal);
     }
 

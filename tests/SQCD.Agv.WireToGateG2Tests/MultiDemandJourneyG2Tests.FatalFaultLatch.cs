@@ -1,6 +1,7 @@
 using System.Text.Json;
 using SQCD.Agv.Core;
 using SQCD.Agv.Wpf;
+using SQCD.Agv.Wpf.ScreenState;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
@@ -65,6 +66,15 @@ public sealed partial class MultiDemandJourneyG2Tests
         // 操作员看到的是「为什么没开门」，不是一句光秃秃的「操作未完成」。这一句在结果发出之前发布。
         AssertLatchGuidance(harness, "本机已锁存严重安全故障，1、2号仓停止开门；复核并复位后可申请恢复。");
         Assert.Empty(harness.UiErrors);
+
+        // The screen-state snapshot of a latched vehicle (onboard-hmi#313, research section 5): the banner came from the
+        // controller snapshot path, which is the only one that writes it while latched, and every recovery entry is
+        // reported as not pressable.
+        HmiScreenState screen = harness.ScreenState();
+        Assert.Equal(HmiBannerSource.ControllerSnapshot, screen.Banner.Source);
+        Assert.True(screen.Banner.HasError);
+        Assert.Equal(harness.ViewModel.StateText, screen.Banner.StateText);
+        Assert.All(RecoveryEntryButtons, key => Assert.False(ButtonOf(screen, key).Enabled, key));
     }
 
     /// <summary>

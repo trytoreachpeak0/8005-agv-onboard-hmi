@@ -2,6 +2,8 @@ using System.Windows.Threading;
 using SQCD.Agv.Application;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
+using SQCD.Agv.Wpf;
+using SQCD.Agv.Wpf.ScreenState;
 using SQCD.Agv.Wpf.ViewModels;
 using Xunit;
 
@@ -304,17 +306,23 @@ public sealed class MultiDemandViewModelTests
     /// 这一档，在走时的黄红与闪烁照旧，ADR-cross-0055）。
     /// </summary>
     [Theory]
-    [InlineData("A: station deadline running", 90, 30 * 60, "本站作业剩余", "30:00", StationDepartureCountdownTier.Normal)]
-    [InlineData("B: station deadline passed", 101, -60, "本站作业", "已结束，车辆继续等单", StationDepartureCountdownTier.Expired)]
-    [InlineData("C: holding deadline passed too", -5, -60, "本站作业", "已结束，车辆继续等单", StationDepartureCountdownTier.Expired)]
-    [InlineData("D: holding without a deadline", null, 45, "本站作业剩余", "00:45", StationDepartureCountdownTier.Warning)]
+    /// <remarks>
+    /// The last column is the "latest departure" the holding line shows, worked out by hand for each combination (the
+    /// later of the two deadlines when there is a holding deadline, none without one): the screen-state snapshot must
+    /// report that time and the station countdown's caption, tier and deadline (onboard-hmi#313, review M1).
+    /// </remarks>
+    [InlineData("A: station deadline running", 90, 30 * 60, "本站作业剩余", "30:00", StationDepartureCountdownTier.Normal, 30 * 60)]
+    [InlineData("B: station deadline passed", 101, -60, "本站作业", "已结束，车辆继续等单", StationDepartureCountdownTier.Expired, 101)]
+    [InlineData("C: holding deadline passed too", -5, -60, "本站作业", "已结束，车辆继续等单", StationDepartureCountdownTier.Expired, -5)]
+    [InlineData("D: holding without a deadline", null, 45, "本站作业剩余", "00:45", StationDepartureCountdownTier.Warning, null)]
     public async Task WhileCargoHoldingTheStationCountdownSpeaksOfTheStationsWorkNotOfDeparture(
         string combination,
         int? holdingSecondsLeft,
         int stationSecondsLeft,
         string label,
         string text,
-        StationDepartureCountdownTier tier)
+        StationDepartureCountdownTier tier,
+        int? latestDepartureSecondsLeft)
     {
         _ = combination;
         ManualClock clock = new(Now);
@@ -340,6 +348,18 @@ public sealed class MultiDemandViewModelTests
         {
             Assert.Contains("离站", viewModel.CargoHoldingCountdownText, StringComparison.Ordinal);
         }
+
+        HmiScreenState screen = HmiScreenStateBuilder.Build(viewModel, new ModalDialogRegistry());
+        Assert.Equal(
+            new HmiStationDepartureCountdownState(
+                true, tier.ToString(), label, tier == StationDepartureCountdownTier.Expired, Now.AddSeconds(stationSecondsLeft)),
+            screen.StationDepartureCountdown);
+        Assert.Equal(
+            new HmiCargoHoldingState(
+                true,
+                viewModel.CargoHoldingCountdownStatus,
+                latestDepartureSecondsLeft is { } latest ? Now.AddSeconds(latest) : null),
+            screen.CargoHolding);
     }
 
     /// <summary>

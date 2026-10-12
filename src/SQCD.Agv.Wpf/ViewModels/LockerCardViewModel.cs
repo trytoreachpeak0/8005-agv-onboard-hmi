@@ -44,6 +44,12 @@ public sealed class LockerCardViewModel : ViewModelBase
         }
     }
 
+    /// <summary>门锁反馈为已锁。<see cref="IsKnown"/> 为假时无意义。只给屏幕状态快照读（onboard-hmi#313）。</summary>
+    internal bool IsLocked => _isLocked;
+
+    /// <summary>光幕判为有货。<see cref="IsKnown"/> 为假时无意义。只给屏幕状态快照读（onboard-hmi#313）。</summary>
+    internal bool HasCargo => _hasCargo;
+
     public string DoorText => !IsKnown ? "仓门：状态未知" : _isLocked ? "仓门：已锁" : "仓门：未锁";
 
     public string CargoText => !IsKnown ? "货物：状态未知" : _hasCargo ? "货物：有货" : "货物：空仓";

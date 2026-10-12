@@ -82,7 +82,8 @@ public static class LoadingPhaseText
     /// the journey's first LoadBatch, so with several batches at one stop it can come first. Without a holding deadline
     /// the wait has no departure time to report, and the station's is not borrowed for one.
     /// </summary>
-    private static DateTimeOffset? LatestDeparture(DateTimeOffset? holding, DateTimeOffset? station) =>
+    /// <remarks>Public so the screen-state snapshot reports the time this line shows, not a second computation of it (onboard-hmi#313).</remarks>
+    public static DateTimeOffset? LatestDeparture(DateTimeOffset? holding, DateTimeOffset? station) =>
         holding is { } h && station is { } s && s > h ? s : holding;
 
     private static LoadingPhaseView CargoHolding(DateTimeOffset? deadlineAt, DateTimeOffset now, TimeZoneInfo zone)

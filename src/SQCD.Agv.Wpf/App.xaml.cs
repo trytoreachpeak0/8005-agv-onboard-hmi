@@ -398,7 +398,7 @@ public partial class App : System.Windows.Application, IDisposable
         if (Environment.UserInteractive)
         {
             await StartupFailureNotice.ShowAsync(
-                () => MessageBox.Show(
+                () => ModalDialogs.Show(
                     "软件无法启动，请联系维护人员检查程序配置。原因已写入程序目录下的 logs 日志。",
                     "软件启动失败",
                     MessageBoxButton.OK,
@@ -520,7 +520,7 @@ public partial class App : System.Windows.Application, IDisposable
             default:
                 _logger?.Write(LogSeverity.Error, nameof(App), "界面发生未处理异常。", e.Exception);
                 _controller?.EnterFatalFault("UNHANDLED_UI_ERROR", OnboardFatalFaultBanner.UnhandledUiError);
-                MessageBox.Show(
+                ModalDialogs.Show(
                     OnboardFatalFaultBanner.UnhandledUiErrorDialog,
                     "软件运行异常",
                     MessageBoxButton.OK,
