@@ -255,13 +255,14 @@ public sealed class MultiDemandViewModelTests
         MainViewModel viewModel = await ViewModel(controller, clock);
 
         viewModel.UpdateWireToGateJourney(Journey(
-            WorklistAt(1, Now.AddMinutes(30), Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2)),
+            // 站点期限早于持货期限：「最迟几点离站」就是持货期限（取两者中更晚的，onboard-hmi#310）。
+            WorklistAt(1, Now.AddSeconds(60), Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2)),
             loadingPhase: new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(90), null)));
 
         Assert.True(viewModel.HasCargoHoldingCountdown);
         Assert.Equal("等待更多任务，最迟 10:01 离站（剩 01:30）", viewModel.CargoHoldingCountdownText);
         Assert.Equal("ACTIVE", viewModel.CargoHoldingCountdownStatus);
-        Assert.Equal("30:00", viewModel.StationDepartureCountdownText);
+        Assert.Equal("01:00", viewModel.StationDepartureCountdownText);
         Assert.False(viewModel.HasLoadingClosedReason);
         Assert.False(viewModel.HasVehicleFullNotice);
 
@@ -295,6 +296,302 @@ public sealed class MultiDemandViewModelTests
 
         Assert.Equal("等待更多任务，最迟 10:10 离站（剩 10:00）", viewModel.CargoHoldingCountdownText);
     }
+
+    /// <summary>
+    /// 持货等单时站点期限只结束本站作业（REQ-0355），「车什么时候走」只由持货那一行回答（onboard-hmi#310）：站点那一格
+    /// 换成「本站作业」口径，不出现「离站」二字。四个组合——站点期限在走、站点期限已过（2026-10-11 现场）、持货期限也过了、
+    /// 持货没有期限——各自断言一次。档位仍按站点期限算，UIA 的 ItemStatus 语义不变；已到期是正常状态，不走红字（中性样式只给
+    /// 这一档，在走时的黄红与闪烁照旧，ADR-cross-0055）。
+    /// </summary>
+    [Theory]
+    [InlineData("A: station deadline running", 90, 30 * 60, "本站作业剩余", "30:00", StationDepartureCountdownTier.Normal)]
+    [InlineData("B: station deadline passed", 101, -60, "本站作业", "已结束，车辆继续等单", StationDepartureCountdownTier.Expired)]
+    [InlineData("C: holding deadline passed too", -5, -60, "本站作业", "已结束，车辆继续等单", StationDepartureCountdownTier.Expired)]
+    [InlineData("D: holding without a deadline", null, 45, "本站作业剩余", "00:45", StationDepartureCountdownTier.Warning)]
+    public async Task WhileCargoHoldingTheStationCountdownSpeaksOfTheStationsWorkNotOfDeparture(
+        string combination,
+        int? holdingSecondsLeft,
+        int stationSecondsLeft,
+        string label,
+        string text,
+        StationDepartureCountdownTier tier)
+    {
+        _ = combination;
+        ManualClock clock = new(Now);
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, clock);
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            WorklistAt(1, Now.AddSeconds(stationSecondsLeft), Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2)),
+            loadingPhase: new WireToGateLoadingPhase(
+                "CARGO_HOLDING_WAIT", holdingSecondsLeft is { } left ? Now.AddSeconds(left) : null, null)));
+
+        Assert.True(viewModel.HasStationDepartureCountdown);
+        Assert.Equal(label, viewModel.StationDepartureCountdownLabel);
+        Assert.Equal(text, viewModel.StationDepartureCountdownText);
+        Assert.Equal(tier, viewModel.StationDepartureCountdownTier);
+        Assert.Equal(tier == StationDepartureCountdownTier.Expired, viewModel.IsStationWorkCountdown);
+        Assert.False(viewModel.StationDepartureCountdownDimmed);
+        Assert.DoesNotContain("离站", viewModel.StationDepartureCountdownLabel, StringComparison.Ordinal);
+        Assert.DoesNotContain("离站", viewModel.StationDepartureCountdownText, StringComparison.Ordinal);
+        // 屏上唯一的离站答案在持货那一行。
+        Assert.True(viewModel.HasCargoHoldingCountdown);
+        if (holdingSecondsLeft > 0)
+        {
+            Assert.Contains("离站", viewModel.CargoHoldingCountdownText, StringComparison.Ordinal);
+        }
+    }
+
+    /// <summary>
+    /// 进入持货等单的那一份快照上，标签就已经是「本站作业」口径；离开（装满）的那一份上就回到「离站剩余」。站点那一格的
+    /// 刷新原本先于 loadingPhase 落定，口径会慢一份快照。
+    /// </summary>
+    [Fact]
+    public async Task TheCaptionChangesOnTheSnapshotThatEntersAndLeavesCargoHolding()
+    {
+        ManualClock clock = new(Now);
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, clock);
+        WireToGateCurrentStopWorklist expired =
+            WorklistAt(1, Now.AddSeconds(-30), Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2));
+
+        viewModel.UpdateWireToGateJourney(Journey(expired, loadingPhase: new WireToGateLoadingPhase("LOADING", null, null)));
+        Assert.Equal("离站剩余", viewModel.StationDepartureCountdownLabel);
+        Assert.Equal("已到期，等待本站结束", viewModel.StationDepartureCountdownText);
+        Assert.False(viewModel.IsStationWorkCountdown);
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            expired, loadingPhase: new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(90), null)));
+        Assert.Equal("本站作业", viewModel.StationDepartureCountdownLabel);
+        Assert.Equal("已结束，车辆继续等单", viewModel.StationDepartureCountdownText);
+        Assert.True(viewModel.IsStationWorkCountdown);
+
+        viewModel.UpdateWireToGateJourney(Journey(expired, loadingPhase: new WireToGateLoadingPhase("VEHICLE_FULL", null, null)));
+        Assert.Equal("离站剩余", viewModel.StationDepartureCountdownLabel);
+        Assert.Equal("已到期，等待本站结束", viewModel.StationDepartureCountdownText);
+        Assert.False(viewModel.IsStationWorkCountdown);
+    }
+
+    /// <summary>
+    /// 服务端 cs#633 可能让持货期间的清单不带站点期限，或者重发一个新期限：前者显示「无倒计时」、标签「本站作业」，
+    /// 后者照新期限正常倒数、标签回到「本站作业剩余」。
+    /// </summary>
+    [Fact]
+    public async Task WhileCargoHoldingAStationDeadlineThatIsAbsentOrRefreshedIsShownAsItStands()
+    {
+        ManualClock clock = new(Now);
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, clock);
+        WireToGateLoadingPhase holding = new("CARGO_HOLDING_WAIT", Now.AddSeconds(120), null);
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            WorklistAt(1, null, Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2)), loadingPhase: holding));
+        Assert.Equal("本站作业", viewModel.StationDepartureCountdownLabel);
+        Assert.Equal("无倒计时", viewModel.StationDepartureCountdownText);
+        Assert.Equal(StationDepartureCountdownTier.Absent, viewModel.StationDepartureCountdownTier);
+        // 无期限照旧是灰色那一档，不换中性样式。
+        Assert.False(viewModel.IsStationWorkCountdown);
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            WorklistAt(2, Now.AddSeconds(-10), Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2)), loadingPhase: holding));
+        Assert.Equal("已结束，车辆继续等单", viewModel.StationDepartureCountdownText);
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            WorklistAt(3, Now.AddSeconds(90), Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2)), loadingPhase: holding));
+        Assert.Equal("本站作业剩余", viewModel.StationDepartureCountdownLabel);
+        Assert.Equal("01:30", viewModel.StationDepartureCountdownText);
+        Assert.Equal(StationDepartureCountdownTier.Normal, viewModel.StationDepartureCountdownTier);
+
+        // 最后一分钟的提醒在持货时照旧（ADR-cross-0055）：转黄，最后 10 秒转红并逐秒闪烁。
+        clock.Advance(TimeSpan.FromSeconds(45));
+        viewModel.RefreshStationDepartureCountdown();
+        Assert.Equal("00:45", viewModel.StationDepartureCountdownText);
+        Assert.Equal(StationDepartureCountdownTier.Warning, viewModel.StationDepartureCountdownTier);
+        Assert.False(viewModel.IsStationWorkCountdown);
+
+        // Now 是整分，再过 85 秒落在奇数秒上：闪烁的「灭」相位。
+        clock.Advance(TimeSpan.FromSeconds(40));
+        viewModel.RefreshStationDepartureCountdown();
+        Assert.Equal("00:05", viewModel.StationDepartureCountdownText);
+        Assert.Equal(StationDepartureCountdownTier.Critical, viewModel.StationDepartureCountdownTier);
+        Assert.True(viewModel.StationDepartureCountdownDimmed);
+        Assert.False(viewModel.IsStationWorkCountdown);
+    }
+
+    /// <summary>
+    /// 持货时站点期限已过，但 #78 的覆盖文案生效（门开着超期、取消装货中）：覆盖文案照显示，红字保留，不换中性样式。
+    /// </summary>
+    [Fact]
+    public async Task WhileCargoHoldingTheStationDeadlineOverrideKeepsItsAlarmStyle()
+    {
+        ManualClock clock = new(Now);
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, clock);
+        viewModel.StationDepartureCountdownTextOverride = _ => "已到期，正在取消本站装货";
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            WorklistAt(1, Now.AddSeconds(-30), Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2)),
+            loadingPhase: new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(90), null)));
+
+        Assert.Equal("已到期，正在取消本站装货", viewModel.StationDepartureCountdownText);
+        Assert.Equal(StationDepartureCountdownTier.Expired, viewModel.StationDepartureCountdownTier);
+        Assert.False(viewModel.IsStationWorkCountdown);
+
+        viewModel.StationDepartureCountdownTextOverride = null;
+
+        Assert.Equal("已结束，车辆继续等单", viewModel.StationDepartureCountdownText);
+        Assert.True(viewModel.IsStationWorkCountdown);
+    }
+
+    /// <summary>
+    /// 持货期限早于站点期限（一站多批、生产值 5 分钟／5 分钟时会出现）：车要等到站点期限才走，持货那一行的「最迟几点离站」
+    /// 就报站点期限，剩余时间随它走；站点那一格是「本站作业剩余」、数到同一刻，屏上仍只有一个离站答案。持货期限过了而站点
+    /// 期限没过时，持货那一行不报「已到期」。
+    /// </summary>
+    [Fact]
+    public async Task AHoldingDeadlineEarlierThanTheStationsReportsTheStationsAsTheLatestDeparture()
+    {
+        ManualClock clock = new(Now);
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, clock);
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            WorklistAt(1, Now.AddSeconds(300), Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2)),
+            loadingPhase: new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(120), null)));
+
+        Assert.Equal("等待更多任务，最迟 10:05 离站（剩 05:00）", viewModel.CargoHoldingCountdownText);
+        Assert.Equal("ACTIVE", viewModel.CargoHoldingCountdownStatus);
+        Assert.Equal("本站作业剩余", viewModel.StationDepartureCountdownLabel);
+        Assert.Equal("05:00", viewModel.StationDepartureCountdownText);
+        Assert.DoesNotContain("离站", viewModel.StationDepartureCountdownLabel, StringComparison.Ordinal);
+        Assert.DoesNotContain("离站", viewModel.StationDepartureCountdownText, StringComparison.Ordinal);
+
+        clock.Advance(TimeSpan.FromSeconds(150));
+        viewModel.RefreshLoadingPhase();
+        viewModel.RefreshStationDepartureCountdown();
+        Assert.Equal("等待更多任务，最迟 10:05 离站（剩 02:30）", viewModel.CargoHoldingCountdownText);
+        Assert.Equal("ACTIVE", viewModel.CargoHoldingCountdownStatus);
+        Assert.Equal("02:30", viewModel.StationDepartureCountdownText);
+    }
+
+    /// <summary>
+    /// 装完最后一批，服务端发空清单、原因 <c>COMPLETED</c>、会话仍在、带新的站点期限（control-server#633）：纠正窗口还开着，
+    /// 到站那一格写「装货完成」，与旁边仍在走的倒计时对得上——不持货时右上框照旧「离站剩余」，持货时是「本站作业剩余」。
+    /// 期限一到，到站那一格随倒计时的重算回到「本站作业已完成」（onboard-hmi#310）。
+    /// </summary>
+    [Theory]
+    [InlineData(false, "离站剩余", "已到期，等待本站结束")]
+    [InlineData(true, "本站作业剩余", "已结束，车辆继续等单")]
+    public async Task ACompletedStopStillInItsCorrectionWindowSaysLoadingIsComplete(
+        bool cargoHolding,
+        string runningLabel,
+        string expiredText)
+    {
+        ManualClock clock = new(Now);
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, clock);
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            CompletedWorklist(Now.AddSeconds(90), "op-session-1"),
+            loadingPhase: cargoHolding ? new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(300), null) : null));
+
+        Assert.Equal("ST-01 / 装货完成", viewModel.VisitText);
+        Assert.Equal(runningLabel, viewModel.StationDepartureCountdownLabel);
+        Assert.Equal("01:30", viewModel.StationDepartureCountdownText);
+
+        clock.Advance(TimeSpan.FromSeconds(91));
+        viewModel.RefreshStationDepartureCountdown();
+
+        Assert.Equal("ST-01 / 本站作业已完成", viewModel.VisitText);
+        Assert.Equal(expiredText, viewModel.StationDepartureCountdownText);
+    }
+
+    /// <summary>
+    /// 只在纠正窗口里写「装货完成」：会话已结束（无会话号）或没有站点期限时，照旧写「本站作业已完成」。
+    /// </summary>
+    [Theory]
+    [InlineData(90, null)]
+    [InlineData(null, "op-session-1")]
+    public async Task ACompletedStopOutsideItsCorrectionWindowKeepsTheOriginalWording(
+        int? stationSecondsLeft,
+        string? operationSessionId)
+    {
+        ManualClock clock = new(Now);
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, clock);
+
+        viewModel.UpdateWireToGateJourney(Journey(CompletedWorklist(
+            stationSecondsLeft is { } left ? Now.AddSeconds(left) : null, operationSessionId)));
+
+        Assert.Equal("ST-01 / 本站作业已完成", viewModel.VisitText);
+    }
+
+    /// <summary>
+    /// 完成空清单之后又来一版带项的清单（追加进本站、或下一站到站）：到站那一格回到只写站名，倒计时之后的重算也不再把
+    /// 上一版空清单的「装货完成」或「本站作业已完成」写回来。
+    /// </summary>
+    [Fact]
+    public async Task AWorklistWithItemsAfterACompletedOneShowsOnlyTheStation()
+    {
+        ManualClock clock = new(Now);
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, clock);
+        viewModel.UpdateWireToGateJourney(Journey(CompletedWorklist(Now.AddSeconds(90), "op-session-1")));
+        Assert.Equal("ST-01 / 装货完成", viewModel.VisitText);
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            WorklistAt(3, Now.AddSeconds(60), Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
+        Assert.Equal("ST-01", viewModel.VisitText);
+
+        clock.Advance(TimeSpan.FromSeconds(91));
+        viewModel.RefreshStationDepartureCountdown();
+        Assert.Equal("ST-01", viewModel.VisitText);
+
+        // 断线清投影，再来一版会话已结束的完成空清单：都不再写「装货完成」。
+        viewModel.UpdateWireToGateJourney(WireToGateJourneySnapshot.Empty);
+        viewModel.RefreshStationDepartureCountdown();
+        Assert.Equal("旅程未同步", viewModel.VisitText);
+
+        viewModel.UpdateWireToGateJourney(Journey(CompletedWorklist(Now.AddSeconds(300), null)));
+        Assert.Equal("ST-01 / 本站作业已完成", viewModel.VisitText);
+    }
+
+    /// <summary>
+    /// 持货时进入最后 10 秒：连续 2 秒、每 250 ms 看一次，始终是红色的 Critical 档、不换中性样式，并且确实在闪
+    /// （亮、灭两个相位都出现）。ADR-cross-0055 的提醒在持货时照旧。
+    /// </summary>
+    [Fact]
+    public async Task WhileCargoHoldingTheLastTenSecondsStayRedAndFlash()
+    {
+        ManualClock clock = new(Now);
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller, clock);
+        viewModel.UpdateWireToGateJourney(Journey(
+            WorklistAt(1, Now.AddSeconds(10), Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2)),
+            loadingPhase: new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(90), null)));
+
+        HashSet<bool> phases = [];
+        for (int tick = 0; tick < 8; tick++)
+        {
+            viewModel.RefreshStationDepartureCountdown();
+            Assert.Equal(StationDepartureCountdownTier.Critical, viewModel.StationDepartureCountdownTier);
+            Assert.False(viewModel.IsStationWorkCountdown);
+            Assert.Equal("本站作业剩余", viewModel.StationDepartureCountdownLabel);
+            phases.Add(viewModel.StationDepartureCountdownDimmed);
+            clock.Advance(TimeSpan.FromMilliseconds(250));
+        }
+
+        Assert.Equal([false, true], phases.Order());
+    }
+
+    private static WireToGateCurrentStopWorklist CompletedWorklist(
+        DateTimeOffset? stationDepartureDeadlineAt,
+        string? operationSessionId) =>
+        WorklistAt(2, stationDepartureDeadlineAt) with
+        {
+            OperationSessionId = operationSessionId,
+            StopEndedReason = "COMPLETED"
+        };
 
     [Fact]
     public async Task VehicleFullShowsItsNotice()

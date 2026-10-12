@@ -25,6 +25,33 @@ public sealed class StationDepartureCountdownFormatterTests
         Assert.False(view.Dimmed);
     }
 
+    /// <summary>
+    /// 持货等单时换成「本站作业」口径（onboard-hmi#310）：在走时标签「本站作业剩余」、数值照旧 mm:ss；到期与无期限时
+    /// 标签「本站作业」，到期那一句说清后果。不持货时一字不变。
+    /// </summary>
+    [Theory]
+    [InlineData(true, 90, "本站作业剩余", "01:30", true)]
+    [InlineData(true, -1, "本站作业", "已结束，车辆继续等单", true)]
+    [InlineData(true, null, "本站作业", "无倒计时", true)]
+    [InlineData(false, 90, "离站剩余", "01:30", false)]
+    [InlineData(false, -1, "离站剩余", "已到期，等待本站结束", false)]
+    [InlineData(false, null, "离站剩余", "无倒计时", false)]
+    public void CargoHoldingWordsTheCountdownForTheStationsWork(
+        bool cargoHolding,
+        int? secondsLeft,
+        string label,
+        string text,
+        bool stationWork)
+    {
+        StationDepartureCountdownView view = StationDepartureCountdownFormatter.Format(
+            secondsLeft is { } left ? Now.AddSeconds(left) : null,
+            Now);
+
+        StationDepartureCountdownCaption caption = StationDepartureCountdownFormatter.Caption(view, cargoHolding);
+
+        Assert.Equal(new StationDepartureCountdownCaption(label, text, stationWork), caption);
+    }
+
     [Fact]
     public void MoreThanAMinuteLeftIsTheNormalTier()
     {

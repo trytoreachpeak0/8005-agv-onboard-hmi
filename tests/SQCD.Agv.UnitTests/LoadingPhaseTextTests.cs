@@ -48,6 +48,49 @@ public sealed class LoadingPhaseTextTests
         Assert.Equal("ACTIVE", view.Code);
     }
 
+    /// <summary>
+    /// 服务端离站取两个期限中更晚的那个（ADR-cross-0057 持货期限从第一批起算、与站点期限各自独立），所以「最迟几点离站」
+    /// 也取更晚的那个（onboard-hmi#310）：一站分多批装货时持货期限可能先到，只报它会少报。站点期限更早或为空时照旧。
+    /// </summary>
+    [Theory]
+    [InlineData(300, 420, "等待更多任务，最迟 10:07 离站（剩 07:00）", "ACTIVE")]
+    [InlineData(420, 300, "等待更多任务，最迟 10:07 离站（剩 07:00）", "ACTIVE")]
+    [InlineData(420, null, "等待更多任务，最迟 10:07 离站（剩 07:00）", "ACTIVE")]
+    [InlineData(-10, 60, "等待更多任务，最迟 10:01 离站（剩 01:00）", "ACTIVE")]
+    [InlineData(-10, -5, "已到期，等待服务端", "EXPIRED")]
+    public void TheLatestDepartureIsTheLaterOfTheHoldingAndStationDeadlines(
+        int holdingSecondsLeft,
+        int? stationSecondsLeft,
+        string text,
+        string code)
+    {
+        LoadingPhaseView view = LoadingPhaseText.Describe(
+            new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", Now.AddSeconds(holdingSecondsLeft), null),
+            Now,
+            China,
+            stationSecondsLeft is { } left ? Now.AddSeconds(left) : null);
+
+        Assert.Equal(LoadingPhaseLine.CargoHolding, view.Line);
+        Assert.Equal(text, view.Text);
+        Assert.Equal(code, view.Code);
+    }
+
+    /// <summary>
+    /// 持货没有期限时，站点期限不拿来充当「最迟离站」：没有持货期限的等单本来就不给离站时刻。
+    /// </summary>
+    [Fact]
+    public void CargoHoldingWithoutADeadlineIgnoresTheStationDeadline()
+    {
+        LoadingPhaseView view = LoadingPhaseText.Describe(
+            new WireToGateLoadingPhase("CARGO_HOLDING_WAIT", null, null),
+            Now,
+            China,
+            Now.AddMinutes(5));
+
+        Assert.Equal("等待更多任务", view.Text);
+        Assert.Equal("NO_DEADLINE", view.Code);
+    }
+
     [Fact]
     public void CargoHoldingWithoutADeadlineShowsNoCountdown()
     {

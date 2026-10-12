@@ -11,6 +11,17 @@ $stationDeadlineTiersStyled = @('Absent', 'Warning', 'Critical', 'Expired' | For
     }) -notcontains $false -and ($xaml -match 'Binding StationDepartureCountdownDimmed\}" Value="True"')
 # 倒计时容器宽高写死，切档时不挤动提示文案、不撑高提示行。
 $stationDeadlineFixedSize = $xaml -match 'Grid\.Column="2"\s+Width="\d+"\s+Height="\d+"[^>]*Binding HasStationDepartureCountdown'
+# 持货等单时的「本站作业」口径（onboard-hmi#310）：倒计时上方的小字绑视图模型的标签，不是写死的「离站剩余」；
+# 持货时已到期那一档的中性样式由 IsStationWorkCountdown 触发器给出，它必须排在各档位与闪烁触发器之后——
+# WPF 的样式触发器后写的赢，排在前面就被 Expired 档的红字盖回去，而视图模型的判据看不见 XAML 的先后。
+$stationWorkTrigger = $xaml.IndexOf('Binding IsStationWorkCountdown}" Value="True"', [StringComparison]::Ordinal)
+$stationTierTriggers = @('Absent', 'Warning', 'Critical', 'Expired' | ForEach-Object {
+        $xaml.IndexOf('Binding StationDepartureCountdownTier}" Value="' + $_ + '"', [StringComparison]::Ordinal)
+    }) + $xaml.IndexOf('Binding StationDepartureCountdownDimmed}" Value="True"', [StringComparison]::Ordinal)
+$stationWorkCountdownStyled = ($xaml -match 'Text="\{Binding StationDepartureCountdownLabel\}"') -and
+    ($xaml -notmatch 'Text="离站剩余"') -and
+    ($stationWorkTrigger -ge 0) -and
+    (@($stationTierTriggers | Where-Object { $_ -lt 0 -or $_ -gt $stationWorkTrigger }).Count -eq 0)
 $checks = [ordered]@{
     prototypeViewport = ($xaml -match 'Width="1000"[\s\S]*Height="700"[\s\S]*WindowState="Maximized"')
     frontRearSlotGroups = ($xaml -match 'ItemsSource="\{Binding SlotGroups\}"') -and ($xaml -match 'UniformGrid Columns="4"') -and ($xaml -match 'Text="\{Binding OpeningSideText\}"')
@@ -29,6 +40,7 @@ $checks = [ordered]@{
     # 也会过（PR #223 审查）。[^>]* 不跨出元素的起始标签。
     visibleBatteryAndChargingStatus = ($xaml -match '<TextBlock[^>]*AutomationProperties\.AutomationId="BatteryStatus"[^>]*AutomationProperties\.ItemStatus="\{Binding BatteryStatus\}"[^>]*Text="\{Binding BatteryStatusText\}"') -and ($xaml -match '<TextBlock[^>]*AutomationProperties\.AutomationId="ChargingStatus"[^>]*AutomationProperties\.ItemStatus="\{Binding ChargingStatus\}"[^>]*Text="\{Binding ChargingStatusText\}"') -and ($xaml -notmatch 'BatteryPercent')
     blockingGuidance = ($xaml -match 'Text="\{Binding Guidance\}"')
+    stationWorkCountdownStyled = $stationWorkCountdownStyled
     visibleStationDeadline = ($xaml -match 'AutomationProperties\.AutomationId="StationDepartureCountdown"') -and ($xaml -match 'Text="\{Binding StationDepartureCountdownText\}"') -and $stationDeadlineTiersStyled -and $stationDeadlineFixedSize
     visibleSublotRejectionReason = ($xaml -match 'AutomationProperties\.AutomationId="SublotRejectionReason"') -and ($xaml -match 'AutomationProperties\.ItemStatus="\{Binding SublotRejectionReasonCode\}"') -and ($xaml -match 'Text="\{Binding SublotRejectionText\}"') -and ($xaml -match 'Binding HasSublotRejection, Converter')
     # 期待动作超时（REQ-0358，onboard-hmi#109）：提示区单独一行，UIA 按 AutomationId 找它。

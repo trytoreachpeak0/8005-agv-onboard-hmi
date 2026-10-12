@@ -31,7 +31,8 @@ public sealed record LoadingPhaseView(LoadingPhaseLine Line, string Text, string
 /// </para>
 /// <para>
 /// 等单期限（<c>cargoHoldingDeadlineAt</c>）与站点离站期限（<c>stationDepartureDeadlineAt</c>）是两个期限，
-/// 各在各的那一行，不合成一个（REQ-0355：结束本站不等于车辆离开）。剩余时间的取整照站点离站倒计时：向上取整到
+/// 各在各的那一行，不合成一个（REQ-0355：结束本站不等于车辆离开）。只有「最迟几点离站」取两者中更晚的那个
+/// （onboard-hmi#310）：服务端在两者都过了才离站，这是显示时的取大，不改、不延长任何一个期限。剩余时间的取整照站点离站倒计时：向上取整到
 /// 秒，00:00 不出现，到期有它自己的文案。
 /// </para>
 /// </remarks>
@@ -53,12 +54,18 @@ public static class LoadingPhaseText
         };
 
     /// <param name="zone">「最迟几点离站」用的时区，界面传车载端本地时区。</param>
-    public static LoadingPhaseView Describe(WireToGateLoadingPhase? phase, DateTimeOffset now, TimeZoneInfo zone)
+    /// <param name="stationDepartureDeadlineAt">本站清单的站点离站期限，没有时为空。</param>
+    public static LoadingPhaseView Describe(
+        WireToGateLoadingPhase? phase,
+        DateTimeOffset now,
+        TimeZoneInfo zone,
+        DateTimeOffset? stationDepartureDeadlineAt = null)
     {
         ArgumentNullException.ThrowIfNull(zone);
         return phase?.State switch
         {
-            "CARGO_HOLDING_WAIT" => CargoHolding(phase.CargoHoldingDeadlineAt, now, zone),
+            "CARGO_HOLDING_WAIT" => CargoHolding(
+                LatestDeparture(phase.CargoHoldingDeadlineAt, stationDepartureDeadlineAt), now, zone),
             "VEHICLE_FULL" => new LoadingPhaseView(LoadingPhaseLine.VehicleFull, VehicleFullText, "VEHICLE_FULL"),
             // 入站校验保证 CLOSED 必带原因；这里仍不假设，空原因显示空串而不是编一个。
             "CLOSED" => new LoadingPhaseView(
@@ -68,6 +75,15 @@ public static class LoadingPhaseText
             _ => new LoadingPhaseView(LoadingPhaseLine.None, string.Empty, string.Empty)
         };
     }
+
+    /// <summary>
+    /// The vehicle leaves at the later of the holding deadline and the station's (onboard-hmi#310): the server departs
+    /// once the station departure wait is over and holding has ended, and ADR-cross-0057 counts the holding deadline from
+    /// the journey's first LoadBatch, so with several batches at one stop it can come first. Without a holding deadline
+    /// the wait has no departure time to report, and the station's is not borrowed for one.
+    /// </summary>
+    private static DateTimeOffset? LatestDeparture(DateTimeOffset? holding, DateTimeOffset? station) =>
+        holding is { } h && station is { } s && s > h ? s : holding;
 
     private static LoadingPhaseView CargoHolding(DateTimeOffset? deadlineAt, DateTimeOffset now, TimeZoneInfo zone)
     {

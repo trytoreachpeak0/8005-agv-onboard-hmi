@@ -32,6 +32,25 @@ public static class WireToGateStopEndedReasonText
             ["TRIP_TERMINATED"] = "本站因行程终止结束"
         };
 
+    public const string LoadCompletedText = "装货完成";
+
+    /// <summary>
+    /// 清单为空时站名后面那半句，看本站会话与站点期限：装完最后一批之后服务端发空清单、原因 <c>COMPLETED</c>、会话仍在、
+    /// 带着新的站点期限（control-server#633），那时纠正窗口还开着、旁边的倒计时还在走，写「装货完成」而不是「本站作业已完成」
+    /// （onboard-hmi#310）。期限到了、会话结束、没有期限，都回到 <see cref="Describe(string?)"/>。
+    /// </summary>
+    public static string Describe(
+        string? stopEndedReason,
+        string? operationSessionId,
+        DateTimeOffset? stationDepartureDeadlineAt,
+        DateTimeOffset now) =>
+        stopEndedReason == "COMPLETED"
+        && operationSessionId is not null
+        && stationDepartureDeadlineAt is { } deadline
+        && now < deadline
+            ? LoadCompletedText
+            : Describe(stopEndedReason);
+
     /// <summary>清单为空时站名后面那半句。</summary>
     public static string Describe(string? stopEndedReason) =>
         stopEndedReason is null
