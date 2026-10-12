@@ -38,7 +38,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             io,
             Harness.NewJournalPath(),
             server => server.OperationResultAckHold = resultAckHeld.Task,
-            token);
+            token,
+            operationTimeout: OrderBOperationTimeout);
         using ReleaseOnExit releaseAck = new(() => resultAckHeld.TrySetResult());
 
         Task<bool> press = await PrepareCancellationThenAcknowledgeLoadResultAsync(harness, io, resultAckHeld, token);
@@ -74,7 +75,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             io,
             journalPath,
             server => server.OperationResultAckHold = resultAckHeld.Task,
-            token);
+            token,
+            operationTimeout: OrderBOperationTimeout);
         using ReleaseOnExit releaseAck = new(() => resultAckHeld.TrySetResult());
 
         Task<bool> press = await PrepareCancellationThenAcknowledgeLoadResultAsync(first, io, resultAckHeld, token);
@@ -128,13 +130,14 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(unlocksBeforeRestart, io.UnlockCount);
         AssertCancellationOnFile(ReadJournal(afterRestart, token), activeSlots: [1]);
 
+        // Slot 2 is emptied and shut as soon as the resumed cancellation opens it: told in advance, so the vector's own
+        // wait shuts it. Shut by this thread after it saw the pulse, a late wake-up ran the wait past its two-second
+        // operation timeout and the cancellation ended UNKNOWN (8005-agv-onboard-hmi#323).
+        io.CloseDoorAfterNextUnlock(1, cargo: false);
         Task<bool> again = afterRestart.Business.RequestLoadCancellationAsync("现场确认不装了。", token);
-        await afterRestart.WaitUntilAsync(
-            () => io.UnlockCount > unlocksBeforeRestart || again.IsCompleted,
-            "slot 2 to be opened for emptying",
-            token);
-        io.CloseDoor(1, cargo: false);
         Assert.True(await again);
+        Assert.Equal(unlocksBeforeRestart + 1, io.UnlockCount);
+        Assert.False(io.HasScheduledClose);
         JsonElement result = Assert.Single(ReceivedPayloads(afterRestart, "LoadCancellationResult"));
         Assert.Equal("ALL_EMPTY", result.GetProperty("overallOutcome").GetString());
         AssertAttemptSettledWithTheCancellation(ReadJournal(afterRestart, token));
@@ -177,7 +180,8 @@ public sealed partial class MultiDemandJourneyG2Tests
                     ["LoadCancellationResult"] = "BUSINESS_ID_CONTENT_CONFLICT"
                 };
             },
-            token);
+            token,
+            operationTimeout: OrderBOperationTimeout);
         using ReleaseOnExit releaseAck = new(() => resultAckHeld.TrySetResult());
 
         Task<bool> press = await PrepareCancellationThenAcknowledgeLoadResultAsync(harness, io, resultAckHeld, token);
@@ -240,12 +244,15 @@ public sealed partial class MultiDemandJourneyG2Tests
         CancellationToken token = TestContext.Current.CancellationToken;
         TaskCompletionSource authorizationHeld = new(TaskCreationOptions.RunContinuationsAsynchronously);
         FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        PreparedVectorJournal? fence = null;
         await using Harness harness = await StartCancellationStopAsync(
             io,
             Harness.NewJournalPath(),
             server => server.LoadCancellationAuthorizationHold = authorizationHeld.Task,
-            token);
+            token,
+            wrapJournal: inner => fence = new PreparedVectorJournal(inner));
         using ReleaseOnExit releaseAuthorization = new(() => authorizationHeld.TrySetResult());
+        using ReleaseOnExit releaseFence = new(() => fence!.Release());
 
         await OpenBothSlotsAsync(harness, io, token);
         Task<bool> press = harness.Business.RequestLoadCancellationAsync("现场确认不装了。", token);
@@ -260,14 +267,26 @@ public sealed partial class MultiDemandJourneyG2Tests
             "the load's COMPLETED result to be recorded",
             token);
 
+        // The prepare write is what is asserted, so the vector is held just after it until the journal has been read. Read
+        // without the hold, the test thread had to get there within the round trip of the vector's PREPARING progress, after
+        // which slot 1's unlock is written ahead of its pulse, and a late wake-up found slot 1 already in the active unlock
+        // set (8005-agv-onboard-hmi#323).
+        //
+        // The closes are scheduled before anything is released: scheduled after the fence, a test thread that woke late
+        // there still ran slot 1's wait out of its two seconds (review L1).
+        ScheduleEmptyingOfBothSlots(io, firstCancellationPulse: 3);
         authorizationHeld.SetResult();
         await harness.WaitUntilAsync(
-            () => ReadJournal(harness, token).RecoveryVector is not null || press.IsCompleted,
-            "the cancellation's prepare write",
+            () => fence!.PrepareWriteHeld || press.IsCompleted,
+            "the cancellation's prepare write, and the vector held there",
             token);
+        Assert.True(fence!.PrepareWriteHeld);
         AssertCancellationOnFile(ReadJournal(harness, token), activeSlots: []);
+        // Held at its prepare write, the vector has unlocked nothing yet: the two pulses are the load's own.
+        Assert.Equal(2, io.UnlockCount);
+        fence.Release();
 
-        await EmptyBothSlotsAsync(harness, io, press, firstCancellationPulse: 3, token);
+        await WaitForBothSlotsEmptiedAsync(harness, io, press, token);
         Assert.True(await press);
         JsonElement result = Assert.Single(ReceivedPayloads(harness, "LoadCancellationResult"));
         Assert.Equal("ALL_EMPTY", result.GetProperty("overallOutcome").GetString());
@@ -323,24 +342,40 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>The operator empties and shuts slot 1, then slot 2, as the cancellation opens each.</summary>
-    private static async Task EmptyBothSlotsAsync(
+    /// <remarks>
+    /// Both closes are told to the fake in advance, keyed on the pulse that opens each slot, so the vector's own wait shuts
+    /// the door. Shut by this thread after it saw each pulse, a late wake-up ran the wait past its two-second operation
+    /// timeout and the slot came out UNKNOWN (8005-agv-onboard-hmi#323). Slot 1 may already have been pulsed when this is
+    /// called (order b opens it before the load's acknowledgement is released); the close then lands on the wait already
+    /// under way.
+    /// </remarks>
+    private static Task EmptyBothSlotsAsync(
         Harness harness,
         FakeIoModuleClient io,
         Task<bool> press,
         int firstCancellationPulse,
         CancellationToken token)
     {
-        await harness.WaitUntilAsync(
-            () => io.UnlockCount >= firstCancellationPulse || press.IsCompleted,
-            "the cancellation to open slot 1",
-            token);
-        io.CloseDoor(0, cargo: false);
-        await harness.WaitUntilAsync(
-            () => io.UnlockCount >= firstCancellationPulse + 1 || press.IsCompleted,
-            "the cancellation to open slot 2",
-            token);
-        io.CloseDoor(1, cargo: false);
+        ScheduleEmptyingOfBothSlots(io, firstCancellationPulse);
+        return WaitForBothSlotsEmptiedAsync(harness, io, press, token);
     }
+
+    /// <summary>Tells the fake, ahead of the pulses, that slot 1 and then slot 2 are emptied and shut once opened.</summary>
+    private static void ScheduleEmptyingOfBothSlots(FakeIoModuleClient io, int firstCancellationPulse)
+    {
+        io.CloseDoorOnceUnlockedAt(0, cargo: false, firstCancellationPulse);
+        io.CloseDoorOnceUnlockedAt(1, cargo: false, firstCancellationPulse + 1);
+    }
+
+    private static Task WaitForBothSlotsEmptiedAsync(
+        Harness harness,
+        FakeIoModuleClient io,
+        Task<bool> press,
+        CancellationToken token) =>
+        harness.WaitUntilAsync(
+            () => !io.HasScheduledClose || press.IsCompleted,
+            "the cancellation to open and the operator to shut slot 1, then slot 2",
+            token);
 
     private static void AssertCancellationOnFile(WireToGateRecoveryState journal, int[] activeSlots)
     {
@@ -362,6 +397,20 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Empty(journal.PendingResults);
     }
 
+    /// <summary>
+    /// The operator's time at each door for the order (b) tests, in place of the harness's two seconds.
+    /// </summary>
+    /// <remarks>
+    /// Order (b) keeps slot 1 open on purpose: the cancellation opens it, and only then does the test thread release the
+    /// load's acknowledgement, wait for the handler's log line and read the journal -- and in the restart test stop the
+    /// vehicle -- before the door is shut. That whole stretch runs against the vector's wait for the door, which ends
+    /// UNKNOWN when the operation timeout runs out, so a test thread that woke late inside it failed the test
+    /// (8005-agv-onboard-hmi#323 review S1). The timeout is the operator's time at the door, not a budget for the system to
+    /// answer within, so a longer one hides nothing the vehicle does. Only these three tests take it: every other test in
+    /// the class shuts its doors through the fake's scheduled closes and keeps the harness's two seconds.
+    /// </remarks>
+    private static readonly TimeSpan OrderBOperationTimeout = TimeSpan.FromSeconds(10);
+
     /// <summary>This file's own proof variable: a maintainer's close-out of a refused result asks for one.</summary>
     private const string CancellationOverRecordedLoadProofVariable = "W2G_G2_HMI259_RECOVERY_PROOF";
 
@@ -375,7 +424,9 @@ public sealed partial class MultiDemandJourneyG2Tests
         FakeIoModuleClient io,
         string journalPath,
         Action<FakeControlServer> configure,
-        CancellationToken token)
+        CancellationToken token,
+        Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null,
+        TimeSpan? operationTimeout = null)
     {
         Environment.SetEnvironmentVariable(CancellationOverRecordedLoadProofVariable, "hmi259-proof");
         Harness harness = await Harness.StartAsync(
@@ -396,12 +447,129 @@ public sealed partial class MultiDemandJourneyG2Tests
             journalPath,
             io: io,
             recoveryOptions: CancellationOverRecordedLoadRecovery,
-            messageTimeout: TimeSpan.FromSeconds(30));
+            messageTimeout: TimeSpan.FromSeconds(30),
+            wrapJournal: wrapJournal,
+            operationTimeout: operationTimeout);
         await harness.WaitUntilAsync(
             () => harness.Session.CurrentJourney.CurrentStopWorklist is not null
                 && harness.Session.Current.Readiness == WireToGateSessionReadiness.Ready,
             "the worklist on a ready session",
             token);
         return harness;
+    }
+
+    /// <summary>
+    /// Holds the vector executor once its prepare write has landed -- the first executor write naming a load cancellation
+    /// vector -- until released; everything else passes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Which writes it sees rests on how the two overloads are split.</b> The business service puts the vector on file
+    /// first (<c>RequestLoadCancellationCoreAsync</c> → <c>WriteRecoveryVectorPreparedAsync</c>), but every business
+    /// service write goes through <c>UpdateRecoveryStateCachedAsync</c>, the overload with the settled callback, which this
+    /// passes straight through. The executor's checkpoints (<c>WriteVectorStateAsync</c>) use the overload without one,
+    /// and only that overload is held, so the first write held is the executor's own <c>Prepared</c>. Were the executor
+    /// moved to the other overload, nothing would be held: the test's wait would end on the press completing instead, and
+    /// its <c>Assert.True(fence.PrepareWriteHeld)</c> would fail loudly rather than let the test pass on the wrong write.
+    /// </para>
+    /// <para>
+    /// Held after the write rather than before the next one: the vector starts each slot's operation timeout after its
+    /// PREPARING progress, ahead of the slot's unlock write, so a hold at the unlock write would be spent out of slot 1's
+    /// two seconds. Here the vector has not started any slot's clock yet.
+    /// </para>
+    /// </remarks>
+    private sealed class PreparedVectorJournal(IWireToGateJournal inner) : IWireToGateJournal
+    {
+        private readonly TaskCompletionSource _release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _held;
+
+        public bool PrepareWriteHeld => Volatile.Read(ref _held) != 0;
+
+        public void Release() => _release.TrySetResult();
+
+        public async Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            CancellationToken cancellationToken = default)
+        {
+            WireToGateRecoveryState? written = await inner.UpdateRecoveryStateAsync(change, cancellationToken);
+            if (written is { RecoveryVector.VectorType: WireToGateRecoveryVectorTypes.LoadCancellation }
+                && Interlocked.Exchange(ref _held, 1) == 0)
+            {
+                await _release.Task.WaitAsync(cancellationToken);
+            }
+
+            return written;
+        }
+
+        public Task<WireToGateRecoveryState?> UpdateRecoveryStateAsync(
+            Func<WireToGateRecoveryState, WireToGateRecoveryState?> change,
+            Action<WireToGateRecoveryState> settled,
+            CancellationToken cancellationToken = default) =>
+            inner.UpdateRecoveryStateAsync(change, settled, cancellationToken);
+
+        public Task<WireToGateRecoveryState> ReadRecoveryStateAsync(CancellationToken cancellationToken = default) =>
+            inner.ReadRecoveryStateAsync(cancellationToken);
+
+        public Task InitializeAsync(CancellationToken cancellationToken = default) =>
+            inner.InitializeAsync(cancellationToken);
+
+        public Task<string> ReadJournalEpochAsync(CancellationToken cancellationToken = default) =>
+            inner.ReadJournalEpochAsync(cancellationToken);
+
+        public Task<WireToGateDurableMessage> SaveOutgoingBeforeSendAsync(
+            WireToGateDurableMessage message,
+            CancellationToken cancellationToken = default) =>
+            inner.SaveOutgoingBeforeSendAsync(message, cancellationToken);
+
+        public Task<WireToGateDurableMessage> ReplaceOutgoingForReplayAsync(
+            WireToGateDurableMessage expected,
+            WireToGateDurableMessage replacement,
+            CancellationToken cancellationToken = default) =>
+            inner.ReplaceOutgoingForReplayAsync(expected, replacement, cancellationToken);
+
+        public Task<WireToGateDurableMessage?> ReadOutgoingByDeduplicationKeyAsync(
+            string deduplicationKey,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadOutgoingByDeduplicationKeyAsync(deduplicationKey, cancellationToken);
+
+        public Task<WireToGateDurableMessage?> ReadOutgoingByMessageIdAsync(
+            string messageId,
+            CancellationToken cancellationToken = default) =>
+            inner.ReadOutgoingByMessageIdAsync(messageId, cancellationToken);
+
+        public Task MarkOutgoingAcknowledgedAsync(
+            string messageId,
+            string acceptedContentSha256,
+            CancellationToken cancellationToken = default) =>
+            inner.MarkOutgoingAcknowledgedAsync(messageId, acceptedContentSha256, cancellationToken);
+
+        public Task<WireToGateDurableMessage> MarkOutgoingAbandonedAsync(
+            string messageId,
+            string contentSha256,
+            string reasonCode,
+            CancellationToken cancellationToken = default) =>
+            inner.MarkOutgoingAbandonedAsync(messageId, contentSha256, reasonCode, cancellationToken);
+
+        public Task<IReadOnlyList<WireToGateDurableMessage>> ReadUnacknowledgedOutgoingAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ReadUnacknowledgedOutgoingAsync(cancellationToken);
+
+        public Task<IReadOnlyList<WireToGateAppliedJourneySnapshot>> ReadAppliedJourneySnapshotsAsync(
+            CancellationToken cancellationToken = default) =>
+            inner.ReadAppliedJourneySnapshotsAsync(cancellationToken);
+
+        public Task<WireToGateAppliedJourneySnapshot> SaveAppliedJourneySnapshotAsync(
+            WireToGateAppliedJourneySnapshot snapshot,
+            CancellationToken cancellationToken = default) =>
+            inner.SaveAppliedJourneySnapshotAsync(snapshot, cancellationToken);
+
+        public Task<string> ComputeContentSha256Async(CancellationToken cancellationToken = default) =>
+            inner.ComputeContentSha256Async(cancellationToken);
+
+        public ValueTask DisposeAsync()
+        {
+            Release();
+            return inner.DisposeAsync();
+        }
     }
 }
