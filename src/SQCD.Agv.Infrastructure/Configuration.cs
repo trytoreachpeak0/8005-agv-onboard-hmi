@@ -27,7 +27,17 @@ public sealed class OnboardSettings
 
     public LogSettings Logging { get; init; } = new();
 
-    public ScreenStateSettings ScreenState { get; init; } = new();
+    /// <summary>
+    /// 屏幕状态快照段。配置里写 <c>"screenState": null</c> 时归一成默认值（关）：后面读它的地方——生效配置摘要、
+    /// 接线——不必各自判空，判漏一处就是一次绕过 <c>OnStartup</c> 的 catch 的 <c>NullReferenceException</c>（onboard-hmi#315 审查 N1）。
+    /// </summary>
+    public ScreenStateSettings ScreenState
+    {
+        get => _screenState;
+        init => _screenState = value ?? new ScreenStateSettings();
+    }
+
+    private readonly ScreenStateSettings _screenState = new();
 
     /// <summary>
     /// 生效配置的一行摘要，启动时进技术日志的「配置」一面（REQ-0272，onboard-hmi#312）。
@@ -754,9 +764,14 @@ public sealed class WorkflowSettings
 /// 所以这里的默认值是那一步之前的状态，不是疏忽；<c>ConfigurationTests.TheScreenStateSnapshotShipsSwitchedOff</c> 钉着它。
 /// </para>
 /// <para>
-/// <b>参数写错从不挡住车载端启动</b>（onboard-hmi#315 审查 S4）：这个块不参与 <see cref="OnboardSettings.Validate"/>。
-/// 开关打开而参数无效时，接线记一行日志、本次不启动快照，车照常启动；生效配置摘要里也写明「参数无效，本次不启动」。
-/// 观测手段不能改变 HMI 行为（调研 4.3），一个观测参数写错让车起不来，就是改变了行为。
+/// <b>数值越界不挡住车载端启动</b>（onboard-hmi#315 审查 S4）：这个块不参与 <see cref="OnboardSettings.Validate"/>。
+/// 开关打开而数值越界时，接线记一行日志、本次不启动快照，车照常启动；生效配置摘要里也写明「参数无效，本次不启动」。
+/// 观测手段不能改变 HMI 行为（调研 4.3），一个观测参数写错让车起不来，就是改变了行为。整段写成 <c>null</c> 归一成默认值（关）。
+/// </para>
+/// <para>
+/// <b>类型写错照样挡住启动</b>，与其他配置段一样（第二轮审查 L1）：<c>"enabled": "true"</c>、<c>"timelineMaxFileBytes": 1.5</c>、
+/// 超出 <c>int</c> 的 <c>"flushIntervalMs"</c> 在反序列化时就抛 <c>JsonException</c>，<c>StartupConfiguration.TryLoad</c> 记一行日志、
+/// 拒绝配置、车载端退出。那一步早于本段的任何代码，要放过它就得给整份配置换一种读法，不在本票范围。
 /// </para>
 /// </remarks>
 public sealed class ScreenStateSettings

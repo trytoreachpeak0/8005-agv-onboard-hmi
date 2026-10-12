@@ -96,16 +96,67 @@ public sealed class HmiScreenStateIsolationArchitectureTests
     {
         string monitor = Code("src", "SQCD.Agv.Wpf", "ScreenStateOutput", "HmiScreenStateMonitor.cs");
         string app = Body(Code("src", "SQCD.Agv.Wpf", "App.xaml.cs"), "StartScreenState")!;
+        string wiring = Code("src", "SQCD.Agv.Wpf", "ScreenStateOutput", "HmiScreenStateWiring.cs");
 
         string[] offences =
         [
             .. UnwrappedLogWrites(monitor).Select(index => $"HmiScreenStateMonitor.cs at offset {index}"),
             .. UnwrappedLogWrites(app).Select(index => $"App.StartScreenState at offset {index}"),
+            // Called from App.StartScreenState's try today; wrapped on its own anyway (second review L2).
+            .. UnwrappedLogWrites(wiring).Select(index => $"HmiScreenStateWiring.cs at offset {index}"),
         ];
+        Assert.NotEmpty(Regex.Matches(wiring, @"logger\.Write\s*\("));
 
         Assert.NotEmpty(Regex.Matches(monitor, @"logger\.Write\s*\("));
         Assert.True(offences.Length == 0, "Log writes outside their own try/catch (Exception): " + string.Join(", ", offences));
     }
+
+    /// <summary>
+    /// The application starts the snapshot only through <c>HmiScreenStateWiring.Start</c>, handing it its own
+    /// <c>screenState</c> and <c>logging</c> sections (second review N2): that method holds the switch and the parameter
+    /// check, and <c>HmiScreenStateWiringTests</c> tests it, so a wiring that bypassed it, or passed it other settings,
+    /// would leave both untested. Nothing under <c>src/</c> but the wiring starts a monitor or builds a writer.
+    /// </summary>
+    [Fact]
+    public void TheApplicationStartsTheSnapshotOnlyThroughTheWiringWithItsOwnSettings()
+    {
+        string startScreenState = Body(Code("src", "SQCD.Agv.Wpf", "App.xaml.cs"), "StartScreenState")!;
+        Assert.Matches(@"\bHmiScreenStateWiring\.Start\(\s*settings\.ScreenState\s*,\s*settings\.Logging\s*,", startScreenState);
+        Assert.Single(Regex.Matches(startScreenState, @"\bHmiScreenStateWiring\.Start\("));
+
+        string source = Path.Combine(ProtocolIdentityArchitectureTests.RepositoryRoot(), "src");
+        string[] offences =
+        [
+            .. Directory.GetFiles(source, "*.cs", SearchOption.AllDirectories)
+                .Where(file => Path.GetFileName(file) != "HmiScreenStateWiring.cs")
+                // Only files that name either type can start or build one; the lexer refuses raw strings, which other
+                // files under src/ use, and a file that names a type and uses a raw string still fails loudly here.
+                .Where(file => File.ReadAllText(file) is var text
+                    && (text.Contains("HmiScreenStateMonitor", StringComparison.Ordinal)
+                        || text.Contains("HmiScreenStateFileWriter", StringComparison.Ordinal)))
+                .SelectMany(file => StartsOrBuilds(
+                    string.Join("\n", CSharpSourceLexer.Lex(File.ReadAllText(file)).Code),
+                    Path.GetFileName(file)))
+        ];
+
+        Assert.Contains("App.xaml.cs", Directory.GetFiles(source, "*.cs", SearchOption.AllDirectories)
+            .Where(file => File.ReadAllText(file).Contains("HmiScreenStateMonitor", StringComparison.Ordinal))
+            .Select(Path.GetFileName));
+        Assert.True(offences.Length == 0, "Only HmiScreenStateWiring may start a monitor or build a writer:\n" + string.Join("\n", offences));
+    }
+
+    [Theory]
+    [InlineData("var monitor = HmiScreenStateMonitor.TryStart(vm, build);")]
+    [InlineData("_screenStateWriter = new HmiScreenStateFileWriter(options, files, time, logger);")]
+    [InlineData("HmiScreenStateFileWriter writer = new(options, files, time, logger);")]
+    public void StartingOrBuildingOutsideTheWiringIsCaught(string code) =>
+        Assert.NotEmpty(StartsOrBuilds(code, "App.xaml.cs"));
+
+    private static IEnumerable<string> StartsOrBuilds(string code, string file) =>
+        Regex.Matches(
+                code,
+                @"\bHmiScreenStateMonitor\.TryStart\s*\(|\bnew\s+HmiScreenStateFileWriter\s*\(|\bHmiScreenStateFileWriter\??\s+\w+\s*=\s*new\s*\(")
+            .Select(match => $"{file}: {match.Value}");
 
     /// <summary>The checks themselves, on shapes they must refuse, so a broken pattern does not turn them into a pass.</summary>
     [Theory]

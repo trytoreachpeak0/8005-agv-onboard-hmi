@@ -44,10 +44,18 @@ internal static class HmiScreenStateWiring
 
         if (screenState.Problem() is { } problem)
         {
-            logger.Write(
-                LogSeverity.Warning,
-                nameof(HmiScreenStateWiring),
-                $"屏幕状态快照已打开但参数无效，本次运行不启动快照，车载端照常运行：{problem}");
+            try
+            {
+                logger.Write(
+                    LogSeverity.Warning,
+                    nameof(HmiScreenStateWiring),
+                    $"屏幕状态快照已打开但参数无效，本次运行不启动快照，车载端照常运行：{problem}");
+            }
+            catch (Exception)
+            {
+                // The logger can throw (research 4.3, item 1); not starting the snapshot is the whole answer anyway.
+            }
+
             return null;
         }
 

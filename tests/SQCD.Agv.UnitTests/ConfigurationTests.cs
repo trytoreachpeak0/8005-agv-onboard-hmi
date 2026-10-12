@@ -573,6 +573,33 @@ public sealed class ConfigurationTests
         Assert.Contains("screenState.enabled=False。", Settings(enabled: false).DescribeForTechnicalLog(), StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// <c>"screenState": null</c> 归一成默认值（onboard-hmi#315 第二轮审查 N1）：否则 <c>Load</c> 成功返回、段为 null，
+    /// 启动时生效配置摘要读 <c>ScreenState.Enabled</c> 抛 <c>NullReferenceException</c>，越过 <c>OnStartup</c> 的 catch，进程直接崩溃。
+    /// </summary>
+    [Fact]
+    public void ANullScreenStateSectionLoadsAsSwitchedOff()
+    {
+        System.Text.Json.Nodes.JsonNode root = System.Text.Json.Nodes.JsonNode.Parse(
+            File.ReadAllText(FindRepositoryFile("src/SQCD.Agv.Wpf/appsettings.json")),
+            documentOptions: new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true })!;
+        root["screenState"] = null;
+        string path = Path.Combine(Path.GetTempPath(), $"hmi315-null-screen-state-{Guid.NewGuid():N}.json");
+        File.WriteAllText(path, root.ToJsonString());
+        try
+        {
+            OnboardSettings settings = OnboardSettings.Load(path);
+
+            Assert.NotNull(settings.ScreenState);
+            Assert.False(settings.ScreenState.Enabled);
+            Assert.Contains("screenState.enabled=False。", settings.DescribeForTechnicalLog(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
     [Fact]
     public void TheShippedScreenStateParametersAreValid()
     {
