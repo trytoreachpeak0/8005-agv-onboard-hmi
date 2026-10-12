@@ -219,10 +219,17 @@ public sealed class FakeIoModuleClient : IIoModuleClient
     /// -- no pulse of its own to key a <see cref="CloseDoorOnceUnlockedAt"/> on, and the aborted load's own waits on the
     /// same slot still running when the close would have to be told -- and for a test that must act while the vector waits
     /// on it (8005-agv-onboard-hmi#331: shut by the test thread after it saw the vector start, a late wake-up ran the
-    /// vector's wait past its two-second operation timeout and the slot came out UNKNOWN). Told just before the press, the
-    /// hold also covers the load's own wait on the slot until the cancellation aborts it: the load does not prompt again in
-    /// that interval.
+    /// vector's wait past its two-second operation timeout and the slot did not come out COMPLETED -- the cancellation
+    /// ended ALL_EMPTY_DOOR_UNPROVEN over an emptied handed-over door, UNKNOWN where a slot was left unfinished). Told just
+    /// before the press, the hold also covers the load's own wait on the slot until the cancellation aborts it: the load
+    /// does not prompt again in that interval.
     /// </summary>
+    /// <remarks>
+    /// Only <see cref="OperatorNeverActs"/> reads the hold; on any other fake it is silently without effect. It is lifted
+    /// only by <see cref="CloseDoor"/> -- also the one a scheduled close (<see cref="CloseDoorOnceUnlockedAt"/>) makes --
+    /// never by <see cref="SetUnreadable"/> or <see cref="OpenDoor"/>: a test whose vector must run its wait out to its
+    /// timeout must not hold that slot.
+    /// </remarks>
     public void HoldWaitsUntilShut(int slotIndex)
     {
         lock (_sync)

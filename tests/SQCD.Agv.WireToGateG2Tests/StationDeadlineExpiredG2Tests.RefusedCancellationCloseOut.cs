@@ -46,8 +46,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
             token);
 
         // The cancellation takes slot 1 over standing open and waits on it with the harness's two-second operation timeout.
-        // Held until this thread shuts it: shut after seeing the vector start, a late wake-up ran that wait out and the slot
-        // came out UNKNOWN (8005-agv-onboard-hmi#331).
+        // Held until this thread shuts it: shut after seeing the vector start, a late wake-up ran that wait out and the
+        // cancellation ended ALL_EMPTY_DOOR_UNPROVEN instead of ALL_EMPTY (8005-agv-onboard-hmi#331).
         harness.Io.HoldWaitsUntilShut(0);
         Task<bool> cancelling = harness.Business.RequestLoadCancellationAsync("现场不装了。", token);
         await Harness.WaitUntilAsync(
@@ -60,8 +60,9 @@ public sealed partial class StationDeadlineExpiredG2Tests
         harness.Io.CloseDoor(0, cargo: false);
         _ = await cancelling;
         await harness.WaitForInboundAsync("LoadCancellationResult", token);
-        // The premise above, pinned: the refused result is the ALL_EMPTY one. An UNKNOWN cancellation is refused and closed
-        // out the same way, so without this a run whose slot wait ran out passed on the other path (8005-agv-onboard-hmi#331).
+        // The premise above, pinned: the refused result is the ALL_EMPTY one. A cancellation whose wait on the slot ran out ends
+        // ALL_EMPTY_DOOR_UNPROVEN and is refused and closed out the same way, so without this such a run passed on the other
+        // path (8005-agv-onboard-hmi#331).
         AssertRefusedResultAllEmpty(harness);
         await Harness.WaitUntilAsync(
             () => harness.Business.CanCloseConflictedRecoveryAfterReview,
@@ -243,8 +244,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
             "the in-flight load cancellation entry to be offered",
             token);
         // The cancellation takes slot 1 over standing open and waits on it with the harness's two-second operation timeout.
-        // Held until this thread shuts it: shut after seeing the vector start, a late wake-up ran that wait out and the slot
-        // came out UNKNOWN (8005-agv-onboard-hmi#331).
+        // Held until this thread shuts it: shut after seeing the vector start, a late wake-up ran that wait out and the
+        // cancellation ended ALL_EMPTY_DOOR_UNPROVEN instead of ALL_EMPTY (8005-agv-onboard-hmi#331).
         harness.Io.HoldWaitsUntilShut(0);
         Task<bool> cancelling = harness.Business.RequestLoadCancellationAsync("现场不装了。", token);
         await Harness.WaitUntilAsync(

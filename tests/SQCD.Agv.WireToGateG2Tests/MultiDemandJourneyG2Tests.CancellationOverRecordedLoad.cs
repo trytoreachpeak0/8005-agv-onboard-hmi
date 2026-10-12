@@ -42,7 +42,12 @@ public sealed partial class MultiDemandJourneyG2Tests
             operationTimeout: OrderBOperationTimeout);
         using ReleaseOnExit releaseAck = new(() => resultAckHeld.TrySetResult());
 
-        Task<bool> press = await PrepareCancellationThenAcknowledgeLoadResultAsync(harness, io, resultAckHeld, token);
+        Task<bool> press = await PrepareCancellationThenAcknowledgeLoadResultAsync(
+            harness,
+            io,
+            resultAckHeld,
+            holdSlotOneUntilShut: true,
+            token);
 
         WireToGateRecoveryState journal = ReadJournal(harness, token);
         AssertCancellationOnFile(journal, activeSlots: [1]);
@@ -79,7 +84,12 @@ public sealed partial class MultiDemandJourneyG2Tests
             operationTimeout: OrderBOperationTimeout);
         using ReleaseOnExit releaseAck = new(() => resultAckHeld.TrySetResult());
 
-        Task<bool> press = await PrepareCancellationThenAcknowledgeLoadResultAsync(first, io, resultAckHeld, token);
+        Task<bool> press = await PrepareCancellationThenAcknowledgeLoadResultAsync(
+            first,
+            io,
+            resultAckHeld,
+            holdSlotOneUntilShut: true,
+            token);
         await first.StopVehicleAsync();
         await Record.ExceptionAsync(() => press);
         first.Server.SimulateOnboardProcessRestart();
@@ -184,7 +194,14 @@ public sealed partial class MultiDemandJourneyG2Tests
             operationTimeout: OrderBOperationTimeout);
         using ReleaseOnExit releaseAck = new(() => resultAckHeld.TrySetResult());
 
-        Task<bool> press = await PrepareCancellationThenAcknowledgeLoadResultAsync(harness, io, resultAckHeld, token);
+        // Held only when the door is to be shut: left open, the cancellation has to run its wait out to end UNKNOWN, and
+        // SetUnreadable does not lift a hold.
+        Task<bool> press = await PrepareCancellationThenAcknowledgeLoadResultAsync(
+            harness,
+            io,
+            resultAckHeld,
+            holdSlotOneUntilShut: !doorLeftOpen,
+            token);
         if (doorLeftOpen)
         {
             // Door 1's lock feedback goes unreadable while it stands open: the cancellation ends UNKNOWN over it.
@@ -299,10 +316,19 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// Builds order (b): the load completes with its acknowledgement held, the cancellation is authorized and prepared
     /// and opens slot 1, and only then is the acknowledgement released and the load's handler done with it.
     /// </summary>
+    /// <remarks>
+    /// From the pulse that opens slot 1 the cancellation waits on it with <see cref="OrderBOperationTimeout"/>, while this
+    /// thread releases the acknowledgement, waits for the log line and reads the journal; the door is shut only after that,
+    /// by the caller. With <paramref name="holdSlotOneUntilShut"/> that wait lasts until the door is shut, so a stall here
+    /// longer than the timeout does not end slot 1 UNKNOWN (8005-agv-onboard-hmi#331 review M1: ten seconds of margin,
+    /// not independence from the test thread). Told before the press: the load is over by then and nothing else waits on
+    /// slot 1. Not for a caller whose cancellation must run its wait out -- a hold is lifted only by shutting the door.
+    /// </remarks>
     private static async Task<Task<bool>> PrepareCancellationThenAcknowledgeLoadResultAsync(
         Harness harness,
         FakeIoModuleClient io,
         TaskCompletionSource resultAckHeld,
+        bool holdSlotOneUntilShut,
         CancellationToken token)
     {
         await OpenBothSlotsAsync(harness, io, token);
@@ -311,6 +337,11 @@ public sealed partial class MultiDemandJourneyG2Tests
             () => harness.Server.OperationResultsHeld == 1,
             "the load's COMPLETED result to be held unacknowledged",
             token);
+
+        if (holdSlotOneUntilShut)
+        {
+            io.HoldWaitsUntilShut(0);
+        }
 
         Task<bool> press = harness.Business.RequestLoadCancellationAsync("现场确认不装了。", token);
         await harness.WaitUntilAsync(

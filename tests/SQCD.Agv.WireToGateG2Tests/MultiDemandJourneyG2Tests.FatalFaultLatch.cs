@@ -212,7 +212,7 @@ public sealed partial class MultiDemandJourneyG2Tests
 
         // Slot 2 is handed over standing open, with no pulse to key a close on, and the cancellation waits on it with the
         // harness's two-second operation timeout. Held until this thread shuts it: shut after seeing the vector start, a
-        // late wake-up ran that wait out and slot 2 came out UNKNOWN (8005-agv-onboard-hmi#331).
+        // late wake-up ran that wait out and the cancellation ended UNKNOWN (8005-agv-onboard-hmi#331).
         io.HoldWaitsUntilShut(1);
         Task<bool> press = harness.Business.RequestLoadCancellationAsync("现场确认不装了。", token);
         await harness.WaitUntilAsync(
