@@ -19,6 +19,16 @@ public sealed class SlotConfigurationActivationTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 9, 12, 0, 0, TimeSpan.Zero);
 
+    // 票据 35 批准的逐信号极性：开锁写 1；锁闭为 1；光幕检测到物体为 0。
+    // 与控制服务端 ApprovedSlotHardwareFacts.SignalPolarity、生产库已批准事实逐字相同。
+    private const string Ticket35Polarity =
+        "UNLOCK_OUTPUT_ACTIVE_HIGH;LOCK_FEEDBACK_LOCKED_HIGH;LIGHT_CURTAIN_OBJECT_LOW";
+
+    // 两端共钉的摘要：控制服务端 TheCanonicalFingerprintOfTheSharedExampleIsTheValueTheOnboardSideAlsoComputes
+    // 钉着同一个值。极性改为逐信号之前是 de93ca3d9eda7b619dd3ea2e8824f8592a3471b11ff723eba3dbc12ea6f69da9。
+    private const string SharedFingerprint =
+        "3710b98b136300884ef292af951a25a6e2021b87ab53d140880970dc32873314";
+
     /// <summary>
     /// 指纹相等时激活成功，记下服务端对这一版的命名；硬件事实一个字节没动，所以指纹不变。
     /// </summary>
@@ -216,10 +226,30 @@ public sealed class SlotConfigurationActivationTests
     [Fact]
     public void TheFingerprintMatchesTheValueTheControlServerComputes()
     {
-        // 与控制服务端那份测试逐字段相同的一批输入：八个仓，DO{n}／DI{n}／DI{n+8}，ACTIVE_HIGH，500ms。
+        // 与控制服务端那份测试逐字段相同的一批输入：八个仓，DO{n}／DI{n}／DI{n+8}，
+        // 票据 35 的逐信号极性，500ms。
         Assert.Equal(
-            "de93ca3d9eda7b619dd3ea2e8824f8592a3471b11ff723eba3dbc12ea6f69da9",
+            SharedFingerprint,
             Configuration("v1", pulseMs: 500).Fingerprint);
+    }
+
+    /// <summary>
+    /// 车上不写极性时用的默认值，就是票据 35 批准、服务端已批准事实里的那一串，逐字相同。
+    /// </summary>
+    /// <remarks>
+    /// 现场站点配置不写极性，车用的就是这个默认值。它与服务端
+    /// <c>ApprovedSlotHardwareFacts.SignalPolarity</c> 差一个字节，指纹就对不上，激活被拒并报
+    /// <c>SLOT_CONFIGURATION_FINGERPRINT_MISMATCH</c>，车不能就绪。所以既钉字面量，也钉默认配置算出的
+    /// 指纹等于两端共钉的那个值。
+    /// </remarks>
+    [Fact]
+    public void TheDefaultConfigurationDeclaresTheTicket35PolarityAndYieldsTheSharedFingerprint()
+    {
+        ActiveSlotConfiguration configuration =
+            OnboardActiveSlotConfigurationFactory.Create(new WireToGateSettings(), new IoModuleSettings());
+
+        Assert.All(configuration.Slots, slot => Assert.Equal(Ticket35Polarity, slot.SignalPolarity));
+        Assert.Equal(SharedFingerprint, configuration.Fingerprint);
     }
 
     /// <summary>
@@ -261,7 +291,7 @@ public sealed class SlotConfigurationActivationTests
             $"DO{number}",
             $"DI{number}",
             $"DI{number + 8}",
-            "ACTIVE_HIGH",
+            Ticket35Polarity,
             pulseMs))]);
 
     private sealed class Fixture
