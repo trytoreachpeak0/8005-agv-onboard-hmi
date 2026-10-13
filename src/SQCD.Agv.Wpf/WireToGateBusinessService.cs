@@ -1186,6 +1186,25 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     $"这次装货的修正结果已被服务端拒收并经人工核对结束，修正入口保持关闭：attempt={settledLoad.SlotOperationAttemptId}。");
             }
 
+            // After a restart: a load an operator's cancellation concluded keeps the cancellation and resume entries shut
+            // (onboard-hmi#343). The entries read a per-process mark; the cancellation's result on file is the record.
+            if (state.RecoveryVector is null
+                && state.OperationContext is { OperationType: OperationType.Load } unsettledLoad
+                && string.Equals(
+                    state.UnsettledSlotOperationAttemptId,
+                    unsettledLoad.SlotOperationAttemptId,
+                    StringComparison.Ordinal)
+                && !IsCancellationConcluded(unsettledLoad.SlotOperationAttemptId)
+                && await IsCancellationConcludedAsync(
+                        unsettledLoad.DemandId, unsettledLoad.SlotOperationAttemptId, cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                _logger.Write(
+                    LogSeverity.Information,
+                    nameof(WireToGateBusinessService),
+                    $"这次装货已被操作员取消且取消已有结果，取消与修复续行入口保持关闭：attempt={unsettledLoad.SlotOperationAttemptId}。");
+            }
+
             // A forced isolation is a device fact beside whatever else is on file, not instead of it:
             // it settled its own business side when it was acknowledged, and an operation or vector on
             // other slots is restored and settled below exactly as it would be without it. The
