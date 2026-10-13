@@ -692,7 +692,8 @@ public sealed partial class MultiDemandJourneyG2Tests
             // it is accepted as version+1 and the check, asked under the version before, is refused as
             // PREDEPARTURE_CHECK_EXPIRED (8005-agv-onboard-hmi#337). Announced here and waited for until it is the
             // accepted state, the reading is what the vehicle last reported: a later wake-up finds the same signature
-            // and reports nothing, so the version read below is still the accepted one when the check arrives.
+            // and reports nothing, so the version read below is still the accepted one when the check arrives. No
+            // settling delay follows: the wait is the whole of it, so a wait that let go early would show.
             io.PublishSnapshot();
             await WaitForReportedSafetyAcceptedAsync(
                 harness,
@@ -701,8 +702,11 @@ public sealed partial class MultiDemandJourneyG2Tests
                 expected == "UNKNOWN" ? "the unreadable slot" : "A's open door",
                 token);
         }
+        else
+        {
+            await Task.Delay(300, token);
+        }
 
-        await Task.Delay(300, token);
         long version = harness.Session.Current.SafetyStateVersion;
         string checkId = Guid.NewGuid().ToString("D");
         await harness.Server.SendCommandAsync(
