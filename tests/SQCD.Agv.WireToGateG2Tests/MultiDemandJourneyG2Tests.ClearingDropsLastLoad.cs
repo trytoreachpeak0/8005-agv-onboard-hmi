@@ -31,12 +31,15 @@ public sealed partial class MultiDemandJourneyG2Tests
             () =>
             {
                 harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
-                return harness.ViewModel.CanRequestLoadCompensation && harness.ViewModel.CanRequestLoadCorrection;
+                // The two target lines come from the journal re-read, a different path from the entry gates' cache: right
+                // after B's load the correction line could still name A. Waited for with the gates, not read after them.
+                return harness.ViewModel.CanRequestLoadCompensation
+                    && harness.ViewModel.CanRequestLoadCorrection
+                    && harness.ViewModel.CompensationTargetText == "补偿目标：子批 SUBLOT-B"
+                    && harness.ViewModel.LoadCorrectionTargetText == "只能修正本站最后一次装货：子批 SUBLOT-B";
             },
-            "the compensation and correction entries over the transport's last load",
+            "the compensation and correction entries over the transport's last load, B",
             token);
-        Assert.Equal("补偿目标：子批 SUBLOT-B", harness.ViewModel.CompensationTargetText);
-        Assert.Equal("只能修正本站最后一次装货：子批 SUBLOT-B", harness.ViewModel.LoadCorrectionTargetText);
 
         await harness.Server.SendJourneySnapshotAsync(
             "UpcomingStopPlanSnapshot",
