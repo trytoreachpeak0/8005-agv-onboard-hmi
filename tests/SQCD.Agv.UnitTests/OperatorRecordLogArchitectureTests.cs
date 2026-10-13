@@ -132,6 +132,106 @@ public sealed class OperatorRecordLogArchitectureTests
         Assert.Matches(@"\bOperatorRecordLog\.TryStart\(\s*settings\.Logging\s*,\s*viewModel\.Logs\s*,", start);
     }
 
+    /// <summary>
+    /// A line reaches <c>Logs</c> only through <c>MainViewModel.AppendLogLine</c>, and only <c>ClearLogsCommand</c> clears it:
+    /// a write site that bypassed the helper would still be logged (the record log listens to the collection) but would
+    /// skip the command refresh and the trim, and a second clear would be logged as the operator's.
+    /// </summary>
+    [Fact]
+    public void LogsIsWrittenOnlyThroughAppendLogLineAndClearedOnlyByTheCommand()
+    {
+        string source = System.IO.Path.Combine(ProtocolIdentityArchitectureTests.RepositoryRoot(), "src");
+        List<string> offences = [];
+        int adds = 0;
+        int clears = 0;
+        foreach (string file in Directory.GetFiles(source, "*.cs", SearchOption.AllDirectories)
+            .Where(file => File.ReadAllText(file).Contains("Logs", StringComparison.Ordinal)))
+        {
+            string code = string.Join("\n", CSharpSourceLexer.Lex(File.ReadAllText(file)).Code);
+            string name = System.IO.Path.GetFileName(file);
+            foreach (Match write in Regex.Matches(code, @"\bLogs\s*\.\s*(?<op>Add|Insert|Clear|RemoveAt|Remove|Move)\s*\("))
+            {
+                string op = write.Groups["op"].Value;
+                string? helper = name == "MainViewModel.cs" ? HmiScreenStateIsolationArchitectureTests.Body(code, "AppendLogLine") : null;
+                bool inHelper = helper is not null && code.IndexOf(helper, StringComparison.Ordinal) is var at and >= 0
+                    && write.Index > at && write.Index < at + helper.Length;
+                bool inTrim = name == "MainViewModel.cs" && op == "RemoveAt"
+                    && HmiScreenStateIsolationArchitectureTests.Body(code, "TrimLogs") is { } trim
+                    && code.IndexOf(trim, StringComparison.Ordinal) is var trimAt and >= 0
+                    && write.Index > trimAt && write.Index < trimAt + trim.Length;
+                if (op is "Add" && inHelper)
+                {
+                    adds++;
+                }
+                else if (op is "Clear" && name == "MainViewModel.cs")
+                {
+                    clears++;
+                }
+                else if (!inTrim)
+                {
+                    offences.Add($"{name}: Logs.{op}(");
+                }
+            }
+        }
+
+        Assert.Equal(1, adds);
+        Assert.Equal(1, clears);
+        Assert.True(offences.Count == 0, "Logs written outside AppendLogLine/TrimLogs/ClearLogsCommand:\n" + string.Join("\n", offences));
+    }
+
+    /// <summary>Every line built under <c>src/</c> names its source, so the technical log never says <c>Unknown</c> for a known site.</summary>
+    [Fact]
+    public void EveryLineBuiltUnderSrcNamesItsSource()
+    {
+        string source = System.IO.Path.Combine(ProtocolIdentityArchitectureTests.RepositoryRoot(), "src");
+        List<string> offences = [];
+        int built = 0;
+        foreach (string file in Directory.GetFiles(source, "*.cs", SearchOption.AllDirectories)
+            .Where(file => File.ReadAllText(file).Contains("new LogLineViewModel", StringComparison.Ordinal)))
+        {
+            string code = string.Join("\n", CSharpSourceLexer.Lex(File.ReadAllText(file)).Code);
+            foreach (string call in ConstructorCalls(code))
+            {
+                built++;
+                if (!SourceNamed(call))
+                {
+                    offences.Add($"{System.IO.Path.GetFileName(file)}: {Regex.Replace(call, @"\s+", " ")}");
+                }
+            }
+        }
+
+        Assert.Equal(4, built);
+        Assert.True(offences.Count == 0, "LogLineViewModel built without a known OperatorRecordSource:\n" + string.Join("\n", offences));
+    }
+
+    [Theory]
+    [InlineData("Logs.Add(new LogLineViewModel(now, OperatorRecordKind.Warning, text));", false)]
+    [InlineData("AppendLogLine(new LogLineViewModel(now, kind, text, OperatorRecordSource.Unknown));", false)]
+    [InlineData("AppendLogLine(new LogLineViewModel(now, kind, text, OperatorRecordSource.OperatorRejection));", true)]
+    public void TheSourceCheckRefusesAMissingOrUnknownSource(string code, bool named) =>
+        Assert.Equal(named, SourceNamed(Assert.Single(ConstructorCalls(code))));
+
+    private static bool SourceNamed(string call) =>
+        Regex.IsMatch(call, @"\bOperatorRecordSource\.(?!Unknown\b)\w+");
+
+    private static IEnumerable<string> ConstructorCalls(string code)
+    {
+        foreach (Match match in Regex.Matches(code, @"\bnew\s+LogLineViewModel\s*\("))
+        {
+            int open = match.Index + match.Length - 1;
+            int depth = 0;
+            for (int index = open; index < code.Length; index++)
+            {
+                depth += code[index] switch { '(' => 1, ')' => -1, _ => 0 };
+                if (depth == 0)
+                {
+                    yield return code[open..(index + 1)];
+                    break;
+                }
+            }
+        }
+    }
+
     /// <summary>The boundary check itself, on a shape it must refuse.</summary>
     [Theory]
     [InlineData("string text = _viewModel.ScanText;")]

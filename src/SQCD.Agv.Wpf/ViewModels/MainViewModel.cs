@@ -639,12 +639,13 @@ public sealed partial class MainViewModel : ViewModelBase
                     : operatorEvent.Operation;
             }
 
-            Logs.Add(new LogLineViewModel(
+            AppendLogLine(new LogLineViewModel(
                 operatorEvent.Timestamp,
                 MapOperatorEventKind(operatorEvent.Kind),
-                operatorEvent.Message));
-            ClearLogsCommand.RaiseCanExecuteChanged();
-            TrimLogs();
+                operatorEvent.Message,
+                OperatorRecordSource.OperatorEvent,
+                operatorEvent.Operation?.SlotOperationAttemptId,
+                operatorEvent.Kind));
             // 又有事发生了，上一条拒绝回执到此为止——不等那 8 秒走完。操作员扫错一次、随即扫对，
             // 界面不该继续显示他扫错的那一句（8005-agv-onboard-hmi#171 审查，产品路发现 1）。
             ClearOperatorNotice();
@@ -1118,12 +1119,11 @@ public sealed partial class MainViewModel : ViewModelBase
         if (_announcedCorrectionDemandId is { } previous
             && !string.Equals(previous, demandId, StringComparison.Ordinal))
         {
-            Logs.Add(new LogLineViewModel(
+            AppendLogLine(new LogLineViewModel(
                 DateTimeOffset.Now,
                 OperatorRecordKind.Warning,
-                $"{Describe(previous)} 的修正窗口已随{Describe(demandId)} 装货关闭。"));
-            ClearLogsCommand.RaiseCanExecuteChanged();
-            TrimLogs();
+                $"{Describe(previous)} 的修正窗口已随{Describe(demandId)} 装货关闭。",
+                OperatorRecordSource.CorrectionWindow));
         }
 
         _announcedCorrectionDemandId = demandId;
@@ -2422,9 +2422,11 @@ public sealed partial class MainViewModel : ViewModelBase
         RunOnUiThread(() =>
         {
             string message = OnboardCommandRejectionText.DescribeWithCode(reasonCode);
-            Logs.Add(new LogLineViewModel(Clock.Now, OperatorRecordKind.Warning, message));
-            ClearLogsCommand.RaiseCanExecuteChanged();
-            TrimLogs();
+            AppendLogLine(new LogLineViewModel(
+                Clock.Now,
+                OperatorRecordKind.Warning,
+                message,
+                OperatorRecordSource.OperatorRejection));
             _operatorNotice = message;
             _operatorNoticeUntil = Clock.Now + OperatorNoticeHold;
             Guidance = message;
@@ -2481,9 +2483,12 @@ public sealed partial class MainViewModel : ViewModelBase
             return;
         }
 
-        Logs.Add(new LogLineViewModel(record.Timestamp, record.Kind, record.Message));
-        ClearLogsCommand.RaiseCanExecuteChanged();
-        TrimLogs();
+        AppendLogLine(new LogLineViewModel(
+            record.Timestamp,
+            record.Kind,
+            record.Message,
+            OperatorRecordSource.ControllerRecord,
+            snapshot.ActiveOperation?.OperationId));
     }
 
     private void ApplyWireToGatePresentationCore()
@@ -2644,6 +2649,19 @@ public sealed partial class MainViewModel : ViewModelBase
             group.IsTarget = group.Group.ContainsAnyOf(targetSlots);
         }
         OpeningSideText = SlotGroupPresentation.OpeningSideText(_slotGroupLayout, targetSlots);
+    }
+
+    /// <summary>
+    /// The one place a line reaches the on-screen operator record (onboard-hmi#317). Each caller names its
+    /// <see cref="OperatorRecordSource"/>; <c>OperatorRecordOutput.OperatorRecordLog</c> writes the line to the technical
+    /// log from the collection, so a write site that bypassed this method would still be logged, but as
+    /// <see cref="OperatorRecordSource.Unknown"/>. <c>OperatorRecordLogArchitectureTests</c> holds both.
+    /// </summary>
+    private void AppendLogLine(LogLineViewModel line)
+    {
+        Logs.Add(line);
+        ClearLogsCommand.RaiseCanExecuteChanged();
+        TrimLogs();
     }
 
     private void TrimLogs()
