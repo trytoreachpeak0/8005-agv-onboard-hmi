@@ -239,7 +239,9 @@ public sealed partial class MultiDemandJourneyG2Tests
 
     /// <summary>
     /// 重启后与重启前一致：取消入口与修复续行入口仍关着，补偿入口照样给出，门的疑点仍在日志簿里。「这次取消已有结论」
-    /// 在进程里只是个缓存，重启就没了；入口要从发件箱里那条取消结果读回来，不能因为缓存空了又亮起来。
+    /// 在进程里只是个缓存，重启就没了；入口要从发件箱里那条取消结果读回来，不能因为缓存空了又亮起来。会话就绪到还原流程读完
+    /// 发件箱之间有一个毫秒级的窗口（与 onboard-hmi#254 的修正入口相同），所以先等入口关上、再持续半秒；窗口里的按键由按键路径
+    /// 读发件箱拦下（<see cref="AnInFlightCancellationPressedAfterItsUnknownIsAcknowledgedIsAnswered"/>）。
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
@@ -267,8 +269,9 @@ public sealed partial class MultiDemandJourneyG2Tests
             messageTimeout: TimeSpan.FromSeconds(30));
         await afterRestart.WaitUntilAsync(
             () => afterRestart.Session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired
-                && afterRestart.Business.CanRequestLoadCompensation,
-            "the restarted vehicle held for B's recovery, with the compensation entry offered",
+                && afterRestart.Business.CanRequestLoadCompensation
+                && !afterRestart.Business.CanRequestLoadCancellation,
+            "the restarted vehicle held for B's recovery, compensation offered and the cancellation entry shut",
             token);
         await HoldsForHalfASecondAsync(
             () =>
