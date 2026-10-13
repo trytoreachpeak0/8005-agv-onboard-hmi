@@ -14,7 +14,7 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// 现场所见（10-12，agv02）：搬运装完两条、会话被判需恢复，屏上有「补偿目标：子批 …」和「只能修正本站最后一次装货：子批 …」；
     /// 车随后转为清桩（<c>activePurpose=CLEARING_MAINTENANCE</c>，计划只有充电桩那条腿），这两行仍然留着。修后：清桩那份业务状态一到，
     /// 日志里上一次完成的装货被清掉，修正与补偿入口关闭、补偿目标为空，操作员收到一句说明；会话仍是需恢复，说明关掉入口的是清掉的那条
-    /// 记录，不是会话变就绪。到站那一格写「清桩：尚未下发开往等待点的任务」。
+    /// 记录，不是会话变就绪。到站那一格写「清桩：未收到开往等待点的计划」。
     /// </summary>
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-07")]
@@ -64,13 +64,13 @@ public sealed partial class MultiDemandJourneyG2Tests
         // The visit cell is the journey projection's, written on the UI thread by another handler than the one that drops
         // the record: waited for, not read once.
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.VisitText == "清桩：尚未下发开往等待点的任务",
-            "the visit cell to say no waiting-point task has been sent",
+            () => harness.ViewModel.VisitText == "清桩：未收到开往等待点的计划",
+            "the visit cell to say no plan to a waiting point was received",
             token);
         Assert.Equal(WireToGateSessionReadiness.RecoveryRequired, harness.Session.Current.Readiness);
         Assert.False(harness.ViewModel.HasCompensationTarget);
         Assert.Null(harness.Business.CompensationFallbackDemandId);
-        Assert.Equal(WireToGateIdleReturnText.ClearingNoWaitingPointTaskStatus, harness.ViewModel.IdleReturnStatus);
+        Assert.Equal(WireToGateIdleReturnText.ClearingNoWaitingPointPlanStatus, harness.ViewModel.IdleReturnStatus);
         await harness.WaitUntilAsync(
             () => harness.LogsSnapshot().Any(line => line.Message.Contains(
                 "本趟行程已结束，「车上待交接的需求」已清空。",

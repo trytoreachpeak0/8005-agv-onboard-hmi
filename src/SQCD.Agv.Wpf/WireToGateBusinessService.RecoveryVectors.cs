@@ -3904,19 +3904,6 @@ public sealed partial class WireToGateBusinessService
     }
 
     /// <summary>
-    /// <paramref name="state"/> with the load on board of the demand <paramref name="vector"/> settled marked as handed off,
-    /// awaiting the server (8005-agv-onboard-hmi#209). Every vector that settles here asks the server to end its demand -- a
-    /// handoff and a forced recovery as <c>TERMINATED_BY_FAULT_CARGO_HANDOFF</c>, a compensation as
-    /// <c>CANCELLED_BY_LOAD_COMPENSATION</c>, a cancellation as cancelled -- except a correction, which only corrects the load
-    /// and leaves its cargo where it is.
-    /// </summary>
-    /// <remarks>
-    /// Marked, not taken off (decided for #209's review S4). The session closes whether or not the server reconciled the
-    /// result, so the vehicle cannot tell; a result that did not reconcile keeps the demand, and a second handoff is its way
-    /// out. Taken off, a single-demand trip had no handoff left on the vehicle after such a result. The server refuses a session
-    /// over a demand it did end (control-server#505, A3), so a second press there is answered, not carried out.
-    /// </remarks>
-    /// <summary>
     /// <paramref name="state"/> brought in line with the journey the vehicle holds now
     /// (<see cref="WireToGateRecoveryState.WithLoadsOnBoardFor"/>), applied inside the write that settles a recovery vector
     /// (8005-agv-onboard-hmi#330 review S1).
@@ -3931,6 +3918,19 @@ public sealed partial class WireToGateBusinessService
     private WireToGateRecoveryState WithLoadsOnBoardForCurrentJourney(WireToGateRecoveryState state) =>
         state.WithLoadsOnBoardFor(_session.CurrentJourney);
 
+    /// <summary>
+    /// <paramref name="state"/> with the load on board of the demand <paramref name="vector"/> settled marked as handed off,
+    /// awaiting the server (8005-agv-onboard-hmi#209). Every vector that settles here asks the server to end its demand -- a
+    /// handoff and a forced recovery as <c>TERMINATED_BY_FAULT_CARGO_HANDOFF</c>, a compensation as
+    /// <c>CANCELLED_BY_LOAD_COMPENSATION</c>, a cancellation as cancelled -- except a correction, which only corrects the load
+    /// and leaves its cargo where it is.
+    /// </summary>
+    /// <remarks>
+    /// Marked, not taken off (decided for #209's review S4). The session closes whether or not the server reconciled the
+    /// result, so the vehicle cannot tell; a result that did not reconcile keeps the demand, and a second handoff is its way
+    /// out. Taken off, a single-demand trip had no handoff left on the vehicle after such a result. The server refuses a session
+    /// over a demand it did end (control-server#505, A3), so a second press there is answered, not carried out.
+    /// </remarks>
     internal static WireToGateRecoveryState WithLoadEndedBy(
         WireToGateRecoveryState state,
         WireToGateRecoveryVectorContext vector) =>
