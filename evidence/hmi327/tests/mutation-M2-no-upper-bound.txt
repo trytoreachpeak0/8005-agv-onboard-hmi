@@ -1,0 +1,25 @@
+Test run for F:\8005-wt\hmi327-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:05.58]     SQCD.Agv.UnitTests.InboundPayloadSchemaBoundaryTests.APlanWithASequenceOutOfRangeOrRepeatedIsRefused(sequences: "10") [FAIL]
+[xUnit.net 00:00:05.61]     SQCD.Agv.UnitTests.InboundPayloadSchemaBoundaryTests.APlanWithASequenceOutOfRangeOrRepeatedIsRefused(sequences: "1,10") [FAIL]
+  Failed SQCD.Agv.UnitTests.InboundPayloadSchemaBoundaryTests.APlanWithASequenceOutOfRangeOrRepeatedIsRefused(sequences: "10") [159 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.IO.InvalidDataException)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.InboundPayloadSchemaBoundaryTests.APlanWithASequenceOutOfRangeOrRepeatedIsRefused(String sequences) in F:\8005-wt\hmi327-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\InboundPayloadSchemaBoundaryTests.cs:line 268
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeDirectByRefWithFewArgs(Object obj, Span`1 copyOfArgs, BindingFlags invokeAttr)
+  Failed SQCD.Agv.UnitTests.InboundPayloadSchemaBoundaryTests.APlanWithASequenceOutOfRangeOrRepeatedIsRefused(sequences: "1,10") [< 1 ms]
+  Error Message:
+   Assert.Throws() Failure: No exception was thrown
+Expected: typeof(System.IO.InvalidDataException)
+  Stack Trace:
+     at SQCD.Agv.UnitTests.InboundPayloadSchemaBoundaryTests.APlanWithASequenceOutOfRangeOrRepeatedIsRefused(String sequences) in F:\8005-wt\hmi327-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\InboundPayloadSchemaBoundaryTests.cs:line 268
+   at InvokeStub_InboundPayloadSchemaBoundaryTests.APlanWithASequenceOutOfRangeOrRepeatedIsRefused(Object, Span`1)
+   at System.Reflection.MethodBaseInvoker.InvokeWithOneArg(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
+
+Failed!  - Failed:     2, Passed:    12, Skipped:     0, Total:    14, Duration: 301 ms - SQCD.Agv.UnitTests.dll (net8.0)

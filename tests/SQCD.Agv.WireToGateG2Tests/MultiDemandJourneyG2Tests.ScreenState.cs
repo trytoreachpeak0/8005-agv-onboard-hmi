@@ -37,6 +37,17 @@ public sealed partial class MultiDemandJourneyG2Tests
     private static HmiButtonState ButtonOf(HmiScreenState screen, string key) =>
         Assert.Single(screen.Buttons, button => button.Key == key);
 
+    /// <summary><c>Assert.NotNull</c> that hands the value back (xUnit's returns nothing for a reference type).</summary>
+    private static T Present<T>(T? value)
+        where T : class
+    {
+        Assert.NotNull(value);
+        return value;
+    }
+
+    private static HmiRecoveryEntryState EntryOf(HmiScreenState screen, string entry) =>
+        Assert.Single(screen.Basis.RecoveryEntries, state => state.Entry == entry);
+
     private static HmiInputState InputOf(HmiScreenState screen, string key) =>
         Assert.Single(screen.Inputs, input => input.Key == key);
 

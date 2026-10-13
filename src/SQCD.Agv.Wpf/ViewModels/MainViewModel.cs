@@ -494,8 +494,10 @@ public sealed partial class MainViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 计划腿列表整张替换。排序只按服务端给的 <c>sequence</c>：入站校验已保证它从 1 起连续、不重复，
-    /// 所以这里的排序就是服务端的顺序，不是本地的决定。
+    /// 计划腿列表整张替换。排序只按服务端给的 <c>sequence</c>：入站校验保证它在 1～9 之间、不重复，
+    /// 所以这里的排序就是服务端的顺序，不是本地的决定。<b>它不保证从 1 起、也不保证连续</b>：服务端清桩到点的
+    /// 收尾计划只有一条 <c>sequence</c> 为 2 的腿，第二次清桩途中是 <c>[1, 3]</c>（onboard-hmi#327）。所以
+    /// <c>sequence</c> 只能拿来排序，不能当下标，也不能当「第几站」。
     /// </summary>
     private void ReplaceJourneyPlanLegsCore(IReadOnlyList<WireToGateMovementLeg> legs)
     {
@@ -755,6 +757,7 @@ public sealed partial class MainViewModel : ViewModelBase
 
     private void RefreshWireToGateInputStateCore()
     {
+        BeginRecoveryEntryRefresh();
         CanSubmit = _wireToGateCanSubmit?.Invoke() ?? CanSubmit;
         // 这条路径上的七个恢复入口，六个各自过 AllowRecoveryEntry，取消装货过 AllowLoadCancellationEntry
         // （锁存期间只剩扫码之前那一半，onboard-hmi#174）；另外两个（强制机械取出的确认、硬件恢复
@@ -763,17 +766,25 @@ public sealed partial class MainViewModel : ViewModelBase
         // ——共用的是判据 RecoveryEntriesBlockedByFatalFault。少经一处，锁存期间那个入口就会被放回来。
         // 这十个入口的写入路径由 RecoveryEntryWriteSiteArchitectureTests 守着（onboard-hmi#176）：
         // 第三条直接赋值的路径出现就红，合规写法它都认得。
-        CanRequestWireToGateRecovery = AllowRecoveryEntry(_wireToGateCanRequestRecovery?.Invoke() == true);
+        CanRequestWireToGateRecovery = AllowRecoveryEntry(
+            Offer(RecoveryEntry.WireToGateRecovery, _wireToGateCanRequestRecovery?.Invoke() == true));
         CanRequestLoadCancellation = AllowLoadCancellationEntry(
-            _wireToGateCanRequestLoadCancellation?.Invoke() == true,
-            _wireToGateCanRequestLoadCancellationBeforeAnySublot?.Invoke() == true);
-        CanRequestLoadCompensation = AllowRecoveryEntry(_wireToGateCanRequestLoadCompensation?.Invoke() == true);
-        CanRequestLoadCorrection = AllowRecoveryEntry(_wireToGateCanRequestLoadCorrection?.Invoke() == true);
-        CanRequestFaultCargoHandoff = AllowRecoveryEntry(_wireToGateCanRequestFaultCargoHandoff?.Invoke() == true);
+            Offer(RecoveryEntry.LoadCancellation, _wireToGateCanRequestLoadCancellation?.Invoke() == true),
+            OfferBeforeAnySublot(_wireToGateCanRequestLoadCancellationBeforeAnySublot?.Invoke() == true));
+        CanRequestLoadCompensation = AllowRecoveryEntry(
+            Offer(RecoveryEntry.LoadCompensation, _wireToGateCanRequestLoadCompensation?.Invoke() == true));
+        CanRequestLoadCorrection = AllowRecoveryEntry(
+            Offer(RecoveryEntry.LoadCorrection, _wireToGateCanRequestLoadCorrection?.Invoke() == true));
+        CanRequestFaultCargoHandoff = AllowRecoveryEntry(
+            Offer(RecoveryEntry.FaultCargoHandoff, _wireToGateCanRequestFaultCargoHandoff?.Invoke() == true));
         CanRequestForcedMechanicalRecovery =
-            AllowRecoveryEntry(_wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true);
+            AllowRecoveryEntry(Offer(
+                RecoveryEntry.ForcedMechanicalRecovery,
+                _wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true));
         CanRequestManualChargingReturn =
-            AllowRecoveryEntry(_wireToGateCanRequestManualChargingReturn?.Invoke() == true);
+            AllowRecoveryEntry(Offer(
+                RecoveryEntry.ManualChargingReturn,
+                _wireToGateCanRequestManualChargingReturn?.Invoke() == true));
         RefreshManualChargingReturnGuidanceCore();
         RefreshForcedIsolationCore();
         RefreshRecoveryReasonLockCore();
@@ -2349,6 +2360,14 @@ public sealed partial class MainViewModel : ViewModelBase
 
         AppendOperatorRecord(snapshot);
         LogOperatorVisibleError(snapshot);
+        // The only caller that runs the presentation path without the input refresh first (onboard-hmi#314). Counted
+        // only when the presentation path will write the entries: it returns before writing any while WIRE_TO_GATE is
+        // off or no session status has come yet, and a count then would mark every offer as of an earlier work item.
+        if (_wireToGateEnabled && _wireToGateSession is not null)
+        {
+            BeginRecoveryEntryRefresh();
+        }
+
         ApplyWireToGatePresentationCore();
     }
 
@@ -2484,8 +2503,8 @@ public sealed partial class MainViewModel : ViewModelBase
         // 取消装货写在锁存守卫之前、不在守卫块里：守卫块只许写 false，而它是锁存期间唯一可以开的那一个
         // （扫码之前那一半，不碰 IO；见 AllowLoadCancellationEntry）。下面正常分支也不再写它。
         CanRequestLoadCancellation = AllowLoadCancellationEntry(
-            _wireToGateCanRequestLoadCancellation?.Invoke() == true,
-            _wireToGateCanRequestLoadCancellationBeforeAnySublot?.Invoke() == true);
+            Offer(RecoveryEntry.LoadCancellation, _wireToGateCanRequestLoadCancellation?.Invoke() == true),
+            OfferBeforeAnySublot(_wireToGateCanRequestLoadCancellationBeforeAnySublot?.Invoke() == true));
         // 现场确认充不上与它同理（见 RefreshUnableToChargeCore）。
         RefreshUnableToChargeCore();
         // 人工清桩确认同样写在锁存守卫之前：它不在那十个恢复入口里、锁存期间照常开着（见 RefreshStationClearanceCore），
@@ -2516,13 +2535,23 @@ public sealed partial class MainViewModel : ViewModelBase
             ? string.Empty
             : WireToGateSublotRejectionText.Describe(sublotRejection);
         SublotRejectionReasonCode = sublotRejection?.ReasonCode ?? string.Empty;
-        WireToGateHmiBanner banner = WireToGateHmiPresentation.Create(
+        // Each input read once, in the order the call always read them, and kept for the screen-state snapshot
+        // (onboard-hmi#314): what the banner was computed from, not a fresh read.
+        WireToGatePresentationInputs presentationInputs = new(
             _wireToGateSession,
             _wireToGateOperation,
             _wireToGateCanSubmit?.Invoke() == true,
             _wireToGateLoadCancellationPending?.Invoke() == true,
             sublotRejection is not null,
             _wireToGateEntryPausedUntilStopped?.Invoke() == true);
+        _presentationInputs = presentationInputs;
+        WireToGateHmiBanner banner = WireToGateHmiPresentation.Create(
+            presentationInputs.Session,
+            presentationInputs.Operation,
+            presentationInputs.CanSubmit,
+            presentationInputs.LoadCancellationPending,
+            presentationInputs.SublotRejected,
+            presentationInputs.EntryPausedUntilStopped);
         RuleConnectionText = _wireToGateSession.Connected ? "在线" : "离线";
         StateText = banner.StateText;
         // banner.HasError 在 v2 上恒 false（WireToGateHmiPresentation.Create 的每个分支都写死
@@ -2538,13 +2567,25 @@ public sealed partial class MainViewModel : ViewModelBase
         CanReopenOperation = false;
         CanCancelOperation = false;
         CanRetryPendingResult = false;
-        CanRequestWireToGateRecovery = _wireToGateCanRequestRecovery?.Invoke() == true
-            && _wireToGateOperation?.Stage == WireToGateHmiOperationStage.RecoveryRequired;
-        CanRequestLoadCompensation = _wireToGateCanRequestLoadCompensation?.Invoke() == true;
-        CanRequestLoadCorrection = _wireToGateCanRequestLoadCorrection?.Invoke() == true;
-        CanRequestFaultCargoHandoff = _wireToGateCanRequestFaultCargoHandoff?.Invoke() == true;
-        CanRequestForcedMechanicalRecovery = _wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true;
-        CanRequestManualChargingReturn = _wireToGateCanRequestManualChargingReturn?.Invoke() == true;
+        CanRequestWireToGateRecovery = Offer(
+            RecoveryEntry.WireToGateRecovery,
+            _wireToGateCanRequestRecovery?.Invoke() == true
+                && _wireToGateOperation?.Stage == WireToGateHmiOperationStage.RecoveryRequired);
+        CanRequestLoadCompensation = Offer(
+            RecoveryEntry.LoadCompensation,
+            _wireToGateCanRequestLoadCompensation?.Invoke() == true);
+        CanRequestLoadCorrection = Offer(
+            RecoveryEntry.LoadCorrection,
+            _wireToGateCanRequestLoadCorrection?.Invoke() == true);
+        CanRequestFaultCargoHandoff = Offer(
+            RecoveryEntry.FaultCargoHandoff,
+            _wireToGateCanRequestFaultCargoHandoff?.Invoke() == true);
+        CanRequestForcedMechanicalRecovery = Offer(
+            RecoveryEntry.ForcedMechanicalRecovery,
+            _wireToGateCanRequestForcedMechanicalRecovery?.Invoke() == true);
+        CanRequestManualChargingReturn = Offer(
+            RecoveryEntry.ManualChargingReturn,
+            _wireToGateCanRequestManualChargingReturn?.Invoke() == true);
         RefreshManualChargingReturnGuidanceCore();
         RefreshForcedIsolationCore();
         RefreshRecoveryReasonLockCore();
@@ -2555,11 +2596,17 @@ public sealed partial class MainViewModel : ViewModelBase
     private void RefreshForcedIsolationCore()
     {
         CanConfirmForcedMechanicalRecovery =
-            AllowRecoveryEntry(_wireToGateCanConfirmForcedMechanicalRecovery?.Invoke() == true);
+            AllowRecoveryEntry(Offer(
+                RecoveryEntry.ConfirmForcedMechanicalRecovery,
+                _wireToGateCanConfirmForcedMechanicalRecovery?.Invoke() == true));
         CanSubmitHardwareRecoveryRecord =
-            AllowRecoveryEntry(_wireToGateCanSubmitHardwareRecoveryRecord?.Invoke() == true);
+            AllowRecoveryEntry(Offer(
+                RecoveryEntry.SubmitHardwareRecoveryRecord,
+                _wireToGateCanSubmitHardwareRecoveryRecord?.Invoke() == true));
         CanRequestHardwareRepairRelease =
-            AllowRecoveryEntry(_wireToGateCanRequestHardwareRepairRelease?.Invoke() == true);
+            AllowRecoveryEntry(Offer(
+                RecoveryEntry.HardwareRepairRelease,
+                _wireToGateCanRequestHardwareRepairRelease?.Invoke() == true));
         NeedsForcedCargoHandoff = _wireToGateForcedConfirmationNeedsCargoHandoff?.Invoke() == true;
         ForcedCargoHandoffOnFileText = _wireToGateForcedCargoHandoffOnFile?.Invoke() is { } onFile
                 ? $"货物交接记录已登记：子批号 {onFile.Sublot}，接收人 {onFile.ReceiverName}；再次确认会重发这一份。"

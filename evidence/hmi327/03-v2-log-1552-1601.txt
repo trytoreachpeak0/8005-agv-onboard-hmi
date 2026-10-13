@@ -1,0 +1,405 @@
+15:52:27.000 Warning 2276 "INTERRUPTION_CONFIRMED": vehicle "BROKERX-f38975561adf46ccb1d2f23833c7d0e4" (journey "charging:BROKERX-f38975561adf46ccb1d2f23833c7d0e4:20261012T074050545Z") stopped gaining charge at charger 211 ("batteryState NO_CHARGE without a break from 2026-10-12T07:51:26.9243709+00:00 to 2026-10-12T07:52:26.9277539+00:00 at 51%, below the completion threshold 95%"). The charger's 8005 allocation and this vehicle's charging eligibility are both paused (root cause UNKNOWN: nothing is blamed on the vehicle 
+15:52:29.000 Warning 2300 CHARGING_CLEARANCE_TO_WAITING_POINT: vehicle "BROKERX-f38975561adf46ccb1d2f23833c7d0e4" (journey "charging:BROKERX-f38975561adf46ccb1d2f23833c7d0e4:20261012T074050545Z") could not charge at charger 211; its old order has ended and it is now committed to waiting point 216 (route cost 37871 mm). It will drive there by itself once the pre-departure gate passes: people on site, mind the vehicle. Arriving completes the clearance and releases the charger; the charger's allocation hold stays (control-s
+15:52:31.000 Information 1103 SessionReadiness "f72cdb8d-4e49-4035-b983-59f122b194e0" to "老厂前线新多仓位2" generation 28: "RECOVERY_REQUIRED" ["DEPARTURE_UNSAFE"], after the answer to "SafetyStateChanged" "702a8d29-acb5-035c-ad01-8df23cb43ec9".
+15:52:36.000 Information 1103 SessionReadiness "49c52dd5-42f8-4e38-b2a2-9a875ed2b801" to "老厂前线新多仓位2" generation 28: "RECOVERY_REQUIRED" ["DEPARTURE_UNSAFE"], after the answer to "SafetyStateChanged" "40522e5a-0a4f-965f-a686-a63666a227e0".
+15:54:25.000 Information 2305 Charging journey "charging:BROKERX-f38975561adf46ccb1d2f23833c7d0e4:20261012T074050545Z": vehicle "BROKERX-f38975561adf46ccb1d2f23833c7d0e4" arrived at waiting point 216; the clearance is complete (system proof, REQ-0179), the charger's exclusivity and the vehicle's purpose are released and the waiting point is now its occupancy. The charger's allocation hold stays.
+15:54:25.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:54:26.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:54:26.000 Warning 2205 Vehicle "BROKERX-f38975561adf46ccb1d2f23833c7d0e4" is below its mandatory charge entry threshold: battery 50% < 75% (charging policy version 5). It takes no new transport, no en-route append and no idle return until it has charged (REQ-0290, "MANDATORY_CHARGE_REQUIRED"); a journey it is carrying finishes as planned (REQ-0281).
+15:54:26.000 Information 2241 Charging not allocated for vehicle "老厂前线新多仓位2": "ONBOARD_FACTS_NOT_READY". ""
+15:54:26.000 Information 2199 Idle return not committed for vehicle "老厂前线新多仓位2": "IDLE_RETURN_DISABLED". ""
+15:54:28.000 Information 1103 SessionReadiness "362b05e9-9dce-42b9-9435-6ae935d31f82" to "老厂前线新多仓位2" generation 29: "READY" [null], after the answer to "RecoveryStateReport" "2333e463-47bb-4a06-98bb-ed8c2e9a6958".
+15:54:28.000 Information 1103 SessionReadiness "e0c1188d-020a-496d-84b1-06df23cd535b" to "老厂前线新多仓位2" generation 29: "READY" [null], after the answer to "SafetyStateChanged" "b32fa523-8ebf-f158-b067-fd27e991a81a".
+15:54:28.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:54:29.000 Information 2241 Charging not allocated for vehicle "老厂前线新多仓位2": "CHARGING_VEHICLE_ELIGIBILITY_HELD". ""
+15:54:29.000 Warning 2246 Vehicle "老厂前线新多仓位2" is below its mandatory charge line and no charger can be allocated to it: "CHARGING_VEHICLE_ELIGIBILITY_HELD". "" It stays queued, takes no transport and no idle return, and its battery goes on falling. Check on site: is the charger free and is nothing standing on it (CHARGER_RESERVED_OR_OCCUPIED, CHARGER_OCCUPIED_BY_VEHICLE, CHARGER_TARGETED_BY_RUNNING_ORDER); can RIoT read every fleet vehicle and its unfinished orders (CHARGER_OCCUPANCY_UNKNOWN names what could not be read)
+15:54:30.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:54:32.000 Information 1103 SessionReadiness "2ebf7733-362a-4578-abaf-80dea3b93350" to "老厂前线新多仓位2" generation 30: "READY" [null], after the answer to "RecoveryStateReport" "5032b06e-e74a-496a-8b4f-3f51deeee87c".
+15:54:32.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:54:32.000 Information 1103 SessionReadiness "0cf4e78e-7ec4-4de3-be87-86fed93f9b03" to "老厂前线新多仓位2" generation 30: "READY" [null], after the answer to "SafetyStateChanged" "8f9b77d9-01af-5d53-a68a-f1c3716bb096".
+15:54:34.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:54:36.000 Information 2241 Charging not allocated for vehicle "老厂前线新多仓位2": "ONBOARD_FACTS_NOT_READY". ""
+15:54:37.000 Information 1103 SessionReadiness "4428f44d-6a22-4a6e-b844-eebbc33432a0" to "老厂前线新多仓位2" generation 31: "READY" [null], after the answer to "RecoveryStateReport" "a227d9dd-3b1b-4b80-ab3b-8c1a64c0af52".
+15:54:37.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:54:37.000 Information 1103 SessionReadiness "ed78e1cf-05ec-4e96-920c-96d4c85a57d5" to "老厂前线新多仓位2" generation 31: "READY" [null], after the answer to "SafetyStateChanged" "31eb8604-db0b-105b-a14e-5333517af19f".
+15:54:38.000 Information 2241 Charging not allocated for vehicle "老厂前线新多仓位2": "CHARGING_VEHICLE_ELIGIBILITY_HELD". ""
+15:54:38.000 Warning 2246 Vehicle "老厂前线新多仓位2" is below its mandatory charge line and no charger can be allocated to it: "CHARGING_VEHICLE_ELIGIBILITY_HELD". "" It stays queued, takes no transport and no idle return, and its battery goes on falling. Check on site: is the charger free and is nothing standing on it (CHARGER_RESERVED_OR_OCCUPIED, CHARGER_OCCUPIED_BY_VEHICLE, CHARGER_TARGETED_BY_RUNNING_ORDER); can RIoT read every fleet vehicle and its unfinished orders (CHARGER_OCCUPANCY_UNKNOWN names what could not be read)
+15:54:39.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:54:41.000 Information 1103 SessionReadiness "e04a1dec-1335-48c0-bae9-682bf2672345" to "老厂前线新多仓位2" generation 32: "READY" [null], after the answer to "RecoveryStateReport" "6fc5fbc4-3daf-4f57-b1ac-d9bc5525569d".
+15:54:41.000 Information 1103 SessionReadiness "7cc3297a-90d2-4b90-b42c-b3539e7dc0dc" to "老厂前线新多仓位2" generation 32: "READY" [null], after the answer to "SafetyStateChanged" "6d3253a1-8f5b-0254-ae75-0da126ff1909".
+15:54:41.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:54:43.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:54:45.000 Information 1103 SessionReadiness "5e11de58-13a6-4966-a02d-c3f34e1ccfbb" to "老厂前线新多仓位2" generation 33: "READY" [null], after the answer to "RecoveryStateReport" "68797e4d-54a7-407f-bd89-c8efa7da64f2".
+15:54:45.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:54:45.000 Information 1103 SessionReadiness "8971c757-8f00-4c2b-a8bc-782446e7f9e1" to "老厂前线新多仓位2" generation 33: "READY" [null], after the answer to "SafetyStateChanged" "2bc67770-2b79-e655-8e02-34ec00d05385".
+15:54:47.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:54:49.000 Information 1103 SessionReadiness "dd64f904-9024-4840-8b1a-3b5fe191ff7d" to "老厂前线新多仓位2" generation 34: "READY" [null], after the answer to "RecoveryStateReport" "181fd44b-7287-426f-8c93-b457b101208e".
+15:54:49.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:54:49.000 Information 1103 SessionReadiness "955c96f3-1e5a-42ea-8635-ddaa485ff026" to "老厂前线新多仓位2" generation 34: "READY" [null], after the answer to "SafetyStateChanged" "05145600-4117-ce5e-b3b9-38863912d454".
+15:54:51.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:54:53.000 Information 1103 SessionReadiness "9f7170c9-7a21-431f-8de3-cd7f8e30aca1" to "老厂前线新多仓位2" generation 35: "READY" [null], after the answer to "RecoveryStateReport" "e63dac79-a726-424b-adf6-fb34686172c9".
+15:54:54.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:54:54.000 Information 1103 SessionReadiness "f5d1969a-a373-4938-93d4-f3229eac2da6" to "老厂前线新多仓位2" generation 35: "READY" [null], after the answer to "SafetyStateChanged" "915d5fa4-1733-d655-807b-4c4c741448b0".
+15:54:56.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:54:58.000 Information 1103 SessionReadiness "6fbbe31b-1e7b-48bb-ace4-7fdc5a5812b1" to "老厂前线新多仓位2" generation 36: "READY" [null], after the answer to "RecoveryStateReport" "e79dc162-ccdd-4846-ab12-afe77fb19c82".
+15:54:58.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:54:58.000 Information 1103 SessionReadiness "31729294-622c-4f80-b607-16549d4e2ca3" to "老厂前线新多仓位2" generation 36: "READY" [null], after the answer to "SafetyStateChanged" "2d8db22f-389b-6f58-9bed-171b06784a60".
+15:55:00.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:55:02.000 Information 1103 SessionReadiness "3c7b3966-4535-4a2f-92e1-2c9dd66a6fd5" to "老厂前线新多仓位2" generation 37: "READY" [null], after the answer to "RecoveryStateReport" "695ef9b9-32d6-4dbb-8b38-c66811546eb7".
+15:55:02.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:55:02.000 Information 1103 SessionReadiness "109748bf-748d-42bd-9536-c0eadee6c64c" to "老厂前线新多仓位2" generation 37: "READY" [null], after the answer to "SafetyStateChanged" "2158e93d-7195-5358-8c9d-1a2cba17cc5e".
+15:55:04.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:55:06.000 Information 1103 SessionReadiness "d92106d6-5293-4b9d-8b67-1dca3dd79fd9" to "老厂前线新多仓位2" generation 38: "READY" [null], after the answer to "RecoveryStateReport" "7b7158d4-4911-4e11-8ce4-2a4649400408".
+15:55:06.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:55:06.000 Information 1103 SessionReadiness "f6137d16-f961-43cc-9d62-3e21a3e66178" to "老厂前线新多仓位2" generation 38: "READY" [null], after the answer to "SafetyStateChanged" "f4cbc188-9dd9-f653-85b6-a9cb30dc6c9a".
+15:55:08.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:55:10.000 Information 1103 SessionReadiness "e206af2e-937d-4bc1-b438-7ec1c00c761b" to "老厂前线新多仓位2" generation 39: "READY" [null], after the answer to "RecoveryStateReport" "3e19286e-547c-4028-b4e6-5d4207cabf94".
+15:55:10.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:55:10.000 Information 1103 SessionReadiness "2eceefa1-08d6-4476-bb1d-732d9489bfa1" to "老厂前线新多仓位2" generation 39: "READY" [null], after the answer to "SafetyStateChanged" "e256d8e3-bce3-4253-af2a-f0519606575c".
+15:55:12.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:55:15.000 Information 1103 SessionReadiness "312df589-2bfa-4e3b-9f6f-13f58c179582" to "老厂前线新多仓位2" generation 40: "READY" [null], after the answer to "RecoveryStateReport" "0fe01d41-e386-4954-ad50-d2c04e738582".
+15:55:15.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:55:15.000 Information 1103 SessionReadiness "6e5e31f9-b3b0-47f3-84a6-dad42f72d19e" to "老厂前线新多仓位2" generation 40: "READY" [null], after the answer to "SafetyStateChanged" "d79c494d-9e5e-0355-9319-edaae703758e".
+15:55:17.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:55:19.000 Information 1103 SessionReadiness "b3f1d0bc-e793-4079-a994-ae2ee0f77418" to "老厂前线新多仓位2" generation 41: "READY" [null], after the answer to "RecoveryStateReport" "3e2bb683-253a-4f70-8d5f-c0cd3548f177".
+15:55:19.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:55:19.000 Information 1103 SessionReadiness "edf57b42-2d8a-4b97-b73c-a5540327918f" to "老厂前线新多仓位2" generation 41: "READY" [null], after the answer to "SafetyStateChanged" "94a35f71-546a-0a50-87ee-83711d75f188".
+15:55:21.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:55:23.000 Information 1103 SessionReadiness "850a5aa9-a93a-4671-9f3f-bbf9977a179e" to "老厂前线新多仓位2" generation 42: "READY" [null], after the answer to "RecoveryStateReport" "2b60fdf8-2316-422b-a865-4bc5cc4b47cf".
+15:55:23.000 Information 1103 SessionReadiness "6ef9ad01-d241-4958-809a-9a98ffa4ac0b" to "老厂前线新多仓位2" generation 42: "READY" [null], after the answer to "SafetyStateChanged" "b42e97d4-1b16-de5f-90b5-db321b796d7e".
+15:55:23.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:55:23.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:55:27.000 Information 1103 SessionReadiness "52915a63-ce27-4749-9d88-96bc14b29437" to "老厂前线新多仓位2" generation 43: "READY" [null], after the answer to "RecoveryStateReport" "2b93e30c-4d43-456b-839c-80df5488c78a".
+15:55:27.000 Information 1103 SessionReadiness "dbd4f220-4a2a-4b8e-baab-b4b9ef345546" to "老厂前线新多仓位2" generation 43: "READY" [null], after the answer to "SafetyStateChanged" "658b7209-5bb6-8556-96ea-74bd34026d2d".
+15:55:27.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:55:27.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:55:31.000 Information 1103 SessionReadiness "4f59ef77-47d2-4f75-86bd-b421089e74cd" to "老厂前线新多仓位2" generation 44: "READY" [null], after the answer to "RecoveryStateReport" "ebe5194b-6a35-4664-a8ce-e417dcc233d6".
+15:55:32.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:55:32.000 Information 1103 SessionReadiness "2e44f16a-5e00-41d1-98a6-76be8b70229a" to "老厂前线新多仓位2" generation 44: "READY" [null], after the answer to "SafetyStateChanged" "f30b056d-3891-2d57-a131-6f9766497e84".
+15:55:34.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:55:36.000 Information 1103 SessionReadiness "8dc3d5bd-3289-4643-bce9-be32d45a3abb" to "老厂前线新多仓位2" generation 45: "READY" [null], after the answer to "RecoveryStateReport" "af15aeb3-15fa-4967-8020-96b6162673be".
+15:55:36.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:55:36.000 Information 1103 SessionReadiness "fba7a9fd-3fd7-4066-a98c-13ac59862ea6" to "老厂前线新多仓位2" generation 45: "READY" [null], after the answer to "SafetyStateChanged" "3b276e4c-624b-725a-9f59-3c8ff2e6c92b".
+15:55:38.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:55:40.000 Information 1103 SessionReadiness "263cd638-e05b-4cda-8fc1-4a8964f2f8f4" to "老厂前线新多仓位2" generation 46: "READY" [null], after the answer to "RecoveryStateReport" "c02c297b-4d88-4dcc-bd29-8da523216375".
+15:55:40.000 Information 1103 SessionReadiness "a733efdf-092a-46a3-8b8e-b76d33a19be2" to "老厂前线新多仓位2" generation 46: "READY" [null], after the answer to "SafetyStateChanged" "a9706ee9-ac0e-4551-aa4d-2b42ae8bc22c".
+15:55:40.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:55:40.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:55:44.000 Information 1103 SessionReadiness "7dafc45d-f215-491b-b038-74d58b4b078a" to "老厂前线新多仓位2" generation 47: "READY" [null], after the answer to "RecoveryStateReport" "286e27e5-3be4-44d7-8af8-661b1efc1462".
+15:55:44.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:55:44.000 Information 1103 SessionReadiness "1190dddb-9dfa-4d6d-896f-1536e6a1ac71" to "老厂前线新多仓位2" generation 47: "READY" [null], after the answer to "SafetyStateChanged" "a3044c10-c616-8f56-9f53-9567e7c773fb".
+15:55:46.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:55:48.000 Information 1103 SessionReadiness "144a749c-8a17-474f-8438-b779ac7082c4" to "老厂前线新多仓位2" generation 48: "READY" [null], after the answer to "RecoveryStateReport" "8a45432d-6389-43b2-8a14-5b48b4d5342e".
+15:55:48.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:55:48.000 Information 1103 SessionReadiness "57cc9ee4-d55e-4795-8f7c-18850855ee27" to "老厂前线新多仓位2" generation 48: "READY" [null], after the answer to "SafetyStateChanged" "421d932e-2994-8b50-b850-fd1435b15e7b".
+15:55:50.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:55:53.000 Information 1103 SessionReadiness "b8a94f41-a5f0-4606-92cd-2c5e321bac39" to "老厂前线新多仓位2" generation 49: "READY" [null], after the answer to "RecoveryStateReport" "724aaf29-62f1-4efb-a885-001a8bfdc0ee".
+15:55:53.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:55:53.000 Information 1103 SessionReadiness "1b719912-1bc2-4818-8fee-bdb38b59b990" to "老厂前线新多仓位2" generation 49: "READY" [null], after the answer to "SafetyStateChanged" "7f59e66b-675c-955b-8b61-2709a4b3efaf".
+15:55:55.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:55:57.000 Information 1103 SessionReadiness "7393d5be-e4ce-44c3-924e-997a0cfb79d8" to "老厂前线新多仓位2" generation 50: "READY" [null], after the answer to "RecoveryStateReport" "01c2a1f8-bec1-46de-be42-371cb187fe6a".
+15:55:57.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:55:57.000 Information 1103 SessionReadiness "84536c84-6819-41b1-8e7f-8d6b493e3d38" to "老厂前线新多仓位2" generation 50: "READY" [null], after the answer to "SafetyStateChanged" "58226e38-79d3-5751-a866-bb55f7187e20".
+15:55:59.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:56:01.000 Information 1103 SessionReadiness "06130224-6f87-491f-b2ee-5c961fc44f03" to "老厂前线新多仓位2" generation 51: "READY" [null], after the answer to "RecoveryStateReport" "c6a396c3-96dc-4cb6-b681-2debaf852209".
+15:56:01.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:56:01.000 Information 1103 SessionReadiness "301a25ee-fe3a-4333-92be-516ade5539a4" to "老厂前线新多仓位2" generation 51: "READY" [null], after the answer to "SafetyStateChanged" "0d024dcc-926f-d458-a9e3-e91e0e1e20f2".
+15:56:03.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:56:05.000 Information 1103 SessionReadiness "ac3ba426-f498-4bb7-9cb4-10ec992fe4d5" to "老厂前线新多仓位2" generation 52: "READY" [null], after the answer to "RecoveryStateReport" "9db12221-835a-4404-9df3-b73c6805afd1".
+15:56:05.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:56:05.000 Information 1103 SessionReadiness "c9ebe1ce-2727-40f7-9c2d-6cde0803617f" to "老厂前线新多仓位2" generation 52: "READY" [null], after the answer to "SafetyStateChanged" "e70259ae-8059-4857-88eb-b616ed94186e".
+15:56:07.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:56:10.000 Information 1103 SessionReadiness "5d19ae87-1853-40e4-80ca-07165713169b" to "老厂前线新多仓位2" generation 53: "READY" [null], after the answer to "RecoveryStateReport" "9787e3b1-d252-4b98-8f4b-a82396d61634".
+15:56:10.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:56:10.000 Information 1103 SessionReadiness "a2271d5c-969a-4259-911a-9cf6592d6940" to "老厂前线新多仓位2" generation 53: "READY" [null], after the answer to "SafetyStateChanged" "00692e35-c7ef-1e52-998b-6300dc59b6a2".
+15:56:12.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:56:14.000 Information 1103 SessionReadiness "e7220fad-8e86-4c87-8caa-fd590a809f7d" to "老厂前线新多仓位2" generation 54: "READY" [null], after the answer to "RecoveryStateReport" "926db5ed-4784-4512-be39-e36a513e5961".
+15:56:14.000 Information 1103 SessionReadiness "438d5699-5c25-48e9-8d2b-92c74eec9ba5" to "老厂前线新多仓位2" generation 54: "READY" [null], after the answer to "SafetyStateChanged" "1845e37b-fe87-745e-9a52-c9a85123ae11".
+15:56:14.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:56:14.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:56:18.000 Information 1103 SessionReadiness "0eb19aff-d0f9-4bda-a273-ff7cf633488e" to "老厂前线新多仓位2" generation 55: "READY" [null], after the answer to "RecoveryStateReport" "63d8a799-7d81-416b-a48f-a448075a5442".
+15:56:18.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:56:18.000 Information 1103 SessionReadiness "d608e91b-4a86-4155-b9b6-38a98c024ea6" to "老厂前线新多仓位2" generation 55: "READY" [null], after the answer to "SafetyStateChanged" "8ae2d616-2bf3-e453-b8ce-2fff3a52ba81".
+15:56:20.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:56:22.000 Information 1103 SessionReadiness "0ecd3fa8-f156-497f-8984-d05f4c6d7e71" to "老厂前线新多仓位2" generation 56: "READY" [null], after the answer to "RecoveryStateReport" "b1b6752a-b7ae-48f9-b128-489a055c98fb".
+15:56:22.000 Information 1103 SessionReadiness "fd1c23cf-5aa7-4895-8618-fba935d86340" to "老厂前线新多仓位2" generation 56: "READY" [null], after the answer to "SafetyStateChanged" "a7b22432-36ec-b953-bcf1-18a2e8a7d89e".
+15:56:22.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:56:22.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:56:26.000 Information 1103 SessionReadiness "ab6559e7-85bf-4148-a4fa-85e7c429ed6a" to "老厂前线新多仓位2" generation 57: "READY" [null], after the answer to "RecoveryStateReport" "bc67d7d1-6589-4bfe-bb9f-572920720482".
+15:56:26.000 Information 1103 SessionReadiness "3281412e-d759-4879-870a-6dbdcd89a384" to "老厂前线新多仓位2" generation 57: "READY" [null], after the answer to "SafetyStateChanged" "0b2c449a-034b-5f52-8893-7116afced54d".
+15:56:26.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:56:27.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:56:31.000 Information 1103 SessionReadiness "60a9ac85-3f3d-444f-9deb-bd0bc0b98ddb" to "老厂前线新多仓位2" generation 58: "READY" [null], after the answer to "RecoveryStateReport" "5c17a78d-9566-4b3e-9d49-55d629f9db1c".
+15:56:31.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:56:31.000 Information 1103 SessionReadiness "b334f143-5f7f-4196-b220-5e7995669b4f" to "老厂前线新多仓位2" generation 58: "READY" [null], after the answer to "SafetyStateChanged" "4d781b52-171f-3750-9187-2d210b573d5c".
+15:56:33.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:56:35.000 Information 1103 SessionReadiness "39ec1fb0-fbcb-4473-891f-275e358fb524" to "老厂前线新多仓位2" generation 59: "READY" [null], after the answer to "RecoveryStateReport" "64345f4c-6b47-4d5e-81b7-405a9dacccb3".
+15:56:35.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:56:35.000 Information 1103 SessionReadiness "4970a5c7-6fb9-4995-ae7e-2f66d053c9ac" to "老厂前线新多仓位2" generation 59: "READY" [null], after the answer to "SafetyStateChanged" "d0a19c92-b4ad-205b-a5f8-d976a7d4913f".
+15:56:37.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:56:39.000 Information 1103 SessionReadiness "95dcf98a-ce57-4815-baeb-d9725ee983b6" to "老厂前线新多仓位2" generation 60: "READY" [null], after the answer to "RecoveryStateReport" "493abe45-4a44-451f-8a2e-7259971e91f2".
+15:56:39.000 Information 1103 SessionReadiness "840ff118-71e1-4b1b-afab-5e4b6181b6fa" to "老厂前线新多仓位2" generation 60: "READY" [null], after the answer to "SafetyStateChanged" "7590295c-8727-1759-a3fa-ce46d0ec4781".
+15:56:39.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:56:39.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:56:43.000 Information 1103 SessionReadiness "b58a0fd7-0abb-4a09-b1bc-7a5377f34b71" to "老厂前线新多仓位2" generation 61: "READY" [null], after the answer to "RecoveryStateReport" "bbd23e60-2334-440b-89e8-b670cf2bfd34".
+15:56:43.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:56:43.000 Information 1103 SessionReadiness "890a25de-77f3-4961-a76f-bf536155b5b3" to "老厂前线新多仓位2" generation 61: "READY" [null], after the answer to "SafetyStateChanged" "14d865d3-873d-ff50-9b8f-ffa5de84b02f".
+15:56:45.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:56:48.000 Information 1103 SessionReadiness "5ab21bd4-34e0-4cfb-85d2-f6b046377192" to "老厂前线新多仓位2" generation 62: "READY" [null], after the answer to "RecoveryStateReport" "7c3037f8-5c9e-4c62-bb27-e6ee9c3ac639".
+15:56:48.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:56:48.000 Information 1103 SessionReadiness "99052113-6b59-48b4-99eb-f2c266be2d03" to "老厂前线新多仓位2" generation 62: "READY" [null], after the answer to "SafetyStateChanged" "41a2529a-5e8c-ab56-b6a8-8607136d4aab".
+15:56:50.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:56:52.000 Information 1103 SessionReadiness "c47fd98d-c571-48a5-abc2-da6247600c47" to "老厂前线新多仓位2" generation 63: "READY" [null], after the answer to "RecoveryStateReport" "441a4bd6-6712-4391-b97a-ce2ff85c857c".
+15:56:52.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:56:52.000 Information 1103 SessionReadiness "a1fa740f-23d7-4e5b-a179-b13820f2cff0" to "老厂前线新多仓位2" generation 63: "READY" [null], after the answer to "SafetyStateChanged" "15b8ee11-4f3a-1b51-9525-e1403a0d869d".
+15:56:54.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:56:56.000 Information 1103 SessionReadiness "119ae1f8-0e73-4cf9-ad9b-43ad10fa9b42" to "老厂前线新多仓位2" generation 64: "READY" [null], after the answer to "RecoveryStateReport" "34f8a047-78e4-4fdd-9ded-4f2523cf6f26".
+15:56:56.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:56:56.000 Information 1103 SessionReadiness "049b6b97-07dc-4889-87a4-66e675a69318" to "老厂前线新多仓位2" generation 64: "READY" [null], after the answer to "SafetyStateChanged" "83006104-d2b1-fe58-b602-0df18cf63445".
+15:56:58.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:57:00.000 Information 1103 SessionReadiness "7caa35d2-dc09-4256-9ade-c55662f078d1" to "老厂前线新多仓位2" generation 65: "READY" [null], after the answer to "RecoveryStateReport" "98a4fec8-0668-4aa7-8f5e-95a118fffcf8".
+15:57:00.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:57:00.000 Information 1103 SessionReadiness "8cad0796-792e-4fa5-adb5-29c0009f60ed" to "老厂前线新多仓位2" generation 65: "READY" [null], after the answer to "SafetyStateChanged" "eeaa3e78-25d9-8456-9691-8d551444d883".
+15:57:02.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:57:04.000 Information 1103 SessionReadiness "4ac951da-ecc7-4889-92b8-8b3907720ce4" to "老厂前线新多仓位2" generation 66: "READY" [null], after the answer to "RecoveryStateReport" "dbca0346-8274-48de-a417-c3786489182a".
+15:57:04.000 Information 1103 SessionReadiness "8ff44f78-79f9-4af3-a937-1b5d3402f2fd" to "老厂前线新多仓位2" generation 66: "READY" [null], after the answer to "SafetyStateChanged" "4d8fa93f-0347-5957-bf29-c8da3cec3043".
+15:57:04.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:57:05.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:57:09.000 Information 1103 SessionReadiness "9a648ee5-a179-4dcd-b5fa-22296dd0c8a8" to "老厂前线新多仓位2" generation 67: "READY" [null], after the answer to "RecoveryStateReport" "a70f8b96-3d2d-4b3d-a9ba-ec68c5ca8e1e".
+15:57:09.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:57:09.000 Information 1103 SessionReadiness "89b4d4a7-51dc-42a8-92b1-179c86bb4459" to "老厂前线新多仓位2" generation 67: "READY" [null], after the answer to "SafetyStateChanged" "f5961312-6e20-475a-8440-3a7d40395774".
+15:57:11.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:57:13.000 Information 1103 SessionReadiness "b8934224-96dd-42a7-98b4-e88b490e9439" to "老厂前线新多仓位2" generation 68: "READY" [null], after the answer to "RecoveryStateReport" "44f783cf-459c-4d14-805e-ba15ee48c353".
+15:57:13.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:57:13.000 Information 1103 SessionReadiness "fe107226-c4ac-4680-b0c5-eec716e85716" to "老厂前线新多仓位2" generation 68: "READY" [null], after the answer to "SafetyStateChanged" "d44b153d-fefd-135a-a51c-f7a4fdf6c98e".
+15:57:15.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:57:17.000 Information 1103 SessionReadiness "03cb2342-f385-4773-bf60-c56745aeb62d" to "老厂前线新多仓位2" generation 69: "READY" [null], after the answer to "RecoveryStateReport" "e867d897-3ab8-4e37-bb7d-6de12461bdc1".
+15:57:17.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:57:17.000 Information 1103 SessionReadiness "64522360-c6d2-4b1e-b14d-4648042b1062" to "老厂前线新多仓位2" generation 69: "READY" [null], after the answer to "SafetyStateChanged" "cfef7372-da40-175b-a359-f7df9e7c0ece".
+15:57:19.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:57:21.000 Information 1103 SessionReadiness "131b7c9c-1036-4647-9f07-931b96b06327" to "老厂前线新多仓位2" generation 70: "READY" [null], after the answer to "RecoveryStateReport" "6f9f2ef9-9179-4000-8b0e-ed92347883f0".
+15:57:21.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:57:21.000 Information 1103 SessionReadiness "d3a1fb50-afdf-4cd3-b372-14e5124bf85e" to "老厂前线新多仓位2" generation 70: "READY" [null], after the answer to "SafetyStateChanged" "f67823f6-e181-7356-9595-20334c974e3f".
+15:57:23.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:57:26.000 Information 1103 SessionReadiness "0eb6abcc-b5c2-4154-941b-20978924b52c" to "老厂前线新多仓位2" generation 71: "READY" [null], after the answer to "RecoveryStateReport" "799480b0-5d17-4960-9e22-51c8622d3d6d".
+15:57:26.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:57:26.000 Information 1103 SessionReadiness "7bdd5101-99f0-42c9-8ecb-e7094d3ba867" to "老厂前线新多仓位2" generation 71: "READY" [null], after the answer to "SafetyStateChanged" "672fda5f-c8db-3b59-adba-d717ea4a1ab9".
+15:57:28.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:57:30.000 Information 1103 SessionReadiness "df211193-cb5e-4db8-9658-51abc43f6a39" to "老厂前线新多仓位2" generation 72: "READY" [null], after the answer to "RecoveryStateReport" "46e5151f-943a-470e-b957-066497dd35d2".
+15:57:30.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:57:30.000 Information 1103 SessionReadiness "b67cb725-625d-4e93-88e6-283278bd072d" to "老厂前线新多仓位2" generation 72: "READY" [null], after the answer to "SafetyStateChanged" "b5fb9ade-fc80-f452-a07c-b61df2659429".
+15:57:32.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:57:34.000 Information 1103 SessionReadiness "c49732b4-c2a7-45f6-ab54-676fc345d707" to "老厂前线新多仓位2" generation 73: "READY" [null], after the answer to "RecoveryStateReport" "71e2df91-c02b-4dfb-a846-e337aa0791b7".
+15:57:34.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:57:34.000 Information 1103 SessionReadiness "ee691b76-0f5b-4ede-8ab3-c1c24fd59b29" to "老厂前线新多仓位2" generation 73: "READY" [null], after the answer to "SafetyStateChanged" "ac090959-c8dc-685d-a7fd-deb2aa1578a2".
+15:57:36.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:57:38.000 Information 1103 SessionReadiness "f1199163-a71c-439b-bd99-099933dfdc0c" to "老厂前线新多仓位2" generation 74: "READY" [null], after the answer to "RecoveryStateReport" "9436f5db-2d56-4d6c-8c58-dd7d8f611fd9".
+15:57:38.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:57:38.000 Information 1103 SessionReadiness "40e3a4d3-be15-4dcf-8b89-ce1f0922c915" to "老厂前线新多仓位2" generation 74: "READY" [null], after the answer to "SafetyStateChanged" "fd88db24-49e6-8359-9f25-d6a5b29f2af0".
+15:57:40.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:57:42.000 Information 2241 Charging not allocated for vehicle "老厂前线新多仓位2": "ONBOARD_FACTS_NOT_READY". ""
+15:57:42.000 Information 1103 SessionReadiness "ffe109ce-35dc-4ce3-8687-c546da9cb1dc" to "老厂前线新多仓位2" generation 75: "READY" [null], after the answer to "RecoveryStateReport" "6ce378a2-93a3-4592-9858-ecee7483c0c9".
+15:57:43.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:57:43.000 Information 1103 SessionReadiness "0f502281-cd68-4ea1-a478-a6f505dac6e3" to "老厂前线新多仓位2" generation 75: "READY" [null], after the answer to "SafetyStateChanged" "d3b56e06-18d8-f45b-a274-54883da08e98".
+15:57:44.000 Information 2241 Charging not allocated for vehicle "老厂前线新多仓位2": "CHARGING_VEHICLE_ELIGIBILITY_HELD". ""
+15:57:44.000 Warning 2246 Vehicle "老厂前线新多仓位2" is below its mandatory charge line and no charger can be allocated to it: "CHARGING_VEHICLE_ELIGIBILITY_HELD". "" It stays queued, takes no transport and no idle return, and its battery goes on falling. Check on site: is the charger free and is nothing standing on it (CHARGER_RESERVED_OR_OCCUPIED, CHARGER_OCCUPIED_BY_VEHICLE, CHARGER_TARGETED_BY_RUNNING_ORDER); can RIoT read every fleet vehicle and its unfinished orders (CHARGER_OCCUPANCY_UNKNOWN names what could not be read)
+15:57:45.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:57:47.000 Information 1103 SessionReadiness "dffe987c-b2ed-455f-83a8-fe38fdc90350" to "老厂前线新多仓位2" generation 76: "READY" [null], after the answer to "RecoveryStateReport" "b78c46df-ff5a-476f-9248-7630715ae50f".
+15:57:47.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:57:47.000 Information 1103 SessionReadiness "4e01444f-c17c-481c-8028-7ea2750b58ed" to "老厂前线新多仓位2" generation 76: "READY" [null], after the answer to "SafetyStateChanged" "96305bc0-6937-2b59-bbb7-5ba0275cb668".
+15:57:47.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:57:51.000 Information 1103 SessionReadiness "32e73ad9-229e-4ddc-9699-104d828f6d33" to "老厂前线新多仓位2" generation 77: "READY" [null], after the answer to "RecoveryStateReport" "f8b5e2ba-80fa-4112-b554-ef3e7d683b16".
+15:57:51.000 Information 1103 SessionReadiness "f55b26b4-7a35-41f1-8f85-fda24e40aa94" to "老厂前线新多仓位2" generation 77: "READY" [null], after the answer to "SafetyStateChanged" "52af6663-9e9c-3d5c-a8fe-4669f2263fa2".
+15:57:51.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:57:51.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:57:55.000 Information 1103 SessionReadiness "bd133b39-03ec-4a23-8d99-a69706a0befa" to "老厂前线新多仓位2" generation 78: "READY" [null], after the answer to "RecoveryStateReport" "c2369241-eaf3-41e9-af29-41656d5b1fb3".
+15:57:55.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:57:55.000 Information 1103 SessionReadiness "34903c25-ec73-4952-9c6b-2547e19c7c10" to "老厂前线新多仓位2" generation 78: "READY" [null], after the answer to "SafetyStateChanged" "d775038e-7a6e-3755-a759-32142d5b7afe".
+15:57:57.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:57:59.000 Information 1103 SessionReadiness "350b5b05-df4f-44ec-86df-6f7a09fc8b97" to "老厂前线新多仓位2" generation 79: "READY" [null], after the answer to "RecoveryStateReport" "745fb1f3-4438-4b13-9c6c-7b3187ab3367".
+15:57:59.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:57:59.000 Information 1103 SessionReadiness "3a945055-73e0-4fca-a737-cb9095b0af38" to "老厂前线新多仓位2" generation 79: "READY" [null], after the answer to "SafetyStateChanged" "f45aee09-5720-9a5c-b13d-2572d44f20d8".
+15:58:01.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:58:04.000 Information 1103 SessionReadiness "102fda3b-ea83-41d3-8200-e7202cbe90ef" to "老厂前线新多仓位2" generation 80: "READY" [null], after the answer to "RecoveryStateReport" "15df0b68-a41f-421f-9f40-78807c5263c7".
+15:58:04.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:58:04.000 Information 1103 SessionReadiness "662086d5-dece-4021-9efc-f589ef872ccf" to "老厂前线新多仓位2" generation 80: "READY" [null], after the answer to "SafetyStateChanged" "fcb0bee2-38bc-8d5f-b444-4ac81c4e8a1b".
+15:58:06.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:58:08.000 Information 1103 SessionReadiness "dcd9abe1-21c5-44c9-baee-c8de7a88c27b" to "老厂前线新多仓位2" generation 81: "READY" [null], after the answer to "RecoveryStateReport" "023b7ab7-cc3c-40e1-96d6-6092c8bea9a3".
+15:58:08.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:58:08.000 Information 1103 SessionReadiness "403853b3-5fe7-4486-b75f-db2327983a9d" to "老厂前线新多仓位2" generation 81: "READY" [null], after the answer to "SafetyStateChanged" "80e9707d-9a7a-c05b-9f1f-9a727274e58d".
+15:58:10.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:58:12.000 Information 1103 SessionReadiness "ae4ada17-501b-4415-aad6-0ede23e6f72c" to "老厂前线新多仓位2" generation 82: "READY" [null], after the answer to "RecoveryStateReport" "b982e62f-c96c-46c6-b77a-ae147a723057".
+15:58:12.000 Information 1103 SessionReadiness "2a2da78e-cf93-4391-8cfc-77ba56ee38a7" to "老厂前线新多仓位2" generation 82: "READY" [null], after the answer to "SafetyStateChanged" "68f1f082-6c6d-c05f-b2e7-a55a682c56fc".
+15:58:12.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:58:14.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:58:16.000 Information 1103 SessionReadiness "37d4aac2-62f9-4d71-8283-a49b95cdafa1" to "老厂前线新多仓位2" generation 83: "READY" [null], after the answer to "RecoveryStateReport" "3c77792c-3ad4-46ca-a09d-7f642b8f62d9".
+15:58:16.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:58:16.000 Information 1103 SessionReadiness "83d45a77-6e2d-48f9-b606-cf9452e6dedf" to "老厂前线新多仓位2" generation 83: "READY" [null], after the answer to "SafetyStateChanged" "8747965e-b1b8-6a5e-8320-688aaedd109d".
+15:58:16.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:58:20.000 Information 2241 Charging not allocated for vehicle "老厂前线新多仓位2": "ONBOARD_FACTS_NOT_READY". ""
+15:58:21.000 Information 1103 SessionReadiness "3f709c00-a96e-49cd-9594-5cea01318e25" to "老厂前线新多仓位2" generation 84: "READY" [null], after the answer to "RecoveryStateReport" "029a19b0-00f1-4aa5-979b-f00c56e39b6e".
+15:58:21.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:58:21.000 Information 1103 SessionReadiness "a97dd2e0-9c4e-42a6-a961-a7e6ad4550ad" to "老厂前线新多仓位2" generation 84: "READY" [null], after the answer to "SafetyStateChanged" "f45ffb5c-fd43-6e5b-9d51-1864c3c4c6a6".
+15:58:23.000 Information 2241 Charging not allocated for vehicle "老厂前线新多仓位2": "CHARGING_VEHICLE_ELIGIBILITY_HELD". ""
+15:58:23.000 Warning 2246 Vehicle "老厂前线新多仓位2" is below its mandatory charge line and no charger can be allocated to it: "CHARGING_VEHICLE_ELIGIBILITY_HELD". "" It stays queued, takes no transport and no idle return, and its battery goes on falling. Check on site: is the charger free and is nothing standing on it (CHARGER_RESERVED_OR_OCCUPIED, CHARGER_OCCUPIED_BY_VEHICLE, CHARGER_TARGETED_BY_RUNNING_ORDER); can RIoT read every fleet vehicle and its unfinished orders (CHARGER_OCCUPANCY_UNKNOWN names what could not be read)
+15:58:23.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:58:25.000 Information 1103 SessionReadiness "9e8fa18f-a319-41c9-b98e-fc6922776287" to "老厂前线新多仓位2" generation 85: "READY" [null], after the answer to "RecoveryStateReport" "82e2bb37-e9b1-4fb0-81ec-af0f50295630".
+15:58:25.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:58:25.000 Information 1103 SessionReadiness "9b8a2d9e-6a0e-4427-ae8e-c2e9e8542ccd" to "老厂前线新多仓位2" generation 85: "READY" [null], after the answer to "SafetyStateChanged" "cb147807-4c9a-a754-b981-8aab934da5ca".
+15:58:25.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:58:29.000 Information 1103 SessionReadiness "e6526d29-647f-4bdb-bf87-355885970c36" to "老厂前线新多仓位2" generation 86: "READY" [null], after the answer to "RecoveryStateReport" "e5e6eb87-af52-41c1-94c8-06ba60eb5d3b".
+15:58:29.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:58:29.000 Information 1103 SessionReadiness "bfe6f99e-d952-4966-b6ec-6c70f21fa39f" to "老厂前线新多仓位2" generation 86: "READY" [null], after the answer to "SafetyStateChanged" "14cbfceb-44ff-4458-a663-52bf7a0149d5".
+15:58:31.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:58:33.000 Information 1103 SessionReadiness "8deac74c-82c0-43bd-a53b-066c0b6d246f" to "老厂前线新多仓位2" generation 87: "READY" [null], after the answer to "RecoveryStateReport" "f9997588-2f6b-4041-81e6-deea8140d3a0".
+15:58:33.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:58:33.000 Information 1103 SessionReadiness "7d731c75-6f57-4a65-9b32-9734f37e4631" to "老厂前线新多仓位2" generation 87: "READY" [null], after the answer to "SafetyStateChanged" "bfb9d025-24c3-775c-8d3b-8b30e3cf6195".
+15:58:35.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:58:37.000 Information 1103 SessionReadiness "5a1f0f23-8f7d-4e8f-a733-332262565439" to "老厂前线新多仓位2" generation 88: "READY" [null], after the answer to "RecoveryStateReport" "956bbec8-4fa6-4a24-aa95-d81c11c2a999".
+15:58:37.000 Information 1103 SessionReadiness "7b5a8fbe-44b2-456a-b7e4-183411b72437" to "老厂前线新多仓位2" generation 88: "READY" [null], after the answer to "SafetyStateChanged" "bced5a34-fc27-5b5e-a131-1b5e4e878d7e".
+15:58:37.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:58:37.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:58:42.000 Information 1103 SessionReadiness "7d61a79e-cb84-4e14-a5c3-06bc17d8cf8f" to "老厂前线新多仓位2" generation 89: "READY" [null], after the answer to "RecoveryStateReport" "c6c7aacb-8f9c-4e05-becc-d74adf69ab84".
+15:58:42.000 Information 1103 SessionReadiness "e7913cc3-678f-47e5-934d-1de0ee1adf1c" to "老厂前线新多仓位2" generation 89: "READY" [null], after the answer to "SafetyStateChanged" "9e1af5e3-c52f-6555-ba0d-680a46755001".
+15:58:42.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:58:42.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:58:46.000 Information 1103 SessionReadiness "4342e245-ecc9-4417-8f2c-fc86dc348827" to "老厂前线新多仓位2" generation 90: "READY" [null], after the answer to "RecoveryStateReport" "fc82ddf2-e26f-43fa-8dde-1b4a823d9592".
+15:58:46.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:58:46.000 Information 1103 SessionReadiness "097fc399-c6f9-4999-b7b7-9467e2dfbb51" to "老厂前线新多仓位2" generation 90: "READY" [null], after the answer to "SafetyStateChanged" "154f3afc-8a97-3e5f-981a-15d550db05ab".
+15:58:48.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:58:50.000 Information 1103 SessionReadiness "3f5f05d4-3fca-448d-ad76-5545c4e13a61" to "老厂前线新多仓位2" generation 91: "READY" [null], after the answer to "RecoveryStateReport" "17e060dd-9880-4ae6-babd-ce839f1ccdfe".
+15:58:50.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:58:50.000 Information 1103 SessionReadiness "e69fea22-4b29-44d8-ad4a-2551602e0856" to "老厂前线新多仓位2" generation 91: "READY" [null], after the answer to "SafetyStateChanged" "9548597c-dd17-de54-a737-de35d6d7a5e8".
+15:58:52.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:58:54.000 Information 1103 SessionReadiness "ef05e86e-afa9-4b21-aa36-2a3ee586548f" to "老厂前线新多仓位2" generation 92: "READY" [null], after the answer to "RecoveryStateReport" "2469a7af-e31f-4b9c-9479-0c3becff32cd".
+15:58:54.000 Information 1103 SessionReadiness "a96bc538-5e0e-4259-bb8a-3d4c5c0208a0" to "老厂前线新多仓位2" generation 92: "READY" [null], after the answer to "SafetyStateChanged" "dbd83979-f7c7-df59-9e2d-9c1021612ba5".
+15:58:54.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:58:54.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:58:59.000 Information 2241 Charging not allocated for vehicle "老厂前线新多仓位2": "ONBOARD_FACTS_NOT_READY". ""
+15:58:59.000 Information 1103 SessionReadiness "57fd0090-e5fd-4de1-a5d9-9dc08f783ba0" to "老厂前线新多仓位2" generation 93: "READY" [null], after the answer to "RecoveryStateReport" "18e5f17f-890e-4fd3-8b9a-710ec9a5d1bd".
+15:58:59.000 Information 1103 SessionReadiness "0aaf6e0e-8c63-4141-b8be-3a860796e6bc" to "老厂前线新多仓位2" generation 93: "READY" [null], after the answer to "SafetyStateChanged" "d76f9cdd-41e8-265b-9c51-c5eb66de514e".
+15:58:59.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:58:59.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:59:00.000 Information 2241 Charging not allocated for vehicle "老厂前线新多仓位2": "CHARGING_VEHICLE_ELIGIBILITY_HELD". ""
+15:59:00.000 Warning 2246 Vehicle "老厂前线新多仓位2" is below its mandatory charge line and no charger can be allocated to it: "CHARGING_VEHICLE_ELIGIBILITY_HELD". "" It stays queued, takes no transport and no idle return, and its battery goes on falling. Check on site: is the charger free and is nothing standing on it (CHARGER_RESERVED_OR_OCCUPIED, CHARGER_OCCUPIED_BY_VEHICLE, CHARGER_TARGETED_BY_RUNNING_ORDER); can RIoT read every fleet vehicle and its unfinished orders (CHARGER_OCCUPANCY_UNKNOWN names what could not be read)
+15:59:03.000 Information 1103 SessionReadiness "ce54e589-5725-418d-839f-f4ee0540a38c" to "老厂前线新多仓位2" generation 94: "READY" [null], after the answer to "RecoveryStateReport" "ce91e164-b344-4cc8-8c91-ad9420677d19".
+15:59:03.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:59:03.000 Information 1103 SessionReadiness "dab4a68a-1358-4bda-bd09-f49677f94594" to "老厂前线新多仓位2" generation 94: "READY" [null], after the answer to "SafetyStateChanged" "93ea28a1-9af2-6656-872c-191722758329".
+15:59:05.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:59:07.000 Information 1103 SessionReadiness "7d117985-a3fb-49de-8e61-fb34ac0024b9" to "老厂前线新多仓位2" generation 95: "READY" [null], after the answer to "RecoveryStateReport" "f61804b0-64d8-4771-9010-85f913a30959".
+15:59:07.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:59:07.000 Information 1103 SessionReadiness "132d422a-545b-46b0-86f6-e2bc65f9d9bf" to "老厂前线新多仓位2" generation 95: "READY" [null], after the answer to "SafetyStateChanged" "83e17796-e295-f859-ba09-7ead7d77418c".
+15:59:09.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:59:11.000 Information 1103 SessionReadiness "9bc28d13-8db4-4b40-95c8-ab2eb216a1fa" to "老厂前线新多仓位2" generation 96: "READY" [null], after the answer to "RecoveryStateReport" "2d840cb2-5d56-41c8-8ab1-3b86a8012c58".
+15:59:11.000 Information 1103 SessionReadiness "1be67d69-01e5-44db-a43c-1c8395f12500" to "老厂前线新多仓位2" generation 96: "READY" [null], after the answer to "SafetyStateChanged" "91c23ad5-e58d-785d-955d-080e74bb9774".
+15:59:11.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:59:11.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:59:15.000 Information 1103 SessionReadiness "72130026-4658-4861-bd59-9835c7a1bb59" to "老厂前线新多仓位2" generation 97: "READY" [null], after the answer to "RecoveryStateReport" "50ba756d-e3f3-4c72-bad5-c30e7337af98".
+15:59:15.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:59:15.000 Information 1103 SessionReadiness "8cc35b07-b3b5-4575-8862-1a2864fdaaac" to "老厂前线新多仓位2" generation 97: "READY" [null], after the answer to "SafetyStateChanged" "55776229-e4cf-b854-9a83-7da7c5226bf6".
+15:59:17.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:59:20.000 Information 1103 SessionReadiness "73cc2a15-73ac-48cc-a5a6-d826282d8fe8" to "老厂前线新多仓位2" generation 98: "READY" [null], after the answer to "RecoveryStateReport" "74d5674e-32f7-4a8f-8f5a-6d9884484fc2".
+15:59:20.000 Information 1103 SessionReadiness "cbda783a-eba6-40b3-83a1-e2f7c75d058f" to "老厂前线新多仓位2" generation 98: "READY" [null], after the answer to "SafetyStateChanged" "aadb1dad-2bd1-6c5f-b3d4-d7f27d64de70".
+15:59:20.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:59:20.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:59:24.000 Information 1103 SessionReadiness "b52c4cdc-e848-405f-a722-22bc5f6add7c" to "老厂前线新多仓位2" generation 99: "READY" [null], after the answer to "RecoveryStateReport" "1cdabcf3-11b3-4d40-881d-79bf0fda9440".
+15:59:24.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:59:24.000 Information 1103 SessionReadiness "0914b5bd-14f2-45ec-9ec6-921283759048" to "老厂前线新多仓位2" generation 99: "READY" [null], after the answer to "SafetyStateChanged" "7d940985-cb27-4654-b75e-340111c66f4f".
+15:59:26.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:59:28.000 Information 1103 SessionReadiness "203acf95-b461-48cc-9aa2-034db3ff7047" to "老厂前线新多仓位2" generation 100: "READY" [null], after the answer to "RecoveryStateReport" "74c4ff52-e8e1-4eac-b809-fd20efdbfbe3".
+15:59:28.000 Information 1103 SessionReadiness "e93459d7-ea64-4fa9-82b6-f6abce6d1d68" to "老厂前线新多仓位2" generation 100: "READY" [null], after the answer to "SafetyStateChanged" "475cdb93-9c73-e753-a3db-4bce16099cb3".
+15:59:28.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:59:28.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:59:32.000 Information 1103 SessionReadiness "46952ab2-fd7a-4b7c-a1c6-51e4057f254f" to "老厂前线新多仓位2" generation 101: "READY" [null], after the answer to "RecoveryStateReport" "9dfecda2-0ea9-439a-a384-a6eb28fd1bdf".
+15:59:32.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:59:32.000 Information 1103 SessionReadiness "d33b4d0b-2f45-48cf-b74e-e26396e2fcd5" to "老厂前线新多仓位2" generation 101: "READY" [null], after the answer to "SafetyStateChanged" "37d672df-6757-9551-873b-05a77cb737d5".
+15:59:34.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:59:37.000 Information 1103 SessionReadiness "0cd201e2-3245-4f5b-9242-b6db40de3df6" to "老厂前线新多仓位2" generation 102: "READY" [null], after the answer to "RecoveryStateReport" "f9839138-f9bb-443c-9d36-fabef71163fd".
+15:59:37.000 Information 2241 Charging not allocated for vehicle "老厂前线新多仓位2": "ONBOARD_FACTS_NOT_READY". ""
+15:59:37.000 Information 1103 SessionReadiness "374dfec7-6e35-44cd-baf2-bbfc7fd833d6" to "老厂前线新多仓位2" generation 102: "READY" [null], after the answer to "SafetyStateChanged" "5fd2cde0-5faf-6453-bdf6-4b6c0d51c92f".
+15:59:37.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:59:37.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:59:38.000 Information 2241 Charging not allocated for vehicle "老厂前线新多仓位2": "CHARGING_VEHICLE_ELIGIBILITY_HELD". ""
+15:59:39.000 Warning 2246 Vehicle "老厂前线新多仓位2" is below its mandatory charge line and no charger can be allocated to it: "CHARGING_VEHICLE_ELIGIBILITY_HELD". "" It stays queued, takes no transport and no idle return, and its battery goes on falling. Check on site: is the charger free and is nothing standing on it (CHARGER_RESERVED_OR_OCCUPIED, CHARGER_OCCUPIED_BY_VEHICLE, CHARGER_TARGETED_BY_RUNNING_ORDER); can RIoT read every fleet vehicle and its unfinished orders (CHARGER_OCCUPANCY_UNKNOWN names what could not be read)
+15:59:41.000 Information 1103 SessionReadiness "694d1037-3d74-43cb-9a32-612eb020f066" to "老厂前线新多仓位2" generation 103: "READY" [null], after the answer to "RecoveryStateReport" "d1ff8ebe-fe2e-4986-a906-393757a7fa9f".
+15:59:41.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:59:41.000 Information 1103 SessionReadiness "a4997a38-c897-4107-bccf-e999296e6293" to "老厂前线新多仓位2" generation 103: "READY" [null], after the answer to "SafetyStateChanged" "b0058d81-9b8a-725b-8965-522801535300".
+15:59:43.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:59:45.000 Information 1103 SessionReadiness "5f5a510e-7587-455b-8ccd-0723df9bf3a7" to "老厂前线新多仓位2" generation 104: "READY" [null], after the answer to "RecoveryStateReport" "0255b645-2990-4c64-a862-3e5fb2967ca0".
+15:59:45.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:59:45.000 Information 1103 SessionReadiness "864b6a26-96c0-4434-a80d-6e0f93fc2d1c" to "老厂前线新多仓位2" generation 104: "READY" [null], after the answer to "SafetyStateChanged" "09cff035-1730-1c56-8505-fc295d3b7d48".
+15:59:47.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:59:49.000 Information 1103 SessionReadiness "1211cf58-872f-435b-a5ea-4fa1a2dfc94b" to "老厂前线新多仓位2" generation 105: "READY" [null], after the answer to "RecoveryStateReport" "61e75807-3ae4-44f2-bfcb-2247c0b3317e".
+15:59:49.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:59:49.000 Information 1103 SessionReadiness "04c6f77d-0619-486b-89ae-7c62b1f6416e" to "老厂前线新多仓位2" generation 105: "READY" [null], after the answer to "SafetyStateChanged" "7324bd35-48de-555b-82e3-d00990dcd763".
+15:59:51.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:59:53.000 Information 1103 SessionReadiness "086f096c-6459-45ea-be8b-6b81ab875add" to "老厂前线新多仓位2" generation 106: "READY" [null], after the answer to "RecoveryStateReport" "c47765d8-22bd-4d7a-9957-2e04ea3d9091".
+15:59:53.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:59:53.000 Information 1103 SessionReadiness "e2cb88ca-aafd-46e5-a7f7-fafc8bd1a47a" to "老厂前线新多仓位2" generation 106: "READY" [null], after the answer to "SafetyStateChanged" "6b6cbe58-39c0-0d57-bd09-b53dd3a51618".
+15:59:55.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+15:59:58.000 Information 1103 SessionReadiness "c53580cd-3c73-4877-a486-23b0dcb0c908" to "老厂前线新多仓位2" generation 107: "READY" [null], after the answer to "RecoveryStateReport" "b861645b-77e4-4fb8-8643-cf48c59fd795".
+15:59:58.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+15:59:58.000 Information 1103 SessionReadiness "9ba038ef-3fa8-4320-9cbf-804d15572739" to "老厂前线新多仓位2" generation 107: "READY" [null], after the answer to "SafetyStateChanged" "dccd08db-7b5f-7259-bbd1-0f59a6b24c95".
+16:00:00.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+16:00:02.000 Information 1103 SessionReadiness "c4f4fc0a-8beb-4baa-9d15-9fae0b824b0e" to "老厂前线新多仓位2" generation 108: "READY" [null], after the answer to "RecoveryStateReport" "bbc45312-059b-452f-9130-5b9fe1ff552e".
+16:00:02.000 Information 1103 SessionReadiness "efb3b60e-6fb9-4d1e-836b-1a7eb57ca55b" to "老厂前线新多仓位2" generation 108: "READY" [null], after the answer to "SafetyStateChanged" "eb3b0100-853f-7755-b2b4-a468cca936fd".
+16:00:02.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+16:00:02.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+16:00:06.000 Information 1103 SessionReadiness "01f31e1d-0bc0-406b-a2a9-4613f151dcc2" to "老厂前线新多仓位2" generation 109: "READY" [null], after the answer to "RecoveryStateReport" "d695f2f4-9d44-429e-9e00-9c910a586b5f".
+16:00:06.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+16:00:06.000 Information 1103 SessionReadiness "0d74654f-8e78-4a33-ad6b-e3cf9099519e" to "老厂前线新多仓位2" generation 109: "READY" [null], after the answer to "SafetyStateChanged" "2bfac9a8-4731-515d-99a7-443b875bba91".
+16:00:08.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+16:00:10.000 Information 1103 SessionReadiness "eb2bc776-1f59-4e4e-a9ad-30ace262a319" to "老厂前线新多仓位2" generation 110: "READY" [null], after the answer to "RecoveryStateReport" "cbbd28b6-b893-4452-b514-0634f787b23c".
+16:00:10.000 Information 1103 SessionReadiness "28c2aecb-7cab-4233-a4ab-e6a0f42f3b1b" to "老厂前线新多仓位2" generation 110: "READY" [null], after the answer to "SafetyStateChanged" "8da9726d-798b-4d52-a7af-159757340105".
+16:00:10.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+16:00:10.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+16:00:15.000 Information 2241 Charging not allocated for vehicle "老厂前线新多仓位2": "ONBOARD_FACTS_NOT_READY". ""
+16:00:15.000 Information 1103 SessionReadiness "1c0394ae-8017-4f00-8c0a-fa9f7b731964" to "老厂前线新多仓位2" generation 111: "READY" [null], after the answer to "RecoveryStateReport" "6a3eb4d2-b828-4f94-a6d2-42d010bba84e".
+16:00:15.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+16:00:15.000 Information 1103 SessionReadiness "76c924cc-c5f3-459e-b39f-c71264847957" to "老厂前线新多仓位2" generation 111: "READY" [null], after the answer to "SafetyStateChanged" "abdcf881-9f26-1056-89b6-7a0fa54738d4".
+16:00:16.000 Information 2241 Charging not allocated for vehicle "老厂前线新多仓位2": "CHARGING_VEHICLE_ELIGIBILITY_HELD". ""
+16:00:16.000 Warning 2246 Vehicle "老厂前线新多仓位2" is below its mandatory charge line and no charger can be allocated to it: "CHARGING_VEHICLE_ELIGIBILITY_HELD". "" It stays queued, takes no transport and no idle return, and its battery goes on falling. Check on site: is the charger free and is nothing standing on it (CHARGER_RESERVED_OR_OCCUPIED, CHARGER_OCCUPIED_BY_VEHICLE, CHARGER_TARGETED_BY_RUNNING_ORDER); can RIoT read every fleet vehicle and its unfinished orders (CHARGER_OCCUPANCY_UNKNOWN names what could not be read)
+16:00:17.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+16:00:19.000 Information 1103 SessionReadiness "98af2d96-4800-4e37-938d-dd779121a2db" to "老厂前线新多仓位2" generation 112: "READY" [null], after the answer to "RecoveryStateReport" "884218ad-1a7f-4e01-b450-de4bfe6f9c5e".
+16:00:19.000 Information 1103 SessionReadiness "2ac7b078-50f6-41fd-bdc7-a78dbf4ecff7" to "老厂前线新多仓位2" generation 112: "READY" [null], after the answer to "SafetyStateChanged" "b291a963-3a8e-0c5e-8ccb-1263f757fde1".
+16:00:19.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+16:00:19.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+16:00:23.000 Information 1103 SessionReadiness "690ca9b9-8c65-46c5-b814-b1f2cb2948dd" to "老厂前线新多仓位2" generation 113: "READY" [null], after the answer to "RecoveryStateReport" "5f9c84f0-a4c2-4ae0-aa42-3e59f127fd6e".
+16:00:23.000 Information 1103 SessionReadiness "a1fc71ca-68c5-439a-8768-203276b0f054" to "老厂前线新多仓位2" generation 113: "READY" [null], after the answer to "SafetyStateChanged" "339f9aad-8d2e-f855-948f-8b0c52885c86".
+16:00:23.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+16:00:25.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+16:00:27.000 Information 1103 SessionReadiness "c21e1694-5d31-4668-b5aa-f1bea6f978ce" to "老厂前线新多仓位2" generation 114: "READY" [null], after the answer to "RecoveryStateReport" "95aae312-1e18-45ae-b2ad-33bc2de8b38b".
+16:00:27.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+16:00:27.000 Information 1103 SessionReadiness "3929d2cc-9a91-4750-8b0c-96c5a378e8ea" to "老厂前线新多仓位2" generation 114: "READY" [null], after the answer to "SafetyStateChanged" "f77f86e0-1036-4c5e-9317-e9f6948fe1fa".
+16:00:29.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+16:00:31.000 Information 1103 SessionReadiness "6fc2557e-19f7-4727-9943-2fc41d2aa7bd" to "老厂前线新多仓位2" generation 115: "READY" [null], after the answer to "RecoveryStateReport" "bf21e69c-b069-417b-a1d0-bbd03a51b463".
+16:00:31.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+16:00:31.000 Information 1103 SessionReadiness "43fb1d34-9e01-4483-a9f3-23e38bae81ce" to "老厂前线新多仓位2" generation 115: "READY" [null], after the answer to "SafetyStateChanged" "f81ca480-e112-6358-b2db-7b6cd2c1cd0d".
+16:00:33.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+16:00:36.000 Information 1103 SessionReadiness "67c67b74-de37-4a6a-b783-bf9b8ceccc22" to "老厂前线新多仓位2" generation 116: "READY" [null], after the answer to "RecoveryStateReport" "094f96aa-69f9-4711-b94d-4270ee37ef99".
+16:00:36.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+16:00:36.000 Information 1103 SessionReadiness "b6b90637-a386-44e0-8ff0-5f4fd0d4c828" to "老厂前线新多仓位2" generation 116: "READY" [null], after the answer to "SafetyStateChanged" "40990b8d-59b2-c95d-8a2b-e41f0f109c29".
+16:00:38.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+16:00:40.000 Information 1103 SessionReadiness "7f47fef3-ceab-47fa-ab56-741ea470b2a0" to "老厂前线新多仓位2" generation 117: "READY" [null], after the answer to "RecoveryStateReport" "69deb284-9395-4af8-83d5-fcafb2012cd8".
+16:00:40.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+16:00:40.000 Information 1103 SessionReadiness "35e112e0-faa6-409d-b791-426e5b42eb29" to "老厂前线新多仓位2" generation 117: "READY" [null], after the answer to "SafetyStateChanged" "fe2d2949-21b9-d753-881f-85a95dabdd55".
+16:00:42.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+16:00:44.000 Information 1103 SessionReadiness "e1b2544e-88a2-4ef7-999a-b47666a9ab83" to "老厂前线新多仓位2" generation 118: "READY" [null], after the answer to "RecoveryStateReport" "3a2125a1-2032-4ddd-98a5-f3971b6b0327".
+16:00:44.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+16:00:44.000 Information 1103 SessionReadiness "861904c6-47d7-473b-9bf8-83255cfdfd76" to "老厂前线新多仓位2" generation 118: "READY" [null], after the answer to "SafetyStateChanged" "3bdcfcb5-db51-e159-8188-5ab41222a603".
+16:00:46.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+16:00:48.000 Information 1103 SessionReadiness "7a5a2e06-5d02-4375-94d3-5d171a9f7bee" to "老厂前线新多仓位2" generation 119: "READY" [null], after the answer to "RecoveryStateReport" "865940b4-e5eb-4a83-b4aa-073151f4186a".
+16:00:48.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+16:00:48.000 Information 1103 SessionReadiness "dff3af64-afac-45ff-83cd-0415ee6bb019" to "老厂前线新多仓位2" generation 119: "READY" [null], after the answer to "SafetyStateChanged" "c8bdd704-6164-7058-92e6-3f71a9b6cdaa".
+16:00:48.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+16:00:52.000 Information 1103 SessionReadiness "0adb5f1f-9055-4e9c-8435-275569ac8094" to "老厂前线新多仓位2" generation 120: "READY" [null], after the answer to "RecoveryStateReport" "51e956b8-535f-4792-82ee-f863f905c4d6".
+16:00:52.000 Information 2241 Charging not allocated for vehicle "老厂前线新多仓位2": "ONBOARD_FACTS_NOT_READY". ""
+16:00:53.000 Information 1103 SessionReadiness "4a5e041b-7c20-4ba7-85c2-33575098928f" to "老厂前线新多仓位2" generation 120: "READY" [null], after the answer to "SafetyStateChanged" "70db4620-075b-345c-8b77-b89876408de4".
+16:00:53.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+16:00:55.000 Information 2241 Charging not allocated for vehicle "老厂前线新多仓位2": "CHARGING_VEHICLE_ELIGIBILITY_HELD". ""
+16:00:55.000 Warning 2246 Vehicle "老厂前线新多仓位2" is below its mandatory charge line and no charger can be allocated to it: "CHARGING_VEHICLE_ELIGIBILITY_HELD". "" It stays queued, takes no transport and no idle return, and its battery goes on falling. Check on site: is the charger free and is nothing standing on it (CHARGER_RESERVED_OR_OCCUPIED, CHARGER_OCCUPIED_BY_VEHICLE, CHARGER_TARGETED_BY_RUNNING_ORDER); can RIoT read every fleet vehicle and its unfinished orders (CHARGER_OCCUPANCY_UNKNOWN names what could not be read)
+16:00:55.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.
+16:00:57.000 Information 1103 SessionReadiness "a43ee2ae-cf49-4776-aff2-48a591453a20" to "老厂前线新多仓位2" generation 121: "READY" [null], after the answer to "RecoveryStateReport" "fc417786-5beb-439e-acb0-e1a247de837b".
+16:00:57.000 Warning 1101 Onboard rejected "UpcomingStopPlanSnapshot" "77b45b7d-76b9-8c54-8b3c-4c10366e176b": "PROTOCOL_SCHEMA_INVALID" at "(none)" -- "(none)"
+16:00:57.000 Information 1103 SessionReadiness "346682c4-12de-46f1-a81b-1b696a262127" to "老厂前线新多仓位2" generation 121: "READY" [null], after the answer to "SafetyStateChanged" "e4f702f5-9f38-2e50-abc8-54a98ffcc0bc".
+16:00:59.000 Warning 1003 Onboard connection ended with a protocol or transport error. EX: System.IO.IOException: Unable to read data from the transport connection: 远程主机强迫关闭了一个现有的连接。.

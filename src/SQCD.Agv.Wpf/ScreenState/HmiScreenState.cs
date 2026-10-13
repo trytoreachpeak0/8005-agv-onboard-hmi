@@ -18,6 +18,7 @@ namespace SQCD.Agv.Wpf.ScreenState;
 /// mechanically. <c>HmiScreenStateXamlCoverageArchitectureTests</c> holds the two sides equal.
 /// </para>
 /// <para>
+/// <see cref="Basis"/> is what the banner and the entries were computed from (T1b, onboard-hmi#314).
 /// Writer metadata (content revision, process start, <c>ACTIVE</c>/<c>DISABLED</c>) belongs to the writer, T2.
 /// </para>
 /// </remarks>
@@ -37,7 +38,8 @@ public sealed record HmiScreenState(
     IReadOnlyList<HmiLockerState> Lockers,
     HmiStationDepartureCountdownState StationDepartureCountdown,
     HmiCargoHoldingState CargoHolding,
-    IReadOnlyList<HmiOperatorRecordState> RecentOperatorRecords);
+    IReadOnlyList<HmiOperatorRecordState> RecentOperatorRecords,
+    HmiScreenBasisState Basis);
 
 /// <summary>
 /// One button. <see cref="Visible"/> is the value of its <c>Visibility</c> binding ("visible at the binding layer"),

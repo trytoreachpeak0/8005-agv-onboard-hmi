@@ -201,6 +201,32 @@ public sealed class MultiDemandViewModelTests
     }
 
     /// <summary>
+    /// <c>sequence</c> 跳号、不从 1 起的计划（服务端第二次清桩途中的 <c>[1, 3]</c>，onboard-hmi#327）照样每条腿一行、
+    /// 按 <c>sequence</c> 排，行上是腿自己的号。钉住的是「只排序、不当下标」：把 <c>sequence</c> 当下标的写法在这里会越界或错位。
+    /// </summary>
+    [Fact]
+    public async Task APlanWhoseSequencesSkipIsShownAsOneRowPerLegInSequenceOrder()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+
+        viewModel.UpdateWireToGateJourney(Journey(
+            null,
+            Plan(
+                1,
+                Leg(3, null, "WAITING_POINT", null, "WP-03", "ACTIVE"),
+                Leg(1, null, "CHARGER", null, "CH-01", "COMPLETED"))));
+
+        Assert.Equal(
+            [
+                ("1|CHARGER|COMPLETED", "CH-01", "充电桩", "已完成"),
+                ("3|WAITING_POINT|ACTIVE", "WP-03", "等待点", "前往中")
+            ],
+            viewModel.JourneyPlanLegs.Select(row => (row.ItemStatus, row.StationId, row.StopPurposeText, row.StateText)));
+        Assert.True(viewModel.HasJourneyPlanLegs);
+    }
+
+    /// <summary>
     /// 修订号前进的新计划整张替换旧计划：旧表里有、新表里没有的腿不留，顺序只随新表的 <c>sequence</c>。
     /// </summary>
     [Fact]

@@ -1,0 +1,63 @@
+baseline dirs 23 candidate dirs 20 test cases 23
+    AGuidanceLineNamingTheTypedSublotStaysOutOfTheScreenState__1.txt: base 2 variants/13 runs, cand 1 variants/10 runs, base-only 1
+    AHandoffThatOpenedNothingLeavesTheLoadsAckToSettleIt__1.txt: base 1 variants/13 runs, cand 1 variants/10 runs, base-only 0
+    ALatchMidwayThroughATwoSlotLoadKeepsTheFinishedSlotAndNamesOnlyTheOtherOne__1.txt: base 2 variants/13 runs, cand 2 variants/10 runs, base-only 0
+    ALatchRefusesTheReopenAfterADoorShutEmptyAndReportsTheSlotFailed__1.txt: base 2 variants/13 runs, cand 1 variants/10 runs, base-only 1
+    ALatchWhileTheDoorIsAlreadyOpenLetsTheOperatorFinishTheLoadWithoutAnotherPulse__1.txt: base 2 variants/13 runs, cand 1 variants/10 runs, base-only 1
+    APressAfterTheCommandIsReplayedIntoANewSessionIsANoticeNotAFault__1.txt: base 2 variants/13 runs, cand 1 variants/10 runs, base-only 1
+    APressConfirmedAfterTheLoadEndedUnknownSendsNothing__1.txt: base 2 variants/13 runs, cand 2 variants/10 runs, base-only 0
+    ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect_doorLeftO: base 2 variants/23 runs, cand 1 variants/20 runs, base-only 1
+NEW ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect_doorLeftOpen__Tr__1.txt in ['41a6d31-supp/run4']
+    ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect_doorLeftO: base 2 variants/23 runs, cand 2 variants/20 runs, base-only 1
+    ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect__1.txt: base 3 variants/23 runs, cand 1 variants/20 runs, base-only 2
+NEW ARefusedSafetyChangeIsGivenUpAndTheServersSnapshotRequestIsAnswered__1.txt in ['41a6d31-u17/run6']
+    ARefusedSafetyChangeIsGivenUpAndTheServersSnapshotRequestIsAnswered__1.txt: base 2 variants/13 runs, cand 3 variants/10 runs, base-only 0
+NEW ARefusedSafetyChangeWithNothingAfterItStillAnswersTheServersSnapshotRequest__1.txt in ['41a6d31-supp/run1', '41a6d31-supp/run4', '41a6d31-supp/run6']
+    ARefusedSafetyChangeWithNothingAfterItStillAnswersTheServersSnapshotRequest__1.txt: base 3 variants/23 runs, cand 4 variants/20 runs, base-only 0
+    ARestartAfterTheLateLoadAcknowledgementResumesTheCancellationOverItsOpenDoor__1.txt: base 2 variants/13 runs, cand 2 variants/10 runs, base-only 0
+    ASafetyChangeRefusedInTheHandshakeReplayIsGivenUpAndTheSessionRecovers__1.txt: base 2 variants/13 runs, cand 2 variants/10 runs, base-only 0
+NEW AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect_ackAfterHandoffEnded__False__1.txt in ['41a6d31-u17/run6']  <- only the interrupted run6 file
+    AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect_ackAfterHandoffEnded: base 3 variants/23 runs, cand 3 variants/20 runs, base-only 1
+    AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect_ackAfterHandoffEnded: base 3 variants/23 runs, cand 2 variants/20 runs, base-only 1
+    CompensationNamesItsOwnTargetAmongSeveralLoads__1.txt: base 2 variants/13 runs, cand 2 variants/10 runs, base-only 0
+NEW EveryLoadedDemandCanStillBeHandedOffAfterAReconnectAndARestart__1.txt in ['41a6d31-u17/run8', '41a6d31-u17/run10', '41a6d31-supp/run9', '41a6d31-supp/run10']
+    EveryLoadedDemandCanStillBeHandedOffAfterAReconnectAndARestart__1.txt: base 2 variants/23 runs, cand 3 variants/20 runs, base-only 0
+    EveryLoadedDemandOfAJourneyCanBeHandedOff__1.txt: base 2 variants/13 runs, cand 1 variants/10 runs, base-only 1
+    TheLoadCancellationEntryClosesOnceTheLoadsNonCompletedResultIsOnItsWay__1.txt: base 2 variants/13 runs, cand 2 variants/10 runs, base-only 0
+    TheRepairReleaseIsShutToAVehicleWithNoRecoveryAdministrator__1.txt: base 1 variants/13 runs, cand 1 variants/10 runs, base-only 0
+    TheRunningDemandsUnknownResultIsShownBeforeTheQueuedCommandTakesOver__1.txt: base 3 variants/13 runs, cand 2 variants/10 runs, base-only 1
+    WireToGateG2Tests_AnOperationInterruptedWhileWaitingForTheOperatorIsSettledFromLiveIoOnThe: base 2 variants/13 runs, cand 1 variants/10 runs, base-only 1
+candidate variants never seen in baseline: 5 counting run6, 4 excluding the interrupted run6 file; baseline-only variants: 13
+
+== like for like: 17-group context only, 10 runs each, 19 test cases, same 23-run baseline
+d7cd011 (first version): 4 test-runs with a sequence the baseline never showed, 4 distinct such sequences, in 4 test cases
+      ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect_doorLeftOpen__Tr__1
+      ARefusedSafetyChangeWithNothingAfterItStillAnswersTheServersSnapshotRequest__1.txt
+      AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect_ackAfterHandoffEnded__True___1
+      EveryLoadedDemandCanStillBeHandedOffAfterAReconnectAndARestart__1.txt
+41a6d31 (fixed): 3 test-runs with a sequence the baseline never showed, 2 distinct such sequences, in 2 test cases
+      ARefusedSafetyChangeIsGivenUpAndTheServersSnapshotRequestIsAnswered__1.txt
+      EveryLoadedDemandCanStillBeHandedOffAfterAReconnectAndARestart__1.txt
+
+== 41a6d31 sequences the baseline never showed, line by line
+== EveryLoadedDemandCanStillBeHandedOffAfterAReconnectAndARestart__1.txt ['41a6d31-u17/run8', '41a6d31-u17/run10', '41a6d31-supp/run9', '41a6d31-supp/run10'] | nearest baseline in 1 runs
+    @@ -3,4 +3,3 @@
+     c1 Changed v3 S
+    -c2 Changed v3 S
+    -c2 Snapshot v4 S
+    +c2 Snapshot v3 S
+     c3 Snapshot v1 S
+== ARefusedSafetyChangeIsGivenUpAndTheServersSnapshotRequestIsAnswered__1.txt ['41a6d31-u17/run6'] | nearest baseline in 7 runs
+    @@ -5 +5,2 @@
+     c1 Snapshot v5 S
+    +c1 Changed v6 S
+== ARefusedSafetyChangeWithNothingAfterItStillAnswersTheServersSnapshotRequest__1.t ['41a6d31-supp/run1', '41a6d31-supp/run4', '41a6d31-supp/run6'] | nearest baseline in 17 runs
+    @@ -4,2 +4,3 @@
+     c1 Changed v4 U SLOT_STATE_UNKNOWN,LOCK_NOT_CLOSED,UNLOCK_OUTPUT_NOT_RESET
+    -c1 Snapshot v5 U SLOT_STATE_UNKNOWN,LOCK_NOT_CLOSED,UNLOCK_OUTPUT_NOT_RESET
+    +c1 Changed v5 U SLOT_STATE_UNKNOWN,LOCK_NOT_CLOSED,UNLOCK_OUTPUT_NOT_RESET
+    +c1 Snapshot v6 U SLOT_STATE_UNKNOWN,LOCK_NOT_CLOSED,UNLOCK_OUTPUT_NOT_RESET
+== ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect ['41a6d31-supp/run4'] | nearest baseline in 1 runs
+    @@ -3,2 +3 @@
+     c2 Snapshot v2 U SLOT_STATE_UNKNOWN,LOCK_NOT_CLOSED,UNLOCK_OUTPUT_NOT_RESET
+    -c2 Changed v3 U SLOT_STATE_UNKNOWN,LOCK_NOT_CLOSED,UNLOCK_OUTPUT_NOT_RESET

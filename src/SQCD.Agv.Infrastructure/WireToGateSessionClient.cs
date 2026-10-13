@@ -82,6 +82,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     private long _acceptedCapabilityVersion;
     private long _acceptedSafetyStateVersion;
 
+    // What the server accepted, version and summary together, for the screen-state snapshot only (onboard-hmi#314).
+    // Nothing in the session or the business reads it; see RegisterAcceptedSafety.
+    private readonly WireToGateAcceptedSafetyRegister _acceptedSafety;
+
     // The generation of the last session this client had, for a message put on file while none is up: the envelope
     // needs one to be valid, and the handshake rebinds it to its own before replaying it (onboard-hmi#127).
     private long _lastSessionGeneration;
@@ -127,6 +131,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         ValidateOptions(options);
         _acceptedCapabilityVersion = options.CapabilityVersion;
         _acceptedSafetyStateVersion = options.SafetyStateVersion;
+        _acceptedSafety = new WireToGateAcceptedSafetyRegister(options.SafetyStateVersion);
         _current = new WireToGateSessionSnapshot(
             false,
             null,
@@ -763,6 +768,10 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         }
 
         string deduplicationKey = SafetyStateChangedDeduplicationKey(safetyStateVersion, observedAt);
+        RememberSafety(safetyStateVersion, safety);
+        // The generation this change goes out under, read before the send: the acknowledgement's continuation can run
+        // after a reconnect has published the next one, whose handshake may keep this version with its own summary.
+        long? sentGeneration = Volatile.Read(ref _current).SessionGeneration;
         string messageId = await SendDurableCoreAsync(
             "SafetyStateChanged",
             deduplicationKey,
@@ -776,6 +785,15 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             allowRecoveryRequired: true,
             cancellationToken).ConfigureAwait(false);
         AdvanceSafetyStateVersion(safetyStateVersion);
+        // This call's arguments stand for the row on file: an already acknowledged key returns the stored row unsent,
+        // and StoreDurableAsync refuses a different payload under the key (BUSINESS_ID_CONTENT_CONFLICT), so the two say
+        // the same. Registered from the arguments rather than by reading the row back, so the acknowledgement reaches
+        // PublishAcceptedVersions as soon as it did before onboard-hmi#314: a record and a compare-exchange, no parsing.
+        RegisterAcceptedSafety(() => new WireToGateAcceptedSafety(
+            safetyStateVersion,
+            sentGeneration,
+            safety,
+            WireToGateAcceptedSafetySource.SafetyStateChanged));
         PublishAcceptedVersions("SafetyStateChanged-ack");
         return messageId;
     }
@@ -954,6 +972,7 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             long safetyStateVersion = resentSafetyStateChange
                 ? checked(acceptedSafetyStateVersion + 1)
                 : acceptedSafetyStateVersion;
+            RememberSafety(safetyStateVersion, safety);
             await SendSnapshotAndRequireAckAsync(
                 "SafetyStateSnapshot",
                 "SAFETY_STATE",
@@ -967,6 +986,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
             // 服务端在握手末尾的 SessionReadiness 里回报的是这份快照的号，ApplySessionReadiness 要求恰好相等。
             AdvanceSafetyStateVersion(safetyStateVersion);
+            RegisterAcceptedSafety(() => new WireToGateAcceptedSafety(
+                safetyStateVersion,
+                generation,
+                safety,
+                WireToGateAcceptedSafetySource.HandshakeSnapshot));
 
             await SendOnboardAlarmSnapshotAsync(generation, cancellationToken).ConfigureAwait(false);
             IReadOnlyList<WireToGateDurableMessage> pendingResultReplays =
@@ -2365,16 +2389,23 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(
             safetyStateVersion,
             Volatile.Read(ref _acceptedSafetyStateVersion));
+        WireToGateSafetySummaryPayload? sent = null;
         long? generation = await PublishMidSessionSnapshotAsync(
             "SafetyStateSnapshot",
             "SAFETY_STATE",
             () =>
             {
                 IoSnapshot io = _ioModule.CurrentSnapshot;
+                // The clock first, then the summary (which reads it again for IO freshness): the order the payload's
+                // arguments were evaluated in before onboard-hmi#314.
+                DateTimeOffset observedAt = _clock.Now.ToUniversalTime();
+                WireToGateSafetySummaryPayload safety = CreateSafetySummary(io);
+                sent = safety;
+                RememberSafety(safetyStateVersion, safety);
                 return (safetyStateVersion, new SafetyStateSnapshotPayload(
                     safetyStateVersion,
-                    _clock.Now.ToUniversalTime(),
-                    CreateSafetySummary(io),
+                    observedAt,
+                    safety,
                     CreateSlotStates(io)));
             },
             cancellationToken).ConfigureAwait(false);
@@ -2384,6 +2415,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
         }
 
         AdvanceSafetyStateVersion(safetyStateVersion);
+        RegisterAcceptedSafety(() => new WireToGateAcceptedSafety(
+            safetyStateVersion,
+            generation,
+            sent,
+            WireToGateAcceptedSafetySource.RequestedSnapshot));
         PublishAcceptedVersions("SafetyStateSnapshot-ack");
         return true;
     }
@@ -2732,6 +2768,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             SafetyStateChangedPayload payload = WireToGateProtocolSerializer
                 .DeserializePayload<SafetyStateChangedPayload>(storedEnvelope);
             AdvanceSafetyStateVersion(payload.SafetyStateVersion);
+            RegisterAcceptedSafety(() => new WireToGateAcceptedSafety(
+                payload.SafetyStateVersion,
+                generation,
+                payload.Safety,
+                WireToGateAcceptedSafetySource.ReboundSafetyStateChanged));
         }
     }
 
@@ -4507,6 +4548,17 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
     /// Same history as the item count in <see cref="ValidateCurrentStopWorklist"/>: the leg count was
     /// held at two until batch 7-13 (<c>8005-agv-onboard-hmi#134</c>) and is now the schema's own
     /// <c>legs.maxItems</c> of 9. A tenth leg is a schema violation, not a narrowing.
+    /// <para>
+    /// <c>sequence</c> is held to the schema's own bounds, each one within 1..9, plus one narrowing kept on purpose: no
+    /// two legs may share one. The schema's <c>uniqueItems</c> compares whole legs, not their sequences; the narrowing
+    /// rests on <c>x-sortedBy: sequence</c>, which names sequence as the plan's order and is no order if two legs tie.
+    /// It is not required to start at 1 or to run without a gap, and the order legs arrive in is not checked. Until
+    /// 8005-agv-onboard-hmi#327 it was required to run 1..n, and the plan the control server stages when a vehicle
+    /// clearing a charger reaches its waiting point is one leg at sequence 2: refused, the session dropped, the server
+    /// replayed it into the next one, and agv02 reconnected every 4 s until a later plan replaced it. Nothing on this end
+    /// reads <c>sequence</c> as an index -- the projection only orders by it -- so a gap changes nothing above here.
+    /// The schema bounds are not checked anywhere else on this path: deserialising the envelope checks the envelope only.
+    /// </para>
     /// </remarks>
     internal static void ValidateUpcomingStopPlan(UpcomingStopPlanSnapshotPayload payload)
     {
@@ -4515,9 +4567,9 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             || payload.Legs.Count > 9
             || payload.Legs.Any(leg => leg is null)
             || payload.Legs.Select(leg => leg.Sequence).Distinct().Count() != payload.Legs.Count
-            || payload.Legs.OrderBy(leg => leg.Sequence).Select((leg, index) => leg.Sequence == index + 1).Any(valid => !valid)
             || payload.Legs.Any(leg =>
                 leg is null
+                || leg.Sequence is < 1 or > 9
                 || !IsUuid(leg.MovementLegId)
                 || leg.LegType is not (null or "TO_PICKUP" or "TO_DROPOFF")
                 || leg.StopPurposeCategory is not ("BUSINESS" or "WAITING_POINT" or "CHARGER")
@@ -4955,6 +5007,13 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             }
 
             AdvanceSafetyStateVersion(acceptedSafetyStateVersion);
+            // Only a version arrives here; the summary is the one this client built for it, or unknown -- never another
+            // version's. It can arrive before the acknowledgement of that very send has been processed.
+            RegisterAcceptedSafety(() => new WireToGateAcceptedSafety(
+                acceptedSafetyStateVersion,
+                envelope.SessionGeneration,
+                _acceptedSafety.Recall(acceptedSafetyStateVersion),
+                WireToGateAcceptedSafetySource.SessionReadiness));
             PublishUnderGate(true, envelope.SessionGeneration, readiness, reasonCodes, "SessionReadiness");
         }
     }
@@ -4975,6 +5034,54 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             ref _acceptedSafetyStateVersion,
             safetyStateVersion,
             current) != current);
+    }
+
+    /// <summary>
+    /// The safety state the server has accepted, version and summary together, for the screen-state snapshot
+    /// (onboard-hmi#314). Observation only: nothing in the session or the business reads it.
+    /// </summary>
+    public WireToGateAcceptedSafety AcceptedSafety => _acceptedSafety.Current;
+
+    /// <summary>
+    /// Registers what the server accepted, next to <see cref="AdvanceSafetyStateVersion"/>. Observation must not change
+    /// what the session does, so nothing here may escape into the send path: a failure is recorded as a diagnostic and
+    /// dropped, and so is a failure of the diagnostic.
+    /// </summary>
+    private void RegisterAcceptedSafety(Func<WireToGateAcceptedSafety> build)
+    {
+        try
+        {
+            _acceptedSafety.Register(build());
+        }
+        catch (Exception failure)
+        {
+            TryRecordAcceptedSafetyFailure("登记", failure);
+        }
+    }
+
+    /// <summary>Remembers the summary built for a version, before it is sent; see <see cref="RegisterAcceptedSafety"/>.</summary>
+    private void RememberSafety(long safetyStateVersion, WireToGateSafetySummaryPayload safety)
+    {
+        try
+        {
+            _acceptedSafety.Remember(safetyStateVersion, safety);
+        }
+        catch (Exception failure)
+        {
+            TryRecordAcceptedSafetyFailure("记下", failure);
+        }
+    }
+
+    private void TryRecordAcceptedSafetyFailure(string step, Exception failure)
+    {
+        try
+        {
+            RecordDiagnostic($"已接受安全摘要{step}失败，快照里这一项可能不是最新：{failure.GetType().Name}。");
+        }
+        catch (Exception)
+        {
+            // A diagnostic subscriber can throw; the snapshot is observation and must not change the send path.
+        }
     }
 
     /// <summary>
@@ -5041,6 +5148,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         row.WireLine.TrimEnd('\r', '\n'),
                         _options.AgvId));
                 AdvanceSafetyStateVersion(payload.SafetyStateVersion);
+                RegisterAcceptedSafety(() => new WireToGateAcceptedSafety(
+                    payload.SafetyStateVersion,
+                    Volatile.Read(ref _current).SessionGeneration,
+                    payload.Safety,
+                    WireToGateAcceptedSafetySource.LateSafetyStateChangedAck));
                 PublishAcceptedVersions("SafetyStateChanged-late-ack");
             }
         }
