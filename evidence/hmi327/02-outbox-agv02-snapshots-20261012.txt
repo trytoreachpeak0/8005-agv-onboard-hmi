@@ -1,0 +1,46 @@
+2026-10-12T20:31:23.5805844+08:00 V2 db read-only: agv02 VehicleBusinessStateSnapshot / UpcomingStopPlanSnapshot rows (summary)
+7cc4f97b-3ddc-9355-a359-2c76e907c4bf | UpcomingStopPlanSnapshot | created=2026-10-12 07:40:52.5367861+00:00 | ack=2026-10-12 07:40:52.6402026+00:00 | fenced= | revision=45 | sessionGeneration=27
+2d69f4ce-3ca3-7b5f-8cb3-877b24e4e6ed | VehicleBusinessStateSnapshot | created=2026-10-12 07:40:52.5377861+00:00 | ack=2026-10-12 07:40:52.668021+00:00 | fenced= | revision= | sessionGeneration=27
+e3d5d7fd-d4c0-835c-a9ac-878edc50ee09 | UpcomingStopPlanSnapshot | created=2026-10-12 07:47:33.7685509+00:00 | ack=2026-10-12 07:47:33.8265148+00:00 | fenced= | revision=46 | sessionGeneration=28
+cbb2b82d-19b8-7358-b180-427146427a8c | VehicleBusinessStateSnapshot | created=2026-10-12 07:47:33.7695509+00:00 | ack=2026-10-12 07:47:33.8523755+00:00 | fenced= | revision= | sessionGeneration=28
+24b1dd3c-c947-e959-8736-6c0027904902 | UpcomingStopPlanSnapshot | created=2026-10-12 07:49:43.0479539+00:00 | ack=2026-10-12 07:49:43.1657787+00:00 | fenced= | revision=47 | sessionGeneration=28
+02385c87-765d-4c53-a0d4-300b500da65d | VehicleBusinessStateSnapshot | created=2026-10-12 07:49:43.0489539+00:00 | ack=2026-10-12 07:49:43.1964221+00:00 | fenced= | revision= | sessionGeneration=28
+1cfc870f-c58a-c95b-991b-77f11c3e8b56 | UpcomingStopPlanSnapshot | created=2026-10-12 07:52:26.9277571+00:00 | ack=2026-10-12 07:52:27.1259321+00:00 | fenced= | revision=48 | sessionGeneration=28
+11514ddc-f5fc-7952-9151-8d5792c4ad10 | VehicleBusinessStateSnapshot | created=2026-10-12 07:52:26.9287571+00:00 | ack=2026-10-12 07:52:27.1553161+00:00 | fenced= | revision= | sessionGeneration=28
+b65467c4-1f99-4a54-99fd-498c8be47796 | UpcomingStopPlanSnapshot | created=2026-10-12 07:52:31.4938904+00:00 | ack=2026-10-12 07:52:31.5338654+00:00 | fenced= | revision=49 | sessionGeneration=28
+b6877ee6-9438-2458-be09-c4e4a0b81f31 | VehicleBusinessStateSnapshot | created=2026-10-12 07:52:31.4948904+00:00 | ack=2026-10-12 07:52:31.5608128+00:00 | fenced= | revision= | sessionGeneration=28
+77b45b7d-76b9-8c54-8b3c-4c10366e176b | UpcomingStopPlanSnapshot | created=2026-10-12 07:54:25.1461211+00:00 | ack= | fenced= | revision=50 | sessionGeneration=309
+66196451-6339-515b-bc8c-3da58ba55a90 | VehicleBusinessStateSnapshot | created=2026-10-12 07:54:25.1471211+00:00 | ack= | fenced= | revision= | sessionGeneration=309
+9cf3c023-c717-6a51-ac6c-f99eaaf07bc7 | UpcomingStopPlanSnapshot | created=2026-10-12 11:38:41.1093621+00:00 | ack=2026-10-12 11:38:43.1043465+00:00 | fenced= | revision=51 | sessionGeneration=310
+26621229-f3ed-4353-b1f3-16804a152bd1 | VehicleBusinessStateSnapshot | created=2026-10-12 11:38:41.1103621+00:00 | ack=2026-10-12 11:38:43.1420432+00:00 | fenced= | revision= | sessionGeneration=310
+0528c4d9-ca56-c757-8919-35be56db3f23 | UpcomingStopPlanSnapshot | created=2026-10-12 11:40:35.0752508+00:00 | ack=2026-10-12 11:40:35.1778291+00:00 | fenced= | revision=52 | sessionGeneration=310
+f7e8b7b4-85c3-6c52-a593-a71503313cca | VehicleBusinessStateSnapshot | created=2026-10-12 11:40:35.0762508+00:00 | ack=2026-10-12 11:40:35.2023647+00:00 | fenced= | revision= | sessionGeneration=310
+1c486e76-f2a4-8f56-99e6-cfdec5f89316 | UpcomingStopPlanSnapshot | created=2026-10-12 11:49:42.3032506+00:00 | ack=2026-10-12 11:49:42.358718+00:00 | fenced= | revision=54 | sessionGeneration=312
+52bbaced-5b1a-4f55-b904-4cf66e59d594 | VehicleBusinessStateSnapshot | created=2026-10-12 11:53:57.638203+00:00 | ack=2026-10-12 11:53:57.6758487+00:00 | fenced= | revision= | sessionGeneration=312
+1954de3c-b42c-a452-9c2b-48413c8e8eda | UpcomingStopPlanSnapshot | created=2026-10-12 11:53:57.6669481+00:00 | ack=2026-10-12 11:53:57.7271418+00:00 | fenced= | revision=55 | sessionGeneration=312
+2d8c6bb8-a815-7054-b6ca-600aef449f18 | VehicleBusinessStateSnapshot | created=2026-10-12 11:54:47.5134625+00:00 | ack=2026-10-12 11:54:47.5592911+00:00 | fenced= | revision= | sessionGeneration=312
+ca3559e4-de93-c251-a722-1a039a7e5d58 | VehicleBusinessStateSnapshot | created=2026-10-12 11:56:49.4579777+00:00 | ack=2026-10-12 11:56:49.4901767+00:00 | fenced= | revision= | sessionGeneration=312
+8e073c9d-2c60-0155-8f7c-233c5139f039 | VehicleBusinessStateSnapshot | created=2026-10-12 12:00:01.6023768+00:00 | ack=2026-10-12 12:00:01.6355986+00:00 | fenced= | revision= | sessionGeneration=312
+3e4f398c-1fb2-be55-a215-494b920a9de5 | UpcomingStopPlanSnapshot | created=2026-10-12 12:00:01.6116923+00:00 | ack=2026-10-12 12:00:01.684784+00:00 | fenced= | revision=56 | sessionGeneration=312
+0ffa56c6-0d80-b15e-8dd0-632c6d9cd513 | UpcomingStopPlanSnapshot | created=2026-10-12 12:00:11.4105925+00:00 | ack=2026-10-12 12:00:11.5148193+00:00 | fenced= | revision=57 | sessionGeneration=312
+6ca88255-f6d5-f058-bd88-43db9863caeb | VehicleBusinessStateSnapshot | created=2026-10-12 12:00:11.4105925+00:00 | ack=2026-10-12 12:00:11.5357874+00:00 | fenced= | revision= | sessionGeneration=312
+240c6d8c-b0c1-4b55-8ee8-b9b25faf1dcc | UpcomingStopPlanSnapshot | created=2026-10-12 12:02:04.0447782+00:00 | ack=2026-10-12 12:02:04.1528288+00:00 | fenced= | revision=58 | sessionGeneration=313
+7d148818-31d0-1856-97fa-81da9e099277 | VehicleBusinessStateSnapshot | created=2026-10-12 12:02:04.0457782+00:00 | ack=2026-10-12 12:02:04.1788262+00:00 | fenced= | revision= | sessionGeneration=313
+9e554d00-825d-2b59-bf67-84decbf46c3e | UpcomingStopPlanSnapshot | created=2026-10-12 12:05:22.7153699+00:00 | ack=2026-10-12 12:05:22.7594418+00:00 | fenced= | revision=59 | sessionGeneration=314
+a61500ce-32e9-f956-b9cf-7f6115ac629a | VehicleBusinessStateSnapshot | created=2026-10-12 12:05:22.7163699+00:00 | ack=2026-10-12 12:05:22.7851878+00:00 | fenced= | revision= | sessionGeneration=314
+abc3edd1-0b01-1955-a029-c24b75bae6bf | UpcomingStopPlanSnapshot | created=2026-10-12 12:11:02.9632568+00:00 | ack=2026-10-12 12:11:03.173149+00:00 | fenced= | revision=60 | sessionGeneration=314
+a453e5dd-9563-455c-8a09-5a2013ee6def | VehicleBusinessStateSnapshot | created=2026-10-12 12:11:02.9642568+00:00 | ack=2026-10-12 12:11:03.2004256+00:00 | fenced= | revision= | sessionGeneration=314
+571c31b5-f1f7-2c57-8a3c-56c2ae868542 | UpcomingStopPlanSnapshot | created=2026-10-12 12:12:15.3030259+00:00 | ack=2026-10-12 12:12:15.3435874+00:00 | fenced= | revision=61 | sessionGeneration=314
+9f27126c-eba7-2551-baa7-72eeab653b18 | VehicleBusinessStateSnapshot | created=2026-10-12 12:12:15.3040259+00:00 | ack=2026-10-12 12:12:15.3824254+00:00 | fenced= | revision= | sessionGeneration=314
+3cb1f8f1-7af8-4550-bb8d-41ac13622411 | UpcomingStopPlanSnapshot | created=2026-10-12 12:14:08.9596936+00:00 | ack= | fenced= | revision=62 | sessionGeneration=366
+90ef3b7d-6ffb-7c5e-b1c0-d1f80e373ea9 | VehicleBusinessStateSnapshot | created=2026-10-12 12:14:08.9606936+00:00 | ack= | fenced= | revision= | sessionGeneration=366
+fdc3276f-7583-1357-ab59-9c68e8d6fc2f | UpcomingStopPlanSnapshot | created=2026-10-12 12:18:08.281468+00:00 | ack=2026-10-12 12:18:08.3542996+00:00 | fenced= | revision=63 | sessionGeneration=367
+9bbcd4c3-9f58-3859-a564-370143a793b6 | VehicleBusinessStateSnapshot | created=2026-10-12 12:18:08.282468+00:00 | ack=2026-10-12 12:18:08.3798791+00:00 | fenced= | revision= | sessionGeneration=367
+8aaea773-dcda-ae57-a01f-f94d45b92dfa | UpcomingStopPlanSnapshot | created=2026-10-12 12:20:07.820847+00:00 | ack=2026-10-12 12:20:07.8756263+00:00 | fenced= | revision=64 | sessionGeneration=368
+92beff1d-0ed6-005b-b7ab-19774d720c24 | VehicleBusinessStateSnapshot | created=2026-10-12 12:20:07.821847+00:00 | ack=2026-10-12 12:20:07.9001316+00:00 | fenced= | revision= | sessionGeneration=368
+3c0bb0cf-0c07-1355-b5c4-236c280e035d | UpcomingStopPlanSnapshot | created=2026-10-12 12:22:13.0994469+00:00 | ack=2026-10-12 12:22:13.2246328+00:00 | fenced= | revision=65 | sessionGeneration=368
+cf98fc1a-bf22-f756-af22-32a4c368995c | VehicleBusinessStateSnapshot | created=2026-10-12 12:22:13.1004469+00:00 | ack=2026-10-12 12:22:13.2484369+00:00 | fenced= | revision= | sessionGeneration=368
+19f63b41-e53a-6459-959b-04fcb43be13e | UpcomingStopPlanSnapshot | created=2026-10-12 12:24:14.9829719+00:00 | ack=2026-10-12 12:24:15.178388+00:00 | fenced= | revision=66 | sessionGeneration=368
+a6dfaea0-d9cd-4059-8b02-51f0472ea798 | VehicleBusinessStateSnapshot | created=2026-10-12 12:24:14.9839719+00:00 | ack=2026-10-12 12:24:15.2032845+00:00 | fenced= | revision= | sessionGeneration=368
+50433dc6-a048-a359-9dde-1414cd4a4ab7 | UpcomingStopPlanSnapshot | created=2026-10-12 12:27:56.9771186+00:00 | ack=2026-10-12 12:27:57.0166537+00:00 | fenced= | revision=67 | sessionGeneration=368
+d229f815-caf2-a55e-a063-54e82fbae40c | VehicleBusinessStateSnapshot | created=2026-10-12 12:27:56.9781186+00:00 | ack=2026-10-12 12:27:57.0464323+00:00 | fenced= | revision= | sessionGeneration=368

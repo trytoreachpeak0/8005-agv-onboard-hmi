@@ -1,0 +1,14 @@
+== ARefusedSafetyChangeIsGivenUpAndTheServersSnapshotRequestIsAnswered__1.txt
+   valid runs: base 15 (excluded []), cand 15 (excluded [])
+   base 15  cand 15            c1 Snapshot v1 S | c1 Changed v2 S | c1 Changed v3 U | c1 Changed v4 U | c1 Changed v5 S | c1 Snapshot v6 S
+== ARefusedSafetyChangeWithNothingAfterItStillAnswersTheServersSnapshotRequest__1.txt
+   valid runs: base 15 (excluded []), cand 15 (excluded [])
+   base 14  cand 14            c1 Snapshot v1 S | c1 Changed v2 S | c1 Changed v3 U | c1 Changed v4 U | c1 Snapshot v5 U
+   base  1  cand  1            c1 Snapshot v1 S | c1 Changed v2 S | c1 Changed v3 U | c1 Changed v4 U | c1 Changed v5 U | c1 Snapshot v6 U
+== ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect_doorLeftOpen__Fa__1.txt
+   valid runs: base 15 (excluded []), cand 15 (excluded [])
+   base 15  cand 15            c1 Snapshot v1 S | c1 Changed v2 S | c2 Snapshot v2 S | c2 Changed v3 S
+== ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect_doorLeftOpen__Tr__1.txt
+   valid runs: base 15 (excluded []), cand 15 (excluded [])
+   base 15  cand 15            c1 Snapshot v1 S | c1 Changed v2 S | c2 Changed v3 U | c2 Snapshot v4 U | c2 Changed v5 U
+candidate sequences never seen in the baseline (same run mode): 0

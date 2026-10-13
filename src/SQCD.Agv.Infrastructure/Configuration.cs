@@ -52,7 +52,7 @@ public sealed class OnboardSettings
         + $"wireToGate.enabled={WireToGate.Enabled}，wireToGate.server={WireToGate.Host}:{WireToGate.Port}，"
         + $"wireToGate.recoveryResumeEnabled={WireToGate.RecoveryResumeEnabled}，wireToGate.journalPath={WireToGate.JournalPath}，"
         + $"vehicleSafety.enabled={VehicleSafety.Enabled}，vehicleSafety.endpoint={OriginOf(VehicleSafety.Endpoint)}，"
-        + $"ioModule={IoModule.Host}:{IoModule.Port}，logging.directory={Logging.Directory}，"
+        + $"ioModule={IoModule.Host}:{IoModule.Port}，logging.directory={Logging.Directory}，logging.operatorRecords={Logging.OperatorRecords}，"
         + $"screenState.enabled={ScreenState.Enabled}{(ScreenState.Enabled && ScreenState.Problem() is not null ? "（参数无效，本次不启动）" : string.Empty)}。";
 
     private static string OriginOf(string endpoint) =>
@@ -659,10 +659,15 @@ public sealed class SlotIoMapping
     /// <remarks>
     /// 它们是**协议 v2 的仓位配置指纹要算进去的硬件事实**，不是本机的运行参数——服务端手上有它批准的
     /// 一份同样的东西，激活时两边算同一个摘要来核对。默认值取自 REQ-0267 已批准的八仓事实
-    /// （<c>ACTIVE_HIGH</c>、500ms）；现场若与服务端那份对不上，激活会被拒并报
-    /// <c>SLOT_CONFIGURATION_FINGERPRINT_MISMATCH</c>，那正是这条握手存在的意义。
+    /// （<c>UNLOCK_OUTPUT_ACTIVE_HIGH;LOCK_FEEDBACK_LOCKED_HIGH;LIGHT_CURTAIN_OBJECT_LOW</c>、500ms）：
+    /// 极性按票据 35 逐信号写明——开锁写 1，锁闭为 1，光幕检测到物体为 0——与控制服务端
+    /// <c>ApprovedSlotHardwareFacts.SignalPolarity</c> 和生产库里三车的已批准事实逐字相同。2026-10 之前
+    /// 这里是笼统的 <c>ACTIVE_HIGH</c>，对光幕是错的。这串只是声明，进指纹，不参与本机读 IO 的解释。
+    /// 现场若与服务端那份对不上，激活会被拒并报 <c>SLOT_CONFIGURATION_FINGERPRINT_MISMATCH</c>，那正是
+    /// 这条握手存在的意义。
     /// </remarks>
-    public string SignalPolarity { get; init; } = "ACTIVE_HIGH";
+    public string SignalPolarity { get; init; } =
+        "UNLOCK_OUTPUT_ACTIVE_HIGH;LOCK_FEEDBACK_LOCKED_HIGH;LIGHT_CURTAIN_OBJECT_LOW";
 
     public int PulseResetMilliseconds { get; init; } = 500;
 }
@@ -824,4 +829,10 @@ public sealed class LogSettings
     public string Directory { get; init; } = @"%LOCALAPPDATA%\SQCD\8005AGV\logs";
 
     public bool WriteToConsole { get; init; }
+
+    /// <summary>
+    /// 屏上「操作记录」每加一条、每次清空，都在技术日志里写一行结构化记录（onboard-hmi#317，hmi#308 调研 T4）。
+    /// 出厂为关，所有环境都是，与屏幕状态快照同一个两步走（用户 2026-10-12 定）。
+    /// </summary>
+    public bool OperatorRecords { get; init; }
 }

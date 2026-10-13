@@ -1,8 +1,11 @@
+using System.Text.Json;
 using SQCD.Agv.Application;
 using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
 using SQCD.Agv.Wpf;
+using SQCD.Agv.Wpf.OperatorRecordOutput;
+using SQCD.Agv.Wpf.ViewModels;
 using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
@@ -48,6 +51,113 @@ public sealed class OperatorEventVisibilityTests
 
         Assert.Equal(3, published.Count);
         Assert.All(published, item => Assert.Equal("RECOVERY_BLOCKED", item.Kind));
+    }
+
+    /// <summary>
+    /// 同一场景同时断言技术日志（onboard-hmi#317，调研 T4 验收标准）：屏上「操作记录」每多一条，技术日志就多一行
+    /// 「操作记录」，消息、来源、事件类别一一对应；业务拒绝与「清空记录」也各落一行。
+    /// </summary>
+    /// <remarks>
+    /// 业务事件经 <c>ApplyWireToGateOperatorEvent</c> 进视图模型的 <c>Logs</c>，记录器挂在 <c>Logs</c> 上，这两处与 <c>App</c> 相同；
+    /// 启动顺序不同：<c>App</c> 在 <c>InitializeAsync</c> 之前挂记录器，这里在之后挂，所以初始化时放上屏的控制器记录在这里不落盘。
+    /// 这里填进三个输入框的内容不经过业务服务（本用例的入口在读会话之前就返回），只能抓到「视图模型自己把输入框文字拼进消息」
+    /// 这一种泄露。输入框内容真正流经业务侧的路径在 <c>RecoveryVectorG2Tests.OperatorRecordLog</c> 里测。两个子批框按调度条件 1
+    /// 的口径豁免（hmi#317 审查 M1），不在排除表里。
+    /// </remarks>
+    [Fact]
+    public async Task EachOperatorRecordOnScreenIsOneTechnicalLogLine()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new();
+        RecordingLogger serviceLogger = new();
+        await using WireToGateSessionService session = CreateOfflineSession(io, serviceLogger);
+        await using WireToGateBusinessService business = CreateBusiness(session, io, serviceLogger);
+        await using OnboardController controller = MultiDemandViewModelTests.Controller();
+        MainViewModel viewModel = await MultiDemandViewModelTests.ViewModel(controller);
+        viewModel.RecoveryReason = "W2G_T4_RECOVERY_REASON";
+        viewModel.ForcedHandoffReceiverName = "W2G_T4_接收人姓名";
+        viewModel.HardwareRecoveryObservations = "W2G_T4_OBSERVATIONS";
+
+        RecordingLogger technicalLog = new();
+        using OperatorRecordLog? recordLog = OperatorRecordLog.TryStart(
+            new LogSettings { OperatorRecords = true },
+            viewModel.Logs,
+            technicalLog);
+        Assert.NotNull(recordLog);
+        // InitializeAsync already put the controller's own records on screen; they came before the record log started.
+        int before = viewModel.Logs.Count;
+        List<WireToGateOperatorEvent> published = [];
+        business.OperatorEventPublished += (_, args) =>
+        {
+            lock (published)
+            {
+                published.Add(args.Value);
+            }
+
+            viewModel.ApplyWireToGateOperatorEvent(args.Value);
+        };
+
+        Assert.False(await business.RequestResumeAfterRepairAsync(cancellationToken: token));
+        Assert.False(await business.RequestResumeAfterRepairAsync(cancellationToken: token));
+        viewModel.ReportOperatorRejection("SUBLOT_NOT_IN_WORKLIST");
+        LogLineViewModel[] onScreen = [.. viewModel.Logs.Skip(before)];
+        int clearedOnScreen = viewModel.Logs.Count;
+        viewModel.ClearLogsCommand.Execute(null);
+        await WaitUntilAsync(
+            () => technicalLog.Entries.Count == onScreen.Length + 1,
+            () => $"onScreen={onScreen.Length}，logs={viewModel.Logs.Count}，published={published.Count}，entries=[{string.Join(" | ", technicalLog.Entries.Select(entry => entry.Message))}]",
+            token);
+
+        string[] lines = [.. technicalLog.Entries
+            .Where(entry => entry.Source == nameof(OperatorRecordLog))
+            .Select(entry => entry.Message)];
+        Assert.Equal(onScreen.Length + 1, lines.Length);
+        Assert.Equal(3, onScreen.Length);
+        for (int index = 0; index < onScreen.Length; index++)
+        {
+            using JsonDocument line = JsonDocument.Parse(lines[index][OperatorRecordLog.Prefix.Length..]);
+            Assert.Equal("APPENDED", line.RootElement.GetProperty("action").GetString());
+            Assert.Equal(onScreen[index].Message, line.RootElement.GetProperty("message").GetString());
+            Assert.Equal(onScreen[index].Kind.ToString(), line.RootElement.GetProperty("kind").GetString());
+        }
+
+        for (int index = 0; index < 2; index++)
+        {
+            using JsonDocument line = JsonDocument.Parse(lines[index][OperatorRecordLog.Prefix.Length..]);
+            Assert.Equal("OperatorEvent", line.RootElement.GetProperty("source").GetString());
+            Assert.Equal("RECOVERY_BLOCKED", line.RootElement.GetProperty("eventKind").GetString());
+            Assert.Equal(published[index].Message, line.RootElement.GetProperty("message").GetString());
+        }
+
+        using (JsonDocument rejection = JsonDocument.Parse(lines[2][OperatorRecordLog.Prefix.Length..]))
+        {
+            Assert.Equal("OperatorRejection", rejection.RootElement.GetProperty("source").GetString());
+        }
+
+        using (JsonDocument cleared = JsonDocument.Parse(lines[3][OperatorRecordLog.Prefix.Length..]))
+        {
+            Assert.Equal("CLEARED", cleared.RootElement.GetProperty("action").GetString());
+            Assert.Equal(clearedOnScreen, cleared.RootElement.GetProperty("cleared").GetInt32());
+        }
+
+        string[] excluded =
+        [
+            "W2G_OPERATOR_EVENT_VISIBILITY_CREDENTIAL",
+            "W2G_T4_RECOVERY_REASON",
+            "W2G_T4_接收人姓名",
+            "W2G_T4_OBSERVATIONS",
+        ];
+        Assert.All(lines, line => Assert.DoesNotContain(excluded, value => line.Contains(value, StringComparison.Ordinal)));
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition, Func<string> describe, CancellationToken token)
+    {
+        DateTime deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (!condition())
+        {
+            Assert.True(DateTime.UtcNow < deadline, "等待技术日志行超时：" + describe());
+            await Task.Delay(20, token);
+        }
     }
 
     /// <summary>

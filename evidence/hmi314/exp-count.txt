@@ -1,0 +1,15 @@
+base: "c2 Snapshot v3" in 10 of 30 valid runs; excluded runs []
+    15 x  c1 Snapshot v1 | c1 Changed v2 | c2 Changed v3 | c2 Snapshot v4 | c3 Snapshot v1 | c3 Changed v2
+    10 x  c1 Snapshot v1 | c1 Changed v2 | c1 Changed v3 | c2 Snapshot v3 | c3 Snapshot v1 | c3 Changed v2
+     4 x  c1 Snapshot v1 | c1 Changed v2 | c1 Changed v3 | c2 Changed v3 | c2 Snapshot v4 | c3 Snapshot v1 | c3 Changed v2
+     1 x  c1 Snapshot v1 | c1 Changed v2 | c1 Changed v3 | c2 Changed v3 | c2 Snapshot v4 | c2 Changed v5 | c3 Changed v5 | c3 Snapshot v6 | c3 Changed v7
+cand: "c2 Snapshot v3" in 3 of 30 valid runs; excluded runs []
+    24 x  c1 Snapshot v1 | c1 Changed v2 | c2 Changed v3 | c2 Snapshot v4 | c3 Snapshot v1 | c3 Changed v2
+     3 x  c1 Snapshot v1 | c1 Changed v2 | c1 Changed v3 | c2 Snapshot v3 | c3 Snapshot v1 | c3 Changed v2
+     2 x  c1 Snapshot v1 | c1 Changed v2 | c2 Changed v3 | c2 Snapshot v4 | c2 Changed v5 | c3 Changed v5 | c3 Snapshot v6 | c3 Changed v7
+     1 x  c1 Snapshot v1 | c1 Changed v2 | c1 Changed v3 | c2 Changed v3 | c2 Snapshot v4 | c3 Snapshot v1 | c3 Changed v2
+variant: "c2 Snapshot v3" in 5 of 30 valid runs; excluded runs []
+    22 x  c1 Snapshot v1 | c1 Changed v2 | c2 Changed v3 | c2 Snapshot v4 | c3 Snapshot v1 | c3 Changed v2
+     5 x  c1 Snapshot v1 | c1 Changed v2 | c1 Changed v3 | c2 Snapshot v3 | c3 Snapshot v1 | c3 Changed v2
+     2 x  c1 Snapshot v1 | c1 Changed v2 | c1 Changed v3 | c2 Changed v3 | c2 Snapshot v4 | c3 Snapshot v1 | c3 Changed v2
+     1 x  c1 Snapshot v1 | c1 Changed v2 | c2 Changed v3 | c2 Snapshot v4 | c2 Changed v5 | c3 Changed v5 | c3 Snapshot v6 | c3 Changed v7

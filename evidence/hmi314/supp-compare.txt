@@ -1,0 +1,33 @@
+baseline dirs 23 candidate dirs 13 tests 11
+NEW base 1 variants/13 runs, cand 2 variants/3 runs: AHandoffThatOpenedNothingLeavesTheLoadsAckToSettleIt__1.txt
+     unseen candidate variant in ['d7cd011/run2']
+OK  base 2 variants/13 runs, cand 2 variants/3 runs: ALatchRefusesTheReopenAfterADoorShutEmptyAndReportsTheSlotFailed__1.txt
+OK  base 2 variants/23 runs, cand 2 variants/13 runs: ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect_doorLeftOpen__Fa__1.txt
+NEW base 2 variants/23 runs, cand 3 variants/13 runs: ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect_doorLeftOpen__Tr__1.txt
+     unseen candidate variant in ['d7cd011-u17/run2']
+OK  base 3 variants/23 runs, cand 3 variants/13 runs: ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect__1.txt
+NEW base 3 variants/23 runs, cand 4 variants/13 runs: ARefusedSafetyChangeWithNothingAfterItStillAnswersTheServersSnapshotRequest__1.txt
+     unseen candidate variant in ['d7cd011-u17/run7']
+OK  base 2 variants/13 runs, cand 2 variants/3 runs: ARestartAfterTheLateLoadAcknowledgementResumesTheCancellationOverItsOpenDoor__1.txt
+OK  base 3 variants/23 runs, cand 2 variants/13 runs: AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect_ackAfterHandoffEnded__False__1.txt
+NEW base 3 variants/23 runs, cand 2 variants/13 runs: AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect_ackAfterHandoffEnded__True___1.txt
+     unseen candidate variant in ['d7cd011-u17/run10']
+NEW base 2 variants/23 runs, cand 4 variants/13 runs: EveryLoadedDemandCanStillBeHandedOffAfterAReconnectAndARestart__1.txt
+     unseen candidate variant in ['d7cd011/run2', 'd7cd011-u17/run7']
+     unseen candidate variant in ['d7cd011/run3']
+NEW base 1 variants/13 runs, cand 2 variants/3 runs: TheRepairReleaseIsShutToAVehicleWithNoRecoveryAdministrator__1.txt
+     unseen candidate variant in ['d7cd011/run1']
+candidate variants never seen in baseline: 7
+
+== reverse direction and b2f602e (reference only, outside the agreed rule)
+AHandoffThatOpenedNothingLeavesTheLoadsAckToSettleIt__1.txt: base-only 0, cand-only 1, cand-only seen at b2f602e 0/1 (b2f602e runs having this test: 2)
+ALatchRefusesTheReopenAfterADoorShutEmptyAndReportsTheSlotFailed__1.txt: base-only 0, cand-only 0, cand-only seen at b2f602e 0/0 (b2f602e runs having this test: 2)
+ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect_doorLeftOpen__: base-only 0, cand-only 0, cand-only seen at b2f602e 0/0 (b2f602e runs having this test: 2)
+ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect_doorLeftOpen__: base-only 0, cand-only 1, cand-only seen at b2f602e 0/1 (b2f602e runs having this test: 2)
+ARefusedHandoffEndedAfterTheManualCheckKeepsTheLoadsAttemptAndDoorAcrossAReconnect__1.txt: base-only 0, cand-only 0, cand-only seen at b2f602e 0/0 (b2f602e runs having this test: 2)
+ARefusedSafetyChangeWithNothingAfterItStillAnswersTheServersSnapshotRequest__1.txt: base-only 0, cand-only 1, cand-only seen at b2f602e 0/1 (b2f602e runs having this test: 2)
+ARestartAfterTheLateLoadAcknowledgementResumesTheCancellationOverItsOpenDoor__1.txt: base-only 0, cand-only 0, cand-only seen at b2f602e 0/0 (b2f602e runs having this test: 2)
+AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect_ackAfterHandoffEnded__Fal: base-only 1, cand-only 0, cand-only seen at b2f602e 0/0 (b2f602e runs having this test: 2)
+AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect_ackAfterHandoffEnded__Tru: base-only 2, cand-only 1, cand-only seen at b2f602e 0/1 (b2f602e runs having this test: 2)
+EveryLoadedDemandCanStillBeHandedOffAfterAReconnectAndARestart__1.txt: base-only 0, cand-only 2, cand-only seen at b2f602e 0/2 (b2f602e runs having this test: 2)
+TheRepairReleaseIsShutToAVehicleWithNoRecoveryAdministrator__1.txt: base-only 0, cand-only 1, cand-only seen at b2f602e 1/1 (b2f602e runs having this test: 2)

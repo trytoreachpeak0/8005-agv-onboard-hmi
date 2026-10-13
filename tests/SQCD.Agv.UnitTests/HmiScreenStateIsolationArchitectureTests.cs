@@ -29,6 +29,10 @@ namespace SQCD.Agv.UnitTests;
 /// only post to a channel (<c>TryWrite</c>, which does not throw); the writer's own task is not on the dispatcher and
 /// catches per request.
 /// </para>
+/// <para>
+/// The scan helpers are internal: <c>OperatorRecordLogArchitectureTests</c> (onboard-hmi#317) holds the operator record
+/// log to the same shape with the same code.
+/// </para>
 /// </remarks>
 public sealed class HmiScreenStateIsolationArchitectureTests
 {
@@ -182,7 +186,7 @@ public sealed class HmiScreenStateIsolationArchitectureTests
     public void LogWritesAreCheckedForTheirOwnCatch(string code, int unwrapped) =>
         Assert.Equal(unwrapped, UnwrappedLogWrites(code).Length);
 
-    private static IEnumerable<string> WrappedWholeOffences(string code, string method)
+    internal static IEnumerable<string> WrappedWholeOffences(string code, string method)
     {
         string? body = Body(code, method);
         if (body is null)
@@ -232,7 +236,7 @@ public sealed class HmiScreenStateIsolationArchitectureTests
     }
 
     /// <summary>Offsets of logger writes not inside a <c>try</c> block whose catches include <c>catch (Exception …)</c>.</summary>
-    private static int[] UnwrappedLogWrites(string code)
+    internal static int[] UnwrappedLogWrites(string code)
     {
         List<(int Start, int End)> guarded = [];
         foreach (Match tryMatch in Regex.Matches(code, @"\btry\s*\{"))
@@ -268,7 +272,7 @@ public sealed class HmiScreenStateIsolationArchitectureTests
     }
 
     /// <summary>The body of the named method, braces included; null when there is none.</summary>
-    private static string? Body(string code, string method)
+    internal static string? Body(string code, string method)
     {
         Match header = Regex.Match(code, @"\b" + method + @"\s*\([^;{]*?\)\s*\{");
         if (!header.Success)
@@ -295,7 +299,7 @@ public sealed class HmiScreenStateIsolationArchitectureTests
         throw new InvalidOperationException("unbalanced braces");
     }
 
-    private static string Code(params string[] relativePath) =>
+    internal static string Code(params string[] relativePath) =>
         string.Join(
             "\n",
             CSharpSourceLexer.Lex(File.ReadAllText(Path.Combine([ProtocolIdentityArchitectureTests.RepositoryRoot(), .. relativePath]))).Code);
