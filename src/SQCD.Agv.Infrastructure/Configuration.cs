@@ -52,7 +52,7 @@ public sealed class OnboardSettings
         + $"wireToGate.enabled={WireToGate.Enabled}，wireToGate.server={WireToGate.Host}:{WireToGate.Port}，"
         + $"wireToGate.recoveryResumeEnabled={WireToGate.RecoveryResumeEnabled}，wireToGate.journalPath={WireToGate.JournalPath}，"
         + $"vehicleSafety.enabled={VehicleSafety.Enabled}，vehicleSafety.endpoint={OriginOf(VehicleSafety.Endpoint)}，"
-        + $"ioModule={IoModule.Host}:{IoModule.Port}，logging.directory={Logging.Directory}，"
+        + $"ioModule={IoModule.Host}:{IoModule.Port}，logging.directory={Logging.Directory}，logging.operatorRecords={Logging.OperatorRecords}，"
         + $"screenState.enabled={ScreenState.Enabled}{(ScreenState.Enabled && ScreenState.Problem() is not null ? "（参数无效，本次不启动）" : string.Empty)}。";
 
     private static string OriginOf(string endpoint) =>
@@ -824,4 +824,10 @@ public sealed class LogSettings
     public string Directory { get; init; } = @"%LOCALAPPDATA%\SQCD\8005AGV\logs";
 
     public bool WriteToConsole { get; init; }
+
+    /// <summary>
+    /// 屏上「操作记录」每加一条、每次清空，都在技术日志里写一行结构化记录（onboard-hmi#317，hmi#308 调研 T4）。
+    /// 出厂为关，所有环境都是，与屏幕状态快照同一个两步走（用户 2026-10-12 定）。
+    /// </summary>
+    public bool OperatorRecords { get; init; }
 }

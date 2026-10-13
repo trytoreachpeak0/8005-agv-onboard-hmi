@@ -513,6 +513,49 @@ public sealed class ConfigurationTests
     }
 
     /// <summary>
+    /// 屏上「操作记录」落盘出厂为关，所有环境都是（onboard-hmi#317，用户 2026-10-12 定的两步走同样适用于本系列各票）。
+    /// 代码默认值与两份出厂文件一起钉，理由同上一条。
+    /// </summary>
+    [Theory]
+    [InlineData("src/SQCD.Agv.Wpf/appsettings.json")]
+    [InlineData("src/SQCD.Agv.Wpf/appsettings.Production.example.json")]
+    public void TheOperatorRecordLogShipsSwitchedOff(string relativePath)
+    {
+        using JsonDocument document = JsonDocument.Parse(
+            File.ReadAllText(FindRepositoryFile(relativePath)),
+            new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+
+        Assert.False(new LogSettings().OperatorRecords);
+        Assert.False(document.RootElement.GetProperty("logging").GetProperty("operatorRecords").GetBoolean());
+    }
+
+    /// <summary>
+    /// Production 下操作记录落盘默认关，配置可开：开着的 Production 配置照常通过校验（onboard-hmi#317）。
+    /// </summary>
+    [Fact]
+    public void ProductionLeavesTheOperatorRecordLogOffByDefaultAndAcceptsItSwitchedOn()
+    {
+        using EnvironmentVariableScope _ = new();
+        OnboardSettings byDefault = CreateValidProductionSettings();
+        byDefault.Validate();
+        Assert.False(byDefault.Logging.OperatorRecords);
+
+        OnboardSettings switchedOn = new()
+        {
+            Environment = byDefault.Environment,
+            AgvId = byDefault.AgvId,
+            OnboardInstanceId = byDefault.OnboardInstanceId,
+            RuleGateway = byDefault.RuleGateway,
+            WireToGate = byDefault.WireToGate,
+            VehicleSafety = byDefault.VehicleSafety,
+            IoModule = byDefault.IoModule,
+            Logging = new LogSettings { OperatorRecords = true }
+        };
+        switchedOn.Validate();
+        Assert.True(switchedOn.Logging.OperatorRecords);
+    }
+
+    /// <summary>
     /// Production 下快照默认关，配置可开：开着的 Production 配置照常通过校验，不像自动化接口那样被禁止。
     /// </summary>
     [Fact]

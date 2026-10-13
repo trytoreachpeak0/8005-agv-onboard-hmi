@@ -943,6 +943,48 @@ public sealed class MultiDemandViewModelTests
     }
 
     /// <summary>
+    /// 同一个场景落进技术日志时，那一行的来源是修正窗口、没有尝试号（onboard-hmi#317 审查 S1：这个写入点此前没有行为测试）。
+    /// </summary>
+    [Fact]
+    public async Task TheClosedCorrectionWindowNoticeIsLoggedUnderItsOwnSource()
+    {
+        await using OnboardController controller = Controller();
+        MainViewModel viewModel = await ViewModel(controller);
+        viewModel.ConfigureWireToGate(
+            (_, _, _) => Task.CompletedTask,
+            () => false,
+            canRequestLoadCorrection: () => true,
+            loadCorrectionRequester: _ => Task.FromResult(true));
+        viewModel.UpdateWireToGateStatus(Session());
+        viewModel.UpdateWireToGateJourney(Journey(WorklistInSession(
+            1,
+            StopSessionId,
+            Item(DemandA, "SUBLOT-A", "WIRE_TO_GATE", "PICKUP", 2),
+            Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
+        RecordingLogger log = new();
+        using SQCD.Agv.Wpf.OperatorRecordOutput.OperatorRecordLog? recordLog =
+            SQCD.Agv.Wpf.OperatorRecordOutput.OperatorRecordLog.TryStart(new LogSettings { OperatorRecords = true }, viewModel.Logs, log);
+        Assert.NotNull(recordLog);
+
+        viewModel.UpdateJournaledOperations(WireToGateRecoveryState.Empty with
+        {
+            LastCompletedLoadOperationContext = WireToGateRecoveryOperationContext.FromCommand(Command(DemandA, [1]))
+        });
+        viewModel.UpdateJournaledOperations(WireToGateRecoveryState.Empty with
+        {
+            LastCompletedLoadOperationContext = WireToGateRecoveryOperationContext.FromCommand(Command(DemandB, [2]))
+        });
+
+        string line = Assert.Single(
+            log.Entries.Select(entry => entry.Message),
+            message => message.Contains("的修正窗口已随", StringComparison.Ordinal));
+        using System.Text.Json.JsonDocument record = System.Text.Json.JsonDocument.Parse(
+            line[SQCD.Agv.Wpf.OperatorRecordOutput.OperatorRecordLog.Prefix.Length..]);
+        Assert.Equal("CorrectionWindow", record.RootElement.GetProperty("source").GetString());
+        Assert.Equal(System.Text.Json.JsonValueKind.Null, record.RootElement.GetProperty("attemptId").ValueKind);
+    }
+
+    /// <summary>
     /// 回落到「上次完成的装货」的三个入口（补偿清空、故障交接、强制机械恢复）同样标出目标子批；有在途操作时
     /// 不标——那时主体就是那次操作，不是「上一次」，业务服务据此给出 <c>null</c>（批次7-14，验收第 3 条）。
     /// </summary>
