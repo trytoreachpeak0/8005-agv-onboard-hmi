@@ -63,6 +63,45 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
+    /// 入口关掉之后仍到达业务层的按键（界面在关之前读到入口亮着），每按一次都得到一条应答：这次装货已取消、取消已有结论，
+    /// 要处理货物请联系维护人员。修之前它重跑向量、按发件箱里已确认的 UNKNOWN 收尾，提示的去重键与第一次相同，
+    /// <c>Events</c> 一条不增，屏上什么都没有（hmi#164 的诊断）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task AnInFlightCancellationPressedAfterItsUnknownIsAcknowledgedIsAnswered()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await StartCancellationUnknownStopAsync(io, token);
+        await CancelBEndingUnknownAsync(harness, io, token);
+        await harness.WaitUntilAsync(
+            () => !harness.Business.CanRequestLoadCancellation,
+            "the in-flight cancellation entry to shut once its UNKNOWN is acknowledged",
+            token);
+
+        for (int press = 1; press <= 2; press++)
+        {
+            int eventsBefore = harness.Events.Count;
+            await harness.Business.RequestLoadCancellationAsync(
+                SQCD.Agv.Wpf.WireToGateBusinessService.LoadCancellationDefaultReason,
+                null,
+                token);
+            WireToGateOperatorEvent answer = Assert.Single(harness.Events.Skip(eventsBefore));
+            Assert.Equal("RECOVERY_BLOCKED", answer.Kind);
+            Assert.Contains("取消已有结论", answer.Message, StringComparison.Ordinal);
+            Assert.Contains("联系维护人员", answer.Message, StringComparison.Ordinal);
+        }
+
+        Assert.Single(ReceivedPayloads(harness, "LoadCancellationStartRequested"));
+        Assert.Single(ReceivedPayloads(harness, "LoadCancellationResult"));
+        Assert.Equal(2, io.UnlockCount);
+        Assert.Null(ReadJournal(harness, token).RecoveryVector);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
     /// 走到「B 的取消报 UNKNOWN、服务端已确认、会话 RecoveryRequired、1 号仓已清空关好」：A 在 5 号仓装好结算，B 在 1 号仓开门后
     /// 操作员不动，按「取消装货」，替身在授权前把 1 号仓锁反馈设成读不到。
     /// </summary>
