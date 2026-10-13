@@ -68,7 +68,8 @@ public partial class MainViewModel
     /// <summary>
     /// Counts the work items that write the ten entries' final values: each input refresh
     /// (<c>RefreshWireToGateInputStateCore</c>, which the presentation path follows in the same work item wherever both
-    /// run) and each controller snapshot, the one caller that runs the presentation path alone. Every such work item
+    /// run) and each controller snapshot the presentation path writes the entries for, the one caller that runs it alone
+    /// (none while WIRE_TO_GATE is off or before the first session status, when it writes nothing). Every such work item
     /// writes all ten, but the presentation path's latch branch writes nine of them false without reading the business,
     /// so after a controller snapshot while latched those nine offers carry a lower number: the business value as of an
     /// earlier work item.

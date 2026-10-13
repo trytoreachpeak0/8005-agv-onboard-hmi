@@ -2358,8 +2358,14 @@ public sealed partial class MainViewModel : ViewModelBase
 
         AppendOperatorRecord(snapshot);
         LogOperatorVisibleError(snapshot);
-        // The only caller that runs the presentation path without the input refresh first (onboard-hmi#314).
-        BeginRecoveryEntryRefresh();
+        // The only caller that runs the presentation path without the input refresh first (onboard-hmi#314). Counted
+        // only when the presentation path will write the entries: it returns before writing any while WIRE_TO_GATE is
+        // off or no session status has come yet, and a count then would mark every offer as of an earlier work item.
+        if (_wireToGateEnabled && _wireToGateSession is not null)
+        {
+            BeginRecoveryEntryRefresh();
+        }
+
         ApplyWireToGatePresentationCore();
     }
 
