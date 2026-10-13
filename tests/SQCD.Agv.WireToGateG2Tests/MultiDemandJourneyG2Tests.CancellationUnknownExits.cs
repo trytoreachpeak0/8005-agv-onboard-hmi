@@ -238,6 +238,58 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
+    /// 重启后与重启前一致：取消入口与修复续行入口仍关着，补偿入口照样给出，门的疑点仍在日志簿里。「这次取消已有结论」
+    /// 在进程里只是个缓存，重启就没了；入口要从发件箱里那条取消结果读回来，不能因为缓存空了又亮起来。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task AcrossARestartAnAcknowledgedUnknownCancellationStaysShutAndCompensable()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        string journalPath = Harness.NewJournalPath();
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness first = await StartCancellationUnknownStopAsync(io, token, journalPath: journalPath);
+        await CancelBEndingUnknownAsync(first, io, token);
+        await first.WaitUntilAsync(
+            () => ReadJournal(first, token).RecoveryVector is null,
+            "the acknowledged cancellation's vector to leave the journal",
+            token);
+        await first.StopVehicleAsync();
+        first.Server.SimulateOnboardProcessRestart();
+
+        await using Harness afterRestart = await Harness.StartAgainstAsync(
+            first.Server,
+            token,
+            journalPath,
+            io,
+            recoveryOptions: TakeOverRecovery,
+            messageTimeout: TimeSpan.FromSeconds(30));
+        await afterRestart.WaitUntilAsync(
+            () => afterRestart.Session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired
+                && afterRestart.Business.CanRequestLoadCompensation,
+            "the restarted vehicle held for B's recovery, with the compensation entry offered",
+            token);
+        await HoldsForHalfASecondAsync(
+            () =>
+            {
+                Assert.False(afterRestart.Business.CanRequestLoadCancellation);
+                Assert.False(afterRestart.Business.CanRequestResumeAfterRepair);
+                Assert.True(afterRestart.Business.CanRequestLoadCompensation);
+            },
+            token);
+
+        WireToGateRecoveryState onFile = ReadJournal(afterRestart, token);
+        Assert.Null(onFile.RecoveryVector);
+        Assert.Equal(AttemptB, onFile.UnsettledSlotOperationAttemptId);
+        Assert.Equal(AttemptB, onFile.TakenOverSlotOperationAttemptId);
+        Assert.Equal([1], onFile.ActiveUnlockSlots);
+        Assert.Single(first.Server.ReceivedEnvelopes, envelope => envelope.MessageType == "LoadCancellationStartRequested");
+        Assert.Equal(2, io.UnlockCount);
+        Assert.Empty(afterRestart.UiErrors);
+    }
+
+    /// <summary>
     /// 走到「B 的取消报 UNKNOWN、服务端已确认、会话 RecoveryRequired、1 号仓已清空关好」：A 在 5 号仓装好结算，B 在 1 号仓开门后
     /// 操作员不动，按「取消装货」，替身在授权前把 1 号仓锁反馈设成读不到。
     /// </summary>
