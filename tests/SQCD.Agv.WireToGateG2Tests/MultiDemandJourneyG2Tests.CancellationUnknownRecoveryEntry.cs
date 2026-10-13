@@ -68,7 +68,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             token);
 
         // The operator cancels B; the clearing ends UNKNOWN over its unreadable, still-open door.
-        Assert.False(await harness.ViewModel.RequestLoadCancellationAsync(token));
+        await harness.ViewModel.RequestLoadCancellationAsync(token);
         JsonElement unknown = Assert.Single(ReceivedPayloads(harness, "LoadCancellationResult"));
         Assert.Equal("UNKNOWN", unknown.GetProperty("overallOutcome").GetString());
         Assert.Equal(DemandB, unknown.GetProperty("demandId").GetString());

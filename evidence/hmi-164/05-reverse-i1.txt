@@ -1,0 +1,43 @@
+# 注入 I1（未提交，跑完 git checkout 还原）
+## diff
+diff --git a/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs b/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+index ee9a5f4..eefb6fb 100644
+--- a/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
++++ b/src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs
+@@ -644,7 +644,7 @@ public sealed partial class WireToGateBusinessService
+             return vector.VectorType == WireToGateRecoveryVectorTypes.LoadCancellation && !IsAwaitingManualCheck(state)
+                 ? new LoadCancellationTarget(
+                     $"vector:{vector.PrimaryId}",
+-                    vector.DemandId,
++                    selectedDemandId ?? vector.DemandId,
+                     !WireToGateRecoveryVectorTypes.IsLoadCancellationBeforeSublot(vector))
+                 : null;
+         }
+
+## dotnet test --filter "ProtocolVector=CV-LOAD-CANCELLATION-ALL-EMPTY"
+  All projects are up-to-date for restore.
+Test run for F:\8005-wt\hmi164-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:07.74]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.WithAnInFlightCancellationOnFileTheConfirmationNamesItsDemandNotTheSelectedRow [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.WithAnInFlightCancellationOnFileTheConfirmationNamesItsDemandNotTheSelectedRow [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the confirmation to name A, the demand the cancellation on file is about. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in F:\8005-wt\hmi164-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 741
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.WithAnInFlightCancellationOnFileTheConfirmationNamesItsDemandNotTheSelectedRow() in F:\8005-wt\hmi164-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.LateLoadCancellationPress.cs:line 503
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.WithAnInFlightCancellationOnFileTheConfirmationNamesItsDemandNotTheSelectedRow() in F:\8005-wt\hmi164-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.LateLoadCancellationPress.cs:line 513
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:13.09]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnInFlightCancellationOfTheSecondDemandEndingUnknownLeavesTheRecoveryEntryOnThatDemand [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnInFlightCancellationOfTheSecondDemandEndingUnknownLeavesTheRecoveryEntryOnThatDemand [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the recovery entry to be up over B, the cancelled demand. UI errors: []
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Harness.WaitUntilAsync(Func`1 predicate, String expectation, CancellationToken cancellationToken) in F:\8005-wt\hmi164-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.cs:line 741
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnInFlightCancellationOfTheSecondDemandEndingUnknownLeavesTheRecoveryEntryOnThatDemand() in F:\8005-wt\hmi164-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationUnknownRecoveryEntry.cs:line 78
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnInFlightCancellationOfTheSecondDemandEndingUnknownLeavesTheRecoveryEntryOnThatDemand() in F:\8005-wt\hmi164-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationUnknownRecoveryEntry.cs:line 127
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     2, Passed:    24, Skipped:     0, Total:    26, Duration: 36 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

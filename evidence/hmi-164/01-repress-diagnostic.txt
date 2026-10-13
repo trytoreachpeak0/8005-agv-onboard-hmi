@@ -1,0 +1,31 @@
+# hmi#164 临时诊断：UNKNOWN 之后经按键路径再按一次取消，车上做了什么
+# 来源：基线 f487a16 + 新用例的一个未提交诊断版本（在第二次按下前 io.CloseDoor(0, cargo: false)，按下后等 1.5 s，用 Assert.Fail 打印）。诊断已撤掉，正式用例见 9955765。
+# EVENTS 为第二次按下之后新增的已发布操作员事件（空）；RESULTS 为服务端收到的全部取消类报文；JOURNAL 为日志簿；ENTRIES 为车上技术日志最后几条；LOG 为屏上操作记录最后 8 行。
+
+  Error Message:
+   DIAG second=False unlocks=2
+EVENTS:
+
+RESULTS:
+LoadCancellationStartRequested {"protocolVersion":4,"profileId":"AGV_FULL_PRODUCT","protocolReleaseVersion":"3.0.0","protocolReleaseManifestSha256":"d5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e","messageType":"LoadCancellationStartRequested","messageId":"02d6ce3c-6665-410f-8fa6-1248edc86ec0","correlationId":null,"agvId":"AGV-8005-01","sessionGeneration":1,"sentAt":"2026-10-13T10:09:28.887221+00:00","payload":{"cancellationId":"b3b098c3-6784-c555-ab63-4e31e2a5ce9e","demandId":"bbbbbbbb-0000-4000-8000-00000000000b","slotOperationAttemptId":"44444444-0000-4444-8444-00000000000b","operator":{"operatorId":"operator-134","verificationMethod":"SESSION","verifiedAt":"2026-10-13T10:09:28.8771221\u002B00:00"},"reason":"\u73B0\u573A\u786E\u8BA4\u88C5\u8D27\u53D6\u6D88\uFF0C\u7533\u8BF7\u5C06\u76EE\u6807\u4ED3\u4F4D\u6E05\u7A7A\u3002"}}
+LoadCancellationResult {"protocolVersion":4,"profileId":"AGV_FULL_PRODUCT","protocolReleaseVersion":"3.0.0","protocolReleaseManifestSha256":"d5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e","messageType":"LoadCancellationResult","messageId":"7987a1fe-8194-b351-95df-d083401e23ea","correlationId":null,"agvId":"AGV-8005-01","sessionGeneration":1,"sentAt":"2026-10-13T10:09:28.9751253+00:00","payload":{"cancellationId":"b3b098c3-6784-c555-ab63-4e31e2a5ce9e","demandId":"bbbbbbbb-0000-4000-8000-00000000000b","slotOperationAttemptId":"44444444-0000-4444-8444-00000000000b","overallOutcome":"UNKNOWN","slotResults":[{"slotNo":1,"outcome":"UNKNOWN","finalPhysicalState":"UNKNOWN","lockState":"UNKNOWN","unlockOutputState":"UNKNOWN","reasonCodes":["SLOT_STATE_UNKNOWN"]}],"observedAt":"2026-10-13T10:09:28.961224\u002B00:00"}}
+JOURNAL vector=bbbbbbbb-0000-4000-8000-00000000000b cp=Prepared active=1
+TECHLOG:
+
+ENTRIES:
+Information WireToGateBusinessService 重连后检查授权请求：generation=1，vector=none/none，commandBound=False，结论=无待授权的补偿或修正。
+Information WireToGateSessionClient 收到SessionReadiness：messageId=2a605b4f-7776-4200-b2c6-fc0cf8a36519，generation=1，readiness=RECOVERY_REQUIRED，reasonCodes=[SESSION_RECOVERY_REQUIRED]，acceptedSafetyStateVersion=2。
+Information WireToGateSessionClient 会话状态发布：source=SessionReadiness，connected=True，generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=2。
+Information WireToGateBusinessService 判恢复入口：generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，subject=Load/bbbbbbbb-0000-4000-8000-00000000000b/44444444-0000-4444-8444-00000000000b（在途操作），recoveryVector=LOAD_CANCELLATION，recoverySession=none，faultCargoHandoff=False。
+Information WireToGateSessionClient 会话状态发布：source=SafetyStateChanged-ack，connected=True，generation=1，readiness=RecoveryRequired，reasonCodes=[SESSION_RECOVERY_REQUIRED]，safetyStateVersion=3。
+Information WireToGateBusinessService 恢复向量结果的DurableAck不在首次发送时到达，按发件箱已确认的结果收尾：type=LOAD_CANCELLATION，id=b3b098c3-6784-c555-ab63-4e31e2a5ce9e，outcome=UNKNOWN，messageId=7987a1fe-8194-b351-95df-d083401e23ea。
+UIERR:
+LOG:
+操作 正在处理1号仓。
+操作 1号仓操作未完成，需要恢复处理。
+系统 装货取消已获服务端授权，装货已停止，开始将1号仓清空。 
+操作 准备执行恢复向量：1号仓。
+故障 1号仓操作失败或状态未知，服务端已收到结果，等待管理员恢复。
+操作 恢复向量未完成，已保持故障安全并准备上报未知/失败结果。
+操作 恢复向量 LOAD_CANCELLATION 尚未完成：1号仓，请保持车辆停稳。
+故障 恢复结果已上报，但物理状态仍未达到可确认条件；请保持车辆停稳并等待下一步处理。 
