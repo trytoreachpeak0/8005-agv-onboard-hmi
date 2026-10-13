@@ -1,0 +1,17 @@
+board227: - 持有者：hmi#343
+start 21:25:54
+ src/SQCD.Agv.Wpf/WireToGateBusinessService.RecoveryVectors.cs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+a-m3-mut-1 exit=1
+a-m3-mut-2 exit=1
+a-m3-mut-3 exit=1
+b exit=1
+round 1: Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12, Duration: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12, Duration: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12, Duration: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) 
+round 2: Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12, Duration: 25 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12, Duration: 25 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12, Duration: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) 
+round 3: Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12, Duration: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12, Duration: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12, Duration: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) 
+round 4: Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12, Duration: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12, Duration: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) Passed!  - Failed:     0, Passed:    12, Skipped:     0, Total:    12, Duration: 24 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0) 
+family exit=0 Passed!  - Failed:     0, Passed:   485, Skipped:     0, Total:   485, Duration: 2 m 51 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+unit exit=0 Passed!  - Failed:     0, Passed:  1158, Skipped:     0, Total:  1158, Duration: 19 s - SQCD.Agv.UnitTests.dll (net8.0)
+end 21:38:42
+
+[exited with code 0]
