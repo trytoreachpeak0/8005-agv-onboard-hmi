@@ -1702,7 +1702,7 @@ public sealed partial class RecoveryVectorG2Tests
             // A restart over a journal whose settled load is gone has no correction entry to wait for: a compensation in
             // the first run ended the demand, and the journey's closure that followed dropped the record
             // (8005-agv-onboard-hmi#330). It is the empty journal's case then.
-            bool settledLoadOnFile = !(restart && loadAlreadySettled)
+            bool settledLoadOnFile = !restart
                 || (await journal.ReadRecoveryStateAsync(cancellationToken)).LastCompletedLoadOperationContext is not null;
             int safetyReportsBefore = server.Received.Count(item => item.MessageType == "SafetyStateChanged");
             business.Start();
