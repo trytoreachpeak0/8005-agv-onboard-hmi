@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Reflection;
 using System.Text.Json;
 using SQCD.Agv.Application;
 using SQCD.Agv.Core;
@@ -118,6 +119,21 @@ public sealed class OperatorRecordLogTests
         Assert.Equal(1, again.RootElement.GetProperty("cleared").GetInt32());
     }
 
+    /// <summary>A replaced line puts a new line on screen, so it is written like an added one (review L2; nothing replaces today).</summary>
+    [Fact]
+    public void AReplacedLineIsWrittenAsTheNewLine()
+    {
+        ObservableCollection<LogLineViewModel> logs = [Line("原来那条")];
+        RecordingLogger logger = new();
+        using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, logs, logger);
+
+        logs[0] = Line("换上的那条");
+
+        using JsonDocument line = Parse(Assert.Single(logger.Entries).Message);
+        Assert.Equal("APPENDED", line.RootElement.GetProperty("action").GetString());
+        Assert.Equal("换上的那条", line.RootElement.GetProperty("message").GetString());
+    }
+
     /// <summary>
     /// Research 4.3 item 1: a logger that throws something other than an IO failure does not get out of
     /// <c>Logs.Add</c>; the record log turns itself off and does not try again.
@@ -227,6 +243,78 @@ public sealed class OperatorRecordLogTests
         Assert.Equal(300, viewModel.Logs.Count);
         Assert.Equal(305, logger.Entries.Count(entry => entry.Source == nameof(OperatorRecordLog)));
         Assert.All(logger.Entries, entry => Assert.Contains("\"APPENDED\"", entry.Message, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The operator-event write site (<c>MainViewModel.ApplyWireToGateOperatorEvent</c>) names its source, the event's own
+    /// kind, and the slot operation attempt the event carries (T4 acceptance, first item; review S1).
+    /// </summary>
+    [Fact]
+    public async Task AnOperatorEventLineCarriesItsAttemptAndKind()
+    {
+        await using OnboardController controller = MultiDemandViewModelTests.Controller();
+        MainViewModel viewModel = await MultiDemandViewModelTests.ViewModel(controller);
+        RecordingLogger logger = new();
+        using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger);
+        DateTimeOffset now = DateTimeOffset.Now;
+
+        viewModel.ApplyWireToGateOperatorEvent(new WireToGateOperatorEvent(
+            now,
+            "OPERATION_PROGRESS",
+            "1号仓开锁中。",
+            new WireToGateHmiOperationSnapshot("attempt-T4-9", OperationType.Load, [1], WireToGateHmiOperationStage.Unlocking, "开锁中", now)));
+
+        using JsonDocument line = Parse(Assert.Single(logger.Entries).Message);
+        Assert.Equal("OperatorEvent", line.RootElement.GetProperty("source").GetString());
+        Assert.Equal("OPERATION_PROGRESS", line.RootElement.GetProperty("eventKind").GetString());
+        Assert.Equal("attempt-T4-9", line.RootElement.GetProperty("attemptId").GetString());
+    }
+
+    /// <summary>
+    /// The controller-record write site (<c>MainViewModel.AppendOperatorRecord</c>) names its source and puts the
+    /// controller's <c>OperationId</c> in <c>attemptId</c> -- the legacy controller's operation number, not a W2G slot
+    /// operation attempt; the two share the field (review S1). The snapshot reaches the view model through its
+    /// <c>StateChanged</c> handler, invoked here by reflection because a disabled rule gateway never lets the real
+    /// controller reach <c>Operating</c>.
+    /// </summary>
+    [Fact]
+    public async Task AControllerRecordLineCarriesTheControllersOperationId()
+    {
+        await using OnboardController controller = MultiDemandViewModelTests.Controller();
+        MainViewModel viewModel = await MultiDemandViewModelTests.ViewModel(controller);
+        RecordingLogger logger = new();
+        using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger);
+        DateTimeOffset now = DateTimeOffset.Now;
+        OnboardSnapshot operating = new(
+            OnboardState.Operating,
+            RuleConnected: true,
+            IoConnected: true,
+            new VisitContext("VISIT-T4", "ST-T4", "T4 站", true, now.AddMinutes(10)),
+            IoSnapshot.Unknown(now),
+            new ActiveOperation("VISIT-T4", "OP-T4-7", "TASK-T4", "SUBLOT-T4", 0, OperationType.Load, OperationStage.WritingUnlock, now),
+            DeparturePermitted: false,
+            "1号仓开锁中",
+            ErrorCode: null,
+            now);
+
+        MethodInfo handler = typeof(MainViewModel).GetMethod("OnStateChanged", BindingFlags.Instance | BindingFlags.NonPublic)
+            ?? throw new InvalidOperationException("MainViewModel.OnStateChanged not found.");
+        handler.Invoke(viewModel, [controller, new ValueChangedEventArgs<OnboardSnapshot>(operating)]);
+
+        JsonDocument[] lines = [.. logger.Entries.Select(entry => Parse(entry.Message))];
+        try
+        {
+            JsonDocument record = Assert.Single(lines, line => line.RootElement.GetProperty("source").GetString() == "ControllerRecord");
+            Assert.Equal("OP-T4-7", record.RootElement.GetProperty("attemptId").GetString());
+            Assert.Equal(JsonValueKind.Null, record.RootElement.GetProperty("eventKind").ValueKind);
+        }
+        finally
+        {
+            foreach (JsonDocument line in lines)
+            {
+                line.Dispose();
+            }
+        }
     }
 
     private static LogLineViewModel Line(string message) =>

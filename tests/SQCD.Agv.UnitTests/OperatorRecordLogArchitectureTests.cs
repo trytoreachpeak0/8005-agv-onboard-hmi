@@ -149,6 +149,11 @@ public sealed class OperatorRecordLogArchitectureTests
         {
             string code = string.Join("\n", CSharpSourceLexer.Lex(File.ReadAllText(file)).Code);
             string name = System.IO.Path.GetFileName(file);
+            foreach (Match indexer in Regex.Matches(code, @"\bLogs\s*\["))
+            {
+                offences.Add($"{name}: Logs[…] (indexer, at offset {indexer.Index})");
+            }
+
             foreach (Match write in Regex.Matches(code, @"\bLogs\s*\.\s*(?<op>Add|Insert|Clear|RemoveAt|Remove|Move)\s*\("))
             {
                 string op = write.Groups["op"].Value;

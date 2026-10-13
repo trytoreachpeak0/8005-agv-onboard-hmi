@@ -25,7 +25,8 @@ namespace SQCD.Agv.Wpf.OperatorRecordOutput;
 /// <para>
 /// <b>Line shape.</b> Message column <c>操作记录 {json}</c>, one JSON object with <c>action</c> (<c>APPENDED</c> or
 /// <c>CLEARED</c>), and for an appended line <c>at</c>, <c>source</c>, <c>kind</c>, <c>eventKind</c>, <c>attemptId</c>,
-/// <c>message</c>; for a clear, <c>cleared</c>. JSON escapes the tabs and line breaks a message could carry, so the line
+/// <c>message</c>; for a clear, <c>cleared</c>. <c>attemptId</c> means the W2G slot operation attempt for an operator event
+/// and the legacy controller's operation id for a controller record; read it with <c>source</c>. JSON escapes the tabs and line breaks a message could carry, so the line
 /// stays one line with the logger's tab-separated columns intact.
 /// </para>
 /// <para>
@@ -172,6 +173,8 @@ internal sealed class OperatorRecordLog : IDisposable
                 switch (e.Action)
                 {
                     case NotifyCollectionChangedAction.Add:
+                    // Nothing replaces a line today; one that did would put a new line on screen, so it is written as one.
+                    case NotifyCollectionChangedAction.Replace:
                         foreach (LogLineViewModel line in e.NewItems?.OfType<LogLineViewModel>() ?? [])
                         {
                             lines.Add(Appended(line));

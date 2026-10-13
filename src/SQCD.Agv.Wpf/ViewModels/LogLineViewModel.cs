@@ -5,7 +5,10 @@ namespace SQCD.Agv.Wpf.ViewModels;
 
 /// <summary>One line of the operator record (「操作记录」) on screen.</summary>
 /// <param name="Source">Which of the write sites produced it; written to the technical log by <c>OperatorRecordLog</c> (onboard-hmi#317), not shown on screen.</param>
-/// <param name="AttemptId">The slot operation attempt the line is about, when its source knows one; technical log only.</param>
+/// <param name="AttemptId">What operation the line is about, when its source knows one; technical log only. Two meanings share
+/// it: for <see cref="OperatorRecordSource.OperatorEvent"/> the W2G slot operation attempt id, for
+/// <see cref="OperatorRecordSource.ControllerRecord"/> the legacy controller's <c>ActiveOperation.OperationId</c>. Read it
+/// together with the source (onboard-hmi#317 review S1).</param>
 /// <param name="EventKind">The business event's own kind (for example <c>SUBLOT_REJECTED</c>) for <see cref="OperatorRecordSource.OperatorEvent"/>; technical log only.</param>
 public sealed record LogLineViewModel(
     DateTimeOffset Timestamp,
