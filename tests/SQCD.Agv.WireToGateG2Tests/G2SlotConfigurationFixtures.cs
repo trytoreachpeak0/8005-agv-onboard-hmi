@@ -29,7 +29,7 @@ internal static class G2SlotConfigurationFixtures
                 $"DO{number}",
                 $"DI{number}",
                 $"DI{number + 8}",
-                "ACTIVE_HIGH",
+                "UNLOCK_OUTPUT_ACTIVE_HIGH;LOCK_FEEDBACK_LOCKED_HIGH;LIGHT_CURTAIN_OBJECT_LOW",
                 500))
         ]);
 
