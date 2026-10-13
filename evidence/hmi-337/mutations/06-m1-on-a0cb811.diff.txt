@@ -1,0 +1,12 @@
+diff --git a/tests/SQCD.Agv.WireToGateG2Tests/MultiDemandJourneyG2Tests.Paths.cs b/tests/SQCD.Agv.WireToGateG2Tests/MultiDemandJourneyG2Tests.Paths.cs
+index 72a4c28..6b25ca2 100644
+--- a/tests/SQCD.Agv.WireToGateG2Tests/MultiDemandJourneyG2Tests.Paths.cs
++++ b/tests/SQCD.Agv.WireToGateG2Tests/MultiDemandJourneyG2Tests.Paths.cs
+@@ -694,7 +694,6 @@ public sealed partial class MultiDemandJourneyG2Tests
+             // accepted state, the reading is what the vehicle last reported: a later wake-up finds the same signature
+             // and reports nothing, so the version read below is still the accepted one when the check arrives. No
+             // settling delay follows: the wait is the whole of it, so a wait that let go early would show.
+-            io.PublishSnapshot();
+             await WaitForReportedSafetyAcceptedAsync(
+                 harness,
+                 safety => !safety.GetProperty("departureSafe").GetBoolean()

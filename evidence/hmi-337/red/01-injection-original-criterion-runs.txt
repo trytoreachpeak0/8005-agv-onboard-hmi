@@ -1,0 +1,36 @@
+    0 Error(s)
+
+Time Elapsed 00:00:11.68
+=== run 1 2026-10-13T18:12:09+08:00
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.APreDepartureCheckNamingTheFirstDemandIsAnsweredAsForOneItem(expected: "UNSAFE") [5 s]
+   Timed out after 5s waiting for: the control server to receive PreDepartureSafetyCheckResult. UI errors: []
+Failed!  - Failed:     1, Passed:     3, Skipped:     0, Total:     4, Duration: 13 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1
+=== run 2 2026-10-13T18:13:19+08:00
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.APreDepartureCheckNamingTheFirstDemandIsAnsweredAsForOneItem(expected: "UNSAFE") [5 s]
+   Timed out after 5s waiting for: the control server to receive PreDepartureSafetyCheckResult. UI errors: []
+Failed!  - Failed:     1, Passed:     3, Skipped:     0, Total:     4, Duration: 13 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1
+=== run 3 2026-10-13T18:14:09+08:00
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.APreDepartureCheckNamingTheFirstDemandIsAnsweredAsForOneItem(expected: "UNSAFE") [5 s]
+   Timed out after 5s waiting for: the control server to receive PreDepartureSafetyCheckResult. UI errors: []
+Failed!  - Failed:     1, Passed:     3, Skipped:     0, Total:     4, Duration: 13 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1
+=== run 4 2026-10-13T18:14:57+08:00
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.APreDepartureCheckNamingTheFirstDemandIsAnsweredAsForOneItem(expected: "UNSAFE") [5 s]
+   Timed out after 5s waiting for: the control server to receive PreDepartureSafetyCheckResult. UI errors: []
+Failed!  - Failed:     1, Passed:     3, Skipped:     0, Total:     4, Duration: 13 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1
+=== run 5 2026-10-13T18:15:42+08:00
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.APreDepartureCheckNamingTheFirstDemandIsAnsweredAsForOneItem(expected: "UNSAFE") [5 s]
+   Timed out after 5s waiting for: the control server to receive PreDepartureSafetyCheckResult. UI errors: []
+Failed!  - Failed:     1, Passed:     3, Skipped:     0, Total:     4, Duration: 13 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1
+    0 Error(s)
+
+Time Elapsed 00:00:04.98
+=== run 1 2026-10-13T18:16:42+08:00
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.APreDepartureCheckNamingTheFirstDemandIsAnsweredAsForOneItem(expected: "UNSAFE") [6 s]
+   Timed out after 5s waiting for: the control server to receive PreDepartureSafetyCheckResult. UI errors: []
+Failed!  - Failed:     1, Passed:     3, Skipped:     0, Total:     4, Duration: 14 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1

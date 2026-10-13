@@ -1,0 +1,28 @@
+diff --git a/tests/SQCD.Agv.WireToGateG2Tests/MultiDemandJourneyG2Tests.Paths.cs b/tests/SQCD.Agv.WireToGateG2Tests/MultiDemandJourneyG2Tests.Paths.cs
+index 72a4c28..45a3600 100644
+--- a/tests/SQCD.Agv.WireToGateG2Tests/MultiDemandJourneyG2Tests.Paths.cs
++++ b/tests/SQCD.Agv.WireToGateG2Tests/MultiDemandJourneyG2Tests.Paths.cs
+@@ -708,6 +708,23 @@ public sealed partial class MultiDemandJourneyG2Tests
+         }
+ 
+         long version = harness.Session.Current.SafetyStateVersion;
++        // HMI337-INJECTION: one session state publication between reading the version and the check.
++        if (expected != "PREDEPARTURE_CHECK_EXPIRED")
++        {
++            bool reportedSafeBefore = LatestReportedSafety(harness).GetProperty("departureSafe").GetBoolean();
++            await harness.Server.SendSessionReadinessAsync();
++            DateTimeOffset injectionUntil = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(3);
++            while (harness.Session.Current.SafetyStateVersion == version && DateTimeOffset.UtcNow < injectionUntil)
++            {
++                await Task.Delay(10, token);
++            }
++
++            System.IO.File.AppendAllText(
++                "F:/8005-scratch/hmi337/injection-round2.log",
++                $"{DateTimeOffset.Now:O} case={expected} versionRead={version} reportedDepartureSafeAtRead={reportedSafeBefore} "
++                + $"versionAfterInjection={harness.Session.Current.SafetyStateVersion}{Environment.NewLine}");
++        }
++
+         string checkId = Guid.NewGuid().ToString("D");
+         await harness.Server.SendCommandAsync(
+             "PreDepartureSafetyCheck",

@@ -684,7 +684,29 @@ public sealed partial class MultiDemandJourneyG2Tests
             io.SetUnreadable(3);
         }
 
-        await Task.Delay(300, token);
+        if (expected is "UNSAFE" or "UNKNOWN")
+        {
+            // Neither the pulse nor the unreadable slot announces itself (FakeIoModuleClient raises SnapshotChanged only
+            // on PublishSnapshot), so the changed reading reaches the server whenever something else next wakes the
+            // safety report -- a session state publication, say. Woken between reading the version below and the check,
+            // it is accepted as version+1 and the check, asked under the version before, is refused as
+            // PREDEPARTURE_CHECK_EXPIRED (8005-agv-onboard-hmi#337). Announced here and waited for until it is the
+            // accepted state, the reading is what the vehicle last reported: a later wake-up finds the same signature
+            // and reports nothing, so the version read below is still the accepted one when the check arrives. No
+            // settling delay follows: the wait is the whole of it, so a wait that let go early would show.
+            io.PublishSnapshot();
+            await WaitForReportedSafetyAcceptedAsync(
+                harness,
+                safety => !safety.GetProperty("departureSafe").GetBoolean()
+                    && safety.GetProperty("unknownPresent").GetBoolean() == (expected == "UNKNOWN"),
+                expected == "UNKNOWN" ? "the unreadable slot" : "A's open door",
+                token);
+        }
+        else
+        {
+            await Task.Delay(300, token);
+        }
+
         long version = harness.Session.Current.SafetyStateVersion;
         string checkId = Guid.NewGuid().ToString("D");
         await harness.Server.SendCommandAsync(
@@ -727,6 +749,36 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(2, harness.WorklistRows().Length);
         Assert.Empty(harness.UiErrors);
     }
+
+    /// <summary>
+    /// Waits until the safety state this vehicle last reported -- a full snapshot or a change -- is the one
+    /// <paramref name="matches"/> describes and the server has accepted its version (8005-agv-onboard-hmi#337).
+    /// </summary>
+    private static Task WaitForReportedSafetyAcceptedAsync(
+        Harness harness,
+        Func<JsonElement, bool> matches,
+        string what,
+        CancellationToken token) =>
+        harness.WaitUntilAsync(
+            () =>
+            {
+                (JsonElement Safety, long Version)[] reported =
+                [
+                    .. harness.Server.ReceivedEnvelopes
+                        .Where(envelope => envelope.MessageType is "SafetyStateSnapshot" or "SafetyStateChanged")
+                        .Select(envelope =>
+                        {
+                            using JsonDocument document = JsonDocument.Parse(envelope.WireLine);
+                            JsonElement payload = document.RootElement.GetProperty("payload");
+                            return (payload.GetProperty("safety").Clone(), payload.GetProperty("safetyStateVersion").GetInt64());
+                        })
+                ];
+                return reported.Length > 0
+                    && matches(reported[^1].Safety)
+                    && harness.Session.Current.SafetyStateVersion >= reported[^1].Version;
+            },
+            $"{what} to be the accepted safety state",
+            token);
 
     /// <summary>
     /// The first demand's load ends <c>FAILED</c> (refused before any unlock) or <c>UNKNOWN</c> (the
