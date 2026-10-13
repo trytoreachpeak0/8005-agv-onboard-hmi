@@ -23,6 +23,12 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// comes back empty, which is turned into an <c>InvalidOperationException</c>.
 /// </para>
 /// <para>
+/// <b>The indexed copy is deliberate; do not turn it into an enumeration</b> (<c>[.. viewModel.Logs]</c>,
+/// <c>ToArray()</c>, <c>foreach</c>). Nothing would go red if it were: ViewModelLogsReadArchitectureTests only counts
+/// that this file reads the log once, and no test races an append against this method. The tolerance is shown only
+/// by the probe kept in <c>evidence/hmi307/</c> (onboard-hmi#307 review S2).
+/// </para>
+/// <para>
 /// <b>What the retry cannot repair.</b> <c>TrimLogs</c> removes from the front once the log passes 300 lines; a removal
 /// in the middle of a copy can shift a line out of it without any exception. Only
 /// <c>OperatorRecordLogTests.TheScreenKeepsTheLast300LinesAndTheLogKeepsEveryOne</c> goes past 300, and it appends

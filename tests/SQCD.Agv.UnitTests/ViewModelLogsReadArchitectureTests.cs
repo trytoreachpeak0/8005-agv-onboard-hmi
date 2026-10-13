@@ -29,6 +29,15 @@ namespace SQCD.Agv.UnitTests;
 /// (<c>viewModel.Logs.Any(...)</c>, <c>.Count</c>, an index) is reported with or without it.
 /// </para>
 /// <para>
+/// <b>The marked lines are registered.</b> The shape check cannot tell a subscriber from something that enumerates
+/// what it is given: <c>Assert.Contains(viewModel.Logs, ...)</c>, <c>Assert.Single(viewModel.Logs)</c>,
+/// <c>string.Join(",", viewModel.Logs)</c> and a <c>foreach</c> all hand the reference on as it is (onboard-hmi#307
+/// review S1: nine such forms, all let through). So <see cref="MarkedReferences"/> lists, per file, the code of
+/// every marked line, and a marked line that is added, removed or rewritten turns the guard red until the list is
+/// changed to match. No line is judged by meaning; the list makes a new or changed exemption a line in this file's
+/// diff, where a reviewer reads it.
+/// </para>
+/// <para>
 /// <b>What this cannot see.</b> It looks for two written forms, <c>ViewModel.Logs</c> and <c>viewModel.Logs</c>,
 /// on a single line with no identifier character in front (so <c>harness.ViewModel.Logs</c>, a bare
 /// <c>ViewModel.Logs</c> and a local <c>viewModel.Logs</c>; not <c>_viewModel.Logs</c> or <c>MainViewModel.Logs</c>),
@@ -37,8 +46,10 @@ namespace SQCD.Agv.UnitTests;
 /// and <c>.Logs</c> on the next, <c>var vm = harness.ViewModel;</c> followed by <c>vm.Logs.Any(...)</c>, a view
 /// model held under another name (<c>OperatorRecordLogDispatcherTests</c> reads <c>observed.Logs</c> and
 /// <c>reference.Logs</c>, inside <c>Dispatcher.Invoke</c> or as a reference handed on), reflection, a marked
-/// reference handed to something that enumerates it (<c>Assert.Contains(viewModel.Logs, ...)</c> looks the same
-/// as a reference handed on), or a <c>/* ... */</c> block comment that happens to contain a form (a false report,
+/// reference handed to something that enumerates it when that line is registered as it stands (the list pins the
+/// text, not what the receiver does with it; a reviewer reading the list is the check), a <c>//</c> inside a string
+/// before a form on the same line (the comment is cut at the first <c>//</c>, so the form is dropped with it), or a
+/// <c>/* ... */</c> block comment that happens to contain a form (a false report,
 /// not a miss). A string literal containing a form is reported too, which is why sample text elsewhere spells it
 /// as a concatenation. Chasing every such spelling is not the goal; keeping the forms everyone copies from going
 /// back in is.
@@ -64,6 +75,45 @@ public sealed class ViewModelLogsReadArchitectureTests
 
     /// <summary>The exemption marker, with at least one word of reason after it.</summary>
     private static readonly Regex Marker = new(@"^\s*logs-reference:\s*\S", RegexOptions.CultureInvariant);
+
+    /// <summary>The marker as written, reason or not: what <see cref="MarkedLines"/> counts.</summary>
+    private const string MarkerText = "logs-reference:";
+
+    /// <summary>
+    /// Every marked line in the test sources, as file name and the line's code (trimmed, comment dropped), in file
+    /// order. Each of these hands <c>viewModel.Logs</c> to something that subscribes to it and reads no line:
+    /// <c>OperatorRecordLog.TryStart</c> hooks <c>CollectionChanged</c>, and <c>Handlers</c> counts its handlers.
+    /// Change this list only together with the line it names; a change here is an exemption a reviewer has to read.
+    /// </summary>
+    private static readonly IReadOnlyDictionary<string, string[]> MarkedReferences = new Dictionary<string, string[]>(StringComparer.Ordinal)
+    {
+        ["HmiScreenStateWiringTests.cs"] =
+        [
+            "Handlers(viewModel.Logs, \"CollectionChanged\"),",
+        ],
+        ["MultiDemandViewModelTests.cs"] =
+        [
+            "SQCD.Agv.Wpf.OperatorRecordOutput.OperatorRecordLog.TryStart(new LogSettings { OperatorRecords = true }, viewModel.Logs, log);",
+        ],
+        ["OperatorEventVisibilityTests.cs"] =
+        [
+            "viewModel.Logs,",
+        ],
+        ["OperatorRecordLogDispatcherTests.cs"] =
+        [
+            "viewModel.Logs,",
+        ],
+        ["OperatorRecordLogTests.cs"] =
+        [
+            "using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger);",
+            "using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger);",
+            "using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger);",
+        ],
+        ["RecoveryVectorG2Tests.OperatorRecordLog.cs"] =
+        [
+            "OperatorRecordLog? recordLog = OperatorRecordLog.TryStart(new LogSettings { OperatorRecords = true }, viewModel.Logs, log);",
+        ],
+    };
 
     [Fact]
     public void NoTestReadsViewModelLogsOutsideTheSnapshotMethods()
@@ -159,6 +209,105 @@ public sealed class ViewModelLogsReadArchitectureTests
 
         Assert.Equal([4, 5, 6, 7, 8, 9], DirectReads(source));
     }
+
+    /// <summary>
+    /// The marked lines in the test sources are exactly the registered ones: none added, none removed, none rewritten
+    /// (onboard-hmi#307 review S1).
+    /// </summary>
+    [Fact]
+    public void EveryMarkedLineIsRegistered()
+    {
+        Dictionary<string, string[]> actual = new(StringComparer.Ordinal);
+        foreach (string path in TestSources())
+        {
+            if (Path.GetFileName(path) == nameof(ViewModelLogsReadArchitectureTests) + ".cs")
+            {
+                continue;
+            }
+
+            string[] marked = MarkedLines(File.ReadAllText(path));
+            if (marked.Length > 0)
+            {
+                actual.Add(Path.GetFileName(path), marked);
+            }
+        }
+
+        string[] mismatches = RegisterMismatches(actual, MarkedReferences);
+
+        Assert.True(
+            mismatches.Length == 0,
+            "The // logs-reference: lines differ from MarkedReferences in ViewModelLogsReadArchitectureTests; a marked line"
+            + " is an exemption, so change the list together with it:" + Environment.NewLine
+            + string.Join(Environment.NewLine, mismatches));
+    }
+
+    /// <summary>
+    /// Proves the register check is not vacuous: a marked line is read as its code alone, and an added, a missing, a
+    /// rewritten and a duplicated marked line, and a file the register does not name, are each reported.
+    /// </summary>
+    [Fact]
+    public void TheRegisterReportsEachDifference()
+    {
+        const string source = """
+            OperatorRecordLog.TryStart(settings, viewModel.Logs, log); // logs-reference: the record log subscribes to it
+                viewModel.Logs, // logs-reference:
+            int count = OperatorLogSnapshot.Of(viewModel).Length; // not marked
+            """;
+        Assert.Equal(["OperatorRecordLog.TryStart(settings, viewModel.Logs, log);", "viewModel.Logs,"], MarkedLines(source));
+
+        Dictionary<string, string[]> register = new(StringComparer.Ordinal)
+        {
+            ["A.cs"] = ["Use(viewModel.Logs, log);"],
+            ["B.cs"] = ["Use(viewModel.Logs, log);", "Hook(viewModel.Logs);"],
+            ["C.cs"] = ["Use(viewModel.Logs, log);"],
+        };
+
+        Assert.Empty(RegisterMismatches(register, register));
+        Assert.Single(RegisterMismatches(
+            new Dictionary<string, string[]>(register) { ["A.cs"] = ["Assert.Single(viewModel.Logs, log);"] },
+            register));
+        Assert.Single(RegisterMismatches(
+            new Dictionary<string, string[]>(register) { ["B.cs"] = ["Use(viewModel.Logs, log);"] },
+            register));
+        Assert.Single(RegisterMismatches(
+            new Dictionary<string, string[]>(register) { ["C.cs"] = ["Use(viewModel.Logs, log);", "Use(viewModel.Logs, log);"] },
+            register));
+        Assert.Single(RegisterMismatches(
+            new Dictionary<string, string[]>(register) { ["D.cs"] = ["Use(viewModel.Logs, log);"] },
+            register));
+        Dictionary<string, string[]> withoutC = new(register, StringComparer.Ordinal);
+        withoutC.Remove("C.cs");
+        Assert.Single(RegisterMismatches(withoutC, register));
+    }
+
+    /// <summary>The code of each line that carries the marker, reason or not: trimmed, with the comment dropped.</summary>
+    internal static string[] MarkedLines(string source)
+    {
+        List<string> marked = [];
+        foreach (string line in source.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+        {
+            int comment = line.IndexOf("//", StringComparison.Ordinal);
+            if (comment >= 0 && line.IndexOf(MarkerText, comment, StringComparison.Ordinal) >= 0)
+            {
+                marked.Add(line[..comment].Trim());
+            }
+        }
+
+        return [.. marked];
+    }
+
+    /// <summary>One line per file whose marked lines differ from the register, in either direction.</summary>
+    private static string[] RegisterMismatches(
+        Dictionary<string, string[]> actual,
+        IReadOnlyDictionary<string, string[]> register) =>
+        [.. actual.Keys.Union(register.Keys, StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+            .Select(file => (
+                File: file,
+                Actual: actual.TryGetValue(file, out string[]? found) ? found : [],
+                Registered: register.TryGetValue(file, out string[]? listed) ? listed : []))
+            .Where(entry => !entry.Actual.SequenceEqual(entry.Registered, StringComparer.Ordinal))
+            .Select(entry => $"{entry.File}: marked [{string.Join(" | ", entry.Actual)}], registered [{string.Join(" | ", entry.Registered)}]")];
 
     internal static int[] DirectReads(string source)
     {
