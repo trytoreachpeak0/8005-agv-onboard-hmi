@@ -75,11 +75,9 @@ public sealed partial class MultiDemandJourneyG2Tests
         CancellationToken token = TestContext.Current.CancellationToken;
         FakeIoModuleClient io = new() { OperatorNeverActs = true };
         await using Harness harness = await StartCancellationUnknownStopAsync(io, token);
+        // No wait on the entry: the press is the one that got past it. CancelBEndingUnknownAsync has already seen the
+        // server's readiness change, which the fake writes after the result's DurableAck.
         await CancelBEndingUnknownAsync(harness, io, token);
-        await harness.WaitUntilAsync(
-            () => !harness.Business.CanRequestLoadCancellation,
-            "the in-flight cancellation entry to shut once its UNKNOWN is acknowledged",
-            token);
 
         for (int press = 1; press <= 2; press++)
         {
