@@ -198,6 +198,46 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
+    /// 修复续行不把已取消的装货重跑：取消已有结论后「申请恢复」入口关闭，按键到了业务层也只得到一条应答，不开会话、不开门。
+    /// 修之前它走得通，续作命令重开 1 号仓、提示「请在1号仓放入货物并关门」，把操作员取消掉的装货又装一遍，跑完向量与未结尝试
+    /// 仍留在日志簿里（第 1 步实测 <c>01-probe-resume*.txt</c>）。被取消接管的装货，结论归那次取消（ADR-cross-0046），
+    /// 补偿与强制机械恢复已经走得通，所以这里选「不重跑」而不是「重跑后收尾」。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-RESUME")]
+    public async Task AResumeAfterRepairDoesNotRerunALoadWhoseCancellationIsConcluded()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await StartCancellationUnknownStopAsync(io, token);
+        await CancelBEndingUnknownAsync(harness, io, token);
+
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCompensation,
+            "the recovery entries to be offered over B",
+            token);
+        await HoldsForHalfASecondAsync(
+            () => Assert.False(harness.Business.CanRequestResumeAfterRepair),
+            token);
+
+        for (int press = 1; press <= 2; press++)
+        {
+            int eventsBefore = harness.Events.Count;
+            Assert.False(await harness.Business.RequestResumeAfterRepairAsync("现场确认修复完成。", token));
+            WireToGateOperatorEvent answer = Assert.Single(harness.Events.Skip(eventsBefore));
+            Assert.Equal("RECOVERY_BLOCKED", answer.Kind);
+            Assert.Contains("取消已有结论", answer.Message, StringComparison.Ordinal);
+            Assert.Contains("补偿清空", answer.Message, StringComparison.Ordinal);
+        }
+
+        Assert.Empty(ReceivedPayloads(harness, "ExceptionRecoverySessionRequested"));
+        Assert.Empty(ReceivedPayloads(harness, "RecoveryActionSubmitted"));
+        Assert.Equal(2, io.UnlockCount);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
     /// 走到「B 的取消报 UNKNOWN、服务端已确认、会话 RecoveryRequired、1 号仓已清空关好」：A 在 5 号仓装好结算，B 在 1 号仓开门后
     /// 操作员不动，按「取消装货」，替身在授权前把 1 号仓锁反馈设成读不到。
     /// </summary>
