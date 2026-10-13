@@ -5,24 +5,27 @@ using Xunit;
 namespace SQCD.Agv.WireToGateG2Tests;
 
 /// <summary>
-/// 一站两条需求：A 已装完结算，取消 B 的在途装货，清空以 <c>UNKNOWN</c> 结束——屏上的恢复入口指向 B（被取消的那一条），
-/// 不指向 A，也不指向空（trytoreachpeak0/8005-agv-onboard-hmi#164）。
+/// 一站两条需求：A 已装完结算，取消 B 的在途装货，清空以 <c>UNKNOWN</c> 结束——屏上当前操作是 B（被取消的那一条），
+/// 不是 A，也不是空；结果一经确认，在途取消入口关掉，再按也动不到 A（trytoreachpeak0/8005-agv-onboard-hmi#164、#343）。
 /// </summary>
 /// <remarks>
 /// <para>
 /// <b>构造。</b>A 在 5 号仓装好关门、结算；B 在 1 号仓开门，操作员一直不动（<c>OperatorNeverActs</c>），门交接给取消时仍开着。
-/// 替身在写出取消授权之前把 1 号仓的锁反馈设成读不到：取消向量的前检拒绝这扇交接过来的门，结果报 <c>UNKNOWN</c>，
-/// 向量留在日志簿里（操作员发起的取消故意保留向量，再按入口就是重跑这一个）。这条路径单需求时由
-/// <see cref="ACancellationRefusedWhileTheHandedOverDoorStandsOpenReportsThatDoorInTheHandshake"/> 钉住；这里多的是第二条需求。
+/// 替身在写出取消授权之前把 1 号仓的锁反馈设成读不到：取消向量的前检拒绝这扇交接过来的门，结果报 <c>UNKNOWN</c>。这条路径
+/// 单需求时由 <see cref="ACancellationRefusedWhileTheHandedOverDoorStandsOpenReportsThatDoorInTheHandshake"/> 钉住；这里多的是第二条需求。
 /// </para>
 /// <para>
 /// <b>为什么断到视图层。</b>视图只从被抛出的事件学习当前操作，而业务层快照在事件被去重器吞掉时照写（onboard-hmi#161），
-/// 只断业务层会假绿。所以这里断三处：视图模型的取消入口与它的确认文案（选中行故意放在 A 上，排除「碰巧选中了 B」），
+/// 只断业务层会假绿。所以这里断三处：视图模型的取消入口（选中行故意放在 A 上，排除「碰巧选中了 B」），
 /// 最后一条带 operation 的已发布事件，以及真按下去之后车上执行和上报的对象。
 /// </para>
 /// <para>
-/// <b>它什么时候会红。</b>恢复入口改成指向 A（确认文案复述 SUBLOT-A、或重按时取消 A）、或指向空（入口灭掉、确认文案为空），
-/// 或屏上当前操作不再是 B 的这次尝试。
+/// <b>#343 改了什么。</b>hmi#164 时这里钉的是「入口一直亮着、确认文案复述 B」：那时向量故意留在日志簿里，再按就重跑它。
+/// 可结果已确认后重跑只会以同一个 UNKNOWN 收尾，留着的向量还把补偿等出路全挡住，所以 #343 让确认后的向量离开日志簿，
+/// 入口按「这次取消已有结果就关入口」（onboard-hmi#254）关掉。指向 B 而不是 A 的那半没变。
+/// </para>
+/// <para>
+/// <b>它什么时候会红。</b>屏上当前操作不再是 B 的这次尝试，入口在结果确认后仍亮着，或再按时为 A 申请、开了 A 的仓。
 /// </para>
 /// </remarks>
 public sealed partial class MultiDemandJourneyG2Tests
@@ -30,7 +33,7 @@ public sealed partial class MultiDemandJourneyG2Tests
     [Fact]
     [Trait("IntegrationSlice", "FP-IS-02")]
     [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
-    public async Task AnInFlightCancellationOfTheSecondDemandEndingUnknownLeavesTheRecoveryEntryOnThatDemand()
+    public async Task AnInFlightCancellationOfTheSecondDemandEndingUnknownKeepsTheScreenOnThatDemandAndShutsTheEntry()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         FakeIoModuleClient io = new() { OperatorNeverActs = true };
@@ -74,15 +77,12 @@ public sealed partial class MultiDemandJourneyG2Tests
         Assert.Equal(DemandB, unknown.GetProperty("demandId").GetString());
         Assert.Equal(AttemptB, unknown.GetProperty("slotOperationAttemptId").GetString());
 
-        // The entry the operator is left with points at B, and keeps pointing there.
+        // The screen is left on B, the cancelled demand, and the entry shuts once B's UNKNOWN is acknowledged.
         await harness.WaitUntilAsync(
             () => LastPublishedOperation(harness) is { Stage: WireToGateHmiOperationStage.RecoveryRequired } operation
                 && operation.SlotOperationAttemptId == AttemptB
-                && harness.ViewModel.CanRequestLoadCancellation
-                && harness.ViewModel.LoadCancellationConfirmationDetailText.StartsWith(
-                    "将要取消的任务：子批 SUBLOT-B，",
-                    StringComparison.Ordinal),
-            "the recovery entry to be up over B, the cancelled demand",
+                && !harness.ViewModel.CanRequestLoadCancellation,
+            "the screen to stay on B, the cancelled demand, with the entry shut",
             token);
         await HoldsForHalfASecondAsync(
             () =>
@@ -91,24 +91,23 @@ public sealed partial class MultiDemandJourneyG2Tests
                 Assert.NotNull(operation);
                 Assert.Equal(WireToGateHmiOperationStage.RecoveryRequired, operation.Stage);
                 Assert.Equal(AttemptB, operation.SlotOperationAttemptId);
-                Assert.True(harness.ViewModel.CanRequestLoadCancellation);
-                Assert.True(harness.ViewModel.CanPressLoadCancellation);
-                Assert.True(ButtonOf(harness.ScreenState(), "OnLoadCancellationClick") is { Visible: true, Enabled: true });
-                string detail = harness.ViewModel.LoadCancellationConfirmationDetailText;
-                Assert.StartsWith("将要取消的任务：子批 SUBLOT-B，", detail, StringComparison.Ordinal);
-                Assert.DoesNotContain("SUBLOT-A", detail, StringComparison.Ordinal);
+                Assert.False(harness.ViewModel.CanRequestLoadCancellation);
+                Assert.False(harness.ViewModel.CanPressLoadCancellation);
+                Assert.False(ButtonOf(harness.ScreenState(), "OnLoadCancellationClick") is { Visible: true, Enabled: true });
                 Assert.Equal(DemandA, harness.ViewModel.SelectedWorklistItem?.DemandId);
             },
             token);
         WireToGateRecoveryState onFile = ReadJournal(harness, token);
-        Assert.Equal(DemandB, onFile.RecoveryVector?.DemandId);
-        Assert.Equal(AttemptB, onFile.RecoveryVector?.SlotOperationAttemptId);
+        Assert.Null(onFile.RecoveryVector);
+        Assert.Equal(AttemptB, onFile.UnsettledSlotOperationAttemptId);
 
-        // Pressed again through the entry, with A still the selected row: the press acts on B's cancellation on file and
-        // on nothing else. Pointed at A it would ask for A or pulse A's slot; pointed at nothing, it would fall through to
-        // a cancellation before any sublot for the selected row, A. Its return value and what the screen says about it are
-        // not pinned here: the outbox answers the re-run with B's acknowledged UNKNOWN, which is the product's to judge.
-        await harness.ViewModel.RequestLoadCancellationAsync(token);
+        // A press that reaches the business layer anyway, with A still the selected row, acts on nothing: not on A, which
+        // a fall-through to a cancellation before any sublot for the selected row would ask for, and not on B again. What it
+        // tells the operator is pinned by AnInFlightCancellationPressedAfterItsUnknownIsAcknowledgedIsAnswered.
+        await harness.Business.RequestLoadCancellationAsync(
+            SQCD.Agv.Wpf.WireToGateBusinessService.LoadCancellationDefaultReason,
+            DemandA,
+            token);
 
         JsonElement request = Assert.Single(ReceivedPayloads(harness, "LoadCancellationStartRequested"));
         Assert.Equal(DemandB, request.GetProperty("demandId").GetString());
@@ -119,8 +118,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             Assert.Equal(AttemptB, result.GetProperty("slotOperationAttemptId").GetString());
         });
         WireToGateRecoveryState afterPress = ReadJournal(harness, token);
-        Assert.Equal(DemandB, afterPress.RecoveryVector?.DemandId);
-        Assert.Equal(AttemptB, afterPress.RecoveryVector?.SlotOperationAttemptId);
+        Assert.Null(afterPress.RecoveryVector);
         Assert.Equal(AttemptA, afterPress.LastCompletedLoadOperationContext?.SlotOperationAttemptId);
         // No door was opened by either press: B's door was handed over open, and A's slot was never touched again.
         Assert.Equal(2, io.UnlockCount);

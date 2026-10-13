@@ -28,8 +28,11 @@ namespace SQCD.Agv.Wpf;
 /// <para>
 /// <b>Same outcome, same settlement, both paths.</b> <c>COMPLETED</c> (<c>ALL_EMPTY</c>, <c>HANDED_OFF</c>,
 /// <c>COMPLETED</c>) settles the vector and its attempt; <c>MECHANICALLY_ISOLATED</c> records the isolation; anything
-/// else forgets the vector and the session and keeps the unsettled attempt -- except the load cancellation the operator
-/// started, which the send path keeps on purpose, because pressing the entry again re-executes that very vector.
+/// else forgets the vector and the session and keeps the unsettled attempt. That includes the load cancellation the
+/// operator started: it used to be kept so that pressing the entry again re-executed it, but once its result is
+/// acknowledged a re-run can only end in that same acknowledged result, and the vector left on file refused every
+/// recovery entry with <c>RECOVERY_VECTOR_CONFLICT</c> -- compensation, handoff and forced recovery alike, with the
+/// server holding the journey on <c>LoadCancellationResult_NOT_RECONCILED</c> (onboard-hmi#343).
 /// </para>
 /// </remarks>
 public sealed partial class WireToGateBusinessService
@@ -193,11 +196,6 @@ public sealed partial class WireToGateBusinessService
             await CompleteRecoveryVectorStateAsync(vector, cancellationToken).ConfigureAwait(false);
             PublishRecoveryVectorCompleted(vector);
             return true;
-        }
-
-        if (vector.VectorType == WireToGateRecoveryVectorTypes.LoadCancellation)
-        {
-            return false;
         }
 
         await ForgetSettledRecoveryVectorAsync(vector, cancellationToken).ConfigureAwait(false);

@@ -16,7 +16,7 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// <c>evidence/hmi-343/01-*</c>），服务端那边旅程卡在 <c>LoadCancellationResult_NOT_RECONCILED</c>，没有出路。
 /// </para>
 /// <para>
-/// <b>构造。</b>与 <see cref="AnInFlightCancellationOfTheSecondDemandEndingUnknownLeavesTheRecoveryEntryOnThatDemand"/>
+/// <b>构造。</b>与 <see cref="AnInFlightCancellationOfTheSecondDemandEndingUnknownKeepsTheScreenOnThatDemandAndShutsTheEntry"/>
 /// 相同，只是夹具开了恢复开关与凭据（管理员恢复要用），假服务端应答恢复会话并下发补偿命令。清空报 <c>UNKNOWN</c> 后，
 /// 操作员把 1 号仓清空关好，这样挡路的只可能是那条向量，不是门检。
 /// </para>
