@@ -70,7 +70,7 @@ I1、I2 下另一条红的现有用例断的是同一个确认文案（向量在
 - `dotnet format --verify-no-changes`：退出码 0。
 - 车载端全量 G2 走 CI。
 
-## 疑点（范围外，已交调度转分票）
+## 疑点（范围外，已开票 trytoreachpeak0/8005-agv-onboard-hmi#343）
 
 `01-repress-diagnostic.txt`：UNKNOWN 之后，在途取消入口一直可按。按下去车上对 B 的向量重跑一次，但结果键与第一次相同，
 发件箱直接拿已确认的 UNKNOWN 收尾，不发新结果（技术日志原文「恢复向量结果的DurableAck不在首次发送时到达，按发件箱已确认的
