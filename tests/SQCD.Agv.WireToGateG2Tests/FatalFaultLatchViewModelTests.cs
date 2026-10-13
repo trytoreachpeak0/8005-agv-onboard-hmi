@@ -59,7 +59,7 @@ public sealed class FatalFaultLatchViewModelTests
         viewModel.ScanText = "SUBLOT-X";
 
         viewModel.ScannerSubmitCommand.Execute(null);
-        await WaitUntilAsync(() => viewModel.Logs.Count > 0);
+        await WaitUntilAsync(() => OperatorLogSnapshot.Of(viewModel).Length > 0);
 
         Assert.NotEqual(OnboardState.Faulted, controller.Current.State);
         Assert.False(viewModel.HasError);
@@ -71,7 +71,7 @@ public sealed class FatalFaultLatchViewModelTests
         // 引名字不引行号：行号会漂移，而我核这条时拿到的行号已经指向了别的测试。
         // 加强它就要接真服务，那会和 Paths.cs 重复；一条删掉的假断言比一条半真的干净。
         Assert.Contains(
-            viewModel.Logs,
+            OperatorLogSnapshot.Of(viewModel),
             line => line.Kind == OperatorRecordKind.Warning
                 && line.Message == OnboardCommandRejectionText.DescribeWithCode("SUBLOT_NOT_IN_WORKLIST"));
         // 读到的是一句中文，不是一个裸码。码留在句末的括号里是有意的：操作员把它报给维护人员，
@@ -103,7 +103,7 @@ public sealed class FatalFaultLatchViewModelTests
         viewModel.ScanText = "SUBLOT-X";
 
         viewModel.ScannerSubmitCommand.Execute(null);
-        await WaitUntilAsync(() => viewModel.Logs.Count > 0);
+        await WaitUntilAsync(() => OperatorLogSnapshot.Of(viewModel).Length > 0);
         string refusal = viewModel.Guidance;
         Assert.Contains("不属于服务端下发的站点任务", refusal, StringComparison.Ordinal);
 
@@ -296,7 +296,7 @@ public sealed class FatalFaultLatchViewModelTests
         viewModel.ScanText = "SUBLOT-X";
 
         viewModel.ScannerSubmitCommand.Execute(null);
-        await WaitUntilAsync(() => viewModel.Logs.Count > 0);
+        await WaitUntilAsync(() => OperatorLogSnapshot.Of(viewModel).Length > 0);
         Assert.Contains("不属于服务端下发的站点任务", viewModel.Guidance, StringComparison.Ordinal);
 
         // 还没到期：仍然压住。
@@ -357,7 +357,7 @@ public sealed class FatalFaultLatchViewModelTests
 
         viewModel.ScanText = "SUBLOT-X";
         viewModel.ScannerSubmitCommand.Execute(null);
-        await WaitUntilAsync(() => viewModel.Logs.Any(
+        await WaitUntilAsync(() => OperatorLogSnapshot.Of(viewModel).Any(
             line => line.Message.Contains("不属于服务端下发的站点任务", StringComparison.Ordinal)));
 
         // 常态横幅又发了一遍。门在开，所以这一行不能还在说他刚才扫错了。
@@ -385,7 +385,7 @@ public sealed class FatalFaultLatchViewModelTests
         viewModel.ScanText = "SUBLOT-X";
 
         viewModel.ScannerSubmitCommand.Execute(null);
-        await WaitUntilAsync(() => viewModel.Logs.Count > 0);
+        await WaitUntilAsync(() => OperatorLogSnapshot.Of(viewModel).Length > 0);
         Assert.Contains("不属于服务端下发的站点任务", viewModel.Guidance, StringComparison.Ordinal);
 
         viewModel.ApplyWireToGateOperatorEvent(new WireToGateOperatorEvent(

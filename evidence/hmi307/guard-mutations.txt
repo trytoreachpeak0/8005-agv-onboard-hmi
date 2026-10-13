@@ -1,0 +1,77 @@
+== 1 hmi#285 原变异：一处读回 harness.ViewModel.Logs file=tests/SQCD.Agv.WireToGateG2Tests/ManualStationClearanceG2Tests.cs changed_files=1
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethods [4 s]
+tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:209
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 4 s - SQCD.Agv.UnitTests.dll (net8.0)
+exit=1
+== 2 hmi#285 原变异：夹具文件多读一处 file=tests/SQCD.Agv.WireToGateG2Tests/MultiDemandJourneyG2Tests.cs changed_files=1
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.EachSnapshotFileReadsTheLogExactlyOnce(file: "MultiDemandJourneyG2Tests.cs") [28 ms]
+   MultiDemandJourneyG2Tests.cs reads the operator log on line(s) [663, 664]; only the snapshot method may.
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 227 ms - SQCD.Agv.UnitTests.dll (net8.0)
+exit=1
+== 3 FatalFaultLatch 一处改回 viewModel.Logs.Count file=tests/SQCD.Agv.WireToGateG2Tests/FatalFaultLatchViewModelTests.cs changed_files=1
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethods [133 ms]
+tests\SQCD.Agv.WireToGateG2Tests\FatalFaultLatchViewModelTests.cs:62
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 225 ms - SQCD.Agv.UnitTests.dll (net8.0)
+exit=1
+== 4 遍历行贴标记 file=tests/SQCD.Agv.WireToGateG2Tests/RecoveryVectorG2Tests.OperatorRecordLog.cs changed_files=1
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethods [151 ms]
+tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.OperatorRecordLog.cs:123
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 232 ms - SQCD.Agv.UnitTests.dll (net8.0)
+exit=1
+== 5 OperatorLogSnapshot.cs 多读一处 file=tests/SQCD.Agv.WireToGateG2Tests/OperatorLogSnapshot.cs changed_files=1
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.EachSnapshotFileReadsTheLogExactlyOnce(file: "OperatorLogSnapshot.cs") [24 ms]
+   OperatorLogSnapshot.cs reads the operator log on line(s) [53, 54]; only the snapshot method may.
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 210 ms - SQCD.Agv.UnitTests.dll (net8.0)
+exit=1
+== 6 删掉一处 TryStart 的标记 file=tests/SQCD.Agv.WireToGateG2Tests/OperatorRecordLogTests.cs changed_files=1
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethods [135 ms]
+tests\SQCD.Agv.WireToGateG2Tests\OperatorRecordLogTests.cs:235
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 211 ms - SQCD.Agv.UnitTests.dll (net8.0)
+exit=1
+
+#### 审查 S1 后（护栏 66c848b，登记标记行）重跑
+== R1 审查变异：:222 改 Assert.Single、标记保留 file=tests/SQCD.Agv.WireToGateG2Tests/HmiScreenStateWiringTests.cs changed_files=2
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.EveryMarkedLineIsRegistered [146 ms]
+HmiScreenStateWiringTests.cs: marked [Assert.Single(viewModel.Logs, line => line is null),], registered [Handlers(viewModel.Logs, "CollectionChanged"),]
+Failed!  - Failed:     1, Passed:     6, Skipped:     0, Total:     7, Duration: 360 ms - SQCD.Agv.UnitTests.dll (net8.0)
+exit=1
+== R2 新增一行带标记的枚举（引用形状） file=tests/SQCD.Agv.WireToGateG2Tests/OperatorRecordLogTests.cs changed_files=2
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.EveryMarkedLineIsRegistered [145 ms]
+OperatorRecordLogTests.cs: marked [using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger); | Assert.Contains(viewModel.Logs, line => line is not null); | using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger); | using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger);], registered [using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger); | using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger); | using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger);]
+Failed!  - Failed:     1, Passed:     6, Skipped:     0, Total:     7, Duration: 340 ms - SQCD.Agv.UnitTests.dll (net8.0)
+exit=1
+== 1 一处读回 harness.ViewModel.Logs file=tests/SQCD.Agv.WireToGateG2Tests/ManualStationClearanceG2Tests.cs changed_files=2
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethods [157 ms]
+tests\SQCD.Agv.WireToGateG2Tests\ManualStationClearanceG2Tests.cs:209
+Failed!  - Failed:     1, Passed:     6, Skipped:     0, Total:     7, Duration: 441 ms - SQCD.Agv.UnitTests.dll (net8.0)
+exit=1
+== 2 夹具文件多读一处 file=tests/SQCD.Agv.WireToGateG2Tests/MultiDemandJourneyG2Tests.cs changed_files=2
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.EachSnapshotFileReadsTheLogExactlyOnce(file: "MultiDemandJourneyG2Tests.cs") [15 ms]
+   MultiDemandJourneyG2Tests.cs reads the operator log on line(s) [663, 664]; only the snapshot method may.
+Failed!  - Failed:     1, Passed:     6, Skipped:     0, Total:     7, Duration: 319 ms - SQCD.Agv.UnitTests.dll (net8.0)
+exit=1
+== 3 FatalFaultLatch 一处改回 viewModel.Logs.Count file=tests/SQCD.Agv.WireToGateG2Tests/FatalFaultLatchViewModelTests.cs changed_files=2
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethods [69 ms]
+tests\SQCD.Agv.WireToGateG2Tests\FatalFaultLatchViewModelTests.cs:62
+Failed!  - Failed:     1, Passed:     6, Skipped:     0, Total:     7, Duration: 216 ms - SQCD.Agv.UnitTests.dll (net8.0)
+exit=1
+== 4 遍历行贴标记 file=tests/SQCD.Agv.WireToGateG2Tests/RecoveryVectorG2Tests.OperatorRecordLog.cs changed_files=2
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.EveryMarkedLineIsRegistered [165 ms]
+RecoveryVectorG2Tests.OperatorRecordLog.cs: marked [OperatorRecordLog? recordLog = OperatorRecordLog.TryStart(new LogSettings { OperatorRecords = true }, viewModel.Logs, log); | Assert.Contains(viewModel.Logs.Where(_ => true), line => line.Source == OperatorRecordSource.OperatorEvent);], registered [OperatorRecordLog? recordLog = OperatorRecordLog.TryStart(new LogSettings { OperatorRecords = true }, viewModel.Logs, log);]
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethods [170 ms]
+tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.OperatorRecordLog.cs:123
+Failed!  - Failed:     2, Passed:     5, Skipped:     0, Total:     7, Duration: 456 ms - SQCD.Agv.UnitTests.dll (net8.0)
+exit=1
+== 5 OperatorLogSnapshot.cs 多读一处 file=tests/SQCD.Agv.WireToGateG2Tests/OperatorLogSnapshot.cs changed_files=2
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.EachSnapshotFileReadsTheLogExactlyOnce(file: "OperatorLogSnapshot.cs") [10 ms]
+   OperatorLogSnapshot.cs reads the operator log on line(s) [59, 60]; only the snapshot method may.
+Failed!  - Failed:     1, Passed:     6, Skipped:     0, Total:     7, Duration: 474 ms - SQCD.Agv.UnitTests.dll (net8.0)
+exit=1
+== 6 删掉一处 TryStart 的标记 file=tests/SQCD.Agv.WireToGateG2Tests/OperatorRecordLogTests.cs changed_files=2
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.EveryMarkedLineIsRegistered [964 ms]
+OperatorRecordLogTests.cs: marked [using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger); | using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger);], registered [using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger); | using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger); | using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger);]
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethods [401 ms]
+tests\SQCD.Agv.WireToGateG2Tests\OperatorRecordLogTests.cs:235
+Failed!  - Failed:     2, Passed:     5, Skipped:     0, Total:     7, Duration: 1 s - SQCD.Agv.UnitTests.dll (net8.0)
+exit=1
+注：本节 changed_files=2 是被变异的那个测试文件加上正在追加的本证据文件（已入库）；每次只还原被变异的测试文件，跑完 git status 只剩本文件。

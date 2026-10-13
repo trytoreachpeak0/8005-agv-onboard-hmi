@@ -1,0 +1,66 @@
+using SQCD.Agv.Application;
+using SQCD.Agv.Wpf.ViewModels;
+using Xunit;
+
+namespace SQCD.Agv.WireToGateG2Tests;
+
+// Throwaway probe for onboard-hmi#307 red evidence; not committed (a copy is kept under evidence/hmi307/).
+// Each round builds the view model the way FatalFaultLatchViewModelTests does (real controller, InitializeAsync, no
+// WPF Application), lets another thread append operator records through ReportOperatorRejection -- the path a
+// refused scanner command takes when it finishes off the test thread -- and meanwhile polls the log the way
+// FatalFaultLatchViewModelTests:360 did (Logs.Any) or through OperatorLogSnapshot.Of.
+public sealed class Hmi307LogsRaceProbe(ITestOutputHelper output)
+{
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PollingTheLogWhileAnotherThreadAppends(bool throughSnapshot)
+    {
+        const int Rounds = 50;
+        const int Appends = 250;
+        int failedRounds = 0;
+        int exceptions = 0;
+        string? first = null;
+        for (int round = 0; round < Rounds; round++)
+        {
+            await using OnboardController controller = MultiDemandViewModelTests.Controller();
+            MainViewModel viewModel = await MultiDemandViewModelTests.ViewModel(controller);
+            using ManualResetEventSlim start = new();
+            Task appender = Task.Run(
+                () =>
+            {
+                start.Wait();
+                for (int index = 0; index < Appends; index++)
+                {
+                    viewModel.ReportOperatorRejection("SUBLOT_NOT_IN_WORKLIST");
+                }
+            }, TestContext.Current.CancellationToken);
+
+            int inRound = 0;
+            start.Set();
+            while (!appender.IsCompleted)
+            {
+                try
+                {
+                    _ = throughSnapshot
+                        ? OperatorLogSnapshot.Of(viewModel).Any(line => line.Message == "never")
+                        : viewModel.Logs.Any(line => line.Message == "never");
+                }
+                catch (Exception exception) when (exception is InvalidOperationException or ArgumentOutOfRangeException)
+                {
+                    inRound++;
+                    first ??= $"{exception.GetType().Name}: {exception.Message}";
+                }
+            }
+
+            await appender;
+            exceptions += inRound;
+            failedRounds += inRound > 0 ? 1 : 0;
+        }
+
+        output.WriteLine($"throughSnapshot={throughSnapshot} rounds={Rounds} failedRounds={failedRounds} exceptions={exceptions} first={first ?? "-"}");
+        Assert.True(
+            failedRounds == 0,
+            $"throughSnapshot={throughSnapshot}: {failedRounds}/{Rounds} rounds threw ({exceptions} exceptions), first: {first}");
+    }
+}

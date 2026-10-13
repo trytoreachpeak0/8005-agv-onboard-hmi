@@ -275,7 +275,7 @@ public sealed class HmiScreenStateMonitorDispatcherTests
         screen[nameof(MainViewModel.Guidance)] = viewModel.Guidance;
         screen[nameof(MainViewModel.HasWarning)] = viewModel.HasWarning;
         screen[nameof(MainViewModel.StateText)] = viewModel.StateText;
-        screen["Logs.Count"] = viewModel.Logs.Count;
+        screen["Logs.Count"] = OperatorLogSnapshot.Of(viewModel).Length;
         screen["ClearLogsCommand.CanExecute"] = viewModel.ClearLogsCommand.CanExecute(null);
         return screen;
     }
