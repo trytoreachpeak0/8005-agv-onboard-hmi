@@ -1,0 +1,39 @@
+EXIT=resume-ok
+ENTRIES compensation=False handoff=False forced=False resume=True cancel=True vmCompensation=False vmHandoff=False vmForced=False
+RESUME-STATE session=d18b7c6f-f3e7-6b52-8690-4039ae2294db action=8ecc37e1-4402-444e-a765-7c24520ac76d cp=Prepared ctx=bbbbbbbb-0000-4000-8000-00000000000b
+RESUME-ANSWER OperationResult {"demandId":"aaaaaaaa-0000-4000-8000-00000000000a","slotOperationAttemptId":"44444444-0000-4444-8444-00000000000a","operationType":"LOAD","overallOutcome":"COMPLETED","slotResults":[{"slotNo":5,"outcome":"COMPLETED","finalPhysicalState":"OCCUPIED","lockState":"LOCKED","unlockOutputState":"RESET","reasonCodes":[]}],"observedAt":"2026-10-13T19:22:40.9155695\u002B08:00","journalCheckpoint":"SAFE_FINISH_REACHED","resultContentSha256":"89756c63127bbb9608bcecb9775199bad0871436d50c920f41f792b23ce30a6e"}
+RESUME-ANSWER OperationResult {"demandId":"bbbbbbbb-0000-4000-8000-00000000000b","slotOperationAttemptId":"44444444-0000-4444-8444-00000000000b","operationType":"LOAD","overallOutcome":"UNKNOWN","slotResults":[{"slotNo":1,"outcome":"UNKNOWN","finalPhysicalState":"UNKNOWN","lockState":"UNKNOWN","unlockOutputState":"UNKNOWN","reasonCodes":["SLOT_STATE_UNKNOWN"]}],"observedAt":"2026-10-13T19:22:41.1584365\u002B08:00","journalCheckpoint":"ACTIVE_UNLOCK_SET","resultContentSha256":"bb4e85b5eb028e416c186bb7cff87dd4faa8aea6d7811e97304a77e757467e55"}
+RESUME-ANSWER OperationResult {"demandId":"bbbbbbbb-0000-4000-8000-00000000000b","slotOperationAttemptId":"44444444-0000-4444-8444-00000000000b","operationType":"LOAD","overallOutcome":"COMPLETED","slotResults":[{"slotNo":1,"outcome":"COMPLETED","finalPhysicalState":"OCCUPIED","lockState":"LOCKED","unlockOutputState":"RESET","reasonCodes":[]}],"observedAt":"2026-10-13T19:22:43.6130021\u002B08:00","journalCheckpoint":"SAFE_FINISH_REACHED","resultContentSha256":"e4ac87bc97758d6345de7475843214acef64c5b0120b505ffa5a8bedcc35c529"}
+PRESSED returned=True unlocksDelta=1
+EVENT RECOVERY_ACTION_SUBMITTED 恢复申请已通过服务端授权，等待下发原操作续作命令。 
+EVENT OPERATION_PROGRESS 恢复原操作：1号仓。
+EVENT OPERATION_PROGRESS 正在检查1号仓的安全条件。
+EVENT OPERATION_PROGRESS 正在打开1号仓。
+EVENT OPERATION_PROGRESS 请在1号仓放入货物并关门。
+EVENT OPERATION_PROGRESS 正在核对仓门、货物和输出状态；已完成 1/1。
+EVENT OPERATION_PROGRESS 全部目标仓已达到安全收尾状态，正在上报结果。
+EVENT OPERATION_PROGRESS 恢复后的仓位操作已完成，正在上报替换结果。
+EVENT OPERATION_COMPLETED 恢复后的原操作结果已上报。
+SENT ExceptionRecoverySessionRequested x1
+SENT RecoveryActionSubmitted x1
+SENT LoadCompensationRequested x0
+SENT LoadCompensationResult x0
+SENT FaultCargoRecoveryResult x0
+SENT ForcedMechanicalRecoveryResult x0
+SENT RecoveryResumeRequested x0
+SENT LoadCancellationResult x1
+SENT OperationResult x3
+JOURNAL vector=LOAD_CANCELLATION/bbbbbbbb-0000-4000-8000-00000000000b cp=SafeFinishReached active=[] unsettled=44444444-0000-4444-8444-00000000000b
+CONFIRM forced=False
+LOG 恢复向量未完成，已保持故障安全并准备上报未知/失败结果。
+LOG 恢复结果已上报，但物理状态仍未达到可确认条件；请保持车辆停稳并等待下一步处理。 
+LOG 恢复申请已通过服务端授权，等待下发原操作续作命令。 
+LOG 恢复原操作：1号仓。
+LOG 正在检查1号仓的安全条件。
+LOG 正在打开1号仓。
+LOG 请在1号仓放入货物并关门。
+LOG 正在核对仓门、货物和输出状态；已完成 1/1。
+LOG 全部目标仓已达到安全收尾状态，正在上报结果。
+LOG 恢复后的仓位操作已完成，正在上报替换结果。
+LOG 恢复后的原操作结果已上报。
+LOG 子批 SUBLOT-A 的修正窗口已随子批 SUBLOT-B 装货关闭。

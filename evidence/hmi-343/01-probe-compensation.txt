@@ -1,0 +1,26 @@
+EXIT=compensation
+ENTRIES compensation=False handoff=False forced=False resume=True cancel=True vmCompensation=False vmHandoff=False vmForced=False
+PRESSED returned=False unlocksDelta=0
+EVENT RECOVERY_BLOCKED 操作被拒绝（RECOVERY_VECTOR_CONFLICT）。请核对后重试，持续出现请联系维护人员。请确认车辆停稳、仓门状态和服务端授权，不要仅凭本提示重试。
+SENT ExceptionRecoverySessionRequested x0
+SENT RecoveryActionSubmitted x0
+SENT LoadCompensationRequested x0
+SENT LoadCompensationResult x0
+SENT FaultCargoRecoveryResult x0
+SENT ForcedMechanicalRecoveryResult x0
+SENT RecoveryResumeRequested x0
+SENT LoadCancellationResult x1
+JOURNAL vector=LOAD_CANCELLATION/bbbbbbbb-0000-4000-8000-00000000000b cp=Prepared active=[1] unsettled=44444444-0000-4444-8444-00000000000b
+CONFIRM forced=False
+LOG 正在检查1号仓的安全条件。
+LOG 正在打开1号仓。
+LOG 请在1号仓放入货物并关门。
+LOG 正在处理1号仓。
+LOG 1号仓操作未完成，需要恢复处理。
+LOG 装货取消已获服务端授权，装货已停止，开始将1号仓清空。 
+LOG 准备执行恢复向量：1号仓。
+LOG 恢复向量未完成，已保持故障安全并准备上报未知/失败结果。
+LOG 1号仓操作失败或状态未知，服务端已收到结果，等待管理员恢复。
+LOG 恢复向量 LOAD_CANCELLATION 尚未完成：1号仓，请保持车辆停稳。
+LOG 恢复结果已上报，但物理状态仍未达到可确认条件；请保持车辆停稳并等待下一步处理。 
+LOG 操作被拒绝（RECOVERY_VECTOR_CONFLICT）。请核对后重试，持续出现请联系维护人员。请确认车辆停稳、仓门状态和服务端授权，不要仅凭本提示重试。

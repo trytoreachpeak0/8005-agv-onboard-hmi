@@ -539,7 +539,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         Action<FakeControlServer> configure,
         CancellationToken token,
         TimeSpan? messageTimeout = null,
-        string? journalPath = null)
+        string? journalPath = null,
+        Func<IWireToGateJournal, IWireToGateJournal>? wrapJournal = null)
     {
         Environment.SetEnvironmentVariable(TakeOverProofVariable, "hmi278-proof");
         Harness harness = await Harness.StartAsync(
@@ -562,6 +563,7 @@ public sealed partial class MultiDemandJourneyG2Tests
             token,
             journalPath ?? Harness.NewJournalPath(),
             io: io,
+            wrapJournal: wrapJournal,
             recoveryOptions: TakeOverRecovery,
             messageTimeout: messageTimeout ?? TimeSpan.FromSeconds(30));
         await harness.WaitUntilAsync(

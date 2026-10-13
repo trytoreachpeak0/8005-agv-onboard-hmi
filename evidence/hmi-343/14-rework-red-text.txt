@@ -1,0 +1,52 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  SQCD.Agv.Contracts -> F:\8005-wt\hmi343-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Debug\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Core -> F:\8005-wt\hmi343-8005-agv-onboard-hmi\src\SQCD.Agv.Core\bin\Debug\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.AutomationHost -> F:\8005-wt\hmi343-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Debug\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Application -> F:\8005-wt\hmi343-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Debug\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.Infrastructure -> F:\8005-wt\hmi343-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Debug\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.Wpf -> F:\8005-wt\hmi343-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.Wpf.dll
+  SQCD.Agv.SchemaConformance -> F:\8005-wt\hmi343-8005-agv-onboard-hmi\tools\SQCD.Agv.SchemaConformance\bin\Debug\net8.0\win-x64\SQCD.Agv.SchemaConformance.dll
+  SQCD.Agv.WireToGateG2Tests -> F:\8005-wt\hmi343-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll
+Test run for F:\8005-wt\hmi343-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:06.92]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnInFlightCancellationPressedAfterItsUnknownIsAcknowledgedIsAnswered [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnInFlightCancellationPressedAfterItsUnknownIsAcknowledgedIsAnswered [372 ms]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "这次装货已经取消过、取消已有结论，不能再取消；需要处理货物请联系维护人员走恢复流程。（LOAD_CA"···
+Not found: "补偿清空"
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AssertNamesTheThreeExits(String message) in F:\8005-wt\hmi343-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationUnknownExits.cs:line 714
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AssertConcludedCancellationAnswer(WireToGateOperatorEvent answer) in F:\8005-wt\hmi343-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationUnknownExits.cs:line 706
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnInFlightCancellationPressedAfterItsUnknownIsAcknowledgedIsAnswered() in F:\8005-wt\hmi343-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationUnknownExits.cs:line 89
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AnInFlightCancellationPressedAfterItsUnknownIsAcknowledgedIsAnswered() in F:\8005-wt\hmi343-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationUnknownExits.cs:line 96
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:18.42]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AResumeAfterRepairDoesNotRerunALoadWhoseCancellationIsConcluded [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AResumeAfterRepairDoesNotRerunALoadWhoseCancellationIsConcluded [952 ms]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "这次装货已经取消过、取消已有结论，不能再恢复原装货。需要处理货物请改用「补偿清空」或「强制机械恢复」"···
+Not found: "故障交接"
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AssertNamesTheThreeExits(String message) in F:\8005-wt\hmi343-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationUnknownExits.cs:line 715
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AResumeAfterRepairDoesNotRerunALoadWhoseCancellationIsConcluded() in F:\8005-wt\hmi343-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationUnknownExits.cs:line 248
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AResumeAfterRepairDoesNotRerunALoadWhoseCancellationIsConcluded() in F:\8005-wt\hmi343-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationUnknownExits.cs:line 254
+--- End of stack trace from previous location ---
+[xUnit.net 00:00:22.62]     SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AConfirmationLeftOpenAcrossTheReplayedAcknowledgementIsAnswered [FAIL]
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AConfirmationLeftOpenAcrossTheReplayedAcknowledgementIsAnswered [2 s]
+  Error Message:
+   Assert.Contains() Failure: Sub-string not found
+String:    "这次装货已经取消过、取消已有结论，不能再取消；需要处理货物请联系维护人员走恢复流程。（LOAD_CA"···
+Not found: "补偿清空"
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AssertNamesTheThreeExits(String message) in F:\8005-wt\hmi343-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationUnknownExits.cs:line 714
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AssertConcludedCancellationAnswer(WireToGateOperatorEvent answer) in F:\8005-wt\hmi343-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationUnknownExits.cs:line 706
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AConfirmationLeftOpenAcrossTheReplayedAcknowledgementIsAnswered() in F:\8005-wt\hmi343-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationUnknownExits.cs:line 356
+   at SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.AConfirmationLeftOpenAcrossTheReplayedAcknowledgementIsAnswered() in F:\8005-wt\hmi343-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\MultiDemandJourneyG2Tests.CancellationUnknownExits.cs:line 367
+--- End of stack trace from previous location ---
+
+Failed!  - Failed:     3, Passed:     9, Skipped:     0, Total:    12, Duration: 22 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

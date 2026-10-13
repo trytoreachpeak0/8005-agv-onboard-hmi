@@ -439,9 +439,25 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         && session.Readiness is (WireToGateSessionReadiness.Ready
                             or WireToGateSessionReadiness.RecoveryRequired)))
                 && !string.IsNullOrWhiteSpace(operatorId)
-                && !string.IsNullOrWhiteSpace(proof);
+                && !string.IsNullOrWhiteSpace(proof)
+                && !IsResumeOverConcludedCancellation(Volatile.Read(ref _lastRecoveryState));
         }
     }
+
+    /// <summary>
+    /// Whether the load a resume would run again is one an operator's cancellation took over and concluded: its result is
+    /// on file, and the attempt's conclusion is that cancellation's (ADR-cross-0046). A resume would pulse the door open and
+    /// ask for the cargo the operator gave up (onboard-hmi#343, step 1 probe); compensation, the fault cargo handoff and the
+    /// forced recovery are the ways on from there -- which of them the server allows depends on whether the load reported a
+    /// result of its own (control-server#697).
+    /// </summary>
+    private bool IsResumeOverConcludedCancellation(WireToGateRecoveryState state) =>
+        state.UnsettledSlotOperationAttemptId is { } attempt && IsCancellationConcluded(attempt);
+
+    /// <summary>What a resume press over a concluded cancellation is answered with.</summary>
+    internal const string ResumeOverConcludedCancellationText =
+        "这次装货已经取消过、取消已有结论，不能再恢复原装货。需要处理货物请改用「补偿清空」「故障交接」或「强制机械恢复」，"
+        + "或联系维护人员。 ";
 
     /// <param name="reason">
     /// The administrator's reason for the exception recovery session (CP-0005 section 5, onboard-hmi#109).
@@ -545,6 +561,22 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                         || !recoverySnapshot.Slots.SequenceEqual(context.Slots)))
             {
                 throw new InvalidDataException("RECOVERY_SCOPE_MISMATCH");
+            }
+
+            // Asked of the outbox, not the cache the entry reads: the press may have got past an entry read before the
+            // cancellation's result was filed (onboard-hmi#343).
+            if (await IsCancellationConcludedAsync(
+                    context.DemandId,
+                    context.SlotOperationAttemptId,
+                    cancellationToken)
+                .ConfigureAwait(false))
+            {
+                _logger.Write(
+                    LogSeverity.Information,
+                    nameof(WireToGateBusinessService),
+                    $"修复续行申请未发：这次装货已被操作员取消且取消已有结果，续作会重开仓门：attempt={context.SlotOperationAttemptId}。");
+                PublishOperatorResponse("RECOVERY_BLOCKED", ResumeOverConcludedCancellationText);
+                return false;
             }
 
             if (!activeRecovery && state.ExceptionRecoverySessionId is not null)
@@ -1153,6 +1185,25 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                     LogSeverity.Information,
                     nameof(WireToGateBusinessService),
                     $"这次装货的修正结果已被服务端拒收并经人工核对结束，修正入口保持关闭：attempt={settledLoad.SlotOperationAttemptId}。");
+            }
+
+            // After a restart: a load an operator's cancellation concluded keeps the cancellation and resume entries shut
+            // (onboard-hmi#343). The entries read a per-process mark; the cancellation's result on file is the record.
+            if (state.RecoveryVector is null
+                && state.OperationContext is { OperationType: OperationType.Load } unsettledLoad
+                && string.Equals(
+                    state.UnsettledSlotOperationAttemptId,
+                    unsettledLoad.SlotOperationAttemptId,
+                    StringComparison.Ordinal)
+                && !IsCancellationConcluded(unsettledLoad.SlotOperationAttemptId)
+                && await IsCancellationConcludedAsync(
+                        unsettledLoad.DemandId, unsettledLoad.SlotOperationAttemptId, cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                _logger.Write(
+                    LogSeverity.Information,
+                    nameof(WireToGateBusinessService),
+                    $"这次装货已被操作员取消且取消已有结果，取消与修复续行入口保持关闭：attempt={unsettledLoad.SlotOperationAttemptId}。");
             }
 
             // A forced isolation is a device fact beside whatever else is on file, not instead of it:
