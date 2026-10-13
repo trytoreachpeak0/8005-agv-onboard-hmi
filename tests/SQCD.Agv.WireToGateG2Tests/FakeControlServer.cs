@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using SQCD.Agv.Contracts;
+using Xunit;
 
 namespace SQCD.Agv.WireToGateG2Tests;
 
@@ -2068,6 +2069,35 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
 
         EnvelopeReceived?.Invoke(connectionIndex, messageType, messageId);
+    }
+
+    /// <summary>
+    /// Writes every safety message this double received, in order, one file per server per test, into the directory
+    /// <see cref="SafetyMessageProbeVariable"/> names (onboard-hmi#314). With the variable unset it does nothing at all:
+    /// it is for comparing what the vehicle sends before and after a change, run by hand with
+    /// <c>scripts/compare-g2-safety-messages.ps1</c>, and no test reads it.
+    /// </summary>
+    private void WriteSafetyMessageProbe()
+    {
+        string? directory = Environment.GetEnvironmentVariable(SafetyMessageProbeVariable);
+        if (string.IsNullOrEmpty(directory))
+        {
+            return;
+        }
+
+        string test = TestContext.Current.Test?.TestDisplayName ?? "unknown";
+        string name = string.Concat(test.Select(character => char.IsLetterOrDigit(character) ? character : '_'));
+        name = name.Length > 150 ? name[..150] : name;
+        // Numbered within the test, not across the run, so a file names the same server in every run.
+        int index = SafetyMessageProbeFiles.AddOrUpdate(name, 1, (_, count) => count + 1);
+        string[] types = ["SafetyStateSnapshot", "SafetyStateChanged", "PreDepartureSafetyCheckResult"];
+        Directory.CreateDirectory(directory);
+        File.WriteAllLines(
+            Path.Combine(directory, $"{name}__{index.ToString(CultureInfo.InvariantCulture)}.txt"),
+            ReceivedEnvelopes
+                .Where(envelope => types.Contains(envelope.MessageType))
+                .Select(envelope => envelope.Connection.ToString(CultureInfo.InvariantCulture) + "|"
+                    + envelope.WireLine.TrimEnd('\r', '\n')));
     }
 
     /// <summary>
@@ -4466,8 +4496,14 @@ public sealed class FakeControlServer : IAsyncDisposable
         }
     }
 
+    /// <summary>The environment variable that turns <see cref="WriteSafetyMessageProbe"/> on.</summary>
+    internal const string SafetyMessageProbeVariable = "HMI314_PROBE_DIR";
+
+    private static readonly ConcurrentDictionary<string, int> SafetyMessageProbeFiles = new(StringComparer.Ordinal);
+
     public async ValueTask DisposeAsync()
     {
+        WriteSafetyMessageProbe();
         _stopping.Cancel();
         try
         {

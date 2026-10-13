@@ -1,0 +1,36 @@
+== AHandoffThatOpenedNothingLeavesTheLoadsAckToSettleIt__1.txt | candidate ['d7cd011/run2'] | nearest baseline seen in 13 runs
+    @@ -3 +3,2 @@
+     c1 Changed v3 S
+    +c1 Changed v4 U SLOT_STATE_UNKNOWN,LOCK_NOT_CLOSED,UNLOCK_OUTPUT_NOT_RESET
+== ARefusedCancellationEndedAfterTheManualCheckKeepsTheLoadsAttemptAcrossAReconnect_doorLeftOpen__Tr__1.txt | candidate ['d7cd011-u17/run2'] | nearest baseline seen in 1 runs
+    @@ -3,2 +3 @@
+     c2 Snapshot v2 U SLOT_STATE_UNKNOWN,LOCK_NOT_CLOSED,UNLOCK_OUTPUT_NOT_RESET
+    -c2 Changed v3 U SLOT_STATE_UNKNOWN,LOCK_NOT_CLOSED,UNLOCK_OUTPUT_NOT_RESET
+== ARefusedSafetyChangeWithNothingAfterItStillAnswersTheServersSnapshotRequest__1.txt | candidate ['d7cd011-u17/run7'] | nearest baseline seen in 17 runs
+    @@ -5 +5,2 @@
+     c1 Snapshot v5 U SLOT_STATE_UNKNOWN,LOCK_NOT_CLOSED,UNLOCK_OUTPUT_NOT_RESET
+    +c1 Changed v6 U SLOT_STATE_UNKNOWN,LOCK_NOT_CLOSED,UNLOCK_OUTPUT_NOT_RESET
+== AnUnknownHandoffOverALoadWhoseAckCameLateKeepsItsDoorAcrossAReconnect_ackAfterHandoffEnded__True___1.txt | candidate ['d7cd011-u17/run10'] | nearest baseline seen in 21 runs
+    @@ -7 +7,2 @@
+     c2 Changed v7 S
+    +c2 Changed v8 S
+== EveryLoadedDemandCanStillBeHandedOffAfterAReconnectAndARestart__1.txt | candidate ['d7cd011/run2', 'd7cd011-u17/run7'] | nearest baseline seen in 1 runs
+    @@ -3,4 +3,3 @@
+     c1 Changed v3 S
+    -c2 Changed v3 S
+    -c2 Snapshot v4 S
+    +c2 Snapshot v3 S
+     c3 Snapshot v1 S
+== EveryLoadedDemandCanStillBeHandedOffAfterAReconnectAndARestart__1.txt | candidate ['d7cd011/run3'] | nearest baseline seen in 1 runs
+    @@ -5,3 +5,5 @@
+     c2 Snapshot v4 S
+    -c3 Snapshot v1 S
+    -c3 Changed v2 S
+    +c2 Changed v5 S
+    +c3 Changed v5 S
+    +c3 Snapshot v6 S
+    +c3 Changed v7 S
+== TheRepairReleaseIsShutToAVehicleWithNoRecoveryAdministrator__1.txt | candidate ['d7cd011/run1'] | nearest baseline seen in 13 runs
+    @@ -1,2 +1 @@
+     c1 Snapshot v1 S
+    -c1 Changed v2 S

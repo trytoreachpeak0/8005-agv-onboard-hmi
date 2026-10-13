@@ -63,6 +63,14 @@ public sealed class HmiScreenStateContentBoundaryArchitectureTests
         Assert.Contains("HmiInputState.HasText", names);
         Assert.Contains("HmiOperatorRecordState.Kind", names);
         Assert.Contains("OpenModalDialog.Title", names);
+        // T1b (onboard-hmi#314): the walk only follows SQCD.Agv.Wpf types, so a basis record moved out of that namespace
+        // would drop out of the content boundary without a sound. One property of each, the guidance flags among them.
+        Assert.Contains("HmiScreenBasisState.RecoveryEntriesLatched", names);
+        Assert.Contains("HmiControllerState.HasControllerGuidance", names);
+        Assert.Contains("HmiPresentationInputsState.ReasonCodes", names);
+        Assert.Contains("HmiSlotOperationState.HasOperationGuidance", names);
+        Assert.Contains("HmiRecoveryEntryState.OfferFromLastRefresh", names);
+        Assert.Contains("HmiAcceptedSafetyState.ReasonCodes", names);
     }
 
     private static IEnumerable<PropertyInfo> Properties(Type type, HashSet<Type> seen)

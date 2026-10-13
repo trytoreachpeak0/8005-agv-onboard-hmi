@@ -50,11 +50,16 @@ internal sealed class HmiScreenStateMonitor : IDisposable
     private readonly DispatcherTimer _flushTimer;
     private readonly DispatcherTimer _heartbeatTimer;
     private readonly Action<string>? _entryProbe;
+    private readonly IHmiScreenStateSessionSource? _session;
     private IReadOnlyList<OpenModalDialog> _lastModals = [];
     private int _dirty;
     private int _disabled;
 
     /// <param name="entryProbe">Test seam: called first in every entry point with its name, so a test can make it throw.</param>
+    /// <param name="session">
+    /// The session, when there is one: its accepted safety state can move without any view-model property changing
+    /// (onboard-hmi#314), so its <c>StateChanged</c> sets the flag too.
+    /// </param>
     internal HmiScreenStateMonitor(
         MainViewModel viewModel,
         Func<HmiScreenState> build,
@@ -65,7 +70,8 @@ internal sealed class HmiScreenStateMonitor : IDisposable
         Dispatcher dispatcher,
         TimeSpan flushInterval,
         TimeSpan heartbeatInterval,
-        Action<string>? entryProbe = null)
+        Action<string>? entryProbe = null,
+        IHmiScreenStateSessionSource? session = null)
     {
         _viewModel = viewModel ?? throw new ArgumentNullException(nameof(viewModel));
         _build = build ?? throw new ArgumentNullException(nameof(build));
@@ -75,6 +81,7 @@ internal sealed class HmiScreenStateMonitor : IDisposable
         _time = time ?? throw new ArgumentNullException(nameof(time));
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _entryProbe = entryProbe;
+        _session = session;
         _flushTimer = new DispatcherTimer(DispatcherPriority.Background, dispatcher) { Interval = flushInterval };
         _heartbeatTimer = new DispatcherTimer(DispatcherPriority.Background, dispatcher) { Interval = heartbeatInterval };
     }
@@ -95,14 +102,15 @@ internal sealed class HmiScreenStateMonitor : IDisposable
         Dispatcher dispatcher,
         TimeSpan flushInterval,
         TimeSpan heartbeatInterval,
-        Action<string>? entryProbe = null)
+        Action<string>? entryProbe = null,
+        IHmiScreenStateSessionSource? session = null)
     {
         HmiScreenStateMonitor? monitor = null;
         try
         {
             entryProbe?.Invoke(nameof(TryStart));
             monitor = new HmiScreenStateMonitor(
-                viewModel, build, modals, sink, logger, time, dispatcher, flushInterval, heartbeatInterval, entryProbe);
+                viewModel, build, modals, sink, logger, time, dispatcher, flushInterval, heartbeatInterval, entryProbe, session);
             monitor.Subscribe();
             Interlocked.Exchange(ref monitor._dirty, 1);
             monitor._flushTimer.Tick += monitor.OnFlushTick;
@@ -173,6 +181,11 @@ internal sealed class HmiScreenStateMonitor : IDisposable
         {
             command.CanExecuteChanged += OnCommandCanExecuteChanged;
         }
+
+        if (_session is not null)
+        {
+            _session.StateChanged += OnSessionStateChanged;
+        }
     }
 
     private void Unsubscribe()
@@ -191,6 +204,11 @@ internal sealed class HmiScreenStateMonitor : IDisposable
         foreach (ICommand command in Commands())
         {
             command.CanExecuteChanged -= OnCommandCanExecuteChanged;
+        }
+
+        if (_session is not null)
+        {
+            _session.StateChanged -= OnSessionStateChanged;
         }
     }
 
@@ -242,6 +260,20 @@ internal sealed class HmiScreenStateMonitor : IDisposable
         catch (Exception failure)
         {
             Disable(nameof(OnLockerPropertyChanged), failure);
+        }
+    }
+
+    /// <summary>Raised on the session's thread, after the accepted versions moved; only sets the flag.</summary>
+    private void OnSessionStateChanged(object? sender, ValueChangedEventArgs<WireToGateSessionSnapshot> args)
+    {
+        try
+        {
+            _entryProbe?.Invoke(nameof(OnSessionStateChanged));
+            Interlocked.Exchange(ref _dirty, 1);
+        }
+        catch (Exception failure)
+        {
+            Disable(nameof(OnSessionStateChanged), failure);
         }
     }
 

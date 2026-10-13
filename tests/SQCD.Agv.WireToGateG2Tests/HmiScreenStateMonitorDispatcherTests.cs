@@ -45,6 +45,7 @@ public sealed class HmiScreenStateMonitorDispatcherTests
     [InlineData("OnViewModelPropertyChanged", false)]
     [InlineData("OnCollectionChanged", true)]
     [InlineData("OnCommandCanExecuteChanged", true)]
+    [InlineData("OnSessionStateChanged", true)]
     [InlineData("OnFlushTick", true)]
     [InlineData("OnHeartbeatTick", true)]
     [InlineData("Build", true)]
@@ -77,6 +78,13 @@ public sealed class HmiScreenStateMonitorDispatcherTests
             Interlocked.Increment(ref unhandled);
             args.Handled = true;
         });
+        // The session's change event comes off the dispatcher, as the session raises it (onboard-hmi#314).
+        HmiScreenStateWiringTests.FakeScreenStateSession session = new(
+            new SQCD.Agv.Infrastructure.WireToGateAcceptedSafety(
+                1,
+                null,
+                null,
+                SQCD.Agv.Infrastructure.WireToGateAcceptedSafetySource.Configured));
         // A heartbeat long enough not to fire before the trigger, unless the heartbeat is what is being made to fail.
         TimeSpan heartbeat = failingEntry == "OnHeartbeatTick" ? Heartbeat : TimeSpan.FromMinutes(5);
         HmiScreenStateMonitor? monitor = thread.Dispatcher.Invoke(() => HmiScreenStateMonitor.TryStart(
@@ -97,7 +105,8 @@ public sealed class HmiScreenStateMonitorDispatcherTests
                 {
                     throw new InvalidOperationException(entry);
                 }
-            }));
+            },
+            session));
         Assert.NotNull(monitor);
         if (failingEntry is not ("OnFlushTick" or "Build" or "OnHeartbeatTick"))
         {
@@ -112,6 +121,7 @@ public sealed class HmiScreenStateMonitorDispatcherTests
             observed.ReportOperatorRejection("SUBLOT_NOT_IN_WORKLIST");
             reference.ReportOperatorRejection("SUBLOT_NOT_IN_WORKLIST");
         });
+        await Task.Run(session.Raise, TestContext.Current.CancellationToken);
 
         await WaitAsync(() => monitor.IsDisabled, "the snapshot to disable itself");
         // Let anything queued behind the trigger run, so a late escape would still be counted.

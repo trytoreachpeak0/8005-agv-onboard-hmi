@@ -26,6 +26,7 @@ internal static class HmiScreenStateWiring
     internal sealed record Started(HmiScreenStateFileWriter Writer, HmiScreenStateMonitor? Monitor);
 
     /// <summary>Starts the snapshot on the calling (dispatcher) thread if it is switched on and its parameters are valid.</summary>
+    /// <param name="session">The session, null without one: the accepted safety state and its change event (onboard-hmi#314).</param>
     internal static Started? Start(
         ScreenStateSettings screenState,
         LogSettings logging,
@@ -34,7 +35,8 @@ internal static class HmiScreenStateWiring
         IAppLogger logger,
         Dispatcher dispatcher,
         IHmiScreenStateFileSystem? files = null,
-        TimeProvider? time = null)
+        TimeProvider? time = null,
+        IHmiScreenStateSessionSource? session = null)
     {
         ArgumentNullException.ThrowIfNull(screenState);
         if (!screenState.Enabled)
@@ -64,14 +66,15 @@ internal static class HmiScreenStateWiring
         HmiScreenStateFileWriter writer = new(options, files ?? HmiScreenStateFileSystem.Instance, clock, logger);
         HmiScreenStateMonitor? monitor = HmiScreenStateMonitor.TryStart(
             viewModel,
-            () => HmiScreenStateBuilder.Build(viewModel, modals),
+            () => HmiScreenStateBuilder.Build(viewModel, modals, session?.AcceptedSafety),
             modals,
             writer,
             logger,
             clock,
             dispatcher,
             options.FlushInterval,
-            options.HeartbeatInterval);
+            options.HeartbeatInterval,
+            session: session);
         return new Started(writer, monitor);
     }
 }

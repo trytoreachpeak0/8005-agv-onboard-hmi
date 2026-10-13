@@ -484,7 +484,8 @@ public partial class App : System.Windows.Application, IDisposable
                 viewModel,
                 ModalDialogs.Registry,
                 logger,
-                Dispatcher);
+                Dispatcher,
+                session: _wireToGate is { } session ? new HmiScreenStateSessionSource(session) : null);
             _screenStateWriter = started?.Writer;
             _screenStateMonitor = started?.Monitor;
         }

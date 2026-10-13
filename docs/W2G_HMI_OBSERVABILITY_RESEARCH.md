@@ -333,21 +333,45 @@ A1 与 A2 的差别：
     - 发车倒计时：只记档位与截止时刻，不记每秒变化的文字与闪烁相位；
     - 最近 N 条「操作记录」（`Logs` 的尾部）。
   - **横幅与入口背后的输入（T1b）**：
-    - 控制器快照的 `State`、`ErrorCode`、`Guidance`、`DeparturePermitted`；锁存与否；
+    - 控制器快照的 `State`、`ErrorCode`、`DeparturePermitted`；锁存与否。**`Guidance` 不进快照，只记是否非空**
+      （hmi#314，调度 2026-10-12 裁定 A）：控制器提示会带子批号（`OnboardController.cs:275`，「正在确认物料条码 {sublot}」），
+      与本节内容边界和 T1a 的 `HmiScreenStateContentBoundaryArchitectureTests` 冲突；仓位操作快照的 `Guidance` 同理；
     - 会话的 `Readiness`、`ReasonCodes`、`SessionGeneration`；
     - 当前仓位操作阶段；`WireToGateHmiPresentation.Create` 的其余输入；
     - 十个恢复入口各自的业务层判据（锁存闸门之前的值），与 T1a 的最终值并列，二者之差就是锁存闸门的作用；
     - **服务端已接受的那份安全摘要**：版本号、`departureSafe`、`reasonCodes`。今天它只以业务服务的私有签名存在（第 2 节 O7），
       进程外看不到。T1b 在会话客户端里加一个只读字段，记「服务端已接受的版本号＋对应的摘要」：
-      - 「版本号＋摘要」放进**同一个**不可变 record，字段只存它的引用；
-      - 更新用与 `AdvanceSafetyStateVersion` 相同的只升不降规则做 CAS（参照 `WireToGateSessionClient.cs:4962-4976`）：
-        新 record 的版本号不大于当前就放弃，否则 `Interlocked.CompareExchange` 换上。**不用 `Volatile.Write` 直接覆盖**：
+      - 「版本号＋会话代号＋摘要」放进**同一个**不可变 record，字段只存它的引用；摘要可以是「未知」；
+      - 更新做 CAS：新 record 胜出才 `Interlocked.CompareExchange` 换上，否则放弃。**不用 `Volatile.Write` 直接覆盖**：
         那样迟到的旧确认会盖掉新摘要，读者也可能读到新版本号配旧摘要。不加锁、不做 I/O、不改发送路径；
-      - 五个手里有摘要的调用点（`:778`、`:969`、`:2386`、`:2734`、`:5043`）直接用手里的摘要登记；
-      - `:778` 所在的发送方法在「此前已送达」时提前返回存档的那一行（`:1775-1778` 的 `stored.Acknowledged` 分支），
-        这时登记的是**存档的那一行**里的摘要，不是这次调用传进来的参数；
-      - `:4957` 只有版本号：去查「版本号→摘要」（由前五处登记时一并记下），查到就用；查不到就登记一个摘要标为未知的 record，
-        绝不拿一份别的版本的摘要顶上。
+      - **胜出规则不是单纯的只升不降**（hmi#314 实现时读代码发现，调度 2026-10-12 裁定 B）。版本号更大就胜出；版本号更小就放弃；
+        **同号时只有两种情况替换**：当前摘要未知、新的已知；或者新的是握手快照、会话代号比当前的新。其余同号一律放弃。
+        单纯的「不大于就放弃」会在下面三种情形里登记错（行号是 `b2f602e` 上的 `WireToGateSessionClient.cs`）：
+        1. **新一代握手同号换内容。**读到的：握手没补发时快照沿用已接受的号，摘要却是当场按 IO 现算的（`:946-955`，注释写明
+           「服务端每一代从零开始」）。断线重连且期间 IO 变了，同一个号在新一代对应新摘要，只升不降会留下上一代那份。
+           用例 `ANewGenerationsHandshakeAtTheSameVersionReplacesTheOldGenerationsSummary` 跑出了这个前提（同号、代号变大、摘要不同）。
+        2. **初值没有摘要。**读到的：版本号由构造函数按配置播种（`:129`），那时没有摘要；首次握手不补发时推进的是同一个号（`:969`）。
+           只升不降会让摘要一直是未知。用例 `AcceptedSafetyAfterTheHandshakeIsTheSnapshotTheServerAcknowledged`。
+        3. **就绪消息先于确认登记。**`:778` 的登记排在 `DurableAck` 唤醒的续体里、还要先 await 写盘，接收循环会先处理紧跟着的
+           `SessionReadiness`（`:4957`，只有版本号）。这一条起初是推的，**实测是常态而不是偶发**：在真服务端的顺序下（先确认、
+           紧跟就绪），`TheNaturalOrderOfAcknowledgementAndReadinessAlwaysEndsWithTheChangesSummary` 40 轮里 40 轮是就绪消息先登记，
+           按请求快照那条路（`AcceptedSafetyAfterARequestedSnapshotIsTheSnapshotTheServerAcknowledged`）5 次全是。
+      - 所以「版本号→摘要」**在构造摘要时、发送之前就记下**（`SafetyStateChanged`、握手快照、按请求快照三处，保留最近 16 个），
+        不是在确认之后才记：否则 `:4957` 几乎总是查不到。查到就用；查不到（服务端报了一个本机从没构造过的版本）就登记摘要未知，
+        绝不拿一份别的版本的摘要顶上（用例 `AReadinessReportingAVersionNeverBuiltHereLeavesTheSummaryUnknown`）。
+      - 有摘要的五个登记点（`:778`、`:969`、`:2386`、`:2734`、`:5043`）用手里的摘要登记。`:778` 所在的发送方法在「此前已送达」时
+        提前返回存档的那一行（`:1775-1778`）；本节原先要求这时登记**存档那一行**里的摘要，实现改为登记本次调用的参数（调度
+        2026-10-12 批准的偏离）。理由：读到的，存档行与本次参数在 JSON 上恒等，因为同一去重键下载荷不同会被 `StoreDurableAsync`
+        以 `BUSINESS_ID_CONTENT_CONFLICT` 拒绝（`:1984-2009`），这条前提由
+        `AResendOfAnAcknowledgedChangeRegistersWhatTheServerTookAndADifferentSummaryUnderItsKeyIsRefused` 钉住；而回读存档行要在
+        每次确认之后、`PublishAcceptedVersions` 之前多做一次整行反序列化，第一版这样实现时，发出消息的逐字节对照里候选独有的
+        序列明显多于基线独有（见 `evidence/hmi314/README.md`），推的机理正是这段多出的开销改变了竞态的先后。`:5043` 同理直接用
+        原有代码已经解析出的载荷，不再解析第二遍。登记记录在原位置（推进版本号之后、发布之前），只做一次记录分配与一次 CAS：
+        放到发布之后会出现「已发布新号、未登记」的窗口——会话里的判断（按请求快照、握手选号 `:906-956`、就绪校验）读的都是
+        `_acceptedSafetyStateVersion` 而不读登记器，所以窗口不改变会话行为，但窗口里构造的快照会读到旧记录，且登记本身不置脏
+        标记，要等心跳才更新，所以不挪。
+      - 每个登记点整体 `try/catch`，失败只记一行会话诊断、不影响发送；会话诊断本来就经 `WireToGateSessionService` 落到文件日志，
+        不新增日志来源。
       这是推荐方案里唯一一处碰到 `SQCD.Agv.Infrastructure` 的改动。
 - 在 G2 里构造快照（M4）：G2 没有 `Dispatcher`，ViewModel 的集合可能正被别的线程追加。T1a 的 G2 断言要在夹具的 UI 锁内构造快照，
   或者照 `Logs` 的做法用容忍并发追加的复制（`ViewModelLogsReadArchitectureTests.cs:5-21` 说的那个快照方法），二者选一并写明。
@@ -426,7 +450,8 @@ T1a 要用量测证明（见验收标准）。
 
 ### T1b 验收标准
 
-- [ ] 快照给出 `WireToGateHmiPresentation.Create` 的全部输入，以及控制器快照的 `State`／`ErrorCode`／`Guidance`。
+- [ ] 快照给出 `WireToGateHmiPresentation.Create` 的全部输入，以及控制器快照的 `State`／`ErrorCode`；两处 `Guidance`
+      只记是否非空（见第 4.1 节，hmi#314 裁定 A）。
 - [ ] 十个恢复入口的业务层判据与最终值并列；G2 锁存场景断言「业务层为真、最终值为假」——这正是 O4 回答不了的那一条。
 - [ ] 服务端已接受的安全摘要：会话客户端按第 4.1 节记「已接受版本号＋对应摘要」，快照带出版本号、`departureSafe` 与 `reasonCodes`；
       G2 覆盖三条发送路（握手快照、按请求快照、`SafetyStateChanged`），断言快照里的那份与服务端假对端确认的那一份一致；
