@@ -1,8 +1,8 @@
 using System.IO;
 using System.Reflection;
 using System.Text.Json;
-using SQCD.Agv.Contracts;
 using SQCD.Agv.Application;
+using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
 using SQCD.Agv.Wpf;
