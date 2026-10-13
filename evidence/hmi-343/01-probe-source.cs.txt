@@ -1,0 +1,148 @@
+using System.Text.Json;
+using SQCD.Agv.Core;
+using Xunit;
+
+namespace SQCD.Agv.WireToGateG2Tests;
+
+// TEMPORARY step-1 probe for onboard-hmi#343. Not committed.
+public sealed partial class MultiDemandJourneyG2Tests
+{
+    private static readonly int[] Hmi343Slot1 = [1];
+}
+
+public sealed partial class MultiDemandJourneyG2Tests
+{
+    [Theory]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [InlineData("compensation")]
+    [InlineData("handoff")]
+    [InlineData("forced")]
+    [InlineData("resume")]
+    [InlineData("resume-ok")]
+    public async Task Hmi343ProbeExitAfterUnknownCancellation(string exit)
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await StartTakeOverStopAsync(
+            io,
+            server =>
+            {
+                server.RespondToLoadCancellationRequests = true;
+                server.LoadCancellationAuthorizedSlots = [1];
+                server.BeforeLoadCancellationAuthorization = () => io.SetUnreadable(0);
+                server.SendLoadCompensationCommandOnRequest = true;
+                server.RecoverySlotOperationAttemptId = AttemptB;
+                server.RecoveryVectorSlotOperationAttemptId = AttemptB;
+            },
+            token);
+        await harness.WaitUntilAsync(() => harness.ViewModel.WorklistItems.Count == 2, "rows", token);
+        await SendSlotCommandAsync(harness, DemandA, AttemptA, [5]);
+        await WaitForDoorOpenAsync(harness, io, AttemptA, pulses: 1, token);
+        io.CloseDoor(4, cargo: true);
+        await harness.WaitUntilAsync(
+            () => ReadJournal(harness, token).LastCompletedLoadOperationContext?.SlotOperationAttemptId == AttemptA
+                && ReadJournal(harness, token).UnsettledSlotOperationAttemptId is null,
+            "A recorded",
+            token);
+        await SendSlotCommandAsync(harness, DemandB, AttemptB, [1]);
+        await WaitForDoorOpenAsync(harness, io, AttemptB, pulses: 2, token);
+        await harness.WaitUntilAsync(() => harness.ViewModel.CanRequestLoadCancellation, "entry", token);
+        await harness.ViewModel.RequestLoadCancellationAsync(token);
+        JsonElement unknown = Assert.Single(ReceivedPayloads(harness, "LoadCancellationResult"));
+        Assert.Equal("UNKNOWN", unknown.GetProperty("overallOutcome").GetString());
+        await harness.WaitUntilAsync(
+            () => harness.Session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired,
+            "recovery required",
+            token);
+        // The operator empties and shuts B's door, so a door check is not what blocks the exits.
+        io.CloseDoor(0, cargo: false);
+        await Task.Delay(1000, token);
+
+        List<string> report = [];
+        harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
+        report.Add($"EXIT={exit}");
+        report.Add(
+            $"ENTRIES compensation={harness.Business.CanRequestLoadCompensation} handoff={harness.Business.CanRequestFaultCargoHandoff} "
+            + $"forced={harness.Business.CanRequestForcedMechanicalRecovery} resume={harness.Business.CanRequestResumeAfterRepair} "
+            + $"cancel={harness.Business.CanRequestLoadCancellation} vmCompensation={harness.ViewModel.CanRequestLoadCompensation} "
+            + $"vmHandoff={harness.ViewModel.CanRequestFaultCargoHandoff} vmForced={harness.ViewModel.CanRequestForcedMechanicalRecovery}");
+        int eventsBefore = harness.Events.Count;
+        int unlocksBefore = io.UnlockCount;
+        bool pressed = exit switch
+        {
+            "compensation" => await harness.Business.RequestLoadCompensationAsync("现场确认装货无法继续，申请补偿清空目标仓位。", token),
+            "handoff" => await harness.Business.RequestFaultCargoHandoffAsync("现场确认故障仓货物需要交接处理。", DemandB, token),
+            "forced" => await harness.Business.RequestForcedMechanicalRecoveryAsync("现场确认仓门无法电动解锁，申请强制机械恢复。", DemandB, token),
+            "resume" or "resume-ok" => await harness.Business.RequestResumeAfterRepairAsync("现场确认修复完成。", token),
+            _ => throw new ArgumentOutOfRangeException(nameof(exit))
+        };
+        await Task.Delay(1000, token);
+        if (exit.StartsWith("resume", StringComparison.Ordinal) && pressed)
+        {
+            if (exit == "resume-ok")
+            {
+                io.CloseDoorAfterNextUnlock(0, cargo: true);
+            }
+
+            WireToGateRecoveryState st = ReadJournal(harness, token);
+            report.Add($"RESUME-STATE session={st.ExceptionRecoverySessionId} action={st.RecoveryActionId} cp={st.ProvenRecoveryCheckpoint} ctx={st.OperationContext?.DemandId}");
+            await harness.Server.SendCommandAsync(
+                "SlotOperationResumeCommand",
+                Guid.NewGuid().ToString("D"),
+                new
+                {
+                    exceptionRecoverySessionId = st.ExceptionRecoverySessionId,
+                    recoveryActionId = st.RecoveryActionId,
+                    demandId = DemandB,
+                    slotOperationAttemptId = AttemptB,
+                    provenRecoveryCheckpoint = st.ProvenRecoveryCheckpoint switch
+                    {
+                        WireToGateRecoveryCheckpoint.Prepared => "PREPARED",
+                        WireToGateRecoveryCheckpoint.ActiveUnlockSet => "ACTIVE_UNLOCK_SET",
+                        _ => "SAFE_FINISH_REACHED"
+                    },
+                    slots = Hmi343Slot1,
+                    commandContentSha256 = new string('0', 64)
+                });
+            await Task.Delay(3000, token);
+            foreach (string type in (string[])["SlotOperationCommandRejected", "OperationResult"])
+            {
+                foreach (JsonElement p in ReceivedPayloads(harness, type))
+                {
+                    report.Add($"RESUME-ANSWER {type} {p}");
+                }
+            }
+        }
+
+        await Task.Delay(2000, token);
+        report.Add($"PRESSED returned={pressed} unlocksDelta={io.UnlockCount - unlocksBefore}");
+        foreach (var e in harness.Events.Skip(eventsBefore))
+        {
+            report.Add($"EVENT {e.Kind} {e.Message}");
+        }
+
+        foreach (string type in new[]
+                 {
+                     "ExceptionRecoverySessionRequested", "RecoveryActionSubmitted", "LoadCompensationRequested",
+                     "LoadCompensationResult", "FaultCargoRecoveryResult", "ForcedMechanicalRecoveryResult",
+                     "RecoveryResumeRequested", "LoadCancellationResult", "OperationResult"
+                 })
+        {
+            report.Add($"SENT {type} x{ReceivedPayloads(harness, type).Length}");
+        }
+
+        WireToGateRecoveryState after = ReadJournal(harness, token);
+        report.Add(
+            $"JOURNAL vector={after.RecoveryVector?.VectorType}/{after.RecoveryVector?.DemandId} cp={after.ProvenRecoveryCheckpoint} "
+            + $"active=[{string.Join(",", after.ActiveUnlockSlots)}] unsettled={after.UnsettledSlotOperationAttemptId}");
+        report.Add(
+            $"CONFIRM forced={harness.Business.CanConfirmForcedMechanicalRecovery}");
+        foreach (var line in harness.LogsSnapshot().TakeLast(12))
+        {
+            report.Add($"LOG {line.Message}");
+        }
+
+        Directory.CreateDirectory("F:/8005-scratch/hmi343");
+        File.WriteAllLines($"F:/8005-scratch/hmi343/probe-{exit}.txt", report);
+    }
+}
