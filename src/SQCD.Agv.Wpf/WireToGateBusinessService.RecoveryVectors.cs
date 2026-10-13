@@ -698,6 +698,19 @@ public sealed partial class WireToGateBusinessService
         string? confirmedSubject = LoadCancellationSubject(state, selectedDemandId)?.Key;
         if (!string.Equals(pressedSubject, confirmedSubject, StringComparison.Ordinal))
         {
+            // Gone because the cancellation it named has concluded -- its result acknowledged while the dialog was open,
+            // and its vector forgotten (onboard-hmi#343): the press is answered as one over a concluded cancellation, not
+            // told to press again on an entry that is now shut.
+            if (confirmedSubject is null
+                && state.RecoveryVector is null
+                && state.OperationContext is { OperationType: OperationType.Load } load
+                && string.Equals(state.UnsettledSlotOperationAttemptId, load.SlotOperationAttemptId, StringComparison.Ordinal)
+                && await IsCancellationConcludedAsync(load.DemandId, load.SlotOperationAttemptId, cancellationToken)
+                    .ConfigureAwait(false))
+            {
+                throw new InvalidOperationException("LOAD_CANCELLATION_ALREADY_CONCLUDED");
+            }
+
             return AnswerNothingToCancel($"按下时的对象={pressedSubject}，确认时的对象={confirmedSubject ?? "none"}");
         }
 
