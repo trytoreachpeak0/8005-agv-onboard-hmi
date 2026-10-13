@@ -447,15 +447,16 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// <summary>
     /// Whether the load a resume would run again is one an operator's cancellation took over and concluded: its result is
     /// on file, and the attempt's conclusion is that cancellation's (ADR-cross-0046). A resume would pulse the door open and
-    /// ask for the cargo the operator gave up (onboard-hmi#343, step 1 probe); compensation and the forced recovery are
-    /// the ways on from there.
+    /// ask for the cargo the operator gave up (onboard-hmi#343, step 1 probe); compensation, the fault cargo handoff and the
+    /// forced recovery are the ways on from there -- which of them the server allows depends on whether the load reported a
+    /// result of its own (control-server#697).
     /// </summary>
     private bool IsResumeOverConcludedCancellation(WireToGateRecoveryState state) =>
         state.UnsettledSlotOperationAttemptId is { } attempt && IsCancellationConcluded(attempt);
 
     /// <summary>What a resume press over a concluded cancellation is answered with.</summary>
     internal const string ResumeOverConcludedCancellationText =
-        "这次装货已经取消过、取消已有结论，不能再恢复原装货。需要处理货物请改用「补偿清空」或「强制机械恢复」，"
+        "这次装货已经取消过、取消已有结论，不能再恢复原装货。需要处理货物请改用「补偿清空」「故障交接」或「强制机械恢复」，"
         + "或联系维护人员。 ";
 
     /// <param name="reason">
