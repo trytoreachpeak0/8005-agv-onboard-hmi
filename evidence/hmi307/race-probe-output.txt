@@ -1,0 +1,49 @@
+  Determining projects to restore...
+  All projects are up-to-date for restore.
+  SQCD.Agv.Core -> F:\8005-wt\hmi307-8005-agv-onboard-hmi\src\SQCD.Agv.Core\bin\Debug\net8.0\win-x64\SQCD.Agv.Core.dll
+  SQCD.Agv.Contracts -> F:\8005-wt\hmi307-8005-agv-onboard-hmi\src\SQCD.Agv.Contracts\bin\Debug\net8.0\win-x64\SQCD.Agv.Contracts.dll
+  SQCD.Agv.Infrastructure -> F:\8005-wt\hmi307-8005-agv-onboard-hmi\src\SQCD.Agv.Infrastructure\bin\Debug\net8.0\win-x64\SQCD.Agv.Infrastructure.dll
+  SQCD.Agv.Application -> F:\8005-wt\hmi307-8005-agv-onboard-hmi\src\SQCD.Agv.Application\bin\Debug\net8.0\win-x64\SQCD.Agv.Application.dll
+  SQCD.Agv.AutomationHost -> F:\8005-wt\hmi307-8005-agv-onboard-hmi\src\SQCD.Agv.AutomationHost\bin\Debug\net8.0\win-x64\SQCD.Agv.AutomationHost.dll
+  SQCD.Agv.Wpf -> F:\8005-wt\hmi307-8005-agv-onboard-hmi\src\SQCD.Agv.Wpf\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.Wpf.dll
+  SQCD.Agv.SchemaConformance -> F:\8005-wt\hmi307-8005-agv-onboard-hmi\tools\SQCD.Agv.SchemaConformance\bin\Debug\net8.0\win-x64\SQCD.Agv.SchemaConformance.dll
+  SQCD.Agv.WireToGateG2Tests -> F:\8005-wt\hmi307-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll
+Test run for F:\8005-wt\hmi307-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+F:\8005-wt\hmi307-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\bin\Debug\net8.0-windows\win-x64\SQCD.Agv.WireToGateG2Tests.dll
+[xUnit.net 00:00:00.00] xUnit.net VSTest Adapter v3.1.5+1b188a7b0a (64-bit .NET 8.0.31)
+[xUnit.net 00:00:02.59]   Discovering: SQCD.Agv.WireToGateG2Tests
+[xUnit.net 00:00:03.55]   Discovered:  SQCD.Agv.WireToGateG2Tests
+[xUnit.net 00:00:03.84]   Starting:    SQCD.Agv.WireToGateG2Tests
+[xUnit.net 00:00:04.16]     SQCD.Agv.WireToGateG2Tests.Hmi307LogsRaceProbe.PollingTheLogWhileAnotherThreadAppends(throughSnapshot: False) [FAIL]
+[xUnit.net 00:00:04.17]       throughSnapshot=False: 50/50 rounds threw (414 exceptions), first: InvalidOperationException: Collection was modified; enumeration operation may not execute.
+[xUnit.net 00:00:04.17]       Stack Trace:
+[xUnit.net 00:00:04.17]         F:\8005-wt\hmi307-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\Hmi307LogsRaceProbe.cs(62,0): at SQCD.Agv.WireToGateG2Tests.Hmi307LogsRaceProbe.PollingTheLogWhileAnotherThreadAppends(Boolean throughSnapshot)
+[xUnit.net 00:00:04.17]         --- End of stack trace from previous location ---
+[xUnit.net 00:00:04.17]       Output:
+[xUnit.net 00:00:04.17]         throughSnapshot=False rounds=50 failedRounds=50 exceptions=414 first=InvalidOperationException: Collection was modified; enumeration operation may not execute.
+[xUnit.net 00:00:04.86]   Finished:    SQCD.Agv.WireToGateG2Tests (ID = '8e6c0d31704589cb5f7eee512f6c8216ae7f250ef3f3371f1323c1209984fff8')
+  Failed SQCD.Agv.WireToGateG2Tests.Hmi307LogsRaceProbe.PollingTheLogWhileAnotherThreadAppends(throughSnapshot: False) [175 ms]
+  Error Message:
+   throughSnapshot=False: 50/50 rounds threw (414 exceptions), first: InvalidOperationException: Collection was modified; enumeration operation may not execute.
+  Stack Trace:
+     at SQCD.Agv.WireToGateG2Tests.Hmi307LogsRaceProbe.PollingTheLogWhileAnotherThreadAppends(Boolean throughSnapshot) in F:\8005-wt\hmi307-8005-agv-onboard-hmi\tests\SQCD.Agv.WireToGateG2Tests\Hmi307LogsRaceProbe.cs:line 62
+--- End of stack trace from previous location ---
+  Standard Output Messages:
+ throughSnapshot=False rounds=50 failedRounds=50 exceptions=414 first=InvalidOperationException: Collection was modified; enumeration operation may not execute.
+
+
+  Passed SQCD.Agv.WireToGateG2Tests.Hmi307LogsRaceProbe.PollingTheLogWhileAnotherThreadAppends(throughSnapshot: True) [29 ms]
+  Standard Output Messages:
+ throughSnapshot=True rounds=50 failedRounds=0 exceptions=0 first=-
+
+
+
+Test Run Failed.
+Total tests: 2
+     Passed: 1
+     Failed: 1
+ Total time: 5.6759 Seconds
