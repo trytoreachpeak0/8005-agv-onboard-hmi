@@ -92,7 +92,7 @@ public sealed partial class RecoveryVectorG2Tests
         viewModel.ConfigureWireToGate((_, _, _) => Task.CompletedTask, () => false);
         ForcedIsolationWiring.Configure(viewModel, harness.Business);
         RecordingLogger log = new();
-        OperatorRecordLog? recordLog = OperatorRecordLog.TryStart(new LogSettings { OperatorRecords = true }, viewModel.Logs, log);
+        OperatorRecordLog? recordLog = OperatorRecordLog.TryStart(new LogSettings { OperatorRecords = true }, viewModel.Logs, log); // logs-reference: the record log subscribes to its CollectionChanged
         Assert.NotNull(recordLog);
         harness.Business.OperatorEventPublished += (_, args) => viewModel.ApplyWireToGateOperatorEvent(args.Value);
         return (viewModel, log, recordLog);
@@ -120,7 +120,7 @@ public sealed partial class RecoveryVectorG2Tests
             .Select(entry => entry.Message)];
         // Something was written: the paths published operator events, so an empty log would pass vacuously.
         Assert.NotEmpty(lines);
-        Assert.Contains(viewModel.Logs, line => line.Source == OperatorRecordSource.OperatorEvent);
+        Assert.Contains(OperatorLogSnapshot.Of(viewModel), line => line.Source == OperatorRecordSource.OperatorEvent);
         string[] excluded = [.. typed, "g2-vector-credential", "vector-test-proof"];
         Assert.All(lines, line => Assert.DoesNotContain(excluded, value => line.Contains(value, StringComparison.Ordinal)));
     }

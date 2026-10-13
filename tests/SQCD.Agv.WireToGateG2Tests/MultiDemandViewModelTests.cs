@@ -929,7 +929,7 @@ public sealed class MultiDemandViewModelTests
 
         Assert.Equal("只能修正本站最后一次装货：子批 SUBLOT-A", viewModel.LoadCorrectionTargetText);
         // 第一次装完不提醒任何窗口关闭：在它之前没有窗口。
-        Assert.DoesNotContain(viewModel.Logs, line => line.Message.Contains("修正窗口", StringComparison.Ordinal));
+        Assert.DoesNotContain(OperatorLogSnapshot.Of(viewModel), line => line.Message.Contains("修正窗口", StringComparison.Ordinal));
 
         viewModel.UpdateJournaledOperations(WireToGateRecoveryState.Empty with
         {
@@ -938,7 +938,7 @@ public sealed class MultiDemandViewModelTests
 
         Assert.Equal("只能修正本站最后一次装货：子批 SUBLOT-B", viewModel.LoadCorrectionTargetText);
         Assert.Contains(
-            viewModel.Logs,
+            OperatorLogSnapshot.Of(viewModel),
             line => line.Message == "子批 SUBLOT-A 的修正窗口已随子批 SUBLOT-B 装货关闭。");
     }
 
@@ -963,7 +963,7 @@ public sealed class MultiDemandViewModelTests
             Item(DemandB, "SUBLOT-B", "WIRE_TO_GATE", "PICKUP", 1))));
         RecordingLogger log = new();
         using SQCD.Agv.Wpf.OperatorRecordOutput.OperatorRecordLog? recordLog =
-            SQCD.Agv.Wpf.OperatorRecordOutput.OperatorRecordLog.TryStart(new LogSettings { OperatorRecords = true }, viewModel.Logs, log);
+            SQCD.Agv.Wpf.OperatorRecordOutput.OperatorRecordLog.TryStart(new LogSettings { OperatorRecords = true }, viewModel.Logs, log); // logs-reference: the record log subscribes to its CollectionChanged
         Assert.NotNull(recordLog);
 
         viewModel.UpdateJournaledOperations(WireToGateRecoveryState.Empty with
@@ -1084,7 +1084,7 @@ public sealed class MultiDemandViewModelTests
         });
 
         Assert.Equal("只能修正本站最后一次装货：子批 SUBLOT-B", viewModel.LoadCorrectionTargetText);
-        Assert.DoesNotContain(viewModel.Logs, line => line.Message.Contains("修正窗口", StringComparison.Ordinal));
+        Assert.DoesNotContain(OperatorLogSnapshot.Of(viewModel), line => line.Message.Contains("修正窗口", StringComparison.Ordinal));
     }
 
     /// <summary>

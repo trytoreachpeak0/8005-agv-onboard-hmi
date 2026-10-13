@@ -83,7 +83,7 @@ public sealed class OperatorRecordLogDispatcherTests
 
         OperatorRecordLog? log = thread.Dispatcher.Invoke(() => OperatorRecordLog.TryStart(
             new LogSettings { OperatorRecords = true },
-            viewModel.Logs,
+            viewModel.Logs, // logs-reference: the record log subscribes to its CollectionChanged
             logger));
         Assert.NotNull(log);
 

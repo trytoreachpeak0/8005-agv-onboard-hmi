@@ -343,9 +343,9 @@ public sealed class HmiScreenStateFileWriterTests
         Assert.NotNull(monitor);
 
         await WaitAsync(() => files.Attempts >= 10, "repeated write attempts");
-        int records = thread.Dispatcher.Invoke(() => viewModel.Logs.Count);
+        int records = thread.Dispatcher.Invoke(() => OperatorLogSnapshot.Of(viewModel).Length);
         _ = thread.Dispatcher.BeginInvoke(() => viewModel.ReportOperatorRejection("SUBLOT_NOT_IN_WORKLIST"));
-        await WaitAsync(() => thread.Dispatcher.Invoke(() => viewModel.Logs.Count) == records + 1, "the operator record");
+        await WaitAsync(() => thread.Dispatcher.Invoke(() => OperatorLogSnapshot.Of(viewModel).Length) == records + 1, "the operator record");
         files.Recover();
         // The writer writes the current file, then the timeline, and only then logs the recovery (review S1): wait for
         // the log line itself, not for the file.

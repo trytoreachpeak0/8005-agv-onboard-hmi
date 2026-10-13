@@ -232,7 +232,7 @@ public sealed class OperatorRecordLogTests
         await using OnboardController controller = MultiDemandViewModelTests.Controller();
         MainViewModel viewModel = await MultiDemandViewModelTests.ViewModel(controller);
         RecordingLogger logger = new();
-        using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger);
+        using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger); // logs-reference: the record log subscribes to its CollectionChanged
         Assert.NotNull(log);
 
         for (int index = 0; index < 305; index++)
@@ -240,7 +240,7 @@ public sealed class OperatorRecordLogTests
             viewModel.ReportOperatorRejection("SUBLOT_NOT_IN_WORKLIST");
         }
 
-        Assert.Equal(300, viewModel.Logs.Count);
+        Assert.Equal(300, OperatorLogSnapshot.Of(viewModel).Length);
         Assert.Equal(305, logger.Entries.Count(entry => entry.Source == nameof(OperatorRecordLog)));
         Assert.All(logger.Entries, entry => Assert.Contains("\"APPENDED\"", entry.Message, StringComparison.Ordinal));
     }
@@ -255,7 +255,7 @@ public sealed class OperatorRecordLogTests
         await using OnboardController controller = MultiDemandViewModelTests.Controller();
         MainViewModel viewModel = await MultiDemandViewModelTests.ViewModel(controller);
         RecordingLogger logger = new();
-        using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger);
+        using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger); // logs-reference: the record log subscribes to its CollectionChanged
         DateTimeOffset now = DateTimeOffset.Now;
 
         viewModel.ApplyWireToGateOperatorEvent(new WireToGateOperatorEvent(
@@ -283,7 +283,7 @@ public sealed class OperatorRecordLogTests
         await using OnboardController controller = MultiDemandViewModelTests.Controller();
         MainViewModel viewModel = await MultiDemandViewModelTests.ViewModel(controller);
         RecordingLogger logger = new();
-        using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger);
+        using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger); // logs-reference: the record log subscribes to its CollectionChanged
         DateTimeOffset now = DateTimeOffset.Now;
         OnboardSnapshot operating = new(
             OnboardState.Operating,

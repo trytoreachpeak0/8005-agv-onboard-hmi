@@ -81,11 +81,11 @@ public sealed class OperatorEventVisibilityTests
         RecordingLogger technicalLog = new();
         using OperatorRecordLog? recordLog = OperatorRecordLog.TryStart(
             new LogSettings { OperatorRecords = true },
-            viewModel.Logs,
+            viewModel.Logs, // logs-reference: the record log subscribes to its CollectionChanged
             technicalLog);
         Assert.NotNull(recordLog);
         // InitializeAsync already put the controller's own records on screen; they came before the record log started.
-        int before = viewModel.Logs.Count;
+        int before = OperatorLogSnapshot.Of(viewModel).Length;
         List<WireToGateOperatorEvent> published = [];
         business.OperatorEventPublished += (_, args) =>
         {
@@ -100,12 +100,12 @@ public sealed class OperatorEventVisibilityTests
         Assert.False(await business.RequestResumeAfterRepairAsync(cancellationToken: token));
         Assert.False(await business.RequestResumeAfterRepairAsync(cancellationToken: token));
         viewModel.ReportOperatorRejection("SUBLOT_NOT_IN_WORKLIST");
-        LogLineViewModel[] onScreen = [.. viewModel.Logs.Skip(before)];
-        int clearedOnScreen = viewModel.Logs.Count;
+        LogLineViewModel[] onScreen = [.. OperatorLogSnapshot.Of(viewModel).Skip(before)];
+        int clearedOnScreen = OperatorLogSnapshot.Of(viewModel).Length;
         viewModel.ClearLogsCommand.Execute(null);
         await WaitUntilAsync(
             () => technicalLog.Entries.Count == onScreen.Length + 1,
-            () => $"onScreen={onScreen.Length}，logs={viewModel.Logs.Count}，published={published.Count}，entries=[{string.Join(" | ", technicalLog.Entries.Select(entry => entry.Message))}]",
+            () => $"onScreen={onScreen.Length}，logs={OperatorLogSnapshot.Of(viewModel).Length}，published={published.Count}，entries=[{string.Join(" | ", technicalLog.Entries.Select(entry => entry.Message))}]",
             token);
 
         string[] lines = [.. technicalLog.Entries

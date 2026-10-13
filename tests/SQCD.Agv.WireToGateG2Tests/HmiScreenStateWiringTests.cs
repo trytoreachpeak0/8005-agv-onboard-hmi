@@ -219,7 +219,7 @@ public sealed class HmiScreenStateWiringTests
     private static int[] Subscribers(MainViewModel viewModel) =>
     [
         Handlers(viewModel, "PropertyChanged"),
-        Handlers(viewModel.Logs, "CollectionChanged"),
+        Handlers(viewModel.Logs, "CollectionChanged"), // logs-reference: counts its CollectionChanged handlers, reads no line
         Handlers(viewModel.Lockers, "CollectionChanged"),
         Handlers(viewModel.WorklistItems, "CollectionChanged"),
         Handlers(viewModel.JourneyPlanLegs, "CollectionChanged"),
