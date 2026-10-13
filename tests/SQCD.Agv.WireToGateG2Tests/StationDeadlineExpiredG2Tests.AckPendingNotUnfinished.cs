@@ -94,6 +94,26 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.Equal(WireToGateRecoveryCheckpoint.ResultRecorded, harness.ReadRecoveryState(token).ProvenRecoveryCheckpoint);
         Assert.Equal(WireToGateHmiOperationStage.Completed, harness.Business.CurrentOperationSnapshot?.Stage);
         Assert.Equal(1, harness.Io.UnlockCount);
+
+        // The business snapshot above is written before the deduplicator decides whether the event goes out, and the
+        // screen learns the current operation only from an event that went out (onboard-hmi#161). The last operation
+        // anything published before the settlement is RESULT_ACK_PENDING's Reporting, so if OPERATION_COMPLETED were
+        // swallowed the screen would stay at "result awaiting acknowledgement" while every assertion above held.
+        // Waited for, then held: the settlement's event follows the journal write the wait above anchors on.
+        await Harness.WaitUntilAsync(
+            () => harness.LastPublishedOperation() is { Stage: WireToGateHmiOperationStage.Completed } operation
+                && operation.SlotOperationAttemptId == AttemptId,
+            "the settlement to be published to the operator's screen as Completed",
+            token,
+            harness.DescribeEvents);
+        await harness.AssertLastPublishedOperationHoldsAsync(
+            operation =>
+            {
+                Assert.NotNull(operation);
+                Assert.Equal(WireToGateHmiOperationStage.Completed, operation.Stage);
+                Assert.Equal(AttemptId, operation.SlotOperationAttemptId);
+            },
+            token);
     }
 
     /// <summary>
@@ -287,5 +307,40 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.Equal(WireToGateRecoveryCheckpoint.ResultRecorded, harness.ReadRecoveryState(token).ProvenRecoveryCheckpoint);
         Assert.DoesNotContain("上次装货在执行中中断", harness.DescribeEvents(), StringComparison.Ordinal);
         Assert.Equal(1, harness.Io.UnlockCount);
+    }
+
+    private sealed partial class Harness
+    {
+        /// <summary>
+        /// The operation the last published operator event carried, exactly as published (onboard-hmi#161).
+        /// </summary>
+        /// <remarks>
+        /// This harness builds no view model; the published events are what the screen is fed from, so this is the
+        /// screen's input, read without applying any of the view model's own rules to it. A copy of such a rule here
+        /// would stay green after the real one changed.
+        /// </remarks>
+        public WireToGateHmiOperationSnapshot? LastPublishedOperation()
+        {
+            lock (_events)
+            {
+                return _events.LastOrDefault(item => item.Operation is not null)?.Operation;
+            }
+        }
+
+        /// <summary>
+        /// Holds <paramref name="assert"/> over <see cref="LastPublishedOperation"/> for half a second, asserting
+        /// throughout rather than reading once: a later event overwriting it would land within tens of milliseconds.
+        /// </summary>
+        public async Task AssertLastPublishedOperationHoldsAsync(
+            Action<WireToGateHmiOperationSnapshot?> assert,
+            CancellationToken cancellationToken)
+        {
+            DateTimeOffset until = DateTimeOffset.UtcNow.AddMilliseconds(500);
+            while (DateTimeOffset.UtcNow < until)
+            {
+                assert(LastPublishedOperation());
+                await Task.Delay(10, cancellationToken);
+            }
+        }
     }
 }
