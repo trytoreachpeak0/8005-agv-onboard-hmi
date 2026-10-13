@@ -45,6 +45,10 @@ public sealed partial class StationDeadlineExpiredG2Tests
             "the in-flight load cancellation entry to be offered",
             token);
 
+        // The cancellation takes slot 1 over standing open and waits on it with the harness's two-second operation timeout.
+        // Held until this thread shuts it: shut after seeing the vector start, a late wake-up ran that wait out and the
+        // cancellation ended ALL_EMPTY_DOOR_UNPROVEN instead of ALL_EMPTY (8005-agv-onboard-hmi#331).
+        harness.Io.HoldWaitsUntilShut(0);
         Task<bool> cancelling = harness.Business.RequestLoadCancellationAsync("现场不装了。", token);
         await Harness.WaitUntilAsync(
             () => harness.ReadRecoveryState(token).RecoveryVector is not null,
@@ -56,6 +60,10 @@ public sealed partial class StationDeadlineExpiredG2Tests
         harness.Io.CloseDoor(0, cargo: false);
         _ = await cancelling;
         await harness.WaitForInboundAsync("LoadCancellationResult", token);
+        // The premise above, pinned: the refused result is the ALL_EMPTY one. A cancellation whose wait on the slot ran out ends
+        // ALL_EMPTY_DOOR_UNPROVEN and is refused and closed out the same way, so without this such a run passed on the other
+        // path (8005-agv-onboard-hmi#331).
+        AssertRefusedResultAllEmpty(harness);
         await Harness.WaitUntilAsync(
             () => harness.Business.CanCloseConflictedRecoveryAfterReview,
             "the refused cancellation to wait for a maintainer's manual check",
@@ -235,6 +243,10 @@ public sealed partial class StationDeadlineExpiredG2Tests
             () => harness.Business.CanRequestLoadCancellation,
             "the in-flight load cancellation entry to be offered",
             token);
+        // The cancellation takes slot 1 over standing open and waits on it with the harness's two-second operation timeout.
+        // Held until this thread shuts it: shut after seeing the vector start, a late wake-up ran that wait out and the
+        // cancellation ended ALL_EMPTY_DOOR_UNPROVEN instead of ALL_EMPTY (8005-agv-onboard-hmi#331).
+        harness.Io.HoldWaitsUntilShut(0);
         Task<bool> cancelling = harness.Business.RequestLoadCancellationAsync("现场不装了。", token);
         await Harness.WaitUntilAsync(
             () => harness.ReadRecoveryState(token).RecoveryVector is not null,
@@ -243,6 +255,8 @@ public sealed partial class StationDeadlineExpiredG2Tests
         string attempt = harness.ReadRecoveryState(token).RecoveryVector!.SlotOperationAttemptId!;
         harness.Io.CloseDoor(0, cargo: false);
         _ = await cancelling;
+        await harness.WaitForInboundAsync("LoadCancellationResult", token);
+        AssertRefusedResultAllEmpty(harness);
         await Harness.WaitUntilAsync(
             () => harness.Business.CanCloseConflictedRecoveryAfterReview,
             "the refused cancellation to wait for a maintainer's manual check",
@@ -251,6 +265,12 @@ public sealed partial class StationDeadlineExpiredG2Tests
         Assert.Equal(attempt, harness.ReadRecoveryState(token).UnsettledSlotOperationAttemptId);
         return attempt;
     }
+
+    /// <summary>The one cancellation result the server refused is the ALL_EMPTY the emptied, shut door makes.</summary>
+    private static void AssertRefusedResultAllEmpty(Harness harness) =>
+        Assert.Equal(
+            "ALL_EMPTY",
+            harness.SingleResult("LoadCancellationResult").GetProperty("overallOutcome").GetString());
 
     /// <summary>The restore's line owing the recovery entry for an unfinished operation, counted.</summary>
     private static int RecoveryEntryLinesOwed(Harness harness) =>

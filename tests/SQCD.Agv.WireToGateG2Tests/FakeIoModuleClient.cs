@@ -156,6 +156,7 @@ public sealed class FakeIoModuleClient : IIoModuleClient
     {
         lock (_sync)
         {
+            _heldUntilShut.Remove(slotIndex);
             Update(slotIndex, locker => locker with
             {
                 LockFeedbackRaw = true,
@@ -210,6 +211,36 @@ public sealed class FakeIoModuleClient : IIoModuleClient
     }
 
     private readonly List<(int SlotIndex, bool Cargo, int AtUnlockCount)> _scheduledCloses = [];
+
+    /// <summary>
+    /// With <see cref="OperatorNeverActs"/>, the operator will shut this slot's door at a moment the test chooses: until
+    /// <see cref="CloseDoor"/> is called for the slot, a wait on it does not run out at its timeout but lasts until the
+    /// slot reaches the state it waits for, or the wait is cancelled. For a door a recovery vector takes over standing open
+    /// -- no pulse of its own to key a <see cref="CloseDoorOnceUnlockedAt"/> on, and the aborted load's own waits on the
+    /// same slot still running when the close would have to be told -- and for a test that must act while the vector waits
+    /// on it (8005-agv-onboard-hmi#331: shut by the test thread after it saw the vector start, a late wake-up ran the
+    /// vector's wait past its two-second operation timeout and the slot did not come out COMPLETED -- the cancellation
+    /// ended ALL_EMPTY_DOOR_UNPROVEN over an emptied handed-over door, UNKNOWN where a slot was left unfinished). Told just
+    /// before the press, the hold also covers the load's own wait on the slot until the cancellation aborts it: the load
+    /// does not prompt again in that interval.
+    /// </summary>
+    /// <remarks>
+    /// Only <see cref="OperatorNeverActs"/> reads the hold; on any other fake it is silently without effect. It is lifted
+    /// only by <see cref="CloseDoor"/> -- also the one a scheduled close (<see cref="CloseDoorOnceUnlockedAt"/>) makes --
+    /// never by <see cref="SetUnreadable"/> or <see cref="OpenDoor"/>: a test whose vector must run its wait out to its
+    /// timeout must not hold that slot. Nor may a test hold a slot it then stops the vehicle over with the door still open:
+    /// stopping the business service waits for the vector, and the vector's wait on a held slot is not ended by the stop
+    /// (8005-agv-onboard-hmi#331 review H1: the stop never returned).
+    /// </remarks>
+    public void HoldWaitsUntilShut(int slotIndex)
+    {
+        lock (_sync)
+        {
+            _heldUntilShut.Add(slotIndex);
+        }
+    }
+
+    private readonly HashSet<int> _heldUntilShut = [];
 
     /// <summary>
     /// The door reads open -- lock feedback released, unlock output reset -- as a door left standing open
@@ -310,8 +341,10 @@ public sealed class FakeIoModuleClient : IIoModuleClient
             // The executor's own timeout still applies, so a wait that is meant to end this way ends
             // by cancellation when the process goes away -- not by running out. Timing out anyway
             // keeps a stuck test reading like the other branches here instead of hanging.
+            // The deadline is checked after the reading, under the same lock: a door shut by the test, which lifts a
+            // HoldWaitsUntilShut, is always seen before the wait gives up on it.
             DateTimeOffset neverActsDeadline = DateTimeOffset.UtcNow + timeout;
-            while (DateTimeOffset.UtcNow < neverActsDeadline)
+            while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 lock (_sync)
@@ -330,6 +363,11 @@ public sealed class FakeIoModuleClient : IIoModuleClient
                         _scheduledCloses.RemoveAt(due);
                         CloseDoor(slotIndex, cargo);
                         continue;
+                    }
+
+                    if (DateTimeOffset.UtcNow >= neverActsDeadline && !_heldUntilShut.Contains(slotIndex))
+                    {
+                        break;
                     }
                 }
 
