@@ -1,0 +1,8 @@
+    0 Error(s)
+
+Time Elapsed 00:00:05.31
+=== run 1 2026-10-13T18:26:00+08:00
+  Failed SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.APreDepartureCheckNamingTheFirstDemandIsAnsweredAsForOneItem(expected: "UNSAFE") [5 s]
+   Timed out after 5s waiting for: A's open door to be the accepted safety state. UI errors: []
+Failed!  - Failed:     1, Passed:     3, Skipped:     0, Total:     4, Duration: 7 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=1

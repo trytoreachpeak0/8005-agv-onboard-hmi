@@ -1,0 +1,12 @@
+    0 Error(s)
+
+Time Elapsed 00:00:13.97
+=== run 1 2026-10-13T18:55:54+08:00
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+=== run 2 2026-10-13T18:56:37+08:00
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
+=== run 3 2026-10-13T18:57:15+08:00
+Passed!  - Failed:     0, Passed:     4, Skipped:     0, Total:     4, Duration: 1 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0

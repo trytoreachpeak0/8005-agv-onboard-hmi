@@ -1,0 +1,12 @@
+2026-10-13T18:58:02.4899891+08:00 case=UNKNOWN versionRead=3 reportedDepartureSafeAtRead=False versionAfterInjection=3
+2026-10-13T18:58:06.3282974+08:00 case=SAFE versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=2
+2026-10-13T18:58:09.5689964+08:00 case=UNSAFE versionRead=3 reportedDepartureSafeAtRead=False versionAfterInjection=3
+2026-10-13T18:58:47.0897990+08:00 case=UNKNOWN versionRead=3 reportedDepartureSafeAtRead=False versionAfterInjection=3
+2026-10-13T18:58:50.9287830+08:00 case=SAFE versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=2
+2026-10-13T18:58:54.1748551+08:00 case=UNSAFE versionRead=3 reportedDepartureSafeAtRead=False versionAfterInjection=3
+2026-10-13T18:59:30.0106379+08:00 case=UNKNOWN versionRead=3 reportedDepartureSafeAtRead=False versionAfterInjection=3
+2026-10-13T18:59:33.8343896+08:00 case=SAFE versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=2
+2026-10-13T18:59:37.0477123+08:00 case=UNSAFE versionRead=3 reportedDepartureSafeAtRead=False versionAfterInjection=3
+2026-10-13T19:00:19.6470082+08:00 case=UNKNOWN versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=3
+2026-10-13T19:00:28.4842219+08:00 case=SAFE versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=2
+2026-10-13T19:00:28.7031872+08:00 case=UNSAFE versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=3

@@ -1,0 +1,2 @@
+Passed!  - Failed:     0, Passed:   152, Skipped:     0, Total:   152, Duration: 2 m 30 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)
+exit=0
