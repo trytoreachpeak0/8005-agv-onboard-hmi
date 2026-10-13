@@ -925,6 +925,15 @@ public sealed class FakeControlServer : IAsyncDisposable
     public int LoadCancellationResultAcksToDrop { get; set; }
 
     /// <summary>
+    /// 一条对不上的 <c>LoadCancellationResult</c>（不是 <c>ALL_EMPTY</c>）把它那次仓位操作置为需要恢复，就绪随之改判
+    /// <c>RECOVERY_REQUIRED</c>：control-server <c>OnboardRecoveryCoordinator</c> 的结果分支走
+    /// <c>KeepDemandAndJourneyBlockedAsync</c>，需求留在 <c>RecoveryRequired</c>、旅程阻断在
+    /// <c>LoadCancellationResult_NOT_RECONCILED</c>。默认不设，沿用旧行为：不改任何操作，就绪只看别的事实
+    /// （onboard-hmi#343：不设时这一步只是偶尔被别的报文带出来，等它的用例时红时绿）。
+    /// </summary>
+    public bool HoldOperationOnUnreconciledLoadCancellationResult { get; set; }
+
+    /// <summary>
     /// 这么多条 <c>LoadCompensationResult</c> 收下了却不回 <c>DurableAck</c>，也不断连接：结果已在车的发件箱里，
     /// 车等不到确认（onboard-hmi#123）。
     /// </summary>
@@ -2444,6 +2453,13 @@ public sealed class FakeControlServer : IAsyncDisposable
                             {
                                 _settledAttempts.Add(settledAttempt);
                                 _operationsNeedingRecovery.Remove(settledAttempt);
+                            }
+                            else if (messageType == "LoadCancellationResult"
+                                && HoldOperationOnUnreconciledLoadCancellationResult
+                                && recoveryPayload.GetProperty("slotOperationAttemptId").GetString() is { } heldAttempt
+                                && !_settledAttempts.Contains(heldAttempt))
+                            {
+                                _operationsNeedingRecovery.Add(heldAttempt);
                             }
 
                             if (recoveryPayload.GetProperty("overallOutcome").GetString() is "HANDED_OFF" or "ALL_EMPTY"
