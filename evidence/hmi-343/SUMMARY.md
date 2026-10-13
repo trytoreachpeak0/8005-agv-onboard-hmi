@@ -37,6 +37,7 @@
 | `AResumeAfterRepairDoesNotRerunALoadWhoseCancellationIsConcluded` | 「申请恢复」关、按下只应答、不开会话不开门 | `06`（测试提交 `e92bee2` 上）、`08`（修前） | `09` |
 | `AcrossARestartAnAcknowledgedUnknownCancellationStaysShutAndCompensable` | 重启后入口仍关、补偿仍可用、门的疑点仍在 | `08`（修前，向量不离开日志簿） | `09` |
 | `AConfirmationLeftOpenAcrossTheReplayedAcknowledgementIsAnswered` | 确认丢失→重连补发→收尾；跨过收尾的确认框按下得到「取消已有结论」 | `07`（测试提交 `bd9bf9d` 上，回的是 `LOAD_CANCELLATION_NOTHING_TO_CANCEL`）、`08`（修前） | `09` |
+| `AnAcknowledgedFailedCancellationShutsTheEntriesAndIsCompensable` | 结果 FAILED（授权后锁存，1 号仓 NOT_STARTED）同样关入口、复位锁存后补偿走通 | `12`（修前，本机时段 10-13 20:41:03～20:42:09，C11 放行） | `13` |
 | `AnInFlightCancellationOfTheSecondDemandEndingUnknownKeepsTheScreenOnThatDemandAndShutsTheEntry`（hmi#164，改写） | 屏上仍是 B、入口关、再按动不到 A | —（原判据「入口一直亮着」与本票相反，改写） | `09` |
 
 假服务端新增 `HoldOperationOnUnreconciledLoadCancellationResult`（默认关）：照真服务端 `KeepDemandAndJourneyBlockedAsync`
@@ -46,7 +47,7 @@
 
 - `09-green-family-481.txt`：`RecoveryVectorG2Tests`、`*LoadCancellation*`、`MultiDemandJourneyG2Tests`、
   `CV-LOAD-CANCELLATION-ALL-EMPTY`、`StationDeadlineExpiredG2Tests`、G2 `ArchitectureTests`，481/481，退出码 0。
-- 本票 8 条连跑 3 轮全绿。
+- 本票 8 条连跑 3 轮全绿；后补的 FAILED 用例连跑 3 轮全绿，`13-green-multidemand-149.txt` 为补完后 `MultiDemandJourneyG2Tests` 一族 149/149。
 - `10-green-unittests-286.txt`：`SQCD.Agv.UnitTests` 的 `ArchitectureTests`（含切片标记）与向量相关单元测试 286/286，退出码 0。
 - `11-format-verify.txt`：改动文件 `dotnet format --verify-no-changes` 退出码 0（无输出）。
 - 车载端全量 G2 走 CI。
@@ -55,7 +56,5 @@
 
 - **重启后的毫秒窗口**：入口读进程内标记，重启后要等会话就绪、中断装货收尾读完发件箱才写回。其间取消与修复续行入口可能
   短暂亮起；按下会被按键路径读发件箱拦下并应答，不发申请、不开门。onboard-hmi#254 的修正入口有同样的窗口。
-- **FAILED 结果**没有单独的 G2 用例：改动按「非 COMPLETED、非 door-unproven」统一处理，与 outcome 无关；本夹具造不出
-  在途取消的 FAILED。
 - 服务端发来的 `SlotOperationResumeCommand` 没加新的车载端拒绝：车载端不再提交修复续行，没有会话与动作 id 在档，现有安全门禁
   （`RecoverySessionAuthorized`）就会拒绝。
