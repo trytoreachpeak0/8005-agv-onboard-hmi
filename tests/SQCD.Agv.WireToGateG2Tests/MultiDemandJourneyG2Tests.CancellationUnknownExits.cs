@@ -146,6 +146,58 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
+    /// 门怎么都证明不了时的出路也走得通：为 B 申请强制机械恢复，确认隔离与人工取出（带货物交接记录），服务端确认
+    /// <c>MECHANICALLY_ISOLATED</c>。被取消留在疑点里的 1 号仓进了隔离记录、标为物理状态未知——「可能已开过门」这件事
+    /// 从取消一路带到了硬件恢复记录之前。修之前这个入口同样被 <c>RECOVERY_VECTOR_CONFLICT</c> 挡住（第 1 步实测）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-FORCED-MECHANICAL-RECOVERY")]
+    public async Task AForcedMechanicalRecoveryTakesOverAnAcknowledgedUnknownCancellationAndKeepsItsDoor()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await StartCancellationUnknownStopAsync(
+            io,
+            token,
+            server => server.RecoverySessionScopeByDemand = new Dictionary<string, int[]>(StringComparer.Ordinal)
+            {
+                [DemandA] = [5],
+                [DemandB] = [1]
+            });
+        await CancelBEndingUnknownAsync(harness, io, token);
+
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanRequestForcedMechanicalRecovery,
+            "the forced mechanical recovery entry",
+            token);
+        Assert.True(await harness.Business.RequestForcedMechanicalRecoveryAsync(
+            "现场确认仓门无法电动解锁，申请强制机械恢复。",
+            DemandB,
+            token));
+        JsonElement session = Assert.Single(ReceivedPayloads(harness, "ExceptionRecoverySessionRequested"));
+        Assert.Equal(DemandB, session.GetProperty("demandId").GetString());
+        Assert.Equal([1], session.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()));
+
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanConfirmForcedMechanicalRecovery,
+            "the authorized forced recovery to wait for the operator's confirmation",
+            token);
+        await ConfirmForcedRecoveryWithHandoffAsync(harness, "SUBLOT-B", token);
+        await harness.WaitUntilAsync(
+            () => ReadJournal(harness, token) is { RecoveryVector: null, ForcedIsolation: not null },
+            "the acknowledged isolation to settle the forced recovery",
+            token);
+
+        JsonElement result = Assert.Single(ReceivedPayloads(harness, "ForcedMechanicalRecoveryResult"));
+        Assert.Equal(DemandB, result.GetProperty("demandId").GetString());
+        Assert.Equal("MECHANICALLY_ISOLATED", result.GetProperty("outcome").GetString());
+        Assert.Contains(1, ReadJournal(harness, token).ForcedIsolation!.PhysicallyUnknownSlots);
+        Assert.Equal(2, io.UnlockCount);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
     /// 走到「B 的取消报 UNKNOWN、服务端已确认、会话 RecoveryRequired、1 号仓已清空关好」：A 在 5 号仓装好结算，B 在 1 号仓开门后
     /// 操作员不动，按「取消装货」，替身在授权前把 1 号仓锁反馈设成读不到。
     /// </summary>
