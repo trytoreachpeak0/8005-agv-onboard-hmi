@@ -50,7 +50,17 @@ public sealed partial class MultiDemandJourneyG2Tests
         await WaitForChoicesAsync(harness, [], token);
         Assert.False(harness.ViewModel.ShowsRecoveryDemandChoices);
         Assert.Null(harness.ViewModel.SelectedRecoveryDemandChoice);
-        Assert.Equal("目标：子批 SUBLOT-A", harness.ViewModel.RecoveryFallbackTargetText);
+        // The target line is waited for with the entry, not read once after it (8005-agv-onboard-hmi#340): on the integration
+        // branch's push CI this read once found "" with the entry already lit. Not reproduced locally; taken as a window of
+        // the S-a kind recorded in #330's review -- the line and the entry are refreshed by different paths.
+        await harness.WaitUntilAsync(
+            () =>
+            {
+                harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
+                return harness.ViewModel.RecoveryFallbackTargetText == "目标：子批 SUBLOT-A";
+            },
+            "the target line to name A",
+            token);
         Assert.True(harness.ViewModel.CanPressFaultCargoHandoff);
         Assert.Equal("处理对象：子批 SUBLOT-A / 1号仓。\n\n", harness.ViewModel.RecoveryTargetConfirmationText);
 
@@ -226,13 +236,17 @@ public sealed partial class MultiDemandJourneyG2Tests
             () =>
             {
                 harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
-                return harness.ViewModel.CanRequestFaultCargoHandoff && harness.ViewModel.CanRequestLoadCompensation;
+                // The target line is waited for with the entry, not read once after it (8005-agv-onboard-hmi#340): on the integration
+                // branch's push CI this read once found "" with the entry already lit. Not reproduced locally; taken as a window of
+                // the S-a kind recorded in #330's review -- the line and the entry are refreshed by different paths.
+                return harness.ViewModel.CanRequestFaultCargoHandoff
+                    && harness.ViewModel.CanRequestLoadCompensation
+                    && harness.ViewModel.RecoveryFallbackTargetText == "目标：子批 SUBLOT-A";
             },
-            "the handoff and compensation entries",
+            "the handoff and compensation entries, the target line naming A",
             token);
 
         Assert.False(harness.ViewModel.ShowsRecoveryDemandChoices);
-        Assert.Equal("目标：子批 SUBLOT-A", harness.ViewModel.RecoveryFallbackTargetText);
         Assert.True(harness.ViewModel.HasRecoveryFallbackTarget);
         Assert.Equal("补偿目标：子批 SUBLOT-B", harness.ViewModel.CompensationTargetText);
         Assert.True(harness.ViewModel.HasCompensationTarget);
@@ -271,12 +285,15 @@ public sealed partial class MultiDemandJourneyG2Tests
             () =>
             {
                 harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
-                return harness.ViewModel.CanPressFaultCargoHandoff;
+                // The target line is waited for with the entry, not read once after it (8005-agv-onboard-hmi#340): on the integration
+                // branch's push CI this read once found "" with the entry already lit. Not reproduced locally; taken as a window of
+                // the S-a kind recorded in #330's review -- the line and the entry are refreshed by different paths.
+                return harness.ViewModel.CanPressFaultCargoHandoff
+                    && harness.ViewModel.RecoveryFallbackTargetText == "目标：子批 SUBLOT-A";
             },
-            "the handoff entry over A",
+            "the handoff entry over A, the target line naming A",
             token);
         Assert.False(harness.ViewModel.ShowsRecoveryDemandChoices);
-        Assert.Equal("目标：子批 SUBLOT-A", harness.ViewModel.RecoveryFallbackTargetText);
 
         // 1. Handed off, not reconciled: A stays, marked, and is handed off again.
         await HandOffAsync(harness, io, DemandA, AttemptA, slot: 1, sessions: 1, token);
