@@ -205,6 +205,30 @@ public sealed class OperatorRecordLogTests
         Assert.Empty(logger.Entries);
     }
 
+    /// <summary>
+    /// The view model keeps the last 300 lines (<c>MainViewModel.TrimLogs</c>, called from <c>AppendLogLine</c>); every
+    /// line still reaches the technical log, and the trim itself writes nothing. Nothing pinned the 300 before
+    /// onboard-hmi#317 moved the trim into the helper.
+    /// </summary>
+    [Fact]
+    public async Task TheScreenKeepsTheLast300LinesAndTheLogKeepsEveryOne()
+    {
+        await using OnboardController controller = MultiDemandViewModelTests.Controller();
+        MainViewModel viewModel = await MultiDemandViewModelTests.ViewModel(controller);
+        RecordingLogger logger = new();
+        using OperatorRecordLog? log = OperatorRecordLog.TryStart(On, viewModel.Logs, logger);
+        Assert.NotNull(log);
+
+        for (int index = 0; index < 305; index++)
+        {
+            viewModel.ReportOperatorRejection("SUBLOT_NOT_IN_WORKLIST");
+        }
+
+        Assert.Equal(300, viewModel.Logs.Count);
+        Assert.Equal(305, logger.Entries.Count(entry => entry.Source == nameof(OperatorRecordLog)));
+        Assert.All(logger.Entries, entry => Assert.Contains("\"APPENDED\"", entry.Message, StringComparison.Ordinal));
+    }
+
     private static LogLineViewModel Line(string message) =>
         new(DateTimeOffset.Now, OperatorRecordKind.System, message);
 
