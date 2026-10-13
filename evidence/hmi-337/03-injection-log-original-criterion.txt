@@ -1,0 +1,19 @@
+2026-10-13T18:12:18.8453144+08:00 case=UNKNOWN versionRead=3 reportedDepartureSafeAtRead=False versionAfterInjection=3
+2026-10-13T18:12:22.6766466+08:00 case=SAFE versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=2
+2026-10-13T18:12:23.2241757+08:00 case=UNSAFE versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=3
+2026-10-13T18:13:26.5419826+08:00 case=UNKNOWN versionRead=3 reportedDepartureSafeAtRead=False versionAfterInjection=3
+2026-10-13T18:13:30.6638841+08:00 case=SAFE versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=2
+2026-10-13T18:13:31.2617867+08:00 case=UNSAFE versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=3
+2026-10-13T18:14:15.5406322+08:00 case=UNKNOWN versionRead=3 reportedDepartureSafeAtRead=False versionAfterInjection=3
+2026-10-13T18:14:19.3834165+08:00 case=SAFE versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=2
+2026-10-13T18:14:19.9613373+08:00 case=UNSAFE versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=3
+2026-10-13T18:15:04.0820606+08:00 case=UNKNOWN versionRead=3 reportedDepartureSafeAtRead=False versionAfterInjection=3
+2026-10-13T18:15:07.9223234+08:00 case=SAFE versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=2
+2026-10-13T18:15:08.4407711+08:00 case=UNSAFE versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=3
+2026-10-13T18:15:48.2740687+08:00 case=UNKNOWN versionRead=3 reportedDepartureSafeAtRead=False versionAfterInjection=3
+2026-10-13T18:15:52.0920249+08:00 case=SAFE versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=2
+2026-10-13T18:15:52.6221491+08:00 case=UNSAFE versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=3
+2026-10-13T18:16:49.1152054+08:00 case=UNKNOWN versionRead=3 reportedDepartureSafeAtRead=False versionAfterInjection=3
+2026-10-13T18:16:53.0391162+08:00 case=SAFE versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=2
+2026-10-13T18:16:53.6004069+08:00 case=UNSAFE versionRead=2 reportedDepartureSafeAtRead=True versionAfterInjection=3
+2026-10-13T18:16:54.6010699+08:00 case=UNSAFE received after check: {"protocolVersion":4,"profileId":"AGV_FULL_PRODUCT","protocolReleaseVersion":"3.0.0","protocolReleaseManifestSha256":"d5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e","messageType":"ProtocolProblem","messageId":"cd89f28e-511f-49f1-9f55-83cd2a7af892","correlationId":"55456d4e-d93d-4178-b886-0e885711fb5c","agvId":"AGV-8005-01","sessionGeneration":1,"sentAt":"2026-10-13T10:16:53.6011933+00:00","payload":{"rejectedMessageId":"55456d4e-d93d-4178-b886-0e885711fb5c","rejectedMessageType":"PreDepartureSafetyCheck","problem":{"reasonCode":"PREDEPARTURE_CHECK_EXPIRED","fieldPath":null,"displayMessage":null},"expectedProtocolVersion":4,"expectedProfileId":"AGV_FULL_PRODUCT","expectedProtocolReleaseManifestSha256":"d5e1a53f1fd61f105a890dc0267e1b0a9ac5ea49f713d2cf730b0f554df9db9e"}}

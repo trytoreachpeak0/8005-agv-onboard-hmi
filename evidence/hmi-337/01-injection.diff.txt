@@ -1,0 +1,47 @@
+diff --git a/tests/SQCD.Agv.WireToGateG2Tests/MultiDemandJourneyG2Tests.Paths.cs b/tests/SQCD.Agv.WireToGateG2Tests/MultiDemandJourneyG2Tests.Paths.cs
+index 77cca3b..24dba2d 100644
+--- a/tests/SQCD.Agv.WireToGateG2Tests/MultiDemandJourneyG2Tests.Paths.cs
++++ b/tests/SQCD.Agv.WireToGateG2Tests/MultiDemandJourneyG2Tests.Paths.cs
+@@ -686,6 +686,23 @@ public sealed partial class MultiDemandJourneyG2Tests
+ 
+         await Task.Delay(300, token);
+         long version = harness.Session.Current.SafetyStateVersion;
++        // HMI337-INJECTION: one session state publication between reading the version and the check.
++        if (expected != "PREDEPARTURE_CHECK_EXPIRED")
++        {
++            bool reportedSafeBefore = LatestReportedSafety(harness).GetProperty("departureSafe").GetBoolean();
++            await harness.Server.SendSessionReadinessAsync();
++            DateTimeOffset injectionUntil = DateTimeOffset.UtcNow + TimeSpan.FromSeconds(3);
++            while (harness.Session.Current.SafetyStateVersion == version && DateTimeOffset.UtcNow < injectionUntil)
++            {
++                await Task.Delay(10, token);
++            }
++
++            System.IO.File.AppendAllText(
++                "F:/8005-scratch/hmi337/injection.log",
++                $"{DateTimeOffset.Now:O} case={expected} versionRead={version} reportedDepartureSafeAtRead={reportedSafeBefore} "
++                + $"versionAfterInjection={harness.Session.Current.SafetyStateVersion}{Environment.NewLine}");
++        }
++
+         string checkId = Guid.NewGuid().ToString("D");
+         await harness.Server.SendCommandAsync(
+             "PreDepartureSafetyCheck",
+@@ -701,6 +718,18 @@ public sealed partial class MultiDemandJourneyG2Tests
+                 targetStationId = "ST-GATE"
+             });
+ 
++        if (expected == "UNSAFE")
++        {
++            await Task.Delay(1000, token);
++            System.IO.File.AppendAllText(
++                "F:/8005-scratch/hmi337/injection.log",
++                $"{DateTimeOffset.Now:O} case=UNSAFE received after check: "
++                + string.Join(" | ", harness.Server.ReceivedEnvelopes
++                    .Where(item => item.MessageType is "ProtocolProblem" or "PreDepartureSafetyCheckResult")
++                    .Select(item => item.WireLine))
++                + Environment.NewLine);
++        }
++
+         if (expected == "PREDEPARTURE_CHECK_EXPIRED")
+         {
+             JsonElement problem = await WaitForPayloadAsync(harness, "ProtocolProblem", token);
