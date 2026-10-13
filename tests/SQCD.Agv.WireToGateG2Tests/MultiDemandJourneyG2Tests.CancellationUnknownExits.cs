@@ -349,6 +349,87 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
+    /// 结果是 <c>FAILED</c> 也一样（票面「或其他非 COMPLETED 的已确认结果」）。B 装 1、2 号仓：1 号仓装好关门，2 号仓开着时操作员
+    /// 按取消；授权之后车上锁存严重安全故障，1 号仓要新开一次门、被拒（<c>NOT_STARTED</c>），交接过来的 2 号仓空着关上，结果
+    /// <c>FAILED</c>（造法同 <see cref="ALatchArrivingWhileTheInFlightCancellationIsAskedOpensNoFurtherDoor"/>）。维护人员复核仓门、
+    /// 复位锁存之后：取消与「申请恢复」入口都关，向量离开日志簿，补偿照常把 B 的两个仓清空、收尾。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task AnAcknowledgedFailedCancellationShutsTheEntriesAndIsCompensable()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        Harness? latchTarget = null;
+        await using Harness harness = await StartCancellationUnknownStopAsync(
+            io,
+            token,
+            server =>
+            {
+                server.LoadCancellationAuthorizedSlots = [1, 2];
+                server.BeforeLoadCancellationAuthorization = () => LatchNow(latchTarget!);
+            });
+        latchTarget = harness;
+
+        await SendSlotCommandAsync(harness, DemandB, AttemptB, [1, 2]);
+        await WaitForDoorOpenAsync(harness, io, AttemptB, pulses: 1, token);
+        io.CloseDoor(0, cargo: true);
+        await WaitForDoorOpenAsync(harness, io, AttemptB, pulses: 2, token);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCancellation,
+            "the in-flight cancellation entry over B",
+            token);
+        // Held until this thread shuts it, as in the latch test: a late wake-up must not run the handed-over wait out.
+        io.HoldWaitsUntilShut(1);
+        Task<bool> press = harness.Business.RequestLoadCancellationAsync("现场确认不装了。", token);
+        await harness.WaitUntilAsync(
+            () => ReadJournal(harness, token).RecoveryVector is not null,
+            "the authorized cancellation to take the slots over",
+            token);
+        Assert.True(harness.Controller.IsFatalFaultLatched);
+        io.CloseDoor(1, cargo: false);
+        JsonElement failed = await WaitForPayloadAsync(harness, "LoadCancellationResult", token);
+        Assert.Equal("FAILED", failed.GetProperty("overallOutcome").GetString());
+        Assert.Equal(DemandB, failed.GetProperty("demandId").GetString());
+        await press;
+        await harness.WaitUntilAsync(
+            () => harness.Session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired
+                && ReadJournal(harness, token).RecoveryVector is null,
+            "the server to hold the vehicle for B, and the acknowledged FAILED to leave the journal",
+            token);
+        Assert.Equal(2, io.UnlockCount);
+
+        // Maintenance reviews the doors and lifts the latch.
+        Assert.True(await harness.Controller.ClearFatalFaultAsync("operator-134", token));
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCompensation,
+            "the compensation entry over B once the latch is lifted",
+            token);
+        await HoldsForHalfASecondAsync(
+            () =>
+            {
+                Assert.False(harness.Business.CanRequestLoadCancellation);
+                Assert.False(harness.Business.CanRequestResumeAfterRepair);
+            },
+            token);
+        Assert.Equal(AttemptB, ReadJournal(harness, token).UnsettledSlotOperationAttemptId);
+
+        // The operator takes the basket out of slot 1 and shuts each door as the compensation opens it.
+        io.CloseDoorOnceUnlockedAt(0, cargo: false, unlockCount: 3);
+        io.CloseDoorOnceUnlockedAt(1, cargo: false, unlockCount: 4);
+        Assert.True(await harness.Business.RequestLoadCompensationAsync("现场确认装货无法继续，申请补偿清空目标仓位。", token));
+        JsonElement compensation = await WaitForPayloadAsync(harness, "LoadCompensationResult", token);
+        Assert.Equal("ALL_EMPTY", compensation.GetProperty("overallOutcome").GetString());
+        Assert.Equal(AttemptB, compensation.GetProperty("slotOperationAttemptId").GetString());
+        await harness.WaitUntilAsync(
+            () => ReadJournal(harness, token) is { RecoveryVector: null, UnsettledSlotOperationAttemptId: null },
+            "the compensation to settle B's attempt",
+            token);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
     /// 走到「B 的取消报 UNKNOWN、服务端已确认（<paramref name="resultAcknowledged"/> 为 false 时服务端收下不回确认）、会话 RecoveryRequired、1 号仓已清空关好」：A 在 5 号仓装好结算，B 在 1 号仓开门后
     /// 操作员不动，按「取消装货」，替身在授权前把 1 号仓锁反馈设成读不到。
     /// </summary>
