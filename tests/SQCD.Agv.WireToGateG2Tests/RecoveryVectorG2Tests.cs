@@ -1699,18 +1699,24 @@ public sealed partial class RecoveryVectorG2Tests
                     Interlocked.Exchange(ref startSettlementConcluded, conclusion);
                 }
             };
+            // A restart over a journal whose settled load is gone has no correction entry to wait for: a compensation in
+            // the first run ended the demand, and the journey's closure that followed dropped the record
+            // (8005-agv-onboard-hmi#330). It is the empty journal's case then.
+            bool settledLoadOnFile = !(restart && loadAlreadySettled)
+                || (await journal.ReadRecoveryStateAsync(cancellationToken)).LastCompletedLoadOperationContext is not null;
+            int safetyReportsBefore = server.Received.Count(item => item.MessageType == "SafetyStateChanged");
             business.Start();
 
             // The CanRequest* gates read a cached copy of the recovery state that the pump
             // refreshes on its first pass; the seeded journal alone does not answer them. The
             // request path reads the journal directly, so this wait is what makes the gates
             // meaningful to assert rather than what makes the request work.
-            if (nothingOnFile)
+            if (nothingOnFile || (loadAlreadySettled && !settledLoadOnFile))
             {
                 // No operation snapshot and no entry can turn true here, so neither is a signal the
                 // pump ran. The one SafetyStateChanged it sends when it starts is.
                 await WaitUntilAsync(
-                    () => server.Received.Any(item => item.MessageType == "SafetyStateChanged"),
+                    () => server.Received.Count(item => item.MessageType == "SafetyStateChanged") > safetyReportsBefore,
                     "the business pump to start over an empty recovery journal",
                     cancellationToken);
             }

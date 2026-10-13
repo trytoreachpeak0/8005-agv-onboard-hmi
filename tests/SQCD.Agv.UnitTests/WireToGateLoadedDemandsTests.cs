@@ -180,6 +180,88 @@ public sealed class WireToGateLoadedDemandsTests
         Assert.All(unstamped.LoadsOnBoard!, load => Assert.Null(load.JourneyAnchorDemandId));
     }
 
+    /// <summary>
+    /// The journey's closure also drops the last completed load (8005-agv-onboard-hmi#330): the load correction entry and the
+    /// compensation fallback read it, and a vehicle gone on to charge or clear a charger was still offered both over the
+    /// previous journey's sublot. With nothing on the list -- the shape the field met, the list emptied by an earlier
+    /// snapshot -- it is dropped all the same.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("IDLE_RETURN")]
+    [InlineData("CHARGING")]
+    [InlineData("CLEARING_MAINTENANCE")]
+    public void AClosedJourneyDropsTheLastCompletedLoad(string? purpose)
+    {
+        WireToGateRecoveryState withList = TwoOnBoard() with { LastCompletedLoadOperationContext = Load(DemandB, AttemptB, [5]) };
+        WireToGateRecoveryState listEmptied = WireToGateRecoveryState.Empty with
+        {
+            LoadsOnBoard = [],
+            LastCompletedLoadOperationContext = Load(DemandB, AttemptB, [5])
+        };
+
+        Assert.Null(withList.WithLoadsOnBoardFor(Journey(purpose, [])).LastCompletedLoadOperationContext);
+        WireToGateRecoveryState dropped = listEmptied.WithLoadsOnBoardFor(Journey(purpose, []));
+        Assert.Null(dropped.LastCompletedLoadOperationContext);
+        Assert.Empty(dropped.SettledLoadSubjects());
+        Assert.Same(dropped, dropped.WithLoadsOnBoardFor(Journey(purpose, [])));
+    }
+
+    /// <summary>A transport journey, or one with no business state yet, keeps the last completed load.</summary>
+    [Fact]
+    public void ATransportJourneyOrNoBusinessStateKeepsTheLastCompletedLoad()
+    {
+        WireToGateRecoveryState state = WireToGateRecoveryState.Empty with
+        {
+            LoadsOnBoard = [],
+            LastCompletedLoadOperationContext = Load(DemandB, AttemptB, [5])
+        };
+
+        Assert.Same(state, state.WithLoadsOnBoardFor(Journey("TRANSPORT", [DemandB])));
+        Assert.Same(state, state.WithLoadsOnBoardFor(WireToGateJourneySnapshot.Empty));
+    }
+
+    /// <summary>
+    /// Anything still under way that may be about the last completed load keeps it through the closure: an unsettled
+    /// operation, a recovery vector, a pending load cancellation, a bound recovery session, or one requested and not yet
+    /// answered with its id (8005-agv-onboard-hmi#330 and its review L1). The
+    /// loads on board go as before.
+    /// </summary>
+    [Theory]
+    [InlineData("unsettled")]
+    [InlineData("vector")]
+    [InlineData("cancellation")]
+    [InlineData("session")]
+    [InlineData("requested")]
+    public void AClosedJourneyKeepsTheLastCompletedLoadWhileRecoveryWorkIsUnderWay(string underWay)
+    {
+        WireToGateRecoveryOperationContext last = Load(DemandB, AttemptB, [5]);
+        WireToGateRecoveryState state = TwoOnBoard() with { LastCompletedLoadOperationContext = last };
+        state = underWay switch
+        {
+            "unsettled" => state with { UnsettledSlotOperationAttemptId = AttemptA2 },
+            "vector" => state with
+            {
+                RecoveryVector = new WireToGateRecoveryVectorContext(
+                    WireToGateRecoveryVectorTypes.LoadCorrection, Guid.NewGuid().ToString("D"), null, DemandB, AttemptB, null,
+                    [5], null, "OP-1", "BADGE", null)
+            },
+            "cancellation" => state with
+            {
+                PendingLoadCancellation = new WireToGatePendingLoadCancellation(
+                    Guid.NewGuid().ToString("D"), AttemptB, "OP-1", "BADGE", DateTimeOffset.UnixEpoch, "reason")
+            },
+            "session" => state with { ExceptionRecoverySessionId = Guid.NewGuid().ToString("D") },
+            "requested" => state with { RecoverySessionRequestId = Guid.NewGuid().ToString("D") },
+            _ => throw new ArgumentOutOfRangeException(nameof(underWay))
+        };
+
+        WireToGateRecoveryState next = state.WithLoadsOnBoardFor(Journey("CLEARING_MAINTENANCE", []));
+
+        Assert.Same(last, next.LastCompletedLoadOperationContext);
+        Assert.Empty(next.LoadsOnBoard!);
+    }
+
     private static WireToGateRecoveryState TwoOnBoard() =>
         WireToGateRecoveryState.Empty
             .WithLoadOnBoard(Load(DemandA, AttemptA, [1]))
