@@ -1,0 +1,42 @@
+Test run for F:\8005-wt\hmi307-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\bin\Debug\net8.0\win-x64\SQCD.Agv.UnitTests.dll (.NETCoreApp,Version=v8.0)
+VSTest version 17.11.1 (x64)
+
+Starting test execution, please wait...
+A total of 1 test files matched the specified pattern.
+[xUnit.net 00:00:06.16]     SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethods [FAIL]
+  Failed SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethods [234 ms]
+  Error Message:
+   26 direct read(s) of ViewModel.Logs / viewModel.Logs; read the log through the harness's LogsSnapshot or OperatorLogSnapshot.Of instead (a reference handed on to a subscriber takes a // logs-reference: marker):
+tests\SQCD.Agv.WireToGateG2Tests\FatalFaultLatchViewModelTests.cs:62
+tests\SQCD.Agv.WireToGateG2Tests\FatalFaultLatchViewModelTests.cs:74
+tests\SQCD.Agv.WireToGateG2Tests\FatalFaultLatchViewModelTests.cs:106
+tests\SQCD.Agv.WireToGateG2Tests\FatalFaultLatchViewModelTests.cs:299
+tests\SQCD.Agv.WireToGateG2Tests\FatalFaultLatchViewModelTests.cs:360
+tests\SQCD.Agv.WireToGateG2Tests\FatalFaultLatchViewModelTests.cs:388
+tests\SQCD.Agv.WireToGateG2Tests\HmiScreenStateFileWriterTests.cs:346
+tests\SQCD.Agv.WireToGateG2Tests\HmiScreenStateFileWriterTests.cs:348
+tests\SQCD.Agv.WireToGateG2Tests\HmiScreenStateMonitorDispatcherTests.cs:278
+tests\SQCD.Agv.WireToGateG2Tests\HmiScreenStateWiringTests.cs:222
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:932
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:941
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:966
+tests\SQCD.Agv.WireToGateG2Tests\MultiDemandViewModelTests.cs:1087
+tests\SQCD.Agv.WireToGateG2Tests\OperatorEventVisibilityTests.cs:84
+tests\SQCD.Agv.WireToGateG2Tests\OperatorEventVisibilityTests.cs:88
+tests\SQCD.Agv.WireToGateG2Tests\OperatorEventVisibilityTests.cs:103
+tests\SQCD.Agv.WireToGateG2Tests\OperatorEventVisibilityTests.cs:104
+tests\SQCD.Agv.WireToGateG2Tests\OperatorEventVisibilityTests.cs:108
+tests\SQCD.Agv.WireToGateG2Tests\OperatorRecordLogDispatcherTests.cs:86
+tests\SQCD.Agv.WireToGateG2Tests\OperatorRecordLogTests.cs:235
+tests\SQCD.Agv.WireToGateG2Tests\OperatorRecordLogTests.cs:243
+tests\SQCD.Agv.WireToGateG2Tests\OperatorRecordLogTests.cs:258
+tests\SQCD.Agv.WireToGateG2Tests\OperatorRecordLogTests.cs:286
+tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.OperatorRecordLog.cs:95
+tests\SQCD.Agv.WireToGateG2Tests\RecoveryVectorG2Tests.OperatorRecordLog.cs:123
+  Stack Trace:
+     at SQCD.Agv.UnitTests.ViewModelLogsReadArchitectureTests.NoTestReadsViewModelLogsOutsideTheSnapshotMethods() in F:\8005-wt\hmi307-8005-agv-onboard-hmi\tests\SQCD.Agv.UnitTests\ViewModelLogsReadArchitectureTests.cs:line 84
+   at System.RuntimeMethodHandle.InvokeMethod(Object target, Void** arguments, Signature sig, Boolean isConstructor)
+   at System.Reflection.MethodBaseInvoker.InvokeWithNoArgs(Object obj, BindingFlags invokeAttr)
+
+Failed!  - Failed:     1, Passed:     4, Skipped:     0, Total:     5, Duration: 346 ms - SQCD.Agv.UnitTests.dll (net8.0)
+exit=1
