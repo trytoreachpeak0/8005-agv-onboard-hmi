@@ -228,7 +228,9 @@ public sealed class FakeIoModuleClient : IIoModuleClient
     /// Only <see cref="OperatorNeverActs"/> reads the hold; on any other fake it is silently without effect. It is lifted
     /// only by <see cref="CloseDoor"/> -- also the one a scheduled close (<see cref="CloseDoorOnceUnlockedAt"/>) makes --
     /// never by <see cref="SetUnreadable"/> or <see cref="OpenDoor"/>: a test whose vector must run its wait out to its
-    /// timeout must not hold that slot.
+    /// timeout must not hold that slot. Nor may a test hold a slot it then stops the vehicle over with the door still open:
+    /// stopping the business service waits for the vector, and the vector's wait on a held slot is not ended by the stop
+    /// (8005-agv-onboard-hmi#331 review H1: the stop never returned).
     /// </remarks>
     public void HoldWaitsUntilShut(int slotIndex)
     {

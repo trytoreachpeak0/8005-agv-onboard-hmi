@@ -84,11 +84,15 @@ public sealed partial class MultiDemandJourneyG2Tests
             operationTimeout: OrderBOperationTimeout);
         using ReleaseOnExit releaseAck = new(() => resultAckHeld.TrySetResult());
 
+        // Not held, so this one keeps OrderBOperationTimeout's ten seconds of margin and no more: StopVehicleAsync disposes
+        // the business service, which waits for every task in flight, and stopping does not cancel the vector's wait on
+        // slot 1. Held, that wait would last until a door shut that comes only after the restart, and the stop would
+        // never return (8005-agv-onboard-hmi#331 review H1).
         Task<bool> press = await PrepareCancellationThenAcknowledgeLoadResultAsync(
             first,
             io,
             resultAckHeld,
-            holdSlotOneUntilShut: true,
+            holdSlotOneUntilShut: false,
             token);
         await first.StopVehicleAsync();
         await Record.ExceptionAsync(() => press);
@@ -322,7 +326,8 @@ public sealed partial class MultiDemandJourneyG2Tests
     /// by the caller. With <paramref name="holdSlotOneUntilShut"/> that wait lasts until the door is shut, so a stall here
     /// longer than the timeout does not end slot 1 UNKNOWN (8005-agv-onboard-hmi#331 review M1: ten seconds of margin,
     /// not independence from the test thread). Told before the press: the load is over by then and nothing else waits on
-    /// slot 1. Not for a caller whose cancellation must run its wait out -- a hold is lifted only by shutting the door.
+    /// slot 1. Not for a caller whose cancellation must run its wait out -- a hold is lifted only by shutting the door --
+    /// nor for one that stops the vehicle with the door still open: the stop waits for that wait to end.
     /// </remarks>
     private static async Task<Task<bool>> PrepareCancellationThenAcknowledgeLoadResultAsync(
         Harness harness,
