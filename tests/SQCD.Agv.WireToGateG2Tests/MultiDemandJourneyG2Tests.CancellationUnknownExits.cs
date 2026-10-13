@@ -290,10 +290,70 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
-    /// 走到「B 的取消报 UNKNOWN、服务端已确认、会话 RecoveryRequired、1 号仓已清空关好」：A 在 5 号仓装好结算，B 在 1 号仓开门后
+    /// 确认不在首次发送时到达、靠重连补发的那条路，与关入口和按下的竞态：结果待确认时入口还亮着，操作员按下（确认框弹出，
+    /// 按键绑在这条取消上）；重连后握手补发结果、服务端确认，车载端按发件箱收尾、忘掉向量、关入口；操作员这时才确认。
+    /// 这一按得到一条应答，说清取消已有结论、要处理货物请联系维护人员，不发申请、不开门；之后补偿照样给出。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-02")]
+    [Trait("ProtocolVector", "CV-LOAD-CANCELLATION-ALL-EMPTY")]
+    public async Task AConfirmationLeftOpenAcrossTheReplayedAcknowledgementIsAnswered()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await StartCancellationUnknownStopAsync(
+            io,
+            token,
+            server => server.LoadCancellationResultAcksToDrop = 1,
+            messageTimeout: TimeSpan.FromSeconds(2));
+        await CancelBEndingUnknownAsync(harness, io, token, resultAcknowledged: false);
+
+        // The result is owed: the vector stays, and the entry with it.
+        Assert.NotNull(ReadJournal(harness, token).RecoveryVector);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCancellation,
+            "the entry still up while B's result is owed",
+            token);
+        SQCD.Agv.Wpf.WireToGateLoadCancellationPress press = harness.Business.BindLoadCancellationPress(
+            SQCD.Agv.Wpf.WireToGateBusinessService.LoadCancellationDefaultReason,
+            DemandA);
+        Assert.Equal(DemandB, press.SubjectDemandId);
+
+        await harness.Session.Client.DisconnectAsync();
+        await harness.Session.Client.ConnectAndRecoverAsync(token);
+        await harness.WaitUntilAsync(
+            () => ReadJournal(harness, token).RecoveryVector is null && !harness.Business.CanRequestLoadCancellation,
+            "the replayed result's acknowledgement to settle the vector and shut the entry",
+            token);
+
+        int eventsBefore = harness.Events.Count;
+        await press.SendAsync(token);
+        WireToGateOperatorEvent answer = Assert.Single(harness.Events.Skip(eventsBefore));
+        Assert.Equal("RECOVERY_BLOCKED", answer.Kind);
+        Assert.Contains("取消已有结论", answer.Message, StringComparison.Ordinal);
+        Assert.Contains("联系维护人员", answer.Message, StringComparison.Ordinal);
+
+        Assert.Single(ReceivedPayloads(harness, "LoadCancellationStartRequested"));
+        Assert.All(
+            ReceivedPayloads(harness, "LoadCancellationResult"),
+            result => Assert.Equal("UNKNOWN", result.GetProperty("overallOutcome").GetString()));
+        Assert.Equal(2, io.UnlockCount);
+        await harness.WaitUntilAsync(
+            () => harness.Business.CanRequestLoadCompensation,
+            "the compensation entry over B after the replay",
+            token);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// 走到「B 的取消报 UNKNOWN、服务端已确认（<paramref name="resultAcknowledged"/> 为 false 时服务端收下不回确认）、会话 RecoveryRequired、1 号仓已清空关好」：A 在 5 号仓装好结算，B 在 1 号仓开门后
     /// 操作员不动，按「取消装货」，替身在授权前把 1 号仓锁反馈设成读不到。
     /// </summary>
-    private static async Task CancelBEndingUnknownAsync(Harness harness, FakeIoModuleClient io, CancellationToken token)
+    private static async Task CancelBEndingUnknownAsync(
+        Harness harness,
+        FakeIoModuleClient io,
+        CancellationToken token,
+        bool resultAcknowledged = true)
     {
         await harness.WaitUntilAsync(
             () => harness.ViewModel.WorklistItems.Count == 2,
@@ -319,10 +379,14 @@ public sealed partial class MultiDemandJourneyG2Tests
         JsonElement unknown = Assert.Single(ReceivedPayloads(harness, "LoadCancellationResult"));
         Assert.Equal("UNKNOWN", unknown.GetProperty("overallOutcome").GetString());
         Assert.Equal(DemandB, unknown.GetProperty("demandId").GetString());
-        await harness.WaitUntilAsync(
-            () => harness.Session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired,
-            "the server to hold the vehicle for B's recovery",
-            token);
+        if (resultAcknowledged)
+        {
+            await harness.WaitUntilAsync(
+                () => harness.Session.Current.Readiness == WireToGateSessionReadiness.RecoveryRequired,
+                "the server to hold the vehicle for B's recovery",
+                token);
+        }
+
         // The operator empties B's slot and shuts it: from here on a door check is not what stands in any exit's way.
         io.CloseDoor(0, cargo: false);
         Assert.Equal(2, io.UnlockCount);
@@ -332,7 +396,8 @@ public sealed partial class MultiDemandJourneyG2Tests
         FakeIoModuleClient io,
         CancellationToken token,
         Action<FakeControlServer>? alsoConfigure = null,
-        string? journalPath = null) =>
+        string? journalPath = null,
+        TimeSpan? messageTimeout = null) =>
         StartTakeOverStopAsync(
             io,
             server =>
@@ -347,5 +412,6 @@ public sealed partial class MultiDemandJourneyG2Tests
                 alsoConfigure?.Invoke(server);
             },
             token,
-            journalPath: journalPath);
+            messageTimeout,
+            journalPath);
 }
