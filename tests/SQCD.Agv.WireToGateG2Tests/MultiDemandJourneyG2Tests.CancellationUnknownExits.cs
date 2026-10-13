@@ -100,6 +100,52 @@ public sealed partial class MultiDemandJourneyG2Tests
     }
 
     /// <summary>
+    /// 维护人员的出路真走得通：屏上按「补偿」，为 B 开会话、申请授权，补偿命令接管 1 号仓（取消交接过来、留在疑点里的那扇门，
+    /// 操作员已清空关好，所以等它而不再开一次），结果
+    /// <c>ALL_EMPTY</c>，B 的尝试收尾、日志簿清干净。上一条应答叫人「联系维护人员走恢复流程」，这一条就是那条流程。
+    /// 修之前补偿入口是灰的，按下去被 <c>RECOVERY_VECTOR_CONFLICT</c> 拒绝，什么都不发（第 1 步实测）。
+    /// </summary>
+    [Fact]
+    [Trait("IntegrationSlice", "FP-IS-07")]
+    [Trait("ProtocolVector", "CV-EXCEPTION-COMPENSATE")]
+    public async Task ACompensationTakesOverAnAcknowledgedUnknownCancellationAndSettlesIt()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        FakeIoModuleClient io = new() { OperatorNeverActs = true };
+        await using Harness harness = await StartCancellationUnknownStopAsync(io, token);
+        await CancelBEndingUnknownAsync(harness, io, token);
+
+        await harness.WaitUntilAsync(
+            () =>
+            {
+                harness.OnUi(harness.ViewModel.RefreshWireToGateInputState);
+                return harness.ViewModel.CanRequestLoadCompensation;
+            },
+            "the compensation entry over B",
+            token);
+        Assert.True(await harness.ViewModel.RequestLoadCompensationAsync(token));
+
+        JsonElement session = Assert.Single(ReceivedPayloads(harness, "ExceptionRecoverySessionRequested"));
+        Assert.Equal(DemandB, session.GetProperty("demandId").GetString());
+        Assert.Equal([1], session.GetProperty("slots").EnumerateArray().Select(item => item.GetInt32()));
+        JsonElement compensation = await WaitForPayloadAsync(harness, "LoadCompensationResult", token);
+        Assert.Equal("ALL_EMPTY", compensation.GetProperty("overallOutcome").GetString());
+        Assert.Equal(DemandB, compensation.GetProperty("demandId").GetString());
+        Assert.Equal(AttemptB, compensation.GetProperty("slotOperationAttemptId").GetString());
+        // Not pulsed again: slot 1 is the door the cancellation took over open and left in doubt, which the compensation
+        // waits on rather than pulses, and the operator has already emptied and shut it.
+        Assert.Equal(2, io.UnlockCount);
+        await harness.WaitUntilAsync(
+            () => ReadJournal(harness, token) is { RecoveryVector: null, UnsettledSlotOperationAttemptId: null } state
+                && state.ActiveUnlockSlots.Count == 0
+                && state.TakenOverSlotOperationAttemptId is null,
+            "the compensation to settle B's attempt and clear the journal",
+            token);
+        Assert.Equal(AttemptA, ReadJournal(harness, token).LastCompletedLoadOperationContext?.SlotOperationAttemptId);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
     /// 走到「B 的取消报 UNKNOWN、服务端已确认、会话 RecoveryRequired、1 号仓已清空关好」：A 在 5 号仓装好结算，B 在 1 号仓开门后
     /// 操作员不动，按「取消装货」，替身在授权前把 1 号仓锁反馈设成读不到。
     /// </summary>
