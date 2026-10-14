@@ -6,7 +6,7 @@ namespace SQCD.Agv.Application;
 /// <remarks>
 /// <para>
 /// 协议 3.0.0 给 <c>CurrentStopWorklistSnapshot</c> 加了必填的 <c>stopEndedReason</c>：清单项非空时为 <c>null</c>，
-/// 清单项为空时是七个值之一。在此之前清单变空只能写一句笼统的「无待处理任务」，操作员分不清是做完了、超时了还是被取消了。
+/// 清单项为空时是七个值之一（4.0.0 起九个）。在此之前清单变空只能写一句笼统的「无待处理任务」，操作员分不清是做完了、超时了还是被取消了。
 /// </para>
 /// <para>
 /// <b>表里没有的值原样显示</b>，与 <c>OnboardCommandRejectionText</c> 同一规矩：猜出来的意思比没有更糟。入站校验按
@@ -29,7 +29,10 @@ public static class WireToGateStopEndedReasonText
             ["LOAD_COMPENSATED"] = "本站因补偿清空结束",
             ["CARGO_HANDED_OFF"] = "本站因货物交接结束",
             ["DEMAND_RELEASED"] = "本站因任务释放结束",
-            ["TRIP_TERMINATED"] = "本站因行程终止结束"
+            ["TRIP_TERMINATED"] = "本站因行程终止结束",
+            // 协议 4.0.0 新增（CP-0012，8005-agv-onboard-hmi#349）：只出现在待送点。没装的任务退回待派，不是取消。
+            ["OPERATOR_DEPARTED"] = "已按出发，未装的任务退回待派",
+            ["CHARGING_REQUIRED"] = "低电量去充电，未装的任务退回待派"
         };
 
     public const string LoadCompletedText = "装货完成";

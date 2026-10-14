@@ -38,7 +38,7 @@ namespace SQCD.Agv.WireToGateG2Tests;
 /// <see cref="AnswerReadyOverPendingFactsForTest"/> makes.</item>
 /// </list>
 /// </remarks>
-public sealed class FakeControlServer : IAsyncDisposable
+public sealed partial class FakeControlServer : IAsyncDisposable
 {
     private static readonly JsonSerializerOptions SerializerOptions = new(JsonSerializerDefaults.Web);
     private static readonly int[] SingleSlot = [1];
@@ -2539,6 +2539,10 @@ public sealed class FakeControlServer : IAsyncDisposable
                             || UnableToChargeProtocolProblem is not null:
                         await HandleUnableToChargeFieldConfirmationRequestedAsync(context, root)
                             .ConfigureAwait(false);
+                        break;
+                    // The staging pickup stop's departure request (protocol 4.0.0 candidate, 8005-agv-onboard-hmi#349).
+                    case "CurrentStopDepartureRequested":
+                        await HandleCurrentStopDepartureRequestedAsync(context, root).ConfigureAwait(false);
                         break;
                     case "SafetyStateChanged" when AnswerSafetyStateChanged:
                         await HandleSafetyStateChangedAsync(context, line, root).ConfigureAwait(false);

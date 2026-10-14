@@ -864,16 +864,28 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         // sending, not after: the server may refuse this entry too, and that rejection can arrive
         // before the send returns.
         Volatile.Write(ref _currentSublotRejection, null);
-        string messageId = await _session.SendSublotSubmittedAsync(
-            request.OperationSessionId,
-            request.StationId,
-            request.WorklistRevision,
-            sublot.Trim(),
-            entryMethod,
-            operatorId,
-            "SESSION",
-            _clock.Now.ToUniversalTime(),
-            cancellationToken).ConfigureAwait(false);
+        // The entry is being processed until the server answers it with a load or a rejection: 「出发」 waits
+        // (8005-agv-onboard-hmi#349). Set before sending, because the answer can arrive before the send returns.
+        Volatile.Write(ref _sublotAwaitingAnswer, request.OperationSessionId);
+        string messageId;
+        try
+        {
+            messageId = await _session.SendSublotSubmittedAsync(
+                request.OperationSessionId,
+                request.StationId,
+                request.WorklistRevision,
+                sublot.Trim(),
+                entryMethod,
+                operatorId,
+                "SESSION",
+                _clock.Now.ToUniversalTime(),
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            Interlocked.CompareExchange(ref _sublotAwaitingAnswer, null, request.OperationSessionId);
+            throw;
+        }
         PublishOperatorResponse(
             "SUBLOT_SUBMITTED",
             $"子批 {sublot.Trim()} 已提交，等待服务端下发仓位操作。");
@@ -952,6 +964,7 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         _stopping.Dispose();
         _safetySendGate.Dispose();
         _recoveryRequestGate.Dispose();
+        _currentStopDepartureResultGate.Dispose();
         _operationDisplayGate.Dispose();
         await _executor.DisposeAsync().ConfigureAwait(false);
         await _vectorExecutor.DisposeAsync().ConfigureAwait(false);
@@ -992,6 +1005,12 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
         if (args.Value.Readiness != WireToGateSessionReadiness.Ready)
         {
             Volatile.Write(ref _currentEntryRequest, null);
+            Volatile.Write(ref _sublotAwaitingAnswer, null);
+        }
+        else
+        {
+            // A press journaled but never put in the outbox goes out now (8005-agv-onboard-hmi#349).
+            TrackTask(ResumePendingCurrentStopDepartureAsync(_stopping.Token));
         }
 
         if (args.Value.Readiness is WireToGateSessionReadiness.Ready
@@ -1060,6 +1079,8 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     private void OnJourneyChanged(object? sender, ValueChangedEventArgs<WireToGateJourneySnapshot> args)
     {
         _ = UpdateLoadsOnBoardForJourneyAsync(args.Value);
+        _ = RememberStagingPickupStationAsync(args.Value);
+        ForgetSublotAwaitingAnswerOnceTheStopEnds(args.Value);
         ForgetStationClearanceOnceTheServerSaysItIsOver(args.Value);
         ForgetUnableToChargeOnceTheServerSaysItIsOver(args.Value);
         if (args.Value.CurrentStopWorklist is not { } worklist
@@ -1156,6 +1177,13 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// </remarks>
     private void WithdrawEntryRequestAnsweredBy(WireToGateSlotOperationCommand command)
     {
+        if (command.OperationType == OperationType.Load
+            && Volatile.Read(ref _sublotAwaitingAnswer) is { } awaiting
+            && string.Equals(awaiting, command.OperationSessionId, StringComparison.Ordinal))
+        {
+            Interlocked.CompareExchange(ref _sublotAwaitingAnswer, null, awaiting);
+        }
+
         if (command.OperationType == OperationType.Load
             && Volatile.Read(ref _currentEntryRequest) is { } request
             && string.Equals(request.OperationSessionId, command.OperationSessionId, StringComparison.Ordinal))
@@ -2599,6 +2627,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
                 case WireToGateSlotFaultDeclarationCommand declaration:
                     await HandleSlotFaultDeclarationAsync(declaration, cancellationToken).ConfigureAwait(false);
                     break;
+                case WireToGateCurrentStopDepartureResult departureResult:
+                    await HandleCurrentStopDepartureResultAsync(departureResult, cancellationToken).ConfigureAwait(false);
+                    break;
                 case WireToGateRecoveryCommand { MessageType: "SublotRejected" } rejection:
                     HandleSublotRejected(rejection);
                     break;
@@ -2657,6 +2688,9 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// </summary>
     private void HandleSublotRejected(WireToGateRecoveryCommand command)
     {
+        // The answer to the entry: it is no longer being processed (8005-agv-onboard-hmi#349).
+        Volatile.Write(ref _sublotAwaitingAnswer, null);
+
         // The session client has already validated the payload against the 2.0.0 shape.
         SublotRejectedPayload payload =
             JsonSerializer.Deserialize<SublotRejectedPayload>(command.PayloadJson, JsonOptions)

@@ -75,7 +75,7 @@ jobs:
       # The protocol release this branch binds, read from the contract rather than written here, so the
       # same workflow file serves a branch bound to another release without an edit. A released identity
       # (ApprovalStatus APPROVED_RELEASE) is checked out by its tag; a candidate's tag does not exist yet
-      # (8005-agv-onboard-hmi#214: protocol-v3.0.0 is created by 8005-agv-program#152 only at release), so
+      # (8005-agv-onboard-hmi#349: protocol-v4.0.0 is created only at release, as protocol-v3.0.0 was), so
       # a candidate is checked out by its Commit constant. The switch is the constant, not this file.
       - name: Protocol ref
         id: protocol

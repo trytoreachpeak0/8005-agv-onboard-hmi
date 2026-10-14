@@ -793,6 +793,8 @@ public sealed partial class MainViewModel : ViewModelBase
         RefreshLoadCorrectionTargetCore();
         // 人工清桩确认不在那十个恢复入口里，不看锁存（见 RefreshStationClearanceCore）。
         RefreshStationClearanceCore();
+        // 待送点「出发」由业务视图自己判会话与锁存，不经锁存守卫（见 RefreshCurrentStopDepartureCore）。
+        RefreshCurrentStopDepartureCore();
         // 扣住的服务端恢复命令自己看锁存：「确认执行」锁存时关，「不执行」照常开（见 RefreshHeldRecoveryCommandCore）。
         RefreshHeldRecoveryCommandCore();
         // 现场确认充不上同样不在那十个里，不看锁存（见 RefreshUnableToChargeCore）。
@@ -2515,6 +2517,8 @@ public sealed partial class MainViewModel : ViewModelBase
         // 人工清桩确认同样写在锁存守卫之前：它不在那十个恢复入口里、锁存期间照常开着（见 RefreshStationClearanceCore），
         // 放到守卫之后，锁存期间这条路径就不再刷新它，入口会停在锁存那一刻的样子。
         RefreshStationClearanceCore();
+        // 待送点「出发」同理写在守卫之前（见 RefreshCurrentStopDepartureCore）。
+        RefreshCurrentStopDepartureCore();
         // 扣住的服务端恢复命令同理写在守卫之前，锁存与否由它自己判（见 RefreshHeldRecoveryCommandCore）。
         RefreshHeldRecoveryCommandCore();
         // 人工核对后结束被拒收的恢复同理（见 RefreshConflictedRecoveryCore）。
@@ -2639,6 +2643,8 @@ public sealed partial class MainViewModel : ViewModelBase
                 _wireToGateOperation);
         }
         RefreshSlotGroupsCore();
+        // 待送点摘要读的是仓位读数，读数一变就重算（8005-agv-onboard-hmi#349）。
+        RefreshCurrentStopDepartureCore();
     }
 
     private void RefreshSlotGroupsCore()

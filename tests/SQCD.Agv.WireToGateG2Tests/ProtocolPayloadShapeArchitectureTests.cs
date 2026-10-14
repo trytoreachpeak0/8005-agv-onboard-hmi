@@ -79,9 +79,9 @@ public sealed class ProtocolPayloadShapeArchitectureTests
     /// the session this test is still using.
     /// </para>
     /// <para>
-    /// The other two have <b>no send path at all</b>, which is a finding rather than a limit of
-    /// this test. <c>DurableAck</c> is <c>BIDIRECTIONAL</c> in the manifest but only ever arrives
-    /// here -- the server acknowledges the onboard's durable messages, never the reverse.
+    /// The other one has <b>no send path at all</b>, which is a finding rather than a limit of
+    /// this test. <c>DurableAck</c> was the second until 8005-agv-onboard-hmi#349: the vehicle now
+    /// acknowledges the server's <c>CurrentStopDepartureResult</c>, and the session above drives it.
     /// <c>SlotOperationCommandRejected</c> is an <c>O_TO_C</c> message this onboard is supposed to
     /// originate and only ever parses; it is pinned for that reason in
     /// <c>ProtocolMessageSurfaceArchitectureTests.OnboardToServerTypesDispatchedInbound</c>, and it
@@ -97,8 +97,6 @@ public sealed class ProtocolPayloadShapeArchitectureTests
     private static readonly SortedDictionary<string, string> SendPathsNotDriven =
         new(StringComparer.Ordinal)
         {
-            ["DurableAck"] =
-                "BIDIRECTIONAL in the manifest, but this end only receives it; the onboard has no send path",
             ["LoadCancellationStartRequested"] =
                 "blocks on a LoadCancellationAuthorization the fake server does not synthesise",
             ["ProtocolProblem"] =
@@ -132,7 +130,7 @@ public sealed class ProtocolPayloadShapeArchitectureTests
     }
 
     /// <summary>
-    /// The session above drove every implemented <c>O_TO_C</c> message type except the five pinned.
+    /// The session above drove every implemented <c>O_TO_C</c> message type except the ones pinned.
     /// </summary>
     /// <remarks>
     /// Without this, the check above degrades silently: a send path that stops being exercised stops
@@ -284,6 +282,8 @@ public sealed class ProtocolPayloadShapeArchitectureTests
             ManualChargingReturnToServiceVehicleBusinessStateRevision = 4,
             RespondToManualStationClearanceConfirmations = true,
             RespondToUnableToChargeConfirmations = true,
+            // The staging stop's departure request and its result (8005-agv-onboard-hmi#349).
+            RespondToCurrentStopDepartures = true,
             // 协议 v2 消息 7 的下发，把消息 8 的 payload 形状也拉进这次会话里检查。
             SendSlotConfigurationActivationAfterRecovery = true,
             // 恢复会话快照也要进这次检查：替身的快照漏过 2.0.0 新增的必填字段，而车载端反序列化时
@@ -333,6 +333,31 @@ public sealed class ProtocolPayloadShapeArchitectureTests
             await WaitUntilAsync(() => server.ReceivedActivationResults.Count == 1, token);
 
             await client.SendHeartbeatAsync(token);
+
+            // onboard-hmi#349: the departure request, and the vehicle's own DurableAck of the result it draws out -- the
+            // first send path DurableAck has on this end. The ack is sent here as the business service sends it once the
+            // result is journaled; the session has no business service to do it.
+            await client.SendCurrentStopDepartureRequestedAsync(
+                new WireToGateCurrentStopDeparture(
+                    "66666666-6666-4666-8666-666666666661",
+                    "66666666-6666-4666-8666-666666666662",
+                    "ST-01",
+                    1,
+                    null,
+                    "operator-001",
+                    "SESSION",
+                    DateTimeOffset.UtcNow),
+                token);
+            await WaitUntilAsync(
+                () => server.SentEnvelopes.Any(envelope => envelope.MessageType == "CurrentStopDepartureResult"),
+                token);
+            var departureResult = server.SentEnvelopes.First(envelope => envelope.MessageType == "CurrentStopDepartureResult");
+            await client.SendDurableAckAsync(
+                departureResult.MessageId,
+                "CurrentStopDepartureResult",
+                WireToGateProtocolSerializer.ComputeSha256(
+                    System.Text.Encoding.UTF8.GetBytes(departureResult.WireLine.TrimEnd('\r', '\n'))),
+                token);
 
             const string demandId = "11111111-1111-4111-8111-111111111111";
             const string sessionId = "11111111-1111-4111-8111-111111111112";

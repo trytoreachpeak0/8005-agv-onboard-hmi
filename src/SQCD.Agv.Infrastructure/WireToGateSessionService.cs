@@ -324,6 +324,20 @@ public sealed class WireToGateSessionService : IAsyncDisposable
         CancellationToken cancellationToken = default) =>
         _client.SendSlotFaultDeclarationResultAsync(payload, cancellationToken);
 
+    /// <inheritdoc cref="WireToGateSessionClient.SendCurrentStopDepartureRequestedAsync"/>
+    public Task<string> SendCurrentStopDepartureRequestedAsync(
+        WireToGateCurrentStopDeparture departure,
+        CancellationToken cancellationToken = default) =>
+        _client.SendCurrentStopDepartureRequestedAsync(departure, cancellationToken);
+
+    /// <inheritdoc cref="WireToGateSessionClient.SendDurableAckAsync"/>
+    public Task SendDurableAckAsync(
+        string acceptedMessageId,
+        string acceptedMessageType,
+        string contentSha256,
+        CancellationToken cancellationToken = default) =>
+        _client.SendDurableAckAsync(acceptedMessageId, acceptedMessageType, contentSha256, cancellationToken);
+
     public Task<string> ResendSlotFaultDeclarationResultAsync(
         string declarationId,
         CancellationToken cancellationToken = default) =>

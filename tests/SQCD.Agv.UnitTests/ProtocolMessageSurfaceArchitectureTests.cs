@@ -136,9 +136,11 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
     ];
 
     /// <summary>
-    /// The parse of the manifest, checked against the shape the bound release froze: 65 message types
-    /// since the 3.0.0 candidate added <c>SlotFaultDeclarationCommand</c> and
-    /// <c>SlotFaultDeclarationResult</c> (8005-agv-onboard-hmi#214).
+    /// The parse of the manifest, checked against the shape the bound release froze: 67 message types
+    /// since the 4.0.0 candidate added <c>CurrentStopDepartureRequested</c> and
+    /// <c>CurrentStopDepartureResult</c> (8005-agv-onboard-hmi#349), 65 before that since the 3.0.0
+    /// candidate added <c>SlotFaultDeclarationCommand</c> and <c>SlotFaultDeclarationResult</c>
+    /// (8005-agv-onboard-hmi#214).
     /// </summary>
     /// <remarks>
     /// Without this, every assertion below could pass over an empty parse: an empty message table
@@ -147,9 +149,9 @@ public sealed class ProtocolMessageSurfaceArchitectureTests
     /// wrong property is reported here.
     /// </remarks>
     [Fact]
-    public void TheManifestParsesIntoSixtyFiveMessagesAndElevenDenylistedTypes()
+    public void TheManifestParsesIntoSixtySevenMessagesAndElevenDenylistedTypes()
     {
-        Assert.Equal(65, FrozenMessageTypes().Length);
+        Assert.Equal(67, FrozenMessageTypes().Length);
         Assert.Equal(11, DenylistedMessageTypes().Length);
         Assert.Empty(FrozenMessageTypes().Intersect(DenylistedMessageTypes(), StringComparer.Ordinal));
     }

@@ -138,6 +138,8 @@ public sealed class LoadingPhaseTextTests
     [InlineData("CARGO_HOLDING_TIMEOUT", "等单已到期，本车结束等单，前往卸货")]
     [InlineData("VEHICLE_FULL", "已装满，本站装货结束")]
     [InlineData("PLANNED_LOADING_COMPLETE", "本站计划装货已完成")]
+    [InlineData("OPERATOR_DEPARTED", "已按出发，本站装货结束，前往送货")]
+    [InlineData("CHARGING_REQUIRED", "低电量，带货去充电，充完直接送货")]
     public void EachClosedReasonHasItsOwnSentence(string closedReason, string expected)
     {
         LoadingPhaseView view = LoadingPhaseText.Describe(

@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using SQCD.Agv.Application;
 using SQCD.Agv.Core;
+using SQCD.Agv.Infrastructure;
 
 namespace SQCD.Agv.Wpf;
 
@@ -59,6 +60,17 @@ public sealed partial class WireToGateBusinessService
             // here: a refusal mid-session is caught by that work, which asks for one, and one in a handshake is followed
             // by the readiness that asks for one (review of PR #258, N2: an extra request here was never needed).
             Volatile.Write(ref _abandonedSafetyChange, change);
+            return;
+        }
+
+        if (abandoned.DeduplicationKey.StartsWith(
+                WireToGateSessionClient.CurrentStopDepartureKeyPrefix,
+                StringComparison.Ordinal)
+            && !_disposed)
+        {
+            // A departure request refused for good: settled as refused, so the screen stops saying it is pending
+            // (8005-agv-onboard-hmi#349).
+            TrackTask(SettleAbandonedCurrentStopDepartureAsync(abandoned, _stopping.Token));
             return;
         }
 
