@@ -266,28 +266,46 @@ public sealed class CurrentStopDepartureG2Tests
         Assert.False(harness.Business.CurrentStopDeparture.Shown);
         Assert.False(harness.OnUi(() => harness.ViewModel.CurrentStopDeparture.IsShown));
 
-        string checkId = Guid.NewGuid().ToString("D");
-        await harness.Server.SendCommandAsync(
-            "PreDepartureSafetyCheck",
-            Guid.NewGuid().ToString("D"),
-            new
+        // The DEPARTURE check, as the server sends it. The snapshots above can make the vehicle report its safety again, and a
+        // check asking about a version older than the one the vehicle has had accepted is refused as expired
+        // (PREDEPARTURE_CHECK_EXPIRED) -- the real server then asks again with the newer version, and so does this test.
+        for (int attempt = 1; ; attempt++)
+        {
+            string checkMessageId = Guid.NewGuid().ToString("D");
+            await harness.Server.SendCommandAsync(
+                "PreDepartureSafetyCheck",
+                checkMessageId,
+                new
+                {
+                    preDepartureSafetyCheckId = Guid.NewGuid().ToString("D"),
+                    checkPurpose = "DEPARTURE",
+                    demandId = DemandA,
+                    movementLegId = "22222222-2222-4222-8222-000000000002",
+                    expectedSafetyStateVersion = harness.Session.Current.SafetyStateVersion,
+                    targetStationId = "WB-01"
+                });
+            await harness.WaitUntilAsync(
+                () => harness.Server.ReceivedEnvelopes.Any(item => item.MessageType == "PreDepartureSafetyCheckResult")
+                    || harness.Server.ReceivedEnvelopes.Any(item =>
+                        item.MessageType == "ProtocolProblem" && item.WireLine.Contains(checkMessageId, StringComparison.Ordinal)),
+                "the departure check to be answered or refused as expired",
+                token);
+            if (harness.Server.ReceivedEnvelopes.Any(item => item.MessageType == "PreDepartureSafetyCheckResult"))
             {
-                preDepartureSafetyCheckId = checkId,
-                checkPurpose = "DEPARTURE",
-                demandId = DemandA,
-                movementLegId = "22222222-2222-4222-8222-000000000002",
-                expectedSafetyStateVersion = harness.Session.Current.SafetyStateVersion,
-                targetStationId = "WB-01"
-            });
-        await harness.WaitUntilAsync(
-            () => harness.Server.ReceivedEnvelopes.Any(item => item.MessageType == "PreDepartureSafetyCheckResult"),
-            "the departure check to be answered",
-            token);
+                break;
+            }
+
+            Assert.Contains(
+                harness.Server.ReceivedEnvelopes,
+                item => item.MessageType == "ProtocolProblem"
+                    && item.WireLine.Contains("PREDEPARTURE_CHECK_EXPIRED", StringComparison.Ordinal));
+            Assert.True(attempt < 3, "the departure check was refused as expired three times running");
+        }
 
         // NEVER_DEPART_LOCALLY: the server departed it; the vehicle sent no request of its own and opened nothing.
         Assert.Empty(harness.Server.CurrentStopDepartureRequests);
         Assert.Equal(0, harness.Io.UnlockCount);
-        Assert.DoesNotContain(harness.Server.Received, item => item.MessageType is "SublotSubmitted" or "ProtocolProblem");
+        Assert.DoesNotContain(harness.Server.Received, item => item.MessageType == "SublotSubmitted");
         Assert.Empty(harness.UiErrors);
     }
 
