@@ -244,10 +244,16 @@ public sealed class CurrentStopDepartureG2Tests
         await harness.Server.SendJourneySnapshotAsync("CurrentStopWorklistSnapshot", Worklist(2, null, "CHARGING_REQUIRED"));
         await harness.Server.SendJourneySnapshotAsync("UpcomingStopPlanSnapshot", Payloads.Plan(2, legs));
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.LoadingClosedReasonCode == "CHARGING_REQUIRED"
-                && harness.Session.CurrentJourney.UpcomingStopPlan?.Revision == 2
-                && SnapshotAcknowledgements(harness.Server) == acknowledgementsBefore + 3,
-            "the charging-required departure to be applied, acknowledged and shown",
+            () => harness.Session.CurrentJourney.UpcomingStopPlan?.Revision == 2,
+            "the plan without a charger leg to be applied",
+            token);
+        await harness.WaitUntilAsync(
+            () => SnapshotAcknowledgements(harness.Server) >= acknowledgementsBefore + 3,
+            $"the three snapshots to be acknowledged (before: {acknowledgementsBefore}, now: {SnapshotAcknowledgements(harness.Server)})",
+            token);
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.LoadingClosedReasonCode == "CHARGING_REQUIRED",
+            $"the charging-required closure to be shown (code: '{harness.ViewModel.LoadingClosedReasonCode}')",
             token);
 
         Assert.Equal(LoadingPhaseText.ChargingRequiredText, harness.ViewModel.LoadingClosedReasonText);
