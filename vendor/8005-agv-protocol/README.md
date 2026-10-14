@@ -14,9 +14,10 @@ This candidate is **breaking** against `protocol-v3.0.0`
 three changes — the operator's departure request at the `STAGING_TO_WIRE`
 staging station (`CurrentStopDepartureRequested` /
 `CurrentStopDepartureResult`), `OPERATOR_DEPARTED` and `CHARGING_REQUIRED`
-appended to `loadingPhase.closedReason` and `stopEndedReason`, and charging
-with cargo inside a `TRANSPORT` journey (a `CHARGER` stop in the plan, stated in
-[`docs/wire-notes.md`](docs/wire-notes.md)). See
+appended to `loadingPhase.closedReason` and `stopEndedReason`, and a vehicle
+below the mandatory charge line at the staging station with cargo on board
+departing to deliver it before it charges (no `CHARGER` stop in the journey,
+stated in [`docs/wire-notes.md`](docs/wire-notes.md)). See
 [`compatibility/report.json`](compatibility/report.json) for the full list.
 
 It is not a formal `ProtocolRelease` until a release approval (the product

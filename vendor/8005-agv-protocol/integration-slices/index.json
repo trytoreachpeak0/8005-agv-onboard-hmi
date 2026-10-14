@@ -644,7 +644,7 @@
         "CV-UNABLE-TO-CHARGE-FIELD-CONFIRMATION",
         "CV-MANUAL-STATION-CLEARANCE",
         "CV-MANUAL-CHARGING-RETURN",
-        "CV-TRANSPORT-CHARGING-STOP-WITH-CARGO"
+        "CV-STAGING-CHARGING-REQUIRED-DEPARTURE-WITH-CARGO"
       ],
       "gates": [
         "G1",
@@ -658,7 +658,7 @@
           "CHARGING_CLAIMS_THE_VEHICLE",
           "CHARGING_POLICY_DECIDED_CENTRALLY",
           "STATION_RELEASED_ONLY_ON_CONFIRMED_CLEARANCE",
-          "STAGING_CARGO_CHARGES_WITHIN_TRANSPORT_JOURNEY"
+          "STAGING_CARGO_DELIVERED_BEFORE_CHARGING"
         ],
         "authorityModel": {
           "controlServerFact": "VehiclePurposeClaim",
@@ -676,12 +676,11 @@
           "controlServer": [
             "DECIDE_CHARGING_POLICY",
             "RELEASE_STATION_ON_CONFIRMATION",
-            "CHARGE_STAGING_CARGO_WITHIN_TRANSPORT_JOURNEY"
+            "DELIVER_STAGING_CARGO_BEFORE_CHARGING"
           ],
           "onboardHmi": [
             "REPORT_FIELD_OBSERVATION_WITH_OPERATOR",
-            "NEVER_DECIDE_POLICY_LOCALLY",
-            "NEVER_OPEN_SLOT_AT_CHARGER_STOP"
+            "NEVER_DECIDE_POLICY_LOCALLY"
           ]
         }
       },

@@ -340,7 +340,7 @@ public sealed class CurrentStopDepartureTests
 
     [Theory]
     [InlineData("OPERATOR_DEPARTED", "已按出发，未装的任务退回待派")]
-    [InlineData("CHARGING_REQUIRED", "低电量去充电，未装的任务退回待派")]
+    [InlineData("CHARGING_REQUIRED", "电量低，先送车上的货再充电，未装的任务退回待派")]
     public void TheTwoNewStopEndedReasonsHaveTheirOwnSentence(string reason, string expected)
     {
         Assert.Equal(expected, WireToGateStopEndedReasonText.Describe(reason));

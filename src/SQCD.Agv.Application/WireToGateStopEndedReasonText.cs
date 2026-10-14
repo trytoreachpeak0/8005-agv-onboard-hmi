@@ -32,7 +32,7 @@ public static class WireToGateStopEndedReasonText
             ["TRIP_TERMINATED"] = "本站因行程终止结束",
             // 协议 4.0.0 新增（CP-0012，8005-agv-onboard-hmi#349）：只出现在待送点。没装的任务退回待派，不是取消。
             ["OPERATOR_DEPARTED"] = "已按出发，未装的任务退回待派",
-            ["CHARGING_REQUIRED"] = "低电量去充电，未装的任务退回待派"
+            ["CHARGING_REQUIRED"] = "电量低，先送车上的货再充电，未装的任务退回待派"
         };
 
     public const string LoadCompletedText = "装货完成";

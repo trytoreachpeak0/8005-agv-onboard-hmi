@@ -7,10 +7,10 @@
   "generatedAt": "2026-10-14T00:00:00Z",
   "hashAlgorithm": "SHA-256",
   "jsonCanonicalization": "RFC8785-compatible sorted-key JCS for semantic collections; raw bytes for file entries",
-  "fileTableSha256": "7842336f7e71fc1213e1a86ec9fbcc94f8ae68338af63f7b0109bc7c6c776852",
+  "fileTableSha256": "39721010a6812184acf353b6d74167c799085b740279e6eeee83af72609919aa",
   "schemaBundleSha256": "dad44a5e93203eb0b7ade50b23d12f2aaffc0e2abb3c8e5dcdd3de62d931d628",
   "examplesSha256": "b0da007ca9712e6b390677ce62679875f195ceb76c080332f4d49ab5fc6cf923",
-  "vectorsSha256": "c59c4594094455bafdbb631644e65e7a32e092f049520d0bc753650c04f95552",
+  "vectorsSha256": "290b9260df46cd484f993a5a5022712fd54e043c9777da78caa0f9aabf5aa300",
   "errorRegistrySha256": "3386154ca06bef1803e08c0b0bc5fc6e498146e3736aa1ab6a4ca604ccf01499",
   "messages": {
     "SessionHello": {
@@ -1065,8 +1065,8 @@
     {
       "path": "README.md",
       "role": "README.md",
-      "bytes": 2407,
-      "sha256": "ea237e1ebeedafa52a0d86b82a572cb19ad78f224ee183cee43b72ae1483a564"
+      "bytes": 2489,
+      "sha256": "f2f805f6acc001c65c3618bd5d33e9358dcbc6d7330b9bb08be57ecf5bb8d0aa"
     },
     {
       "path": "THIRD-PARTY-NOTICES.md",
@@ -1083,8 +1083,8 @@
     {
       "path": "compatibility/report.json",
       "role": "compatibility",
-      "bytes": 2214,
-      "sha256": "b92efc39eda2d5d4e6f27eb44b5f44564789cd4200e1cecd35aa60e2352f56ad"
+      "bytes": 2222,
+      "sha256": "0e14836fb107a7cd29f476110b4677c52d4c56ea4535e0bc824e4febe03eb5ad"
     },
     {
       "path": "docs/README.md",
@@ -1107,8 +1107,8 @@
     {
       "path": "docs/wire-notes.md",
       "role": "docs",
-      "bytes": 8088,
-      "sha256": "492ac0af8b8c66c9893f28509286f9a47d183bd44994dd51811fc1a5860b3e28"
+      "bytes": 7678,
+      "sha256": "944511039a7b295e3260bb17df27e04a1a31719f0e18dce5bcb2fffb53521344"
     },
     {
       "path": "errors/error-codes.json",
@@ -11787,8 +11787,8 @@
     {
       "path": "integration-slices/index.json",
       "role": "integration-slices",
-      "bytes": 21908,
-      "sha256": "1e2cfb1f6a38eab8490102c360b1cf679dfe130665d364824ad8ee914fe35ce9"
+      "bytes": 21858,
+      "sha256": "2d781153aba9edc1845e4d39b3f56461d8e20c8b3b7cc7a6edeb70129bc0a9f1"
     },
     {
       "path": "package.json",
@@ -12249,8 +12249,8 @@
     {
       "path": "tools/g1-validate.mjs",
       "role": "tools",
-      "bytes": 14591,
-      "sha256": "e5b2e069ba189d70cc12b3f423369aa1091f211bb753f9f045ab8653c555c94c"
+      "bytes": 14603,
+      "sha256": "3b10bafb0ab0ba33de0cedfce5da5450bc6119ecd584053585b6973149f859f5"
     },
     {
       "path": "vectors/CV-AUTOMATIC-CHARGING-CYCLE/expected.json",
@@ -12697,6 +12697,18 @@
       "sha256": "4510ed158a120b25bc88ed9456e9d1c555f5f1c4768b66489dd5ffa353e2f8b9"
     },
     {
+      "path": "vectors/CV-STAGING-CHARGING-REQUIRED-DEPARTURE-WITH-CARGO/expected.json",
+      "role": "vectors",
+      "bytes": 1918,
+      "sha256": "4efad932e1e13fc87d4f99fb8579ac686c48738d3ecdb710c755b76659208bd6"
+    },
+    {
+      "path": "vectors/CV-STAGING-CHARGING-REQUIRED-DEPARTURE-WITH-CARGO/input.ndjson",
+      "role": "vectors",
+      "bytes": 821,
+      "sha256": "adff80be147a7062556805985e8a8e9025105d9dc3986e581562bc1c6489ac96"
+    },
+    {
       "path": "vectors/CV-SUBLOT-REJECTED-AFTER-ENTRY/expected.json",
       "role": "vectors",
       "bytes": 972,
@@ -12719,18 +12731,6 @@
       "role": "vectors",
       "bytes": 404,
       "sha256": "4edfe0a9038d76a38f686d04fa9a200d667f4cb74a4010fdabfc116893111037"
-    },
-    {
-      "path": "vectors/CV-TRANSPORT-CHARGING-STOP-WITH-CARGO/expected.json",
-      "role": "vectors",
-      "bytes": 1959,
-      "sha256": "4d3539eb244d72800a5fdfff8b9449552ff4d4bedd937e8b70f8ea3339f1a2b5"
-    },
-    {
-      "path": "vectors/CV-TRANSPORT-CHARGING-STOP-WITH-CARGO/input.ndjson",
-      "role": "vectors",
-      "bytes": 1451,
-      "sha256": "203dfe03e319249758caac17cc06c9e9199a4986150e67d6ab4cf3a25e953541"
     },
     {
       "path": "vectors/CV-UNABLE-TO-CHARGE-FIELD-CONFIRMATION/expected.json",

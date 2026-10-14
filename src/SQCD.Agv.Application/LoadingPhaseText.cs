@@ -51,7 +51,8 @@ public static class LoadingPhaseText
             ["CARGO_HOLDING_TIMEOUT"] = "等单已到期，本车结束等单，前往卸货",
             ["VEHICLE_FULL"] = "已装满，本站装货结束",
             ["PLANNED_LOADING_COMPLETE"] = "本站计划装货已完成",
-            // 协议 4.0.0 新增（CP-0012，8005-agv-onboard-hmi#349）：待送点上操作员按了「出发」，或缺电带货去充电。
+            // 协议 4.0.0 新增（CP-0012、CP-0013，8005-agv-onboard-hmi#349）：待送点上操作员按了「出发」，或缺电时服务端
+            // 让车带着已装的货自动出发，先送货、旅程结束后再去充电（protocol#15，旅程里不插充电停靠）。
             ["OPERATOR_DEPARTED"] = OperatorDepartedText,
             ["CHARGING_REQUIRED"] = ChargingRequiredText
         };
@@ -59,8 +60,10 @@ public static class LoadingPhaseText
     /// <summary>待送点上操作员按「出发」、服务端受理后装货阶段的结束原因。</summary>
     public const string OperatorDepartedText = "已按出发，本站装货结束，前往送货";
 
-    /// <summary>缺电带货去充电时装货阶段的结束原因（票面原文）。</summary>
-    public const string ChargingRequiredText = "低电量，带货去充电，充完直接送货";
+    /// <summary>
+    /// 待送点缺电、车上有货时装货阶段的结束原因：服务端让车自动出发，先送货，送完再充电（CP-0013，protocol#15）。
+    /// </summary>
+    public const string ChargingRequiredText = "电量低，先送车上的货，送完再充电";
 
     /// <param name="zone">「最迟几点离站」用的时区，界面传车载端本地时区。</param>
     /// <param name="stationDepartureDeadlineAt">本站清单的站点离站期限，没有时为空。</param>

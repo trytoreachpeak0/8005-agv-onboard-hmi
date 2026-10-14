@@ -12,11 +12,12 @@ namespace SQCD.Agv.Contracts;
 /// <remarks>
 /// <para>
 /// <b>This names the <c>4.0.0</c> candidate, not a release.</b> Every value below is read off
-/// <c>8005-agv-protocol</c> commit <c>c6b1ff737e1604f3fa2fc3a3734477b2a92e7191</c>, the merge of
-/// <c>8005-agv-protocol#14</c> into <c>fp/v2-candidate</c> (<c>8005-agv-protocol#13</c>, CP-0012): the
-/// operator's departure request at the <c>STAGING_TO_WIRE</c> staging station, <c>OPERATOR_DEPARTED</c> and
-/// <c>CHARGING_REQUIRED</c> on <c>closedReason</c> and <c>stopEndedReason</c>, and charging with cargo inside a
-/// <c>TRANSPORT</c> journey. Bound here by 8005-agv-onboard-hmi#349. The tag <c>protocol-v4.0.0</c> does not
+/// <c>8005-agv-protocol</c> commit <c>4d67655c4da5120d20cd06d99f67f14c4f2dfb08</c> on <c>fp/v2-candidate</c>: the
+/// operator's departure request at the <c>STAGING_TO_WIRE</c> staging station and <c>OPERATOR_DEPARTED</c> and
+/// <c>CHARGING_REQUIRED</c> on <c>closedReason</c> and <c>stopEndedReason</c> (<c>8005-agv-protocol#13</c>, CP-0012), and
+/// a vehicle below the mandatory charge line at the staging station delivering its cargo before it charges
+/// (<c>8005-agv-protocol#15</c>, CP-0013, which replaced the charging stop inside a <c>TRANSPORT</c> journey the first
+/// 4.0.0 candidate, <c>c6b1ff73</c>, carried). Bound here by 8005-agv-onboard-hmi#349. The tag <c>protocol-v4.0.0</c> does not
 /// exist yet, so <see cref="ApprovalStatus"/> is <c>SUPERSEDING_CANDIDATE</c>, CI checks the protocol out by
 /// <see cref="Commit"/>, and evidence produced on this identity is <c>UNRELEASED_CANDIDATE</c> and does not
 /// count toward a batch exit. The release, if it changes nothing, moves only <see cref="ApprovalStatus"/>,
@@ -57,10 +58,10 @@ public static class WireToGateRelease
     public const string ReleaseVersion = "4.0.0";
     public const string Repository = "8005-agv-protocol";
     public const string Tag = "protocol-v4.0.0";
-    public const string Commit = "c6b1ff737e1604f3fa2fc3a3734477b2a92e7191";
-    public const string ManifestSha256 = "8b5fb4669f221bcbf507a92fc1d1f4212f5abfb30a8090daa352d30ac467634f";
+    public const string Commit = "4d67655c4da5120d20cd06d99f67f14c4f2dfb08";
+    public const string ManifestSha256 = "38a5d2d53e1e235f7f844d991c7258ed51910d542f235ebae6768455c5511fc4";
     public const string SchemaBundleSha256 = "dad44a5e93203eb0b7ade50b23d12f2aaffc0e2abb3c8e5dcdd3de62d931d628";
-    public const string VectorsSha256 = "c59c4594094455bafdbb631644e65e7a32e092f049520d0bc753650c04f95552";
+    public const string VectorsSha256 = "290b9260df46cd484f993a5a5022712fd54e043c9777da78caa0f9aabf5aa300";
     public const string ApprovalStatus = "SUPERSEDING_CANDIDATE";
 
     public static ProtocolReleaseIdentity Identity { get; } = new(

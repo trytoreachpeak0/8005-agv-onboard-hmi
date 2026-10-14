@@ -11,15 +11,15 @@ using Payloads = SQCD.Agv.WireToGateG2Tests.MultiDemandJourneyG2Tests.Payloads;
 namespace SQCD.Agv.WireToGateG2Tests;
 
 /// <summary>
-/// The onboard half of the staging pickup stop's 「出发」 and of charging with cargo (protocol 4.0.0 candidate, CP-0012,
-/// <c>8005-agv-onboard-hmi#349</c>), driven from the fake control server through the real session service, business service
+/// The onboard half of the staging pickup stop's 「出发」 and of its charging-required departure (protocol 4.0.0 candidate,
+/// CP-0012 and CP-0013, <c>8005-agv-onboard-hmi#349</c>), driven from the fake control server through the real session service, business service
 /// and <see cref="MainViewModel"/>, wired as <c>App.xaml.cs</c> wires them.
 /// </summary>
 /// <remarks>
 /// <para>
 /// The six vectors the 4.0.0 candidate added each have one named test here: five on <c>FP-IS-02</c> -- accepted, the three
-/// refusals, the duplicate request -- and the charging stop with cargo on <c>FP-IS-13</c>. Their slice traits are the projection
-/// of their vector traits (<c>IntegrationSliceTraitArchitectureTests</c>). The tests without a vector trait are the ticket's
+/// refusals, the duplicate request -- and the charging-required departure with cargo on <c>FP-IS-13</c>. Their slice traits
+/// are the projection of their vector traits (<c>IntegrationSliceTraitArchitectureTests</c>). The tests without a vector trait are the ticket's
 /// own acceptance points the vectors do not speak to: the machine pickup that must not change, the cargo-holding wait with an
 /// empty worklist, the entry being processed.
 /// </para>
@@ -32,7 +32,6 @@ namespace SQCD.Agv.WireToGateG2Tests;
 public sealed class CurrentStopDepartureG2Tests
 {
     private const string Staging = "ST-01";
-    private const string Charger = "CH-211";
     private const string OperationSession = "77777777-7777-4777-8777-777777777777";
     private const string DemandA = "aaaaaaaa-0000-4000-8000-00000000000a";
     private const string DemandB = "bbbbbbbb-0000-4000-8000-00000000000b";
@@ -214,63 +213,73 @@ public sealed class CurrentStopDepartureG2Tests
     }
 
     /// <summary>
-    /// <c>CV-TRANSPORT-CHARGING-STOP-WITH-CARGO</c>: under <c>TRANSPORT</c>, a journey whose plan carries a charger leg shows the
-    /// loading phase closed for charging, the charging cycle and the charger visit; the charger stop offers no entry, no
-    /// cancellation and no departure, and nothing opens.
+    /// <c>CV-STAGING-CHARGING-REQUIRED-DEPARTURE-WITH-CARGO</c> (protocol#15, CP-0013): below the mandatory charge line at the
+    /// staging stop with cargo on board, the control server departs the vehicle itself. The vehicle shows it from the snapshots
+    /// -- the loading phase closed for charging, the stop ended the same way -- acknowledges each, answers the
+    /// <c>DEPARTURE</c> check, and never departs on its own: no departure request goes out, the entry is gone, nothing opens.
+    /// The journey carries no charger leg, the purpose stays <c>TRANSPORT</c> and nothing is shown as charging yet.
     /// </summary>
     [Fact]
-    [Trait("ProtocolVector", "CV-TRANSPORT-CHARGING-STOP-WITH-CARGO")]
+    [Trait("ProtocolVector", "CV-STAGING-CHARGING-REQUIRED-DEPARTURE-WITH-CARGO")]
     [Trait("IntegrationSlice", "FP-IS-13")]
-    public async Task ChargingWithCargoIsShownAndTheChargerStopOffersNoEntry()
+    public async Task AChargingRequiredDepartureWithCargoIsShownFromTheSnapshots()
     {
         CancellationToken token = TestContext.Current.CancellationToken;
         object[] legs =
         [
             Payloads.Leg(1, "TO_PICKUP", "BUSINESS", DemandA, Staging, "COMPLETED"),
-            Payloads.Leg(2, null, "CHARGER", null, Charger, "ACTIVE"),
-            Payloads.Leg(3, "TO_DROPOFF", "BUSINESS", DemandA, "WB-01", "PLANNED")
+            Payloads.Leg(2, "TO_DROPOFF", "BUSINESS", DemandA, "WB-01", "ACTIVE")
         ];
         await using Harness harness = await StartAtStagingAsync(token);
         await WaitForPressableAsync(harness, token);
+        int acknowledgementsBefore = SnapshotAcknowledgements(harness.Server);
 
+        // The vector's order: the business state, the worklist and the plan, each acknowledged.
         await harness.Server.SendJourneySnapshotAsync(
             "VehicleBusinessStateSnapshot",
             State(
                 2,
                 Payloads.LoadingPhase("CLOSED", closedReason: "CHARGING_REQUIRED"),
-                chargingCycleState: "EN_ROUTE",
                 batteryState: "MANDATORY_CHARGE"));
         await harness.Server.SendJourneySnapshotAsync("CurrentStopWorklistSnapshot", Worklist(2, null, "CHARGING_REQUIRED"));
         await harness.Server.SendJourneySnapshotAsync("UpcomingStopPlanSnapshot", Payloads.Plan(2, legs));
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.ChargingStatus == "EN_ROUTE"
-                && harness.ViewModel.LoadingClosedReasonCode == "CHARGING_REQUIRED"
-                && harness.Session.CurrentJourney.UpcomingStopPlan?.Revision == 2,
-            "the charging stop with cargo to be shown",
+            () => harness.ViewModel.LoadingClosedReasonCode == "CHARGING_REQUIRED"
+                && harness.Session.CurrentJourney.UpcomingStopPlan?.Revision == 2
+                && SnapshotAcknowledgements(harness.Server) == acknowledgementsBefore + 3,
+            "the charging-required departure to be applied, acknowledged and shown",
             token);
 
         Assert.Equal(LoadingPhaseText.ChargingRequiredText, harness.ViewModel.LoadingClosedReasonText);
-        Assert.Equal($"前往充电桩 {Charger}", harness.ViewModel.VisitText);
-        Assert.Equal("前往充电", harness.ViewModel.ChargingStatusText);
-        AssertNoEntryAt(harness);
+        Assert.Contains("先送", LoadingPhaseText.ChargingRequiredText, StringComparison.Ordinal);
+        Assert.Contains("再充电", LoadingPhaseText.ChargingRequiredText, StringComparison.Ordinal);
+        // No charging stop and no charging under way: the charge comes after the journey, from the charging allocation.
+        Assert.False(harness.Session.CurrentJourney.IsChargerStop);
+        Assert.Equal("NOT_CHARGING", harness.ViewModel.ChargingStatus);
+        Assert.Equal("需强制充电", harness.ViewModel.BatteryStatusText);
+        Assert.False(harness.Business.CurrentStopDeparture.Shown);
+        Assert.False(harness.OnUi(() => harness.ViewModel.CurrentStopDeparture.IsShown));
 
-        legs[1] = Payloads.Leg(2, null, "CHARGER", null, Charger, "ARRIVED");
-        await harness.Server.SendJourneySnapshotAsync("UpcomingStopPlanSnapshot", Payloads.Plan(3, legs));
-        await harness.Server.SendJourneySnapshotAsync(
-            "VehicleBusinessStateSnapshot",
-            State(
-                3,
-                Payloads.LoadingPhase("CLOSED", closedReason: "CHARGING_REQUIRED"),
-                chargingCycleState: "CHARGING",
-                batteryState: "MANDATORY_CHARGE"));
+        string checkId = Guid.NewGuid().ToString("D");
+        await harness.Server.SendCommandAsync(
+            "PreDepartureSafetyCheck",
+            Guid.NewGuid().ToString("D"),
+            new
+            {
+                preDepartureSafetyCheckId = checkId,
+                checkPurpose = "DEPARTURE",
+                demandId = DemandA,
+                movementLegId = "22222222-2222-4222-8222-000000000002",
+                expectedSafetyStateVersion = harness.Session.Current.SafetyStateVersion,
+                targetStationId = "WB-01"
+            });
         await harness.WaitUntilAsync(
-            () => harness.ViewModel.ChargingStatus == "CHARGING",
-            "charging at the charger to be shown",
+            () => harness.Server.ReceivedEnvelopes.Any(item => item.MessageType == "PreDepartureSafetyCheckResult"),
+            "the departure check to be answered",
             token);
 
-        Assert.Equal($"在充电桩 {Charger} 充电中", harness.ViewModel.VisitText);
-        Assert.Equal("充电中", harness.ViewModel.ChargingStatusText);
-        AssertNoEntryAt(harness);
+        // NEVER_DEPART_LOCALLY: the server departed it; the vehicle sent no request of its own and opened nothing.
+        Assert.Empty(harness.Server.CurrentStopDepartureRequests);
         Assert.Equal(0, harness.Io.UnlockCount);
         Assert.DoesNotContain(harness.Server.Received, item => item.MessageType is "SublotSubmitted" or "ProtocolProblem");
         Assert.Empty(harness.UiErrors);
@@ -798,14 +807,8 @@ public sealed class CurrentStopDepartureG2Tests
             items
         };
 
-    private static void AssertNoEntryAt(Harness harness)
-    {
-        Assert.False(harness.Business.CanSubmitSublot);
-        Assert.False(harness.ViewModel.CanSubmit);
-        Assert.False(harness.ViewModel.CanRequestLoadCancellation);
-        Assert.False(harness.Business.CurrentStopDeparture.Shown);
-        Assert.False(harness.OnUi(() => harness.ViewModel.CurrentStopDeparture.IsShown));
-    }
+    private static int SnapshotAcknowledgements(FakeControlServer server) =>
+        server.ReceivedEnvelopes.Count(item => item.MessageType == "SnapshotAppliedAck");
 
     private static bool IsResultAcknowledgement(string wireLine)
     {
