@@ -2,9 +2,9 @@ using SQCD.Agv.Application;
 using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
+using Xunit;
 using WireToGateMovementLeg = SQCD.Agv.Core.WireToGateMovementLeg;
 using WireToGateWorklistItem = SQCD.Agv.Core.WireToGateWorklistItem;
-using Xunit;
 
 namespace SQCD.Agv.UnitTests;
 
