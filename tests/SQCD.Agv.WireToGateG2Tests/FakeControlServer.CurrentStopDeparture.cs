@@ -49,6 +49,18 @@ public sealed partial class FakeControlServer
         set => Volatile.Write(ref _currentStopDepartureAcksToDrop, value);
     }
 
+    /// <summary>
+    /// The reason the next departure request is answered with a <c>ProtocolProblem</c> instead of a <c>DurableAck</c>,
+    /// once; <c>null</c> answers normally.
+    /// </summary>
+    public string? NextCurrentStopDepartureProtocolProblem
+    {
+        get => Volatile.Read(ref _nextCurrentStopDepartureProtocolProblem);
+        set => Volatile.Write(ref _nextCurrentStopDepartureProtocolProblem, value);
+    }
+
+    private string? _nextCurrentStopDepartureProtocolProblem;
+
     /// <summary>Every departure request payload received, in order, resends included.</summary>
     public IReadOnlyList<JsonElement> CurrentStopDepartureRequests => [.. _currentStopDepartureRequests];
 
@@ -87,6 +99,18 @@ public sealed partial class FakeControlServer
         _currentStopDepartureRequests.Enqueue(payload);
         if (TryConsume(ref _currentStopDepartureAcksToDrop))
         {
+            return;
+        }
+
+        if (Interlocked.Exchange(ref _nextCurrentStopDepartureProtocolProblem, null) is { } problem)
+        {
+            await WriteEnvelopeAsync(
+                context,
+                CreateProtocolProblem(
+                    context,
+                    root.GetProperty("messageId").GetString()!,
+                    "CurrentStopDepartureRequested",
+                    problem)).ConfigureAwait(false);
             return;
         }
 

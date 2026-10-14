@@ -37,6 +37,7 @@ public sealed class CurrentStopDepartureG2Tests
     private const string DemandA = "aaaaaaaa-0000-4000-8000-00000000000a";
     private const string DemandB = "bbbbbbbb-0000-4000-8000-00000000000b";
     private const string Operator = "operator-134";
+    private const string NextTripOperationSession = "99999999-9999-4999-8999-999999999999";
 
     static CurrentStopDepartureG2Tests()
     {
@@ -488,6 +489,172 @@ public sealed class CurrentStopDepartureG2Tests
             },
             submission);
         await WaitForPressableAsync(harness, token);
+    }
+
+    /// <summary>
+    /// Review M1, the first variant (P1): the acknowledgement of the request is lost and the link stays up. The press is
+    /// resent in the same session under the same messageId until it is acknowledged and answered -- not left pending until
+    /// the next disconnect, with the button shut and no way out.
+    /// </summary>
+    [Fact]
+    public async Task ALostAcknowledgementWithTheLinkUpIsResentInTheSameSession()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAtStagingAsync(
+            token,
+            server =>
+            {
+                server.RespondToCurrentStopDepartures = true;
+                server.CurrentStopDepartureAcksToDrop = 1;
+            });
+        CurrentStopDepartureDisplay shown = await WaitForPressableAsync(harness, token);
+        int connection = harness.Server.ReceivedEnvelopes.Max(item => item.Connection);
+
+        Assert.True(await harness.ViewModel.RequestCurrentStopDepartureAsync(shown.Prompt!, token));
+        // The press as journaled, before anything resends it.
+        WireToGateCurrentStopDeparture pressed = (await harness.Session.Journal.ReadRecoveryStateAsync(token))
+            .CurrentStopDeparture!;
+        await harness.WaitUntilAsync(
+            () => ResultAcknowledgements(harness.Server).Length == 1,
+            "the lost request to be resent in the same session and answered",
+            token);
+
+        (int Connection, string MessageType, string MessageId, string WireLine)[] sends =
+        [
+            .. harness.Server.ReceivedEnvelopes.Where(item => item.MessageType == "CurrentStopDepartureRequested")
+        ];
+        Assert.Equal(2, sends.Length);
+        Assert.All(sends, item => Assert.Equal(connection, item.Connection));
+        Assert.Equal(sends[0].MessageId, sends[1].MessageId);
+        // The very line, byte for byte: the server deduplicates by messageId and compares the whole line, so a resend that
+        // changed anything -- a new sentAt, a new verifiedAt -- would be a content conflict, not a repeat.
+        Assert.Equal(sends[0].WireLine, sends[1].WireLine);
+        JsonElement[] requests = [.. harness.Server.CurrentStopDepartureRequests];
+        Assert.Equal(requests[0].GetRawText(), requests[1].GetRawText());
+        // The resend is not a press (the lesson of 8005-agv-onboard-hmi#236 and #239): the journaled press keeps its id, its
+        // messageId and its operator's verification time, and no second id is ever minted.
+        WireToGateCurrentStopDeparture afterResend = (await harness.Session.Journal.ReadRecoveryStateAsync(token))
+            .CurrentStopDeparture!;
+        Assert.Equal(pressed.DepartureRequestId, afterResend.DepartureRequestId);
+        Assert.Equal(pressed.MessageId, afterResend.MessageId);
+        Assert.Equal(pressed.VerifiedAt, afterResend.VerifiedAt);
+        Assert.Equal(pressed with { Result = afterResend.Result }, afterResend);
+        Assert.Single(
+            requests.Select(item => item.GetProperty("departureRequestId").GetString()).Distinct(StringComparer.Ordinal));
+        await harness.WaitUntilAsync(
+            () => harness.OnUi(() => harness.ViewModel.CurrentStopDeparture.Status) == "ACCEPTED",
+            "the acceptance to be shown",
+            token);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// Review M1, the second variant (P1): the server answers the request itself with a <c>ProtocolProblem</c> that is not
+    /// given up for good. The press is settled as refused with the code shown as it came, and the operator can press again --
+    /// it is not left pending.
+    /// </summary>
+    [Fact]
+    public async Task AProtocolProblemAnsweringTheRequestSettlesItAsRefused()
+    {
+        const string ReasonCode = "PROTOCOL_SCHEMA_INVALID";
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAtStagingAsync(
+            token,
+            server => server.NextCurrentStopDepartureProtocolProblem = ReasonCode);
+        CurrentStopDepartureDisplay shown = await WaitForPressableAsync(harness, token);
+
+        await harness.ViewModel.RequestCurrentStopDepartureAsync(shown.Prompt!, token);
+        await harness.WaitUntilAsync(
+            () => harness.OnUi(() => harness.ViewModel.CurrentStopDeparture.Status) == ReasonCode,
+            "the refusal to be shown with its code",
+            token);
+
+        CurrentStopDepartureDisplay refused = harness.OnUi(() => harness.ViewModel.CurrentStopDeparture);
+        Assert.Equal(WireToGateCurrentStopDepartureText.RejectionText(ReasonCode), refused.StatusText);
+        Assert.Contains(ReasonCode, refused.StatusText, StringComparison.Ordinal);
+        await WaitForPressableAsync(harness, token);
+        WireToGateRecoveryState state = await harness.Session.Journal.ReadRecoveryStateAsync(token);
+        Assert.Equal(WireToGateCurrentStopDepartureOutcome.Rejected, state.CurrentStopDeparture?.Result?.Outcome);
+        Assert.Equal(ReasonCode, state.CurrentStopDeparture?.Result?.ReasonCode);
+        Assert.Empty(harness.UiErrors);
+    }
+
+    /// <summary>
+    /// Review M2 (P2): a settled result belongs to the stop it was for. The next trip back to the same staging station -- a
+    /// new operation session, a newer worklist -- shows no 「服务端已受理出发请求」 left over from the last one.
+    /// </summary>
+    [Fact]
+    public async Task ASettledResultIsNotShownOnTheNextTripToTheSameStation()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAtStagingAsync(
+            token,
+            server =>
+            {
+                server.RespondToCurrentStopDepartures = true;
+                server.SnapshotsAfterAcceptedDeparture =
+                [
+                    ("VehicleBusinessStateSnapshot", State(2, Payloads.LoadingPhase("CLOSED", closedReason: "OPERATOR_DEPARTED"))),
+                    ("CurrentStopWorklistSnapshot", Worklist(2, null, "OPERATOR_DEPARTED"))
+                ];
+            });
+        CurrentStopDepartureDisplay shown = await WaitForPressableAsync(harness, token);
+        Assert.True(await harness.ViewModel.RequestCurrentStopDepartureAsync(shown.Prompt!, token));
+        await harness.WaitUntilAsync(
+            () => harness.ViewModel.LoadingClosedReasonCode == "OPERATOR_DEPARTED",
+            "the departure to be shown",
+            token);
+
+        // The next trip: back at the staging station, loading again under a new operation session.
+        await harness.Server.SendJourneySnapshotAsync("VehicleBusinessStateSnapshot", State(3, Payloads.LoadingPhase("LOADING")));
+        await harness.Server.SendJourneySnapshotAsync(
+            "CurrentStopWorklistSnapshot",
+            Worklist(
+                3,
+                NextTripOperationSession,
+                null,
+                Payloads.Item(DemandA, "TD-A2", "SUBLOT-A2", WireToGateStagingPickupStop.StagingToWire, "PICKUP", 1)));
+        CurrentStopDepartureDisplay nextTrip = await WaitForPressableAsync(harness, token, revision: 3);
+
+        Assert.False(nextTrip.HasStatus);
+        Assert.Equal(string.Empty, nextTrip.StatusText);
+        Assert.Equal(string.Empty, nextTrip.Status);
+    }
+
+    /// <summary>
+    /// Review L1: once the server has accepted, the button stays shut while the stop has not moved on -- a second press in that
+    /// window would draw a refusal under the acceptance. It comes back once the worklist moves past the accepted revision.
+    /// </summary>
+    [Fact]
+    public async Task TheButtonStaysShutAfterAnAcceptanceUntilTheStopMovesOn()
+    {
+        CancellationToken token = TestContext.Current.CancellationToken;
+        await using Harness harness = await StartAtStagingAsync(
+            token,
+            server => server.RespondToCurrentStopDepartures = true);
+        CurrentStopDepartureDisplay shown = await WaitForPressableAsync(harness, token);
+
+        Assert.True(await harness.ViewModel.RequestCurrentStopDepartureAsync(shown.Prompt!, token));
+        await harness.WaitUntilAsync(
+            () => harness.OnUi(() => harness.ViewModel.CurrentStopDeparture.Status) == "ACCEPTED",
+            "the acceptance to be shown",
+            token);
+
+        CurrentStopDepartureDisplay accepted = harness.OnUi(() => harness.ViewModel.CurrentStopDeparture);
+        Assert.True(accepted.IsShown);
+        Assert.False(accepted.CanPress);
+        Assert.Null(accepted.Prompt);
+        Assert.False(await harness.Business.RequestCurrentStopDepartureAsync(shown.Prompt!, token));
+        Assert.Single(harness.Server.CurrentStopDepartureRequests);
+
+        await harness.Server.SendJourneySnapshotAsync(
+            "CurrentStopWorklistSnapshot",
+            Worklist(
+                2,
+                OperationSession,
+                null,
+                Payloads.Item(DemandB, "TD-B", "SUBLOT-B", WireToGateStagingPickupStop.StagingToWire, "PICKUP", 1)));
+        await WaitForPressableAsync(harness, token, revision: 2);
     }
 
     private static async Task AssertRefusalIsShownAsync(string reasonCode)
