@@ -1,0 +1,3 @@
+mutation=slot
+  Failed SQCD.Agv.UnitTests.CurrentStopDepartureTests.ASlotOperationRunningUnsettledOrAwaitingAcknowledgementHoldsThePress [7 ms]
+Failed!  - Failed:     1, Passed:    40, Skipped:     0, Total:    41, Duration: 121 ms - SQCD.Agv.UnitTests.dll (net8.0)

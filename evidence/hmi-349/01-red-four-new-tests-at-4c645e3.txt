@@ -1,0 +1,17 @@
+  Failed SQCD.Agv.WireToGateG2Tests.CurrentStopDepartureG2Tests.AProtocolProblemAnsweringTheRequestSettlesItAsRefused [5 s]
+  Error Message:
+   Timed out after 5s waiting for: the refusal to be shown with its code. UI errors: []
+  Failed SQCD.Agv.WireToGateG2Tests.CurrentStopDepartureG2Tests.TheButtonStaysShutAfterAnAcceptanceUntilTheStopMovesOn [149 ms]
+  Error Message:
+   Assert.False() Failure
+Expected: False
+Actual:   True
+  Failed SQCD.Agv.WireToGateG2Tests.CurrentStopDepartureG2Tests.ASettledResultIsNotShownOnTheNextTripToTheSameStation [154 ms]
+  Error Message:
+   Assert.False() Failure
+Expected: False
+Actual:   True
+  Failed SQCD.Agv.WireToGateG2Tests.CurrentStopDepartureG2Tests.ALostAcknowledgementWithTheLinkUpIsResentInTheSameSession [7 s]
+  Error Message:
+   Timed out after 5s waiting for: the lost request to be resent in the same session and answered. UI errors: []
+Failed!  - Failed:     4, Passed:     0, Skipped:     0, Total:     4, Duration: 12 s - SQCD.Agv.WireToGateG2Tests.dll (net8.0)

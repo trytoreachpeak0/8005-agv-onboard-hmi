@@ -1,0 +1,1 @@
+Passed!  - Failed:     0, Passed:  1205, Skipped:     0, Total:  1205, Duration: 18 s - SQCD.Agv.UnitTests.dll (net8.0)
