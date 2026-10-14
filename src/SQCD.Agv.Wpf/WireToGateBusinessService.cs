@@ -2688,13 +2688,18 @@ public sealed partial class WireToGateBusinessService : IAsyncDisposable
     /// </summary>
     private void HandleSublotRejected(WireToGateRecoveryCommand command)
     {
-        // The answer to the entry: it is no longer being processed (8005-agv-onboard-hmi#349).
-        Volatile.Write(ref _sublotAwaitingAnswer, null);
-
         // The session client has already validated the payload against the 2.0.0 shape.
         SublotRejectedPayload payload =
             JsonSerializer.Deserialize<SublotRejectedPayload>(command.PayloadJson, JsonOptions)
             ?? throw new InvalidDataException("PROTOCOL_SCHEMA_INVALID");
+
+        // The answer to the entry of this operation session: it is no longer being processed. Only that session's: a late
+        // rejection of an earlier stop's entry does not clear the mark of this one (8005-agv-onboard-hmi#349, review L5).
+        if (Volatile.Read(ref _sublotAwaitingAnswer) is { } awaiting
+            && string.Equals(awaiting, payload.OperationSessionId, StringComparison.Ordinal))
+        {
+            Interlocked.CompareExchange(ref _sublotAwaitingAnswer, null, awaiting);
+        }
 
         // Same operation session, same worklist revision: the request the operator scanned against
         // still stands, so they can scan again straight away. Anything else means the worklist moved

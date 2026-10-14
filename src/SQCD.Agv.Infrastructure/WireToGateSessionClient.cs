@@ -1922,6 +1922,16 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
             // A MANUAL_REVIEW refusal gives the row up before the refusal is thrown as it always was: the caller sees what
             // it saw before onboard-hmi#254, and the next handshake no longer replays the row.
             await AbandonIfManualReviewAsync(stored, ackEnvelope, cancellationToken).ConfigureAwait(false);
+            // A departure request answered with a ProtocolProblem is the server refusing that request, whatever the reason
+            // and whether or not it was given up above: the business service settles the press as refused with this code
+            // rather than leaving it pending (8005-agv-onboard-hmi#349 review M1).
+            if (string.Equals(stored.MessageType, "CurrentStopDepartureRequested", StringComparison.Ordinal)
+                && string.Equals(ackEnvelope.MessageType, "ProtocolProblem", StringComparison.Ordinal))
+            {
+                throw new WireToGateRequestNotAcceptedException(WireToGateProtocolSerializer
+                    .DeserializePayload<ProtocolProblemPayload>(ackEnvelope).Problem.ReasonCode);
+            }
+
             ThrowIfProtocolProblem(ackEnvelope);
             WireToGateProtocolSerializer.RequireMessage(ackEnvelope, "DurableAck", stored.MessageId);
             DurableAckPayload ack = WireToGateProtocolSerializer
@@ -2054,6 +2064,11 @@ public sealed class WireToGateSessionClient : IAsyncDisposable
                         envelope.Payload,
                         allowRecoveryRequired: true,
                         CancellationToken.None).ConfigureAwait(false);
+                }
+                catch (WireToGateRequestNotAcceptedException)
+                {
+                    // A departure request the server refused (8005-agv-onboard-hmi#349): the business service's resend loop
+                    // sends it again, meets the same refusal and settles the press. The rows after it still go out.
                 }
                 catch (InvalidDataException)
                 {

@@ -20,6 +20,8 @@ namespace SQCD.Agv.Wpf.ViewModels;
 /// <param name="StatusText">上一次按键现在的状况：待处理、已受理、或拒绝原因；没有时为空。</param>
 /// <param name="Status">给 UIA 的原始值：<c>PENDING</c>／<c>ACCEPTED</c>／拒绝码。</param>
 /// <param name="SummaryText">待送点摘要：已装篮数、前后仓空仓、待装条数。</param>
+/// <param name="NoticeCode">给 UIA 的按不了的原因原始值（枚举名）；按得了或入口不出现时为空（审查 L4）。</param>
+/// <param name="SummaryCode">给 UIA 的摘要原始值，形如 <c>LOADED=1;FRONT_EMPTY=3;REAR_EMPTY=4;UNKNOWN=0;PENDING=2</c>（审查 L4）。</param>
 public sealed record CurrentStopDepartureDisplay(
     bool IsShown,
     bool CanPress,
@@ -30,8 +32,22 @@ public sealed record CurrentStopDepartureDisplay(
     bool HasStatus,
     string StatusText,
     string Status,
-    string SummaryText)
+    string SummaryText,
+    string NoticeCode,
+    string SummaryCode)
 {
     public static CurrentStopDepartureDisplay Empty { get; } =
-        new(false, false, null, string.Empty, false, string.Empty, false, string.Empty, string.Empty, string.Empty);
+        new(
+            false,
+            false,
+            null,
+            string.Empty,
+            false,
+            string.Empty,
+            false,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty);
 }

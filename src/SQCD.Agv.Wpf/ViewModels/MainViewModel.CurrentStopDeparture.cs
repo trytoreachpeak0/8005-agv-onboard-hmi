@@ -92,7 +92,9 @@ public sealed partial class MainViewModel
             status.Length > 0,
             status,
             WireToGateCurrentStopDepartureText.Status(view.Last),
-            WireToGateCurrentStopDepartureText.SummaryText(loaded, frontEmpty, rearEmpty, unknown, unloadedItems));
+            WireToGateCurrentStopDepartureText.SummaryText(loaded, frontEmpty, rearEmpty, unknown, unloadedItems),
+            notice.Length > 0 ? view.Unavailability.ToString() : string.Empty,
+            WireToGateCurrentStopDepartureText.SummaryCode(loaded, frontEmpty, rearEmpty, unknown, unloadedItems));
     }
 
     /// <summary>

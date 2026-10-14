@@ -830,6 +830,7 @@
                                    FontSize="13"
                                    Foreground="#334155"
                                    AutomationProperties.AutomationId="StagingSummary"
+                                   AutomationProperties.ItemStatus="{Binding CurrentStopDeparture.SummaryCode}"
                                    Text="{Binding CurrentStopDeparture.SummaryText}"
                                    TextWrapping="Wrap"
                                    Visibility="{Binding CurrentStopDeparture.IsShown, Converter={StaticResource BooleanToVisibilityConverter}}" />
@@ -849,6 +850,7 @@
                                        FontSize="13"
                                        Foreground="{StaticResource MutedBrush}"
                                        AutomationProperties.AutomationId="CurrentStopDepartureNotice"
+                                       AutomationProperties.ItemStatus="{Binding CurrentStopDeparture.NoticeCode}"
                                        Text="{Binding CurrentStopDeparture.Notice}"
                                        TextWrapping="Wrap"
                                        Visibility="{Binding CurrentStopDeparture.HasNotice, Converter={StaticResource BooleanToVisibilityConverter}}" />

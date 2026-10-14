@@ -144,6 +144,140 @@ public sealed class CurrentStopDepartureTests
         Assert.Same(once, machine);
     }
 
+    // ---- review M3: every branch of the entry's judgement, one fact at a time from "everything clear" ----
+
+    [Fact]
+    public void WithEverythingClearThePressIsOffered()
+    {
+        Assert.Equal(
+            WireToGateCurrentStopDepartureUnavailability.None,
+            WireToGateCurrentStopDepartureGate.Judge(WireToGateCurrentStopDepartureFacts.Clear));
+    }
+
+    [Fact]
+    public void ASlotOperationRunningUnsettledOrAwaitingAcknowledgementHoldsThePress()
+    {
+        WireToGateCurrentStopDepartureFacts clear = WireToGateCurrentStopDepartureFacts.Clear;
+        WireToGateCurrentStopDepartureFacts[] held =
+        [
+            clear with { SlotOperationRunning = true },
+            clear with { SlotOperationUnsettled = true },
+            clear with { ResultsAwaitingAcknowledgement = true }
+        ];
+
+        Assert.All(held, facts => Assert.Equal(
+            WireToGateCurrentStopDepartureUnavailability.SlotOperationInProgress,
+            WireToGateCurrentStopDepartureGate.Judge(facts)));
+    }
+
+    [Fact]
+    public void AnOpenCorrectionOrCancellationHoldsThePress()
+    {
+        WireToGateCurrentStopDepartureFacts clear = WireToGateCurrentStopDepartureFacts.Clear;
+
+        Assert.Equal(
+            WireToGateCurrentStopDepartureUnavailability.CorrectionOrCancellationOpen,
+            WireToGateCurrentStopDepartureGate.Judge(clear with { RecoveryVectorOpen = true }));
+        Assert.Equal(
+            WireToGateCurrentStopDepartureUnavailability.CorrectionOrCancellationOpen,
+            WireToGateCurrentStopDepartureGate.Judge(clear with { LoadCancellationOpen = true }));
+    }
+
+    /// <summary>
+    /// A session that is not Ready -- RecoveryRequired, or no session -- holds the press as a session problem; a latched severe
+    /// safety fault holds it as what it is, with its own sentence (review L3), even when the session is not Ready either.
+    /// </summary>
+    [Fact]
+    public void ASessionNotReadyAndALatchedSafetyFaultHoldThePressEachAsWhatItIs()
+    {
+        WireToGateCurrentStopDepartureFacts clear = WireToGateCurrentStopDepartureFacts.Clear;
+
+        Assert.Equal(
+            WireToGateCurrentStopDepartureUnavailability.SessionNotReady,
+            WireToGateCurrentStopDepartureGate.Judge(clear with { SessionReady = false }));
+        Assert.Equal(
+            WireToGateCurrentStopDepartureUnavailability.SafetyFaultLatched,
+            WireToGateCurrentStopDepartureGate.Judge(clear with { SafetyFaultLatched = true }));
+        Assert.Equal(
+            WireToGateCurrentStopDepartureUnavailability.SafetyFaultLatched,
+            WireToGateCurrentStopDepartureGate.Judge(clear with { SafetyFaultLatched = true, SessionReady = false }));
+        Assert.Equal(
+            "严重安全故障锁存中，不能出发",
+            WireToGateCurrentStopDepartureText.UnavailableText(WireToGateCurrentStopDepartureUnavailability.SafetyFaultLatched));
+        Assert.DoesNotContain(
+            "连接",
+            WireToGateCurrentStopDepartureText.UnavailableText(WireToGateCurrentStopDepartureUnavailability.SafetyFaultLatched),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void NoOperatorHoldsThePress()
+    {
+        Assert.Equal(
+            WireToGateCurrentStopDepartureUnavailability.NoOperator,
+            WireToGateCurrentStopDepartureGate.Judge(WireToGateCurrentStopDepartureFacts.Clear with { OperatorSignedIn = false }));
+    }
+
+    [Fact]
+    public void APendingPressAnAcceptanceAtThisStopOrAnEntryInProgressHoldThePress()
+    {
+        WireToGateCurrentStopDepartureFacts clear = WireToGateCurrentStopDepartureFacts.Clear;
+
+        Assert.Equal(
+            WireToGateCurrentStopDepartureUnavailability.AwaitingResult,
+            WireToGateCurrentStopDepartureGate.Judge(clear with { DepartureAwaitingResult = true }));
+        Assert.Equal(
+            WireToGateCurrentStopDepartureUnavailability.AwaitingResult,
+            WireToGateCurrentStopDepartureGate.Judge(clear with { AcceptedAtThisStop = true }));
+        Assert.Equal(
+            WireToGateCurrentStopDepartureUnavailability.EntryInProgress,
+            WireToGateCurrentStopDepartureGate.Judge(clear with { EntryInProgress = true }));
+    }
+
+    /// <summary>Review M2/L1: a settled press belongs to the station it was for, up to the revision its result named.</summary>
+    [Theory]
+    [InlineData(Staging, 3, true)]
+    [InlineData(Staging, 2, true)]
+    [InlineData(Staging, 4, false)]
+    [InlineData(Machine, 3, false)]
+    public void ASettledPressBelongsToItsStopUntilTheWorklistMovesPastIt(string stationId, long revision, bool expected)
+    {
+        WireToGateCurrentStopDeparture settled = new WireToGateCurrentStopDeparture(
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            Staging,
+            2,
+            null,
+            "operator-1",
+            "SESSION",
+            DateTimeOffset.UnixEpoch) with
+        {
+            Result = new("00000000-0000-4000-8000-000000000003", new string('a', 64), "ACCEPTED", null, 3, DateTimeOffset.UnixEpoch)
+        };
+        WireToGateCurrentStopWorklist worklist = Worklist(stationId) with { Revision = revision };
+
+        Assert.Equal(expected, WireToGateCurrentStopDepartureGate.BelongsToStop(settled, worklist));
+        Assert.False(WireToGateCurrentStopDepartureGate.BelongsToStop(settled with { Result = null }, worklist));
+    }
+
+    /// <summary>Review L2: the not-allowed refusal names the not-a-staging-stop case too.</summary>
+    [Fact]
+    public void TheNotAllowedRefusalNamesTheNotAStagingStopCase()
+    {
+        Assert.Contains(
+            "本站不是待送点",
+            WireToGateCurrentStopDepartureText.RejectionText("ACTION_NOT_ALLOWED_IN_STATE"),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheSummaryCodeCarriesTheFiveNumbersWithoutText()
+    {
+        Assert.Equal(
+            "LOADED=1;FRONT_EMPTY=3;REAR_EMPTY=4;UNKNOWN=0;PENDING=2",
+            WireToGateCurrentStopDepartureText.SummaryCode(1, 3, 4, 0, 2));
+    }
+
     [Theory]
     [InlineData(2, 3, "已装 2 篮将出发送货；未装的 3 条退回待派。")]
     [InlineData(2, 0, "已装 2 篮将出发送货。")]

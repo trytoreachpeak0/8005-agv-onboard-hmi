@@ -27,6 +27,12 @@ public static class WireToGateCurrentStopDepartureText
 
     public const string AcceptedText = "服务端已受理出发请求，车辆按服务端安排离站";
 
+    /// <summary>请求写到了链路上，但没等到服务端确认；车载端会按同一个编号自动重发。</summary>
+    public const string NotAcknowledgedText = "出发请求已发出，还没收到服务端确认，系统会自动重发，请勿重复按。";
+
+    /// <summary>请求已记下，但当前没有能送出去的连接；连接恢复后按同一个编号补发。</summary>
+    public const string NotSentText = "出发请求已记下，连接恢复后自动补发，请勿重复按。";
+
     private const string ContactMaintainer = "如无法解决，请联系系统维护人员。";
 
     private static readonly IReadOnlyDictionary<string, string> RejectionTexts =
@@ -35,8 +41,8 @@ public static class WireToGateCurrentStopDepartureText
             ["STATION_MISMATCH"] = "出发请求未被受理：车辆已不在按下「出发」时的那一站。请核对车辆位置与屏上清单。" + ContactMaintainer,
             ["WORKLIST_REVISION_STALE"] = "出发请求未被受理：按下时屏上的任务清单已经更新。请核对最新清单，仍需出发时重新按「出发」。",
             ["ACTION_NOT_ALLOWED_IN_STATE"] =
-                "出发请求未被受理：当前状态不允许出发（仓门操作进行中，或有纠错未完成）。请等当前操作结束后再按「出发」。"
-                + ContactMaintainer
+                "出发请求未被受理：当前状态不允许出发（本站不是待送点、仓门操作进行中，或有纠错未完成）。"
+                + "请等当前操作结束后再按「出发」。" + ContactMaintainer
         };
 
     /// <summary>服务端拒绝时屏上那一句。表外的码原样带出，不编意思。</summary>
@@ -68,6 +74,7 @@ public static class WireToGateCurrentStopDepartureText
     public static string UnavailableText(WireToGateCurrentStopDepartureUnavailability unavailability) =>
         unavailability switch
         {
+            WireToGateCurrentStopDepartureUnavailability.SafetyFaultLatched => "严重安全故障锁存中，不能出发",
             WireToGateCurrentStopDepartureUnavailability.SessionNotReady => "与服务端的连接未就绪，暂不能出发",
             WireToGateCurrentStopDepartureUnavailability.NoOperator => "未登录操作员，不能出发",
             WireToGateCurrentStopDepartureUnavailability.EntryInProgress => "扫码已提交，等服务端答复后才能出发",
@@ -94,6 +101,16 @@ public static class WireToGateCurrentStopDepartureText
     /// 待送点摘要那一行：已装篮数、前后仓剩余空仓、待装条数（票面第 5 条）。只显示，数据车上都有。仓位读数未知的不算空仓，
     /// 有未知时另写一句，免得把读不到的仓说成空仓。
     /// </summary>
+    /// <summary>给 UIA 与屏幕状态快照的摘要原始值：同样五个数，不带中文（审查 L4）。</summary>
+    public static string SummaryCode(
+        int loadedBasketCount,
+        int frontEmptyCount,
+        int rearEmptyCount,
+        int unknownSlotCount,
+        int unloadedItemCount) =>
+        $"LOADED={loadedBasketCount};FRONT_EMPTY={frontEmptyCount};REAR_EMPTY={rearEmptyCount};"
+        + $"UNKNOWN={unknownSlotCount};PENDING={unloadedItemCount}";
+
     public static string SummaryText(
         int loadedBasketCount,
         int frontEmptyCount,

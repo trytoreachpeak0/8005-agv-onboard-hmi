@@ -1,5 +1,6 @@
 using System.IO;
 using SQCD.Agv.Application;
+using SQCD.Agv.Contracts;
 using SQCD.Agv.Core;
 using SQCD.Agv.Infrastructure;
 
@@ -48,6 +49,23 @@ public sealed partial class WireToGateBusinessService
     /// server has answered or resends, and it refuses a departure while a slot operation runs anyway.
     /// </summary>
     private string? _sublotAwaitingAnswer;
+
+    /// <summary>1 while the loop that resends an unacknowledged press runs (review M1); at most one runs.</summary>
+    private int _currentStopDepartureResendLoopRunning;
+
+    /// <summary>
+    /// 1 while an automatic send of the press on file is under way -- the resend loop's, or the one after a restart. Its own
+    /// flag, not the press's <see cref="_currentStopDepartureSending"/>: an automatic send changes nothing that belongs to a
+    /// press (the lesson of 8005-agv-onboard-hmi#236 and #239, where automatic paths recorded a press or refreshed its window).
+    /// A press cannot overlap it anyway, since the entry is shut while a press is pending.
+    /// </summary>
+    private int _currentStopDepartureResending;
+
+    /// <summary>
+    /// How long the resend loop waits between looks at a press whose request has not been acknowledged (review M1). Not a
+    /// protocol timer: a resend goes out under the same messageId, and the server takes a repeat as the same message.
+    /// </summary>
+    internal TimeSpan CurrentStopDepartureResendInterval { get; set; } = TimeSpan.FromSeconds(5);
 
     /// <summary>The 「出发」 entry as it stands now.</summary>
     public WireToGateCurrentStopDepartureView CurrentStopDeparture => ReadCurrentStopDeparture();
@@ -119,9 +137,23 @@ public sealed partial class WireToGateBusinessService
                 + $"station={departure.StationId}，worklistRevision={departure.WorklistRevision}，"
                 + $"operationSession={departure.OperationSessionId ?? "null"}，unloadedItems={shown.UnloadedItemCount}，"
                 + $"operator={departure.OperatorId}。");
-            await _session.SendCurrentStopDepartureRequestedAsync(departure, cancellationToken).ConfigureAwait(false);
-            PublishOperatorResponse("CURRENT_STOP_DEPARTURE_SENT", WireToGateCurrentStopDepartureText.PendingText + "。");
-            return true;
+            switch (await SendCurrentStopDepartureOnceAsync(departure, cancellationToken).ConfigureAwait(false))
+            {
+                case DepartureSend.Acknowledged:
+                    PublishOperatorResponse("CURRENT_STOP_DEPARTURE_SENT", WireToGateCurrentStopDepartureText.PendingText + "。");
+                    return true;
+                case DepartureSend.Refused:
+                    // Settled as refused and shown; the press is over.
+                    return false;
+                case DepartureSend.NotAcknowledged:
+                    EnsureCurrentStopDepartureResendLoop();
+                    PublishOperatorResponse("CURRENT_STOP_DEPARTURE_PENDING", WireToGateCurrentStopDepartureText.NotAcknowledgedText);
+                    return true;
+                default:
+                    EnsureCurrentStopDepartureResendLoop();
+                    PublishOperatorResponse("CURRENT_STOP_DEPARTURE_PENDING", WireToGateCurrentStopDepartureText.NotSentText);
+                    return true;
+            }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -147,11 +179,10 @@ public sealed partial class WireToGateBusinessService
                 return false;
             }
 
-            // On file in the journal, and in the outbox even with the link down: the next handshake replays it under the
-            // same id, and the screen keeps saying it is pending until the result comes back.
-            PublishOperatorResponse(
-                "CURRENT_STOP_DEPARTURE_PENDING",
-                WireToGateCurrentStopDepartureText.PendingText + "（已记下，连接恢复后自动补发，请勿重复按）。");
+            // On file in the journal: the resend loop and the next session send it under the same id, and the screen keeps
+            // saying it is pending until the result comes back.
+            EnsureCurrentStopDepartureResendLoop();
+            PublishOperatorResponse("CURRENT_STOP_DEPARTURE_PENDING", WireToGateCurrentStopDepartureText.NotSentText);
             return true;
         }
         finally
@@ -170,13 +201,16 @@ public sealed partial class WireToGateBusinessService
         }
 
         WireToGateCurrentStopWorklist worklist = journey.CurrentStopWorklist!;
-        // A pending press is shown wherever the vehicle is; a settled one only at the stop it was for.
+        // A pending press is shown wherever the vehicle is; a settled one only at the stop it was for (review M2).
         WireToGateCurrentStopDeparture? last = state.CurrentStopDeparture is { } departure
-            && (departure.Result is null
-                || string.Equals(departure.StationId, worklist.StationId, StringComparison.Ordinal))
+            && (departure.Result is null || WireToGateCurrentStopDepartureGate.BelongsToStop(departure, worklist))
                 ? departure
                 : null;
-        WireToGateCurrentStopDepartureUnavailability unavailability = JudgeCurrentStopDeparture(state, ignoreSending);
+        WireToGateCurrentStopDepartureUnavailability unavailability = WireToGateCurrentStopDepartureGate.Judge(
+            ReadCurrentStopDepartureFacts(
+                state,
+                ignoreSending,
+                acceptedAtThisStop: last?.Result?.Outcome == WireToGateCurrentStopDepartureOutcome.Accepted));
         if (unavailability != WireToGateCurrentStopDepartureUnavailability.None
             || Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable) is not { } operatorId)
         {
@@ -196,56 +230,190 @@ public sealed partial class WireToGateBusinessService
     }
 
     /// <summary>
-    /// Why 「出发」 cannot be pressed at this staging pickup stop, or <c>None</c>. The four conditions of the ticket's item 1, and
-    /// before them the two that would refuse any operator request.
+    /// The facts <see cref="WireToGateCurrentStopDepartureGate.Judge"/> decides on, read now (review M3: the judgement lives in
+    /// that function alone, where each branch has its own test).
     /// </summary>
-    private WireToGateCurrentStopDepartureUnavailability JudgeCurrentStopDeparture(
+    private WireToGateCurrentStopDepartureFacts ReadCurrentStopDepartureFacts(
         WireToGateRecoveryState state,
-        bool ignoreSending)
+        bool ignoreSending,
+        bool acceptedAtThisStop)
     {
         WireToGateSessionSnapshot session = _session.Current;
-        if (_fatalFaultLatched()
-            || !session.Connected
-            || session.Readiness != WireToGateSessionReadiness.Ready)
-        {
-            return WireToGateCurrentStopDepartureUnavailability.SessionNotReady;
-        }
-
-        if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable)))
-        {
-            return WireToGateCurrentStopDepartureUnavailability.NoOperator;
-        }
-
-        if (state.CurrentStopDeparture is { Result: null }
-            || !ignoreSending && Volatile.Read(ref _currentStopDepartureSending) != 0)
-        {
-            return WireToGateCurrentStopDepartureUnavailability.AwaitingResult;
-        }
-
-        if (Volatile.Read(ref _sublotAwaitingAnswer) is not null)
-        {
-            return WireToGateCurrentStopDepartureUnavailability.EntryInProgress;
-        }
-
         bool running;
         lock (_operationAttemptGate)
         {
             running = _operationAttempts.Count > 0;
         }
 
-        if (running || state.UnsettledSlotOperationAttemptId is not null || state.PendingResults.Count > 0)
+        return new WireToGateCurrentStopDepartureFacts(
+            SafetyFaultLatched: _fatalFaultLatched(),
+            SessionReady: session.Connected && session.Readiness == WireToGateSessionReadiness.Ready,
+            OperatorSignedIn: !string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(_operatorIdEnvironmentVariable)),
+            DepartureAwaitingResult: state.CurrentStopDeparture is { Result: null }
+                || !ignoreSending && Volatile.Read(ref _currentStopDepartureSending) != 0,
+            AcceptedAtThisStop: acceptedAtThisStop,
+            EntryInProgress: Volatile.Read(ref _sublotAwaitingAnswer) is not null,
+            SlotOperationRunning: running,
+            SlotOperationUnsettled: state.UnsettledSlotOperationAttemptId is not null,
+            ResultsAwaitingAcknowledgement: state.PendingResults.Count > 0,
+            RecoveryVectorOpen: state.RecoveryVector is not null,
+            LoadCancellationOpen: state.PendingLoadCancellation is not null || IsLoadCancellationBeforeSublotOpen);
+    }
+
+    private enum DepartureSend
+    {
+        /// <summary>The server holds the request; its result comes on its own.</summary>
+        Acknowledged,
+
+        /// <summary>The server answered the request itself with a refusal; it is settled as refused.</summary>
+        Refused,
+
+        /// <summary>Written to the link, and no acknowledgement came back in time.</summary>
+        NotAcknowledged,
+
+        /// <summary>Not written to the link -- no session to carry it, or the link went -- but on file to go out later.</summary>
+        NotSent
+    }
+
+    /// <summary>
+    /// Sends the press on file once, under its own id, and says how it went. A <c>ProtocolProblem</c> answering the request --
+    /// whichever reason, given up for good or not -- settles the press as refused with that code (review M1): left pending, it
+    /// would hold the button shut with nothing ever answering it.
+    /// </summary>
+    private async Task<DepartureSend> SendCurrentStopDepartureOnceAsync(
+        WireToGateCurrentStopDeparture departure,
+        CancellationToken cancellationToken)
+    {
+        try
         {
-            return WireToGateCurrentStopDepartureUnavailability.SlotOperationInProgress;
+            await _session.SendCurrentStopDepartureRequestedAsync(departure, cancellationToken).ConfigureAwait(false);
+            return DepartureSend.Acknowledged;
+        }
+        catch (WireToGateRequestNotAcceptedException refusal)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"服务端以 ProtocolProblem 回绝出发请求：departureRequestId={departure.DepartureRequestId}，"
+                + $"messageId={departure.MessageId}，reason={refusal.ReasonCode}。");
+            await SettleCurrentStopDepartureLocallyAsync(
+                departure.MessageId,
+                string.Empty,
+                refusal.ReasonCode,
+                cancellationToken).ConfigureAwait(false);
+            return DepartureSend.Refused;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception) when (
+            exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"出发请求这一次没有得到确认：departureRequestId={departure.DepartureRequestId}，"
+                + $"{exception.GetType().Name}：{exception.Message}。",
+                exception);
+            return exception is TimeoutException ? DepartureSend.NotAcknowledged : DepartureSend.NotSent;
+        }
+    }
+
+    /// <summary>
+    /// Starts the loop that resends a press nothing has acknowledged (review M1), unless one runs. The handshake does not replay
+    /// a departure request and the pass over stale rows only sends rows of an older generation, so a request whose
+    /// acknowledgement was lost while the link stayed up had nothing to send it again until the next disconnect.
+    /// </summary>
+    private void EnsureCurrentStopDepartureResendLoop()
+    {
+        if (_disposed || Interlocked.CompareExchange(ref _currentStopDepartureResendLoopRunning, 1, 0) != 0)
+        {
+            return;
         }
 
-        if (state.RecoveryVector is not null
-            || state.PendingLoadCancellation is not null
-            || IsLoadCancellationBeforeSublotOpen)
-        {
-            return WireToGateCurrentStopDepartureUnavailability.CorrectionOrCancellationOpen;
-        }
+        TrackTask(RunCurrentStopDepartureResendLoopAsync(_stopping.Token));
+    }
 
-        return WireToGateCurrentStopDepartureUnavailability.None;
+    private async Task RunCurrentStopDepartureResendLoopAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(CurrentStopDepartureResendInterval, cancellationToken).ConfigureAwait(false);
+                if (Volatile.Read(ref _lastRecoveryState).CurrentStopDeparture is not { Result: null } pending)
+                {
+                    return;
+                }
+
+                WireToGateSessionSnapshot session = _session.Current;
+                if (!session.Connected
+                    || session.Readiness != WireToGateSessionReadiness.Ready
+                    || Interlocked.CompareExchange(ref _currentStopDepartureResending, 1, 0) != 0)
+                {
+                    continue;
+                }
+
+                try
+                {
+                    WireToGateDurableMessage? row = await _session.Journal
+                        .ReadOutgoingByDeduplicationKeyAsync(
+                            WireToGateSessionClient.CurrentStopDepartureKey(pending.DepartureRequestId),
+                            cancellationToken)
+                        .ConfigureAwait(false);
+                    // Acknowledged: the server holds it, and its result -- or its replay of it -- is the server's to send.
+                    // Given up: the abandonment has settled it.
+                    if (row is { Acknowledged: true } or { Abandoned: true })
+                    {
+                        return;
+                    }
+
+                    // A row of an older generation is the pass over stale rows' to send once the session is up; sending it
+                    // from here too would put a second copy on the wire beside that pass's. Only this generation's row --
+                    // the link stayed up and the acknowledgement was lost -- has no other sender.
+                    if (row is not null
+                        && session.SessionGeneration is long generation
+                        && WireToGateProtocolSerializer
+                            .DeserializeAndValidate(row.WireLine.TrimEnd('\r', '\n'), _session.Client.AgvId)
+                            .SessionGeneration is long rowGeneration
+                        && rowGeneration < generation)
+                    {
+                        continue;
+                    }
+
+                    _logger.Write(
+                        LogSeverity.Information,
+                        nameof(WireToGateBusinessService),
+                        $"重发未得到确认的出发请求：departureRequestId={pending.DepartureRequestId}，messageId={pending.MessageId}。");
+                    if (await SendCurrentStopDepartureOnceAsync(pending, cancellationToken).ConfigureAwait(false)
+                        is DepartureSend.Acknowledged or DepartureSend.Refused)
+                    {
+                        return;
+                    }
+                }
+                finally
+                {
+                    Volatile.Write(ref _currentStopDepartureResending, 0);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (
+            exception is IOException or TimeoutException or InvalidOperationException or InvalidDataException)
+        {
+            _logger.Write(
+                LogSeverity.Warning,
+                nameof(WireToGateBusinessService),
+                $"出发请求的重发循环停止，下次会话就绪时再起：{exception.GetType().Name}：{exception.Message}。",
+                exception);
+        }
+        finally
+        {
+            Volatile.Write(ref _currentStopDepartureResendLoopRunning, 0);
+        }
     }
 
     /// <summary>
@@ -369,7 +537,8 @@ public sealed partial class WireToGateBusinessService
     /// </summary>
     private async Task ResumePendingCurrentStopDepartureAsync(CancellationToken cancellationToken)
     {
-        if (Volatile.Read(ref _currentStopDepartureSending) != 0)
+        if (Volatile.Read(ref _lastRecoveryState).CurrentStopDeparture is not { Result: null }
+            || Interlocked.CompareExchange(ref _currentStopDepartureResending, 1, 0) != 0)
         {
             return;
         }
@@ -377,21 +546,31 @@ public sealed partial class WireToGateBusinessService
         try
         {
             WireToGateRecoveryState state = await ReadRecoveryStateCachedAsync(cancellationToken).ConfigureAwait(false);
-            if (state.CurrentStopDeparture is not { Result: null } pending
-                || await _session.Journal
-                    .ReadOutgoingByDeduplicationKeyAsync(
-                        WireToGateSessionClient.CurrentStopDepartureKey(pending.DepartureRequestId),
-                        cancellationToken)
-                    .ConfigureAwait(false) is not null)
+            if (state.CurrentStopDeparture is not { Result: null } pending)
             {
                 return;
             }
 
-            _logger.Write(
-                LogSeverity.Information,
-                nameof(WireToGateBusinessService),
-                $"补发日志簿里未进发件箱的出发请求：departureRequestId={pending.DepartureRequestId}，messageId={pending.MessageId}。");
-            await _session.SendCurrentStopDepartureRequestedAsync(pending, cancellationToken).ConfigureAwait(false);
+            if (await _session.Journal
+                    .ReadOutgoingByDeduplicationKeyAsync(
+                        WireToGateSessionClient.CurrentStopDepartureKey(pending.DepartureRequestId),
+                        cancellationToken)
+                    .ConfigureAwait(false) is null)
+            {
+                _logger.Write(
+                    LogSeverity.Information,
+                    nameof(WireToGateBusinessService),
+                    $"补发日志簿里未进发件箱的出发请求：departureRequestId={pending.DepartureRequestId}，messageId={pending.MessageId}。");
+                if (await SendCurrentStopDepartureOnceAsync(pending, cancellationToken).ConfigureAwait(false)
+                    is DepartureSend.Acknowledged or DepartureSend.Refused)
+                {
+                    return;
+                }
+            }
+
+            // In the outbox and unacknowledged: an older generation's row goes out with the pass over stale rows; one of this
+            // generation -- the session came back without a reconnect -- has only this loop (review M1).
+            EnsureCurrentStopDepartureResendLoop();
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -405,14 +584,36 @@ public sealed partial class WireToGateBusinessService
                 $"补发出发请求未完成，下次会话就绪时再试：{exception.GetType().Name}：{exception.Message}。",
                 exception);
         }
+        finally
+        {
+            Volatile.Write(ref _currentStopDepartureResending, 0);
+        }
     }
 
     /// <summary>
     /// A departure request the server refused for good (<c>MANUAL_REVIEW</c>, such as <c>BUSINESS_ID_CONTENT_CONFLICT</c>) and
     /// the outbox gave up: settled as refused, so the screen stops saying it is pending and the operator can press again.
     /// </summary>
-    private async Task SettleAbandonedCurrentStopDepartureAsync(
+    private Task SettleAbandonedCurrentStopDepartureAsync(
         WireToGateDurableMessageAbandonment abandoned,
+        CancellationToken cancellationToken) =>
+        SettleCurrentStopDepartureLocallyAsync(
+            abandoned.MessageId,
+            abandoned.ContentSha256,
+            abandoned.ReasonCode,
+            cancellationToken);
+
+    /// <summary>
+    /// Settles the pending press sent as <paramref name="messageId"/> as refused with <paramref name="reasonCode"/>, when the
+    /// server refused the request itself rather than answering it with a result: given up for good, or answered with a
+    /// <c>ProtocolProblem</c> (review M1). The screen stops saying it is pending, shows the code as it came, and the operator
+    /// can press again. <paramref name="contentSha256"/> is the request's own hash when the outbox gave one, otherwise empty:
+    /// no result message exists to name.
+    /// </summary>
+    private async Task SettleCurrentStopDepartureLocallyAsync(
+        string messageId,
+        string contentSha256,
+        string reasonCode,
         CancellationToken cancellationToken)
     {
         try
@@ -423,7 +624,7 @@ public sealed partial class WireToGateBusinessService
                 {
                     settled = false;
                     if (state.CurrentStopDeparture is not { Result: null } pending
-                        || !string.Equals(pending.MessageId, abandoned.MessageId, StringComparison.Ordinal))
+                        || !string.Equals(pending.MessageId, messageId, StringComparison.Ordinal))
                     {
                         return null;
                     }
@@ -434,10 +635,10 @@ public sealed partial class WireToGateBusinessService
                         CurrentStopDeparture = pending with
                         {
                             Result = new WireToGateCurrentStopDepartureOutcome(
-                                abandoned.MessageId,
-                                abandoned.ContentSha256,
+                                messageId,
+                                contentSha256,
                                 WireToGateCurrentStopDepartureOutcome.Rejected,
-                                abandoned.ReasonCode,
+                                reasonCode,
                                 pending.WorklistRevision,
                                 _clock.Now.ToUniversalTime())
                         }
@@ -448,7 +649,7 @@ public sealed partial class WireToGateBusinessService
             {
                 PublishOperatorResponse(
                     "CURRENT_STOP_DEPARTURE_REJECTED",
-                    WireToGateCurrentStopDepartureText.RejectionText(abandoned.ReasonCode));
+                    WireToGateCurrentStopDepartureText.RejectionText(reasonCode));
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -460,7 +661,7 @@ public sealed partial class WireToGateBusinessService
             _logger.Write(
                 LogSeverity.Warning,
                 nameof(WireToGateBusinessService),
-                $"被服务端放弃的出发请求未能记为已拒绝：messageId={abandoned.MessageId}，{exception.Message}。",
+                $"被服务端回绝的出发请求未能记为已拒绝：messageId={messageId}，reason={reasonCode}，{exception.Message}。",
                 exception);
         }
     }

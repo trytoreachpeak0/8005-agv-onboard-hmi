@@ -84,13 +84,19 @@ public enum WireToGateCurrentStopDepartureUnavailability
     /// <summary>Not a staging pickup stop: the entry is not shown at all. Machine pickups keep their screen.</summary>
     NotAtStagingPickupStop,
 
-    /// <summary>The session is not Ready, or a severe safety fault is latched.</summary>
+    /// <summary>A severe safety fault is latched on this vehicle (review L3: not a link problem, and not shown as one).</summary>
+    SafetyFaultLatched,
+
+    /// <summary>The session is not connected, or not Ready.</summary>
     SessionNotReady,
 
     /// <summary>No operator is signed in on this vehicle.</summary>
     NoOperator,
 
-    /// <summary>A departure was sent and its result has not come back.</summary>
+    /// <summary>
+    /// A departure was sent and its result has not come back; or it was accepted and the stop has not moved on since, so a
+    /// second press would only draw a refusal under the acceptance (review L1).
+    /// </summary>
     AwaitingResult,
 
     /// <summary>A sublot was submitted and the server has not answered it with a load or a rejection yet.</summary>
@@ -101,6 +107,100 @@ public enum WireToGateCurrentStopDepartureUnavailability
 
     /// <summary>A load correction or a load cancellation is open.</summary>
     CorrectionOrCancellationOpen
+}
+
+/// <summary>
+/// The facts the 「出发」 entry is judged on, read by the business service at one instant (review M3: the judgement itself is
+/// <see cref="WireToGateCurrentStopDepartureGate.Judge"/>, a function of these alone, so every branch has its own test).
+/// </summary>
+/// <param name="DepartureAwaitingResult">A press is on file with no result, or one is being journaled right now.</param>
+/// <param name="AcceptedAtThisStop">The press on file was accepted for the stop still on screen.</param>
+/// <param name="EntryInProgress">A sublot went out and the server has not answered it with a load or a rejection.</param>
+/// <param name="SlotOperationRunning">The executor holds a slot operation attempt.</param>
+/// <param name="SlotOperationUnsettled">The journal names an unsettled slot operation attempt.</param>
+/// <param name="ResultsAwaitingAcknowledgement">The journal holds results the server has not acknowledged.</param>
+/// <param name="RecoveryVectorOpen">A load correction, compensation or other recovery vector is open.</param>
+/// <param name="LoadCancellationOpen">A load cancellation, before or after any sublot, is open.</param>
+public sealed record WireToGateCurrentStopDepartureFacts(
+    bool SafetyFaultLatched,
+    bool SessionReady,
+    bool OperatorSignedIn,
+    bool DepartureAwaitingResult,
+    bool AcceptedAtThisStop,
+    bool EntryInProgress,
+    bool SlotOperationRunning,
+    bool SlotOperationUnsettled,
+    bool ResultsAwaitingAcknowledgement,
+    bool RecoveryVectorOpen,
+    bool LoadCancellationOpen)
+{
+    /// <summary>Everything that lets the press through; a test changes one fact at a time from here.</summary>
+    public static WireToGateCurrentStopDepartureFacts Clear { get; } =
+        new(false, true, true, false, false, false, false, false, false, false, false);
+}
+
+/// <summary>
+/// Why 「出发」 cannot be pressed at a staging pickup stop, or <c>None</c>: the ticket's four conditions (8005-agv-onboard-hmi#349
+/// item 1) and, before them, the ones that refuse any operator request. The first that holds decides, in the order of
+/// <see cref="WireToGateCurrentStopDepartureUnavailability"/>.
+/// </summary>
+public static class WireToGateCurrentStopDepartureGate
+{
+    public static WireToGateCurrentStopDepartureUnavailability Judge(WireToGateCurrentStopDepartureFacts facts)
+    {
+        ArgumentNullException.ThrowIfNull(facts);
+        if (facts.SafetyFaultLatched)
+        {
+            return WireToGateCurrentStopDepartureUnavailability.SafetyFaultLatched;
+        }
+
+        if (!facts.SessionReady)
+        {
+            return WireToGateCurrentStopDepartureUnavailability.SessionNotReady;
+        }
+
+        if (!facts.OperatorSignedIn)
+        {
+            return WireToGateCurrentStopDepartureUnavailability.NoOperator;
+        }
+
+        if (facts.DepartureAwaitingResult || facts.AcceptedAtThisStop)
+        {
+            return WireToGateCurrentStopDepartureUnavailability.AwaitingResult;
+        }
+
+        if (facts.EntryInProgress)
+        {
+            return WireToGateCurrentStopDepartureUnavailability.EntryInProgress;
+        }
+
+        if (facts.SlotOperationRunning || facts.SlotOperationUnsettled || facts.ResultsAwaitingAcknowledgement)
+        {
+            return WireToGateCurrentStopDepartureUnavailability.SlotOperationInProgress;
+        }
+
+        return facts.RecoveryVectorOpen || facts.LoadCancellationOpen
+            ? WireToGateCurrentStopDepartureUnavailability.CorrectionOrCancellationOpen
+            : WireToGateCurrentStopDepartureUnavailability.None;
+    }
+
+    /// <summary>
+    /// Whether a settled press belongs to the stop now on screen, so its result is still shown there and an acceptance still
+    /// holds the button (review M2, L1): the same station, and a worklist no newer than the revision the result names. The next
+    /// trip back to the same station comes with a newer worklist, and shows nothing left over from this one.
+    /// </summary>
+    /// <remarks>
+    /// The revision and not the operation session: the cargo-holding wait's empty worklist carries none, and a stop's
+    /// worklist keeps its session while it moves on -- after which an acceptance must stop holding the button.
+    /// </remarks>
+    public static bool BelongsToStop(WireToGateCurrentStopDeparture departure, WireToGateCurrentStopWorklist worklist)
+    {
+        ArgumentNullException.ThrowIfNull(departure);
+        ArgumentNullException.ThrowIfNull(worklist);
+        return departure.Result is { } result
+            && string.Equals(departure.StationId, worklist.StationId, StringComparison.Ordinal)
+            && worklist.Revision <= result.CurrentWorklistRevision;
+    }
 }
 
 /// <summary>
